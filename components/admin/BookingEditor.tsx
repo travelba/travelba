@@ -3,6 +3,7 @@
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { greetingGivenName, shownPersonName } from "@/lib/crm/identity";
 import {
   isActiveItem,
   isLedgerExpenseKind,
@@ -16,6 +17,7 @@ import {
   type CrmHotelMessage,
   type CrmHotelThreadMessage,
   type CrmHotelRequest,
+  type CrmBillingCompany,
   type CrmCompanion,
   type CrmCustomer,
   type CrmCustomerActivity,
@@ -47,10 +49,12 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
+import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { PliantBookingTab } from "@/components/admin/PliantBookingTab";
+import { PliantSettlement } from "@/components/admin/PliantSettlement";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
-import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
+import type { PliantCardRecap, PliantSettlementStay } from "@/lib/crm/pliant-booking";
 import { WhatsappThread, type WhatsappThreadMessage, type WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
 import { BookingExpensesPanel, type ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
@@ -203,6 +207,7 @@ export function BookingEditor({
   shareCompanions = [],
   arrivals = [],
   hotelRequests = [],
+  hotelSignatory = "",
   hasCardCode = false,
   cardViews = [],
   attachedEmails = [],
@@ -210,6 +215,8 @@ export function BookingEditor({
   hotelThreadMessages = [],
   openHotelItemId = null,
   billingCompanies = [],
+  ficheBillingCompanies = [],
+  companyAdmins = [],
   littleEmperors = null,
   expenseBilling = [],
   revolutExpenses = [],
@@ -217,6 +224,7 @@ export function BookingEditor({
   accountLedger = null,
   bookingCards = [],
   pliantRecap = [],
+  settlementStays = [],
   estaLines = [],
   ukEtaLines = [],
   whatsappMessages = [],
@@ -249,6 +257,7 @@ export function BookingEditor({
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
   hotelRequests?: CrmHotelRequest[];
+  hotelSignatory?: string;
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
   attachedEmails?: {
@@ -269,6 +278,9 @@ export function BookingEditor({
     sort_order: number;
     funding?: string | null;
   }[];
+  /** Sociétés de la fiche du client du dossier, colonnes complètes. */
+  ficheBillingCompanies?: CrmBillingCompany[];
+  companyAdmins?: PickableCustomer[];
   littleEmperors?: {
     id: string;
     hotel_name: string | null;
@@ -285,6 +297,7 @@ export function BookingEditor({
   accountLedger?: ClientLedgerView | null;
   bookingCards?: CrmBookingCard[];
   pliantRecap?: PliantCardRecap[];
+  settlementStays?: PliantSettlementStay[];
   estaLines?: EstaTravelerLine[];
   ukEtaLines?: UkEtaTravelerLine[];
   whatsappMessages?: WhatsappThreadMessage[];
@@ -508,6 +521,8 @@ export function BookingEditor({
     first_name: account?.first_name || holderName.first_name,
     last_name: account?.last_name || holderName.last_name,
     usage_name: account?.usage_name ?? null,
+    birth_date: account?.birth_date ?? null,
+    sex: account?.sex ?? null,
   };
   const stayGuest = principalGuest({ travelers, holder: holderProfile });
   const documentChoices = peopleNotOnStay(
@@ -808,7 +823,7 @@ export function BookingEditor({
   const travelerLabel = travelers.length
     ? travelers.length <= 4
       ? travelers
-          .map((traveler) => (traveler.first_name || traveler.last_name || "").trim())
+          .map((traveler) => greetingGivenName(traveler.first_name) || (traveler.last_name || "").trim())
           .filter(Boolean)
           .join(", ") || `${travelers.length} voyageurs`
       : `${travelers.length} voyageurs`
@@ -1207,7 +1222,7 @@ export function BookingEditor({
             </div>
             {clientPick && payerPick && clientPick.id !== payerPick.id ? (
               <p className="text-sm text-muted">
-                Réglé par {payerPick.first_name} {payerPick.last_name}
+                Réglé par {shownPersonName(payerPick)}
               </p>
             ) : null}
             <details className="group rounded-2xl bg-[#faf9f6]">
@@ -1623,6 +1638,7 @@ export function BookingEditor({
         household={householdMembers(account || holderName, companions)}
         currency={booking.currency}
         hotelRequests={hotelRequests}
+        hotelSignatory={hotelSignatory}
         today={todayIsoDate()}
         travelers={travelers}
         identityDocs={identityDocs}
@@ -1676,10 +1692,29 @@ export function BookingEditor({
         </>
       ) : null}
 
+      {customer ? (
+        <div className={tab === "client" ? "order-2" : "hidden"}>
+          {clientPick && clientPick.id !== customer.id ? (
+            <p className="mb-4 text-sm text-muted">
+              Enregistrez le dossier pour ouvrir la fiche de{" "}
+              {[clientPick.first_name, clientPick.last_name].filter(Boolean).join(" ") || "ce client"}.
+            </p>
+          ) : null}
+          <CustomerEditor
+            key={customer.updated_at}
+            customer={customer}
+            companions={companions}
+            documents={identityDocs}
+            companyAdmins={companyAdmins}
+            billingCompanies={ficheBillingCompanies}
+          />
+        </div>
+      ) : null}
+
       {tab === "client" ? (
         <>
-      <section className="order-2 admin-af-card space-y-4 rounded-3xl p-5">
-        <CoverMark>Voyageurs</CoverMark>
+      <section className="order-3 admin-af-card space-y-4 rounded-3xl p-5">
+        <CoverMark>Sur ce séjour</CoverMark>
         {!travelers.length ? (
           <button
             type="button"
@@ -1687,7 +1722,7 @@ export function BookingEditor({
             onClick={() => void addHolder()}
             className="admin-tap rounded-full bg-[var(--admin-peach)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
           >
-            {partyBusy ? "Ajout…" : `Ajouter ${holderName.first_name} ${holderName.last_name} (titulaire)`}
+            {partyBusy ? "Ajout…" : `Ajouter ${shownPersonName(holderName)} (titulaire)`}
           </button>
         ) : (
           <TripPassportPicker
@@ -1699,6 +1734,7 @@ export function BookingEditor({
             travelers={travelers}
             documents={identityDocs}
             holder={holderProfile}
+            companions={companions}
             badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
             scans={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
             onRemove={(id) => removeTraveler(id)}
@@ -1723,7 +1759,7 @@ export function BookingEditor({
               <optgroup label="Dans les documents">
                 {documentChoices.map((person, index) => (
                   <option key={`doc-${person.first_name}-${person.last_name}`} value={`doc:${index}`}>
-                    {[person.first_name, person.last_name].filter(Boolean).join(" ")}
+                    {shownPersonName(person) || "Sans nom"}
                   </option>
                 ))}
               </optgroup>
@@ -1731,14 +1767,14 @@ export function BookingEditor({
             <optgroup label="Foyer">
               {travelers.some((row) => row.is_account_holder) ? null : (
                 <option value="holder">
-                  {holderName.first_name} {holderName.last_name} (titulaire)
+                  {shownPersonName(holderName)} (titulaire)
                 </option>
               )}
               {companions
                 .filter((companion) => !travelers.some((row) => row.companion_id === companion.id))
                 .map((companion) => (
                   <option key={companion.id} value={`companion:${companion.id}`}>
-                    {companion.first_name} {companion.last_name}
+                    {shownPersonName(companion)}
                   </option>
                 ))}
             </optgroup>
@@ -1763,7 +1799,7 @@ export function BookingEditor({
       </section>
 
       {shareUrl ? (
-        <div className="order-3">
+        <div className="order-4">
         <TripSharePanel
           bookingId={booking.id}
           shareUrl={shareUrl}
@@ -1772,7 +1808,7 @@ export function BookingEditor({
         />
         </div>
       ) : null}
-      <div className="order-4">
+      <div className="order-5">
         <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
       </div>
         </>
@@ -1803,6 +1839,13 @@ export function BookingEditor({
           <p className="text-sm text-muted">Les cartes se règlent hors agence. Les frais et les dépenses restent au grand livre.</p>
         ) : null}
       </section>
+
+      <PliantSettlement
+        bookingId={booking.id}
+        currency={booking.currency}
+        cards={pliantRecap}
+        stays={settlementStays}
+      />
 
       <div className="order-3">
       <BookingExpensesPanel
@@ -1842,12 +1885,7 @@ export function BookingEditor({
             quietEmpty={pliantRecap.length > 0}
           />
           {pliantRecap.length ? (
-            <PliantBookingTab
-              bookingId={booking.id}
-              currency={booking.currency}
-              cards={pliantRecap}
-              items={items}
-            />
+            <PliantBookingTab bookingId={booking.id} cards={pliantRecap} />
           ) : null}
         </div>
       ) : null}
@@ -1860,7 +1898,7 @@ export function BookingEditor({
               <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
                 {passportGap.map((traveler) => (
                   <li key={traveler.id}>
-                    {traveler.first_name} {traveler.last_name}
+                    {shownPersonName(traveler)}
                   </li>
                 ))}
               </ul>

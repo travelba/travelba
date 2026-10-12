@@ -1,3 +1,5 @@
+import { shownPersonName } from "./identity";
+
 export const BOOKING_STATUSES = ["draft", "quoted", "confirmed", "cancelled"] as const;
 
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
@@ -387,6 +389,7 @@ export const HOTEL_DESK_KINDS = [
   "full_credit",
   "transfer",
   "concierge",
+  "other",
 ] as const;
 
 export type HotelDeskKind = (typeof HOTEL_DESK_KINDS)[number];
@@ -732,5 +735,5 @@ export type CrmCustomerActivity = {
 };
 
 export function customerFullName(c: Pick<CrmCustomer, "first_name" | "last_name">) {
-  return [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || "Client";
+  return shownPersonName(c) || "Client";
 }

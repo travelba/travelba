@@ -15,6 +15,8 @@ import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { Pagination } from "@/components/admin/Pagination";
 import {
   ADMIN_PAGE_SIZE,
+  bookingSortParam,
+  DEFAULT_BOOKING_SORT,
   listHref,
   type BookingSort,
   type BookingStateFilter,
@@ -24,6 +26,7 @@ export type BookingsListFilters = {
   q: string;
   etat: BookingStateFilter | null;
   tri: BookingSort;
+  vue?: "liste" | null;
 };
 
 /** Liste paginée côté serveur : la recherche met l’URL à jour pendant la saisie. */
@@ -36,7 +39,7 @@ export function BookingsTable({
   page = 1,
   pageSize = ADMIN_PAGE_SIZE,
   total = bookings.length,
-  filters = { q: "", etat: null, tri: "depart" },
+  filters = { q: "", etat: null, tri: DEFAULT_BOOKING_SORT },
   hiddenArchiveHits = 0,
   searchText = {},
   payerLabels = {},
@@ -60,17 +63,19 @@ export function BookingsTable({
   const urlFilters = {
     q: filters.q,
     etat: filters.etat,
-    tri: filters.tri === "depart" ? null : filters.tri,
+    tri: bookingSortParam(filters.tri),
+    vue: filters.vue === "liste" ? "liste" : null,
   };
   const filtering = Boolean(filters.q || filters.etat);
   const archivedOnly = filters.etat === "archive";
 
   return (
-    <div className="mt-6 space-y-3">
+    <div className="space-y-3">
       <BookingsFilters
         q={filters.q}
         etat={filters.etat}
         tri={filters.tri}
+        vue={filters.vue}
         revision={bookings.map((b) => b.id).join(",")}
       />
       <Pagination

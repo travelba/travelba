@@ -16,6 +16,10 @@ import {
   hotelReplyLink,
   hotelReplySearchQueries,
   deskNeedsAttention,
+  applyHotelSalutation,
+  companionNames,
+  hotelSignatoryName,
+  signHotelLetter,
   hotelDeskDraft,
   ensureHotelMailIdentity,
   ensureHotelMailSubject,
@@ -83,12 +87,15 @@ test("lien et full credit non proposés pour Expedia", () => {
   assert.equal(hotelDeskSuggested("full_credit", "expedia"), false);
   assert.equal(hotelDeskSuggested("upgrade", "expedia"), true);
   assert.equal(hotelDeskSuggested("payment_link", "direct"), true);
+  assert.equal(hotelDeskSuggested("other", "direct"), false);
+  assert.equal(hotelDeskSuggested("other", "expedia"), false);
 });
 
 test("brouillon français : lien, full credit sans numéro, tous les contacts", () => {
   const link = hotelDeskDraft({ ...base, kind: "payment_link", item: hotel() });
   assert.match(link.subject, /Camille Martin/);
   assert.match(link.subject, /HB-9/);
+  assert.match(link.body, /clients VIP/);
   assert.match(link.body, /lien de paiement/);
   assert.match(link.body, /Camille Martin/);
   assert.match(link.body, /HB-9/);
@@ -148,9 +155,12 @@ test("anglais hors de France, transfert repris sur les vols", () => {
     details: { hotel_name: "The Leela", country: "India", email: "stay@leela.test" },
   });
   const upgrade = hotelDeskDraft({ ...base, kind: "upgrade", item });
-  assert.match(upgrade.body, /Dear team/);
-  assert.match(upgrade.body, /VIP welcome amenities/);
-  assert.match(upgrade.body, /Best regards/);
+  assert.match(upgrade.body, /^Dear team,/);
+  assert.match(upgrade.body, /one of our VIP clients/);
+  assert.match(upgrade.body, /welcome note/);
+  assert.match(upgrade.body, /Travel Business Agency$/);
+  assert.doesNotMatch(upgrade.body, /Benjamin/);
+  assert.match(upgrade.subject, /^Camille Martin — Arrival — The Leela/);
   assert.equal(upgrade.lang, "en");
   const flights: CrmBookingItem[] = [
     {
@@ -176,6 +186,103 @@ test("anglais hors de France, transfert repris sur les vols", () => {
   assert.match(cues.departure, /AF193/);
   const transfer = hotelDeskDraft({ ...base, kind: "transfer", item: hotel(), items: flights });
   assert.match(transfer.body, /AF192/);
+  assert.doesNotMatch(transfer.body, /à préciser/);
+});
+
+test("l'accueil nomme la personne, la chambre, le vol et signe Benjamin", () => {
+  const item = hotel({
+    details: {
+      hotel_name: "Le Bristol",
+      country: "France",
+      rooms: [{ room: "Deluxe" }],
+      included: ["Petit-déjeuner offert"],
+      hotel_contacts: [
+        { type: "Réservations", first_name: "Alexandra", last_name: "Rossi", email: "alexandra@bristol.test" },
+      ],
+    },
+  });
+  const flights: CrmBookingItem[] = [
+    {
+      ...hotel(),
+      id: "in",
+      kind: "flight",
+      title: "Aller",
+      start_at: "2026-11-04T09:40:00",
+      end_at: "2026-11-04T18:00:00",
+      details: { flight_number: "AF192", from: "CDG", to: "CDG" },
+    },
+  ];
+  const upgrade = hotelDeskDraft({
+    ...base,
+    kind: "upgrade",
+    item,
+    items: flights,
+    companions: ["Julien Martin"],
+  });
+  assert.match(upgrade.body, /^Bonjour Alexandra Rossi,/);
+  assert.match(upgrade.body, /Camille Martin, qui compte parmi nos clients VIP, séjournera à Le Bristol le 4 novembre 2026/);
+  assert.match(upgrade.body, /en chambre Deluxe/);
+  assert.match(upgrade.body, /avec Julien Martin/);
+  assert.match(upgrade.body, /18h00/);
+  assert.doesNotMatch(upgrade.body, /09h40/);
+  assert.match(upgrade.body, /mot de bienvenue/);
+  assert.match(upgrade.body, /Petit-déjeuner offert/);
+  assert.match(upgrade.body, /\nTravel Business Agency$/);
+  assert.doesNotMatch(upgrade.body, /Benjamin/);
+  assert.match(upgrade.subject, /^Camille Martin — Accueil — Le Bristol — 4 novembre 2026 — HB-9$/);
+  const plain = hotelDeskDraft({ ...base, kind: "upgrade", item: hotel() });
+  assert.match(plain.body, /^Chère équipe,/);
+  assert.doesNotMatch(plain.body, /en chambre/);
+  assert.doesNotMatch(plain.body, /Petit-déjeuner/);
+  const swapped = applyHotelSalutation(
+    plain.body,
+    "fr",
+    [
+      { email: "claire@bristol.test", firstName: "Claire", lastName: "Martin", role: "Directrice" },
+      { email: "desk@bristol.test", firstName: "Paul", lastName: "Bernard", role: "Concierge" },
+    ],
+    ["claire@bristol.test"]
+  );
+  assert.match(swapped, /^Bonjour Claire Martin,/);
+  const kept = applyHotelSalutation("Madame,\n\nLa chambre est prête.", "fr", [], ["claire@bristol.test"]);
+  assert.match(kept, /^Madame,/);
+  assert.deepEqual(companionNames([{ first_name: "Camille", last_name: "Martin" }, { first_name: "Julien", last_name: "Martin" }, { first_name: "Adulte", last_name: "2" }], "Camille Martin"), ["Julien Martin"]);
+  const followUp = hotelDeskDraft({ ...base, kind: "upgrade", item: hotel(), relance: true });
+  assert.match(followUp.body, /n'ayant pas encore eu le plaisir de votre retour/);
+  assert.doesNotMatch(followUp.body, /Travel Business Agency\.\n/);
+  assert.match(followUp.subject, /^Relance — Camille Martin — Accueil/);
+  const other = hotelDeskDraft({ ...base, kind: "other", item: hotel() });
+  assert.equal(other.status, "skipped");
+  assert.match(other.subject, /^Camille Martin — Autre demande — Le Bristol — 4 novembre 2026 — HB-9$/);
+  assert.match(other.body, /^Chère équipe,/);
+  assert.match(other.body, /Camille Martin, qui compte parmi nos clients VIP/);
+  assert.match(other.body, /confirmation HB-9/);
+  assert.match(other.body, /demande suivante/);
+  assert.match(other.body, /\n…\n/);
+  assert.match(other.body, /Travel Business Agency$/);
+  assert.doesNotMatch(other.body, /^Guest:/m);
+  const otherEn = hotelDeskDraft({
+    ...base,
+    kind: "other",
+    item: hotel({ details: { hotel_name: "The NoMad Hotel, London", country: "United Kingdom", email: "reservations.london@thenomadhotel.com" } }),
+  });
+  assert.equal(otherEn.lang, "en");
+  assert.match(otherEn.subject, /Other request/);
+  assert.match(otherEn.body, /^Dear team,/);
+  assert.match(otherEn.body, /following request/);
+});
+
+test("la signature est le prénom de l'agent qui envoie", () => {
+  const named = hotelDeskDraft({ ...base, kind: "upgrade", item: hotel(), signatory: "Camille Rossi" });
+  assert.match(named.body, /Camille\nTravel Business Agency$/);
+  assert.doesNotMatch(named.body, /Rossi/);
+  const swapped = signHotelLetter(named.body, "Jean-Pierre Martin");
+  assert.match(swapped, /Jean-Pierre\nTravel Business Agency$/);
+  assert.doesNotMatch(swapped, /Camille\nTravel Business Agency/);
+  const kept = signHotelLetter("Chère équipe,\n\nBien à vous,\nTravel Business Agency", "Camille Rossi");
+  assert.equal(kept, "Chère équipe,\n\nBien à vous,\nTravel Business Agency");
+  assert.equal(hotelSignatoryName("  Benjamin Boukris "), "Benjamin");
+  assert.equal(hotelSignatoryName(""), "");
 });
 
 test("une modification agence n'est pas écrasée", () => {
@@ -258,8 +365,8 @@ test("chaque courrier est envoyé, pas besoin, ou encore ouvert", () => {
     row("concierge", "follow_up"),
   ]);
   assert.equal(stay.complete, false);
-  assert.deepEqual(stay.openTitles, ["Lien de paiement", "Full credit"]);
-  assert.equal(stay.summary, "Il reste Lien de paiement et Full credit");
+  assert.deepEqual(stay.openTitles, ["Lien de paiement", "Note de la maison"]);
+  assert.equal(stay.summary, "Il reste Lien de paiement et Note de la maison");
   assert.equal(stay.lines.find((line) => line.kind === "precheckin")?.caption, "Pas besoin");
   assert.equal(stay.lines.find((line) => line.kind === "concierge")?.caption, "Envoyé · à relancer");
   assert.equal(stay.lines.find((line) => line.kind === "transfer")?.mark, "sent");
@@ -632,12 +739,13 @@ test("écrire à l'hôtel n'ajoute pas d'étape et coche les destinataires à l'
   assert.doesNotMatch(fn, /crm_booking_items/);
   const desk = readFileSync(join(process.cwd(), "components/admin/HotelDesk.tsx"), "utf8");
   assert.match(desk, /HotelMailTo/);
+  assert.ok(desk.indexOf("<HotelMailTo") < desk.search(/\n\s*Objet\n/), "destinataires avant l’objet");
   assert.doesNotMatch(desk, /RecipientRoster/);
   const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
   assert.match(thread, /Avec l’hôtel/);
-  assert.match(thread, /HotelMailTo/);
-  assert.match(thread, /recipients: selected/);
-  assert.doesNotMatch(thread, /RecipientRoster/);
+  assert.doesNotMatch(thread, /HotelMailTo/);
+  assert.doesNotMatch(thread, /send-message/);
+  assert.match(desk, /Autre demande|other/);
   const carnet = readFileSync(join(process.cwd(), "components/account/CarnetItinerary.tsx"), "utf8");
   assert.doesNotMatch(carnet, /HotelMailTo/);
 });
@@ -819,7 +927,7 @@ test("le fil garde chaque réponse et replie la copie Gmail de l'envoi", () => {
   assert.equal(turns[3]?.link, "https://secure.hotel.test/authorizations/stay-1");
 });
 
-test("le fil hôtel coche le destinataire prévu et laisse décocher les autres", async () => {
+test("Autre demande suit Concierge et coche le destinataire prévu", async () => {
   const nodeRequire = createRequire(import.meta.url);
   const Module = nodeRequire("module") as { _load: (...args: unknown[]) => unknown };
   const load = Module._load;
@@ -828,6 +936,7 @@ test("le fil hôtel coche le destinataire prévu et laisse décocher les autres"
     return load.call(this, request, parent, isMain);
   };
   try {
+    const { HotelDesk } = await import("../../components/admin/HotelDesk");
     const { HotelThread } = await import("../../components/admin/HotelThread");
     const item = hotel({
       details: {
@@ -840,21 +949,51 @@ test("le fil hôtel coche le destinataire prévu et laisse décocher les autres"
         ],
       },
     });
-    const html = renderToStaticMarkup(
-      createElement(HotelThread, {
+    const requests = [
+      letter({ kind: "concierge", status: "waiting", subject: "Concierge — Le Bristol" }),
+      letter({
+        id: "req-other",
+        kind: "other",
+        status: "skipped",
+        subject: "Camille Martin — Autre demande — Le Bristol — HB-9",
+        body: "Chère équipe,\n\nSi la maison pouvait donner suite à la demande suivante, nous vous en serions très reconnaissants.\n\n…\n\nTravel Business Agency",
+        recipients: ["reservations@bristol.test"],
+        sent_at: null,
+        reply_body: "",
+        replied_at: null,
+      }),
+    ];
+    const list = renderToStaticMarkup(
+      createElement(HotelDesk, {
         bookingId: "b1",
         item,
-        requests: [
-          {
-            ...letter(),
-            recipients: ["reservations@bristol.test"],
-            sent_at: null,
-            reply_body: "",
-            replied_at: null,
-          },
-        ],
+        requests,
+        today: "2026-10-12",
         messages: [],
         attached: [],
+      })
+    );
+    assert.ok(list.indexOf("Concierge") < list.indexOf("Autre demande"), "Autre demande après Concierge");
+    assert.match(list, /Pas besoin/);
+    const thread = renderToStaticMarkup(
+      createElement(HotelThread, {
+        item,
+        requests,
+        messages: [],
+        attached: [],
+      })
+    );
+    assert.equal(thread.includes("Destinataires"), false);
+    assert.equal(thread.includes("Envoyer"), false);
+    const html = renderToStaticMarkup(
+      createElement(HotelDesk, {
+        bookingId: "b1",
+        item,
+        requests,
+        today: "2026-10-12",
+        messages: [],
+        attached: [],
+        focusReply: true,
       })
     );
     assert.match(html, /Destinataires/);
@@ -864,12 +1003,13 @@ test("le fil hôtel coche le destinataire prévu et laisse décocher les autres"
     assert.match(html, /Concierge/);
     assert.match(html, /concierge@bristol\.test/);
     assert.match(html, /reservations@bristol\.test/);
-    assert.match(html, /border-l-\[#C5A880\]/);
+    assert.match(html, /shadow-\[inset_3px_0_0_#C5A880\]/);
     assert.match(html, /Le message part seulement vers les adresses cochées/);
+    assert.match(html, /Autre demande — Le Bristol/);
     const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) || [];
     assert.equal(boxes.length, 3);
     assert.equal(boxes.filter((box) => box.includes("checked")).length, 1);
-    assert.equal((html.match(/border-l-\[#C5A880\]/g) || []).length, 1);
+    assert.equal((html.match(/shadow-\[inset_3px_0_0_#C5A880\]/g) || []).length, 1);
     assert.doesNotMatch(html, /RecipientRoster/);
   } finally {
     Module._load = load;

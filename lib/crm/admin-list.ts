@@ -1,3 +1,4 @@
+import { stayMoment } from "./stay-moment";
 import { BOOKING_STATUSES, type BookingStatus } from "./types";
 
 /** Listes agence paginées côté serveur : 50 lignes par page, filtres dans l’URL. */
@@ -97,16 +98,79 @@ export function parseBookingStatus(value: SearchParamValue): BookingStatus | nul
 }
 
 export const BOOKING_SORTS = {
-  depart: { column: "start_date", ascending: false, label: "Départ, du plus lointain" },
-  "depart-asc": { column: "start_date", ascending: true, label: "Départ, du plus proche" },
-  creation: { column: "created_at", ascending: false, label: "Création, du plus récent" },
-  montant: { column: "total_amount", ascending: false, label: "Montant, du plus élevé" },
+  proche: {
+    column: "start_date",
+    ascending: true,
+    proximity: true,
+    label: "Du plus proche au plus loin",
+  },
+  depart: { column: "start_date", ascending: false, proximity: false, label: "Départ, du plus lointain" },
+  "depart-asc": { column: "start_date", ascending: true, proximity: false, label: "Départ, du plus ancien" },
+  creation: { column: "created_at", ascending: false, proximity: false, label: "Création, du plus récent" },
+  montant: { column: "total_amount", ascending: false, proximity: false, label: "Montant, du plus élevé" },
 } as const;
 export type BookingSort = keyof typeof BOOKING_SORTS;
 
+/** Tri par défaut de `/admin/reservations` : absent de l’URL. */
+export const DEFAULT_BOOKING_SORT: BookingSort = "proche";
+
 export function parseBookingSort(value: SearchParamValue): BookingSort {
   const raw = firstParam(value);
-  return raw && raw in BOOKING_SORTS ? (raw as BookingSort) : "depart";
+  return raw && raw in BOOKING_SORTS ? (raw as BookingSort) : DEFAULT_BOOKING_SORT;
+}
+
+/** `tri` à mettre dans l’URL. Le tri par défaut n’y figure pas. */
+export function bookingSortParam(sort: BookingSort) {
+  return sort === DEFAULT_BOOKING_SORT ? null : sort;
+}
+
+type ProximityDated = {
+  id?: string;
+  start_date: string | null;
+  end_date?: string | null;
+  created_at?: string | null;
+};
+
+function isoDay(value: string | null | undefined) {
+  const day = String(value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "";
+}
+
+/** Inverse les chiffres pour qu’une date plus récente trie avant, en ordre croissant. */
+function invertIsoDay(value: string) {
+  return value.replace(/\d/g, (digit) => String(9 - Number(digit)));
+}
+
+/**
+ * 0 séjour en cours (retour le plus tôt d’abord), 1 départ à venir,
+ * 2 passé (le plus récent d’abord), 3 sans date.
+ */
+export function bookingProximityRank(
+  booking: { start_date: string | null; end_date?: string | null },
+  today: string
+) {
+  const start = isoDay(booking.start_date);
+  const end = isoDay(booking.end_date);
+  if (!start && !end) return { band: 3, key: "" };
+  const moment = stayMoment(start, end, today);
+  if (moment === "travelling") return { band: 0, key: end || "9999-12-31" };
+  if (moment === "before") return { band: 1, key: start || end };
+  return { band: 2, key: invertIsoDay(end || start) };
+}
+
+export function compareBookingsByProximity<T extends ProximityDated>(a: T, b: T, today: string) {
+  const left = bookingProximityRank(a, today);
+  const right = bookingProximityRank(b, today);
+  if (left.band !== right.band) return left.band - right.band;
+  if (left.key !== right.key) return left.key < right.key ? -1 : 1;
+  const created = (b.created_at || "").localeCompare(a.created_at || "");
+  if (created !== 0) return created;
+  return (a.id || "").localeCompare(b.id || "");
+}
+
+/** En cours, puis le prochain départ, puis les passés du plus récent, sans date en dernier. */
+export function sortBookingsByProximity<T extends ProximityDated>(rows: T[], today: string) {
+  return rows.slice().sort((a, b) => compareBookingsByProximity(a, b, today));
 }
 
 export const CLIENT_FILTERS = ["veille"] as const;

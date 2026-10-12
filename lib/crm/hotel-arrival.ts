@@ -1,7 +1,8 @@
 import { addIsoDays } from "./dates";
+import { findHotelSameStay, type MatchableItem } from "./item-match";
 import { centsToAmount } from "./money";
 import { stayDatesOpen } from "./stay-moment";
-import type { HotelArrivalChannel, HotelArrivalStatus } from "./types";
+import { isActiveItem, type HotelArrivalChannel, type HotelArrivalStatus } from "./types";
 
 export { addIsoDays };
 
@@ -626,51 +627,69 @@ export type ArrivalMail = {
   text: string;
 };
 
-/** Entrée et sortie des courriers hôtel : la maison, brève, une demande, un remerciement. */
-export function hotelMailFrame(lang: "fr" | "en", relance?: boolean) {
+/** Une personne quand on la connaît. Sinon l'équipe. Jamais de civilité devinée. */
+export function hotelSalutation(lang: "fr" | "en", name?: string) {
+  const who = (name || "").trim();
+  if (who) return lang === "fr" ? `Bonjour ${who},` : `Dear ${who},`;
+  return lang === "fr" ? "Chère équipe," : "Dear team,";
+}
+
+/** Entrée et sortie : l'invité d'abord, une relance en une phrase, le prénom de l'agent. */
+export function hotelMailFrame(lang: "fr" | "en", relance?: boolean, addressee?: string, signatory?: string) {
+  const hello = hotelSalutation(lang, addressee);
+  const name = (signatory || "").trim();
+  const close = [
+    lang === "fr" ? "Avec nos remerciements," : "With our thanks,",
+    "",
+    ...(name ? [name] : []),
+    "Travel Business Agency",
+  ];
   if (lang === "fr") {
     return {
-      open: relance
-        ? [
-            "Chère équipe,",
-            "",
-            "Nous nous permettons de revenir vers vous, de la part de Travel Business Agency.",
-            "",
-            "Nous n'avons pas encore reçu votre retour, et nous nous permettons cette relance.",
-          ]
-        : ["Chère équipe,", "", "Nous avons le plaisir de vous écrire de la part de Travel Business Agency."],
-      close: [
-        "Nous vous remercions de l'attention que vous porterez à ce séjour.",
-        "",
-        "Bien à vous,",
-        "Travel Business Agency",
-      ],
+      open: relance ? [hello, "", "Nous nous permettons de revenir vers vous, n'ayant pas encore eu le plaisir de votre retour."] : [hello],
+      close,
     };
   }
   return {
-    open: relance
-      ? [
-          "Dear team,",
-          "",
-          "We are writing once more, from Travel Business Agency.",
-          "",
-          "We have not yet received your reply, and would be most grateful if you could come back to us.",
-        ]
-      : ["Dear team,", "", "We are pleased to write to you from Travel Business Agency."],
-    close: ["With our thanks for the welcome you will extend to our guest.", "", "Best regards,", "Travel Business Agency"],
+    open: relance ? [hello, "", "We are writing again, as we have not yet had the pleasure of your reply."] : [hello],
+    close,
   };
+}
+
+/** Objet : le voyageur, la demande, la maison, la date, la confirmation. */
+export function hotelLetterSubject(input: {
+  lang: "fr" | "en";
+  label: string;
+  guest?: string;
+  hotel: string;
+  when?: string;
+  ref?: string;
+  relance?: boolean;
+}) {
+  const guest = showGuestName(input.guest);
+  const ref = (input.ref || "").trim();
+  const token = !ref || ref === "—" ? "" : ref;
+  const core = [guest, input.label, input.hotel, (input.when || "").trim(), token].filter(Boolean).join(" — ");
+  if (!input.relance) return core;
+  return `${input.lang === "fr" ? "Relance" : "Follow-up"} — ${core}`;
+}
+
+export function welcomeRequest(lang: "fr" | "en") {
+  return lang === "fr"
+    ? "Si la maison pouvait préparer la chambre, avec un mot de bienvenue, ce serait une attention dont nous vous serions très reconnaissants. Un surclassement, si cela vous était possible à l'arrivée, toucherait beaucoup notre client."
+    : "If the house could have the room prepared, with a welcome note, we would be most grateful for the attention. An upgrade, should it be possible on arrival, would mean a great deal to our client.";
 }
 
 export function paymentLinkAsk(lang: "fr" | "en") {
   return lang === "fr"
-    ? "Nous vous serions reconnaissants de nous adresser le lien de paiement de la réservation de notre client."
-    : "We would be grateful if you could send us the payment link for our guest's reservation.";
+    ? "Si vous pouviez nous adresser le lien de paiement de cette réservation, nous vous en serions très reconnaissants."
+    : "If you could send us the payment link for this reservation, we would be most grateful.";
 }
 
 export function paymentLinkCharge(lang: "fr" | "en") {
   return lang === "fr"
-    ? "Nous vous prions de prélever le montant de cette réservation sur la carte ouverte par le lien sécurisé ci-dessous."
-    : "We would be grateful if you could charge this reservation to the card opened from the secure link below.";
+    ? "Lorsque cela vous conviendra, vous pourrez prélever le montant de cette réservation sur la carte ouverte par le lien sécurisé ci-dessous."
+    : "Whenever it suits the house, this reservation may be charged to the card opened from the secure link below.";
 }
 
 /** Remplace la phrase du lien de paiement. Le reste du courrier reste. */
@@ -694,52 +713,47 @@ export function linkRequestMail(input: {
   guest?: string;
   relance?: boolean;
   charge?: boolean;
+  addressee?: string;
+  signatory?: string;
 }): ArrivalMail {
-  const stay = `${formatStayDate(input.checkIn, input.lang)} – ${formatStayDate(input.checkOut, input.lang)}`;
+  const from = formatStayDate(input.checkIn, input.lang);
+  const to = formatStayDate(input.checkOut, input.lang);
   const ref = input.reference || "—";
   const guest = showGuestName(input.guest);
-  const frame = hotelMailFrame(input.lang, input.relance);
+  const frame = hotelMailFrame(input.lang, input.relance, input.addressee, input.signatory);
   const request = input.charge ? paymentLinkCharge(input.lang) : paymentLinkAsk(input.lang);
-  if (input.lang === "fr") {
-    const lines = [
-      ...frame.open,
-      "",
-      request,
-      "",
-      guest ? `Séjour de ${guest} à ${input.hotel}, du ${stay}.` : `Séjour à ${input.hotel}, du ${stay}.`,
-      `Référence de confirmation : ${ref}.`,
-    ];
-    if (input.amount) lines.push(`Montant à régler : ${input.amount}.`);
-    lines.push("", ...frame.close);
-    return {
-      subject: mailSubject(input.relance ? "Relance — Lien de paiement" : "Lien de paiement", guest, input.hotel, ref),
-      text: lines.join("\n"),
-    };
-  }
-  const lines = [
-    ...frame.open,
-    "",
-    request,
-    "",
-    guest ? `Stay of ${guest} at ${input.hotel}, ${stay}.` : `Stay at ${input.hotel}, ${stay}.`,
-    `Confirmation: ${ref}.`,
-  ];
-  if (input.amount) lines.push(`Amount due: ${input.amount}.`);
-  lines.push("", ...frame.close);
-  return {
-    subject: mailSubject(input.relance ? "Follow-up — Payment link" : "Payment link", guest, input.hotel, ref),
-    text: lines.join("\n"),
-  };
+  const label = input.lang === "fr" ? "Lien de paiement" : "Payment link";
+  const subject = hotelLetterSubject({
+    lang: input.lang,
+    label,
+    guest,
+    hotel: input.hotel,
+    when: from,
+    ref,
+    relance: input.relance,
+  });
+  const who =
+    input.lang === "fr"
+      ? guest
+        ? `${guest}, qui compte parmi nos clients VIP,`
+        : "Notre invité, qui compte parmi nos clients VIP,"
+      : guest
+        ? `${guest}, one of our VIP clients,`
+        : "Our guest, one of our VIP clients,";
+  const stay =
+    input.lang === "fr"
+      ? `${who} séjournera à ${input.hotel}, du ${from} au ${to} (confirmation ${ref}).`
+      : `${who} will be staying at ${input.hotel}, from ${from} to ${to} (confirmation ${ref}).`;
+  const lines = [...frame.open, "", stay];
+  if (input.amount) lines.push(input.lang === "fr" ? `Le montant du séjour est de ${input.amount}.` : `The stay amounts to ${input.amount}.`);
+  lines.push("", request, "", ...frame.close);
+  return { subject, text: lines.join("\n") };
 }
 
 function showGuestName(guest: string | null | undefined) {
   const value = (guest || "").trim();
   if (!value || /^(notre client|our guest)$/i.test(value)) return "";
   return value;
-}
-
-function mailSubject(label: string, guest: string, hotel: string, ref: string) {
-  return [label, guest, hotel, ref].filter(Boolean).join(" — ");
 }
 
 export function vipMail(input: {
@@ -765,17 +779,15 @@ export function vipMail(input: {
         ]
       : [];
     return {
-      subject: `Arrivée VIP — ${input.hotel} — ${ref}`,
+      subject: hotelLetterSubject({ lang: "fr", label: "Accueil", hotel: input.hotel, when: formatStayDate(input.checkIn, "fr"), ref }),
       text: [
         ...frame.open,
         "",
-        "Nous vous serions reconnaissants de signaler cette arrivée à vos équipes.",
+        `Nous avons le plaisir de vous confier l'un de nos clients VIP, pour son arrivée à ${input.hotel}, du ${stay} (confirmation ${ref}).`,
         "",
-        `Notre client séjourne à ${input.hotel}, du ${stay} (confirmation ${ref}).`,
+        welcomeRequest("fr"),
         "",
-        "Nous vous prions de préparer un accueil VIP dans la chambre. Un surclassement, s'il peut être envisagé à l'arrivée selon les disponibilités de la maison, serait très apprécié.",
-        "",
-        "Les documents d'identité sont joints, afin que la chambre soit prête dès l'arrivée.",
+        "Vous trouverez les documents d'identité en pièce jointe, afin que la chambre puisse être prête dès l'arrivée.",
         ...card,
         "",
         ...frame.close,
@@ -793,17 +805,15 @@ export function vipMail(input: {
       ]
     : [];
   return {
-    subject: `VIP arrival — ${input.hotel} — ${ref}`,
+    subject: hotelLetterSubject({ lang: "en", label: "Arrival", hotel: input.hotel, when: formatStayDate(input.checkIn, "en"), ref }),
     text: [
       ...frame.open,
       "",
-      "We would be most grateful if you could note this arrival with your team on property.",
+      `We have the pleasure of entrusting you with one of our VIP clients, arriving at ${input.hotel}, ${stay} (confirmation ${ref}).`,
       "",
-      `Our guest is staying at ${input.hotel}, ${stay} (confirmation ${ref}).`,
+      welcomeRequest("en"),
       "",
-      "Kindly arrange VIP welcome amenities in the room. An upgrade, should one be available upon arrival, would be greatly appreciated.",
-      "",
-      "Identity documents are attached, so the room may be ready upon arrival.",
+      "You will find the identity documents attached, so the room may be ready upon arrival.",
       ...card,
       "",
       ...frame.close,
@@ -895,4 +905,49 @@ function relancePlan(tick: ArrivalTick, holidays: ReadonlySet<string>): ArrivalP
     return { action: "wait" };
   }
   return { action: "task", note: "L'hôtel n'a pas renvoyé de lien de paiement.", reason: "no_reply" };
+}
+
+export type StayCardSlot = {
+  id: string;
+  booking_item_id: string;
+  pliant_card_id?: string | null;
+  card_last4?: string | null;
+  card_closed_at?: string | null;
+  status?: string | null;
+};
+
+type StayCardItem = {
+  id: string;
+  kind?: string | null;
+  title?: string | null;
+  confirmation_ref?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  lifecycle?: string | null;
+  details?: Record<string, unknown> | null;
+};
+
+function toMatchable(item: StayCardItem): MatchableItem {
+  return { ...item, kind: item.kind || "" };
+}
+
+/** Même hôtel, nuits qui se croisent : la carte déjà ouverte suffit. Pas une seconde CB. */
+export function stayCardDonor(item: StayCardItem, items: StayCardItem[], arrivals: StayCardSlot[]) {
+  if ((item.kind || "") !== "hotel" || !isActiveItem(item)) return null;
+  const open = arrivals.filter(
+    (row) =>
+      row.booking_item_id !== item.id &&
+      row.pliant_card_id &&
+      !row.card_closed_at &&
+      row.status !== "closed"
+  );
+  const donors = items.filter((other) => open.some((row) => row.booking_item_id === other.id));
+  const hits = donors.filter((other) =>
+    findHotelSameStay([toMatchable(other)], toMatchable(item))
+  );
+  const chosen = hits.find((other) => !isActiveItem(other)) || hits[0];
+  if (!chosen) return null;
+  const row = open.find((entry) => entry.booking_item_id === chosen.id);
+  if (!row?.pliant_card_id) return null;
+  return { arrivalId: row.id, cardId: row.pliant_card_id, last4: row.card_last4 || null };
 }

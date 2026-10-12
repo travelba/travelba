@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ageAndSexCaption,
+  ageLabel,
+  ageYears,
+  birthCaption,
   completeGivenNames,
   givenNameTokens,
   greetingGivenName,
+  shownPersonName,
   humanizeMrzName,
   maskDocumentNumber,
   normalizeGivenNames,
   allCapsNameNote,
   PASSPORT_VAULT_NOTICE,
   recordedNameIsAllCaps,
+  sexLabel,
 } from "./identity";
 
 test("tous les prénoms restent dans l’ordre imprimé", () => {
@@ -78,6 +84,34 @@ test("l’accueil ne garde que le premier prénom", () => {
   assert.equal(greetingGivenName("JEAN-PIERRE Marie"), "Jean-Pierre");
   assert.equal(greetingGivenName("  "), null);
   assert.equal(greetingGivenName(null), null);
+  assert.equal(shownPersonName({ first_name: "Maelle Louise Rosalie", last_name: "Dupont" }), "Maelle Dupont");
+  assert.equal(shownPersonName({ first_name: "JEAN-PIERRE Marie", last_name: "Martin" }), "Jean-Pierre Martin");
+});
+
+test("à côté de la naissance : l’âge du jour et le sexe", () => {
+  const today = "2026-10-12";
+  assert.equal(ageYears("1985-10-12", today), 41);
+  assert.equal(ageYears("1985-10-13", today), 40);
+  assert.equal(ageYears("2025-10-12", today), 1);
+  assert.equal(ageYears("2025-10-13", today), 0);
+  assert.equal(ageYears("2026-10-12", today), 0);
+  assert.equal(ageYears("2026-10-13", today), null);
+  assert.equal(ageYears("1890-01-01", today), null);
+  assert.equal(ageYears("2012-02-29", "2026-02-28"), 13);
+  assert.equal(ageYears("pas une date", today), null);
+  assert.equal(ageLabel("1985-10-12", today), "41 ans");
+  assert.equal(ageLabel("2025-10-12", today), "1 an");
+  assert.equal(ageLabel("2026-01-01", today), "moins d’un an");
+  assert.equal(sexLabel("F"), "Femme");
+  assert.equal(sexLabel("M"), "Homme");
+  assert.equal(sexLabel("X"), "Autre");
+  assert.equal(sexLabel("Z"), null);
+  assert.equal(ageAndSexCaption("1985-10-12", "F", today), "41 ans · Femme");
+  assert.equal(ageAndSexCaption("", "M", today), "Homme");
+  assert.equal(birthCaption("1985-10-12", "F", today), "12 oct. 1985 · 41 ans · Femme");
+  assert.equal(birthCaption("1985-10-12", null, today), "12 oct. 1985 · 41 ans");
+  assert.equal(birthCaption(null, "M", today), "Homme");
+  assert.equal(birthCaption("", "", today), "");
 });
 
 test("un nom tout en capitales se signale sans être réécrit", () => {

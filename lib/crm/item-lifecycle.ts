@@ -143,6 +143,7 @@ export function replacementPlan(
       kind,
       confirmation_ref: item.confirmation_ref,
       start_at: item.start_at,
+      end_at: item.end_at,
       title: item.title,
       details: item.details || null,
     };

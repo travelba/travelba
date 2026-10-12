@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   customerBillingPickLabel,
+  customerDirectoryName,
   customerMatchesQuery,
   customerPickLabel,
   customerTravelerPickLabel,
@@ -22,6 +23,29 @@ function customer(partial: Partial<PickableCustomer>): PickableCustomer {
 }
 
 describe("customer-search", () => {
+  it("l’annuaire se lit par nom de famille", () => {
+    assert.equal(
+      customerDirectoryName(customer({ first_name: "Alice", last_name: "Martin" })),
+      "Martin Alice"
+    );
+    assert.equal(
+      customerDirectoryName(customer({ first_name: "Maelle Louise Rosalie", last_name: "Dupont" })),
+      "Dupont Maelle"
+    );
+    const rows = [
+      customer({ id: "1", first_name: "Zoé", last_name: "Bernard" }),
+      customer({ id: "2", first_name: "Alice", last_name: "Martin" }),
+      customer({ id: "3", first_name: "Paul", last_name: "Bernard" }),
+    ];
+    const labels = [...rows]
+      .sort(
+        (a, b) =>
+          a.last_name.localeCompare(b.last_name, "fr") || a.first_name.localeCompare(b.first_name, "fr")
+      )
+      .map(customerDirectoryName);
+    assert.deepEqual(labels, ["Bernard Paul", "Bernard Zoé", "Martin Alice"]);
+  });
+
   it("affiche le nom puis la société", () => {
     assert.equal(customerPickLabel(customer({})), "Marie Dupont");
     assert.equal(

@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BOOKING_SORTS,
+  bookingSortParam,
+  DEFAULT_BOOKING_SORT,
   listHref,
   type BookingSort,
   type BookingStateFilter,
@@ -25,11 +27,14 @@ export function BookingsFilters({
   q,
   etat,
   tri,
+  vue = null,
   revision,
 }: {
   q: string;
   etat: BookingStateFilter | null;
   tri: BookingSort;
+  /** Garde la liste quand l’agence l’a ouverte elle-même. */
+  vue?: "liste" | null;
   /** Change quand la liste serveur est remplacée, pour réappliquer le filtre local. */
   revision: string;
 }) {
@@ -47,7 +52,7 @@ export function BookingsFilters({
     setState(etat || "");
     setSort(tri);
   }
-  const filtering = Boolean(q || etat || tri !== "depart");
+  const filtering = Boolean(q || etat || tri !== DEFAULT_BOOKING_SORT);
 
   useEffect(() => {
     const list = document.getElementById("dossiers-liste");
@@ -83,7 +88,8 @@ export function BookingsFilters({
     const href = listHref("/admin/reservations", {
       q: query || null,
       etat: stateValue || null,
-      tri: !sortValue || sortValue === "depart" ? null : sortValue,
+      tri: bookingSortParam((sortValue || DEFAULT_BOOKING_SORT) as BookingSort),
+      vue: vue === "liste" ? "liste" : null,
     });
     router.replace(href, { scroll: false });
   }
@@ -145,7 +151,7 @@ export function BookingsFilters({
         name="tri"
         value={sort}
         aria-label="Tri"
-        className="admin-af-input text-sm sm:w-56"
+        className="admin-af-input text-sm sm:w-72"
         onChange={(event) => {
           const next = event.target.value as BookingSort;
           setSort(next);

@@ -62,6 +62,21 @@ test("a glare digit does not replace a check-digit-valid MRZ number", () => {
   assert.equal(rows[0].nationality, "IL");
 });
 
+test("un passeport israélien se lit de gauche à droite, le nom n’est pas un prénom", () => {
+  const rows = identitiesFromPassportOcr(
+    [
+      "PPISRCOHEN<<MOSHE<DAVID<<<<<<<<<<<<<<<<<<<<<",
+      td3Line("31234567<", "ISR", "900101", "M", "300101", "3<1234567<8"),
+    ].join("\n"),
+    ["Surname Given name", "COHEN DAVID MOSHE", "Given name DAVID MOSHE", "Surname COHEN"].join("\n")
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].last_name, "Cohen");
+  assert.equal(rows[0].first_name, "Moshe David");
+  assert.equal(rows[0].usage_name, null);
+  assert.equal(rows[0].nationality, "IL");
+});
+
 test("a split OCR day is still the issue date", () => {
   const identity = { ...emptyIdentity(), birth_date: "2012-03-05", expires_on: "2030-03-17" };
   assert.equal(readIssueDate("1 8/03/2025\n17/03/2030", identity), "2025-03-18");

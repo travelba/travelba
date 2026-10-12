@@ -117,6 +117,50 @@ test("le nom d’épouse est enregistré à part du nom de naissance", () => {
   assert.match(identitySummary(merged!), /ép\. Martin/);
 });
 
+test("des prénoms relus dans le nom ne deviennent pas un nom d’épouse", () => {
+  assert.deepEqual(
+    spouseFamilyNames({
+      birthName: "Delacour",
+      printedName: "Rosalie Louise Maelle",
+      givenNames: "Maelle Louise Rosalie",
+    }),
+    { last_name: "Delacour", usage_name: null }
+  );
+  const seen = identityFromVision({
+    number: "31234567",
+    last_name: "COHEN",
+    first_name: "MOSHE DAVID",
+    usage_name: "DAVID MOSHE",
+    issuing_country: "IL",
+    nationality: "IL",
+  });
+  assert.equal(seen?.last_name, "Cohen");
+  assert.equal(seen?.first_name, "Moshe David");
+  assert.equal(seen?.usage_name, null);
+
+  const mrz = {
+    ...emptyIdentity(),
+    number: "31234567",
+    last_name: "Cohen",
+    first_name: "Moshe David",
+    issuing_country: "IL",
+    nationality: "IL",
+    valid: true,
+    format: "TD3",
+  };
+  const vision = identityFromVision({
+    number: "31234567",
+    last_name: "DAVID MOSHE",
+    first_name: "COHEN",
+    issuing_country: "IL",
+    nationality: "IL",
+  });
+  const merged = mergePassportIdentities(mrz, vision);
+  assert.equal(merged?.last_name, "Cohen");
+  assert.equal(merged?.first_name, "Moshe David");
+  assert.equal(merged?.usage_name, null);
+});
+
 test("merge keeps every given name in passport order even if MRZ truncates", () => {
   const mrz = {
     ...emptyIdentity(),
@@ -315,6 +359,8 @@ test("Israeli personal number keeps the printed hyphens", () => {
   assert.equal(cleanPersonalNumber("3<5207718<6"), "3-5207718-6");
   assert.equal(cleanPersonalNumber("3 5207718 6"), "3-5207718-6");
   assert.equal(cleanPersonalNumber("AB<<<12"), "AB12");
+  assert.equal(cleanPersonalNumber("23"), null);
+  assert.equal(cleanPersonalNumber("3"), null);
 });
 
 test("distinctPassportPeople keeps both nationalities of one person", () => {
@@ -340,6 +386,54 @@ test("distinctPassportPeople keeps both nationalities of one person", () => {
     people.map((identity) => identity.issuing_country).sort(),
     ["FR", "IL"]
   );
+});
+
+test("distinctPassportPeople drops a truncated number of the same booklet", () => {
+  const full = identityFromVision({
+    doc_type: "passport",
+    number: "22AA17834",
+    last_name: "Martin",
+    first_name: "Camille Adele",
+    birth_date: "2013-01-19",
+    expires_on: "2027-09-12",
+    sex: "M",
+    nationality: "FR",
+    issuing_country: "FR",
+  });
+  const fragment = identityFromVision({
+    doc_type: "passport",
+    number: "22AA178",
+    last_name: "Martin",
+    first_name: "Camille Adele",
+    nationality: "FR",
+    issuing_country: "FR",
+    personal_number: "23",
+  });
+  const people = distinctPassportPeople([full!, fragment!]);
+  assert.equal(people.length, 1);
+  assert.equal(people[0].number, "22AA17834");
+  assert.equal(people[0].birth_date, "2013-01-19");
+  assert.equal(people[0].personal_number, null);
+  const shown = listedIdentities(fragment, [full!, fragment!]);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].number, "22AA17834");
+});
+
+test("distinctPassportPeople keeps a different person even if one number starts the other", () => {
+  const full = identityFromVision({
+    number: "22AA17834",
+    last_name: "Martin",
+    first_name: "Camille",
+    birth_date: "2013-01-19",
+  });
+  const other = identityFromVision({
+    number: "22AA178",
+    last_name: "Martin",
+    first_name: "Louis",
+    birth_date: "2015-04-02",
+  });
+  const people = distinctPassportPeople([full!, other!]);
+  assert.equal(people.length, 2);
 });
 
 test("distinctPassportPeople keeps siblings with sequential numbers", () => {

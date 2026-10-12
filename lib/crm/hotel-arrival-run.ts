@@ -20,6 +20,7 @@ import {
   principalGuest,
   quotedAmount,
   replyPaymentUrl,
+  stayCardDonor,
   stayProvision,
   classifyPaymentPage,
   type ArrivalTick,
@@ -34,6 +35,7 @@ import {
 } from "./manual-stay-card";
 import { manualPliantCardIds, rememberPliantCard, setRememberedCardLimit } from "./pliant-card-run";
 import { issuePliantCard, pliantConfigured, readPliantCardFace, setPliantCardLimit } from "./pliant";
+import { isActiveItem } from "./types";
 import type {
   CrmBookingItem,
   CrmBookingTraveler,
@@ -269,6 +271,8 @@ async function alignStayCard(input: {
   parisToday: string;
   deps: ArrivalDeps;
   limitManual?: boolean;
+  stayItems?: CrmBookingItem[];
+  stayArrivals?: CrmHotelArrival[];
 }) {
   const channel = channelOf(input.item);
   const row = input.row.channel === channel ? input.row : { ...input.row, channel };
@@ -302,6 +306,30 @@ async function alignStayCard(input: {
     return { ...row, ...basePatch };
   }
   if (!row.pliant_card_id) {
+    if (!isActiveItem(input.item)) {
+      if (!aligned) await save(input.admin, row.id, basePatch);
+      return { ...row, ...basePatch };
+    }
+    const donor = stayCardDonor(input.item, input.stayItems || [], input.stayArrivals || []);
+    if (donor) {
+      await save(input.admin, donor.arrivalId, { pliant_card_id: null, card_last4: null });
+      const previous = (input.stayArrivals || []).find((entry) => entry.id === donor.arrivalId);
+      if (previous) {
+        previous.pliant_card_id = null;
+        previous.card_last4 = null;
+      }
+      await save(input.admin, row.id, {
+        ...basePatch,
+        pliant_card_id: donor.cardId,
+        card_last4: donor.last4,
+      });
+      return {
+        ...row,
+        ...basePatch,
+        pliant_card_id: donor.cardId,
+        card_last4: donor.last4,
+      };
+    }
     const ready = await ensureCard({
       admin: input.admin,
       row,
@@ -405,6 +433,8 @@ export async function syncStayCards(
       parisToday,
       deps,
       limitManual: Boolean(row.pliant_card_id && manualCards.has(row.pliant_card_id)),
+      stayItems: hotels,
+      stayArrivals: rows,
     });
   }
   await raiseSharedStayLimit(admin, rows, deps, manualCards);
@@ -593,6 +623,8 @@ export async function runHotelArrivals(admin: Admin, deps: ArrivalDeps = {}, onl
         fetchImpl,
         holidayCache,
         deps,
+        stayItems: [...items.values()].filter((row) => row.booking_id === booking.id),
+        stayArrivals: [...arrivals.values()].filter((row) => row.booking_id === booking.id),
       });
       acted += steps;
     } catch (error) {
@@ -616,6 +648,8 @@ async function stepArrival(input: {
   fetchImpl: typeof fetch;
   holidayCache: Map<string, string[]>;
   deps: ArrivalDeps;
+  stayItems: CrmBookingItem[];
+  stayArrivals: CrmHotelArrival[];
 }) {
   const contact = hotelContact(input.item);
   const emails = hotelEmails(input.item);
@@ -645,6 +679,8 @@ async function stepArrival(input: {
     parisToday: input.parisToday,
     deps: input.deps,
     limitManual: Boolean(input.arrival.pliant_card_id && arrivalManual.has(input.arrival.pliant_card_id)),
+    stayItems: input.stayItems,
+    stayArrivals: input.stayArrivals,
   });
   const { data: limitRows } = await input.admin
     .from("crm_hotel_arrivals")
@@ -727,6 +763,7 @@ async function stepArrival(input: {
       break;
     }
     if (plan.action === "pay") {
+      if (!row.pliant_card_id && !isActiveItem(input.item)) break;
       const provision = stayProvisionFor(input.item, row, input.booking.currency, le);
       const limitCents = provision?.ceilingCents ?? quoted.cents;
       if (limitCents == null) {

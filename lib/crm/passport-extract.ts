@@ -1,5 +1,6 @@
 import { resolveNationality } from "./countries";
 import {
+  birthCaption,
   completeGivenNames,
   emptyToNull,
   humanizeMrzName,
@@ -88,6 +89,8 @@ export function cleanPersonalNumber(value: string | null | undefined) {
   // Passeport israélien : les « < » de la MRZ sont les tirets du n° d’identité (3-1234567-8).
   if (/^\d(?: \d+)+$/.test(spaced)) return spaced.replace(/ /g, "-");
   const stripped = spaced.replace(/ /g, "");
+  // Deux chiffres : fin du contrôle d’expiration dans la MRZ, pas un n° personnel.
+  if (/^\d{1,2}$/.test(stripped)) return null;
   return stripped || null;
 }
 
@@ -128,6 +131,13 @@ function usageIsGivenName(usage: string, given: Set<string>) {
   return false;
 }
 
+/** « DAVID MOSHE » dans Surname, alors que ce sont les prénoms (dans n’importe quel ordre). */
+function tokensAreGivenNames(value: string, given: Set<string>) {
+  const tokens = nameTokens(value);
+  if (!tokens.length || !given.size) return false;
+  return tokens.every((token) => given.has(token));
+}
+
 export function spouseFamilyNames(input: {
   birthName?: string | null;
   printedName?: string | null;
@@ -142,13 +152,15 @@ export function spouseFamilyNames(input: {
   const printedPlain = fromPrinted ? null : tidyName(input.printedName);
   let usage = explicitUsage;
   const givenFold = new Set(nameTokens(input.givenNames));
-  const printedIsGiven = printedPlain ? givenFold.has(foldName(printedPlain)) : false;
+  const printedIsGiven = printedPlain
+    ? tokensAreGivenNames(printedPlain, givenFold) || usageIsGivenName(printedPlain, givenFold)
+    : false;
   if (!usage && printedPlain && birth && !printedIsGiven && !lastNamesMatch(printedPlain, birth)) {
     usage = printedPlain;
   }
   const last = birth || printedPlain || tidyName(input.printedName);
   if (usage && last && lastNamesMatch(usage, last)) usage = null;
-  if (usage && usageIsGivenName(usage, givenFold)) usage = null;
+  if (usage && (usageIsGivenName(usage, givenFold) || tokensAreGivenNames(usage, givenFold))) usage = null;
   return { last_name: last, usage_name: usage };
 }
 
@@ -165,17 +177,19 @@ export function fieldScore(identity: ExtractedIdentity) {
 }
 
 export function identityFromVision(raw: Record<string, unknown>): ExtractedIdentity | null {
+  const firstName = normalizeGivenNames(emptyToNull(raw.first_name));
   const identity: ExtractedIdentity = {
     doc_type: mapDocType(emptyToNull(raw.doc_type)),
     number: emptyToNull(raw.number)?.replace(/\s/g, "") || null,
     issuing_country: resolveNationality(emptyToNull(raw.issuing_country)),
     issued_on: isoDate(emptyToNull(raw.issued_on)),
     expires_on: isoDate(emptyToNull(raw.expires_on)),
-    first_name: normalizeGivenNames(emptyToNull(raw.first_name)),
+    first_name: firstName,
     ...spouseFamilyNames({
       birthName: emptyToNull(raw.last_name),
       printedName: emptyToNull(raw.last_name),
       usageName: emptyToNull(raw.usage_name),
+      givenNames: firstName,
     }),
     birth_date: isoDate(emptyToNull(raw.birth_date)),
     place_of_birth: emptyToNull(raw.place_of_birth),
@@ -270,6 +284,10 @@ function numbersLookLikeSameDocument(a: string | null | undefined, b: string | n
   const right = passportNumberKey(b);
   if (!left || !right) return false;
   if (left === right) return true;
+  const short = left.length <= right.length ? left : right;
+  const long = left.length <= right.length ? right : left;
+  // Lecture coupée du même livret : 22AA178 est le début de 22AA17834, pas un second passeport.
+  if (short.length >= 6 && long.length - short.length <= 3 && long.startsWith(short)) return true;
   if (left.length < 8 || right.length < 8) return false;
   if (Math.abs(left.length - right.length) > 1) return false;
   return compactEditDistance(left, right) <= 2;
@@ -326,9 +344,14 @@ export function distinctPassportPeople(identities: ExtractedIdentity[]): Extract
     else groups.push([identity]);
   }
   const best = groups.map((group) =>
-    group.reduce((winner, identity) =>
-      identityQuality(identity) > identityQuality(winner) ? identity : winner
-    )
+    group.reduce((winner, identity) => {
+      const quality = identityQuality(identity) - identityQuality(winner);
+      if (quality !== 0) return quality > 0 ? identity : winner;
+      const winnerNumber = passportNumberKey(winner.number);
+      const nextNumber = passportNumberKey(identity.number);
+      if (nextNumber.startsWith(winnerNumber) && nextNumber.length > winnerNumber.length) return identity;
+      return winner;
+    })
   );
   const named = best.filter(hasPersonName);
   return named.length ? named : best;
@@ -418,13 +441,13 @@ export function mergePassportIdentities(
 
 export function identitySummary(id: ExtractedIdentity) {
   const name = [id.last_name, id.first_name].filter(Boolean).join(" ");
+  const born = birthCaption(id.birth_date, id.sex);
   return [
     name || null,
     id.number ? `n° ${id.number}` : null,
-    id.birth_date ? `né(e) ${id.birth_date}` : null,
+    born ? (id.birth_date ? `né(e) le ${born}` : born) : null,
     id.place_of_birth ? `à ${id.place_of_birth}` : null,
     id.usage_name ? `ép. ${id.usage_name}` : null,
-    id.sex,
     id.nationality,
     id.issued_on ? `délivré ${id.issued_on}` : null,
     id.expires_on ? `exp. ${id.expires_on}` : null,

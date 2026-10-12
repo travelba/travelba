@@ -6,8 +6,8 @@ import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4 } from "@/lib/crm/pliant-card-run";
-import { pliantBookingCards, pliantCardRecaps } from "@/lib/crm/pliant-booking";
+import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
+import { pliantBookingCards, pliantCardRecaps, pliantSettlementStays, type PliantSettlementStay } from "@/lib/crm/pliant-booking";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
@@ -17,11 +17,13 @@ import { markUkEtaNoticesSeen, syncUkEtaForBookingId } from "@/lib/crm/uk-eta-ru
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
+import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
-import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
 import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
+import { companionNames, hotelSignatoryName } from "@/lib/crm/hotel-desk";
 import { ensureHotelRequests, loadHotelThread, syncHotelDeskThreads, syncHotelMessages } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
@@ -65,7 +67,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const hotelQuery = (await searchParams).hotel;
   const hotel = Array.isArray(hotelQuery) ? hotelQuery[0] : hotelQuery;
   const openHotelItemId = hotel && /^[0-9a-f-]{36}$/i.test(hotel) ? hotel : null;
-  const { supabase } = await requireStaffPage();
+  const { supabase, staff } = await requireStaffPage();
+  const signatory = hotelSignatoryName(staff.full_name);
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
@@ -91,6 +94,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     whatsappMessages,
     whatsappRequests,
     { data: stayRefs },
+    { data: ficheCompanyRows },
+    { data: companyAdminRows },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -141,7 +146,15 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .eq("customer_id", b.customer_id)
       .order("created_at", { ascending: false }),
     supabase.from("crm_bookings").select("id, reference").eq("customer_id", b.customer_id),
+    supabase.from("crm_billing_companies").select("*").eq("customer_id", b.customer_id).order("sort_order"),
+    supabase.from("crm_customers").select(CUSTOMER_PICK_SELECT).eq("company_role", "admin"),
   ]);
+  const ficheBillingCompanies = (ficheCompanyRows || []) as CrmBillingCompany[];
+  const companyAdmins = ((companyAdminRows || []) as PickableCustomer[]).sort(
+    (a, b) =>
+      (a.last_name || "").localeCompare(b.last_name || "", "fr") ||
+      (a.first_name || "").localeCompare(b.first_name || "", "fr")
+  );
   const customerLogins = (loginRows || []) as CrmCustomerLogin[];
   const customerActivity = (activityRows || []) as CrmCustomerActivity[];
   const threadMessages = whatsappMessages.error
@@ -181,6 +194,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     travelers: bookingTravelers,
     holder: customer ? { first_name: customer.first_name || "", last_name: customer.last_name || "" } : null,
   });
+  const guestName = `${guest.firstName} ${guest.lastName}`.trim();
   try {
     const arrivalAdmin = createServiceClient();
     arrivals = await syncStayCards(arrivalAdmin, {
@@ -196,7 +210,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       bookingId: id,
       reference: b.reference,
       currency: b.currency,
-      guest: `${guest.firstName} ${guest.lastName}`.trim(),
+      guest: guestName,
+      companions: companionNames(bookingTravelers, guestName),
+      signatory,
       items: bookingItems,
     });
     hotelMessages = await syncHotelMessages(arrivalAdmin, id);
@@ -232,6 +248,11 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       { limit: null }
     );
     try {
+      pliantTabSpends = await withPliantSpendBookings(cardAdmin, pliantTabSpends);
+    } catch {
+      // Le lien vers la réservation manque ; les transactions restent lisibles.
+    }
+    try {
       await showPliantLast4(cardAdmin, { bookingCards, arrivals, registry: pliantCard });
     } catch {
       // Les quatre derniers chiffres manquent ; le récap des dépenses reste lisible.
@@ -253,6 +274,61 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     }),
     pliantTabSpends
   );
+  let settlementStays: PliantSettlementStay[] = pliantSettlementStays(
+    [
+      {
+        id: b.id,
+        reference: b.reference,
+        title: b.title,
+        destination: b.destination,
+        start_date: b.start_date,
+        status: b.status,
+      },
+    ],
+    b.id
+  );
+  try {
+    const stayAdmin = createServiceClient();
+    const payerId = b.billing_customer_id || b.customer_id;
+    const columns = "id, reference, title, destination, start_date, status";
+    const [payerRows, travelerRows] = await Promise.all([
+      payerId
+        ? stayAdmin
+            .from("crm_bookings")
+            .select(columns)
+            .eq("billing_customer_id", payerId)
+            .order("start_date", { ascending: false, nullsFirst: false })
+            .limit(80)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      stayAdmin
+        .from("crm_bookings")
+        .select(columns)
+        .eq("customer_id", b.customer_id)
+        .order("start_date", { ascending: false, nullsFirst: false })
+        .limit(80),
+    ]);
+    const currentStay = {
+      id: b.id,
+      reference: b.reference,
+      title: b.title,
+      destination: b.destination,
+      start_date: b.start_date,
+      status: b.status,
+    };
+    settlementStays = pliantSettlementStays(
+      [currentStay, ...(payerRows.data || []), ...(travelerRows.data || [])] as {
+        id: string;
+        reference: string | null;
+        title: string | null;
+        destination: string | null;
+        start_date: string | null;
+        status: string | null;
+      }[],
+      b.id
+    );
+  } catch {
+    // Le séjour ouvert reste le seul choix.
+  }
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
   let shareUrl: string | null = null;
   if (b.visible_to_client) {
@@ -361,6 +437,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
+          hotelSignatory={signatory}
           hotelMessages={hotelMessages}
           hotelThreadMessages={hotelThreadMessages}
           openHotelItemId={openHotelItemId}
@@ -391,6 +468,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           accountLedger={accountLedger}
           bookingCards={bookingCards}
           pliantRecap={pliantRecap}
+          settlementStays={settlementStays}
           estaLines={estaLines}
           ukEtaLines={ukEtaLines}
           whatsappMessages={threadMessages}
@@ -398,6 +476,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           whatsappBookings={(stayRefs || []) as { id: string; reference: string }[]}
           customerLogins={customerLogins}
           customerActivity={customerActivity}
+          ficheBillingCompanies={ficheBillingCompanies}
+          companyAdmins={companyAdmins}
         />
   );
 }

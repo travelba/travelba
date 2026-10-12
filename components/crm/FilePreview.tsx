@@ -6,6 +6,7 @@ import { fileDownloadHref, fileInlineHref, fileThumbHref } from "@/lib/crm/file-
 import { isPreviewImage, isPreviewPdf, type FilePreviewModel } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import { Icon } from "@/components/crm/icons";
+import { LockBadge } from "@/components/crm/PassportSeal";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 
 type RemoveResult = void | string | null | undefined;
@@ -17,6 +18,9 @@ function whatsappHref(text: string) {
 function accessOf(file: FilePreviewModel) {
   return file.partage ? { partage: file.partage } : undefined;
 }
+
+/** Assez fort pour qu’un visage et une MRZ ne se lisent pas, en vignette comme en aperçu. */
+const SEAL = "pointer-events-none scale-110 select-none blur-[64px]";
 
 function FileThumb({ file }: { file: FilePreviewModel }) {
   const image = isPreviewImage(file.mimeType, file.fileName);
@@ -36,17 +40,18 @@ function FileThumb({ file }: { file: FilePreviewModel }) {
       <iframe
         title={`Première page de ${file.label}`}
         src={`${inline}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-        className="pointer-events-none h-full w-full border-0 bg-white"
+        className={`h-full w-full border-0 bg-white ${file.sealed ? SEAL : "pointer-events-none"}`}
       />
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- vignette servie par /api/files
     <img
-      src={pdf ? fileThumbHref(file.path, accessOf(file)) : inline}
+      src={pdf || file.sealed ? fileThumbHref(file.path, accessOf(file)) : inline}
       alt=""
       referrerPolicy="no-referrer"
-      className="h-full w-full bg-white object-cover object-top"
+      draggable={false}
+      className={`h-full w-full bg-white object-cover object-top ${file.sealed ? SEAL : ""}`}
       onError={() => setMode(pdf ? "frame" : "icon")}
     />
   );
@@ -69,10 +74,15 @@ export function FilePreviewTile({
         type="button"
         onClick={() => setOpen(true)}
         className="text-left"
-        aria-label={`Aperçu de ${file.label}`}
+        aria-label={file.sealed ? `Aperçu flouté de ${file.label}` : `Aperçu de ${file.label}`}
       >
         <span className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#0B192C] ring-1 ring-[#C5A880]/50">
           <FileThumb file={file} />
+          {file.sealed ? (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <LockBadge />
+            </span>
+          ) : null}
         </span>
         <span className="mt-1.5 line-clamp-2 text-center text-xs font-semibold leading-snug text-[#0B192C]">
           {file.label}
@@ -164,6 +174,8 @@ function FilePreviewDialog({
   const pdf = isPreviewPdf(file.mimeType, file.fileName);
   const href = fileInlineHref(file.path, accessOf(file));
   const downloadHref = fileDownloadHref(file.path, file.fileName, accessOf(file));
+  const sealed = Boolean(file.sealed);
+  const [raster, setRaster] = useState(sealed && (image || pdf));
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -233,17 +245,34 @@ function FilePreviewDialog({
             <Icon name="close" className="h-5 w-5" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#0B192C]/5 p-3">
-          {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
+        <div className="relative min-h-0 flex-1 overflow-auto bg-[#0B192C]/5 p-3">
+          {raster ? (
+            <div className="overflow-hidden rounded-2xl bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element -- aperçu flou, le fichier net passe par Télécharger */}
+              <img
+                src={fileThumbHref(file.path, accessOf(file))}
+                alt=""
+                referrerPolicy="no-referrer"
+                draggable={false}
+                className={`mx-auto max-h-[58vh] w-full object-contain ${SEAL}`}
+                onError={() => setRaster(false)}
+              />
+            </div>
+          ) : image ? (
+            // eslint-disable-next-line @next/next/no-img-element -- aperçu servi par /api/files
             <img
               src={href}
               alt=""
               referrerPolicy="no-referrer"
-              className="mx-auto max-h-[58vh] w-full rounded-2xl object-contain"
+              draggable={false}
+              className={`mx-auto max-h-[58vh] w-full rounded-2xl object-contain ${sealed ? SEAL : ""}`}
             />
           ) : pdf ? (
-            <iframe title={file.label} src={href} className="h-[58vh] w-full rounded-2xl bg-white" />
+            <iframe
+              title={file.label}
+              src={href}
+              className={`h-[58vh] w-full rounded-2xl bg-white ${sealed ? SEAL : ""}`}
+            />
           ) : (
             <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-2xl bg-[#0B192C] text-[#C5A880]">
               <Icon name="draft" className="h-14 w-14" />
@@ -252,6 +281,11 @@ function FilePreviewDialog({
               </p>
             </div>
           )}
+          {sealed ? (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <LockBadge size="lg" />
+            </span>
+          ) : null}
         </div>
         <div className="space-y-2 border-t border-[#e5e3dc] px-4 py-3">
           {notice ? <p className="text-sm text-[#0B192C]">{notice}</p> : null}

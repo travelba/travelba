@@ -1,20 +1,24 @@
+import { sortBookingsByProximity } from "./admin-list";
 import { greetingGivenName } from "./identity";
+import { stayToday } from "./stay-moment";
 import { customerFullName, type CrmCustomer } from "./types";
 
 type FicheBookingRow = {
   id: string;
   customer_id: string;
   start_date: string | null;
+  end_date?: string | null;
+  created_at?: string | null;
 };
 
-/** Dossiers du voyageur + dossiers facturés sur ce compte (collaborateur rattaché). */
-export function mergeFicheBookings<T extends FicheBookingRow>(owned: T[], billed: T[]): T[] {
+/** Dossiers du voyageur + dossiers facturés sur ce compte, du plus proche au plus loin. */
+export function mergeFicheBookings<T extends FicheBookingRow>(owned: T[], billed: T[], today = stayToday()): T[] {
   const byId = new Map<string, T>();
   for (const row of owned) byId.set(row.id, row);
   for (const row of billed) {
     if (!byId.has(row.id)) byId.set(row.id, row);
   }
-  return [...byId.values()].sort(byStartDateDesc);
+  return sortBookingsByProximity([...byId.values()], today);
 }
 
 export function ficheTravelerCaption(
@@ -37,9 +41,3 @@ export function ficheBookingTravelerLine(
   return name ? `Voyage de ${name}` : "Voyage d’un collaborateur";
 }
 
-function byStartDateDesc(a: FicheBookingRow, b: FicheBookingRow) {
-  if (a.start_date === b.start_date) return 0;
-  if (!a.start_date) return 1;
-  if (!b.start_date) return -1;
-  return a.start_date < b.start_date ? 1 : -1;
-}

@@ -26,6 +26,7 @@ const PROMPT = `Tu lis une photo ou un scan PDF de passeport, carte d’identit�
 Le fichier peut contenir PLUSIEURS passeports (deux livrets ouverts sur la même page, photocopie de couple, PDF de plusieurs pages).
 Si tu vois 2 passeports, identities DOIT contenir 2 objets. Si tu en vois 3, 3 objets. Un objet par personne, jamais fusionnés.
 Plusieurs images peuvent être le même scan découpé (gauche / droite / bas) : dédupe par personne.
+Un numéro tronqué qui est le début du numéro MRZ (sans date de naissance) est le même livret, pas un second passeport. La page du haut d’un livret ouvert n’est pas une personne.
 
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
@@ -33,12 +34,12 @@ Nationalité : code ISO 2 lettres UNIQUEMENT (FR, IL, MA, US, GB). « Israeli »
 Pays émetteur : même règle ISO 2.
 sex : M, F ou X. Sur un passeport israélien, נ = F et ז = M.
 doc_type : passport | id_card | visa | insurance | other.
-first_name : TOUS les prénoms, dans l’ordre de la ligne latine « Prénoms » / « Given name » et de la MRZ (gauche à droite). Maelle Louise Rosalie, jamais l’ordre inverse. Ne pas prendre l’ordre visuel du bloc hébreu (droite à gauche). Ne pas retourner les prénoms latins. Accents gardés (Hélie).
+first_name : TOUS les prénoms, dans l’ordre écrit de gauche à droite sur la ligne latine « Prénoms » / « Given name » et dans la MRZ, le premier prénom d’abord. Maelle Louise Rosalie, jamais l’ordre inverse. Accents gardés (Hélie).
 Livret ouvert en portrait, page déjà droite : seule la page du bas est une personne. Le haut (armoiries, « page réservée aux autorités ») n’en est pas une.
 Photo tournée (livret ouvert, table visible) : tourner d’abord pour que la MRZ soit horizontale. Ce sont les deux lignes d’encre au-dessus de l’ombre du bord, pas le bas du cadre et pas la table. Un chiffre de reflet ne remplace pas une MRZ dont les contrôles sont valides.
 Deux livrets de pays différents pour la même personne = deux pièces, pas une seconde personne.
 Taille et couleur des yeux ne sont pas des champs. Le domicile imprimé n’est pas le lieu de naissance. Le n° personnel israélien garde ses tirets.
-last_name : nom de naissance (ligne « Nom » / Surname). Pas le nom d’usage.
+last_name : nom de naissance (ligne « Nom » / Surname). Pas le nom d’usage. Passeport israélien : on lit de gauche à droite. last_name = Surname / שם המשפחה, pas les prénoms. first_name = Given name / שם פרטי dans l’ordre écrit de gauche à droite. La MRZ : avant << le nom, après << les prénoms de gauche à droite. Ne pas inverser le nom et les prénoms. Ne pas retourner la ligne.
 usage_name : nom d’épouse ou nom d’usage, s’il est imprimé (ligne « Nom d’usage », « épouse », « ép. », « née »). Null s’il n’y en a pas. Ne jamais l’inventer, ne pas le mettre dans last_name ni dans les prénoms.
 place_of_birth : lieu de naissance (ville / pays), tel qu’imprimé.
 issued_on : date de délivrance.

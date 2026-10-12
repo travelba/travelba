@@ -1,5 +1,5 @@
 import { resolveNationality } from "./countries";
-import { emptyToNull, identityOverwriteWarning } from "./identity";
+import { emptyToNull, identityOverwriteWarning, shownPersonName } from "./identity";
 import { foldName, matchTravelerToParty, namesReferToSamePerson, type PersonName } from "./person-match";
 
 export type DocumentIdentityFields = {
@@ -59,15 +59,13 @@ export function documentHolderName(
   customer: { first_name: string | null; last_name: string | null },
   companions: { id: string; first_name: string | null; last_name: string | null }[]
 ) {
-  const stored = [doc.first_name, doc.last_name].filter(Boolean).join(" ").trim();
+  const stored = shownPersonName(doc);
   if (stored) return stored;
   if (doc.companion_id) {
     const companion = companions.find((item) => item.id === doc.companion_id);
-    if (companion) {
-      return [companion.first_name, companion.last_name].filter(Boolean).join(" ").trim();
-    }
+    if (companion) return shownPersonName(companion);
   }
-  return [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim();
+  return shownPersonName(customer);
 }
 
 export type DocumentTarget = {

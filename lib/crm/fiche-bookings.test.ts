@@ -11,7 +11,7 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("la fiche agence réunit le voyageur et les dossiers facturés sur le compte", () => {
+test("la fiche agence réunit le voyageur et les dossiers facturés, du plus proche au plus loin", () => {
   const own = {
     id: "marrakech",
     customer_id: "cyril",
@@ -22,10 +22,10 @@ test("la fiche agence réunit le voyageur et les dossiers facturés sur le compt
     customer_id: "jeremy",
     start_date: "2026-12-01",
   };
-  const merged = mergeFicheBookings([own], [own, jeremy]);
+  const merged = mergeFicheBookings([own], [own, jeremy], "2026-10-12");
   assert.deepEqual(
     merged.map((row) => row.id),
-    ["aghouatim", "marrakech"]
+    ["marrakech", "aghouatim"]
   );
 });
 
@@ -35,7 +35,8 @@ test("un dossier sans date passe après les séjours datés", () => {
       { id: "open", customer_id: "cyril", start_date: null },
       { id: "dated", customer_id: "cyril", start_date: "2026-01-02" },
     ],
-    []
+    [],
+    "2026-10-12"
   );
   assert.deepEqual(
     merged.map((row) => row.id),

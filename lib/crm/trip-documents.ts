@@ -1,8 +1,9 @@
+import { shownPersonName } from "./identity";
 import { isPlaceholderTraveler, namesReferToSamePerson, type PersonName } from "./person-match";
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 export function travelerDisplayName(traveler: CrmBookingTraveler) {
-  return [traveler.first_name, traveler.last_name].filter(Boolean).join(" ").trim() || "Voyageur";
+  return shownPersonName(traveler) || "Voyageur";
 }
 
 export function isVaultDocument(doc: CrmTravelDocument) {

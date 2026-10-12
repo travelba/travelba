@@ -1,3 +1,4 @@
+import { shownPersonName } from "./identity";
 import { matchTokens, normalizeMatchText, suggestedCustomerId, tokensSpell } from "./revolut-match";
 
 export { suggestedCustomerId } from "./revolut-match";
@@ -124,7 +125,7 @@ async function bookingIdForCard(admin: PliantAdmin, cardId: string | null | unde
 }
 
 function customerLabel(c: PliantMatchCustomer) {
-  const name = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+  const name = shownPersonName(c);
   if (c.company_name?.trim()) {
     return name ? `${name} · ${c.company_name.trim()}` : c.company_name.trim();
   }
@@ -303,31 +304,48 @@ export function pliantMatchReasonLabel(reason: PliantMatchReason) {
   }
 }
 
-export async function applyPliantToCustomer(admin: PliantAdmin, row: PliantLedgerRow, customerId: string) {
-  if (row.match_status === "matched") return { ok: false as const, error: "already_matched" };
+export type PliantBookingLink = {
+  /** Réservation choisie par l’agence. Absente : la carte du registre décide. */
+  bookingId?: string | null;
+  billingCompanyId?: string | null;
+  payerKind?: "company" | "personal" | null;
+};
+
+/** Poste le débit (ou le remboursement) au compte, et le rattache à la réservation choisie. */
+export async function applyPliantToCustomer(
+  admin: PliantAdmin,
+  row: PliantLedgerRow,
+  customerId: string,
+  link?: PliantBookingLink
+) {
+  const chosen = link && "bookingId" in link ? link.bookingId || null : undefined;
+  if (row.match_status === "matched") {
+    if (!chosen) return { ok: false as const, error: "already_matched" };
+    return attachPliantBooking(admin, row, customerId, chosen, link);
+  }
   const draft = pliantLedgerDraft(row);
   if (!draft) return { ok: false as const, error: "not_postable" };
-  const bookingId = await bookingIdForCard(admin, row.card_id);
+  const bookingId = chosen === undefined ? await bookingIdForCard(admin, row.card_id) : chosen;
 
-  const { data: tx, error } = await admin
-    .from("crm_transactions")
-    .insert({
-      customer_id: customerId,
-      booking_id: bookingId,
-      direction: draft.direction,
-      kind: draft.kind,
-      amount: draft.amount,
-      currency: draft.currency,
-      occurred_on: draft.occurred_on,
-      label: draft.label,
-      source: "pliant",
-      external_id: draft.external_id,
-      status: "posted",
-    })
-    .select("*")
-    .single();
+  const payload: Record<string, unknown> = {
+    customer_id: customerId,
+    booking_id: bookingId,
+    direction: draft.direction,
+    kind: draft.kind,
+    amount: draft.amount,
+    currency: draft.currency,
+    occurred_on: draft.occurred_on,
+    label: draft.label,
+    source: "pliant",
+    external_id: draft.external_id,
+    status: "posted",
+  };
+  if (link?.billingCompanyId) payload.billing_company_id = link.billingCompanyId;
+  if (link?.payerKind) payload.payer_kind = link.payerKind;
 
-  let posted = tx;
+  const { data: tx, error } = await admin.from("crm_transactions").insert(payload).select("*").single();
+
+  let posted = tx as { id: string; booking_id?: string | null } | null;
   if (error) {
     if (!/duplicate|unique/i.test(String(error.message || ""))) {
       return { ok: false as const, error: error.message as string };
@@ -339,7 +357,19 @@ export async function applyPliantToCustomer(admin: PliantAdmin, row: PliantLedge
       .eq("external_id", draft.external_id)
       .maybeSingle();
     if (!existing) return { ok: false as const, error: error.message as string };
-    posted = existing;
+    const current = existing as { id: string; booking_id?: string | null; customer_id?: string | null };
+    if (bookingId && current.booking_id && current.booking_id !== bookingId) {
+      return { ok: false as const, error: "other_booking" };
+    }
+    if (bookingId && !current.booking_id) {
+      const stamp: Record<string, unknown> = { booking_id: bookingId };
+      if (link?.billingCompanyId) stamp.billing_company_id = link.billingCompanyId;
+      if (link?.payerKind) stamp.payer_kind = link.payerKind;
+      const { error: stampError } = await admin.from("crm_transactions").update(stamp).eq("id", current.id);
+      if (stampError) return { ok: false as const, error: stampError.message as string };
+      current.booking_id = bookingId;
+    }
+    posted = current;
   }
   if (!posted) return { ok: false as const, error: "insert_failed" };
 
@@ -354,6 +384,36 @@ export async function applyPliantToCustomer(admin: PliantAdmin, row: PliantLedge
     .eq("id", row.id);
   if (updateError) return { ok: false as const, error: updateError.message as string };
   return { ok: true as const, transaction: posted };
+}
+
+/** Une dépense déjà au compte se rattache à la réservation, sans seconde écriture. */
+async function attachPliantBooking(
+  admin: PliantAdmin,
+  row: PliantLedgerRow,
+  customerId: string,
+  bookingId: string,
+  link?: PliantBookingLink
+) {
+  const table = admin.from("crm_transactions");
+  if (!table || typeof table.select !== "function") return { ok: false as const, error: "already_matched" };
+  const selected = table.select("id, customer_id, booking_id");
+  if (!selected || typeof selected.eq !== "function") return { ok: false as const, error: "already_matched" };
+  const bySource = selected.eq("source", "pliant");
+  if (!bySource || typeof bySource.eq !== "function") return { ok: false as const, error: "already_matched" };
+  const filtered = bySource.eq("external_id", row.pliant_transaction_id);
+  if (!filtered || typeof filtered.maybeSingle !== "function") return { ok: false as const, error: "already_matched" };
+  const { data } = await filtered.maybeSingle();
+  const tx = data as { id?: string; customer_id?: string | null; booking_id?: string | null } | null;
+  if (!tx?.id) return { ok: false as const, error: "already_matched" };
+  if (tx.customer_id && tx.customer_id !== customerId) return { ok: false as const, error: "already_matched" };
+  if (tx.booking_id && tx.booking_id !== bookingId) return { ok: false as const, error: "other_booking" };
+  if (tx.booking_id === bookingId) return { ok: true as const, transaction: tx };
+  const stamp: Record<string, unknown> = { booking_id: bookingId };
+  if (link?.billingCompanyId) stamp.billing_company_id = link.billingCompanyId;
+  if (link?.payerKind) stamp.payer_kind = link.payerKind;
+  const { error } = await admin.from("crm_transactions").update(stamp).eq("id", tx.id);
+  if (error) return { ok: false as const, error: error.message as string };
+  return { ok: true as const, transaction: { ...tx, booking_id: bookingId } };
 }
 
 async function stayPayers(admin: PliantAdmin, cardIds: string[]) {

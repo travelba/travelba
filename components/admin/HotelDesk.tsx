@@ -7,8 +7,9 @@ import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
-import { hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
-import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
+import { shownPersonName } from "@/lib/crm/identity";
+import { applyHotelSalutation, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, signHotelLetter, type HotelMailPiece } from "@/lib/crm/hotel-desk";
+import { applyPaymentLinkChoice, hotelLanguage } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
@@ -58,7 +59,7 @@ export function HotelDesk({
   messages = [],
   thread = [],
   attached = [],
-  reference = "",
+  signatory = "",
   focusReply = false,
 }: {
   bookingId: string;
@@ -76,19 +77,18 @@ export function HotelDesk({
   thread?: CrmHotelThreadMessage[];
   attached?: HotelMailPiece[];
   reference?: string;
+  signatory?: string;
   focusReply?: boolean;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
   );
   const router = useRouter();
-  const [open, setOpen] = useState<HotelDeskKind | null>(null);
+  const [open, setOpen] = useState<HotelDeskKind | null>(focusReply ? "other" : null);
   const [marking, setMarking] = useState<string | null>(null);
   const [markError, setMarkError] = useState<string | null>(null);
   if (!rows.length) return null;
   const stay = hotelStayChecklist(item.id, rows);
-  const lead = principalGuest({ travelers, holder });
-  const guestName = `${lead.firstName} ${lead.lastName}`.trim();
 
   async function mark(row: CrmHotelRequest, action: "skip" | "restore") {
     if (marking) return;
@@ -174,19 +174,16 @@ export function HotelDesk({
           identityDocs={identityDocs}
           holder={holder}
           cardLast4={cardLast4}
+          signatory={signatory}
           onClose={() => setOpen(null)}
         />
       ) : null}
       <HotelThread
-        bookingId={bookingId}
         item={item}
         requests={requests}
         messages={messages}
         thread={thread}
         attached={attached}
-        guest={guestName}
-        reference={reference}
-        focusReply={focusReply}
       />
     </div>
   );
@@ -200,6 +197,7 @@ function HotelDeskEditor({
   identityDocs,
   holder,
   cardLast4,
+  signatory,
   onClose,
 }: {
   bookingId: string;
@@ -209,16 +207,21 @@ function HotelDeskEditor({
   identityDocs: CrmTravelDocument[];
   holder: { first_name: string; last_name: string } | null;
   cardLast4: string | null;
+  signatory: string;
   onClose: () => void;
 }) {
   const router = useRouter();
   const party = precheckParty(travelers, identityDocs, holder);
   const availableIds = party.flatMap((traveler) => traveler.pieces.map((piece) => piece.id));
-  const [subject, setSubject] = useState(row?.subject || "");
-  const [body, setBody] = useState(row?.body || "");
   const people = hotelSendPeople(item, row ? [row] : []);
+  const letterLang = hotelLanguage(hotelContact(item).country);
+  const initialRecipients = row ? hotelSendDefaults(item, [row]) : [];
+  const [subject, setSubject] = useState(row?.subject || "");
+  const [body, setBody] = useState(() =>
+    signHotelLetter(applyHotelSalutation(row?.body || "", letterLang, people, initialRecipients), signatory)
+  );
   const [picked, setPicked] = useState<string[] | null>(null);
-  const recipients = picked ?? (row ? hotelSendDefaults(item, [row]) : []);
+  const recipients = picked ?? initialRecipients;
   const [chargeCard, setChargeCard] = useState(row?.card_choice === "pliant");
   const [pieceIds, setPieceIds] = useState<string[]>(() =>
     row?.identity_picked ? (row.identity_document_ids || []).filter((id) => availableIds.includes(id)) : availableIds
@@ -227,7 +230,6 @@ function HotelDeskEditor({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!row) return null;
-  const letterLang = hotelLanguage(hotelContact(item).country);
   const cardChoice = row.kind === "payment_link" ? (chargeCard ? "pliant" : null) : "pliant";
 
   async function run(action: "save" | "send" | "skip", next = recipients, pieces = pieceIds) {
@@ -279,7 +281,7 @@ function HotelDeskEditor({
           party={party}
           selectedIds={pieceIds}
           last4={last4}
-          holder={[holder?.first_name, holder?.last_name].filter(Boolean).join(" ")}
+          holder={shownPersonName(holder)}
           hotel={hotelDisplayName(item) || item.title}
           disabled={Boolean(busy)}
           generating={busy === "card"}
@@ -307,6 +309,15 @@ function HotelDeskEditor({
           Prélever sur la carte
         </label>
       ) : null}
+      <HotelMailTo
+        people={people}
+        selected={recipients}
+        onChange={(next) => {
+          setPicked(next);
+          setBody((current) => applyHotelSalutation(current, letterLang, people, next));
+        }}
+        fieldClassName={letterFieldClass}
+      />
       <label className="block text-xs font-semibold text-[#0B192C]">
         Objet
         <input className={`${letterFieldClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
@@ -315,7 +326,6 @@ function HotelDeskEditor({
         Message
         <textarea className={`${letterFieldClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
       </label>
-      <HotelMailTo people={people} selected={recipients} onChange={setPicked} fieldClassName={letterFieldClass} />
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex flex-wrap gap-2">
         <button type="button" className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]" disabled={Boolean(busy) || recipients.length === 0} onClick={() => void run("send")}>

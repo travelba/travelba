@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminAction } from "@/lib/crm/admin-action";
+import { shownPersonName } from "@/lib/crm/identity";
 import { Icon } from "@/components/crm/icons";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { EmptyState } from "@/components/crm/ui";
@@ -88,7 +89,7 @@ function printedTravelers(row: CrmEmailIngest) {
     .map((person) => {
       if (!person || typeof person !== "object") return "";
       const record = person as { first_name?: string | null; last_name?: string | null };
-      return [record.first_name, record.last_name].filter(Boolean).join(" ").trim();
+      return shownPersonName(record);
     })
     .filter(Boolean);
 }

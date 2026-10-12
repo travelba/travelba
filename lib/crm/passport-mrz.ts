@@ -1,6 +1,6 @@
 import { completeGivenNames, type ExtractedIdentity } from "./identity";
 import { identityFromMrzLines } from "./mrz-parse";
-import { enrichPassportVisual, passportNumberHints, readPrintedGivenNames } from "./passport-visual";
+import { enrichPassportVisual, omitSurnameFromGiven, passportNumberHints, readPrintedGivenNames } from "./passport-visual";
 
 const WEIGHTS = [7, 3, 1];
 
@@ -625,7 +625,9 @@ function pairLines(names: string[], numbers: string[], visualText: string, corpu
       const enriched = enrichPassportVisual(identity, corpus);
       const repaired = repairGluedGiven(enriched.first_name, corpus);
       if (repaired !== enriched.first_name) {
-        enriched.first_name = completeGivenNames(repaired, readPrintedGivenNames(corpus)) || repaired;
+        enriched.first_name =
+          completeGivenNames(repaired, omitSurnameFromGiven(readPrintedGivenNames(corpus), enriched.last_name)) ||
+          repaired;
       }
       const score = pairScore(enriched, corpus) + (enriched.place_of_birth ? 1 : 0);
       const prev = found.get(identity.number);

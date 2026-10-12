@@ -57,6 +57,74 @@ export function hotelRefsShareBooking(a: string | null | undefined, b: string | 
   return [...hotelRefTokens(a), ...hotelRefTokens(b)].some((token) => LE_ROOM_REF.test(token));
 }
 
+function hotelNamesAlign(a: string | null | undefined, b: string | null | undefined) {
+  const left = norm(a);
+  const right = norm(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const [shorter, longer] = left.length <= right.length ? [left, right] : [right, left];
+  return shorter.length >= 12 && longer.includes(shorter);
+}
+
+function hotelLabels(item: MatchableItem) {
+  return [detail(item, "hotel_name"), item.title || ""].map((value) => value.trim()).filter(Boolean);
+}
+
+function hotelsShareName(a: MatchableItem, b: MatchableItem) {
+  const left = hotelLabels(a);
+  const right = hotelLabels(b);
+  return left.some((name) => right.some((other) => hotelNamesAlign(name, other)));
+}
+
+/** Les deux côtés ont un numéro, et ce n’est pas le même. */
+function hotelRefsConflict(a: string | null | undefined, b: string | null | undefined) {
+  const left = hotelRefTokens(a);
+  const right = hotelRefTokens(b);
+  if (!left.length || !right.length) return false;
+  if (left.some((token) => right.includes(token))) return false;
+  if (hotelRefsShareBooking(a, b)) return false;
+  return true;
+}
+
+function stayNightsOverlap(a: MatchableItem, b: MatchableItem) {
+  const aStart = day(a.start_at);
+  const bStart = day(b.start_at);
+  if (!aStart || !bStart) return false;
+  const aEnd = day(a.end_at) || aStart;
+  const bEnd = day(b.end_at) || bStart;
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
+/**
+ * Même hôtel, nuits qui se croisent, et pas deux numéros différents.
+ * « Mondrian Bordeaux » et « Mondrian Bordeaux Les Carmes » sont le même hôtel.
+ * Deux cartes du même nom : aucun choix automatique.
+ */
+export function findHotelSameStay<T extends MatchableItem>(
+  existing: T[],
+  incoming: MatchableItem
+): T | null {
+  if ((incoming.kind || "") !== "hotel") return null;
+  const hits = existing.filter((row) => {
+    if ((row.kind || "") !== "hotel") return false;
+    if (hotelRefsConflict(row.confirmation_ref, incoming.confirmation_ref)) return false;
+    if (!hotelsShareName(row, incoming)) return false;
+    return stayNightsOverlap(row, incoming);
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/** Compléter la carte déjà là : garder le nom, écrire la référence manquante. */
+export function hotelMatchKeepsStay(current: MatchableItem, incoming: MatchableItem) {
+  if ((current.kind || "") !== "hotel") return false;
+  if (hotelRefsConflict(current.confirmation_ref, incoming.confirmation_ref)) return false;
+  const shared = hotelRefTokens(current.confirmation_ref).some((token) =>
+    hotelRefTokens(incoming.confirmation_ref).includes(token)
+  );
+  if (shared || hotelRefsShareBooking(current.confirmation_ref, incoming.confirmation_ref)) return false;
+  return Boolean(findHotelSameStay([current], incoming));
+}
+
 /**
  * Une seule carte active porte cette réservation. Deux chambres actives : aucun choix,
  * l’agence désigne la carte.
@@ -174,6 +242,8 @@ export function findMatchingItem<T extends MatchableItem>(
       });
       if (hit) return hit;
     }
+    const stay = findHotelSameStay(existing, incoming);
+    if (stay) return stay;
   }
   const key = itemMatchKey(incoming);
   if (!key) return null;

@@ -12,7 +12,9 @@ import {
   phoneSearchFilter,
   joinOrFilters,
   BOOKING_SORTS,
+  bookingSortParam,
   parseBookingSort,
+  sortBookingsByProximity,
   parseBookingState,
   parseBookingStatus,
   parseClientFilter,
@@ -63,12 +65,45 @@ test("un numéro tapé retrouve le +33 stocké, les noms ne déclenchent pas la 
   assert.equal(joinOrFilters("a.ilike.%x%", "", "phone.ilike.%1%"), "a.ilike.%x%,phone.ilike.%1%");
 });
 
-test("les tris disent ce qu’ils font : asc = le plus proche d’abord", () => {
+test("les tris disent ce qu’ils font : le défaut est du plus proche au plus loin", () => {
+  assert.equal(BOOKING_SORTS.proche.proximity, true);
+  assert.match(BOOKING_SORTS.proche.label, /plus proche/);
   assert.equal(BOOKING_SORTS["depart-asc"].ascending, true);
-  assert.match(BOOKING_SORTS["depart-asc"].label, /plus proche/);
+  assert.match(BOOKING_SORTS["depart-asc"].label, /plus ancien/);
   assert.equal(BOOKING_SORTS.depart.ascending, false);
   assert.match(BOOKING_SORTS.depart.label, /plus lointain/);
+  assert.equal(bookingSortParam("proche"), null);
+  assert.equal(bookingSortParam("depart"), "depart");
   assert.equal(parseBookingState("a-venir"), "a-venir");
+});
+
+test("les dossiers se classent du plus proche au plus loin", () => {
+  const today = "2026-10-12";
+  const row = (
+    id: string,
+    start: string | null,
+    end: string | null,
+    created = "2026-01-01T00:00:00.000Z"
+  ) => ({ id, start_date: start, end_date: end, created_at: created });
+  const sorted = sortBookingsByProximity(
+    [
+      row("past-old", "2026-01-01", "2026-01-05"),
+      row("undated", null, null),
+      row("future-far", "2026-12-01", "2026-12-05"),
+      row("now-long", "2026-10-10", "2026-10-30"),
+      row("past-new", "2026-10-01", "2026-10-11"),
+      row("future-near", "2026-10-20", "2026-10-22"),
+      row("now-short", "2026-10-11", "2026-10-13"),
+      row("open", "2026-10-01", null),
+      row("same-new", "2026-10-20", "2026-10-21", "2026-10-02T00:00:00.000Z"),
+      row("same-old", "2026-10-20", "2026-10-21", "2026-09-01T00:00:00.000Z"),
+    ],
+    today
+  );
+  assert.deepEqual(
+    sorted.map((item) => item.id),
+    ["now-short", "now-long", "open", "same-new", "same-old", "future-near", "future-far", "past-new", "past-old", "undated"]
+  );
 });
 
 test("une page au-delà du total renvoie vers la dernière page", () => {
@@ -84,9 +119,10 @@ test("les filtres inconnus retombent sur la valeur par défaut", () => {
   assert.equal(parseBookingState("supprime"), null);
   assert.equal(parseBookingStatus("confirmed"), "confirmed");
   assert.equal(parseBookingStatus("brouillon"), null);
-  assert.equal(parseBookingSort(undefined), "depart");
+  assert.equal(parseBookingSort(undefined), "proche");
+  assert.equal(parseBookingSort("depart"), "depart");
   assert.equal(parseBookingSort("montant"), "montant");
-  assert.equal(parseBookingSort("hack"), "depart");
+  assert.equal(parseBookingSort("hack"), "proche");
   assert.equal(parseClientFilter("veille"), "veille");
   assert.equal(parseClientFilter("x"), null);
 });

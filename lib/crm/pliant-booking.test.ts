@@ -7,6 +7,8 @@ import {
   pliantCardRecaps,
   pliantExpenseTitle,
   pliantExpenseTransactionId,
+  pliantReconcileState,
+  pliantSettlementStays,
   pliantSpendCopy,
 } from "./pliant-booking";
 import type { PliantSpendLine } from "./pliant-cards";
@@ -165,4 +167,59 @@ test("une dépense annulée ne bloque pas une nouvelle copie", () => {
   assert.equal(filed.has("tx-1"), true);
   assert.equal(filed.has("tx-2"), false);
   assert.equal(filed.has("tx-3"), false);
+});
+
+test("le rapprochement distingue la réservation ouverte, une autre, et une ligne fermée", () => {
+  const line = { type: "PURCHASE", status: "BOOKED", billingCents: 4200, billingCurrency: "EUR" };
+  assert.equal(pliantReconcileState({ ...line, matchStatus: "unmatched" }, "stay-1"), "post");
+  assert.equal(pliantReconcileState({ ...line, matchStatus: "matched" }, "stay-1"), "attach");
+  assert.equal(
+    pliantReconcileState({ ...line, matchStatus: "matched", matchedBookingId: "stay-1" }, "stay-1"),
+    "here"
+  );
+  assert.equal(
+    pliantReconcileState({ ...line, matchStatus: "matched", matchedBookingId: "stay-2" }, "stay-1"),
+    "elsewhere"
+  );
+  assert.equal(pliantReconcileState({ ...line, matchStatus: "ignored" }, "stay-1"), "ignored");
+  assert.equal(pliantReconcileState({ ...line, status: "DECLINED" }, "stay-1"), "closed");
+  assert.equal(pliantReconcileState({ ...line, status: "PENDING" }, "stay-1"), "closed");
+});
+
+test("les réservations du compte gardent le séjour ouvert en tête", () => {
+  const stays = pliantSettlementStays(
+    [
+      {
+        id: "milan",
+        reference: "TBA-2",
+        title: "Milan",
+        destination: null,
+        start_date: "2026-08-01",
+        status: "confirmed",
+      },
+      {
+        id: "annule",
+        reference: "TBA-X",
+        title: "Lyon",
+        destination: null,
+        start_date: "2026-01-01",
+        status: "cancelled",
+      },
+      {
+        id: "rome",
+        reference: "TBA-1",
+        title: "Rome",
+        destination: "Paris",
+        start_date: "2026-06-01",
+        status: "draft",
+      },
+    ],
+    "rome"
+  );
+  assert.deepEqual(
+    stays.map((stay) => stay.id),
+    ["rome", "milan"]
+  );
+  assert.match(stays[0]?.label || "", /^TBA-1 · Rome · /);
+  assert.equal(stays[0]?.label.includes("Paris"), false);
 });
