@@ -32,6 +32,7 @@ import {
   shownStayProvision,
   stayCardFace,
   tripStayCard,
+  stayCardDonor,
   stayProvision,
   stayRevealNeedsAgencyCode,
   vipMail,
@@ -417,4 +418,48 @@ test("carte visuelle : le début reste masqué, le code agence ne se devine pas 
   assert.equal(tripStayCard([]) , null);
   assert.equal(stayRevealNeedsAgencyCode("client"), false);
   assert.equal(stayRevealNeedsAgencyCode("staff"), true);
+});
+
+test("le même hôtel reprend la CB déjà ouverte, sans en émettre une seconde", () => {
+  const replaced = {
+    id: "old",
+    kind: "hotel",
+    title: "Mondrian Bordeaux Les Carmes",
+    confirmation_ref: null,
+    start_at: "2026-10-13",
+    end_at: "2026-10-14",
+    lifecycle: "superseded",
+  };
+  const incoming = {
+    id: "new",
+    kind: "hotel",
+    title: "Mondrian Bordeaux",
+    confirmation_ref: "B7G5AJC0552",
+    start_at: "2026-10-13",
+    end_at: "2026-10-14",
+    lifecycle: "active",
+  };
+  const arrivals = [
+    { id: "arr-old", booking_item_id: "old", pliant_card_id: "card-1", card_last4: "7237", status: "blocked" },
+  ];
+  assert.deepEqual(stayCardDonor(incoming, [replaced, incoming], arrivals), {
+    arrivalId: "arr-old",
+    cardId: "card-1",
+    last4: "7237",
+  });
+  assert.equal(stayCardDonor(replaced, [replaced, incoming], arrivals), null);
+  assert.equal(
+    stayCardDonor(
+      { ...incoming, title: "Hotel Eden", confirmation_ref: "99999" },
+      [replaced, { ...incoming, title: "Hotel Eden", confirmation_ref: "99999" }],
+      arrivals
+    ),
+    null
+  );
+  assert.equal(
+    stayCardDonor(incoming, [replaced, incoming], [
+      { ...arrivals[0], status: "closed", card_closed_at: "2026-10-14T00:00:00.000Z" },
+    ]),
+    null
+  );
 });

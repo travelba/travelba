@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   findHotelBookingCard,
+  findHotelSameStay,
   findMatchingItem,
+  hotelMatchKeepsStay,
   hotelRefsShareBooking,
   itemMatchKey,
   keptHotelStayFields,
@@ -111,6 +113,81 @@ describe("itemMatchKey", () => {
       start_at: "2027-03-20",
     });
     assert.equal(hit?.title, "Assurance Multirisques");
+  });
+
+  it("complète l’hôtel déjà là quand le nom et les nuits sont les mêmes", () => {
+    const existing = [
+      {
+        kind: "hotel",
+        title: "Mondrian Bordeaux Les Carmes",
+        confirmation_ref: null,
+        start_at: "2026-10-13",
+        end_at: "2026-10-14",
+      },
+    ];
+    const incoming = {
+      kind: "hotel",
+      title: "Mondrian Bordeaux",
+      confirmation_ref: "B7G5AJC0552",
+      start_at: "2026-10-13",
+      end_at: "2026-10-14",
+      details: { hotel_name: "Mondrian Bordeaux" },
+    };
+    assert.equal(findMatchingItem(existing, incoming)?.title, "Mondrian Bordeaux Les Carmes");
+    assert.equal(hotelMatchKeepsStay(existing[0], incoming), true);
+    const kept = keptHotelStayFields(existing[0], incoming);
+    assert.equal(kept.title, "Mondrian Bordeaux Les Carmes");
+    assert.equal(kept.confirmation_ref, "B7G5AJC0552");
+  });
+
+  it("ne fusionne pas deux hôtels qui ont déjà des références différentes", () => {
+    const existing = [
+      {
+        kind: "hotel",
+        title: "Hotel Eden",
+        confirmation_ref: "97620170",
+        start_at: "2026-06-12",
+        end_at: "2026-06-15",
+      },
+    ];
+    const incoming = {
+      kind: "hotel",
+      title: "Hotel Eden",
+      confirmation_ref: "97620171",
+      start_at: "2026-06-12",
+      end_at: "2026-06-15",
+    };
+    assert.equal(findHotelSameStay(existing, incoming), null);
+    assert.equal(findMatchingItem(existing, incoming), null);
+  });
+
+  it("ne choisit pas entre deux hôtels au même nom", () => {
+    const existing = [
+      {
+        kind: "hotel",
+        title: "Mondrian Bordeaux",
+        confirmation_ref: null,
+        start_at: "2026-10-13",
+        end_at: "2026-10-14",
+      },
+      {
+        kind: "hotel",
+        title: "Mondrian Bordeaux Les Carmes",
+        confirmation_ref: null,
+        start_at: "2026-10-13",
+        end_at: "2026-10-14",
+      },
+    ];
+    assert.equal(
+      findHotelSameStay(existing, {
+        kind: "hotel",
+        title: "Mondrian Bordeaux",
+        confirmation_ref: "B7G5AJC0552",
+        start_at: "2026-10-13",
+        end_at: "2026-10-14",
+      }),
+      null
+    );
   });
 
   it("reconnaît le numéro court et une autre chambre de la même réservation", () => {
