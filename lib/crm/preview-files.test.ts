@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileDownloadHref, fileHref, fileInlineHref } from "./file-href";
-import { attachmentPreviews, passportPreviewsForStay } from "./preview-files";
+import { attachmentPreviews, identityPreview, passportPreviewsForStay } from "./preview-files";
 import type { CrmBookingDocument, CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 function traveler(partial: Partial<CrmBookingTraveler>): CrmBookingTraveler {
@@ -89,6 +89,8 @@ test("un passeport sans fichier n’apparaît pas, et le partage ignore le numé
   assert.equal(files[0]?.shareText.includes("XX00"), false);
   assert.equal(files[0]?.shareText.includes("SECRET"), false);
   assert.match(files[0]?.shareText || "", /dossier TB-1/);
+  assert.equal(files[0]?.sealed, true);
+  assert.equal(identityPreview(passport({}), "Ada")?.sealed, true);
 });
 
 test("les pièces jointes reprennent le libellé du dossier", () => {
@@ -111,4 +113,5 @@ test("les pièces jointes reprennent le libellé du dossier", () => {
   assert.match(file?.label || "", /confirmation\.pdf/);
   assert.equal(file?.shareText.includes("confirmation.pdf"), false);
   assert.equal(file?.path.startsWith("bookings/"), true);
+  assert.equal(file?.sealed, undefined);
 });

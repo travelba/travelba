@@ -319,8 +319,15 @@ export function DocumentsManager({
         {scan ? (
           <div className="flex items-start gap-3">
             {scan.preview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={scan.preview} alt="" className="h-20 w-14 rounded-lg object-cover" />
+              <span className="inline-flex h-20 w-14 overflow-hidden rounded-lg">
+                {/* eslint-disable-next-line @next/next/no-img-element -- photo locale, floue avant l’enregistrement */}
+                <img
+                  src={scan.preview}
+                  alt=""
+                  draggable={false}
+                  className="pointer-events-none h-full w-full scale-125 select-none object-cover blur-[28px]"
+                />
+              </span>
             ) : scan.file ? (
               <p className="text-xs font-medium text-[var(--admin-navy)]">{scan.file.name}</p>
             ) : null}

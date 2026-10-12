@@ -42,7 +42,7 @@ description: >-
 - **Adresse personnelle** : si la pièce imprime un domicile (passeport français, carte d’identité, titre de séjour, permis), le recopier sur la fiche du **titulaire** (`address_line`, `postal_code`, `city`, `country`) seulement dans les champs encore vides. Passeport français : la première adresse seulement. La suivante, celle du représentant légal d’un mineur, ne compte pas. Un passeport sans adresse ne remplit rien. Ne jamais inventer, ne pas prendre le lieu de naissance, ne pas écraser une adresse déjà saisie, ne pas toucher l’adresse de facturation. L’adresse d’un accompagnateur ne va pas sur la fiche du titulaire.
 - Rattachement : un mot du prénom suffit (« Jérémy » = « Jérémy Moïse »), une lettre d’écart dès 4 lettres (`Leoh` / `Leo`), nom égal ou à deux caractères près. Virgule, nom inversé ou nom entier dans un seul champ comptent. Le passeport du titulaire rangé sur un accompagnateur du même nom est le sien. `Louise` ≠ `Noah`. « Adulte N » n’est pas une personne. Un passeport de coffre unique et non expiré est coché pour le séjour (`lib/crm/person-match.ts`, `reconcile-party.ts`).
 
-UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Uploadez le passeport du titulaire pour préremplir » en hint permanent.
+UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Uploadez le passeport du titulaire pour préremplir » en hint permanent. Le scan d’une pièce (vignette, aperçu, photo juste lue) reste **flou** à l’écran, agence comme client. Le téléchargement et le partage WhatsApp envoient le fichier net.
 
 ## Fidélité / facturation
 

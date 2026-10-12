@@ -18,6 +18,9 @@ function accessOf(file: FilePreviewModel) {
   return file.partage ? { partage: file.partage } : undefined;
 }
 
+/** Assez fort pour qu’un visage et une MRZ ne se lisent pas, en vignette comme en aperçu. */
+const SEAL = "pointer-events-none scale-110 select-none blur-[64px]";
+
 function FileThumb({ file }: { file: FilePreviewModel }) {
   const image = isPreviewImage(file.mimeType, file.fileName);
   const pdf = isPreviewPdf(file.mimeType, file.fileName);
@@ -36,17 +39,18 @@ function FileThumb({ file }: { file: FilePreviewModel }) {
       <iframe
         title={`Première page de ${file.label}`}
         src={`${inline}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-        className="pointer-events-none h-full w-full border-0 bg-white"
+        className={`h-full w-full border-0 bg-white ${file.sealed ? SEAL : "pointer-events-none"}`}
       />
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- vignette servie par /api/files
     <img
-      src={pdf ? fileThumbHref(file.path, accessOf(file)) : inline}
+      src={pdf || file.sealed ? fileThumbHref(file.path, accessOf(file)) : inline}
       alt=""
       referrerPolicy="no-referrer"
-      className="h-full w-full bg-white object-cover object-top"
+      draggable={false}
+      className={`h-full w-full bg-white object-cover object-top ${file.sealed ? SEAL : ""}`}
       onError={() => setMode(pdf ? "frame" : "icon")}
     />
   );
@@ -164,6 +168,8 @@ function FilePreviewDialog({
   const pdf = isPreviewPdf(file.mimeType, file.fileName);
   const href = fileInlineHref(file.path, accessOf(file));
   const downloadHref = fileDownloadHref(file.path, file.fileName, accessOf(file));
+  const sealed = Boolean(file.sealed);
+  const [raster, setRaster] = useState(sealed && (image || pdf));
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -234,16 +240,33 @@ function FilePreviewDialog({
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto bg-[#0B192C]/5 p-3">
-          {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
+          {raster ? (
+            <div className="overflow-hidden rounded-2xl bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element -- aperçu flou, le fichier net passe par Télécharger */}
+              <img
+                src={fileThumbHref(file.path, accessOf(file))}
+                alt=""
+                referrerPolicy="no-referrer"
+                draggable={false}
+                className={`mx-auto max-h-[58vh] w-full object-contain ${SEAL}`}
+                onError={() => setRaster(false)}
+              />
+            </div>
+          ) : image ? (
+            // eslint-disable-next-line @next/next/no-img-element -- aperçu servi par /api/files
             <img
               src={href}
               alt=""
               referrerPolicy="no-referrer"
-              className="mx-auto max-h-[58vh] w-full rounded-2xl object-contain"
+              draggable={false}
+              className={`mx-auto max-h-[58vh] w-full rounded-2xl object-contain ${sealed ? SEAL : ""}`}
             />
           ) : pdf ? (
-            <iframe title={file.label} src={href} className="h-[58vh] w-full rounded-2xl bg-white" />
+            <iframe
+              title={file.label}
+              src={href}
+              className={`h-[58vh] w-full rounded-2xl bg-white ${sealed ? SEAL : ""}`}
+            />
           ) : (
             <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-2xl bg-[#0B192C] text-[#C5A880]">
               <Icon name="draft" className="h-14 w-14" />
