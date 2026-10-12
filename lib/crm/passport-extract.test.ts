@@ -386,6 +386,51 @@ test("distinctPassportPeople keeps both nationalities of one person", () => {
   );
 });
 
+test("distinctPassportPeople drops a truncated number of the same booklet", () => {
+  const full = identityFromVision({
+    doc_type: "passport",
+    number: "22AA17834",
+    last_name: "Martin",
+    first_name: "Camille Adele",
+    birth_date: "2013-01-19",
+    expires_on: "2027-09-12",
+    sex: "M",
+    nationality: "FR",
+    issuing_country: "FR",
+  });
+  const fragment = identityFromVision({
+    doc_type: "passport",
+    number: "22AA178",
+    last_name: "Martin",
+    first_name: "Camille Adele",
+    nationality: "FR",
+    issuing_country: "FR",
+    personal_number: "23",
+  });
+  const people = distinctPassportPeople([full!, fragment!]);
+  assert.equal(people.length, 1);
+  assert.equal(people[0].number, "22AA17834");
+  assert.equal(people[0].birth_date, "2013-01-19");
+  assert.equal(people[0].personal_number, null);
+});
+
+test("distinctPassportPeople keeps a different person even if one number starts the other", () => {
+  const full = identityFromVision({
+    number: "22AA17834",
+    last_name: "Martin",
+    first_name: "Camille",
+    birth_date: "2013-01-19",
+  });
+  const other = identityFromVision({
+    number: "22AA178",
+    last_name: "Martin",
+    first_name: "Louis",
+    birth_date: "2015-04-02",
+  });
+  const people = distinctPassportPeople([full!, other!]);
+  assert.equal(people.length, 2);
+});
+
 test("distinctPassportPeople keeps siblings with sequential numbers", () => {
   const jean = identityFromVision({
     number: "12AB34567",
