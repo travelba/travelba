@@ -12,6 +12,8 @@ export type FilePreviewModel = {
   shareText: string;
   /** Code /v/CODE : la pièce se lit sans session, toujours via /api/files. */
   partage?: string | null;
+  /** Pièce d’identité : vignette et aperçu restent flous. Le fichier téléchargé est net. */
+  sealed?: boolean;
 };
 
 export function isPreviewImage(mime?: string | null, name?: string | null) {
@@ -69,6 +71,7 @@ export function passportPreviewsForStay(
       mimeType: doc.mime_type,
       label: travelerDisplayName(traveler),
       shareText: passportShareText(reference),
+      sealed: true,
     });
   }
   return out;
@@ -106,5 +109,6 @@ export function identityPreview(
     shareText: passport
       ? "Bonjour, je vous transmets un passeport."
       : "Bonjour, je vous transmets une pièce d’identité.",
+    sealed: true,
   };
 }
