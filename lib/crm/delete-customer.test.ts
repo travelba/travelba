@@ -113,7 +113,13 @@ test("les mouvements Revolut, Stripe et Pliant reviennent à l’inbox avant tou
       "crm_customers:delete",
     ]
   );
-  assert.deepEqual(writes[0].payload, { status: "unmatched", matched_customer_id: null, matched_transaction_id: null });
+  assert.deepEqual(writes[0].payload, {
+    status: "unmatched",
+    matched_customer_id: null,
+    matched_transaction_id: null,
+    matched_booking_id: null,
+    settled_at: null,
+  });
   assert.deepEqual(writes[0].filters, [{ method: "eq", args: ["matched_customer_id", CUSTOMER_ID] }]);
   assert.deepEqual(writes[1].payload, { status: "unmatched", matched_customer_id: null, matched_transaction_id: null });
   assert.deepEqual(writes[1].filters, [{ method: "eq", args: ["matched_customer_id", CUSTOMER_ID] }]);

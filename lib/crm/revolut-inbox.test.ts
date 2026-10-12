@@ -5,6 +5,7 @@ import {
   revolutDebitLine,
   revolutInboxCopy,
   revolutInboxDraft,
+  revolutSyncPayload,
   senderFromRevolutPayload,
   shouldIngestRevolutDebit,
   shouldIngestRevolutForRapprochement,
@@ -84,7 +85,10 @@ describe("revolut-inbox", () => {
       ],
     });
     assert.equal(wire?.direction, "debit");
-    assert.equal(wire?.status, "ignored");
+    assert.equal(wire?.status, "unmatched");
+    const sync = wire ? revolutSyncPayload("tx-out", wire) : null;
+    assert.equal(sync?.insert.status, "unmatched");
+    assert.equal("status" in (sync?.update || {}), false);
     assert.equal(wire?.amount, 850);
     assert.equal(wire?.counterparty_name, "Hotel Nantipa");
     const card = revolutInboxDraft({
@@ -129,6 +133,8 @@ describe("revolut-inbox", () => {
     assert.equal(line.party, "Hotel Nantipa");
     assert.equal(line.kind, "Virement");
     assert.equal(line.reference, "FACTURE 12");
+    assert.equal(line.status, "unmatched");
+    assert.equal(line.bookingId, null);
     assert.equal("iban" in line, false);
   });
 

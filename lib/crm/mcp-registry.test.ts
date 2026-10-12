@@ -18,6 +18,7 @@ const EXPECTED = [
   "little_emperors_en_attente",
   "crediter_virement",
   "crediter_revolut",
+  "rapprocher_depense_revolut",
   "crediter_stripe",
   "rapprocher_pliant",
   "publier_carnet",
@@ -31,6 +32,7 @@ const EXPECTED = [
 const WRITE_TOOLS = [
   "crediter_virement",
   "crediter_revolut",
+  "rapprocher_depense_revolut",
   "crediter_stripe",
   "rapprocher_pliant",
   "publier_carnet",

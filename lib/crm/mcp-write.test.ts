@@ -13,6 +13,8 @@ import {
   prepareManualCredit,
   preparePliantReconcile,
   prepareRevolutCredit,
+  prepareRevolutExpense,
+  matchRevolutExpense,
   prepareStripeCredit,
   publishBlock,
 } from "./mcp-write";
@@ -56,6 +58,12 @@ test("revolut credit names the transfer and the client", () => {
   });
   assert.throws(() => prepareRevolutCredit({ virement_id: WIRE }), /Client invalide/);
   assert.throws(() => prepareRevolutCredit({ client_id: CLIENT, virement_id: "le virement de ce matin" }), /Virement invalide/);
+  assert.deepEqual(prepareRevolutExpense({ depense_id: WIRE, client_id: CLIENT, dossier_id: BOOKING }), {
+    depenseId: WIRE,
+    clientId: CLIENT,
+    dossierId: BOOKING,
+  });
+  assert.throws(() => prepareRevolutExpense({ depense_id: WIRE, client_id: CLIENT }), /Dossier invalide/);
 });
 
 test("showing a carnet keeps the agency guards", () => {
@@ -147,6 +155,21 @@ test("un crédit Stripe exige le paiement et le client", () => {
   assert.throws(() => prepareStripeCredit({ paiement_id: WIRE }), /Client invalide/);
 });
 
+test("a revolut expense match does not write the client ledger", async () => {
+  const writes: string[] = [];
+  const admin = fakeAdmin({
+    crm_customers: { id: CLIENT },
+    crm_revolut_transactions: { id: WIRE, status: "unmatched", direction: "debit", currency: "EUR" },
+    onInsert(table) {
+      writes.push(table);
+    },
+  });
+  await rejection(() =>
+    matchRevolutExpense({ depense_id: WIRE, client_id: CLIENT, dossier_id: BOOKING }, admin)
+  );
+  assert.deepEqual(writes, []);
+});
+
 test("an already matched revolut transfer is not credited again", async () => {
   const writes: string[] = [];
   const admin = fakeAdmin({
@@ -176,6 +199,8 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "tableau_de_bord")?.readOnly, true);
   assert.equal(seen.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
   assert.equal(seen.find((tool) => tool.name === "crediter_revolut")?.openWorld, false);
+  assert.equal(seen.find((tool) => tool.name === "rapprocher_depense_revolut")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "rapprocher_depense_revolut")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "crediter_stripe")?.openWorld, false);
 });
 

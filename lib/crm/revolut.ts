@@ -2,7 +2,8 @@ import { createPrivateKey, createSign, createHmac } from "crypto";
 import { secretEquals } from "./secret-equals";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { revolutInboxDraft } from "@/lib/crm/revolut-inbox";
+import { repairRevolutDebitQueue } from "@/lib/crm/revolut-debit";
+import { revolutInboxDraft, revolutSyncPayload } from "@/lib/crm/revolut-inbox";
 import { revolutBalancePockets } from "@/lib/crm/account-balances";
 import { isRevolutAccountId, parseRevolutAccounts, pickEurSepaWire, type AgencyWire } from "@/lib/crm/revolut-wire";
 
@@ -223,39 +224,30 @@ export async function fetchRevolutTransactions(fromIso: string) {
 
 export async function upsertRevolutInbox(txs: RevolutTx[]) {
   const supabase = createServiceClient();
+  try {
+    await repairRevolutDebitQueue(supabase);
+  } catch (err) {
+    console.error("[revolut] file débits", err instanceof Error ? err.message : "échec");
+  }
   let inserted = 0;
   for (const tx of txs) {
     const draft = revolutInboxDraft(tx);
-    if (!draft) continue;
-    const fields = {
-      amount: draft.amount,
-      currency: draft.currency,
-      direction: draft.direction,
-      counterparty_name: draft.counterparty_name,
-      counterparty_iban: draft.counterparty_iban,
-      reference: draft.reference,
-      booked_at: draft.booked_at,
-      raw: tx,
-    };
-    // Un débit ne doit jamais rester « à rapprocher » : le statut ignored le sort de la file.
-    const patch =
-      draft.direction === "debit" ? { ...fields, status: "ignored" as const } : fields;
+    if (!draft || !tx.id) continue;
+    const payload = revolutSyncPayload(tx.id, draft);
     const { error, data } = await supabase
       .from("crm_revolut_transactions")
       .upsert(
-        {
-          revolut_transaction_id: tx.id,
-          ...patch,
-        },
+        { ...payload.insert, raw: tx },
         { onConflict: "revolut_transaction_id", ignoreDuplicates: true }
       )
       .select("id");
     if (!error && data?.length) inserted += data.length;
     else {
       // Ne pas retourner un crédit déjà rangé en débit, ni l’inverse.
+      // Le statut (rapproché, refusé) reste celui du clic : la synchro ne l’écrase pas.
       await supabase
         .from("crm_revolut_transactions")
-        .update(patch)
+        .update({ ...payload.update, raw: tx })
         .eq("revolut_transaction_id", tx.id)
         .eq("direction", draft.direction);
     }

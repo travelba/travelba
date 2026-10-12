@@ -609,6 +609,10 @@ export type CrmRevolutTransaction = {
   raw: Record<string, unknown>;
   matched_customer_id: string | null;
   matched_transaction_id: string | null;
+  /** Dossier d’une sortie rapprochée. Le montant n’entre pas au grand livre. */
+  matched_booking_id?: string | null;
+  /** Clic Valider ou Refuser. Null tant que la sortie n’a pas été traitée. */
+  settled_at?: string | null;
   status: "unmatched" | "matched" | "ignored";
   created_at: string;
   updated_at: string;
