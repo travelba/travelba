@@ -632,10 +632,12 @@ test("écrire à l'hôtel n'ajoute pas d'étape et coche les destinataires à l'
   assert.doesNotMatch(fn, /crm_booking_items/);
   const desk = readFileSync(join(process.cwd(), "components/admin/HotelDesk.tsx"), "utf8");
   assert.match(desk, /HotelMailTo/);
+  assert.ok(desk.indexOf("<HotelMailTo") < desk.search(/\n\s*Objet\n/), "destinataires avant l’objet");
   assert.doesNotMatch(desk, /RecipientRoster/);
   const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
   assert.match(thread, /Avec l’hôtel/);
   assert.match(thread, /HotelMailTo/);
+  assert.ok(thread.indexOf("<HotelMailTo") < thread.search(/\n\s*Objet\n/), "destinataires avant l’objet");
   assert.match(thread, /recipients: selected/);
   assert.doesNotMatch(thread, /RecipientRoster/);
   const carnet = readFileSync(join(process.cwd(), "components/account/CarnetItinerary.tsx"), "utf8");
