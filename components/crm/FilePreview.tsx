@@ -6,6 +6,7 @@ import { fileDownloadHref, fileInlineHref, fileThumbHref } from "@/lib/crm/file-
 import { isPreviewImage, isPreviewPdf, type FilePreviewModel } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import { Icon } from "@/components/crm/icons";
+import { LockBadge } from "@/components/crm/PassportSeal";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 
 type RemoveResult = void | string | null | undefined;
@@ -73,10 +74,15 @@ export function FilePreviewTile({
         type="button"
         onClick={() => setOpen(true)}
         className="text-left"
-        aria-label={`Aperçu de ${file.label}`}
+        aria-label={file.sealed ? `Aperçu flouté de ${file.label}` : `Aperçu de ${file.label}`}
       >
         <span className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#0B192C] ring-1 ring-[#C5A880]/50">
           <FileThumb file={file} />
+          {file.sealed ? (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <LockBadge />
+            </span>
+          ) : null}
         </span>
         <span className="mt-1.5 line-clamp-2 text-center text-xs font-semibold leading-snug text-[#0B192C]">
           {file.label}
@@ -239,7 +245,7 @@ function FilePreviewDialog({
             <Icon name="close" className="h-5 w-5" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#0B192C]/5 p-3">
+        <div className="relative min-h-0 flex-1 overflow-auto bg-[#0B192C]/5 p-3">
           {raster ? (
             <div className="overflow-hidden rounded-2xl bg-white">
               {/* eslint-disable-next-line @next/next/no-img-element -- aperçu flou, le fichier net passe par Télécharger */}
@@ -275,6 +281,11 @@ function FilePreviewDialog({
               </p>
             </div>
           )}
+          {sealed ? (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <LockBadge size="lg" />
+            </span>
+          ) : null}
         </div>
         <div className="space-y-2 border-t border-[#e5e3dc] px-4 py-3">
           {notice ? <p className="text-sm text-[#0B192C]">{notice}</p> : null}

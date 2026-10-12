@@ -29,7 +29,7 @@ import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/Iden
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
-import { PassportSeal } from "@/components/crm/PassportSeal";
+import { LockBadge, PassportSeal } from "@/components/crm/PassportSeal";
 import { identityPreview } from "@/lib/crm/preview-files";
 
 export function DocumentsManager({
@@ -319,7 +319,7 @@ export function DocumentsManager({
         {scan ? (
           <div className="flex items-start gap-3">
             {scan.preview ? (
-              <span className="inline-flex h-20 w-14 overflow-hidden rounded-lg">
+              <span className="relative inline-flex h-20 w-14 overflow-hidden rounded-lg">
                 {/* eslint-disable-next-line @next/next/no-img-element -- photo locale, floue avant l’enregistrement */}
                 <img
                   src={scan.preview}
@@ -327,6 +327,9 @@ export function DocumentsManager({
                   draggable={false}
                   className="pointer-events-none h-full w-full scale-125 select-none object-cover blur-[28px]"
                 />
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <LockBadge size="sm" />
+                </span>
               </span>
             ) : scan.file ? (
               <p className="text-xs font-medium text-[var(--admin-navy)]">{scan.file.name}</p>
