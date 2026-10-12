@@ -18,3 +18,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Création / clone local : `.cursor/skills/travelba-bootstrap/SKILL.md`
 - Prod `travelba.fr` : `.cursor/skills/travelba-go-live/SKILL.md`
 - Prefer shipping working CRM flows over speculative refactors.
+
+## Cursor Cloud specific instructions
+
+- `install` is `npm ci --include=optional` (lockfile, sharp, and the Chromium postinstall). `start` runs `npm run dev` on `0.0.0.0:3000` and skips the launch if that port already answers. Do not start a second dev server.
+- Supabase URL, anon key, and service role arrive as environment variables. Do not copy them into `.env.local`. When `NEXT_PUBLIC_SITE_URL` is unset, `start` uses `http://localhost:3000`.
+- Do not run `npm run seed:demo` in this environment: the Supabase project is production.
+- Checks match CI: `npm run typecheck`, `npm run lint`, `npm run test`, then `node scripts/check-migrations.mjs`.
