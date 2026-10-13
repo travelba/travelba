@@ -129,9 +129,9 @@ export default async function ExampleReservationPage({ params }: Props) {
             </div>
           </BookingHero>
 
-          {b.notes_client ? (
+          {pub.notes_client ? (
             <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
-              {b.notes_client}
+              {pub.notes_client}
             </p>
           ) : null}
         </>

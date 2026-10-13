@@ -30,6 +30,7 @@ import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extr
 import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
+import { shownClientNote } from "@/lib/crm/public-booking";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { stripePublishableKey } from "@/lib/crm/stripe";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
@@ -266,6 +267,7 @@ function ClientScreen({
   const missingCount = coverage.total - coverage.ready;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination);
   const headline = stayTitleFromItems(booking.title, booking.destination, items);
+  const clientNote = shownClientNote(booking.notes_client);
   const placeLine = tripPlaceLine(headline, booking.destination);
   const formalities = frenchPassportTrip(items, travelers.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
@@ -365,9 +367,9 @@ function ClientScreen({
                     </div>
                   </div>
                 </BookingHero>
-                {booking.notes_client ? (
+                {clientNote ? (
                   <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
-                    {booking.notes_client}
+                    {clientNote}
                   </p>
                 ) : null}
                 {screen === "stay" ? encoursPay : null}

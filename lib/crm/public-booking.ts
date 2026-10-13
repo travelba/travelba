@@ -33,11 +33,22 @@ export type PublicBookingKey = (typeof PUBLIC_BOOKING_KEYS)[number];
 
 export type PublicBooking = Pick<CrmBooking, PublicBookingKey>;
 
+const ABSENT_CLIENT_NOTE = /^(null|undefined)$/i;
+
+/** Note montrée au client. Le mot null, laissé par une lecture, n’est pas une note. */
+export function shownClientNote(value: unknown): string | null {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text || ABSENT_CLIENT_NOTE.test(text)) return null;
+  return text;
+}
+
 /** Projection stricte : seules les clés listées, rien d’autre. */
 export function toPublicBooking(booking: CrmBooking): PublicBooking {
   const out: Partial<Record<PublicBookingKey, unknown>> = {};
   for (const key of PUBLIC_BOOKING_KEYS) {
-    if (key in booking) out[key] = booking[key];
+    if (!(key in booking)) continue;
+    out[key] = key === "notes_client" ? shownClientNote(booking[key]) : booking[key];
   }
   return out as PublicBooking;
 }

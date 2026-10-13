@@ -6,6 +6,7 @@ import { ledgerWarning, nextBookingReference, parseIncludeInLedger, syncBookingL
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { assignPayer, defaultPayer, resolveFeesFollowStay, type PayerCompany } from "@/lib/crm/payer";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
+import { shownClientNote } from "@/lib/crm/public-booking";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export async function GET() {
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
       include_in_ledger: parseIncludeInLedger(body.include_in_ledger, true),
       agency_commission: parseIncludeInLedger(body.agency_commission, false),
       client_settles_stay: parseIncludeInLedger(body.client_settles_stay, false),
-      notes_client: body.notes_client?.trim() || null,
+      notes_client: shownClientNote(body.notes_client),
       notes_internal: body.notes_internal?.trim() || null,
       visible_to_client: false,
     })

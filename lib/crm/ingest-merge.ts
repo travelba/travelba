@@ -11,6 +11,7 @@ import {
   type IngestWarning,
 } from "./ingest-types";
 import { mergeExtractItems } from "./item-match";
+import { shownClientNote } from "./public-booking";
 
 export type FileExtractResult = {
   name: string;
@@ -176,7 +177,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     customer_email: email,
     customer_first_name: firstName,
     customer_last_name: lastName,
-    notes_client: [...new Set(notes.map((row) => row.trim()).filter(Boolean))].join(
+    notes_client: [...new Set(notes.map((row) => shownClientNote(row)).filter(Boolean))].join(
       "\n"
     ),
     items: sortItemsByOrder(items),
