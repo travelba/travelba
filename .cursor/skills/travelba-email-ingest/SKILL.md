@@ -202,7 +202,7 @@ est annulé) :
   reprend ce prix vendu et reste cachée. Le choix d’une carte n’apparaît que
   pour **une** carte nouvelle face à plusieurs cartes du même type. Plusieurs
   cartes nouvelles rejoignent le séjour (bouton **Mettre à jour le séjour**) ;
-- les dates du dossier suivent les cartes actives ;
+- les dates du dossier suivent les cartes actives, sauf le ski (cours, forfait, matériel) qui ne les déplace pas ;
 - le mail appliqué seul sort de la file (`attached`), note « Itinéraire mis à jour depuis le mail. » ;
 - la nouvelle carte d’un remplacement reste cachée jusqu’au clic Montrer ;
 - un dossier annulé redevient actif, sans être montré : pas de débit tant que le séjour n’est pas Visible ;

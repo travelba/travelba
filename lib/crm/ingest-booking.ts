@@ -43,7 +43,13 @@ import {
   IMPORT_DOCUMENTS_NOTE,
   IMPORT_QUOTE_NOTE,
 } from "@/lib/crm/email-detach";
-import { activeCardDateRange, cancellationApplyPlan, cardStaysShown, replacementPlan } from "@/lib/crm/item-lifecycle";
+import {
+  activeCardDateRange,
+  cancellationApplyPlan,
+  cardStaysShown,
+  replacementPlan,
+  stayDatesFromExtract,
+} from "@/lib/crm/item-lifecycle";
 import { findHotelBookingCard, findMatchingItem, hotelMatchKeepsStay, keptHotelStayFields } from "@/lib/crm/item-match";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
@@ -546,6 +552,7 @@ export async function persistNewBookingFromExtract(opts: {
     .order("sort_order");
   const payer = defaultPayer((companyRows || []) as { id: string; sort_order: number }[]);
   const extract = opts.extract;
+  const stayDates = stayDatesFromExtract(extract);
   const title = dossierTitle(extract);
   const totalAmount = sellingTotalFromExtract(extract);
   const status = bookingStatusFromExtract(extract, opts.status);
@@ -560,8 +567,8 @@ export async function persistNewBookingFromExtract(opts: {
       title,
       destination: emptyToNull(extract.destination),
       status,
-      start_date: emptyToNull(extract.start_date),
-      end_date: emptyToNull(extract.end_date),
+      start_date: stayDates.start,
+      end_date: stayDates.end,
       currency: bookingCurrencyFromReview(extract.currency, extract.items),
       total_amount: totalAmount,
       notes_client: emptyToNull(extract.notes_client),
@@ -694,14 +701,15 @@ export async function applyExtractToBooking(opts: {
   if (opts.keepSellingPrice) {
     const { data: dated } = await admin
       .from("crm_booking_items")
-      .select("kind, start_at, end_at, lifecycle")
+      .select("kind, title, supplier, details, start_at, end_at, lifecycle")
       .eq("booking_id", opts.bookingId);
     const range = activeCardDateRange(dated || []);
     if (range.start) patch.start_date = range.start;
     if (range.end) patch.end_date = range.end;
   } else {
-    if (!booking.start_date && opts.extract.start_date) patch.start_date = opts.extract.start_date;
-    if (!booking.end_date && opts.extract.end_date) patch.end_date = opts.extract.end_date;
+    const fromExtract = stayDatesFromExtract(opts.extract);
+    if (!booking.start_date && fromExtract.start) patch.start_date = fromExtract.start;
+    if (!booking.end_date && fromExtract.end) patch.end_date = fromExtract.end;
   }
   if (booking.status === "draft" && opts.extract.document_status === "confirmed") {
     patch.status = "confirmed";
@@ -835,7 +843,7 @@ export async function applyCancellationToBooking(opts: {
   if (itemIds.length && !cancelBooking) {
     const { data: dated } = await admin
       .from("crm_booking_items")
-      .select("kind, start_at, end_at, lifecycle")
+      .select("kind, title, supplier, details, start_at, end_at, lifecycle")
       .eq("booking_id", opts.bookingId);
     const range = activeCardDateRange(dated || []);
     if (range.start) patch.start_date = range.start;
