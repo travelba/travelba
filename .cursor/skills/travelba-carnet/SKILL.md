@@ -39,7 +39,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - **Carte au pré-enregistrement (B-04)** : jamais de numéro ni de cryptogramme par e-mail, ni PDF ni photo en pièce jointe. `sendHotelRequest` crée un lien `/k/CODE` (`lib/crm/card-link*.ts`, table `crm_card_links`, empreinte du code seulement) : 3 ouvertures, jusqu’à la fermeture de la carte (départ + 3 jours, 48 h au moins). La page n’ouvre rien au chargement ; le bouton `POST /api/k/CODE` compte l’ouverture, journalise dans `crm_card_views` (`viewer = 'hotel'`) puis montre la carte Pliant dans le cadre PCI de Pliant, ou la carte déposée par le client. Un nouvel envoi coupe l’ancien lien. Ces courriers ne sont jamais en copie de contact@travelba.fr (`tokenMailCc`), et la copie gardée au dossier comme les réponses d’hôtel qui le citent perdent le lien (`redactCardLinks`).
 - **Courriers hôtel** : chaque lettre préparée (lien, accueil, pré-check-in, et les autres du bureau) est envoyée ou marquée **Pas besoin**. Tant qu’une lettre est ouverte, l’étape dit ce qu’il reste et le séjour le montre dans l’en-tête et dans À faire. Une relance reste un envoi, pas un oubli.
 - **Dupliquer** copie cartes, pièces, voyageurs, couverture, **visas, refus et courriers hôtel** (courrier recopié en brouillon, pour ne pas renvoyer). Pas les mails bruts comme étapes.
-- Note client : champ `notes_client`, à côté de `notes_internal`.
+- Note client : champ `notes_client`, à côté de `notes_internal`. Le mot `null` n’est pas une note : il ne s’affiche pas et ne s’enregistre pas.
 
 ## Timeline
 

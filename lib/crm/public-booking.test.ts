@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PUBLIC_BOOKING_KEYS, toPublicBooking } from "./public-booking";
+import { PUBLIC_BOOKING_KEYS, shownClientNote, toPublicBooking } from "./public-booking";
 import type { CrmBooking } from "./types";
 
 const row: CrmBooking = {
@@ -63,6 +63,14 @@ test("la projection publique ne garde que les colonnes du carnet", () => {
   ]) {
     assert.equal(key in leaked, false, key);
   }
+});
+
+test("le mot null n’est pas une note client", () => {
+  assert.equal(shownClientNote("null"), null);
+  assert.equal(shownClientNote(" NULL "), null);
+  assert.equal(shownClientNote("undefined"), null);
+  assert.equal(toPublicBooking({ ...row, notes_client: "null" }).notes_client, null);
+  assert.equal(shownClientNote("Arrivée tardive"), "Arrivée tardive");
 });
 
 test("une colonne absente de la ligne ne devient pas undefined dans la projection", () => {

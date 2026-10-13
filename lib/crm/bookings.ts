@@ -15,6 +15,7 @@ import {
 } from "@/lib/crm/types";
 import { itemTicketCount } from "@/lib/crm/item-match";
 import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
+import { shownClientNote } from "@/lib/crm/public-booking";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import {
   AUTO_TICKETING_FEE,
@@ -124,6 +125,10 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     }
     if (key === "title") {
       patch[key] = String(body[key] ?? "").trim();
+      continue;
+    }
+    if (key === "notes_client") {
+      patch[key] = shownClientNote(body[key]);
       continue;
     }
     if (key === "start_date" || key === "end_date") {

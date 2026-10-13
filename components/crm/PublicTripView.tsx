@@ -8,7 +8,7 @@ import { formatDateFr } from "@/lib/crm/money";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import type { PhoneCalendarLinks } from "@/lib/crm/calendar-ics";
-import type { PublicBooking } from "@/lib/crm/public-booking";
+import { shownClientNote, type PublicBooking } from "@/lib/crm/public-booking";
 import type { CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 
 /** Page du voyage : itinéraire et documents. Pas de compte, pas de facturation. Reçoit la projection publique, jamais la ligne brute. */
@@ -29,6 +29,7 @@ export function PublicTripView({
 }) {
   const shown = items.map((item) => ({ ...item, amount: null }));
   const headline = stayTitleFromItems(booking.title, booking.destination, items);
+  const clientNote = shownClientNote(booking.notes_client);
   const placeLine = tripPlaceLine(headline, booking.destination);
   const attachments = attachmentPreviews(docs, shown, booking.reference).map((file) => ({
     ...file,
@@ -65,9 +66,9 @@ export function PublicTripView({
         </div>
       </BookingHero>
 
-      {booking.notes_client ? (
+      {clientNote ? (
         <p className="aura-card mt-5 rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed">
-          {booking.notes_client}
+          {clientNote}
         </p>
       ) : null}
 

@@ -2,6 +2,7 @@ import { inferAirlineIata } from "./brand-marks";
 import { extractHotelEmail, extractHotelPhone, extractHotelWebsite } from "./hotel-contact";
 import { redactIngestText } from "./ingest-redact";
 import { detectCancellationDocument, type BookingExtract } from "./ingest-types";
+import { shownClientNote } from "./public-booking";
 import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
 
@@ -1868,7 +1869,7 @@ export function applyStructuredHints(
 
   const notes =
     [extract.notes_client, ...extraNotes]
-      .map((row) => (row || "").trim())
+      .map((row) => shownClientNote(row) || "")
       .filter((row) => row && (status === "cancelled" || row !== SUPPLIER_CANCELLATION_NOTE))
       .filter((row, index, all) => all.indexOf(row) === index)
       .join("\n") || null;

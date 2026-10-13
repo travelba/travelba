@@ -10,6 +10,7 @@ import {
 import { unsplashKeywordMatch } from "./covers";
 import { countryName } from "./countries";
 import { greetingGivenName } from "./identity";
+import { shownClientNote } from "./public-booking";
 import { encoursCaption, formatDateFr, formatMoney } from "./money";
 import { siteConfig } from "../site";
 import {
@@ -373,7 +374,7 @@ export function buildConciergeDossier(input: {
       totalAmount:
         prices && Number.isFinite(Number(booking.total_amount)) ? Number(booking.total_amount) : null,
       currency: booking.currency || "EUR",
-      notesClient: booking.notes_client?.trim() || null,
+      notesClient: shownClientNote(booking.notes_client),
       cover: publishedCover(booking),
       shareCode: typeof booking.share_code === "string" && booking.share_code ? booking.share_code : null,
       items,

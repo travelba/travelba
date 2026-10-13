@@ -225,6 +225,8 @@ test("le titre du dossier est trimé et une date vide ne bloque pas l’enregist
     ignored: "nope",
   });
   assert.equal(patch.title, "40 ans");
+  assert.equal(bookingMetaPatch({ notes_client: "null" }).notes_client, null);
+  assert.equal(bookingMetaPatch({ notes_client: "  Bon voyage  " }).notes_client, "Bon voyage");
   assert.equal(patch.start_date, null);
   assert.equal(patch.end_date, "2026-10-11");
   assert.equal(patch.include_in_ledger, true);
