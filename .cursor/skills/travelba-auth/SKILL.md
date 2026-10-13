@@ -52,7 +52,7 @@ Mot de passe oublié : `POST /api/auth/reset` (même garde titulaire, `generateL
 
 Le formulaire mot de passe n’accepte que le mot de passe du client (`signInWithPassword` côté navigateur). **Aucun code maître** : `ADMIN_CLIENT_CODE` et `/api/auth/login` ont été supprimés (B-06) — ne pas les recréer.
 
-Chaque connexion reste dans `crm_customer_logins`. Ce que le titulaire fait ensuite est dans `crm_customer_activity` (fiche › Activité) : page ouverte, fiche, pièce, voyageur, règlement, carte, formalité, service, partage, calendrier, déconnexion. Le libellé est en français et ne contient ni mot de passe, ni numéro de pièce, ni PAN. Quand le geste concerne un séjour, il porte son nom (titre choisi, sinon destination) et sa référence. La même page revue dans les 90 secondes ne s’écrit qu’une fois. Une ouverture par l’agence (`tb_desk`) n’écrit pas dans ce journal.
+Chaque connexion reste dans `crm_customer_logins`. Ce que le titulaire fait ensuite est dans `crm_customer_activity` (fiche › Activité, et tableau de bord › Connexions : un clic sur une connexion montre les gestes jusqu’à la suivante) : page ouverte, fiche, pièce, voyageur, règlement, carte, formalité, service, partage, calendrier, déconnexion. Le libellé est en français et ne contient ni mot de passe, ni numéro de pièce, ni PAN. Quand le geste concerne un séjour, il porte son nom (titre choisi, sinon destination) et sa référence. La même page revue dans les 90 secondes ne s’écrit qu’une fois. Une ouverture par l’agence (`tb_desk`) n’écrit pas dans ce journal.
 
 ## Ouvrir l’espace d’un client (agence)
 

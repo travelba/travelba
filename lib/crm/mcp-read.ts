@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
+import { loadConnectionJournal } from "@/lib/crm/connection-journal";
+import { loginMethodLabel } from "@/lib/crm/customer-login";
+import { formatDateTimeFr } from "@/lib/crm/dates";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import {
   joinOrFilters,
@@ -189,6 +192,22 @@ function pieceLine(doc: CrmTravelDocument, names?: Map<string, string>) {
     expire_le: doc.expires_on ? formatDateFr(doc.expires_on) : null,
     nom: who || (names?.get(doc.customer_id) ?? null),
     lien: `/admin/clients/${doc.customer_id}`,
+  };
+}
+
+export async function readJournalConnexions() {
+  const sessions = await loadConnectionJournal(db());
+  return {
+    connexions: sessions.map((session) => ({
+      client: session.name,
+      methode: loginMethodLabel(session.method),
+      quand: formatDateTimeFr(session.at),
+      lien: `/admin/clients/${session.customerId}`,
+      gestes: session.actions.map((action) => ({
+        quand: formatDateTimeFr(action.at),
+        texte: action.detail ? `${action.summary} · ${action.detail}` : action.summary,
+      })),
+    })),
   };
 }
 
