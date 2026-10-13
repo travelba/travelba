@@ -84,20 +84,64 @@ function dayOf(value: string | null | undefined) {
   return match?.[1] || null;
 }
 
-/** Début et fin du séjour d’après les cartes encore actives. */
-export function activeCardDateRange(
-  items: { kind?: string | null; lifecycle?: string | null; start_at?: string | null; end_at?: string | null }[]
-): { start: string | null; end: string | null } {
+const SKI_ACTIVITY =
+  /\b(ski|esf|snowboard)\b|cours collectif|remont[ée]es|mat[ée]riel de ski|portes du soleil|my\s*esf/i;
+
+type DatedCard = {
+  kind?: string | null;
+  title?: string | null;
+  supplier?: string | null;
+  details?: Record<string, unknown> | null;
+  lifecycle?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+};
+
+/** Cours, forfait ou matériel : la carte peut rester au carnet, elle ne cale pas le séjour. */
+export function isSkiActivity(item: DatedCard) {
+  if (item.kind !== "activity") return false;
+  const bits = [item.title, item.supplier];
+  const details = item.details;
+  if (details && typeof details === "object") {
+    if (typeof details.supplier === "string") bits.push(details.supplier);
+    const included = details.included;
+    if (Array.isArray(included)) {
+      for (const line of included) if (typeof line === "string") bits.push(line);
+    }
+  }
+  return SKI_ACTIVITY.test(bits.filter(Boolean).join("\n"));
+}
+
+/** Début et fin du séjour d’après les cartes encore actives. Le ski ne compte pas. */
+export function activeCardDateRange(items: DatedCard[]): { start: string | null; end: string | null } {
   let start: string | null = null;
   let end: string | null = null;
   for (const item of items) {
-    if (!isActiveItem(item) || !countsAsCarnetCard(item.kind)) continue;
+    if (!isActiveItem(item) || !countsAsCarnetCard(item.kind) || isSkiActivity(item)) continue;
     const itemStart = dayOf(item.start_at);
     const itemEnd = dayOf(item.end_at) || itemStart;
     if (itemStart && (!start || itemStart < start)) start = itemStart;
     if (itemEnd && (!end || itemEnd > end)) end = itemEnd;
   }
   return { start, end };
+}
+
+/**
+ * Dates à écrire sur un dossier neuf. Les cartes hors ski priment.
+ * Un extrait qui n’a que du ski ne date pas le séjour.
+ */
+export function stayDatesFromExtract(extract: {
+  start_date?: string | null;
+  end_date?: string | null;
+  items?: DatedCard[] | null;
+}): { start: string | null; end: string | null } {
+  const items = extract.items || [];
+  const range = activeCardDateRange(items);
+  if (range.start || range.end) return range;
+  const ski = items.some((item) => isSkiActivity(item));
+  const other = items.some((item) => countsAsCarnetCard(item.kind) && !isSkiActivity(item));
+  if (ski && !other) return { start: null, end: null };
+  return { start: dayOf(extract.start_date), end: dayOf(extract.end_date) };
 }
 
 /** Même référence, carte déjà montrée : elle le reste. Une carte nouvelle reste cachée. */

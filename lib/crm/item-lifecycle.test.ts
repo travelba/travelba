@@ -6,6 +6,7 @@ import {
   cardStaysShown,
   inboxStayAction,
   replacementPlan,
+  stayDatesFromExtract,
 } from "./item-lifecycle";
 
 const hotel = (patch: Record<string, unknown> = {}) => ({
@@ -179,6 +180,44 @@ describe("dates et visibilité", () => {
     assert.equal(cardStaysShown({ visible_to_client: true }, true), true);
     assert.equal(cardStaysShown({ visible_to_client: true }, false), false);
     assert.equal(cardStaysShown(null, true), false);
+  });
+
+  it("laisse le cours de ski hors des dates du séjour", () => {
+    assert.deepEqual(
+      activeCardDateRange([
+        { kind: "hotel", title: "L'Amara", start_at: "2027-03-20", end_at: "2027-03-27" },
+        {
+          kind: "activity",
+          title: "COURS COLLECTIFS JOURNEE",
+          supplier: "ESF",
+          start_at: "2026-03-21T09:15:00",
+          end_at: "2026-03-26T11:45:00",
+        },
+        {
+          kind: "activity",
+          title: "Forfaits Les Portes du Soleil",
+          start_at: "2026-03-21",
+          end_at: "2026-03-26",
+        },
+        { kind: "activity", title: "Location matériel de ski", start_at: "2026-03-20", end_at: "2026-03-27" },
+      ]),
+      { start: "2027-03-20", end: "2027-03-27" }
+    );
+    assert.deepEqual(
+      stayDatesFromExtract({
+        start_date: "2026-03-21",
+        end_date: "2026-03-26",
+        items: [{ kind: "activity", title: "Cours collectifs journée", start_at: "2026-03-21", end_at: "2026-03-26" }],
+      }),
+      { start: null, end: null }
+    );
+    assert.deepEqual(
+      activeCardDateRange([
+        { kind: "activity", title: "Visite", start_at: "2026-06-12", end_at: "2026-06-12" },
+        { kind: "hotel", title: "Eden", start_at: "2026-06-13", end_at: "2026-06-16" },
+      ]),
+      { start: "2026-06-12", end: "2026-06-16" }
+    );
   });
 });
 
