@@ -123,7 +123,8 @@ describe("facture MB3M du compte", () => {
     assert.equal(mb3mAgencyActivityId("hotel"), 7);
     assert.equal(mb3mAgencyActivityId("car"), 8);
     assert.equal(mb3mAgencyActivityId("cruise"), 20);
-    assert.equal(mb3mAgencyActivityId("fee"), 14);
+    // Frais généraux (14) est refusé en ligne de facture par la base agence.
+    assert.equal(mb3mAgencyActivityId("fee"), 22);
     assert.equal(mb3mAgencyActivityId("package"), 11);
     assert.equal(mb3mAgencyActivityId("transfer"), 22);
     assert.equal(mb3mAgencyActivityId("expense"), 22);

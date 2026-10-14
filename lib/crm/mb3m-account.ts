@@ -46,6 +46,9 @@ export function mb3mLineNote(suppliers: string[]) {
  * Activités du fichier agence.
  * Le 3 de la base de test n’est pas l’assurance.
  * Maritime (9) et Low Cost (27) n’ont pas de type Travelba : on ne les devine pas.
+ * Frais généraux (14) est une activité de charges : la base agence refuse une ligne de facture
+ * dessus (-504, « Nullable object must have a value » sur la facture entière). Les frais d’agence
+ * partent en Divers Terrestre.
  */
 const AGENCY_ACTIVITY: Record<string, number> = {
   flight: 2,
@@ -54,7 +57,7 @@ const AGENCY_ACTIVITY: Record<string, number> = {
   hotel: 7,
   car: 8,
   package: 11,
-  fee: 14,
+  fee: 22,
   cruise: 20,
   transfer: 22,
   activity: 22,
