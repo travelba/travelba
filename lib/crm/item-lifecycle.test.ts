@@ -5,6 +5,7 @@ import {
   cancellationApplyPlan,
   cardStaysShown,
   inboxStayAction,
+  hollowHotelCard,
   replacementPlan,
   stayDatesFromExtract,
 } from "./item-lifecycle";
@@ -148,6 +149,44 @@ describe("replacementPlan", () => {
     assert.equal(plan.choices.length, 0);
     assert.equal(plan.adds, 2);
     assert.equal(plan.replacements.length, 0);
+  });
+
+  it("ignore un hôtel sans date ni numéro, et ne retire pas l’autre hôtel", () => {
+    const plan = replacementPlan(
+      [
+        {
+          kind: "hotel",
+          title: "Fairmont Singapore",
+          confirmation_ref: "470705216",
+          start_at: "2026-11-19",
+          end_at: "2026-11-22",
+        },
+        { kind: "hotel", title: "Fairmont Singapore" },
+      ],
+      [
+        hotel({
+          id: "fairmont",
+          title: "Fairmont Singapore",
+          confirmation_ref: "470705216",
+          amount: 1361,
+        }),
+        hotel({
+          id: "crowne",
+          title: "Crowne Plaza Changi Airport",
+          confirmation_ref: "73564866232664",
+          amount: 1182,
+        }),
+      ]
+    );
+    assert.deepEqual(plan.updates, [{ itemId: "fairmont" }]);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.adds, 0);
+    assert.equal(plan.choices.length, 0);
+    assert.equal(hollowHotelCard({ kind: "hotel", title: "Fairmont Singapore" }), true);
+    assert.equal(
+      hollowHotelCard({ kind: "hotel", confirmation_ref: "470705216", start_at: "2026-11-19" }),
+      false
+    );
   });
 
   it("recopie le prix d’une carte déjà annulée pour rouvrir le séjour", () => {

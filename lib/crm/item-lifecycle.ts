@@ -164,6 +164,19 @@ function choiceRow(row: LifecycleCard) {
 }
 
 /**
+ * Hôtel cité sans numéro et sans date d’arrivée.
+ * Ce n’est pas un autre séjour : le même mail a souvent déjà la vraie carte.
+ */
+export function hollowHotelCard(item: {
+  kind?: string | null;
+  confirmation_ref?: string | null;
+  start_at?: string | null;
+}) {
+  if ((item.kind || "") !== "hotel") return false;
+  return !(item.confirmation_ref || "").trim() && !(item.start_at || "").trim();
+}
+
+/**
  * Même référence, ou même réservation Little Emperors : mettre à jour la carte.
  * Une autre référence, seule de son type : la remplacer. Plusieurs cartes du même
  * type pour une seule carte nouvelle : demander laquelle. Plusieurs cartes
@@ -197,7 +210,7 @@ export function replacementPlan(
       findHotelBookingCard(pool, probe) ||
       findHotelBookingCard(matched, probe);
     if (!hit) {
-      unmatched.push(item);
+      if (!hollowHotelCard(item)) unmatched.push(item);
       continue;
     }
     if (!updates.some((row) => row.itemId === hit.id)) updates.push({ itemId: hit.id });

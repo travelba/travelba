@@ -202,6 +202,10 @@ est annulé) :
   reprend ce prix vendu et reste cachée. Le choix d’une carte n’apparaît que
   pour **une** carte nouvelle face à plusieurs cartes du même type. Plusieurs
   cartes nouvelles rejoignent le séjour (bouton **Mettre à jour le séjour**) ;
+- une carte hôtel sans numéro et sans date d’arrivée ne remplace rien et
+  n’ouvre pas une seconde carte. Le même mail a déjà la vraie carte
+  (Fairmont daté + Fairmont vide : on met à jour le Fairmont, le Crowne Plaza
+  reste) ;
 - les dates du dossier suivent les cartes actives, sauf le ski (cours, forfait, matériel) qui ne les déplace pas ;
 - le mail appliqué seul sort de la file (`attached`), note « Itinéraire mis à jour depuis le mail. » ;
 - la nouvelle carte d’un remplacement reste cachée jusqu’au clic Montrer ;
