@@ -241,6 +241,29 @@ export async function mb3mAgencyNames(fetchImpl?: FetchImpl) {
   return mb3mXmlTexts(xml, "DisplayName").filter(Boolean);
 }
 
+/**
+ * Agence à poser sur le dossier et la pièce. Une seule agence sur la base : son Uid.
+ * Plusieurs (base partners) : rien, le serveur prend celle du compte.
+ * Sans agence sur la pièce, la base de l’agence répond « Nullable object must have a value ».
+ */
+export async function mb3mSingleAgencyUid(fetchImpl?: FetchImpl) {
+  const xml = await mb3mSoap(
+    "ConfigurationService",
+    "IConfigurationService",
+    "GetAgencies",
+    `<GetAgencies xmlns="http://schemas.mb3m.fr/Partners"/>`,
+    fetchImpl
+  );
+  const blocks = xml.match(/<Agency>[\s\S]*?<\/Agency>/g) || [];
+  if (blocks.length !== 1) return null;
+  return mb3mXmlText(blocks[0], "Uid") || null;
+}
+
+function agencyXml(uid: string | null | undefined) {
+  const value = (uid || "").trim();
+  return value ? `<Agency><Uid>${escapeMb3mXml(value)}</Uid></Agency>` : "";
+}
+
 export async function mb3mFindPersons(
   query: { email?: string; name?: string; firstName?: string },
   fetchImpl?: FetchImpl
@@ -299,14 +322,16 @@ export async function mb3mSaveFolder(
     destinationIso?: string;
     codeRef?: string;
     id?: string;
+    agencyUid?: string | null;
   },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${tag("CodeRef", input.codeRef?.trim())}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}${tag("FolderType", input.folderType)}${tag("Id", input.id?.trim())}${tag("Title", input.title.trim())}</Folder></FolderSaveRequest>`;
+  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agencyXml(input.agencyUid)}${tag("CodeRef", input.codeRef?.trim())}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}${tag("FolderType", input.folderType)}${tag("Id", input.id?.trim())}${tag("Title", input.title.trim())}</Folder></FolderSaveRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "Save", inner, fetchImpl);
   assertOperation(xml);
   const id = mb3mXmlTexts(xml, "Id")[0] || "";
-  const uid = mb3mXmlTexts(xml, "Uid").find((value) => value !== input.customerUid.trim()) || "";
+  const known = new Set([input.customerUid.trim(), (input.agencyUid || "").trim()].filter(Boolean));
+  const uid = mb3mXmlTexts(xml, "Uid").find((value) => !known.has(value)) || "";
   if (!id) throw new Mb3mError("MB3M n’a pas renvoyé de dossier.", -1);
   return { id, uid };
 }
@@ -368,10 +393,11 @@ export async function mb3mAddInvoice(
     destinationIso?: string;
     refCommand?: string;
     travelers?: Mb3mTraveler[];
+    agencyUid?: string | null;
   },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
+  const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice>${agencyXml(input.agencyUid)}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "AddPieces", inner, fetchImpl);
   assertOperation(xml);
   return pieceIdentity(xml, "Invoice");
@@ -445,10 +471,12 @@ export async function mb3mAddCreditNote(
     lines: Mb3mLine[];
     destinationIso?: string;
     refCommand?: string;
+    agencyUid?: string | null;
   },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder><CreditNotes><CreditNote><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines)}</Lines></CreditNote></CreditNotes><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
+  const agency = agencyXml(input.agencyUid);
+  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agency}<CreditNotes><CreditNote>${agency}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines)}</Lines></CreditNote></CreditNotes><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "Save", inner, fetchImpl);
   assertOperation(xml);
   return { number: pieceNumber(xml, "CreditNote") };

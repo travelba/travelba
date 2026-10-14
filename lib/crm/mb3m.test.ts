@@ -18,6 +18,7 @@ import {
   mb3mSaveCompany,
   mb3mSaveFolder,
   mb3mSavePerson,
+  mb3mSingleAgencyUid,
   mb3mXmlText,
 } from "./mb3m";
 
@@ -128,6 +129,56 @@ describe("client MB3M Partners", () => {
     assert.match(logged[0], /System\.InvalidOperationException/);
     assert.match(logged[0], /ActivityVat\.Rate/);
     assert.equal(mb3mFaultDetail("<x/>"), "");
+  });
+
+  it("pose l’agence unique de la base sur le dossier et la pièce, pas quand il y en a plusieurs", async () => {
+    arm();
+    const agencies = (names: string[]) => async () =>
+      new Response(
+        `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><GetAgenciesResponse xmlns="http://schemas.mb3m.fr/Partners"><GetAgenciesResult>${names
+          .map((name, index) => `<Agency><DisplayName>${name}</DisplayName><Uid>aaaaaaa${index}-0000-0000-0000-000000000000</Uid></Agency>`)
+          .join("")}</GetAgenciesResult></GetAgenciesResponse></s:Body></s:Envelope>`
+      );
+    assert.equal(await mb3mSingleAgencyUid(agencies(["Travel Business Agency"])), "aaaaaaa0-0000-0000-0000-000000000000");
+    assert.equal(await mb3mSingleAgencyUid(agencies(["Agence 1060", "Agence 1750"])), null);
+
+    let body = "";
+    const folder = await mb3mSaveFolder(
+      {
+        customerUid: "6759c8c7-2cb1-40a7-a9e8-91eaf71c8623",
+        title: "Séjour",
+        folderType: "Prestation",
+        dateStart: "2026-10-08",
+        dateEnd: "2026-10-11",
+        agencyUid: "ba3e9d2d-c2a5-4872-b5d2-99e74b483831",
+      },
+      async (_url, init) => {
+        body = String(init?.body);
+        return new Response(
+          `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FolderOperationResponse xmlns="http://schemas.mb3m.fr/Partners"><Result><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity><Uid>6759c8c7-2cb1-40a7-a9e8-91eaf71c8623</Uid></CustomerIdentity><Id>01-0002000</Id><Uid>b74cb0fe-afc2-4210-92a1-202610141546</Uid></Result><ResultCode>1</ResultCode></FolderOperationResponse></s:Body></s:Envelope>`
+        );
+      }
+    );
+    assert.ok(body.includes("<Folder><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
+    assert.deepEqual(folder, { id: "01-0002000", uid: "b74cb0fe-afc2-4210-92a1-202610141546" });
+
+    let invoiceBody = "";
+    await mb3mAddInvoice(
+      {
+        folderId: "01-0002000",
+        customerUid: "6759c8c7-2cb1-40a7-a9e8-91eaf71c8623",
+        title: "Séjour",
+        lines: [{ label: "Hôtel", quantity: 1, netPriceUnit: 100, netPriceTotal: 100, marginUnit: 10 }],
+        agencyUid: "ba3e9d2d-c2a5-4872-b5d2-99e74b483831",
+      },
+      async (_url, init) => {
+        invoiceBody = String(init?.body);
+        return new Response(
+          `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FolderOperationResponse xmlns="http://schemas.mb3m.fr/Partners"><Result><Invoices><Invoice><Number>2051</Number><Uid>11111111-1111-1111-1111-111111111111</Uid></Invoice></Invoices></Result><ResultCode>1</ResultCode></FolderOperationResponse></s:Body></s:Envelope>`
+        );
+      }
+    );
+    assert.ok(invoiceBody.includes("<Invoice><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
   });
 
   it("crée une fiche et lit l’identifiant renvoyé", async () => {
