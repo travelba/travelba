@@ -49,6 +49,37 @@ export function ticketingExpenseTouched(details: Record<string, unknown> | null 
   return details?.fee_touched === true;
 }
 
+const TICKETING_TITLE = /^Frais de billeterie(?: \(\d+ billets?\))?$/;
+
+/** Ligne de billeterie que l’agence n’a pas retouchée, avec ou sans marqueur. */
+export function isSpareTicketingExpense(item: {
+  kind?: string | null;
+  title?: string | null;
+  details?: Record<string, unknown> | null;
+  lifecycle?: string | null;
+}) {
+  if ((item.kind || "") !== "expense" || !isActiveItem(item)) return false;
+  if (ticketingExpenseTouched(item.details)) return false;
+  if (isAutoTicketingExpense(item)) return true;
+  return TICKETING_TITLE.test((item.title || "").trim());
+}
+
+/**
+ * Une seule ligne automatique. Les copies au même libellé, non modifiées, sortent.
+ * Sans marqueur, la première copie est reprise.
+ */
+export function ticketingLinesToKeep<T extends { id: string; kind?: string | null; title?: string | null; details?: Record<string, unknown> | null; lifecycle?: string | null }>(
+  items: T[]
+): { keepId: string | null; dropIds: string[] } {
+  const active = items.filter((row) => isActiveItem(row));
+  const marked = active.find((row) => isAutoTicketingExpense(row)) || null;
+  const spares = active.filter((row) => isSpareTicketingExpense(row) && row.id !== marked?.id);
+  if (marked) return { keepId: marked.id, dropIds: spares.map((row) => row.id) };
+  if (!spares.length) return { keepId: null, dropIds: [] };
+  const [keep, ...drop] = spares;
+  return { keepId: keep.id, dropIds: drop.map((row) => row.id) };
+}
+
 export function ticketingFeeDismissed(feeMode: string | null | undefined) {
   return feeMode === TICKETING_FEE_OFF;
 }

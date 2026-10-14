@@ -20,6 +20,7 @@ import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import {
   AUTO_TICKETING_FEE,
   isAutoTicketingExpense,
+  ticketingLinesToKeep,
   ticketingExpenseAction,
   ticketingExpenseTouched,
   ticketingFeeAmount,
@@ -528,7 +529,12 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
   const active = items.filter((row) => isActiveItem(row));
   const hasFlight = active.some((row) => row.kind === "flight");
   const travelerCount = (travelers || []).length;
-  const auto = active.find((row) => isAutoTicketingExpense(row)) || null;
+  const lines = ticketingLinesToKeep(items);
+  // La synchro des cartes, juste après, annule le débit de chaque copie retirée.
+  for (const id of lines.dropIds) {
+    must(await supabase.from("crm_booking_items").delete().eq("id", id), "Frais de billeterie");
+  }
+  const auto = items.find((row) => row.id === lines.keepId) || null;
   const amount = ticketingFeeAmount({ hasFlight, travelerCount });
   const title = ticketingFeeLabel(ticketingTicketCount({ hasFlight, travelerCount }));
   const action = ticketingExpenseAction({
@@ -570,6 +576,14 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
           include_in_ledger: true,
           details: { ...(auto.details || {}), auto_fee: AUTO_TICKETING_FEE },
         })
+        .eq("id", auto.id),
+      "Frais de billeterie"
+    );
+  } else if (auto && !isAutoTicketingExpense(auto)) {
+    must(
+      await supabase
+        .from("crm_booking_items")
+        .update({ details: { ...(auto.details || {}), auto_fee: AUTO_TICKETING_FEE } })
         .eq("id", auto.id),
       "Frais de billeterie"
     );

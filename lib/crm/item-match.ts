@@ -95,6 +95,69 @@ function stayNightsOverlap(a: MatchableItem, b: MatchableItem) {
   return aStart <= bEnd && bStart <= aEnd;
 }
 
+function addDays(iso: string, days: number) {
+  const [year, month, date] = iso.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, date));
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
+/** Dernier jour exclu. Sans date de départ, la nuit d’arrivée compte. */
+function checkoutDay(item: MatchableItem) {
+  const start = day(item.start_at);
+  if (!start) return "";
+  const end = day(item.end_at);
+  if (!end || end <= start) return addDays(start, 1);
+  return end;
+}
+
+/** Une nuit en commun. Le jour de départ est libre : arrivée le 19 après un départ le 19. */
+function hotelNightsShare(a: MatchableItem, b: MatchableItem) {
+  const aStart = day(a.start_at);
+  const bStart = day(b.start_at);
+  if (!aStart || !bStart) return false;
+  return aStart < checkoutDay(b) && bStart < checkoutDay(a);
+}
+
+/**
+ * Même séjour : même réservation, même hôtel, ou une nuit en commun.
+ * Deux hôtels à la suite ne se remplacent pas.
+ */
+export function hotelSameStay(
+  current: MatchableItem,
+  incoming: {
+    kind?: string | null;
+    confirmation_ref?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    title?: string | null;
+    details?: Record<string, unknown> | null;
+  }
+) {
+  const card: MatchableItem = { ...incoming, kind: incoming.kind || "" };
+  if (current.kind !== "hotel" || card.kind !== "hotel") return false;
+  if (hotelRefsShareBooking(current.confirmation_ref, card.confirmation_ref)) return true;
+  if (hotelsShareName(current, card)) return true;
+  return hotelNightsShare(current, card);
+}
+
+function hollowHotelMention(item: MatchableItem) {
+  return (item.kind || "") === "hotel" && !(item.confirmation_ref || "").trim() && !day(item.start_at);
+}
+
+/** Mention sans date ni numéro : la carte du même nom qui a déjà des dates, s’il n’y en a qu’une. */
+function foldHollowHotel<T extends MatchableItem>(existing: T[], incoming: T): T | null {
+  if ((incoming.kind || "") !== "hotel") return null;
+  if (hollowHotelMention(incoming)) {
+    const dated = existing.filter(
+      (row) => (row.kind || "") === "hotel" && hotelsShareName(row, incoming) && Boolean(day(row.start_at))
+    );
+    return dated.length === 1 ? dated[0] : null;
+  }
+  const hollows = existing.filter((row) => hollowHotelMention(row) && hotelsShareName(row, incoming));
+  return hollows.length === 1 ? hollows[0] : null;
+}
+
 /**
  * Même hôtel, nuits qui se croisent, et pas deux numéros différents.
  * « Mondrian Bordeaux » et « Mondrian Bordeaux Les Carmes » sont le même hôtel.
@@ -301,7 +364,7 @@ function mergeDetails(
 export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
   const out: T[] = [];
   for (const item of items) {
-    const hit = findMatchingItem(out, item);
+    const hit = findMatchingItem(out, item) || foldHollowHotel(out, item);
     if (!hit) {
       out.push({
         ...item,

@@ -48,6 +48,7 @@ import {
   activeCardDateRange,
   cancellationApplyPlan,
   cardStaysShown,
+  hollowHotelCard,
   replacementPlan,
   stayDatesFromExtract,
 } from "@/lib/crm/item-lifecycle";
@@ -301,6 +302,9 @@ async function upsertItemsAndTravelers(
     const item = raw.kind === "hotel" ? normalizeHotelExtractItem(raw) : raw;
     const title = String(item.title || "").trim();
     if (!title) continue;
+    // Même hôtel repris sans numéro ni dates : on ne crée pas une seconde carte,
+    // et on ne retire pas un autre hôtel du séjour.
+    if (opts?.keepSellingPrice && hollowHotelCard(item)) continue;
     const kind = itemKind(item.kind);
     const details = cleanDetails(item.details);
     if (item.confirmation_ref && !details.pnr) details.pnr = item.confirmation_ref;

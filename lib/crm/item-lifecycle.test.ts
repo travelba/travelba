@@ -5,6 +5,7 @@ import {
   cancellationApplyPlan,
   cardStaysShown,
   inboxStayAction,
+  hollowHotelCard,
   replacementPlan,
   stayDatesFromExtract,
 } from "./item-lifecycle";
@@ -65,23 +66,75 @@ describe("replacementPlan", () => {
     assert.equal(plan.replacements[0].amount, 1200);
   });
 
-  it("demande la carte s’il y a deux hôtels", () => {
+  it("demande la carte s’il y a deux hôtels du même séjour", () => {
     const plan = replacementPlan(
-      [{ kind: "hotel", title: "Autre hôtel", confirmation_ref: "97620199" }],
-      [hotel(), hotel({ id: "h2", title: "Second", confirmation_ref: "97620188", amount: 800 })]
+      [{ kind: "hotel", title: "Autre hôtel", confirmation_ref: "97620199", start_at: "2026-06-01", end_at: "2026-06-04" }],
+      [
+        hotel({ start_at: "2026-06-01", end_at: "2026-06-04" }),
+        hotel({ id: "h2", title: "Second", confirmation_ref: "97620188", amount: 800, start_at: "2026-06-02", end_at: "2026-06-05" }),
+      ]
     );
     assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.adds, 0);
     assert.deepEqual(
       plan.choices.map((row) => row.id),
       ["h1", "h2"]
     );
     const chosen = replacementPlan(
-      [{ kind: "hotel", title: "Autre hôtel", confirmation_ref: "97620199" }],
-      [hotel(), hotel({ id: "h2", title: "Second", confirmation_ref: "97620188", amount: 800 })],
+      [{ kind: "hotel", title: "Autre hôtel", confirmation_ref: "97620199", start_at: "2026-06-01", end_at: "2026-06-04" }],
+      [
+        hotel({ start_at: "2026-06-01", end_at: "2026-06-04" }),
+        hotel({ id: "h2", title: "Second", confirmation_ref: "97620188", amount: 800, start_at: "2026-06-02", end_at: "2026-06-05" }),
+      ],
       "h2"
     );
     assert.equal(chosen.replacements[0].itemId, "h2");
     assert.equal(chosen.replacements[0].amount, 800);
+  });
+
+  it("ajoute l’hôtel suivant : le jour de départ ne compte pas", () => {
+    const plan = replacementPlan(
+      [
+        {
+          kind: "hotel",
+          title: "Crowne Plaza Changi Airport",
+          confirmation_ref: "73564866232664",
+          start_at: "2026-11-16",
+          end_at: "2026-11-19",
+        },
+      ],
+      [
+        hotel({
+          id: "fairmont",
+          title: "Fairmont Singapore",
+          confirmation_ref: "470705216",
+          amount: 1361,
+          start_at: "2026-11-19",
+          end_at: "2026-11-22",
+        }),
+      ]
+    );
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.choices.length, 0);
+    assert.equal(plan.adds, 1);
+  });
+
+  it("remplace l’hôtel du même séjour quand le nom change", () => {
+    const plan = replacementPlan(
+      [
+        {
+          kind: "hotel",
+          title: "Autre hôtel",
+          confirmation_ref: "97620171",
+          start_at: "2026-06-01",
+          end_at: "2026-06-04",
+        },
+      ],
+      [hotel({ start_at: "2026-06-01", end_at: "2026-06-04", amount: 1200 })]
+    );
+    assert.equal(plan.replacements.length, 1);
+    assert.equal(plan.replacements[0].itemId, "h1");
+    assert.equal(plan.replacements[0].amount, 1200);
   });
 
   it("met à jour la réservation Little Emperors et ajoute le trajet manquant", () => {
@@ -148,6 +201,44 @@ describe("replacementPlan", () => {
     assert.equal(plan.choices.length, 0);
     assert.equal(plan.adds, 2);
     assert.equal(plan.replacements.length, 0);
+  });
+
+  it("ignore un hôtel sans date ni numéro, et ne retire pas l’autre hôtel", () => {
+    const plan = replacementPlan(
+      [
+        {
+          kind: "hotel",
+          title: "Fairmont Singapore",
+          confirmation_ref: "470705216",
+          start_at: "2026-11-19",
+          end_at: "2026-11-22",
+        },
+        { kind: "hotel", title: "Fairmont Singapore" },
+      ],
+      [
+        hotel({
+          id: "fairmont",
+          title: "Fairmont Singapore",
+          confirmation_ref: "470705216",
+          amount: 1361,
+        }),
+        hotel({
+          id: "crowne",
+          title: "Crowne Plaza Changi Airport",
+          confirmation_ref: "73564866232664",
+          amount: 1182,
+        }),
+      ]
+    );
+    assert.deepEqual(plan.updates, [{ itemId: "fairmont" }]);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.adds, 0);
+    assert.equal(plan.choices.length, 0);
+    assert.equal(hollowHotelCard({ kind: "hotel" }), true);
+    assert.equal(
+      hollowHotelCard({ kind: "hotel", confirmation_ref: "470705216", start_at: "2026-11-19" }),
+      false
+    );
   });
 
   it("recopie le prix d’une carte déjà annulée pour rouvrir le séjour", () => {

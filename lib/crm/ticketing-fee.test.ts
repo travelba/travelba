@@ -5,7 +5,9 @@ import {
   chargeableTicketingFee,
   collectableTicketingFee,
   isAutoTicketingExpense,
+  isSpareTicketingExpense,
   ticketingExpenseAction,
+  ticketingLinesToKeep,
   ticketingFeeAmount,
   ticketingFeeDismissed,
   ticketingFeeExternalId,
@@ -56,6 +58,16 @@ test("la billeterie déjà en dépense ne se rajoute pas au prix", () => {
     }),
     125
   );
+});
+
+test("une copie au même libellé rejoint la ligne automatique, les autres sortent", () => {
+  const marked = { id: "auto", kind: "expense", title: "Frais de billeterie (1 billet)", amount: 25, details: { auto_fee: "ticketing" }, lifecycle: "active" };
+  const copy = { id: "copy", kind: "expense", title: "Frais de billeterie (1 billet)", amount: 25, details: {}, lifecycle: "active" };
+  const touched = { id: "touched", kind: "expense", title: "Frais de billeterie", amount: 40, details: { fee_touched: true }, lifecycle: "active" };
+  assert.equal(isSpareTicketingExpense(copy), true);
+  assert.equal(isSpareTicketingExpense(touched), false);
+  assert.deepEqual(ticketingLinesToKeep([marked, copy, touched]), { keepId: "auto", dropIds: ["copy"] });
+  assert.deepEqual(ticketingLinesToKeep([copy, { ...copy, id: "copy-2" }]), { keepId: "copy", dropIds: ["copy-2"] });
 });
 
 test("une ligne modifiée ou retirée ne revient pas au calcul", () => {

@@ -5,6 +5,7 @@ import {
   findHotelSameStay,
   findMatchingItem,
   hotelMatchKeepsStay,
+  hotelSameStay,
   hotelRefsShareBooking,
   itemMatchKey,
   keptHotelStayFields,
@@ -251,5 +252,50 @@ describe("itemMatchKey", () => {
     );
     assert.equal(merged.length, 1);
     assert.equal((merged[0]?.details as { ticket_count?: number } | undefined)?.ticket_count, 5);
+  });
+
+  it("replie la mention vide sur l’hôtel du même nom qui a des dates", () => {
+    const dated = {
+      kind: "hotel",
+      title: "Fairmont Singapore",
+      confirmation_ref: "470705216",
+      start_at: "2026-11-19",
+      end_at: "2026-11-22",
+      details: { hotel_name: "Fairmont Singapore", included: ["Petit-déjeuner"] },
+    };
+    const hollow = {
+      kind: "hotel",
+      title: "Fairmont Singapore",
+      confirmation_ref: null,
+      start_at: null,
+      end_at: null,
+      details: { hotel_name: "Fairmont Singapore", included: ["Crédit hôtel"] },
+    };
+    for (const items of [
+      [dated, hollow],
+      [hollow, dated],
+    ]) {
+      const merged = mergeExtractItems(items);
+      assert.equal(merged.length, 1);
+      assert.equal(merged[0]?.confirmation_ref, "470705216");
+      assert.equal(merged[0]?.start_at, "2026-11-19");
+      assert.equal(merged[0]?.end_at, "2026-11-22");
+      const included = (merged[0]?.details as { included?: string[] } | undefined)?.included || [];
+      assert.deepEqual([...included].sort(), ["Crédit hôtel", "Petit-déjeuner"]);
+    }
+    assert.equal(
+      hotelSameStay(
+        { kind: "hotel", title: "Crowne Plaza Changi Airport", start_at: "2026-11-16", end_at: "2026-11-19" },
+        { kind: "hotel", title: "Fairmont Singapore", start_at: "2026-11-19", end_at: "2026-11-22" }
+      ),
+      false
+    );
+    assert.equal(
+      hotelSameStay(
+        { kind: "hotel", title: "Hotel Eden", start_at: "2026-06-01", end_at: "2026-06-04" },
+        { kind: "hotel", title: "Autre hôtel", start_at: "2026-06-02", end_at: "2026-06-05" }
+      ),
+      true
+    );
   });
 });
