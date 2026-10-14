@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AccountBalanceCard, AgencyAccountBalances } from "../../components/admin/AccountBalance";
+import { PliantAccountBalance, PliantAccountBalanceCard } from "../../components/admin/PliantCardDesk";
 import { formatMoney } from "./money";
 import {
   dashboardRevolutPocket,
@@ -211,6 +212,42 @@ describe("soldes des comptes", () => {
     assert.match(html, /Dollar/);
     assert.ok(html.includes(formatMoney(1234.5)));
     assert.ok(html.includes(formatMoney(40, "USD")));
+  });
+
+  it("le solde Pliant s’affiche même à zéro, et reste lisible s’il manque", () => {
+    const funded = renderToStaticMarkup(
+      createElement(PliantAccountBalance, { account: { availableCents: 226142, currency: "EUR" } })
+    );
+    assert.match(funded, /Solde du compte/);
+    assert.ok(funded.includes(formatMoney(2261.42)));
+    const empty = renderToStaticMarkup(
+      createElement(PliantAccountBalance, { account: { availableCents: 0, currency: "EUR" } })
+    );
+    assert.ok(empty.includes(formatMoney(0)));
+    assert.equal(empty.includes("Indisponible"), false);
+    const missing = renderToStaticMarkup(
+      createElement(PliantAccountBalance, { account: { availableCents: null, currency: "EUR" } })
+    );
+    assert.match(missing, /Indisponible/);
+    assert.equal(renderToStaticMarkup(createElement(PliantAccountBalance, { account: null })), "");
+    const card = renderToStaticMarkup(
+      createElement(PliantAccountBalanceCard, { account: { availableCents: 226142, currency: "EUR" } })
+    );
+    assert.match(card, /Solde du compte/);
+    assert.match(card, /Alimentez-le si ce solde ne couvre pas la carte/);
+    assert.ok(card.includes(formatMoney(2261.42)));
+    const unread = renderToStaticMarkup(createElement(PliantAccountBalanceCard, { account: null }));
+    assert.match(unread, /Indisponible/);
+    assert.match(unread, /Alimentez-le si ce solde ne couvre pas la carte/);
+  });
+
+  it("l’onglet Carte du dossier affiche toujours le solde Pliant", () => {
+    const page = readFileSync(join(root, "app/admin/reservations/[id]/page.tsx"), "utf8");
+    const editor = readFileSync(join(root, "components/admin/BookingEditor.tsx"), "utf8");
+    assert.match(page, /loadPliantAccountBalance/);
+    assert.match(page, /pliantAccount=\{pliantAccount\}/);
+    const cartes = editor.slice(editor.indexOf('tab === "cartes"'));
+    assert.match(cartes, /PliantAccountBalanceCard/);
   });
 
   it("l’accueil et les pages argent affichent ces soldes", () => {
