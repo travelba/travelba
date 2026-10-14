@@ -160,5 +160,15 @@ describe("coûts du voyage", () => {
     const spa = [{ id: "b3", reference: "TB-2026-0003", title: "Marrakech", items: [{ id: "i4", kind: "hotel", title: "Hivernage Hotel And Spa", amount: 2000 }] }];
     assert.deepEqual(suggestCostTargets({ text: "", party: "EL SILENCIO LODGE Y SPA", amount: 531.1 }, spa), []);
     assert.equal(suggestCostTargets({ text: "", party: "HIVERNAGE MARRAKECH", amount: 1 }, spa)[0]?.itemId, "i4");
+    // La carte d’un client connu propose son voyage autour de la date, même sans fournisseur reconnu.
+    const own = [
+      { id: "b4", reference: "TB-2026-0004", title: "Hiver", customerId: "c1", startDate: "2026-02-01", endDate: "2026-02-08", items: [] },
+      { id: "b5", reference: "TB-2026-0005", title: "40 ans", customerId: "c1", startDate: "2026-10-08", endDate: "2026-10-11", items: [] },
+      { id: "b6", reference: "TB-2026-0006", title: "Autre", customerId: "c2", startDate: "2026-10-09", endDate: "2026-10-12", items: [] },
+    ];
+    const byClient = suggestCostTargets({ text: "", party: "WINXO JNANE OUMNAS", amount: 453.41, customerId: "c1", date: "2026-10-11" }, own);
+    assert.deepEqual(byClient.map((hit) => [hit.bookingId, hit.reason]), [["b5", "client"]]);
+    // Hors fenêtre : tous les voyages du client, à l’agent de choisir.
+    assert.equal(suggestCostTargets({ text: "", party: "X", amount: 1, customerId: "c1", date: "2026-06-01" }, own).length, 2);
   });
 });
