@@ -22,6 +22,8 @@ import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
 import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
+import { buildTripAccountingView, loadDossierAccountingInputs } from "@/lib/crm/trip-accounting-view";
+import { TRIP_ACCOUNTING_LABELS, type TripCost } from "@/lib/crm/trip-costs";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
   DOC_TYPE_LABELS,
@@ -727,6 +729,81 @@ export async function readRevolutDebits() {
         dossier: row.matched_booking_id ? references.get(row.matched_booking_id) || null : null,
       };
     }),
+  };
+}
+
+/** Comptabilité d’un voyage : ventes, coûts rattachés, marge par ligne, facture MB3M. Rien côté client. */
+export async function readComptabiliteVoyage(input: { id?: string; reference?: string }) {
+  const admin = db();
+  const id = (input.id || "").trim();
+  const reference = (input.reference || "").trim();
+  if (!id && !reference) return { message: "Indiquez l’identifiant ou la référence du dossier." };
+  let query = admin.from("crm_bookings").select("id, reference, title, destination, client_settles_stay");
+  if (id) {
+    if (!UUID.test(id)) return { message: "Identifiant inconnu." };
+    query = query.eq("id", id);
+  } else {
+    query = query.eq("reference", reference);
+  }
+  const { data, error } = await query.limit(2);
+  if (error) {
+    logRead("comptabilite", error);
+    throw new Error("Lecture impossible.");
+  }
+  const rows = (data || []) as { id: string; reference: string; title: string | null; destination: string | null; client_settles_stay: boolean | null }[];
+  if (!rows.length) return { introuvable: true };
+  if (rows.length > 1) return { choix: rows.map((row) => ({ id: row.id, reference: row.reference, titre: row.title || row.destination })) };
+  const booking = rows[0];
+  const [{ data: items }, inputs] = await Promise.all([
+    admin.from("crm_booking_items").select("id, kind, details, lifecycle").eq("booking_id", booking.id),
+    loadDossierAccountingInputs(admin, booking.id),
+  ]);
+  const view = await buildTripAccountingView(
+    admin,
+    booking,
+    ((items || []) as { id: string; kind: string | null; details: Record<string, unknown> | null; lifecycle: string | null }[]).filter(
+      (item) => item.lifecycle !== "superseded" && item.lifecycle !== "cancelled"
+    ),
+    inputs
+  );
+  const eur = (value: number) => formatMoney(value, "EUR");
+  const costLine = (cost: TripCost) => ({
+    source: cost.source === "pliant" ? "Pliant" : "Revolut",
+    fournisseur: cost.supplier,
+    montant: eur(cost.amountEur),
+    date: cost.occurredOn ? formatDateFr(cost.occurredOn) : null,
+  });
+  return {
+    lien: `/admin/reservations/${booking.id}?tab=reglement`,
+    reference: booking.reference,
+    titre: booking.title || booking.destination,
+    etat: TRIP_ACCOUNTING_LABELS[view.state],
+    lignes: view.lines.map((line) => ({
+      vente: line.label,
+      vendu: eur(line.sale),
+      cout: eur(line.cost),
+      marge: eur(line.margin),
+      couts: line.costs.map(costLine),
+    })),
+    couts_sans_vente: view.unsold.map(costLine),
+    totaux: {
+      vendu: eur(view.totals.sale),
+      cout: eur(view.totals.cost),
+      marge: eur(view.totals.margin),
+    },
+    sorties_proposees: view.proposed.map((line) => ({
+      source: line.source === "pliant" ? "Pliant" : "Revolut",
+      beneficiaire: line.party,
+      montant: formatMoney(line.refund ? line.amount : -line.amount, line.currency),
+      date: line.occurredOn ? formatDateFr(line.occurredOn) : null,
+      proposition: line.suggestions[0]?.itemLabel || (line.suggestions[0] ? "Montant du séjour" : null),
+    })),
+    facture: {
+      numero: view.invoice.number,
+      imprimee: view.invoice.printed,
+      marge_a_corriger: view.invoice.marginStale,
+    },
+    anomalies: view.anomalies,
   };
 }
 

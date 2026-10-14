@@ -1,7 +1,6 @@
 import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/admin";
-import { autoMatchUnmatchedPliant } from "./pliant-match";
 import { fetchPliantTransactions, pliantConfigured } from "./pliant";
 import { mapPliantTransaction, type PliantTransactionRow } from "./pliant-tx";
 
@@ -21,13 +20,8 @@ export async function syncPliantAccount() {
     });
     if (error) throw new Error("Les transactions Pliant n’ont pas pu être enregistrées.");
   }
-  let auto_matched = 0;
-  try {
-    auto_matched = (await autoMatchUnmatchedPliant()).matched;
-  } catch (err) {
-    console.error("[pliant] match", err instanceof Error ? err.message : "échec");
-  }
-  return { fetched: fetched.length, stored: rows.length, auto_matched };
+  // Aucune écriture au grand livre : chaque dépense attend son rattachement à un voyage (clic agent).
+  return { fetched: fetched.length, stored: rows.length, auto_matched: 0 };
 }
 
 /** Un passage API sans libellé ne doit pas effacer une carte déjà connue. */

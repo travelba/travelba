@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { isUuid } from "@/lib/crm/ids";
-import { applyRevolutExpense, revolutExpenseError } from "@/lib/crm/revolut-debit";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
+import { attachOutgoing, TripCostError } from "@/lib/crm/trip-costs-db";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 
@@ -35,13 +35,19 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const customerId = String(body?.customer_id || "");
   if (movement.direction === "debit") {
+    // Une sortie devient un coût du voyage désigné ; elle ne crédite ni ne débite le client.
     const bookingId = String(body?.booking_id || "");
-    if (!isUuid(customerId) || !isUuid(bookingId)) {
-      return jsonError("Choisissez le client et la réservation.");
+    if (!isUuid(bookingId)) return jsonError("Choisissez la réservation.");
+    try {
+      const cost = await attachOutgoing(
+        { source: "revolut", sourceId: id, bookingId, itemId: typeof body?.item_id === "string" ? body.item_id : null },
+        admin
+      );
+      return NextResponse.json({ ok: true, cost });
+    } catch (err) {
+      if (err instanceof TripCostError) return jsonError(err.message, err.status);
+      return jsonError("Rattachement impossible. Réessayez.", 400);
     }
-    const result = await applyRevolutExpense(admin, movement, customerId, bookingId);
-    if (!result.ok) return jsonError(revolutExpenseError(result.error));
-    return NextResponse.json({ ok: true, reference: result.reference });
   }
   if (!customerId) return jsonError("Client requis");
   const billingCompanyId = typeof body?.billing_company_id === "string" ? body.billing_company_id : null;

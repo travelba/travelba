@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
 import {
   ArchiveBookingButton,
   DuplicateBookingButton,
@@ -26,6 +27,8 @@ import {
   type StripeMatchCustomer,
 } from "@/lib/crm/stripe-match";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { mb3mRealm } from "@/lib/crm/mb3m";
+import { mb3mFicheBlocker } from "@/lib/crm/mb3m-party";
 import {
   customerFullName,
   type CrmBalance,
@@ -71,6 +74,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
     .maybeSingle();
   if (!customer) notFound();
   const c = customer as CrmCustomer;
+  const { data: mb3mParty } = await createServiceClient()
+    .from("crm_mb3m_parties")
+    .select("id")
+    .eq("customer_id", id)
+    .eq("realm", mb3mRealm())
+    .is("billing_company_id", null)
+    .maybeSingle();
+  const mb3mSent = Boolean(mb3mParty?.id);
 
   const [
     { data: companions },
@@ -306,6 +317,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         companyAdmins={(companyAdmins || []) as PickableCustomer[]}
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
+      <Mb3mFicheAction customerId={c.id} blocker={mb3mFicheBlocker(c)} sent={mb3mSent} />
       <ClientRevolutSuggestions
         suggestions={revolutSuggestions}
         accounts={

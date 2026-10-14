@@ -1,25 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
+import { OutgoingAttach } from "@/components/admin/OutgoingAttach";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { Icon } from "@/components/crm/icons";
 import { StatusChip } from "@/components/crm/ui";
-import {
-  customerPickLabel,
-  type PickableCustomer,
-} from "@/lib/crm/customer-search";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import {
-  pliantLedgerDraft,
-  pliantMatchReasonLabel,
-  scorePliantMatches,
-  suggestedCustomerId,
-  type PliantMatchCandidate,
-} from "@/lib/crm/pliant-match";
-import { possibleClientsLabel } from "@/lib/crm/revolut-labels";
 import { PliantAccountBalance } from "@/components/admin/PliantCardDesk";
 import {
   pliantCardDisplay,
@@ -30,6 +17,7 @@ import {
   pliantSyncSummary,
   pliantTypeLabel,
 } from "@/lib/crm/pliant-tx";
+import type { OutgoingLine } from "@/lib/crm/trip-costs";
 
 export type PliantLine = {
   id: string;
@@ -49,15 +37,17 @@ export type PliantLine = {
   reference: string | null;
   bookingId: string | null;
   matchStatus: "unmatched" | "matched" | "ignored";
-  matchedCustomerId: string | null;
-  linkedCustomerIds: string[];
+  /** Sortie à rattacher (dépense comptabilisée, pas encore sur un voyage). */
+  outgoing: OutgoingLine | null;
+  /** Voyage auquel le coût est rattaché. */
+  cost: { bookingId: string; reference: string; itemLabel: string | null } | null;
 };
 
 function lineView(row: PliantLine) {
   const signed = pliantSignedCents(row.type, row.billingCents);
   return {
     merchant: row.merchant || pliantTypeLabel(row.type),
-    amount: signed == null ? "—" : euros(signed, row.currency),
+    amount: signed == null ? "—" : euros(signed, row.currency),
     origin: originAmount(row),
     card: pliantCardDisplay(row.cardLabel, row.last4),
     category: pliantCategoryLabel(row.category),
@@ -99,33 +89,17 @@ function euros(cents: number, currency: string | null) {
   }
 }
 
-function ledgerOf(row: PliantLine) {
-  return pliantLedgerDraft({
-    pliant_transaction_id: row.id,
-    type: row.type,
-    status: row.status,
-    merchant: row.merchant,
-    billing_cents: row.billingCents,
-    billing_currency: row.currency,
-    booked_at: row.bookedAt,
-    card_label: row.cardLabel,
-    card_last4: row.last4,
-  });
-}
-
 function needsMatch(row: PliantLine) {
-  return row.matchStatus === "unmatched" && ledgerOf(row) != null;
+  return row.matchStatus === "unmatched" && row.outgoing != null;
 }
 
 export function PliantAccount({
   configured,
   lines,
-  customers,
   account = null,
 }: {
   configured: boolean;
   lines: PliantLine[];
-  customers: PickableCustomer[];
   account?: { availableCents: number | null; currency: string } | null;
 }) {
   const router = useRouter();
@@ -133,30 +107,8 @@ export function PliantAccount({
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [picked, setPicked] = useState<Record<string, string>>({});
-  const [pickerRow, setPickerRow] = useState<string | null>(null);
   const [scope, setScope] = useState<"all" | "unmatched">("all");
   const shown = scope === "unmatched" ? lines.filter(needsMatch) : lines;
-  const byId = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
-  const suggestions = useMemo(() => {
-    const map = new Map<string, PliantMatchCandidate[]>();
-    for (const row of lines) {
-      if (!needsMatch(row)) continue;
-      map.set(
-        row.id,
-        scorePliantMatches({ card_label: row.cardLabel }, customers, {
-          linkedCustomerIds: row.linkedCustomerIds,
-        }).candidates
-      );
-    }
-    return map;
-  }, [lines, customers]);
-
-  /** Présélection seulement sur un rapprochement certain et unique ; un partiel reste à choisir. */
-  function chosenFor(rowId: string) {
-    if (picked[rowId]) return picked[rowId];
-    return suggestedCustomerId(suggestions.get(rowId) || []);
-  }
 
   async function sync() {
     setBusy(true);
@@ -168,16 +120,12 @@ export function PliantAccount({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "sync" }),
       });
-      const json = (await res.json().catch(() => null)) as {
-        error?: string;
-        fetched?: number;
-        auto_matched?: number;
-      } | null;
+      const json = (await res.json().catch(() => null)) as { error?: string; fetched?: number } | null;
       if (!res.ok) {
         setError(json?.error || "Synchronisation Pliant impossible. Réessayez.");
         return;
       }
-      setMessage(pliantSyncSummary(json?.fetched || 0, json?.auto_matched || 0));
+      setMessage(pliantSyncSummary(json?.fetched || 0, 0));
       router.refresh();
     } catch {
       setError("Synchronisation Pliant impossible. Réessayez.");
@@ -186,106 +134,61 @@ export function PliantAccount({
     }
   }
 
-  async function post(id: string, body: Record<string, unknown>, failure: string) {
+  async function restore(id: string) {
     setRowBusy(id);
     setError(null);
     try {
       const res = await fetch(`/api/admin/pliant/${id}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ action: "restore" }),
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
-        setError(json?.error || failure);
-        return false;
+        setError(json?.error || "Impossible de remettre cette dépense dans la file.");
+        return;
       }
       router.refresh();
-      return true;
     } catch {
       setError("Connexion interrompue. Réessayez.");
-      return false;
     } finally {
       setRowBusy(null);
     }
   }
 
-  async function validate(row: PliantLine) {
-    const customerId = chosenFor(row.id);
-    if (!customerId) {
-      setError("Choisissez le client à rapprocher.");
-      setPickerRow(row.id);
-      return;
+  function tripCell(row: PliantLine) {
+    if (row.cost) {
+      return (
+        <p className="text-sm font-semibold text-[var(--admin-navy)]">
+          <Link href={`/admin/reservations/${row.cost.bookingId}?tab=reglement`} className="underline">
+            {row.cost.reference}
+          </Link>
+          {row.cost.itemLabel ? <span className="block text-xs font-normal text-muted">{row.cost.itemLabel}</span> : null}
+        </p>
+      );
     }
-    const draft = ledgerOf(row);
-    const ok = await post(row.id, { customer_id: customerId }, "Rapprochement impossible. Réessayez.");
-    if (!ok || !draft) return;
-    const amount = formatMoney(draft.amount, draft.currency);
-    setMessage(draft.direction === "credit" ? `Remboursement enregistré : ${amount}.` : `Dépense enregistrée : ${amount}.`);
-  }
-
-  function matchCell(row: PliantLine) {
-    if (row.matchStatus === "matched") {
-      const client = row.matchedCustomerId ? byId.get(row.matchedCustomerId) : undefined;
-      return <p className="text-sm font-semibold text-[var(--admin-navy)]">{client ? customerPickLabel(client) : "Rapprochée"}</p>;
-    }
-    if (row.matchStatus === "ignored") return <p className="text-sm text-muted">Ignorée</p>;
-    if (!needsMatch(row)) return <p className="text-sm text-muted">—</p>;
-    const candidates = suggestions.get(row.id) || [];
-    const suggestedId = suggestedCustomerId(candidates);
-    const top = suggestedId ? candidates.find((c) => c.customer_id === suggestedId) : undefined;
-    const chosen = byId.get(chosenFor(row.id));
-    return (
-      <div className="flex w-full flex-col gap-2 sm:max-w-xs">
-        {top ? (
-          <p className="text-xs font-semibold text-[#9e7e51]">
-            Proposition : {top.label} ({pliantMatchReasonLabel(top.reason)})
-          </p>
-        ) : candidates.length ? (
-          <p className="text-xs font-semibold text-[#9e7e51]">{possibleClientsLabel(candidates.length)}</p>
-        ) : (
-          <p className="text-xs text-muted">Aucune proposition</p>
-        )}
-        <BusyBar active={rowBusy === row.id} label="Rapprochement…" />
-        <button
-          type="button"
-          disabled={rowBusy === row.id}
-          onClick={() => setPickerRow(row.id)}
-          aria-haspopup="dialog"
-          aria-expanded={pickerRow === row.id}
-          aria-label="Choisir le client à rapprocher"
-          className="inline-flex items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)]"
-        >
-          <span className="min-w-0 truncate">
-            {chosen ? customerPickLabel(chosen) : candidates.length ? possibleClientsLabel(candidates.length) : "Choisir un client…"}
-          </span>
-          <Icon name="search" className="h-4 w-4 shrink-0 text-muted" />
-        </button>
-        <div className="flex flex-wrap gap-2">
+    if (row.matchStatus === "ignored") {
+      return (
+        <p className="text-sm text-muted">
+          Hors voyage
           <button
             type="button"
             disabled={rowBusy === row.id}
-            className="admin-af-btn rounded-full px-3 py-1 text-sm"
-            onClick={() => void validate(row)}
+            onClick={() => void restore(row.id)}
+            className="ml-2 text-xs font-semibold text-[#9e7e51] underline disabled:opacity-50"
           >
-            {rowBusy === row.id ? "En cours…" : "Valider"}
+            Remettre dans la file
           </button>
-          <button
-            type="button"
-            disabled={rowBusy === row.id}
-            className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
-            onClick={() => void post(row.id, { action: "refuse" }, "Impossible de refuser cette dépense.")}
-          >
-            Refuser
-          </button>
-        </div>
-      </div>
-    );
+        </p>
+      );
+    }
+    if (!row.outgoing) return <p className="text-sm text-muted">—</p>;
+    return <OutgoingAttach line={row.outgoing} />;
   }
 
   return (
     <div className="space-y-4">
-      <BusyBar active={busy} label="Synchronisation…" />
+      <BusyBar active={busy} label="Synchronisation⬦" />
       {configured ? (
         <div className="admin-af-card max-w-xs rounded-3xl px-5 py-4">
           <PliantAccountBalance account={account || { availableCents: null, currency: "EUR" }} />
@@ -293,17 +196,17 @@ export function PliantAccount({
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => void sync()} disabled={busy || !configured} className="admin-af-btn rounded-full px-4 py-2 text-sm">
-          {busy ? "Synchronisation…" : "Synchroniser Pliant"}
+          {busy ? "Synchronisation⬦" : "Synchroniser Pliant"}
         </button>
         {configured ? (
-          <p className="text-sm text-muted">Imputation automatique seulement si le libellé désigne un seul client.</p>
+          <p className="text-sm text-muted">Chaque dépense se rattache à une ligne d’un voyage. Rien ne part au client.</p>
         ) : null}
         <button
           type="button"
           onClick={() => setScope((current) => (current === "unmatched" ? "all" : "unmatched"))}
           className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
         >
-          {scope === "unmatched" ? "Toutes les dépenses" : "Seulement à rapprocher"}
+          {scope === "unmatched" ? "Toutes les dépenses" : "Seulement à rattacher"}
         </button>
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
@@ -329,7 +232,7 @@ export function PliantAccount({
                   <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{view.card.number}</dd>
                 </dl>
                 <LineMeta row={row} view={view} />
-                {matchCell(row)}
+                {tripCell(row)}
               </li>
             );
           })}
@@ -343,7 +246,7 @@ export function PliantAccount({
                 <th className="px-5 py-3">Libellé</th>
                 <th className="px-5 py-3">Carte</th>
                 <th className="px-5 py-3 text-right">Montant</th>
-                <th className="px-5 py-3">Compte</th>
+                <th className="px-5 py-3">Voyage</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -362,7 +265,7 @@ export function PliantAccount({
                       {view.amount}
                       {view.origin ? <span className="mt-0.5 block text-xs font-normal text-muted">{view.origin}</span> : null}
                     </td>
-                    <td className="px-5 py-3">{matchCell(row)}</td>
+                    <td className="px-5 py-3">{tripCell(row)}</td>
                   </tr>
                 );
               })}
@@ -372,26 +275,13 @@ export function PliantAccount({
         {!shown.length ? (
           <p className="px-5 py-8 text-center text-sm text-muted">
             {lines.length && scope === "unmatched"
-              ? "Aucune dépense à rapprocher."
+              ? "Aucune dépense à rattacher."
               : configured
                 ? "Aucune transaction pour le moment."
                 : "Pliant n’est pas branché."}
           </p>
         ) : null}
       </div>
-      <CustomerPickDialog
-        open={Boolean(pickerRow)}
-        customers={customers}
-        suggestedIds={pickerRow ? (suggestions.get(pickerRow) || []).map((candidate) => candidate.customer_id) : []}
-        selectedId={pickerRow ? chosenFor(pickerRow) : ""}
-        title="Rapprocher vers un client"
-        onSelect={(customer) => {
-          if (!pickerRow) return;
-          setPicked((current) => ({ ...current, [pickerRow]: customer.id }));
-          setError(null);
-        }}
-        onClose={() => setPickerRow(null)}
-      />
     </div>
   );
 }

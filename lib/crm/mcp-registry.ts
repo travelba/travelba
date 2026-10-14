@@ -4,6 +4,7 @@ import type { BookingStateFilter } from "@/lib/crm/admin-list";
 import {
   readChercherClients,
   readChercherDossiers,
+  readComptabiliteVoyage,
   readEmailsEnAttente,
   readFicheClient,
   readFicheDossier,
@@ -165,6 +166,16 @@ export const MCP_TOOLS: ToolDef[] = [
     description:
       "Sorties du compte Revolut. Celles à rapprocher ont un id pour rapprocher_depense_revolut. Ne crédite pas un client.",
     run: () => readRevolutDebits(),
+  },
+  {
+    name: "comptabilite_voyage",
+    description:
+      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées. id ou reference. Lecture seule, jamais montré au client.",
+    input: {
+      id,
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+    },
+    run: (args: ToolArgs) => readComptabiliteVoyage({ id: str(args, "id"), reference: str(args, "reference") }),
   },
   {
     name: "stripe_en_attente",

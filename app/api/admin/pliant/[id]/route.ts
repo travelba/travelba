@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { applyPliantToCustomer, type PliantLedgerRow } from "@/lib/crm/pliant-match";
+import { attachOutgoing, setOutgoingOutsideTrip, TripCostError } from "@/lib/crm/trip-costs-db";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { revalidateTripAccounting } from "@/lib/crm/trip-costs-paths";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+/**
+ * Une dépense Pliant ne va plus au grand livre du client.
+ * Elle se rattache à une ligne d’un voyage (coût), ou reste hors voyage.
+ */
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
@@ -13,29 +18,40 @@ export async function POST(request: Request, ctx: Ctx) {
   const admin = createServiceClient();
   const { data: row } = await admin
     .from("crm_pliant_transactions")
-    .select(
-      "id, pliant_transaction_id, card_id, type, status, merchant, billing_cents, billing_currency, booked_at, card_label, card_last4, match_status"
-    )
+    .select("id, match_status")
     .eq("id", id)
     .maybeSingle();
   if (!row) return jsonError("Dépense introuvable", 404);
-  const movement = row as PliantLedgerRow;
 
-  if (body?.action === "ignore" || body?.action === "refuse") {
-    if (movement.match_status === "matched") return jsonError("Déjà rapprochée");
-    await admin.from("crm_pliant_transactions").update({ match_status: "ignored" }).eq("id", id);
-    return NextResponse.json({ ok: true });
-  }
-
-  const customerId = String(body?.customer_id || "");
-  if (!customerId) return jsonError("Client requis");
-  const result = await applyPliantToCustomer(admin, movement, customerId);
-  if (!result.ok) {
-    if (result.error === "already_matched") return jsonError("Déjà rapprochée");
-    if (result.error === "not_postable") {
-      return jsonError("Cette dépense n’est pas comptabilisée.");
+  try {
+    if (body?.action === "ignore" || body?.action === "refuse" || body?.action === "outside") {
+      await setOutgoingOutsideTrip("pliant", id, true, admin);
+      revalidateTripAccounting(null);
+      return NextResponse.json({ ok: true });
     }
-    return jsonError("Rapprochement impossible. Réessayez.", 400);
+    if (body?.action === "restore") {
+      await setOutgoingOutsideTrip("pliant", id, false, admin);
+      revalidateTripAccounting(null);
+      return NextResponse.json({ ok: true });
+    }
+    const bookingId = String(body?.booking_id || "");
+    if (!bookingId) return jsonError("Choisissez le voyage.");
+    const cost = await attachOutgoing(
+      {
+        source: "pliant",
+        sourceId: id,
+        bookingId,
+        itemId: body?.item_id ? String(body.item_id) : null,
+        newExpense: body?.new_expense
+          ? { title: body.new_expense.title ? String(body.new_expense.title) : null, amount: Number(body.new_expense.amount) }
+          : null,
+      },
+      admin
+    );
+    revalidateTripAccounting(bookingId);
+    return NextResponse.json({ cost });
+  } catch (error) {
+    if (error instanceof TripCostError) return jsonError(error.message, error.status);
+    return jsonError("Rattachement impossible. Réessayez.", 400);
   }
-  return NextResponse.json({ transaction: result.transaction });
 }

@@ -77,6 +77,21 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                 />
               </span>
             </button>
+            {row.mb3mLabel ? (
+              <div className="px-4 pb-3 pl-[4.25rem]">
+                {row.mb3mHref ? (
+                  <Link
+                    href={row.mb3mHref}
+                    target="_blank"
+                    className="text-[13px] font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                  >
+                    {row.mb3mLabel}
+                  </Link>
+                ) : (
+                  <p className="m-0 text-[13px] leading-snug text-muted">{row.mb3mLabel}</p>
+                )}
+              </div>
+            ) : null}
             {open ? (
               <div className="space-y-1 border-t border-[#e9e8e5] px-4 py-3 text-[13px] text-[var(--admin-navy)]">
                 {row.whenWhere ? (
