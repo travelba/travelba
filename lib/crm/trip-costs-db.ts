@@ -29,7 +29,7 @@ const COST_SELECT =
   "id, booking_id, booking_item_id, source, source_id, amount_eur, original_amount, original_currency, supplier, occurred_on";
 
 const PLIANT_SELECT =
-  "id, pliant_transaction_id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, card_last4, match_status";
+  "id, pliant_transaction_id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, card_last4, match_status, customer_id, matched_customer_id";
 
 const REVOLUT_SELECT =
   "id, direction, status, amount, currency, counterparty_name, reference, booked_at, raw";
@@ -49,6 +49,8 @@ type PliantRow = {
   card_label: string | null;
   card_last4: string | null;
   match_status: string;
+  customer_id?: string | null;
+  matched_customer_id?: string | null;
 };
 
 type RevolutRow = {
@@ -338,15 +340,19 @@ async function chunked<T>(ids: string[], run: (slice: string[]) => Promise<T[]>)
 
 /** Dossiers ouverts (non annulés) avec leurs lignes : la base des propositions. */
 export async function loadCostTargets(admin: SupabaseClient, bookingId?: string | null): Promise<CostTargetBooking[]> {
-  let query = admin
-    .from("crm_bookings")
-    .select("id, reference, title, destination")
-    .neq("status", "cancelled")
-    .order("created_at", { ascending: false })
-    .limit(400);
-  if (bookingId) query = admin.from("crm_bookings").select("id, reference, title, destination").eq("id", bookingId);
+  const select = "id, reference, title, destination, customer_id, start_date, end_date";
+  let query = admin.from("crm_bookings").select(select).neq("status", "cancelled").order("created_at", { ascending: false }).limit(400);
+  if (bookingId) query = admin.from("crm_bookings").select(select).eq("id", bookingId);
   const { data: bookings } = await query;
-  const rows = (bookings || []) as { id: string; reference: string; title: string | null; destination: string | null }[];
+  const rows = (bookings || []) as {
+    id: string;
+    reference: string;
+    title: string | null;
+    destination: string | null;
+    customer_id: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  }[];
   if (!rows.length) return [];
   const items = await chunked(
     rows.map((row) => row.id),
@@ -369,6 +375,9 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     reference: row.reference,
     title: row.title,
     destination: row.destination,
+    customerId: row.customer_id,
+    startDate: row.start_date,
+    endDate: row.end_date,
     items: (byBooking.get(row.id) || []).map((item) => ({
       id: item.id,
       kind: item.kind,
@@ -441,7 +450,14 @@ export async function loadOutgoingQueue(
       if (!draft) continue;
       const cardBookingIds = row.card_id ? cards.get(row.card_id) || [] : [];
       const suggestions = suggestCostTargets(
-        { text: row.merchant, party: row.merchant, amount: Math.abs(draft.amountEur), cardBookingIds },
+        {
+          text: row.merchant,
+          party: row.merchant,
+          amount: Math.abs(draft.amountEur),
+          cardBookingIds,
+          customerId: row.customer_id || row.matched_customer_id || null,
+          date: draft.occurredOn,
+        },
         targets
       );
       lines.push({

@@ -28,7 +28,7 @@ export type Mb3mAccountLine = {
   label: string;
   amount: number;
   activityId: number | null;
-  /** Marge : vente − coûts rattachés. Nulle tant qu’aucun coût n’est pointé. */
+  /** Marge : vente − coûts rattachés. Sans coût pointé, la vente entière. */
   margin?: number | null;
   /** Fournisseurs des coûts, pour la note de la ligne. */
   note?: string | null;
@@ -192,14 +192,16 @@ export function mb3mAccountLines(
     .filter((row) => posted(row) && euros(row) && row.direction === "debit" && rowInMb3mAccount(row, companyId, split))
     .map((row) => {
       const hit = margins?.get(row.id);
-      const costed = Boolean(hit);
+      const amount = Math.round(Number(row.amount) * 100) / 100;
       return {
         transactionId: row.id,
         label: (row.label || "").trim().slice(0, 120) || "Dépense",
-        amount: Math.round(Number(row.amount) * 100) / 100,
+        amount,
         activityId: mb3mLineActivityId(row.chargeKind ?? mb3mChargeKind(row)),
-        margin: hit && costed ? Math.round(hit.margin * 100) / 100 : null,
-        note: hit && costed ? mb3mLineNote(hit.suppliers) : null,
+        // Chaque ligne porte sa marge : vente − coûts pointés. Sans coût, la marge est la vente,
+        // comme MB3M le calcule lui-même pour une ligne sans achat. Rattacher un coût la fait baisser.
+        margin: hit ? Math.round(hit.margin * 100) / 100 : amount,
+        note: hit ? mb3mLineNote(hit.suppliers) : null,
       };
     })
     .filter((line) => line.transactionId && line.amount > 0)

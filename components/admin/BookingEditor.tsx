@@ -52,7 +52,6 @@ import { BookingCards } from "@/components/admin/BookingCards";
 import { PliantAccountBalanceCard } from "@/components/admin/PliantCardDesk";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
-import { PliantBookingTab } from "@/components/admin/PliantBookingTab";
 import { PliantSettlement } from "@/components/admin/PliantSettlement";
 import { TripAccountingBlock, type TripAccountingView } from "@/components/admin/TripAccountingBlock";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
@@ -2020,13 +2019,10 @@ export function BookingEditor({
           <BookingCards
             bookingId={booking.id}
             cards={bookingCards}
+            recap={pliantRecap}
             firstName={stayGuest.firstName}
             lastName={stayGuest.lastName}
-            quietEmpty={pliantRecap.length > 0}
           />
-          {pliantRecap.length ? (
-            <PliantBookingTab bookingId={booking.id} cards={pliantRecap} />
-          ) : null}
         </div>
       ) : null}
 

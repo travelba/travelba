@@ -703,7 +703,9 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
     if (!piece.folderId || !piece.customerUid || !piece.pieceNumber) continue;
     const lines = piece.lines.length
       ? piece.lines
-      : ctx.lines.filter((line) => piece.transactionIds.includes(line.transactionId)).map((line) => mb3mInvoiceLine({ ...line, margin: null, note: null }));
+      : ctx.lines
+          .filter((line) => piece.transactionIds.includes(line.transactionId))
+          .map((line) => mb3mInvoiceLine({ ...line, margin: line.amount, note: null }));
     const credit = await mb3mAddCreditNote({
       folderId: piece.folderId,
       customerUid: piece.customerUid,

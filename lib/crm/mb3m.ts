@@ -163,12 +163,20 @@ function dayStamp(value: string) {
   return day;
 }
 
+/** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
+let lastCall: { service: string; action: string; inner: string } | null = null;
+
 function assertOperation(xml: string) {
   const raw = mb3mXmlText(xml, "ResultCode");
   if (!raw) return;
   const code = Number(raw);
   if (code === 1) return;
-  throw new Mb3mError(mb3mXmlText(xml, "Message") || "L’opération MB3M a échoué.", Number.isFinite(code) ? code : -1);
+  const message = mb3mXmlText(xml, "Message") || "L’opération MB3M a échoué.";
+  const body = xml.replace(/^[\s\S]*?<s:Body>/, "").replace(/<\/s:Body>[\s\S]*$/, "").slice(0, 3000);
+  console.error(
+    `[mb3m] ${lastCall ? `${lastCall.service}/${lastCall.action}` : "?"} ResultCode ${raw} ${message}\nréponse : ${body}\nrequête : ${(lastCall?.inner || "").slice(0, 6000)}`
+  );
+  throw new Mb3mError(message, Number.isFinite(code) ? code : -1);
 }
 
 export async function mb3mSoap(
@@ -188,6 +196,7 @@ export async function mb3mSoap(
       0
     );
   }
+  lastCall = { service, action, inner };
   const response = await fetchImpl(`${MB3M_ORIGIN}/Partners/1.0/${service}.svc/Soap`, {
     method: "POST",
     headers: {
@@ -200,9 +209,25 @@ export async function mb3mSoap(
   const xml = await response.text();
   const fault = mb3mXmlText(xml, "faultstring");
   if (!response.ok || fault) {
+    // Le détail de la faute (type d’exception, pile .NET) ne passe pas à l’écran : il va dans les logs.
+    const detail = mb3mFaultDetail(xml);
+    console.error(`[mb3m] ${service}/${action} ${response.status} ${fault || "sans faultstring"}${detail ? `\n${detail}` : ""}`);
     throw new Mb3mError(fault || "L’API MB3M n’a pas répondu.", response.ok ? -1 : response.status);
   }
   return xml;
+}
+
+/** Type d’exception et premières lignes de pile d’une faute SOAP, sans le corps de la requête. */
+export function mb3mFaultDetail(xml: string) {
+  const type = mb3mXmlText(xml, "Type");
+  const message = mb3mXmlText(xml, "Message");
+  const stack = mb3mXmlText(xml, "StackTrace")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .join("\n");
+  return [type, message, stack].filter(Boolean).join("\n").slice(0, 2000);
 }
 
 export async function mb3mAgencyNames(fetchImpl?: FetchImpl) {

@@ -288,6 +288,9 @@ export type CostTargetBooking = {
   reference: string;
   title: string | null;
   destination?: string | null;
+  customerId?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
   items: CostTargetItem[];
 };
 
@@ -295,8 +298,19 @@ export type CostSuggestion = {
   bookingId: string;
   itemId: string | null;
   score: number;
-  reason: "reference" | "card" | "supplier" | "amount";
+  reason: "reference" | "card" | "client" | "supplier" | "amount";
 };
+
+/** Jours autour du voyage pendant lesquels une dépense du client lui appartient sans doute. */
+const CLIENT_WINDOW_DAYS = 10;
+
+function withinTrip(date: string | null | undefined, booking: CostTargetBooking) {
+  if (!date || !booking.startDate) return true;
+  const day = Date.parse(date.slice(0, 10));
+  const start = Date.parse(booking.startDate) - CLIENT_WINDOW_DAYS * 86_400_000;
+  const end = Date.parse(booking.endDate || booking.startDate) + CLIENT_WINDOW_DAYS * 86_400_000;
+  return Number.isFinite(day) && day >= start && day <= end;
+}
 
 function itemNames(item: CostTargetItem) {
   const details = item.details || {};
@@ -346,11 +360,20 @@ export function suggestItem(
 
 /**
  * Propositions pour une sortie. La référence du dossier dans la désignation gagne,
- * puis la carte Pliant du dossier, puis un fournisseur ou un montant qui correspond.
- * Jamais d’écriture : l’agent clique.
+ * puis la carte Pliant du dossier, puis les voyages du client de la carte autour de la date,
+ * puis un fournisseur ou un montant qui correspond. Jamais d’écriture : l’agent clique.
  */
 export function suggestCostTargets(
-  input: { text: string | null | undefined; party: string | null | undefined; amount: number; cardBookingIds?: string[] },
+  input: {
+    text: string | null | undefined;
+    party: string | null | undefined;
+    amount: number;
+    cardBookingIds?: string[];
+    /** Client porteur de la carte, quand Pliant le connaît. */
+    customerId?: string | null;
+    /** Jour de la sortie : départage les voyages du client. */
+    date?: string | null;
+  },
   bookings: CostTargetBooking[]
 ): CostSuggestion[] {
   const out: CostSuggestion[] = [];
@@ -368,6 +391,11 @@ export function suggestCostTargets(
   for (const bookingId of input.cardBookingIds || []) {
     const booking = bookings.find((row) => row.id === bookingId);
     if (booking) push(booking.id, suggestItem(booking, input).itemId, 90, "card");
+  }
+  if (input.customerId) {
+    const own = bookings.filter((row) => row.customerId === input.customerId);
+    const around = own.filter((row) => withinTrip(input.date, row));
+    for (const booking of around.length ? around : own) push(booking.id, suggestItem(booking, input).itemId, 80, "client");
   }
   for (const booking of bookings) {
     const hit = suggestItem(booking, input);
@@ -406,6 +434,8 @@ export function costSuggestionReasonLabel(reason: CostSuggestion["reason"]) {
       return "Référence du dossier";
     case "card":
       return "Carte du dossier";
+    case "client":
+      return "Client de la carte";
     case "supplier":
       return "Fournisseur";
     default:
