@@ -6,6 +6,7 @@ import { StayCard } from "@/components/crm/StayCard";
 import { stayCardFace } from "@/lib/crm/hotel-arrival";
 import { shownPersonName } from "@/lib/crm/identity";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { bookingCardMosaic, type PliantCardRecap } from "@/lib/crm/pliant-booking";
 import type { CrmBookingCard } from "@/lib/crm/types";
 
 function cardTransactionLine(card: CrmBookingCard) {
@@ -26,16 +27,15 @@ const fieldClass =
 export function BookingCards({
   bookingId,
   cards,
+  recap = [],
   firstName,
   lastName,
-  quietEmpty = false,
 }: {
   bookingId: string;
   cards: CrmBookingCard[];
+  recap?: PliantCardRecap[];
   firstName: string;
   lastName: string;
-  /** Le récap Pliant liste déjà une carte : ne pas dire qu’il n’y en a aucune. */
-  quietEmpty?: boolean;
 }) {
   const router = useRouter();
   const [amount, setAmount] = useState("");
@@ -105,6 +105,10 @@ export function BookingCards({
       setBusy(false);
     }
   }
+
+  const tiles = bookingCardMosaic(cards, recap);
+  const issuedById = new Map(cards.map((card) => [card.id, card]));
+  const spentByPliant = new Map(recap.map((card) => [card.pliantCardId, card]));
 
   return (
     <div className="space-y-6">
@@ -204,68 +208,105 @@ export function BookingCards({
           </button>
         </form>
       </section>
-      {cards.some((card) => card.status !== "terminated") ? (
-        <ul className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-          {cards
-            .filter((card) => card.status !== "terminated")
-            .map((card) => (
-            <li key={card.id} className="admin-af-card min-w-0 space-y-3 rounded-3xl p-5">
-              <div>
-                <p className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">{card.label}</p>
-                <p className="text-sm text-[var(--admin-navy)]/70">
-                  {formatMoney(card.limit_cents / 100, card.currency || "EUR")}
-                  {cardTransactionLine(card)}
-                  {" · "}du {formatDateFr(card.valid_from)} au {formatDateFr(card.valid_to)}
-                  {card.status === "locked" ? " · bloquée" : ""}
-                </p>
-              </div>
-              <StayCard
-                personal
-                title={card.label}
-                face={stayCardFace({
-                  itemId: card.id,
-                  hotel: "",
-                  holder: shownPersonName(card),
-                  last4: card.last4,
-                  closed: false,
-                })}
-                revealUrl={`/api/admin/bookings/${bookingId}/cards`}
-                locked={card.status === "locked"}
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="rounded-full border border-[#0B192C] px-4 py-2 text-sm font-semibold text-[#0B192C] disabled:opacity-60"
-                  onClick={() =>
-                    void act(
-                      card.id,
-                      card.status === "locked" ? "unlock" : "lock",
-                      card.status === "locked" ? "Pliant n’a pas débloqué la carte." : "Pliant n’a pas bloqué la carte."
-                    )
-                  }
-                >
-                  {card.status === "locked" ? "Débloquer la carte" : "Bloquer la carte"}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="rounded-full border border-[#8a3b2b] px-4 py-2 text-sm font-semibold text-[#8a3b2b] disabled:opacity-60"
-                  onClick={() => {
-                    if (!window.confirm("Supprimer cette carte ? Elle ne pourra plus payer.")) return;
-                    void act(card.id, "terminate", "Pliant n’a pas supprimé la carte.");
-                  }}
-                >
-                  Supprimer la carte
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+      {tiles.length ? (
+        <>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(22rem,1fr))] items-start gap-4">
+            {tiles.map((slot) => {
+              if (slot.source === "issued") {
+                const card = issuedById.get(slot.id);
+                if (!card) return null;
+                const spent = spentByPliant.get(card.pliant_card_id);
+                return (
+                  <li key={card.id} className="admin-af-card min-w-0 space-y-3 rounded-3xl p-5">
+                    <div>
+                      <p className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">{card.label}</p>
+                      <p className="text-sm text-[var(--admin-navy)]/70">
+                        {formatMoney(card.limit_cents / 100, card.currency || "EUR")}
+                        {cardTransactionLine(card)}
+                        {" · "}du {formatDateFr(card.valid_from)} au {formatDateFr(card.valid_to)}
+                        {spent ? ` · Dépensé ${formatMoney(spent.spentCents / 100, spent.currency)}` : ""}
+                        {card.status === "locked" ? " · bloquée" : ""}
+                      </p>
+                    </div>
+                    <StayCard
+                      personal
+                      title={card.label}
+                      face={stayCardFace({
+                        itemId: card.id,
+                        hotel: "",
+                        holder: shownPersonName(card),
+                        last4: card.last4,
+                        closed: false,
+                      })}
+                      revealUrl={`/api/admin/bookings/${bookingId}/cards`}
+                      locked={card.status === "locked"}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="rounded-full border border-[#0B192C] px-4 py-2 text-sm font-semibold text-[#0B192C] disabled:opacity-60"
+                        onClick={() =>
+                          void act(
+                            card.id,
+                            card.status === "locked" ? "unlock" : "lock",
+                            card.status === "locked" ? "Pliant n’a pas débloqué la carte." : "Pliant n’a pas bloqué la carte."
+                          )
+                        }
+                      >
+                        {card.status === "locked" ? "Débloquer la carte" : "Bloquer la carte"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="rounded-full border border-[#8a3b2b] px-4 py-2 text-sm font-semibold text-[#8a3b2b] disabled:opacity-60"
+                        onClick={() => {
+                          if (!window.confirm("Supprimer cette carte ? Elle ne pourra plus payer.")) return;
+                          void act(card.id, "terminate", "Pliant n’a pas supprimé la carte.");
+                        }}
+                      >
+                        Supprimer la carte
+                      </button>
+                    </div>
+                  </li>
+                );
+              }
+              const card = spentByPliant.get(slot.pliantCardId);
+              if (!card) return null;
+              return (
+                <li key={card.pliantCardId} className="admin-af-card min-w-0 space-y-3 rounded-3xl p-5">
+                  <div>
+                    <p className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">{card.label}</p>
+                    <p className="text-sm text-[var(--admin-navy)]/70">
+                      {card.ceilingCents != null
+                        ? `Plafond ${formatMoney(card.ceilingCents / 100, card.currency)} · `
+                        : null}
+                      Dépensé {formatMoney(card.spentCents / 100, card.currency)}
+                    </p>
+                  </div>
+                  <StayCard
+                    personal
+                    title={card.label}
+                    pliantCardId={card.pliantCardId}
+                    face={stayCardFace({
+                      itemId: card.pliantCardId,
+                      hotel: "",
+                      holder: shownPersonName({ first_name: firstName, last_name: lastName }),
+                      last4: card.last4,
+                      closed: false,
+                    })}
+                    revealUrl={`/api/admin/bookings/${bookingId}/cards`}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+          {recap.length ? (
+            <p className="text-sm text-[var(--admin-navy)]/70">Le détail des transactions est dans Règlement.</p>
+          ) : null}
+        </>
       ) : (
-        quietEmpty ? null : (
-          <p className="text-sm text-[var(--admin-navy)]/70">Aucune carte sur ce dossier.</p>
-        )
+        <p className="text-sm text-[var(--admin-navy)]/70">Aucune carte sur ce dossier.</p>
       )}
       {error ? <p className="text-sm text-[#8a3b2b]">{error}</p> : null}
     </div>
