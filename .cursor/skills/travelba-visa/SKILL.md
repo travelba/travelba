@@ -45,6 +45,8 @@ Le client voit ces cinq étapes sur son séjour : Préparation, Remplissage, Val
 
 30 % au-dessus de la dépense officielle, au cours BCE. 25 ILS, 40,27 USD, 20 GBP. Une carte par dossier, au nom du titulaire. Pas de PAN stocké. La carte du compte (fiche client, sans dossier) prend le plafond, le montant par transaction et le nombre saisis — pas le prix de l’hôtel.
 
+Une carte générée part sans blocage. L’émission envoie des contrôles vides (`emptyPliantCardControls`) puis les confirme : commerçants, catégories, dates, heures, lieux, pays, devises, modes d’acceptation. Le produit voyage ne garde pas sa liste de commerçants.
+
 ## Jeton Pliant
 
 Auth0 (`infinnityprodinternal`) n’accorde qu’une poignée de jetons par jour, valables 24 h. Toutes les cartes, la synchro et les formalités passent par `acquirePliantToken` (`lib/crm/pliant-auth.ts`). Le jeton reste dans `crm_integrations` (service role). Le verrou `crm_claim_integration_refresh` empêche deux passages de le redemander. Un quota dépassé bloque le parc une heure, sans nouvel appel. Une preview ne présente pas `PLIANT_CLIENT_ID` / `PLIANT_CLIENT_SECRET` (`productionOnlySecret`). Ne pas ajouter un second `client_credentials`. Le test `le client_credentials Pliant ne vit que derrière le verrou` échoue si quelqu’un le fait.
