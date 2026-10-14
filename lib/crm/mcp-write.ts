@@ -12,8 +12,7 @@ import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CU
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { extraMomentOf, extraPlaceOf, extraServiceLeg } from "@/lib/crm/extras";
-import { applyPliantToCustomer, type PliantLedgerRow } from "@/lib/crm/pliant-match";
-import { applyRevolutExpense, revolutExpenseError } from "@/lib/crm/revolut-debit";
+import { bookingBelongsToCustomer, revolutExpenseError } from "@/lib/crm/revolut-debit";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
 import { applyStripeToCustomer } from "@/lib/crm/stripe-match";
 import {
@@ -28,6 +27,7 @@ import {
   type CrmStripeTransaction,
 } from "@/lib/crm/types";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
+import { attachOutgoing, TripCostError } from "@/lib/crm/trip-costs-db";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -323,9 +323,16 @@ export async function creditRevolutTransfer(input: Record<string, unknown>, admi
   };
 }
 
+/**
+ * Sortie Revolut → coût du dossier désigné. Le client doit être celui du dossier (voyageur ou payeur).
+ * Aucune ligne au grand livre : la sortie devient un coût rattaché au montant du séjour.
+ */
 export async function matchRevolutExpense(input: Record<string, unknown>, admin?: McpAdmin) {
   const { depenseId, clientId, dossierId } = prepareRevolutExpense(input);
   const db = client(admin);
+  const { data: customer, error: customerError } = await db.from("crm_customers").select("id").eq("id", clientId).maybeSingle();
+  if (customerError) failDb(customerError, "Client introuvable.");
+  if (!customer) throw new McpWriteError(revolutExpenseError("customer_not_found"));
   const { data: row, error } = await db
     .from("crm_revolut_transactions")
     .select("*")
@@ -333,14 +340,30 @@ export async function matchRevolutExpense(input: Record<string, unknown>, admin?
     .maybeSingle();
   if (error) failDb(error, "Dépense introuvable.");
   if (!row) throw new McpWriteError("Dépense introuvable.");
-  const result = await applyRevolutExpense(db, row as CrmRevolutTransaction, clientId, dossierId);
-  if (!result.ok) throw new McpWriteError(revolutExpenseError(result.error));
+  const movement = row as CrmRevolutTransaction & { matched_booking_id?: string | null; settled_at?: string | null };
+  if (movement.direction !== "debit") throw new McpWriteError(revolutExpenseError("not_a_debit"));
+  if (movement.status === "matched" || movement.matched_booking_id) throw new McpWriteError(revolutExpenseError("already_matched"));
+  const { data: booking, error: bookingError } = await db
+    .from("crm_bookings")
+    .select("id, reference, customer_id, billing_customer_id")
+    .eq("id", dossierId)
+    .maybeSingle();
+  if (bookingError) failDb(bookingError, "Dossier introuvable.");
+  const stay = booking as { id: string; reference: string; customer_id: string; billing_customer_id: string | null } | null;
+  if (!stay) throw new McpWriteError(revolutExpenseError("booking_not_found"));
+  if (!bookingBelongsToCustomer(stay, clientId)) throw new McpWriteError(revolutExpenseError("booking_not_for_customer"));
+  try {
+    await attachOutgoing({ source: "revolut", sourceId: depenseId, bookingId: dossierId }, db);
+  } catch (err) {
+    if (err instanceof TripCostError) throw new McpWriteError(err.message);
+    throw err;
+  }
   return {
     depense: {
       id: depenseId,
       client_id: clientId,
       dossier_id: dossierId,
-      reference: result.reference,
+      reference: stay.reference,
     },
   };
 }
@@ -352,58 +375,34 @@ export function preparePliantReconcile(input: Record<string, unknown>) {
   };
 }
 
-/** Débit Pliant → réservation désignée. Le compte est celui qui règle le séjour. */
+/** Dépense Pliant → coût de la réservation désignée. Rien n’est écrit au grand livre du client. */
 export async function reconcilePliantDebit(input: Record<string, unknown>, admin?: McpAdmin) {
   const { mouvementId, dossierId } = preparePliantReconcile(input);
   const db = client(admin);
   const { data: booking, error: bookingError } = await db
     .from("crm_bookings")
-    .select("id, billing_customer_id, billing_company_id, payer_kind")
+    .select("id, reference")
     .eq("id", dossierId)
     .maybeSingle();
   if (bookingError) failDb(bookingError, "Dossier introuvable.");
-  const stay = booking as {
-    id: string;
-    billing_customer_id: string | null;
-    billing_company_id: string | null;
-    payer_kind: string | null;
-  } | null;
+  const stay = booking as { id: string; reference: string } | null;
   if (!stay) throw new McpWriteError("Dossier introuvable.");
-  if (!stay.billing_customer_id) throw new McpWriteError("Ce séjour n’a pas de compte à débiter.");
-  const { data: row, error } = await db
-    .from("crm_pliant_transactions")
-    .select(
-      "id, pliant_transaction_id, card_id, type, status, merchant, billing_cents, billing_currency, booked_at, card_label, card_last4, match_status"
-    )
-    .eq("id", mouvementId)
-    .maybeSingle();
-  if (error) failDb(error, "Dépense introuvable.");
-  if (!row) throw new McpWriteError("Dépense introuvable.");
-  const payerKind = stay.payer_kind === "company" || stay.payer_kind === "personal" ? stay.payer_kind : null;
-  const result = await applyPliantToCustomer(db, row as PliantLedgerRow, stay.billing_customer_id, {
-    bookingId: stay.id,
-    billingCompanyId: stay.billing_company_id,
-    payerKind,
-  });
-  if (!result.ok) {
-    if (result.error === "already_matched") throw new McpWriteError("Déjà rapprochée.");
-    if (result.error === "other_booking") {
-      throw new McpWriteError("Ce débit est déjà rapproché sur une autre réservation.");
-    }
-    if (result.error === "not_postable") throw new McpWriteError("Cette dépense n’est pas comptabilisée.");
-    console.error("[mcp] pliant");
-    throw new McpWriteError("Rapprochement impossible.");
+  let cost: Awaited<ReturnType<typeof attachOutgoing>>;
+  try {
+    cost = await attachOutgoing({ source: "pliant", sourceId: mouvementId, bookingId: dossierId }, db);
+  } catch (err) {
+    if (err instanceof TripCostError) throw new McpWriteError(err.status === 409 ? "Déjà rapprochée." : err.message);
+    throw err;
   }
-  const posted = result.transaction as { id?: string; amount?: number; currency?: string; direction?: string };
   return {
     mouvement: {
-      id: posted.id ?? null,
+      id: cost.id,
       depense_id: mouvementId,
       dossier_id: dossierId,
-      client_id: stay.billing_customer_id,
-      montant: posted.amount ?? null,
-      devise: posted.currency ?? null,
-      sens: posted.direction ?? null,
+      reference: stay.reference,
+      montant: cost.amountEur,
+      devise: "EUR",
+      sens: cost.amountEur < 0 ? "credit" : "debit",
       source: "pliant",
     },
   };

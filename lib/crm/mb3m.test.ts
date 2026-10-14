@@ -11,6 +11,8 @@ import {
   mb3mFindPersons,
   mb3mPartnerCode,
   mb3mPdfBytes,
+  mb3mPieceState,
+  mb3mRealm,
   mb3mRenderPiece,
   mb3mSaveCompany,
   mb3mSaveFolder,
@@ -22,6 +24,9 @@ const previous = {
   user: process.env.MB3M_API_USER,
   password: process.env.MB3M_API_PASSWORD,
   activity: process.env.MB3M_ACTIVITY_ID,
+  prodUser: process.env.MB3M_PROD_API_USER,
+  prodPassword: process.env.MB3M_PROD_API_PASSWORD,
+  prodActivity: process.env.MB3M_PROD_ACTIVITY_ID,
   vercel: process.env.VERCEL_ENV,
 };
 
@@ -29,6 +34,9 @@ afterEach(() => {
   restore("MB3M_API_USER", previous.user);
   restore("MB3M_API_PASSWORD", previous.password);
   restore("MB3M_ACTIVITY_ID", previous.activity);
+  restore("MB3M_PROD_API_USER", previous.prodUser);
+  restore("MB3M_PROD_API_PASSWORD", previous.prodPassword);
+  restore("MB3M_PROD_ACTIVITY_ID", previous.prodActivity);
   restore("VERCEL_ENV", previous.vercel);
 });
 
@@ -48,11 +56,53 @@ describe("client MB3M Partners", () => {
     process.env.MB3M_API_USER = "agent@partner";
     process.env.MB3M_API_PASSWORD = "secret-value";
     process.env.MB3M_ACTIVITY_ID = "3";
+    delete process.env.MB3M_PROD_API_USER;
+    delete process.env.MB3M_PROD_API_PASSWORD;
+    delete process.env.MB3M_PROD_ACTIVITY_ID;
     process.env.VERCEL_ENV = "production";
+    assert.equal(mb3mRealm(), "production");
     assert.equal(mb3mBlockedOnProduction(), true);
     assert.equal(mb3mConfigured(), false);
     assert.equal(mb3mActivityId(), null);
     assert.equal(mb3mPartnerCode("11111111-2222-4333-8444-555555555555"), "11111111222243");
+  });
+
+  it("en production, lit les identifiants d’agence et ignore ceux du test", () => {
+    process.env.VERCEL_ENV = "production";
+    process.env.MB3M_API_USER = "agent@partner";
+    process.env.MB3M_API_PASSWORD = "secret-value";
+    process.env.MB3M_ACTIVITY_ID = "3";
+    process.env.MB3M_PROD_API_USER = "agence";
+    process.env.MB3M_PROD_API_PASSWORD = "prod-secret";
+    process.env.MB3M_PROD_ACTIVITY_ID = "12";
+    assert.equal(mb3mConfigured(), true);
+    assert.equal(mb3mActivityId(), 12);
+  });
+
+  it("hors production, ignore les identifiants d’agence", () => {
+    delete process.env.VERCEL_ENV;
+    delete process.env.MB3M_API_USER;
+    delete process.env.MB3M_API_PASSWORD;
+    delete process.env.MB3M_ACTIVITY_ID;
+    process.env.MB3M_PROD_API_USER = "agence";
+    process.env.MB3M_PROD_API_PASSWORD = "prod-secret";
+    process.env.MB3M_PROD_ACTIVITY_ID = "12";
+    assert.equal(mb3mRealm(), "test");
+    assert.equal(mb3mConfigured(), false);
+    assert.equal(mb3mActivityId(), null);
+  });
+
+  it("une preview garde la base de test même si les identifiants d’agence sont présents", () => {
+    process.env.VERCEL_ENV = "preview";
+    process.env.MB3M_API_USER = "agent@partner";
+    process.env.MB3M_API_PASSWORD = "secret-value";
+    process.env.MB3M_ACTIVITY_ID = "3";
+    process.env.MB3M_PROD_API_USER = "agence";
+    process.env.MB3M_PROD_API_PASSWORD = "prod-secret";
+    process.env.MB3M_PROD_ACTIVITY_ID = "12";
+    assert.equal(mb3mRealm(), "test");
+    assert.equal(mb3mConfigured(), true);
+    assert.equal(mb3mActivityId(), 3);
   });
 
   it("crée une fiche et lit l’identifiant renvoyé", async () => {
@@ -139,6 +189,37 @@ describe("client MB3M Partners", () => {
     );
     assert.ok(body.indexOf("<ActivityId>3</ActivityId>") < body.indexOf("<Label>Hôtel</Label>"));
     assert.equal(invoice.number, "4531");
+  });
+
+  it("écrit la marge et la note dans l’ordre du schéma, et les omet sans coût pointé", async () => {
+    arm();
+    let body = "";
+    await mb3mAddInvoice(
+      {
+        folderId: "22-0000025",
+        customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+        title: "Sonde",
+        lines: [
+          { label: "Hôtel", quantity: 1, netPriceUnit: 1200, netPriceTotal: 1200, activityId: 7, marginUnit: -50.5, note: "Fournisseur : RIAD" },
+          { label: "Vol", quantity: 1, netPriceUnit: 400, netPriceTotal: 400, activityId: 2 },
+        ],
+      },
+      async (_url, init) => {
+        body = String(init?.body);
+        return new Response(
+          `<s:Envelope><s:Body><FolderOperationResponse><ResultCode>1</ResultCode><Invoices><Invoice><Number>4529</Number></Invoice></Invoices></FolderOperationResponse></s:Body></s:Envelope>`
+        );
+      }
+    );
+    const hotel = body.slice(body.indexOf("<InvoiceLine>"), body.indexOf("</InvoiceLine>"));
+    const order = ["<ActivityId>7", "<Label>Hôtel", "<MarginUnit>-50.5", "<NetPriceTotal>1200", "<NetPriceUnit>1200", "<Note>Fournisseur : RIAD", "<Quantity>1", "<Type>Standard"].map(
+      (needle) => hotel.indexOf(needle)
+    );
+    assert.ok(order.every((index) => index >= 0), hotel);
+    assert.deepEqual(order, [...order].sort((left, right) => left - right));
+    const flight = body.slice(body.lastIndexOf("<InvoiceLine>"));
+    assert.equal(flight.includes("<MarginUnit>"), false);
+    assert.equal(flight.includes("<Note>"), false);
   });
 
   it("crée un avoir sur le dossier déjà ouvert", async () => {
@@ -284,5 +365,21 @@ describe("client MB3M Partners", () => {
         return true;
       }
     );
+  });
+});
+
+describe("état d’une pièce MB3M", () => {
+  it("distingue une facture émise d’une facture seulement numérotée", () => {
+    assert.equal(
+      mb3mPieceState(`<Piece><Number>4540</Number><Amount>1</Amount><TotalCount>1</TotalCount></Piece>`),
+      "open"
+    );
+    assert.equal(
+      mb3mPieceState(
+        `<Piece><Number>4531</Number><DatePrint>2026-10-12T11:59:25.08+00:00</DatePrint><TotalCount>1</TotalCount></Piece>`
+      ),
+      "printed"
+    );
+    assert.equal(mb3mPieceState(`<FolderFindPiecesResult><TotalCount>0</TotalCount></FolderFindPiecesResult>`), "missing");
   });
 });

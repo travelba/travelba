@@ -1,9 +1,10 @@
 import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { RevolutInbox } from "@/components/admin/RevolutInbox";
+import { RevolutInbox, type RevolutDebitRow } from "@/components/admin/RevolutInbox";
+import { itemLabelFor, loadOutgoingQueue } from "@/lib/crm/trip-costs-db";
 import { AccountBalanceCard } from "@/components/admin/AccountBalance";
 import { loadRevolutAccountBalances, revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
-import { customerPickLabel, type PickableCustomer } from "@/lib/crm/customer-search";
+import type { PickableCustomer } from "@/lib/crm/customer-search";
 import {
   REVOLUT_MATCH_SELECT,
   scoreRevolutMatches,
@@ -11,7 +12,7 @@ import {
   type RevolutMatchCustomer,
 } from "@/lib/crm/revolut-match";
 import { wireAccountChoices } from "@/lib/crm/funding-wallet";
-import { repairRevolutDebitQueue, revolutBookingPickLabel } from "@/lib/crm/revolut-debit";
+import { repairRevolutDebitQueue } from "@/lib/crm/revolut-debit";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
@@ -48,10 +49,10 @@ export default async function AdminRevolutPage({
   }));
 
   let rows: CrmRevolutTransaction[] = [];
-  let debits: ReturnType<typeof revolutDebitLine>[] = [];
+  let debits: RevolutDebitRow[] = [];
   try {
     await repairRevolutDebitQueue(admin);
-    const [credits, outs] = await Promise.all([
+    const [credits, outs, queue] = await Promise.all([
       admin
         .from("crm_revolut_transactions")
         .select("*")
@@ -60,50 +61,49 @@ export default async function AdminRevolutPage({
         .limit(200),
       admin
         .from("crm_revolut_transactions")
-        .select(
-          "id, amount, currency, counterparty_name, reference, booked_at, raw, status, matched_customer_id, matched_booking_id"
-        )
+        .select("id, amount, currency, counterparty_name, reference, booked_at, raw, status")
         .eq("direction", "debit")
         .order("booked_at", { ascending: false, nullsFirst: false })
         .limit(200),
+      loadOutgoingQueue({ source: "revolut", limit: 400 }, admin).catch(() => []),
     ]);
     rows = (credits.data || []) as CrmRevolutTransaction[];
-    const rawDebits = (outs.data || []) as (CrmRevolutTransaction & {
-      matched_customer_id: string | null;
-      matched_booking_id: string | null;
-    })[];
-    const bookingIds = [
-      ...new Set(rawDebits.map((row) => row.matched_booking_id).filter((id): id is string => Boolean(id))),
-    ];
-    const bookingLabels = new Map<string, string>();
-    if (bookingIds.length) {
-      const { data: stays } = await admin
-        .from("crm_bookings")
-        .select("id, reference, title, destination, start_date, visible_to_client, archived_at")
-        .in("id", bookingIds);
-      for (const stay of (stays || []) as {
-        id: string;
-        reference: string;
-        title: string | null;
-        destination: string | null;
-        start_date: string | null;
-        visible_to_client: boolean | null;
-        archived_at: string | null;
-      }[]) {
-        bookingLabels.set(stay.id, revolutBookingPickLabel(stay));
-      }
-    }
-    const names = new Map(customers.map((customer) => [customer.id, customerPickLabel(customer)]));
-    debits = rawDebits.map((row) =>
-      revolutDebitLine({
-        ...row,
-        customerLabel: row.matched_customer_id ? names.get(row.matched_customer_id) || "Client" : "",
-        bookingId: row.matched_booking_id,
-        bookingLabel: row.matched_booking_id
-          ? bookingLabels.get(row.matched_booking_id) || "Dossier retiré"
-          : "",
-      })
+    const outRows = (outs.data || []) as CrmRevolutTransaction[];
+    const outgoing = new Map(queue.map((line) => [line.id, line]));
+    const { data: costs } = outRows.length
+      ? await admin
+          .from("crm_trip_costs")
+          .select("source_id, booking_id, booking_item_id")
+          .eq("source", "revolut")
+          .in("source_id", outRows.map((row) => row.id))
+      : { data: [] };
+    const costRows = (costs || []) as { source_id: string; booking_id: string; booking_item_id: string | null }[];
+    const bookingIds = [...new Set(costRows.map((row) => row.booking_id))];
+    const itemIds = costRows.map((row) => row.booking_item_id).filter((id): id is string => Boolean(id));
+    const [{ data: bookings }, { data: items }] = await Promise.all([
+      bookingIds.length ? admin.from("crm_bookings").select("id, reference").in("id", bookingIds) : Promise.resolve({ data: [] }),
+      itemIds.length ? admin.from("crm_booking_items").select("id, kind, title, details").in("id", itemIds) : Promise.resolve({ data: [] }),
+    ]);
+    const references = new Map(((bookings || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference]));
+    const labels = new Map(
+      ((items || []) as { id: string; kind: string | null; title: string | null; details: Record<string, unknown> | null }[]).map((item) => [item.id, itemLabelFor(item)])
     );
+    const costById = new Map(
+      costRows.map((row) => [
+        row.source_id,
+        {
+          bookingId: row.booking_id,
+          reference: references.get(row.booking_id) || "Voyage",
+          itemLabel: row.booking_item_id ? labels.get(row.booking_item_id) || null : "Montant du séjour",
+        },
+      ])
+    );
+    debits = outRows.map((row) => ({
+      ...revolutDebitLine(row),
+      status: row.status,
+      outgoing: outgoing.get(row.id) || null,
+      cost: costById.get(row.id) || null,
+    }));
   } catch {
     rows = [];
     debits = [];
@@ -138,7 +138,7 @@ export default async function AdminRevolutPage({
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Revolut"
-        subtitle="Virements reçus à rapprocher. Les sorties se rattachent à un client et une réservation : elles ne créditent pas le client."
+        subtitle="Virements reçus à rapprocher. Les sorties du compte sont dans l’onglet Débits : elles se rattachent à un voyage, jamais à un client."
       />
       <div className="mt-6 space-y-4">
         {balance ? <AccountBalanceCard pockets={balance} /> : null}

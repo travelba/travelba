@@ -3,7 +3,6 @@ import { afterEach, describe, it } from "node:test";
 import { Mb3mError } from "./mb3m";
 import {
   buildMb3mInvoiceContext,
-  dossierStayAmount,
   mb3mInvoiceBlocker,
   runMb3mInvoice,
   storeMb3mPdf,
@@ -16,6 +15,7 @@ const previous = {
   user: process.env.MB3M_API_USER,
   password: process.env.MB3M_API_PASSWORD,
   activity: process.env.MB3M_ACTIVITY_ID,
+  allow: process.env.MB3M_SYNC_CUSTOMER_IDS,
   vercel: process.env.VERCEL_ENV,
 };
 
@@ -23,6 +23,7 @@ afterEach(() => {
   restore("MB3M_API_USER", previous.user);
   restore("MB3M_API_PASSWORD", previous.password);
   restore("MB3M_ACTIVITY_ID", previous.activity);
+  restore("MB3M_SYNC_CUSTOMER_IDS", previous.allow);
   restore("VERCEL_ENV", previous.vercel);
 });
 
@@ -33,6 +34,7 @@ function restore(name: string, value: string | undefined) {
 
 function arm() {
   delete process.env.VERCEL_ENV;
+  delete process.env.MB3M_SYNC_CUSTOMER_IDS;
   process.env.MB3M_API_USER = "agent@partner";
   process.env.MB3M_API_PASSWORD = "secret-value";
   process.env.MB3M_ACTIVITY_ID = "3";
@@ -107,7 +109,8 @@ function context(overrides: Partial<Mb3mInvoiceContext> = {}): Mb3mInvoiceContex
     travelers: [{ firstName: "Ada", lastName: "Lovelace" }],
     visibleToClient: false,
     configured: true,
-    activityId: 3,
+    lines: [{ transactionId: "tx-1", label: "Hôtel", amount: 1050, activityId: 3 }],
+    hadExpenses: true,
     ...overrides,
   };
 }
@@ -124,16 +127,20 @@ function blankPiece(patch: Partial<Mb3mStoredPiece> = {}): Mb3mStoredPiece {
     amount: null,
     documentId: null,
     updatedAt: new Date().toISOString(),
+    printedAt: null,
+    signature: null,
+    transactionIds: [],
+    lines: [],
     ...patch,
   };
 }
 
 describe("facture MB3M", () => {
-  it("facture le même montant que le dossier, en euros", () => {
+  it("prépare une ligne par dépense déjà au grand livre", () => {
     arm();
     const items = [
-      { kind: "hotel", amount: 1000, lifecycle: "active" },
-      { kind: "expense", amount: 50, lifecycle: "active" },
+      { id: "hotel-1", kind: "hotel", amount: 1000, lifecycle: "active" },
+      { id: "fee-1", kind: "expense", amount: 50, lifecycle: "active" },
       { kind: "hotel", amount: 9000, lifecycle: "cancelled" },
     ];
     const ctx = buildMb3mInvoiceContext({
@@ -142,17 +149,37 @@ describe("facture MB3M", () => {
       travelers: [{ first_name: "Ada", last_name: "Lovelace" }],
       payer: payer(),
       companies: [],
+      charges: [
+        {
+          id: "hotel-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 1000,
+          label: "Hôtel · Avoriaz",
+          external_id: "booking:b:item:hotel-1",
+          booking_id: bookingId,
+        },
+        {
+          id: "fee-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 50,
+          label: "Dépense · Extra",
+          external_id: "booking:b:expense:fee-1",
+          booking_id: bookingId,
+        },
+      ],
     });
-    assert.equal(
-      ctx.amount,
-      dossierStayAmount({
-        items,
-        agencyCommission: true,
-        status: "confirmed",
-        travelerCount: 1,
-      })
+    assert.equal(ctx.amount, 1050);
+    assert.deepEqual(
+      ctx.lines.map((line) => [line.transactionId, line.amount, line.activityId]),
+      [
+        ["fee-debit", 50, 3],
+        ["hotel-debit", 1000, 3],
+      ]
     );
-    assert.equal(ctx.amount, 1155);
     assert.equal(ctx.currency, "EUR");
     assert.equal(ctx.destinationIso, "FR");
     assert.equal(ctx.destination, "France");
@@ -172,10 +199,11 @@ describe("facture MB3M", () => {
     assert.equal(ctx.destination, "Avoriaz");
     assert.equal(ctx.person?.address?.line1, "1 rue du Test");
     assert.equal(ctx.travelers.length, 0);
-    assert.equal(ctx.amount, 800);
+    assert.equal(ctx.amount, 0);
+    assert.equal(ctx.lines.length, 0);
   });
 
-  it("préfère l’adresse de facturation et reste éteint sans prix, sans adresse ou sans accès", () => {
+  it("préfère l’adresse de facturation et reste éteint sans prix, sans adresse ou sans accès", async () => {
     arm();
     const billed = buildMb3mInvoiceContext({
       booking: booking(),
@@ -190,13 +218,19 @@ describe("facture MB3M", () => {
       companies: [],
     });
     assert.equal(billed.person?.address?.city, "Lyon");
-    assert.equal(mb3mInvoiceBlocker(context({ amount: 0 })), "Saisissez le prix du séjour avant de facturer.");
+    assert.equal(
+      mb3mInvoiceBlocker(context({ lines: [], hadExpenses: false })),
+      "Aucune dépense de ce séjour n’est au grand livre."
+    );
     assert.equal(
       mb3mInvoiceBlocker(context({ person: { ...context().person!, address: null } })),
       "L’adresse de facturation est incomplète."
     );
     assert.equal(mb3mInvoiceBlocker(context({ configured: false })), "L’accès MB3M n’est pas configuré.");
-    assert.equal(mb3mInvoiceBlocker(context({ activityId: null })), "L’activité MB3M n’est pas configurée.");
+    assert.equal(
+      mb3mInvoiceBlocker(context({ lines: [{ transactionId: "tx-1", label: "Hôtel", amount: 10, activityId: null }] })),
+      "L’activité MB3M n’est pas configurée."
+    );
     assert.equal(mb3mInvoiceBlocker(context({ currency: "USD" })), "Le séjour n’est pas en euros.");
     const company = buildMb3mInvoiceContext({
       booking: booking({ payer_kind: "company", billing_company_id: "co-1" }),
@@ -271,11 +305,10 @@ describe("facture MB3M", () => {
     assert.equal(reused, true);
   });
 
-  it("ne crée pas une seconde facture et n’écrit pas au grand livre", async () => {
+  it("prépare un pro forma et ne le réémet pas", async () => {
     let stored = blankPiece();
     let invoices = 0;
     let renders = 0;
-    let pdfCalls = 0;
     const deps: Mb3mInvoiceDeps = {
       now: () => Date.now(),
       claim: async () => ({ piece: { ...stored }, created: stored.pieceNumber == null && stored.customerUid == null }),
@@ -289,6 +322,9 @@ describe("facture MB3M", () => {
           pieceUid: patch.pieceUid === undefined ? stored.pieceUid : patch.pieceUid,
           documentId: patch.documentId === undefined ? stored.documentId : patch.documentId,
           amount: patch.amount === undefined ? stored.amount : patch.amount,
+          printedAt: patch.printedAt === undefined ? stored.printedAt : patch.printedAt,
+          signature: patch.signature === undefined ? stored.signature : patch.signature,
+          transactionIds: patch.transactionIds === undefined ? stored.transactionIds : patch.transactionIds,
         };
       },
       remove: async () => {
@@ -314,31 +350,32 @@ describe("facture MB3M", () => {
         assert.equal(input.lines[0]?.netPriceTotal, 1050);
         assert.equal(input.lines[0]?.activityId, 3);
         assert.deepEqual(input.travelers, [{ firstName: "Ada", name: "Lovelace" }]);
-        return { number: "4531", uid: "piece-uid" };
+        return { number: invoices === 1 ? "4531" : "4532", uid: "piece-uid" };
       },
+      findPiece: async () => (stored.printedAt ? "printed" : stored.pieceNumber ? "open" : "missing"),
+      cancelInvoice: async () => undefined,
       renderPiece: async (number) => {
         renders += 1;
         assert.equal(number, "4531");
         return { bytes: Buffer.from("%PDF-1.4") };
       },
       putPdf: async (input) => {
-        pdfCalls += 1;
-        if (pdfCalls === 1) assert.equal(input.visibleToClient, false);
         assert.equal(input.bytes.subarray(0, 4).toString("utf8"), "%PDF");
         return "doc-1";
       },
     };
     const first = await runMb3mInvoice(context(), deps);
     const second = await runMb3mInvoice(context({ amount: 20, visibleToClient: true }), deps);
-    assert.deepEqual(Object.keys(first).sort(), ["created", "documentId", "number", "visibleToClient"]);
+    assert.deepEqual(Object.keys(first).sort(), ["created", "documentId", "number", "printed", "replaced", "visibleToClient"]);
     assert.equal(first.created, true);
+    assert.equal(first.printed, false);
+    assert.equal(first.documentId, null);
     assert.equal(first.number, "4531");
-    assert.equal(first.documentId, "doc-1");
-    assert.equal(first.visibleToClient, false);
     assert.equal(second.created, false);
+    assert.equal(second.replaced, false);
     assert.equal(second.number, "4531");
     assert.equal(invoices, 1);
-    assert.equal(renders, 2);
+    assert.equal(renders, 0);
     stored = blankPiece({ updatedAt: new Date().toISOString(), customerUid: "customer-uid" });
     await assert.rejects(
       () => runMb3mInvoice(context(), deps),

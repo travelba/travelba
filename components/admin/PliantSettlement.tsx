@@ -120,7 +120,7 @@ export function PliantSettlement({
       <div>
         <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Cartes Pliant</h2>
         <p className="mt-1 text-sm text-muted">
-          Transactions de chaque carte. Le rapprochement écrit le débit sur la réservation choisie.
+          Transactions de chaque carte. Rapprocher rattache la dépense au voyage choisi comme coût : rien ne part au client. Le détail par ligne vendue est dans Comptabilité du voyage.
         </p>
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}

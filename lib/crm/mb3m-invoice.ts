@@ -24,19 +24,43 @@ type PayerCustomer = Pick<
   | "city"
   | "country"
 >;
+import {
+  mb3mDossierLines,
+  mb3mFactureHref,
+  mb3mFactureMention,
+  mb3mLineSignature,
+  mb3mPieceStale,
+  mb3mProformaHref,
+  type Mb3mAccountLine,
+  type Mb3mLedgerRow,
+} from "@/lib/crm/mb3m-account";
 import { defaultPayer, type PayerCompany } from "@/lib/crm/payer";
 import {
+  accountLines,
+  mapTripCost,
+  marginByTransaction,
+  saleLines,
+  type SaleLedgerRow,
+  type TripCost,
+  type TripCostRow,
+} from "@/lib/crm/trip-costs";
+import {
   Mb3mError,
-  mb3mActivityId,
+  mb3mAddCreditNote,
   mb3mAddInvoice,
+  mb3mCancelInvoice,
+  type Mb3mLine,
   mb3mConfigured,
+  mb3mFindPiece,
   mb3mPartnerCode,
+  mb3mRealm,
   mb3mRenderPiece,
   mb3mSaveCompany,
   mb3mSaveFolder,
   mb3mSavePerson,
   type Mb3mAddress,
 } from "@/lib/crm/mb3m";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 const STALE_MS = 3 * 60 * 1000;
 
@@ -87,7 +111,8 @@ export type Mb3mInvoiceContext = {
   travelers: { firstName: string; lastName: string }[];
   visibleToClient: boolean;
   configured: boolean;
-  activityId: number | null;
+  lines: Mb3mAccountLine[];
+  hadExpenses: boolean;
 };
 
 export type Mb3mStoredPiece = {
@@ -101,12 +126,19 @@ export type Mb3mStoredPiece = {
   amount: number | null;
   documentId: string | null;
   updatedAt: string;
+  printedAt: string | null;
+  signature: string | null;
+  transactionIds: string[];
+  /** Lignes telles qu’envoyées à MB3M : l’avoir les reprend. */
+  lines: Mb3mLine[];
 };
 
 export type Mb3mInvoiceResult = {
   number: string;
-  documentId: string;
+  documentId: string | null;
   created: boolean;
+  replaced: boolean;
+  printed: boolean;
   visibleToClient: boolean;
 };
 
@@ -118,7 +150,25 @@ type PiecePatch = {
   pieceUid?: string | null;
   amount?: number | null;
   documentId?: string | null;
+  printedAt?: string | null;
+  signature?: string | null;
+  transactionIds?: string[];
+  lines?: Mb3mLine[];
 };
+
+/** Ligne MB3M d’une vente : prix vendu, marge et fournisseurs quand des coûts sont pointés. */
+export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
+  return {
+    label: line.label,
+    quantity: 1,
+    netPriceUnit: line.amount,
+    netPriceTotal: line.amount,
+    activityId: line.activityId ?? undefined,
+    type: "Standard" as const,
+    marginUnit: line.margin ?? null,
+    note: line.note ?? null,
+  };
+}
 
 export type Mb3mInvoiceDeps = {
   now: () => number;
@@ -129,6 +179,8 @@ export type Mb3mInvoiceDeps = {
   saveCompany: typeof mb3mSaveCompany;
   saveFolder: typeof mb3mSaveFolder;
   addInvoice: typeof mb3mAddInvoice;
+  findPiece: typeof mb3mFindPiece;
+  cancelInvoice: typeof mb3mCancelInvoice;
   renderPiece: (number: string) => Promise<{ bytes: Buffer }>;
   putPdf: (input: {
     bookingId: string;
@@ -204,18 +256,22 @@ function personAddress(customer: PayerCustomer, name: string) {
 
 export function mb3mInvoiceBlocker(ctx: Mb3mInvoiceContext) {
   if (!ctx.configured) return "L’accès MB3M n’est pas configuré.";
-  if (!ctx.activityId) return "L’activité MB3M n’est pas configurée.";
   if (ctx.currency !== "EUR") return "Le séjour n’est pas en euros.";
-  if (!(ctx.amount > 0)) return "Saisissez le prix du séjour avant de facturer.";
   if (!ctx.dateStart || !ctx.dateEnd) return "Les dates du séjour manquent.";
   if (ctx.dateEnd < ctx.dateStart) return "Les dates du séjour sont inversées.";
   if (ctx.payerKind === "company") {
     if (!ctx.company?.name) return "La raison sociale est incomplète.";
     if (!ctx.company.address) return "L’adresse de facturation est incomplète.";
-    return null;
+  } else {
+    if (!ctx.person?.firstName || !ctx.person.lastName) return "Le nom du client est incomplet.";
+    if (!ctx.person.address) return "L’adresse de facturation est incomplète.";
   }
-  if (!ctx.person?.firstName || !ctx.person.lastName) return "Le nom du client est incomplet.";
-  if (!ctx.person.address) return "L’adresse de facturation est incomplète.";
+  if (!ctx.lines.length) {
+    return ctx.hadExpenses
+      ? "Les dépenses de ce séjour sont déjà sur une facture validée."
+      : "Aucune dépense de ce séjour n’est au grand livre.";
+  }
+  if (ctx.lines.some((line) => line.activityId == null)) return "L’activité MB3M n’est pas configurée.";
   return null;
 }
 
@@ -239,6 +295,10 @@ export function buildMb3mInvoiceContext(input: {
   travelers: { first_name: string | null; last_name: string | null }[];
   payer: PayerCustomer | null;
   companies: CompanyRow[];
+  charges?: Mb3mLedgerRow[];
+  coveredIds?: string[];
+  /** Coûts rattachés (Pliant, Revolut) : la marge de chaque ligne. */
+  costs?: TripCost[];
 }): Mb3mInvoiceContext {
   const facts = staffStayFacts({
     items: input.items,
@@ -265,17 +325,20 @@ export function buildMb3mInvoiceContext(input: {
       lastName: (traveler.last_name || "").trim(),
     }))
     .filter((traveler) => traveler.firstName && traveler.lastName);
+  const covered = new Set(input.coveredIds || []);
+  const margins = input.costs?.length
+    ? marginByTransaction(
+        accountLines(saleLines((input.charges || []) as SaleLedgerRow[], input.booking.id), input.costs).lines
+      )
+    : null;
+  const posted = mb3mDossierLines(input.charges || [], input.items, margins);
+  const lines = posted.filter((line) => !covered.has(line.transactionId));
   return {
     bookingId: input.booking.id,
     reference: input.booking.reference,
     title: (input.booking.title || "").trim().slice(0, 120) || input.booking.reference,
     currency: stayCurrency(input.booking.currency),
-    amount: dossierStayAmount({
-      items: input.items,
-      agencyCommission: input.booking.agency_commission === true,
-      status: input.booking.status,
-      travelerCount: input.travelers.length,
-    }),
+    amount: Math.round(lines.reduce((sum, line) => sum + line.amount, 0) * 100) / 100,
     dateStart: facts.start,
     dateEnd: facts.end,
     destination: facts.placeLine.trim().slice(0, 120) || null,
@@ -307,7 +370,8 @@ export function buildMb3mInvoiceContext(input: {
     travelers: namedTravelers,
     visibleToClient: input.booking.visible_to_client === true,
     configured: mb3mConfigured(),
-    activityId: mb3mActivityId(),
+    lines,
+    hadExpenses: posted.length > 0,
   };
 }
 
@@ -366,30 +430,110 @@ async function attachPdf(
 }
 
 export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps): Promise<Mb3mInvoiceResult> {
+  const signature = mb3mLineSignature(ctx.lines);
   const { piece, created } = await deps.claim(ctx.bookingId, ctx.amount);
-  if (piece.pieceNumber) {
-    const documentId = await attachPdf(ctx, deps, piece, piece.pieceNumber);
-    return {
-      number: piece.pieceNumber,
-      documentId,
-      created: false,
-      visibleToClient: ctx.visibleToClient,
-    };
-  }
-  if (!created) {
-    const age = deps.now() - Date.parse(piece.updatedAt);
-    if (!Number.isFinite(age) || age < STALE_MS) {
+  if (!ctx.lines.length) {
+    if (piece.pieceNumber && !piece.printedAt) {
+      const state = await deps.findPiece(piece.pieceNumber);
+      if (state === "open" && piece.folderId) await deps.cancelInvoice(piece.folderId, piece.pieceNumber);
+      if (state !== "printed") await deps.remove(piece.id);
+    } else if (created) {
+      await deps.remove(piece.id);
+    } else if (recent(deps, piece)) {
       throw new Mb3mError("Une facture MB3M est déjà en cours pour ce séjour.", 0);
     }
+    throw new Mb3mError(mb3mInvoiceBlocker(ctx) || "Aucune dépense de ce séjour n’est au grand livre.", 0);
+  }
+  if (piece.pieceNumber) {
+    const state = await deps.findPiece(piece.pieceNumber);
+    if (state === "printed") {
+      let documentId = piece.documentId;
+      if (!piece.printedAt) {
+        documentId = await attachPdf(ctx, deps, piece, piece.pieceNumber);
+        await deps.save(piece.id, { printedAt: new Date().toISOString(), documentId });
+      }
+      const covered = new Set(piece.transactionIds);
+      const fresh = ctx.lines.filter((line) => !covered.has(line.transactionId));
+      if (!fresh.length) {
+        return {
+          number: piece.pieceNumber,
+          documentId,
+          created: false,
+          replaced: false,
+          printed: true,
+          visibleToClient: ctx.visibleToClient,
+        };
+      }
+      return runMb3mInvoice(
+        { ...ctx, lines: fresh, amount: Math.round(fresh.reduce((sum, line) => sum + line.amount, 0) * 100) / 100, hadExpenses: true },
+        deps
+      );
+    }
+    if (state === "open" && piece.signature === signature) {
+      return {
+        number: piece.pieceNumber,
+        documentId: null,
+        created: false,
+        replaced: false,
+        printed: false,
+        visibleToClient: ctx.visibleToClient,
+      };
+    }
+    if (state === "open" && piece.folderId) await deps.cancelInvoice(piece.folderId, piece.pieceNumber);
+  } else if (!created && recent(deps, piece)) {
+    throw new Mb3mError("Une facture MB3M est déjà en cours pour ce séjour.", 0);
   }
   const blocker = mb3mInvoiceBlocker(ctx);
-  if (blocker) {
+  if (blocker && !piece.customerUid) {
     if (created) await deps.remove(piece.id);
     throw new Mb3mError(blocker, 0);
   }
-  const activityId = ctx.activityId;
-  if (!activityId) throw new Mb3mError("L’activité MB3M n’est pas configurée.", 0);
+  if (blocker && !piece.pieceNumber) {
+    if (created) await deps.remove(piece.id);
+    throw new Mb3mError(blocker, 0);
+  }
 
+  const savedPiece = await ensureFolder(ctx, deps, piece);
+  const replaced = Boolean(piece.pieceNumber);
+  const invoice = await deps.addInvoice({
+    folderId: savedPiece.folderId || "",
+    customerUid: savedPiece.customerUid || "",
+    title: ctx.title,
+    refCommand: ctx.reference,
+    dateStart: ctx.dateStart || undefined,
+    dateEnd: ctx.dateEnd || undefined,
+    destination: ctx.destination || undefined,
+    destinationIso: ctx.destinationIso || undefined,
+    lines: ctx.lines.map(mb3mInvoiceLine),
+    travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
+  });
+  await deps.save(savedPiece.id, {
+    pieceNumber: invoice.number,
+    pieceUid: invoice.uid || null,
+    amount: ctx.amount,
+    signature,
+    transactionIds: ctx.lines.map((line) => line.transactionId),
+    lines: ctx.lines.map(mb3mInvoiceLine),
+    customerUid: savedPiece.customerUid,
+    folderId: savedPiece.folderId,
+    folderUid: savedPiece.folderUid,
+  });
+  return {
+    number: invoice.number,
+    documentId: null,
+    created: !replaced,
+    replaced,
+    printed: false,
+    visibleToClient: ctx.visibleToClient,
+  };
+}
+
+function recent(deps: Mb3mInvoiceDeps, piece: Mb3mStoredPiece) {
+  const age = deps.now() - Date.parse(piece.updatedAt);
+  return !Number.isFinite(age) || age < STALE_MS;
+}
+
+async function ensureFolder(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps, piece: Mb3mStoredPiece) {
   let customerUid = piece.customerUid;
   if (!customerUid) {
     const saved =
@@ -413,7 +557,6 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     customerUid = saved.uid;
     await deps.save(piece.id, { customerUid });
   }
-
   let folderId = piece.folderId;
   let folderUid = piece.folderUid;
   if (!folderId) {
@@ -431,35 +574,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     folderUid = folder.uid || null;
     await deps.save(piece.id, { folderId, folderUid });
   }
-
-  const invoice = await deps.addInvoice({
-    folderId,
-    customerUid,
-    title: ctx.title,
-    refCommand: ctx.reference,
-    dateStart: ctx.dateStart || undefined,
-    dateEnd: ctx.dateEnd || undefined,
-    destination: ctx.destination || undefined,
-    destinationIso: ctx.destinationIso || undefined,
-    lines: [
-      {
-        label: ctx.title,
-        quantity: 1,
-        netPriceUnit: ctx.amount,
-        netPriceTotal: ctx.amount,
-        activityId,
-        type: "Standard",
-      },
-    ],
-    travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
-  });
-  await deps.save(piece.id, {
-    pieceNumber: invoice.number,
-    pieceUid: invoice.uid || null,
-    amount: ctx.amount,
-  });
-  const documentId = await attachPdf(ctx, deps, { ...piece, pieceNumber: invoice.number, documentId: null }, invoice.number);
-  return { number: invoice.number, documentId, created: true, visibleToClient: ctx.visibleToClient };
+  return { ...piece, customerUid, folderId, folderUid };
 }
 
 function dbFail(error: { code?: string; message?: string }, fallback: string): never {
@@ -479,6 +594,45 @@ function mapPiece(row: Record<string, unknown>): Mb3mStoredPiece {
     amount: row.amount == null ? null : Number(row.amount),
     documentId: row.document_id ? String(row.document_id) : null,
     updatedAt: String(row.updated_at || ""),
+    printedAt: row.printed_at ? String(row.printed_at) : null,
+    signature: row.line_signature ? String(row.line_signature) : null,
+    transactionIds: Array.isArray(row.transaction_ids) ? row.transaction_ids.map(String) : [],
+    lines: Array.isArray(row.lines) ? (row.lines as Mb3mLine[]) : [],
+  };
+}
+
+const SALE_SELECT = "id, direction, status, currency, amount, label, external_id, booking_id, kind";
+
+/** Ventes postées du dossier, coûts rattachés, pièces imprimées encore valables. */
+async function dossierInvoiceInputs(supabase: SupabaseClient, bookingId: string) {
+  const [chargesResult, piecesResult, costsResult] = await Promise.all([
+    supabase
+      .from("crm_transactions")
+      .select(SALE_SELECT)
+      .eq("booking_id", bookingId)
+      .eq("status", "posted")
+      .eq("direction", "debit"),
+    supabase
+      .from("crm_mb3m_pieces")
+      .select("*")
+      .eq("booking_id", bookingId)
+      .eq("kind", "invoice")
+      .eq("realm", mb3mRealm())
+      .not("printed_at", "is", null)
+      .is("credited_at", null),
+    supabase
+      .from("crm_trip_costs")
+      .select("id, booking_id, booking_item_id, source, source_id, amount_eur, original_amount, original_currency, supplier, occurred_on")
+      .eq("booking_id", bookingId),
+  ]);
+  if (chargesResult.error) dbFail(chargesResult.error, "La facture n’a pas pu être préparée.");
+  if (costsResult.error) dbFail(costsResult.error, "La facture n’a pas pu être préparée.");
+  const printed = ((piecesResult.data || []) as Record<string, unknown>[]).map(mapPiece);
+  return {
+    charges: (chargesResult.data || []) as Mb3mLedgerRow[],
+    printed,
+    coveredIds: printed.flatMap((piece) => piece.transactionIds),
+    costs: ((costsResult.data || []) as TripCostRow[]).map(mapTripCost),
   };
 }
 
@@ -502,14 +656,90 @@ export async function emitMb3mInvoice(supabase: SupabaseClient, bookingId: strin
   if (travelers.error) dbFail(travelers.error, "La facture n’a pas pu être préparée.");
   if (payerResult.error) dbFail(payerResult.error, "La facture n’a pas pu être préparée.");
   if (companiesResult.error) dbFail(companiesResult.error, "La facture n’a pas pu être préparée.");
+  const inputs = await dossierInvoiceInputs(supabase, bookingId);
   const ctx = buildMb3mInvoiceContext({
     booking: stay,
     items: (items.data || []) as StayItem[],
     travelers: (travelers.data || []) as { first_name: string | null; last_name: string | null }[],
     payer: (payerResult.data as PayerCustomer | null) || null,
     companies: (companiesResult.data || []) as CompanyRow[],
+    charges: inputs.charges,
+    coveredIds: inputs.coveredIds,
+    costs: inputs.costs,
   });
   return runMb3mInvoice(ctx, supabaseInvoiceDeps(supabase));
+}
+
+/** Pièces imprimées dont la marge a changé depuis l’impression. */
+export function mb3mStalePieces(printed: Mb3mStoredPiece[], lines: Mb3mAccountLine[]) {
+  return printed.filter((piece) => mb3mPieceStale(piece, lines));
+}
+
+/**
+ * Avoir et nouvelle facture. L’avoir reprend la facture imprimée ligne à ligne ; la facture suivante
+ * repart avec la même vente et la marge corrigée. Les deux se valident dans MB3M, à l’impression.
+ */
+export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: string) {
+  const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", bookingId).maybeSingle();
+  if (!booking) throw new Mb3mError("Réservation introuvable.", 0);
+  const stay = booking as CrmBooking;
+  const [{ data: items }, inputs] = await Promise.all([
+    supabase.from("crm_booking_items").select("*").eq("booking_id", bookingId),
+    dossierInvoiceInputs(supabase, bookingId),
+  ]);
+  const ctx = buildMb3mInvoiceContext({
+    booking: stay,
+    items: (items || []) as StayItem[],
+    travelers: [],
+    payer: null,
+    companies: [],
+    charges: inputs.charges,
+    costs: inputs.costs,
+  });
+  const stale = mb3mStalePieces(inputs.printed, ctx.lines);
+  if (!stale.length) throw new Mb3mError("Aucune facture imprimée à corriger.", 0);
+  const creditNotes: string[] = [];
+  for (const piece of stale) {
+    if (!piece.folderId || !piece.customerUid || !piece.pieceNumber) continue;
+    const lines = piece.lines.length
+      ? piece.lines
+      : ctx.lines.filter((line) => piece.transactionIds.includes(line.transactionId)).map((line) => mb3mInvoiceLine({ ...line, margin: null, note: null }));
+    const credit = await mb3mAddCreditNote({
+      folderId: piece.folderId,
+      customerUid: piece.customerUid,
+      folderTitle: ctx.title,
+      folderType: "Prestation",
+      dateStart: ctx.dateStart || new Date().toISOString().slice(0, 10),
+      dateEnd: ctx.dateEnd || ctx.dateStart || new Date().toISOString().slice(0, 10),
+      title: `Avoir sur facture n° ${piece.pieceNumber}`,
+      refCommand: ctx.reference,
+      destinationIso: ctx.destinationIso || undefined,
+      lines,
+    });
+    const now = new Date().toISOString();
+    const inserted = await supabase.from("crm_mb3m_pieces").insert({
+      booking_id: bookingId,
+      kind: "credit_note",
+      realm: mb3mRealm(),
+      customer_uid: piece.customerUid,
+      folder_id: piece.folderId,
+      folder_uid: piece.folderUid,
+      piece_number: credit.number,
+      amount: piece.amount,
+      currency: "EUR",
+      line_signature: piece.signature,
+      transaction_ids: piece.transactionIds,
+      lines,
+      replaces_piece_id: piece.id,
+    });
+    if (inserted.error) dbFail(inserted.error, "L’avoir n’a pas pu être enregistré.");
+    const credited = await supabase.from("crm_mb3m_pieces").update({ credited_at: now, updated_at: now }).eq("id", piece.id);
+    if (credited.error) dbFail(credited.error, "L’avoir n’a pas pu être enregistré.");
+    creditNotes.push(credit.number);
+  }
+  if (!creditNotes.length) throw new Mb3mError("La facture imprimée n’a pas de dossier MB3M connu.", 0);
+  const invoice = await emitMb3mInvoice(supabase, bookingId);
+  return { creditNote: creditNotes.join(", "), ...invoice };
 }
 
 function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
@@ -518,7 +748,7 @@ function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
     claim: async (bookingId, amount) => {
       const inserted = await supabase
         .from("crm_mb3m_pieces")
-        .insert({ booking_id: bookingId, kind: "invoice", amount, currency: "EUR" })
+        .insert({ booking_id: bookingId, kind: "invoice", amount, currency: "EUR", realm: mb3mRealm() })
         .select("*")
         .maybeSingle();
       if (!inserted.error && inserted.data) {
@@ -532,6 +762,8 @@ function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
         .select("*")
         .eq("booking_id", bookingId)
         .eq("kind", "invoice")
+        .eq("realm", mb3mRealm())
+        .is("printed_at", null)
         .maybeSingle();
       if (existing.error || !existing.data) {
         dbFail(existing.error || { message: "select" }, "La facture n’a pas pu être enregistrée.");
@@ -547,6 +779,10 @@ function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
       if ("pieceUid" in patch) row.piece_uid = patch.pieceUid;
       if ("amount" in patch) row.amount = patch.amount;
       if ("documentId" in patch) row.document_id = patch.documentId;
+      if ("printedAt" in patch) row.printed_at = patch.printedAt;
+      if ("signature" in patch) row.line_signature = patch.signature;
+      if ("transactionIds" in patch) row.transaction_ids = patch.transactionIds;
+      if ("lines" in patch) row.lines = patch.lines;
       const { error } = await supabase.from("crm_mb3m_pieces").update(row).eq("id", id);
       if (error) dbFail(error, "La facture n’a pas pu être enregistrée.");
     },
@@ -558,6 +794,8 @@ function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
     saveCompany: mb3mSaveCompany,
     saveFolder: mb3mSaveFolder,
     addInvoice: mb3mAddInvoice,
+    findPiece: mb3mFindPiece,
+    cancelInvoice: mb3mCancelInvoice,
     renderPiece: async (number) => mb3mRenderPiece({ number }),
     putPdf: async (input) =>
       storeMb3mPdf({
@@ -599,4 +837,50 @@ function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
         },
       }),
   };
+}
+
+export async function mb3mPieceLinksFor(transactionIds: string[], options?: { preview?: boolean }) {
+  const links = new Map<string, { text: string; href: string | null }>();
+  const ids = [...new Set(transactionIds.filter(Boolean))];
+  if (!ids.length) return links;
+  const admin = createServiceClient();
+  let query = admin
+    .from("crm_mb3m_pieces")
+    .select("booking_id, piece_number, document_id, transaction_ids, printed_at")
+    .eq("realm", mb3mRealm())
+    .overlaps("transaction_ids", ids);
+  if (!options?.preview) query = query.not("printed_at", "is", null);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  const pieces = ((data || []) as {
+    booking_id: string | null;
+    piece_number: string | null;
+    document_id: string | null;
+    transaction_ids: string[] | null;
+    printed_at: string | null;
+  }[]).sort((left, right) => Number(Boolean(left.printed_at)) - Number(Boolean(right.printed_at)));
+  const documentIds = [...new Set(pieces.map((row) => row.document_id).filter(Boolean))] as string[];
+  const paths = new Map<string, string>();
+  if (documentIds.length) {
+    const { data: documents, error: documentError } = await admin
+      .from("crm_booking_documents")
+      .select("id, storage_path")
+      .in("id", documentIds);
+    if (documentError) throw new Error(documentError.message);
+    for (const document of (documents || []) as { id: string; storage_path: string | null }[]) {
+      if (document.storage_path) paths.set(document.id, document.storage_path);
+    }
+  }
+  for (const piece of pieces) {
+    const number = (piece.piece_number || "").trim();
+    if (!number) continue;
+    const issued = Boolean(piece.printed_at);
+    const path = piece.document_id ? paths.get(piece.document_id) : "";
+    const href = issued ? (path ? mb3mFactureHref(path, number) : null) : piece.booking_id ? mb3mProformaHref(piece.booking_id) : null;
+    const text = issued ? mb3mFactureMention(number, true).text : `Facture pro forma n° ${number}`;
+    for (const id of piece.transaction_ids || []) {
+      if (ids.includes(id)) links.set(id, { text, href });
+    }
+  }
+  return links;
 }

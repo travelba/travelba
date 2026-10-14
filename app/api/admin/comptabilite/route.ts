@@ -1,0 +1,54 @@
+import { NextResponse } from "next/server";
+import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { attachOutgoing, detachTripCost, setOutgoingOutsideTrip, TripCostError } from "@/lib/crm/trip-costs-db";
+import { revalidateTripAccounting } from "@/lib/crm/trip-costs-paths";
+import type { TripCostSource } from "@/lib/crm/trip-costs";
+
+function sourceOf(value: unknown): TripCostSource | null {
+  return value === "pliant" || value === "revolut" ? value : null;
+}
+
+/**
+ * Comptabilité du voyage. Tout part d’un clic :
+ *  - `attach`  : rattache une sortie à une ligne du voyage (ou une nouvelle dépense) ;
+ *  - `outside` : hors voyage (frais d’agence) ; `restore` la remet dans la file ;
+ *  - `detach`  : retire un coût, la sortie revient dans la file.
+ */
+export async function POST(request: Request) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body) return jsonError("Requête vide.");
+  try {
+    if (body.action === "detach") {
+      const cost = await detachTripCost(String(body.cost_id || ""));
+      revalidateTripAccounting(cost.bookingId);
+      return NextResponse.json({ ok: true, cost });
+    }
+    const source = sourceOf(body.source);
+    const id = String(body.id || "");
+    if (!source || !id) return jsonError("Sortie inconnue.");
+    if (body.action === "outside" || body.action === "restore") {
+      await setOutgoingOutsideTrip(source, id, body.action === "outside");
+      revalidateTripAccounting(null);
+      return NextResponse.json({ ok: true });
+    }
+    const bookingId = String(body.booking_id || "");
+    if (!bookingId) return jsonError("Choisissez le voyage.");
+    const expense = body.new_expense as { title?: unknown; amount?: unknown } | null | undefined;
+    const cost = await attachOutgoing({
+      source,
+      sourceId: id,
+      bookingId,
+      itemId: body.item_id ? String(body.item_id) : null,
+      newExpense: expense ? { title: expense.title ? String(expense.title) : null, amount: Number(expense.amount) } : null,
+      eurAmount: body.eur_amount == null || body.eur_amount === "" ? null : Number(body.eur_amount),
+    });
+    revalidateTripAccounting(bookingId);
+    return NextResponse.json({ cost });
+  } catch (error) {
+    if (error instanceof TripCostError) return jsonError(error.message, error.status);
+    console.error("[comptabilite]", error instanceof Error ? error.message : error);
+    return jsonError("Opération impossible. Réessayez.", 400);
+  }
+}

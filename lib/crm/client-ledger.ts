@@ -23,6 +23,7 @@ import {
   type SpendingDesk,
 } from "@/lib/crm/spending-desk";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { mb3mPieceLinksFor } from "@/lib/crm/mb3m-invoice";
 import { fundingPockets, payingCompanyLabels, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
 import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
@@ -132,6 +133,7 @@ export function shapeClientLedger(input: {
   spendAccounts?: SpendingAccountInput[];
   /** Collaborateurs dont le carnet s’ouvre. Un autre admin reste fermé. */
   openCarnetOwnerIds?: string[];
+  mb3mByTransaction?: Map<string, { text: string; href: string | null }>;
 }): ClientLedgerView {
   const member = isCompanyMember({ company_role: input.companyRole ?? null });
   const scoped = filterClientLedgerRows(input.rows, {
@@ -182,6 +184,8 @@ export function shapeClientLedger(input: {
       carnetLabel: carnet.label,
       companyLabel: transactionCompanyLabel(input.billingCompanyCount || 0, companyName),
       bookingId: row.booking_id,
+      mb3mLabel: credit ? null : input.mb3mByTransaction?.get(row.id)?.text || null,
+      mb3mHref: credit ? null : input.mb3mByTransaction?.get(row.id)?.href || null,
     };
   });
 
@@ -401,6 +405,7 @@ export async function loadClientLedger(
 
   const spend = await loadSpendAccounts(supabase, customer, bookings, contextIds);
   bookings = spend.bookings;
+  const mb3mByTransaction = await mb3mLinksForLedger(customer.id, rows, audience);
 
   return shapeClientLedger({
     companyRole: customer.company_role,
@@ -417,7 +422,17 @@ export async function loadClientLedger(
     viewerId: customer.id,
     spendAccounts: spend.accounts,
     openCarnetOwnerIds: spend.openCarnetOwnerIds,
+    mb3mByTransaction,
   });
+}
+
+async function mb3mLinksForLedger(_viewerId: string, rows: CrmTransaction[], audience: ClientLedgerAudience) {
+  try {
+    return await mb3mPieceLinksFor(rows.map((row) => row.id), { preview: audience === "staff" });
+  } catch (error) {
+    console.error("mb3m", error instanceof Error ? error.message : "lecture");
+    return new Map<string, { text: string; href: string | null }>();
+  }
 }
 
 function roundLedger(amount: number) {

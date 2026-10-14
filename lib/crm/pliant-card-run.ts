@@ -281,19 +281,20 @@ export async function pliantSpendsForCards(
   }));
 }
 
-/** Relie chaque dépense déjà rapprochée à la réservation écrite au grand livre. */
+/** Relie chaque dépense déjà rattachée au voyage dont elle est un coût (`crm_trip_costs`). */
 export async function withPliantSpendBookings(admin: Admin, spends: PliantSpendLine[]) {
-  const ids = [
-    ...new Set(spends.map((row) => row.matchedTransactionId).filter((id): id is string => Boolean(id))),
-  ];
+  const ids = [...new Set(spends.filter((row) => row.matchStatus === "matched").map((row) => row.id))];
   if (!ids.length) return spends;
   const txRows: { id: string; booking_id: string | null }[] = [];
   for (let index = 0; index < ids.length; index += 100) {
     const { data } = await admin
-      .from("crm_transactions")
-      .select("id, booking_id")
-      .in("id", ids.slice(index, index + 100));
-    txRows.push(...((data || []) as { id: string; booking_id: string | null }[]));
+      .from("crm_trip_costs")
+      .select("source_id, booking_id")
+      .eq("source", "pliant")
+      .in("source_id", ids.slice(index, index + 100));
+    txRows.push(
+      ...((data || []) as { source_id: string; booking_id: string | null }[]).map((row) => ({ id: row.source_id, booking_id: row.booking_id }))
+    );
   }
   const bookingIds = [...new Set(txRows.map((row) => row.booking_id).filter((id): id is string => Boolean(id)))];
   const references = new Map<string, string | null>();
@@ -308,7 +309,7 @@ export async function withPliantSpendBookings(admin: Admin, spends: PliantSpendL
   }
   const byTx = new Map(txRows.map((row) => [row.id, row.booking_id]));
   return spends.map((spend) => {
-    const bookingId = spend.matchedTransactionId ? byTx.get(spend.matchedTransactionId) || null : null;
+    const bookingId = byTx.get(spend.id) || null;
     return {
       ...spend,
       matchedBookingId: bookingId,

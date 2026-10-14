@@ -1,6 +1,10 @@
 /** Client SOAP MB3M Partners (serveur). Les identifiants restent dans l’environnement. */
 
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
+
 export const MB3M_ORIGIN = "https://api.mb3m.com";
+
+export type Mb3mRealm = "test" | "production";
 
 export class Mb3mError extends Error {
   constructor(
@@ -59,22 +63,31 @@ export type Mb3mLine = {
   netPriceTotal: number;
   activityId?: number;
   type?: Mb3mLineType;
+  /** Marge unitaire : prix vendu − coûts rattachés. Peut être négative. */
+  marginUnit?: number | null;
+  /** Fournisseurs des coûts (pas de ProviderId : l’API ne crée pas de fournisseur). */
+  note?: string | null;
 };
 
 type FetchImpl = typeof fetch;
 
-/** Base partners partagée : ces identifiants ne doivent pas servir sur travelba.fr. */
+/** travelba.fr parle à la base de l’agence. Le local et les previews restent sur la base partners. */
+export function mb3mRealm(): Mb3mRealm {
+  return process.env.VERCEL_ENV === "production" ? "production" : "test";
+}
+
+/** Les identifiants @partner ne servent pas sur travelba.fr. */
 export function mb3mBlockedOnProduction() {
-  return process.env.VERCEL_ENV === "production";
+  return mb3mRealm() === "production";
 }
 
 function mb3mUser() {
-  if (mb3mBlockedOnProduction()) return "";
+  if (mb3mRealm() === "production") return productionOnlySecret(process.env.MB3M_PROD_API_USER);
   return (process.env.MB3M_API_USER || "").trim();
 }
 
 function mb3mPassword() {
-  if (mb3mBlockedOnProduction()) return "";
+  if (mb3mRealm() === "production") return productionOnlySecret(process.env.MB3M_PROD_API_PASSWORD);
   return (process.env.MB3M_API_PASSWORD || "").trim();
 }
 
@@ -82,10 +95,12 @@ export function mb3mConfigured() {
   return Boolean(mb3mUser() && mb3mPassword());
 }
 
-/** Activité d’une ligne standard. Absente en production Travelba, comme les identifiants de test. */
+/** Activité d’une ligne standard. Le 3 de la base partners ne vaut pas pour l’agence. */
 export function mb3mActivityId() {
-  if (mb3mBlockedOnProduction()) return null;
-  const raw = (process.env.MB3M_ACTIVITY_ID || "").trim();
+  const raw =
+    mb3mRealm() === "production"
+      ? productionOnlySecret(process.env.MB3M_PROD_ACTIVITY_ID)
+      : (process.env.MB3M_ACTIVITY_ID || "").trim();
   if (!/^[1-9]\d*$/.test(raw)) return null;
   const value = Number(raw);
   return Number.isSafeInteger(value) ? value : null;
@@ -167,8 +182,8 @@ export async function mb3mSoap(
   const password = mb3mPassword();
   if (!user || !password) {
     throw new Mb3mError(
-      mb3mBlockedOnProduction()
-        ? "Les identifiants de test MB3M ne sont pas utilisés en production."
+      mb3mRealm() === "production"
+        ? "L’accès MB3M de production n’est pas configuré."
         : "L’accès MB3M n’est pas configuré.",
       0
     );
@@ -280,7 +295,11 @@ function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine[]) {
         throw new Mb3mError("Activité MB3M invalide.", -1);
       }
       const activity = line.activityId == null ? "" : tag("ActivityId", line.activityId);
-      return `<${kind}>${activity}${tag("Label", line.label.trim())}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${tag("Quantity", quantity(line.quantity))}${tag("Type", type)}</${kind}>`;
+      const margin =
+        line.marginUnit == null || !Number.isFinite(line.marginUnit) ? "" : tag("MarginUnit", money(line.marginUnit));
+      const note = tag("Note", (line.note || "").trim().slice(0, 250));
+      // Ordre du schéma InvoiceLine : ActivityId, Label, MarginUnit, NetPriceTotal, NetPriceUnit, Note, Quantity, Type.
+      return `<${kind}>${activity}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${tag("Quantity", quantity(line.quantity))}${tag("Type", type)}</${kind}>`;
     })
     .join("");
 }
@@ -361,6 +380,32 @@ export async function mb3mRenderPiece(input: { number: string }, fetchImpl?: Fet
   const inner = `<RenderPieceRequest xmlns="http://schemas.mb3m.fr/Partners"><Format>Pdf</Format><Id><Number>${number}</Number></Id></RenderPieceRequest>`;
   const xml = await mb3mSoap("RenderService", "IRenderService", "Piece", inner, fetchImpl);
   return mb3mPdfBytes(xml);
+}
+
+/** Une pièce filtrée par numéro. DatePrint ou PrintedDate veut dire qu’elle est émise. */
+export function mb3mPieceState(xml: string): "printed" | "open" | "missing" {
+  if (mb3mXmlText(xml, "TotalCount") === "0") return "missing";
+  if (/<(?:DatePrint|PrintedDate)(?:\s[^>]*)?>\s*[^<\s][^<]*</.test(xml)) return "printed";
+  if (mb3mXmlText(xml, "Number")) return "open";
+  return "missing";
+}
+
+export async function mb3mFindPiece(number: string, fetchImpl?: FetchImpl) {
+  const pieceNumber = number.trim();
+  if (!/^[1-9]\d*$/.test(pieceNumber)) throw new Mb3mError("Numéro de facture MB3M invalide.", -1);
+  const inner = `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><IncludeInvoices>true</IncludeInvoices><Number>${pieceNumber}</Number><PageIndex>0</PageIndex><PageSize>5</PageSize></FolderFindPiecesQuery>`;
+  const xml = await mb3mSoap("FolderService", "IFolderService", "FindAllPieces", inner, fetchImpl);
+  const fault = mb3mXmlText(xml, "faultstring");
+  if (fault) throw new Mb3mError(fault, -1);
+  return mb3mPieceState(xml);
+}
+
+export async function mb3mCancelInvoice(folderId: string, number: string, fetchImpl?: FetchImpl) {
+  const pieceNumber = number.trim();
+  if (!/^[1-9]\d*$/.test(pieceNumber)) throw new Mb3mError("Numéro de facture MB3M invalide.", -1);
+  const inner = `<FolderCancelPieceRequest xmlns="http://schemas.mb3m.fr/Partners"><FolderId>${escapeMb3mXml(folderId.trim())}</FolderId><Number>${pieceNumber}</Number></FolderCancelPieceRequest>`;
+  const xml = await mb3mSoap("FolderService", "IFolderService", "CancelInvoice", inner, fetchImpl);
+  assertOperation(xml);
 }
 
 export async function mb3mAddCreditNote(

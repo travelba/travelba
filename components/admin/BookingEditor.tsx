@@ -53,6 +53,7 @@ import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { PliantBookingTab } from "@/components/admin/PliantBookingTab";
 import { PliantSettlement } from "@/components/admin/PliantSettlement";
+import { TripAccountingBlock, type TripAccountingView } from "@/components/admin/TripAccountingBlock";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import type { PliantCardRecap, PliantSettlementStay } from "@/lib/crm/pliant-booking";
 import { WhatsappThread, type WhatsappThreadMessage, type WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
@@ -211,7 +212,7 @@ function Mb3mInvoiceAction({
   onNote: (note: string | null) => void;
   onInvoiced: (number: string, note: string) => void;
 }) {
-  const reason = pieceNumber ? null : unsaved ? "Enregistrez le séjour avant de facturer." : blocker;
+  const reason = unsaved ? "Enregistrez le séjour avant de facturer." : blocker;
   async function facture() {
     onBusy(true);
     onNote(null);
@@ -221,17 +222,20 @@ function Mb3mInvoiceAction({
         error?: string;
         number?: string;
         created?: boolean;
-        visibleToClient?: boolean;
+        replaced?: boolean;
+        printed?: boolean;
       } | null;
       if (!res.ok || !json?.number) {
         onNote(json?.error || "La facture MB3M n’a pas abouti.");
         return;
       }
-      const message = json.created
-        ? json.visibleToClient
-          ? `Facture MB3M n° ${json.number} déposée dans les pièces. Le client la voit avec le séjour.`
-          : `Facture MB3M n° ${json.number} déposée dans les pièces. Le client la verra quand le séjour sera montré.`
-        : `Facture MB3M n° ${json.number}. Le PDF est à jour.`;
+      const message = json.printed
+        ? `Facture MB3M n° ${json.number} validée. Le PDF est dans les pièces.`
+        : json.replaced
+          ? `Facture pro forma n° ${json.number} mise à jour. Elle se valide dans MB3M.`
+          : json.created
+            ? `Facture pro forma n° ${json.number} préparée. Elle se valide dans MB3M.`
+            : `Facture pro forma n° ${json.number}. Elle se valide dans MB3M.`;
       onInvoiced(json.number, message);
     } catch {
       onNote("La facture MB3M n’a pas abouti.");
@@ -241,7 +245,10 @@ function Mb3mInvoiceAction({
   }
   return (
     <div className="space-y-2 pt-2">
-      <p className="text-sm text-muted">La facture MB3M rejoint les pièces du séjour. Le grand livre ne change pas.</p>
+      <p className="text-sm text-muted">
+        Prépare une facture pro forma dans MB3M, une ligne par dépense du séjour. Le dossier l’ouvre ici, sans
+        l’imprimer. Elle se valide en l’imprimant dans MB3M. Le grand livre ne change pas.
+      </p>
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -249,10 +256,19 @@ function Mb3mInvoiceAction({
           onClick={() => void facture()}
           className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50"
         >
-          {invoicing ? "Facturation…" : "Facturer dans MB3M"}
+          {invoicing ? "Préparation…" : "Préparer la facture"}
         </button>
-        {pieceNumber ? <p className="text-sm text-[var(--admin-navy)]">Facture n° {pieceNumber}.</p> : null}
-        {!pieceNumber && reason ? <p className="text-sm text-muted">{reason}</p> : null}
+        {pieceNumber ? (
+          <a
+            href={`/api/admin/bookings/${bookingId}/mb3m`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-semibold text-[var(--admin-navy)] underline underline-offset-2"
+          >
+            Voir la facture pro forma
+          </a>
+        ) : null}
+        {reason ? <p className="text-sm text-muted">{reason}</p> : null}
       </div>
       {note ? <p className="text-sm text-[var(--admin-navy)]">{note}</p> : null}
     </div>
@@ -304,6 +320,7 @@ export function BookingEditor({
   customerLogins = [],
   customerActivity = [],
   mb3m,
+  accounting = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -378,6 +395,8 @@ export function BookingEditor({
   customerLogins?: CrmCustomerLogin[];
   customerActivity?: CrmCustomerActivity[];
   mb3m: { blocker: string | null; piece: { number: string } | null };
+  /** Comptabilité du voyage : ventes, coûts rattachés, marge, sorties proposées. */
+  accounting?: TripAccountingView | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -1940,6 +1959,28 @@ export function BookingEditor({
         cards={pliantRecap}
         stays={settlementStays}
       />
+
+      {accounting ? (
+        <TripAccountingBlock
+          bookingId={booking.id}
+          booking={{
+            id: booking.id,
+            reference: booking.reference,
+            title: booking.title || booking.destination || "",
+            items: pricedItems
+              .filter((item) => isActiveItem(item))
+              .map((item) => ({
+                id: item.id,
+                label: item.kind === "hotel" ? hotelDisplayName(item) : item.title,
+                kind: item.kind,
+                amount: item.amount == null ? null : Number(item.amount),
+              })),
+          }}
+          view={accounting}
+          busy={busy !== "idle"}
+          onBusy={(active) => setBusy(active ? "invoice" : "idle")}
+        />
+      ) : null}
 
       <div className="order-3">
       <BookingExpensesPanel

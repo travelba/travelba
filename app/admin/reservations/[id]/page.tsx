@@ -15,6 +15,12 @@ import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { markEstaNoticesSeen, syncEstaForBookingId } from "@/lib/crm/esta-run";
 import { markUkEtaNoticesSeen, syncUkEtaForBookingId } from "@/lib/crm/uk-eta-run";
 import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
+import {
+  buildTripAccountingView,
+  loadDossierAccountingInputs,
+  type DossierAccountingInputs,
+} from "@/lib/crm/trip-accounting-view";
+import type { TripAccountingView } from "@/components/admin/TripAccountingBlock";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
@@ -419,27 +425,27 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     billing_city?: string | null;
     billing_country?: string | null;
   }[];
+  const mb3mAdmin = createServiceClient();
+  let accountingInputs: DossierAccountingInputs = { charges: [], pieces: [], costs: [], coveredIds: [], openNumber: null };
+  let accounting: TripAccountingView | null = null;
+  try {
+    accountingInputs = await loadDossierAccountingInputs(mb3mAdmin, id);
+    accounting = await buildTripAccountingView(mb3mAdmin, b, bookingItems, accountingInputs);
+  } catch (error) {
+    console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
+    accounting = null;
+  }
+  const mb3mPiece = accountingInputs.openNumber ? { number: accountingInputs.openNumber } : null;
   const mb3mContext = buildMb3mInvoiceContext({
     booking: b,
     items: bookingItems,
     travelers: bookingTravelers,
     payer: billingCustomer || customer,
     companies: billingCompanyRows,
+    charges: accountingInputs.charges,
+    coveredIds: accountingInputs.coveredIds,
+    costs: accountingInputs.costs,
   });
-  let mb3mPiece: { number: string } | null = null;
-  try {
-    const mb3mAdmin = createServiceClient();
-    const { data: mb3mRow, error: mb3mError } = await mb3mAdmin
-      .from("crm_mb3m_pieces")
-      .select("piece_number")
-      .eq("booking_id", id)
-      .eq("kind", "invoice")
-      .maybeSingle();
-    const number = !mb3mError && mb3mRow?.piece_number ? String(mb3mRow.piece_number).trim() : "";
-    if (number) mb3mPiece = { number };
-  } catch {
-    mb3mPiece = null;
-  }
 
   return (
     <BookingEditor
@@ -514,6 +520,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           ficheBillingCompanies={ficheBillingCompanies}
           companyAdmins={companyAdmins}
           mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece }}
+          accounting={accounting}
         />
   );
 }
