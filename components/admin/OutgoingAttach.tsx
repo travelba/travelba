@@ -172,6 +172,9 @@ export function OutgoingAttach({
                   </option>
                 ))}
               </select>
+              {query.trim() && !options.length ? (
+                <p className="text-xs text-muted">Aucun voyage pour « {query.trim()} ». Essayez la référence (0034), la destination ou le nom du client.</p>
+              ) : null}
             </>
           ) : null}
           <select

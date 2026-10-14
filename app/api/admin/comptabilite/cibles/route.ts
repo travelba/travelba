@@ -15,7 +15,7 @@ function escapeLike(value: string) {
   return value.replace(/[%_,().]/g, " ").trim();
 }
 
-/** Voyages où rattacher une sortie : recherche par référence, titre, destination ou nom du client. */
+/** Voyages où rattacher une sortie : recherche par référence, titre, destination, prénom, nom ou société du client. */
 export async function GET(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
@@ -24,13 +24,19 @@ export async function GET(request: Request) {
   const only = url.searchParams.get("booking") || "";
   const admin = createServiceClient();
   const select = "id, reference, title, destination, status, customer_id";
-  let query = admin.from("crm_bookings").select(select).neq("status", "cancelled").order("created_at", { ascending: false }).limit(15);
+  // Tous les voyages non annulés, passés compris : une dépense se rattache souvent après le retour.
+  let query = admin
+    .from("crm_bookings")
+    .select(select)
+    .neq("status", "cancelled")
+    .order("start_date", { ascending: false, nullsFirst: false })
+    .limit(q ? 30 : 80);
   if (only) query = admin.from("crm_bookings").select(select).eq("id", only).limit(1);
   else if (q) {
     const { data: people } = await admin
       .from("crm_customers")
       .select("id")
-      .or(`last_name.ilike.%${q}%,company_name.ilike.%${q}%`)
+      .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,company_name.ilike.%${q}%`)
       .limit(30);
     const ids = ((people || []) as { id: string }[]).map((row) => row.id);
     const parts = [`reference.ilike.%${q}%`, `title.ilike.%${q}%`, `destination.ilike.%${q}%`];
