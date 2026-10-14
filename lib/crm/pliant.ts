@@ -185,7 +185,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
   const resolved = await resolvePliantIssue({
     organizationId: raw.organizationId || process.env.PLIANT_ORGANIZATION_ID || "",
     cardholderId: cardholderId || process.env.PLIANT_CARDHOLDER_ID || "",
-    cardConfig: raw.cardConfig || "PLIANT_VIRTUAL_TRAVEL",
+    cardConfig: raw.cardConfig || "PLIANT_VIRTUAL",
   });
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${resolved.cardholderId}`, {

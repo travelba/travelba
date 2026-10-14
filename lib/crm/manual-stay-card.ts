@@ -85,7 +85,7 @@ export function manualStayCardBody(input: {
   const perTransaction = input.transactionLimitCents ?? input.limitCents;
   return {
     organizationId: input.organizationId,
-    cardConfig: "PLIANT_VIRTUAL_TRAVEL" as const,
+    cardConfig: "PLIANT_VIRTUAL" as const,
     label: pliantDesignation(input.designation) || name.label,
     customFirstName: name.customFirstName,
     customLastName: name.customLastName,

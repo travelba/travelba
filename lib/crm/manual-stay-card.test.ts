@@ -28,7 +28,7 @@ test("carte manuelle : plafond reçu, transactions illimitées, aucun blocage", 
   assert.equal(body.limitRenewFrequency, "TOTAL");
   assert.equal(body.maxTransactionCount, MANUAL_CARD_TX_MAX);
   assert.equal(body.validTimezone, "Europe/Paris");
-  assert.equal(body.cardConfig, "PLIANT_VIRTUAL_TRAVEL");
+  assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
   assert.equal(body.label.length <= 40, true);
   assert.equal(Object.hasOwn(body, "cardControls"), false);
 });

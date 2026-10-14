@@ -45,7 +45,7 @@ Le client voit ces cinq étapes sur son séjour : Préparation, Remplissage, Val
 
 30 % au-dessus de la dépense officielle, au cours BCE. 25 ILS, 40,27 USD, 20 GBP. Une carte par dossier, au nom du titulaire. Pas de PAN stocké. La carte du compte (fiche client, sans dossier) prend le plafond, le montant par transaction et le nombre saisis — pas le prix de l’hôtel.
 
-Une carte générée part sans blocage. L’émission envoie des contrôles vides (`emptyPliantCardControls`) puis les confirme : commerçants, catégories, dates, heures, lieux, pays, devises, modes d’acceptation. Le produit voyage ne garde pas sa liste de commerçants.
+Une carte générée part sans blocage. Le produit est `PLIANT_VIRTUAL`. Commercial Choice Travel (`PLIANT_VIRTUAL_TRAVEL_CC`) refuse des identifiants commerçant, dont DAYUSE. L’émission envoie des contrôles vides (`emptyPliantCardControls`) puis les confirme : commerçants, catégories, dates, heures, lieux, pays, devises, modes d’acceptation.
 
 ## Jeton Pliant
 

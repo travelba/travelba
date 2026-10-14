@@ -198,7 +198,7 @@ export async function issueCustomerPliantCard(
   const money = { value: input.limitCents, currency: input.currency };
   const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
-    cardConfig: "PLIANT_VIRTUAL_TRAVEL",
+    cardConfig: "PLIANT_VIRTUAL",
     label: designation || name.label,
     customFirstName: name.customFirstName,
     customLastName: name.customLastName,

@@ -98,7 +98,7 @@ export function etaIlPliantCard(input: {
     portal: ETA_IL_PORTAL,
     body: {
       organizationId: input.organizationId,
-      cardConfig: input.cardConfig || "PLIANT_VIRTUAL_TRAVEL",
+      cardConfig: input.cardConfig || "PLIANT_VIRTUAL",
       label: name.label,
       customFirstName: name.customFirstName,
       customLastName: name.customLastName,
@@ -138,14 +138,15 @@ export function pickListedId(preferred: string, ids: string[]) {
   return null;
 }
 
+/** Carte virtuelle sans la liste de commerçants du produit voyage. */
 export function pickTravelConfig(
   preferred: string,
   configs: { cardConfig?: string | null; canBeIssued?: boolean | null; type?: string | null }[]
 ) {
-  const issuable = configs.filter((row) => row.canBeIssued !== false && row.cardConfig);
-  if (issuable.some((row) => row.cardConfig === preferred)) return preferred;
-  const travel = issuable.find(
-    (row) => /TRAVEL/i.test(row.cardConfig || "") && (row.type === "VIRTUAL" || /VIRTUAL/i.test(row.cardConfig || ""))
+  const open = configs.filter(
+    (row) => row.canBeIssued !== false && row.cardConfig && !/TRAVEL/i.test(row.cardConfig)
   );
-  return travel?.cardConfig || issuable.find((row) => /TRAVEL/i.test(row.cardConfig || ""))?.cardConfig || null;
+  const virtual = open.filter((row) => row.type === "VIRTUAL" || /VIRTUAL/i.test(row.cardConfig || ""));
+  if (preferred && virtual.some((row) => row.cardConfig === preferred)) return preferred;
+  return virtual.find((row) => row.cardConfig === "PLIANT_VIRTUAL")?.cardConfig || virtual[0]?.cardConfig || null;
 }
