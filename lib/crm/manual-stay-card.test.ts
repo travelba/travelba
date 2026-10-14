@@ -4,7 +4,6 @@ import {
   MANUAL_CARD_TX_MAX,
   bookingCardValidity,
   cardTransactionRules,
-  manualCardControls,
   manualStayCardBody,
   manualStayCardDraft,
   sameCardNameCount,
@@ -12,7 +11,7 @@ import {
   stayCardIsManual,
 } from "./manual-stay-card";
 
-test("carte manuelle : plafond reçu, transactions illimitées, transfert d’argent bloqué", () => {
+test("carte manuelle : plafond reçu, transactions illimitées, aucun blocage", () => {
   const body = manualStayCardBody({
     firstName: "Camille",
     lastName: "Martin",
@@ -29,12 +28,9 @@ test("carte manuelle : plafond reçu, transactions illimitées, transfert d’ar
   assert.equal(body.limitRenewFrequency, "TOTAL");
   assert.equal(body.maxTransactionCount, MANUAL_CARD_TX_MAX);
   assert.equal(body.validTimezone, "Europe/Paris");
-  assert.equal(body.cardConfig, "PLIANT_VIRTUAL_TRAVEL");
+  assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
   assert.equal(body.label.length <= 40, true);
-  assert.deepEqual(body.cardControls, manualCardControls());
-  assert.deepEqual(body.cardControls.categories.values, ["4829", "6012", "6051", "6536", "6537", "6538", "6540"]);
-  assert.equal(Object.hasOwn(body.cardControls, "countries"), false);
-  assert.equal(Object.hasOwn(body.cardControls, "currencies"), false);
+  assert.equal(Object.hasOwn(body, "cardControls"), false);
 });
 
 test("carte manuelle : nombre et montant de transaction choisis", () => {

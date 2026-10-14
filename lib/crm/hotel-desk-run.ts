@@ -1009,7 +1009,7 @@ async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: Cr
     const money = { value: CHECKIN_CARD_CENTS, currency: CHECKIN_CARD_CURRENCY };
     const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
-      cardConfig: "PLIANT_VIRTUAL_TRAVEL",
+      cardConfig: "PLIANT_VIRTUAL",
       label: pliantDesignation(hotelDisplayName(item)) || name.label,
       customFirstName: name.customFirstName,
       customLastName: name.customLastName,

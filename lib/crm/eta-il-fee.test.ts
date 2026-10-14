@@ -156,10 +156,10 @@ test("un identifiant Pliant absent est remplacé seulement s’il n’y en a qu�
       { cardConfig: "PLIANT_VIRTUAL", type: "VIRTUAL", canBeIssued: true },
       { cardConfig: "PLIANT_VIRTUAL_TRAVEL", type: "VIRTUAL", canBeIssued: true },
     ]),
-    "PLIANT_VIRTUAL_TRAVEL"
+    "PLIANT_VIRTUAL"
   );
   assert.equal(
     pickTravelConfig("UNKNOWN", [{ cardConfig: "ORG_VIRTUAL_TRAVEL", type: "VIRTUAL", canBeIssued: true }]),
-    "ORG_VIRTUAL_TRAVEL"
+    null
   );
 });

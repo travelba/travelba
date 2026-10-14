@@ -64,19 +64,6 @@ function parseTransactionCount(value: string) {
   return count;
 }
 
-/** Transfert d’argent. Les retraits DAB (6010, 6011) restent ouverts. */
-const MONEY_TRANSFER_MCCS = ["4829", "6012", "6051", "6536", "6537", "6538", "6540"] as const;
-
-export function manualCardControls() {
-  return {
-    categories: {
-      type: "MCC" as const,
-      restriction: "BLOCKED" as const,
-      values: [...MONEY_TRANSFER_MCCS],
-    },
-  };
-}
-
 export function manualStayCardBody(input: {
   firstName: string;
   lastName: string;
@@ -98,7 +85,7 @@ export function manualStayCardBody(input: {
   const perTransaction = input.transactionLimitCents ?? input.limitCents;
   return {
     organizationId: input.organizationId,
-    cardConfig: "PLIANT_VIRTUAL_TRAVEL" as const,
+    cardConfig: "PLIANT_VIRTUAL" as const,
     label: pliantDesignation(input.designation) || name.label,
     customFirstName: name.customFirstName,
     customLastName: name.customLastName,
@@ -106,7 +93,6 @@ export function manualStayCardBody(input: {
     transactionLimit: { value: perTransaction, currency: "EUR" as const },
     limitRenewFrequency: "TOTAL" as const,
     maxTransactionCount: input.maxTransactionCount ?? MANUAL_CARD_TX_MAX,
-    cardControls: manualCardControls(),
     validFrom: input.validFrom,
     validTo: input.validTo,
     validTimezone: "Europe/Paris" as const,

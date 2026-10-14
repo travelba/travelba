@@ -119,7 +119,7 @@ function cardBody(input: {
     holder: `${name.customFirstName} ${name.customLastName}`.trim(),
     body: {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
-      cardConfig: "PLIANT_VIRTUAL_TRAVEL",
+      cardConfig: "PLIANT_VIRTUAL",
       label: pliantDesignation(input.designation) || name.label,
       customFirstName: name.customFirstName,
       customLastName: name.customLastName,

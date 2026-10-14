@@ -12,6 +12,7 @@ import {
   type PliantTokenStore,
 } from "./pliant-auth";
 import { pliantOtpToken, pliantPciWidgetUrl } from "./pliant-pci";
+import { emptyPliantCardControls, pliantIssuePayload } from "./pliant-controls";
 import {
   annotatePliantPayload,
   pliantAvailableLimit,
@@ -177,14 +178,14 @@ function rethrowTokenFailure(err: unknown) {
 }
 
 export async function issuePliantCard(cardholderId: string, body: unknown) {
-  const raw = (body && typeof body === "object" ? body : {}) as {
+  const raw = (body && typeof body === "object" ? body : {}) as Record<string, unknown> & {
     organizationId?: string;
     cardConfig?: string;
   };
   const resolved = await resolvePliantIssue({
     organizationId: raw.organizationId || process.env.PLIANT_ORGANIZATION_ID || "",
     cardholderId: cardholderId || process.env.PLIANT_CARDHOLDER_ID || "",
-    cardConfig: raw.cardConfig || "PLIANT_VIRTUAL_TRAVEL",
+    cardConfig: raw.cardConfig || "PLIANT_VIRTUAL",
   });
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${resolved.cardholderId}`, {
@@ -195,7 +196,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
       "content-type": "application/json",
       "Pliant-API-Version": "2.1.0",
     },
-    body: JSON.stringify({ ...raw, organizationId: resolved.organizationId, cardConfig: resolved.cardConfig }),
+    body: JSON.stringify(pliantIssuePayload(raw, resolved)),
   });
   const text = await res.text();
   if (!res.ok) {
@@ -203,7 +204,26 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
     throw new Error(pliantRefusal(res.status, text));
   }
   const json = JSON.parse(text) as { cardId?: string; id?: string; status?: string };
-  return { cardId: json.cardId || json.id || null, status: json.status || null };
+  const cardId = json.cardId || json.id || null;
+  if (cardId) await clearPliantCardControls(cardId, token);
+  return { cardId, status: json.status || null };
+}
+
+/** Retire commerçants, catégories, dates, lieux, pays, devises et modes d’acceptation. */
+async function clearPliantCardControls(cardId: string, token: string) {
+  const res = await fetch(`${endpoints().api}/cards/${encodeURIComponent(cardId)}/card-controls`, {
+    method: "PUT",
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "Pliant-API-Version": "2.1.0",
+    },
+    body: JSON.stringify(emptyPliantCardControls()),
+  });
+  if (res.ok || res.status === 202) return;
+  console.error("[pliant] contrôles", res.status);
+  throw new Error("Pliant n’a pas retiré les restrictions de la carte.");
 }
 
 async function resolvePliantIssue(preferred: { organizationId: string; cardholderId: string; cardConfig: string }) {
