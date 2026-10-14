@@ -125,6 +125,7 @@ export function OutgoingAttach({
     const body: Record<string, unknown> = { action: "attach", booking_id: bookingId };
     if (itemChoice === NEW) body.new_expense = { title: line.party, amount: Number(saleAmount.replace(",", ".")) };
     else if (itemChoice !== STAY) body.item_id = itemChoice;
+    else body.stay = true;
     if (needsEur) body.eur_amount = Number(eurAmount.replace(",", "."));
     void post(body, "Rattachement impossible. Réessayez.");
   }

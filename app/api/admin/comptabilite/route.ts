@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { attachOutgoing, detachTripCost, setOutgoingOutsideTrip, TripCostError } from "@/lib/crm/trip-costs-db";
+import { attachOutgoing, detachTripCost, retargetTripCost, setOutgoingOutsideTrip, TripCostError } from "@/lib/crm/trip-costs-db";
 import { revalidateTripAccounting } from "@/lib/crm/trip-costs-paths";
 import type { TripCostSource } from "@/lib/crm/trip-costs";
 
@@ -12,7 +12,8 @@ function sourceOf(value: unknown): TripCostSource | null {
  * Comptabilité du voyage. Tout part d’un clic :
  *  - `attach`  : rattache une sortie à une ligne du voyage (ou une nouvelle dépense) ;
  *  - `outside` : hors voyage (frais d’agence) ; `restore` la remet dans la file ;
- *  - `detach`  : retire un coût, la sortie revient dans la file.
+ *  - `detach`  : retire un coût, la sortie revient dans la file ;
+ *  - `retarget` : déplace un coût vers une autre ligne du même voyage.
  */
 export async function POST(request: Request) {
   const auth = await requireStaff();
@@ -22,6 +23,11 @@ export async function POST(request: Request) {
   try {
     if (body.action === "detach") {
       const cost = await detachTripCost(String(body.cost_id || ""));
+      revalidateTripAccounting(cost.bookingId);
+      return NextResponse.json({ ok: true, cost });
+    }
+    if (body.action === "retarget") {
+      const cost = await retargetTripCost(String(body.cost_id || ""), body.item_id ? String(body.item_id) : null);
       revalidateTripAccounting(cost.bookingId);
       return NextResponse.json({ ok: true, cost });
     }
@@ -41,6 +47,7 @@ export async function POST(request: Request) {
       sourceId: id,
       bookingId,
       itemId: body.item_id ? String(body.item_id) : null,
+      stayOnly: body.stay === true,
       newExpense: expense ? { title: expense.title ? String(expense.title) : null, amount: Number(expense.amount) } : null,
       eurAmount: body.eur_amount == null || body.eur_amount === "" ? null : Number(body.eur_amount),
     });
