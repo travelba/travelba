@@ -15,8 +15,6 @@ const REFERENCE = /^[A-Za-z0-9-]{4,40}$/;
 export function isBookingReference(value: string) {
   return REFERENCE.test(value);
 }
-const HUB = /^(paris|cdg|ory|lbg|bva|france)$/i;
-
 export const CONCIERGE_TEMPLATE_ENV = {
   sejour: "TWILIO_CONTENT_SEJOUR",
   sejour_texte: "TWILIO_CONTENT_SEJOUR_TEXTE",
@@ -88,10 +86,10 @@ export function reservationPath(reference: string) {
   return `/mon-compte/reservations/${reference}`;
 }
 
-/** Ville ou station d’arrivée. Pas de repli inventé (ni « voyage », ni un hub de départ). */
+/** Ville ou station, y compris Paris ou un aéroport. « voyage » n’est pas un lieu. */
 export function stayPlaceName(destination: string | null, title: string | null) {
   const place = coverQuery(destination, title).replace(/[\r\n]+/g, " ").trim();
-  if (!place || place.toLowerCase() === "voyage" || HUB.test(place)) return null;
+  if (!place || place.toLowerCase() === "voyage") return null;
   return place;
 }
 
@@ -245,11 +243,15 @@ export function stayNoticeLine(place: string, reference: string) {
   return `Votre séjour à ${stayTemplateSlot(place, reference)} est dans votre espace.`;
 }
 
+export function stayNoticeBareLine() {
+  return "Votre séjour est dans votre espace.";
+}
+
 export type StayPlan = {
   body: string;
   place: string;
   mediaUrl: string | null;
-  template: "sejour" | "sejour_texte";
+  template: "sejour" | "sejour_texte" | "sejour_sans_lieu" | "sejour_sans_lieu_texte";
   path: string;
 };
 
@@ -266,8 +268,16 @@ export function planStayNotice(input: {
   const path = reservationPath(input.reference);
   if (!path) return null;
   const place = stayPlaceName(input.destination, input.title);
-  if (!place) return null;
   const mediaUrl = stayCoverUrl(input.reference, input.hasCover, input.coverAccess);
+  if (!place) {
+    return {
+      body: withConciergeSignature(stayNoticeBareLine()),
+      place: "",
+      mediaUrl,
+      template: input.hasCover ? "sejour_sans_lieu" : "sejour_sans_lieu_texte",
+      path,
+    };
+  }
   return {
     body: withConciergeSignature(stayNoticeLine(place, input.reference)),
     place,
@@ -1209,9 +1219,13 @@ export function conciergeContentVariables(input: {
   if (AUTHORIZATION_CARDS.has(input.template)) {
     return authorizationVariables(input.template, text, place, reference, media, when, suffix);
   }
-  if (input.template === "sejour_sans_lieu" || input.template === "sejour_sans_lieu_texte") return null;
+  if (input.template === "sejour_sans_lieu_texte") return { "1": suffix };
+  if (input.template === "sejour_sans_lieu") {
+    if (!isStayCoverMedia(media)) return null;
+    return { "1": media, "2": suffix };
+  }
   if (input.template === "sejour" || input.template === "sejour_texte") {
-    if (!place || !REFERENCE.test(reference) || HUB.test(place)) return null;
+    if (!place || !REFERENCE.test(reference)) return null;
     const slot = stayTemplateSlot(place, reference);
     if (input.template === "sejour_texte") return { "1": slot, "2": suffix };
     if (!isStayCoverMedia(media)) return null;
@@ -1229,30 +1243,30 @@ export function conciergeContentVariables(input: {
     return { "1": pieceTemplateSlot(text, reference, place || null), "2": media, "3": suffix };
   }
   if (STAY_CARDS.has(input.template)) {
-    if (!place || !REFERENCE.test(reference) || HUB.test(place)) return null;
+    if (!place || !REFERENCE.test(reference)) return null;
     return { "1": stayTemplateSlot(place, reference), "2": suffix };
   }
   if (STAY_PHOTO.has(input.template)) {
-    if (!place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
+    if (!place || !REFERENCE.test(reference) || !isWhatsappTypeMedia(media)) return null;
     return { "1": stayTemplateSlot(place, reference), "2": media, "3": suffix };
   }
   if (input.template === "formalite_prete_carte" || input.template === "formalite_manquante_carte") {
-    if (!text || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
+    if (!text || !place || !REFERENCE.test(reference)) return null;
     return { "1": text, "2": stayTemplateSlot(place, reference), "3": suffix };
   }
   if (
     input.template === "formalite_prete_carte_photo" ||
     input.template === "formalite_manquante_carte_photo"
   ) {
-    if (!text || !place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
+    if (!text || !place || !REFERENCE.test(reference) || !isWhatsappTypeMedia(media)) return null;
     return { "1": text, "2": stayTemplateSlot(place, reference), "3": media, "4": suffix };
   }
   if (input.template === "connexion_carte") {
-    if (!text || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
+    if (!text || !place || !REFERENCE.test(reference)) return null;
     return { "1": text, "2": stayTemplateSlot(place, reference), "3": suffix };
   }
   if (input.template === "connexion_carte_photo") {
-    if (!text || !place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
+    if (!text || !place || !REFERENCE.test(reference) || !isWhatsappTypeMedia(media)) return null;
     return { "1": text, "2": stayTemplateSlot(place, reference), "3": media, "4": suffix };
   }
   if (!text) return null;
@@ -1302,7 +1316,7 @@ function authorizationVariables(
   when: string,
   suffix: string
 ): Record<string, string> | null {
-  if (!name || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
+  if (!name || !place || !REFERENCE.test(reference)) return null;
   if (/\d/.test(name) && name.replace(/[^A-Za-z0-9]/g, "").length >= 6) return null;
   const stay = stayTemplateSlot(place, reference);
   const dated = AUTHORIZATION_DATED.has(template);

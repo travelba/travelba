@@ -403,7 +403,7 @@ function catalogGroups(): WhatsappCatalogGroup[] {
     {
       id: "sejour",
       title: "Séjour publié",
-      intro: "Un seul message, au moment où le séjour devient visible. Le lieu est la ville ou la station d’arrivée.",
+      intro: "Un seul message, au moment où le séjour devient visible. La ville est nommée, y compris Paris ou un aéroport. Sans ville, le message part quand même.",
       messages: [
         message({
           id: "sejour-photo",
@@ -416,6 +416,13 @@ function catalogGroups(): WhatsappCatalogGroup[] {
           title: "Sans photo",
           when: "Le séjour est publié, sans couverture exploitable.",
           bubble: wiredBubble("sejour_texte", { media: false }),
+        }),
+        message({
+          id: "sejour-sans-lieu-photo",
+          title: "Sans ville, avec photo",
+          when: "Aucune ville n’est écrite et la couverture répond.",
+          bubble: wiredBubble("sejour_sans_lieu"),
+          fallback: { template: "sejour_sans_lieu_texte", label: "Sans photo" },
         }),
       ],
     },
@@ -657,20 +664,6 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       title: "Rédigés, pas encore envoyés",
       intro: "Ces textes existent. Aucun envoi ne les utilise pour le moment.",
       messages: [
-        message({
-          id: "sejour-sans-lieu-photo",
-          title: "Séjour sans lieu, avec photo",
-          when: "Non envoyé. Sans ville ou station d’arrivée, le séjour publié ne déclenche pas de message.",
-          wired: false,
-          bubble: bubbleFrom("sejour_sans_lieu", null),
-        }),
-        message({
-          id: "sejour-sans-lieu-texte",
-          title: "Séjour sans lieu, sans photo",
-          when: "Non envoyé.",
-          wired: false,
-          bubble: bubbleFrom("sejour_sans_lieu_texte", null),
-        }),
         message({
           id: "encours-modele",
           title: "Encours du séjour",
