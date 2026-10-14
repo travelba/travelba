@@ -33,7 +33,7 @@ import type { EstaTravelerLine } from "@/lib/crm/esta-status";
 import { settledAuthorizationCountries } from "@/lib/crm/visa-cover";
 import type { UkEtaTravelerLine } from "@/lib/crm/uk-eta-ui";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
-import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
+import { agencyFeeExtraAmounts, bookingTotalFromItems, flightsInStayTotal, isStayAmountKind } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
@@ -51,10 +51,13 @@ import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
-import { PliantSettlement } from "@/components/admin/PliantSettlement";
-import { TripAccountingBlock, type TripAccountingView } from "@/components/admin/TripAccountingBlock";
+import { TripCostsBlock } from "@/components/admin/TripCostsBlock";
+import { InvoiceBlock } from "@/components/admin/InvoiceBlock";
+import { ReglementSummary } from "@/components/admin/ReglementSummary";
+import type { TripAccountingView } from "@/lib/crm/trip-costs";
+import { reglementChecklist, reglementCostsToPoint } from "@/lib/crm/reglement-checklist";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
-import type { PliantCardRecap, PliantSettlementStay } from "@/lib/crm/pliant-booking";
+import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
 import { WhatsappThread, type WhatsappThreadMessage, type WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
 import { BookingExpensesPanel, type ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
@@ -188,88 +191,49 @@ function CoverMark({ children }: { children: string }) {
   );
 }
 
-function Mb3mInvoiceAction({
-  bookingId,
-  busy,
-  invoicing,
-  unsaved,
-  blocker,
-  pieceNumber,
-  note,
-  onBusy,
-  onNote,
-  onInvoiced,
+type SegmentedOption<T extends string> = { value: T; title: string; hint: string; disabled?: boolean };
+
+/** Un choix à deux ou trois valeurs sur une ligne. Le texte sous la ligne décrit la valeur retenue. */
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
 }: {
-  bookingId: string;
-  busy: boolean;
-  invoicing: boolean;
-  unsaved: boolean;
-  blocker: string | null;
-  pieceNumber: string | null;
-  note: string | null;
-  onBusy: (active: boolean) => void;
-  onNote: (note: string | null) => void;
-  onInvoiced: (number: string, note: string) => void;
+  label: string;
+  value: T;
+  options: SegmentedOption<T>[];
+  onChange: (value: T) => void;
 }) {
-  const reason = unsaved ? "Enregistrez le séjour avant de facturer." : blocker;
-  async function facture() {
-    onBusy(true);
-    onNote(null);
-    try {
-      const res = await fetch(`/api/admin/bookings/${bookingId}/mb3m`, { method: "POST" });
-      const json = (await res.json().catch(() => null)) as {
-        error?: string;
-        number?: string;
-        created?: boolean;
-        replaced?: boolean;
-        printed?: boolean;
-      } | null;
-      if (!res.ok || !json?.number) {
-        onNote(json?.error || "La facture MB3M n’a pas abouti.");
-        return;
-      }
-      const message = json.printed
-        ? `Facture MB3M n° ${json.number} validée. Le PDF est dans les pièces.`
-        : json.replaced
-          ? `Facture pro forma n° ${json.number} mise à jour. Elle se valide dans MB3M.`
-          : json.created
-            ? `Facture pro forma n° ${json.number} préparée. Elle se valide dans MB3M.`
-            : `Facture pro forma n° ${json.number}. Elle se valide dans MB3M.`;
-      onInvoiced(json.number, message);
-    } catch {
-      onNote("La facture MB3M n’a pas abouti.");
-    } finally {
-      onBusy(false);
-    }
-  }
+  const current = options.find((option) => option.value === value) || options[0];
   return (
-    <div className="space-y-2 pt-2">
-      <p className="text-sm text-muted">
-        Prépare une facture pro forma dans MB3M, une ligne par dépense du séjour. Le dossier l’ouvre ici, sans
-        l’imprimer. Elle se valide en l’imprimant dans MB3M. Le grand livre ne change pas.
-      </p>
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={busy || Boolean(reason)}
-          onClick={() => void facture()}
-          className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50"
-        >
-          {invoicing ? "Préparation…" : "Préparer la facture"}
-        </button>
-        {pieceNumber ? (
-          <a
-            href={`/api/admin/bookings/${bookingId}/mb3m`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm font-semibold text-[var(--admin-navy)] underline underline-offset-2"
-          >
-            Voir la facture pro forma
-          </a>
-        ) : null}
-        {reason ? <p className="text-sm text-muted">{reason}</p> : null}
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">{label}</p>
+      <div
+        role="radiogroup"
+        aria-label={label}
+        className="inline-flex max-w-full flex-wrap gap-1 rounded-full bg-white/60 p-1 shadow-[inset_0_0_0_1px_var(--border)]"
+      >
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={option.disabled}
+              onClick={() => onChange(option.value)}
+              className={`admin-tap rounded-full px-3.5 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                selected ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)] hover:bg-white"
+              }`}
+            >
+              {option.title}
+            </button>
+          );
+        })}
       </div>
-      {note ? <p className="text-sm text-[var(--admin-navy)]">{note}</p> : null}
+      {current?.hint ? <p className="text-xs text-muted">{current.hint}</p> : null}
     </div>
   );
 }
@@ -310,7 +274,6 @@ export function BookingEditor({
   accountLedger = null,
   bookingCards = [],
   pliantRecap = [],
-  settlementStays = [],
   estaLines = [],
   ukEtaLines = [],
   whatsappMessages = [],
@@ -378,14 +341,13 @@ export function BookingEditor({
     state: string | null;
   } | null;
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
-  /** Sorties Revolut rattachées. Hors encours. */
+  /** Débits Revolut rattachés au dossier. Hors encours ; montrés dans Coûts du voyage s’ils n’ont pas de coût posé. */
   revolutExpenses?: { id: string; label: string; amount: string }[];
   ledger?: ClientLedgerView | null;
   /** Grand livre du compte, même lecture que Transactions du client. */
   accountLedger?: ClientLedgerView | null;
   bookingCards?: CrmBookingCard[];
   pliantRecap?: PliantCardRecap[];
-  settlementStays?: PliantSettlementStay[];
   estaLines?: EstaTravelerLine[];
   ukEtaLines?: UkEtaTravelerLine[];
   whatsappMessages?: WhatsappThreadMessage[];
@@ -907,11 +869,14 @@ export function BookingEditor({
     startDate: booking.start_date,
     endDate: booking.end_date,
   });
+  const costsToPoint = reglementCostsToPoint(accounting);
   const blockers = staffBlockingChips({
     travelers,
     missingPassportIds: passportGap.map((traveler) => traveler.id),
     hotelLettersOpen: hotelLetters.openCount,
     amountHidden: !booking.archived_at && (!booking.visible_to_client || booking.prices_visible === false),
+    costsToPoint,
+    marginStale: Boolean(accounting?.invoice.printed && accounting.invoice.marginStale),
   });
   const travelerLabel = travelers.length
     ? travelers.length <= 4
@@ -937,6 +902,32 @@ export function BookingEditor({
     }),
   });
   const statementCustomer = billingCustomer || customer;
+  // Cartes qui composent le montant : un aller-retour compte une fois, comme dans le total stocké.
+  const activeStayCards = pricedItems.filter((item) => isActiveItem(item) && isStayAmountKind(item.kind));
+  const fareFlights = new Set(flightsInStayTotal(activeStayCards));
+  const stayCards = activeStayCards.filter((item) => item.kind !== "flight" || fareFlights.has(item));
+  const countedCards = stayCards.filter((item) => item.include_in_ledger);
+  const payerCompany = payerKind === "company" ? payerCompanies.find((company) => company.id === payerCompanyId) || null : null;
+  const invoiceNumber = invoicePiece?.number || accounting?.invoice.number || mb3m.piece?.number || null;
+  const checklist = reglementChecklist({
+    payerKind,
+    payerCompanyName: payerCompany?.company_name || null,
+    cardsTotal: stayCards.length,
+    cardsPriced: stayCards.filter((item) => item.amount != null).length,
+    booking: {
+      status: booking.status,
+      visible_to_client: booking.visible_to_client,
+      archived_at: booking.archived_at,
+      include_in_ledger: includeInLedger,
+      client_settles_stay: clientSettles,
+    },
+    costsToPoint,
+    invoice: {
+      number: invoiceNumber,
+      printed: Boolean(accounting?.invoice.printed),
+      marginStale: Boolean(accounting?.invoice.marginStale),
+    },
+  });
   const tabs = BOOKING_TAB_IDS;
   const tabButtonId = (id: BookingTabId) => `booking-tab-${BOOKING_TAB_SLUGS[id]}`;
 
@@ -1147,7 +1138,7 @@ export function BookingEditor({
               <li key={chip.id}>
                 <button
                   type="button"
-                  onClick={() => setTab("todo")}
+                  onClick={() => setTab(chip.tab || "todo")}
                   className="rounded-full border border-[var(--border)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--admin-navy)]"
                 >
                   {chip.label}
@@ -1306,21 +1297,20 @@ export function BookingEditor({
                 onPick={setClientPick}
                 controlClass={coverField}
               />
-              <CustomerPickField
-                name="billing_customer_id"
-                selected={billingCustomer || account}
-                title="Qui paie"
-                label="Qui paie"
-                formatLabel={customerBillingPickLabel}
-                onPick={setPayerPick}
-                controlClass={coverField}
-              />
-            </div>
-            {clientPick && payerPick && clientPick.id !== payerPick.id ? (
-              <p className="text-sm text-muted">
-                Réglé par {shownPersonName(payerPick)}
+              <p className="self-end pb-3 text-sm text-muted">
+                {clientPick && payerPick && clientPick.id !== payerPick.id
+                  ? `Réglé par ${shownPersonName(payerPick)}`
+                  : "Règle lui-même ce séjour"}
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => setTab("argent")}
+                  className="font-semibold text-[var(--admin-navy)] underline underline-offset-2"
+                >
+                  Règlement
+                </button>
               </p>
-            ) : null}
+            </div>
             <details className="group rounded-2xl bg-[#faf9f6]">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
                 <span className="min-w-0">
@@ -1433,90 +1423,54 @@ export function BookingEditor({
             )}
           </section>
 
-          <section className={`order-2 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "argent" ? "" : "hidden"}`}>
-            <CoverMark>Règlement</CoverMark>
-            {revolutExpenses.length ? (
-              <div className="space-y-2 rounded-2xl bg-[var(--admin-sky)] px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Dépenses Revolut</p>
-                <ul className="space-y-1">
-                  {revolutExpenses.map((row) => (
-                    <li key={row.id} className="flex items-baseline justify-between gap-3 text-sm">
-                      <span className="min-w-0 truncate">{row.label}</span>
-                      <span className="shrink-0 font-semibold tabular-nums">{row.amount}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-xs text-muted">Rattachées au dossier. Elles ne changent pas l’encours du client.</p>
-              </div>
+          <section className={`order-2 admin-af-card space-y-5 rounded-3xl p-5 ${tab === "argent" ? "" : "hidden"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CoverMark>Qui règle et comment</CoverMark>
+              <p className="shrink-0 text-xs text-muted">Enregistrer applique ces choix.</p>
+            </div>
+            <CustomerPickField
+              name="billing_customer_id"
+              selected={billingCustomer || account}
+              title="Qui paie"
+              label="Qui paie"
+              formatLabel={customerBillingPickLabel}
+              onPick={setPayerPick}
+              controlClass={coverField}
+            />
+            {clientPick && payerPick && clientPick.id !== payerPick.id ? (
+              <p className="-mt-3 text-xs text-muted">
+                Le compte de {shownPersonName(payerPick)} porte les débits ; {shownPersonName(clientPick)} voyage.
+              </p>
             ) : null}
-            <label className="flex max-w-[11rem] flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-              Devise
-              <select
-                name="currency"
-                value={currencyDraft}
-                onChange={(event) => setCurrencyDraft(stayCurrency(event.target.value))}
-                aria-label="Devise du séjour"
-                className={coverField}
-              >
-                {STAY_CURRENCIES.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
-            </label>
             <input type="hidden" name="payer_kind" value={payerKind} />
             <input
               type="hidden"
               name="billing_company_id"
               value={payerKind === "company" ? payerCompanyId : ""}
             />
-            <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Qui règle ce voyage">
-              {(
-                [
-                  {
-                    kind: "company" as const,
-                    title: "Société",
-                    hint: "Ce voyage entre dans la part société de l’encours.",
-                  },
-                  {
-                    kind: "personal" as const,
-                    title: "Particulier",
-                    hint: "Ce voyage entre dans la part particulier de l’encours.",
-                  },
-                ]
-              ).map((choice) => {
-                const selected = payerKind === choice.kind;
-                const blocked = choice.kind === "company" && !payerCompanies.length;
-                return (
-                  <button
-                    key={choice.kind}
-                    type="button"
-                    aria-pressed={selected}
-                    disabled={blocked}
-                    onClick={() => {
-                      setPayerKind(choice.kind);
-                      if (choice.kind === "company") {
-                        setPayerCompanyId((current) => current || defaultCompany?.id || "");
-                      }
-                    }}
-                    className={`rounded-3xl p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                      selected
-                        ? "bg-white shadow-[0_8px_24px_-12px_rgba(11,25,44,0.35),inset_0_0_0_1.5px_var(--admin-gold)]"
-                        : "bg-white/45 shadow-[inset_0_0_0_1px_var(--border)]"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className={`h-2 w-2 rounded-full ${selected ? "bg-[var(--admin-gold)]" : "bg-[var(--border)]"}`}
-                      />
-                      <span className="font-display text-base font-bold text-[var(--admin-navy)]">{choice.title}</span>
-                    </span>
-                    <span className="mt-2 block pl-4 text-xs leading-relaxed text-muted">{choice.hint}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <Segmented<"company" | "personal">
+              label="Part de l’encours"
+              value={payerKind}
+              options={[
+                {
+                  value: "company",
+                  title: "Société",
+                  hint: payerCompanies.length
+                    ? "Ce voyage entre dans la part société de l’encours. Le client règle cette part dans Transactions."
+                    : "Aucune société sur la fiche.",
+                  disabled: !payerCompanies.length,
+                },
+                {
+                  value: "personal",
+                  title: "Particulier",
+                  hint: "Ce voyage entre dans la part particulier de l’encours.",
+                },
+              ]}
+              onChange={(kind) => {
+                setPayerKind(kind);
+                if (kind === "company") setPayerCompanyId((current) => current || defaultCompany?.id || "");
+              }}
+            />
             {payerKind === "company" && !payerCompanies.length ? (
               <p className="text-sm text-muted">
                 Ajoutez une société sur{" "}
@@ -1540,7 +1494,7 @@ export function BookingEditor({
               </p>
             ) : null}
             {payerKind === "company" && payerCompanies.length > 1 ? (
-              <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+              <label className="flex max-w-md flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
                 Société qui règle
                 <select
                   value={payerCompanyId}
@@ -1560,67 +1514,6 @@ export function BookingEditor({
                 </select>
               </label>
             ) : null}
-            {payerKind === "company" ? (
-              <p className="text-xs text-muted">Le client règle cette part dans Transactions.</p>
-            ) : null}
-            <input
-              type="hidden"
-              name="fees_follow_stay"
-              value={payerKind === "personal" && !payerCompanies.length ? "on" : feesFollowStay ? "on" : "off"}
-            />
-            <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Facture des frais et dépenses">
-              {(
-                [
-                  {
-                    follow: true,
-                    title: payerKind === "company" ? "Même facture" : "Sans facture société",
-                    hint:
-                      payerKind === "company"
-                        ? "Frais d’agence et dépenses suivent la facture du séjour."
-                        : "Frais d’agence et dépenses suivent le séjour.",
-                  },
-                  {
-                    follow: false,
-                    title: payerKind === "company" ? "Sans facture société" : "Facture société",
-                    hint:
-                      payerKind === "company"
-                        ? "Le client les règle à part, sans facture société."
-                        : `Ils sont portés par ${defaultCompany?.company_name?.trim() || "la société du compte"}.`,
-                  },
-                ] as const
-              ).map((choice) => {
-                const locked = !choice.follow && payerKind === "personal" && !payerCompanies.length;
-                const effectiveFollow = payerKind === "personal" && !payerCompanies.length ? true : feesFollowStay;
-                const selected = effectiveFollow === choice.follow;
-                return (
-                  <button
-                    key={choice.title}
-                    type="button"
-                    aria-pressed={selected}
-                    disabled={locked}
-                    onClick={() => setFeesFollowStay(choice.follow)}
-                    className={`rounded-3xl p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                      selected
-                        ? "bg-white shadow-[0_8px_24px_-12px_rgba(11,25,44,0.35),inset_0_0_0_1.5px_var(--admin-gold)]"
-                        : "bg-white/45 shadow-[inset_0_0_0_1px_var(--border)]"
-                    }`}
-                  >
-                    <span className="font-display text-base font-bold text-[var(--admin-navy)]">{choice.title}</span>
-                    <span className="mt-2 block text-xs leading-relaxed text-muted">{choice.hint}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {payerKind === "company" ? (
-              <StayBillingChoice
-                expensesOnly
-                endpoint="admin"
-                bookingId={booking.id}
-                companies={payerCompanies}
-                bookingCompanyId={payerCompanyId || null}
-                expenses={expenseBilling}
-              />
-            ) : null}
             <input
               type="checkbox"
               name="client_settles_stay"
@@ -1630,48 +1523,20 @@ export function BookingEditor({
               tabIndex={-1}
               aria-hidden
             />
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  {
-                    settles: false,
-                    title: "L’agence encaisse",
-                    hint: "Le montant entre dans le compte du client.",
-                  },
-                  {
-                    settles: true,
-                    title: "Le client règle l’hôtel",
-                    hint: "Sur sa carte. Le prix reste visible.",
-                  },
-                ] as const
-              ).map((choice) => {
-                const selected = clientSettles === choice.settles;
-                return (
-                  <button
-                    key={choice.title}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => setClientSettles(choice.settles)}
-                    className={`rounded-3xl p-4 text-left transition ${
-                      selected
-                        ? "bg-white shadow-[0_8px_24px_-12px_rgba(11,25,44,0.35),inset_0_0_0_1.5px_var(--admin-gold)]"
-                        : "bg-white/45 shadow-[inset_0_0_0_1px_var(--border)]"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className={`h-2 w-2 rounded-full ${selected ? "bg-[var(--admin-gold)]" : "bg-[var(--border)]"}`}
-                      />
-                      <span className="font-display text-base font-bold text-[var(--admin-navy)]">{choice.title}</span>
-                    </span>
-                    <span className="mt-2 block pl-4 text-xs leading-relaxed text-muted">{choice.hint}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {clientSettles ? (
-              <p className="text-sm text-muted">Ce montant ne va pas dans les transactions.</p>
-            ) : (
+            <Segmented<"agency" | "client">
+              label="Encaissement"
+              value={clientSettles ? "client" : "agency"}
+              options={[
+                { value: "agency", title: "L’agence encaisse", hint: "Le montant du séjour entre dans le compte du client." },
+                {
+                  value: "client",
+                  title: "Le client règle l’hôtel",
+                  hint: "Sur sa carte. Le prix reste au carnet ; les cartes du séjour ne vont pas dans les transactions.",
+                },
+              ]}
+              onChange={(value) => setClientSettles(value === "client")}
+            />
+            {clientSettles ? null : (
               <label className="flex items-start gap-3 rounded-2xl bg-white/70 px-4 py-3 text-sm text-[var(--admin-navy)]">
                 <input
                   key="stay-in"
@@ -1682,16 +1547,58 @@ export function BookingEditor({
                   className="mt-1 size-4 accent-[var(--admin-navy)]"
                 />
                 <span>
-                  Ajouter ce prix au compte du client
+                  Ajouter le montant global au compte du client
                   <span className="mt-0.5 block text-xs font-normal text-muted">
                     Décochez pour montrer le prix sans le compter.
-                    {items.some((item) => item.include_in_ledger)
-                      ? " Des étapes sont déjà comptées : laissez décoché pour ne pas compter deux fois."
+                    {countedCards.length
+                      ? ` ${countedCards.length > 1 ? `${countedCards.length} cartes sont` : "Une carte est"} déjà comptée${countedCards.length > 1 ? "s" : ""} : laissez décoché pour ne pas compter deux fois.`
                       : ""}
                   </span>
                 </span>
               </label>
             )}
+            <input
+              type="hidden"
+              name="fees_follow_stay"
+              value={payerKind === "personal" && !payerCompanies.length ? "on" : feesFollowStay ? "on" : "off"}
+            />
+            <Segmented<"follow" | "apart">
+              label="Frais d’agence, billeterie et dépenses"
+              value={payerKind === "personal" && !payerCompanies.length ? "follow" : feesFollowStay ? "follow" : "apart"}
+              options={[
+                {
+                  value: "follow",
+                  title: "Avec le séjour",
+                  hint:
+                    payerKind === "company"
+                      ? "Ils suivent la facture société du séjour."
+                      : "Ils suivent le séjour, sur la part particulier.",
+                },
+                payerKind === "company"
+                  ? {
+                      value: "apart",
+                      title: "À part, sans facture société",
+                      hint: "Le client les règle à part, sur sa part particulier.",
+                    }
+                  : {
+                      value: "apart",
+                      title: `Portés par ${defaultCompany?.company_name?.trim() || "la société du compte"}`,
+                      hint: "Le séjour reste au particulier ; les frais vont sur la facture société.",
+                      disabled: !payerCompanies.length,
+                    },
+              ]}
+              onChange={(value) => setFeesFollowStay(value === "follow")}
+            />
+            {payerKind === "company" ? (
+              <StayBillingChoice
+                expensesOnly
+                endpoint="admin"
+                bookingId={booking.id}
+                companies={payerCompanies}
+                bookingCompanyId={payerCompanyId || null}
+                expenses={expenseBilling}
+              />
+            ) : null}
           </section>
 
 
@@ -1921,91 +1828,156 @@ export function BookingEditor({
 
       {tab === "argent" ? (
         <>
-      <section className="order-1 admin-af-card space-y-2 rounded-3xl p-5">
-        <p className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
-          Montant du séjour
-        </p>
-        <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {formatMoney(stayAmount, stayCurrency(booking.currency))}
-        </p>
-        <p className="text-sm text-muted">
-          Prix des cartes, des frais d’agence, des frais de billeterie et des dépenses.
-        </p>
-        <Mb3mInvoiceAction
-          bookingId={booking.id}
-          busy={busy !== "idle"}
-          invoicing={busy === "invoice"}
-          unsaved={unsaved}
-          blocker={mb3m.blocker}
-          pieceNumber={invoicePiece?.number || mb3m.piece?.number || null}
-          note={invoiceNote}
-          onBusy={(active) => setBusy(active ? "invoice" : "idle")}
-          onNote={setInvoiceNote}
-          onInvoiced={(number, note) => {
-            setInvoicePiece({ number });
-            setInvoiceNote(note);
-            router.refresh();
-          }}
-        />
-        {clientSettles ? (
-          <p className="text-sm text-muted">Les cartes se règlent hors agence. Les frais et les dépenses restent au grand livre.</p>
-        ) : null}
-      </section>
+          <div className="order-1">
+            <ReglementSummary
+              amount={stayAmount}
+              currency={stayCurrency(booking.currency)}
+              ledgerCaption={staffLedgerCaption({
+                ...booking,
+                include_in_ledger: includeInLedger,
+                client_settles_stay: clientSettles,
+              })}
+              payerCaption={payerCaption}
+              totals={accounting?.totals || null}
+              state={accounting?.state || null}
+              invoiceNumber={invoiceNumber}
+              checks={checklist}
+            />
+          </div>
 
-      <PliantSettlement
-        bookingId={booking.id}
-        currency={booking.currency}
-        cards={pliantRecap}
-        stays={settlementStays}
-      />
+          <section className="order-3 admin-af-card space-y-4 rounded-3xl p-5">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="space-y-1">
+                <CoverMark>Prix et lignes vendues</CoverMark>
+                <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
+                  {formatMoney(stayAmount, stayCurrency(booking.currency))}
+                </p>
+                <p className="text-sm text-muted">
+                  {clientSettles
+                    ? "Les cartes se règlent hors agence. Seuls les frais et les dépenses comptent au grand livre."
+                    : !includeInLedger
+                      ? "Le montant global n’est pas ajouté au compte du client ; seules les cartes cochées comptent."
+                      : countedCards.length
+                        ? `${countedCards.length} ${countedCards.length > 1 ? "cartes comptent" : "carte compte"} au grand livre, avec les frais et les dépenses.`
+                        : "Prix des cartes, des frais d’agence, des frais de billeterie et des dépenses."}
+                </p>
+              </div>
+              <label className="flex max-w-[11rem] flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+                Devise
+                <select
+                  name="currency"
+                  form="booking-meta"
+                  value={currencyDraft}
+                  onChange={(event) => setCurrencyDraft(stayCurrency(event.target.value))}
+                  aria-label="Devise du séjour"
+                  className={coverField}
+                >
+                  {STAY_CURRENCIES.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <BookingExpensesPanel
+              bookingId={booking.id}
+              items={pricedItems}
+              visible={booking.visible_to_client}
+              currency={booking.currency}
+              agencyCommission={booking.agency_commission === true}
+              onExpenseWrite={onExpenseWrite}
+            />
+          </section>
 
-      {accounting ? (
-        <TripAccountingBlock
-          bookingId={booking.id}
-          booking={{
-            id: booking.id,
-            reference: booking.reference,
-            title: booking.title || booking.destination || "",
-            items: pricedItems
-              .filter((item) => isActiveItem(item))
-              .map((item) => ({
-                id: item.id,
-                label: item.kind === "hotel" ? hotelDisplayName(item) : item.title,
-                kind: item.kind,
-                amount: item.amount == null ? null : Number(item.amount),
-              })),
-          }}
-          view={accounting}
-          busy={busy !== "idle"}
-          onBusy={(active) => setBusy(active ? "invoice" : "idle")}
-        />
-      ) : null}
+          <div className="order-4">
+            {accounting ? (
+              <TripCostsBlock
+                bookingId={booking.id}
+                booking={{
+                  id: booking.id,
+                  reference: booking.reference,
+                  title: booking.title || booking.destination || "",
+                  items: pricedItems
+                    .filter((item) => isActiveItem(item))
+                    .map((item) => ({
+                      id: item.id,
+                      label: item.kind === "hotel" ? hotelDisplayName(item) : item.title,
+                      kind: item.kind,
+                      amount: item.amount == null ? null : Number(item.amount),
+                    })),
+                }}
+                view={accounting}
+                cards={pliantRecap}
+                revolutLinked={revolutExpenses}
+                busy={busy !== "idle"}
+              />
+            ) : (
+              <section className="admin-af-card space-y-2 rounded-3xl p-5">
+                <CoverMark>Coûts du voyage</CoverMark>
+                <p className="text-sm text-muted">La comptabilité du voyage n’est pas lisible pour le moment.</p>
+              </section>
+            )}
+          </div>
 
-      <div className="order-3">
-      <BookingExpensesPanel
-        bookingId={booking.id}
-        items={pricedItems}
-        visible={booking.visible_to_client}
-        currency={booking.currency}
-        agencyCommission={booking.agency_commission === true}
-        onExpenseWrite={onExpenseWrite}
-      />
-      </div>
-      <section className="max-w-[480px] space-y-3">
-        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Compte du client</h2>
-        <p className="text-sm text-muted">Même lecture que l’espace du client.</p>
-        {liveLedger ? (
-          <ClientTransactionsPanel
-            view={liveLedger}
-            statementEndpoint={
-              statementCustomer ? `/api/admin/clients/${statementCustomer.id}/releve` : null
-            }
-            statementAudience="staff"
-          />
-        ) : (
-          <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
-        )}
-      </section>
+          <div className="order-5">
+            <InvoiceBlock
+              bookingId={booking.id}
+              busy={busy !== "idle"}
+              invoicing={busy === "invoice"}
+              unsaved={unsaved}
+              blocker={mb3m.blocker}
+              view={{
+                number: invoiceNumber,
+                printed: Boolean(accounting?.invoice.printed),
+                marginStale: Boolean(accounting?.invoice.marginStale),
+                printedTotal: accounting?.invoice.printedTotal ?? null,
+                saleTotal: accounting?.totals.sale ?? null,
+              }}
+              note={invoiceNote}
+              onBusy={(active) => setBusy(active ? "invoice" : "idle")}
+              onNote={setInvoiceNote}
+              onInvoiced={(number, note) => {
+                setInvoicePiece({ number });
+                setInvoiceNote(note);
+                router.refresh();
+              }}
+            />
+          </div>
+
+          <details className="order-6 admin-af-card group rounded-3xl">
+            <summary className="admin-tap flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 py-4 [&::-webkit-details-marker]:hidden">
+              <span className="space-y-0.5">
+                <span className="block font-display text-lg font-bold text-[var(--admin-navy)]">Compte du client</span>
+                <span className="block text-sm text-muted">Même lecture que l’espace du client.</span>
+              </span>
+              <span className="text-sm font-semibold text-[var(--admin-gold-dark)]">
+                <span className="group-open:hidden">Ouvrir</span>
+                <span className="hidden group-open:inline">Replier</span>
+              </span>
+            </summary>
+            <div className="space-y-3 border-t border-[var(--border)] px-5 py-4">
+              {statementCustomer ? (
+                <Link
+                  href={`/admin/transactions/client/${statementCustomer.id}`}
+                  className="text-sm font-semibold text-[var(--admin-navy)] underline underline-offset-4"
+                >
+                  Toutes les transactions du client
+                </Link>
+              ) : null}
+              {liveLedger ? (
+                <ClientTransactionsPanel
+                  view={liveLedger}
+                  statementEndpoint={
+                    statementCustomer ? `/api/admin/clients/${statementCustomer.id}/releve` : null
+                  }
+                  statementAudience="staff"
+                />
+              ) : (
+                <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
+              )}
+            </div>
+          </details>
         </>
       ) : null}
 
