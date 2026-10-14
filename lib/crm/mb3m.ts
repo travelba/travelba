@@ -163,12 +163,20 @@ function dayStamp(value: string) {
   return day;
 }
 
+/** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
+let lastCall: { service: string; action: string; inner: string } | null = null;
+
 function assertOperation(xml: string) {
   const raw = mb3mXmlText(xml, "ResultCode");
   if (!raw) return;
   const code = Number(raw);
   if (code === 1) return;
-  throw new Mb3mError(mb3mXmlText(xml, "Message") || "L’opération MB3M a échoué.", Number.isFinite(code) ? code : -1);
+  const message = mb3mXmlText(xml, "Message") || "L’opération MB3M a échoué.";
+  const body = xml.replace(/^[\s\S]*?<s:Body>/, "").replace(/<\/s:Body>[\s\S]*$/, "").slice(0, 3000);
+  console.error(
+    `[mb3m] ${lastCall ? `${lastCall.service}/${lastCall.action}` : "?"} ResultCode ${raw} ${message}\nréponse : ${body}\nrequête : ${(lastCall?.inner || "").slice(0, 6000)}`
+  );
+  throw new Mb3mError(message, Number.isFinite(code) ? code : -1);
 }
 
 export async function mb3mSoap(
@@ -188,6 +196,7 @@ export async function mb3mSoap(
       0
     );
   }
+  lastCall = { service, action, inner };
   const response = await fetchImpl(`${MB3M_ORIGIN}/Partners/1.0/${service}.svc/Soap`, {
     method: "POST",
     headers: {
