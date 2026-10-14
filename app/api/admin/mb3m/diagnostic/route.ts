@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/crm/auth";
-import { mb3mRealm, mb3mSoap, mb3mXmlText } from "@/lib/crm/mb3m";
+import { mb3mRealm, mb3mSoap, mb3mXmlText, mb3mXmlTexts } from "@/lib/crm/mb3m";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +39,52 @@ export async function GET(request: Request) {
     }
   };
 
+  const params = new URL(request.url).searchParams;
+  const customerUid = (params.get("customer") || "").replace(/[^0-9a-fA-F-]/g, "").slice(0, 36);
+  const agencyUid = (params.get("agency") || "").replace(/[^0-9a-fA-F-]/g, "").slice(0, 36);
+  if (params.get("probe") === "1" && folderId && customerUid) {
+    // Bissection : une facture minimale d’un euro par variante. Un échec ne laisse rien ;
+    // un succès est annulé aussitôt, et la série s’arrête.
+    const variants: [string, string][] = [
+      ["A-nu", `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde A</Label><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`],
+      ["B-taxes", `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde B</Label><MarginTaxRate>0</MarginTaxRate><MarginTaxTotal>0</MarginTaxTotal><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><TaxRate>0</TaxRate><TaxTotal>0</TaxTotal><Type>Standard</Type></InvoiceLine>`],
+      ["C-provider", `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde C</Label><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit>${agencyUid ? `<ProviderId>${agencyUid}</ProviderId>` : ""}<Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`],
+      ["D-activite-11", `<InvoiceLine><ActivityId>11</ActivityId><Label>Sonde D</Label><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`],
+      ["E-sans-activite", `<InvoiceLine><Label>Sonde E</Label><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`],
+      ["F-note", `<InvoiceLine><Label>Sonde F</Label><NetPriceTotal>0</NetPriceTotal><NetPriceUnit>0</NetPriceUnit><Quantity>1</Quantity><Type>Note</Type></InvoiceLine>`],
+    ];
+    for (const [name, line] of variants) {
+      const agency = agencyUid ? `<Agency><Uid>${agencyUid}</Uid></Agency>` : "";
+      const inner = `<FolderAddPiecesRequest ${NS} xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${folderId}</FolderId><Invoice>${agency}<CustomerIdentity><Uid>${customerUid}</Uid></CustomerIdentity><Title>Sonde Travelba</Title><DateEnd>2026-10-11</DateEnd><DateStart>2026-10-08</DateStart><Lines>${line}</Lines></Invoice></FolderAddPiecesRequest>`;
+      let xml = "";
+      try {
+        xml = strip(await mb3mSoap("FolderService", "IFolderService", "AddPieces", inner));
+      } catch (error) {
+        log(`probe-${name}`, `FAUTE ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+      const code = mb3mXmlText(xml, "ResultCode");
+      const number = mb3mXmlTexts(xml, "Number").filter(Boolean).at(-1) || "";
+      log(`probe-${name}`, `ResultCode ${code} ${mb3mXmlText(xml, "Message")} n°${number}`);
+      if (code === "1" && number) {
+        await run(`probe-${name}-cancel`, () =>
+          mb3mSoap(
+            "FolderService",
+            "IFolderService",
+            "CancelInvoice",
+            `<FolderCancelPieceRequest ${NS}><FolderId>${folderId}</FolderId><Number>${number}</Number></FolderCancelPieceRequest>`
+          )
+        );
+        break;
+      }
+    }
+    return NextResponse.json(out);
+  }
+
   await run("agencies", () => mb3mSoap("ConfigurationService", "IConfigurationService", "GetAgencies", `<GetAgencies ${NS}/>`));
+  await run("productTypes", () =>
+    mb3mSoap("ConfigurationService", "IConfigurationService", "GetProductTypes", `<GetProductTypes ${NS}/>`)
+  );
   if (folderId) {
     await run("folder", () =>
       mb3mSoap("FolderService", "IFolderService", "Get", `<FolderGetRequest ${NS}><Id>${folderId}</Id></FolderGetRequest>`)
