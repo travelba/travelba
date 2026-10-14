@@ -446,3 +446,22 @@ export function costSuggestionReasonLabel(reason: CostSuggestion["reason"]) {
 export function round(value: number) {
   return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
 }
+
+/** Le bloc « Coûts du voyage » de l’onglet Règlement, et la lecture MCP. */
+export type TripAccountingView = {
+  lines: AccountedLine[];
+  unsold: TripCost[];
+  totals: TripAccountingTotals;
+  proposed: OutgoingLine[];
+  state: TripAccountingState;
+  invoice: {
+    number: string | null;
+    printed: boolean;
+    marginStale: boolean;
+    /** Lignes couvertes par une facture imprimée (id de transaction → n°). */
+    byTransaction: Record<string, { number: string; printed: boolean }>;
+    /** Somme des factures imprimées non annulées par un avoir. */
+    printedTotal: number | null;
+  };
+  anomalies: string[];
+};
