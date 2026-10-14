@@ -58,6 +58,7 @@ import {
   mb3mSaveCompany,
   mb3mSaveFolder,
   mb3mSavePerson,
+  mb3mSingleAgencyUid,
   type Mb3mAddress,
 } from "@/lib/crm/mb3m";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -182,6 +183,8 @@ export type Mb3mInvoiceDeps = {
   findPiece: typeof mb3mFindPiece;
   cancelInvoice: typeof mb3mCancelInvoice;
   renderPiece: (number: string) => Promise<{ bytes: Buffer }>;
+  /** Agence unique de la base, posée sur le dossier et la pièce. Absente : le serveur prend celle du compte. */
+  agencyUid?: () => Promise<string | null>;
   putPdf: (input: {
     bookingId: string;
     documentId: string | null;
@@ -506,6 +509,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     destinationIso: ctx.destinationIso || undefined,
     lines: ctx.lines.map(mb3mInvoiceLine),
     travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
+    agencyUid: savedPiece.agencyUid,
   });
   await deps.save(savedPiece.id, {
     pieceNumber: invoice.number,
@@ -559,7 +563,10 @@ async function ensureFolder(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps, piec
   }
   let folderId = piece.folderId;
   let folderUid = piece.folderUid;
-  if (!folderId) {
+  const agencyUid = await agencyFor(deps);
+  // Sans dossier : on le crée. Avec dossier et une agence connue : on le repose avec l’agence,
+  // pour les dossiers ouverts avant que la base de l’agence l’exige.
+  if (!folderId || agencyUid) {
     const folder = await deps.saveFolder({
       customerUid,
       title: ctx.title,
@@ -569,12 +576,25 @@ async function ensureFolder(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps, piec
       destination: ctx.destination || undefined,
       destinationIso: ctx.destinationIso || undefined,
       codeRef: mb3mPartnerCode(ctx.bookingId),
+      id: folderId || undefined,
+      agencyUid,
     });
-    folderId = folder.id;
-    folderUid = folder.uid || null;
-    await deps.save(piece.id, { folderId, folderUid });
+    if (!folderId) {
+      folderId = folder.id;
+      folderUid = folder.uid || null;
+      await deps.save(piece.id, { folderId, folderUid });
+    }
   }
-  return { ...piece, customerUid, folderId, folderUid };
+  return { ...piece, customerUid, folderId, folderUid, agencyUid };
+}
+
+async function agencyFor(deps: Mb3mInvoiceDeps) {
+  if (!deps.agencyUid) return null;
+  try {
+    return await deps.agencyUid();
+  } catch {
+    return null;
+  }
 }
 
 function dbFail(error: { code?: string; message?: string }, fallback: string): never {
@@ -698,12 +718,15 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
   });
   const stale = mb3mStalePieces(inputs.printed, ctx.lines);
   if (!stale.length) throw new Mb3mError("Aucune facture imprimée à corriger.", 0);
+  const agencyUid = await mb3mSingleAgencyUid().catch(() => null);
   const creditNotes: string[] = [];
   for (const piece of stale) {
     if (!piece.folderId || !piece.customerUid || !piece.pieceNumber) continue;
     const lines = piece.lines.length
       ? piece.lines
-      : ctx.lines.filter((line) => piece.transactionIds.includes(line.transactionId)).map((line) => mb3mInvoiceLine({ ...line, margin: null, note: null }));
+      : ctx.lines
+          .filter((line) => piece.transactionIds.includes(line.transactionId))
+          .map((line) => mb3mInvoiceLine({ ...line, margin: line.amount, note: null }));
     const credit = await mb3mAddCreditNote({
       folderId: piece.folderId,
       customerUid: piece.customerUid,
@@ -715,6 +738,7 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
       refCommand: ctx.reference,
       destinationIso: ctx.destinationIso || undefined,
       lines,
+      agencyUid,
     });
     const now = new Date().toISOString();
     const inserted = await supabase.from("crm_mb3m_pieces").insert({
@@ -794,6 +818,7 @@ function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
     saveCompany: mb3mSaveCompany,
     saveFolder: mb3mSaveFolder,
     addInvoice: mb3mAddInvoice,
+    agencyUid: mb3mSingleAgencyUid,
     findPiece: mb3mFindPiece,
     cancelInvoice: mb3mCancelInvoice,
     renderPiece: async (number) => mb3mRenderPiece({ number }),

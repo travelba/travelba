@@ -34,6 +34,22 @@ export function PliantAccountBalance({
   );
 }
 
+/** Toujours visible sur l’onglet Carte : le disponible du compte, pas le plafond d’une carte. */
+export function PliantAccountBalanceCard({
+  account,
+}: {
+  account: { availableCents: number | null; currency: string } | null;
+}) {
+  return (
+    <section className="admin-af-card max-w-xs rounded-3xl px-5 py-4">
+      <PliantAccountBalance account={account || { availableCents: null, currency: "EUR" }} />
+      <p className="mt-2 text-xs leading-relaxed text-[var(--admin-navy)]/70">
+        Disponible du compte Pliant de l’agence. Alimentez-le si ce solde ne couvre pas la carte.
+      </p>
+    </section>
+  );
+}
+
 export function PliantCardDesk({
   mode,
   bookingId = null,

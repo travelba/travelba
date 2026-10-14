@@ -5,7 +5,7 @@ import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
-import { pliantConfigured } from "@/lib/crm/pliant";
+import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
 import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
 import { pliantBookingCards, pliantCardRecaps } from "@/lib/crm/pliant-booking";
 import { hotelDisplayName } from "@/lib/crm/carnet";
@@ -78,6 +78,21 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const signatory = hotelSignatoryName(staff.full_name);
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
+  const pliantAccountPromise = pliantConfigured()
+    ? new Promise<Awaited<ReturnType<typeof loadPliantAccountBalance>>>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 12_000);
+        loadPliantAccountBalance().then(
+          (value) => {
+            clearTimeout(timer);
+            resolve(value);
+          },
+          () => {
+            clearTimeout(timer);
+            resolve(null);
+          }
+        );
+      })
+    : Promise.resolve(null);
   const b = booking as CrmBooking;
   const syncedTitle = await syncBookingTitleFromSteps(supabase, id);
   if (syncedTitle) b.title = syncedTitle;
@@ -381,6 +396,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     accounting = null;
   }
   const mb3mPiece = accountingInputs.openNumber ? { number: accountingInputs.openNumber } : null;
+  const pliantAccount = await pliantAccountPromise;
   const mb3mContext = buildMb3mInvoiceContext({
     booking: b,
     items: bookingItems,
@@ -419,6 +435,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
             })
           )}
           pliantReady={pliantConfigured()}
+          pliantAccount={pliantAccount}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
           arrivals={arrivals}

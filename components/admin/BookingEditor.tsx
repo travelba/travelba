@@ -49,6 +49,7 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
+import { PliantAccountBalanceCard } from "@/components/admin/PliantCardDesk";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { TripCostsBlock } from "@/components/admin/TripCostsBlock";
@@ -253,6 +254,7 @@ export function BookingEditor({
   refusals = [],
   visaRequests = [],
   pliantReady = false,
+  pliantAccount = null,
   shareUrl = null,
   shareCompanions = [],
   arrivals = [],
@@ -304,6 +306,8 @@ export function BookingEditor({
     answers?: Partial<EstaAnswers> | null;
   }[];
   pliantReady?: boolean;
+  /** Disponible du compte Pliant de l’agence. Null : lecture impossible, le solde reste affiché. */
+  pliantAccount?: { availableCents: number | null; currency: string } | null;
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
@@ -1983,6 +1987,7 @@ export function BookingEditor({
 
       {tab === "cartes" ? (
         <div className="space-y-6">
+          <PliantAccountBalanceCard account={pliantAccount} />
           <BookingCards
             bookingId={booking.id}
             cards={bookingCards}
