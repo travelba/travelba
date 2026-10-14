@@ -10,6 +10,7 @@ import {
   mapTripCost,
   saleLines,
   suggestCostTargets,
+  suggestItem,
   tripCostFromPliant,
   tripCostFromRevolut,
   tripTotals,
@@ -149,8 +150,10 @@ export type AttachInput = {
   source: TripCostSource;
   sourceId: string;
   bookingId: string;
-  /** Carte ou dépense. Nul : le montant global du séjour. */
+  /** Carte ou dépense. Nul : la ligne qui ressemble au fournisseur, sinon le montant global du séjour. */
   itemId?: string | null;
+  /** Vrai : l’agent a choisi « Montant du séjour » explicitement ; pas de ligne devinée. */
+  stayOnly?: boolean;
   /** Nouvelle dépense libre, prix vendu pré-rempli au coût. */
   newExpense?: { title?: string | null; amount: number } | null;
   /** Sortie Revolut hors euros : coût en euros saisi par l’agent. */
@@ -201,6 +204,8 @@ export async function attachOutgoing(input: AttachInput, admin: SupabaseClient =
       .eq("booking_id", input.bookingId)
       .maybeSingle();
     if (!item) throw new TripCostError("Cette ligne n’est pas sur ce séjour.", 404);
+  } else if (!input.stayOnly) {
+    itemId = await defaultItemFor(admin, input.bookingId, draft);
   }
 
   const { data: inserted, error } = await admin
@@ -226,6 +231,56 @@ export async function attachOutgoing(input: AttachInput, admin: SupabaseClient =
   }
   await markSource(admin, draft.source, draft.sourceId, "matched", { bookingId: input.bookingId, customerId: payer });
   return mapTripCost(inserted as TripCostRow);
+}
+
+/**
+ * Ligne retenue quand l’agent n’en choisit pas : la carte dont le nom ressemble au fournisseur,
+ * sinon l’unique ligne vendue si le montant global du séjour n’est plus au livre, sinon le séjour.
+ */
+async function defaultItemFor(
+  admin: SupabaseClient,
+  bookingId: string,
+  draft: { supplier: string | null; amountEur: number }
+): Promise<string | null> {
+  const [targets, { data: debits }] = await Promise.all([
+    loadCostTargets(admin, bookingId),
+    admin
+      .from("crm_transactions")
+      .select("id, booking_id, direction, kind, status, currency, amount, label, external_id")
+      .eq("booking_id", bookingId)
+      .eq("direction", "debit")
+      .eq("status", "posted"),
+  ]);
+  const booking = targets[0];
+  const sales = saleLines((debits || []) as SaleLedgerRow[], bookingId);
+  if (booking) {
+    const hit = suggestItem(booking, { party: draft.supplier, amount: Math.abs(draft.amountEur) });
+    if (hit.itemId && hit.reason === "supplier") return hit.itemId;
+  }
+  if (!sales.some((line) => line.nature === "stay")) {
+    const sold = sales.filter((line) => line.itemId);
+    if (sold.length === 1) return sold[0].itemId;
+  }
+  return null;
+}
+
+/** Déplace un coût vers une autre ligne du même voyage (null = montant du séjour). */
+export async function retargetTripCost(costId: string, itemId: string | null, admin: SupabaseClient = createServiceClient()) {
+  const { data } = await admin.from("crm_trip_costs").select(COST_SELECT).eq("id", costId).maybeSingle();
+  if (!data) throw new TripCostError("Coût introuvable.", 404);
+  const cost = mapTripCost(data as TripCostRow);
+  if (itemId) {
+    const { data: item } = await admin
+      .from("crm_booking_items")
+      .select("id")
+      .eq("id", itemId)
+      .eq("booking_id", cost.bookingId)
+      .maybeSingle();
+    if (!item) throw new TripCostError("Cette ligne n’est pas sur ce séjour.", 404);
+  }
+  const { error } = await admin.from("crm_trip_costs").update({ booking_item_id: itemId }).eq("id", costId);
+  if (error) throw new TripCostError(error.message, 500);
+  return { ...cost, bookingItemId: itemId };
 }
 
 /** Retire un coût : la sortie revient dans la file à rattacher. La vente reste. */

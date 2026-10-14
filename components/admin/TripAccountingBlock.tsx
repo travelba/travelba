@@ -65,18 +65,18 @@ export function TripAccountingBlock({
   const [note, setNote] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
 
-  async function detach(costId: string) {
+  async function costAction(costId: string, body: Record<string, unknown>, failure: string) {
     setWorking(costId);
     setError(null);
     try {
       const res = await fetch("/api/admin/comptabilite", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "detach", cost_id: costId }),
+        body: JSON.stringify({ cost_id: costId, ...body }),
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
-        setError(json?.error || "Le coût n’a pas pu être retiré.");
+        setError(json?.error || failure);
         return;
       }
       router.refresh();
@@ -86,6 +86,15 @@ export function TripAccountingBlock({
       setWorking(null);
     }
   }
+
+  function detach(costId: string) {
+    return costAction(costId, { action: "detach" }, "Le coût n’a pas pu être retiré.");
+  }
+
+  /** Lignes vendues qui peuvent recevoir un coût : cartes et dépenses au livre, puis le séjour s’il y est. */
+  const retargets = view.lines
+    .filter((line) => line.itemId || line.nature === "stay")
+    .map((line) => ({ value: line.itemId || "", label: line.label }));
 
   async function reissue() {
     onBusy(true);
@@ -219,7 +228,10 @@ export function TripAccountingBlock({
       {view.unsold.length ? (
         <div className="rounded-2xl bg-[var(--admin-sky)]/60 px-4 py-3 text-sm">
           <p className="font-semibold text-[var(--admin-navy)]">Coûts sans vente ({eur(view.totals.unsoldCost)})</p>
-          <p className="text-xs text-muted">Le séjour n’est pas visible, ou la ligne n’est pas au grand livre. La facture attend.</p>
+          <p className="text-xs text-muted">
+            Ce coût ne tient à aucune ligne vendue : le séjour n’est pas visible, la ligne n’est pas au grand livre, ou le coût
+            est posé sur le montant du séjour alors que les cartes sont vendues une à une. Choisissez la ligne. La facture attend.
+          </p>
           <ul className="mt-1 space-y-0.5">
             {view.unsold.map((cost) => (
               <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -228,6 +240,33 @@ export function TripAccountingBlock({
                   {cost.occurredOn ? ` · ${formatDateFr(cost.occurredOn)}` : ""}
                 </span>
                 <span className="tabular-nums">{eur(cost.amountEur)}</span>
+                {retargets.length ? (
+                  <label className="inline-flex items-center gap-1">
+                    <span>Rattacher à</span>
+                    <select
+                      aria-label="Ligne vendue"
+                      disabled={working === cost.id || busy}
+                      defaultValue=""
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (value === "") return;
+                        void costAction(
+                          cost.id,
+                          { action: "retarget", item_id: value === "__stay__" ? null : value },
+                          "Le coût n’a pas pu être déplacé."
+                        );
+                      }}
+                      className="rounded-lg border border-[var(--border)] bg-white px-2 py-1 text-xs text-[var(--admin-navy)]"
+                    >
+                      <option value="">Choisir…</option>
+                      {retargets.map((option) => (
+                        <option key={option.value || "__stay__"} value={option.value || "__stay__"}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <button
                   type="button"
                   disabled={working === cost.id || busy}
