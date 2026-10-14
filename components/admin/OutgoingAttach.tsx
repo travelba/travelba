@@ -44,11 +44,14 @@ export function OutgoingAttach({
   line,
   fixedBooking = null,
   compact = false,
+  allowOutside = false,
 }: {
   line: OutgoingLine;
   /** Sur le dossier : le voyage est connu. */
   fixedBooking?: TargetOption | null;
   compact?: boolean;
+  /** Sur le dossier, « Hors voyage » reste possible : la sortie n’est pas un coût de ce séjour. */
+  allowOutside?: boolean;
 }) {
   const router = useRouter();
   const top = line.suggestions[0] || null;
@@ -234,7 +237,7 @@ export function OutgoingAttach({
           <button type="button" disabled={busy} onClick={() => setOpen(true)} className="admin-af-btn rounded-full px-3 py-1 text-sm">
             Rattacher
           </button>
-          {!fixedBooking ? (
+          {!fixedBooking || allowOutside ? (
             <button
               type="button"
               disabled={busy}
@@ -256,7 +259,15 @@ export function OutgoingAttach({
 }
 
 /** Ligne d’une sortie : bénéficiaire, date, carte, montant, puis le rattachement. */
-export function OutgoingRow({ line, fixedBooking = null }: { line: OutgoingLine; fixedBooking?: TargetOption | null }) {
+export function OutgoingRow({
+  line,
+  fixedBooking = null,
+  allowOutside = false,
+}: {
+  line: OutgoingLine;
+  fixedBooking?: TargetOption | null;
+  allowOutside?: boolean;
+}) {
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 py-3">
       <span className="min-w-0 flex-1">
@@ -269,7 +280,7 @@ export function OutgoingRow({ line, fixedBooking = null }: { line: OutgoingLine;
       </span>
       <OutgoingAmount line={line} />
       <div className="basis-full sm:basis-auto">
-        <OutgoingAttach line={line} fixedBooking={fixedBooking} compact />
+        <OutgoingAttach line={line} fixedBooking={fixedBooking} compact allowOutside={allowOutside} />
       </div>
     </li>
   );

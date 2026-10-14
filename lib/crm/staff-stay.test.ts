@@ -35,6 +35,33 @@ test("les manques comptent passeport, courriers hôtel et montant caché", () =>
     chips.map((chip) => chip.label),
     ["Passeport Judith", "2 courriers hôtel", "Montant non montré"]
   );
+  assert.ok(chips.every((chip) => chip.tab == null));
+});
+
+test("les coûts à pointer et la marge à corriger ouvrent Règlement", () => {
+  const chips = staffBlockingChips({
+    travelers: [],
+    missingPassportIds: [],
+    hotelLettersOpen: 0,
+    amountHidden: false,
+    costsToPoint: 2,
+    marginStale: true,
+  });
+  assert.deepEqual(
+    chips.map((chip) => [chip.label, chip.tab]),
+    [
+      ["2 coûts à pointer", "argent"],
+      ["Marge à corriger", "argent"],
+    ]
+  );
+  const one = staffBlockingChips({
+    travelers: [],
+    missingPassportIds: [],
+    hotelLettersOpen: 0,
+    amountHidden: false,
+    costsToPoint: 1,
+  });
+  assert.deepEqual(one.map((chip) => chip.label), ["Coût à pointer"]);
 });
 
 test("le grand livre suit la visibilité, une annulation ne débite pas", () => {

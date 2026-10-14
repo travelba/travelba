@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { TripAccountingView } from "@/components/admin/TripAccountingBlock";
 import { mb3mRealm } from "./mb3m";
 import { mb3mDossierLines, mb3mPieceStale, type Mb3mLedgerRow } from "./mb3m-account";
 import { isStayAmountKind } from "./bookings";
@@ -12,6 +11,7 @@ import {
   tripAccountingState,
   tripTotals,
   type SaleLedgerRow,
+  type TripAccountingView,
   type TripCost,
 } from "./trip-costs";
 import { loadOutgoingQueue, loadTripCosts } from "./trip-costs-db";

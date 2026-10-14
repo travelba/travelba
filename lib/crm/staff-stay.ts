@@ -36,7 +36,8 @@ export function staffStayLabel(booking: {
   return LABELS[staffStayVisibility(booking)];
 }
 
-export type StaffBlocker = { id: string; label: string };
+/** Onglet que la pastille ouvre : À faire par défaut, Règlement pour l’argent. */
+export type StaffBlocker = { id: string; label: string; tab?: "todo" | "argent" };
 
 /** Ce qui empêche de considérer le dossier comme prêt. */
 export function staffBlockingChips(input: {
@@ -44,6 +45,10 @@ export function staffBlockingChips(input: {
   missingPassportIds: string[];
   hotelLettersOpen: number;
   amountHidden: boolean;
+  /** Sorties proposées et coûts sans vente qui attendent dans Coûts du voyage. */
+  costsToPoint?: number;
+  /** Facture imprimée dont la marge a changé. */
+  marginStale?: boolean;
 }): StaffBlocker[] {
   const missing = new Set(input.missingPassportIds);
   const chips: StaffBlocker[] = [];
@@ -59,6 +64,11 @@ export function staffBlockingChips(input: {
     });
   }
   if (input.amountHidden) chips.push({ id: "amount", label: "Montant non montré" });
+  const costs = input.costsToPoint ?? 0;
+  if (costs > 0) {
+    chips.push({ id: "costs", label: costs > 1 ? `${costs} coûts à pointer` : "Coût à pointer", tab: "argent" });
+  }
+  if (input.marginStale) chips.push({ id: "margin", label: "Marge à corriger", tab: "argent" });
   return chips;
 }
 
