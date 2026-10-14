@@ -43,19 +43,30 @@ export async function GET(request: Request) {
   const customerUid = (params.get("customer") || "").replace(/[^0-9a-fA-F-]/g, "").slice(0, 36);
   const agencyUid = (params.get("agency") || "").replace(/[^0-9a-fA-F-]/g, "").slice(0, 36);
   if (params.get("probe") === "1" && folderId && customerUid) {
-    // Bissection : une facture minimale d’un euro par variante. Un échec ne laisse rien ;
-    // un succès est annulé aussitôt, et la série s’arrête.
-    const variants: [string, string][] = [
-      ["A-nu", `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde A</Label><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`],
-      ["B-taxes", `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde B</Label><MarginTaxRate>0</MarginTaxRate><MarginTaxTotal>0</MarginTaxTotal><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><TaxRate>0</TaxRate><TaxTotal>0</TaxTotal><Type>Standard</Type></InvoiceLine>`],
-      ["C-provider", `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde C</Label><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit>${agencyUid ? `<ProviderId>${agencyUid}</ProviderId>` : ""}<Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`],
-      ["D-activite-11", `<InvoiceLine><ActivityId>11</ActivityId><Label>Sonde D</Label><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`],
-      ["E-sans-activite", `<InvoiceLine><Label>Sonde E</Label><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`],
-      ["F-note", `<InvoiceLine><Label>Sonde F</Label><NetPriceTotal>0</NetPriceTotal><NetPriceUnit>0</NetPriceUnit><Quantity>1</Quantity><Type>Note</Type></InvoiceLine>`],
+    // Bissection : la facture nue d’un euro passe (variante A). Chaque variante ajoute un seul
+    // champ de la vraie facture. Un échec ne laisse rien ; un succès est annulé aussitôt.
+    const base = (label: string, extra = "") =>
+      `<InvoiceLine><ActivityId>22</ActivityId><Label>${label}</Label>${extra}<NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>`;
+    const variants: { name: string; lines: string; head?: string; tail?: string }[] = [
+      { name: "G-marge", lines: `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde G</Label><MarginUnit>1</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>` },
+      { name: "H-marge-zero", lines: `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde H</Label><MarginUnit>0</MarginUnit><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>` },
+      { name: "I-note", lines: `<InvoiceLine><ActivityId>22</ActivityId><Label>Sonde I</Label><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Note>Fournisseur : sonde</Note><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>` },
+      { name: "J-refcommand", lines: base("Sonde J"), head: `<RefCommand>SONDE</RefCommand>` },
+      { name: "K-destination", lines: base("Sonde K"), tail: `<Destination>Sonde</Destination>` },
+      { name: "L-activite-7", lines: `<InvoiceLine><ActivityId>7</ActivityId><Label>Sonde L</Label><NetPriceTotal>1</NetPriceTotal><NetPriceUnit>1</NetPriceUnit><Quantity>1</Quantity><Type>Standard</Type></InvoiceLine>` },
+      { name: "M-deux-lignes", lines: base("Sonde M1") + base("Sonde M2") },
+      {
+        name: "N-voyageurs",
+        lines: base("Sonde N"),
+        tail: `<Travelers><Traveler><Traveler><Person><FirstName>Sonde</FirstName><Name>Travelba</Name></Person></Traveler></Traveler></Travelers>`,
+      },
+      { name: "O-label-long", lines: base("Dépense · Sonde — TB-0000-0000") },
     ];
-    for (const [name, line] of variants) {
+    for (const { name, lines, head = "", tail = "" } of variants) {
       const agency = agencyUid ? `<Agency><Uid>${agencyUid}</Uid></Agency>` : "";
-      const inner = `<FolderAddPiecesRequest ${NS} xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${folderId}</FolderId><Invoice>${agency}<CustomerIdentity><Uid>${customerUid}</Uid></CustomerIdentity><Title>Sonde Travelba</Title><DateEnd>2026-10-11</DateEnd><DateStart>2026-10-08</DateStart><Lines>${line}</Lines></Invoice></FolderAddPiecesRequest>`;
+      const travelers = tail.startsWith("<Travelers>") ? tail : "";
+      const destination = travelers ? "" : tail;
+      const inner = `<FolderAddPiecesRequest ${NS} xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${folderId}</FolderId><Invoice>${agency}<CustomerIdentity><Uid>${customerUid}</Uid></CustomerIdentity><Title>Sonde Travelba</Title>${head}<DateEnd>2026-10-11</DateEnd><DateStart>2026-10-08</DateStart>${destination}<Lines>${lines}</Lines>${travelers}</Invoice></FolderAddPiecesRequest>`;
       let xml = "";
       try {
         xml = strip(await mb3mSoap("FolderService", "IFolderService", "AddPieces", inner));
@@ -75,7 +86,6 @@ export async function GET(request: Request) {
             `<FolderCancelPieceRequest ${NS}><FolderId>${folderId}</FolderId><Number>${number}</Number></FolderCancelPieceRequest>`
           )
         );
-        break;
       }
     }
     return NextResponse.json(out);
