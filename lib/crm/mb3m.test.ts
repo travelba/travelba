@@ -8,6 +8,7 @@ import {
   mb3mAgencyNames,
   mb3mBlockedOnProduction,
   mb3mConfigured,
+  mb3mFaultDetail,
   mb3mFindPersons,
   mb3mPartnerCode,
   mb3mPdfBytes,
@@ -103,6 +104,30 @@ describe("client MB3M Partners", () => {
     assert.equal(mb3mRealm(), "test");
     assert.equal(mb3mConfigured(), true);
     assert.equal(mb3mActivityId(), 3);
+  });
+
+  it("une faute SOAP remonte son message et garde le détail pour les logs", async () => {
+    arm();
+    const logged: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => logged.push(args.map(String).join(" "));
+    try {
+      await assert.rejects(
+        mb3mAgencyNames(async () =>
+          new Response(
+            `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Server</faultcode><faultstring>Nullable object must have a value.</faultstring><detail><ExceptionDetail><Message>Nullable object must have a value.</Message><StackTrace>   at System.ThrowHelper.ThrowInvalidOperationException()&#xD;   at Mb3m.Billing.ActivityVat.Rate()</StackTrace><Type>System.InvalidOperationException</Type></ExceptionDetail></detail></s:Fault></s:Body></s:Envelope>`,
+            { status: 500 }
+          )
+        ),
+        (error: unknown) => error instanceof Mb3mError && error.message === "Nullable object must have a value."
+      );
+    } finally {
+      console.error = original;
+    }
+    assert.equal(logged.length, 1);
+    assert.match(logged[0], /System\.InvalidOperationException/);
+    assert.match(logged[0], /ActivityVat\.Rate/);
+    assert.equal(mb3mFaultDetail("<x/>"), "");
   });
 
   it("crée une fiche et lit l’identifiant renvoyé", async () => {

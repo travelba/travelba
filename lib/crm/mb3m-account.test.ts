@@ -75,12 +75,14 @@ describe("facture MB3M du compte", () => {
   it("porte la marge et les fournisseurs des coûts pointés, et signale une pièce imprimée à corriger", () => {
     const rows = [row("a", "debit", 1200, null, "Hôtel"), row("b", "debit", 400, null, "Vol")];
     const plain = mb3mAccountLines(rows, null, false);
-    assert.equal(plain[0].margin, null);
+    // Sans coût pointé, la marge est la vente : MB3M lit une marge sur chaque ligne.
+    assert.equal(plain[0].margin, 1200);
+    assert.equal(plain[0].note, null);
     const margins = new Map([["a", { margin: 350, suppliers: ["RIAD KNIZA", "RIAD KNIZA"] }]]);
     const costed = mb3mAccountLines(rows, null, false, margins);
     assert.equal(costed[0].margin, 350);
     assert.equal(costed[0].note, "Fournisseur : RIAD KNIZA");
-    assert.equal(costed[1].margin, null);
+    assert.equal(costed[1].margin, 400);
     assert.notEqual(mb3mLineSignature(plain), mb3mLineSignature(costed));
     assert.equal(mb3mInvoiceAction(plain, costed), "replace");
     const printed = { transactionIds: ["a", "b"], signature: mb3mLineSignature(plain) };
