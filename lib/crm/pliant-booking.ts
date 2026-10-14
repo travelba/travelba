@@ -168,6 +168,37 @@ export function pliantSpendCopy(
   return { amount: cents / 100, currency: moneyCode(line.currency) };
 }
 
+export type BookingCardMosaicSlot =
+  | { source: "issued"; id: string }
+  | { source: "linked"; pliantCardId: string };
+
+/**
+ * Mosaïque de l’onglet Carte : les cartes émises, puis les cartes liées
+ * (hôtel, registre) qui ne sont pas déjà une carte du dossier.
+ * Une carte supprimée ne revient pas par le récap.
+ */
+export function bookingCardMosaic(
+  issued: { id: string; pliant_card_id: string; status: string | null }[],
+  linked: { pliantCardId: string }[]
+): BookingCardMosaicSlot[] {
+  const issuedPliantIds = new Set<string>();
+  const slots: BookingCardMosaicSlot[] = [];
+  for (const card of issued) {
+    const pliantCardId = card.pliant_card_id.trim();
+    if (pliantCardId) issuedPliantIds.add(pliantCardId);
+    if (card.status === "terminated") continue;
+    slots.push({ source: "issued", id: card.id });
+  }
+  const seenLinked = new Set<string>();
+  for (const card of linked) {
+    const pliantCardId = card.pliantCardId.trim();
+    if (!pliantCardId || issuedPliantIds.has(pliantCardId) || seenLinked.has(pliantCardId)) continue;
+    seenLinked.add(pliantCardId);
+    slots.push({ source: "linked", pliantCardId });
+  }
+  return slots;
+}
+
 export function pliantCardRecaps(cards: PliantBookingCard[], spends: PliantSpendLine[]): PliantCardRecap[] {
   return cards.map((card) => {
     const lines = spends.filter((row) => row.cardId === card.pliantCardId);

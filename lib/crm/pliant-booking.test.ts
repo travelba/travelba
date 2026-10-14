@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  bookingCardMosaic,
   linkedPliantTransactionIds,
   ownedBookingPliantCard,
   pliantBookingCards,
@@ -75,6 +76,25 @@ test("les cartes du dossier précèdent l’hôtel, et un même identifiant ne c
   );
   assert.equal(cards[2]?.currency, "EUR");
   assert.equal(cards[2]?.last4, "1111");
+});
+
+test("la mosaïque aligne les cartes émises puis les cartes liées, sans doublon", () => {
+  const slots = bookingCardMosaic(
+    [
+      { id: "row-day", pliant_card_id: "card-day", status: "active" },
+      { id: "row-old", pliant_card_id: "card-old", status: "terminated" },
+    ],
+    [
+      { pliantCardId: "card-day" },
+      { pliantCardId: "card-old" },
+      { pliantCardId: "card-bulles" },
+      { pliantCardId: " card-bulles " },
+    ]
+  );
+  assert.deepEqual(slots, [
+    { source: "issued", id: "row-day" },
+    { source: "linked", pliantCardId: "card-bulles" },
+  ]);
 });
 
 test("un achat confirmé se copie, un refus, un remboursement ou un montant nul non", () => {

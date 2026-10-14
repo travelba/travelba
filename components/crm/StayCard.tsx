@@ -10,6 +10,7 @@ export function StayCard({
   face,
   revealUrl,
   personal = false,
+  pliantCardId = null,
   ceilingLabel = null,
   locked = false,
   sealed = false,
@@ -18,6 +19,8 @@ export function StayCard({
   face: StayCardFace;
   revealUrl: string;
   personal?: boolean;
+  /** Carte Pliant du dossier qui n’a pas de ligne `crm_booking_cards`. */
+  pliantCardId?: string | null;
   needsCode?: boolean;
   views?: { name: string; at: string }[];
   ceilingLabel?: string | null;
@@ -40,9 +43,9 @@ export function StayCard({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          itemId: face.itemId,
           action: "card",
           code,
+          ...(pliantCardId ? { pliantCardId } : { itemId: face.itemId }),
         }),
       });
       const json = (await res.json().catch(() => null)) as
