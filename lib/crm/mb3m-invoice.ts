@@ -656,7 +656,8 @@ async function dossierInvoiceInputs(supabase: SupabaseClient, bookingId: string)
   };
 }
 
-export async function emitMb3mInvoice(supabase: SupabaseClient, bookingId: string): Promise<Mb3mInvoiceResult> {
+/** Contexte de facture d’un séjour, tel qu’il part vers MB3M. */
+export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId: string): Promise<Mb3mInvoiceContext> {
   const { data: booking, error: bookingError } = await supabase
     .from("crm_bookings")
     .select("*")
@@ -677,7 +678,7 @@ export async function emitMb3mInvoice(supabase: SupabaseClient, bookingId: strin
   if (payerResult.error) dbFail(payerResult.error, "La facture n’a pas pu être préparée.");
   if (companiesResult.error) dbFail(companiesResult.error, "La facture n’a pas pu être préparée.");
   const inputs = await dossierInvoiceInputs(supabase, bookingId);
-  const ctx = buildMb3mInvoiceContext({
+  return buildMb3mInvoiceContext({
     booking: stay,
     items: (items.data || []) as StayItem[],
     travelers: (travelers.data || []) as { first_name: string | null; last_name: string | null }[],
@@ -687,6 +688,10 @@ export async function emitMb3mInvoice(supabase: SupabaseClient, bookingId: strin
     coveredIds: inputs.coveredIds,
     costs: inputs.costs,
   });
+}
+
+export async function emitMb3mInvoice(supabase: SupabaseClient, bookingId: string): Promise<Mb3mInvoiceResult> {
+  const ctx = await loadMb3mInvoiceContext(supabase, bookingId);
   return runMb3mInvoice(ctx, supabaseInvoiceDeps(supabase));
 }
 

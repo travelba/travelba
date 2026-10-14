@@ -336,7 +336,7 @@ export async function mb3mSaveFolder(
   return { id, uid };
 }
 
-function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine[]) {
+export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine[]) {
   if (!lines.length) throw new Mb3mError("La pièce MB3M n’a pas de ligne.", -1);
   return lines
     .map((line) => {

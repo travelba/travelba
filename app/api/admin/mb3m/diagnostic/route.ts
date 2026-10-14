@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/crm/auth";
-import { mb3mRealm, mb3mSoap, mb3mXmlText, mb3mXmlTexts } from "@/lib/crm/mb3m";
+import { linesXml, mb3mRealm, mb3mSoap, mb3mXmlText, mb3mXmlTexts } from "@/lib/crm/mb3m";
+import { loadMb3mInvoiceContext, mb3mInvoiceLine } from "@/lib/crm/mb3m-invoice";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const NS = `xmlns="http://schemas.mb3m.fr/Partners"`;
 
@@ -42,6 +45,45 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const customerUid = (params.get("customer") || "").replace(/[^0-9a-fA-F-]/g, "").slice(0, 36);
   const agencyUid = (params.get("agency") || "").replace(/[^0-9a-fA-F-]/g, "").slice(0, 36);
+  const bookingId = (params.get("booking") || "").replace(/[^0-9a-fA-F-]/g, "").slice(0, 36);
+  const sendProbe = async (name: string, invoiceInner: string) => {
+    const inner = `<FolderAddPiecesRequest ${NS} xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${folderId}</FolderId><Invoice>${invoiceInner}</Invoice></FolderAddPiecesRequest>`;
+    let xml = "";
+    try {
+      xml = strip(await mb3mSoap("FolderService", "IFolderService", "AddPieces", inner));
+    } catch (error) {
+      log(`probe-${name}`, `FAUTE ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const code = mb3mXmlText(xml, "ResultCode");
+    const number = mb3mXmlTexts(xml, "Number").filter(Boolean).at(-1) || "";
+    log(`probe-${name}`, `ResultCode ${code} ${mb3mXmlText(xml, "Message")} n°${number}`);
+    if (code === "1" && number) {
+      await run(`probe-${name}-cancel`, () =>
+        mb3mSoap(
+          "FolderService",
+          "IFolderService",
+          "CancelInvoice",
+          `<FolderCancelPieceRequest ${NS}><FolderId>${folderId}</FolderId><Number>${number}</Number></FolderCancelPieceRequest>`
+        )
+      );
+    }
+  };
+  if (params.get("probe") === "2" && folderId && customerUid && bookingId) {
+    // Les vraies lignes du séjour : la facture entière, puis chaque ligne seule.
+    const ctx = await loadMb3mInvoiceContext(createServiceClient(), bookingId);
+    const lines = ctx.lines.map(mb3mInvoiceLine);
+    const agency = agencyUid ? `<Agency><Uid>${agencyUid}</Uid></Agency>` : "";
+    const head = `${agency}<CustomerIdentity><Uid>${customerUid}</Uid></CustomerIdentity><Title>Sonde Travelba</Title><DateEnd>2026-10-11</DateEnd><DateStart>2026-10-08</DateStart>`;
+    await sendProbe("reel-entier", `${head}<Lines>${linesXml("InvoiceLine", lines)}</Lines>`);
+    for (const [index, line] of lines.entries()) {
+      await sendProbe(
+        `reel-ligne-${index}-${line.activityId}-m${line.marginUnit ?? "x"}-n${line.note ? 1 : 0}-${line.netPriceTotal}`,
+        `${head}<Lines>${linesXml("InvoiceLine", [line])}</Lines>`
+      );
+    }
+    return NextResponse.json(out);
+  }
   if (params.get("probe") === "1" && folderId && customerUid) {
     // Bissection : la facture nue d’un euro passe (variante A). Chaque variante ajoute un seul
     // champ de la vraie facture. Un échec ne laisse rien ; un succès est annulé aussitôt.
