@@ -212,7 +212,7 @@ function Segmented<T extends string>({
       <div
         role="radiogroup"
         aria-label={label}
-        className="inline-flex max-w-full flex-wrap gap-1 rounded-full bg-white/60 p-1 shadow-[inset_0_0_0_1px_var(--border)]"
+        className="inline-flex max-w-full flex-wrap gap-1 rounded-2xl bg-white/60 p-1 shadow-[inset_0_0_0_1px_var(--border)]"
       >
         {options.map((option) => {
           const selected = option.value === value;
@@ -224,7 +224,7 @@ function Segmented<T extends string>({
               aria-checked={selected}
               disabled={option.disabled}
               onClick={() => onChange(option.value)}
-              className={`admin-tap rounded-full px-3.5 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`admin-tap grow rounded-xl px-3.5 py-1.5 text-center text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 selected ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)] hover:bg-white"
               }`}
             >
@@ -1484,7 +1484,7 @@ export function BookingEditor({
               </p>
             ) : null}
             {payerKind === "company" && payerCompanies.length === 1 ? (
-              <p className="rounded-2xl bg-white/70 px-4 py-3 text-sm text-[var(--admin-navy)]">
+              <p className="text-sm text-[var(--admin-navy)]">
                 Société :{" "}
                 {fundingCompanyOptionLabel(
                   payerCompanies[0].company_name,
