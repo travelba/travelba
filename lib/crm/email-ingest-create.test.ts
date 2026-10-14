@@ -457,8 +457,62 @@ describe("autoCreatePlan", () => {
       ],
       items: [hotel, { ...hotel, id: "h2", title: "Hotel Eden", confirmation_ref: "97620171" }],
     });
-    assert.equal(twoHotels.plan, null);
-    assert.equal(twoHotels.hold, "same_stay");
+    assert.deepEqual(twoHotels.plan, {
+      kind: "apply_stay",
+      bookingId: "b-rome",
+      customerId: "marie",
+      gesture: "replace",
+    });
+
+    const sharedNights = stay({
+      destination: "Rome",
+      items: [
+        {
+          kind: "hotel",
+          title: "Hotel de la Ville",
+          supplier: null,
+          confirmation_ref: "97620999",
+          start_at: "2026-06-14",
+          end_at: "2026-06-18",
+          amount: 900,
+          details: {},
+        },
+      ],
+    });
+    const sameDestination = {
+      customer_id: "marie",
+      booking_id: "b-rome",
+      label: "TB-1 — Rome",
+      reason: SAME_DESTINATION_REASON,
+      score: 80,
+    };
+    const ask = autoCreatePlan({
+      extract: sharedNights,
+      decision: decideEmailIngestAction({
+        extract: sharedNights,
+        suggestedCustomerId: "marie",
+        suggestedBookingId: "b-rome",
+        candidates: [sameDestination],
+      }),
+      candidates: [sameDestination],
+      items: [
+        {
+          ...hotel,
+          start_at: "2026-06-12",
+          end_at: "2026-06-16",
+        },
+        {
+          ...hotel,
+          id: "h2",
+          title: "Hotel Eden",
+          confirmation_ref: "97620171",
+          start_at: "2026-06-13",
+          end_at: "2026-06-17",
+        },
+      ],
+    });
+    assert.equal(ask.plan, null);
+    assert.equal(ask.hold, "same_stay");
   });
 
   it("crée la fiche sans e-mail quand le nom et le séjour sont là", () => {
