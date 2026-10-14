@@ -198,14 +198,16 @@ est annulé) :
   la carte active : le nom, la référence complète et les dates restent, les
   avantages nouveaux s’ajoutent. Une chambre déjà annulée ne revient pas.
   Deux chambres actives de la même réservation : l’agence choisit ;
-- autre référence : l’ancienne carte passe `lifecycle=superseded`, la nouvelle
-  reprend ce prix vendu et reste cachée. Le choix d’une carte n’apparaît que
-  pour **une** carte nouvelle face à plusieurs cartes du même type. Plusieurs
-  cartes nouvelles rejoignent le séjour (bouton **Mettre à jour le séjour**) ;
+- autre référence, même hôtel ou mêmes nuits : l’ancienne carte passe
+  `lifecycle=superseded`, la nouvelle reprend ce prix vendu et reste cachée.
+  Le jour de départ ne compte pas : un Crowne Plaza jusqu’au 19 et un Fairmont
+  à partir du 19 s’ajoutent. Le choix d’une carte n’apparaît que pour **une**
+  carte nouvelle face à plusieurs cartes du même séjour. Plusieurs cartes
+  nouvelles rejoignent le séjour (bouton **Mettre à jour le séjour**) ;
 - une carte hôtel sans numéro et sans date d’arrivée ne remplace rien et
-  n’ouvre pas une seconde carte. Le même mail a déjà la vraie carte
-  (Fairmont daté + Fairmont vide : on met à jour le Fairmont, le Crowne Plaza
-  reste) ;
+  n’ouvre pas une seconde carte. Dans le même mail, elle se replie sur l’hôtel
+  du même nom qui a déjà des dates : les avantages s’ajoutent, les dates et le
+  numéro restent ;
 - les dates du dossier suivent les cartes actives, sauf le ski (cours, forfait, matériel) qui ne les déplace pas ;
 - le mail appliqué seul sort de la file (`attached`), note « Itinéraire mis à jour depuis le mail. » ;
 - la nouvelle carte d’un remplacement reste cachée jusqu’au clic Montrer ;

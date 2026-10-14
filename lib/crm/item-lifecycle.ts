@@ -1,4 +1,4 @@
-import { findHotelBookingCard, findMatchingItem } from "@/lib/crm/item-match";
+import { findHotelBookingCard, findMatchingItem, hotelSameStay } from "@/lib/crm/item-match";
 import { countsAsCarnetCard, isActiveItem } from "@/lib/crm/types";
 
 export type LifecycleCard = {
@@ -178,9 +178,9 @@ export function hollowHotelCard(item: {
 
 /**
  * Même référence, ou même réservation Little Emperors : mettre à jour la carte.
- * Une autre référence, seule de son type : la remplacer. Plusieurs cartes du même
- * type pour une seule carte nouvelle : demander laquelle. Plusieurs cartes
- * nouvelles rejoignent le séjour, sans choix impossible.
+ * Un autre hôtel, sur d’autres nuits, s’ajoute. Le même nom ou une nuit en commun
+ * remplace l’hôtel du séjour. Plusieurs hôtels du même séjour : demander lequel.
+ * Plusieurs cartes nouvelles rejoignent le séjour, sans choix impossible.
  */
 export function replacementPlan(
   incoming: IncomingCard[],
@@ -239,32 +239,34 @@ export function replacementPlan(
       adds += group.length;
       continue;
     }
-    if (targets.length === 1 && group.length === 1) {
-      const target = targets[0];
-      replacements.push({
-        itemId: target.id,
-        kind: target.kind,
-        amount: target.amount ?? null,
-        includeInLedger: Boolean(target.include_in_ledger),
-      });
-      continue;
-    }
     // Plusieurs cartes nouvelles rejoignent le séjour. Le choix n’existe que pour une seule.
     if (group.length !== 1) {
       adds += group.length;
       continue;
     }
-    if (chosenId && targets.some((row) => row.id === chosenId)) {
-      const target = targets.find((row) => row.id === chosenId)!;
+    const incoming = group[0];
+    const stayTargets =
+      kind === "hotel" ? targets.filter((row) => hotelSameStay(row, incoming)) : targets;
+    if (!stayTargets.length) {
+      adds += 1;
+      continue;
+    }
+    const chosen =
+      chosenId && stayTargets.some((row) => row.id === chosenId)
+        ? stayTargets.find((row) => row.id === chosenId)
+        : stayTargets.length === 1
+          ? stayTargets[0]
+          : null;
+    if (chosen) {
       replacements.push({
-        itemId: target.id,
-        kind: target.kind,
-        amount: target.amount ?? null,
-        includeInLedger: Boolean(target.include_in_ledger),
+        itemId: chosen.id,
+        kind: chosen.kind,
+        amount: chosen.amount ?? null,
+        includeInLedger: Boolean(chosen.include_in_ledger),
       });
       continue;
     }
-    for (const row of targets) {
+    for (const row of stayTargets) {
       if (!choices.some((choice) => choice.id === row.id)) choices.push(choiceRow(row));
     }
   }
