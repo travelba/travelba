@@ -200,9 +200,25 @@ export async function mb3mSoap(
   const xml = await response.text();
   const fault = mb3mXmlText(xml, "faultstring");
   if (!response.ok || fault) {
+    // Le détail de la faute (type d’exception, pile .NET) ne passe pas à l’écran : il va dans les logs.
+    const detail = mb3mFaultDetail(xml);
+    console.error(`[mb3m] ${service}/${action} ${response.status} ${fault || "sans faultstring"}${detail ? `\n${detail}` : ""}`);
     throw new Mb3mError(fault || "L’API MB3M n’a pas répondu.", response.ok ? -1 : response.status);
   }
   return xml;
+}
+
+/** Type d’exception et premières lignes de pile d’une faute SOAP, sans le corps de la requête. */
+export function mb3mFaultDetail(xml: string) {
+  const type = mb3mXmlText(xml, "Type");
+  const message = mb3mXmlText(xml, "Message");
+  const stack = mb3mXmlText(xml, "StackTrace")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .join("\n");
+  return [type, message, stack].filter(Boolean).join("\n").slice(0, 2000);
 }
 
 export async function mb3mAgencyNames(fetchImpl?: FetchImpl) {
