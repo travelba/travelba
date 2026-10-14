@@ -234,7 +234,7 @@ describe("replacementPlan", () => {
     assert.equal(plan.replacements.length, 0);
     assert.equal(plan.adds, 0);
     assert.equal(plan.choices.length, 0);
-    assert.equal(hollowHotelCard({ kind: "hotel", title: "Fairmont Singapore" }), true);
+    assert.equal(hollowHotelCard({ kind: "hotel" }), true);
     assert.equal(
       hollowHotelCard({ kind: "hotel", confirmation_ref: "470705216", start_at: "2026-11-19" }),
       false

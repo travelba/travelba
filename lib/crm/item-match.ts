@@ -123,11 +123,22 @@ function hotelNightsShare(a: MatchableItem, b: MatchableItem) {
  * Même séjour : même réservation, même hôtel, ou une nuit en commun.
  * Deux hôtels à la suite ne se remplacent pas.
  */
-export function hotelSameStay(current: MatchableItem, incoming: MatchableItem) {
-  if ((current.kind || "") !== "hotel" || (incoming.kind || "") !== "hotel") return false;
-  if (hotelRefsShareBooking(current.confirmation_ref, incoming.confirmation_ref)) return true;
-  if (hotelsShareName(current, incoming)) return true;
-  return hotelNightsShare(current, incoming);
+export function hotelSameStay(
+  current: MatchableItem,
+  incoming: {
+    kind?: string | null;
+    confirmation_ref?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    title?: string | null;
+    details?: Record<string, unknown> | null;
+  }
+) {
+  const card: MatchableItem = { ...incoming, kind: incoming.kind || "" };
+  if (current.kind !== "hotel" || card.kind !== "hotel") return false;
+  if (hotelRefsShareBooking(current.confirmation_ref, card.confirmation_ref)) return true;
+  if (hotelsShareName(current, card)) return true;
+  return hotelNightsShare(current, card);
 }
 
 function hollowHotelMention(item: MatchableItem) {
