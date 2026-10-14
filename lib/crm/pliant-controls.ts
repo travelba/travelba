@@ -1,3 +1,14 @@
+const PLIANT_CONTROL_KEYS = [
+  "categories",
+  "merchants",
+  "dates",
+  "times",
+  "locations",
+  "countries",
+  "currencies",
+  "acceptanceMethods",
+] as const;
+
 /** Contrôles vidés : Pliant supprime un contrôle absent ou nul. */
 export function emptyPliantCardControls() {
   return {
@@ -10,6 +21,13 @@ export function emptyPliantCardControls() {
     currencies: null,
     acceptanceMethods: null,
   };
+}
+
+/** Vrai quand aucun commerçant, catégorie, date, lieu, pays, devise ou mode n’est posé. */
+export function pliantControlsAreOpen(payload: unknown) {
+  if (!payload || typeof payload !== "object") return false;
+  const row = payload as Record<string, unknown>;
+  return PLIANT_CONTROL_KEYS.every((key) => row[key] == null);
 }
 
 /** Corps d’émission sans aucun blocage, même si l’appelant en avait posé. */

@@ -12,7 +12,7 @@ import {
   type PliantTokenStore,
 } from "./pliant-auth";
 import { pliantOtpToken, pliantPciWidgetUrl } from "./pliant-pci";
-import { emptyPliantCardControls, pliantIssuePayload } from "./pliant-controls";
+import { emptyPliantCardControls, pliantControlsAreOpen, pliantIssuePayload } from "./pliant-controls";
 import {
   annotatePliantPayload,
   pliantAvailableLimit,
@@ -211,19 +211,31 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
 
 /** Retire commerçants, catégories, dates, lieux, pays, devises et modes d’acceptation. */
 async function clearPliantCardControls(cardId: string, token: string) {
-  const res = await fetch(`${endpoints().api}/cards/${encodeURIComponent(cardId)}/card-controls`, {
-    method: "PUT",
-    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-      "Pliant-API-Version": "2.1.0",
-    },
-    body: JSON.stringify(emptyPliantCardControls()),
-  });
-  if (res.ok || res.status === 202) return;
-  console.error("[pliant] contrôles", res.status);
+  const headers = {
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json",
+    "Pliant-API-Version": "2.1.0",
+  };
+  const url = `${endpoints().api}/cards/${encodeURIComponent(cardId)}/card-controls`;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
+    if (await pliantCardControlsAreOpen(url, headers)) return;
+    const res = await fetch(url, {
+      method: "PUT",
+      signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
+      headers,
+      body: JSON.stringify(emptyPliantCardControls()),
+    });
+    if ((res.ok || res.status === 202) && (await pliantCardControlsAreOpen(url, headers))) return;
+    console.error("[pliant] contrôles", res.status);
+  }
   throw new Error("Pliant n’a pas retiré les restrictions de la carte.");
+}
+
+async function pliantCardControlsAreOpen(url: string, headers: Record<string, string>) {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS) });
+  if (!res.ok) return false;
+  return pliantControlsAreOpen(await res.json().catch(() => null));
 }
 
 async function resolvePliantIssue(preferred: { organizationId: string; cardholderId: string; cardConfig: string }) {

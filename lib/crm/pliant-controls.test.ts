@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { emptyPliantCardControls, pliantIssuePayload } from "./pliant-controls";
+import { emptyPliantCardControls, pliantControlsAreOpen, pliantIssuePayload } from "./pliant-controls";
 
 test("une carte générée part sans blocage commerçant, catégorie, pays ni devise", () => {
   const controls = emptyPliantCardControls();
@@ -27,4 +27,13 @@ test("une carte générée part sans blocage commerçant, catégorie, pays ni de
   assert.equal(body.cardConfig, "PLIANT_VIRTUAL_TRAVEL");
   assert.equal(body.label, "Hôtel");
   assert.deepEqual(body.cardControls, controls);
+  assert.equal(pliantControlsAreOpen(controls), true);
+  assert.equal(
+    pliantControlsAreOpen({
+      categories: null,
+      merchants: { type: "MID", restriction: "BLOCKED", values: ["498750040214654"] },
+    }),
+    false
+  );
+  assert.equal(pliantControlsAreOpen(null), false);
 });
