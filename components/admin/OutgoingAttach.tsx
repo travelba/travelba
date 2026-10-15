@@ -29,7 +29,7 @@ export function OutgoingAmount({ line }: { line: OutgoingLine }) {
   const eur = line.eurAmount != null ? money(line.eurAmount, "EUR") : null;
   const origin = line.currency !== "EUR" ? money(line.refund ? -line.amount : line.amount, line.currency) : null;
   return (
-    <span className="text-right">
+    <span className="shrink-0 whitespace-nowrap text-right">
       <span className="block font-semibold tabular-nums text-[var(--admin-navy)]">{eur || origin || "—"}</span>
       {eur && origin ? <span className="block text-xs tabular-nums text-muted">{origin}</span> : null}
     </span>
@@ -133,33 +133,29 @@ export function OutgoingAttach({
     void post(body, "Rattachement impossible. Réessayez.");
   }
 
-  const topLabel = top
-    ? `${[top.reference, top.title.trim(), top.itemLabel && top.itemLabel.trim() !== top.title.trim() ? top.itemLabel : ""]
-        .filter(Boolean)
-        .join(" · ")} — ${costSuggestionReasonLabel(top.reason)}`
-    : null;
   const sure = lineIsSure(line, fixedBooking?.id || null);
-  const proposalClass = sure ? "text-xs font-semibold text-[var(--admin-navy)]" : "text-xs font-semibold text-[#9e7e51]";
   const proposalWord = sure ? "Quasi certain" : "Proposition";
+  const proposalPlace = top ? [top.reference, top.title.trim()].filter(Boolean).join(" · ") : "";
+  const proposalItem = top?.itemLabel && top.itemLabel.trim() !== top.title.trim() ? top.itemLabel : null;
+  const showProposal = Boolean(top) || !fixedBooking || sure;
 
   return (
-    <div className={compact ? "space-y-2" : "space-y-2 sm:max-w-md"}>
-      {!fixedBooking ? (
-        topLabel ? (
-          <p className={proposalClass}>
-            {proposalWord} : {topLabel}
-          </p>
-        ) : line.agencyCard ? (
-          <p className="text-xs text-muted">Carte d’agence : sans doute hors voyage.</p>
-        ) : (
-          <p className="text-xs text-muted">Aucune proposition</p>
-        )
-      ) : top?.itemLabel ? (
-        <p className={proposalClass}>
-          {proposalWord} : {top.itemLabel}
-        </p>
-      ) : sure ? (
-        <p className={proposalClass}>Quasi certain : carte générée dans ce dossier</p>
+    <div className={compact ? "space-y-3" : "space-y-3 sm:max-w-md"}>
+      {showProposal ? (
+        <div className="min-w-0">
+          {top || sure ? (
+            <p className={`text-[11px] font-semibold uppercase tracking-wide ${sure ? "text-[var(--admin-navy)]" : "text-[#9e7e51]"}`}>
+              {proposalWord}
+            </p>
+          ) : null}
+          {top && !fixedBooking ? <p className="text-sm font-semibold leading-snug text-[var(--admin-navy)]">{proposalPlace}</p> : null}
+          {top && fixedBooking && proposalItem ? <p className="text-sm font-semibold leading-snug text-[var(--admin-navy)]">{proposalItem}</p> : null}
+          {top && !fixedBooking && proposalItem ? <p className="text-xs leading-5 text-muted">{proposalItem}</p> : null}
+          {top ? <p className="text-xs leading-5 text-muted">{costSuggestionReasonLabel(top.reason)}</p> : null}
+          {!top && sure ? <p className="text-sm font-semibold text-[var(--admin-navy)]">Carte générée dans ce dossier</p> : null}
+          {!top && !sure && line.agencyCard ? <p className="text-xs text-muted">Carte d’agence : sans doute hors voyage.</p> : null}
+          {!top && !sure && !line.agencyCard && !fixedBooking ? <p className="text-xs text-muted">Aucune proposition</p> : null}
+        </div>
       ) : null}
       {open ? (
         <div className="space-y-2 rounded-2xl border border-border bg-white p-3">
@@ -315,22 +311,24 @@ export function OutgoingRow({
     <li
       className={
         sure
-          ? "-mx-3 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#C5A880] bg-[#C5A880]/10 px-3 py-3"
-          : "flex flex-wrap items-start justify-between gap-3 py-3"
+          ? "my-2 rounded-2xl border border-[#C5A880] bg-[#C5A880]/10 px-4 py-4"
+          : "border-b border-[var(--border)] py-4 last:border-b-0"
       }
       data-sure={sure ? "true" : undefined}
     >
-      <span className="min-w-0 flex-1">
-        <span className="block font-medium text-[var(--admin-navy)]">{line.party}</span>
-        <span className="block text-xs text-muted">
-          {line.occurredOn ? formatDateFr(line.occurredOn) : "—"} · {line.source === "pliant" ? "Pliant" : "Revolut"} · {line.kind}
-          {line.card ? ` · ${line.card}` : ""}
-          {line.text ? ` · ${line.text}` : ""}
-        </span>
-        {cardLabel ? <span className="block text-xs text-[var(--admin-navy)]">{cardLabel}</span> : null}
-      </span>
-      <OutgoingAmount line={line} />
-      <div className="basis-full sm:basis-auto">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="font-medium leading-snug text-[var(--admin-navy)]">{line.party}</p>
+          <p className="mt-0.5 text-xs leading-5 text-muted">
+            {line.occurredOn ? formatDateFr(line.occurredOn) : "—"} · {line.source === "pliant" ? "Pliant" : "Revolut"} · {line.kind}
+            {line.card ? ` · ${line.card}` : ""}
+            {line.text ? ` · ${line.text}` : ""}
+          </p>
+          {cardLabel ? <p className="mt-1 text-xs leading-5 text-[var(--admin-navy)]">{cardLabel}</p> : null}
+        </div>
+        <OutgoingAmount line={line} />
+      </div>
+      <div className="mt-3">
         <OutgoingAttach line={line} fixedBooking={fixedBooking} compact allowOutside={allowOutside} />
       </div>
     </li>

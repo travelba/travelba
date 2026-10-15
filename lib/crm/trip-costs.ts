@@ -484,15 +484,15 @@ export type OutgoingLine = {
 export function costSuggestionReasonLabel(reason: CostSuggestion["reason"]) {
   switch (reason) {
     case "reference":
-      return "le n° de dossier figure dans le libellé";
+      return "Le n° de dossier figure dans le libellé.";
     case "card":
-      return "carte Pliant générée dans ce dossier";
+      return "Carte Pliant générée dans ce dossier.";
     case "client":
-      return "la carte est au nom du client";
+      return "La carte est au nom du client.";
     case "supplier":
-      return "le nom du fournisseur correspond à cette prestation";
+      return "Le nom du fournisseur correspond à cette prestation.";
     default:
-      return "même montant qu’une prestation du dossier";
+      return "Même montant qu’une prestation du dossier.";
   }
 }
 
