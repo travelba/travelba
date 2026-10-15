@@ -359,10 +359,11 @@ export function suggestItem(
 }
 
 /**
- * Règlements globaux qui ne se rattachent à aucun voyage : le prélèvement IATA (BSP) regroupe
- * tous les billets d’une période. Aucune proposition, et rien dans le bloc des dossiers.
+ * Mouvements qui ne se rattachent à aucun voyage : le prélèvement IATA (BSP) regroupe tous les
+ * billets d’une période ; le virement de trésorerie vers Pliant (bénéficiaire l’agence elle-même,
+ * désignation « treso Rev - pliant ») alimente les cartes. Aucune proposition, rien dans les dossiers.
  */
-const SETTLEMENT_PARTY = /\bIATA\b|\bBSP\b/i;
+const SETTLEMENT_PARTY = /\bIATA\b|\bBSP\b|\bPLIANT\b|TRAVEL\s+BUSINESS\s+AGENCY/i;
 
 export function isSettlementParty(text: string | null | undefined) {
   return SETTLEMENT_PARTY.test(text || "");
