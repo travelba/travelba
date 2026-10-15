@@ -57,6 +57,7 @@ export function LittleEmperorsInbox({
   const router = useRouter();
   const copy = mylerSheet(!agency);
   const live = configured && !productionBlocked;
+  const keyLine = live ? copy.keyOn : productionBlocked ? copy.keyPending : copy.keyOff;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -111,7 +112,7 @@ export function LittleEmperorsInbox({
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{copy.title}</p>
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{copy.host}</h2>
         <p className="mt-3 text-sm font-semibold text-[var(--admin-navy)]">
-          {live ? copy.keyOn : copy.keyOff}
+          {keyLine}
         </p>
         <p className="mt-2 text-sm text-[var(--admin-navy)]">{copy.keyNote}</p>
         <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{copy.sso}</p>
