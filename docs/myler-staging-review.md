@@ -6,7 +6,11 @@ Preview (this branch, key is on every Vercel Preview):
 
 `https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app`
 
-The invite button is the way in. It carries Preview access until 2026-10-16 11:09:49 UTC and opens **Set your password**, not the sign-in page. A sign-in link alone stops on Travelba sign-in because no password is set yet.
+Share link, valid until 2026-10-22 15:41:30 UTC. It opens the Little Emperors review page without a Vercel login. The previous share token is revoked.
+
+`https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app/admin/little-emperors?_vercel_share=8RQGFEe6WY5KDtZtQ5xMmRSDvcXNgZsj`
+
+Open that share link first. The invite button then opens **Set your password**, not the sign-in page. A sign-in link alone stops on Travelba sign-in because no password is set yet.
 
 ---
 
@@ -14,18 +18,19 @@ Hello Nico,
 
 Staging review for the MyLER integration. About ten minutes. No production API key is in use, and we are not asking for one until you say this looks complete.
 
-1. Open the Travelba email “Your Little Emperors access” and click **Set your password**. That opens the English password page directly. The link lasts 30 days and includes Preview access until 2026-10-16 11:09:49 UTC. Do not start from Travelba sign-in: there is no password until this page. SSO POST /v1/login is not used.
-2. Choose the password and continue. You land on Little Emperors.
-3. Go to `/admin/login?espace=myler`. The page is titled **Travelba sign-in**. Sign in with nico@littleemperors.com and the password you just set. You land only on Little Emperors. The sidebar reads **MyLER partner**. There is no client list and no ledger.
-4. The page title is Little Emperors. The block at the top is **Travel BA internal back office**. It says this CRM is not a public website, that agents and AI assistants list Little Emperors bookings, match them to clients, and view or cancel them, and that this staging deployment calls the staging API with the test key while production will call the production API once that key is issued. It names the endpoints and the webhook. Under **MyLER integration**, check:
+1. Open the Preview Share link above first (not https://travelba.fr). It is valid until 2026-10-22 15:41:30 UTC. If Vercel asks you to sign in, use that Share link.
+2. Open the Travelba email “Your Little Emperors access” and click **Set your password**. That opens the English password page directly. The link lasts 30 days. Do not start from Travelba sign-in: there is no password until this page. SSO POST /v1/login is not used. If that button asks for a Vercel login, open the Share link above, then use the button again.
+3. Choose the password and continue. You land on Little Emperors.
+4. Go to `/admin/login?espace=myler`. The page is titled **Travelba sign-in**. Sign in with nico@littleemperors.com and the password you just set. You land only on Little Emperors. The sidebar reads **MyLER partner**. There is no client list and no ledger.
+5. The page title is Little Emperors. The block at the top is **Travel BA internal back office**. It says this CRM is not a public website, that agents and AI assistants list Little Emperors bookings, match them to clients, and view or cancel them, and that this staging deployment calls the staging API with the test key while production will call the production API once that key is issued. It names the endpoints and the webhook. Under **MyLER integration**, check:
    - Host `api-staging.littleemperors.com`
    - **Test key: present.**
    - The line: this staging deployment calls the Little Emperors staging API with the test key. Production will call the production API once that key is issued.
    - **v2 routes:** `GET /v2/hotels/bookings`, `GET /v2/hotels/{id}`, `DELETE /v2/hotels/bookings/{id}`
    - Webhook `https://travelba.fr/api/webhooks/little-emperors`, header `X-Access-Key`. The webhook secret is absent until you want push events. **Refresh** does not need it.
    - The line: SSO POST /v1/login is not used for MyLER. Sign-in is the Travelba account.
-5. Click **Refresh**. It calls `GET /v2/hotels/bookings` on the staging API. Expected text: “The staging API answered. No reservations yet: that is expected, staging has none.” An empty list is a successful call. Nothing is published to a traveller. Reload the page: the same sentence stays, with the date of the last read.
-6. `https://travelba.fr` is the same internal CRM. Its French screen says the production key is not issued yet, and that production will call the Little Emperors production API once that key is issued. The test key is judged on this staging review.
+6. Click **Refresh**. It calls `GET /v2/hotels/bookings` on the staging API. Expected text: “The staging API answered. No reservations yet: that is expected, staging has none.” An empty list is a successful call. Nothing is published to a traveller. Reload the page: the same sentence stays, with the date of the last read.
+7. `https://travelba.fr` is the same internal CRM. Its French screen says the production key is not issued yet, and that production will call the Little Emperors production API once that key is issued. The test key is judged on this staging review.
 
 If that matches what you see, the production API key is the next step on our side.
 
