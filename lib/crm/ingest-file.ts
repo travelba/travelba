@@ -63,7 +63,7 @@ Règles d’honnêteté :
 - kind : flight | hotel | transfer | activity | rail | car | cruise | insurance | fee.
 - Un PDF peut produire PLUSIEURS cartes.
 - details.source_file_name = nom exact du fichier source.
-- details.needs_review = true si lecture douteuse.
+- details.needs_review = true si lecture douteuse. Dans ce cas details.review_reason = une phrase courte en français qui nomme le champ douteux (ex. « Le nom de l’hôtel n’est pas imprimé. »). Sinon review_reason = null.
 - amount des items : toujours null (pas le net client).
 - details.document_amount = montant imprimé sur CE fichier (total visible). Absent = null. Pas une ligne « NET » fournisseur seule.
 - total_amount : somme des prix vendus saisis sur les cartes. Ne pas le remplir avec le total PDF.
@@ -401,6 +401,7 @@ function compactForReconcile(extract: BookingExtract) {
       supplier: item.supplier,
       details: {
         needs_review: item.details?.needs_review,
+        review_reason: item.details?.review_reason,
         source_file_name: item.details?.source_file_name,
         from: item.details?.from,
         to: item.details?.to,
@@ -436,7 +437,7 @@ async function reconcileExtract(extract: BookingExtract): Promise<BookingExtract
       type: "text",
       text: `${PROMPT_COMMON}
 
-Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champs vides (title, destination, voyageurs s’ils sont imprimés dans les libellés). Ne jamais inventer d’horaire, d’inclus, de prix, de PNR. Si un champ est douteux : details.needs_review=true. Ne fusionne pas un aller et un retour. Ne change pas source_file_name.`,
+Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champs vides (title, destination, voyageurs s’ils sont imprimés dans les libellés). Ne jamais inventer d’horaire, d’inclus, de prix, de PNR. Si un champ est douteux : details.needs_review=true et details.review_reason = une phrase courte qui nomme ce champ. Ne fusionne pas un aller et un retour. Ne change pas source_file_name.`,
     },
     { type: "text", text: JSON.stringify(compactForReconcile(extract)) },
   ];
@@ -460,6 +461,7 @@ Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champ
           details: {
             ...(item.details || {}),
             needs_review: item.details?.needs_review || incoming.details?.needs_review,
+            review_reason: item.details?.review_reason || incoming.details?.review_reason,
           },
         };
       }),

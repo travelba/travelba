@@ -5,6 +5,7 @@ import { detectCancellationDocument, type BookingExtract } from "./ingest-types"
 import { shownClientNote } from "./public-booking";
 import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
+import { TENTATIVE_REVIEW_REASON } from "./review-doubt";
 
 export type ParsedAirport = { iata: string; city: string };
 
@@ -1575,6 +1576,7 @@ function hotelToItem(hotel: ParsedHotel): ExtractItem {
       included: hotel.included,
       rooms: hotel.rooms,
       needs_review: hotel.needs_review || undefined,
+      review_reason: hotel.needs_review ? TENTATIVE_REVIEW_REASON : undefined,
     },
   };
 }

@@ -72,7 +72,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - **Un hôtel** par établissement même si 2 chambres / 2 réf. → `details.rooms[]`. `title` = nom d’hôtel, pas la ville.
 - Cartes **à la main** autorisées (mêmes types que l’ingest).
 - Réimport **même réf.** (vol : réf. + n° + date) = **remplace** la carte, n’ajoute pas un doublon.
-- Illisible : on **enregistre** + bandeau **À vérifier** (`details.needs_review`), pas un refus global.
+- Illisible : on **enregistre**. Le bandeau nomme l’étape et ce qui est douteux (`details.needs_review`, phrase `details.review_reason`, sinon le fichier option ou le nom qui est la ville). Pas un refus global, pas une phrase qui ne dit que « lecture douteuse ».
 - Check-in / horaires absents = **rien** (pas « 15:00 », pas « non indiqué »).
 - **Contacts d’hôtel** : le catalogue Little Emperors (`crm_hotel_contacts`) peut exister ailleurs. **Sur la fiche réservation**, pas de liste rôle · nom · e-mail. Le nom de l’hôtel suffit. **Interface client** (`/mon-compte`, aperçu Interface client, lien public `/v/`, exemple) : aucun roster. `withoutHotelRoster` retire `hotel_contacts` et les e-mails ou téléphones qui n’existent que dans cette liste, avant le rendu. Milano = Milan. Pas d’écriture dossier par dossier.
 - Rapprochement `matchHotelDirectory` : nom identique, ou mêmes mots une fois la ville retirée. Milano = Milan, Londres = London, Venise = Venice (`CITY_ALIASES` dans `lib/crm/hotel-catalog.ts`). Nouvelle graphie = une ligne d’alias + un test `hotel-catalog.test.ts`. Deux hôtels possibles : aucun. Hôtel absent du catalogue : pas de contact inventé.

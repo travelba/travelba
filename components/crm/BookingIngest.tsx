@@ -33,6 +33,8 @@ import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { IssuesList } from "@/components/crm/IssuesList";
+import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
+import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import {
   collectExtractIssues,
   issuesFromResponse,
@@ -589,10 +591,11 @@ export function BookingIngest({
     });
   }
 
-  const needsReview = Boolean(
-    extract?.items.some((item) => item.details?.needs_review) ||
-      (extract && !extract.items.length)
-  );
+  const reviewRows = (extract?.items || []).flatMap((item, index) => {
+    const reasons = reviewDoubts(item);
+    return reasons.length ? [{ key: String(index), label: reviewStepLabel(item), reasons }] : [];
+  });
+  const noCards = Boolean(extract && !extract.items.length);
   const liveIssues = useMemo(() => {
     if (!extract) return [];
     return collectExtractIssues(extract, {
@@ -828,10 +831,15 @@ export function BookingIngest({
             <CheckCircle2 className="h-4 w-4" />
             Relisez chaque carte. Enregistrer crée un brouillon invisible au client.
           </p>
-          {needsReview ? (
+          {noCards ? (
             <p className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
-              À vérifier — lecture incomplète ou aucune carte extraite. Les fichiers restent joints.
+              Aucune carte extraite. Les fichiers restent joints.
             </p>
+          ) : null}
+          {reviewRows.length ? (
+            <div className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2">
+              <ReviewDoubtList rows={reviewRows} />
+            </div>
           ) : null}
           {extract.document_status === "quote" ? (
             <p className="rounded-2xl bg-[#efebe0] px-3 py-2 text-sm text-[var(--admin-navy)]">

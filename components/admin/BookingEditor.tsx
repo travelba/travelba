@@ -47,6 +47,8 @@ import {
 } from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
+import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
+import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
 import { PliantAccountBalanceCard } from "@/components/admin/PliantCardDesk";
@@ -396,7 +398,10 @@ export function BookingEditor({
     },
     [booking.currency, booking.id]
   );
-  const needsReview = items.some((item) => item.details?.needs_review === true);
+  const reviewRows = items.flatMap((item) => {
+    const reasons = reviewDoubts(item);
+    return reasons.length ? [{ key: item.id, label: reviewStepLabel(item), reasons }] : [];
+  });
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover" | "invoice">("idle");
   // Champs du formulaire méta : `useMirror` — un champ touché par l’agent gagne, un champ intact suit
   // le serveur à chaque `router.refresh()` (une étape ajoutée met déjà à jour la ligne du dossier).
@@ -1210,7 +1215,7 @@ export function BookingEditor({
             Dossier archivé. Le client ne le voit plus. Réactivez-le pour le remettre dans la liste et au grand livre.
           </p>
         ) : null}
-        {needsReview ? <p className="text-sm text-accent">Certaines étapes sont marquées lecture douteuse.</p> : null}
+        <ReviewDoubtList rows={reviewRows} />
         {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
         <IssuesList issues={issues} />
       </header>

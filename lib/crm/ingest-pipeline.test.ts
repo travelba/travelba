@@ -170,6 +170,7 @@ describe("mergeFileExtracts", () => {
       (item) => item.details?.source_file_name === "devis.pdf"
     );
     assert.equal(devis?.details?.needs_review, true);
+    assert.equal(devis?.details?.review_reason, "Issue d’un devis, pas d’une confirmation.");
     assert.match(merged.extract.notes_client || "", /devis/i);
   });
 
