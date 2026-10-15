@@ -5,6 +5,8 @@ export type RevolutAccountRow = {
   name?: string;
   currency?: string;
   state?: string;
+  /** `current`, `merchant`, `savings`, `other`… La trésorerie est `other` et absente de la liste. */
+  account_type?: string;
   /** Solde déjà en unité majeure (euros), tel que Revolut le renvoie. */
   balance?: number | string;
 };
@@ -30,6 +32,7 @@ export function parseRevolutAccounts(data: unknown): RevolutAccountRow[] {
         name: typeof rec.name === "string" ? rec.name : undefined,
         currency: typeof rec.currency === "string" ? rec.currency : undefined,
         state: typeof rec.state === "string" ? rec.state : undefined,
+        account_type: typeof rec.account_type === "string" ? rec.account_type : undefined,
         balance,
       },
     ];
@@ -118,4 +121,78 @@ export function pickEurSepaWire(
     return chooseUnique(candidates.filter((row) => mainIds.has(row.accountId)));
   }
   return chooseUnique(candidates);
+}
+
+const HIDDEN_ACCOUNT_CAP = 4;
+
+/** Poche d’épargne : la liste `/accounts` ne la renvoie pas. */
+export function isRevolutSavingsPocket(account: { name?: string; account_type?: string }) {
+  const type = (account.account_type || "").toLowerCase();
+  if (type === "savings" || type === "other") return true;
+  return /^SP:/i.test((account.name || "").trim());
+}
+
+function pocketAlias(raw: string) {
+  const text = raw.trim();
+  if (!text) return null;
+  if (/^tr[ée]so(rerie)?$/i.test(text)) return "Trésorerie";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** « Interest earned - treso » ou « From treso » → Trésorerie. */
+export function treasuryNameFromDescription(description: string) {
+  const text = description.trim();
+  const interest = text.match(/^interest earned\s*[-–:]\s*(.+)$/i);
+  if (interest?.[1]) return pocketAlias(interest[1]);
+  const from = text.match(/^from\s+(\S+)$/i);
+  if (from?.[1]) return pocketAlias(from[1]);
+  return null;
+}
+
+/** Le nom `SP:…` ou le type épargne devient le libellé lu sur les mouvements. */
+export function withRevolutPocketName(account: RevolutAccountRow, descriptions: string[] = []): RevolutAccountRow {
+  const current = (account.name || "").trim();
+  if (/^tr[ée]so(rerie)?$/i.test(current)) return { ...account, name: "Trésorerie" };
+  if (!isRevolutSavingsPocket(account)) return account;
+  for (const description of descriptions) {
+    const label = treasuryNameFromDescription(description);
+    if (label) return { ...account, name: label };
+  }
+  return { ...account, name: "Trésorerie" };
+}
+
+function legsOf(raw: unknown) {
+  if (!raw || typeof raw !== "object") return [];
+  const legs = (raw as { legs?: unknown }).legs;
+  if (!Array.isArray(legs)) return [];
+  return legs.flatMap((leg) => {
+    if (!leg || typeof leg !== "object") return [];
+    const rec = leg as { account_id?: unknown; description?: unknown };
+    const id = typeof rec.account_id === "string" ? rec.account_id : "";
+    if (!isRevolutAccountId(id)) return [];
+    const description = typeof rec.description === "string" ? rec.description.trim() : "";
+    return [{ id, description }];
+  });
+}
+
+/**
+ * Comptes vus dans les mouvements et absents de la liste Revolut.
+ * Quatre au plus, dans l’ordre d’apparition. Les descriptions servent au libellé.
+ */
+export function collectHiddenRevolutAccounts(rows: unknown[], knownIds: Iterable<string>) {
+  const known = new Set(knownIds);
+  const found = new Map<string, string[]>();
+  for (const raw of rows) {
+    for (const leg of legsOf(raw)) {
+      if (known.has(leg.id)) continue;
+      const descriptions = found.get(leg.id);
+      if (!descriptions) {
+        if (found.size >= HIDDEN_ACCOUNT_CAP) continue;
+        found.set(leg.id, leg.description ? [leg.description] : []);
+        continue;
+      }
+      if (leg.description) descriptions.push(leg.description);
+    }
+  }
+  return found;
 }

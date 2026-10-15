@@ -84,20 +84,30 @@ describe("soldes des comptes", () => {
     assert.equal(pocket.amount, 0);
   });
 
-  it("le tableau de bord ne garde que Revolut Main en euros", () => {
+  it("le tableau de bord garde Main et la trésorerie, pas les autres poches", () => {
     const pockets = revolutBalancePockets([
-      { name: "Main", currency: "EUR", state: "active", balance: 1315.11 },
-      { name: "EUR", currency: "EUR", state: "active", balance: 0 },
       { name: "MYKONOS BB", currency: "EUR", state: "active", balance: 1054.38 },
+      { name: "Trésorerie", currency: "EUR", state: "active", balance: 5012.99 },
+      { name: "Main", currency: "EUR", state: "active", balance: 202.91 },
       { name: "Main", currency: "GBP", state: "active", balance: 0 },
       { name: "Main", currency: "USD", state: "active", balance: 0 },
     ]);
     assert.deepEqual(
+      pockets.map((pocket) => pocket.name),
+      ["Main", "Trésorerie", "MYKONOS BB", "Main", "Main"]
+    );
+    assert.deepEqual(
       dashboardRevolutPocket(pockets).map((pocket) => [pocket.name, pocket.amount, pocket.currency]),
-      [["Main", 1315.11, "EUR"]]
+      [
+        ["Main", 202.91, "EUR"],
+        ["Trésorerie", 5012.99, "EUR"],
+      ]
     );
     const only = revolutBalancePockets([{ name: "Main", currency: "EUR", state: "active", balance: 12 }]);
     assert.equal(dashboardRevolutPocket(only)[0].name, "Main");
+    const treasury = revolutBalancePockets([{ name: "treso", currency: "EUR", state: "active", balance: 40 }]);
+    assert.equal(dashboardRevolutPocket(treasury)[0].name, "Trésorerie");
+    assert.equal(dashboardRevolutPocket(treasury)[0].amount, 40);
     assert.equal(dashboardRevolutPocket(null)[0].amount, null);
   });
 
@@ -132,7 +142,7 @@ describe("soldes des comptes", () => {
     assert.equal(html.includes("payer_email"), false);
   });
 
-  it("le tableau de bord n’affiche que Main, l’attente Stripe et Pliant", () => {
+  it("le tableau de bord affiche Main, la trésorerie, l’attente Stripe et Pliant", () => {
     const html = renderToStaticMarkup(
       createElement(AgencyAccountBalances, {
         accounts: [
@@ -141,7 +151,8 @@ describe("soldes des comptes", () => {
             href: "/admin/revolut",
             pockets: dashboardRevolutPocket(
               revolutBalancePockets([
-                { name: "Main", currency: "EUR", state: "active", balance: 1315.11 },
+                { name: "Main", currency: "EUR", state: "active", balance: 202.91 },
+                { name: "Trésorerie", currency: "EUR", state: "active", balance: 5012.99 },
                 { name: "MYKONOS BB", currency: "EUR", state: "active", balance: 1054.38 },
               ])
             ),
@@ -164,11 +175,13 @@ describe("soldes des comptes", () => {
         ],
       })
     );
-    assert.equal((html.match(/href=/g) || []).length, 3);
+    assert.equal((html.match(/href=/g) || []).length, 4);
     assert.match(html, /Main/);
+    assert.match(html, /Trésorerie/);
     assert.match(html, /En attente/);
     assert.equal(html.includes("MYKONOS"), false);
-    assert.ok(html.includes(formatMoney(1315.11)));
+    assert.ok(html.includes(formatMoney(202.91)));
+    assert.ok(html.includes(formatMoney(5012.99)));
     assert.ok(html.includes(formatMoney(49764.49)));
     assert.ok(html.includes(formatMoney(2261.42)));
   });

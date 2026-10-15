@@ -106,7 +106,7 @@ Inchangé : crédits Revolut / Stripe, encours, 10 %, frais de billeterie, bouto
 
 Le tableau de bord (`/admin`, bloc **Comptes**) et la page de chaque compte montrent le solde, comme Pliant (« Solde du compte »).
 
-- **Revolut** : le tableau de bord ne montre que le compte actif nommé **Main**, en euros. Les autres poches (devises, comptes nommés) restent sur `/admin/revolut`, euros d’abord, Main en tête. Inactif ignoré. Pas d’IBAN. Non connecté : la carte n’est pas affichée.
+- **Revolut** : le tableau de bord montre les comptes actifs **Main** et **Trésorerie**, en euros. La trésorerie est une poche d’épargne absente de `GET /accounts` (`account_type` `other` ou `savings`, nom `SP:…`) : on la retrouve dans les mouvements déjà synchronisés, puis on lit son solde. Le libellé est **Trésorerie**. Les autres poches (devises, comptes nommés) restent sur `/admin/revolut`, euros d’abord, Main puis Trésorerie. Inactif ignoré. Pas d’IBAN. Non connecté : la carte n’est pas affichée.
 - **Stripe** : le tableau de bord montre le montant **en attente** de versement (`balance.pending`, centimes → euros). Le disponible reste sur `/admin/stripe`, en grand, avec l’attente en dessous. Pas de body brut.
 - **Pliant** : `availableLimit` de l’organisation, déjà sur la page Pliant, repris sur le tableau de bord.
 
