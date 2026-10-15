@@ -161,10 +161,22 @@ type PiecePatch = {
  * Ligne MB3M d’une vente. MB3M facture **Net + Marge** : `NetPrice` est le net fournisseur, la
  * marge s’ajoute dessus. On envoie donc vente − marge en net, et la marge à part, pour que la
  * pièce fasse le prix vendu. Sans marge connue, le prix vendu entier en net.
+ *
+ * MB3M refuse une ligne à net 0 (-504 « Une erreur s'est produite durant l'enregistrement de la
+ * facture »), et ses types Fees / Note ne conviennent pas (non supporté / ligne absente du PDF).
+ * Une ligne de marge pure (frais, prestation sans coût pointé) part donc avec un net plancher
+ * d’un centime et la marge qui complète : la pièce imprime le bon montant, la marge varie de 0,01 €.
  */
+export const MB3M_MIN_NET = 0.01;
+
 export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
-  const margin = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
-  const net = margin == null ? line.amount : Math.round((line.amount - margin) * 100) / 100;
+  const raw = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
+  let net = raw == null ? line.amount : Math.round((line.amount - raw) * 100) / 100;
+  let margin = raw;
+  if (raw != null && net < MB3M_MIN_NET && line.amount >= MB3M_MIN_NET) {
+    net = MB3M_MIN_NET;
+    margin = Math.round((line.amount - MB3M_MIN_NET) * 100) / 100;
+  }
   return {
     label: line.label,
     quantity: 1,
@@ -454,6 +466,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     }
     throw new Mb3mError(mb3mInvoiceBlocker(ctx) || "Aucune dépense de ce séjour n’est au grand livre.", 0);
   }
+  let previous: { folderId: string; number: string } | null = null;
   if (piece.pieceNumber) {
     const state = await deps.findPiece(piece.pieceNumber);
     if (state === "printed") {
@@ -489,7 +502,8 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
         visibleToClient: ctx.visibleToClient,
       };
     }
-    if (state === "open" && piece.folderId) await deps.cancelInvoice(piece.folderId, piece.pieceNumber);
+    // L’ancienne pro forma s’annule après la nouvelle : un refus de MB3M ne laisse pas le dossier sans pièce.
+    if (state === "open" && piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
   } else if (!created && recent(deps, piece)) {
     throw new Mb3mError("Une facture MB3M est déjà en cours pour ce séjour.", 0);
   }
@@ -518,6 +532,13 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
     agencyUid: savedPiece.agencyUid,
   });
+  if (previous && previous.number !== invoice.number) {
+    try {
+      await deps.cancelInvoice(previous.folderId, previous.number);
+    } catch (err) {
+      console.error(`[mb3m] annulation de la pro forma n° ${previous.number}`, err instanceof Error ? err.message : err);
+    }
+  }
   await deps.save(savedPiece.id, {
     pieceNumber: invoice.number,
     pieceUid: invoice.uid || null,
