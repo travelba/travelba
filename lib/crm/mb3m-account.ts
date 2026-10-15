@@ -221,11 +221,17 @@ export function mb3mAccountBalance(rows: Mb3mLedgerRow[], companyId: string | nu
 }
 
 /** La marge entre dans la signature : un coût rattaché remplace une pro forma non imprimée. */
+/**
+ * Signature des lignes telles qu’elles partent vers MB3M. Avec une marge, le net envoyé
+ * (vente − marge) en fait partie : une pièce ouverte émise sous l’ancien découpage est remplacée.
+ */
 export function mb3mLineSignature(lines: Mb3mAccountLine[]) {
   return lines
     .map((line) => {
       const base = `${line.transactionId}:${line.amount.toFixed(2)}:${line.label}:${line.activityId ?? ""}`;
-      return line.margin == null ? base : `${base}:m${line.margin.toFixed(2)}`;
+      if (line.margin == null) return base;
+      const net = Math.round((line.amount - line.margin) * 100) / 100;
+      return `${base}:n${net.toFixed(2)}:m${line.margin.toFixed(2)}`;
     })
     .join("|");
 }
