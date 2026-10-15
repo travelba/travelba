@@ -1,12 +1,19 @@
 import { isTripShareCode } from "./trip-share";
 import { isEntryCode } from "./entry-link";
 import { coverQuery } from "./carnet";
+import { generatedCityCoverSpec } from "./cover-catalog";
 import { unsplashKeywordMatch } from "./covers";
 import { siteConfig } from "../site";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 
 /** Fenêtre de regroupement des pièces ajoutées. */
 export const PIECES_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Essais du cron (toutes les 15 min) avant d’envoyer le séjour sans photo.
+ * Huit essais : la génération a le temps de finir, puis le texte part.
+ */
+export const STAY_COVER_WAIT_LIMIT = 8;
 
 export const PIECES_PATH = "/mon-compte/profil/documents";
 
@@ -104,6 +111,34 @@ export function stayHasPublishedCover(booking: {
   return Boolean(
     unsplashKeywordMatch({ destination: booking.destination, title: booking.title || "" })
   );
+}
+
+/** Ville dont la photo se génère. Un import ou une photo de catalogue ne compte pas. */
+export function generatedStayPhotoId(booking: {
+  destination: string | null;
+  title: string | null;
+  cover_image_path: string | null;
+}) {
+  if (booking.cover_image_path) return null;
+  const photo = unsplashKeywordMatch({ destination: booking.destination, title: booking.title || "" });
+  if (!photo || !generatedCityCoverSpec(photo)) return null;
+  return photo;
+}
+
+/**
+ * Nouvelle réservation : la photo du lieu et le modèle illustré précèdent l’envoi.
+ * Sans photo possible, le texte part. Après plusieurs essais, le texte part aussi.
+ */
+export function stayNoticeDispatch(input: {
+  hasCover: boolean;
+  coverReady: boolean;
+  templateReady: boolean;
+  waits: number;
+}): "photo" | "text" | "wait" {
+  if (!input.hasCover) return "text";
+  if (input.coverReady && input.templateReady) return "photo";
+  if (input.waits >= STAY_COVER_WAIT_LIMIT) return "text";
+  return "wait";
 }
 
 /** Preuve d’accès à la couverture : le code du lien court du message, ou le code /v/ (médias Twilio seulement). */
