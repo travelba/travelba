@@ -170,5 +170,8 @@ describe("coûts du voyage", () => {
     assert.deepEqual(byClient.map((hit) => [hit.bookingId, hit.reason]), [["b5", "client"]]);
     // Hors fenêtre : tous les voyages du client, à l’agent de choisir.
     assert.equal(suggestCostTargets({ text: "", party: "X", amount: 1, customerId: "c1", date: "2026-06-01" }, own).length, 2);
+    // Le prélèvement IATA (BSP) regroupe tous les billets : jamais de proposition, même au montant.
+    assert.deepEqual(suggestCostTargets({ text: "", party: "IATA ESPAGNA SL", amount: 850.5 }, bookings), []);
+    assert.deepEqual(suggestCostTargets({ text: "TB-2026-0002", party: "IATA ESPAGNA SL", amount: 1, cardBookingIds: ["b1"] }, bookings), []);
   });
 });

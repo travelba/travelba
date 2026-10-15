@@ -359,6 +359,16 @@ export function suggestItem(
 }
 
 /**
+ * Règlements globaux qui ne se rattachent à aucun voyage : le prélèvement IATA (BSP) regroupe
+ * tous les billets d’une période. Aucune proposition, et rien dans le bloc des dossiers.
+ */
+const SETTLEMENT_PARTY = /\bIATA\b|\bBSP\b/i;
+
+export function isSettlementParty(text: string | null | undefined) {
+  return SETTLEMENT_PARTY.test(text || "");
+}
+
+/**
  * Propositions pour une sortie. La référence du dossier dans la désignation gagne,
  * puis la carte Pliant du dossier, puis les voyages du client de la carte autour de la date,
  * puis un fournisseur ou un montant qui correspond. Jamais d’écriture : l’agent clique.
@@ -376,6 +386,7 @@ export function suggestCostTargets(
   },
   bookings: CostTargetBooking[]
 ): CostSuggestion[] {
+  if (isSettlementParty(input.party) || isSettlementParty(input.text)) return [];
   const out: CostSuggestion[] = [];
   const seen = new Set<string>();
   const push = (bookingId: string, itemId: string | null, score: number, reason: CostSuggestion["reason"]) => {
