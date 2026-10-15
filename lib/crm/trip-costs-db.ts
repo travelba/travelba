@@ -7,6 +7,7 @@ import { pliantExpenseTitle } from "./pliant-booking";
 import { revolutDebitLine } from "./revolut-inbox";
 import {
   accountLines,
+  isFixedCostParty,
   mapTripCost,
   saleLines,
   suggestCostTargets,
@@ -492,6 +493,8 @@ export async function loadOutgoingQueue(
     for (const row of rows) {
       const draft = tripCostFromPliant(row);
       if (!draft) continue;
+      // Coût fixe de l’agence (logiciel, IA, téléphonie) : pas une sortie de voyage, rien à l’écran.
+      if (isFixedCostParty(row.merchant)) continue;
       const card = row.card_id ? cards.get(row.card_id) || null : null;
       const cardBookingIds = card?.bookingIds || [];
       const cardBooking = cardBookingIds.map((id) => targets.find((target) => target.id === id)).find(Boolean) || null;
@@ -545,6 +548,7 @@ export async function loadOutgoingQueue(
     const { data } = await query;
     for (const row of (data || []) as RevolutRow[]) {
       const line = revolutDebitLine(row);
+      if (isFixedCostParty(line.party) || isFixedCostParty(row.counterparty_name)) continue;
       const draft = tripCostFromRevolut(row, null);
       const suggestions = suggestCostTargets(
         { text: `${line.reference} ${row.reference || ""}`, party: line.party, amount: line.amount },

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   accountLines,
+  isFixedCostParty,
   marginByTransaction,
   referenceInText,
   saleLines,
@@ -176,5 +177,11 @@ describe("coûts du voyage", () => {
     // Le virement de trésorerie vers Pliant (vers l’agence elle-même) non plus.
     assert.deepEqual(suggestCostTargets({ text: "treso Rev - pliant", party: "Travel Business Agency sasu", amount: 850.5 }, bookings), []);
     assert.deepEqual(suggestCostTargets({ text: "", party: "PLIANT", amount: 850.5 }, bookings), []);
+    // Coûts fixes de l’agence : logiciels, IA, téléphonie. Jamais proposés, jamais montrés.
+    for (const party of ["OpenAI", "Cursor", "Vercel", "Google Workspace", "GOOGLE *CHROME TEMP", "Anthropic", "Perplexity", "eSIMo", "Free Mobile", "FREE TELECOM"]) {
+      assert.equal(isFixedCostParty(party), true, party);
+      assert.deepEqual(suggestCostTargets({ text: "", party, amount: 850.5 }, bookings), [], party);
+    }
+    for (const party of ["DUTY FREE PARIS", "AIR FRANCE", "HASSLER ROMA", "FREELANCE DJ"]) assert.equal(isFixedCostParty(party), false, party);
   });
 });

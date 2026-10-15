@@ -370,6 +370,23 @@ export function isSettlementParty(text: string | null | undefined) {
 }
 
 /**
+ * Coûts fixes de l’agence : logiciels, IA, hébergement, téléphonie, eSIM. Jamais un coût de
+ * voyage : ces sorties ne sont ni proposées ni montrées dans la file. « Free » seul en tête du
+ * libellé, pour ne pas prendre un « Duty Free ».
+ */
+const FIXED_COST_PARTY =
+  /\bOPEN ?AI\b|\bCHATGPT\b|\bCURSOR\b|\bVERCEL\b|\bGOOGLE\b|\bANTHROPIC\b|\bCLAUDE\.AI\b|\bPERPLEXITY\b|\bE ?SIMO\b|^\s*FREE\b|\bFREE\s+(?:MOBILE|TELECOM|PRO)\b/i;
+
+export function isFixedCostParty(text: string | null | undefined) {
+  return FIXED_COST_PARTY.test(text || "");
+}
+
+/** Sortie qui ne concerne aucun voyage : règlement global ou coût fixe. */
+export function isNonTripParty(text: string | null | undefined) {
+  return isSettlementParty(text) || isFixedCostParty(text);
+}
+
+/**
  * Propositions pour une sortie. La référence du dossier dans la désignation gagne,
  * puis la carte Pliant du dossier, puis les voyages du client de la carte autour de la date,
  * puis un fournisseur ou un montant qui correspond. Jamais d’écriture : l’agent clique.
@@ -387,7 +404,7 @@ export function suggestCostTargets(
   },
   bookings: CostTargetBooking[]
 ): CostSuggestion[] {
-  if (isSettlementParty(input.party) || isSettlementParty(input.text)) return [];
+  if (isNonTripParty(input.party) || isSettlementParty(input.text)) return [];
   const out: CostSuggestion[] = [];
   const seen = new Set<string>();
   const push = (bookingId: string, itemId: string | null, score: number, reason: CostSuggestion["reason"]) => {
