@@ -173,5 +173,8 @@ describe("coûts du voyage", () => {
     // Le prélèvement IATA (BSP) regroupe tous les billets : jamais de proposition, même au montant.
     assert.deepEqual(suggestCostTargets({ text: "", party: "IATA ESPAGNA SL", amount: 850.5 }, bookings), []);
     assert.deepEqual(suggestCostTargets({ text: "TB-2026-0002", party: "IATA ESPAGNA SL", amount: 1, cardBookingIds: ["b1"] }, bookings), []);
+    // Le virement de trésorerie vers Pliant (vers l’agence elle-même) non plus.
+    assert.deepEqual(suggestCostTargets({ text: "treso Rev - pliant", party: "Travel Business Agency sasu", amount: 850.5 }, bookings), []);
+    assert.deepEqual(suggestCostTargets({ text: "", party: "PLIANT", amount: 850.5 }, bookings), []);
   });
 });
