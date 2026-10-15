@@ -6,9 +6,9 @@ Preview (this branch, key is on every Vercel Preview):
 
 `https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app`
 
-Share link, valid until 2026-10-16 02:21:38 UTC. It opens Travelba sign-in without a Vercel login:
+Share link, valid until 2026-10-22 15:41:30 UTC. It opens the Little Emperors review page without a Vercel login. The previous share token is revoked.
 
-`https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app/admin/login?espace=myler&_vercel_share=WCZdupI4JpEyXWLzT1UDRmto9w4rERxf`
+`https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app/admin/little-emperors?_vercel_share=8RQGFEe6WY5KDtZtQ5xMmRSDvcXNgZsj`
 
 ---
 
@@ -17,7 +17,7 @@ Hello Nico,
 Staging review for the MyLER integration. About ten minutes. No production API key is in use, and we are not asking for one until you say this looks complete.
 
 1. You will receive a Travelba email, “Your Little Emperors access”, for nico@littleemperors.com. Open **Set your password**. The link lasts 30 days. That password is the Travelba sign-in. SSO POST /v1/login is not used.
-2. Open the Preview Share link above (not https://travelba.fr). It is valid until 2026-10-16 02:21:38 UTC. If Vercel asks you to sign in, use that Share link.
+2. Open the Preview Share link above (not https://travelba.fr). It is valid until 2026-10-22 15:41:30 UTC. If Vercel asks you to sign in, use that Share link.
 3. Go to `/admin/login?espace=myler`. The page is titled **Travelba sign-in**. Sign in with nico@littleemperors.com and the password you just set. You land only on Little Emperors. The sidebar reads **MyLER partner**. There is no client list and no ledger.
 4. The page title is Little Emperors. The block at the top is **Travel BA internal back office**. It says this CRM is not a public website, that agents and AI assistants list Little Emperors bookings, match them to clients, and view or cancel them, and that this staging deployment calls the staging API with the test key while production will call the production API once that key is issued. It names the endpoints and the webhook. Under **MyLER integration**, check:
    - Host `api-staging.littleemperors.com`
