@@ -948,6 +948,8 @@ describe("parseHotelConfirmationLetter", () => {
     assert.equal(parsed.start_at?.includes("T"), false);
     assert.match(parsed.hotel_name || "", /Leela Mumbai/i);
     assert.equal(parsed.needs_review, true);
+    const built = parsedItemsFromText(LEELA);
+    assert.equal(built.items[0]?.details?.review_reason, "Réservation provisoire (tentative).");
     assert.equal(JSON.stringify(parsed).includes("13750"), false);
   });
 });

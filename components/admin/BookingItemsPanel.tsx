@@ -29,6 +29,7 @@ import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { DRAFT_STEP_PREFIX, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
 import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
+import { reviewDoubts } from "@/lib/crm/review-doubt";
 import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
@@ -557,6 +558,7 @@ export function BookingItemsPanel({
             item.lifecycle === "superseded" || item.lifecycle === "cancelled";
           const cancelled = item.lifecycle === "cancelled";
           const retiredLabel = cancelled ? "" : retired ? "Remplacée" : "";
+          const doubts = reviewDoubts(item);
           const unshown =
             stayVisible &&
             !retired &&
@@ -590,9 +592,11 @@ export function BookingItemsPanel({
               className={`scroll-mt-28 rounded-2xl border px-3 py-3 ${
                 retired
                   ? "border-[var(--border)] bg-[#F4F1EA] text-muted"
-                  : unshown
-                    ? "border-[var(--admin-gold)] bg-[var(--admin-peach)]"
-                    : "border-[var(--border)] bg-white"
+                  : doubts.length
+                    ? "border-accent bg-[var(--admin-peach)]"
+                    : unshown
+                      ? "border-[var(--admin-gold)] bg-[var(--admin-peach)]"
+                      : "border-[var(--border)] bg-white"
               }`}
             >
             {editingId === item.id ? (
@@ -662,6 +666,9 @@ export function BookingItemsPanel({
                     ) : null}
                     {airport ? <span className="block truncate text-xs text-muted">{airport}</span> : null}
                     {quiet ? <span className="block truncate text-xs text-muted">{quiet}</span> : null}
+                    {doubts.length ? (
+                      <span className="mt-1 block text-xs font-semibold text-accent">{doubts.join(" ")}</span>
+                    ) : null}
                     {unshown ? (
                       <span className="block text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</span>
                     ) : null}

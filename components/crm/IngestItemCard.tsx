@@ -16,6 +16,7 @@ import { BrandMark } from "@/components/crm/BrandMark";
 import { applyRoomGuestLabels, guestsLabelFromKeys, type HouseholdMember } from "@/lib/crm/household";
 import { ticketPartyKeys } from "@/lib/crm/document-passengers";
 import { Trash2 } from "lucide-react";
+import { reviewDoubts } from "@/lib/crm/review-doubt";
 
 type ItemDraft = BookingExtract["items"][number];
 
@@ -156,6 +157,9 @@ export function IngestItemCard({
       </div>
       {d.source_file_name ? (
         <p className="text-xs text-muted">Fichier : {d.source_file_name}</p>
+      ) : null}
+      {d.needs_review ? (
+        <p className="text-xs font-semibold text-accent">{reviewDoubts(item).join(" ")}</p>
       ) : null}
 
       <div className="grid gap-2 sm:grid-cols-2">

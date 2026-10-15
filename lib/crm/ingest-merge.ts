@@ -12,6 +12,7 @@ import {
 } from "./ingest-types";
 import { mergeExtractItems } from "./item-match";
 import { shownClientNote } from "./public-booking";
+import { QUOTE_REVIEW_REASON } from "./review-doubt";
 
 export type FileExtractResult = {
   name: string;
@@ -45,7 +46,11 @@ function markQuoteItems(items: BookingExtract["items"], sourceNames: Set<string>
     if (!sourceNames.has(source)) return item;
     return {
       ...item,
-      details: { ...(item.details || {}), needs_review: true },
+      details: {
+        ...(item.details || {}),
+        needs_review: true,
+        review_reason: item.details?.review_reason || QUOTE_REVIEW_REASON,
+      },
     };
   });
 }

@@ -74,6 +74,7 @@ const detailsObjectLoose = z
     notes: looseString,
     source_file_name: looseString,
     needs_review: z.boolean().nullable().optional(),
+    review_reason: looseString,
     document_amount: looseNumber,
     document_currency: looseString,
     ticket_count: looseNumber,
@@ -199,6 +200,7 @@ const detailsSchemaStrict = z.object({
   notes: strictString,
   source_file_name: strictString,
   needs_review: strictBoolean,
+  review_reason: strictString,
   document_amount: strictNumber,
   document_currency: strictString,
 });
