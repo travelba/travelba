@@ -133,6 +133,8 @@ test("chaque coût sait sur quelle ligne il est posé", () => {
     originalCurrency: null,
     supplier: null,
     occurredOn: null,
+    instrument: null,
+    instrumentDetail: null,
   });
   const placements = costPlacements({
     lines: [

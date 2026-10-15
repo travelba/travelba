@@ -6,6 +6,7 @@ import {
   marginByTransaction,
   referenceInText,
   saleLines,
+  settlementLabel,
   suggestCostTargets,
   tripAccountingState,
   tripCostFromPliant,
@@ -30,6 +31,8 @@ function cost(partial: Partial<TripCost>): TripCost {
     originalCurrency: "EUR",
     supplier: null,
     occurredOn: null,
+    instrument: "pliant_card",
+    instrumentDetail: null,
     ...partial,
   };
 }
@@ -54,9 +57,13 @@ describe("coûts du voyage", () => {
       transaction_cents: 920000,
       transaction_currency: "MAD",
       booked_at: "2026-10-02T10:00:00Z",
+      card_last4: "5454",
     };
     const draft = tripCostFromPliant(base);
     assert.ok(draft);
+    assert.equal(draft.instrument, "pliant_card");
+    assert.equal(draft.instrumentDetail, "5454");
+    assert.equal(settlementLabel(draft), "Carte Pliant ···· 5454");
     assert.equal(draft.amountEur, 850.5);
     assert.equal(draft.originalAmount, 9200);
     assert.equal(draft.originalCurrency, "MAD");
@@ -69,8 +76,16 @@ describe("coûts du voyage", () => {
   });
 
   it("prend le montant en euros d’une sortie Revolut, sinon le coût saisi", () => {
-    const eur = tripCostFromRevolut({ id: "r1", direction: "debit", amount: -300, currency: "EUR", counterparty_name: "Air France", booked_at: "2026-10-03" });
+    const eur = tripCostFromRevolut({ id: "r1", direction: "debit", amount: -300, currency: "EUR", counterparty_name: "Air France", booked_at: "2026-10-03", raw: { type: "transfer" } });
     assert.equal(eur?.amountEur, 300);
+    assert.equal(eur?.instrument, "revolut_transfer");
+    assert.equal(settlementLabel(eur!), "Virement Revolut");
+    const card = tripCostFromRevolut({ id: "r1b", direction: "debit", amount: -30, currency: "EUR", counterparty_name: "Uber", booked_at: null, raw: { type: "card_payment" } });
+    assert.equal(card?.instrument, "revolut_card");
+    assert.equal(settlementLabel(card!), "Carte bancaire Revolut");
+    const other = tripCostFromRevolut({ id: "r1c", direction: "debit", amount: -30, currency: "EUR", counterparty_name: "Uber", booked_at: null });
+    assert.equal(other?.instrument, "revolut_other");
+    assert.equal(settlementLabel(other!), "Revolut");
     const usd = tripCostFromRevolut({ id: "r2", direction: "debit", amount: 500, currency: "USD", counterparty_name: "Hotel", booked_at: null });
     assert.equal(usd, null);
     const typed = tripCostFromRevolut({ id: "r2", direction: "debit", amount: 500, currency: "USD", counterparty_name: "Hotel", booked_at: null }, 460);
@@ -90,7 +105,7 @@ describe("coûts du voyage", () => {
     const { lines: accounted, unsold } = accountLines(lines, [
       cost({ id: "a", bookingItemId: HOTEL, amountEur: 900, supplier: "RIAD" }),
       cost({ id: "b", bookingItemId: HOTEL, amountEur: -50, supplier: "RIAD" }),
-      cost({ id: "c", bookingItemId: FLIGHT, amountEur: 450, supplier: "AIR FRANCE" }),
+      cost({ id: "c", bookingItemId: FLIGHT, amountEur: 450, supplier: "AIR FRANCE", instrument: "revolut_transfer", occurredOn: "2026-10-03" }),
     ]);
     const hotel = accounted.find((line) => line.transactionId === "t-hotel");
     assert.equal(hotel?.cost, 850);
@@ -101,7 +116,18 @@ describe("coûts du voyage", () => {
     const totals = tripTotals(accounted, unsold);
     assert.deepEqual(totals, { sale: 1760, cost: 1300, margin: 460, unsoldCost: 0 });
     const margins = marginByTransaction(accounted);
-    assert.deepEqual(margins.get("t-flight"), { margin: -50, suppliers: ["AIR FRANCE"] });
+    assert.deepEqual(margins.get("t-flight"), {
+      margin: -50,
+      suppliers: ["AIR FRANCE"],
+      settlements: [{ label: "Virement Revolut", date: "2026-10-03", amount: 450 }],
+    });
+    assert.deepEqual(
+      margins.get("t-hotel")?.settlements.map((row) => [row.label, row.amount]),
+      [
+        ["Carte Pliant", 900],
+        ["Carte Pliant", -50],
+      ]
+    );
   });
 
   it("sans carte au grand livre, le coût rejoint le montant du séjour ; sans séjour, il reste hors vente", () => {
