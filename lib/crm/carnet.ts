@@ -364,6 +364,19 @@ export function keptHiddenFromClient(details: Record<string, unknown> | null | u
   return details?.client_hidden === true;
 }
 
+/**
+ * Montrer retire le masquage. Un enregistrement avec `visible_to_client` faux
+ * ne cache pas la carte : ce drapeau n’existe que si l’agence a choisi Cacher.
+ */
+export function detailsForCardVisibility(
+  details: Record<string, unknown> | null | undefined,
+  visible: boolean
+) {
+  const next = { ...(details || {}) };
+  if (visible) delete next.client_hidden;
+  return next;
+}
+
 /** Cartes du séjour encore à montrer. Une dépense n’est pas une carte du carnet. */
 export function pendingPublishCards<
   T extends {
@@ -393,6 +406,24 @@ export function canConfirmCarnetPublish(input: {
 }) {
   if (input.revealCards > 0) return true;
   return input.stayVisible && input.revealDocs > 0;
+}
+
+/** Pourquoi Confirmer reste éteint. Null quand le geste est possible. */
+export function publishConfirmHold(input: {
+  stayVisible: boolean;
+  revealCards: number;
+  revealDocs: number;
+  hiddenLabels: string[];
+}) {
+  if (canConfirmCarnetPublish(input)) return null;
+  const hidden = input.hiddenLabels.filter(Boolean);
+  if (hidden.length === 1) {
+    return `${hidden[0]} est cachée. Un fichier seul n’ouvre pas le séjour.`;
+  }
+  if (hidden.length > 1) {
+    return `${hidden.join(" · ")} sont cachées. Un fichier seul n’ouvre pas le séjour.`;
+  }
+  return "Aucune étape à montrer. Un fichier seul n’ouvre pas le séjour.";
 }
 
 /** Ids passés visibles. Les dépenses restent au grand livre. */

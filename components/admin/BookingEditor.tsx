@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { greetingGivenName, shownPersonName } from "@/lib/crm/identity";
 import {
+  countsAsCarnetCard,
   isActiveItem,
   isLedgerExpenseKind,
   type CrmBooking,
@@ -39,8 +40,8 @@ import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticket
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
   canConfirmCarnetPublish,
+  publishConfirmHold,
   coverQuery,
-  flightCardTitle,
   hotelDisplayName,
   keptHiddenFromClient,
   stayHeadline,
@@ -854,10 +855,19 @@ export function BookingEditor({
     if (!linked) return true;
     return !keptHiddenFromClient(linked.details) && !isLedgerExpenseKind(linked.kind);
   });
+  const hiddenFromClient = items.filter(
+    (item) => isActiveItem(item) && countsAsCarnetCard(item.kind) && keptHiddenFromClient(item.details)
+  );
   const publishReady = canConfirmCarnetPublish({
     stayVisible: booking.visible_to_client,
     revealCards: revealItems.length,
     revealDocs: revealDocs.length,
+  });
+  const publishHold = publishConfirmHold({
+    stayVisible: booking.visible_to_client,
+    revealCards: revealItems.length,
+    revealDocs: revealDocs.length,
+    hiddenLabels: hiddenFromClient.map((item) => reviewStepLabel(item)),
   });
 
   const updatesPending = revealItems.length > 0 || revealDocs.length > 0;
@@ -1054,12 +1064,6 @@ export function BookingEditor({
     </div>
   );
 
-  function cardName(item: CrmBookingItem) {
-    if (item.kind === "hotel") return hotelDisplayName(item);
-    if (item.kind === "flight" || item.kind === "rail") return flightCardTitle(item);
-    return item.title;
-  }
-
   return (
     <div className="flex flex-col gap-6">
       {compact ? (
@@ -1241,7 +1245,7 @@ export function BookingEditor({
               <p className="text-sm text-muted">Le client verra ces éléments.</p>
               <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
                 {revealItems.map((item) => (
-                  <li key={item.id}>{cardName(item)}</li>
+                  <li key={item.id}>{reviewStepLabel(item)}</li>
                 ))}
                 {revealDocs.map((doc) => (
                   <li key={doc.id}>{doc.file_name || "Document"}</li>
@@ -1259,10 +1263,14 @@ export function BookingEditor({
               Vos modifications sont enregistrées en même temps.
             </p>
           ) : null}
+          {confirm === "publish" && publishHold ? (
+            <p className="text-sm font-semibold text-accent">{publishHold}</p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               disabled={busy !== "idle" || (confirm === "publish" && !publishReady)}
+              title={confirm === "publish" && publishHold ? publishHold : undefined}
               onClick={() => {
                 const next = confirm === "publish";
                 setConfirm(null);

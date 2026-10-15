@@ -10,6 +10,7 @@ import {
   parseSortOrder,
   refreshBookingLedger,
 } from "@/lib/crm/bookings";
+import { detailsForCardVisibility } from "@/lib/crm/carnet";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
@@ -155,14 +156,13 @@ async function updateBookingItem(
       return { error: jsonError("Cette carte est archivée. Elle ne revient pas dans le carnet.") };
     }
     patch.visible_to_client = visible;
-    const base =
-      patch.details && typeof patch.details === "object"
-        ? (patch.details as Record<string, unknown>)
-        : ((current.details as Record<string, unknown> | null) || {});
-    const details = { ...base };
-    if (visible) delete details.client_hidden;
-    else details.client_hidden = true;
-    patch.details = details;
+    if (visible) {
+      const base =
+        patch.details && typeof patch.details === "object"
+          ? (patch.details as Record<string, unknown>)
+          : ((current.details as Record<string, unknown> | null) || {});
+      patch.details = detailsForCardVisibility(base, true);
+    }
   }
   if ("billing_company_id" in body) {
     const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);

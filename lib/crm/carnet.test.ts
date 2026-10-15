@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import type { CrmBookingDocument, CrmBookingItem } from "./types";
 import {
   canConfirmCarnetPublish,
+  detailsForCardVisibility,
+  publishConfirmHold,
   carnetVisible,
   coverQuery,
   stayHeadline,
@@ -401,6 +403,22 @@ describe("carnet", () => {
       canConfirmCarnetPublish({ stayVisible: false, revealCards: 1, revealDocs: 0 }),
       true
     );
+    assert.equal(
+      publishConfirmHold({
+        stayVisible: false,
+        revealCards: 0,
+        revealDocs: 2,
+        hiddenLabels: ["Phuket, 15–20 juil", "Phuket, 15–20 août"],
+      }),
+      "Phuket, 15–20 juil · Phuket, 15–20 août sont cachées. Un fichier seul n’ouvre pas le séjour."
+    );
+    assert.equal(
+      publishConfirmHold({ stayVisible: false, revealCards: 1, revealDocs: 0, hiddenLabels: [] }),
+      null
+    );
+    assert.equal(detailsForCardVisibility({ city: "Phuket", client_hidden: true }, false).client_hidden, true);
+    assert.equal("client_hidden" in detailsForCardVisibility({ city: "Phuket" }, false), false);
+    assert.equal("client_hidden" in detailsForCardVisibility({ client_hidden: true }, true), false);
     const rows = [
       item({ id: "hotel", kind: "hotel", visible_to_client: true }),
       item({ id: "alcool", kind: "expense", visible_to_client: false, title: "Alcool" }),

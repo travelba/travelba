@@ -21,10 +21,10 @@ Un seul état que l’agence peut croire : **En préparation** (`visible_to_clie
 
 | Geste | Effet |
 |-------|--------|
-| **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché. Il s’allume dès qu’une étape est retirée, ajoutée, modifiée ou réordonnée |
+| **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché. Il s’allume dès qu’une étape est retirée, ajoutée, modifiée ou réordonnée. Il ne cache pas l’étape : `client_hidden` vient seulement du geste Cacher |
 | **Montrer au client** | le client voit ; items + PDFs du dossier passent visibles. La pastille devient **Visible**. Le séjour entre au grand livre |
 
-Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`.
+Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`. Confirmer reste éteint, et le dit, si les étapes sont cachées et qu’il ne reste que des fichiers.
 
 Quotes (`status=quoted`, devis Little Emperors) : dans le dossier, **invisibles** jusqu’à publication / confirmation. Pas d’écran Devis public. Pas d’e-mail auto à la publication.
 
