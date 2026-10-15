@@ -1,14 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { NextResponse } from "next/server";
-import { mcpAuthorized } from "@/lib/crm/mcp-auth";
+import { mcpAccessFromAuthorization, mcpAuthorized, runWithMcpAccess } from "@/lib/crm/mcp-auth";
 import { registerTravelbaTools } from "@/lib/crm/mcp-registry";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const INSTRUCTIONS =
-  "CRM Travel BA pour l’agence. Lectures et écritures : crédit d’un virement, crédit Revolut vers le client désigné, montrer un carnet, mettre à jour un dossier, confirmer un service, traiter un e-mail, créer ou mettre à jour un client. Ne pas inventer d’horaires ni de prix. Ne pas choisir un client à la place de l’agence. Un carnet sans carte reste caché. Les numéros de pièce ne sont pas dans les réponses.";
+  "CRM Travel BA pour l’agence. Lectures et écritures : crédit d’un virement, crédit Revolut vers le client désigné, montrer un carnet, mettre à jour un dossier, confirmer un service, traiter un e-mail, créer ou mettre à jour un client. Ne pas inventer d’horaires ni de prix. Ne pas choisir un client à la place de l’agence. Un carnet sans carte reste caché. Les numéros de pièce ne sont pas dans les réponses. passeport_voyageur les donne pour l’émission d’un billet, seulement si l’assistant est autorisé ; sinon il refuse.";
 
 function unauthorized() {
   return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
@@ -23,7 +23,8 @@ function methodNotAllowed() {
 
 /** Streamable HTTP, sans session : un serveur neuf par requête, réponse JSON. */
 export async function POST(request: Request) {
-  if (!mcpAuthorized(request.headers.get("authorization"))) return unauthorized();
+  const access = mcpAccessFromAuthorization(request.headers.get("authorization"));
+  if (!access) return unauthorized();
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
   registerTravelbaTools(server);
   await server.connect(transport);
   try {
-    return await transport.handleRequest(request);
+    return await runWithMcpAccess(access, () => transport.handleRequest(request));
   } finally {
     await server.close();
   }

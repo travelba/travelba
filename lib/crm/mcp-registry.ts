@@ -31,13 +31,14 @@ import {
   updateBooking,
   updateClient,
 } from "@/lib/crm/mcp-write";
+import { McpReadError, readPasseportVoyageur } from "@/lib/crm/mcp-passport";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
 export const MCP_TOOL_CAP = 40;
 
-const text = (value: unknown) => ({
-  content: [{ type: "text" as const, text: JSON.stringify(redactMcp(value)) }],
+const text = (value: unknown, keepPieceNumber = false) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(redactMcp(value, 0, keepPieceNumber)) }],
 });
 
 function failed(message: string) {
@@ -47,12 +48,12 @@ function failed(message: string) {
   };
 }
 
-async function guard(name: string, write: boolean, run: () => Promise<unknown>) {
+async function guard(name: string, write: boolean, keepPieceNumber: boolean, run: () => Promise<unknown>) {
   try {
-    return text(await run());
+    return text(await run(), keepPieceNumber);
   } catch (err) {
     console.error("[mcp]", name, err instanceof Error ? err.message : "error");
-    if (write && err instanceof McpWriteError) return failed(err.message);
+    if ((write && err instanceof McpWriteError) || err instanceof McpReadError) return failed(err.message);
     return failed(write ? "Écriture impossible." : "Lecture impossible.");
   }
 }
@@ -70,8 +71,21 @@ type ToolDef = {
   write?: boolean;
   /** Appel hors Travelba (réservation chauffeur). */
   openWorld?: boolean;
+  /** Garde le numéro de pièce dans la réponse. Tous les autres outils le retirent. */
+  pieceNumbers?: boolean;
   run: (args: ToolArgs) => Promise<unknown>;
 };
+
+function keepPieceNumber(tool: ToolDef) {
+  return tool.pieceNumbers === true;
+}
+
+/** Même masquage que la réponse de l’outil. Le numéro ne sort que pour passeport_voyageur. */
+export function previewMcpTool(name: string, value: unknown) {
+  const tool = MCP_TOOLS.find((item) => item.name === name);
+  if (!tool) throw new Error("Outil inconnu.");
+  return text(value, keepPieceNumber(tool));
+}
 
 function str(args: ToolArgs, key: string) {
   const value = args[key];
@@ -136,6 +150,23 @@ export const MCP_TOOLS: ToolDef[] = [
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
     },
     run: (args: ToolArgs) => readFicheDossier({ id: str(args, "id"), reference: str(args, "reference") }),
+  },
+  {
+    name: "passeport_voyageur",
+    pieceNumbers: true,
+    description:
+      "Passeports pour émettre un billet (APIS). client_id (fiche), dossier_id ou reference (voyageurs du séjour). Chaque pièce : nom, prénoms, naissance, sexe, nationalité, type, numero_piece, pays, délivrance, expiration. Lecture seule. Sans autorisation, refus, aucun numéro.",
+    input: {
+      client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+    },
+    run: (args: ToolArgs) =>
+      readPasseportVoyageur({
+        client_id: str(args, "client_id"),
+        dossier_id: str(args, "dossier_id"),
+        reference: str(args, "reference"),
+      }),
   },
   {
     name: "formalites",
@@ -350,7 +381,8 @@ export function registerTravelbaTools(server: McpServer) {
           openWorldHint: tool.openWorld === true,
         },
       },
-      async (args) => guard(tool.name, tool.write === true, () => tool.run((args ?? {}) as ToolArgs))
+      async (args) =>
+        guard(tool.name, tool.write === true, keepPieceNumber(tool), () => tool.run((args ?? {}) as ToolArgs))
     );
   }
 }

@@ -22,3 +22,23 @@ test("mcp redact drops piece numbers, iban, tokens and signed urls", () => {
   assert.equal(cleaned.note, "retiré");
   assert.equal(cleaned.fichier, "retiré");
 });
+
+test("piece numbers stay hidden except numero_piece on the passport tool", () => {
+  const payload = {
+    facture: { numero: "FAC-2026-1" },
+    numero_piece: "X12345678",
+    document_numero_piece: "Y87654321",
+    number: "12AB34567",
+    personal_number: "999",
+  };
+  const hidden = redactMcp(payload) as Record<string, unknown>;
+  const shown = redactMcp(payload, 0, true) as Record<string, unknown>;
+  assert.deepEqual((hidden.facture as { numero: string }).numero, "FAC-2026-1");
+  assert.equal("numero_piece" in hidden, false);
+  assert.equal("number" in hidden, false);
+  assert.equal(shown.numero_piece, "X12345678");
+  assert.equal("document_numero_piece" in shown, false);
+  assert.equal("number" in shown, false);
+  assert.equal("personal_number" in shown, false);
+  assert.deepEqual((shown.facture as { numero: string }).numero, "FAC-2026-1");
+});
