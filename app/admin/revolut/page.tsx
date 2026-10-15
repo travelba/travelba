@@ -81,10 +81,15 @@ export default async function AdminRevolutPage({
     const bookingIds = [...new Set(costRows.map((row) => row.booking_id))];
     const itemIds = costRows.map((row) => row.booking_item_id).filter((id): id is string => Boolean(id));
     const [{ data: bookings }, { data: items }] = await Promise.all([
-      bookingIds.length ? admin.from("crm_bookings").select("id, reference").in("id", bookingIds) : Promise.resolve({ data: [] }),
+      bookingIds.length ? admin.from("crm_bookings").select("id, reference, title, destination").in("id", bookingIds) : Promise.resolve({ data: [] }),
       itemIds.length ? admin.from("crm_booking_items").select("id, kind, title, details").in("id", itemIds) : Promise.resolve({ data: [] }),
     ]);
-    const references = new Map(((bookings || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference]));
+    const references = new Map(
+      ((bookings || []) as { id: string; reference: string; title: string | null; destination: string | null }[]).map((row) => [
+        row.id,
+        [row.reference, (row.title || row.destination || "").trim()].filter(Boolean).join(" · "),
+      ])
+    );
     const labels = new Map(
       ((items || []) as { id: string; kind: string | null; title: string | null; details: Record<string, unknown> | null }[]).map((item) => [item.id, itemLabelFor(item)])
     );
