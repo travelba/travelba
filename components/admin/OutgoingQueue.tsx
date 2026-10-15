@@ -15,7 +15,7 @@ export function OutgoingQueue({ lines }: { lines: OutgoingLine[] }) {
       {proposed.length ? (
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Avec une proposition</h3>
-          <ul className="mt-1 divide-y divide-[var(--border)]">
+          <ul className="mt-1">
             {proposed.map((line) => (
               <OutgoingRow key={`${line.source}:${line.id}`} line={line} />
             ))}
@@ -25,7 +25,7 @@ export function OutgoingQueue({ lines }: { lines: OutgoingLine[] }) {
       {others.length ? (
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Sans proposition</h3>
-          <ul className="mt-1 divide-y divide-[var(--border)]">
+          <ul className="mt-1">
             {others.map((line) => (
               <OutgoingRow key={`${line.source}:${line.id}`} line={line} />
             ))}

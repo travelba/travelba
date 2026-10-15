@@ -153,7 +153,7 @@ export function TripCostsBlock({
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-gold-dark)]">
             {pending.length > 1 ? `${pending.length} sorties à rattacher` : "Une sortie à rattacher"}
           </p>
-          <ul className="divide-y divide-[#e7e1d6]">
+          <ul>
             {pending.map((line) => (
               <OutgoingRow key={`${line.source}-${line.id}`} line={line} fixedBooking={booking} allowOutside />
             ))}
