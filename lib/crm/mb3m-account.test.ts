@@ -85,6 +85,11 @@ describe("facture MB3M du compte", () => {
     assert.equal(costed[1].margin, 400);
     assert.notEqual(mb3mLineSignature(plain), mb3mLineSignature(costed));
     assert.equal(mb3mInvoiceAction(plain, costed), "replace");
+    // La signature décrit ce qui part : le net (vente − marge) et la marge.
+    assert.match(mb3mLineSignature(costed), /^a:1200\.00:Hôtel:[^:]*:n850\.00:m350\.00\|/);
+    // Une pièce émise sous l’ancien découpage (vente en net) ne correspond plus : elle est remplacée.
+    const ancien = "a:1200.00:Hôtel:3:m350.00|b:400.00:Vol:3:m400.00";
+    assert.notEqual(mb3mLineSignature(costed), ancien);
     const printed = { transactionIds: ["a", "b"], signature: mb3mLineSignature(plain) };
     assert.equal(mb3mPieceStale(printed, plain), false);
     assert.equal(mb3mPieceStale(printed, costed), true);
