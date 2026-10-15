@@ -61,7 +61,7 @@ export function littleEmperorsConfigured() {
 export function littleEmperorsOrigin() {
   if (littleEmperorsProductionBlocked()) {
     throw new LittleEmperorsError(
-      "La clé de test Little Emperors n’est pas utilisée sur la production Travelba.",
+      "La production appellera l’API de production Little Emperors dès que la clé sera émise. La clé de test reste sur la revue.",
       403,
       "vercel_production"
     );
@@ -81,14 +81,14 @@ export function littleEmperorsOrigin() {
   }
   if (url.hostname === PRODUCTION_HOST) {
     throw new LittleEmperorsError(
-      "La clé de test ne s’utilise pas sur l’API de production Little Emperors.",
+      "La clé de test reste sur l’API de staging. La production utilise la clé de production.",
       403,
       "production_refused"
     );
   }
   if (url.hostname !== "api-staging.littleemperors.com") {
     throw new LittleEmperorsError(
-      "Seul l’environnement de test Little Emperors est autorisé.",
+      "Cette revue appelle l’API de staging Little Emperors.",
       403,
       "staging_only"
     );
@@ -110,19 +110,19 @@ export function littleEmperorsWebhookConfigured() {
 export function littleEmperorsPartnerMessage(code: string) {
   switch (code) {
     case "vercel_production":
-      return "The Little Emperors test key is not used on Travelba production.";
+      return "Production will call the Little Emperors production API once that key is issued. The test key stays on the staging review.";
     case "not_configured":
-      return "Little Emperors is not configured on this environment.";
+      return "The Little Emperors key is not on this environment yet.";
     case "bookings_null":
       return "Little Emperors has not attached an account to the test key. No reservation was created.";
     case "unauthorized":
-      return "The test environment refused the key.";
+      return "The staging API refused the key.";
     case "staging_only":
     case "production_refused":
     case "bad_base":
-      return "Only the Little Emperors test environment is called.";
+      return "This staging deployment calls the Little Emperors staging API.";
     default:
-      return "The test environment could not be read.";
+      return "The staging API could not be read.";
   }
 }
 

@@ -1,6 +1,6 @@
 # MyLER staging review
 
-Paste the block below to Nico (Joao and Phil can use the same steps). Do not attach the staging API key. `https://travelba.fr` shows **Clé de test : absente** on purpose: production does not call `api-staging.littleemperors.com`.
+Paste the block below to Nico (Joao and Phil can use the same steps). Do not attach the staging API key. This page is Travel BA’s internal back office (CRM, not a public website; Little Emperors’ CTO confirmed that on 24 September). This staging deployment calls the Little Emperors staging API with the test key. `https://travelba.fr` will call the Little Emperors production API once that key is issued.
 
 Preview (this branch, key is on every Vercel Preview):
 
@@ -17,14 +17,15 @@ Staging review for the MyLER integration. About ten minutes. No production API k
 1. Open the Travelba email “Your Little Emperors access” and click **Set your password**. That opens the English password page directly. The link lasts 30 days and includes Preview access until 2026-10-16 11:09:49 UTC. Do not start from Travelba sign-in: there is no password until this page. SSO POST /v1/login is not used.
 2. Choose the password and continue. You land on Little Emperors.
 3. Go to `/admin/login?espace=myler`. The page is titled **Travelba sign-in**. Sign in with nico@littleemperors.com and the password you just set. You land only on Little Emperors. The sidebar reads **MyLER partner**. There is no client list and no ledger.
-4. The page title is Little Emperors. The line under it names the test key, **Refresh**, the v2 routes, and the webhook. Under **MyLER integration**, check:
+4. The page title is Little Emperors. The block at the top is **Travel BA internal back office**. It says this CRM is not a public website, that agents and AI assistants list Little Emperors bookings, match them to clients, and view or cancel them, and that this staging deployment calls the staging API with the test key while production will call the production API once that key is issued. It names the endpoints and the webhook. Under **MyLER integration**, check:
    - Host `api-staging.littleemperors.com`
    - **Test key: present.**
+   - The line: this staging deployment calls the Little Emperors staging API with the test key. Production will call the production API once that key is issued.
    - **v2 routes:** `GET /v2/hotels/bookings`, `GET /v2/hotels/{id}`, `DELETE /v2/hotels/bookings/{id}`
    - Webhook `https://travelba.fr/api/webhooks/little-emperors`, header `X-Access-Key`. The webhook secret is absent until you want push events. **Refresh** does not need it.
    - The line: SSO POST /v1/login is not used for MyLER. Sign-in is the Travelba account.
-5. Click **Refresh**. It calls `GET /v2/hotels/bookings` on staging. Expected text: “The test environment answered. No reservations yet: that is expected, staging has none.” An empty list is a successful call. Nothing is published to a traveller. Reload the page: the same sentence stays, with the date of the last read.
-6. `https://travelba.fr` keeps the French agency screen **Clé de test : absente**. That is correct until you send the production API key.
+5. Click **Refresh**. It calls `GET /v2/hotels/bookings` on the staging API. Expected text: “The staging API answered. No reservations yet: that is expected, staging has none.” An empty list is a successful call. Nothing is published to a traveller. Reload the page: the same sentence stays, with the date of the last read.
+6. `https://travelba.fr` is the same internal CRM. Its French screen says the production key is not issued yet, and that production will call the Little Emperors production API once that key is issued. The test key is judged on this staging review.
 
 If that matches what you see, the production API key is the next step on our side.
 
@@ -43,4 +44,4 @@ On `https://travelba.fr` (same accounts as Preview):
 3. On Nico Santos’s row, **Renvoyer le lien**
 4. The email subject is “Your Little Emperors access”. It asks him to set a password and says SSO POST /v1/login is not used. Copy the link if the email does not arrive. It is valid for 30 days.
 5. A new partner uses the same form: nom, e-mail, rôle **Partenaire MyLER**, **Ajouter**
-6. Send him the Preview Share link plus the English block above. Ask him to judge the key on Preview, not on travelba.fr. Sign-in on the Preview is `/admin/login?espace=myler`.
+6. Send him the Preview Share link plus the English block above. The test key is on this staging review. travelba.fr will call the production API once the production key is issued. Sign-in on the Preview is `/admin/login?espace=myler`.
