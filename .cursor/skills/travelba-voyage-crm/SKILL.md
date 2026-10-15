@@ -77,7 +77,7 @@ IDs prod :
 
 ## MCP Grok Bot
 
-Lecture du CRM pour Grok Bot : `https://travelba.fr/api/mcp`, jeton `TRAVELBA_MCP_TOKEN` (vide en preview). Chaque option admin nouvelle ajoute **un outil** dans `lib/crm/mcp-registry.ts`, dans le même changement, en réutilisant `lib/crm`. Plafond 40. Pas de passeport, MRZ, PAN, jeton ni URL signée. Une écriture n’entre qu’avec la garde produit déjà en place (Revolut unique, mail ambigu qui attend le clic, séjour caché qui ne débite pas).
+Lecture du CRM pour Grok Bot : `https://travelba.fr/api/mcp`, jeton `TRAVELBA_MCP_TOKEN` (vide en preview). Chaque option admin nouvelle ajoute **un outil** dans `lib/crm/mcp-registry.ts`, dans le même changement, en réutilisant `lib/crm`. Plafond 40. Pas de MRZ, PAN, jeton ni URL signée. Les numéros de pièce restent masqués. Exception : `passeport_voyageur` (lecture seule, APIS) répond seulement si le jeton est un nom de `TRAVELBA_MCP_PASSPORT_TOKENS` ; chaque consultation est journalisée dans `crm_mcp_passport_reads`, sans numéro. Une écriture n’entre qu’avec la garde produit déjà en place (Revolut unique, mail ambigu qui attend le clic, séjour caché qui ne débite pas).
 
 ## Interdits globaux
 

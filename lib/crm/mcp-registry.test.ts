@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MCP_TOOL_CAP, MCP_TOOLS } from "./mcp-registry";
+import { MCP_TOOL_CAP, MCP_TOOLS, previewMcpTool } from "./mcp-registry";
 
 const EXPECTED = [
   "tableau_de_bord",
@@ -8,6 +8,7 @@ const EXPECTED = [
   "fiche_client",
   "chercher_dossiers",
   "fiche_dossier",
+  "passeport_voyageur",
   "formalites",
   "services_a_confirmer",
   "grand_livre",
@@ -58,4 +59,21 @@ test("mcp tools stay unique, named, and under the cap", () => {
   );
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.write, undefined);
+  assert.deepEqual(
+    MCP_TOOLS.filter((tool) => tool.pieceNumbers).map((tool) => tool.name),
+    ["passeport_voyageur"]
+  );
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "passeport_voyageur")?.write, undefined);
+});
+
+test("only passeport_voyageur keeps a piece number in the payload", () => {
+  const payload = { numero: "FAC-1", numero_piece: "X12345678", number: "12AB34567" };
+  const passport = JSON.parse(previewMcpTool("passeport_voyageur", payload).content[0].text) as Record<string, unknown>;
+  const fiche = JSON.parse(previewMcpTool("fiche_client", payload).content[0].text) as Record<string, unknown>;
+  assert.equal(passport.numero_piece, "X12345678");
+  assert.equal(passport.numero, "FAC-1");
+  assert.equal("number" in passport, false);
+  assert.equal("numero_piece" in fiche, false);
+  assert.equal("number" in fiche, false);
+  assert.equal(fiche.numero, "FAC-1");
 });
