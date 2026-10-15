@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { reservationWeek, type ReservationWeekBooking } from "./reservation-week";
+import { bookingWithStaySpan } from "./staff-stay";
 
 const today = "2026-10-07";
 
@@ -100,6 +101,20 @@ test("le lundi compte sept jours, le dimanche n’en garde qu’un", () => {
     sunday[1].entries.map((entry) => entry.booking.id),
     ["monday"]
   );
+});
+
+test("un départ dossier en 2026 et des cartes en août 2027 ne sont pas en voyage", () => {
+  const placed = bookingWithStaySpan(
+    row({ id: "faro", start_date: "2026-08-01", end_date: "2027-08-10" }),
+    { start: "2027-08-01", end: "2027-08-10" }
+  );
+  const columns = reservationWeek([placed], "2026-10-15");
+  assert.deepEqual(columns[0].entries, []);
+  assert.deepEqual(
+    columns.find((item) => item.id === "later")?.entries.map((entry) => entry.booking.id),
+    ["faro"]
+  );
+  assert.equal(columns[0].entries.some((entry) => entry.mark === "voyage"), false);
 });
 
 test("une semaine à cheval sur deux mois nomme les deux", () => {

@@ -281,6 +281,21 @@ export function staySpanFromSteps(items: Step[]) {
   return { start: start || end, end: end || start };
 }
 
+/**
+ * La semaine et le tableau de bord placent le séjour sur les cartes.
+ * Le départ figé du dossier ne le range pas dans Aujourd’hui.
+ */
+export function bookingWithStaySpan<T extends { start_date?: string | null; end_date?: string | null }>(
+  booking: T,
+  span: { start: string; end: string } | null | undefined
+): T {
+  if (!span?.start && !span?.end) return booking;
+  const start = span.start || booking.start_date || null;
+  const end = span.end || booking.end_date || null;
+  if ((booking.start_date || null) === start && (booking.end_date || null) === end) return booking;
+  return { ...booking, start_date: start, end_date: end };
+}
+
 /** En-tête : dates et villes lues sur les étapes, sinon le dossier. */
 export function staffStayFacts(input: {
   items: Step[];

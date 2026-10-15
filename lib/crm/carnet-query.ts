@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { carnetVisible, stayArrivalPlaces } from "@/lib/crm/carnet";
-import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
+import { stayCitiesFromSteps, staySpanFromSteps } from "@/lib/crm/staff-stay";
 
 export async function loadVisibleCarnets(
   supabase: SupabaseClient,
@@ -43,6 +43,7 @@ type StayStep = {
   start_at?: string | null;
   end_at?: string | null;
   visible_to_client?: boolean | null;
+  lifecycle?: string | null;
 };
 
 /** Villes d’arrivée (couverture) et villes du titre, lues sur les étapes. */
@@ -54,10 +55,11 @@ export async function loadStayMaps(
   const ids = [...new Set(bookingIds.filter(Boolean))];
   const arrival: Record<string, string[]> = {};
   const route: Record<string, string[]> = {};
-  if (!ids.length) return { arrival, route };
+  const span: Record<string, { start: string; end: string }> = {};
+  if (!ids.length) return { arrival, route, span };
   const { data } = await supabase
     .from("crm_booking_items")
-    .select("booking_id, kind, title, details, sort_order, start_at, end_at, visible_to_client")
+    .select("booking_id, kind, title, details, sort_order, start_at, end_at, visible_to_client, lifecycle")
     .in("booking_id", ids)
     .order("sort_order");
   const grouped = new Map<string, StayStep[]>();
@@ -73,8 +75,10 @@ export async function loadStayMaps(
     const titled = opts?.visibleOnly ? items.filter((item) => item.visible_to_client !== false) : items;
     const cities = stayCitiesFromSteps(titled);
     if (cities.length) route[id] = cities;
+    const dates = staySpanFromSteps(items);
+    if (dates) span[id] = dates;
   }
-  return { arrival, route };
+  return { arrival, route, span };
 }
 
 /** Villes d’arrivée par dossier, pour la couverture (pays / diagonale). */

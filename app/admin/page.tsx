@@ -15,6 +15,7 @@ import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
 import { DashboardWeek } from "@/components/admin/DashboardWeek";
 import { dashboardWeek } from "@/lib/crm/dashboard-week";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
+import { bookingWithStaySpan } from "@/lib/crm/staff-stay";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { adminBadges } from "@/lib/crm/admin-badges";
@@ -109,18 +110,21 @@ export default async function AdminHomePage() {
     0
   );
   const weekBookings = [...((travellingRows || []) as CrmBooking[]), ...((upcomingRows || []) as CrmBooking[])];
-  const week = dashboardWeek(weekBookings, today);
+  const places = await loadStayMaps(
+    supabase,
+    weekBookings.map((row) => row.id)
+  );
+  const week = dashboardWeek(
+    weekBookings.map((row) => bookingWithStaySpan(row, places.span[row.id])),
+    today
+  );
   const shown = [...week.travelling, ...week.soon, ...week.week].map((entry) => entry.booking);
   const nameIds = [...new Set(shown.map((row) => row.customer_id).filter(Boolean))];
-  const [{ data: customers }, displayedStayAmounts, places] = await Promise.all([
+  const [{ data: customers }, displayedStayAmounts] = await Promise.all([
     nameIds.length
       ? supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", nameIds)
       : Promise.resolve({ data: [] as CustomerNameRow[] }),
     loadDisplayedStayAmounts(supabase, shown),
-    loadStayMaps(
-      supabase,
-      shown.map((row) => row.id)
-    ),
   ]);
   const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
   const todo = adminTodoLines({
