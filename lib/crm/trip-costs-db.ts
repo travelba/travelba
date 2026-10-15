@@ -28,7 +28,7 @@ import {
 import { createServiceClient } from "@/lib/supabase/admin";
 
 const COST_SELECT =
-  "id, booking_id, booking_item_id, source, source_id, amount_eur, original_amount, original_currency, supplier, occurred_on";
+  "id, booking_id, booking_item_id, source, source_id, amount_eur, original_amount, original_currency, supplier, occurred_on, instrument, instrument_detail";
 
 const PLIANT_SELECT =
   "id, pliant_transaction_id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, card_last4, match_status, customer_id, matched_customer_id";
@@ -224,6 +224,8 @@ export async function attachOutgoing(input: AttachInput, admin: SupabaseClient =
       original_currency: draft.originalCurrency,
       supplier: draft.supplier,
       occurred_on: draft.occurredOn,
+      instrument: draft.instrument,
+      instrument_detail: draft.instrumentDetail,
     })
     .select(COST_SELECT)
     .single();

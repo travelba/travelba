@@ -7,8 +7,10 @@ import {
   mb3mAccountsSplit,
   mb3mFactureMention,
   mb3mInvoiceAction,
+  mb3mLineNote,
   mb3mLineSignature,
   mb3mPieceStale,
+  mb3mSettlementText,
   mb3mAccountSyncAllowed,
   mb3mAgencyActivityId,
   mb3mChargeKind,
@@ -94,6 +96,43 @@ describe("facture MB3M du compte", () => {
     assert.equal(mb3mPieceStale(printed, plain), false);
     assert.equal(mb3mPieceStale(printed, costed), true);
     assert.equal(mb3mPieceStale({ transactionIds: ["a"], signature: null }, costed), false);
+  });
+
+  it("pointe le règlement fournisseur sur la ligne : mode, date, montant si plusieurs", () => {
+    const rows = [row("a", "debit", 1200, null, "Hôtel"), row("b", "debit", 400, null, "Vol")];
+    const one = new Map([
+      ["a", { margin: 350, suppliers: ["RIAD KNIZA"], settlements: [{ label: "Carte Pliant ···· 5454", date: "2026-10-10", amount: 850 }] }],
+      [
+        "b",
+        {
+          margin: 100,
+          suppliers: ["AIR FRANCE"],
+          settlements: [
+            { label: "Virement Revolut", date: "2026-10-02", amount: 280 },
+            { label: "Carte bancaire Revolut", date: null, amount: 20 },
+          ],
+        },
+      ],
+    ]);
+    const lines = mb3mAccountLines(rows, null, false, one);
+    assert.equal(lines[0].settlement, "Réglé par Carte Pliant ···· 5454 le 10/10/2026 (850,00 €)");
+    assert.equal(lines[0].note, "Fournisseur : RIAD KNIZA · Réglé par Carte Pliant ···· 5454 le 10/10/2026 (850,00 €)");
+    assert.equal(lines[1].note, "Fournisseur : AIR FRANCE · Réglé par Virement Revolut le 02/10/2026 (280,00 €) ; Carte bancaire Revolut (20,00 €)");
+    // Un coût unique au montant de la vente : pas de montant répété.
+    assert.equal(mb3mSettlementText([{ label: "Virement Revolut", date: "2026-10-02", amount: 400 }], 400), "Réglé par Virement Revolut le 02/10/2026");
+    assert.equal(
+      mb3mSettlementText([{ label: "Carte Pliant", date: null, amount: -50 }], 400),
+      "Réglé par remboursement Carte Pliant (50,00 €)"
+    );
+    assert.equal(mb3mSettlementText([], 400), null);
+    // La Note MB3M s’arrête à 250 caractères.
+    assert.ok((mb3mLineNote(["X".repeat(300)], "Réglé par Carte Pliant") || "").length <= 250);
+    // Le règlement remplace une pro forma ouverte, mais ne marque pas « Marge à corriger » une facture imprimée.
+    const bare = mb3mAccountLines(rows, null, false, new Map([["a", { margin: 350, suppliers: ["RIAD KNIZA"] }], ["b", { margin: 100, suppliers: ["AIR FRANCE"] }]]));
+    assert.equal(mb3mInvoiceAction(bare, lines), "replace");
+    assert.match(mb3mLineSignature(lines), /:§Réglé par Carte Pliant/);
+    assert.equal(mb3mPieceStale({ transactionIds: ["a", "b"], signature: mb3mLineSignature(bare) }, lines), false);
+    assert.equal(mb3mPieceStale({ transactionIds: ["a", "b"], signature: mb3mLineSignature(lines) }, bare), false);
   });
 
   it("n’envoie aucun compte tant que la liste d’essai est vide", () => {

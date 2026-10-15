@@ -670,7 +670,9 @@ async function dossierInvoiceInputs(supabase: SupabaseClient, bookingId: string)
       .is("credited_at", null),
     supabase
       .from("crm_trip_costs")
-      .select("id, booking_id, booking_item_id, source, source_id, amount_eur, original_amount, original_currency, supplier, occurred_on")
+      .select(
+        "id, booking_id, booking_item_id, source, source_id, amount_eur, original_amount, original_currency, supplier, occurred_on, instrument, instrument_detail"
+      )
       .eq("booking_id", bookingId),
   ]);
   if (chargesResult.error) dbFail(chargesResult.error, "La facture n’a pas pu être préparée.");

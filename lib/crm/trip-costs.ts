@@ -10,6 +10,9 @@ import { matchTokens, normalizeMatchText } from "./revolut-match";
 
 export type TripCostSource = "pliant" | "revolut";
 
+/** Comment l’agence a réglé le fournisseur : déduit de la source au rattachement. */
+export type TripCostInstrument = "pliant_card" | "revolut_transfer" | "revolut_card" | "revolut_other";
+
 export type TripCost = {
   id: string;
   bookingId: string;
@@ -21,6 +24,9 @@ export type TripCost = {
   originalCurrency: string | null;
   supplier: string | null;
   occurredOn: string | null;
+  instrument: TripCostInstrument | null;
+  /** Carte Pliant : 4 derniers chiffres. */
+  instrumentDetail: string | null;
 };
 
 export type TripCostDraft = Omit<TripCost, "id" | "bookingId" | "bookingItemId">;
@@ -36,21 +42,58 @@ export type TripCostRow = {
   original_currency: string | null;
   supplier: string | null;
   occurred_on: string | null;
+  instrument?: string | null;
+  instrument_detail?: string | null;
 };
 
+const INSTRUMENTS = new Set<TripCostInstrument>(["pliant_card", "revolut_transfer", "revolut_card", "revolut_other"]);
+
 export function mapTripCost(row: TripCostRow): TripCost {
+  const source: TripCostSource = row.source === "revolut" ? "revolut" : "pliant";
+  const stored = row.instrument as TripCostInstrument | null | undefined;
   return {
     id: String(row.id),
     bookingId: String(row.booking_id),
     bookingItemId: row.booking_item_id ? String(row.booking_item_id) : null,
-    source: row.source === "revolut" ? "revolut" : "pliant",
+    source,
     sourceId: String(row.source_id),
     amountEur: round(Number(row.amount_eur)),
     originalAmount: row.original_amount == null ? null : round(Number(row.original_amount)),
     originalCurrency: row.original_currency ? String(row.original_currency).toUpperCase() : null,
     supplier: row.supplier || null,
     occurredOn: row.occurred_on ? String(row.occurred_on).slice(0, 10) : null,
+    instrument: stored && INSTRUMENTS.has(stored) ? stored : source === "pliant" ? "pliant_card" : null,
+    instrumentDetail: (row.instrument_detail || "").trim() || null,
   };
+}
+
+/** Instrument d’une sortie Revolut d’après le type Revolut (`transfer`, `card_payment`…). */
+export function revolutInstrument(type: string | null | undefined): TripCostInstrument {
+  switch ((type || "").toLowerCase()) {
+    case "transfer":
+      return "revolut_transfer";
+    case "card_payment":
+    case "card_refund":
+      return "revolut_card";
+    default:
+      return "revolut_other";
+  }
+}
+
+/** « Carte Pliant ···· 5454 », « Virement Revolut », « Carte bancaire Revolut ». Même libellé que les modes MB3M. */
+export function settlementLabel(cost: Pick<TripCost, "source" | "instrument" | "instrumentDetail">) {
+  switch (cost.instrument) {
+    case "pliant_card":
+      return cost.instrumentDetail ? `Carte Pliant ···· ${cost.instrumentDetail}` : "Carte Pliant";
+    case "revolut_transfer":
+      return "Virement Revolut";
+    case "revolut_card":
+      return "Carte bancaire Revolut";
+    case "revolut_other":
+      return "Revolut";
+    default:
+      return cost.source === "pliant" ? "Carte Pliant" : "Revolut";
+  }
 }
 
 const PLIANT_POSTABLE = new Set(["BOOKED", "CONFIRMED"]);
@@ -68,6 +111,7 @@ export function tripCostFromPliant(row: {
   transaction_cents: number | null;
   transaction_currency: string | null;
   booked_at: string | null;
+  card_last4?: string | null;
 }): TripCostDraft | null {
   const status = (row.status || "").toUpperCase();
   const type = (row.type || "").toUpperCase();
@@ -89,6 +133,8 @@ export function tripCostFromPliant(row: {
     originalCurrency: (row.transaction_currency || currency).toUpperCase(),
     supplier: (row.merchant || "").trim() || null,
     occurredOn: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
+    instrument: "pliant_card",
+    instrumentDetail: (row.card_last4 || "").trim() || null,
   };
 }
 
@@ -104,6 +150,7 @@ export function tripCostFromRevolut(
     currency: string;
     counterparty_name: string | null;
     booked_at: string | null;
+    raw?: unknown;
   },
   eurAmount?: number | null
 ): TripCostDraft | null {
@@ -123,7 +170,15 @@ export function tripCostFromRevolut(
     originalCurrency: currency,
     supplier: (row.counterparty_name || "").trim() || null,
     occurredOn: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
+    instrument: revolutInstrument(revolutRawType(row.raw)),
+    instrumentDetail: null,
   };
+}
+
+function revolutRawType(raw: unknown) {
+  if (!raw || typeof raw !== "object") return null;
+  const type = (raw as Record<string, unknown>).type;
+  return typeof type === "string" ? type : null;
 }
 
 export type SaleLedgerRow = {
@@ -256,13 +311,17 @@ export const TRIP_ACCOUNTING_LABELS: Record<TripAccountingState, string> = {
   comptabilise: "Comptabilisé",
 };
 
+/** Un règlement fournisseur derrière une ligne vendue : mode, date, montant en euros. */
+export type CostSettlement = { label: string; date: string | null; amount: number };
+
 /** Marge par transaction du grand livre, pour la ligne MB3M. Seules les lignes pointées (au moins un coût) y figurent. */
 export function marginByTransaction(lines: AccountedLine[]) {
-  const map = new Map<string, { margin: number; suppliers: string[] }>();
+  const map = new Map<string, { margin: number; suppliers: string[]; settlements: CostSettlement[] }>();
   for (const line of lines) {
     if (!line.costs.length) continue;
     const suppliers = [...new Set(line.costs.map((cost) => (cost.supplier || "").trim()).filter(Boolean))];
-    map.set(line.transactionId, { margin: line.margin, suppliers });
+    const settlements = line.costs.map((cost) => ({ label: settlementLabel(cost), date: cost.occurredOn, amount: cost.amountEur }));
+    map.set(line.transactionId, { margin: line.margin, suppliers, settlements });
   }
   return map;
 }

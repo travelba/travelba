@@ -18,6 +18,7 @@ import {
 } from "@/lib/crm/trip-cost-lines";
 import {
   TRIP_ACCOUNTING_LABELS,
+  settlementLabel,
   type TripAccountingState,
   type TripAccountingView,
   type TripCost,
@@ -53,9 +54,10 @@ function spendAmount(row: PliantCardRecap["spends"][number]) {
   return money(signed, row.currency);
 }
 
+/** « Carte Pliant ···· 5454 · HASSLER ROMA · 10/10/2026 » : le mode de règlement d’abord, c’est ce que la compta pointe. */
 function costCaption(cost: TripCost) {
   return [
-    cost.source === "pliant" ? "Pliant" : "Revolut",
+    settlementLabel(cost),
     cost.supplier || "—",
     cost.occurredOn ? formatDateFr(cost.occurredOn) : "",
     cost.originalCurrency && cost.originalCurrency !== "EUR" && cost.originalAmount != null
