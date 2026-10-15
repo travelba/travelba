@@ -53,10 +53,12 @@ export async function POST(request: Request, ctx: Ctx) {
       body?.action === "reissue"
         ? await reissueMb3mInvoice(createServiceClient(), id)
         : await emitMb3mInvoice(createServiceClient(), id);
+    console.info(`[mb3m] ${body?.action || "emit"} ${id}`, JSON.stringify(invoice));
     revalidatePath(`/admin/reservations/${id}`);
     return NextResponse.json(invoice);
   } catch (err) {
     const message = err instanceof Mb3mError || err instanceof Error ? err.message : "La facture MB3M n’a pas abouti.";
+    console.error(`[mb3m] ${body?.action || "emit"} ${id}`, message);
     return jsonError(message, 400);
   }
 }
