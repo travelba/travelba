@@ -420,6 +420,27 @@ export function suggestCostTargets(
   return out.sort((left, right) => right.score - left.score);
 }
 
+/** Ce que l’agence sait d’une carte Pliant générée depuis un dossier. */
+export type OutgoingCardInfo = {
+  label: string | null;
+  holder: string | null;
+  limit: number | null;
+  currency: string;
+  validFrom: string | null;
+  validTo: string | null;
+  countries: string[];
+  status: string | null;
+  bookingReference?: string | null;
+  bookingTitle?: string | null;
+};
+
+/** Un rattachement quasi certain : la référence du dossier, ou la carte générée depuis le dossier. */
+export const SURE_SUGGESTION_SCORE = 90;
+
+export function isSureSuggestion(hit: { score: number } | null | undefined) {
+  return !!hit && hit.score >= SURE_SUGGESTION_SCORE;
+}
+
 /** Sortie à rattacher, telle que l’écran la reçoit. */
 export type OutgoingLine = {
   source: TripCostSource;
@@ -437,6 +458,8 @@ export type OutgoingLine = {
   text: string;
   kind: string;
   agencyCard: boolean;
+  /** Carte Pliant générée depuis un dossier : porteur, plafond, validité, dossier d’origine. */
+  cardInfo: OutgoingCardInfo | null;
   suggestions: (CostSuggestion & { reference: string; title: string; itemLabel: string | null })[];
 };
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { costSuggestionReasonLabel, type OutgoingLine } from "@/lib/crm/trip-costs";
+import { costSuggestionReasonLabel, isSureSuggestion, type OutgoingLine } from "@/lib/crm/trip-costs";
 
 export type TargetOption = {
   id: string;
@@ -136,19 +136,28 @@ export function OutgoingAttach({
   const topLabel = top
     ? `${top.reference}${top.itemLabel ? ` · ${top.itemLabel}` : ""} (${costSuggestionReasonLabel(top.reason)})`
     : null;
+  const sure = lineIsSure(line, fixedBooking?.id || null);
+  const proposalClass = sure ? "text-xs font-semibold text-[var(--admin-navy)]" : "text-xs font-semibold text-[#9e7e51]";
+  const proposalWord = sure ? "Quasi certain" : "Proposition";
 
   return (
     <div className={compact ? "space-y-2" : "space-y-2 sm:max-w-md"}>
       {!fixedBooking ? (
         topLabel ? (
-          <p className="text-xs font-semibold text-[#9e7e51]">Proposition : {topLabel}</p>
+          <p className={proposalClass}>
+            {proposalWord} : {topLabel}
+          </p>
         ) : line.agencyCard ? (
           <p className="text-xs text-muted">Carte d’agence : sans doute hors voyage.</p>
         ) : (
           <p className="text-xs text-muted">Aucune proposition</p>
         )
       ) : top?.itemLabel ? (
-        <p className="text-xs font-semibold text-[#9e7e51]">Proposition : {top.itemLabel}</p>
+        <p className={proposalClass}>
+          {proposalWord} : {top.itemLabel}
+        </p>
+      ) : sure ? (
+        <p className={proposalClass}>Quasi certain : carte générée dans ce dossier</p>
       ) : null}
       {open ? (
         <div className="space-y-2 rounded-2xl border border-border bg-white p-3">
@@ -258,6 +267,36 @@ export function OutgoingAttach({
   );
 }
 
+/**
+ * Rattachement quasi certain : la référence du dossier dans la désignation, ou la carte Pliant
+ * générée depuis le dossier. Sur un dossier, la proposition qui compte est celle de ce dossier.
+ */
+export function lineIsSure(line: OutgoingLine, fixedBookingId: string | null) {
+  if (fixedBookingId) {
+    const hit = line.suggestions.find((row) => row.bookingId === fixedBookingId) || null;
+    if (hit) return isSureSuggestion(hit);
+    // Dépense d’une carte du dossier, hors file proposée : la carte dit le dossier.
+    return !!line.cardInfo && !line.suggestions.length;
+  }
+  return isSureSuggestion(line.suggestions[0]);
+}
+
+/** « Carte générée dans TB-2026-0040 · Cyril Zeitoun · plafond 4 500 € · du 10 au 20 oct. 2026 · Clôturée ». */
+export function cardInfoLabel(line: OutgoingLine) {
+  const info = line.cardInfo;
+  if (!info) return null;
+  const parts: string[] = [];
+  parts.push(info.bookingReference ? `Carte générée dans ${info.bookingReference}` : "Carte générée dans ce dossier");
+  if (info.bookingTitle) parts.push(info.bookingTitle);
+  if (info.holder) parts.push(info.holder);
+  if (info.limit != null) parts.push(`plafond ${money(info.limit, info.currency)}`);
+  if (info.validFrom && info.validTo) parts.push(`du ${formatDateFr(info.validFrom)} au ${formatDateFr(info.validTo)}`);
+  else if (info.validTo) parts.push(`jusqu’au ${formatDateFr(info.validTo)}`);
+  if (info.countries.length) parts.push(info.countries.join(", "));
+  if (info.status === "closed") parts.push("Clôturée");
+  return parts.join(" · ");
+}
+
 /** Ligne d’une sortie : bénéficiaire, date, carte, montant, puis le rattachement. */
 export function OutgoingRow({
   line,
@@ -268,8 +307,17 @@ export function OutgoingRow({
   fixedBooking?: TargetOption | null;
   allowOutside?: boolean;
 }) {
+  const sure = lineIsSure(line, fixedBooking?.id || null);
+  const cardLabel = cardInfoLabel(line);
   return (
-    <li className="flex flex-wrap items-start justify-between gap-3 py-3">
+    <li
+      className={
+        sure
+          ? "-mx-3 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#C5A880] bg-[#C5A880]/10 px-3 py-3"
+          : "flex flex-wrap items-start justify-between gap-3 py-3"
+      }
+      data-sure={sure ? "true" : undefined}
+    >
       <span className="min-w-0 flex-1">
         <span className="block font-medium text-[var(--admin-navy)]">{line.party}</span>
         <span className="block text-xs text-muted">
@@ -277,6 +325,7 @@ export function OutgoingRow({
           {line.card ? ` · ${line.card}` : ""}
           {line.text ? ` · ${line.text}` : ""}
         </span>
+        {cardLabel ? <span className="block text-xs text-[var(--admin-navy)]">{cardLabel}</span> : null}
       </span>
       <OutgoingAmount line={line} />
       <div className="basis-full sm:basis-auto">

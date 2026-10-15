@@ -16,6 +16,7 @@ import {
   tripTotals,
   type CostSuggestion,
   type CostTargetBooking,
+  type OutgoingCardInfo,
   type OutgoingLine,
   type SaleLedgerRow,
   type TripCost,
@@ -390,22 +391,65 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
   }));
 }
 
+type CardRow = {
+  pliant_card_id: string | null;
+  booking_id: string | null;
+  label?: string | null;
+  last4?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  limit_cents?: number | null;
+  ceiling_cents?: number | null;
+  card_limit_cents?: number | null;
+  currency?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  countries?: string[] | null;
+  status?: string | null;
+  closed_at?: string | null;
+  card_closed_at?: string | null;
+};
+
+const CARD_SELECTS: Record<string, string> = {
+  crm_pliant_cards: "pliant_card_id, booking_id, label, last4, ceiling_cents, currency, countries, status, closed_at",
+  crm_booking_cards: "pliant_card_id, booking_id, label, last4, first_name, last_name, limit_cents, currency, valid_from, valid_to, status",
+  crm_hotel_arrivals: "pliant_card_id, booking_id, card_limit_cents, currency, card_closed_at",
+};
+
+/**
+ * Cartes Pliant générées depuis un dossier : le ou les dossiers, et ce que l’agence sait de la
+ * carte (porteur, plafond, validité, pays). Une carte connue d’un dossier dit presque tout.
+ */
 async function cardBookings(admin: SupabaseClient, cardIds: string[]) {
-  const map = new Map<string, string[]>();
-  const push = (cardId: string | null, bookingId: string | null) => {
-    if (!cardId || !bookingId) return;
-    const list = map.get(cardId) || [];
-    if (!list.includes(bookingId)) list.push(bookingId);
-    map.set(cardId, list);
-  };
+  const map = new Map<string, { bookingIds: string[]; info: OutgoingCardInfo }>();
   const ids = [...new Set(cardIds.filter(Boolean))];
   if (!ids.length) return map;
-  for (const table of ["crm_pliant_cards", "crm_booking_cards", "crm_hotel_arrivals"]) {
+  for (const [table, select] of Object.entries(CARD_SELECTS)) {
     const rows = await chunked(ids, async (slice) => {
-      const { data } = await admin.from(table).select("pliant_card_id, booking_id").in("pliant_card_id", slice);
-      return (data || []) as { pliant_card_id: string | null; booking_id: string | null }[];
+      const { data } = await admin.from(table).select(select).in("pliant_card_id", slice);
+      return ((data || []) as unknown) as CardRow[];
     });
-    for (const row of rows) push(row.pliant_card_id, row.booking_id);
+    for (const row of rows) {
+      if (!row.pliant_card_id) continue;
+      const entry = map.get(row.pliant_card_id) || {
+        bookingIds: [],
+        info: { label: null, holder: null, limit: null, currency: "EUR", validFrom: null, validTo: null, countries: [], status: null },
+      };
+      if (row.booking_id && !entry.bookingIds.includes(row.booking_id)) entry.bookingIds.push(row.booking_id);
+      const holder = [row.first_name, row.last_name].filter(Boolean).join(" ").trim();
+      const limitCents = row.limit_cents ?? row.ceiling_cents ?? row.card_limit_cents ?? null;
+      entry.info = {
+        label: entry.info.label || (row.label || "").trim() || null,
+        holder: entry.info.holder || holder || null,
+        limit: entry.info.limit ?? (limitCents == null ? null : limitCents / 100),
+        currency: entry.info.currency !== "EUR" ? entry.info.currency : (row.currency || "EUR").toUpperCase(),
+        validFrom: entry.info.validFrom || row.valid_from || null,
+        validTo: entry.info.validTo || row.valid_to || null,
+        countries: entry.info.countries.length ? entry.info.countries : row.countries || [],
+        status: entry.info.status || (row.closed_at || row.card_closed_at ? "closed" : row.status || null),
+      };
+      map.set(row.pliant_card_id, entry);
+    }
   }
   return map;
 }
@@ -448,7 +492,9 @@ export async function loadOutgoingQueue(
     for (const row of rows) {
       const draft = tripCostFromPliant(row);
       if (!draft) continue;
-      const cardBookingIds = row.card_id ? cards.get(row.card_id) || [] : [];
+      const card = row.card_id ? cards.get(row.card_id) || null : null;
+      const cardBookingIds = card?.bookingIds || [];
+      const cardBooking = cardBookingIds.map((id) => targets.find((target) => target.id === id)).find(Boolean) || null;
       const suggestions = suggestCostTargets(
         {
           text: row.merchant,
@@ -473,6 +519,14 @@ export async function loadOutgoingQueue(
         text: "",
         kind: draft.amountEur < 0 ? "Remboursement" : "Carte",
         agencyCard: pliantAgencyCardLabel(row.card_label),
+        cardInfo: card
+          ? {
+              ...card.info,
+              label: card.info.label || row.card_label || null,
+              bookingReference: cardBooking?.reference || null,
+              bookingTitle: cardBooking?.title || null,
+            }
+          : null,
         suggestions: decorate(suggestions, targets),
       });
     }
@@ -509,6 +563,7 @@ export async function loadOutgoingQueue(
         text: line.reference,
         kind: line.kind,
         agencyCard: false,
+        cardInfo: null,
         suggestions: decorate(suggestions, targets),
       });
     }
