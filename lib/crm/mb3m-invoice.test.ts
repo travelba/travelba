@@ -242,7 +242,7 @@ describe("facture MB3M", () => {
     );
     assert.equal(
       mb3mInvoiceBlocker(context({ person: { ...context().person!, address: null } })),
-      "L’adresse de facturation est incomplète."
+      "L’adresse du client manque sur sa fiche (rue, code postal, ville) : c’est elle qui sert à la facture."
     );
     assert.equal(mb3mInvoiceBlocker(context({ configured: false })), "L’accès MB3M n’est pas configuré.");
     assert.equal(
@@ -268,7 +268,7 @@ describe("facture MB3M", () => {
         },
       ],
     });
-    assert.equal(mb3mInvoiceBlocker(company), "L’adresse de facturation est incomplète.");
+    assert.equal(mb3mInvoiceBlocker(company), "L’adresse de facturation de la société est incomplète (rue, code postal, ville).");
     assert.equal(company.company?.name, "Travelba");
   });
 

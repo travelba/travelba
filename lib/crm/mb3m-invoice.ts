@@ -270,10 +270,11 @@ export function mb3mInvoiceBlocker(ctx: Mb3mInvoiceContext) {
   if (ctx.dateEnd < ctx.dateStart) return "Les dates du séjour sont inversées.";
   if (ctx.payerKind === "company") {
     if (!ctx.company?.name) return "La raison sociale est incomplète.";
-    if (!ctx.company.address) return "L’adresse de facturation est incomplète.";
+    if (!ctx.company.address) return "L’adresse de facturation de la société est incomplète (rue, code postal, ville).";
   } else {
     if (!ctx.person?.firstName || !ctx.person.lastName) return "Le nom du client est incomplet.";
-    if (!ctx.person.address) return "L’adresse de facturation est incomplète.";
+    // Particulier : l’adresse de la fiche est l’adresse de facturation.
+    if (!ctx.person.address) return "L’adresse du client manque sur sa fiche (rue, code postal, ville) : c’est elle qui sert à la facture.";
   }
   if (!ctx.lines.length) {
     return ctx.hadExpenses
