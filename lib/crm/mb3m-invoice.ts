@@ -157,16 +157,22 @@ type PiecePatch = {
   lines?: Mb3mLine[];
 };
 
-/** Ligne MB3M d’une vente : prix vendu, marge et fournisseurs quand des coûts sont pointés. */
+/**
+ * Ligne MB3M d’une vente. MB3M facture **Net + Marge** : `NetPrice` est le net fournisseur, la
+ * marge s’ajoute dessus. On envoie donc vente − marge en net, et la marge à part, pour que la
+ * pièce fasse le prix vendu. Sans marge connue, le prix vendu entier en net.
+ */
 export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
+  const margin = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
+  const net = margin == null ? line.amount : Math.round((line.amount - margin) * 100) / 100;
   return {
     label: line.label,
     quantity: 1,
-    netPriceUnit: line.amount,
-    netPriceTotal: line.amount,
+    netPriceUnit: net,
+    netPriceTotal: net,
     activityId: line.activityId ?? undefined,
     type: "Standard" as const,
-    marginUnit: line.margin ?? null,
+    marginUnit: margin,
     note: line.note ?? null,
   };
 }

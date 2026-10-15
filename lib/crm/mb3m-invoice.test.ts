@@ -4,6 +4,7 @@ import { Mb3mError } from "./mb3m";
 import {
   buildMb3mInvoiceContext,
   mb3mInvoiceBlocker,
+  mb3mInvoiceLine,
   runMb3mInvoice,
   storeMb3mPdf,
   type Mb3mInvoiceContext,
@@ -25,6 +26,23 @@ afterEach(() => {
   restore("MB3M_ACTIVITY_ID", previous.activity);
   restore("MB3M_SYNC_CUSTOMER_IDS", previous.allow);
   restore("VERCEL_ENV", previous.vercel);
+});
+
+describe("mb3mInvoiceLine", () => {
+  it("envoie vente − marge en net : MB3M facture Net + Marge, la pièce fait le prix vendu", () => {
+    const hotel = mb3mInvoiceLine({ transactionId: "tx-1", label: "Hôtel", amount: 9900, activityId: 7, margin: 990, note: "Fournisseur : RIAD" });
+    assert.equal(hotel.netPriceUnit, 8910);
+    assert.equal(hotel.netPriceTotal, 8910);
+    assert.equal(hotel.marginUnit, 990);
+    const fee = mb3mInvoiceLine({ transactionId: "tx-2", label: "Frais d’agence 10 %", amount: 2279.24, activityId: 22, margin: 2279.24 });
+    assert.equal(fee.netPriceUnit, 0);
+    assert.equal(fee.marginUnit, 2279.24);
+    const cents = mb3mInvoiceLine({ transactionId: "tx-3", label: "DJ", amount: 401.28, activityId: 22, margin: 0.1 });
+    assert.equal(cents.netPriceUnit, 401.18);
+    const noMargin = mb3mInvoiceLine({ transactionId: "tx-4", label: "Vol", amount: 400, activityId: 2 });
+    assert.equal(noMargin.netPriceUnit, 400);
+    assert.equal(noMargin.marginUnit, null);
+  });
 });
 
 function restore(name: string, value: string | undefined) {
