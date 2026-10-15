@@ -2,7 +2,7 @@ import type { PliantCardRecap, PliantReconcileState } from "./pliant-booking";
 import { pliantReconcileState } from "./pliant-booking";
 import type { PliantSpendLine } from "./pliant-cards";
 import { pliantSignedCents } from "./pliant-tx";
-import type { OutgoingLine, TripAccountingView, TripCost } from "./trip-costs";
+import { isFixedCostParty, type OutgoingLine, type TripAccountingView, type TripCost } from "./trip-costs";
 
 function moneyCode(value: string | null | undefined) {
   const currency = (value || "EUR").trim().toUpperCase();
@@ -82,6 +82,7 @@ export function pendingCostLines(input: {
       const key = `pliant:${row.id}`;
       if (seen.has(key)) continue;
       if (!spendAwaitsAttach(spendReconcileState(row, input.bookingId))) continue;
+      if (isFixedCostParty(row.merchant)) continue;
       const line = pliantSpendToOutgoing(card, row);
       if (!line) continue;
       seen.add(key);
