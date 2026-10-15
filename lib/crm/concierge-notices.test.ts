@@ -101,41 +101,62 @@ test("sans couverture, le séjour part sans image", () => {
   assert.equal(JSON.stringify(variables).includes("og-concierge"), false);
 });
 
-test("sans ville d’arrivée, aucun message séjour", () => {
-  assert.equal(
-    planStayNotice({
-      published: true,
+test("le séjour part quelle que soit la ville", () => {
+  const paris = planStayNotice({
+    published: true,
+    reference,
+    destination: "Paris",
+    title: "CDG",
+    hasCover: false,
+  });
+  assert.ok(paris);
+  assert.equal(paris.place, "Paris");
+  assert.equal(paris.template, "sejour_texte");
+  assert.match(paris.body, /Votre séjour à Paris, réservation TB-2026-0004, est dans votre espace\./);
+  assert.deepEqual(
+    conciergeContentVariables({
+      template: paris.template,
+      buttonSuffix: "c/K7MQ2PX4",
+      place: paris.place,
       reference,
-      destination: "Paris",
-      title: "CDG",
-      hasCover: true,
     }),
-    null
+    { "1": "Paris, réservation TB-2026-0004,", "2": "c/K7MQ2PX4" }
   );
-  assert.equal(
-    planStayNotice({
-      published: true,
-      reference,
-      destination: "CDG → ORY",
-      title: null,
-      hasCover: false,
+  const airports = planStayNotice({
+    published: true,
+    reference,
+    destination: "CDG → ORY",
+    title: null,
+    hasCover: false,
+  });
+  assert.equal(airports?.place, "CDG");
+  assert.equal(airports?.template, "sejour_texte");
+  const bare = planStayNotice({
+    published: true,
+    reference,
+    destination: null,
+    title: null,
+    hasCover: false,
+  });
+  assert.ok(bare);
+  assert.equal(bare.place, "");
+  assert.equal(bare.template, "sejour_sans_lieu_texte");
+  assert.match(bare.body, /Votre séjour est dans votre espace\./);
+  assert.equal(bare.body.includes("à ,"), false);
+  assert.deepEqual(
+    conciergeContentVariables({
+      template: "sejour_sans_lieu_texte",
+      buttonSuffix: "c/K7MQ2PX4",
     }),
-    null
+    { "1": "c/K7MQ2PX4" }
   );
-  assert.equal(
+  assert.deepEqual(
     conciergeContentVariables({
       template: "sejour_sans_lieu",
       buttonSuffix: "c/K7MQ2PX4",
       mediaUrl: `https://travelba.fr/api/covers/sejour/${reference}`,
     }),
-    null
-  );
-  assert.equal(
-    conciergeContentVariables({
-      template: "sejour_sans_lieu_texte",
-      buttonSuffix: "c/K7MQ2PX4",
-    }),
-    null
+    { "1": `https://travelba.fr/api/covers/sejour/${reference}`, "2": "c/K7MQ2PX4" }
   );
 });
 

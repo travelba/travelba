@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
+import { isOriginHub } from "./carnet";
 import { tripDocCoverage } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportTrip } from "./visa-trip";
@@ -192,11 +193,12 @@ async function deliverTemplate(admin: Admin, input: {
   if (!input.customer.email || !input.customer.phone || !proactiveWhatsappAllowed(input.customer)) {
     return;
   }
+  const stayWithCover = input.template === "sejour" || input.template === "sejour_sans_lieu";
   const button = await entryButton(
     admin,
     input.customer.email,
     input.path,
-    input.template === "sejour" && input.stayCover === true
+    stayWithCover && input.stayCover === true
   );
   if (!button) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
@@ -205,12 +207,12 @@ async function deliverTemplate(admin: Admin, input: {
   const suffix = button.suffix;
   let template = input.template;
   let mediaUrl = input.mediaUrl ?? null;
-  if (template === "sejour") {
+  if (template === "sejour" || template === "sejour_sans_lieu") {
     const cover = input.stayCover && input.reference
       ? await liveStayCover(stayCoverUrl(input.reference, true, { entryCode: button.code }))
       : null;
     mediaUrl = cover;
-    if (!cover) template = "sejour_texte";
+    if (!cover) template = template === "sejour" ? "sejour_texte" : "sejour_sans_lieu_texte";
   }
   const photoTemplate = conciergePhotoTemplate(input.card || template);
   const photoSid = photoTemplate ? conciergeContentSid(photoTemplate) : "";
@@ -618,16 +620,19 @@ export async function flushConcierge(now = new Date()) {
   const today = now.toISOString().slice(0, 10);
   const { data: bookings } = await admin
     .from("crm_bookings")
-    .select("id")
+    .select("id, destination, title")
     .eq("visible_to_client", true)
     .gte("start_date", today)
     .order("start_date")
     .limit(30);
   let reminded = 0;
-  for (const booking of (bookings || []) as { id: string }[]) {
+  for (const booking of (bookings || []) as { id: string; destination: string | null; title: string | null }[]) {
     try {
       await remindMissingPieces(booking.id, now);
       reminded += 1;
+      const place = stayPlaceName(booking.destination, booking.title);
+      // Déjà visible avant la règle : Paris, un aéroport, ou aucune ville. Le message part une fois.
+      if (!place || isOriginHub(place)) await notifyStayPublished(booking.id);
     } catch (err) {
       quiet(err);
     }
