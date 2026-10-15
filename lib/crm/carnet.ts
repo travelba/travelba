@@ -513,11 +513,31 @@ export function nextTimelineFlight(items: CrmBookingItem[], today = todayIsoDate
 }
 
 /** Gares / aéroports de départ FR — jamais une couverture (le client part de Paris). */
-const ORIGIN_HUBS =
-  /^(paris|cdg|ory|lbg|bva|france|ile-de-france|île-de-france)$/i;
+const EXACT_HUBS = new Set(["paris", "cdg", "ory", "lbg", "bva", "france", "ile de france"]);
+
+/**
+ * Gares parisiennes. « Paris Est » est la gare de l’Est, pas une ville de séjour.
+ * Lyon seul n’est pas une gare : seul « Gare de Lyon » ou « Paris Lyon » l’est.
+ */
+const PARIS_STATION =
+  /^(?:paris(?:\s+gare)?\s+(?:de\s+l\s+|d\s+|du\s+|de\s+)?(?:est|nord|lyon|montparnasse|austerlitz|bercy|saint lazare|st lazare)|gare\s+(?:de\s+l\s+est|du\s+nord|de\s+lyon|montparnasse|d\s+austerlitz|de\s+bercy|saint lazare|st lazare))$/;
+
+function foldHub(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/['’.]/g, " ")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export function isOriginHub(value: string) {
-  return ORIGIN_HUBS.test(value.trim());
+  const key = foldHub(value);
+  if (!key) return false;
+  if (EXACT_HUBS.has(key)) return true;
+  return PARIS_STATION.test(key);
 }
 
 function coverTokens(value: string) {
@@ -528,7 +548,7 @@ function coverTokens(value: string) {
 }
 
 function firstArrival(tokens: string[]) {
-  return tokens.find((token) => !ORIGIN_HUBS.test(token)) || "";
+  return tokens.find((token) => !isOriginHub(token)) || "";
 }
 
 /** Nom du séjour tel que saisi par l’agence. La destination ne le remplace pas. */
@@ -561,7 +581,7 @@ export function tripPlaceLine(title: string | null | undefined, destination: str
 function pushArrival(found: string[], value: string) {
   const label = cityLabel(value);
   const key = cityPlaceKey(label);
-  if (!label || !key || ORIGIN_HUBS.test(label)) return;
+  if (!label || !key || isOriginHub(label)) return;
   if (found.some((item) => cityPlaceKey(item) === key)) return;
   found.push(label);
 }

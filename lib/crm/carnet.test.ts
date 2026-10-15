@@ -7,6 +7,8 @@ import {
   publishConfirmHold,
   carnetVisible,
   coverQuery,
+  isOriginHub,
+  stayArrivalPlaces,
   stayHeadline,
   tripHeadline,
   tripPlaceLine,
@@ -234,6 +236,24 @@ describe("carnet", () => {
     assert.equal(coverQuery("Paris", "Week-end"), "Paris");
     assert.equal(coverQuery("Nice, France", null), "Nice");
     assert.equal(coverQuery("Avoriaz - Haute Savoie", "Séjour"), "Avoriaz");
+    assert.equal(coverQuery("Paris Est · Strasbourg", "Train"), "Strasbourg");
+    assert.equal(coverQuery("Paris-Nord → Lyon", "Train"), "Lyon");
+    assert.equal(coverQuery("Gare de Lyon · Avoriaz", "Séjour"), "Avoriaz");
+    assert.equal(isOriginHub("Paris Est"), true);
+    assert.equal(isOriginHub("PARIS-EST"), true);
+    assert.equal(isOriginHub("Gare de l'Est"), true);
+    assert.equal(isOriginHub("Gare d'Austerlitz"), true);
+    assert.equal(isOriginHub("Paris Saint-Lazare"), true);
+    assert.equal(isOriginHub("Paris Gare de Lyon"), true);
+    assert.equal(isOriginHub("Lyon"), false);
+    assert.equal(isOriginHub("Strasbourg"), false);
+    assert.deepEqual(
+      stayArrivalPlaces("Paris Est · Strasbourg", "Paris Est · Strasbourg", [
+        { kind: "rail", details: { from: "Paris Est", to: "Strasbourg" } },
+        { kind: "rail", details: { from: "Strasbourg", to: "Paris Est" } },
+      ]),
+      ["Strasbourg"]
+    );
   });
 
   it("affiche le titre saisi, pas la destination, comme nom du séjour", () => {
