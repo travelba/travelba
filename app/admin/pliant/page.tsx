@@ -60,8 +60,13 @@ export default async function AdminPliantPage({
       }
       const stayBookingIds = [...new Set(stays.map((row) => row.bookingId))];
       if (stayBookingIds.length) {
-        const { data: bookings } = await admin.from("crm_bookings").select("id, reference").in("id", stayBookingIds);
-        const references = new Map(((bookings || []) as { id: string; reference: string | null }[]).map((row) => [row.id, row.reference]));
+        const { data: bookings } = await admin.from("crm_bookings").select("id, reference, title, destination").in("id", stayBookingIds);
+        const references = new Map(
+          ((bookings || []) as { id: string; reference: string | null; title: string | null; destination: string | null }[]).map((row) => [
+            row.id,
+            [row.reference, (row.title || row.destination || "").trim()].filter(Boolean).join(" · ") || null,
+          ])
+        );
         for (const stay of stays) stay.reference = references.get(stay.bookingId) || null;
       }
 
@@ -79,13 +84,18 @@ export default async function AdminPliantPage({
       const costItemIds = costRows.map((row) => row.booking_item_id).filter((id): id is string => Boolean(id));
       const [{ data: costBookings }, { data: costItems }] = await Promise.all([
         costBookingIds.length
-          ? admin.from("crm_bookings").select("id, reference").in("id", costBookingIds)
+          ? admin.from("crm_bookings").select("id, reference, title, destination").in("id", costBookingIds)
           : Promise.resolve({ data: [] }),
         costItemIds.length
           ? admin.from("crm_booking_items").select("id, kind, title, details").in("id", costItemIds)
           : Promise.resolve({ data: [] }),
       ]);
-      const costReference = new Map(((costBookings || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference]));
+      const costReference = new Map(
+        ((costBookings || []) as { id: string; reference: string; title: string | null; destination: string | null }[]).map((row) => [
+          row.id,
+          [row.reference, (row.title || row.destination || "").trim()].filter(Boolean).join(" · "),
+        ])
+      );
       const costItemLabel = new Map(
         ((costItems || []) as { id: string; kind: string | null; title: string | null; details: Record<string, unknown> | null }[]).map((item) => [item.id, itemLabelFor(item)])
       );
