@@ -480,18 +480,19 @@ export type OutgoingLine = {
   suggestions: (CostSuggestion & { reference: string; title: string; itemLabel: string | null })[];
 };
 
+/** Pourquoi le CRM propose ce dossier, en clair pour l’agence. */
 export function costSuggestionReasonLabel(reason: CostSuggestion["reason"]) {
   switch (reason) {
     case "reference":
-      return "Référence du dossier";
+      return "le n° de dossier figure dans le libellé";
     case "card":
-      return "Carte du dossier";
+      return "carte Pliant générée dans ce dossier";
     case "client":
-      return "Client de la carte";
+      return "la carte est au nom du client";
     case "supplier":
-      return "Fournisseur";
+      return "le nom du fournisseur correspond à cette prestation";
     default:
-      return "Montant";
+      return "même montant qu’une prestation du dossier";
   }
 }
 

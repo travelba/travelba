@@ -134,7 +134,7 @@ export function OutgoingAttach({
   }
 
   const topLabel = top
-    ? `${top.reference}${top.itemLabel ? ` · ${top.itemLabel}` : ""} (${costSuggestionReasonLabel(top.reason)})`
+    ? `${top.reference}${top.itemLabel ? ` · ${top.itemLabel}` : ""} — ${costSuggestionReasonLabel(top.reason)}`
     : null;
   const sure = lineIsSure(line, fixedBooking?.id || null);
   const proposalClass = sure ? "text-xs font-semibold text-[var(--admin-navy)]" : "text-xs font-semibold text-[#9e7e51]";
