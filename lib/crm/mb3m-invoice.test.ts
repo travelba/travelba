@@ -34,9 +34,17 @@ describe("mb3mInvoiceLine", () => {
     assert.equal(hotel.netPriceUnit, 8910);
     assert.equal(hotel.netPriceTotal, 8910);
     assert.equal(hotel.marginUnit, 990);
+    // Marge pure : MB3M refuse un net à 0 (-504). Un centime de net, la marge complète, la pièce fait le montant.
     const fee = mb3mInvoiceLine({ transactionId: "tx-2", label: "Frais d’agence 10 %", amount: 2279.24, activityId: 22, margin: 2279.24 });
-    assert.equal(fee.netPriceUnit, 0);
-    assert.equal(fee.marginUnit, 2279.24);
+    assert.equal(fee.netPriceUnit, 0.01);
+    assert.equal(fee.netPriceTotal, 0.01);
+    assert.equal(fee.marginUnit, 2279.23);
+    const over = mb3mInvoiceLine({ transactionId: "tx-5", label: "Taxi", amount: 235, activityId: 22, margin: 300 });
+    assert.equal(over.netPriceUnit, 0.01);
+    assert.equal(over.marginUnit, 234.99);
+    const cent = mb3mInvoiceLine({ transactionId: "tx-6", label: "Arrondi", amount: 0.01, activityId: 22, margin: 0.01 });
+    assert.equal(cent.netPriceUnit, 0.01);
+    assert.equal(cent.marginUnit, 0);
     const cents = mb3mInvoiceLine({ transactionId: "tx-3", label: "DJ", amount: 401.28, activityId: 22, margin: 0.1 });
     assert.equal(cents.netPriceUnit, 401.18);
     const noMargin = mb3mInvoiceLine({ transactionId: "tx-4", label: "Vol", amount: 400, activityId: 2 });
@@ -399,5 +407,66 @@ describe("facture MB3M", () => {
       () => runMb3mInvoice(context(), deps),
       (error: unknown) => error instanceof Mb3mError && /déjà en cours/.test(error.message)
     );
+  });
+
+  it("crée la nouvelle pro forma avant d’annuler l’ancienne ; un refus MB3M laisse l’ancienne en place", async () => {
+    const calls: string[] = [];
+    const open = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "22-0000099",
+      folderUid: "folder-uid",
+      pieceNumber: "4531",
+      amount: 1050,
+      signature: "ancienne",
+      transactionIds: ["tx-1"],
+    });
+    let saved: Parameters<Mb3mInvoiceDeps["save"]>[1] | null = null;
+    const deps = (addInvoice: Mb3mInvoiceDeps["addInvoice"]): Mb3mInvoiceDeps => ({
+      now: () => Date.now(),
+      claim: async () => ({ piece: { ...open }, created: false }),
+      save: async (_id, patch) => {
+        calls.push("save");
+        saved = patch;
+      },
+      remove: async () => undefined,
+      savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => ({ id: "22-0000099", uid: "folder-uid" }),
+      addInvoice,
+      agencyUid: async () => null,
+      findPiece: async () => "open",
+      cancelInvoice: async (_folder, number) => {
+        calls.push(`cancel ${number}`);
+      },
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+    });
+    const result = await runMb3mInvoice(
+      context(),
+      deps(async () => {
+        calls.push("add");
+        return { number: "4532", uid: "piece-uid" };
+      })
+    );
+    assert.equal(result.replaced, true);
+    assert.equal(result.number, "4532");
+    assert.deepEqual(calls, ["add", "cancel 4531", "save"]);
+    assert.equal((saved as Parameters<Mb3mInvoiceDeps["save"]>[1] | null)?.pieceNumber, "4532");
+
+    calls.length = 0;
+    await assert.rejects(
+      () =>
+        runMb3mInvoice(
+          context(),
+          deps(async () => {
+            calls.push("add");
+            throw new Mb3mError("Une erreur s'est produite durant l'enregistrement de la facture.", -504);
+          })
+        ),
+      (error: unknown) => error instanceof Mb3mError && error.resultCode === -504
+    );
+    assert.deepEqual(calls, ["add"]);
   });
 });
