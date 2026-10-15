@@ -39,6 +39,13 @@ async function createCityCover(photoId: string) {
   return webp;
 }
 
+/** JPEG ou WebP déjà en cache ou dans le catalogue public. */
+export async function cityCoverCached(photoId: string) {
+  if (!generatedCityCoverSpec(photoId)) return false;
+  const cached = await readCachedCover(photoId);
+  return Boolean(cached?.byteLength);
+}
+
 /** Fichier déjà là, sinon une seule génération pour cette ville. */
 export function ensureCityCover(photoId: string) {
   if (!generatedCityCoverSpec(photoId)) return Promise.resolve(null);

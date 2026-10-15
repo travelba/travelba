@@ -2,6 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
+import { cityCoverCached, ensureCityCover } from "@/lib/crm/cover-generate";
+import { cityCoverAuthFailed } from "@/lib/crm/cover-retouch";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { tripDocCoverage } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
@@ -19,6 +21,7 @@ import {
   planFormalityReady,
   planMissingPieceNotices,
   planPiecesNotices,
+  generatedStayPhotoId,
   liveConciergeImage,
   liveStayCover,
   noticeCardTemplate,
@@ -26,6 +29,8 @@ import {
   planStayNotice,
   stayCoverUrl,
   stayHasPublishedCover,
+  stayNoticeDispatch,
+  STAY_COVER_WAIT_LIMIT,
   stayPlaceName,
   type ConciergeTemplate,
   type PieceStamp,
@@ -45,6 +50,8 @@ type CustomerRow = {
 type QueuePayload = {
   pieces?: PieceStamp[];
   iso?: string;
+  /** Essais du cron pendant que la photo ou le modèle illustré manque. */
+  coverWaits?: number;
 };
 
 type QueueRow = {
@@ -188,9 +195,11 @@ async function deliverTemplate(admin: Admin, input: {
   card?: ConciergeTemplate | null;
   /** Message du séjour avec couverture : la photo est servie par le code du lien de ce message. */
   stayCover?: boolean;
-}) {
+  /** La photo est attendue : un 404 laisse la file, sans basculer sur le texte. */
+  holdWithoutCover?: boolean;
+}): Promise<"done" | "held"> {
   if (!input.customer.email || !input.customer.phone || !proactiveWhatsappAllowed(input.customer)) {
-    return;
+    return "done";
   }
   const button = await entryButton(
     admin,
@@ -200,7 +209,7 @@ async function deliverTemplate(admin: Admin, input: {
   );
   if (!button) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
-    return;
+    return "done";
   }
   const suffix = button.suffix;
   let template = input.template;
@@ -210,7 +219,10 @@ async function deliverTemplate(admin: Admin, input: {
       ? await liveStayCover(stayCoverUrl(input.reference, true, { entryCode: button.code }))
       : null;
     mediaUrl = cover;
-    if (!cover) template = "sejour_texte";
+    if (!cover) {
+      if (input.holdWithoutCover) return "held";
+      template = "sejour_texte";
+    }
   }
   const photoTemplate = conciergePhotoTemplate(input.card || template);
   const photoSid = photoTemplate ? conciergeContentSid(photoTemplate) : "";
@@ -240,7 +252,7 @@ async function deliverTemplate(admin: Admin, input: {
         dedupeKey: input.sentDedupe,
         templateKey: photoTemplate,
       });
-      return;
+      return "done";
     }
   }
   const cardSid = input.card ? conciergeContentSid(input.card) : "";
@@ -269,11 +281,11 @@ async function deliverTemplate(admin: Admin, input: {
         dedupeKey: input.sentDedupe,
         templateKey: input.card,
       });
-      return;
+      return "done";
     }
   }
   const contentSid = conciergeContentSid(template);
-  if (!contentSid) return;
+  if (!contentSid) return input.holdWithoutCover ? "held" : "done";
   const variables = conciergeContentVariables({
     template,
     buttonSuffix: suffix,
@@ -284,7 +296,7 @@ async function deliverTemplate(admin: Admin, input: {
   });
   if (!variables) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
-    return;
+    return "done";
   }
   if (input.body !== input.row.body || template !== input.row.template_key) {
     await admin.from("crm_whatsapp_messages").update({ body: input.body, template_key: template }).eq("id", input.row.id);
@@ -300,6 +312,39 @@ async function deliverTemplate(admin: Admin, input: {
     result,
     result.ok ? { dedupeKey: input.sentDedupe, templateKey: template } : undefined
   );
+  return "done";
+}
+
+/**
+ * Photo du lieu déjà là, ou à générer.
+ * `generate` reste faux au moment où l’on montre le dossier : la requête admin ne lance pas l’image.
+ */
+async function openStayNotice(
+  booking: { destination: string | null; title: string | null; cover_image_path: string | null },
+  waits: number,
+  generate: boolean
+) {
+  if (!stayHasPublishedCover(booking)) return "text" as const;
+  const photo = generatedStayPhotoId(booking);
+  let coverReady = !photo || (await cityCoverCached(photo));
+  if (photo && !coverReady && generate) {
+    const made = await ensureCityCover(photo);
+    coverReady = Boolean(made?.byteLength);
+    if (!coverReady && cityCoverAuthFailed()) return "text" as const;
+  }
+  if (booking.cover_image_path) coverReady = true;
+  return stayNoticeDispatch({
+    hasCover: true,
+    coverReady,
+    templateReady: Boolean(conciergeContentSid("sejour")),
+    waits,
+  });
+}
+
+async function noteCoverWait(admin: Admin, row: QueueRow) {
+  const waits = (row.payload?.coverWaits || 0) + 1;
+  const payload = { ...(row.payload || {}), coverWaits: waits };
+  await admin.from("crm_whatsapp_messages").update({ payload }).eq("id", row.id).eq("status", "queued");
 }
 
 /** Lieu d’arrivée. Seul le modèle « Votre séjour » porte la couverture : les autres cartes ont leur image de type. */
@@ -319,20 +364,34 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
   const key = row.dedupe_key;
 
   if (key.startsWith("sejour:")) {
-    const hasCover = stayHasPublishedCover(booking);
-    const plan = planStayNotice({
+    const preview = planStayNotice({
       published: true,
       reference: booking.reference,
       destination: booking.destination,
       title: booking.title,
-      hasCover,
+      hasCover: stayHasPublishedCover(booking),
     });
-    if (!plan) {
+    if (!preview) {
       await dropQueue(admin, row.id);
       return;
     }
-    // La photo est résolue dans deliverTemplate, par le code du lien de ce message.
-    await deliverTemplate(admin, {
+    const waits = row.payload?.coverWaits || 0;
+    const dispatch = await openStayNotice(booking, waits, true);
+    if (dispatch === "wait") {
+      await noteCoverWait(admin, row);
+      return;
+    }
+    const plan =
+      dispatch === "photo"
+        ? preview
+        : planStayNotice({
+            published: true,
+            reference: booking.reference,
+            destination: booking.destination,
+            title: booking.title,
+            hasCover: false,
+          }) || preview;
+    const outcome = await deliverTemplate(admin, {
       row,
       customer,
       template: plan.template,
@@ -340,8 +399,34 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       body: plan.body,
       place: plan.place,
       reference: booking.reference,
-      stayCover: hasCover,
+      stayCover: dispatch === "photo",
+      holdWithoutCover: dispatch === "photo",
     });
+    if (outcome === "held") {
+      const next = waits + 1;
+      if (next >= STAY_COVER_WAIT_LIMIT) {
+        const text = planStayNotice({
+          published: true,
+          reference: booking.reference,
+          destination: booking.destination,
+          title: booking.title,
+          hasCover: false,
+        });
+        if (text) {
+          await deliverTemplate(admin, {
+            row,
+            customer,
+            template: text.template,
+            path: text.path,
+            body: text.body,
+            place: text.place,
+            reference: booking.reference,
+          });
+        }
+        return;
+      }
+      await noteCoverWait(admin, row);
+    }
     return;
   }
 
@@ -481,15 +566,19 @@ export async function notifyStayPublished(bookingId: string) {
     hasCover: stayHasPublishedCover(booking),
   });
   if (!plan) return;
+  const dedupeKey = `sejour:${booking.id}`;
+  const previous = await findByDedupe(admin, dedupeKey);
   const row = await saveQueue(admin, {
-    dedupeKey: `sejour:${booking.id}`,
+    dedupeKey,
     customerId: booking.customer_id,
     bookingId: booking.id,
     templateKey: plan.template,
     body: plan.body,
-    payload: {},
+    payload: previous?.payload?.coverWaits ? { coverWaits: previous.payload.coverWaits } : {},
   });
   if (row.status === "sent") return;
+  const dispatch = await openStayNotice(booking, row.payload?.coverWaits || 0, false);
+  if (dispatch === "wait") return;
   await deliverRow(admin, row, new Date());
 }
 

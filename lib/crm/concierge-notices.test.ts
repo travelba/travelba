@@ -12,10 +12,13 @@ import {
   planFormalityReady,
   planMissingPieceNotices,
   planPiecesNotices,
+  generatedStayPhotoId,
   liveStayCover,
   planStayNotice,
+  STAY_COVER_WAIT_LIMIT,
   stayCoverUrl,
   stayHasPublishedCover,
+  stayNoticeDispatch,
   stayNoticeLine,
 } from "./concierge-notices";
 import { sendContentTemplate } from "./whatsapp";
@@ -197,6 +200,39 @@ test("la couverture publiée est une URL HTTPS portée par le code du lien, pas 
       mediaUrl: "https://travelba.fr/og-concierge.jpg",
     }),
     null
+  );
+});
+
+test("une nouvelle réservation attend la photo et le modèle illustré", () => {
+  assert.equal(generatedStayPhotoId({ destination: "Bordeaux", title: "Séjour", cover_image_path: null }), "photo-city-bordeaux");
+  assert.equal(generatedStayPhotoId({ destination: "Avoriaz", title: "Neige", cover_image_path: null }), null);
+  assert.equal(
+    generatedStayPhotoId({ destination: "Bordeaux", title: "Séjour", cover_image_path: "bookings/x/cover.webp" }),
+    null
+  );
+  assert.equal(
+    stayNoticeDispatch({ hasCover: false, coverReady: false, templateReady: false, waits: 0 }),
+    "text"
+  );
+  assert.equal(
+    stayNoticeDispatch({ hasCover: true, coverReady: false, templateReady: true, waits: 0 }),
+    "wait"
+  );
+  assert.equal(
+    stayNoticeDispatch({ hasCover: true, coverReady: true, templateReady: false, waits: 0 }),
+    "wait"
+  );
+  assert.equal(
+    stayNoticeDispatch({ hasCover: true, coverReady: true, templateReady: true, waits: 0 }),
+    "photo"
+  );
+  assert.equal(
+    stayNoticeDispatch({ hasCover: true, coverReady: false, templateReady: false, waits: STAY_COVER_WAIT_LIMIT }),
+    "text"
+  );
+  assert.equal(
+    stayNoticeDispatch({ hasCover: true, coverReady: true, templateReady: true, waits: STAY_COVER_WAIT_LIMIT }),
+    "photo"
   );
 });
 
