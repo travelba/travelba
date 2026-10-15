@@ -11,7 +11,7 @@ function moneyCode(value: string | null | undefined) {
 
 /** Une dépense de carte Pliant lue comme une sortie à rattacher, pour le même geste que la file. */
 export function pliantSpendToOutgoing(
-  card: Pick<PliantCardRecap, "label" | "last4">,
+  card: Pick<PliantCardRecap, "label" | "last4"> & Partial<Pick<PliantCardRecap, "ceilingCents" | "currency">>,
   row: PliantSpendLine
 ): OutgoingLine | null {
   const signed = pliantSignedCents(row.type, row.billingCents);
@@ -32,6 +32,17 @@ export function pliantSpendToOutgoing(
     text: (row.comment || "").trim(),
     kind: cost < 0 ? "Remboursement" : "Carte",
     agencyCard: false,
+    // Carte du dossier : le rattachement à ce dossier est acquis, l’écran la met en avant.
+    cardInfo: {
+      label: (card.label || "").trim() || null,
+      holder: null,
+      limit: card.ceilingCents == null ? null : card.ceilingCents / 100,
+      currency: moneyCode(card.currency),
+      validFrom: null,
+      validTo: null,
+      countries: [],
+      status: null,
+    },
     suggestions: [],
   };
 }

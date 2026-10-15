@@ -80,6 +80,7 @@ const proposed: OutgoingLine[] = [
     text: "",
     kind: "Carte",
     agencyCard: false,
+    cardInfo: null,
     suggestions: [],
   },
   {
@@ -95,6 +96,7 @@ const proposed: OutgoingLine[] = [
     text: "TB-2026-0034",
     kind: "Virement",
     agencyCard: false,
+    cardInfo: null,
     suggestions: [],
   },
 ];
