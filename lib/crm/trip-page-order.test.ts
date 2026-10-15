@@ -75,6 +75,41 @@ test("partager le voyage et les visas reçus sont repliés sur une ligne", () =>
   assert.match(summary, /whitespace-nowrap/);
   assert.doesNotMatch(summary, /Ce lien ouvre/);
 
+  const live = renderToStaticMarkup(
+    createElement(TripSharePanel, {
+      bookingId: "b1",
+      shareUrl: "https://travelba.fr/v/ABCDEFGH",
+      companions: [
+        {
+          travelerId: "t1",
+          companionId: "c1",
+          firstName: "Inès",
+          lastName: "Morel",
+          hasPhone: true,
+        },
+      ],
+    })
+  );
+  assert.match(live, /data-partage="\/api\/client\/bookings\/b1\/partage"/);
+  const localPreview = renderToStaticMarkup(
+    createElement(TripSharePanel, {
+      preview: true,
+      bookingId: "b1",
+      shareUrl: "https://travelba.fr/v/ABCDEFGH",
+      companions: [
+        {
+          travelerId: "t1",
+          companionId: "c1",
+          firstName: "Inès",
+          lastName: "Morel",
+          hasPhone: true,
+        },
+      ],
+    })
+  );
+  assert.match(localPreview, /Envoyer à Inès par WhatsApp/);
+  assert.doesNotMatch(localPreview, /data-partage=/);
+
   const visas = renderToStaticMarkup(
     createElement(FoldedRow, { title: "Visas reçus" }, "Détail")
   );

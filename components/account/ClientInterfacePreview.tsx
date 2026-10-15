@@ -450,7 +450,7 @@ function ClientScreen({
                   shareUrl={shareUrl}
                   companions={shareCompanions}
                   canSend={Boolean(customer.phone)}
-                  preview
+                  sendUrl={`/api/admin/bookings/${booking.id}/partage`}
                 />
               ) : null
             }
