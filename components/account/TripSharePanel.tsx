@@ -16,7 +16,7 @@ export function TripSharePanel({
   bookingId: string;
   shareUrl: string;
   companions: ShareCompanion[];
-  /** Aperçu local : le clic n’appelle pas WhatsApp. */
+  /** Seulement l’exemple local. Interface client envoie pour de vrai. */
   preview?: boolean;
   /** Faux : le client n’a pas de téléphone, l’envoi reste bloqué. */
   canSend?: boolean;
@@ -25,6 +25,7 @@ export function TripSharePanel({
   const [copied, setCopied] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const sendTarget = preview ? null : sendUrl || `/api/client/bookings/${bookingId}/partage`;
 
   async function copy() {
     try {
@@ -41,13 +42,13 @@ export function TripSharePanel({
     if (!companion.companionId || !companion.hasPhone || sendingId) return;
     setSendingId(companion.companionId);
     setNotice(null);
-    if (preview) {
+    if (!sendTarget) {
       setNotice("Aperçu : aucun message n’est envoyé.");
       setSendingId(null);
       return;
     }
     try {
-      const response = await fetch(sendUrl || `/api/client/bookings/${bookingId}/partage`, {
+      const response = await fetch(sendTarget, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companion_id: companion.companionId }),
@@ -103,6 +104,7 @@ export function TripSharePanel({
                   <button
                     type="button"
                     disabled={Boolean(sendingId)}
+                    data-partage={sendTarget || undefined}
                     onClick={() => void send(companion)}
                     className="mt-2 inline-flex h-10 items-center justify-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-60"
                   >
