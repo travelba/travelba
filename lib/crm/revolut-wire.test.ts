@@ -5,10 +5,20 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StayPayment } from "../../components/account/StayPayment";
 import { WireInstructions } from "../../components/account/WireInstructions";
-import { groupIban, parseRevolutAccounts, pickEurSepaWire } from "./revolut-wire";
+import {
+  collectHiddenRevolutAccounts,
+  groupIban,
+  parseRevolutAccounts,
+  pickEurSepaWire,
+  treasuryNameFromDescription,
+  withRevolutPocketName,
+} from "./revolut-wire";
 
 const FR = "FR7630006000011234567890189";
 const GB = "GB29REVO00996912345678";
+
+const MAIN_ID = "b8f3c0a1-1111-4111-8111-111111111111";
+const TREASURY_ID = "c9e4d1b2-2222-4222-8222-222222222222";
 
 test("le parse Revolut garde le solde et refuse un id invalide", () => {
   const rows = parseRevolutAccounts([
@@ -19,6 +29,38 @@ test("le parse Revolut garde le solde et refuse un id invalide", () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].balance, 1234.5);
   assert.equal(rows[0].name, "Main");
+});
+
+test("la poche d’épargne absente de la liste devient Trésorerie", () => {
+  const labeled = withRevolutPocketName(
+    {
+      id: TREASURY_ID,
+      name: "SP:11111111-1111-4111-8111-111111111111",
+      account_type: "other",
+      currency: "EUR",
+      state: "active",
+      balance: 5012.99,
+    },
+    ["From treso", "Interest earned - treso"]
+  );
+  assert.equal(labeled.name, "Trésorerie");
+  assert.equal(labeled.balance, 5012.99);
+  assert.equal(treasuryNameFromDescription("Interest earned - tresorerie"), "Trésorerie");
+  assert.equal(withRevolutPocketName({ id: MAIN_ID, name: "Main", account_type: "current" }).name, "Main");
+  const clues = collectHiddenRevolutAccounts(
+    [
+      {
+        legs: [
+          { account_id: TREASURY_ID, description: "Interest earned - treso", amount: 0.21 },
+          { account_id: MAIN_ID, description: "To treso", amount: -1000 },
+        ],
+      },
+      { legs: [{ account_id: "pas-un-uuid", description: "Interest earned - treso" }] },
+    ],
+    [MAIN_ID]
+  );
+  assert.deepEqual([...clues.keys()], [TREASURY_ID]);
+  assert.deepEqual(clues.get(TREASURY_ID), ["Interest earned - treso"]);
 });
 
 test("le virement retient l’IBAN SEPA français du compte euros", () => {

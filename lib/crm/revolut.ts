@@ -5,7 +5,15 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { repairRevolutDebitQueue } from "@/lib/crm/revolut-debit";
 import { revolutInboxDraft, revolutSyncPayload } from "@/lib/crm/revolut-inbox";
 import { revolutBalancePockets } from "@/lib/crm/account-balances";
-import { isRevolutAccountId, parseRevolutAccounts, pickEurSepaWire, type AgencyWire } from "@/lib/crm/revolut-wire";
+import {
+  collectHiddenRevolutAccounts,
+  isRevolutAccountId,
+  parseRevolutAccounts,
+  pickEurSepaWire,
+  withRevolutPocketName,
+  type AgencyWire,
+  type RevolutAccountRow,
+} from "@/lib/crm/revolut-wire";
 
 const PROVIDER = "revolut";
 const REVOLUT_TIMEOUT_MS = 15_000;
@@ -280,11 +288,74 @@ export async function fetchRevolutAccounts(timeoutMs = REVOLUT_TIMEOUT_MS) {
   return parseRevolutAccounts(await revolutGet("/api/1.0/accounts", timeoutMs));
 }
 
-/** Soldes des comptes actifs. Null si Revolut n’est pas ouvert. Échec : montant indisponible. */
+async function fetchRevolutAccount(accountId: string, timeoutMs: number) {
+  if (!isRevolutAccountId(accountId)) return null;
+  const [account] = parseRevolutAccounts([await revolutGet(`/api/1.0/accounts/${accountId}`, timeoutMs)]);
+  return account || null;
+}
+
+/** Mouvements récents : la poche d’épargne n’est pas dans la liste des comptes. */
+async function hiddenRevolutAccountClues(knownIds: string[]) {
+  try {
+    const supabase = createServiceClient();
+    const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from("crm_revolut_transactions")
+      .select("raw")
+      .gte("booked_at", since)
+      .order("booked_at", { ascending: false })
+      .limit(250);
+    if (error) throw new Error(error.message);
+    return collectHiddenRevolutAccounts(
+      ((data || []) as { raw?: unknown }[]).map((row) => row.raw),
+      knownIds
+    );
+  } catch (err) {
+    console.error("[revolut] trésorerie", err instanceof Error ? err.message : "échec");
+    return new Map<string, string[]>();
+  }
+}
+
+async function loadHiddenRevolutAccounts(listed: RevolutAccountRow[], timeoutMs: number) {
+  const clues = await hiddenRevolutAccountClues(listed.map((account) => account.id));
+  const extras = await Promise.all(
+    [...clues.entries()].map(async ([id, descriptions]) => {
+      try {
+        const account = await fetchRevolutAccount(id, timeoutMs);
+        return account ? withRevolutPocketName(account, descriptions) : null;
+      } catch (err) {
+        console.error("[revolut] trésorerie", err instanceof Error ? err.message : "échec");
+        return null;
+      }
+    })
+  );
+  return extras.filter((account): account is RevolutAccountRow => Boolean(account));
+}
+
+function within<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      }
+    );
+  });
+}
+
+/** Soldes des comptes actifs, Main et Trésorerie compris. Null si Revolut n’est pas ouvert. */
 export async function loadRevolutAccountBalances() {
   try {
     if (!revolutConfigured() || !(await revolutConnected())) return null;
-    return revolutBalancePockets(await fetchRevolutAccounts(8_000));
+    const listed = await fetchRevolutAccounts(8_000);
+    // La poche d’épargne est en plus. Si elle tarde, Main reste affiché.
+    const hidden = await within(loadHiddenRevolutAccounts(listed, 3_000), 4_000, []);
+    return revolutBalancePockets([...listed.map((account) => withRevolutPocketName(account)), ...hidden]);
   } catch (err) {
     console.error("[revolut] solde", err instanceof Error ? err.message : "échec");
     return revolutBalancePockets([]);

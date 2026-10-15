@@ -39,7 +39,7 @@ function bounded<T>(promise: Promise<T>, fallback: T): Promise<T> {
   });
 }
 
-/** Revolut Main euros, Stripe en attente, Pliant. Un appel trop long ou un compte fermé devient indisponible. */
+/** Revolut Main et Trésorerie, Stripe en attente, Pliant. Un appel trop long ou un compte fermé devient indisponible. */
 export async function loadAgencyAccounts(): Promise<AgencyAccount[]> {
   const [revolut, stripe, pliant] = await Promise.all([
     bounded(loadRevolutAccountBalances(), null),

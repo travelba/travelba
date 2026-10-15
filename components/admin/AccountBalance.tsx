@@ -82,7 +82,7 @@ export function AgencyAccountBalances({
       <h2 id="comptes-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
         Soldes des comptes
       </h2>
-      <div className="grid gap-3 sm:grid-cols-3">{cards}</div>
+      <div className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(13.5rem,1fr))]">{cards}</div>
     </section>
   );
 }

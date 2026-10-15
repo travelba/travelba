@@ -104,26 +104,51 @@ export function revolutBalancePockets(accounts: RevolutPocketInput[]): AccountPo
   pockets.sort((a, b) => {
     if (a.currency === "EUR" && b.currency !== "EUR") return -1;
     if (b.currency === "EUR" && a.currency !== "EUR") return 1;
-    const aMain = (a.name || "").toLowerCase() === "main" ? 0 : 1;
-    const bMain = (b.name || "").toLowerCase() === "main" ? 0 : 1;
-    if (aMain !== bMain) return aMain - bMain;
+    const rank = revolutNameRank(a.name) - revolutNameRank(b.name);
+    if (rank !== 0) return rank;
     return (a.name || "").localeCompare(b.name || "", "fr");
   });
   if (!pockets.length) return unavailable();
-  if (pockets.length === 1) return [{ ...pockets[0], name: null }];
+  if (pockets.length === 1) {
+    const only = pockets[0];
+    if (isTreasuryName(only.name)) return [{ ...only, name: "Trésorerie" }];
+    return [{ ...only, name: null }];
+  }
   return pockets.map((pocket) => ({ ...pocket, name: pocket.name || pocket.currency }));
 }
 
-/** Tableau de bord : le compte Revolut nommé Main, en euros. Les autres poches restent sur la page Revolut. */
+function revolutNameRank(name: string | null) {
+  const key = (name || "").trim().toLowerCase();
+  if (key === "main") return 0;
+  if (isTreasuryName(key)) return 1;
+  return 2;
+}
+
+function isTreasuryName(name: string | null | undefined) {
+  return /^tr[ée]so(rerie)?$/i.test((name || "").trim());
+}
+
+/** Tableau de bord : Main et Trésorerie, en euros. Les autres poches restent sur la page Revolut. */
 export function dashboardRevolutPocket(pockets: AccountPocket[] | null): AccountPocket[] {
   if (!pockets?.length) return unavailable();
   if (pockets.length === 1 && pockets[0].amount == null) return pockets;
-  const main = pockets.find(
-    (pocket) => pocket.currency === "EUR" && (pocket.name || "").trim().toLowerCase() === "main"
+  const shown = pockets.filter(
+    (pocket) => pocket.currency === "EUR" && (isMainName(pocket.name) || isTreasuryName(pocket.name))
   );
-  if (main) return [{ ...main, name: "Main" }];
-  if (pockets.length === 1 && pockets[0].currency === "EUR") return [{ ...pockets[0], name: "Main" }];
+  if (shown.length) {
+    return shown.map((pocket) => ({
+      ...pocket,
+      name: isMainName(pocket.name) ? "Main" : "Trésorerie",
+    }));
+  }
+  if (pockets.length === 1 && pockets[0].currency === "EUR") {
+    return [{ ...pockets[0], name: isTreasuryName(pockets[0].name) ? "Trésorerie" : "Main" }];
+  }
   return unavailable();
+}
+
+function isMainName(name: string | null | undefined) {
+  return (name || "").trim().toLowerCase() === "main";
 }
 
 /** Tableau de bord : l’argent Stripe pas encore versé. Le disponible reste sur la page Stripe. */
