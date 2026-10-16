@@ -7,6 +7,7 @@ import {
   publishConfirmHold,
   carnetVisible,
   coverQuery,
+  isDepartureStation,
   isOriginHub,
   stayArrivalPlaces,
   stayHeadline,
@@ -239,6 +240,14 @@ describe("carnet", () => {
     assert.equal(coverQuery("Paris Est · Strasbourg", "Train"), "Strasbourg");
     assert.equal(coverQuery("Paris-Nord → Lyon", "Train"), "Lyon");
     assert.equal(coverQuery("Gare de Lyon · Avoriaz", "Séjour"), "Avoriaz");
+    assert.equal(coverQuery("Paris (Orly) · Florence", "Vol"), "Florence");
+    assert.equal(coverQuery("Paris-Orly · Faro", "Vol"), "Faro");
+    assert.equal(isDepartureStation("Paris Est"), true);
+    assert.equal(isDepartureStation("Paris (Orly)"), true);
+    assert.equal(isDepartureStation("Paris"), false);
+    assert.equal(stayHeadline("Paris Est · Strasbourg", "Paris Est · Strasbourg", ["Strasbourg"]), "Strasbourg");
+    assert.equal(stayHeadline("Paris (Orly) · Florence", "Paris (Orly) · Florence", ["Florence"]), "Florence");
+    assert.equal(stayHeadline("40 ans", "Paris Est · Strasbourg", ["Strasbourg"]), "40 ans");
     assert.equal(isOriginHub("Paris Est"), true);
     assert.equal(isOriginHub("PARIS-EST"), true);
     assert.equal(isOriginHub("Gare de l'Est"), true);

@@ -162,6 +162,34 @@ test("le titre suit chaque ville ajoutée, sans répéter Milan ni Rome", () => 
     },
   ];
   assert.equal(stayTitleFromItems("Paris · Milan", "Paris · Milan", items), "Paris · Milan · Rome");
+  assert.equal(
+    stayTitleFromItems("Paris Est · Strasbourg", "Paris Est · Strasbourg", [
+      {
+        id: "aller",
+        kind: "rail",
+        start_at: "2026-10-16T10:53:00",
+        details: { from: "Paris Est", to: "Strasbourg" },
+      },
+      {
+        id: "retour",
+        kind: "rail",
+        start_at: "2026-10-18T10:49:00",
+        details: { from: "Strasbourg", to: "Paris Est" },
+      },
+    ]),
+    "Strasbourg"
+  );
+  assert.equal(
+    stayTitleFromItems("Paris (Orly) · Florence", "Paris (Orly) · Florence", [
+      {
+        id: "aller",
+        kind: "flight",
+        start_at: "2027-05-28T08:00:00",
+        details: { city_from: "Paris (Orly)", city_to: "Florence", from: "ORY", to: "FLR" },
+      },
+    ]),
+    "Florence"
+  );
   assert.equal(stayTitleFromItems("40 ans", "Paris · Milan", items), "40 ans");
   const facts = staffStayFacts({
     destination: "Paris · Milan",

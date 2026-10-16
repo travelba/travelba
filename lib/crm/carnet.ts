@@ -522,12 +522,15 @@ const EXACT_HUBS = new Set(["paris", "cdg", "ory", "lbg", "bva", "france", "ile 
 const PARIS_STATION =
   /^(?:paris(?:\s+gare)?\s+(?:de\s+l\s+|d\s+|du\s+|de\s+)?(?:est|nord|lyon|montparnasse|austerlitz|bercy|saint lazare|st lazare)|gare\s+(?:de\s+l\s+est|du\s+nord|de\s+lyon|montparnasse|d\s+austerlitz|de\s+bercy|saint lazare|st lazare))$/;
 
+/** Aéroport écrit dans le nom de ville : Paris (Orly), Paris-Orly, Paris CDG. */
+const PARIS_AIRPORT = /^paris\s+(?:orly|cdg|roissy|charles de gaulle|le bourget|beauvais)$/;
+
 function foldHub(value: string) {
   return value
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase()
-    .replace(/['’.]/g, " ")
+    .replace(/['’().]/g, " ")
     .replace(/[-_]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -537,7 +540,14 @@ export function isOriginHub(value: string) {
   const key = foldHub(value);
   if (!key) return false;
   if (EXACT_HUBS.has(key)) return true;
-  return PARIS_STATION.test(key);
+  return PARIS_STATION.test(key) || PARIS_AIRPORT.test(key);
+}
+
+/** Gare ou aéroport de départ. La ville « Paris » reste une ville du voyage. */
+export function isDepartureStation(value: string) {
+  if (!isOriginHub(value)) return false;
+  const key = foldHub(value);
+  return key !== "paris" && key !== "france" && key !== "ile de france";
 }
 
 function coverTokens(value: string) {
@@ -624,6 +634,13 @@ export function stayArrivalPlaces(
   return found;
 }
 
+/** « Paris Est · Strasbourg » devient « Strasbourg ». « Paris · Milan » ne change pas. */
+function withoutDepartureStations(value: string) {
+  const parts = titleCityParts(value);
+  if (!parts.some((part) => isDepartureStation(part))) return "";
+  return parts.filter((part) => !isDepartureStation(part)).join(" · ");
+}
+
 function titleTracksCities(named: string, cities: string[]) {
   const keys = new Set(cities.map((city) => cityPlaceKey(city)).filter(Boolean));
   if (!keys.size) return false;
@@ -645,7 +662,7 @@ export function stayHeadline(
   const cities = (places || []).map((place) => place.trim()).filter(Boolean);
   const stored = (title || "").trim();
   const dest = (destination || "").trim();
-  const named = stored || dest;
+  const named = withoutDepartureStations(stored || dest) || stored || dest;
   if (!named && cities.length) return cities.join(" · ");
   if (
     cities.length >= 2 &&
