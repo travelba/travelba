@@ -3,6 +3,7 @@ import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
+import { backfillEmptyPassportIdentity } from "@/lib/crm/travel-document-write";
 import { profileActivityDetail, profileActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -39,6 +40,16 @@ export async function PATCH(request: Request) {
         .single()
     : await auth.supabase.from("crm_customers").select("*").eq("id", auth.customer.id).single();
   if (error) return dbError(error, 400);
+  try {
+    await backfillEmptyPassportIdentity(auth.supabase, {
+      customerId: auth.customer.id,
+      companionId: null,
+      birthDate: data.birth_date,
+      sex: data.sex,
+    });
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "La pièce n’a pas reçu la fiche", 400);
+  }
   await recordCustomerActivity({
     customerId: auth.customer.id,
     authUserId: auth.user.id,

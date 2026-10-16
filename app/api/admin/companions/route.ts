@@ -4,7 +4,7 @@ import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { loyaltyPatchFromBody } from "@/lib/crm/loyalty";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
-import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
+import { backfillEmptyPassportIdentity, deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 
 function companionPatch(body: Record<string, unknown>) {
   const sex = emptyToNull(body.sex);
@@ -58,6 +58,16 @@ export async function POST(request: Request) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  try {
+    await backfillEmptyPassportIdentity(auth.supabase, {
+      customerId,
+      companionId: data.id,
+      birthDate: data.birth_date,
+      sex: data.sex,
+    });
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "La pièce n’a pas reçu la fiche", 400);
+  }
   return NextResponse.json({ companion: data });
 }
 
@@ -78,6 +88,16 @@ export async function PATCH(request: Request) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  try {
+    await backfillEmptyPassportIdentity(auth.supabase, {
+      customerId,
+      companionId: data.id,
+      birthDate: data.birth_date,
+      sex: data.sex,
+    });
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "La pièce n’a pas reçu la fiche", 400);
+  }
   return NextResponse.json({ companion: data });
 }
 

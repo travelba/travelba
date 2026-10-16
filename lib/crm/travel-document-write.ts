@@ -235,6 +235,48 @@ export function travelDocumentFromForm(form: FormData, customerId: string): Trav
   };
 }
 
+/** Champs vides du passeport que la fiche peut remplir. N’écrase pas une lecture déjà posée. */
+export function emptyPassportFieldPatch(
+  current: { birth_date?: string | null; sex?: string | null },
+  incoming: { birth_date?: string | null; sex?: string | null }
+) {
+  const patch: { birth_date?: string; sex?: "M" | "F" | "X" } = {};
+  const birth = emptyToNull(incoming.birth_date);
+  const sex = incoming.sex === "M" || incoming.sex === "F" || incoming.sex === "X" ? incoming.sex : null;
+  if (!emptyToNull(current.birth_date) && birth) patch.birth_date = birth;
+  if (!(current.sex === "M" || current.sex === "F" || current.sex === "X") && sex) patch.sex = sex;
+  return Object.keys(patch).length ? patch : null;
+}
+
+/** Enregistrer la fiche recopie naissance et sexe sur les passeports qui ne les ont pas. */
+export async function backfillEmptyPassportIdentity(
+  supabase: SupabaseClient,
+  input: {
+    customerId: string;
+    companionId: string | null;
+    birthDate?: string | null;
+    sex?: string | null;
+  }
+) {
+  const birth = emptyToNull(input.birthDate);
+  const sex = input.sex === "M" || input.sex === "F" || input.sex === "X" ? input.sex : null;
+  if (!birth && !sex) return;
+  let query = supabase
+    .from("crm_travel_documents")
+    .select("id, birth_date, sex")
+    .eq("customer_id", input.customerId)
+    .eq("doc_type", "passport");
+  query = input.companionId ? query.eq("companion_id", input.companionId) : query.is("companion_id", null);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  for (const row of (data || []) as { id: string; birth_date: string | null; sex: string | null }[]) {
+    const patch = emptyPassportFieldPatch(row, { birth_date: birth, sex });
+    if (!patch) continue;
+    const update = await supabase.from("crm_travel_documents").update(patch).eq("id", row.id);
+    if (update.error) throw new Error(update.error.message);
+  }
+}
+
 export async function applyIdentityFromForm(
   supabase: SupabaseClient,
   form: FormData,
@@ -303,6 +345,12 @@ export async function applyIdentityFromIdentity(
       .eq("id", travelerId);
     if (travelerUpdate.error) throw new Error(travelerUpdate.error.message);
   }
+  await backfillEmptyPassportIdentity(supabase, {
+    customerId,
+    companionId,
+    birthDate: typeof filled.birth_date === "string" ? filled.birth_date : null,
+    sex: typeof filled.sex === "string" ? filled.sex : null,
+  });
   if (!companionId) await applyHolderAddress(supabase, customerId, identity);
 }
 
