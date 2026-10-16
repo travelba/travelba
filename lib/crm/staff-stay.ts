@@ -6,6 +6,7 @@ import {
   flightCities,
   flightIata,
   hotelDisplayName,
+  isDepartureStation,
   nightsBetween,
   stayHeadline,
 } from "@/lib/crm/carnet";
@@ -133,9 +134,10 @@ export function shortStayRange(start: string | null | undefined, end: string | n
 }
 
 function pushPlace(found: string[], value: string) {
+  if (isDepartureStation(value)) return;
   const label = cityLabel(value);
   const key = cityPlaceKey(label);
-  if (!key || found.some((item) => cityPlaceKey(item) === key)) return;
+  if (!key || isDepartureStation(label) || found.some((item) => cityPlaceKey(item) === key)) return;
   found.push(label);
 }
 
