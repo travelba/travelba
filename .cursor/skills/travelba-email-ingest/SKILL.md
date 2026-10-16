@@ -1,8 +1,9 @@
 ---
 name: travelba-email-ingest
 description: >-
-  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, booking-cancellation, crm, reservations-tba, cdsgroupe.com) → crm_email_ingest →
-  parse → suggestions. Création automatique du dossier (et de la fiche s’il
+  Travelba Gmail labels (expedia-taap, billet-avion, booking-cancellation, crm, reservations-tba, cdsgroupe.com) → crm_email_ingest →
+  parse → suggestions. Le label little-emperors ne crée ni ne réécrit un séjour : la réservation vient de l’API.
+  Création automatique du dossier (et de la fiche s’il
   n’existe pas) sur une confirmation sans voyage reconnu. Un match unique
   (un client, un séjour, une carte) met à jour l’itinéraire seul. Le reste
   attend le clic. Use when touching Gmail webhook, cron
@@ -28,6 +29,8 @@ Sur une confirmation sans voyage reconnu, elle **crée** le dossier en brouillon
 Si aucun client n’est reconnu et que le mail porte un e-mail de voyageur (ni
 boîte agence, ni expéditeur, ni domaine fournisseur), elle crée d’abord la fiche.
 Elle **n’invite pas** : pas de compte Auth, pas de lien. Le carnet reste caché.
+
+**Little Emperors** : le label `little-emperors` ne crée plus de dossier et ne réécrit plus la carte. Le séjour vient de l’API (`crm_le_bookings`, sync et webhooks `hotel_booking_create`, `hotel_booking_update`, `hotel_booking_cancel`). Un mail de confirmation est marqué `refused` : « Couvert par l’API Little Emperors. Ce mail ne crée pas de séjour. » Les mails déjà en file restent consultables. L’annulation vient du webhook, pas du mail. Les autres labels ne changent pas.
 
 Un mail **remplit** une carte vol ou hôtel, puis vit avec les **pièces**. Il n’est jamais une étape glissable du voyage (ni l’original, ni le `Fw:`). Les doublons évidents (même passager + date de billet, même confirmation d’hôtel, Milano = Milan) se regroupent. Sur chaque fiche, la liste est **repliée** : fermée, elle dit qu’il y en a et combien ; ouverte, chaque copie grisée a **Écarter**. Écarter marque la ligne, ne la supprime pas, et ne retire pas la carte. Le fichier reste dans le dossier. Ne pas lancer soi-même un nettoyage des lignes prod.
 
@@ -193,7 +196,8 @@ est annulé) :
   On n’ouvre pas une seconde carte, ni une seconde carte bancaire : la CB déjà
   ouverte sur ce séjour est reprise. Deux cartes au même nom : l’agence choisit ;
 - train : même code, autre jour = une carte nouvelle. On ne réécrit pas le trajet déjà là. Deux billets du même train le même jour restent une carte ;
-- réservation Little Emperors : `64570` et `64570SH046795` sont la même carte
+- réservation Little Emperors : le mail ne l’écrit pas. L’API applique la même
+  règle : `64570` et `64570SH046795` sont la même carte
   (`hotelRefsShareBooking`). Le numéro court ou une ancienne chambre complète
   la carte active : le nom, la référence complète et les dates restent, les
   avantages nouveaux s’ajoutent. Une chambre déjà annulée ne revient pas.
@@ -250,6 +254,10 @@ npx tsc --noEmit
 Couvrir : réf. exacte, dates+dest+nom flou, deux voyages égaux, *Albilla* / *Albilila*.
 `lib/crm/email-ingest-policy.test.ts` interdit apply, annulation et invitation dans le parse et le rematch. Seul `email-ingest-create-run.ts` applique un séjour unique. La création auto n’est appelée qu’une fois, après le parse d’un reçu.
 Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
+
+## Interdit Little Emperors
+
+Créer ou mettre à jour un séjour depuis le label `little-emperors`. La carte vient de l’API. Le coût `total_cost` n’est pas le prix vendu.
 
 ## Hôtel Little Emperors
 

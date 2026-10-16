@@ -578,6 +578,10 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
   if (!(EMAIL_INBOX_QUEUE_STATUSES as readonly string[]).includes(row.status)) {
     throw new McpWriteError("Cet e-mail est déjà traité.");
   }
+  const { isLittleEmperorsLabel, LE_MAIL_COVERED } = await import("@/lib/crm/gmail-parse");
+  if (isLittleEmperorsLabel(row.label) && action.action !== "refuser") {
+    throw new McpWriteError(LE_MAIL_COVERED);
+  }
   if (action.action === "refuser") {
     const { error: updateError } = await db.from("crm_email_ingest").update({ status: "refused" }).eq("id", row.id);
     if (updateError) failDb(updateError, "E-mail non traité.");

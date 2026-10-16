@@ -2,6 +2,7 @@ import "server-only";
 
 import { IMPORT_AUTO_NOTE } from "@/lib/crm/email-detach";
 import { AUTO_STAY_NOTE, runEmailAutoCreate } from "@/lib/crm/email-ingest-create";
+import { isLittleEmperorsLabel, LE_MAIL_COVERED } from "@/lib/crm/gmail-parse";
 import {
   applyCancellationToBooking,
   applyReplacementToBooking,
@@ -22,6 +23,13 @@ export async function autoCreateBookingFromIngestId(id: string) {
     const { data } = await admin.from("crm_email_ingest").select("*").eq("id", id).maybeSingle();
     if (!data) return { created: false, applied: false, bookingId: null, hold: null };
     const row = data as CrmEmailIngest;
+    if (isLittleEmperorsLabel(row.label)) {
+      await admin
+        .from("crm_email_ingest")
+        .update({ status: "refused", error: LE_MAIL_COVERED })
+        .eq("id", row.id);
+      return { created: false, applied: false, bookingId: null, hold: "review" as const };
+    }
     return await runEmailAutoCreate(row, {
       findCustomerByEmail: async (email) => {
         const { data: existing } = await admin

@@ -204,12 +204,42 @@ function CardBody({
                 {[room.room, room.guests, room.confirmation_ref].filter(Boolean).join(" · ")}
               </p>
             ))}
+            {detailStr(item, "check_in_time") || detailStr(item, "check_out_time") ? (
+              <p className="text-muted">
+                {[
+                  detailStr(item, "check_in_time") ? `Enregistrement ${detailStr(item, "check_in_time")}` : "",
+                  detailStr(item, "check_out_time") ? `Départ ${detailStr(item, "check_out_time")}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            ) : null}
+            {detailStr(item, "eta") ? <p className="text-muted">Arrivée prévue à {detailStr(item, "eta")} h</p> : null}
+            {detailStr(item, "deposit_policy") ? <p className="text-muted">{detailStr(item, "deposit_policy")}</p> : null}
+            {detailList(item, "cancellation_policies").map((policy) => (
+              <p key={policy} className="text-muted">
+                {policy}
+              </p>
+            ))}
             {included.length ? (
               <ul className="list-disc pl-4 text-muted">
                 {included.map((row) => (
                   <li key={row}>{row}</li>
                 ))}
               </ul>
+            ) : null}
+            {detailList(item, "benefit_footnotes").map((note) => (
+              <p key={note} className="text-xs text-muted">
+                {note}
+              </p>
+            ))}
+            {detailStr(item, "hotel_description") ? (
+              <p className="text-muted">{detailStr(item, "hotel_description")}</p>
+            ) : null}
+            {/^https?:\/\//i.test(detailStr(item, "image")) ? (
+              // Image d’illustration de l’étape, renvoyée par Little Emperors. Pas la couverture du séjour.
+              // eslint-disable-next-line @next/next/no-img-element -- URL distante déjà publique chez le fournisseur
+              <img src={detailStr(item, "image")} alt="" className="mt-2 max-h-40 w-full rounded-xl object-cover" />
             ) : null}
             {special ? <p>Demandes : {special}</p> : null}
           </>

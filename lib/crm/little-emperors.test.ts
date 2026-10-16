@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { suggestLittleEmperorsBooking, leBookingExtract } from "./little-emperors-match";
+import { suggestLittleEmperorsBooking, leBookingExtract, planLeCarnetWrite, LE_HOLD } from "./little-emperors-match";
 import {
   LITTLE_EMPERORS_STAGING_ORIGIN,
   applyHotelPublicFields,
@@ -10,7 +10,12 @@ import {
   leDateOnly,
   littleEmperorsActionAllowed,
   listLittleEmperorsBookings,
+  leBookBody,
+  littleEmperorsApiKey,
   littleEmperorsOrigin,
+  littleEmperorsProductionBlocked,
+  littleEmperorsWidgetUrl,
+  parseLeFilters,
   littleEmperorsWebhookAuthorized,
   littleEmperorsWebhookConfigured,
   parseLeBooking,
@@ -49,23 +54,33 @@ const sample = {
 };
 
 describe("little emperors staging client", () => {
-  it("refuse l’API de production et Vercel production", () => {
+  it("la production appelle l’API de production, le reste reste sur le staging", () => {
     const previousBase = process.env.LITTLE_EMPERORS_API_BASE;
     const previousEnv = process.env.VERCEL_ENV;
-    process.env.LITTLE_EMPERORS_API_BASE = "https://api.littleemperors.com/v2";
+    const previousKey = process.env.LITTLE_EMPERORS_API_KEY;
     delete process.env.VERCEL_ENV;
+    process.env.LITTLE_EMPERORS_API_BASE = "https://api.littleemperors.com/v2";
     assert.throws(() => littleEmperorsOrigin(), (err: unknown) => {
       return err instanceof LittleEmperorsError && err.code === "production_refused";
     });
     process.env.LITTLE_EMPERORS_API_BASE = LITTLE_EMPERORS_STAGING_ORIGIN;
+    assert.equal(littleEmperorsOrigin(), LITTLE_EMPERORS_STAGING_ORIGIN);
     process.env.VERCEL_ENV = "production";
-    assert.throws(() => littleEmperorsOrigin(), (err: unknown) => {
-      return err instanceof LittleEmperorsError && err.code === "vercel_production";
-    });
+    process.env.LITTLE_EMPERORS_API_KEY = "prod-key";
+    assert.equal(littleEmperorsOrigin(), "https://api.littleemperors.com");
+    assert.equal(littleEmperorsApiKey(), "prod-key");
+    assert.equal(littleEmperorsProductionBlocked(), false);
+    assert.equal(
+      littleEmperorsWidgetUrl("S3SS10N"),
+      "https://api.littleemperors.com/widgets/credit-card?session_id=S3SS10N"
+    );
+    assert.equal(littleEmperorsWidgetUrl("bad id"), null);
     if (previousBase === undefined) delete process.env.LITTLE_EMPERORS_API_BASE;
     else process.env.LITTLE_EMPERORS_API_BASE = previousBase;
     if (previousEnv === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = previousEnv;
+    if (previousKey === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
+    else process.env.LITTLE_EMPERORS_API_KEY = previousKey;
   });
 
   it("ne garde ni téléphone ni e-mail d’hôtel", () => {
@@ -79,6 +94,13 @@ describe("little emperors staging client", () => {
     assert.equal(JSON.stringify(booking).includes("+44"), false);
     assert.equal(JSON.stringify(booking).includes("guest@example.com"), false);
     assert.deepEqual(booking.guest_names, ["Nico Santos"]);
+    assert.equal(booking.rooms[0]?.room_type, "Superior Double-Double");
+    assert.deepEqual(booking.rooms[0]?.benefits, ["Complimentary breakfast"]);
+    assert.equal(booking.rooms[0]?.deposit_policy, null);
+    assert.equal(leBookingExtract(booking).document_status, "confirmed");
+    assert.equal(leBookingExtract(booking).items[0]?.amount, null);
+    assert.equal(leBookingExtract(booking).items[0]?.details?.le_total_cost, "243.83");
+    assert.equal(leBookingExtract(booking).total_amount, null);
     assert.equal(booking.check_in, "2026-11-02");
     assert.equal(leDateOnly("2026-11-02T00:00:00"), "2026-11-02");
     const hotel = hotelPublicFields({
@@ -227,6 +249,9 @@ describe("little emperors staging client", () => {
     assert.equal(littleEmperorsActionAllowed("partner", "init"), false);
     assert.equal(littleEmperorsActionAllowed("agent", "attach"), true);
     assert.equal(littleEmperorsActionAllowed("admin", "cancel"), true);
+    assert.equal(littleEmperorsActionAllowed("partner", "search"), false);
+    assert.equal(littleEmperorsActionAllowed("partner", "book"), false);
+    assert.equal(littleEmperorsActionAllowed("agent", "quote"), true);
   });
 
   it("lit le webhook d’annulation sans inventer de contact", () => {
@@ -246,5 +271,105 @@ describe("little emperors staging client", () => {
     if (previous === undefined) delete process.env.LITTLE_EMPERORS_WEBHOOK_KEY;
     else process.env.LITTLE_EMPERORS_WEBHOOK_KEY = previous;
     assert.equal(littleEmperorsWebhookConfigured(), Boolean(previous && previous.trim()));
+  });
+
+  it("garde le détail de chambre et ne met pas le coût fournisseur au prix vendu", () => {
+    const booking = parseLeBooking({
+      ...sample,
+      eta: "18",
+      latitude: "51.51",
+      longitude: "-0.15",
+      rooms: [
+        {
+          id: 3,
+          guest_name: "Nico Santos",
+          guest_email: "guest@example.com",
+          room_type: "Deluxe King",
+          adults: 2,
+          children: [{ age: 7, name: "Lou" }],
+          cancellation_policy: "Free cancellation before 16:00 on 1 Oct",
+          deposit_policy: "No deposit required at time of booking.",
+          total_cost: 240,
+          benefits: ["Complimentary breakfast", "$100 hotel credit per stay"],
+          additional_benefits: ["Free Wi-Fi"],
+          benefits_footnotes: ["*subject to availability"],
+          public_inclusions: ["20% off spa treatments"],
+          rate_title: ["Best Available Rate"],
+          has_upgrade_benefit: true,
+          eta: "18",
+          images: [{ url: "https://cdn.example/room.jpg" }],
+        },
+      ],
+    });
+    assert.ok(booking);
+    assert.equal(booking.eta, "18");
+    assert.equal(booking.rooms[0]?.adults, 2);
+    assert.equal(booking.rooms[0]?.children[0]?.name, "Lou");
+    assert.equal(JSON.stringify(booking).includes("guest@example.com"), false);
+    const extract = leBookingExtract(booking);
+    const details = extract.items[0]?.details;
+    assert.equal(details?.le_total_cost, "243.83");
+    assert.equal(extract.items[0]?.amount, null);
+    assert.equal(details?.included?.includes("Petit-déjeuner offert"), true);
+    assert.equal(details?.included?.includes("Crédit hôtel de 100 $ par séjour"), true);
+    assert.equal(details?.included?.includes("Free Wi-Fi"), true);
+    assert.equal(details?.included?.includes("20% off spa treatments"), true);
+    assert.deepEqual(details?.benefit_footnotes, ["*subject to availability"]);
+    assert.equal(details?.deposit_policy, "No deposit required at time of booking.");
+    assert.equal(details?.rooms?.[0]?.guests?.includes("Lou"), true);
+    assert.equal(details?.room, "Deluxe King");
+    assert.deepEqual(
+      parseLeFilters({
+        wellness: [{ id: 4, name: "Spa" }, { id: "x", name: "Ignoré" }],
+        activities: [{ id: 2, name: "Ski" }],
+      }),
+      { wellness: [{ id: 4, name: "Spa" }], activities: [{ id: 2, name: "Ski" }] }
+    );
+    assert.equal(details?.image, "https://cdn.example/room.jpg");
+    const body = leBookBody({
+      start_date: "2026-11-02",
+      end_date: "2026-11-05",
+      session_id: "S3SS10N",
+      rate_index: "A2C",
+      hotel_id: 1,
+      guest_name: "Nico Santos",
+      guest_email: "nico@example.com",
+      rooms: [{ adults: 2, children: [{ age: 7 }] }],
+    });
+    assert.equal(JSON.stringify(body).includes("credit_card"), false);
+    assert.equal(JSON.stringify(body).includes("cvc"), false);
+    assert.equal(body.rooms[0]?.send_email_to_guest, false);
+    const held = planLeCarnetWrite({
+      booking,
+      autoBookingId: null,
+      candidates: [
+        { booking_id: "b1", customer_id: "c1", reason: "Même client, même destination", score: 40 },
+        { booking_id: "b2", customer_id: "c1", reason: "Même client, même destination", score: 40 },
+      ],
+      linked: null,
+      items: null,
+      namedCustomerIds: [],
+    });
+    assert.equal(held.kind, "hold");
+    if (held.kind === "hold") assert.equal(held.message, LE_HOLD.same_stay);
+    const created = planLeCarnetWrite({
+      booking,
+      autoBookingId: null,
+      candidates: [],
+      linked: null,
+      items: null,
+      namedCustomerIds: [],
+    });
+    assert.equal(created.kind, "create_customer");
+    const failed = planLeCarnetWrite({
+      booking: { ...booking, state: "failed" },
+      autoBookingId: null,
+      candidates: [],
+      linked: null,
+      items: null,
+      namedCustomerIds: [],
+    });
+    assert.equal(failed.kind, "hold");
+    if (failed.kind === "hold") assert.equal(failed.message, LE_HOLD.unconfirmed);
   });
 });
