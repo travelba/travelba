@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const INSTRUCTIONS =
-  "CRM Travel BA pour l’agence. Lectures et écritures : crédit d’un virement, crédit Revolut vers le client désigné, montrer un carnet, mettre à jour un dossier, confirmer un service, traiter un e-mail, créer ou mettre à jour un client. Ne pas inventer d’horaires ni de prix. Ne pas choisir un client à la place de l’agence. Un carnet sans carte reste caché. Les numéros de pièce ne sont pas dans les réponses. passeport_voyageur les donne pour l’émission d’un billet, seulement si l’assistant est autorisé ; sinon il refuse. scan_passeport donne le fichier du même passeport (URL de dix minutes) à ce même assistant ; un PDF est indiqué comme tel.";
+  "CRM Travel BA pour l’agence. Lectures et écritures : crédit d’un virement, crédit Revolut vers le client désigné, montrer un carnet, mettre à jour un dossier, confirmer un service, traiter un e-mail, créer ou mettre à jour un client. Ne pas inventer d’horaires ni de prix. Ne pas choisir un client à la place de l’agence. Un carnet sans carte reste caché. Les numéros de pièce ne sont pas dans les réponses. passeport_voyageur les donne pour l’émission d’un billet, seulement si l’assistant est autorisé ; sinon il refuse. scan_passeport donne le fichier du même passeport (URL de dix minutes) à ce même assistant ; un PDF est indiqué comme tel. creer_carte_pliant et lire_carte_pliant exigent le jeton carte : une carte virtuelle rattachée au dossier, puis son numéro, son expiration et son CVV, pour cette carte seulement. Le jeton général et le jeton passeport refusent. Le numéro n’est pas enregistré.";
 
 function unauthorized() {
   return NextResponse.json({ error: "Non autorisé" }, { status: 401 });

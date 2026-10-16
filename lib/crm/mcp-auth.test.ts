@@ -6,17 +6,21 @@ function withEnv(
   vercel: string | undefined,
   token: string | undefined,
   run: () => void,
-  passport?: string
+  passport?: string,
+  cards?: string
 ) {
   const previousVercel = process.env.VERCEL_ENV;
   const previousToken = process.env.TRAVELBA_MCP_TOKEN;
   const previousPassport = process.env.TRAVELBA_MCP_PASSPORT_TOKENS;
+  const previousCards = process.env.TRAVELBA_MCP_CARD_TOKENS;
   if (vercel === undefined) delete process.env.VERCEL_ENV;
   else process.env.VERCEL_ENV = vercel;
   if (token === undefined) delete process.env.TRAVELBA_MCP_TOKEN;
   else process.env.TRAVELBA_MCP_TOKEN = token;
   if (passport === undefined) delete process.env.TRAVELBA_MCP_PASSPORT_TOKENS;
   else process.env.TRAVELBA_MCP_PASSPORT_TOKENS = passport;
+  if (cards === undefined) delete process.env.TRAVELBA_MCP_CARD_TOKENS;
+  else process.env.TRAVELBA_MCP_CARD_TOKENS = cards;
   try {
     run();
   } finally {
@@ -26,6 +30,8 @@ function withEnv(
     else process.env.TRAVELBA_MCP_TOKEN = previousToken;
     if (previousPassport === undefined) delete process.env.TRAVELBA_MCP_PASSPORT_TOKENS;
     else process.env.TRAVELBA_MCP_PASSPORT_TOKENS = previousPassport;
+    if (previousCards === undefined) delete process.env.TRAVELBA_MCP_CARD_TOKENS;
+    else process.env.TRAVELBA_MCP_CARD_TOKENS = previousCards;
   }
 }
 
@@ -63,16 +69,19 @@ test("a named passport token is a separate grant", () => {
     assert.deepEqual(mcpAccessFromAuthorization("Bearer ticketing-token-ok"), {
       actor: "amadeus",
       passport: true,
+      cards: false,
     });
     assert.deepEqual(mcpAccessFromAuthorization("Bearer general-token-value"), {
       actor: "mcp",
       passport: false,
+      cards: false,
     });
     assert.equal(mcpAuthorized("Bearer ticketing-token-ok"), true);
     assert.equal(mcpAccessFromAuthorization("Bearer nope"), null);
     assert.deepEqual(mcpAccessFromAuthorization("Bearer second-token-value!"), {
       actor: "billets",
       passport: true,
+      cards: false,
     });
   }, "Amadeus:ticketing-token-ok, billets:second-token-value!");
 });
@@ -84,6 +93,46 @@ test("passport grants ignore a short secret, the name mcp, and the general token
     assert.deepEqual(mcpAccessFromAuthorization("Bearer general-token-value"), {
       actor: "mcp",
       passport: false,
+      cards: false,
     });
   }, "amadeus:short,mcp:ticketing-token-ok,copie:general-token-value");
+});
+
+test("a card token is a separate grant from the passport token", () => {
+  withEnv(
+    undefined,
+    "general-token-value",
+    () => {
+      assert.deepEqual(mcpAccessFromAuthorization("Bearer card-token-value!!"), {
+        actor: "cartes",
+        passport: false,
+        cards: true,
+      });
+      assert.deepEqual(mcpAccessFromAuthorization("Bearer ticketing-token-ok"), {
+        actor: "amadeus",
+        passport: true,
+        cards: false,
+      });
+      assert.equal(mcpAuthorized("Bearer card-token-value!!"), true);
+      assert.equal(mcpAccessFromAuthorization("Bearer tiny"), null);
+    },
+    "amadeus:ticketing-token-ok",
+    "cartes:card-token-value!!,bref:tiny,copie:general-token-value"
+  );
+  withEnv(
+    undefined,
+    "general-token-value",
+    () => {
+      assert.deepEqual(mcpAccessFromAuthorization("Bearer shared-token-value!"), {
+        actor: "cartes",
+        passport: true,
+        cards: true,
+      });
+    },
+    "amadeus:shared-token-value!",
+    "cartes:shared-token-value!"
+  );
+  withEnv("preview", "general-token-value", () => {
+    assert.equal(mcpAccessFromAuthorization("Bearer card-token-value!!"), null);
+  }, undefined, "cartes:card-token-value!!");
 });

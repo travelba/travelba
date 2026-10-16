@@ -53,3 +53,32 @@ test("a signed url stays only on url_signee when the scan tool asks for it", () 
   assert.equal(shown.copie, "retiré");
   assert.equal("storage_path" in shown, false);
 });
+
+test("a card number stays only on pan, cvv and expiration when the card tool asks", () => {
+  const dossier = "11111111-1111-4111-8111-111111111111";
+  const payload = {
+    pan: "4242424242424242",
+    cvv: "482",
+    cvc: "482",
+    expiration: "06/28",
+    note: "payer 4242424242424242",
+    groupe: "4242 4242 4242 4242",
+    dossier_id: dossier,
+    pliant_card_id: "card-1",
+  };
+  const hidden = redactMcp(payload) as Record<string, unknown>;
+  const shown = redactMcp(payload, 0, false, false, true) as Record<string, unknown>;
+  assert.equal("pan" in hidden, false);
+  assert.equal("cvv" in hidden, false);
+  assert.equal("cvc" in hidden, false);
+  assert.equal("expiration" in hidden, false);
+  assert.equal(hidden.note, "payer •••");
+  assert.equal(hidden.groupe, "•••");
+  assert.equal(hidden.dossier_id, dossier);
+  assert.equal(shown.pan, "4242424242424242");
+  assert.equal(shown.cvv, "482");
+  assert.equal(shown.expiration, "06/28");
+  assert.equal("cvc" in shown, false);
+  assert.equal("pliant_card_id" in shown, false);
+  assert.equal(shown.dossier_id, dossier);
+});

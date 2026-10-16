@@ -24,6 +24,8 @@ const EXPECTED = [
   "rapprocher_depense_revolut",
   "crediter_stripe",
   "rapprocher_pliant",
+  "creer_carte_pliant",
+  "lire_carte_pliant",
   "publier_carnet",
   "mettre_a_jour_dossier",
   "confirmer_service",
@@ -38,6 +40,7 @@ const WRITE_TOOLS = [
   "rapprocher_depense_revolut",
   "crediter_stripe",
   "rapprocher_pliant",
+  "creer_carte_pliant",
   "publier_carnet",
   "mettre_a_jour_dossier",
   "confirmer_service",
@@ -70,6 +73,13 @@ test("mcp tools stay unique, named, and under the cap", () => {
     ["scan_passeport"]
   );
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "scan_passeport")?.pieceNumbers, undefined);
+  assert.deepEqual(
+    MCP_TOOLS.filter((tool) => tool.cardSecrets).map((tool) => tool.name),
+    ["lire_carte_pliant"]
+  );
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.cardSecrets, undefined);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.write, true);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "lire_carte_pliant")?.write, undefined);
 });
 
 test("only passeport_voyageur keeps a piece number in the payload", () => {
@@ -104,4 +114,32 @@ test("only scan_passeport keeps the signed file url", () => {
   assert.equal("storage_path" in passport, false);
   assert.equal(fiche.url_signee, "retiré");
   assert.equal("numero_piece" in fiche, false);
+});
+
+test("only lire_carte_pliant keeps the card number", () => {
+  const payload = {
+    pan: "4242424242424242",
+    cvv: "482",
+    expiration: "06/28",
+    titulaire: "Camille Martin",
+    pliant_card_id: "card-1",
+    numero_piece: "X12345678",
+    note: "4242424242424242",
+  };
+  const card = JSON.parse(previewMcpTool("lire_carte_pliant", payload).content[0].text) as Record<string, unknown>;
+  const created = JSON.parse(previewMcpTool("creer_carte_pliant", payload).content[0].text) as Record<string, unknown>;
+  const fiche = JSON.parse(previewMcpTool("fiche_client", payload).content[0].text) as Record<string, unknown>;
+  assert.equal(card.pan, "4242424242424242");
+  assert.equal(card.cvv, "482");
+  assert.equal(card.expiration, "06/28");
+  assert.equal(card.titulaire, "Camille Martin");
+  assert.equal("pliant_card_id" in card, false);
+  assert.equal("numero_piece" in card, false);
+  assert.equal("pan" in created, false);
+  assert.equal("cvv" in created, false);
+  assert.equal("expiration" in created, false);
+  assert.equal(created.note, "•••");
+  assert.equal("pan" in fiche, false);
+  assert.equal(fiche.note, "•••");
+  assert.equal(fiche.titulaire, "Camille Martin");
 });

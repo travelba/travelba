@@ -32,13 +32,19 @@ import {
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
+import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
 export const MCP_TOOL_CAP = 40;
 
-const text = (value: unknown, keepPieceNumber = false, keepSignedUrl = false) => ({
-  content: [{ type: "text" as const, text: JSON.stringify(redactMcp(value, 0, keepPieceNumber, keepSignedUrl)) }],
+const text = (value: unknown, keepPieceNumber = false, keepSignedUrl = false, keepCardSecrets = false) => ({
+  content: [
+    {
+      type: "text" as const,
+      text: JSON.stringify(redactMcp(value, 0, keepPieceNumber, keepSignedUrl, keepCardSecrets)),
+    },
+  ],
 });
 
 function failed(message: string) {
@@ -53,10 +59,11 @@ async function guard(
   write: boolean,
   keepPieceNumber: boolean,
   keepSignedUrl: boolean,
+  keepCardSecrets: boolean,
   run: () => Promise<unknown>
 ) {
   try {
-    return text(await run(), keepPieceNumber, keepSignedUrl);
+    return text(await run(), keepPieceNumber, keepSignedUrl, keepCardSecrets);
   } catch (err) {
     console.error("[mcp]", name, err instanceof Error ? err.message : "error");
     if ((write && err instanceof McpWriteError) || err instanceof McpReadError) return failed(err.message);
@@ -81,6 +88,8 @@ type ToolDef = {
   pieceNumbers?: boolean;
   /** Garde `url_signee`. Tous les autres outils retirent les URL signées. */
   signedUrl?: boolean;
+  /** Garde `pan`, `cvv` et `expiration`. Tous les autres outils les retirent. */
+  cardSecrets?: boolean;
   run: (args: ToolArgs) => Promise<unknown>;
 };
 
@@ -92,11 +101,15 @@ function keepSignedUrl(tool: ToolDef) {
   return tool.signedUrl === true;
 }
 
-/** Même masquage que la réponse de l’outil. Le numéro ne sort que pour passeport_voyageur. */
+function keepCardSecrets(tool: ToolDef) {
+  return tool.cardSecrets === true;
+}
+
+/** Même masquage que la réponse de l’outil. Le numéro de carte ne sort que pour lire_carte_pliant. */
 export function previewMcpTool(name: string, value: unknown) {
   const tool = MCP_TOOLS.find((item) => item.name === name);
   if (!tool) throw new Error("Outil inconnu.");
-  return text(value, keepPieceNumber(tool), keepSignedUrl(tool));
+  return text(value, keepPieceNumber(tool), keepSignedUrl(tool), keepCardSecrets(tool));
 }
 
 function str(args: ToolArgs, key: string) {
@@ -319,6 +332,60 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => reconcilePliantDebit(args),
   },
   {
+    name: "creer_carte_pliant",
+    write: true,
+    openWorld: true,
+    description:
+      "Crée une carte virtuelle Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Visa). Plafond obligatoire, en euros par défaut, une transaction de ce montant par défaut (usage unique, 20 au plus). La carte accepte tous les commerçants et toutes les devises. Elle est rattachée au dossier pour les débits. Ne renvoie pas le numéro : lire_carte_pliant. Réservé à l’assistant autorisé.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0082"),
+      nom: z.string().trim().max(40).describe("Nom de la carte, ex. Visa"),
+      plafond: z.union([z.number(), z.string()]).optional().describe("Plafond, ex. 10. Sans plafond, la carte n’est pas créée"),
+      devise: z.string().trim().max(8).optional().describe("Devise du plafond, 3 lettres. Défaut EUR"),
+      transactions: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe("Nombre de paiements. Défaut 1, maximum 20"),
+      montant_transaction: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe("Maximum d’un paiement. Défaut : le plafond"),
+      prenom: z.string().trim().max(50).optional().describe("Prénom du titulaire. Défaut : le voyageur du dossier"),
+      nom_titulaire: z.string().trim().max(50).optional().describe("Nom du titulaire"),
+    },
+    run: (args) =>
+      createPliantCard({
+        dossier_id: str(args, "dossier_id"),
+        reference: str(args, "reference"),
+        nom: str(args, "nom"),
+        plafond: args.plafond,
+        devise: str(args, "devise"),
+        transactions: args.transactions,
+        montant_transaction: args.montant_transaction,
+        prenom: str(args, "prenom"),
+        nom_titulaire: str(args, "nom_titulaire"),
+      }),
+  },
+  {
+    name: "lire_carte_pliant",
+    openWorld: true,
+    cardSecrets: true,
+    description:
+      "Numéro, expiration, CVV et titulaire d’une carte Pliant du dossier, et de celle-là seulement. dossier_id ou reference, et carte_id s’il y a plusieurs cartes (celui de creer_carte_pliant). Rien n’est enregistré. Réservé à l’assistant autorisé. Lecture seule.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().max(80).optional().describe("Identifiant de la carte sur le dossier"),
+    },
+    run: (args) =>
+      readPliantCard({
+        dossier_id: str(args, "dossier_id"),
+        reference: str(args, "reference"),
+        carte_id: str(args, "carte_id"),
+      }),
+  },
+  {
     name: "publier_carnet",
     write: true,
     description:
@@ -413,8 +480,13 @@ export function registerTravelbaTools(server: McpServer) {
         },
       },
       async (args) =>
-        guard(tool.name, tool.write === true, keepPieceNumber(tool), keepSignedUrl(tool), () =>
-          tool.run((args ?? {}) as ToolArgs)
+        guard(
+          tool.name,
+          tool.write === true,
+          keepPieceNumber(tool),
+          keepSignedUrl(tool),
+          keepCardSecrets(tool),
+          () => tool.run((args ?? {}) as ToolArgs)
         )
     );
   }
