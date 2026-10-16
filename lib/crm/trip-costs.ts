@@ -311,17 +311,16 @@ export const TRIP_ACCOUNTING_LABELS: Record<TripAccountingState, string> = {
   comptabilise: "Comptabilisé",
 };
 
-/** Un règlement fournisseur derrière une ligne vendue : mode, date, montant en euros. */
-export type CostSettlement = { label: string; date: string | null; amount: number };
-
-/** Marge par transaction du grand livre, pour la ligne MB3M. Seules les lignes pointées (au moins un coût) y figurent. */
+/**
+ * Marge par transaction du grand livre, pour la ligne MB3M. Seules les lignes pointées (au moins un coût) y figurent.
+ * Le mode de règlement (`settlementLabel`) n’y est pas : il reste dans le CRM, le client lit la facture MB3M.
+ */
 export function marginByTransaction(lines: AccountedLine[]) {
-  const map = new Map<string, { margin: number; suppliers: string[]; settlements: CostSettlement[] }>();
+  const map = new Map<string, { margin: number; suppliers: string[] }>();
   for (const line of lines) {
     if (!line.costs.length) continue;
     const suppliers = [...new Set(line.costs.map((cost) => (cost.supplier || "").trim()).filter(Boolean))];
-    const settlements = line.costs.map((cost) => ({ label: settlementLabel(cost), date: cost.occurredOn, amount: cost.amountEur }));
-    map.set(line.transactionId, { margin: line.margin, suppliers, settlements });
+    map.set(line.transactionId, { margin: line.margin, suppliers });
   }
   return map;
 }

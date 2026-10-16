@@ -116,18 +116,8 @@ describe("coûts du voyage", () => {
     const totals = tripTotals(accounted, unsold);
     assert.deepEqual(totals, { sale: 1760, cost: 1300, margin: 460, unsoldCost: 0 });
     const margins = marginByTransaction(accounted);
-    assert.deepEqual(margins.get("t-flight"), {
-      margin: -50,
-      suppliers: ["AIR FRANCE"],
-      settlements: [{ label: "Virement Revolut", date: "2026-10-03", amount: 450 }],
-    });
-    assert.deepEqual(
-      margins.get("t-hotel")?.settlements.map((row) => [row.label, row.amount]),
-      [
-        ["Carte Pliant", 900],
-        ["Carte Pliant", -50],
-      ]
-    );
+    // Le mode de règlement reste au CRM : rien de plus que la marge et les fournisseurs ne part à MB3M.
+    assert.deepEqual(margins.get("t-flight"), { margin: -50, suppliers: ["AIR FRANCE"] });
   });
 
   it("sans carte au grand livre, le coût rejoint le montant du séjour ; sans séjour, il reste hors vente", () => {

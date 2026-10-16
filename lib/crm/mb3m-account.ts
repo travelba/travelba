@@ -30,52 +30,20 @@ export type Mb3mAccountLine = {
   activityId: number | null;
   /** Marge : vente − coûts rattachés. Sans coût pointé, la vente entière. */
   margin?: number | null;
-  /** Fournisseurs des coûts et règlements, pour la note de la ligne. */
+  /** Fournisseurs des coûts, pour la note de la ligne. */
   note?: string | null;
-  /** Règlements fournisseur derrière la ligne (« Carte Pliant ···· 5454 le 10/10/2026 »). */
-  settlement?: string | null;
 };
 
-export type Mb3mSettlement = { label: string; date: string | null; amount: number };
-
-/** Marge, fournisseurs et règlements par transaction, calculés par la comptabilité du voyage. */
-export type Mb3mMarginMap = Map<string, { margin: number; suppliers: string[]; settlements?: Mb3mSettlement[] }>;
-
-/** Longueur de la Note MB3M (`linesXml` coupe à 250). */
-const NOTE_MAX = 250;
-
-export function mb3mLineNote(suppliers: string[], settlement?: string | null) {
-  const names = [...new Set(suppliers.map((name) => name.trim()).filter(Boolean))];
-  const parts = [names.length ? `Fournisseur : ${names.join(", ")}` : "", (settlement || "").trim()].filter(Boolean);
-  if (!parts.length) return null;
-  const text = parts.join(" · ");
-  return text.length > NOTE_MAX ? `${text.slice(0, NOTE_MAX - 1).trimEnd()}…` : text;
-}
-
-function frDate(iso: string | null) {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
-  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
-}
-
-function frAmount(amount: number) {
-  return `${new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)} €`;
-}
-
 /**
- * « Réglé par Carte Pliant ···· 5454 le 10/10/2026 (4 141,80 €) ; Virement Revolut le 02/10/2026 (2 800,00 €) ».
- * L’API MB3M n’a pas de règlement fournisseur : la trace va dans la Note de la ligne. Un coût unique
- * au montant de la ligne n’affiche pas le montant. Un coût négatif est un « remboursement ».
+ * Marge et fournisseurs par transaction, calculés par la comptabilité du voyage.
+ * Le mode de règlement des coûts (carte Pliant, virement Revolut) reste dans le CRM : tout texte
+ * envoyé à MB3M (Note de ligne, RefPiece, Notes de pièce) s’imprime sur la facture du client.
  */
-export function mb3mSettlementText(settlements: Mb3mSettlement[] | undefined, lineAmount?: number) {
-  const rows = (settlements || []).filter((row) => row.label && Number.isFinite(row.amount) && row.amount !== 0);
-  if (!rows.length) return null;
-  const sole = rows.length === 1 && lineAmount != null && Math.abs(rows[0].amount - lineAmount) < 0.005;
-  const parts = rows.map((row) => {
-    const when = frDate(row.date);
-    const head = `${row.amount < 0 ? "remboursement " : ""}${row.label}${when ? ` le ${when}` : ""}`;
-    return sole ? head : `${head} (${frAmount(Math.abs(row.amount))})`;
-  });
-  return `Réglé par ${parts.join(" ; ")}`;
+export type Mb3mMarginMap = Map<string, { margin: number; suppliers: string[] }>;
+
+export function mb3mLineNote(suppliers: string[]) {
+  const names = [...new Set(suppliers.map((name) => name.trim()).filter(Boolean))];
+  return names.length ? `Fournisseur : ${names.join(", ")}` : null;
 }
 
 /**
@@ -240,8 +208,7 @@ export function mb3mAccountLines(
         // Chaque ligne porte sa marge : vente − coûts pointés. Sans coût, la marge est la vente,
         // comme MB3M le calcule lui-même pour une ligne sans achat. Rattacher un coût la fait baisser.
         margin: hit ? Math.round(hit.margin * 100) / 100 : amount,
-        note: hit ? mb3mLineNote(hit.suppliers, mb3mSettlementText(hit.settlements, amount)) : null,
-        settlement: hit ? mb3mSettlementText(hit.settlements, amount) : null,
+        note: hit ? mb3mLineNote(hit.suppliers) : null,
       };
     })
     .filter((line) => line.transactionId && line.amount > 0)
@@ -262,29 +229,13 @@ export function mb3mAccountBalance(rows: Mb3mLedgerRow[], companyId: string | nu
  * Signature des lignes telles qu’elles partent vers MB3M. Avec une marge, le net envoyé
  * (vente − marge) en fait partie : une pièce ouverte émise sous l’ancien découpage est remplacée.
  */
-/** Sépare le règlement du reste de la signature ; un libellé ne contient pas « § ». */
-const SETTLEMENT_MARK = ":§";
-
 export function mb3mLineSignature(lines: Mb3mAccountLine[]) {
   return lines
     .map((line) => {
       const base = `${line.transactionId}:${line.amount.toFixed(2)}:${line.label}:${line.activityId ?? ""}`;
       if (line.margin == null) return base;
       const net = Math.round((line.amount - line.margin) * 100) / 100;
-      // Le règlement (mode, date) remplace une pro forma ; il ne compte pas pour « Marge à corriger ».
-      const settlement = (line.settlement || "").trim();
-      return `${base}:n${net.toFixed(2)}:m${line.margin.toFixed(2)}${settlement ? `${SETTLEMENT_MARK}${settlement.replace(/[|§]/g, " ")}` : ""}`;
-    })
-    .join("|");
-}
-
-/** Signature sans les règlements : ce qui compte pour une pièce déjà imprimée. */
-function marginSignature(signature: string) {
-  return signature
-    .split("|")
-    .map((part) => {
-      const at = part.indexOf(SETTLEMENT_MARK);
-      return at < 0 ? part : part.slice(0, at);
+      return `${base}:n${net.toFixed(2)}:m${line.margin.toFixed(2)}`;
     })
     .join("|");
 }
@@ -295,7 +246,8 @@ export function mb3mPieceStale(piece: { transactionIds: string[]; signature: str
   const ids = new Set(piece.transactionIds);
   const current = lines.filter((line) => ids.has(line.transactionId));
   if (current.length !== piece.transactionIds.length) return false;
-  return marginSignature(mb3mLineSignature(current)) !== marginSignature(piece.signature);
+  // Les signatures du 15/10/2026 portaient le règlement derrière « :§ » ; il ne compte plus.
+  return mb3mLineSignature(current) !== piece.signature.replace(/:§[^|]*/g, "");
 }
 
 /** Tant que la facture n’est pas émise, un écart de lignes la remplace. Une liste vide l’annule. */
