@@ -8,6 +8,7 @@ import {
   carnetVisible,
   coverQuery,
   stayHeadline,
+  stayNameField,
   tripHeadline,
   tripPlaceLine,
   clientVisibleItems,
@@ -258,6 +259,17 @@ describe("carnet", () => {
       "Paris · Milan · Rome"
     );
     assert.equal(stayHeadline("40 ans", "Paris · Milan", ["Paris", "Milan", "Rome"]), "40 ans");
+    assert.equal(
+      stayHeadline("40 ans à Marrakech", "Marrakech", ["Tahannaout"]),
+      "40 ans à Marrakech"
+    );
+    const shown = stayHeadline("Paris · Milan", "Paris · Milan", ["Paris", "Milan", "Rome"]);
+    assert.equal(shown, "Paris · Milan · Rome");
+    assert.equal(stayNameField(shown, "40 ans").value, "40 ans");
+    assert.equal(stayNameField(shown, "40 ans").dirty, true);
+    assert.equal(stayNameField(shown, "Paris · Milan").value, "Paris · Milan");
+    assert.equal(stayNameField(shown, "Paris · Milan").dirty, true);
+    assert.equal(stayNameField(shown, shown).dirty, false);
     assert.equal(tripPlaceLine("Paris · Milan · Rome", "Paris · Milan"), null);
     assert.equal(tripPlaceLine("40 ans", "Marrakech"), "Marrakech");
   });

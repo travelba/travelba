@@ -636,6 +636,15 @@ export function stayHeadline(
   return named || fallback;
 }
 
+/**
+ * Nom saisi dans l’en-tête. La valeur affichée est le brouillon :
+ * elle ne revient pas au titre stocké quand on la raccourcit.
+ * Enregistrer s’allume dès que le texte diffère du nom déjà montré.
+ */
+export function stayNameField(shown: string, draft: string) {
+  return { value: draft, dirty: draft !== shown };
+}
+
 /** Ville d’arrivée pour la photo : on ignore Paris / CDG / ORY s’il y a une autre ville. */
 export function coverQuery(destination: string | null, title: string | null) {
   const destTokens = coverTokens(destination || "");
