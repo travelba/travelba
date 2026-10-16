@@ -171,6 +171,74 @@ test("un mineur part avec le représentant adulte, sans numéro dans la vue publ
   assert.equal(pub.includes("FRCHILD1"), false);
 });
 
+test("la fiche comble naissance et sexe quand le passeport les a perdus", () => {
+  const zoe = traveler({
+    id: "zoe",
+    is_account_holder: false,
+    companion_id: "comp-zoe",
+    first_name: "Zoe",
+    last_name: "Martin",
+  });
+  const draft = buildEtaIlDraft({
+    ...stay,
+    items: [{ kind: "flight", details: { to: "TLV" } }],
+    travelers: [zoe],
+    documents: [
+      passport({
+        id: "pz",
+        booking_id: "b1",
+        traveler_id: "zoe",
+        companion_id: "comp-zoe",
+        birth_date: null,
+        sex: null,
+        expires_on: "2027-07-22",
+        first_name: "Zoe",
+        last_name: "Martin",
+      }),
+    ],
+    profiles: {
+      companions: [{ id: "comp-zoe", birth_date: "2008-02-23", sex: "F" }],
+    },
+  });
+  assert.equal(draft.phase, "prêt");
+  assert.equal(draft.applicants[0]?.birthDate, "2008-02-23");
+  assert.equal(draft.applicants[0]?.sex, "F");
+  assert.equal(draft.travelers[0]?.missing.length, 0);
+});
+
+test("sans expiration sur la pièce, la fiche ne suffit pas", () => {
+  const zoe = traveler({
+    id: "zoe",
+    is_account_holder: false,
+    companion_id: "comp-zoe",
+    first_name: "Zoe",
+    last_name: "Martin",
+  });
+  const draft = buildEtaIlDraft({
+    ...stay,
+    items: [{ kind: "flight", details: { to: "TLV" } }],
+    travelers: [zoe],
+    documents: [
+      passport({
+        id: "pz",
+        booking_id: "b1",
+        traveler_id: "zoe",
+        companion_id: "comp-zoe",
+        birth_date: null,
+        sex: null,
+        expires_on: null,
+        first_name: "Zoe",
+        last_name: "Martin",
+      }),
+    ],
+    profiles: {
+      companions: [{ id: "comp-zoe", birth_date: "2008-02-23", sex: "F" }],
+    },
+  });
+  assert.equal(draft.phase, "brouillon");
+  assert.deepEqual(draft.travelers[0]?.missing, ["expiration"]);
+});
+
 test("un mineur sans adulte ne part pas", () => {
   const child = traveler({ id: "child", first_name: "Noa", last_name: "Martin", is_account_holder: false });
   const draft = buildEtaIlDraft({

@@ -97,6 +97,26 @@ function sexOf(value: string | null | undefined): "M" | "F" | "X" | null {
   return null;
 }
 
+export type EtaIlPersonProfile = {
+  birth_date?: string | null;
+  sex?: string | null;
+};
+
+export type EtaIlProfiles = {
+  holder?: EtaIlPersonProfile | null;
+  companions?: ({ id: string } & EtaIlPersonProfile)[];
+};
+
+/** La fiche a la date et le sexe. Le passeport mal lu les laisse vides. */
+function profileFor(traveler: CrmBookingTraveler, profiles?: EtaIlProfiles | null) {
+  if (!profiles) return null;
+  if (traveler.companion_id) {
+    return profiles.companions?.find((row) => row.id === traveler.companion_id) || null;
+  }
+  if (traveler.is_account_holder) return profiles.holder || null;
+  return null;
+}
+
 /** Mineur le jour du départ : le 18e anniversaire est déjà adulte. */
 export function isMinorOn(birthDate: string, onDate: string) {
   const birth = birthDate.slice(0, 10);
@@ -111,12 +131,14 @@ export function guardianForMinors(input: {
   travelers: CrmBookingTraveler[];
   documents: CrmTravelDocument[];
   holder?: PersonName | null;
+  profiles?: EtaIlProfiles | null;
   onDate: string;
 }): EtaIlGuardian | null {
   const adults = input.travelers
     .map((traveler) => {
       const passport = passportFor(input.documents, traveler, input.holder || null);
-      const birthDate = text(passport?.birth_date);
+      const profile = profileFor(traveler, input.profiles);
+      const birthDate = text(passport?.birth_date) || text(profile?.birth_date);
       const firstName = text(passport?.first_name) || text(traveler.first_name);
       const lastName = text(passport?.last_name) || text(traveler.last_name);
       const number = text(passport?.number);
@@ -144,6 +166,7 @@ export function buildEtaIlDraft(input: {
   endDate?: string | null;
   agencyEmail?: string | null;
   travelerIds?: string[] | null;
+  profiles?: EtaIlProfiles | null;
 }): EtaIlDraft {
   const portal = ETA_IL_PORTAL;
   const email = text(input.agencyEmail ?? siteConfig.contactEmail);
@@ -180,9 +203,10 @@ export function buildEtaIlDraft(input: {
     const passport = passportFor(input.documents, traveler, input.holder || null);
     const firstName = text(passport?.first_name) || text(traveler.first_name);
     const lastName = text(passport?.last_name) || text(traveler.last_name);
+    const profile = profileFor(traveler, input.profiles);
     const number = text(passport?.number);
-    const birthDate = text(passport?.birth_date);
-    const sex = sexOf(passport?.sex);
+    const birthDate = text(passport?.birth_date) || text(profile?.birth_date);
+    const sex = sexOf(passport?.sex) || sexOf(profile?.sex);
     const expiresOn = text(passport?.expires_on);
     const nationality = iso2(passport?.nationality) || iso2(passport?.issuing_country);
     const missing: string[] = [];
@@ -252,6 +276,7 @@ export function buildEtaIlDraft(input: {
           travelers: input.travelers,
           documents: input.documents,
           holder: input.holder,
+          profiles: input.profiles,
           onDate: startDate,
         })
       : null;

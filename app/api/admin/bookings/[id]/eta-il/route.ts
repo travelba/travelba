@@ -48,14 +48,20 @@ export async function POST(request: Request, ctx: Ctx) {
   const { data: booking } = await auth.supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) return jsonError("Réservation introuvable", 404);
   const b = booking as CrmBooking;
-  const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }, { data: visa }] = await Promise.all([
+  const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }, { data: companions }, { data: visa }] =
+    await Promise.all([
     auth.supabase.from("crm_booking_items").select("*").eq("booking_id", b.id),
     auth.supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
     auth.supabase.from("crm_travel_documents").select("*").eq("customer_id", b.customer_id),
-    auth.supabase.from("crm_customers").select("first_name, last_name, usage_name").eq("id", b.customer_id).maybeSingle(),
+    auth.supabase
+      .from("crm_customers")
+      .select("first_name, last_name, usage_name, birth_date, sex")
+      .eq("id", b.customer_id)
+      .maybeSingle(),
+    auth.supabase.from("crm_travel_companions").select("id, birth_date, sex").eq("customer_id", b.customer_id),
     auth.supabase.from("crm_visa_requests").select("accepted_at, traveler_ids").eq("booking_id", b.id).eq("country", "IL").maybeSingle(),
   ]);
-  const holder = customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name"> | null;
+  const holder = customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name" | "birth_date" | "sex"> | null;
   const requestRow = visa as { accepted_at?: string | null; traveler_ids?: string[] | null } | null;
   const draft = buildEtaIlDraft({
     items: (items || []) as CrmBookingItem[],
@@ -65,6 +71,10 @@ export async function POST(request: Request, ctx: Ctx) {
     startDate: b.start_date,
     endDate: b.end_date,
     travelerIds: requestRow?.traveler_ids || [],
+    profiles: {
+      holder,
+      companions: (companions || []) as { id: string; birth_date: string | null; sex: string | null }[],
+    },
   });
   if (action === "card") {
     if (!tripGoesToIsrael((items || []) as CrmBookingItem[])) {
