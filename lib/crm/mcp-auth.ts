@@ -12,20 +12,25 @@ const ACTOR = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const MIN_PASSPORT_SECRET = 16;
 
 export type McpAccess = {
-  /** `mcp` : jeton général. Sinon le nom déclaré dans TRAVELBA_MCP_PASSPORT_TOKENS. */
+  /** `mcp` : jeton général. Sinon le nom du jeton nommé qui a authentifié l’appel. */
   actor: string;
+  /** Jeton cité dans `TRAVELBA_MCP_PASSPORT_TOKENS`. */
   passport: boolean;
+  /** Jeton cité dans `TRAVELBA_MCP_CARD_TOKENS`. Absent : pas de cartes. */
+  cards?: boolean;
 };
 
 const accessStore = new AsyncLocalStorage<McpAccess>();
-const DENIED: McpAccess = Object.freeze({ actor: "mcp", passport: false });
-let warnedSharedSecret = false;
+const DENIED: McpAccess = Object.freeze({ actor: "mcp", passport: false, cards: false });
+const warnedSharedSecret = new Set<string>();
 
-function passportGrants(): { actor: string; secret: string }[] {
-  const raw = productionOnlySecret(process.env.TRAVELBA_MCP_PASSPORT_TOKENS);
+type NamedGrant = { actor: string; secret: string };
+
+function namedGrants(envValue: string | undefined, label: string): NamedGrant[] {
+  const raw = productionOnlySecret(envValue);
   if (!raw) return [];
   const general = mcpSecret();
-  const grants: { actor: string; secret: string }[] = [];
+  const grants: NamedGrant[] = [];
   for (const part of raw.split(",")) {
     const entry = part.trim();
     if (!entry) continue;
@@ -35,9 +40,9 @@ function passportGrants(): { actor: string; secret: string }[] {
     const secret = entry.slice(split + 1).trim();
     if (actor === "mcp" || !ACTOR.test(actor) || secret.length < MIN_PASSPORT_SECRET) continue;
     if (general && secretEquals(secret, general)) {
-      if (!warnedSharedSecret) {
-        warnedSharedSecret = true;
-        console.error("[mcp] passeport jeton ignoré : identique au jeton général");
+      if (!warnedSharedSecret.has(label)) {
+        warnedSharedSecret.add(label);
+        console.error(`[mcp] ${label} jeton ignoré : identique au jeton général`);
       }
       continue;
     }
@@ -46,15 +51,36 @@ function passportGrants(): { actor: string; secret: string }[] {
   return grants;
 }
 
-/** Jeton général : CRM sans passeport. Jeton nommé : CRM et passeports. */
+function passportGrants() {
+  return namedGrants(process.env.TRAVELBA_MCP_PASSPORT_TOKENS, "passeport");
+}
+
+function cardGrants() {
+  return namedGrants(process.env.TRAVELBA_MCP_CARD_TOKENS, "carte");
+}
+
+function matchingGrant(authorizationHeader: string | null | undefined, grants: NamedGrant[]) {
+  for (const grant of grants) {
+    if (cronAuthorized(authorizationHeader, grant.secret)) return grant;
+  }
+  return null;
+}
+
+/**
+ * Jeton général : CRM, sans passeport et sans carte.
+ * Un jeton passeport ne lit pas les cartes. Un jeton carte ne lit pas les passeports.
+ * Le même secret dans les deux variables ouvre les deux.
+ */
 export function mcpAccessFromAuthorization(authorizationHeader: string | null | undefined): McpAccess | null {
-  for (const grant of passportGrants()) {
-    if (cronAuthorized(authorizationHeader, grant.secret)) {
-      return Object.freeze({ actor: grant.actor, passport: true });
-    }
+  const passport = matchingGrant(authorizationHeader, passportGrants());
+  const cards = matchingGrant(authorizationHeader, cardGrants());
+  if (passport || cards) {
+    const actor =
+      passport && cards ? (passport.actor === cards.actor ? passport.actor : cards.actor) : (cards ?? passport)!.actor;
+    return Object.freeze({ actor, passport: Boolean(passport), cards: Boolean(cards) });
   }
   if (cronAuthorized(authorizationHeader, mcpSecret())) {
-    return Object.freeze({ actor: "mcp", passport: false });
+    return Object.freeze({ actor: "mcp", passport: false, cards: false });
   }
   return null;
 }

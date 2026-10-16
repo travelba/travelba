@@ -75,13 +75,16 @@ export function manualStayCardBody(input: {
   designation?: string | null;
   transactionLimitCents?: number;
   maxTransactionCount?: number;
+  currency?: string;
 }) {
   const name = pliantCardNomination({
     firstName: input.firstName,
     lastName: input.lastName,
     existingCards: input.existingCards,
   });
-  const money = { value: input.limitCents, currency: "EUR" as const };
+  const code = (input.currency || "EUR").trim().toUpperCase();
+  const currency = /^[A-Z]{3}$/.test(code) ? code : "EUR";
+  const money = { value: input.limitCents, currency };
   const perTransaction = input.transactionLimitCents ?? input.limitCents;
   return {
     organizationId: input.organizationId,
@@ -90,7 +93,7 @@ export function manualStayCardBody(input: {
     customFirstName: name.customFirstName,
     customLastName: name.customLastName,
     limit: money,
-    transactionLimit: { value: perTransaction, currency: "EUR" as const },
+    transactionLimit: { value: perTransaction, currency },
     limitRenewFrequency: "TOTAL" as const,
     maxTransactionCount: input.maxTransactionCount ?? MANUAL_CARD_TX_MAX,
     validFrom: input.validFrom,
@@ -110,6 +113,7 @@ export function manualStayCardDraft(input: {
   designation?: string | null;
   transactionAmount?: string;
   transactionCount?: string;
+  currency?: string;
 }): { error: string } | { body: ReturnType<typeof manualStayCardBody> } {
   const limitCents = parseEurosToCents(input.amount);
   const firstName = input.firstName.trim();
@@ -137,6 +141,7 @@ export function manualStayCardDraft(input: {
       designation: input.designation,
       transactionLimitCents: rules?.transactionLimitCents,
       maxTransactionCount: rules?.maxTransactionCount,
+      currency: input.currency,
     }),
   };
 }

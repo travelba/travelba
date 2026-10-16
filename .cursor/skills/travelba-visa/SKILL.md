@@ -51,6 +51,10 @@ Une carte générée part sans blocage. Le produit est `PLIANT_VIRTUAL`. Commerc
 
 Auth0 (`infinnityprodinternal`) n’accorde qu’une poignée de jetons par jour, valables 24 h. Toutes les cartes, la synchro et les formalités passent par `acquirePliantToken` (`lib/crm/pliant-auth.ts`). Le jeton reste dans `crm_integrations` (service role). Le verrou `crm_claim_integration_refresh` empêche deux passages de le redemander. Un quota dépassé bloque le parc une heure, sans nouvel appel. Une preview ne présente pas `PLIANT_CLIENT_ID` / `PLIANT_CLIENT_SECRET` (`productionOnlySecret`). Ne pas ajouter un second `client_credentials`. Le test `le client_credentials Pliant ne vit que derrière le verrou` échoue si quelqu’un le fait.
 
+## Carte depuis le MCP
+
+`creer_carte_pliant` reprend l’onglet Carte du dossier : `PLIANT_VIRTUAL`, contrôles vides, plafond saisi, une transaction par défaut. `lire_carte_pliant` lit le numéro chez Pliant (`readPliantCardSecrets`, hôte PCI) pour cette carte seulement. Le jeton est `TRAVELBA_MCP_CARD_TOKENS`, pas le jeton passeport. Pas de PAN stocké. Journal `crm_mcp_card_events`.
+
 ## Scan pour le formulaire
 
 Le fichier du passeport sort par l’outil MCP `scan_passeport` (même jeton que `passeport_voyageur`). URL Storage dix minutes, nom et type mime. Si `pdf` est vrai, ce n’est pas une photo png, jpg ou jpeg. `lieu_naissance` est sur `passeport_voyageur` (`place_of_birth`). Le coffre n’a pas de champ biométrique.
