@@ -24,7 +24,6 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
   extract.destination = booking.city || "";
   extract.start_date = booking.check_in || "";
   extract.end_date = booking.check_out || "";
-  extract.currency = booking.currency || "EUR";
   extract.total_amount = null;
   extract.title = booking.hotel_name || "";
   const people = booking.guest_names

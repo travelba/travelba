@@ -23,7 +23,7 @@ Gmail labels → `crm_email_ingest` → suggestions, clic agence : skill `travel
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule. Un total `5,920.33` (virgule = milliers) vaut 5920.33, pas 920.33. `£` = GBP.
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule. Un total `5,920.33` (virgule = milliers) vaut 5920.33, pas 920.33. `£` = GBP **sur le document**. La devise du séjour à l’extraction reste **EUR** : le prix vendu est en euros. L’agent peut encore la changer à la relecture.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
