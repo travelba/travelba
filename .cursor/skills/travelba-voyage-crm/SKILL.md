@@ -77,7 +77,7 @@ IDs prod :
 
 ## MCP Grok Bot
 
-Lecture du CRM pour Grok Bot : `https://travelba.fr/api/mcp`, jeton `TRAVELBA_MCP_TOKEN` (vide en preview). Chaque option admin nouvelle ajoute **un outil** dans `lib/crm/mcp-registry.ts`, dans le même changement, en réutilisant `lib/crm`. Plafond 40. Pas de MRZ, PAN, jeton ni URL signée. Les numéros de pièce restent masqués. Exception : `passeport_voyageur` (lecture seule, APIS) répond seulement si le jeton est un nom de `TRAVELBA_MCP_PASSPORT_TOKENS` ; chaque consultation est journalisée dans `crm_mcp_passport_reads`, sans numéro. Une écriture n’entre qu’avec la garde produit déjà en place (Revolut unique, mail ambigu qui attend le clic, séjour caché qui ne débite pas).
+Lecture du CRM pour Grok Bot : `https://travelba.fr/api/mcp`, jeton `TRAVELBA_MCP_TOKEN` (vide en preview). Chaque option admin nouvelle ajoute **un outil** dans `lib/crm/mcp-registry.ts`, dans le même changement, en réutilisant `lib/crm`. Plafond 40. Pas de MRZ, PAN ni jeton. Pas d’URL signée, sauf `scan_passeport`. Les numéros de pièce restent masqués. Exception : `passeport_voyageur` (lecture seule, APIS) et `scan_passeport` (fichier du passeport, URL Storage 600 s, nom, type mime ; un PDF est signalé) répondent seulement si le jeton est un nom de `TRAVELBA_MCP_PASSPORT_TOKENS`. `lieu_naissance` vient de `place_of_birth`. Pas de champ biométrique. Chaque consultation est journalisée dans `crm_mcp_passport_reads` (`kind` lecture ou scan), sans numéro, sans chemin, sans URL. Une écriture n’entre qu’avec la garde produit déjà en place (Revolut unique, mail ambigu qui attend le clic, séjour caché qui ne débite pas).
 
 ## Interdits globaux
 

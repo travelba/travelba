@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const INSTRUCTIONS =
-  "CRM Travel BA pour l’agence. Lectures et écritures : crédit d’un virement, crédit Revolut vers le client désigné, montrer un carnet, mettre à jour un dossier, confirmer un service, traiter un e-mail, créer ou mettre à jour un client. Ne pas inventer d’horaires ni de prix. Ne pas choisir un client à la place de l’agence. Un carnet sans carte reste caché. Les numéros de pièce ne sont pas dans les réponses. passeport_voyageur les donne pour l’émission d’un billet, seulement si l’assistant est autorisé ; sinon il refuse.";
+  "CRM Travel BA pour l’agence. Lectures et écritures : crédit d’un virement, crédit Revolut vers le client désigné, montrer un carnet, mettre à jour un dossier, confirmer un service, traiter un e-mail, créer ou mettre à jour un client. Ne pas inventer d’horaires ni de prix. Ne pas choisir un client à la place de l’agence. Un carnet sans carte reste caché. Les numéros de pièce ne sont pas dans les réponses. passeport_voyageur les donne pour l’émission d’un billet, seulement si l’assistant est autorisé ; sinon il refuse. scan_passeport donne le fichier du même passeport (URL de dix minutes) à ce même assistant ; un PDF est indiqué comme tel.";
 
 function unauthorized() {
   return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
