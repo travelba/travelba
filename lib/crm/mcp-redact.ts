@@ -17,16 +17,21 @@ function scrubString(value: string) {
 /**
  * Retire pièces, secrets et URL signées avant qu’une réponse parte vers Grok.
  * `keepPieceNumber` ne garde que la clé `numero_piece` (outil passeport_voyageur).
+ * `keepSignedUrl` ne garde que la clé `url_signee` (outil scan_passeport).
  */
-export function redactMcp(value: unknown, depth = 0, keepPieceNumber = false): unknown {
+export function redactMcp(value: unknown, depth = 0, keepPieceNumber = false, keepSignedUrl = false): unknown {
   if (depth > 8) return null;
   if (typeof value === "string") return scrubString(value);
-  if (Array.isArray(value)) return value.map((item) => redactMcp(item, depth + 1, keepPieceNumber));
+  if (Array.isArray(value)) return value.map((item) => redactMcp(item, depth + 1, keepPieceNumber, keepSignedUrl));
   if (!value || typeof value !== "object") return value;
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
     if (secretKey(key, keepPieceNumber)) continue;
-    out[key] = redactMcp(item, depth + 1, keepPieceNumber);
+    if (keepSignedUrl && key === "url_signee" && typeof item === "string") {
+      out[key] = item;
+      continue;
+    }
+    out[key] = redactMcp(item, depth + 1, keepPieceNumber, keepSignedUrl);
   }
   return out;
 }

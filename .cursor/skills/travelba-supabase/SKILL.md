@@ -53,6 +53,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261007101500_booking_visible_debit.sql` | débit séjour du trigger : séjour visible, pas annulé, pas archivé |
 | `20261007183000_companion_loyalty.sql` | `crm_travel_companions.loyalty` jsonb — mêmes programmes que la fiche titulaire |
 | `20261015120000_mcp_passport_reads.sql` | journal `crm_mcp_passport_reads` : acteur, client, dossier. Sans numéro de pièce |
+| `20261016180000_mcp_passport_scan_kind.sql` | `kind` lecture ou scan sur le même journal. Sans chemin, sans URL |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

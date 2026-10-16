@@ -8,7 +8,10 @@ import {
   journalReference,
   McpReadError,
   parsePassportQuery,
+  parseScanQuery,
+  passportScanPath,
   readPasseportVoyageur,
+  readScanPasseport,
 } from "./mcp-passport";
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
 
@@ -89,7 +92,14 @@ test("a household keeps each passport and the name written on it", () => {
       },
     ],
     [
-      doc({ id: "fr", expires_on: "2030-03-01", storage_path: "customers/secret.pdf" }),
+      doc({
+        id: "fr",
+        expires_on: "2030-03-01",
+        place_of_birth: "PARIS",
+        storage_path: `customers/${CLIENT}/documents/secret.pdf`,
+        file_name: "secret.pdf",
+        mime_type: "application/pdf",
+      }),
       doc({
         id: "il",
         number: OTHER_NUMBER,
@@ -121,6 +131,10 @@ test("a household keeps each passport and the name written on it", () => {
   assert.equal(pieces[1].nationalite, "FR");
   assert.equal(pieces[1].pays_emission, "FR");
   assert.equal(pieces[1].type, "Passeport");
+  assert.equal(pieces[1].lieu_naissance, "PARIS");
+  assert.equal(pieces[1].a_un_scan, true);
+  assert.equal(pieces[0].lieu_naissance, null);
+  assert.equal(pieces[0].a_un_scan, false);
   assert.equal(pieces[2].type, "Carte d'identité");
   assert.equal(voyageurs[1].pieces[0].numero_piece, "L1234567");
   assert.equal(JSON.stringify(voyageurs).includes("999888777"), false);
@@ -350,6 +364,7 @@ test("an authorized assistant receives the piece number and the journal does not
   assert.equal(JSON.stringify(body).includes("999888777"), false);
   assert.equal(script.inserts[0].actor, "amadeus");
   assert.equal(script.inserts[0].outcome, "ok");
+  assert.equal(script.inserts[0].kind, "lecture");
   assert.equal(script.inserts[0].traveler_count, 2);
   assert.equal(JSON.stringify(script.inserts).includes(NUMBER), false);
   assert.equal(JSON.stringify(script.inserts).includes(OTHER_NUMBER), false);
@@ -462,4 +477,241 @@ test("a missing dossier, a bad id, and a piece number used as reference stay out
   );
   assert.equal(broken.inserts[0].outcome, "erreur");
   assert.equal(broken.seen.includes("crm_travel_documents"), false);
+});
+
+const SCAN_PATH = `customers/${CLIENT}/documents/passeport.jpg`;
+const SIGNED = `https://example.supabase.co/storage/v1/object/sign/crm-files/passeport.jpg?token=abc`;
+
+test("a passport file path stays inside the customer documents folder", () => {
+  assert.equal(passportScanPath(CLIENT, SCAN_PATH), SCAN_PATH);
+  assert.equal(passportScanPath(CLIENT, `customers/${CLIENT}/documents/secret.pdf`), `customers/${CLIENT}/documents/secret.pdf`);
+  assert.equal(passportScanPath(CLIENT, "customers/secret.pdf"), null);
+  assert.equal(passportScanPath(CLIENT, `customers/${OTHER}/documents/passeport.jpg`), null);
+  assert.equal(passportScanPath(CLIENT, `customers/${CLIENT}/documents/../passeport.jpg`), null);
+  assert.equal(passportScanPath(CLIENT, `customers/${CLIENT}/documents/%2e%2e/passeport.jpg`), null);
+  assert.equal(parseScanQuery({}).kind, "missing");
+  assert.equal(parseScanQuery({ client_id: CLIENT }).kind, "missing");
+  assert.equal(parseScanQuery({ reference: "TB-2026-0042", voyageur_id: "zoe" }).kind, "invalid");
+  assert.equal(parseScanQuery({ reference: "TB-2026-0042", voyageur_id: HOLDER_TRAVELER }).kind, "dossier");
+});
+
+test("without the passport scope the scan is refused before any signature", async () => {
+  const script: Script = {
+    bookings: [{ id: BOOKING, reference: "TB-2026-0042", title: "Rome", customer_id: CLIENT }],
+    documents: [passportRow({ storage_path: SCAN_PATH, file_name: "passeport.jpg", mime_type: "image/jpeg" })],
+    inserts: [],
+    seen: [],
+  };
+  let signed = 0;
+  await assert.rejects(
+    () =>
+      readScanPasseport({ reference: "TB-2026-0042", voyageur_id: HOLDER_TRAVELER }, fakeAdmin(script), async () => {
+        signed += 1;
+        return SIGNED;
+      }),
+    (err: unknown) => err instanceof McpReadError && /pas autorisé/.test(err.message)
+  );
+  assert.equal(signed, 0);
+  assert.deepEqual(script.seen, ["crm_mcp_passport_reads"]);
+  assert.equal(script.inserts[0].outcome, "refuse");
+  assert.equal(script.inserts[0].kind, "scan");
+  assert.equal(script.inserts[0].actor, "mcp");
+});
+
+test("an authorized assistant receives the scan url, the birth place, and a pdf warning", async () => {
+  const jpeg: Script = {
+    customers: customerRow(),
+    bookings: [{ id: BOOKING, reference: "TB-2026-0042", title: "Rome", customer_id: CLIENT }],
+    travelers: [
+      {
+        id: HOLDER_TRAVELER,
+        booking_id: BOOKING,
+        companion_id: null,
+        is_account_holder: true,
+        first_name: "Maëlle",
+        last_name: "Martin",
+        created_at: "2024-01-01",
+      },
+    ],
+    documents: [
+      passportRow({
+        place_of_birth: "PARIS",
+        storage_path: SCAN_PATH,
+        file_name: "passeport.jpg",
+        mime_type: "image/jpeg",
+        booking_id: null,
+      }),
+      passportRow({
+        id: "trip",
+        number: NUMBER,
+        booking_id: BOOKING,
+        traveler_id: HOLDER_TRAVELER,
+        expires_on: "2032-01-01",
+        place_of_birth: null,
+        storage_path: null,
+        file_name: null,
+        mime_type: null,
+      }),
+    ],
+    inserts: [],
+    seen: [],
+  };
+  const signed: string[] = [];
+  const result = await runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+    readScanPasseport({ reference: "TB-2026-0042" }, fakeAdmin(jpeg), async (path) => {
+      signed.push(path);
+      return SIGNED;
+    })
+  );
+  const body = result as {
+    voyageur_id: string;
+    scans: { fichier: string; type_mime: string; pdf: boolean; url_signee: string; expire_dans: number; lieu_naissance: string | null; note?: string }[];
+  };
+  assert.equal(body.voyageur_id, HOLDER_TRAVELER);
+  assert.deepEqual(signed, [SCAN_PATH]);
+  assert.equal(body.scans.length, 1);
+  assert.equal(body.scans[0].fichier, "passeport.jpg");
+  assert.equal(body.scans[0].type_mime, "image/jpeg");
+  assert.equal(body.scans[0].pdf, false);
+  assert.equal(body.scans[0].note, undefined);
+  assert.equal(body.scans[0].url_signee, SIGNED);
+  assert.equal(body.scans[0].expire_dans, 600);
+  assert.equal(body.scans[0].lieu_naissance, "PARIS");
+  assert.equal(JSON.stringify(body).includes(NUMBER), false);
+  assert.equal(JSON.stringify(body).includes(SCAN_PATH), false);
+  assert.equal(JSON.stringify(body).includes("999888777"), false);
+  assert.equal(jpeg.inserts.at(-1)?.kind, "scan");
+  assert.equal(jpeg.inserts.at(-1)?.outcome, "ok");
+  assert.equal(jpeg.inserts.at(-1)?.reference, "TB-2026-0042");
+  assert.equal(JSON.stringify(jpeg.inserts).includes(SCAN_PATH), false);
+  assert.equal(JSON.stringify(jpeg.inserts).includes(SIGNED), false);
+  assert.equal(JSON.stringify(jpeg.inserts).includes(NUMBER), false);
+  assert.equal(JSON.stringify(jpeg.inserts).includes("PARIS"), false);
+
+  const pdf: Script = {
+    customers: customerRow(),
+    bookings: [{ id: BOOKING, reference: "TB-2026-0042", title: "Rome", customer_id: CLIENT }],
+    travelers: [
+      {
+        id: COMPANION_TRAVELER,
+        booking_id: BOOKING,
+        companion_id: COMPANION,
+        is_account_holder: false,
+        first_name: "Léa",
+        last_name: "Martin",
+        created_at: "2024-01-01",
+      },
+    ],
+    companions: [{ id: COMPANION, first_name: "Léa", last_name: "Martin" }],
+    documents: [
+      passportRow({
+        id: "lea",
+        companion_id: COMPANION,
+        number: OTHER_NUMBER,
+        first_name: "Léa",
+        last_name: "Martin",
+        storage_path: `customers/${CLIENT}/documents/livret.pdf`,
+        file_name: "livret.pdf",
+        mime_type: "application/pdf",
+      }),
+    ],
+    inserts: [],
+    seen: [],
+  };
+  const pdfResult = await runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+    readScanPasseport({ dossier_id: BOOKING, voyageur_id: COMPANION }, fakeAdmin(pdf), async () => SIGNED)
+  );
+  const pdfBody = pdfResult as { voyageur_id: string; scans: { pdf: boolean; note?: string; type_mime: string }[] };
+  assert.equal(pdfBody.voyageur_id, COMPANION_TRAVELER);
+  assert.equal(pdfBody.scans[0].pdf, true);
+  assert.equal(pdfBody.scans[0].type_mime, "application/pdf");
+  assert.match(pdfBody.scans[0].note || "", /PDF/);
+  assert.match(pdfBody.scans[0].note || "", /png, jpg ou jpeg/);
+});
+
+test("a foreign file path and an unknown traveler do not produce a url", async () => {
+  const foreign: Script = {
+    customers: customerRow(),
+    bookings: [{ id: BOOKING, reference: "TB-2026-0042", title: "Rome", customer_id: CLIENT }],
+    travelers: [
+      {
+        id: HOLDER_TRAVELER,
+        booking_id: BOOKING,
+        companion_id: null,
+        is_account_holder: true,
+        first_name: "Maëlle",
+        last_name: "Martin",
+        created_at: "2024-01-01",
+      },
+    ],
+    documents: [
+      passportRow({
+        storage_path: `customers/${OTHER}/documents/passeport.jpg`,
+        file_name: "passeport.jpg",
+        mime_type: "image/jpeg",
+        place_of_birth: "LYON",
+      }),
+    ],
+    inserts: [],
+    seen: [],
+  };
+  let signed = 0;
+  const result = await runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+    readScanPasseport({ reference: "TB-2026-0042", voyageur_id: HOLDER_TRAVELER }, fakeAdmin(foreign), async () => {
+      signed += 1;
+      return SIGNED;
+    })
+  );
+  const body = result as { scans: unknown[]; message: string; lieu_naissance: string };
+  assert.equal(signed, 0);
+  assert.deepEqual(body.scans, []);
+  assert.match(body.message, /Aucun scan/);
+  assert.equal(body.lieu_naissance, "LYON");
+  assert.equal(JSON.stringify(result).includes(OTHER), false);
+
+  const missing: Script = {
+    customers: customerRow(),
+    bookings: [{ id: BOOKING, reference: "TB-2026-0042", title: "Rome", customer_id: CLIENT }],
+    travelers: [
+      {
+        id: HOLDER_TRAVELER,
+        booking_id: BOOKING,
+        companion_id: null,
+        is_account_holder: true,
+        first_name: "Maëlle",
+        last_name: "Martin",
+        created_at: "2024-01-01",
+      },
+      {
+        id: COMPANION_TRAVELER,
+        booking_id: BOOKING,
+        companion_id: COMPANION,
+        is_account_holder: false,
+        first_name: "Léa",
+        last_name: "Martin",
+        created_at: "2024-01-02",
+      },
+    ],
+    documents: [passportRow({ storage_path: SCAN_PATH, file_name: "passeport.jpg", mime_type: "image/jpeg" })],
+    inserts: [],
+    seen: [],
+  };
+  const choice = await runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+    readScanPasseport({ reference: "TB-2026-0042" }, fakeAdmin(missing), async () => {
+      signed += 1;
+      return SIGNED;
+    })
+  );
+  const listed = choice as { voyageurs: { voyageur_id: string; a_un_scan: boolean }[] };
+  assert.equal(signed, 0);
+  assert.equal(listed.voyageurs.length, 2);
+  assert.equal(listed.voyageurs[0].a_un_scan, true);
+  assert.equal(JSON.stringify(choice).includes(SIGNED), false);
+  assert.equal(missing.inserts.at(-1)?.outcome, "choix");
+
+  const unknown = await runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+    readScanPasseport({ reference: "TB-2026-0042", voyageur_id: OTHER }, fakeAdmin(missing), async () => SIGNED)
+  );
+  assert.equal((unknown as { message: string }).message.includes("pas sur ce dossier"), true);
+  assert.equal(missing.inserts.at(-1)?.outcome, "introuvable");
 });

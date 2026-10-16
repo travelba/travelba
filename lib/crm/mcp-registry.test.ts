@@ -9,6 +9,7 @@ const EXPECTED = [
   "chercher_dossiers",
   "fiche_dossier",
   "passeport_voyageur",
+  "scan_passeport",
   "formalites",
   "services_a_confirmer",
   "grand_livre",
@@ -64,6 +65,11 @@ test("mcp tools stay unique, named, and under the cap", () => {
     ["passeport_voyageur"]
   );
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "passeport_voyageur")?.write, undefined);
+  assert.deepEqual(
+    MCP_TOOLS.filter((tool) => tool.signedUrl).map((tool) => tool.name),
+    ["scan_passeport"]
+  );
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "scan_passeport")?.pieceNumbers, undefined);
 });
 
 test("only passeport_voyageur keeps a piece number in the payload", () => {
@@ -76,4 +82,26 @@ test("only passeport_voyageur keeps a piece number in the payload", () => {
   assert.equal("numero_piece" in fiche, false);
   assert.equal("number" in fiche, false);
   assert.equal(fiche.numero, "FAC-1");
+});
+
+test("only scan_passeport keeps the signed file url", () => {
+  const url = "https://example.supabase.co/storage/v1/object/sign/crm-files/a.jpg?token=abc";
+  const payload = {
+    url_signee: url,
+    autre: url,
+    numero_piece: "X12345678",
+    storage_path: "customers/11111111-1111-4111-8111-111111111111/documents/a.jpg",
+  };
+  const scan = JSON.parse(previewMcpTool("scan_passeport", payload).content[0].text) as Record<string, unknown>;
+  const passport = JSON.parse(previewMcpTool("passeport_voyageur", payload).content[0].text) as Record<string, unknown>;
+  const fiche = JSON.parse(previewMcpTool("fiche_client", payload).content[0].text) as Record<string, unknown>;
+  assert.equal(scan.url_signee, url);
+  assert.equal(scan.autre, "retiré");
+  assert.equal("numero_piece" in scan, false);
+  assert.equal("storage_path" in scan, false);
+  assert.equal(passport.url_signee, "retiré");
+  assert.equal(passport.numero_piece, "X12345678");
+  assert.equal("storage_path" in passport, false);
+  assert.equal(fiche.url_signee, "retiré");
+  assert.equal("numero_piece" in fiche, false);
 });

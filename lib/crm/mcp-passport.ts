@@ -5,7 +5,11 @@ import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { isPlaceholderTraveler, type PersonName } from "@/lib/crm/person-match";
 import { isSameDocumentPiece, reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 import { DOC_TYPE_LABELS, type CrmBookingTraveler, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
+import { signedCrmUrl } from "@/lib/crm/files";
 import { createServiceClient } from "@/lib/supabase/admin";
+
+/** Durée de l’URL du scan. Même fenêtre que `/api/files`. */
+export const SCAN_URL_SECONDS = 600;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const JOURNAL_REFERENCE = /^TB-[A-Za-z0-9-]{1,30}$/i;
@@ -13,7 +17,7 @@ const IDENTITY = new Set<TravelDocType>(["passport", "id_card"]);
 
 const PERSON_COLUMNS = "id, first_name, last_name, usage_name, birth_date, sex, nationality";
 const DOC_COLUMNS =
-  "id, customer_id, companion_id, booking_id, traveler_id, doc_type, number, issuing_country, issued_on, expires_on, first_name, last_name, usage_name, birth_date, nationality, sex, created_at";
+  "id, customer_id, companion_id, booking_id, traveler_id, doc_type, number, issuing_country, issued_on, expires_on, first_name, last_name, usage_name, birth_date, nationality, sex, place_of_birth, storage_path, file_name, mime_type, created_at";
 const TRAVELER_COLUMNS = "id, booking_id, companion_id, is_account_holder, first_name, last_name, created_at";
 
 /** Refus renvoyé tel quel. Le message ne contient aucune pièce. */
@@ -39,7 +43,25 @@ export type PasseportPiece = {
   pays_emission: string | null;
   delivre_le: string | null;
   expire_le: string | null;
+  lieu_naissance: string | null;
+  /** Vrai si un fichier est au coffre. Le chemin ne sort pas. */
+  a_un_scan: boolean;
 };
+
+export type ScanFichier = {
+  type: string;
+  lieu_naissance: string | null;
+  pays_emission: string | null;
+  expire_le: string | null;
+  fichier: string;
+  type_mime: string;
+  pdf: boolean;
+  url_signee: string;
+  expire_dans: number;
+  note?: string;
+};
+
+export type ScanSigner = (path: string) => Promise<string>;
 
 export type PasseportVoyageur = {
   voyageur_id: string;
@@ -85,6 +107,8 @@ type AuditRow = {
   reference: string | null;
   outcome: PassportOutcome;
   traveler_count: number;
+  /** `lecture` : données APIS. `scan` : URL du fichier. */
+  kind: "lecture" | "scan";
 };
 
 function openDb() {
@@ -163,7 +187,8 @@ function auditRow(
   query: PassportQuery,
   outcome: PassportOutcome,
   travelerCount: number,
-  resolved?: { customerId?: string | null; bookingId?: string | null; reference?: string | null }
+  resolved?: { customerId?: string | null; bookingId?: string | null; reference?: string | null },
+  kind: AuditRow["kind"] = "lecture"
 ): AuditRow {
   const requested = queryIds(query);
   return {
@@ -173,19 +198,31 @@ function auditRow(
     reference: journalReference(resolved?.reference ?? requested.reference),
     outcome,
     traveler_count: travelerCount,
+    kind,
   };
 }
 
 async function writeAudit(admin: SupabaseClient, row: AuditRow) {
-  const { error } = await admin.from("crm_mcp_passport_reads").insert({
+  const payload = {
     actor: row.actor,
     customer_id: row.customer_id,
     booking_id: row.booking_id,
     reference: row.reference,
     outcome: row.outcome,
     traveler_count: row.traveler_count,
-  });
-  if (error) logDb("journal", error);
+    kind: row.kind,
+  };
+  const first = await admin.from("crm_mcp_passport_reads").insert(payload);
+  if (!first.error) return;
+  const missingKind = first.error.code === "PGRST204" || first.error.code === "42703";
+  if (missingKind) {
+    const { kind: _kind, ...withoutKind } = payload;
+    const second = await admin.from("crm_mcp_passport_reads").insert(withoutKind);
+    if (!second.error) return;
+    logDb("journal", second.error);
+    return;
+  }
+  logDb("journal", first.error);
 }
 
 function bio(row: BioRow, role: PersonBio["role"], id = row.id): PersonBio {
@@ -219,12 +256,12 @@ function asDocument(row: Record<string, unknown>): CrmTravelDocument {
     birth_date: (row.birth_date as string | null) ?? null,
     nationality: (row.nationality as string | null) ?? null,
     sex: (row.sex as string | null) ?? null,
-    place_of_birth: null,
+    place_of_birth: (row.place_of_birth as string | null) ?? null,
     authority: null,
     personal_number: null,
-    storage_path: null,
-    file_name: null,
-    mime_type: null,
+    storage_path: (row.storage_path as string | null) ?? null,
+    file_name: (row.file_name as string | null) ?? null,
+    mime_type: (row.mime_type as string | null) ?? null,
     created_at: String(row.created_at || ""),
     updated_at: String(row.created_at || ""),
   };
@@ -258,16 +295,53 @@ function toPiece(doc: CrmTravelDocument, person: PersonBio): PasseportPiece {
     pays_emission: resolveCountryCode(doc.issuing_country),
     delivre_le: isoDay(doc.issued_on),
     expire_le: isoDay(doc.expires_on),
+    lieu_naissance: clean(doc.place_of_birth),
+    a_un_scan: Boolean(passportScanPath(doc.customer_id, doc.storage_path)),
+  };
+}
+
+/** Fichier de pièce d’identité : seulement le dossier du client, un seul segment. */
+export function passportScanPath(customerId: string, path: string | null | undefined) {
+  if (!customerId || !path) return null;
+  const prefix = `customers/${customerId}/documents/`;
+  const lowerPrefix = prefix.toLowerCase();
+  if (!path.toLowerCase().startsWith(lowerPrefix)) return null;
+  const rest = path.slice(lowerPrefix.length);
+  if (!rest || /[\\/]/.test(rest) || rest.includes("..") || /%(2e|2f|5c)/i.test(rest)) return null;
+  return path;
+}
+
+function fillBlankScan(winner: CrmTravelDocument, other: CrmTravelDocument) {
+  const place = clean(winner.place_of_birth) ? winner.place_of_birth : other.place_of_birth;
+  const path = passportScanPath(winner.customer_id, winner.storage_path)
+    ? winner.storage_path
+    : passportScanPath(other.customer_id, other.storage_path);
+  const source = path && path === other.storage_path ? other : winner;
+  if (place === winner.place_of_birth && path === winner.storage_path) return winner;
+  return {
+    ...winner,
+    place_of_birth: place,
+    storage_path: path,
+    file_name: path === winner.storage_path ? winner.file_name : source.file_name,
+    mime_type: path === winner.storage_path ? winner.mime_type : source.mime_type,
   };
 }
 
 function preferPiece(current: CrmTravelDocument, candidate: CrmTravelDocument) {
   const expiry = (candidate.expires_on || "").localeCompare(current.expires_on || "");
-  if (expiry !== 0) return expiry > 0 ? candidate : current;
-  const currentVault = !current.booking_id;
-  const candidateVault = !candidate.booking_id;
-  if (currentVault !== candidateVault) return candidateVault ? candidate : current;
-  return (candidate.created_at || "").localeCompare(current.created_at || "") > 0 ? candidate : current;
+  const winner =
+    expiry !== 0
+      ? expiry > 0
+        ? candidate
+        : current
+      : !current.booking_id !== !candidate.booking_id
+        ? !candidate.booking_id
+          ? candidate
+          : current
+        : (candidate.created_at || "").localeCompare(current.created_at || "") > 0
+          ? candidate
+          : current;
+  return fillBlankScan(winner, winner === current ? candidate : current);
 }
 
 function dedupePieces(docs: CrmTravelDocument[]) {
@@ -487,4 +561,224 @@ export async function readPasseportVoyageur(
   }
   if (query.kind === "client") return readClient(db, access.actor, query);
   return readDossier(db, access.actor, query);
+}
+
+const PHOTO_MIME = new Set(["image/jpeg", "image/jpg", "image/png"]);
+
+export type ScanQuery =
+  | { kind: "missing" }
+  | { kind: "invalid" }
+  | { kind: "dossier"; dossierId?: string; reference?: string; customerId?: string; voyageurId?: string };
+
+export function parseScanQuery(input: {
+  client_id?: string;
+  dossier_id?: string;
+  reference?: string;
+  voyageur_id?: string;
+}): ScanQuery {
+  const voyageurId = (input.voyageur_id || "").trim();
+  if (voyageurId && !UUID.test(voyageurId)) return { kind: "invalid" };
+  const base = parsePassportQuery({
+    client_id: input.client_id,
+    dossier_id: input.dossier_id,
+    reference: input.reference,
+  });
+  if (base.kind !== "dossier") return { kind: base.kind === "invalid" ? "invalid" : "missing" };
+  return { ...base, voyageurId: voyageurId || undefined };
+}
+
+function mimeFromName(name: string) {
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "heic" || ext === "heif") return "image/heic";
+  if (ext === "webp") return "image/webp";
+  return null;
+}
+
+function scanNote(mime: string) {
+  if (mime === "application/pdf") return "Le scan est un PDF, pas une photo png, jpg ou jpeg.";
+  if (PHOTO_MIME.has(mime)) return undefined;
+  return "Le scan n’est pas une photo png, jpg ou jpeg.";
+}
+
+function scanMeta(doc: CrmTravelDocument) {
+  const fichier =
+    clean(doc.file_name) || doc.storage_path?.split("/").pop()?.replace(/^\d{10,}-/, "") || "passeport";
+  let mime = (doc.mime_type || "").split(";")[0].trim().toLowerCase();
+  if (!mime || mime === "application/octet-stream") mime = mimeFromName(fichier) || "application/octet-stream";
+  return { fichier, type_mime: mime, pdf: mime === "application/pdf", note: scanNote(mime) };
+}
+
+async function signScan(path: string, sign: ScanSigner) {
+  try {
+    const url = await sign(path);
+    if (!url) throw new Error("signature");
+    return url;
+  } catch (err) {
+    const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code) : "signature";
+    logDb("signature", { code });
+    throw new Error("Lecture impossible.");
+  }
+}
+
+async function toScan(doc: CrmTravelDocument, sign: ScanSigner): Promise<ScanFichier> {
+  const path = passportScanPath(doc.customer_id, doc.storage_path);
+  if (!path) throw new Error("Lecture impossible.");
+  const meta = scanMeta(doc);
+  const scan: ScanFichier = {
+    type: DOC_TYPE_LABELS.passport,
+    lieu_naissance: clean(doc.place_of_birth),
+    pays_emission: resolveCountryCode(doc.issuing_country),
+    expire_le: isoDay(doc.expires_on),
+    fichier: meta.fichier,
+    type_mime: meta.type_mime,
+    pdf: meta.pdf,
+    url_signee: await signScan(path, sign),
+    expire_dans: SCAN_URL_SECONDS,
+  };
+  if (meta.note) scan.note = meta.note;
+  return scan;
+}
+
+function holderName(customer: BioRow): PersonName {
+  return {
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    usage_name: customer.usage_name ?? null,
+  };
+}
+
+export async function readScanPasseport(
+  input: { client_id?: string; dossier_id?: string; reference?: string; voyageur_id?: string },
+  admin?: SupabaseClient,
+  sign: ScanSigner = (path) => signedCrmUrl(path, SCAN_URL_SECONDS)
+) {
+  const db = admin ?? openDb();
+  const access = currentMcpAccess();
+  const query = parseScanQuery(input);
+  const audit = (
+    outcome: PassportOutcome,
+    travelerCount: number,
+    resolved?: { customerId?: string | null; bookingId?: string | null; reference?: string | null }
+  ) => writeAudit(db, auditRow(access.actor, query, outcome, travelerCount, resolved, "scan"));
+  if (!access.passport) {
+    await audit("refuse", 0);
+    throw new McpReadError("Cet assistant n’est pas autorisé à lire les passeports.");
+  }
+  if (query.kind === "missing") {
+    await audit("invalide", 0);
+    return { message: "Indiquez un identifiant de dossier ou une référence." };
+  }
+  if (query.kind === "invalid") {
+    await audit("invalide", 0);
+    return { message: "Identifiant inconnu." };
+  }
+  let bookingQuery = db.from("crm_bookings").select("id, reference, title, customer_id");
+  bookingQuery = query.dossierId ? bookingQuery.eq("id", query.dossierId) : bookingQuery.eq("reference", query.reference || "");
+  const { data, error } = await bookingQuery.limit(2);
+  if (error) {
+    logDb("dossier", error);
+    await audit("erreur", 0);
+    throw new Error("Lecture impossible.");
+  }
+  const rows = (data || []) as BookingHit[];
+  if (!rows.length) {
+    await audit("introuvable", 0);
+    return { introuvable: true as const };
+  }
+  if (rows.length > 1) {
+    await audit("choix", 0);
+    return {
+      message: "Plusieurs dossiers correspondent. Précisez l’identifiant.",
+      choix: rows.map((row) => ({ id: row.id, reference: row.reference, titre: row.title })),
+    };
+  }
+  const booking = rows[0];
+  const resolved = { customerId: booking.customer_id, bookingId: booking.id, reference: booking.reference };
+  const dossier = { id: booking.id, reference: booking.reference, titre: booking.title };
+  if (query.customerId && query.customerId !== booking.customer_id) {
+    await audit("invalide", 0, { bookingId: booking.id, reference: booking.reference });
+    return { message: "Ce dossier n’appartient pas à ce client." };
+  }
+  const [travelers, customerResult, loaded] = await Promise.all([
+    db.from("crm_booking_travelers").select(TRAVELER_COLUMNS).eq("booking_id", booking.id).order("created_at"),
+    db.from("crm_customers").select(PERSON_COLUMNS).eq("id", booking.customer_id).maybeSingle(),
+    loadIdentity(db, booking.customer_id),
+  ]);
+  if (travelers.error || customerResult.error || !loaded) {
+    logDb("voyageurs", travelers.error || customerResult.error);
+    await audit("erreur", 0, resolved);
+    throw new Error("Lecture impossible.");
+  }
+  const customer = (customerResult.data as BioRow | null) || {
+    id: booking.customer_id,
+    first_name: null,
+    last_name: null,
+  };
+  const travelerRows = ((travelers.data || []) as Record<string, unknown>[]).map(asTraveler);
+  const voyageurs = dossierVoyageurs(travelerRows, customer, loaded.companions, loaded.documents);
+  let chosen = voyageurs;
+  if (query.voyageurId) {
+    const row = travelerRows.find((traveler) => traveler.id === query.voyageurId || traveler.companion_id === query.voyageurId);
+    chosen = row ? voyageurs.filter((voyageur) => voyageur.voyageur_id === row.id) : [];
+    if (!chosen.length) {
+      await audit("introuvable", 0, resolved);
+      return { message: "Ce voyageur n’est pas sur ce dossier.", dossier };
+    }
+  } else if (voyageurs.length !== 1) {
+    await audit(voyageurs.length ? "choix" : "introuvable", voyageurs.length, resolved);
+    if (!voyageurs.length) return { message: "Aucun voyageur sur ce dossier.", dossier };
+    return {
+      message: "Plusieurs voyageurs. Précisez voyageur_id.",
+      dossier,
+      voyageurs: voyageurs.map((voyageur) => ({
+        voyageur_id: voyageur.voyageur_id,
+        nom: voyageur.nom,
+        prenoms: voyageur.prenoms,
+        a_un_scan: voyageur.pieces.some((piece) => piece.type === "Passeport" && piece.a_un_scan),
+      })),
+    };
+  }
+  const voyageur = chosen[0];
+  const traveler = travelerRows.find((row) => row.id === voyageur.voyageur_id);
+  if (!traveler) {
+    await audit("erreur", 0, resolved);
+    throw new Error("Lecture impossible.");
+  }
+  const passports = piecesForTraveler(loaded.documents, traveler, holderName(customer)).filter(
+    (doc) => doc.doc_type === "passport"
+  );
+  const head = {
+    client_id: booking.customer_id,
+    dossier,
+    voyageur_id: voyageur.voyageur_id,
+    nom: voyageur.nom,
+    prenoms: voyageur.prenoms,
+  };
+  if (!passports.length) {
+    await audit("ok", 1, resolved);
+    return { ...head, scans: [], message: "Aucun passeport n’est enregistré pour ce voyageur." };
+  }
+  const withFile = passports.filter((doc) => passportScanPath(doc.customer_id, doc.storage_path));
+  if (!withFile.length) {
+    await audit("ok", 1, resolved);
+    return {
+      ...head,
+      lieu_naissance: clean(passports[0].place_of_birth),
+      scans: [],
+      message: "Aucun scan n’est enregistré pour ce passeport.",
+    };
+  }
+  try {
+    const scans: ScanFichier[] = [];
+    for (const doc of withFile) scans.push(await toScan(doc, sign));
+    await audit("ok", 1, resolved);
+    return { ...head, scans };
+  } catch (err) {
+    await audit("erreur", 0, resolved);
+    if (err instanceof Error && err.message === "Lecture impossible.") throw err;
+    throw new Error("Lecture impossible.");
+  }
 }
