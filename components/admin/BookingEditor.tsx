@@ -45,6 +45,7 @@ import {
   hotelDisplayName,
   keptHiddenFromClient,
   stayHeadline,
+  stayNameField,
 } from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
@@ -185,6 +186,9 @@ function stayAmountKey(list: CrmBookingItem[]) {
 
 const coverField =
   "w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-[var(--admin-navy)] shadow-[0_1px_2px_rgba(11,25,44,0.04)] outline-none transition focus:border-[var(--admin-gold)] focus:shadow-[0_0_0_3px_rgba(197,168,128,0.22)]";
+
+const stayNameClass =
+  "w-full cursor-text rounded-md border-b border-transparent bg-transparent px-1.5 py-0.5 font-display font-bold leading-tight text-[var(--admin-navy)] outline-none placeholder:text-[var(--admin-navy)]/30 hover:border-[var(--admin-gold)] hover:bg-white focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/40";
 
 function CoverMark({ children }: { children: string }) {
   return (
@@ -406,9 +410,9 @@ export function BookingEditor({
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover" | "invoice">("idle");
   // Champs du formulaire méta : `useMirror` — un champ touché par l’agent gagne, un champ intact suit
   // le serveur à chaque `router.refresh()` (une étape ajoutée met déjà à jour la ligne du dossier).
-  const [titleDraft, setTitleDraft] = useMirror(booking.title);
   const routeTitle = stayHeadline(booking.title, booking.destination, stayCitiesFromSteps(items));
-  const titleShown = titleDraft === booking.title ? routeTitle : titleDraft;
+  const [titleDraft, setTitleDraft] = useMirror(routeTitle);
+  const titleEdit = stayNameField(routeTitle, titleDraft);
   const [coverOpen, setCoverOpen] = useState(false);
   const tab = bookingTabFromParam(searchParams.get("tab"));
   const [more, setMore] = useState(false);
@@ -463,7 +467,7 @@ export function BookingEditor({
   const serverPayerPickId = serverPayerPick?.id || null;
   const [stepsPending, setStepsPending] = useState(false);
   const dirty =
-    titleDraft !== booking.title ||
+    titleEdit.dirty ||
     startDraft !== (booking.start_date || "") ||
     endDraft !== (booking.end_date || "") ||
     destinationDraft !== (booking.destination || "") ||
@@ -573,7 +577,7 @@ export function BookingEditor({
     const settles = fd.get("client_settles_stay") === "on";
     const payload: Record<string, unknown> = {
       ...Object.fromEntries(fd.entries()),
-      title: titleShown.trim(),
+      title: titleEdit.value.trim(),
       client_settles_stay: settles,
     };
     if (settles) delete payload.include_in_ledger;
@@ -1003,7 +1007,7 @@ export function BookingEditor({
   const moreMenu = (
     <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl bg-[var(--admin-sky)] px-4 py-3">
       <div className="flex flex-wrap gap-3">
-        <DuplicateBookingButton bookingId={booking.id} label={`${booking.reference} — ${titleShown || booking.title}`} />
+        <DuplicateBookingButton bookingId={booking.id} label={`${booking.reference} — ${titleEdit.value.trim() || booking.title}`} />
         <button
           type="button"
           className="text-sm font-semibold text-[var(--admin-navy)]"
@@ -1056,7 +1060,7 @@ export function BookingEditor({
       {booking.archived_at ? null : (
         <ArchiveBookingButton
           bookingId={booking.id}
-          label={`${booking.reference} — ${titleShown || booking.title}`}
+          label={`${booking.reference} — ${titleEdit.value.trim() || booking.title}`}
           compact
           redirectTo={null}
         />
@@ -1070,9 +1074,14 @@ export function BookingEditor({
         <div className="fixed inset-x-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-30 border-b border-[var(--border)] bg-[rgba(250,249,246,0.94)] px-4 py-2 shadow-[0_1px_8px_rgba(11,25,44,0.06)] backdrop-blur-xl sm:px-6 lg:left-72 lg:top-20 lg:px-8">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate font-display text-base font-bold text-[var(--admin-navy)]">
-                {titleShown || booking.title}
-              </p>
+              <input
+                value={titleEdit.value}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                placeholder="Nom du séjour"
+                aria-label="Nom du séjour"
+                autoComplete="off"
+                className={`${stayNameClass} truncate text-base`}
+              />
               <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
                 <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--admin-navy)]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" aria-hidden />
@@ -1104,20 +1113,26 @@ export function BookingEditor({
         <div ref={sentinelRef} aria-hidden className="absolute left-0 top-0 h-px w-px" />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <Link href="/admin/reservations" className="shrink-0 pt-2 text-sm font-semibold text-[var(--admin-navy)]">
+            <Link href="/admin/reservations" className="shrink-0 pt-5 text-sm font-semibold text-[var(--admin-navy)]">
               ← Réservations
             </Link>
             <div className="min-w-0 flex-1">
-              <input
-                name="title"
-                form="booking-meta"
-                value={titleShown}
-                onChange={(event) => setTitleDraft(event.target.value)}
-                placeholder="Séjour à Avoriaz"
-                aria-label="Titre"
-                className="w-full bg-transparent font-display text-2xl font-bold leading-tight text-[var(--admin-navy)] outline-none placeholder:text-[var(--admin-navy)]/30 sm:text-3xl"
-              />
-              <p className="text-sm text-muted">
+              <label className="block min-w-0">
+                <span className="px-1.5 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--admin-gold-dark)]">
+                  Nom du séjour
+                </span>
+                <input
+                  id="booking-title"
+                  name="title"
+                  form="booking-meta"
+                  value={titleEdit.value}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  placeholder="Séjour à Avoriaz"
+                  autoComplete="off"
+                  className={`${stayNameClass} text-2xl sm:text-3xl`}
+                />
+              </label>
+              <p className="px-1.5 text-sm text-muted">
                 Référence {booking.reference}
                 {jMinusLabel(facts.start) ? ` · ${jMinusLabel(facts.start)}` : ""}
               </p>
