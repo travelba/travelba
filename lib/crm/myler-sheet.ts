@@ -15,24 +15,24 @@ export const MYLER_SHEET = {
   introTitle: "Back-office interne",
   intro: lines(
     "Ceci est le back-office interne de Travel BA, le CRM des agents. Ce n’est pas un site public. Le CTO de Little Emperors l’a confirmé le 24 septembre.",
-    "Les agents et les assistants lisent les réservations Little Emperors, les rattachent aux clients, les consultent et les annulent.",
-    "travelba.fr appellera l’API de production Little Emperors dès que la clé de production sera émise. La revue de staging appelle déjà l’API de staging avec la clé de test.",
+    "Les agents et les assistants lisent les réservations Little Emperors, les rattachent aux clients, les consultent et les annulent. La recherche et le devis se font ici. La carte est saisie chez Little Emperors. Travelba ne la conserve pas.",
+    "travelba.fr appelle l’API de production Little Emperors. La revue de staging appelle l’API de staging avec la clé de test.",
     `Points d’accès appelés : ${ENDPOINTS}.`,
     `Webhook : ${WEBHOOK}. En-tête X-Access-Key.`
   ),
   keyNote:
-    "Les réservations hôtel se lisent sur le compte de production. La production appellera l’API de production Little Emperors dès que la clé sera émise. La revue de staging appelle déjà l’API de staging avec la clé de test. Rien n’est publié au client.",
+    "Les réservations hôtel se lisent sur le compte de production. travelba.fr appelle l’API de production Little Emperors. Rien n’est publié au client.",
   auth: "Clé du compte de production.",
   authLabel: "Clé",
   keyOn: "Clé de production : présente. La valeur n’est pas affichée.",
-  keyOff: "Clé de production : pas encore émise.",
+  keyOff: "Clé de production : absente de cet environnement.",
   keyPending:
-    "Clé de production : pas encore émise. La production appellera l’API de production Little Emperors dès qu’elle sera remise.",
+    "Clé de production : absente de cet environnement. travelba.fr appelle l’API de production Little Emperors.",
   sso: "La connexion est le compte de l’agence.",
   routesLabel: "Lecture",
   routes: ROUTES,
   syncLabel: "Lecture",
-  sync: "Actualiser lit les réservations et les affiche ici. Une liste vide est une réponse réussie. Rien n’est publié au client.",
+  sync: "Actualiser lit les réservations. Un séjour reconnu met la carte à jour. Un séjour inconnu crée un brouillon caché. Une liste vide est une réponse réussie. Rien n’est publié au client.",
   idle: "Aucune lecture pour l’instant.",
   webhookLabel: "Webhook",
   webhook: WEBHOOK,
@@ -44,7 +44,7 @@ export const MYLER_SHEET = {
   lastRead: "Dernière lecture",
   refreshEmpty: "Lecture réussie. Aucune réservation à afficher.",
   blocked:
-    "La clé de production n’est pas encore posée. La production appellera l’API de production Little Emperors dès qu’elle sera émise.",
+    "La clé de production n’est pas posée sur cet environnement. travelba.fr appelle l’API de production Little Emperors.",
   storage: "La table des réservations Little Emperors n’est pas encore en place.",
   emptyOk: "Aucune réservation à afficher.",
   emptyIdle: "Aucune réservation Little Emperors pour le moment.",
@@ -72,18 +72,18 @@ export const MYLER_PARTNER = {
   intro: lines(
     "This screen is the internal back office of Travel BA, the CRM its agents use. It is not a public website. Little Emperors' CTO confirmed that on 24 September.",
     "Agents and AI assistants list Little Emperors bookings, match them to Travel BA clients, and view or cancel those bookings.",
-    "This staging deployment calls the Little Emperors staging API with the test key. Production (travelba.fr) will call the Little Emperors production API once that key is issued.",
+    "This staging deployment calls the Little Emperors staging API with the test key. Production (travelba.fr) calls the Little Emperors production API.",
     `Endpoints called: ${ENDPOINTS}.`,
     `Webhook: ${WEBHOOK}. Header X-Access-Key.`
   ),
   keyNote:
-    "This staging deployment calls the Little Emperors staging API with the test key. Production will call the Little Emperors production API once that key is issued.",
+    "This staging deployment calls the Little Emperors staging API with the test key. Production calls the Little Emperors production API.",
   auth: "API key, Authorization: Bearer header.",
   authLabel: "Authentication",
   keyOn: "Test key: present.",
   keyOff: "Test key: not on this staging deployment yet. Once it is present, this deployment calls the staging API.",
   keyPending:
-    "Production key: not issued yet. Production will call the Little Emperors production API once that key is issued.",
+    "Production key: not on this environment. Production calls the Little Emperors production API.",
   sso: "SSO POST /v1/login is not used for MyLER. Sign-in is the Travelba account.",
   routesLabel: "v2 routes",
   routes: ROUTES,
@@ -100,7 +100,7 @@ export const MYLER_PARTNER = {
   lastRead: "Last read",
   refreshEmpty: "The staging API answered. No reservations yet: that is expected, staging has none.",
   blocked:
-    "The key for this environment is not in place yet. This staging deployment calls the Little Emperors staging API with the test key. Production will call the production API once that key is issued.",
+    "The key for this environment is not in place yet. This staging deployment calls the Little Emperors staging API with the test key. Production calls the production API.",
   storage: "The Little Emperors reservation table is not ready yet.",
   emptyOk: "No reservations to show. The staging API answered.",
   emptyIdle: "No Little Emperors reservations yet.",

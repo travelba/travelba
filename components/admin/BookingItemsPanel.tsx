@@ -113,6 +113,83 @@ function stepTitle(item: CrmBookingItem) {
   return visibleServiceCopy(item.title);
 }
 
+function detailLines(item: CrmBookingItem, key: string) {
+  const value = item.details?.[key];
+  if (!Array.isArray(value)) return [];
+  return value.map((row) => (typeof row === "string" ? row.trim() : "")).filter(Boolean);
+}
+
+function hotelRoomLabel(item: CrmBookingItem) {
+  const rooms = Array.isArray(item.details?.rooms) ? item.details.rooms : [];
+  return rooms
+    .flatMap((room) => {
+      if (!room || typeof room !== "object") return [];
+      const name = (room as { room?: unknown }).room;
+      return typeof name === "string" && name.trim() ? [name.trim()] : [];
+    })
+    .join(" · ");
+}
+
+function supplierCostLabel(item: CrmBookingItem) {
+  const cost = detailText(item, "le_total_cost");
+  if (!cost) return "";
+  const currency = detailText(item, "le_currency");
+  return `Coût Little Emperors ${cost}${currency ? ` ${currency}` : ""}`;
+}
+
+function HotelStepFacts({ item }: { item: CrmBookingItem }) {
+  const included = detailLines(item, "included");
+  const notes = detailLines(item, "benefit_footnotes");
+  const policies = detailLines(item, "cancellation_policies");
+  const deposit = detailText(item, "deposit_policy");
+  const eta = detailText(item, "eta");
+  const checkIn = detailText(item, "check_in_time");
+  const checkOut = detailText(item, "check_out_time");
+  const rooms = Array.isArray(item.details?.rooms) ? item.details.rooms : [];
+  const roomLines = rooms.flatMap((room) => {
+    if (!room || typeof room !== "object") return [];
+    const row = room as { room?: unknown; guests?: unknown };
+    const line = [typeof row.room === "string" ? row.room : "", typeof row.guests === "string" ? row.guests : ""]
+      .filter(Boolean)
+      .join(" · ");
+    return line ? [line] : [];
+  });
+  if (!included.length && !notes.length && !policies.length && !deposit && !eta && !checkIn && !checkOut && roomLines.length < 2) {
+    return null;
+  }
+  return (
+    <div className="mb-3 space-y-1 text-sm text-[var(--admin-navy)]">
+      {roomLines.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+      {checkIn || checkOut ? (
+        <p className="text-muted">
+          {[checkIn ? `Enregistrement ${checkIn}` : "", checkOut ? `Départ ${checkOut}` : ""].filter(Boolean).join(" · ")}
+        </p>
+      ) : null}
+      {eta ? <p className="text-muted">Arrivée prévue à {eta} h</p> : null}
+      {deposit ? <p className="text-muted">{deposit}</p> : null}
+      {policies.map((line) => (
+        <p key={line} className="text-muted">
+          {line}
+        </p>
+      ))}
+      {included.length ? (
+        <ul className="list-disc pl-4 text-muted">
+          {included.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+      {notes.map((line) => (
+        <p key={line} className="text-xs text-muted">
+          {line}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function stepSubtitle(item: CrmBookingItem) {
   const parts: string[] = [];
   if (item.kind === "flight" || item.kind === "rail") {
@@ -128,7 +205,7 @@ function stepSubtitle(item: CrmBookingItem) {
       parts.push(`${Math.round(tickets)} billets`);
     }
   } else if (item.kind === "hotel") {
-    const room = detailText(item, "room");
+    const room = detailText(item, "room") || hotelRoomLabel(item);
     const city = detailText(item, "city");
     if (room) parts.push(room);
     if (city) parts.push(city);
@@ -577,6 +654,7 @@ export function BookingItemsPanel({
             subtitle,
             docs.length ? `${docs.length} pièce${docs.length > 1 ? "s" : ""}` : "",
             counted ? "Compté" : "",
+            supplierCostLabel(item),
             priceDiffers && printed != null
               ? `Prix du document : ${printedPrice(printed, typeof item.details?.document_currency === "string" ? item.details.document_currency : "")}`
               : "",
@@ -777,6 +855,7 @@ export function BookingItemsPanel({
               </div>
               {openStep === item.id ? (
                 <div className="mt-3 border-t border-[var(--border)] pt-3">
+                  {item.kind === "hotel" ? <HotelStepFacts item={item} /> : null}
                   <ItemAttachments
                     bookingId={bookingId}
                     itemId={item.id}

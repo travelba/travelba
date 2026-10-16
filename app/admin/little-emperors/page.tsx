@@ -1,3 +1,4 @@
+import { LittleEmperorsDesk } from "@/components/admin/LittleEmperorsDesk";
 import { LittleEmperorsInbox } from "@/components/admin/LittleEmperorsInbox";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
@@ -43,6 +44,11 @@ export default async function AdminLittleEmperorsPage() {
           ))}
         </div>
       </section>
+      {agency ? (
+        <div className="mt-6">
+          <LittleEmperorsDesk customers={(customersResult.data || []) as PickableCustomer[]} />
+        </div>
+      ) : null}
       <div className="mt-6">
         <LittleEmperorsInbox
           rows={rowsError ? [] : ((rows || []) as CrmLeBooking[])}

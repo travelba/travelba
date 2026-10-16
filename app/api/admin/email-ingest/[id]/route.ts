@@ -13,6 +13,7 @@ import {
 import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
 import { loadEmailIngestFiles, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
+import { isLittleEmperorsLabel, LE_MAIL_COVERED } from "@/lib/crm/gmail-parse";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
@@ -107,6 +108,13 @@ export async function POST(request: Request, ctx: Ctx) {
       : parseExtractPayloadSafe(storedExtract);
     const files = await loadEmailIngestFiles(row);
     const extractPatch = body.extract ? { extract } : {};
+
+    if (
+      (action === "attach_booking" || action === "replace_booking" || action === "new_booking") &&
+      isLittleEmperorsLabel(row.label)
+    ) {
+      return jsonError(LE_MAIL_COVERED);
+    }
 
     if (action === "attach_booking" || action === "replace_booking") {
       const bookingId = String(body.booking_id || "");

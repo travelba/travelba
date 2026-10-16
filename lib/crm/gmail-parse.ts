@@ -301,6 +301,16 @@ export function isBookingCancellationLabel(name: string | null | undefined) {
   return gmailLabelMatchKey(name || "") === BOOKING_CANCELLATION_LABEL;
 }
 
+/** Label Gmail `little-emperors`. La réservation vient de l’API, pas du mail. */
+export const LITTLE_EMPERORS_LABEL = "little-emperors";
+
+export function isLittleEmperorsLabel(name: string | null | undefined) {
+  return gmailLabelMatchKey(name || "") === LITTLE_EMPERORS_LABEL;
+}
+
+export const LE_MAIL_COVERED =
+  "Couvert par l’API Little Emperors. Ce mail ne crée pas de séjour.";
+
 function splitGmailLabelList(raw: string | undefined | null): string[] {
   return (raw || "")
     .split(",")
