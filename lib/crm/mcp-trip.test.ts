@@ -10,6 +10,7 @@ import {
   addHotel,
   addVol,
   addVoyageur,
+  updateVol,
   buildFlightCard,
   buildHotelCard,
   createDossier,
@@ -241,6 +242,8 @@ test("une carte vol ou hôtel a la forme lue par le carnet", () => {
   assert.equal(itemClock(flight.start_at), "22h10");
   assert.equal(flight.details.airline_iata, "AF");
   assert.equal(flight.details.notes, "J+1");
+  assert.equal(flight.details.departure_timezone, "Europe/Paris");
+  assert.equal(flight.details.arrival_timezone, "Asia/Bangkok");
   assert.deepEqual(flight.details.party_keys, ["companion:00000000-0000-4000-8000-000000000098"]);
   assert.deepEqual(ticketTravelerNames(flight.details), ["Léa Martin"]);
   assert.equal(itemSellingAmount({ kind: "flight", amount: flight.amount, details: flight.details }), 450);
@@ -413,6 +416,12 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
   );
   assert.equal(flight.titre, "Paris → Bangkok");
   assert.equal(flight.prix_vendu, 450);
+  assert.equal(flight.prix_billet, 450);
+  assert.equal(flight.billets, 1);
+  assert.equal(flight.horaire_depart, "2026-11-02T22:10:00+01:00");
+  assert.equal(flight.horaire_arrivee, "2026-11-03T06:40:00+07:00");
+  assert.equal(flight.fuseau_depart, "Europe/Paris");
+  assert.equal(flight.fuseau_arrivee, "Asia/Bangkok");
   assert.equal(flight.visible, false);
   assert.equal(flight.notifie, false);
   assert.equal(flight.devise_dossier, "EUR");
@@ -428,6 +437,8 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
   assert.equal(details.airline, "Air France");
   assert.equal(details.from, "CDG");
   assert.equal(details.to, "BKK");
+  assert.equal(details.departure_timezone, "Europe/Paris");
+  assert.equal(details.arrival_timezone, "Asia/Bangkok");
   assert.equal(itemClock(String(flightRow.start_at)), "22h10");
   assert.equal(flightCardTitle(card(flightRow)), "Paris → Bangkok");
   const fee = db.tables.crm_booking_items.find((row) => row.kind === "expense");
@@ -540,6 +551,90 @@ test("un hôtel dans la devise du dossier porte le prix vendu", async () => {
   assert.equal(hotel.devise_dossier, "THB");
   assert.equal(db.tables.crm_booking_items[0].amount, 8000);
   assert.equal(db.tables.crm_transactions?.length || 0, 0);
+});
+
+test("prix_total est le total du groupe, et modifier_vol garde l’heure locale", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Phuket", devise: "EUR" }, client);
+  const lea = await addVoyageur({ dossier_id: dossier.id, prenoms: "Léa", nom: "Martin" }, client);
+  const camille = await addVoyageur({ dossier_id: dossier.id, prenoms: "Camille", nom: "Martin" }, client);
+  const outbound = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Thai Airways",
+      depart_iata: "CDG",
+      arrivee_iata: "HKT",
+      depart: "2026-12-25T12:10",
+      arrivee: "2026-12-26T05:50",
+      voyageurs: [lea.voyageur_id, camille.voyageur_id],
+      prix_total: 6990,
+    },
+    client
+  );
+  assert.equal(outbound.prix_billet, 3495);
+  assert.equal(outbound.prix_vendu, 6990);
+  assert.equal(outbound.billets, 2);
+  assert.equal(outbound.horaire_depart, "2026-12-25T12:10:00+01:00");
+  assert.equal(outbound.horaire_arrivee, "2026-12-26T05:50:00+07:00");
+  const outboundRow = db.tables.crm_booking_items.find((row) => row.id === outbound.id);
+  assert.equal(outboundRow?.amount, 3495);
+  assert.equal(outboundRow?.start_at, "2026-12-25T12:10:00");
+  assert.equal(outboundRow?.end_at, "2026-12-26T05:50:00");
+  assert.equal(itemClock(String(outboundRow?.start_at)), "12h10");
+  assert.equal((outboundRow?.details as Record<string, unknown>).ticket_count, 2);
+  assert.equal((outboundRow?.details as Record<string, unknown>).departure_timezone, "Europe/Paris");
+  assert.equal((outboundRow?.details as Record<string, unknown>).arrival_timezone, "Asia/Bangkok");
+
+  const inbound = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Thai Airways",
+      depart_iata: "HKT",
+      arrivee_iata: "CDG",
+      depart: "2027-01-08T11:55",
+      arrivee: "2027-01-08T19:15",
+      voyageurs: [lea.voyageur_id, camille.voyageur_id],
+      prix_total: 6348,
+    },
+    client
+  );
+  assert.equal(inbound.prix_billet, 3174);
+  assert.equal(inbound.prix_vendu, 6348);
+  assert.equal(inbound.horaire_depart, "2027-01-08T11:55:00+07:00");
+  assert.equal(inbound.horaire_arrivee, "2027-01-08T19:15:00+01:00");
+  assert.equal(db.tables.crm_bookings[0].total_amount, 13338);
+  assert.equal(db.tables.crm_transactions?.length || 0, 0);
+
+  const corrected = await updateVol(
+    {
+      dossier_id: dossier.id,
+      carte_id: outbound.id,
+      depart_iata: "CDG",
+      arrivee_iata: "HKT",
+      depart: "2026-12-25T12:10",
+      arrivee: "2026-12-26T05:50",
+      prix_total: 6990,
+    },
+    client
+  );
+  assert.equal(corrected.prix_billet, 3495);
+  assert.equal(corrected.prix_vendu, 6990);
+  assert.equal(corrected.billets, 2);
+  assert.equal(corrected.horaire_depart, "2026-12-25T12:10:00+01:00");
+  assert.equal(corrected.notifie, false);
+  const kept = db.tables.crm_booking_items.find((row) => row.id === outbound.id);
+  assert.equal(kept?.amount, 3495);
+  assert.equal(kept?.start_at, "2026-12-25T12:10:00");
+  assert.equal((kept?.details as Record<string, unknown>).ticket_count, 2);
+  assert.equal(db.tables.crm_bookings[0].total_amount, 13338);
+  assert.equal(db.tables.crm_transactions?.length || 0, 0);
+  await assert.rejects(
+    () => updateVol({ dossier_id: dossier.id, carte_id: inbound.id, voyageurs: [] }, client),
+    /au moins un voyageur/
+  );
 });
 
 test("ces outils n’envoient ni message ni synchro de formalité", () => {

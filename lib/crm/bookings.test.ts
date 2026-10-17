@@ -458,6 +458,40 @@ test("stay total is always the sum of card selling prices", () => {
   );
   assert.equal(
     bookingTotalFromItems([
+      {
+        kind: "flight",
+        amount: 800,
+        start_at: "2026-08-01T08:00:00",
+        details: { from: "CDG", to: "RAK", ticket_count: 2 },
+      },
+      {
+        kind: "flight",
+        amount: null,
+        start_at: "2026-08-08T18:00:00",
+        details: { from: "RAK", to: "CDG", ticket_count: 2 },
+      },
+    ]),
+    1600
+  );
+  assert.equal(
+    bookingTotalFromItems([
+      {
+        kind: "flight",
+        amount: 3495,
+        start_at: "2026-12-25T12:10:00",
+        details: { from: "CDG", to: "HKT", ticket_count: 2 },
+      },
+      {
+        kind: "flight",
+        amount: 3174,
+        start_at: "2027-01-08T11:55:00",
+        details: { from: "HKT", to: "CDG", ticket_count: 2 },
+      },
+    ]),
+    13338
+  );
+  assert.equal(
+    bookingTotalFromItems([
       { kind: "flight", amount: 400, start_at: "2026-08-01", details: { from: "CDG", to: "JFK" } },
       { kind: "flight", amount: 350, start_at: "2026-08-03", details: { from: "CDG", to: "LIS" } },
     ]),

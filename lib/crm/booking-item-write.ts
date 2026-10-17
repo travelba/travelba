@@ -117,3 +117,53 @@ export async function addStaffBookingCard(
   const warning = await ledgerWarning("Ajout enregistré", () => refreshBookingLedger(supabase, bookingId));
   return { item: data as Record<string, unknown>, ledgerWarning: warning };
 }
+
+/**
+ * Corrige une carte déjà au dossier. Ne change pas la visibilité et n’envoie rien.
+ * Le grand livre est recalculé ; un séjour caché ne débite pas.
+ */
+export async function patchStaffBookingCard(
+  supabase: SupabaseClient,
+  bookingId: string,
+  itemId: string,
+  body: Record<string, unknown>
+): Promise<{ item: Record<string, unknown>; ledgerWarning: string | null } | { error: string; status: number }> {
+  const { data: current, error: currentError } = await supabase
+    .from("crm_booking_items")
+    .select("id")
+    .eq("id", itemId)
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+  if (currentError) return { error: dbErrorMessage(currentError as DbErrorLike, "Carte introuvable."), status: 400 };
+  if (!current) return { error: "Carte introuvable", status: 404 };
+  const patch: Record<string, unknown> = {};
+  if ("title" in body) patch.title = body.title;
+  if ("supplier" in body) patch.supplier = body.supplier;
+  if ("confirmation_ref" in body) patch.confirmation_ref = body.confirmation_ref;
+  if ("start_at" in body) patch.start_at = body.start_at;
+  if ("end_at" in body) patch.end_at = body.end_at;
+  if ("amount" in body) patch.amount = parseMoney(moneyField(body.amount));
+  if ("details" in body) {
+    const details = parseItemDetails(body.details);
+    if ("error" in details) return { error: details.error, status: 400 };
+    patch.details = details.details;
+  }
+  if (!Object.keys(patch).length) return { error: "Rien à mettre à jour", status: 400 };
+  const { data, error } = await supabase
+    .from("crm_booking_items")
+    .update(patch)
+    .eq("id", itemId)
+    .eq("booking_id", bookingId)
+    .select("*")
+    .single();
+  if (error || !data) return { error: dbErrorMessage(error as DbErrorLike, "Carte non modifiée."), status: 400 };
+  if ("start_at" in body || "end_at" in body) {
+    try {
+      await persistBookingCardOrder(supabase, bookingId);
+    } catch (orderError) {
+      return { error: dbErrorMessage(orderError as DbErrorLike, "Ordre de la carte non enregistré."), status: 400 };
+    }
+  }
+  const warning = await ledgerWarning("Modification enregistrée", () => refreshBookingLedger(supabase, bookingId));
+  return { item: data as Record<string, unknown>, ledgerWarning: warning };
+}

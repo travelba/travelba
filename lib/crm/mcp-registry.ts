@@ -32,13 +32,17 @@ import {
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
-import { addHotel, addVol, addVoyageur, createDossier } from "@/lib/crm/mcp-trip";
+import { addHotel, addVol, addVoyageur, createDossier, updateVol } from "@/lib/crm/mcp-trip";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
 export const MCP_TOOL_CAP = 40;
+
+const PRIX_BILLET = "Prix d’un billet (unitaire). Le séjour le multiplie par le nombre de billets.";
+const PRIX_GROUPE =
+  "Total du groupe pour cette carte. Unitaire = total / billets. Un aller-retour au même prix n’est compté qu’une fois ; deux prix différents comptent tous les deux.";
 
 const text = (value: unknown, keepPieceNumber = false, keepSignedUrl = false, keepCardSecrets = false) => ({
   content: [
@@ -581,12 +585,40 @@ export const MCP_TOOLS: ToolDef[] = [
       cabine: z.string().trim().max(80).optional().describe("Cabine"),
       pnr: z.string().trim().max(40).optional().describe("PNR"),
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
-      prix: z.union([z.number(), z.string()]).optional().describe("Prix d’un billet, dans la devise"),
-      prix_total: z.union([z.number(), z.string()]).optional().describe("Total des billets, même devise"),
+      prix: z.union([z.number(), z.string()]).optional().describe(PRIX_BILLET),
+      prix_total: z.union([z.number(), z.string()]).optional().describe(PRIX_GROUPE),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
       fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
     },
     run: (args) => addVol(args),
+  },
+  {
+    name: "modifier_vol",
+    write: true,
+    description:
+      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().describe("Identifiant de la carte vol"),
+      compagnie: z.string().trim().max(120).optional().describe("Compagnie"),
+      numero: z.string().trim().max(20).optional().describe("Numéro de vol"),
+      depart_iata: z.string().trim().max(8).optional().describe("Aéroport de départ, 3 lettres"),
+      arrivee_iata: z.string().trim().max(8).optional().describe("Aéroport d’arrivée, 3 lettres"),
+      ville_depart: z.string().trim().max(80).optional().describe("Ville de départ, avec la ville d’arrivée"),
+      ville_arrivee: z.string().trim().max(80).optional().describe("Ville d’arrivée, avec la ville de départ"),
+      depart: z.string().trim().max(40).optional().describe("Décollage local, AAAA-MM-JJTHH:mm"),
+      arrivee: z.string().trim().max(40).optional().describe("Arrivée locale, AAAA-MM-JJTHH:mm"),
+      decalage_jour: z.number().optional().describe("Jours à ajouter si l’arrivée est encore le jour du départ, 0 à 3"),
+      cabine: z.string().trim().max(80).optional().describe("Cabine"),
+      pnr: z.string().trim().max(40).optional().describe("PNR"),
+      voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs. Omis : les billets déjà sur la carte restent"),
+      prix: z.union([z.number(), z.string()]).optional().describe(PRIX_BILLET),
+      prix_total: z.union([z.number(), z.string()]).optional().describe(PRIX_GROUPE),
+      devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
+      fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
+    },
+    run: (args) => updateVol(args),
   },
   {
     name: "ajouter_hotel",

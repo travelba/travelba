@@ -1,14 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { createBookingSchema, isIsoDate, parseBody } from "@/lib/crm/admin-schemas";
+import { dossierFlightStamp, timezoneForIata } from "@/lib/crm/airport-time";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
-import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
+import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { createStaffBooking, StaffWriteError, type StaffBookingInput } from "@/lib/crm/booking-create";
 import { ledgerWarning, refreshTicketingFee } from "@/lib/crm/bookings";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { addIsoDays } from "@/lib/crm/dates";
 import { resolveNationality } from "@/lib/crm/countries";
 import { companionKey, holderKey } from "@/lib/crm/household";
+import { itemTicketCount } from "@/lib/crm/item-match";
 import { parseMoney } from "@/lib/crm/money";
 import { sameRecordedTraveler } from "@/lib/crm/person-match";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
@@ -346,6 +348,10 @@ export function buildFlightCard(
   if (input.cabine) details.cabin = input.cabine;
   if (input.pnr) details.pnr = input.pnr;
   if (input.schedule.notes) details.notes = input.schedule.notes;
+  const departureZone = timezoneForIata(from);
+  const arrivalZone = timezoneForIata(to);
+  if (departureZone) details.departure_timezone = departureZone;
+  if (arrivalZone) details.arrival_timezone = arrivalZone;
   if (input.price.ticketCount) details.ticket_count = input.price.ticketCount;
   if (input.price.documentAmount != null) details.document_amount = input.price.documentAmount;
   if (input.price.documentCurrency) details.document_currency = input.price.documentCurrency;
@@ -453,17 +459,43 @@ async function passengersOf(db: Admin, bookingId: string, ids: string[]) {
   });
 }
 
+function sellingAmount(price: PricePlan) {
+  if (price.amount == null) return null;
+  const tickets = price.ticketCount && price.ticketCount > 0 ? price.ticketCount : 1;
+  return Math.round(price.amount * tickets * 100) / 100;
+}
+
+function detailText(details: Record<string, unknown>, key: string) {
+  const value = details[key];
+  return typeof value === "string" ? value : null;
+}
+
+function flightClocks(item: Record<string, unknown>) {
+  const details = item.details && typeof item.details === "object" ? (item.details as Record<string, unknown>) : {};
+  const depart = dossierFlightStamp(typeof item.start_at === "string" ? item.start_at : null, detailText(details, "from"), details.departure_timezone);
+  const arrivee = dossierFlightStamp(typeof item.end_at === "string" ? item.end_at : null, detailText(details, "to"), details.arrival_timezone);
+  return {
+    ...(depart ? { horaire_depart: depart } : {}),
+    ...(arrivee ? { horaire_arrivee: arrivee } : {}),
+    ...(detailText(details, "departure_timezone") ? { fuseau_depart: detailText(details, "departure_timezone") } : {}),
+    ...(detailText(details, "arrival_timezone") ? { fuseau_arrivee: detailText(details, "arrival_timezone") } : {}),
+  };
+}
+
 function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: PricePlan, warning: string | null) {
+  const tickets = price.ticketCount && price.ticketCount > 0 ? price.ticketCount : null;
   return {
     id: item.id,
     dossier_id: booking.id,
     reference: booking.reference,
     titre: item.title,
-    prix_vendu: price.amount,
+    prix_vendu: sellingAmount(price),
+    ...(tickets ? { prix_billet: price.amount, billets: tickets } : {}),
     prix_document: price.documentAmount,
     devise: price.devise,
     devise_dossier: booking.currency || "EUR",
-    visible: false,
+    ...(item.kind === "flight" ? flightClocks(item) : {}),
+    visible: item.visible_to_client === true,
     notifie: false,
     ...(warning ? { avertissement: warning } : {}),
   };
@@ -719,6 +751,156 @@ export async function addVol(input: Record<string, unknown>, admin?: Admin) {
   const saved = await addStaffBookingCard(db, booking.id, body);
   if ("error" in saved) throw new McpWriteError(saved.error);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
+}
+
+function stampFlightZones(details: Record<string, unknown>) {
+  const departure = timezoneForIata(detailText(details, "from"));
+  const arrival = timezoneForIata(detailText(details, "to"));
+  if (departure) details.departure_timezone = departure;
+  if (arrival) details.arrival_timezone = arrival;
+}
+
+function applyFlightPrice(details: Record<string, unknown>, price: PricePlan) {
+  if (price.ticketCount) details.ticket_count = price.ticketCount;
+  if (price.documentAmount != null) details.document_amount = price.documentAmount;
+  else delete details.document_amount;
+  if (price.documentCurrency) details.document_currency = price.documentCurrency;
+  else delete details.document_currency;
+}
+
+/** Corrige une carte vol : heure locale, fuseau d’aéroport, prix du groupe. Aucun message. */
+export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
+  const target = dossierTarget(input);
+  const carteId = uuid(input.carte_id, "Carte");
+  const db = client(admin);
+  const booking = await loadBooking(db, target);
+  const { data, error } = await db
+    .from("crm_booking_items")
+    .select("*")
+    .eq("id", carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  if (error || !data) throw new McpWriteError("Carte introuvable sur ce dossier.");
+  const item = data as Record<string, unknown>;
+  if (item.kind !== "flight") throw new McpWriteError("Cette carte n’est pas un vol.");
+  const details: Record<string, unknown> = {
+    ...(item.details && typeof item.details === "object" ? (item.details as Record<string, unknown>) : {}),
+  };
+  const patch: Record<string, unknown> = { details };
+
+  if (input.depart_iata != null && input.depart_iata !== "") details.from = iata(input.depart_iata, "Départ");
+  if (input.arrivee_iata != null && input.arrivee_iata !== "") details.to = iata(input.arrivee_iata, "Arrivée");
+  if (input.compagnie != null && input.compagnie !== "") details.airline = requiredText(input.compagnie, "Compagnie", 120);
+  if ("numero" in input) {
+    const numero = optionalText(input.numero, "Numéro de vol", 20);
+    if (numero) details.flight_number = numero;
+    else delete details.flight_number;
+  }
+  if ("cabine" in input) {
+    const cabine = optionalText(input.cabine, "Cabine", 80);
+    if (cabine) details.cabin = cabine;
+    else delete details.cabin;
+  }
+  if ("pnr" in input) {
+    const pnr = optionalText(input.pnr, "PNR", 40);
+    if (pnr) details.pnr = pnr;
+    else delete details.pnr;
+    patch.confirmation_ref = pnr;
+  }
+  if ("fournisseur" in input) patch.supplier = optionalText(input.fournisseur, "Fournisseur", 120);
+
+  const villeDepart = "ville_depart" in input ? optionalText(input.ville_depart, "Ville de départ", 80) : undefined;
+  const villeArrivee = "ville_arrivee" in input ? optionalText(input.ville_arrivee, "Ville d’arrivée", 80) : undefined;
+  if (villeDepart !== undefined || villeArrivee !== undefined) {
+    const fromCity = villeDepart !== undefined ? villeDepart : detailText(details, "city_from");
+    const toCity = villeArrivee !== undefined ? villeArrivee : detailText(details, "city_to");
+    if (Boolean(fromCity) !== Boolean(toCity)) {
+      throw new McpWriteError("Indiquez la ville de départ et la ville d’arrivée.");
+    }
+    if (fromCity && toCity) {
+      details.city_from = fromCity;
+      details.city_to = toCity;
+      patch.title = `${fromCity} → ${toCity}`;
+    }
+  }
+
+  const hasDepart = input.depart != null && input.depart !== "";
+  const hasArrivee = input.arrivee != null && input.arrivee !== "";
+  const hasOffset = input.decalage_jour != null && input.decalage_jour !== "";
+  if (hasDepart || hasArrivee || hasOffset) {
+    const schedule = flightSchedule(
+      hasDepart ? input.depart : item.start_at,
+      hasArrivee ? input.arrivee : item.end_at,
+      hasOffset ? input.decalage_jour : 0
+    );
+    patch.start_at = schedule.start_at;
+    patch.end_at = schedule.end_at;
+    if (schedule.notes) details.notes = schedule.notes;
+    else delete details.notes;
+  }
+
+  const hasVoyageurs = input.voyageurs != null && input.voyageurs !== "";
+  const voyageurIds = hasVoyageurs ? idList(input.voyageurs, "Voyageur") : null;
+  if (voyageurIds && !voyageurIds.length) throw new McpWriteError("Indiquez au moins un voyageur.");
+  const passengers = voyageurIds ? await passengersOf(db, booking.id, voyageurIds) : null;
+  if (passengers) {
+    details.passengers = passengers.map((person) => ({
+      first_name: person.first_name,
+      last_name: person.last_name,
+    }));
+    const keys = passengers.map(partyKey).filter(Boolean);
+    if (keys.length) details.party_keys = keys;
+    else delete details.party_keys;
+    details.ticket_count = passengers.length;
+  }
+
+  const prix = positiveMoney(input.prix, "Prix");
+  const prixTotal = positiveMoney(input.prix_total, "Prix total");
+  const count = passengers ? passengers.length : itemTicketCount({ kind: "flight", details });
+  let price = priceFromFlight(item, details, booking);
+  if (prix != null || prixTotal != null) {
+    const devise = input.devise == null || input.devise === "" ? price.devise : currencyOf(input.devise);
+    price = flightPrice({
+      prix,
+      prixTotal,
+      passengers: count,
+      devise,
+      dossierDevise: booking.currency || "EUR",
+    });
+    applyFlightPrice(details, price);
+    patch.amount = price.amount;
+  } else if (passengers) {
+    price = { ...price, ticketCount: passengers.length };
+  }
+
+  stampFlightZones(details);
+  const saved = await patchStaffBookingCard(db, booking.id, carteId, patch);
+  if ("error" in saved) throw new McpWriteError(saved.error);
+  return cardReply(saved.item, booking, price, saved.ledgerWarning);
+}
+
+function priceFromFlight(item: Record<string, unknown>, details: Record<string, unknown>, booking: CrmBooking): PricePlan {
+  const tickets = itemTicketCount({ kind: "flight", details });
+  const dossierDevise = booking.currency || "EUR";
+  const documentCurrency = detailText(details, "document_currency");
+  const documentAmount = typeof details.document_amount === "number" ? details.document_amount : null;
+  if (documentCurrency && documentCurrency !== dossierDevise) {
+    return {
+      amount: null,
+      ticketCount: tickets,
+      documentAmount,
+      documentCurrency,
+      devise: documentCurrency,
+    };
+  }
+  const amount = typeof item.amount === "number" ? item.amount : item.amount == null ? null : Number(item.amount);
+  return {
+    amount: amount != null && Number.isFinite(amount) ? amount : null,
+    ticketCount: tickets,
+    documentAmount: null,
+    documentCurrency: null,
+    devise: dossierDevise,
+  };
 }
 
 export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
