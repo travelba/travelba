@@ -477,7 +477,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id facultatif. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » si le séjour est visible et le client a activé WhatsApp. notifier false coupe cet envoi. Le numéro n’est pas renvoyé.",
+      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id facultatif. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » au client et au voyageur concerné s’il a un autre numéro et a activé WhatsApp. Le client déjà prévenu n’est pas renvoyé. notifier false coupe cet envoi. Le numéro n’est pas renvoyé.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
@@ -502,9 +502,13 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Renvoie le WhatsApp « formalité prête » pour une pièce déjà déposée (visa ou ETA liée à un séjour). document_id. Même règles : séjour visible, opt-in, un seul envoi par pays. Ne redépose pas le fichier.",
+      "Renvoie le WhatsApp « formalité prête » pour une pièce déjà déposée (visa ou ETA liée à un séjour). document_id. destinataires : tous (défaut), client ou voyageur. Chaque personne a son opt-in et son propre envoi : le client déjà prévenu n’est pas renvoyé, le voyageur d’un autre numéro peut l’être. Ne redépose pas le fichier.",
     input: {
       document_id: z.string().trim().max(80).describe("Identifiant de la pièce déjà dans l’espace"),
+      destinataires: z
+        .enum(["tous", "client", "voyageur"])
+        .optional()
+        .describe("tous par défaut. voyageur : seulement le voyageur de la pièce, sans renvoyer le client"),
     },
     run: (args) => notifyTravelPiece(args),
   },
