@@ -291,18 +291,170 @@ test("notifier_piece resends for an existing formality without a new file", asyn
   await assert.rejects(() => notifyTravelPiece({ document_id: TRAVELER }, admin), /Pièce introuvable/);
 });
 
+const COMPANION = "66666666-6666-4666-8666-666666666666";
+const OTHER_CLIENT = "77777777-7777-4777-8777-777777777777";
+
+function otherTraveler(phone: string | null) {
+  return {
+    visible: true,
+    travelers: [
+      { id: TRAVELER, booking_id: BOOKING, companion_id: COMPANION, is_account_holder: false, first_name: "Léa" },
+    ],
+    companions: [{ id: COMPANION, phone }],
+    customers: [
+      {
+        id: CLIENT,
+        first_name: "Camille",
+        last_name: "Martin",
+        email: "client@example.com",
+        phone: "+33611111111",
+        whatsapp_opt_in_at: "2026-01-01",
+      },
+    ],
+    messages: [{ id: "msg-sent", dedupe_key: `formalite-prete:${BOOKING}:IL`, status: "sent" }],
+  };
+}
+
+test("a traveller with another number is not blocked by the client's already sent notice", async () => {
+  const { admin, writes } = fakeCrm(otherTraveler("+33601020304"));
+  const result = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta", voyageur_id: TRAVELER }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.equal(result.notifie, false);
+  assert.deepEqual(
+    result.destinataires.map((row) => `${row.qui}:${row.raison}`),
+    ["client:Déjà envoyé.", "voyageur:Modèle WhatsApp voyageur pas encore approuvé."]
+  );
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
+
+  process.env.TWILIO_CONTENT_FORMALITE_PRETE_VOYAGEUR = "HXvoyageur";
+  try {
+    const armed = fakeCrm(otherTraveler("+33601020304"));
+    const sent = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta", voyageur_id: TRAVELER }), armed.admin, {
+      upload: async () => {},
+      reconcile: async () => {},
+    });
+    const queued = armed.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
+    assert.equal(queued?.payload.template_key, "formalite_prete_voyageur");
+    assert.equal(queued?.payload.customer_id, CLIENT);
+    assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL:voyageur:${TRAVELER}`);
+    assert.equal(JSON.stringify(queued?.payload).includes("+33601020304"), false);
+    assert.equal(JSON.stringify(queued?.payload).includes("http"), false);
+    assert.match(String(queued?.payload.body), /Léa/);
+    assert.match(String(queued?.payload.body), /ETA-IL/);
+    assert.match(String(queued?.payload.body), /TB-2026-0082/);
+    assert.match(String(queued?.payload.body), /Travel Business Agency/);
+    assert.equal(sent.destinataires.find((row) => row.qui === "voyageur")?.raison, "Message non parti.");
+    assert.equal(sent.destinataires.find((row) => row.qui === "client")?.raison, "Déjà envoyé.");
+  } finally {
+    delete process.env.TWILIO_CONTENT_FORMALITE_PRETE_VOYAGEUR;
+  }
+});
+
+test("the same handset is not notified twice", async () => {
+  const { admin, writes } = fakeCrm(otherTraveler("+33611111111"));
+  const result = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta", voyageur_id: TRAVELER }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.equal(result.destinataires.find((row) => row.qui === "voyageur")?.raison, "Même numéro que le client.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
+});
+
+test("notifier_piece can target only the traveller", async () => {
+  const docId = "55555555-5555-4555-8555-555555555555";
+  const { admin, writes } = fakeCrm({
+    ...otherTraveler(null),
+    documents: [
+      {
+        id: docId,
+        booking_id: BOOKING,
+        traveler_id: TRAVELER,
+        doc_type: "visa",
+        issuing_country: "IL",
+        customer_id: CLIENT,
+      },
+    ],
+  });
+  const skipped = await notifyTravelPiece({ document_id: docId, destinataires: "voyageur" }, admin);
+  assert.equal(skipped.raison, "Le voyageur n’a pas de numéro WhatsApp.");
+  assert.equal(skipped.destinataires.length, 1);
+  assert.equal(skipped.destinataires[0].qui, "voyageur");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+
+  const opted = fakeCrm({
+    ...otherTraveler("+33601020304"),
+    documents: [
+      {
+        id: docId,
+        booking_id: BOOKING,
+        traveler_id: TRAVELER,
+        doc_type: "eta",
+        issuing_country: "IL",
+        customer_id: CLIENT,
+      },
+    ],
+    customers: [
+      {
+        id: CLIENT,
+        first_name: "Camille",
+        email: "client@example.com",
+        phone: "+33611111111",
+        whatsapp_opt_in_at: "2026-01-01",
+      },
+      {
+        id: OTHER_CLIENT,
+        first_name: "Léa",
+        email: "voyageur@example.com",
+        phone: "+33601020304",
+        whatsapp_opt_in_at: "2026-01-02",
+      },
+    ],
+  });
+  const sent = await notifyTravelPiece({ document_id: docId, destinataires: "voyageur" }, opted.admin);
+  const queued = opted.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
+  assert.equal(queued?.payload.customer_id, OTHER_CLIENT);
+  assert.equal(queued?.payload.template_key, "formalite_prete");
+  assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL:voyageur:${TRAVELER}`);
+  assert.equal(sent.destinataires.some((row) => row.qui === "client"), false);
+  await assert.rejects(
+    () => notifyTravelPiece({ document_id: docId, destinataires: "tout" }, admin),
+    /Destinataires/
+  );
+});
+
 type Write = { op: string; table: string; payload: Record<string, unknown> };
 
-function fakeCrm(options: { visible?: boolean; documents?: Record<string, unknown>[]; messages?: Record<string, unknown>[] } = {}) {
+function fakeCrm(
+  options: {
+    visible?: boolean;
+    documents?: Record<string, unknown>[];
+    messages?: Record<string, unknown>[];
+    travelers?: Record<string, unknown>[];
+    companions?: Record<string, unknown>[];
+    customers?: Record<string, unknown>[];
+  } = {}
+) {
   const writes: Write[] = [];
   const uploads: { path: string; bytes: Buffer; mime: string }[] = [];
   const documents = (options.documents || []).map((row) => ({ ...row }));
   const messages = (options.messages || []).map((row) => ({ ...row }));
-  const customers = [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }];
+  const customers = options.customers || [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }];
   const bookings = [
-    { id: BOOKING, reference: "TB-2026-0082", customer_id: CLIENT, visible_to_client: options.visible === true },
+    {
+      id: BOOKING,
+      reference: "TB-2026-0082",
+      customer_id: CLIENT,
+      visible_to_client: options.visible === true,
+      start_date: "2026-06-04",
+      end_date: "2026-06-11",
+    },
   ];
-  const travelers = [{ id: TRAVELER, booking_id: BOOKING, companion_id: null, is_account_holder: true }];
+  const travelers = options.travelers || [
+    { id: TRAVELER, booking_id: BOOKING, companion_id: null, is_account_holder: true },
+  ];
+  const companions = options.companions || [];
 
   function from(table: string) {
     const eqs: [string, unknown][] = [];
@@ -383,9 +535,11 @@ function fakeCrm(options: { visible?: boolean; documents?: Record<string, unknow
           ? customers.filter((row) => matches(row))
           : table === "crm_bookings"
             ? bookings.filter((row) => matches(row))
-            : table === "crm_booking_travelers"
-              ? travelers.filter((row) => matches(row))
-              : table === "crm_travel_documents"
+              : table === "crm_booking_travelers"
+                ? travelers.filter((row) => matches(row))
+                : table === "crm_travel_companions"
+                  ? companions.filter((row) => matches(row))
+                : table === "crm_travel_documents"
                 ? documents.filter((row) => matches(row))
                 : table === "crm_whatsapp_messages"
                   ? messages.filter((row) => matches(row))

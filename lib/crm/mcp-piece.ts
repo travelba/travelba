@@ -4,7 +4,7 @@ import { isIsoDate } from "@/lib/crm/admin-schemas";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { DOC_TYPE_LABELS, isTravelAuthorization, type CrmBooking, type TravelDocType } from "@/lib/crm/types";
 import { resolveNationality } from "@/lib/crm/countries";
-import { notifyFormalitiesReady, type FormalityNotice } from "@/lib/crm/concierge-send";
+import { notifyFormalitiesReady, type FormalityAudience, type FormalityNotice, type FormalityRecipient } from "@/lib/crm/concierge-send";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import {
   assertBookingForCustomer,
@@ -54,7 +54,8 @@ export type PieceReconcile = (customerId: string, admin: SupabaseClient) => Prom
 export type PieceNotify = (
   bookingId: string,
   countries: string[],
-  admin: SupabaseClient
+  admin: SupabaseClient,
+  options?: { travelerIds?: string[]; audience?: FormalityAudience }
 ) => Promise<FormalityNotice[]>;
 
 export type PreparedPiece = {
@@ -249,6 +250,8 @@ export async function addTravelPiece(
       bookingId: booking?.id || null,
       docType: document.doc_type,
       issuingCountry: document.issuing_country,
+      travelerId: document.traveler_id,
+      audience: "tous",
     },
     deps?.notify ?? notifyFormalitiesReady
   );
@@ -267,6 +270,7 @@ export async function addTravelPiece(
     lien_agence: linked ? `/admin/reservations/${booking?.id}` : `/admin/clients/${customerId}`,
     notifie: notice.notifie,
     raison: notice.raison,
+    destinataires: notice.destinataires,
   };
 }
 
@@ -280,11 +284,17 @@ export async function notifyTravelPiece(
   const db = client(admin);
   const { data, error } = await db
     .from("crm_travel_documents")
-    .select("id, booking_id, doc_type, issuing_country")
+    .select("id, booking_id, traveler_id, doc_type, issuing_country")
     .eq("id", id)
     .maybeSingle();
   if (error) failDb(error, "Pièce introuvable.");
-  const doc = data as { id: string; booking_id: string | null; doc_type: string; issuing_country: string | null } | null;
+  const doc = data as {
+    id: string;
+    booking_id: string | null;
+    traveler_id: string | null;
+    doc_type: string;
+    issuing_country: string | null;
+  } | null;
   if (!doc) throw new McpWriteError("Pièce introuvable.");
   const notice = await notifyLinkedPiece(
     db,
@@ -293,33 +303,58 @@ export async function notifyTravelPiece(
       bookingId: doc.booking_id,
       docType: doc.doc_type,
       issuingCountry: doc.issuing_country,
+      travelerId: doc.traveler_id,
+      audience: audienceOf(input.destinataires),
     },
     deps?.notify ?? notifyFormalitiesReady
   );
   return {
     id: doc.id,
     dossier_id: doc.booking_id,
+    voyageur_id: doc.traveler_id,
     notifie: notice.notifie,
     raison: notice.raison,
+    destinataires: notice.destinataires,
   };
+}
+
+function audienceOf(value: unknown): FormalityAudience {
+  if (value == null || value === "") return "tous";
+  if (value === "tous" || value === "client" || value === "voyageur") return value;
+  throw new McpWriteError("Destinataires : voyageur, client ou tous.");
 }
 
 async function notifyLinkedPiece(
   admin: SupabaseClient,
-  input: { notifier: boolean; bookingId: string | null; docType: string; issuingCountry: string | null },
+  input: {
+    notifier: boolean;
+    bookingId: string | null;
+    docType: string;
+    issuingCountry: string | null;
+    travelerId: string | null;
+    audience: FormalityAudience;
+  },
   notify: PieceNotify
-) {
-  if (!input.notifier) return { notifie: false, raison: "Notification non demandée." };
-  if (!input.bookingId) return { notifie: false, raison: "La pièce n’est pas liée à un séjour." };
-  if (!isTravelAuthorization(input.docType)) return { notifie: false, raison: "La pièce n’est pas une formalité." };
+): Promise<{ notifie: boolean; raison: string | null; destinataires: FormalityRecipient[] }> {
+  const quiet = (raison: string) => ({ notifie: false, raison, destinataires: [] as FormalityRecipient[] });
+  if (!input.notifier) return quiet("Notification non demandée.");
+  if (!input.bookingId) return quiet("La pièce n’est pas liée à un séjour.");
+  if (!isTravelAuthorization(input.docType)) return quiet("La pièce n’est pas une formalité.");
   const iso = resolveNationality(input.issuingCountry);
-  if (!iso) return { notifie: false, raison: "Pays émetteur manquant." };
+  if (!iso) return quiet("Pays émetteur manquant.");
   try {
-    const [row] = await notify(input.bookingId, [iso], admin);
-    if (!row) return { notifie: false, raison: "Message non parti." };
-    return { notifie: row.notifie, raison: row.notifie ? null : row.raison };
+    const [row] = await notify(input.bookingId, [iso], admin, {
+      travelerIds: input.travelerId ? [input.travelerId] : [],
+      audience: input.audience,
+    });
+    if (!row) return quiet("Message non parti.");
+    return {
+      notifie: row.notifie,
+      raison: row.notifie ? null : row.raison,
+      destinataires: row.destinataires || [],
+    };
   } catch (err) {
     console.error("[mcp] piece", err instanceof Error ? err.message : "error");
-    return { notifie: false, raison: "Message non parti." };
+    return quiet("Message non parti.");
   }
 }
