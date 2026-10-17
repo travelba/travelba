@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveNationality } from "./countries";
-import { safeFileName, uploadCrmFile } from "./files";
+import { uploadCrmFile } from "./files";
 import { emptyToNull, type ExtractedIdentity } from "./identity";
 import { assignPassportsToParty, type PassportTarget } from "./passport-assign";
 import { distinctPassportPeople, identitiesFromForm } from "./passport-extract";
@@ -9,6 +9,7 @@ import type { PersonName } from "./person-match";
 import { reconcileCustomerParty } from "./reconcile-party";
 import {
   applyIdentityFromIdentity,
+  customerDocumentStoragePath,
   insertTravelDocument,
 } from "./travel-document-write";
 import type { CrmTravelDocument } from "./types";
@@ -56,7 +57,7 @@ export async function persistImportedPassports(
   let mimeType: string | null = null;
   if (opts.file && opts.file.size > 0) {
     const bytes = Buffer.from(await opts.file.arrayBuffer());
-    storagePath = `customers/${opts.customerId}/documents/${Date.now()}-${safeFileName(opts.file.name)}`;
+    storagePath = customerDocumentStoragePath(opts.customerId, opts.file.name);
     await uploadCrmFile(storagePath, bytes, opts.file.type || "application/octet-stream");
     fileName = opts.file.name;
     mimeType = opts.file.type;

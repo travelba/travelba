@@ -1,9 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { uploadCrmFile } from "@/lib/crm/files";
 import { assignVisaHolders, type VisaCountry } from "@/lib/crm/visa-assign";
 import { readVisaHolders } from "@/lib/crm/visa-read";
-import { insertTravelDocument } from "@/lib/crm/travel-document-write";
+import { customerDocumentStoragePath, insertTravelDocument } from "@/lib/crm/travel-document-write";
 import type { CrmBookingTraveler } from "@/lib/crm/types";
 
 const MAX_FILES = 15;
@@ -34,7 +34,7 @@ export async function saveVisaUploads(
       const result = assignVisaHolders(holders, input.travelers, input.countries);
       errors.push(...result.errors);
       if (!result.assigned.length) continue;
-      const storagePath = `customers/${input.customerId}/documents/${Date.now()}-${safeFileName(file.name)}`;
+      const storagePath = customerDocumentStoragePath(input.customerId, file.name);
       await uploadCrmFile(storagePath, Buffer.from(bytes), file.type || "application/octet-stream");
       for (const visa of result.assigned) {
         await insertTravelDocument(supabase, {
