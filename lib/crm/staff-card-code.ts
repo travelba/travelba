@@ -38,4 +38,4 @@ export function staffCardCodeMatches(code: string, stored: string | null | undef
 }
 
 /** Empreinte du code maître agence. Jamais le code en clair. */
-export const AGENCY_MASTER_CODE_HASH = "scrypt$FfFJlezGTER5PomxdMXiZw==$4MgdjCKQurP54p51z2SD6ShANJtPAiUW8agZJ6+DDoo=";
+export const AGENCY_MASTER_CODE_HASH = "scrypt$Fr7jb1bBMaIuJunqjlDTvw==$12XjDyEL6WWlIy1SU/f1AxyLTcwBXX6gxtHY0ys4fJQ=";
