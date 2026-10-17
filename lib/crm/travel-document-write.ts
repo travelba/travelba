@@ -29,6 +29,8 @@ export type TravelDocumentInput = {
   mimeType?: string | null;
   /** false : conserver les visas déjà déposés pour ce voyageur. */
   replacePrevious?: boolean;
+  /** false : ne pas relancer ESTA / ETA (aucun message). Défaut : la synchro de la fiche. */
+  formalities?: boolean;
 } & Partial<DocumentIdentityFields>;
 
 function asDocType(value: string | null | undefined): TravelDocType {
@@ -147,7 +149,7 @@ export async function insertTravelDocument(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  if (docType === "passport") {
+  if (input.formalities !== false && docType === "passport") {
     try {
       const { createServiceClient } = await import("@/lib/supabase/admin");
       const { syncEstaForCustomer } = await import("@/lib/crm/esta-run");
@@ -216,7 +218,7 @@ export async function cloneTravelDocument(
   supabase: SupabaseClient,
   sourceId: string,
   customerId: string,
-  opts: { bookingId: string; travelerId?: string | null; companionId?: string | null }
+  opts: { bookingId: string; travelerId?: string | null; companionId?: string | null; formalities?: boolean }
 ) {
   const { data: source, error } = await supabase
     .from("crm_travel_documents")
@@ -248,6 +250,7 @@ export async function cloneTravelDocument(
     storagePath: source.storage_path,
     fileName: source.file_name,
     mimeType: source.mime_type,
+    formalities: opts.formalities,
   });
 }
 

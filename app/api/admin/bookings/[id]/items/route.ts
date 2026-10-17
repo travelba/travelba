@@ -12,8 +12,8 @@ import {
 } from "@/lib/crm/bookings";
 import { detailsForCardVisibility } from "@/lib/crm/carnet";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
-import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
+import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { BOOKING_ITEM_KINDS, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
@@ -240,64 +240,16 @@ export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   if (body?.commit === true) return commitStaySteps(auth.supabase, id, body);
-  const title = String(body?.title || "").trim();
-  const kind = knownKind(body?.kind || "fee");
-  if (!kind) return jsonError("Type de carte inconnu");
-  if (!title) return jsonError("Titre requis");
-  const amount = parseMoney(body?.amount);
-  if (isLedgerExpenseKind(kind) && (amount == null || amount <= 0)) {
-    return jsonError("Montant requis");
-  }
-  const { data: existing } = await auth.supabase
-    .from("crm_booking_items")
-    .select("sort_order, kind, lifecycle, details")
-    .eq("booking_id", id);
-  const maxSort = (existing || []).reduce(
-    (max, row) => Math.max(max, Number(row.sort_order || 0)),
-    -1
-  );
-  const sortOrder =
-    body?.sort_order == null || body.sort_order === "" ? maxSort + 1 : parseSortOrder(body.sort_order);
-  if (sortOrder == null) return jsonError(SORT_ORDER_ERROR);
-  const details = parseItemDetails(body?.details);
-  if ("error" in details) return jsonError(details.error);
-  const txId = isLedgerExpenseKind(kind) ? pliantExpenseTransactionId(details.details) : null;
-  if (txId && linkedPliantTransactionIds(existing || []).has(txId)) {
-    return jsonError("Cette dépense est déjà au dossier.", 409);
-  }
-  const company = await billingCompanyPatch(auth.supabase, id, body?.billing_company_id);
-  if ("error" in company && company.error) return jsonError(company.error);
-  const { data, error } = await auth.supabase
-    .from("crm_booking_items")
-    .insert({
-      booking_id: id,
-      kind,
-      title,
-      supplier: body?.supplier || null,
-      confirmation_ref: body?.confirmation_ref || null,
-      start_at: body?.start_at || null,
-      end_at: body?.end_at || null,
-      amount,
-      include_in_ledger: isLedgerExpenseKind(kind)
-        ? true
-        : parseIncludeInLedger(body?.include_in_ledger, false),
-      sort_order: sortOrder,
-      details: details.details,
-      visible_to_client: false,
-      ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
-    })
-    .select("*")
-    .single();
-  if (error) return dbError(error, 400);
-  if (!isLedgerExpenseKind(kind)) {
-    try {
-      await persistBookingCardOrder(auth.supabase, id, { createdIds: [String(data.id)] });
-    } catch (orderError) {
-      return dbError(orderError as { message?: string; code?: string }, 400);
-    }
-  }
+  const saved = await addStaffBookingCard(auth.supabase, id, (body || {}) as Record<string, unknown>);
+  if ("error" in saved) return jsonError(saved.error, saved.status);
   scheduleFormalitySync(id);
-  return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, id, "Ajout enregistré")) });
+  revalidatePath(`/admin/reservations/${id}`);
+  revalidatePath("/admin/transactions");
+  revalidatePath("/mon-compte/transactions");
+  return NextResponse.json({
+    item: saved.item,
+    ...(saved.ledgerWarning ? { ledger_warning: saved.ledgerWarning } : {}),
+  });
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
