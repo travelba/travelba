@@ -15,6 +15,7 @@ import {
   readRevolutEnAttente,
   readStripeEnAttente,
   readServicesAConfirmer,
+  readJournalConnexions,
   readTableauDeBord,
 } from "@/lib/crm/mcp-read";
 import {
@@ -131,6 +132,12 @@ export const MCP_TOOLS: ToolDef[] = [
     description:
       "À faire aujourd’hui : mails, Little Emperors, formalités, services, départs, pièces, soldes Revolut, Stripe et Pliant. Lecture seule.",
     run: () => readTableauDeBord(),
+  },
+  {
+    name: "journal_connexions",
+    description:
+      "Dernières connexions des clients et les gestes de chaque session. Lecture seule. Sans e-mail ni numéro.",
+    run: () => readJournalConnexions(),
   },
   {
     name: "chercher_clients",

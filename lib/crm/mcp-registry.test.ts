@@ -4,6 +4,7 @@ import { MCP_TOOL_CAP, MCP_TOOLS, previewMcpTool } from "./mcp-registry";
 
 const EXPECTED = [
   "tableau_de_bord",
+  "journal_connexions",
   "chercher_clients",
   "fiche_client",
   "chercher_dossiers",

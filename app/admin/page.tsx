@@ -5,8 +5,10 @@ import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { addIsoDays } from "@/lib/crm/dates";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
+import { loadConnectionJournal } from "@/lib/crm/connection-journal";
 import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { AgencyAccountBalances } from "@/components/admin/AccountBalance";
+import { ConnectionJournal } from "@/components/admin/ConnectionJournal";
 import { RecentMails } from "@/components/admin/RecentMails";
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
@@ -48,6 +50,7 @@ export default async function AdminHomePage() {
     serviceLines,
     agencyAccounts,
     recentMails,
+    connections,
   ] = await Promise.all([
     supabase
       .from("crm_bookings")
@@ -92,6 +95,7 @@ export default async function AdminHomePage() {
     loadAgencyServiceDesk(supabase),
     loadAgencyAccounts(),
     loadDashboardMails(supabase),
+    loadConnectionJournal(supabase),
   ]);
   const customersTotal = customerCount ?? 0;
   const launchItems = buildLaunchItems({
@@ -164,6 +168,8 @@ export default async function AdminHomePage() {
           <p className="mt-2 text-sm text-muted">Rien en attente. Bonne journée.</p>
         )}
       </section>
+
+      <ConnectionJournal sessions={connections} />
 
       <RecentMails mails={recentMails} />
 
