@@ -5,7 +5,8 @@ import {
   identityFieldsFromForm,
   type DocumentIdentityFields,
 } from "./document-identity";
-import { removeCrmFiles } from "./files";
+import { removeCrmFiles, safeFileName, uploadCrmFile } from "./files";
+import { assertUpload } from "./upload-policy";
 import { emptyToNull, holderAddressPatch, printedAddressFromParts } from "./identity";
 import { cleanPersonalNumber } from "./passport-extract";
 import { DOC_TYPES, type CrmTravelDocument, type TravelDocType } from "./types";
@@ -175,6 +176,40 @@ export async function insertTravelDocument(
     });
   }
   return data as CrmTravelDocument;
+}
+
+/** Même chemin que le formulaire Pièces : `customers/<id>/documents/<heure>-<nom>`. */
+export function customerDocumentStoragePath(customerId: string, fileName: string, now = Date.now()) {
+  return `customers/${customerId}/documents/${now}-${safeFileName(fileName)}`;
+}
+
+export type TravelDocumentUpload = {
+  name: string;
+  type: string;
+  bytes: Uint8Array;
+};
+
+/**
+ * Pièce du formulaire agence (et du même geste MCP) : contrôle du fichier,
+ * coffre `crm-files`, ligne `crm_travel_documents`. Pas de message au client.
+ */
+export async function saveUploadedTravelDocument(
+  supabase: SupabaseClient,
+  input: TravelDocumentInput,
+  file: TravelDocumentUpload,
+  upload: (path: string, bytes: Buffer, contentType: string) => Promise<unknown> = uploadCrmFile
+) {
+  const name = file.name;
+  const type = file.type || "";
+  assertUpload({ size: file.bytes.byteLength, type, name });
+  const storagePath = customerDocumentStoragePath(input.customerId, name);
+  await upload(storagePath, Buffer.from(file.bytes), type || "application/octet-stream");
+  return insertTravelDocument(supabase, {
+    ...input,
+    storagePath,
+    fileName: name,
+    mimeType: type,
+  });
 }
 
 export async function cloneTravelDocument(

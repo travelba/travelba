@@ -31,6 +31,7 @@ import {
   updateBooking,
   updateClient,
 } from "@/lib/crm/mcp-write";
+import { addTravelPiece } from "@/lib/crm/mcp-piece";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
@@ -462,6 +463,26 @@ export const MCP_TOOLS: ToolDef[] = [
       societe: z.string().max(200).optional().describe("Société"),
     },
     run: (args) => updateClient(args),
+  },
+  {
+    name: "ajouter_piece",
+    write: true,
+    description:
+      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id facultatif. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée. N’envoie ni WhatsApp ni e-mail.",
+    input: {
+      client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      voyageur_id: z.string().trim().max(80).optional().describe("Voyageur du dossier, s’il y en a un"),
+      type: z.string().trim().max(40).describe("visa, eta, passeport, carte_identite, assurance ou autre"),
+      pays: z.string().trim().max(80).optional().describe("Pays émetteur, code ou nom"),
+      numero: z.string().trim().max(40).optional().describe("Numéro de la pièce. Il n’est pas renvoyé"),
+      expiration: z.string().trim().max(40).optional().describe("Expiration, AAAA-MM-JJ"),
+      nom_fichier: z.string().trim().max(180).describe("Nom du fichier, ex. eta-il.pdf"),
+      type_mime: z.string().trim().max(120).optional().describe("Type mime, ex. application/pdf"),
+      contenu: z.string().trim().max(36_000_000).describe("Fichier en base64, 25 Mo maximum"),
+    },
+    run: (args) => addTravelPiece(args),
   },
 ];
 

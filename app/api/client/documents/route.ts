@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
-import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
 import { persistPassportsFromForm } from "@/lib/crm/passport-import";
 import { assertUpload } from "@/lib/crm/upload-policy";
@@ -10,6 +9,7 @@ import {
   cloneTravelDocument,
   deleteTravelDocuments,
   insertTravelDocument,
+  saveUploadedTravelDocument,
   travelDocumentFromForm,
 } from "@/lib/crm/travel-document-write";
 import { documentActivitySummary, pieceActivityDetail, recordCustomerActivity, stayMention } from "@/lib/crm/customer-activity";
@@ -74,22 +74,14 @@ export async function POST(request: Request) {
         created_companions: imported.createdCompanions,
       });
     }
-    let storagePath: string | null = null;
-    let fileName: string | null = null;
-    let mimeType: string | null = null;
-    if (file instanceof File && file.size > 0) {
-      const bytes = Buffer.from(await file.arrayBuffer());
-      storagePath = `customers/${auth.customer.id}/documents/${Date.now()}-${safeFileName(file.name)}`;
-      await uploadCrmFile(storagePath, bytes, file.type || "application/octet-stream");
-      fileName = file.name;
-      mimeType = file.type;
-    }
-    const document = await insertTravelDocument(auth.supabase, {
-      ...travelDocumentFromForm(form, auth.customer.id),
-      storagePath,
-      fileName,
-      mimeType,
-    });
+    const document =
+      file instanceof File && file.size > 0
+        ? await saveUploadedTravelDocument(auth.supabase, travelDocumentFromForm(form, auth.customer.id), {
+            name: file.name,
+            type: file.type,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+          })
+        : await insertTravelDocument(auth.supabase, travelDocumentFromForm(form, auth.customer.id));
     await applyIdentityFromForm(auth.supabase, form, auth.customer.id, companionId, travelerId);
     await reconcileCustomerParty(auth.customer.id);
     await recordCustomerActivity({
