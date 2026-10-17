@@ -4,6 +4,9 @@ import {
   conciergeContentDrafts,
   conciergeContentSid,
   conciergeContentVariables,
+  travellerFormalityBody,
+  travellerFormalityMessage,
+  travellerFormalityVariables,
   conciergeExemplars,
   conciergePhotoTemplate,
   noticeCardTemplate,
@@ -559,4 +562,34 @@ test("sans SID approuvé, Twilio n’est pas appelé", async () => {
       else process.env[key] = value;
     }
   }
+});
+
+test("la formalité du voyageur n’a ni bouton ni lien", () => {
+  const draft = conciergeContentDrafts().find((row) => row.template === "formalite_prete_voyageur");
+  assert.ok(draft);
+  assert.equal(draft?.env, "TWILIO_CONTENT_FORMALITE_PRETE_VOYAGEUR");
+  const types = draft?.create.types as Record<string, { body?: string; actions?: unknown[] }>;
+  assert.equal(types["twilio/call-to-action"], undefined);
+  assert.equal(types["whatsapp/card"], undefined);
+  assert.equal(types["twilio/text"]?.actions, undefined);
+  assert.equal(types["twilio/text"]?.body, travellerFormalityBody());
+  assert.equal(/https?:|travelba\.fr|\{\{/.test(travellerFormalityBody().replace(/\{\{\d+\}\}/g, "")), false);
+  assert.match(travellerFormalityBody(), /Travel Business Agency/);
+  const variables = travellerFormalityVariables({
+    firstName: "Léa",
+    formality: "ETA-IL",
+    reference: "TB-2026-0082",
+    startDate: "2026-06-04",
+    endDate: "2026-06-11",
+  });
+  assert.ok(variables);
+  const body = travellerFormalityMessage(variables || {});
+  assert.match(body, /Bonjour Léa/);
+  assert.match(body, /Votre ETA-IL pour le séjour TB-2026-0082, du 4 juin 2026 au 11 juin 2026 est prête/);
+  assert.equal(body.includes("http"), false);
+  assert.equal(noticeCardTemplate("formalite_prete_voyageur"), null);
+  assert.equal(
+    travellerFormalityVariables({ firstName: "Léa", formality: "https://evil", reference: "TB-2026-0082" }),
+    null
+  );
 });

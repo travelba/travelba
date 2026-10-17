@@ -20,6 +20,9 @@ import {
   normalizePieceKind,
   PIECES_WINDOW_MS,
   planFormalityReady,
+  safeFormalityName,
+  travellerFormalityMessage,
+  travellerFormalityVariables,
   planMissingPieceNotices,
   planPiecesNotices,
   generatedStayPhotoId,
@@ -355,6 +358,45 @@ function stayPlace(booking: { destination: string | null; title: string | null }
   return stayPlaceName(booking.destination, booking.title);
 }
 
+/** Modèle sans bouton. Le numéro vient du compagnon, jamais du client du séjour. */
+async function deliverTravellerPlain(admin: Admin, row: QueueRow, booking: CrmBooking) {
+  const sid = conciergeContentSid("formalite_prete_voyageur");
+  if (!sid || !row.payload?.travelerId) return;
+  const handset = await loadTravellerHandset(admin, booking.id, row.payload.travelerId);
+  if (!handset) {
+    await markResult(admin, row.id, { ok: false, reason: "no_phone" });
+    return;
+  }
+  const formality = safeFormalityName(entryForFrenchPassport(row.payload.iso).formality);
+  const variables = formality
+    ? travellerFormalityVariables({
+        firstName: handset.firstName,
+        formality,
+        reference: booking.reference,
+        startDate: booking.start_date,
+        endDate: booking.end_date,
+      })
+    : null;
+  if (!variables) {
+    await markResult(admin, row.id, { ok: false, reason: "rejected", detail: "variables absentes" });
+    return;
+  }
+  const body = travellerFormalityMessage(variables);
+  if (body !== row.body) {
+    await admin
+      .from("crm_whatsapp_messages")
+      .update({ body, template_key: "formalite_prete_voyageur" })
+      .eq("id", row.id);
+  }
+  const result = await sendContentTemplate({ phone: handset.phone, contentSid: sid, variables });
+  await markResult(
+    admin,
+    row.id,
+    result,
+    result.ok ? { templateKey: "formalite_prete_voyageur" } : undefined
+  );
+}
+
 async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
   if (!row.booking_id || !row.customer_id || !row.dedupe_key) return;
   const booking = await loadBooking(admin, row.booking_id);
@@ -482,6 +524,11 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       reference: booking.reference,
       card: noticeCardTemplate(plan.template),
     });
+    return;
+  }
+
+  if (row.template_key === "formalite_prete_voyageur") {
+    await deliverTravellerPlain(admin, row, booking);
     return;
   }
 
@@ -714,11 +761,10 @@ async function consentedCustomer(admin: Admin, phone: string) {
   );
 }
 
-/** Compagnon différent du client : son propre opt-in, jamais le lien magique du client. */
-async function travelerTarget(admin: Admin, booking: CrmBooking, client: CustomerRow | null, travelerId: string) {
+async function loadTravellerHandset(admin: Admin, bookingId: string, travelerId: string) {
   const { data } = await admin
     .from("crm_booking_travelers")
-    .select("id, booking_id, companion_id, is_account_holder")
+    .select("id, booking_id, companion_id, is_account_holder, first_name")
     .eq("id", travelerId)
     .maybeSingle();
   const traveler = data as {
@@ -726,11 +772,9 @@ async function travelerTarget(admin: Admin, booking: CrmBooking, client: Custome
     booking_id: string;
     companion_id: string | null;
     is_account_holder: boolean;
+    first_name: string | null;
   } | null;
-  if (!traveler || traveler.booking_id !== booking.id) {
-    return { kind: "skip" as const, raison: "La pièce n’est pas liée à un voyageur." };
-  }
-  if (traveler.is_account_holder) return { kind: "same" as const };
+  if (!traveler || traveler.booking_id !== bookingId) return null;
   let phone: string | null = null;
   if (traveler.companion_id) {
     const { data: companion } = await admin
@@ -738,17 +782,24 @@ async function travelerTarget(admin: Admin, booking: CrmBooking, client: Custome
       .select("phone")
       .eq("id", traveler.companion_id)
       .maybeSingle();
-    phone = (companion as { phone?: string | null } | null)?.phone || null;
+    phone = handset((companion as { phone?: string | null } | null)?.phone);
   }
-  if (!handset(phone)) return { kind: "skip" as const, raison: "Le voyageur n’a pas de numéro WhatsApp." };
-  if (client && sameHandset(client, phone)) return { kind: "same" as const };
-  const consented = await consentedCustomer(admin, phone || "");
-  if (!consented || consented.id === booking.customer_id) {
-    return consented?.id === booking.customer_id
-      ? { kind: "same" as const }
-      : { kind: "skip" as const, raison: "Le voyageur n’a pas activé WhatsApp." };
+  return { traveler, phone, firstName: (traveler.first_name || "").trim() };
+}
+
+/** Compagnon différent du client. Une fiche opt-in garde le bouton ; sinon le modèle sans lien. */
+async function travelerTarget(admin: Admin, booking: CrmBooking, client: CustomerRow | null, travelerId: string) {
+  const loaded = await loadTravellerHandset(admin, booking.id, travelerId);
+  if (!loaded) return { kind: "skip" as const, raison: "La pièce n’est pas liée à un voyageur." };
+  if (loaded.traveler.is_account_holder) return { kind: "same" as const };
+  if (!loaded.phone) return { kind: "skip" as const, raison: "Le voyageur n’a pas de numéro WhatsApp." };
+  if (client && sameHandset(client, loaded.phone)) return { kind: "same" as const };
+  const consented = await consentedCustomer(admin, loaded.phone);
+  if (consented && consented.id !== booking.customer_id) {
+    return { kind: "send" as const, customerId: consented.id };
   }
-  return { kind: "send" as const, customerId: consented.id };
+  if (consented?.id === booking.customer_id) return { kind: "same" as const };
+  return { kind: "plain" as const, firstName: loaded.firstName };
 }
 
 async function sendFormalityRecipient(
@@ -781,7 +832,46 @@ async function sendFormalityRecipient(
   return { qui: input.qui, notifie: false, raison: "Message non parti." };
 }
 
-/** WhatsApp « formalité prête ». Client et voyageur ont chacun leur envoi, leur opt-in et leur dédoublonnage. */
+const TRAVELLER_TEMPLATE_PENDING = "Modèle WhatsApp voyageur pas encore approuvé.";
+
+/** Numéro d’agence, sans fiche : modèle Utility sans bouton. Rien n’est mis en file si le SID manque. */
+async function sendPlainTraveller(
+  admin: Admin,
+  booking: CrmBooking,
+  input: { dedupeKey: string; iso: string; travelerId: string; firstName: string }
+): Promise<FormalityRecipient> {
+  const previous = await findByDedupe(admin, input.dedupeKey);
+  if (previous?.status === "sent") return { qui: "voyageur", notifie: false, raison: "Déjà envoyé." };
+  if (!conciergeContentSid("formalite_prete_voyageur")) {
+    return { qui: "voyageur", notifie: false, raison: TRAVELLER_TEMPLATE_PENDING };
+  }
+  const formality = safeFormalityName(entryForFrenchPassport(input.iso).formality);
+  const variables = formality
+    ? travellerFormalityVariables({
+        firstName: input.firstName,
+        formality,
+        reference: booking.reference,
+        startDate: booking.start_date,
+        endDate: booking.end_date,
+      })
+    : null;
+  if (!variables) return { qui: "voyageur", notifie: false, raison: "Message non parti." };
+  const row = await saveQueue(admin, {
+    dedupeKey: input.dedupeKey,
+    customerId: booking.customer_id,
+    bookingId: booking.id,
+    templateKey: "formalite_prete_voyageur",
+    body: travellerFormalityMessage(variables),
+    payload: { iso: input.iso, travelerId: input.travelerId },
+  });
+  if (row.status === "sent") return { qui: "voyageur", notifie: false, raison: "Déjà envoyé." };
+  await deliverRow(admin, row, new Date());
+  const after = await findByDedupe(admin, input.dedupeKey);
+  if (after?.status === "sent") return { qui: "voyageur", notifie: true, raison: null };
+  return { qui: "voyageur", notifie: false, raison: "Message non parti." };
+}
+
+/** WhatsApp « formalité prête ». Client et voyageur ont chacun leur envoi et leur dédoublonnage. */
 export async function notifyFormalitiesReady(
   bookingId: string,
   countries: string[],
@@ -875,6 +965,17 @@ export async function notifyFormalitiesReady(
             }
             if (target.kind === "skip") {
               destinataires.push({ qui: "voyageur", notifie: false, raison: target.raison });
+              continue;
+            }
+            if (target.kind === "plain") {
+              destinataires.push(
+                await sendPlainTraveller(admin, booking, {
+                  dedupeKey: `formalite-prete:${booking.id}:${code}:voyageur:${travelerId}`,
+                  iso: code,
+                  travelerId,
+                  firstName: target.firstName,
+                })
+              );
               continue;
             }
             destinataires.push(

@@ -297,7 +297,9 @@ const OTHER_CLIENT = "77777777-7777-4777-8777-777777777777";
 function otherTraveler(phone: string | null) {
   return {
     visible: true,
-    travelers: [{ id: TRAVELER, booking_id: BOOKING, companion_id: COMPANION, is_account_holder: false }],
+    travelers: [
+      { id: TRAVELER, booking_id: BOOKING, companion_id: COMPANION, is_account_holder: false, first_name: "Léa" },
+    ],
     companions: [{ id: COMPANION, phone }],
     customers: [
       {
@@ -322,9 +324,32 @@ test("a traveller with another number is not blocked by the client's already sen
   assert.equal(result.notifie, false);
   assert.deepEqual(
     result.destinataires.map((row) => `${row.qui}:${row.raison}`),
-    ["client:Déjà envoyé.", "voyageur:Le voyageur n’a pas activé WhatsApp."]
+    ["client:Déjà envoyé.", "voyageur:Modèle WhatsApp voyageur pas encore approuvé."]
   );
   assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
+
+  process.env.TWILIO_CONTENT_FORMALITE_PRETE_VOYAGEUR = "HXvoyageur";
+  try {
+    const armed = fakeCrm(otherTraveler("+33601020304"));
+    const sent = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta", voyageur_id: TRAVELER }), armed.admin, {
+      upload: async () => {},
+      reconcile: async () => {},
+    });
+    const queued = armed.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
+    assert.equal(queued?.payload.template_key, "formalite_prete_voyageur");
+    assert.equal(queued?.payload.customer_id, CLIENT);
+    assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL:voyageur:${TRAVELER}`);
+    assert.equal(JSON.stringify(queued?.payload).includes("+33601020304"), false);
+    assert.equal(JSON.stringify(queued?.payload).includes("http"), false);
+    assert.match(String(queued?.payload.body), /Léa/);
+    assert.match(String(queued?.payload.body), /ETA-IL/);
+    assert.match(String(queued?.payload.body), /TB-2026-0082/);
+    assert.match(String(queued?.payload.body), /Travel Business Agency/);
+    assert.equal(sent.destinataires.find((row) => row.qui === "voyageur")?.raison, "Message non parti.");
+    assert.equal(sent.destinataires.find((row) => row.qui === "client")?.raison, "Déjà envoyé.");
+  } finally {
+    delete process.env.TWILIO_CONTENT_FORMALITE_PRETE_VOYAGEUR;
+  }
 });
 
 test("the same handset is not notified twice", async () => {
@@ -390,6 +415,7 @@ test("notifier_piece can target only the traveller", async () => {
   const sent = await notifyTravelPiece({ document_id: docId, destinataires: "voyageur" }, opted.admin);
   const queued = opted.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
   assert.equal(queued?.payload.customer_id, OTHER_CLIENT);
+  assert.equal(queued?.payload.template_key, "formalite_prete");
   assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL:voyageur:${TRAVELER}`);
   assert.equal(sent.destinataires.some((row) => row.qui === "client"), false);
   await assert.rejects(
@@ -416,7 +442,14 @@ function fakeCrm(
   const messages = (options.messages || []).map((row) => ({ ...row }));
   const customers = options.customers || [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }];
   const bookings = [
-    { id: BOOKING, reference: "TB-2026-0082", customer_id: CLIENT, visible_to_client: options.visible === true },
+    {
+      id: BOOKING,
+      reference: "TB-2026-0082",
+      customer_id: CLIENT,
+      visible_to_client: options.visible === true,
+      start_date: "2026-06-04",
+      end_date: "2026-06-11",
+    },
   ];
   const travelers = options.travelers || [
     { id: TRAVELER, booking_id: BOOKING, companion_id: null, is_account_holder: true },

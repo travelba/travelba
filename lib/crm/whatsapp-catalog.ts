@@ -84,7 +84,8 @@ function draftSurface(template: ConciergeTemplate): DraftSurface {
   >;
   const card = types["whatsapp/card"];
   const text = types["twilio/call-to-action"];
-  const block = card || text;
+  const plain = types["twilio/text"];
+  const block = card || text || plain;
   if (!block?.body) throw new Error(`corps absent: ${template}`);
   return {
     body: block.body,
@@ -141,7 +142,15 @@ function bubbleFrom(template: ConciergeTemplate, variables: Record<string, strin
 
 function wiredBubble(
   template: ConciergeTemplate,
-  extra?: { variable?: string | null; media?: boolean; date?: string | null }
+  extra?: {
+    variable?: string | null;
+    media?: boolean;
+    date?: string | null;
+    givenName?: string | null;
+    formality?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+  }
 ): WhatsappBubble {
   const variables = conciergeContentVariables({
     template,
@@ -151,6 +160,10 @@ function wiredBubble(
     mediaUrl: extra?.media === false ? null : conciergeTemplateImage(template) || COVER,
     variable: extra?.variable,
     date: extra?.date,
+    givenName: extra?.givenName,
+    formality: extra?.formality,
+    startDate: extra?.startDate,
+    endDate: extra?.endDate,
   });
   if (!variables) throw new Error(`envoi impossible: ${template}`);
   return bubbleFrom(template, variables);
@@ -526,6 +539,17 @@ function catalogGroups(): WhatsappCatalogGroup[] {
           bubble: wiredBubble("formalite_prete_carte_photo", { variable: "ESTA" }),
           fallback: { template: "formalite_prete_carte", variable: "ESTA" },
           earlier: { template: "formalite_prete", variable: "ESTA" },
+        }),
+        message({
+          id: "formalite-prete-voyageur",
+          title: "La formalité est prête, sans espace",
+          when: "Le voyageur a un numéro, sans fiche ni opt-in. Pas de bouton, pas de lien.",
+          bubble: wiredBubble("formalite_prete_voyageur", {
+            givenName: FIRST_NAME,
+            formality: "ETA-IL",
+            startDate: "2026-06-04",
+            endDate: "2026-06-11",
+          }),
         }),
       ],
     },
