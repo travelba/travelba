@@ -203,7 +203,9 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "rapprocher_depense_revolut")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "crediter_stripe")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "ajouter_piece")?.readOnly, false);
-  assert.equal(seen.find((tool) => tool.name === "ajouter_piece")?.openWorld, false);
+  assert.equal(seen.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
 });
 
 function fakeAdmin(script: {

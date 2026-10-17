@@ -192,6 +192,7 @@ const DOC_PHRASES: Record<TravelDocType, string> = {
   passport: "un passeport",
   id_card: "une carte d’identité",
   visa: "un visa",
+  eta: "une autorisation de voyage (ETA)",
   insurance: "une assurance",
   other: "une pièce",
 };

@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { isIsoDate } from "@/lib/crm/admin-schemas";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
-import { DOC_TYPE_LABELS, type CrmBooking, type TravelDocType } from "@/lib/crm/types";
+import { DOC_TYPE_LABELS, isTravelAuthorization, type CrmBooking, type TravelDocType } from "@/lib/crm/types";
+import { resolveNationality } from "@/lib/crm/countries";
+import { notifyFormalitiesReady, type FormalityNotice } from "@/lib/crm/concierge-send";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import {
   assertBookingForCustomer,
@@ -24,7 +26,10 @@ const MAX_B64 = 4 * Math.ceil(MAX_UPLOAD_BYTES / 3);
 
 const DOC_TYPE_INPUT: Record<string, TravelDocType> = {
   visa: "visa",
-  eta: "visa",
+  eta: "eta",
+  eta_il: "eta",
+  autorisation_de_voyage: "eta",
+  autorisation_de_voyage_eta: "eta",
   esta: "visa",
   passeport: "passport",
   passport: "passport",
@@ -46,6 +51,11 @@ const KNOWN_WRITE = new Set([
 
 export type PieceUpload = (path: string, bytes: Buffer, contentType: string) => Promise<unknown>;
 export type PieceReconcile = (customerId: string, admin: SupabaseClient) => Promise<void>;
+export type PieceNotify = (
+  bookingId: string,
+  countries: string[],
+  admin: SupabaseClient
+) => Promise<FormalityNotice[]>;
 
 export type PreparedPiece = {
   clientId: string;
@@ -106,7 +116,7 @@ function pieceType(value: unknown): TravelDocType {
     .replace(/^_|_$/g, "");
   const docType = DOC_TYPE_INPUT[key];
   if (!docType) {
-    throw new McpWriteError("Type de pièce inconnu. visa, passeport, carte_identite, assurance ou autre.");
+    throw new McpWriteError("Type de pièce inconnu. visa, eta, passeport, carte_identite, assurance ou autre.");
   }
   return docType;
 }
@@ -187,12 +197,12 @@ async function loadBooking(
 
 /**
  * Dépose une pièce dans l’espace client, comme le formulaire Pièces.
- * N’appelle pas le dépôt visas : pas de WhatsApp, pas d’e-mail.
+ * Une formalité liée au séjour envoie le WhatsApp « formalité prête », sauf `notifier: false`.
  */
 export async function addTravelPiece(
   input: Record<string, unknown>,
   admin?: SupabaseClient,
-  deps?: { upload?: PieceUpload; reconcile?: PieceReconcile }
+  deps?: { upload?: PieceUpload; reconcile?: PieceReconcile; notify?: PieceNotify }
 ) {
   const draft = prepareTravelPiece(input);
   const db = client(admin);
@@ -232,6 +242,16 @@ export async function addTravelPiece(
   }
   await (deps?.reconcile ?? reconcileCustomerParty)(customerId, db);
   const linked = Boolean(booking);
+  const notice = await notifyLinkedPiece(
+    db,
+    {
+      notifier: input.notifier !== false,
+      bookingId: booking?.id || null,
+      docType: document.doc_type,
+      issuingCountry: document.issuing_country,
+    },
+    deps?.notify ?? notifyFormalitiesReady
+  );
   return {
     id: document.id,
     client_id: customerId,
@@ -245,6 +265,61 @@ export async function addTravelPiece(
     endroit: linked ? `Espace client · séjour ${booking?.reference}` : "Espace client · Pièces",
     lien: linked ? `/mon-compte/reservations/${booking?.reference}` : "/mon-compte/profil/documents",
     lien_agence: linked ? `/admin/reservations/${booking?.id}` : `/admin/clients/${customerId}`,
-    notifie: false,
+    notifie: notice.notifie,
+    raison: notice.raison,
   };
+}
+
+/** Renvoie le WhatsApp « formalité prête » pour une pièce déjà déposée. */
+export async function notifyTravelPiece(
+  input: Record<string, unknown>,
+  admin?: SupabaseClient,
+  deps?: { notify?: PieceNotify }
+) {
+  const id = uuid(input.document_id, "Pièce");
+  const db = client(admin);
+  const { data, error } = await db
+    .from("crm_travel_documents")
+    .select("id, booking_id, doc_type, issuing_country")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) failDb(error, "Pièce introuvable.");
+  const doc = data as { id: string; booking_id: string | null; doc_type: string; issuing_country: string | null } | null;
+  if (!doc) throw new McpWriteError("Pièce introuvable.");
+  const notice = await notifyLinkedPiece(
+    db,
+    {
+      notifier: true,
+      bookingId: doc.booking_id,
+      docType: doc.doc_type,
+      issuingCountry: doc.issuing_country,
+    },
+    deps?.notify ?? notifyFormalitiesReady
+  );
+  return {
+    id: doc.id,
+    dossier_id: doc.booking_id,
+    notifie: notice.notifie,
+    raison: notice.raison,
+  };
+}
+
+async function notifyLinkedPiece(
+  admin: SupabaseClient,
+  input: { notifier: boolean; bookingId: string | null; docType: string; issuingCountry: string | null },
+  notify: PieceNotify
+) {
+  if (!input.notifier) return { notifie: false, raison: "Notification non demandée." };
+  if (!input.bookingId) return { notifie: false, raison: "La pièce n’est pas liée à un séjour." };
+  if (!isTravelAuthorization(input.docType)) return { notifie: false, raison: "La pièce n’est pas une formalité." };
+  const iso = resolveNationality(input.issuingCountry);
+  if (!iso) return { notifie: false, raison: "Pays émetteur manquant." };
+  try {
+    const [row] = await notify(input.bookingId, [iso], admin);
+    if (!row) return { notifie: false, raison: "Message non parti." };
+    return { notifie: row.notifie, raison: row.notifie ? null : row.raison };
+  } catch (err) {
+    console.error("[mcp] piece", err instanceof Error ? err.message : "error");
+    return { notifie: false, raison: "Message non parti." };
+  }
 }

@@ -33,6 +33,7 @@ const EXPECTED = [
   "creer_client",
   "mettre_a_jour_client",
   "ajouter_piece",
+  "notifier_piece",
 ];
 
 const WRITE_TOOLS = [
@@ -49,6 +50,7 @@ const WRITE_TOOLS = [
   "creer_client",
   "mettre_a_jour_client",
   "ajouter_piece",
+  "notifier_piece",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
@@ -83,7 +85,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "lire_carte_pliant")?.write, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.write, true);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.write, true);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
 });
 
 test("only passeport_voyageur keeps a piece number in the payload", () => {
