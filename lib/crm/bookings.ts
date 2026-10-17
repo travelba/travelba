@@ -194,8 +194,9 @@ function flightsReturn(a: { details?: Record<string, unknown> | null }, b: { det
 
 /**
  * Vols dont le prix entre dans le séjour.
- * Aller-retour : le prix saisi est celui du billet complet, compté une fois.
- * Aller simple : le prix est celui de ce vol.
+ * Aller-retour au même prix vendu : le billet complet, compté une fois.
+ * Deux prix différents (deux allers simples) : les deux entrent.
+ * Un seul des deux vols a un prix : ce prix est celui du billet, compté une fois.
  */
 export function flightsInStayTotal<T extends {
   kind?: string | null;
@@ -215,6 +216,12 @@ export function flightsInStayTotal<T extends {
     if (pair) {
       used.add(flight);
       used.add(pair);
+      const outbound = itemSellingAmount(flight);
+      const inbound = itemSellingAmount(pair);
+      if (outbound != null && inbound != null && Math.abs(outbound - inbound) > 0.05) {
+        counted.push(flight, pair);
+        continue;
+      }
       const priced = [flight, pair].find((row) => itemSellingAmount(row) != null);
       if (priced) counted.push(priced);
       continue;

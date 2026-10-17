@@ -12,6 +12,7 @@ import {
   type FilterableQuery,
 } from "@/lib/crm/admin-list";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
@@ -441,12 +442,14 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
   const full = item as CrmBookingItem;
   const city = typeof item.details?.city === "string" ? item.details.city : null;
   if (item.kind === "flight") {
+    const from = typeof item.details?.from === "string" ? item.details.from : null;
+    const to = typeof item.details?.to === "string" ? item.details.to : null;
     return {
       kind: "vol",
       titre: flightCities(full) || item.title,
       aeroports: flightIata(full) || null,
-      debut: item.start_at,
-      fin: item.end_at,
+      debut: dossierFlightStamp(item.start_at, from, item.details?.departure_timezone),
+      fin: dossierFlightStamp(item.end_at, to, item.details?.arrival_timezone),
       reference: item.confirmation_ref,
       montre: item.visible_to_client,
     };
