@@ -1,7 +1,12 @@
 import "server-only";
 
 import { IMPORT_AUTO_NOTE } from "@/lib/crm/email-detach";
-import { AUTO_STAY_NOTE, runEmailAutoCreate } from "@/lib/crm/email-ingest-create";
+import {
+  AUTO_STAY_NOTE,
+  hasObsoleteEmailHold,
+  runEmailAutoCreate,
+  withoutObsoleteEmailHold,
+} from "@/lib/crm/email-ingest-create";
 import {
   applyCancellationToBooking,
   applyReplacementToBooking,
@@ -174,4 +179,47 @@ export async function autoCreateBookingFromIngestId(id: string) {
     await admin.from("crm_email_ingest").update({ error: message }).eq("id", id);
     return { created: false, applied: false, bookingId: null, hold: null };
   }
+}
+
+/**
+ * Reprend les mails tenus par l’ancienne règle « pas d’e-mail client ».
+ * Le nom imprimé suffit : la fiche est créée, le dossier reste un brouillon caché.
+ */
+export async function retryObsoleteEmailHolds(limit = 20) {
+  const admin = createServiceClient();
+  // Le motif se termine par un point : un filtre PostgREST le couperait. On trie en mémoire.
+  const { data } = await admin
+    .from("crm_email_ingest")
+    .select("id, warnings, error")
+    .in("status", ["parsed", "matched"])
+    .is("created_booking_id", null)
+    .order("received_at", { ascending: true, nullsFirst: true })
+    .limit(100);
+  const rows = (data || [])
+    .filter(
+      (row) =>
+        !String(row.error || "").trim() &&
+        hasObsoleteEmailHold(row.warnings as { message?: string | null }[] | null)
+    )
+    .slice(0, limit);
+  let created = 0;
+  let applied = 0;
+  let held = 0;
+  for (const row of rows) {
+    const result = await autoCreateBookingFromIngestId(row.id);
+    if (result.created) created += 1;
+    else if (result.applied) applied += 1;
+    else held += 1;
+    if (!result.created && !result.applied) continue;
+    const { data: fresh } = await admin
+      .from("crm_email_ingest")
+      .select("warnings")
+      .eq("id", row.id)
+      .maybeSingle();
+    const warnings = withoutObsoleteEmailHold(
+      (fresh?.warnings as { message?: string | null }[] | null) || []
+    );
+    await admin.from("crm_email_ingest").update({ warnings }).eq("id", row.id);
+  }
+  return { scanned: rows.length, created, applied, held };
 }

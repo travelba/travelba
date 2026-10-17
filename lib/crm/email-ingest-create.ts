@@ -31,11 +31,34 @@ const SUPPLIER_EMAIL_DOMAINS = [
 
 export const AUTO_CREATE_HOLDS = {
   missing_email: "Création automatique en attente : le mail n’a pas d’e-mail client.",
+  missing_name: "Création automatique en attente : le mail n’a pas de nom de voyageur.",
   supplier_email: "Création automatique en attente : l’e-mail lu est celui du fournisseur.",
   quote: "Devis : le dossier n’est pas créé automatiquement.",
   thin: "Création automatique en attente : il manque une carte ou une date.",
   same_stay: "Même client, même destination : le dossier n’est pas créé. Remplacez la carte sur le séjour existant.",
 } as const;
+
+const OBSOLETE_EMAIL_HOLDS = new Set<string>([
+  AUTO_CREATE_HOLDS.missing_email,
+  AUTO_CREATE_HOLDS.supplier_email,
+]);
+
+/** Ancien arrêt : pas d’e-mail voyageur. La fiche se crée maintenant avec le nom seul. */
+export function hasObsoleteEmailHold(
+  warnings: { message?: string | null }[] | null | undefined
+) {
+  return (warnings || []).some(
+    (warning) => typeof warning?.message === "string" && OBSOLETE_EMAIL_HOLDS.has(warning.message)
+  );
+}
+
+export function withoutObsoleteEmailHold<T extends { message?: string | null }>(
+  warnings: T[] | null | undefined
+) {
+  return (warnings || []).filter(
+    (warning) => typeof warning?.message !== "string" || !OBSOLETE_EMAIL_HOLDS.has(warning.message)
+  );
+}
 
 export const AUTO_STAY_NOTE = "Itinéraire mis à jour depuis le mail.";
 
@@ -193,7 +216,7 @@ export function autoCreatePlan(input: {
   const firstName = (decision.firstName || "").trim();
   const lastName = (decision.lastName || "").trim();
   if (!firstName || !lastName) {
-    return { plan: null, hold: "missing_email", message: AUTO_CREATE_HOLDS.missing_email };
+    return { plan: null, hold: "missing_name", message: AUTO_CREATE_HOLDS.missing_name };
   }
   return {
     plan: {
