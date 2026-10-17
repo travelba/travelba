@@ -7,7 +7,7 @@ import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { FoldedRow } from "@/components/crm/FoldedRow";
 import { travelerDisplayName, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
-import type { CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
+import { isTravelAuthorization, type CrmBookingTraveler, type CrmTravelDocument } from "@/lib/crm/types";
 
 const MAX_BYTES = 15 * 1024 * 1024;
 
@@ -97,7 +97,7 @@ export function TripVisaUploads({
       ) : (
         <ul className="space-y-3">
           {travelers.map((traveler) => {
-            const visas = tripDocumentsForTraveler(documents, traveler).filter((doc) => doc.doc_type === "visa");
+            const visas = tripDocumentsForTraveler(documents, traveler).filter((doc) => isTravelAuthorization(doc.doc_type));
             return (
               <li key={traveler.id}>
                 <p className="text-sm font-semibold text-[var(--admin-navy)]">{travelerDisplayName(traveler)}</p>
@@ -161,7 +161,7 @@ export function ReceivedVisasFold(
   }
 ) {
   const { folded, ...uploads } = props;
-  const hasVisa = uploads.documents.some((doc) => doc.doc_type === "visa");
+  const hasVisa = uploads.documents.some((doc) => isTravelAuthorization(doc.doc_type));
   if (!uploads.entries.length && !hasVisa) return null;
   const body = <TripVisaUploads {...uploads} hideTitle={Boolean(folded)} />;
   if (!props.folded) {

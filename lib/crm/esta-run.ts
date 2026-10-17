@@ -429,13 +429,13 @@ export async function markEstaNoticesSeen(admin: Admin, bookingId: string) {
 
 export type EstaNoticeLine = { id: string; href: string; label: string };
 
-export async function loadOpenEstaNotices(admin: Admin): Promise<EstaNoticeLine[]> {
-  const { data, error } = await admin
+export async function loadOpenEstaNotices(admin: Admin, bookingId?: string): Promise<EstaNoticeLine[]> {
+  let query = admin
     .from("crm_esta_notices")
     .select("id, booking_id, traveler_id, kind, status")
-    .is("seen_at", null)
-    .order("created_at", { ascending: false })
-    .limit(8);
+    .is("seen_at", null);
+  if (bookingId) query = query.eq("booking_id", bookingId);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(bookingId ? 40 : 8);
   if (error || !data?.length) return [];
   const rows = data as { id: string; booking_id: string; traveler_id: string; kind: string; status: string }[];
   const bookingIds = [...new Set(rows.map((row) => row.booking_id))];

@@ -24,7 +24,7 @@ import {
   type EstaAnswers,
 } from "@/lib/crm/visa-flow";
 import type { FormalityEntry, FrenchPassportTrip } from "@/lib/crm/visa-trip";
-import type { CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
+import { isTravelAuthorization, type CrmBookingTraveler, type CrmTravelDocument } from "@/lib/crm/types";
 
 type VisaRequest = {
   country: string;
@@ -45,7 +45,7 @@ function isCorridor(iso: string): iso is VisaCorridor {
 }
 
 function piecePaths(documents: CrmTravelDocument[], iso: string) {
-  return documents.filter((doc) => doc.doc_type === "visa" && doc.issuing_country === iso && doc.storage_path);
+  return documents.filter((doc) => isTravelAuthorization(doc.doc_type) && doc.issuing_country === iso && doc.storage_path);
 }
 
 /** Pièce de visa encore valable : on ne propose plus de la faire. */

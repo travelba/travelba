@@ -10,7 +10,7 @@ import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportTrip } from "./visa-trip";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { sendContentTemplate, type WhatsappSendResult } from "./whatsapp";
-import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "./types";
+import { isTravelAuthorization, type CrmBooking, type CrmBookingItem, type CrmBookingTraveler, type CrmTravelDocument } from "./types";
 import {
   conciergeContentSid,
   conciergeContentVariables,
@@ -526,7 +526,7 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
   );
   const filedDocs = new Set(
     papers
-      .filter((doc) => doc.doc_type === "visa" && doc.booking_id === booking.id && doc.issuing_country)
+      .filter((doc) => isTravelAuthorization(doc.doc_type) && doc.booking_id === booking.id && doc.issuing_country)
       .map((doc) => doc.issuing_country as string)
   );
   const sentKeys = new Set(
@@ -635,39 +635,105 @@ export async function queuePublishedPieces(
   });
 }
 
-export async function notifyFormalitiesReady(bookingId: string, countries: string[]) {
-  const admin = createServiceClient();
+export type FormalityNotice = {
+  iso: string;
+  notifie: boolean;
+  raison: string | null;
+};
+
+function formalityNotice(iso: string, notifie: boolean, raison: string | null): FormalityNotice {
+  return { iso, notifie, raison: notifie ? null : raison };
+}
+
+/** WhatsApp « formalité prête ». Même règles que le dépôt visas : séjour visible, pièce en place, opt-in, dédoublonnage. */
+export async function notifyFormalitiesReady(
+  bookingId: string,
+  countries: string[],
+  admin: Admin = createServiceClient()
+): Promise<FormalityNotice[]> {
   const booking = await loadBooking(admin, bookingId);
-  if (!booking?.visible_to_client) return;
+  if (!booking) {
+    return countries.map((iso) => formalityNotice(iso.trim().toUpperCase(), false, "Dossier introuvable."));
+  }
+  if (!booking.visible_to_client) {
+    return countries.map((iso) => formalityNotice(iso.trim().toUpperCase(), false, "Le séjour n’est pas visible."));
+  }
   const { data: papers } = await admin
     .from("crm_travel_documents")
     .select("doc_type, issuing_country, booking_id")
     .eq("customer_id", booking.customer_id)
-    .eq("doc_type", "visa");
+    .in("doc_type", ["visa", "eta"]);
   const filed = new Set(
-    ((papers || []) as { issuing_country?: string | null; booking_id?: string | null }[])
-      .filter((row) => row.issuing_country && (!row.booking_id || row.booking_id === booking.id))
+    ((papers || []) as { doc_type?: string | null; issuing_country?: string | null; booking_id?: string | null }[])
+      .filter(
+        (row) =>
+          isTravelAuthorization(row.doc_type) &&
+          row.issuing_country &&
+          (!row.booking_id || row.booking_id === booking.id)
+      )
       .map((row) => String(row.issuing_country).toUpperCase())
   );
+  const results: FormalityNotice[] = [];
   for (const iso of countries) {
     const code = iso.trim().toUpperCase();
-    if (!filed.has(code)) continue;
-    const plan = planFormalityReady({
-      published: true,
-      formality: entryForFrenchPassport(code).formality,
-    });
-    if (!plan) continue;
-    const row = await saveQueue(admin, {
-      dedupeKey: `formalite-prete:${booking.id}:${code}`,
-      customerId: booking.customer_id,
-      bookingId: booking.id,
-      templateKey: plan.template,
-      body: plan.body,
-      payload: { iso: code },
-    });
-    if (row.status === "sent") continue;
-    await deliverRow(admin, row, new Date());
+    try {
+      if (!/^[A-Z]{2}$/.test(code)) {
+        results.push(formalityNotice(code, false, "Pays émetteur manquant."));
+        continue;
+      }
+      if (!filed.has(code)) {
+        results.push(formalityNotice(code, false, "La pièce n’est pas dans l’espace."));
+        continue;
+      }
+      const plan = planFormalityReady({
+        published: true,
+        formality: entryForFrenchPassport(code).formality,
+      });
+      if (!plan) {
+        results.push(formalityNotice(code, false, "Formalité inconnue pour ce pays."));
+        continue;
+      }
+      const dedupeKey = `formalite-prete:${booking.id}:${code}`;
+      const previous = await findByDedupe(admin, dedupeKey);
+      if (previous?.status === "sent") {
+        results.push(formalityNotice(code, false, "Déjà envoyé."));
+        continue;
+      }
+      const row = await saveQueue(admin, {
+        dedupeKey,
+        customerId: booking.customer_id,
+        bookingId: booking.id,
+        templateKey: plan.template,
+        body: plan.body,
+        payload: { iso: code },
+      });
+      if (row.status === "sent") {
+        results.push(formalityNotice(code, false, "Déjà envoyé."));
+        continue;
+      }
+      await deliverRow(admin, row, new Date());
+      const after = await findByDedupe(admin, dedupeKey);
+      if (after?.status === "sent") {
+        results.push(formalityNotice(code, true, null));
+        continue;
+      }
+      const fresh = await loadBooking(admin, booking.id);
+      if (!fresh?.visible_to_client) {
+        results.push(formalityNotice(code, false, "Le séjour n’est pas visible."));
+        continue;
+      }
+      const customer = await loadCustomer(admin, booking.customer_id);
+      if (!customer?.email || !customer.phone || !proactiveWhatsappAllowed(customer)) {
+        results.push(formalityNotice(code, false, "Le client n’a pas activé WhatsApp."));
+        continue;
+      }
+      results.push(formalityNotice(code, false, "Message non parti."));
+    } catch (err) {
+      console.error("[concierge] formalité", err instanceof Error ? err.message : "error");
+      results.push(formalityNotice(code, false, "Message non parti."));
+    }
   }
+  return results;
 }
 
 export async function remindMissingPieces(bookingId: string, now = new Date()) {

@@ -4,7 +4,7 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
-import { customerFullName, type CrmBalance, type CrmTravelDocument } from "@/lib/crm/types";
+import { customerFullName, DOC_TYPE_LABELS, type CrmBalance, type CrmTravelDocument } from "@/lib/crm/types";
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
 import { formatDateFr, isoDateInDays } from "@/lib/crm/money";
 import {
@@ -82,7 +82,7 @@ export default async function AdminClientsPage({
               return (
                 <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <Link href={`/admin/clients/${doc.customer_id}`} className="font-semibold text-[var(--admin-navy)]">
-                    {doc.doc_type} · {owner ? customerFullName(owner) : "Client"}
+                    {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type} · {owner ? customerFullName(owner) : "Client"}
                   </Link>
                   <span className="font-semibold text-[var(--admin-red)]">{formatDateFr(doc.expires_on)}</span>
                 </li>
@@ -97,7 +97,7 @@ export default async function AdminClientsPage({
               return (
                 <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <Link href={`/admin/clients/${doc.customer_id}`} className="font-semibold text-[var(--admin-navy)]">
-                    {doc.doc_type} · {owner ? customerFullName(owner) : "Client"}
+                    {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type} · {owner ? customerFullName(owner) : "Client"}
                   </Link>
                   <span className="font-semibold text-[var(--admin-red)]">{formatDateFr(doc.expires_on)}</span>
                 </li>

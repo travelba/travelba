@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { previewMcpTool } from "./mcp-registry";
-import { addTravelPiece, prepareTravelPiece } from "./mcp-piece";
+import { addTravelPiece, notifyTravelPiece, prepareTravelPiece } from "./mcp-piece";
 import { McpWriteError } from "./mcp-write";
 import { customerDocumentStoragePath } from "./travel-document-write";
 
@@ -40,7 +40,8 @@ test("a piece names the client or the dossier and keeps a readable file", () => 
   assert.equal(draft.docType, "id_card");
   assert.equal(draft.issuingCountry, "Israël");
   assert.equal(draft.number, "ETA-9");
-  assert.equal(prepareTravelPiece(piece({ type: "eta" })).docType, "visa");
+  assert.equal(prepareTravelPiece(piece({ type: "eta" })).docType, "eta");
+  assert.equal(prepareTravelPiece(piece({ type: "esta" })).docType, "visa");
   assert.equal(prepareTravelPiece(piece({ type: "passeport" })).docType, "passport");
   assert.throws(() => prepareTravelPiece(piece({ client_id: undefined, contenu: PDF })), /client ou le dossier/);
   assert.throws(() => prepareTravelPiece(piece({ type: "contrat" })), /Type de pièce inconnu/);
@@ -87,6 +88,7 @@ test("adding a visa stores it in the client vault and does not notify", async ()
   assert.equal(writes[0].payload.customer_id, CLIENT);
   assert.equal(writes[0].payload.doc_type, "visa");
   assert.equal(writes[0].payload.issuing_country, "IL");
+  assert.equal(writes[0].payload.nationality, null);
   assert.equal(writes[0].payload.number, "ETA-9");
   assert.equal(writes[0].payload.expires_on, "2027-04-01");
   assert.equal(writes[0].payload.booking_id, null);
@@ -96,6 +98,7 @@ test("adding a visa stores it in the client vault and does not notify", async ()
   assert.equal(result.endroit, "Espace client · Pièces");
   assert.equal(result.lien, "/mon-compte/profil/documents");
   assert.equal(result.notifie, false);
+  assert.equal(result.raison, "La pièce n’est pas liée à un séjour.");
   assert.equal("numero" in result, false);
   assert.equal("number" in result, false);
   assert.equal(reconciled, CLIENT);
@@ -126,13 +129,18 @@ test("a piece linked to a stay names the traveller and replaces the same type", 
   assert.equal(writes[0].payload.customer_id, CLIENT);
   assert.equal(writes[0].payload.booking_id, BOOKING);
   assert.equal(writes[0].payload.traveler_id, TRAVELER);
+  assert.equal(writes[0].payload.doc_type, "eta");
+  assert.equal(writes[0].payload.nationality, null);
   assert.equal(result.dossier_id, BOOKING);
   assert.equal(result.reference, "TB-2026-0082");
   assert.equal(result.voyageur_id, TRAVELER);
+  assert.equal(result.type, "eta");
+  assert.equal(result.libelle, "Autorisation de voyage (ETA)");
   assert.equal(result.endroit, "Espace client · séjour TB-2026-0082");
   assert.equal(result.lien, "/mon-compte/reservations/TB-2026-0082");
   assert.equal(result.lien_agence, `/admin/reservations/${BOOKING}`);
   assert.equal(result.notifie, false);
+  assert.equal(result.raison, "Le séjour n’est pas visible.");
 });
 
 test("a piece is refused before upload when the stay is not the client's", async () => {
@@ -168,29 +176,132 @@ test("an unknown traveller is refused before the file is stored", async () => {
   assert.deepEqual(writes, []);
 });
 
-test("ajouter_piece does not keep the document number and does not send a formality", () => {
+test("an insurance file on a stay does not use the formality WhatsApp", async () => {
+  const { admin, writes } = fakeCrm({ visible: true });
+  const result = await addTravelPiece(piece({ dossier_id: BOOKING, type: "assurance" }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.equal(result.type, "insurance");
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "La pièce n’est pas une formalité.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+});
+
+test("a country without a formality name is not notified", async () => {
+  const { admin, writes } = fakeCrm({ visible: true });
+  const result = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta", pays: "France" }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "Formalité inconnue pour ce pays.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+});
+
+test("ajouter_piece does not keep the document number and notifies through the formality path", () => {
   const shown = JSON.parse(
-    previewMcpTool("ajouter_piece", { id: "doc-1", number: "ETA-9", numero_piece: "ETA-9", notifie: false }).content[0].text
+    previewMcpTool("ajouter_piece", {
+      id: "doc-1",
+      number: "ETA-9",
+      numero_piece: "ETA-9",
+      notifie: false,
+      raison: "Le séjour n’est pas visible.",
+    }).content[0].text
   ) as Record<string, unknown>;
   assert.equal(shown.id, "doc-1");
   assert.equal(shown.notifie, false);
+  assert.equal(shown.raison, "Le séjour n’est pas visible.");
   assert.equal("number" in shown, false);
   assert.equal("numero_piece" in shown, false);
   const source = readFileSync(new URL("./mcp-piece.ts", import.meta.url), "utf8");
-  assert.equal(source.includes("notifyFormalitiesReady"), false);
+  assert.equal(source.includes("notifyFormalitiesReady"), true);
   assert.equal(source.includes("saveVisaUploads"), false);
-  assert.equal(source.includes("concierge-send"), false);
+  assert.equal(source.includes("markPaidVisasFiled"), false);
   const route = readFileSync(new URL("../../app/api/admin/travel-documents/route.ts", import.meta.url), "utf8");
   assert.equal(route.includes("saveUploadedTravelDocument"), true);
 });
 
+test("notifier false skips the formality WhatsApp", async () => {
+  const { admin, writes } = fakeCrm({ visible: true });
+  const result = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta", notifier: false }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "Notification non demandée.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+});
+
+test("a visible formality queues the ready WhatsApp when the client has not opted in", async () => {
+  const { admin, writes } = fakeCrm({ visible: true });
+  const result = await addTravelPiece(
+    piece({ client_id: undefined, reference: "TB-2026-0082", type: "eta", voyageur_id: TRAVELER }),
+    admin,
+    { upload: async () => {}, reconcile: async () => {} }
+  );
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "Le client n’a pas activé WhatsApp.");
+  const queued = writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
+  assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL`);
+  assert.equal(queued?.payload.template_key, "formalite_prete");
+});
+
+test("a formality already sent is not sent again", async () => {
+  const { admin, writes } = fakeCrm({
+    visible: true,
+    messages: [{ id: "msg-sent", dedupe_key: `formalite-prete:${BOOKING}:IL`, status: "sent" }],
+  });
+  const result = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta" }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "Déjà envoyé.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
+});
+
+test("a failed notice still keeps the uploaded piece", async () => {
+  const { admin } = fakeCrm({ visible: true });
+  const result = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta" }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+    notify: async () => {
+      throw new Error("twilio down");
+    },
+  });
+  assert.equal(result.id, "doc-1");
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "Message non parti.");
+});
+
+test("notifier_piece resends for an existing formality without a new file", async () => {
+  const docId = "55555555-5555-4555-8555-555555555555";
+  const { admin, writes, uploads } = fakeCrm({
+    visible: true,
+    documents: [{ id: docId, booking_id: BOOKING, doc_type: "visa", issuing_country: "IL", customer_id: CLIENT }],
+  });
+  const result = await notifyTravelPiece({ document_id: docId }, admin);
+  assert.equal(uploads.length, 0);
+  assert.equal(result.id, docId);
+  assert.equal(result.dossier_id, BOOKING);
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "Le client n’a pas activé WhatsApp.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), true);
+  await assert.rejects(() => notifyTravelPiece({ document_id: TRAVELER }, admin), /Pièce introuvable/);
+});
+
 type Write = { op: string; table: string; payload: Record<string, unknown> };
 
-function fakeCrm() {
+function fakeCrm(options: { visible?: boolean; documents?: Record<string, unknown>[]; messages?: Record<string, unknown>[] } = {}) {
   const writes: Write[] = [];
   const uploads: { path: string; bytes: Buffer; mime: string }[] = [];
+  const documents = (options.documents || []).map((row) => ({ ...row }));
+  const messages = (options.messages || []).map((row) => ({ ...row }));
   const customers = [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }];
-  const bookings = [{ id: BOOKING, reference: "TB-2026-0082", customer_id: CLIENT }];
+  const bookings = [
+    { id: BOOKING, reference: "TB-2026-0082", customer_id: CLIENT, visible_to_client: options.visible === true },
+  ];
   const travelers = [{ id: TRAVELER, booking_id: BOOKING, companion_id: null, is_account_holder: true }];
 
   function from(table: string) {
@@ -225,7 +336,8 @@ function fakeCrm() {
       is() {
         return api;
       },
-      in() {
+      in(column: string, value: unknown) {
+        eqs.push([column, value]);
         return api;
       },
       order() {
@@ -245,22 +357,39 @@ function fakeCrm() {
       },
     };
 
+    function matches(row: Record<string, unknown>) {
+      return eqs.every(([column, value]) => {
+        const cell = row[column];
+        return Array.isArray(value) ? value.includes(cell) : cell === value;
+      });
+    }
+
     function finish(one: boolean) {
       if (op !== "select") writes.push({ op, table, payload });
+      if (op === "insert" && table === "crm_travel_documents") {
+        const row = { id: "doc-1", ...payload };
+        documents.push(row);
+        return { data: row, error: null };
+      }
+      if (op === "insert" && table === "crm_whatsapp_messages") {
+        const row = { id: "msg-1", status: "queued", ...payload };
+        messages.push(row);
+        return { data: row, error: null };
+      }
       if (op === "insert") return { data: { id: "doc-1", ...payload }, error: null };
       if (op === "delete" || op === "update") return { data: null, error: null };
       const rows =
         table === "crm_customers"
-          ? customers.filter((row) => !eqs.some(([column, value]) => column === "id" && row.id !== value))
+          ? customers.filter((row) => matches(row))
           : table === "crm_bookings"
-            ? bookings.filter((row) =>
-                eqs.every(([column, value]) => (row as Record<string, unknown>)[column] === value)
-              )
+            ? bookings.filter((row) => matches(row))
             : table === "crm_booking_travelers"
-              ? travelers.filter((row) =>
-                  eqs.every(([column, value]) => (row as Record<string, unknown>)[column] === value)
-                )
-              : [];
+              ? travelers.filter((row) => matches(row))
+              : table === "crm_travel_documents"
+                ? documents.filter((row) => matches(row))
+                : table === "crm_whatsapp_messages"
+                  ? messages.filter((row) => matches(row))
+                  : [];
       return { data: one ? rows[0] || null : rows, error: null };
     }
     return api;

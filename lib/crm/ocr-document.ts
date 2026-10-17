@@ -33,7 +33,7 @@ Dates en YYYY-MM-DD.
 Nationalité : code ISO 2 lettres UNIQUEMENT (FR, IL, MA, US, GB). « Israeli » et ISR deviennent IL, « Française » et FRA deviennent FR. Jamais l’adjectif.
 Pays émetteur : même règle ISO 2.
 sex : M, F ou X. Sur un passeport israélien, נ = F et ז = M.
-doc_type : passport | id_card | visa | insurance | other.
+doc_type : passport | id_card | visa | eta | insurance | other. Une autorisation de voyage (ETA, ETA-IL) est eta, pas visa.
 first_name : TOUS les prénoms, dans l’ordre écrit de gauche à droite sur la ligne latine « Prénoms » / « Given name » et dans la MRZ, le premier prénom d’abord. Maelle Louise Rosalie, jamais l’ordre inverse. Accents gardés (Hélie).
 Livret ouvert en portrait, page déjà droite : seule la page du bas est une personne. Le haut (armoiries, « page réservée aux autorités ») n’en est pas une.
 Photo tournée (livret ouvert, table visible) : tourner d’abord pour que la MRZ soit horizontale. Ce sont les deux lignes d’encre au-dessus de l’ombre du bord, pas le bas du cadre et pas la table. Un chiffre de reflet ne remplace pas une MRZ dont les contrôles sont valides.

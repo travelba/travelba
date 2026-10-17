@@ -77,6 +77,7 @@ export const DOC_TYPES = [
   "passport",
   "id_card",
   "visa",
+  "eta",
   "insurance",
   "other",
 ] as const;
@@ -87,9 +88,15 @@ export const DOC_TYPE_LABELS: Record<TravelDocType, string> = {
   passport: "Passeport",
   id_card: "Carte d'identité",
   visa: "Visa",
+  eta: "Autorisation de voyage (ETA)",
   insurance: "Assurance",
   other: "Autre",
 };
+
+/** Visa ou ETA déjà déposé : la formalité est dans l’espace. */
+export function isTravelAuthorization(docType: string | null | undefined) {
+  return docType === "visa" || docType === "eta";
+}
 
 export const TX_KINDS = [
   "booking",

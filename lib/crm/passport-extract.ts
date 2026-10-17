@@ -64,6 +64,15 @@ export function mapSex(value: string | null | undefined): ExtractedIdentity["sex
 export function mapDocType(value: string | null | undefined): TravelDocType {
   const raw = (value || "").trim().toLowerCase().replace(/['’]/g, " ");
   if (raw.includes("visa")) return "visa";
+  if (
+    raw === "eta" ||
+    raw.startsWith("eta ") ||
+    raw.startsWith("eta-") ||
+    raw.startsWith("eta_") ||
+    raw.includes("autorisation de voyage")
+  ) {
+    return "eta";
+  }
   if (raw.includes("assur")) return "insurance";
   if (
     raw.includes("id_card") ||

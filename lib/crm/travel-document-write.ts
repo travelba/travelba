@@ -121,7 +121,7 @@ export async function insertTravelDocument(
     last_name: emptyToNull(input.last_name),
     usage_name: emptyToNull(input.usage_name),
     birth_date: emptyToNull(input.birth_date),
-    nationality: resolveNationality(input.nationality, input.issuingCountry),
+    nationality: resolveNationality(input.nationality),
     sex: input.sex === "M" || input.sex === "F" || input.sex === "X" ? input.sex : null,
   };
   const { data, error } = await supabase

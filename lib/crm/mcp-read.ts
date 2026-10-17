@@ -542,17 +542,34 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
   };
 }
 
-export async function readFormalites(admin = db()) {
+export async function readFormalites(
+  input: { reference?: string; dossier_id?: string } = {},
+  admin = db()
+) {
   const today = todayIsoDate();
+  const dossierId = (input.dossier_id || "").trim();
+  const reference = (input.reference || "").trim();
+  let bookingId = "";
+  if (dossierId || reference) {
+    let query = admin.from("crm_bookings").select("id, reference");
+    query = dossierId ? query.eq("id", dossierId) : query.eq("reference", reference);
+    const { data, error } = await query.limit(2);
+    if (error) logRead("formalites", error);
+    const rows = (data || []) as { id: string }[];
+    if (rows.length !== 1) {
+      return { jour: today, introuvable: true, taches: [], demandes: [], esta: [] };
+    }
+    bookingId = rows[0].id;
+  }
+  const taskQuery = admin
+    .from("crm_visa_tasks")
+    .select("booking_id, holder_name, reference, reasons, done_at")
+    .is("done_at", null);
+  const visaQuery = admin.from("crm_visa_requests").select("booking_id, country, status, step");
   const [tasks, visas, esta] = await Promise.all([
-    admin
-      .from("crm_visa_tasks")
-      .select("booking_id, holder_name, reference, reasons, done_at")
-      .is("done_at", null)
-      .order("created_at", { ascending: false })
-      .limit(40),
-    admin.from("crm_visa_requests").select("booking_id, country, status, step").order("created_at", { ascending: false }).limit(80),
-    loadOpenEstaNotices(admin).catch(() => []),
+    (bookingId ? taskQuery.eq("booking_id", bookingId) : taskQuery).order("created_at", { ascending: false }).limit(40),
+    (bookingId ? visaQuery.eq("booking_id", bookingId) : visaQuery).order("created_at", { ascending: false }).limit(80),
+    loadOpenEstaNotices(admin, bookingId || undefined).catch(() => []),
   ]);
   if (tasks.error) logRead("formalites", tasks.error);
   if (visas.error) logRead("visas", visas.error);

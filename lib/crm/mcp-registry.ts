@@ -31,7 +31,7 @@ import {
   updateBooking,
   updateClient,
 } from "@/lib/crm/mcp-write";
-import { addTravelPiece } from "@/lib/crm/mcp-piece";
+import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
@@ -215,8 +215,16 @@ export const MCP_TOOLS: ToolDef[] = [
   },
   {
     name: "formalites",
-    description: "Formalités ouvertes : ETA-IL, ESTA, Royaume-Uni, et tâches du bureau. Lecture seule.",
-    run: () => readFormalites(),
+    description: "Formalités ouvertes : ETA-IL, ESTA, Royaume-Uni, et tâches du bureau. reference ou dossier_id limite au séjour. Lecture seule.",
+    input: {
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+    },
+    run: (args: ToolArgs) =>
+      readFormalites({
+        reference: str(args, "reference"),
+        dossier_id: str(args, "dossier_id"),
+      }),
   },
   {
     name: "services_a_confirmer",
@@ -467,22 +475,38 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "ajouter_piece",
     write: true,
+    openWorld: true,
     description:
-      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id facultatif. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée. N’envoie ni WhatsApp ni e-mail.",
+      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id facultatif. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » si le séjour est visible et le client a activé WhatsApp. notifier false coupe cet envoi. Le numéro n’est pas renvoyé.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
       voyageur_id: z.string().trim().max(80).optional().describe("Voyageur du dossier, s’il y en a un"),
       type: z.string().trim().max(40).describe("visa, eta, passeport, carte_identite, assurance ou autre"),
-      pays: z.string().trim().max(80).optional().describe("Pays émetteur, code ou nom"),
+      pays: z.string().trim().max(80).optional().describe("Pays émetteur, code ou nom. Pas la nationalité"),
       numero: z.string().trim().max(40).optional().describe("Numéro de la pièce. Il n’est pas renvoyé"),
       expiration: z.string().trim().max(40).optional().describe("Expiration, AAAA-MM-JJ"),
       nom_fichier: z.string().trim().max(180).describe("Nom du fichier, ex. eta-il.pdf"),
       type_mime: z.string().trim().max(120).optional().describe("Type mime, ex. application/pdf"),
       contenu: z.string().trim().max(36_000_000).describe("Fichier en base64, 25 Mo maximum"),
+      notifier: z
+        .boolean()
+        .optional()
+        .describe("WhatsApp « formalité prête ». Vrai si omis. false pour ne pas écrire au client"),
     },
     run: (args) => addTravelPiece(args),
+  },
+  {
+    name: "notifier_piece",
+    write: true,
+    openWorld: true,
+    description:
+      "Renvoie le WhatsApp « formalité prête » pour une pièce déjà déposée (visa ou ETA liée à un séjour). document_id. Même règles : séjour visible, opt-in, un seul envoi par pays. Ne redépose pas le fichier.",
+    input: {
+      document_id: z.string().trim().max(80).describe("Identifiant de la pièce déjà dans l’espace"),
+    },
+    run: (args) => notifyTravelPiece(args),
   },
 ];
 
