@@ -32,6 +32,7 @@ import {
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
+import { addHotel, addVol, addVoyageur, createDossier } from "@/lib/crm/mcp-trip";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
@@ -511,6 +512,106 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("tous par défaut. voyageur : seulement le voyageur de la pièce, sans renvoyer le client"),
     },
     run: (args) => notifyTravelPiece(args),
+  },
+  {
+    name: "creer_dossier",
+    write: true,
+    description:
+      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
+    input: {
+      client_id: z.string().trim().describe("Identifiant du client"),
+      titre: z.string().trim().describe("Titre du séjour"),
+      destination: z.string().trim().max(200).optional().describe("Destination"),
+      date_depart: z.string().trim().max(40).optional().describe("Départ, AAAA-MM-JJ"),
+      date_retour: z.string().trim().max(40).optional().describe("Retour, AAAA-MM-JJ"),
+      notes: z.string().trim().max(5000).optional().describe("Note visible par le client une fois le séjour montré"),
+      notes_internes: z.string().trim().max(5000).optional().describe("Note interne, jamais côté client"),
+      devise: z.string().trim().max(12).optional().describe("Devise du dossier, 3 lettres. EUR si omise. THB reste THB"),
+    },
+    run: (args) => createDossier(args),
+  },
+  {
+    name: "ajouter_voyageur",
+    write: true,
+    description:
+      "Ajoute un voyageur au dossier et à la liste du client. Civilité, prénoms, nom, naissance, nationalité, téléphone. Le passeport est enregistré comme sur la fiche. Le numéro n’est pas renvoyé. L’e-mail n’ouvre pas de compte et n’est pas enregistré. Aucun message.",
+    input: {
+      client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      prenoms: z.string().trim().describe("Prénoms"),
+      nom: z.string().trim().describe("Nom"),
+      civilite: z.string().trim().max(40).optional().describe("Monsieur, Madame ou autre"),
+      sexe: z.string().trim().max(20).optional().describe("M, F ou X"),
+      date_naissance: z.string().trim().max(40).optional().describe("Naissance, AAAA-MM-JJ"),
+      lieu_naissance: z.string().trim().max(120).optional().describe("Lieu de naissance"),
+      nationalite: z.string().trim().max(80).optional().describe("Nationalité, code ou nom. Pas le pays du passeport"),
+      telephone: z.string().trim().max(40).optional().describe("Téléphone"),
+      email: z.string().trim().max(200).optional().describe("E-mail, contrôlé mais non enregistré"),
+      passeport: z
+        .object({
+          numero: z.string().trim().max(40).optional().describe("Numéro. Il n’est pas renvoyé"),
+          delivrance: z.string().trim().max(40).optional().describe("Délivrance, AAAA-MM-JJ"),
+          expiration: z.string().trim().max(40).optional().describe("Expiration, AAAA-MM-JJ"),
+          autorite: z.string().trim().max(160).optional().describe("Autorité de délivrance"),
+          pays: z.string().trim().max(80).optional().describe("Pays de délivrance, pas la nationalité"),
+        })
+        .optional()
+        .describe("Passeport, enregistré comme sur la fiche"),
+    },
+    run: (args) => addVoyageur(args),
+  },
+  {
+    name: "ajouter_vol",
+    write: true,
+    description:
+      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      compagnie: z.string().trim().describe("Compagnie"),
+      numero: z.string().trim().max(20).optional().describe("Numéro de vol"),
+      depart_iata: z.string().trim().describe("Aéroport de départ, 3 lettres"),
+      arrivee_iata: z.string().trim().describe("Aéroport d’arrivée, 3 lettres"),
+      ville_depart: z.string().trim().max(80).optional().describe("Ville de départ, avec la ville d’arrivée"),
+      ville_arrivee: z.string().trim().max(80).optional().describe("Ville d’arrivée, avec la ville de départ"),
+      depart: z.string().trim().describe("Décollage local, AAAA-MM-JJTHH:mm"),
+      arrivee: z.string().trim().describe("Arrivée locale, AAAA-MM-JJTHH:mm"),
+      decalage_jour: z.number().optional().describe("Jours à ajouter si l’arrivée est encore le jour du départ, 0 à 3"),
+      cabine: z.string().trim().max(80).optional().describe("Cabine"),
+      pnr: z.string().trim().max(40).optional().describe("PNR"),
+      voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
+      prix: z.union([z.number(), z.string()]).optional().describe("Prix d’un billet, dans la devise"),
+      prix_total: z.union([z.number(), z.string()]).optional().describe("Total des billets, même devise"),
+      devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
+      fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
+    },
+    run: (args) => addVol(args),
+  },
+  {
+    name: "ajouter_hotel",
+    write: true,
+    description:
+      "Ajoute une carte hôtel : nom, ville, pays, dates, chambre, pension, inclus, confirmation, fournisseur, prix (THB compris) et texte d’annulation s’il est indiqué. Le séjour caché ne débite pas. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      nom: z.string().trim().describe("Nom de l’hôtel"),
+      ville: z.string().trim().max(80).optional().describe("Ville"),
+      pays: z.string().trim().max(80).optional().describe("Pays"),
+      arrivee: z.string().trim().describe("Arrivée, AAAA-MM-JJ"),
+      depart: z.string().trim().describe("Départ, AAAA-MM-JJ"),
+      chambre: z.string().trim().max(120).optional().describe("Type de chambre"),
+      pension: z.string().trim().max(120).optional().describe("Pension"),
+      inclus: z.union([z.string(), z.array(z.string())]).optional().describe("Inclus, une ligne ou une liste"),
+      confirmation: z.string().trim().max(80).optional().describe("Référence de confirmation"),
+      fournisseur: z.string().trim().max(120).optional().describe("Fournisseur, ex. Little Emperors"),
+      prix: z.union([z.number(), z.string()]).optional().describe("Prix du séjour hôtel"),
+      devise: z.string().trim().max(12).optional().describe("Devise du prix. THB reste THB"),
+      annulation: z.string().trim().max(2000).optional().describe("Conditions d’annulation, seulement si elles sont connues"),
+      voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
+    },
+    run: (args) => addHotel(args),
   },
 ];
 
