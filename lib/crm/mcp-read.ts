@@ -542,8 +542,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
   };
 }
 
-export async function readFormalites() {
-  const admin = db();
+export async function readFormalites(admin = db()) {
   const today = todayIsoDate();
   const [tasks, visas, esta] = await Promise.all([
     admin
@@ -552,7 +551,7 @@ export async function readFormalites() {
       .is("done_at", null)
       .order("created_at", { ascending: false })
       .limit(40),
-    admin.from("crm_visa_requests").select("booking_id, country, status, step").order("updated_at", { ascending: false }).limit(80),
+    admin.from("crm_visa_requests").select("booking_id, country, status, step").order("created_at", { ascending: false }).limit(80),
     loadOpenEstaNotices(admin).catch(() => []),
   ]);
   if (tasks.error) logRead("formalites", tasks.error);
