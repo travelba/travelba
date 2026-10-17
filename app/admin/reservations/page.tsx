@@ -29,6 +29,7 @@ import {
   type SearchParamValue,
 } from "@/lib/crm/admin-list";
 import { reservationWeek } from "@/lib/crm/reservation-week";
+import { bookingWithStaySpan } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
 
 type Props = {
@@ -98,13 +99,20 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       throw new Error("Réservations indisponibles");
     }
     const pool = [...((travellingRows || []) as CrmBooking[]), ...((upcomingRows || []) as CrmBooking[])];
-    const columns = reservationWeek(pool, today);
+    const maps = await loadStayMaps(
+      supabase,
+      pool.map((row) => row.id)
+    );
+    const columns = reservationWeek(
+      pool.map((row) => bookingWithStaySpan(row, maps.span[row.id])),
+      today
+    );
     const shown = columns.flatMap((column) => column.entries.map((entry) => entry.booking));
     const customerIds = [...new Set(shown.map((row) => row.customer_id).filter(Boolean))];
     const walletIds = [
       ...new Set(shown.flatMap((row) => [row.billing_customer_id, row.customer_id].filter(Boolean))),
     ];
-    const [{ data: customerRows }, { data: companyRows }, maps, displayed] = await Promise.all([
+    const [{ data: customerRows }, { data: companyRows }, displayed] = await Promise.all([
       customerIds.length
         ? supabase.from("crm_customers").select("id, first_name, last_name, company_name, email, phone").in("id", customerIds)
         : Promise.resolve({ data: [] as ListCustomer[] }),
@@ -114,10 +122,6 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
             .select("id, customer_id, company_name, funding, sort_order")
             .in("customer_id", walletIds)
         : Promise.resolve({ data: [] as (FundingCompany & { customer_id: string })[] }),
-      loadStayMaps(
-        supabase,
-        shown.map((row) => row.id)
-      ),
       loadDisplayedStayAmounts(supabase, shown),
     ]);
     const customersById = new Map(((customerRows || []) as ListCustomer[]).map((row) => [row.id, row]));

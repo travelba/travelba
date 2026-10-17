@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { dashboardWeek, type DashboardWeekBooking } from "./dashboard-week";
+import { bookingWithStaySpan } from "./staff-stay";
 
 const today = "2026-10-07";
 
@@ -53,5 +54,16 @@ test("un même dossier n’est compté qu’une fois", () => {
     ["once"]
   );
   assert.equal(grouped.travelling.length, 0);
+  assert.equal(grouped.week.length, 0);
+});
+
+test("des cartes en août 2027 sortent le séjour du briefing", () => {
+  const placed = bookingWithStaySpan(
+    row({ id: "faro", start_date: "2026-08-01", end_date: "2027-08-10" }),
+    { start: "2027-08-01", end: "2027-08-10" }
+  );
+  const grouped = dashboardWeek([placed], "2026-10-15");
+  assert.equal(grouped.travelling.length, 0);
+  assert.equal(grouped.soon.length, 0);
   assert.equal(grouped.week.length, 0);
 });

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  bookingWithStaySpan,
   staffBlockingChips,
   staffLedgerCaption,
   staffStayFacts,
   staffStayLabel,
+  staySpanFromSteps,
   stayTitleFromItems,
 } from "./staff-stay";
 
@@ -280,4 +282,41 @@ test("lieu et dates n’imprime qu’une fois le même séjour et le même traje
   assert.deepEqual(facts.cities, ["Paris", "Milan", "Rome"]);
   assert.equal(facts.placeLine, "Paris · Milan · Rome");
   assert.equal(facts.nights, 9);
+});
+
+test("les cartes d’août 2027 priment sur un départ dossier en 2026", () => {
+  const span = staySpanFromSteps([
+    {
+      kind: "hotel",
+      title: "Da Balaia",
+      start_at: "2027-08-01T00:00:00+00:00",
+      end_at: "2027-08-10T00:00:00+00:00",
+    },
+    {
+      kind: "flight",
+      title: "Faro",
+      start_at: "2027-08-01T14:00:00+00:00",
+      end_at: "2027-08-01T15:40:00+00:00",
+    },
+    { kind: "expense", title: "Frais de billeterie", start_at: null, end_at: null },
+    {
+      kind: "hotel",
+      title: "Annulé",
+      lifecycle: "cancelled",
+      start_at: "2026-08-01T00:00:00+00:00",
+      end_at: "2026-08-10T00:00:00+00:00",
+    },
+  ]);
+  assert.deepEqual(span, { start: "2027-08-01", end: "2027-08-10" });
+  const placed = bookingWithStaySpan(
+    { id: "faro", start_date: "2026-08-01", end_date: "2027-08-10" },
+    span
+  );
+  assert.equal(placed.start_date, "2027-08-01");
+  assert.equal(placed.end_date, "2027-08-10");
+  const same = bookingWithStaySpan({ id: "same", start_date: "2027-08-01", end_date: "2027-08-10" }, span);
+  assert.equal(same.id, "same");
+  assert.equal(same.start_date, "2027-08-01");
+  const untouched = { id: "open", start_date: "2026-08-01", end_date: "2027-08-10" };
+  assert.equal(bookingWithStaySpan(untouched, null), untouched);
 });
