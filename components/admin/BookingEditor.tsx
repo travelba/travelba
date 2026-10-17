@@ -429,6 +429,7 @@ export function BookingEditor({
   const [partyError, setPartyError] = useState<string | null>(null);
   const [docBusy, setDocBusy] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
   const [compact, setCompact] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pendingStep = useRef<string | null>(null);
@@ -755,22 +756,22 @@ export function BookingEditor({
     return undefined;
   }
 
-  async function addDoc(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (docBusy) return;
-    const form = event.currentTarget;
+  async function uploadDoc(file: File | null | undefined) {
+    if (!file || docBusy) return;
+    const body = new FormData();
+    body.set("file", file);
     setDocBusy(true);
     setDocError(null);
     const result = await adminAction(`/api/admin/bookings/${booking.id}/documents`, {
       method: "POST",
-      formData: new FormData(form),
+      formData: body,
     });
     setDocBusy(false);
+    if (docInputRef.current) docInputRef.current.value = "";
     if (!result.ok) {
       setDocError(result.error || "Pièce non jointe. Réessayez.");
       return;
     }
-    form.reset();
     router.refresh();
   }
 
@@ -975,6 +976,31 @@ export function BookingEditor({
       {!booking.visible_to_client ? "Montrer au client" : "Mettre à jour"}
     </button>
   ) : null;
+  const attachPieceButton = tab === "voyage" ? (
+    <button
+      type="button"
+      disabled={docBusy}
+      onClick={() => docInputRef.current?.click()}
+      className="admin-af-btn admin-tap shrink-0 rounded-full px-4 py-2 text-sm disabled:opacity-50"
+    >
+      {docBusy ? "Envoi…" : "Joindre une pièce"}
+    </button>
+  ) : null;
+  const attachPieceInput = tab === "voyage" ? (
+    <input
+      ref={docInputRef}
+      type="file"
+      accept="application/pdf,image/*"
+      disabled={docBusy}
+      aria-label="Confirmation PDF ou photo"
+      className="sr-only"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        void uploadDoc(file);
+      }}
+    />
+  ) : null;
   const saveButton = (
     <button
       type="submit"
@@ -1106,6 +1132,7 @@ export function BookingEditor({
               {moreButton}
             </div>
           </div>
+          {attachPieceButton ? <div className="mt-2">{attachPieceButton}</div> : null}
           {more ? <div className="mt-2">{moreMenu}</div> : null}
         </div>
       ) : null}
@@ -1150,8 +1177,10 @@ export function BookingEditor({
               </button>
             ) : null}
             {saveButton}
+            {attachPieceButton}
             {primaryAction}
             {moreButton}
+            {attachPieceInput}
           </div>
         </div>
         <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
@@ -1236,6 +1265,11 @@ export function BookingEditor({
         ) : null}
         <ReviewDoubtList rows={reviewRows} />
         {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
+        {docError && tab === "voyage" ? (
+          <p role="alert" className="text-sm text-[var(--admin-red)]">
+            {docError}
+          </p>
+        ) : null}
         <IssuesList issues={issues} />
       </header>
       <CoverPickDialog
@@ -1650,21 +1684,20 @@ export function BookingEditor({
         preserveTitle={booking.title}
       />
       </div>
-      <form onSubmit={addDoc} className="admin-af-card order-6 flex flex-wrap items-center gap-3 rounded-3xl p-5">
-        <p className="text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
-        <input name="file" type="file" required disabled={docBusy} aria-label="Confirmation PDF ou photo" className="text-sm" />
-        <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
-          {docBusy ? "Envoi…" : "Joindre"}
+      <div className="admin-af-card order-1 flex w-full min-w-0 flex-wrap items-center justify-between gap-3 rounded-3xl p-5">
+        <p className="min-w-0 text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
+        <button
+          type="button"
+          disabled={docBusy}
+          onClick={() => docInputRef.current?.click()}
+          className="admin-af-btn admin-tap shrink-0 rounded-full px-4 py-2 text-sm disabled:opacity-50"
+        >
+          {docBusy ? "Envoi…" : "Joindre une pièce"}
         </button>
         <div className="basis-full">
           <BusyBar active={docBusy} label="Envoi de la pièce…" />
-          {docError ? (
-            <p role="alert" className="text-sm text-[var(--admin-red)]">
-              {docError}
-            </p>
-          ) : null}
         </div>
-      </form>
+      </div>
       <div className="order-2">
       <BookingItemsPanel
         bookingId={booking.id}
