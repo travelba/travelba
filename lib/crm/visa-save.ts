@@ -22,6 +22,7 @@ export async function saveVisaUploads(
   if (!files.length) throw new Error("Ajoutez au moins un visa.");
   const errors: string[] = [];
   const countries = new Set<string>();
+  const travelerIds = new Set<string>();
   let saved = 0;
   for (const file of files) {
     try {
@@ -55,11 +56,12 @@ export async function saveVisaUploads(
           replacePrevious: false,
         });
         if (visa.country) countries.add(visa.country);
+        if (visa.travelerId) travelerIds.add(visa.travelerId);
         saved += 1;
       }
     } catch (err) {
       errors.push(err instanceof Error ? err.message : "Envoi impossible");
     }
   }
-  return { saved, errors, countries: [...countries] };
+  return { saved, errors, countries: [...countries], travelerIds: [...travelerIds] };
 }

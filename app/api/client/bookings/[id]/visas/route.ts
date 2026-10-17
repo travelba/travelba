@@ -48,7 +48,9 @@ export async function POST(request: Request, ctx: Ctx) {
     });
     if (result.saved > 0 && whatsappOnVisa("piece")) {
       await markPaidVisasFiled(createServiceClient(), b.id, result.countries, party);
-      await safeConcierge(() => notifyFormalitiesReady(b.id, result.countries));
+      await safeConcierge(() =>
+        notifyFormalitiesReady(b.id, result.countries, createServiceClient(), { travelerIds: result.travelerIds })
+      );
     }
     if (result.saved > 0) {
       await recordCustomerActivity({

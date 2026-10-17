@@ -36,6 +36,8 @@ export const CONCIERGE_TEMPLATE_ENV = {
   passeports: "TWILIO_CONTENT_PASSEPORTS",
   formalite_manquante: "TWILIO_CONTENT_FORMALITE_MANQUANTE",
   formalite_prete: "TWILIO_CONTENT_FORMALITE_PRETE",
+  /** Voyageur sans fiche : pas de bouton, pas de lien de connexion. */
+  formalite_prete_voyageur: "TWILIO_CONTENT_FORMALITE_PRETE_VOYAGEUR",
   piece_hotel: "TWILIO_CONTENT_PIECE_HOTEL",
   piece_vol: "TWILIO_CONTENT_PIECE_VOL",
   piece_transfert: "TWILIO_CONTENT_PIECE_TRANSFERT",
@@ -520,6 +522,74 @@ export function planMissingPieceNotices(input: {
   return plans;
 }
 
+/** Corps soumis à Meta. {{1}} prénom, {{2}} formalité, {{3}} référence et dates. Aucun lien. */
+export function travellerFormalityBody() {
+  return ["Bonjour {{1}},", "", "Votre {{2}} pour le séjour {{3}} est prête.", "", siteConfig.name].join("\n");
+}
+
+function frenchLongDate(iso: string | null | undefined) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+/** Référence, puis les dates quand elles existent. Pas d’URL. */
+export function travellerStaySlot(
+  reference: string,
+  startDate?: string | null,
+  endDate?: string | null
+) {
+  const ref = cleanToken(reference);
+  if (!REFERENCE.test(ref)) return null;
+  const from = frenchLongDate(startDate);
+  const to = frenchLongDate(endDate);
+  const slot = from && to ? `${ref}, du ${from} au ${to}` : from ? `${ref}, à partir du ${from}` : ref;
+  if (/https?:|travelba\.fr/i.test(slot)) return null;
+  return slot;
+}
+
+export function travellerFormalityVariables(input: {
+  firstName: string;
+  formality: string;
+  reference: string;
+  startDate?: string | null;
+  endDate?: string | null;
+}): Record<string, string> | null {
+  const formality = safeFormalityName(input.formality);
+  const stay = travellerStaySlot(input.reference, input.startDate, input.endDate);
+  const given = cleanToken(input.firstName).slice(0, 40);
+  const name = given && !/https?:|travelba\.fr/i.test(given) ? given : "voyageur";
+  if (!formality || !stay) return null;
+  return { "1": name, "2": formality, "3": stay };
+}
+
+export function travellerFormalityMessage(variables: Record<string, string>) {
+  return travellerFormalityBody()
+    .replaceAll("{{1}}", variables["1"] || "")
+    .replaceAll("{{2}}", variables["2"] || "")
+    .replaceAll("{{3}}", variables["3"] || "");
+}
+
+export function travellerFormalityCreateBody() {
+  return contentDraft({
+    friendlyName: "formalite_prete_voyageur",
+    variables: {
+      "1": "Camille",
+      "2": "ETA-IL",
+      "3": travellerStaySlot("TB-EXEMPLE", "2026-06-04", "2026-06-11") || "TB-EXEMPLE",
+    },
+    types: { "twilio/text": { body: travellerFormalityBody() } },
+  });
+}
+
 export function planFormalityReady(input: {
   published: boolean;
   formality: string | null;
@@ -900,6 +970,12 @@ export function conciergeContentDrafts() {
         types: textTemplate(`Votre {{1}} est dans vos pièces.${signature}`, "Voir les pièces", "2"),
       }),
     },
+    {
+      template: "formalite_prete_voyageur" as const,
+      env: CONCIERGE_TEMPLATE_ENV.formalite_prete_voyageur,
+      friendlyName: "formalite_prete_voyageur",
+      create: travellerFormalityCreateBody(),
+    },
     ...stayCardPair({
       text: "piece_hotel",
       photo: "piece_hotel_photo",
@@ -1230,7 +1306,20 @@ export function conciergeContentVariables(input: {
   variable?: string | null;
   /** Date affichée `JJ/MM/AAAA`, pour les modèles qui expirent ou qui sont approuvés. */
   date?: string | null;
+  givenName?: string | null;
+  formality?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
 }): Record<string, string> | null {
+  if (input.template === "formalite_prete_voyageur") {
+    return travellerFormalityVariables({
+      firstName: input.givenName || "",
+      formality: input.formality || "",
+      reference: input.reference || "",
+      startDate: input.startDate,
+      endDate: input.endDate,
+    });
+  }
   const suffix = cleanToken(input.buttonSuffix);
   if (!suffix.startsWith("c/") || suffix.includes("://") || /token|password|mot de passe/i.test(suffix)) {
     return null;
