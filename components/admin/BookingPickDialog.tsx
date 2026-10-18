@@ -119,7 +119,7 @@ export function BookingPickDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-[#0b192c] hover:bg-[#f3f1ea]"
+            className="admin-tap inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#0b192c] hover:bg-[#f3f1ea]"
             aria-label="Fermer"
           >
             <Icon name="close" className="h-5 w-5" />

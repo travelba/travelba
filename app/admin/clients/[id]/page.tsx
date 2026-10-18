@@ -248,7 +248,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         <div className="flex flex-wrap items-end justify-between gap-5 px-6 py-6 sm:px-8">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--admin-gold)]">Fiche client</p>
-            <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight text-[#faf9f6]">
+            <h1 className="mt-2 break-words font-display text-3xl font-extrabold tracking-tight text-[#faf9f6] sm:text-4xl">
               {customerFullName(c)}
               {c.on_hold ? (
                 <span className="ml-3 align-middle rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
@@ -256,7 +256,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                 </span>
               ) : null}
             </h1>
-            <p className="mt-2 max-w-xl truncate text-sm text-white/70">
+            <p className="mt-2 max-w-xl break-words text-sm text-white/70">
               {[contactLine, `Dernière visite · ${lastVisit}`].filter(Boolean).join("  ·  ")}
             </p>
           </div>
@@ -272,7 +272,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
               {balanceRows.some((row) => Number(row.balance) > 0) ? "Crédit" : "Encours"}
             </p>
-            <p className="mt-1 font-display text-xl font-bold text-[#faf9f6]">
+            <p className="mt-1 break-words font-display text-xl font-bold text-[#faf9f6]">
               {balanceRows.length
                 ? balanceRows
                     .map((row) => {
@@ -353,17 +353,17 @@ export default async function AdminClientDetailPage({ params }: Props) {
             {activeBookings.map((b) => {
               const travelerLine = ficheBookingTravelerLine(b, id, travelerNames);
               return (
-                <li key={b.id} className="flex min-w-0 items-center justify-between gap-3 py-3">
+                <li key={b.id} className="flex min-w-0 flex-col gap-2 py-3 lg:flex-row lg:items-center lg:justify-between">
                   <Link
                     href={`/admin/reservations/${b.id}`}
                     className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)]"
                   >
-                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-24 shrink-0 rounded-xl" />
+                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-20 shrink-0 rounded-xl lg:w-24" />
                     <span className="min-w-0">
-                      <span className="block truncate font-medium">
+                      <span className="block break-words font-medium lg:truncate">
                         {stayHeadline(b.title, b.destination, places.route[b.id], "Séjour", places.layovers[b.id])}
                       </span>
-                      <span className="block truncate text-xs text-muted">
+                      <span className="block break-words text-xs text-muted lg:truncate">
                         {b.reference} · {formatDateFr(b.start_date)}
                         {travelerLine ? ` · ${travelerLine}` : ""}
                       </span>
@@ -392,10 +392,10 @@ export default async function AdminClientDetailPage({ params }: Props) {
             <h3 className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Archivées</h3>
             <ul className="mt-1 divide-y divide-border text-sm">
               {archivedBookings.map((b) => (
-                <li key={b.id} className="flex min-w-0 items-center justify-between gap-3 py-2">
+                <li key={b.id} className="flex min-w-0 flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
                   <Link
                     href={`/admin/reservations/${b.id}`}
-                    className="min-w-0 truncate text-[var(--admin-navy)]"
+                    className="min-w-0 break-words text-[var(--admin-navy)] sm:truncate"
                   >
                     {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id], "Séjour", places.layovers[b.id])}
                   </Link>
@@ -436,8 +436,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
               );
               const who = [doc.first_name, doc.last_name].filter(Boolean).join(" ") || "Titulaire";
               return (
-                <li key={doc.id} className="flex min-w-0 items-center justify-between gap-3 py-2">
-                  <span className="min-w-0 truncate text-[var(--admin-navy)]">
+                <li key={doc.id} className="flex min-w-0 flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="min-w-0 break-words text-[var(--admin-navy)] sm:truncate">
                     <span className="font-medium">
                       {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
                       {doc.number ? ` · ${doc.number}` : ""}

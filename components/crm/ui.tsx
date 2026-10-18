@@ -58,7 +58,7 @@ export function PageTitle({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)] sm:text-4xl">
+        <h1 className="mt-2 break-words font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)] sm:text-4xl">
           {title}
         </h1>
         {subtitle ? (

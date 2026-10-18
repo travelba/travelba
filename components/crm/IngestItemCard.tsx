@@ -129,13 +129,13 @@ export function IngestItemCard({
         missingDocumentPrice ? "border-accent" : "border-border"
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          {item.kind === "flight" || item.kind === "car" ? <BrandMark item={item} className="h-9 w-9" /> : null}
+          {item.kind === "flight" || item.kind === "car" ? <BrandMark item={item} className="h-9 w-9 shrink-0" /> : null}
           <select
             value={item.kind}
             onChange={(e) => onChange({ ...item, kind: e.target.value as typeof item.kind })}
-            className={`${fieldControlClass} max-w-[12rem]`}
+            className={`${fieldControlClass} w-full min-w-0 sm:max-w-[12rem]`}
           >
             {kinds.map((kind) => (
               <option key={kind} value={kind}>
@@ -150,7 +150,7 @@ export function IngestItemCard({
               À vérifier
             </span>
           ) : null}
-          <button type="button" className="text-accent" onClick={onRemove} aria-label="Retirer">
+          <button type="button" className="admin-tap inline-flex h-11 w-11 shrink-0 items-center justify-center text-accent" onClick={onRemove} aria-label="Retirer">
             <Trash2 className="h-4 w-4" />
           </button>
         </div>

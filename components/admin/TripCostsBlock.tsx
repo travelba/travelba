@@ -256,7 +256,72 @@ export function TripCostsBlock({
       ) : null}
 
       {view.lines.length ? (
-        <div className="overflow-x-auto">
+        <>
+        <ul className="space-y-3 lg:hidden">
+          {view.lines.map((line) => {
+            const piece = view.invoice.byTransaction[line.transactionId];
+            return (
+              <li key={line.transactionId} className="rounded-2xl border border-border px-3 py-3 text-sm">
+                <p className="break-words font-medium text-[var(--admin-navy)]">{line.label}</p>
+                <dl className="mt-2 grid grid-cols-3 gap-2">
+                  <div>
+                    <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Vendu</dt>
+                    <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.sale)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
+                    <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
+                    <dd className={`font-semibold tabular-nums ${marginTone(line.margin)}`}>{eur(line.margin)}</dd>
+                  </div>
+                </dl>
+                {line.costs.length ? (
+                  <ul className="mt-2 space-y-1">
+                    {line.costs.map((cost) => (
+                      <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                        <span className="min-w-0 break-words">{costCaption(cost)}</span>
+                        <span className="tabular-nums">{eur(cost.amountEur)}</span>
+                        <button
+                          type="button"
+                          disabled={locked}
+                          onClick={() => void detach(cost.id)}
+                          className="admin-tap text-[#9e7e51] underline disabled:opacity-50"
+                        >
+                          Retirer
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-muted">Aucun coût rattaché</p>
+                )}
+                <p className="mt-2 text-xs text-muted">
+                  {piece ? `Facture n° ${piece.number} · ${piece.printed ? "imprimée" : "pro forma"}` : "Facture —"}
+                </p>
+              </li>
+            );
+          })}
+          <li className="rounded-2xl bg-[var(--admin-sky)]/60 px-3 py-3 text-sm font-semibold text-[var(--admin-navy)]">
+            <p>Total</p>
+            <dl className="mt-2 grid grid-cols-3 gap-2 font-semibold">
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Vendu</dt>
+                <dd className="tabular-nums">{eur(view.totals.sale)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
+                <dd className="tabular-nums">{eur(view.totals.cost)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
+                <dd className={`tabular-nums ${marginTone(view.totals.margin)}`}>{eur(view.totals.margin)}</dd>
+              </div>
+            </dl>
+          </li>
+        </ul>
+        <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-full text-left text-sm">
             <thead className="font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
               <tr>
@@ -316,6 +381,7 @@ export function TripCostsBlock({
             </tfoot>
           </table>
         </div>
+        </>
       ) : (
         <p className="text-sm text-muted">Aucune vente au grand livre pour ce séjour. Les coûts se rattachent quand même.</p>
       )}

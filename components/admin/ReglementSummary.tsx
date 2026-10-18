@@ -60,7 +60,7 @@ export function ReglementSummary({
       </div>
 
       {totals ? (
-        <dl className="grid grid-cols-3 gap-3 rounded-2xl bg-[var(--admin-sky)]/60 px-4 py-3 text-sm">
+        <dl className="grid grid-cols-1 gap-3 rounded-2xl bg-[var(--admin-sky)]/60 px-4 py-3 text-sm min-[420px]:grid-cols-3">
           <div>
             <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Vendu au livre</dt>
             <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{formatMoney(totals.sale, "EUR")}</dd>

@@ -58,7 +58,7 @@ export function ReservationWeek({
 
   return (
     <div className="max-w-full overflow-x-auto pb-1">
-      <div className="flex w-max items-start gap-3" aria-label="Séjours par jour">
+      <div className="flex w-max min-w-full snap-x snap-mandatory items-start gap-3" aria-label="Séjours par jour">
         {columns.map((column) =>
           column.entries.length ? (
             <WeekColumn key={column.id} column={column} names={names} places={places} amounts={amounts} payerLabels={payerLabels} />
@@ -106,7 +106,7 @@ function WeekColumn({
   const later = column.tone === "later";
   return (
     <section
-      className="admin-af-card flex max-h-[calc(100vh-12rem)] w-80 shrink-0 flex-col overflow-hidden rounded-2xl"
+      className="admin-af-card flex max-h-[calc(100vh-12rem)] w-[min(20rem,calc(100vw-2.75rem))] shrink-0 snap-start flex-col overflow-hidden rounded-2xl lg:w-80"
       aria-labelledby={`resa-${column.id}`}
     >
       <header

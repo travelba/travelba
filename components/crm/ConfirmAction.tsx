@@ -68,7 +68,7 @@ export function ConfirmAction({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const height = size === "sm" ? "min-h-9 px-3 text-xs" : "min-h-11 px-4 text-sm";
+  const height = size === "sm" ? "min-h-11 px-3 text-xs lg:min-h-9" : "min-h-11 px-4 text-sm";
   const trigger =
     tone === "danger"
       ? "text-[var(--admin-red)] ring-1 ring-[var(--admin-red)]/30"
