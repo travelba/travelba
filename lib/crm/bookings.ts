@@ -16,7 +16,7 @@ import {
 import { itemTicketCount } from "@/lib/crm/item-match";
 import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import { shownClientNote } from "@/lib/crm/public-booking";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { nextStayLabels } from "@/lib/crm/staff-stay";
 import {
   AUTO_TICKETING_FEE,
   isAutoTicketingExpense,
@@ -805,7 +805,11 @@ export async function syncBookingLedger(
   }
 }
 
-/** Le titre suit les villes des étapes, sauf un nom choisi (« 40 ans »). */
+/**
+ * Le titre suit les villes des étapes, sauf un nom choisi (« 40 ans »).
+ * Une escale pure en sort. La destination ne change que si elle n’est qu’une liste de villes
+ * qui cite cette escale — un nom choisi et les dates restent.
+ */
 export async function syncBookingTitleFromSteps(supabase: SupabaseClient, bookingId: string) {
   const { data: booking } = await supabase
     .from("crm_bookings")
@@ -817,17 +821,15 @@ export async function syncBookingTitleFromSteps(supabase: SupabaseClient, bookin
     .from("crm_booking_items")
     .select("id, kind, title, start_at, end_at, sort_order, details, lifecycle")
     .eq("booking_id", bookingId);
-  const next = stayTitleFromItems(
-    booking.title,
-    booking.destination,
-    items || [],
-    ""
-  ).trim();
+  const labels = nextStayLabels(booking.title, booking.destination, items || [], "");
   const current = (booking.title || "").trim();
-  if (!next || next === current) return current;
-  const { error } = await supabase.from("crm_bookings").update({ title: next }).eq("id", bookingId);
+  const patch: { title?: string; destination?: string } = {};
+  if (labels.title && labels.title !== current) patch.title = labels.title;
+  if (labels.destinationChanged && labels.destination) patch.destination = labels.destination;
+  if (!Object.keys(patch).length) return current;
+  const { error } = await supabase.from("crm_bookings").update(patch).eq("id", bookingId);
   if (error) return current;
-  return next;
+  return patch.title || current;
 }
 
 export async function refreshBookingLedger(supabase: SupabaseClient, bookingId: string) {

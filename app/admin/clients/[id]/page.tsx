@@ -361,7 +361,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-24 shrink-0 rounded-xl" />
                     <span className="min-w-0">
                       <span className="block truncate font-medium">
-                        {stayHeadline(b.title, b.destination, places.route[b.id])}
+                        {stayHeadline(b.title, b.destination, places.route[b.id], "Séjour", places.layovers[b.id])}
                       </span>
                       <span className="block truncate text-xs text-muted">
                         {b.reference} · {formatDateFr(b.start_date)}
@@ -397,7 +397,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     href={`/admin/reservations/${b.id}`}
                     className="min-w-0 truncate text-[var(--admin-navy)]"
                   >
-                    {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id])}
+                    {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id], "Séjour", places.layovers[b.id])}
                   </Link>
                   <RestoreBookingButton iconOnly bookingId={b.id} />
                 </li>

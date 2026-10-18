@@ -1,6 +1,6 @@
 import { foldLetters } from "./text";
-import { sortItemsByOrder, stayHeadline } from "./carnet";
-import { stayCitiesFromSteps } from "./staff-stay";
+import { sortItemsByOrder } from "./carnet";
+import { nextStayLabels } from "./staff-stay";
 import { isEmailBodyFile } from "./ingest-title";
 import type { IngestFamily } from "./ingest-parse";
 import { tagSourceFileName } from "./ingest-parse";
@@ -189,12 +189,17 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     travelers: dedupeTravelers(travelers),
   };
 
-  const route = stayCitiesFromSteps(merged.items);
-  if (route.length >= 2) merged.title = stayHeadline(merged.title, merged.destination, route);
-  else if (!merged.title && route.length === 1) merged.title = route[0];
-  const cities = route.length ? route : uniqueCities(merged);
-  if (!merged.title && cities.length) merged.title = cities.join(" · ");
-  if (!merged.destination && cities.length) merged.destination = cities.join(" · ");
+  const labels = nextStayLabels(merged.title, merged.destination, merged.items, "");
+  if (labels.title) merged.title = labels.title;
+  if (labels.destinationChanged && labels.destination) merged.destination = labels.destination;
+  else if (!merged.destination && labels.suggestedDestination) merged.destination = labels.suggestedDestination;
+  if (!merged.title || !merged.destination) {
+    const cities = (labels.plan.cities.length ? labels.plan.cities : uniqueCities(merged)).filter(
+      (city) => !labels.plan.layovers.some((stop) => city.toLowerCase() === stop.toLowerCase())
+    );
+    if (!merged.title && cities.length) merged.title = cities.join(" · ");
+    if (!merged.destination && cities.length) merged.destination = labels.suggestedDestination || cities.join(" · ");
+  }
   merged.start_date = pickDate(
     [merged.start_date, ...merged.items.map((item) => item.start_at)],
     "min"

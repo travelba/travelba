@@ -13,6 +13,7 @@ export const CITY_ALIASES: Record<string, string> = {
   bruxelles: "brussels",
   lisboa: "lisbon",
   lisbonne: "lisbon",
+  singapour: "singapore",
   praha: "prague",
   moscou: "moscow",
   pekin: "beijing",
@@ -31,11 +32,19 @@ const CITY_LABELS: Record<string, string> = {
   vienna: "Vienne",
   brussels: "Bruxelles",
   lisbon: "Lisbonne",
+  singapore: "Singapour",
   prague: "Prague",
   moscow: "Moscou",
   beijing: "Pékin",
   "new york": "New York",
 };
+
+/** Hubs de départ FR : jamais une destination (le client part de Paris). */
+const ORIGIN_HUBS = /^(paris|cdg|ory|lbg|bva|france|ile-de-france|île-de-france)$/i;
+
+export function isOriginHub(value: string) {
+  return ORIGIN_HUBS.test((value || "").trim());
+}
 
 export function foldCityName(value: string) {
   return value

@@ -22,8 +22,8 @@ import {
   uniquePeople,
 } from "@/lib/crm/document-passengers";
 import type { PersonName } from "@/lib/crm/person-match";
-import { sortItemsByOrder, stayHeadline } from "@/lib/crm/carnet";
-import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
+import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { stayTitleForExtract } from "@/lib/crm/ingest-title";
 import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
@@ -477,7 +477,7 @@ export function BookingIngest({
               ...merged,
               title: titleEdited.current
                 ? kept
-                : stayHeadline(kept, merged.destination, stayCitiesFromSteps(merged.items)),
+                : stayTitleFromItems(kept, merged.destination, merged.items),
               currency: prev?.currency ? stayCurrency(prev.currency) : stayCurrency(merged.currency),
               travelers: linkHolder
                 ? linkExtractTravelers(merged.travelers, linkHolder, linkCompanions)

@@ -1,14 +1,16 @@
 import { greetingGivenName } from "@/lib/crm/identity";
 import { stepChronoKey } from "@/lib/crm/item-order";
 import { countsAsCarnetCard, isActiveItem, type BookingStatus } from "@/lib/crm/types";
-import { CITY_ALIASES, cityLabel, cityPlaceKey, foldCityName } from "@/lib/crm/city-names";
+import { CITY_ALIASES, cityPlaceKey, foldCityName } from "@/lib/crm/city-names";
 import {
   flightCities,
   flightIata,
   hotelDisplayName,
   nightsBetween,
+  stayArrivalPlaces,
   stayHeadline,
 } from "@/lib/crm/carnet";
+import { labelIncludesCity, splitPlaceLabel, tripCityPlan, type TripStep } from "@/lib/crm/layover";
 import { formatDateRangeShort } from "@/lib/crm/money";
 
 export type StaffStayVisibility = "preparing" | "shown" | "archived";
@@ -132,13 +134,6 @@ export function shortStayRange(start: string | null | undefined, end: string | n
   return shortStayDay(from || to);
 }
 
-function pushPlace(found: string[], value: string) {
-  const label = cityLabel(value);
-  const key = cityPlaceKey(label);
-  if (!key || found.some((item) => cityPlaceKey(item) === key)) return;
-  found.push(label);
-}
-
 function carnetSteps(items: Step[]) {
   return items
     .filter((item) => countsAsCarnetCard(item.kind) && isActiveItem(item))
@@ -150,9 +145,56 @@ function carnetSteps(items: Step[]) {
     });
 }
 
+function knownCityKeys(items: Step[]) {
+  const plan = tripCityPlan(items);
+  return new Set(
+    [...plan.cities, ...plan.destinations, ...plan.layovers]
+      .map((city) => cityPlaceKey(city))
+      .filter(Boolean)
+  );
+}
+
+/** Liste de villes déjà posée par l’agence, pas un nom choisi (« 40 ans »). */
+export function isAutoCityList(value: string | null | undefined, items: Step[]) {
+  const parts = splitPlaceLabel(value);
+  if (!parts.length) return false;
+  const keys = knownCityKeys(items);
+  if (!keys.size) return false;
+  return parts.every((part) => keys.has(cityPlaceKey(part)));
+}
+
+/**
+ * Titre et destination lus sur les étapes.
+ * Une escale pure sort du titre et, si la destination n’est qu’une liste de villes, de la destination.
+ * Un nom choisi (« 40 ans ») reste.
+ */
+export function nextStayLabels(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  items: Step[],
+  fallback = "Séjour"
+) {
+  const plan = tripCityPlan(items as TripStep[]);
+  const nextTitle = stayHeadline(title, destination, plan.cities, fallback, plan.layovers).trim();
+  const currentDest = (destination || "").trim();
+  const suggested = stayArrivalPlaces(null, null, items).join(" · ");
+  const destHasLayover = plan.layovers.some((city) => labelIncludesCity(currentDest, city));
+  const destinationChanged = Boolean(
+    destHasLayover && isAutoCityList(currentDest, items) && suggested && suggested !== currentDest
+  );
+  return {
+    title: nextTitle,
+    destination: destinationChanged ? suggested : currentDest,
+    suggestedDestination: suggested,
+    destinationChanged,
+    plan,
+  };
+}
+
 /**
  * Titre lu sur les étapes. Un nom choisi (« 40 ans ») reste.
  * Une liste de villes s’allonge quand une étape en ajoute une.
+ * Une escale pure n’y entre pas.
  */
 export function stayTitleFromItems(
   title: string | null | undefined,
@@ -160,21 +202,51 @@ export function stayTitleFromItems(
   items: Step[],
   fallback = "Séjour"
 ) {
-  return stayHeadline(title, destination, stayCitiesFromSteps(items), fallback);
+  return nextStayLabels(title, destination, items, fallback).title || fallback;
 }
 
-/** Villes dans l’ordre des étapes, Paris compris quand le vol en part. */
+/** Villes dans l’ordre des étapes, Paris compris quand le vol en part. Les escales pures n’y sont pas. */
 export function stayCitiesFromSteps(items: Step[]) {
-  const cities: string[] = [];
-  for (const item of carnetSteps(items)) {
-    if (item.kind === "flight" || item.kind === "rail") {
-      pushPlace(cities, detail(item, "city_from") || detail(item, "from"));
-      pushPlace(cities, detail(item, "city_to") || detail(item, "to"));
-      continue;
-    }
-    if (item.kind === "hotel") pushPlace(cities, detail(item, "city"));
-  }
-  return cities;
+  return tripCityPlan(items).cities;
+}
+
+export type LayoverFieldChange = { from: string; to: string };
+
+export type LayoverDossierDiff = {
+  layovers: string[];
+  title: LayoverFieldChange | null;
+  destination: LayoverFieldChange | null;
+  customTitle: boolean;
+  customDestination: boolean;
+};
+
+/**
+ * Ce que le rattrapage écrirait. Rien si le titre et la destination ne citent pas une escale pure.
+ * Un nom choisi qui cite l’escale est signalé et laissé.
+ */
+export function layoverDossierDiff(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  items: Step[]
+): LayoverDossierDiff | null {
+  const plan = tripCityPlan(items);
+  const currentTitle = (title || "").trim();
+  const currentDest = (destination || "").trim();
+  const titleHas = plan.layovers.some((city) => labelIncludesCity(currentTitle, city));
+  const destHas = plan.layovers.some((city) => labelIncludesCity(currentDest, city));
+  if (!titleHas && !destHas) return null;
+  const next = nextStayLabels(currentTitle, currentDest, items, currentTitle || "Séjour");
+  const titleAuto = titleHas && isAutoCityList(currentTitle, items);
+  const destAuto = destHas && isAutoCityList(currentDest, items);
+  const nextTitle = titleAuto ? next.title : currentTitle;
+  const nextDest = destAuto && next.destinationChanged ? next.destination : currentDest;
+  return {
+    layovers: plan.layovers,
+    title: titleAuto && nextTitle !== currentTitle ? { from: currentTitle, to: nextTitle } : null,
+    destination: destAuto && nextDest !== currentDest ? { from: currentDest, to: nextDest } : null,
+    customTitle: titleHas && !titleAuto,
+    customDestination: destHas && !destAuto,
+  };
 }
 
 export type StaySegment = {

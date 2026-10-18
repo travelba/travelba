@@ -20,6 +20,7 @@ export function bookingListSearchText(input: {
   phone?: string | null;
   places?: string[] | null;
   routes?: string[] | null;
+  layovers?: string[] | null;
   amount?: number | null;
 }) {
   const places = input.places || [];
@@ -33,7 +34,7 @@ export function bookingListSearchText(input: {
     input.reference,
     input.title,
     input.destination,
-    stayHeadline(input.title, input.destination, routes.length ? routes : places),
+    stayHeadline(input.title, input.destination, routes.length ? routes : places, "Séjour", input.layovers),
     input.customer,
     input.company,
     input.email,

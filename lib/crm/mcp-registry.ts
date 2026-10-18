@@ -533,7 +533,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "creer_dossier",
     write: true,
     description:
-      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. societe_id ou facturer_societe facture la société du client (payer_kind société) ; sinon le séjour reste particulier. Erreur s’il n’y a aucune société ou plusieurs sans societe_id. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
+      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination : aller simple = dernière ville, aller-retour = ville où l’on fait demi-tour. societe_id ou facturer_societe facture la société du client (payer_kind société) ; sinon le séjour reste particulier. Erreur s’il n’y a aucune société ou plusieurs sans societe_id. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
     input: {
       client_id: z.string().trim().describe("Identifiant du client"),
       titre: z.string().trim().describe("Titre du séjour"),
@@ -586,7 +586,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_vol",
     write: true,
     description:
-      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
+      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) sort du titre et d’une destination qui n’est qu’une liste de villes. Une nuit d’hôtel garde la ville. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
