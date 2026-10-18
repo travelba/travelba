@@ -112,6 +112,11 @@ test("a client is created with an email and a name, and updated by id", () => {
   const updated = prepareClientUpdate({ id: CLIENT, prenom: "Ada", societe: "TBA" });
   assert.equal(updated.patch.first_name, "Ada");
   assert.equal(updated.patch.company_name, "TBA");
+  assert.equal(updated.company?.company_name, "TBA");
+  const siretOnly = prepareClientUpdate({ id: CLIENT, siret: "73282932000074", tva: "FR123", ville: "Paris" });
+  assert.equal(Object.keys(siretOnly.patch).length, 0);
+  assert.equal(siretOnly.company?.siret, "73282932000074");
+  assert.equal(siretOnly.company?.billing_city, "Paris");
   assert.throws(() => prepareClientUpdate({ id: CLIENT }), /Rien à modifier/);
   assert.throws(() => prepareClientUpdate({ id: "nom", prenom: "Ada" }), /Client invalide/);
 });
