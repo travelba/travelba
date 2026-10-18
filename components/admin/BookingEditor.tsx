@@ -969,11 +969,12 @@ export function BookingEditor({
       type="button"
       disabled={busy !== "idle"}
       onClick={() => setConfirm(showPrimaryPublish ? "publish" : "unpublish")}
-      className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
+      className="admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50"
     >
       {!booking.visible_to_client ? "Montrer au client" : "Mettre à jour"}
     </button>
   ) : null;
+  const saveLabel = busy === "save" ? "Enregistrement…" : "Enregistrer";
   const saveButton = (
     <button
       type="submit"
@@ -983,7 +984,20 @@ export function BookingEditor({
       title="⌘S / Ctrl+S"
       className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50"
     >
-      {busy === "save" ? "Enregistrement…" : "Enregistrer"}
+      {saveLabel}
+    </button>
+  );
+  const saveIconButton = (
+    <button
+      type="submit"
+      form="booking-meta"
+      disabled={busy !== "idle" || !unsaved}
+      aria-keyshortcuts="Control+S Meta+S"
+      title="⌘S / Ctrl+S"
+      aria-label={saveLabel}
+      className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--admin-navy)] bg-white text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50 lg:hidden"
+    >
+      <Icon name="save" className="h-4 w-4" />
     </button>
   );
   const moreButton = (
@@ -992,7 +1006,7 @@ export function BookingEditor({
       aria-expanded={more}
       aria-label="Autres actions du dossier"
       onClick={() => setMore((open) => !open)}
-      className="admin-tap inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)]"
+      className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)] lg:h-10 lg:w-10"
     >
       …
     </button>
@@ -1071,7 +1085,7 @@ export function BookingEditor({
     <div className="flex flex-col gap-6">
       {compact ? (
         <div className="fixed inset-x-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-30 border-b border-[var(--border)] bg-[rgba(250,249,246,0.94)] px-4 py-2 shadow-[0_1px_8px_rgba(11,25,44,0.06)] backdrop-blur-xl sm:px-6 lg:left-72 lg:top-20 lg:px-8">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
             <div className="min-w-0 flex-1">
               <input
                 value={titleEdit.value}
@@ -1089,18 +1103,19 @@ export function BookingEditor({
                 {unsaved ? <span>· Modifications non enregistrées</span> : null}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {travelers.length === 0 ? (
                 <button
                   type="button"
                   disabled={partyBusy}
                   onClick={() => void addHolder()}
-                  className="admin-tap rounded-full border border-[var(--admin-navy)] px-3 py-2 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+                  className="admin-tap rounded-full border border-[var(--admin-navy)] px-3 py-2 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50 max-lg:basis-full lg:shrink-0"
                 >
                   Ajouter le titulaire
                 </button>
               ) : null}
-              {saveButton}
+              {saveIconButton}
+              <span className="hidden lg:contents">{saveButton}</span>
               {primaryAction}
               {moreButton}
             </div>
@@ -1110,9 +1125,9 @@ export function BookingEditor({
       ) : null}
       <header className="relative space-y-4">
         <div ref={sentinelRef} aria-hidden className="absolute left-0 top-0 h-px w-px" />
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            <Link href="/admin/reservations" className="shrink-0 pt-5 text-sm font-semibold text-[var(--admin-navy)]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-start lg:gap-3">
+            <Link href="/admin/reservations" className="admin-tap inline-flex shrink-0 items-center text-sm font-semibold text-[var(--admin-navy)] lg:pt-5">
               ← Réservations
             </Link>
             <div className="min-w-0 flex-1">
@@ -1137,7 +1152,7 @@ export function BookingEditor({
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
             {travelers.length === 0 ? (
               <button
                 type="button"
@@ -1174,7 +1189,7 @@ export function BookingEditor({
             ))}
           </ul>
         ) : null}
-        <div className="flex items-end gap-6 overflow-x-auto border-b border-[var(--border)]" role="tablist" aria-label="Parties du dossier">
+        <div className="flex min-w-0 items-end gap-4 overflow-x-auto border-b border-[var(--border)] lg:gap-6" role="tablist" aria-label="Parties du dossier">
           {tabs.map((id) => {
             const selected = tab === id;
             return (
@@ -1193,12 +1208,12 @@ export function BookingEditor({
                 onKeyDown={onTabKey}
                 className={
                   id === "interface"
-                    ? `ml-auto mb-2 shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 font-display text-sm font-semibold ${
+                    ? `mb-2 inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-3 py-1.5 font-display text-sm font-semibold lg:ml-auto lg:min-h-0 ${
                         selected
                           ? "bg-[var(--admin-peach)] text-[var(--admin-navy)]"
                           : "text-[#9e7e51] hover:text-[var(--admin-navy)]"
                       }`
-                    : `-mb-px shrink-0 whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold ${
+                    : `-mb-px inline-flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold lg:min-h-0 ${
                         selected
                           ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
                           : "border-transparent text-muted hover:text-[var(--admin-navy)]"
@@ -1309,7 +1324,7 @@ export function BookingEditor({
       <form id="booking-meta" onSubmit={save} className="contents">
         <div className="contents">
           <section className={`order-1 admin-af-card space-y-4 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CoverMark>Le client</CoverMark>
               <Link
                 href={`/admin/clients/${clientPick?.id || booking.customer_id}`}
@@ -1393,7 +1408,7 @@ export function BookingEditor({
           </section>
 
           <section className={`order-1 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "voyage" ? "" : "hidden"}`}>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CoverMark>Lieu et dates</CoverMark>
               {facts.nights ? (
                 <span className="rounded-full bg-[var(--admin-navy)] px-3 py-1 font-display text-sm font-bold text-[var(--admin-gold)]">
@@ -1404,8 +1419,8 @@ export function BookingEditor({
             {facts.segments.length ? (
               <ul className="divide-y divide-[var(--border)]">
                 {facts.segments.map((segment) => (
-                  <li key={segment.id} className="flex items-baseline justify-between gap-3 py-2 text-sm text-[var(--admin-navy)]">
-                    <span className="font-semibold">{segment.place}</span>
+                  <li key={segment.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2 text-sm text-[var(--admin-navy)]">
+                    <span className="min-w-0 break-words font-semibold">{segment.place}</span>
                     <span className="shrink-0 text-muted">{segment.when}</span>
                   </li>
                 ))}

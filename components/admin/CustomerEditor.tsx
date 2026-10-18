@@ -632,7 +632,7 @@ function CompanionCard({
 
   return (
     <article className={`admin-af-card rounded-3xl px-5 py-4 ${expanded ? "sm:col-span-2" : "h-full"}`}>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-3">
         <button
           type="button"
           onClick={onToggle}

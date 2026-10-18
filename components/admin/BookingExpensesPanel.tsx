@@ -222,11 +222,11 @@ export function BookingExpensesPanel({
 
   return (
     <section className="admin-af-card rounded-3xl p-5">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-display text-lg font-bold">Dépenses</h2>
         <button
           type="button"
-          className="text-xs font-semibold text-[var(--admin-navy)] underline"
+          className="admin-tap text-xs font-semibold text-[var(--admin-navy)] underline"
           onClick={beginNew}
         >
           Ajouter une dépense
@@ -281,16 +281,16 @@ export function BookingExpensesPanel({
             ) : (
               <li
                 key={item.id}
-                className="flex items-start justify-between gap-3 rounded-xl border border-border px-3 py-2"
+                className="flex flex-col gap-2 rounded-xl border border-border px-3 py-2 lg:flex-row lg:items-start lg:justify-between"
               >
                 <div className="min-w-0">
-                  <p className="font-medium">
+                  <p className="break-words font-medium">
                     {visibleServiceCopy(item.title)}
                     <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
                       Transactions
                     </span>
                   </p>
-                  <p className="text-xs text-muted">
+                  <p className="break-words text-xs text-muted">
                     {item.amount != null ? formatMoney(Number(item.amount), currency) : "Montant manquant"}
                     {" · "}
                     {isAutoTicketingExpense(item)
@@ -300,17 +300,17 @@ export function BookingExpensesPanel({
                       : "Absente de l’itinéraire"}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex items-center gap-2 lg:shrink-0">
                   <button
                     type="button"
-                    className="text-xs font-semibold text-[var(--admin-navy)]"
+                    className="admin-tap inline-flex min-h-11 items-center rounded-full px-3 text-xs font-semibold text-[var(--admin-navy)] lg:min-h-0"
                     onClick={() => beginEdit(item)}
                   >
                     Modifier
                   </button>
                   <button
                     type="button"
-                    className="text-xs font-semibold text-accent"
+                    className="admin-tap inline-flex min-h-11 items-center rounded-full px-3 text-xs font-semibold text-accent lg:min-h-0"
                     onClick={() => void remove(item.id)}
                   >
                     Retirer

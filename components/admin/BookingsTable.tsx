@@ -92,18 +92,18 @@ export function BookingsTable({
           <li
             key={b.id}
             data-search={searchText[b.id] || ""}
-            className="flex flex-col gap-3 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 px-4 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:px-5 lg:flex-row lg:items-center lg:justify-between"
           >
             <Link
               href={`/admin/reservations/${b.id}`}
-              className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+              className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between"
             >
               <div className="flex min-w-0 items-center gap-3">
               <BookingHero
                 booking={b}
                 places={places[b.id]}
                 plain
-                className="h-16 w-28 shrink-0 rounded-xl"
+                className="h-14 w-20 shrink-0 rounded-xl sm:h-16 sm:w-28"
               />
                 <div className="min-w-0">
                   <p className="break-words font-semibold text-[var(--admin-navy)]">
@@ -127,7 +127,7 @@ export function BookingsTable({
                 </span>
               </div>
             </Link>
-            <div className="flex shrink-0 items-center gap-1 self-end sm:self-center">
+            <div className="flex shrink-0 items-center justify-end gap-1 self-end lg:self-center">
               <DuplicateBookingButton iconOnly bookingId={b.id} label={`${b.reference} — ${b.title}`} />
               {b.archived_at ? (
                 <RestoreBookingButton iconOnly bookingId={b.id} />

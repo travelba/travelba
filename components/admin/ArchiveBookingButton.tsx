@@ -72,7 +72,7 @@ function ActionTrigger({
           aria-label={label}
           aria-haspopup="dialog"
           onClick={onClick}
-          className={`admin-tap inline-flex h-9 w-9 items-center justify-center rounded-full bg-white ring-1 transition hover:bg-[var(--admin-sky)] disabled:opacity-50 ${toneClass}`}
+          className={`admin-tap inline-flex h-11 w-11 items-center justify-center rounded-full bg-white ring-1 transition hover:bg-[var(--admin-sky)] disabled:opacity-50 lg:h-9 lg:w-9 ${toneClass}`}
         >
           <Icon name={icon} className="h-4 w-4" />
         </button>
@@ -80,7 +80,7 @@ function ActionTrigger({
     );
   }
 
-  const height = compact ? "min-h-9 px-3 text-xs" : "min-h-11 px-4 text-sm";
+  const height = compact ? "min-h-11 px-3 text-xs lg:min-h-9" : "min-h-11 px-4 text-sm";
   const toneClass =
     tone === "danger"
       ? "text-[var(--admin-red)] ring-1 ring-[var(--admin-red)]/30"

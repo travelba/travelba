@@ -141,9 +141,9 @@ function stepSubtitle(item: CrmBookingItem) {
 }
 
 const flatBtn =
-  "admin-tap inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-40";
+  "admin-tap inline-flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-40 lg:h-8";
 const flatIconBtn =
-  "admin-tap inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)]";
+  "admin-tap inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)] lg:h-8 lg:w-8";
 
 /**
  * Une étape déplaçable : seule la poignée (icône grip) démarre le glisser, le reste de la carte
@@ -522,10 +522,10 @@ export function BookingItemsPanel({
   }
 
   return (
-    <section className="admin-af-card rounded-3xl p-5">
-      <div className="flex items-center justify-between gap-2">
+    <section className="admin-af-card rounded-3xl p-4 sm:p-5">
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
-        <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" onClick={startNew}>
+        <button type="button" className="admin-af-btn admin-tap self-start rounded-full px-4 py-2 text-sm sm:self-auto" onClick={startNew}>
           Ajouter une étape
         </button>
       </div>
@@ -589,7 +589,7 @@ export function BookingItemsPanel({
             {(handle) => (
             <div
               id={bookingStepAnchor(item.id)}
-              className={`scroll-mt-28 rounded-2xl border px-3 py-3 ${
+              className={`scroll-mt-40 rounded-2xl border px-3 py-3 lg:scroll-mt-28 ${
                 retired
                   ? "border-[var(--border)] bg-[#F4F1EA] text-muted"
                   : doubts.length
@@ -633,13 +633,14 @@ export function BookingItemsPanel({
               </div>
             ) : (
               <>
-              <div className="flex items-start gap-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+                <div className="flex min-w-0 items-start gap-2 lg:flex-1 lg:gap-3">
                 <button
                   type="button"
                   aria-label={`Déplacer ${stepTitle(item)}`}
                   disabled={locked}
                   onPointerDown={handle.onPointerDown}
-                  className="-ml-1 mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted active:cursor-grabbing disabled:opacity-30"
+                  className="-ml-1 inline-flex h-11 w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted active:cursor-grabbing disabled:opacity-30 lg:mt-0.5 lg:h-6 lg:w-6"
                 >
                   <Icon name="grip" className="h-4 w-4" />
                 </button>
@@ -648,24 +649,30 @@ export function BookingItemsPanel({
                   type="button"
                   aria-expanded={openStep === item.id}
                   onClick={() => setOpenStep(openStep === item.id ? null : item.id)}
-                  className="flex w-full items-start gap-3 rounded-xl text-left"
+                  className="flex w-full items-start gap-2 rounded-xl text-left lg:gap-3"
                 >
-                  <span className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted">{when || "Sans date"}</span>
+                  <span className="hidden w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted lg:block">{when || "Sans date"}</span>
                   <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
                   <span className="min-w-0 flex-1">
-                    <span className={`block truncate text-sm font-semibold ${cancelled ? "text-muted line-through" : "text-[var(--admin-navy)]"}`}>
-                      {stepTitle(item)}
+                    <span className="flex items-start justify-between gap-2">
+                      <span className={`min-w-0 break-words text-sm font-semibold lg:truncate ${cancelled ? "text-muted line-through" : "text-[var(--admin-navy)]"}`}>
+                        {stepTitle(item)}
+                      </span>
+                      {price ? (
+                        <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:hidden">{price}</span>
+                      ) : null}
                     </span>
+                    <span className="mt-0.5 block text-xs font-semibold text-muted lg:hidden">{when || "Sans date"}</span>
                     {cancelled ? (
                       <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
                         Annulée
                       </span>
                     ) : null}
                     {ticketNames.length ? (
-                      <span className="block text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</span>
+                      <span className="block break-words text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</span>
                     ) : null}
-                    {airport ? <span className="block truncate text-xs text-muted">{airport}</span> : null}
-                    {quiet ? <span className="block truncate text-xs text-muted">{quiet}</span> : null}
+                    {airport ? <span className="block break-words text-xs text-muted lg:truncate">{airport}</span> : null}
+                    {quiet ? <span className="block break-words text-xs text-muted lg:truncate">{quiet}</span> : null}
                     {doubts.length ? (
                       <span className="mt-1 block text-xs font-semibold text-accent">{doubts.join(" ")}</span>
                     ) : null}
@@ -673,7 +680,7 @@ export function BookingItemsPanel({
                       <span className="block text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</span>
                     ) : null}
                   </span>
-                  {price ? <span className="shrink-0 text-sm font-semibold text-[var(--admin-navy)]">{price}</span> : null}
+                  {price ? <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:block">{price}</span> : null}
                   <Icon
                     name="expand_more"
                     className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition ${openStep === item.id ? "rotate-180" : ""}`}
@@ -681,8 +688,8 @@ export function BookingItemsPanel({
                 </button>
                 {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
                   <div className="mt-2 flex gap-3">
-                    <span className="w-16 shrink-0" />
-                    <span className="w-4 shrink-0" />
+                    <span className="hidden w-16 shrink-0 lg:block" />
+                    <span className="hidden w-4 shrink-0 lg:block" />
                     <div className="min-w-0 flex-1">
                     {deskFor === item.id ? null : <HotelChecklistGlance itemId={item.id} requests={hotelRequests} />}
                     <button
@@ -717,8 +724,13 @@ export function BookingItemsPanel({
                   </div>
                 ) : null}
                 </div>
-                <div className="relative flex shrink-0 items-center gap-2">
-                  <button type="button" className={flatBtn} onClick={() => startEdit(item)}>
+                </div>
+                <div className="relative flex items-center gap-2 lg:shrink-0">
+                  <button
+                    type="button"
+                    className="admin-tap inline-flex h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] lg:h-8 lg:flex-none"
+                    onClick={() => startEdit(item)}
+                  >
                     Modifier
                   </button>
                   <button
@@ -730,7 +742,7 @@ export function BookingItemsPanel({
                     …
                   </button>
                   {menuFor === item.id ? (
-                    <div className="absolute right-0 top-9 z-20 flex w-60 flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2">
+                    <div className="absolute right-0 top-full z-30 mt-1 flex w-60 max-w-[calc(100vw-2.5rem)] flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2 shadow-lg">
                       {!retired ? (
                       <button
                         type="button"

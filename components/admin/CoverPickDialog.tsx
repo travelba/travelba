@@ -154,7 +154,7 @@ export function CoverPickDialog({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="rounded-full p-1.5 text-muted hover:bg-[var(--admin-sky)] disabled:opacity-50"
+            className="admin-tap inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted hover:bg-[var(--admin-sky)] disabled:opacity-50"
             aria-label="Fermer"
           >
             <Icon name="close" className="h-5 w-5" />

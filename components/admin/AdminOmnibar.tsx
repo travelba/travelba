@@ -33,6 +33,7 @@ export function OmnibarMenu({
   onPick,
   onHover,
   className = "",
+  comfortable = false,
 }: {
   listId: string;
   payload: OmnibarPayload;
@@ -42,6 +43,7 @@ export function OmnibarMenu({
   onPick: (hit: OmnibarHit) => void;
   onHover: (index: number) => void;
   className?: string;
+  comfortable?: boolean;
 }) {
   const flat = flattenOmnibar(payload);
   const showEmpty = !loading && !error && flat.length === 0;
@@ -75,9 +77,9 @@ export function OmnibarMenu({
                   <li key={`${group.id}-${hit.id}`} id={`${listId}-${index}`} role="option" aria-selected={active}>
                     <button
                       type="button"
-                      className={`flex w-full min-w-0 items-center gap-2.5 px-2.5 py-2 text-left ${
-                        active ? "bg-[#f3f6fa]" : "bg-white"
-                      }`}
+                      className={`flex w-full min-w-0 items-center gap-2.5 px-2.5 text-left ${
+                        comfortable ? "min-h-11 py-2" : "py-2"
+                      } ${active ? "bg-[#f3f6fa]" : "bg-white"}`}
                       onMouseEnter={() => onHover(index)}
                       onMouseDown={(event) => {
                         event.preventDefault();
@@ -260,7 +262,7 @@ export function AdminOmnibar({
         type="search"
         className={
           variant === "overlay"
-            ? "w-full rounded-md bg-white/10 py-3 pl-10 pr-4 text-[15px] text-white outline-none placeholder:text-[#c5c6cd] focus:bg-white/15 focus:ring-2 focus:ring-[var(--admin-gold)]/40"
+            ? "w-full min-w-0 rounded-md bg-white/10 py-3 pl-10 pr-4 text-base text-white outline-none placeholder:text-[#c5c6cd] focus:bg-white/15 focus:ring-2 focus:ring-[var(--admin-gold)]/40"
             : `w-full rounded-md py-2.5 pl-10 pr-4 text-[13px] text-[var(--admin-navy)] outline-none transition focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30 ${
                 highlighted ? "bg-white ring-2 ring-[var(--admin-gold)]/60" : "bg-[var(--surface-2)]"
               }`
@@ -293,7 +295,7 @@ export function AdminOmnibar({
       <form
         role="search"
         onSubmit={onFormSubmit}
-        className={variant === "overlay" ? "flex items-center gap-2" : undefined}
+        className={variant === "overlay" ? "flex min-w-0 items-center gap-2" : undefined}
       >
         {input}
         {trailing}
@@ -307,6 +309,7 @@ export function AdminOmnibar({
           activeIndex={active}
           onPick={pick}
           onHover={setActive}
+          comfortable={variant === "overlay"}
           className={
             variant === "overlay" ? "mt-3 min-h-0 flex-1" : "absolute top-full z-50 mt-1 max-h-80 w-full"
           }

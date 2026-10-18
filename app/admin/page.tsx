@@ -147,12 +147,12 @@ export default async function AdminHomePage() {
           À faire aujourd’hui
         </h2>
         {todo.length ? (
-          <ul className="mt-3 flex gap-3 overflow-x-auto py-1 lg:flex-wrap lg:overflow-visible">
+          <ul className="mt-3 flex flex-col gap-2 lg:flex-row lg:flex-wrap">
             {todo.map((row) => (
-              <li key={row.id} className="shrink-0">
+              <li key={row.id} className="min-w-0 lg:shrink-0">
                 <Link
                   href={row.href}
-                  className="flex min-w-[12.5rem] items-center gap-3 rounded-2xl border border-[var(--admin-gold)]/30 bg-[#f8f4ed] px-4 py-3 text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)]"
+                  className="flex min-h-11 items-center gap-3 rounded-2xl border border-[var(--admin-gold)]/30 bg-[#f8f4ed] px-4 py-3 text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)] lg:min-w-[12.5rem]"
                 >
                   <span className="font-display text-2xl font-bold tabular-nums text-[var(--admin-gold)]">{row.count}</span>
                   <span className="max-w-[11rem] text-sm font-semibold leading-snug">{todoCaption(row.label)}</span>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Icon } from "@/components/crm/icons";
 
 const dismissBtn =
-  "admin-tap inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-40";
+  "admin-tap inline-flex h-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-40 lg:h-8";
 
 /** Bandeau fermé : le mot et le nombre, sans ouvrir la liste. */
 export function proposedDuplicateHeading(count: number) {
@@ -43,11 +43,11 @@ export function ProposedDuplicates({
       </summary>
       <div>
         {duplicates.map((mail) => (
-          <div key={mail.id} className="mt-2 flex items-center gap-3 rounded-2xl bg-[#f4f3f0] px-3 py-3 text-muted">
-            <Icon name="mail" className="h-4 w-4 shrink-0" />
+          <div key={mail.id} className="mt-2 flex flex-col gap-2 rounded-2xl bg-[#f4f3f0] px-3 py-3 text-muted sm:flex-row sm:items-center sm:gap-3">
+            <Icon name="mail" className="hidden h-4 w-4 shrink-0 sm:block" />
             <p className="min-w-0 flex-1 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide">Doublon</span>
-              <span className="block truncate">{mail.label}</span>
+              <span className="block break-words sm:truncate">{mail.label}</span>
             </p>
             <button type="button" disabled={busy} className={dismissBtn} onClick={() => onDismiss(mail.id)}>
               Écarter
