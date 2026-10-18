@@ -35,7 +35,7 @@ import {
 import { itemTicketCount } from "@/lib/crm/item-match";
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
-import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-ics";
+import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-open";
 import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
 import {
   bookingHasFlight,
@@ -69,6 +69,7 @@ function AgendaLink({
       href={href}
       googleHref={phone?.google}
       className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+      fallbackClassName="inline-flex items-center text-xs font-semibold text-[var(--admin-navy)]/70 underline-offset-2 hover:underline"
     >
       <Icon name="event" className="h-4 w-4" />
       {children}
