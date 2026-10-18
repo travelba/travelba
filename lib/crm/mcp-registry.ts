@@ -40,6 +40,16 @@ import { redactMcp } from "@/lib/crm/mcp-redact";
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
 export const MCP_TOOL_CAP = 40;
 
+const COMPANY_FIELDS = {
+  raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
+  siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres. Même SIRET : la société existante est mise à jour"),
+  tva: z.string().trim().max(40).optional().describe("Numéro de TVA"),
+  adresse: z.string().trim().max(300).optional().describe("Adresse de facturation"),
+  code_postal: z.string().trim().max(20).optional().describe("Code postal de facturation"),
+  ville: z.string().trim().max(80).optional().describe("Ville de facturation"),
+  pays: z.string().trim().max(80).optional().describe("Pays de facturation"),
+};
+
 const PRIX_BILLET = "Prix d’un billet (unitaire). Le séjour le multiplie par le nombre de billets.";
 const PRIX_GROUPE =
   "Total du groupe pour cette carte. Unitaire = total / billets. Un aller-retour au même prix n’est compté qu’une fois ; deux prix différents comptent tous les deux.";
@@ -158,7 +168,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "chercher_dossiers",
     description:
-      "Dossiers. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Visible, ou Archivée.",
+      "Dossiers. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Visible, ou Archivée. À côté du contact : societe et paye_par (société ou particulier).",
     input: {
       q,
       etat: z
@@ -175,7 +185,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (villes puis code aéroport), voyageurs, état. id ou reference. Pas les contacts d’hôtel.",
+      "Un dossier : cartes (villes puis code aéroport), voyageurs, état, société facturée (societe, paye_par). id ou reference. Pas les contacts d’hôtel.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -453,12 +463,13 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "creer_client",
     write: true,
     description:
-      "Crée une fiche client (e-mail, prénom, nom). N’envoie pas d’invitation. Un e-mail déjà utilisé est refusé.",
+      "Crée une fiche client (e-mail, prénom, nom). Raison sociale, SIRET, TVA et adresse créent la société de facturation sur cette fiche, sans doublon de SIRET. N’envoie pas d’invitation. Un e-mail déjà utilisé est refusé.",
     input: {
       email: z.string().trim().describe("E-mail du client"),
       prenom: z.string().trim().describe("Prénom"),
       nom: z.string().trim().describe("Nom"),
       telephone: z.string().trim().max(40).optional().describe("Téléphone"),
+      ...COMPANY_FIELDS,
     },
     run: (args) => createClient(args),
   },
@@ -466,14 +477,15 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_client",
     write: true,
     description:
-      "Met à jour le prénom, le nom, l’e-mail, le téléphone ou la société d’un client déjà identifié. Ne crée pas de fiche.",
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone ou la société d’un client déjà identifié. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). Ne crée pas de fiche. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       prenom: z.string().max(80).optional().describe("Prénom"),
       nom: z.string().max(80).optional().describe("Nom"),
       email: z.string().trim().optional().describe("E-mail"),
       telephone: z.string().max(40).optional().describe("Téléphone"),
-      societe: z.string().max(200).optional().describe("Société"),
+      societe: z.string().max(200).optional().describe("Raison sociale, comme raison_sociale"),
+      ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),
   },
@@ -521,7 +533,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "creer_dossier",
     write: true,
     description:
-      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
+      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination : aller simple = dernière ville, aller-retour = ville où l’on fait demi-tour. societe_id ou facturer_societe facture la société du client (payer_kind société) ; sinon le séjour reste particulier. Erreur s’il n’y a aucune société ou plusieurs sans societe_id. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
     input: {
       client_id: z.string().trim().describe("Identifiant du client"),
       titre: z.string().trim().describe("Titre du séjour"),
@@ -531,6 +543,11 @@ export const MCP_TOOLS: ToolDef[] = [
       notes: z.string().trim().max(5000).optional().describe("Note visible par le client une fois le séjour montré"),
       notes_internes: z.string().trim().max(5000).optional().describe("Note interne, jamais côté client"),
       devise: z.string().trim().max(12).optional().describe("Devise du dossier, 3 lettres. EUR si omise. THB reste THB"),
+      societe_id: z.string().trim().max(80).optional().describe("Société de facturation déjà sur la fiche"),
+      facturer_societe: z
+        .boolean()
+        .optional()
+        .describe("Facturer l’unique société du client. Erreur s’il n’y en a aucune ou plusieurs"),
     },
     run: (args) => createDossier(args),
   },
@@ -569,7 +586,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_vol",
     write: true,
     description:
-      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
+      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) sort du titre et d’une destination qui n’est qu’une liste de villes. Une nuit d’hôtel garde la ville. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),

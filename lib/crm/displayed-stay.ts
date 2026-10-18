@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { itemIncludedInLedger, itemSellingAmount } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
 import { isActiveItem, isExtraItemKind, isLedgerExpenseKind } from "@/lib/crm/types";
@@ -15,6 +16,7 @@ type StayItemRow = {
   amount: number | string | null;
   lifecycle?: string | null;
   details?: Record<string, unknown> | null;
+  include_in_ledger?: boolean | null;
 };
 
 /**
@@ -47,27 +49,63 @@ export function displayedStayAmount(
   });
 }
 
+/**
+ * Montant des cartes comptées au grand livre.
+ * Le total stocké porte les étapes (aller-retour une fois). La billeterie compte une fois :
+ * la ligne de dépense si elle existe, sinon le forfait. Un extra inclus (visa) s’ajoute.
+ * Un extra hors livre ne s’ajoute pas. Le prix affiché client, lui, laisse l’extra dans l’assiette des 10 % seulement.
+ */
+export function ledgerCountedStayAmount(
+  booking: StayRow & { client_settles_stay?: boolean | null; include_in_ledger?: boolean | null },
+  items: StayItemRow[],
+  travelerCount: number
+) {
+  const settles = booking.client_settles_stay === true;
+  const active = items.filter((item) => isActiveItem(item));
+  const extraSum = active.reduce((sum, item) => {
+    if (!isExtraItemKind(item.kind) || !itemIncludedInLedger(item, settles)) return sum;
+    const amount = item.amount == null || item.amount === "" ? null : Number(item.amount);
+    return sum + (itemSellingAmount({ ...item, amount: Number.isFinite(amount) ? amount : null }) || 0);
+  }, 0);
+  const stayInLedger = !settles && booking.include_in_ledger !== false;
+  const headline = stayInLedger ? displayedStayAmount(booking, active, travelerCount) : expenseHeadline(booking, active, travelerCount);
+  return Math.round((headline + extraSum) * 100) / 100;
+}
+
+/** Dépenses, billeterie et commission, sans le montant du séjour (réglé par le client, ou hors livre). */
+function expenseHeadline(booking: StayRow, items: StayItemRow[], travelerCount: number) {
+  return displayedStayAmount({ ...booking, total_amount: 0 }, items, travelerCount);
+}
+
+const STAY_AMOUNT_KINDS = ["expense", "flight", "chauffeur", "greeter", "visa", "checkin"] as const;
+
+type ItemQueryRow = StayItemRow & { booking_id: string };
+
+async function loadStayItemRows(supabase: SupabaseClient, ids: string[], columns: string) {
+  const [{ data, error }, { data: travelerRows, error: travelerError }] = await Promise.all([
+    supabase.from("crm_booking_items").select(columns).in("booking_id", ids).in("kind", [...STAY_AMOUNT_KINDS]),
+    supabase.from("crm_booking_travelers").select("booking_id").in("booking_id", ids),
+  ]);
+  if (error || travelerError) {
+    const failed = error || travelerError;
+    throw Object.assign(new Error("Lecture du montant impossible."), {
+      code: failed?.code,
+    });
+  }
+  return {
+    items: (data || []) as unknown as ItemQueryRow[],
+    travelers: (travelerRows || []) as { booking_id: string }[],
+  };
+}
+
 /** Même montant que le dossier, la liste et le règlement quand les frais suivent le séjour. */
 export async function loadDisplayedStayAmounts(supabase: SupabaseClient, bookings: StayRow[]) {
   const itemsByBooking = new Map<string, StayItemRow[]>();
   const travelers = new Map<string, number>();
   if (bookings.length) {
     const ids = bookings.map((booking) => booking.id);
-    const [{ data }, { data: travelerRows }] = await Promise.all([
-      supabase
-        .from("crm_booking_items")
-        .select("booking_id, kind, amount, lifecycle, details")
-        .in("booking_id", ids)
-        .in("kind", ["expense", "flight", "chauffeur", "greeter", "visa", "checkin"]),
-      supabase.from("crm_booking_travelers").select("booking_id").in("booking_id", ids),
-    ]);
-    for (const row of (data || []) as {
-      booking_id: string;
-      kind: string;
-      amount: number | null;
-      lifecycle?: string | null;
-      details?: Record<string, unknown> | null;
-    }[]) {
+    const loaded = await loadStayItemRows(supabase, ids, "booking_id, kind, amount, lifecycle, details");
+    for (const row of loaded.items) {
       const list = itemsByBooking.get(row.booking_id) || [];
       list.push({
         kind: row.kind,
@@ -77,7 +115,7 @@ export async function loadDisplayedStayAmounts(supabase: SupabaseClient, booking
       });
       itemsByBooking.set(row.booking_id, list);
     }
-    for (const row of (travelerRows || []) as { booking_id: string }[]) {
+    for (const row of loaded.travelers) {
       travelers.set(row.booking_id, (travelers.get(row.booking_id) || 0) + 1);
     }
   }
@@ -86,6 +124,39 @@ export async function loadDisplayedStayAmounts(supabase: SupabaseClient, booking
     amounts.set(
       booking.id,
       displayedStayAmount(booking, itemsByBooking.get(booking.id) || [], travelers.get(booking.id) || 0)
+    );
+  }
+  return amounts;
+}
+
+/** Même lecture que le prix affiché, plus les extras inclus au grand livre (visa). Une erreur n’est pas un zéro. */
+export async function loadLedgerCountedStayAmounts(
+  supabase: SupabaseClient,
+  bookings: (StayRow & { client_settles_stay?: boolean | null; include_in_ledger?: boolean | null })[]
+) {
+  const itemsByBooking = new Map<string, StayItemRow[]>();
+  const travelers = new Map<string, number>();
+  if (bookings.length) {
+    const ids = bookings.map((booking) => booking.id);
+    const loaded = await loadStayItemRows(
+      supabase,
+      ids,
+      "booking_id, kind, amount, lifecycle, details, include_in_ledger"
+    );
+    for (const row of loaded.items) {
+      const list = itemsByBooking.get(row.booking_id) || [];
+      list.push(row);
+      itemsByBooking.set(row.booking_id, list);
+    }
+    for (const row of loaded.travelers) {
+      travelers.set(row.booking_id, (travelers.get(row.booking_id) || 0) + 1);
+    }
+  }
+  const amounts = new Map<string, number>();
+  for (const booking of bookings) {
+    amounts.set(
+      booking.id,
+      ledgerCountedStayAmount(booking, itemsByBooking.get(booking.id) || [], travelers.get(booking.id) || 0)
     );
   }
   return amounts;

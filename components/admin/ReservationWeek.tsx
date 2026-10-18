@@ -37,7 +37,7 @@ export function ReservationWeek({
 }: {
   columns: ReservationWeekColumn<CrmBooking>[];
   names: Map<string, string>;
-  places: { arrival: Record<string, string[]>; route: Record<string, string[]> };
+  places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
   amounts: Map<string, number>;
   payerLabels?: Record<string, string>;
 }) {
@@ -98,7 +98,7 @@ function WeekColumn({
 }: {
   column: ReservationWeekColumn<CrmBooking>;
   names: Map<string, string>;
-  places: { arrival: Record<string, string[]>; route: Record<string, string[]> };
+  places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
   amounts: Map<string, number>;
   payerLabels: Record<string, string>;
 }) {
@@ -144,7 +144,7 @@ function StayRow({
   entry: ReservationWeekEntry<CrmBooking>;
   column: ReservationWeekColumn<CrmBooking>;
   names: Map<string, string>;
-  places: { arrival: Record<string, string[]>; route: Record<string, string[]> };
+  places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
   amounts: Map<string, number>;
   payerLabels: Record<string, string>;
 }) {
@@ -170,7 +170,7 @@ function StayRow({
           {booking.reference} · {when}
         </p>
         <p className="truncate font-semibold text-[var(--admin-navy)]">
-          {stayHeadline(booking.title, booking.destination, places.route[booking.id])}
+          {stayHeadline(booking.title, booking.destination, places.route[booking.id], "Séjour", places.layovers?.[booking.id])}
         </p>
         <p className="truncate text-xs text-muted">{names.get(booking.customer_id) || "Client"}</p>
         {payerLabels[booking.id] ? (

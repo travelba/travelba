@@ -35,6 +35,7 @@ export function BookingsTable({
   customers,
   places = {},
   routes = {},
+  layovers = {},
   displayAmounts = {},
   page = 1,
   pageSize = ADMIN_PAGE_SIZE,
@@ -48,6 +49,7 @@ export function BookingsTable({
   customers: CustomerNameRow[];
   places?: Record<string, string[]>;
   routes?: Record<string, string[]>;
+  layovers?: Record<string, string[]>;
   displayAmounts?: Record<string, number>;
   page?: number;
   pageSize?: number;
@@ -105,7 +107,7 @@ export function BookingsTable({
               />
                 <div className="min-w-0">
                   <p className="break-words font-semibold text-[var(--admin-navy)]">
-                    {b.reference} · {stayHeadline(b.title, b.destination, routes[b.id] || places[b.id])}
+                    {b.reference} · {stayHeadline(b.title, b.destination, routes[b.id] || places[b.id], "Séjour", layovers[b.id])}
                   </p>
                   <p className="text-xs text-muted">
                     {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)} →{" "}

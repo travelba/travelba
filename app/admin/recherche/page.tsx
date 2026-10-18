@@ -101,7 +101,7 @@ export default async function AdminSearchPage({
               {hit.bookings.map((booking) => (
                 <li key={booking.id}>
                   <Link href={`/admin/reservations/${booking.id}`} className="block px-5 py-3 font-semibold text-[var(--admin-navy)]">
-                    {booking.reference} · {stayHeadline(booking.title, booking.destination, routes.route[booking.id])}
+                    {booking.reference} · {stayHeadline(booking.title, booking.destination, routes.route[booking.id], "Séjour", routes.layovers[booking.id])}
                     {booking.archived_at ? " · Archivée" : ""}
                   </Link>
                 </li>

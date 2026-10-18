@@ -333,18 +333,128 @@ export async function saveCustomerBillingCompanies(
     if (error) return billingWriteError(error);
   }
 
-  const { error: mirrorError } = await supabase
-    .from("crm_customers")
-    .update(primaryBillingMirror(normalized.companies))
-    .eq("id", customerId);
-  if (mirrorError) return billingWriteError(mirrorError);
+  const mirrored = await mirrorPrimaryBillingCompany(supabase, customerId, normalized.companies);
+  if ("error" in mirrored) return mirrored;
+  const saved = await readBillingCompanies(supabase, customerId);
+  if ("error" in saved) return saved;
+  return { ok: true as const, companies: saved.companies };
+}
+
+async function readBillingCompanies(supabase: SupabaseClient, customerId: string) {
   const { data: saved, error: savedError } = await supabase
     .from("crm_billing_companies")
     .select("*")
     .eq("customer_id", customerId)
     .order("sort_order");
   if (savedError) return billingWriteError(savedError);
-  return { ok: true as const, companies: (saved || []) as BillingCompanyRow[] };
+  return { companies: (saved || []) as BillingCompanyRow[] };
+}
+
+async function mirrorPrimaryBillingCompany(
+  supabase: SupabaseClient,
+  customerId: string,
+  companies: Parameters<typeof primaryBillingMirror>[0]
+) {
+  const { error: mirrorError } = await supabase
+    .from("crm_customers")
+    .update(primaryBillingMirror(companies))
+    .eq("id", customerId);
+  if (mirrorError) return billingWriteError(mirrorError);
+  return { ok: true as const };
+}
+
+/**
+ * Une société sur la fiche : crée, ou met à jour la ligne du même SIRET.
+ * Les autres sociétés restent. La première est recopiée sur la fiche, comme le formulaire.
+ */
+export async function upsertBillingCompany(
+  supabase: SupabaseClient,
+  customerId: string,
+  raw: BillingCompanyInput
+): Promise<{ ok: true; company: BillingCompanyRow } | { error: string }> {
+  const probedSiret = "siret" in raw ? normalizeSiret(raw.siret) : undefined;
+  if (probedSiret !== undefined) {
+    const invalid = siretError(probedSiret);
+    if (invalid) return { error: invalid };
+  }
+  const { data: existing, error: readError } = await supabase
+    .from("crm_billing_companies")
+    .select("*")
+    .eq("customer_id", customerId);
+  if (readError) return billingWriteError(readError);
+  const stored = (existing || []) as BillingCompanyRow[];
+  let target: BillingCompanyRow | null = null;
+  if (probedSiret) {
+    target = stored.find((row) => normalizeSiret(row.siret) === probedSiret) || null;
+  } else if (stored.length > 1) {
+    return { error: "Plusieurs sociétés sur la fiche. Indiquez le SIRET." };
+  } else {
+    target = stored[0] || null;
+  }
+  const merged: BillingCompanyInput = {
+    id: target?.id ?? null,
+    company_name: "company_name" in raw ? raw.company_name : target?.company_name,
+    siret: "siret" in raw ? raw.siret : target?.siret,
+    vat_number: "vat_number" in raw ? raw.vat_number : target?.vat_number,
+    billing_email: "billing_email" in raw ? raw.billing_email : target?.billing_email,
+    billing_address_line: "billing_address_line" in raw ? raw.billing_address_line : target?.billing_address_line,
+    billing_postal_code: "billing_postal_code" in raw ? raw.billing_postal_code : target?.billing_postal_code,
+    billing_city: "billing_city" in raw ? raw.billing_city : target?.billing_city,
+    billing_country: "billing_country" in raw ? raw.billing_country : target?.billing_country,
+  };
+  const normalized = normalizeBillingCompanies([merged]);
+  if ("error" in normalized) return normalized;
+  if (!normalized.companies.length) return { error: "Indiquez la raison sociale ou le SIRET." };
+  const incoming = { ...normalized.companies[0], id: target?.id ?? null };
+  const plan = planBillingCompanyWrites(
+    stored.map((row) => ({ id: row.id, siret: row.siret })),
+    [incoming]
+  );
+  if (plan.clearSiretIds.length) {
+    const { error } = await supabase
+      .from("crm_billing_companies")
+      .update({ siret: null })
+      .eq("customer_id", customerId)
+      .in("id", plan.clearSiretIds);
+    if (error) return billingWriteError(error);
+  }
+  const write = plan.writes[0];
+  const sortOrder = target
+    ? target.sort_order
+    : stored.reduce((max, row) => Math.max(max, Number(row.sort_order) || 0), -1) + 1;
+  const fields = {
+    company_name: write.company_name,
+    siret: write.siret,
+    vat_number: write.vat_number,
+    billing_email: write.billing_email,
+    billing_address_line: write.billing_address_line,
+    billing_postal_code: write.billing_postal_code,
+    billing_city: write.billing_city,
+    billing_country: write.billing_country,
+    sort_order: sortOrder,
+  };
+  if (write.id) {
+    const { error } = await supabase
+      .from("crm_billing_companies")
+      .update(fields)
+      .eq("id", write.id)
+      .eq("customer_id", customerId);
+    if (error) return billingWriteError(error);
+  } else {
+    const { error } = await supabase.from("crm_billing_companies").insert({ customer_id: customerId, ...fields });
+    if (error) return billingWriteError(error);
+  }
+  const saved = await readBillingCompanies(supabase, customerId);
+  if ("error" in saved) return saved;
+  const mirrored = await mirrorPrimaryBillingCompany(supabase, customerId, saved.companies);
+  if ("error" in mirrored) return mirrored;
+  const company =
+    (write.id ? saved.companies.find((row) => row.id === write.id) : null) ||
+    saved.companies.find((row) => row.siret && row.siret === write.siret) ||
+    saved.companies.find((row) => row.sort_order === sortOrder) ||
+    null;
+  if (!company) return { error: "Enregistrement de la société impossible." };
+  return { ok: true, company };
 }
 
 /** Rattache un séjour ou une dépense à une société du compte facturé. */

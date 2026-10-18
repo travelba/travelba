@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { carnetVisible, stayArrivalPlaces } from "@/lib/crm/carnet";
+import { tripCityPlan } from "@/lib/crm/layover";
 import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
 
 export async function loadVisibleCarnets(
@@ -54,7 +55,8 @@ export async function loadStayMaps(
   const ids = [...new Set(bookingIds.filter(Boolean))];
   const arrival: Record<string, string[]> = {};
   const route: Record<string, string[]> = {};
-  if (!ids.length) return { arrival, route };
+  const layovers: Record<string, string[]> = {};
+  if (!ids.length) return { arrival, route, layovers };
   const { data } = await supabase
     .from("crm_booking_items")
     .select("booking_id, kind, title, details, sort_order, start_at, end_at, visible_to_client")
@@ -73,8 +75,10 @@ export async function loadStayMaps(
     const titled = opts?.visibleOnly ? items.filter((item) => item.visible_to_client !== false) : items;
     const cities = stayCitiesFromSteps(titled);
     if (cities.length) route[id] = cities;
+    const stops = tripCityPlan(titled).layovers;
+    if (stops.length) layovers[id] = stops;
   }
-  return { arrival, route };
+  return { arrival, route, layovers };
 }
 
 /** Villes d’arrivée par dossier, pour la couverture (pays / diagonale). */

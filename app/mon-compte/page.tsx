@@ -8,9 +8,8 @@ import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
-import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { tripPlaceLine } from "@/lib/crm/carnet";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { stayHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
@@ -137,7 +136,7 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
       bookings.filter((b) => isClientUpcomingStay(b)),
       "asc"
     )[0] || null;
-  const places = nextTrip ? await loadStayArrivalPlaces(supabase, [nextTrip.id]) : {};
+  const places = nextTrip ? await loadStayMaps(supabase, [nextTrip.id]) : null;
 
   if (!nextTrip) {
     return (
@@ -150,7 +149,13 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
 
   const countdown = jMinusLabel(nextTrip.start_date);
   const tripHref = `/mon-compte/reservations/${nextTrip.reference}`;
-  const tripName = stayTitleFromItems(nextTrip.title, nextTrip.destination, [], "Prochain séjour");
+  const tripName = stayHeadline(
+    nextTrip.title,
+    nextTrip.destination,
+    places?.route[nextTrip.id],
+    "Prochain séjour",
+    places?.layovers[nextTrip.id]
+  );
   const tripPlace = tripPlaceLine(tripName, nextTrip.destination);
 
   return (
@@ -158,7 +163,7 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
       <article className="account-press overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
         <BookingHero
           booking={toPublicBooking(nextTrip)}
-          places={places[nextTrip.id]}
+          places={places?.arrival[nextTrip.id]}
           priority
           frameClassName="relative h-[22rem] w-full"
           transitionName={stayTransitionName(nextTrip.reference)}

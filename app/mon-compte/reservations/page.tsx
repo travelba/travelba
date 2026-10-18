@@ -163,7 +163,7 @@ export default async function ReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {stayHeadline(b.title, b.destination, places.route[b.id])}
+                      {stayHeadline(b.title, b.destination, places.route[b.id], "Séjour", places.layovers[b.id])}
                     </h2>
                   </div>
                 </BookingHero>

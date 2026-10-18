@@ -25,7 +25,7 @@ export function DashboardWeek({
     week: DashboardWeekEntry<CrmBooking>[];
   };
   names: Map<string, string>;
-  places: { arrival: Record<string, string[]>; route: Record<string, string[]> };
+  places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
   amounts: Map<string, number>;
 }) {
   const total = groups.travelling.length + groups.soon.length + groups.week.length;
@@ -96,7 +96,7 @@ export function DashboardWeek({
                                   : ""}
                             </p>
                             <p className="truncate font-semibold text-[var(--admin-navy)]">
-                              {stayHeadline(booking.title, booking.destination, places.route[booking.id])}
+                              {stayHeadline(booking.title, booking.destination, places.route[booking.id], "Séjour", places.layovers?.[booking.id])}
                             </p>
                             <p className="truncate text-xs text-muted">
                               {names.get(booking.customer_id) || "Client"} · {formatDateFr(when)}
