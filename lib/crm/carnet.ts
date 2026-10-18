@@ -513,11 +513,41 @@ export function nextTimelineFlight(items: CrmBookingItem[], today = todayIsoDate
 }
 
 /** Gares / aéroports de départ FR — jamais une couverture (le client part de Paris). */
-const ORIGIN_HUBS =
-  /^(paris|cdg|ory|lbg|bva|france|ile-de-france|île-de-france)$/i;
+const EXACT_HUBS = new Set(["paris", "cdg", "ory", "lbg", "bva", "france", "ile de france"]);
+
+/**
+ * Gares parisiennes. « Paris Est » est la gare de l’Est, pas une ville de séjour.
+ * Lyon seul n’est pas une gare : seul « Gare de Lyon » ou « Paris Lyon » l’est.
+ */
+const PARIS_STATION =
+  /^(?:paris(?:\s+gare)?\s+(?:de\s+l\s+|d\s+|du\s+|de\s+)?(?:est|nord|lyon|montparnasse|austerlitz|bercy|saint lazare|st lazare)|gare\s+(?:de\s+l\s+est|du\s+nord|de\s+lyon|montparnasse|d\s+austerlitz|de\s+bercy|saint lazare|st lazare))$/;
+
+/** Aéroport écrit dans le nom de ville : Paris (Orly), Paris-Orly, Paris CDG. */
+const PARIS_AIRPORT = /^paris\s+(?:orly|cdg|roissy|charles de gaulle|le bourget|beauvais)$/;
+
+function foldHub(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/['’().]/g, " ")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export function isOriginHub(value: string) {
-  return ORIGIN_HUBS.test(value.trim());
+  const key = foldHub(value);
+  if (!key) return false;
+  if (EXACT_HUBS.has(key)) return true;
+  return PARIS_STATION.test(key) || PARIS_AIRPORT.test(key);
+}
+
+/** Gare ou aéroport de départ. La ville « Paris » reste une ville du voyage. */
+export function isDepartureStation(value: string) {
+  if (!isOriginHub(value)) return false;
+  const key = foldHub(value);
+  return key !== "paris" && key !== "france" && key !== "ile de france";
 }
 
 function coverTokens(value: string) {
@@ -528,7 +558,7 @@ function coverTokens(value: string) {
 }
 
 function firstArrival(tokens: string[]) {
-  return tokens.find((token) => !ORIGIN_HUBS.test(token)) || "";
+  return tokens.find((token) => !isOriginHub(token)) || "";
 }
 
 /** Nom du séjour tel que saisi par l’agence. La destination ne le remplace pas. */
@@ -561,7 +591,7 @@ export function tripPlaceLine(title: string | null | undefined, destination: str
 function pushArrival(found: string[], value: string) {
   const label = cityLabel(value);
   const key = cityPlaceKey(label);
-  if (!label || !key || ORIGIN_HUBS.test(label)) return;
+  if (!label || !key || isOriginHub(label)) return;
   if (found.some((item) => cityPlaceKey(item) === key)) return;
   found.push(label);
 }
@@ -604,6 +634,13 @@ export function stayArrivalPlaces(
   return found;
 }
 
+/** « Paris Est · Strasbourg » devient « Strasbourg ». « Paris · Milan » ne change pas. */
+function withoutDepartureStations(value: string) {
+  const parts = titleCityParts(value);
+  if (!parts.some((part) => isDepartureStation(part))) return "";
+  return parts.filter((part) => !isDepartureStation(part)).join(" · ");
+}
+
 function titleTracksCities(named: string, cities: string[]) {
   const keys = new Set(cities.map((city) => cityPlaceKey(city)).filter(Boolean));
   if (!keys.size) return false;
@@ -625,7 +662,7 @@ export function stayHeadline(
   const cities = (places || []).map((place) => place.trim()).filter(Boolean);
   const stored = (title || "").trim();
   const dest = (destination || "").trim();
-  const named = stored || dest;
+  const named = withoutDepartureStations(stored || dest) || stored || dest;
   if (!named && cities.length) return cities.join(" · ");
   if (
     cities.length >= 2 &&

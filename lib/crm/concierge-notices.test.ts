@@ -107,6 +107,23 @@ test("sans couverture, le séjour part sans image", () => {
   assert.equal(JSON.stringify(variables).includes("og-concierge"), false);
 });
 
+test("un train Paris Est → Strasbourg nomme le séjour Strasbourg", () => {
+  const plan = planStayNotice({
+    published: true,
+    reference: "TB-2026-0087",
+    destination: "Paris Est · Strasbourg",
+    title: "Paris Est · Strasbourg",
+    hasCover: false,
+  });
+  assert.ok(plan);
+  assert.equal(plan.place, "Strasbourg");
+  assert.match(
+    plan.body,
+    /Votre séjour à Strasbourg, réservation TB-2026-0087, est dans votre espace\./
+  );
+  assert.equal(plan.body.includes("Paris Est"), false);
+});
+
 test("sans ville d’arrivée, aucun message séjour", () => {
   assert.equal(
     planStayNotice({
@@ -124,6 +141,16 @@ test("sans ville d’arrivée, aucun message séjour", () => {
       reference,
       destination: "CDG → ORY",
       title: null,
+      hasCover: false,
+    }),
+    null
+  );
+  assert.equal(
+    planStayNotice({
+      published: true,
+      reference,
+      destination: "Paris Est",
+      title: "Gare de l'Est",
       hasCover: false,
     }),
     null
