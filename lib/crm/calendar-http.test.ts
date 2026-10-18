@@ -65,14 +65,34 @@ test("iPhone : un événement .ics, pas un flux", async () => {
     itemId: flight().id,
   });
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get("content-type")?.startsWith("text/calendar"), true);
-  assert.equal(response.headers.get("content-disposition"), null);
+  assert.equal(response.headers.get("content-type"), "text/calendar; charset=utf-8");
+  assert.equal(response.headers.get("content-disposition"), 'inline; filename="travelba-TBA-1001-etape.ics"');
   assert.equal(response.headers.get("location"), null);
   const body = await response.text();
   assert.equal((body.match(/BEGIN:VEVENT/g) || []).length, 1);
   assert.equal(body.includes("X-WR-CALNAME"), false);
   assert.equal(body.includes("X-PUBLISHED-TTL"), false);
   assert.match(body, /SUMMARY:Vol CDG → RAK/);
+  assert.match(body, /DTSTART;TZID=Europe\/Paris:20260812T094500/);
+  assert.equal(body.includes("webcal"), false);
+});
+
+test("bureau : le fichier se télécharge", async () => {
+  const response = calendarHttpResponse({
+    request: request("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"),
+    booking: booking(),
+    items: [flight()],
+    itemId: flight().id,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/calendar; charset=utf-8");
+  assert.equal(
+    response.headers.get("content-disposition"),
+    'attachment; filename="travelba-TBA-1001-etape.ics"'
+  );
+  const body = await response.text();
+  assert.equal(body.endsWith("\r\n"), true);
+  assert.match(body, /BEGIN:VTIMEZONE/);
 });
 
 test("Android : Google Agenda crée l’événement", () => {

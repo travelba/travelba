@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildBookingIcs,
+  calendarClickPlan,
   calendarOpenTarget,
   calendarResponsePlan,
   chosenCalendarHref,
@@ -10,6 +11,7 @@ import {
   isAppleMobileBrowser,
   calendarItemIdFromSegment,
   itemCalendarHref,
+  showGoogleCalendarFallback,
   veventFromItem,
   veventFromStay,
 } from "./calendar-ics";
@@ -62,11 +64,14 @@ function item(partial: Partial<CrmBookingItem>): CrmBookingItem {
   };
 }
 
-test("vol horodaté : DTSTART avec heure, pas minuit", () => {
+test("vol horodaté : heure locale de l’aéroport, pas une heure flottante", () => {
   const event = veventFromItem(item({}), booking());
-  assert.match(event || "", /DTSTART:20260812T094500/);
-  assert.match(event || "", /DTEND:20260812T111000/);
+  assert.match(event || "", /DTSTART;TZID=Europe\/Paris:20260812T094500/);
+  assert.match(event || "", /DTEND;TZID=Africa\/Casablanca:20260812T111000/);
+  assert.match(event || "", /LOCATION:CDG/);
+  assert.match(event || "", /UID:i1@travelba\.fr/);
   assert.equal((event || "").includes("T000000"), false);
+  assert.equal(/\bDTSTART:\d{8}T/.test(event || ""), false);
 });
 
 test("hôtel : journée entière check-in → checkout exclusif, sans heure", () => {
@@ -84,6 +89,7 @@ test("hôtel : journée entière check-in → checkout exclusif, sans heure", ()
   assert.match(event || "", /DTSTART;VALUE=DATE:20260812/);
   assert.match(event || "", /DTEND;VALUE=DATE:20260815/);
   assert.match(event || "", /SUMMARY:Hôtel · Nantipa/);
+  assert.match(event || "", /LOCATION:Nantipa\\, Santa Teresa/);
   assert.equal((event || "").includes("T00"), false);
 });
 
@@ -134,7 +140,7 @@ test("iPhone reçoit l’événement, Android ouvre Google Agenda", () => {
   assert.equal(calendarOpenTarget({ ua: mac, googleHref: "https://calendar.google.com/x" }), null);
   assert.deepEqual(calendarResponsePlan({ ua: iphone, googleHref: "https://calendar.google.com/x" }), {
     kind: "file",
-    handoff: true,
+    disposition: "inline",
   });
   assert.equal(
     chosenCalendarHref("/agenda/i1.ics", { google: "https://calendar.google.com/x" }, iphone),
@@ -144,14 +150,23 @@ test("iPhone reçoit l’événement, Android ouvre Google Agenda", () => {
   assert.equal(calendarItemIdFromSegment("abc.ics"), "abc");
   assert.equal(calendarItemIdFromSegment("exemple-vol-aller.ics"), "exemple-vol-aller");
   assert.equal(calendarItemIdFromSegment("pas-un-fichier"), null);
-  assert.equal(icsHttpHeaders("a.ics", { handoff: true })["Content-Disposition"], undefined);
-  assert.match(icsHttpHeaders("a.ics")["Content-Disposition"] || "", /inline/);
+  assert.equal(
+    icsHttpHeaders("a.ics", { disposition: "inline" })["Content-Disposition"],
+    'inline; filename="a.ics"'
+  );
+  assert.equal(icsHttpHeaders("a.ics")["Content-Type"], "text/calendar; charset=utf-8");
+  assert.equal(
+    calendarResponsePlan({ ua: mac, googleHref: null }).kind === "file" &&
+      calendarResponsePlan({ ua: "Mozilla/5.0 (Windows NT 10.0) Chrome/120", googleHref: null }).kind === "file",
+    true
+  );
 });
 
-test("Google Agenda : heure de vol, journée d’hôtel", () => {
+test("Google Agenda : heure de vol en UTC, journée d’hôtel", () => {
   const flight = googleCalendarHref(item({}), booking());
   assert.match(flight || "", /^https:\/\/calendar\.google\.com\/calendar\/render\?/);
-  assert.match(flight || "", /dates=20260812T094500%2F20260812T111000/);
+  assert.match(flight || "", /dates=20260812T074500Z%2F20260812T101000Z/);
+  assert.match(flight || "", /ctz=Europe%2FParis/);
   const hotel = googleCalendarHref(
     item({
       id: "h1",
@@ -164,4 +179,156 @@ test("Google Agenda : heure de vol, journée d’hôtel", () => {
     booking()
   );
   assert.match(hotel || "", /dates=20260812%2F20260815/);
+});
+
+function unfold(ics: string) {
+  return ics.replace(/\r\n[ \t]/g, "");
+}
+
+test("vol CDG → NCE : fuseau de l’aéroport, UID stable, lieu", () => {
+  const flight = item({
+    id: "e3d36ceb-90bd-46f1-bc09-af2c895baf40",
+    title: "Paris → Nice",
+    confirmation_ref: "YO448B",
+    start_at: "2026-11-11T13:50:00",
+    end_at: "2026-11-11T15:25:00",
+    details: {
+      from: "CDG",
+      to: "NCE",
+      city_from: "Paris",
+      city_to: "Nice",
+      departure_timezone: "Europe/Paris",
+      arrival_timezone: "Europe/Paris",
+    },
+  });
+  const stay = booking({ reference: "TB-2026-0075", title: "Anantara Plaza Nice Hotel", destination: "Nice" });
+  const first = buildBookingIcs({ booking: stay, items: [flight], itemId: flight.id });
+  const second = buildBookingIcs({ booking: stay, items: [flight], itemId: flight.id });
+  const flat = unfold(first);
+  assert.match(flat, /UID:e3d36ceb-90bd-46f1-bc09-af2c895baf40@travelba\.fr/);
+  assert.match(second, /UID:e3d36ceb-90bd-46f1-bc09-af2c895baf40@travelba\.fr/);
+  assert.match(flat, /DTSTART;TZID=Europe\/Paris:20261111T135000/);
+  assert.match(flat, /DTEND;TZID=Europe\/Paris:20261111T152500/);
+  assert.match(flat, /BEGIN:VTIMEZONE[\s\S]*TZID:Europe\/Paris[\s\S]*TZOFFSETTO:\+0100/);
+  assert.match(flat, /LOCATION:Paris \(CDG\)/);
+  assert.match(flat, /DESCRIPTION:Anantara Plaza Nice Hotel\\nTB-2026-0075\\nParis → Nice\\nRéf\. YO448B/);
+  assert.equal(flat.includes("\\\\n"), false);
+  assert.equal(/\bDTSTART:\d{8}T\d{6}Z/.test(flat), false);
+  assert.equal(first.replace(/\r\n/g, "").includes("\n"), false);
+  assert.match(flat, /DTSTAMP:\d{8}T\d{6}Z/);
+});
+
+test("le fuseau enregistré gagne, les chiffres de l’heure restent", () => {
+  const event = veventFromItem(
+    item({
+      start_at: "2026-11-11T13:50:00",
+      end_at: "2026-11-11T15:25:00",
+      details: { from: "CDG", to: "NCE", departure_timezone: "Asia/Bangkok", arrival_timezone: "Asia/Bangkok" },
+    }),
+    booking()
+  );
+  assert.match(event || "", /DTSTART;TZID=Asia\/Bangkok:20261111T135000/);
+  assert.match(event || "", /DTEND;TZID=Asia\/Bangkok:20261111T152500/);
+});
+
+test("aéroport inconnu : pas de fuseau inventé", () => {
+  const event = veventFromItem(
+    item({
+      start_at: "2026-11-11T13:50:00",
+      end_at: "2026-11-11T15:25:00",
+      details: { from: "ABI", to: "XXX" },
+    }),
+    booking()
+  );
+  assert.match(event || "", /DTSTART:20261111T135000/);
+  assert.equal((event || "").includes("TZID"), false);
+});
+
+test("échappement RFC 5545 : une seule passe, puis repli des lignes longues", () => {
+  const title = `A, B; C\\D\nE ${"É".repeat(80)}`;
+  const ics = buildBookingIcs({
+    booking: booking({ title, reference: "TB-1" }),
+    items: [item({ confirmation_ref: null, details: { from: "CDG", to: "NCE", city_from: "Paris" } })],
+    itemId: "i1",
+  });
+  for (const line of ics.split("\r\n")) {
+    assert.ok(new TextEncoder().encode(line).length <= 75, line);
+  }
+  const flat = unfold(ics);
+  assert.match(flat, /DESCRIPTION:A\\, B\\; C\\\\D\\nE /);
+  assert.ok(flat.includes("É".repeat(80)));
+  const description = flat.match(/DESCRIPTION:(.*)/)?.[1] || "";
+  assert.equal(description.includes("\n"), false);
+  assert.equal(description.split("\\n").length > 1, true);
+});
+
+test("transfert horodaté et activité sans fuseau", () => {
+  const transfer = veventFromItem(
+    item({
+      id: "t1",
+      kind: "transfer",
+      title: "Chauffeur",
+      start_at: "2026-11-11T16:00:00",
+      end_at: "2026-11-11T17:00:00",
+      details: { pickup: "NCE", timezone: "Europe/Paris" },
+    }),
+    booking()
+  );
+  assert.match(transfer || "", /DTSTART;TZID=Europe\/Paris:20261111T160000/);
+  assert.match(transfer || "", /DTEND;TZID=Europe\/Paris:20261111T170000/);
+  assert.match(transfer || "", /LOCATION:NCE/);
+  const activity = veventFromItem(
+    item({
+      id: "a1",
+      kind: "activity",
+      title: "Visite",
+      start_at: "2026-11-12T10:00:00",
+      details: { location: "Vieux Nice" },
+    }),
+    booking()
+  );
+  assert.match(activity || "", /DTSTART:20261112T100000/);
+  assert.match(activity || "", /LOCATION:Vieux Nice/);
+  assert.equal((activity || "").includes("TZID"), false);
+  assert.equal((activity || "").includes("VALUE=DATE"), false);
+});
+
+test("écran d’accueil iOS : le .ics s’ouvre hors de l’app, sans webcal", () => {
+  const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)";
+  const android = "Mozilla/5.0 (Linux; Android 14; Pixel)";
+  const href = "/mon-compte/reservations/TB-2026-0075/agenda/e3.ics";
+  const google = "https://calendar.google.com/calendar/render?action=TEMPLATE";
+  assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: iphone, navigatorStandalone: true }), {
+    action: "external",
+    url: href,
+  });
+  assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: iphone, displayModeStandalone: true }), {
+    action: "external",
+    url: href,
+  });
+  assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: iphone }), {
+    action: "navigate",
+    url: href,
+  });
+  assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: android, displayModeStandalone: true }), {
+    action: "google",
+    url: google,
+  });
+  assert.equal(showGoogleCalendarFallback({ href, googleHref: google, ua: iphone }), true);
+  assert.equal(showGoogleCalendarFallback({ href, googleHref: google, ua: android }), false);
+  assert.equal(JSON.stringify(calendarClickPlan({ href, ua: iphone, navigatorStandalone: true })).includes("webcal"), false);
+  assert.equal(
+    calendarClickPlan({
+      href,
+      ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.6 Safari/605.1.15",
+      navigatorStandalone: true,
+    }).action,
+    "external"
+  );
+  const safari = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15";
+  assert.deepEqual(calendarResponsePlan({ ua: safari, googleHref: google }), { kind: "file", disposition: "inline" });
+  assert.deepEqual(calendarResponsePlan({ ua: "Mozilla/5.0 (Windows NT 10.0) Chrome/120.0.0.0", googleHref: null }), {
+    kind: "file",
+    disposition: "attachment",
+  });
 });

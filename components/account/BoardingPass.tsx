@@ -41,6 +41,7 @@ export function BoardingPass({
           href={calendarHref}
           googleHref={googleHref}
           className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C]"
+          fallbackClassName="mt-2 block text-center text-xs font-semibold text-white/80 underline decoration-white/30 underline-offset-2"
         >
           Ajouter au calendrier
         </AddToPhoneCalendar>
