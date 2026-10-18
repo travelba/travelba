@@ -165,8 +165,13 @@ export function bookingCoverPlan(
     const code = countryCodeForPlace(placeKey(place));
     if (code && !countries.includes(code)) countries.push(code);
   }
-  for (const code of labelCountryCodes(booking)) {
-    if (!countries.includes(code)) countries.push(code);
+  const allowed = new Set(coverPlaces.map((place) => placeKey(place)));
+  for (const token of [...labelTokens(booking.destination), ...labelTokens(booking.title)]) {
+    const key = placeKey(token);
+    const code = countryCodeForPlace(key);
+    if (!code || countries.includes(code)) continue;
+    if (allowed.size && cityCoverPhoto(key) && !allowed.has(key) && !isOriginHub(token)) continue;
+    countries.push(code);
   }
   if (coverPlaces.length >= 2 && countries.length === 1) {
     const photos: string[] = [];

@@ -7,7 +7,8 @@ import {
   visibleServiceCopy,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
-import { cityLabel, cityPlaceKey } from "./city-names";
+import { cityLabel, cityPlaceKey, isOriginHub } from "./city-names";
+import { tripCityPlan } from "./layover";
 import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
@@ -512,13 +513,7 @@ export function nextTimelineFlight(items: CrmBookingItem[], today = todayIsoDate
   return flightPass(next.item);
 }
 
-/** Gares / aéroports de départ FR — jamais une couverture (le client part de Paris). */
-const ORIGIN_HUBS =
-  /^(paris|cdg|ory|lbg|bva|france|ile-de-france|île-de-france)$/i;
-
-export function isOriginHub(value: string) {
-  return ORIGIN_HUBS.test(value.trim());
-}
+export { isOriginHub };
 
 function coverTokens(value: string) {
   return value
@@ -528,7 +523,7 @@ function coverTokens(value: string) {
 }
 
 function firstArrival(tokens: string[]) {
-  return tokens.find((token) => !ORIGIN_HUBS.test(token)) || "";
+  return tokens.find((token) => !isOriginHub(token)) || "";
 }
 
 /** Nom du séjour tel que saisi par l’agence. La destination ne le remplace pas. */
@@ -561,14 +556,9 @@ export function tripPlaceLine(title: string | null | undefined, destination: str
 function pushArrival(found: string[], value: string) {
   const label = cityLabel(value);
   const key = cityPlaceKey(label);
-  if (!label || !key || ORIGIN_HUBS.test(label)) return;
+  if (!label || !key || isOriginHub(label)) return;
   if (found.some((item) => cityPlaceKey(item) === key)) return;
   found.push(label);
-}
-
-function detailPlace(details: Record<string, unknown> | null | undefined, key: string) {
-  const value = details?.[key];
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function foldPlace(value: string) {
@@ -582,30 +572,33 @@ function foldPlace(value: string) {
     .trim();
 }
 
-/** Villes d’arrivée du séjour, hubs de départ exclus. Les hôtels priment sur les vols. */
+/** Villes d’arrivée du séjour, hubs de départ et escales pures exclus. Les hôtels priment sur les vols. */
 export function stayArrivalPlaces(
   destination: string | null | undefined,
   title: string | null | undefined,
-  items?: Array<{ kind?: string | null; details?: Record<string, unknown> | null }>
+  items?: Array<{
+    kind?: string | null;
+    title?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    sort_order?: number | null;
+    details?: Record<string, unknown> | null;
+    lifecycle?: string | null;
+  }>
 ) {
-  const hotels: string[] = [];
-  const arrivals: string[] = [];
-  for (const item of items || []) {
-    if (item.kind === "hotel") pushArrival(hotels, detailPlace(item.details, "city"));
-    if (item.kind === "flight" || item.kind === "rail") {
-      pushArrival(arrivals, detailPlace(item.details, "city_to") || detailPlace(item.details, "to"));
-    }
+  if (items?.length) {
+    const found = tripCityPlan(items).destinations;
+    if (found.length) return found;
   }
-  const found = hotels.length ? hotels : arrivals;
-  if (found.length) return found;
+  const found: string[] = [];
   for (const token of [...coverTokens(destination || ""), ...coverTokens(title || "")]) {
     pushArrival(found, token);
   }
   return found;
 }
 
-function titleTracksCities(named: string, cities: string[]) {
-  const keys = new Set(cities.map((city) => cityPlaceKey(city)).filter(Boolean));
+function titleTracksCities(named: string, cities: string[], extra: string[] = []) {
+  const keys = new Set([...cities, ...extra].map((city) => cityPlaceKey(city)).filter(Boolean));
   if (!keys.size) return false;
   const parts = titleCityParts(named);
   if (!parts.length) return false;
@@ -620,19 +613,19 @@ export function stayHeadline(
   title: string | null | undefined,
   destination: string | null | undefined,
   places: string[] | null | undefined,
-  fallback = "Séjour"
+  fallback = "Séjour",
+  layovers?: string[] | null
 ) {
   const cities = (places || []).map((place) => place.trim()).filter(Boolean);
+  const stops = (layovers || []).map((place) => place.trim()).filter(Boolean);
   const stored = (title || "").trim();
   const dest = (destination || "").trim();
   const named = stored || dest;
   if (!named && cities.length) return cities.join(" · ");
-  if (
-    cities.length >= 2 &&
-    (titleTracksCities(named, cities) || (dest && foldPlace(named) === foldPlace(dest)))
-  ) {
-    return cities.join(" · ");
-  }
+  const tracks = titleTracksCities(named, cities, stops);
+  const echoesDestination = Boolean(dest && foldPlace(named) === foldPlace(dest));
+  if (cities.length >= 2 && (tracks || echoesDestination)) return cities.join(" · ");
+  if (stops.length && tracks && cities.length) return cities.join(" · ");
   return named || fallback;
 }
 

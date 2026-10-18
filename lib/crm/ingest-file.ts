@@ -75,7 +75,8 @@ Voyageurs :
 - Si des noms sont imprimés, ne pas ajouter de voyageurs « Adulte N ».
 - Ne pas créer d’enfant sans nom.
 
-title : villes séparées par « · ». destination : mêmes villes.`;
+title : villes du voyage séparées par « · », domicile compris. destination : villes d’arrivée, pas le domicile.
+Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) n’est ni dans le titre ni dans la destination. La destination d’un aller simple est la dernière ville. Celle d’un aller-retour est la ville où l’on fait demi-tour. Une nuit d’hôtel garde la ville.`;
 
 const PROMPT_FLIGHT = `Vol :
 - Aller et retour = DEUX items si les deux sont imprimés (même PDF). Correspondance = DEUX items. Pas de retour fantôme.
@@ -84,6 +85,7 @@ const PROMPT_FLIGHT = `Vol :
 - details.airline = transporteur opérant. details.airline_iata = code IATA 2 lettres s’il est imprimé (AF, CM). Sinon null. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
 - details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Orly=ORY, Tel Aviv=TLV, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS.
 - details.city_from / city_to = villes. « 03 August 09:45 » : année = ligne « Lundi 03 août 2026 ».
+- Une correspondance (on atterrit et on redécolle en moins de 24 h, sans hôtel) n’est pas une ville du titre ni la destination. Amsterdam entre Paris et Tel Aviv n’est pas la destination. Francfort avec une nuit d’hôtel l’est.
 - Terminal / siège seulement s’ils sont imprimés. « Heure limite d’enregistrement » n’est pas l’horaire du vol.
 - Carte fidélité : ne pas extraire.
 - « Scan for check-in. Not to be used as boarding pass » n’est PAS un hôtel.

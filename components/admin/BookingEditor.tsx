@@ -44,7 +44,6 @@ import {
   coverQuery,
   hotelDisplayName,
   keptHiddenFromClient,
-  stayHeadline,
   stayNameField,
 } from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
@@ -94,7 +93,7 @@ import {
   staffLedgerCaption,
   staffStayFacts,
   staffStayLabel,
-  stayCitiesFromSteps,
+  stayTitleFromItems,
 } from "@/lib/crm/staff-stay";
 import { type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
@@ -410,7 +409,7 @@ export function BookingEditor({
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover" | "invoice">("idle");
   // Champs du formulaire méta : `useMirror` — un champ touché par l’agent gagne, un champ intact suit
   // le serveur à chaque `router.refresh()` (une étape ajoutée met déjà à jour la ligne du dossier).
-  const routeTitle = stayHeadline(booking.title, booking.destination, stayCitiesFromSteps(items));
+  const routeTitle = stayTitleFromItems(booking.title, booking.destination, items);
   const [titleDraft, setTitleDraft] = useMirror(routeTitle);
   const titleEdit = stayNameField(routeTitle, titleDraft);
   const [coverOpen, setCoverOpen] = useState(false);

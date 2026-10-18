@@ -5,6 +5,7 @@ import { detectCancellationDocument, type BookingExtract } from "./ingest-types"
 import { shownClientNote } from "./public-booking";
 import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
+import { tripCityPlan } from "./layover";
 import { TENTATIVE_REVIEW_REASON } from "./review-doubt";
 
 export type ParsedAirport = { iata: string; city: string };
@@ -387,7 +388,21 @@ export function parseTransaviaConfirmation(text: string): ParsedTransavia | null
     seen.add(key);
     travelers.push(person);
   }
+  const plan = tripCityPlan(
+    flights.map((flight) => ({
+      kind: "flight",
+      start_at: flight.start_at,
+      end_at: flight.end_at,
+      details: {
+        city_from: flight.city_from,
+        city_to: flight.city_to,
+        from: flight.from,
+        to: flight.to,
+      },
+    }))
+  );
   const destination =
+    plan.destinations.join(" · ") ||
     flights.map((flight) => flight.city_to).find((city) => city && !/^paris$/i.test(city)) ||
     flights[0]?.city_to ||
     null;

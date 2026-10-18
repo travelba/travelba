@@ -314,6 +314,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
         phone: customer?.phone,
         places: maps.arrival[row.id],
         routes: maps.route[row.id],
+        layovers: maps.layovers[row.id],
         amount: displayed.get(row.id) ?? Number(row.total_amount),
       })
     );
@@ -362,6 +363,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
           customers={customers.map((row) => ({ id: row.id, first_name: row.first_name, last_name: row.last_name }))}
           places={pickRecord(maps.arrival, rowIds)}
           routes={pickRecord(maps.route, rowIds)}
+          layovers={pickRecord(maps.layovers, rowIds)}
           displayAmounts={displayAmounts}
           searchText={visibleSearch}
           payerLabels={payerLabels}
