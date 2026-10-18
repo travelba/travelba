@@ -311,20 +311,42 @@ export function passportScanPath(customerId: string, path: string | null | undef
   return path;
 }
 
+const BLANK_FILL = [
+  "issued_on",
+  "first_name",
+  "last_name",
+  "usage_name",
+  "birth_date",
+  "nationality",
+  "sex",
+  "place_of_birth",
+  "number",
+  "expires_on",
+  "issuing_country",
+] as const;
+
+/** La copie la plus récente ne doit pas cacher la délivrance, les noms ou le lieu de l’autre. */
 function fillBlankScan(winner: CrmTravelDocument, other: CrmTravelDocument) {
-  const place = clean(winner.place_of_birth) ? winner.place_of_birth : other.place_of_birth;
+  const next: CrmTravelDocument = { ...winner };
+  let changed = false;
+  for (const key of BLANK_FILL) {
+    const incoming = other[key] ?? null;
+    if (!clean(winner[key]) && clean(incoming)) {
+      next[key] = incoming;
+      changed = true;
+    }
+  }
   const path = passportScanPath(winner.customer_id, winner.storage_path)
     ? winner.storage_path
     : passportScanPath(other.customer_id, other.storage_path);
-  const source = path && path === other.storage_path ? other : winner;
-  if (place === winner.place_of_birth && path === winner.storage_path) return winner;
-  return {
-    ...winner,
-    place_of_birth: place,
-    storage_path: path,
-    file_name: path === winner.storage_path ? winner.file_name : source.file_name,
-    mime_type: path === winner.storage_path ? winner.mime_type : source.mime_type,
-  };
+  if (path !== winner.storage_path) {
+    const source = path && path === other.storage_path ? other : winner;
+    next.storage_path = path;
+    next.file_name = source.file_name;
+    next.mime_type = source.mime_type;
+    changed = true;
+  }
+  return changed ? next : winner;
 }
 
 function preferPiece(current: CrmTravelDocument, candidate: CrmTravelDocument) {

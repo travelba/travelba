@@ -109,6 +109,19 @@ test("mcp tools stay unique, named, and under the cap", () => {
   }
 });
 
+test("passport tools name the travelba-passeports namespace and stay off the general token", () => {
+  for (const name of ["passeport_voyageur", "scan_passeport"]) {
+    const description = MCP_TOOLS.find((tool) => tool.name === name)?.description || "";
+    assert.match(description, /travelba-passeports/);
+    assert.match(description, /jeton général/);
+    assert.match(description, /voulu/);
+  }
+  const piece = MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.description || "";
+  assert.match(piece, /accompagnateur déjà lié/);
+  assert.match(piece, /délivrance, autorité, noms/);
+  assert.match(piece, /n’envoie rien/);
+});
+
 test("only passeport_voyageur keeps a piece number in the payload", () => {
   const payload = { numero: "FAC-1", numero_piece: "X12345678", number: "12AB34567" };
   const passport = JSON.parse(previewMcpTool("passeport_voyageur", payload).content[0].text) as Record<string, unknown>;

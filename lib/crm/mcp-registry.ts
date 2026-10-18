@@ -196,7 +196,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "passeport_voyageur",
     pieceNumbers: true,
     description:
-      "Passeports pour émettre un billet (APIS). client_id (fiche), dossier_id ou reference (voyageurs du séjour). Chaque pièce : nom, prénoms, naissance, lieu_naissance, sexe, nationalité, type, numero_piece, pays, délivrance, expiration, a_un_scan. Pas de champ biométrique. Le fichier est scan_passeport. Lecture seule. Sans autorisation, refus, aucun numéro.",
+      "Passeports pour émettre un billet (APIS). Espace travelba-passeports seulement : jeton nommé dans TRAVELBA_MCP_PASSPORT_TOKENS. L’espace travelba (jeton général) refuse, c’est voulu, aucun numéro. client_id (fiche), dossier_id ou reference (voyageurs du séjour). Chaque pièce : nom, prénoms, naissance, lieu_naissance, sexe, nationalité, type, numero_piece, pays, délivrance, expiration, a_un_scan. Pas de champ biométrique. Le fichier est scan_passeport, même espace. Lecture seule.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
@@ -213,7 +213,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "scan_passeport",
     signedUrl: true,
     description:
-      "Scan du passeport d’un voyageur du dossier. dossier_id ou reference, et voyageur_id (celui de passeport_voyageur). URL signée dix minutes, nom du fichier, type mime. Un PDF est signalé : ce n’est pas une photo png, jpg ou jpeg. Lieu de naissance si le coffre l’a. Pas de champ biométrique. Même autorisation que passeport_voyageur. Lecture seule.",
+      "Scan du passeport d’un voyageur du dossier. Même espace travelba-passeports que passeport_voyageur (jeton TRAVELBA_MCP_PASSPORT_TOKENS). L’espace travelba, jeton général, refuse : c’est voulu. dossier_id ou reference, et voyageur_id (celui de passeport_voyageur). URL signée dix minutes, nom du fichier, type mime. Un PDF est signalé : ce n’est pas une photo png, jpg ou jpeg. Lieu de naissance si le coffre l’a. Pas de champ biométrique. Lecture seule.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client, pour vérifier le dossier"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
@@ -494,12 +494,17 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id facultatif. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » au client et au voyageur concerné s’il a un autre numéro. Une fiche qui a activé WhatsApp reçoit le modèle avec bouton ; sinon le modèle sans lien, une fois approuvé. Le client déjà prévenu n’est pas renvoyé. notifier false coupe cet envoi. Le numéro n’est pas renvoyé.",
+      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays) sont écrits ; délivrance, autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » au client et au voyageur concerné s’il a un autre numéro. Une fiche qui a activé WhatsApp reçoit le modèle avec bouton ; sinon le modèle sans lien, une fois approuvé. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. Le numéro n’est pas renvoyé.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
-      voyageur_id: z.string().trim().max(80).optional().describe("Voyageur du dossier, s’il y en a un"),
+      voyageur_id: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Voyageur du dossier, ou accompagnateur déjà lié au client, sans dossier"),
       type: z.string().trim().max(40).describe("visa, eta, passeport, carte_identite, assurance ou autre"),
       pays: z.string().trim().max(80).optional().describe("Pays émetteur, code ou nom. Pas la nationalité"),
       numero: z.string().trim().max(40).optional().describe("Numéro de la pièce. Il n’est pas renvoyé"),
