@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import { AdminOmnibar } from "@/components/admin/AdminOmnibar";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 import { staffRoleLabel, type StaffRole } from "@/lib/crm/staff-team";
@@ -446,14 +447,15 @@ export function SearchOverlay({
   initialQuery,
   onClose,
   onSubmit,
+  onNavigate,
 }: {
   open: boolean;
   initialQuery: string;
   onClose: () => void;
   onSubmit: (query: string) => void;
+  onNavigate: (href: string) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [query, setQuery] = useState(initialQuery);
   useDialogFocus(open, panelRef, onClose);
   if (!open) return null;
   return (
@@ -463,47 +465,16 @@ export function SearchOverlay({
       aria-modal="true"
       aria-label="Rechercher"
       tabIndex={-1}
-      className="fixed inset-0 z-[60] flex flex-col bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden"
+      className="fixed inset-0 z-[60] flex flex-col bg-[var(--admin-navy)] px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white lg:hidden"
     >
-      <form
-        role="search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit(query.trim());
-        }}
-        className="flex items-center gap-2 px-3 py-3"
-      >
-        <div className="relative flex-1">
-          <Icon
-            name="search"
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#c5c6cd]"
-          />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="w-full rounded-md bg-white/10 py-3 pl-10 pr-4 text-[15px] text-white outline-none placeholder:text-[#c5c6cd] focus:bg-white/15 focus:ring-2 focus:ring-[var(--admin-gold)]/40"
-            placeholder="Client, référence TB-, hôtel, confirmation…"
-            aria-label="Rechercher un client ou un dossier"
-            type="search"
-            autoComplete="off"
-            enterKeyHint="search"
-          />
-        </div>
-        <button type="submit" className="admin-af-btn-accent admin-tap rounded-md px-3 py-2.5 text-sm">
-          Chercher
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Fermer la recherche"
-          className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-lg"
-        >
-          <Icon name="close" className="h-5 w-5" />
-        </button>
-      </form>
-      <p className="px-4 text-sm text-[#c5c6cd]">
-        Un nom ouvre la fiche. Une référence, un hôtel ou une confirmation ouvre le dossier.
-      </p>
+      <AdminOmnibar
+        variant="overlay"
+        initialValue={initialQuery}
+        autoFocus
+        onSubmit={onSubmit}
+        onNavigate={onNavigate}
+        onClose={onClose}
+      />
     </div>
   );
 }

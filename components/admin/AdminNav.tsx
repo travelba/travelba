@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useMirror } from "@/lib/crm/use-mirror";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { AgencyLogo } from "@/components/AgencyLogo";
+import { AdminOmnibar } from "@/components/admin/AdminOmnibar";
 import { HotelReplyToasts } from "@/components/admin/HotelReplyToasts";
 import { Icon } from "@/components/crm/icons";
 import { MobileTabBar, MoreSheet, SearchOverlay, SidebarGroups, UserMenu } from "@/components/admin/AdminNavParts";
@@ -110,9 +111,10 @@ export function AdminNav({
     router.push(q ? `/admin/recherche?q=${encodeURIComponent(q)}` : "/admin/recherche");
   }
 
-  function onSearch(event: FormEvent) {
-    event.preventDefault();
-    goSearch(query.trim());
+  function goHit(href: string) {
+    setSearchOpen(false);
+    setMoreOpen(false);
+    router.push(href);
   }
 
   function toggleGroup(groupId: string) {
@@ -159,7 +161,13 @@ export function AdminNav({
         </div>
       </header>
       {searchOpen ? (
-        <SearchOverlay open initialQuery={currentQuery} onClose={() => setSearchOpen(false)} onSubmit={goSearch} />
+        <SearchOverlay
+          open
+          initialQuery={currentQuery}
+          onClose={() => setSearchOpen(false)}
+          onSubmit={goSearch}
+          onNavigate={goHit}
+        />
       ) : null}
       <MoreSheet
         open={moreOpen}
@@ -201,23 +209,13 @@ export function AdminNav({
         {partner ? (
           <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Little Emperors</p>
         ) : (
-        <form onSubmit={onSearch} className="relative w-full max-w-xl" role="search">
-          <Icon
-            name="search"
-            className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted"
-          />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-current={searching ? "page" : undefined}
-            className={`w-full rounded-md py-2.5 pl-10 pr-4 text-[13px] text-[var(--admin-navy)] outline-none transition focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30 ${
-              searching ? "bg-white ring-2 ring-[var(--admin-gold)]/60" : "bg-[var(--surface-2)]"
-            }`}
-            placeholder="Client, référence TB-, hôtel, confirmation…"
-            aria-label="Rechercher un client ou un dossier"
-          type="search"
+        <AdminOmnibar
+          value={query}
+          onValueChange={setQuery}
+          onSubmit={goSearch}
+          onNavigate={goHit}
+          highlighted={searching}
         />
-        </form>
         )}
         <div className="ml-6 flex items-center gap-4">
           <UserMenu name={staffName} role={staffRole} onSignOut={signOut} />
