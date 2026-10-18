@@ -8,6 +8,7 @@ import {
   syncBookingLedger,
   syncBookingTotalFromItems,
 } from "@/lib/crm/bookings";
+import { upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
@@ -198,16 +199,56 @@ const CLIENT_FIELDS = {
   societe: "company_name",
 } as const;
 
+/** Champs société de l’outil. `societe` et `raison_sociale` sont la même raison sociale. */
+export function clientBillingInput(input: Record<string, unknown>): BillingCompanyInput | null {
+  const body: BillingCompanyInput = {};
+  let any = false;
+  if ("societe" in input) {
+    body.company_name = input.societe;
+    any = true;
+  }
+  if ("raison_sociale" in input) {
+    body.company_name = input.raison_sociale;
+    any = true;
+  }
+  if ("siret" in input) {
+    body.siret = input.siret;
+    any = true;
+  }
+  if ("tva" in input) {
+    body.vat_number = input.tva;
+    any = true;
+  }
+  if ("adresse" in input) {
+    body.billing_address_line = input.adresse;
+    any = true;
+  }
+  if ("code_postal" in input) {
+    body.billing_postal_code = input.code_postal;
+    any = true;
+  }
+  if ("ville" in input) {
+    body.billing_city = input.ville;
+    any = true;
+  }
+  if ("pays" in input) {
+    body.billing_country = input.pays;
+    any = true;
+  }
+  return any ? body : null;
+}
+
 export function prepareClientUpdate(input: Record<string, unknown>) {
   const id = uuid(input.id, "Client");
   const body: Record<string, unknown> = {};
   for (const [from, key] of Object.entries(CLIENT_FIELDS)) {
     if (from in input) body[key] = input[from];
   }
+  const company = clientBillingInput(input);
   const { patch, error } = customerPatchFromBody(body, { allowEmail: true });
   if (error) throw new McpWriteError(error);
-  if (!Object.keys(patch).length) throw new McpWriteError("Rien à modifier.");
-  return { id, patch };
+  if (!Object.keys(patch).length && !company) throw new McpWriteError("Rien à modifier.");
+  return { id, patch, company };
 }
 
 async function loadBooking(admin: McpAdmin, target: { id: string; reference: string }) {
@@ -642,16 +683,27 @@ export async function createClient(input: Record<string, unknown>, admin?: McpAd
     failDb(error, "Client non créé.");
   }
   const row = data as Pick<CrmCustomer, "id" | "first_name" | "last_name" | "email">;
+  const company = clientBillingInput(input);
+  let saved: { id: string; company_name: string | null; siret: string | null; vat_number: string | null } | null = null;
+  if (company) {
+    const result = await upsertBillingCompany(db, row.id, company);
+    if ("error" in result) throw new McpWriteError(result.error);
+    saved = result.company;
+  }
   return {
     id: row.id,
     nom: customerFullName(row),
     email: row.email,
     invite: false,
+    societe: saved?.company_name ?? null,
+    societe_id: saved?.id ?? null,
+    siret: saved?.siret ?? null,
+    tva: saved?.vat_number ?? null,
   };
 }
 
 export async function updateClient(input: Record<string, unknown>, admin?: McpAdmin) {
-  const { id, patch } = prepareClientUpdate(input);
+  const { id, patch, company } = prepareClientUpdate(input);
   const db = client(admin);
   const { data: current, error: currentError } = await db
     .from("crm_customers")
@@ -683,19 +735,34 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
       }
     }
   }
-  const { data, error } = await db
-    .from("crm_customers")
-    .update(patch)
-    .eq("id", id)
-    .select("id, first_name, last_name, email, phone, company_name")
-    .single();
-  if (error || !data) failDb(error, "Client non enregistré.");
-  const row = data as Pick<CrmCustomer, "id" | "first_name" | "last_name" | "email" | "phone" | "company_name">;
+  let row = holder as Pick<CrmCustomer, "id" | "first_name" | "last_name" | "email"> & {
+    phone?: string | null;
+    company_name?: string | null;
+  };
+  if (Object.keys(patch).length) {
+    const { data, error } = await db
+      .from("crm_customers")
+      .update(patch)
+      .eq("id", id)
+      .select("id, first_name, last_name, email, phone, company_name")
+      .single();
+    if (error || !data) failDb(error, "Client non enregistré.");
+    row = data as typeof row;
+  }
+  let saved: { id: string; company_name: string | null; siret: string | null; vat_number: string | null } | null = null;
+  if (company) {
+    const result = await upsertBillingCompany(db, id, company);
+    if ("error" in result) throw new McpWriteError(result.error);
+    saved = result.company;
+  }
   return {
     id: row.id,
     nom: customerFullName(row),
     email: row.email,
-    telephone: row.phone,
-    societe: row.company_name,
+    telephone: row.phone ?? null,
+    societe: saved?.company_name ?? row.company_name ?? null,
+    societe_id: saved?.id ?? null,
+    siret: saved?.siret ?? null,
+    tva: saved?.vat_number ?? null,
   };
 }

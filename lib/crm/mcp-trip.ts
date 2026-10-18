@@ -6,12 +6,14 @@ import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { createStaffBooking, StaffWriteError, type StaffBookingInput } from "@/lib/crm/booking-create";
 import { ledgerWarning, refreshTicketingFee } from "@/lib/crm/bookings";
+import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { addIsoDays } from "@/lib/crm/dates";
 import { resolveNationality } from "@/lib/crm/countries";
 import { companionKey, holderKey } from "@/lib/crm/household";
 import { itemTicketCount } from "@/lib/crm/item-match";
 import { parseMoney } from "@/lib/crm/money";
+import { type PayerCompany } from "@/lib/crm/payer";
 import { sameRecordedTraveler } from "@/lib/crm/person-match";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
@@ -234,6 +236,37 @@ function lines(value: unknown, label: string) {
   const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/\n+/) : null;
   if (!raw) throw new McpWriteError(`${label} invalide.`);
   return raw.map((item) => text(item, label, 200)).filter(Boolean);
+}
+
+/**
+ * Société demandée, ou l’unique société du client.
+ * Sans ces champs, le séjour reste particulier, même si une société est sur la fiche.
+ */
+export function dossierPayerChoice(input: {
+  societeId: string;
+  facturerSociete: boolean;
+  companies: PayerCompany[];
+}): { payer_kind: "company" | "personal"; billing_company_id: string | null } | { error: string } {
+  if (input.societeId) {
+    const match = input.companies.find((company) => company.id === input.societeId);
+    if (!match) return { error: "Cette société n’est pas sur la fiche du client." };
+    return { payer_kind: "company", billing_company_id: match.id };
+  }
+  if (input.facturerSociete) {
+    if (!input.companies.length) {
+      return { error: "Aucune société sur la fiche. Ajoutez-la avant de facturer le séjour." };
+    }
+    if (input.companies.length > 1) return { error: "Plusieurs sociétés sur la fiche. Indiquez societe_id." };
+    return { payer_kind: "company", billing_company_id: input.companies[0].id };
+  }
+  return { payer_kind: "personal", billing_company_id: null };
+}
+
+function facturerSociete(value: unknown) {
+  if (value == null || value === "") return false;
+  if (value === true) return true;
+  if (value === false) return false;
+  throw new McpWriteError("facturer_societe : vrai ou faux.");
 }
 
 export function prepareDossier(input: Record<string, unknown>): StaffBookingInput {
@@ -503,15 +536,46 @@ function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: Pr
 
 export async function createDossier(input: Record<string, unknown>, admin?: Admin) {
   const draft = prepareDossier(input);
+  const societeId = optionalId(input.societe_id, "Société");
+  const billCompany = facturerSociete(input.facturer_societe);
   const db = client(admin);
   try {
-    const created = await createStaffBooking(db, draft, db);
+    const { data: traveler, error: travelerError } = await db
+      .from("crm_customers")
+      .select("id, company_role, billing_parent_id")
+      .eq("id", draft.customer_id)
+      .maybeSingle();
+    if (travelerError || !traveler) throw new McpWriteError("Client introuvable.");
+    const billingCustomerId = resolveBillingCustomerId(
+      traveler as { id: string; company_role: CrmCustomer["company_role"]; billing_parent_id: string | null }
+    );
+    const { data: companyRows, error: companyError } = await db
+      .from("crm_billing_companies")
+      .select("id, sort_order, company_name")
+      .eq("customer_id", billingCustomerId);
+    if (companyError) throw new McpWriteError("Société introuvable.");
+    const companies = (companyRows || []) as (PayerCompany & { company_name?: string | null })[];
+    const choice = dossierPayerChoice({ societeId, facturerSociete: billCompany, companies });
+    if ("error" in choice) throw new McpWriteError(choice.error);
+    const created = await createStaffBooking(
+      db,
+      {
+        ...draft,
+        payer_kind: choice.payer_kind,
+        billing_company_id: choice.billing_company_id ?? undefined,
+      },
+      db
+    );
+    const billed = companies.find((company) => company.id === created.booking.billing_company_id);
     return {
       id: created.booking.id,
       reference: created.booking.reference,
       statut: staffStayLabel(created.booking),
       visible: false,
       notifie: false,
+      paye_par: created.booking.payer_kind === "company" ? "société" : "particulier",
+      societe: created.booking.payer_kind === "company" ? billed?.company_name || null : null,
+      societe_id: created.booking.billing_company_id,
       ...(created.ledgerWarning ? { avertissement: created.ledgerWarning } : {}),
     };
   } catch (err) {

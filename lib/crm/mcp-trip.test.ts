@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { flightCardTitle, flightIata, hotelDisplayName, itemClock } from "@/lib/crm/carnet";
 import { itemSellingAmount } from "@/lib/crm/bookings";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
-import { McpWriteError } from "@/lib/crm/mcp-write";
+import { createClient, McpWriteError, updateClient } from "@/lib/crm/mcp-write";
 import {
   addHotel,
   addVol,
@@ -14,6 +14,7 @@ import {
   buildFlightCard,
   buildHotelCard,
   createDossier,
+  dossierPayerChoice,
   flightPrice,
   flightSchedule,
   hotelPrice,
@@ -295,7 +296,11 @@ test("creer_dossier reste en préparation, sans invitation ni débit", async () 
   assert.equal(created.statut, "En préparation");
   assert.equal(created.visible, false);
   assert.equal(created.notifie, false);
+  assert.equal(created.paye_par, "particulier");
+  assert.equal(created.societe, null);
   const booking = db.tables.crm_bookings[0];
+  assert.equal(booking.payer_kind, "personal");
+  assert.equal(booking.billing_company_id, null);
   assert.equal(booking.id, created.id);
   assert.equal(booking.visible_to_client, false);
   assert.equal(booking.status, "draft");
@@ -634,6 +639,98 @@ test("prix_total est le total du groupe, et modifier_vol garde l’heure locale"
   await assert.rejects(
     () => updateVol({ dossier_id: dossier.id, carte_id: inbound.id, voyageurs: [] }, client),
     /au moins un voyageur/
+  );
+});
+
+test("une société se facture sur le dossier, sans doublon de SIRET", async () => {
+  assert.deepEqual(dossierPayerChoice({ societeId: "", facturerSociete: false, companies: [{ id: "a", sort_order: 0 }] }), {
+    payer_kind: "personal",
+    billing_company_id: null,
+  });
+  assert.equal(
+    "error" in dossierPayerChoice({ societeId: "", facturerSociete: true, companies: [] }),
+    true
+  );
+  const { db, client } = adminOf({ crm_customers: [], crm_billing_companies: [] });
+  const created = await createClient(
+    {
+      email: "nilos@example.com",
+      prenom: "Camille",
+      nom: "Martin",
+      raison_sociale: "NILOS FRANCE",
+      siret: "732 829 320 00074",
+      tva: "FR73282932000",
+      adresse: "10 rue de la Paix",
+      code_postal: "75002",
+      ville: "Paris",
+      pays: "France",
+    },
+    client
+  );
+  assert.equal(created.invite, false);
+  assert.equal(created.societe, "NILOS FRANCE");
+  assert.equal(created.siret, "73282932000074");
+  assert.equal(db.tables.crm_billing_companies.length, 1);
+  const customer = db.tables.crm_customers[0];
+  assert.equal(customer.company_name, "NILOS FRANCE");
+  assert.equal(customer.siret, "73282932000074");
+  assert.equal(customer.billing_city, "Paris");
+  assert.equal(customer.billing_country, "FR");
+  const updated = await updateClient(
+    { id: created.id, siret: "73282932000074", ville: "Lyon" },
+    client
+  );
+  assert.equal(updated.societe_id, created.societe_id);
+  assert.equal(db.tables.crm_billing_companies.length, 1);
+  assert.equal(db.tables.crm_billing_companies[0].billing_city, "Lyon");
+  assert.equal(db.tables.crm_customers[0].billing_city, "Lyon");
+  const second = await updateClient(
+    { id: created.id, raison_sociale: "EXPONENTIEL", siret: "55210055400013", ville: "Paris" },
+    client
+  );
+  assert.equal(second.societe_id === created.societe_id, false);
+  assert.equal(db.tables.crm_billing_companies.length, 2);
+  assert.equal(db.tables.crm_customers[0].company_name, "NILOS FRANCE");
+  await assert.rejects(() => updateClient({ id: created.id, ville: "Nice" }, client), /Plusieurs sociétés/);
+  await assert.rejects(
+    () => createDossier({ client_id: created.id, titre: "Phuket", facturer_societe: true }, client),
+    /Plusieurs sociétés/
+  );
+  const billed = await createDossier(
+    { client_id: created.id, titre: "Phuket", societe_id: second.societe_id },
+    client
+  );
+  assert.equal(billed.paye_par, "société");
+  assert.equal(billed.societe, "EXPONENTIEL");
+  assert.equal(billed.notifie, false);
+  const booking = db.tables.crm_bookings[0];
+  assert.equal(booking.payer_kind, "company");
+  assert.equal(booking.billing_company_id, second.societe_id);
+  assert.equal(booking.visible_to_client, false);
+  const personal = await createDossier({ client_id: created.id, titre: "Rome" }, client);
+  assert.equal(personal.paye_par, "particulier");
+  assert.equal(db.tables.crm_bookings[1].payer_kind, "personal");
+  assert.equal(db.tables.crm_bookings[1].billing_company_id, null);
+  const alone = await createClient(
+    { email: "seul@example.com", prenom: "Léa", nom: "Martin", societe: "ATELIER" },
+    client
+  );
+  const stay = await createDossier(
+    { client_id: alone.id, titre: "Lyon", facturer_societe: true },
+    client
+  );
+  assert.equal(stay.paye_par, "société");
+  assert.equal(stay.societe, "ATELIER");
+  assert.equal(db.tables.crm_transactions?.length || 0, 0);
+  assert.equal(db.writes.some((write) => /invite|message|whatsapp/i.test(write.table)), false);
+  const bare = await createClient({ email: "vide@example.com", prenom: "Noa", nom: "Bernard" }, client);
+  await assert.rejects(
+    () => createDossier({ client_id: bare.id, titre: "Nice", facturer_societe: true }, client),
+    /Aucune société/
+  );
+  await assert.rejects(
+    () => createClient({ email: "mauvais@example.com", prenom: "Noa", nom: "Bernard", siret: "123" }, client),
+    /14 chiffres/
   );
 });
 
