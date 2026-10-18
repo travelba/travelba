@@ -181,7 +181,7 @@ test("la route staff appelle la fonction, le menu reprend les états des autres 
   assert.match(route, /requireStaff\(/);
   assert.match(route, /loadOmnibar\(/);
   assert.doesNotMatch(route, /\$\{q\}/);
-  const sql = readFileSync(join(root, "supabase/migrations/20261018120000_omnibar_search.sql"), "utf8");
+  const sql = readFileSync(join(root, "supabase/migrations/20261018074306_omnibar_search.sql"), "utf8");
   assert.match(sql, /crm_private\.is_staff\(\)/);
   assert.match(sql, /extensions\.gin_trgm_ops/);
   assert.match(sql, /limit 5/g);
