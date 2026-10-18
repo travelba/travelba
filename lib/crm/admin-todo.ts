@@ -6,7 +6,7 @@ function plural(count: number, one: string, many: string) {
 
 /**
  * « À faire aujourd’hui » du tableau de bord : une seule liste, dans l’ordre du travail de l’agence
- * (mails à relire, Little Emperors, formalités, services, départs demain, pièces).
+ * (WhatsApp, mails à relire, Little Emperors, formalités, services, départs demain, pièces).
  * Les compteurs à zéro n’apparaissent pas.
  */
 export function adminTodoLines(input: {
@@ -16,8 +16,15 @@ export function adminTodoLines(input: {
   services: number;
   departTomorrow: number;
   expiring: number;
+  whatsapp: number;
 }): AdminTodoLine[] {
   const lines: AdminTodoLine[] = [
+    {
+      id: "whatsapp",
+      count: input.whatsapp,
+      label: `${plural(input.whatsapp, "demande WhatsApp", "demandes WhatsApp")} à traiter`,
+      href: "/admin/whatsapp",
+    },
     {
       id: "emails",
       count: input.emails,

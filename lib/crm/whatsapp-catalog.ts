@@ -17,6 +17,7 @@ import {
   panRefusedReply,
   pieceSavedLine,
   planConciergeTurn,
+  sharedPhoneReply,
   UNKNOWN_NUMBER_REPLY,
   type ConciergeDossier,
   type ConciergeStay,
@@ -588,7 +589,7 @@ function catalogGroups(): WhatsappCatalogGroup[] {
           "numero-partage",
           "Plusieurs fiches pour ce numéro",
           "Le téléphone correspond à plus d’un client. Rien n’est répondu sur un dossier.",
-          withConciergeSignature(HANDOFF_SENTENCE)
+          sharedPhoneReply("fr")
         ),
         session(
           "piece-coffre",

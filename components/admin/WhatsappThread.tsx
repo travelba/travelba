@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/crm/icons";
 import { formatDateTimeFr } from "@/lib/crm/money";
@@ -58,12 +59,14 @@ export function WhatsappThread({
   requests,
   bookings,
   expanded = false,
+  desk = null,
 }: {
   messages: WhatsappThreadMessage[];
   requests: WhatsappThreadRequest[];
   bookings: { id: string; reference: string }[];
   /** Dossier : toute la conversation. La fiche client garde le repli aux trois derniers messages. */
   expanded?: boolean;
+  desk?: ReactNode;
 }) {
   const reference = new Map(bookings.map((booking) => [booking.id, booking.reference]));
   const earlier = !expanded && messages.length > VISIBLE_MESSAGES ? messages.slice(0, -VISIBLE_MESSAGES) : [];
@@ -127,6 +130,7 @@ export function WhatsappThread({
       ) : (
         <p className="text-sm text-muted">Aucun échange WhatsApp.</p>
       )}
+      {desk}
     </div>
   );
   if (expanded) {

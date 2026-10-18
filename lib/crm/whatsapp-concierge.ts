@@ -30,7 +30,6 @@ import { clientVisaStepCopy, type ClientVisaStep } from "./visa-flow";
 import { stayCoverUrl, whatsappTypeImageUrl, type WhatsappImageKind } from "./concierge-notices";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 
-export const UNKNOWN_NUMBER_REPLY = "L’espace s’ouvre sur invitation.";
 export const HANDOFF_SENTENCE = "Je transmets à l’agence.";
 /** Ton du retour, dans la même réponse, seulement si l’agence doit revenir. */
 export const FOLLOW_UP_TONE = "Je regarde, je vous fais un retour rapide";
@@ -41,7 +40,18 @@ export const MISSING_PRICE = "Je n’ai pas ce prix dans votre dossier.";
 export const MISSING_DRIVER = "Je n’ai pas de chauffeur dans votre dossier.";
 export const MISSING_FORMALITY = "Je n’ai pas de formalité déposée dans votre dossier.";
 
-export const HANDOFF_KINDS = ["change", "cancel", "payment", "formality", "chauffeur", "complaint", "question"] as const;
+export const HANDOFF_KINDS = [
+  "change",
+  "cancel",
+  "payment",
+  "formality",
+  "chauffeur",
+  "complaint",
+  "question",
+  "quote",
+  "urgent",
+  "lead",
+] as const;
 export type HandoffKind = (typeof HANDOFF_KINDS)[number];
 
 export const HANDOFF_LABELS: Record<HandoffKind, string> = {
@@ -52,12 +62,27 @@ export const HANDOFF_LABELS: Record<HandoffKind, string> = {
   chauffeur: "Chauffeur",
   complaint: "Plainte",
   question: "Question à l’agence",
+  quote: "Nouveau voyage",
+  urgent: "Urgence en voyage",
+  lead: "Prospect",
 };
 
 /** Ces cinq demandes partent à l’agent. Le ton du retour ne sert qu’à elles. */
-const AGENCY_HANDOFF = new Set<HandoffKind>(["change", "cancel", "payment", "formality", "chauffeur"]);
+const AGENCY_HANDOFF = new Set<HandoffKind>([
+  "change",
+  "cancel",
+  "payment",
+  "formality",
+  "chauffeur",
+  "quote",
+  "urgent",
+]);
 
-export type ReplyLang = "fr" | "en";
+export type ReplyLang = "fr" | "en" | "he";
+
+function say(lang: ReplyLang, text: Record<ReplyLang, string>) {
+  return text[lang];
+}
 
 const VISA_STEPS = new Set<ClientVisaStep>([
   "preparation",
@@ -208,6 +233,7 @@ export function proactiveWhatsappAllowed(row: {
 }
 
 export function messageLanguage(message: string): ReplyLang {
+  if (/[\u0590-\u05FF]/.test(message)) return "he";
   const text = fold(message);
   const french =
     /[àâäéèêëïîôùûüçœ]/i.test(message) ||
@@ -230,6 +256,39 @@ export function isConciergeStop(message: string) {
   return (
     /\b(stop|arret|arretez|stoppez|unsubscribe|desabonnez)\b/.test(text) &&
     /\b(message|messages|whatsapp|notif|notification|sms|proactif)\b/.test(text)
+  );
+}
+
+export function leadReply(lang: ReplyLang) {
+  return withConciergeSignature(
+    say(lang, {
+      fr: "Bonjour,\nVotre message est bien arrivé. Un conseiller de l’agence vous répond.",
+      en: "Hello,\nYour message has arrived. An advisor from the agency will reply.",
+      he: "שלום,\nההודעה התקבלה. יועץ של הסוכנות יחזור אליכם.",
+    })
+  );
+}
+
+/** Réponse française au numéro inconnu. Prospect, pas une invitation. */
+export const UNKNOWN_NUMBER_REPLY = leadReply("fr");
+
+export function sharedPhoneReply(lang: ReplyLang) {
+  return withConciergeSignature(
+    say(lang, {
+      fr: "Ce numéro est sur plusieurs fiches. Je transmets à l’agence, sans ouvrir de dossier.",
+      en: "This number is on several files. I’m passing it to the agency, without opening one.",
+      he: "המספר הזה מופיע בכמה כרטיסים. אני מעביר לסוכנות, בלי לפתוח תיק.",
+    })
+  );
+}
+
+export function rateLimitedReply(lang: ReplyLang) {
+  return withConciergeSignature(
+    say(lang, {
+      fr: "J’ai bien reçu. Je réponds au prochain message dans un instant.",
+      en: "I’ve received it. I’ll answer the next message in a moment.",
+      he: "קיבלתי. אענה להודעה הבאה בעוד רגע.",
+    })
   );
 }
 
@@ -420,12 +479,15 @@ export function conciergeContextText(dossier: ConciergeDossier) {
 
 export function classifyHandoff(message: string): HandoffKind | null {
   const text = fold(message);
-  if (/\b(annuler|annulez|annulation|annule|cancel|cancellation)\b/.test(text)) return "cancel";
+  if (/\b(annuler|annulez|annulation|annule|cancel|cancellation)\b/.test(text) || /לבטל|ביטול/.test(message)) {
+    return "cancel";
+  }
   if (
     /\b(modifier|modification|modifiez|changer|changez|changement|decalez|decaler|reporter|reportez|deplacer|deplacez)\b/.test(
       text
     ) ||
-    (/\b(change|modify|reschedule)\b/.test(text) && /\b(trip|stay|booking|dates?|hotel|flight|sejour)\b/.test(text))
+    (/\b(change|modify|reschedule)\b/.test(text) && /\b(trip|stay|booking|dates?|hotel|flight|sejour)\b/.test(text)) ||
+    /לשנות|שינוי/.test(message)
   ) {
     return "change";
   }
@@ -449,6 +511,15 @@ export function classifyHandoff(message: string): HandoffKind | null {
     /command|reserv|envoy|besoin|voudrais|veux|prend|organis|book|need|want|arrange/.test(text)
   ) {
     return "chauffeur";
+  }
+  if (/\burgent\b|\burgence\b|\bbloque\b|\bau secours\b|\bsos\b|\bemergency\b|\bstranded\b/.test(text) || /דחוף/.test(message)) {
+    return "urgent";
+  }
+  if (
+    /\bdevis\b|\bnouveau (sejour|voyage)\b|\borganiser un (sejour|voyage)\b|\bquote\b|\bnew trip\b/.test(text) ||
+    /הצעת מחיר|טיול חדש/.test(message)
+  ) {
+    return "quote";
   }
   return null;
 }
@@ -512,14 +583,15 @@ function whichStayText(stays: ConciergeStay[], lang: ReplyLang) {
   const refs = stays
     .map((stay) => (stay.destination ? `${stay.reference} (${stay.destination})` : stay.reference))
     .join(", ");
-  if (lang === "en") {
-    return `You have several published stays: ${refs}. Which one do you mean?`;
-  }
-  return `Vous avez plusieurs séjours publiés : ${refs}. Lequel vous intéresse ?`;
+  return say(lang, {
+    fr: `Vous avez plusieurs séjours publiés : ${refs}. Lequel vous intéresse ?`,
+    en: `You have several published stays: ${refs}. Which one do you mean?`,
+    he: `יש כמה שהיות שפורסמו: ${refs}. על איזו מהן מדובר?`,
+  });
 }
 
 function moneyLabel(amount: number, currency: string, lang: ReplyLang) {
-  return formatMoney(amount, currency, { lang });
+  return formatMoney(amount, currency, { lang: lang === "en" ? "en" : "fr" });
 }
 
 function sign(body: string) {
@@ -532,8 +604,11 @@ function sign(body: string) {
 
 /** Une seule réponse : le ton du retour, puis ce que l’agence reprend. */
 export function conciergeFollowUp(detail: string, lang: ReplyLang = "fr") {
-  const tone =
-    lang === "en" ? "I’ll look into it and come back to you shortly" : FOLLOW_UP_TONE;
+  const tone = say(lang, {
+    fr: FOLLOW_UP_TONE,
+    en: "I’ll look into it and come back to you shortly",
+    he: "אני בודק ואחזור אליכם בקרוב",
+  });
   return sign(`${tone}\n${detail.trim()}`);
 }
 
@@ -755,7 +830,11 @@ function offerAgency(lang: ReplyLang) {
 }
 
 export function agencyHandoffSentence(lang: ReplyLang = "fr") {
-  return lang === "en" ? "I’m passing this to the agency." : HANDOFF_SENTENCE;
+  return say(lang, {
+    fr: HANDOFF_SENTENCE,
+    en: "I’m passing this to the agency.",
+    he: "אני מעביר את זה לסוכנות.",
+  });
 }
 
 function handoffSentence(lang: ReplyLang) {
@@ -763,31 +842,49 @@ function handoffSentence(lang: ReplyLang) {
 }
 
 function stopText(lang: ReplyLang) {
-  return lang === "en"
-    ? "The agency’s proactive messages are stopped. Write whenever you like, I will still reply."
-    : "Les messages de l’agence sont coupés. Écrivez quand vous voulez, je vous réponds.";
+  return say(lang, {
+    fr: "Les messages de l’agence sont coupés. Écrivez quand vous voulez, je vous réponds.",
+    en: "The agency’s proactive messages are stopped. Write whenever you like, I will still reply.",
+    he: "ההודעות היזומות של הסוכנות הופסקו. כתבו מתי שתרצו, אני עונה.",
+  });
 }
 
 export function accessLinkReply(lang: ReplyLang, url: string | null) {
   if (url && !url.startsWith("https://")) return accessLinkReply(lang, null);
-  if (lang === "en") {
-    if (!url) return sign("I can’t open your space from here. I can ask the agency for a new access link.");
-    return sign(`Here is a new access link. It is not your password.\n${url}`);
+  if (!url) {
+    return sign(
+      say(lang, {
+        fr: "Je n’ouvre pas votre espace d’ici. Je peux demander à l’agence un nouveau lien d’accès.",
+        en: "I can’t open your space from here. I can ask the agency for a new access link.",
+        he: "איני פותח את המרחב מכאן. אפשר לבקש מהסוכנות קישור גישה חדש.",
+      })
+    );
   }
-  if (!url) return sign("Je n’ouvre pas votre espace d’ici. Je peux demander à l’agence un nouveau lien d’accès.");
-  return sign(`Voici un nouveau lien d’accès. Ce n’est pas votre mot de passe.\n${url}`);
+  return sign(
+    `${say(lang, {
+      fr: "Voici un nouveau lien d’accès. Ce n’est pas votre mot de passe.",
+      en: "Here is a new access link. It is not your password.",
+      he: "הנה קישור גישה חדש. זו אינה הסיסמה שלכם.",
+    })}\n${url}`
+  );
 }
 
 export function pieceSavedLine(lang: ReplyLang) {
-  return lang === "en" ? "Your document is saved with your papers." : "Votre pièce est enregistrée dans votre coffre.";
+  return say(lang, {
+    fr: "Votre pièce est enregistrée dans votre coffre.",
+    en: "Your document is saved with your papers.",
+    he: "המסמך נשמר בכספת שלכם.",
+  });
 }
 
 export function panRefusedReply(lang: ReplyLang) {
-  const body =
-    lang === "en"
-      ? "I don’t keep card numbers. Send the document without them, or I can ask the agency."
-      : "Je ne conserve pas de numéro de carte. Envoyez la pièce sans ces chiffres, ou je peux en parler à l’agence.";
-  return sign(body);
+  return sign(
+    say(lang, {
+      fr: "Je ne conserve pas de numéro de carte. Envoyez la pièce sans ces chiffres, ou je peux en parler à l’agence.",
+      en: "I don’t keep card numbers. Send the document without them, or I can ask the agency.",
+      he: "אני לא שומר מספרי כרטיס. שלחו את המסמך בלי הספרות האלה, או שאעביר לסוכנות.",
+    })
+  );
 }
 
 function typeImage(kind: WhatsappImageKind) {
@@ -834,9 +931,11 @@ export function planConciergeTurn(message: string, dossier: ConciergeDossier): C
     const sentence = handoffSentence(lang);
     const which = !stay && dossier.stays.length > 1 ? `\n${whichStayText(dossier.stays, lang)}` : "";
     const focused = stay
-      ? lang === "en"
-        ? `\nThis is about stay ${stay.reference}.\n${stayClientUrl(stay.reference)}`
-        : `\nCela concerne le séjour ${stay.reference}.\n${stayClientUrl(stay.reference)}`
+      ? `\n${say(lang, {
+          fr: `Cela concerne le séjour ${stay.reference}.`,
+          en: `This is about stay ${stay.reference}.`,
+          he: `זה נוגע לשהות ${stay.reference}.`,
+        })}\n${stayClientUrl(stay.reference)}`
       : "";
     return {
       ...empty,

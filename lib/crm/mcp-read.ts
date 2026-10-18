@@ -274,6 +274,7 @@ export async function readTableauDeBord() {
     departTomorrow,
     tasks,
     activeBookings,
+    whatsappOpen,
   ] = await Promise.all([
     adminBadges(),
     admin.from("crm_customer_balances").select("balance, currency"),
@@ -306,6 +307,10 @@ export async function readTableauDeBord() {
       .or(`end_date.is.null,end_date.gte.${isoDateInDays(-1)}`)
       .order("start_date", { ascending: true, nullsFirst: false })
       .limit(300),
+    admin
+      .from("crm_whatsapp_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "open"),
   ]);
   const desk = deskView(visaTasks((tasks.data || []) as VisaTaskRow[]), today);
   const services = await openServiceLines(admin, (activeBookings.data || []) as ServiceBookingRow[]);
@@ -321,6 +326,7 @@ export async function readTableauDeBord() {
       services: services.length,
       departTomorrow: departTomorrow.count ?? 0,
       expiring: badges.pieces,
+      whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
     }),
     encours_a_encaisser: formatMoney(remaining),
     comptes: comptes.map((account) => ({
