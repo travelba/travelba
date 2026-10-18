@@ -143,6 +143,52 @@ test("a household keeps each passport and the name written on it", () => {
   assert.equal(JSON.stringify(voyageurs).includes("T000"), false);
 });
 
+test("a newer scan does not hide the identity of the same passport", () => {
+  const voyageurs = dossierVoyageurs(
+    [traveler({})],
+    holder,
+    [],
+    [
+      doc({
+        id: "vault",
+        expires_on: "2028-01-01",
+        issued_on: "2020-03-01",
+        first_name: "Maëlle Louise",
+        usage_name: "Durand",
+        birth_date: "1985-10-12",
+        nationality: "Française",
+        sex: "F",
+        place_of_birth: "PARIS",
+      }),
+      doc({
+        id: "scan",
+        booking_id: BOOKING,
+        traveler_id: HOLDER_TRAVELER,
+        expires_on: "2032-06-01",
+        issued_on: null,
+        first_name: null,
+        last_name: null,
+        usage_name: null,
+        birth_date: null,
+        nationality: null,
+        sex: null,
+        place_of_birth: null,
+      }),
+    ]
+  );
+  const piece = voyageurs[0].pieces[0];
+  assert.equal(piece.expire_le, "2032-06-01");
+  assert.equal(piece.delivre_le, "2020-03-01");
+  assert.equal(piece.prenoms, "Maëlle Louise");
+  assert.equal(piece.nom, "Martin");
+  assert.equal(piece.nom_usage, "Durand");
+  assert.equal(piece.date_naissance, "1985-10-12");
+  assert.equal(piece.sexe, "F");
+  assert.equal(piece.nationalite, "FR");
+  assert.equal(piece.lieu_naissance, "PARIS");
+  assert.equal(piece.numero_piece, NUMBER);
+});
+
 test("a trip copy is used only when the vault has no piece", () => {
   const onlyTrip = householdVoyageurs(holder, [], [doc({ id: "trip", number: "T000", booking_id: BOOKING })]);
   assert.equal(onlyTrip[0].pieces[0].numero_piece, "T000");

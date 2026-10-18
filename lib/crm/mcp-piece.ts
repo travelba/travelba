@@ -6,9 +6,11 @@ import { DOC_TYPE_LABELS, isTravelAuthorization, type CrmBooking, type TravelDoc
 import { resolveNationality } from "@/lib/crm/countries";
 import { notifyFormalitiesReady, type FormalityAudience, type FormalityNotice, type FormalityRecipient } from "@/lib/crm/concierge-send";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
+import { uploadCrmFile } from "@/lib/crm/files";
 import {
   assertBookingForCustomer,
   assertTravelerOnBooking,
+  customerDocumentStoragePath,
   saveUploadedTravelDocument,
 } from "@/lib/crm/travel-document-write";
 import {
@@ -142,9 +144,8 @@ export function prepareTravelPiece(input: Record<string, unknown>): PreparedPiec
   const dossierId = optionalId(input.dossier_id, "Dossier");
   const reference = optionalText(input.reference, "Référence", 80) || "";
   const voyageurId = optionalId(input.voyageur_id, "Voyageur");
-  if (!clientId && !dossierId && !reference) throw new McpWriteError("Indiquez le client ou le dossier.");
-  if (voyageurId && !dossierId && !reference) {
-    throw new McpWriteError("Indiquez le dossier pour rattacher le voyageur.");
+  if (!clientId && !dossierId && !reference && !voyageurId) {
+    throw new McpWriteError("Indiquez le client ou le dossier.");
   }
   const fileName = optionalText(input.nom_fichier, "Nom de fichier", 180);
   if (!fileName) throw new McpWriteError("Nom de fichier requis.");
@@ -196,9 +197,297 @@ async function loadBooking(
   return rows[0];
 }
 
+type PieceTarget = {
+  customerId: string;
+  booking: Pick<CrmBooking, "id" | "reference" | "customer_id"> | null;
+  companionId: string | null;
+  travelerId: string | null;
+  /** Coffre du titulaire, d’un accompagnateur, ou voyageur de dossier sans fiche. */
+  vault: "holder" | "companion" | "none";
+};
+
+type StoredPassport = {
+  id: string;
+  companion_id: string | null;
+  booking_id: string | null;
+  traveler_id: string | null;
+  number: string | null;
+  issuing_country: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  usage_name: string | null;
+  birth_date: string | null;
+  nationality: string | null;
+  sex: string | null;
+  place_of_birth: string | null;
+  authority: string | null;
+  personal_number: string | null;
+  created_at: string;
+};
+
+type SavedPiece = {
+  id: string;
+  doc_type: TravelDocType;
+  issuing_country: string | null;
+  traveler_id: string | null;
+  file_name: string | null;
+};
+
+const PASSPORT_COLUMNS =
+  "id, companion_id, booking_id, traveler_id, number, issuing_country, issued_on, expires_on, first_name, last_name, usage_name, birth_date, nationality, sex, place_of_birth, authority, personal_number, created_at";
+
+function textOrNull(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function countryOf(row: { issuing_country: string | null }) {
+  return resolveNationality(row.issuing_country);
+}
+
+function sexOf(value: string | null | undefined): "M" | "F" | "X" | null {
+  const code = (value || "").trim().toUpperCase();
+  if (code === "M" || code === "F" || code === "X") return code;
+  return null;
+}
+
+function asPassport(row: Record<string, unknown>): StoredPassport {
+  return {
+    id: String(row.id),
+    companion_id: textOrNull(row.companion_id),
+    booking_id: textOrNull(row.booking_id),
+    traveler_id: textOrNull(row.traveler_id),
+    number: textOrNull(row.number),
+    issuing_country: textOrNull(row.issuing_country),
+    issued_on: textOrNull(row.issued_on),
+    expires_on: textOrNull(row.expires_on),
+    first_name: textOrNull(row.first_name),
+    last_name: textOrNull(row.last_name),
+    usage_name: textOrNull(row.usage_name),
+    birth_date: textOrNull(row.birth_date),
+    nationality: textOrNull(row.nationality),
+    sex: textOrNull(row.sex),
+    place_of_birth: textOrNull(row.place_of_birth),
+    authority: textOrNull(row.authority),
+    personal_number: textOrNull(row.personal_number),
+    created_at: textOrNull(row.created_at) || "",
+  };
+}
+
+function filledCount(row: StoredPassport) {
+  return [
+    row.issued_on,
+    row.authority,
+    row.first_name,
+    row.last_name,
+    row.usage_name,
+    row.birth_date,
+    row.nationality,
+    row.sex,
+    row.place_of_birth,
+    row.personal_number,
+  ].filter(Boolean).length;
+}
+
+function richest(rows: StoredPassport[]) {
+  return rows
+    .slice()
+    .sort((a, b) => filledCount(b) - filledCount(a) || b.created_at.localeCompare(a.created_at))[0];
+}
+
+function inScope(row: StoredPassport, target: PieceTarget) {
+  if (target.booking) {
+    return row.booking_id === target.booking.id && (row.traveler_id || null) === (target.travelerId || null);
+  }
+  if (row.booking_id) return false;
+  if (target.vault === "companion") return row.companion_id === target.companionId;
+  if (target.vault === "holder") return !row.companion_id;
+  return false;
+}
+
+function sameVaultPerson(row: StoredPassport, target: PieceTarget) {
+  if (row.booking_id) return false;
+  if (target.vault === "holder") return !row.companion_id;
+  if (target.vault === "companion") return row.companion_id === target.companionId;
+  return false;
+}
+
+/** Un seul passeport, ou le pays indiqué. Plusieurs sans pays : on ne choisit pas. */
+function choosePassport(scoped: StoredPassport[], country: string | null) {
+  if (!scoped.length) return null;
+  if (!country) {
+    if (scoped.length > 1) throw new McpWriteError("Plusieurs passeports pour ce voyageur. Indiquez le pays.");
+    return { row: scoped[0], extras: [] as StoredPassport[] };
+  }
+  const exact = scoped.filter((row) => countryOf(row) === country);
+  if (exact.length) {
+    const row = richest(exact);
+    return { row, extras: exact.filter((item) => item.id !== row.id) };
+  }
+  if (scoped.length === 1 && !countryOf(scoped[0])) return { row: scoped[0], extras: [] as StoredPassport[] };
+  return null;
+}
+
+function donorPassport(vaultRows: StoredPassport[], country: string | null) {
+  if (!vaultRows.length) return null;
+  if (country) {
+    const exact = vaultRows.filter((row) => countryOf(row) === country);
+    if (!exact.length) return null;
+    return richest(exact);
+  }
+  if (vaultRows.length > 1) throw new McpWriteError("Plusieurs passeports pour ce voyageur. Indiquez le pays.");
+  return vaultRows[0];
+}
+
+async function resolvePieceTarget(db: SupabaseClient, draft: PreparedPiece): Promise<PieceTarget> {
+  if (draft.dossierId || draft.reference) {
+    const booking = await loadBooking(db, { id: draft.dossierId, reference: draft.reference });
+    if (draft.clientId && booking.customer_id !== draft.clientId) {
+      throw new McpWriteError("Ce dossier n’est pas celui de ce client.");
+    }
+    return {
+      customerId: draft.clientId || booking.customer_id,
+      booking,
+      companionId: null,
+      travelerId: draft.voyageurId || null,
+      vault: "none",
+    };
+  }
+  if (!draft.voyageurId || (draft.clientId && draft.voyageurId === draft.clientId)) {
+    if (!draft.clientId) throw new McpWriteError("Indiquez le client ou le dossier.");
+    return { customerId: draft.clientId, booking: null, companionId: null, travelerId: null, vault: "holder" };
+  }
+  const { data, error } = await db
+    .from("crm_travel_companions")
+    .select("id, customer_id")
+    .eq("id", draft.voyageurId)
+    .maybeSingle();
+  if (error) failDb(error, "Voyageur introuvable.");
+  const companion = data as { id: string; customer_id: string } | null;
+  if (!companion) throw new McpWriteError("Indiquez le dossier pour rattacher le voyageur.");
+  if (draft.clientId && companion.customer_id !== draft.clientId) {
+    throw new McpWriteError("Ce voyageur n’est pas rattaché à ce client.");
+  }
+  return {
+    customerId: companion.customer_id,
+    booking: null,
+    companionId: companion.id,
+    travelerId: null,
+    vault: "companion",
+  };
+}
+
+async function bindTraveler(db: SupabaseClient, target: PieceTarget): Promise<PieceTarget> {
+  if (!target.booking) return target;
+  const traveler = await assertTravelerOnBooking(db, target.booking.id, target.travelerId);
+  if (!traveler || traveler.is_account_holder) {
+    return { ...target, companionId: null, travelerId: traveler?.id || null, vault: "holder" };
+  }
+  if (traveler.companion_id) {
+    return { ...target, companionId: traveler.companion_id, travelerId: traveler.id, vault: "companion" };
+  }
+  return { ...target, companionId: null, travelerId: traveler.id, vault: "none" };
+}
+
+async function loadPassports(db: SupabaseClient, customerId: string) {
+  const { data, error } = await db
+    .from("crm_travel_documents")
+    .select(PASSPORT_COLUMNS)
+    .eq("customer_id", customerId)
+    .eq("doc_type", "passport")
+    .limit(80);
+  if (error) failDb(error, "Enregistrement impossible.");
+  return ((data || []) as Record<string, unknown>[]).map(asPassport);
+}
+
+async function updatePassport(
+  db: SupabaseClient,
+  row: StoredPassport,
+  extras: StoredPassport[],
+  draft: PreparedPiece,
+  customerId: string,
+  upload?: PieceUpload
+): Promise<SavedPiece> {
+  const storagePath = customerDocumentStoragePath(customerId, draft.fileName);
+  await (upload ?? uploadCrmFile)(storagePath, draft.bytes, draft.mimeType || "application/octet-stream");
+  const patch: Record<string, string | null> = {
+    storage_path: storagePath,
+    file_name: draft.fileName,
+    mime_type: draft.mimeType || null,
+  };
+  if (draft.number) patch.number = draft.number;
+  if (draft.expiresOn) patch.expires_on = draft.expiresOn;
+  if (draft.issuingCountry) patch.issuing_country = resolveNationality(draft.issuingCountry) || draft.issuingCountry;
+  const updated = await db.from("crm_travel_documents").update(patch).eq("id", row.id).eq("customer_id", customerId);
+  if (updated.error) failDb(updated.error, "Enregistrement impossible.");
+  for (const extra of extras) {
+    const removed = await db.from("crm_travel_documents").delete().eq("id", extra.id).eq("customer_id", customerId);
+    if (removed.error) failDb(removed.error, "Enregistrement impossible.");
+  }
+  return {
+    id: row.id,
+    doc_type: "passport",
+    issuing_country: patch.issuing_country ?? row.issuing_country,
+    traveler_id: row.traveler_id,
+    file_name: draft.fileName,
+  };
+}
+
+/**
+ * Passeport déjà là : on écrit le fichier et les champs fournis.
+ * Délivrance, autorité, noms, naissance, nationalité, sexe et lieu restent.
+ * Pas de synchro ESTA / ETA : aucun message.
+ */
+async function storePassport(
+  db: SupabaseClient,
+  target: PieceTarget,
+  draft: PreparedPiece,
+  upload?: PieceUpload
+): Promise<SavedPiece> {
+  const rows = await loadPassports(db, target.customerId);
+  const country = draft.issuingCountry ? resolveNationality(draft.issuingCountry) : null;
+  const chosen = choosePassport(rows.filter((row) => inScope(row, target)), country);
+  if (chosen) return updatePassport(db, chosen.row, chosen.extras, draft, target.customerId, upload);
+  const donor = donorPassport(
+    rows.filter((row) => sameVaultPerson(row, target)),
+    country
+  );
+  const document = await saveUploadedTravelDocument(
+    db,
+    {
+      customerId: target.customerId,
+      companionId: target.companionId,
+      bookingId: target.booking?.id || null,
+      travelerId: target.travelerId,
+      docType: "passport",
+      number: draft.number ?? donor?.number ?? null,
+      issuingCountry: draft.issuingCountry ?? donor?.issuing_country ?? null,
+      issuedOn: donor?.issued_on ?? null,
+      expiresOn: draft.expiresOn ?? donor?.expires_on ?? null,
+      placeOfBirth: donor?.place_of_birth ?? null,
+      authority: donor?.authority ?? null,
+      personalNumber: donor?.personal_number ?? null,
+      first_name: donor?.first_name ?? null,
+      last_name: donor?.last_name ?? null,
+      usage_name: donor?.usage_name ?? null,
+      birth_date: donor?.birth_date ?? null,
+      nationality: donor?.nationality ?? null,
+      sex: sexOf(donor?.sex),
+      formalities: false,
+    },
+    { name: draft.fileName, type: draft.mimeType, bytes: draft.bytes },
+    upload
+  );
+  return document;
+}
+
 /**
  * Dépose une pièce dans l’espace client, comme le formulaire Pièces.
  * Une formalité liée au séjour envoie le WhatsApp « formalité prête », sauf `notifier: false`.
+ * Un passeport déjà enregistré est complété, pas réécrit à vide. Aucun message pour ce scan.
  */
 export async function addTravelPiece(
   input: Record<string, unknown>,
@@ -207,47 +496,52 @@ export async function addTravelPiece(
 ) {
   const draft = prepareTravelPiece(input);
   const db = client(admin);
-  const booking =
-    draft.dossierId || draft.reference ? await loadBooking(db, { id: draft.dossierId, reference: draft.reference }) : null;
-  if (booking && draft.clientId && booking.customer_id !== draft.clientId) {
-    throw new McpWriteError("Ce dossier n’est pas celui de ce client.");
-  }
-  const customerId = draft.clientId || booking?.customer_id || "";
-  const { data: customer, error: customerError } = await db
-    .from("crm_customers")
-    .select("id")
-    .eq("id", customerId)
-    .maybeSingle();
-  if (customerError) failDb(customerError, "Client introuvable.");
-  if (!customer) throw new McpWriteError("Client introuvable.");
-  let document;
+  let target: PieceTarget;
   try {
-    await assertBookingForCustomer(db, customerId, booking?.id ?? null);
-    await assertTravelerOnBooking(db, booking?.id ?? null, draft.voyageurId || null);
-    document = await saveUploadedTravelDocument(
-      db,
-      {
-        customerId,
-        bookingId: booking?.id || null,
-        travelerId: draft.voyageurId || null,
-        docType: draft.docType,
-        issuingCountry: draft.issuingCountry,
-        number: draft.number,
-        expiresOn: draft.expiresOn,
-      },
-      { name: draft.fileName, type: draft.mimeType, bytes: draft.bytes },
-      deps?.upload
-    );
+    target = await bindTraveler(db, await resolvePieceTarget(db, draft));
   } catch (err) {
     raise(err, "Enregistrement impossible.");
   }
-  await (deps?.reconcile ?? reconcileCustomerParty)(customerId, db);
-  const linked = Boolean(booking);
+  const { data: customer, error: customerError } = await db
+    .from("crm_customers")
+    .select("id")
+    .eq("id", target.customerId)
+    .maybeSingle();
+  if (customerError) failDb(customerError, "Client introuvable.");
+  if (!customer) throw new McpWriteError("Client introuvable.");
+  let document: SavedPiece;
+  try {
+    await assertBookingForCustomer(db, target.customerId, target.booking?.id ?? null);
+    if (draft.docType === "passport") {
+      document = await storePassport(db, target, draft, deps?.upload);
+    } else {
+      document = await saveUploadedTravelDocument(
+        db,
+        {
+          customerId: target.customerId,
+          companionId: target.companionId,
+          bookingId: target.booking?.id || null,
+          travelerId: target.travelerId,
+          docType: draft.docType,
+          issuingCountry: draft.issuingCountry,
+          number: draft.number,
+          expiresOn: draft.expiresOn,
+          formalities: false,
+        },
+        { name: draft.fileName, type: draft.mimeType, bytes: draft.bytes },
+        deps?.upload
+      );
+    }
+  } catch (err) {
+    raise(err, "Enregistrement impossible.");
+  }
+  await (deps?.reconcile ?? reconcileCustomerParty)(target.customerId, db);
+  const linked = Boolean(target.booking);
   const notice = await notifyLinkedPiece(
     db,
     {
       notifier: input.notifier !== false,
-      bookingId: booking?.id || null,
+      bookingId: target.booking?.id || null,
       docType: document.doc_type,
       issuingCountry: document.issuing_country,
       travelerId: document.traveler_id,
@@ -257,17 +551,17 @@ export async function addTravelPiece(
   );
   return {
     id: document.id,
-    client_id: customerId,
-    dossier_id: booking?.id || null,
-    reference: booking?.reference || null,
-    voyageur_id: document.traveler_id,
+    client_id: target.customerId,
+    dossier_id: target.booking?.id || null,
+    reference: target.booking?.reference || null,
+    voyageur_id: document.traveler_id || target.companionId,
     type: document.doc_type,
     libelle: DOC_TYPE_LABELS[document.doc_type],
     pays: document.issuing_country,
     fichier: document.file_name,
-    endroit: linked ? `Espace client · séjour ${booking?.reference}` : "Espace client · Pièces",
-    lien: linked ? `/mon-compte/reservations/${booking?.reference}` : "/mon-compte/profil/documents",
-    lien_agence: linked ? `/admin/reservations/${booking?.id}` : `/admin/clients/${customerId}`,
+    endroit: linked ? `Espace client · séjour ${target.booking?.reference}` : "Espace client · Pièces",
+    lien: linked ? `/mon-compte/reservations/${target.booking?.reference}` : "/mon-compte/profil/documents",
+    lien_agence: linked ? `/admin/reservations/${target.booking?.id}` : `/admin/clients/${target.customerId}`,
     notifie: notice.notifie,
     raison: notice.raison,
     destinataires: notice.destinataires,

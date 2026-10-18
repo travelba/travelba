@@ -55,7 +55,9 @@ test("a piece names the client or the dossier and keeps a readable file", () => 
     () => prepareTravelPiece(piece({ nom_fichier: "note.txt", type_mime: "text/plain", contenu: Buffer.from("bonjour").toString("base64") })),
     /Format non pris en charge/
   );
-  assert.throws(() => prepareTravelPiece(piece({ voyageur_id: TRAVELER, client_id: CLIENT, dossier_id: undefined })), /dossier pour rattacher/);
+  const companionDraft = prepareTravelPiece(piece({ voyageur_id: TRAVELER, client_id: CLIENT, dossier_id: undefined }));
+  assert.equal(companionDraft.voyageurId, TRAVELER);
+  assert.equal(companionDraft.dossierId, "");
   assert.throws(() => prepareTravelPiece(piece({ client_id: "cyril" })), /Client invalide/);
   const heavy = "A".repeat(4 * Math.ceil((25 * 1024 * 1024) / 3) + 4);
   assert.throws(() => prepareTravelPiece(piece({ contenu: heavy })), /25 Mo/);
@@ -159,6 +161,252 @@ test("a piece is refused before upload when the stay is not the client's", async
   );
   assert.equal(uploads.length, 0);
   assert.deepEqual(writes, []);
+});
+
+const PASSPORT = {
+  id: "pass-1",
+  customer_id: CLIENT,
+  companion_id: null as string | null,
+  booking_id: null as string | null,
+  traveler_id: null as string | null,
+  doc_type: "passport",
+  number: "12AB34567",
+  issuing_country: "FR",
+  issued_on: "2018-03-12",
+  expires_on: "2028-03-11",
+  first_name: "Maëlle Louise",
+  last_name: "Martin",
+  usage_name: "Durand",
+  birth_date: "1985-10-12",
+  nationality: "FR",
+  sex: "F",
+  place_of_birth: "PARIS",
+  authority: "Préfecture de Paris",
+  personal_number: "PN-1",
+  created_at: "2024-01-01",
+};
+
+function passportScan(extra: Record<string, unknown> = {}) {
+  return piece({
+    type: "passeport",
+    pays: "France",
+    numero: "12AB34567",
+    expiration: "2028-03-11",
+    nom_fichier: "passeport.pdf",
+    ...extra,
+  });
+}
+
+test("a passport scan keeps the identity already on file and writes the file", async () => {
+  const { admin, writes, uploads } = fakeCrm({ documents: [{ ...PASSPORT }] });
+  const result = await addTravelPiece(
+    passportScan({ numero: "99ZZ00001", expiration: "2034-01-01", pays: undefined }),
+    admin,
+    { upload: async (path, bytes, mime) => uploads.push({ path, bytes, mime }), reconcile: async () => {} }
+  );
+  assert.equal(uploads.length, 1);
+  assert.equal(writes.filter((row) => row.op === "insert").length, 0);
+  assert.equal(writes.filter((row) => row.op === "delete").length, 0);
+  const patch = writes.find((row) => row.op === "update" && row.table === "crm_travel_documents");
+  assert.equal(patch?.eqs.some(([column, value]) => column === "id" && value === "pass-1"), true);
+  assert.equal(patch?.payload.number, "99ZZ00001");
+  assert.equal(patch?.payload.expires_on, "2034-01-01");
+  assert.equal(patch?.payload.file_name, "passeport.pdf");
+  assert.match(String(patch?.payload.storage_path), /^customers\/.+\/documents\/\d+-passeport\.pdf$/);
+  for (const key of ["issued_on", "authority", "first_name", "last_name", "usage_name", "birth_date", "nationality", "sex", "place_of_birth", "personal_number"]) {
+    assert.equal(key in (patch?.payload || {}), false);
+  }
+  assert.equal(result.id, "pass-1");
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "La pièce n’est pas liée à un séjour.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+  assert.equal(JSON.stringify(result).includes("12AB34567"), false);
+  assert.equal(JSON.stringify(result).includes("PN-1"), false);
+  assert.equal(JSON.stringify(result).includes("Préfecture"), false);
+});
+
+test("a second nationality does not replace the passport already on file", async () => {
+  const { admin, writes } = fakeCrm({ documents: [{ ...PASSPORT }] });
+  const result = await addTravelPiece(passportScan({ pays: "Israël", numero: "IL998877", expiration: "2035-06-01" }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.equal(writes.some((row) => row.op === "update"), false);
+  const inserted = writes.find((row) => row.op === "insert" && row.table === "crm_travel_documents");
+  assert.equal(inserted?.payload.issuing_country, "IL");
+  assert.equal(inserted?.payload.number, "IL998877");
+  assert.equal(inserted?.payload.authority, null);
+  assert.equal(inserted?.payload.first_name, null);
+  assert.equal(inserted?.payload.nationality, null);
+  const removed = writes.find((row) => row.op === "delete");
+  assert.equal(removed?.eqs.some(([column, value]) => column === "issuing_country" && value === "IL"), true);
+  assert.equal(result.notifie, false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+});
+
+test("two passports without a country wait for the country", async () => {
+  const { admin, writes, uploads } = fakeCrm({
+    documents: [
+      { ...PASSPORT },
+      { ...PASSPORT, id: "pass-il", issuing_country: "IL", number: "IL1", authority: "Misrad Hapnim" },
+    ],
+  });
+  await assert.rejects(
+    () =>
+      addTravelPiece(passportScan({ pays: undefined, numero: undefined }), admin, {
+        upload: async () => {
+          uploads.push({ path: "x", bytes: Buffer.alloc(0), mime: "application/pdf" });
+        },
+        reconcile: async () => {
+          throw new Error("ne pas rapprocher");
+        },
+      }),
+    /Indiquez le pays/
+  );
+  assert.equal(uploads.length, 0);
+  assert.equal(writes.some((row) => row.op !== "select"), false);
+});
+
+test("a companion already on the client receives the scan without a dossier", async () => {
+  const { admin, writes, uploads } = fakeCrm({
+    companions: [{ id: COMPANION, customer_id: CLIENT }],
+    documents: [{ ...PASSPORT, id: "lea", companion_id: COMPANION, first_name: "Léa", personal_number: null }],
+  });
+  const result = await addTravelPiece(
+    passportScan({ client_id: undefined, voyageur_id: COMPANION, numero: undefined, expiration: undefined, pays: "France" }),
+    admin,
+    { upload: async (path) => uploads.push({ path, bytes: Buffer.alloc(0), mime: "application/pdf" }), reconcile: async () => {} }
+  );
+  assert.equal(uploads.length, 1);
+  const patch = writes.find((row) => row.op === "update");
+  assert.equal(patch?.eqs.some(([column, value]) => column === "id" && value === "lea"), true);
+  assert.equal("number" in (patch?.payload || {}), false);
+  assert.equal("expires_on" in (patch?.payload || {}), false);
+  assert.equal(patch?.payload.issuing_country, "FR");
+  assert.equal("first_name" in (patch?.payload || {}), false);
+  assert.equal("authority" in (patch?.payload || {}), false);
+  assert.equal(result.client_id, CLIENT);
+  assert.equal(result.dossier_id, null);
+  assert.equal(result.voyageur_id, COMPANION);
+  assert.equal(result.endroit, "Espace client · Pièces");
+  assert.equal(result.notifie, false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+});
+
+test("a visa for a companion is filed without a stay or a message", async () => {
+  const { admin, writes } = fakeCrm({ companions: [{ id: COMPANION, customer_id: CLIENT }] });
+  const result = await addTravelPiece(piece({ voyageur_id: COMPANION, dossier_id: undefined, type: "visa" }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  const inserted = writes.find((row) => row.op === "insert" && row.table === "crm_travel_documents");
+  assert.equal(inserted?.payload.companion_id, COMPANION);
+  assert.equal(inserted?.payload.booking_id, null);
+  assert.equal(inserted?.payload.traveler_id, null);
+  assert.equal(inserted?.payload.doc_type, "visa");
+  assert.equal(result.voyageur_id, COMPANION);
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "La pièce n’est pas liée à un séjour.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+});
+
+test("a new passport for a companion is stored on that companion", async () => {
+  const { admin, writes } = fakeCrm({ companions: [{ id: COMPANION, customer_id: CLIENT }] });
+  const result = await addTravelPiece(passportScan({ voyageur_id: COMPANION, dossier_id: undefined }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  const inserted = writes.find((row) => row.op === "insert" && row.table === "crm_travel_documents");
+  assert.equal(inserted?.payload.companion_id, COMPANION);
+  assert.equal(inserted?.payload.booking_id, null);
+  assert.equal(inserted?.payload.traveler_id, null);
+  assert.equal(inserted?.payload.customer_id, CLIENT);
+  assert.equal(result.voyageur_id, COMPANION);
+  assert.equal(result.notifie, false);
+});
+
+test("a traveller who is not a companion still needs the dossier", async () => {
+  const { admin, writes, uploads } = fakeCrm();
+  await assert.rejects(
+    () =>
+      addTravelPiece(piece({ voyageur_id: TRAVELER, dossier_id: undefined }), admin, {
+        upload: async () => {
+          uploads.push({ path: "x", bytes: Buffer.alloc(0), mime: "application/pdf" });
+        },
+      }),
+    /dossier pour rattacher/
+  );
+  assert.equal(uploads.length, 0);
+  assert.deepEqual(writes, []);
+});
+
+test("a companion of another client is refused", async () => {
+  const { admin, uploads } = fakeCrm({ companions: [{ id: COMPANION, customer_id: OTHER }] });
+  await assert.rejects(
+    () =>
+      addTravelPiece(piece({ voyageur_id: COMPANION, dossier_id: undefined }), admin, {
+        upload: async () => {
+          uploads.push({ path: "x", bytes: Buffer.alloc(0), mime: "application/pdf" });
+        },
+      }),
+    /pas rattaché à ce client/
+  );
+  assert.equal(uploads.length, 0);
+});
+
+test("a passport already on the stay keeps its identity when the scan is replaced", async () => {
+  const { admin, writes } = fakeCrm({
+    documents: [
+      {
+        ...PASSPORT,
+        booking_id: BOOKING,
+        traveler_id: TRAVELER,
+        issued_on: "2019-04-02",
+        authority: "Préfecture de Lyon",
+      },
+    ],
+  });
+  const result = await addTravelPiece(
+    passportScan({ client_id: undefined, reference: "TB-2026-0082", voyageur_id: TRAVELER, expiration: "2031-04-02" }),
+    admin,
+    { upload: async () => {}, reconcile: async () => {} }
+  );
+  const patch = writes.find((row) => row.op === "update");
+  assert.equal(patch?.payload.expires_on, "2031-04-02");
+  assert.equal("issued_on" in (patch?.payload || {}), false);
+  assert.equal("authority" in (patch?.payload || {}), false);
+  assert.equal("birth_date" in (patch?.payload || {}), false);
+  assert.equal(result.dossier_id, BOOKING);
+  assert.equal(result.voyageur_id, TRAVELER);
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "La pièce n’est pas une formalité.");
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages"), false);
+});
+
+test("a stay scan copies the vault passport instead of opening a blank one", async () => {
+  const { admin, writes } = fakeCrm({ documents: [{ ...PASSPORT }] });
+  await addTravelPiece(passportScan({ dossier_id: BOOKING, voyageur_id: TRAVELER, numero: "99ZZ00001" }), admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  const inserted = writes.find((row) => row.op === "insert" && row.table === "crm_travel_documents");
+  assert.equal(inserted?.payload.booking_id, BOOKING);
+  assert.equal(inserted?.payload.traveler_id, TRAVELER);
+  assert.equal(inserted?.payload.number, "99ZZ00001");
+  assert.equal(inserted?.payload.issued_on, "2018-03-12");
+  assert.equal(inserted?.payload.authority, "Préfecture de Paris");
+  assert.equal(inserted?.payload.first_name, "Maëlle Louise");
+  assert.equal(inserted?.payload.last_name, "Martin");
+  assert.equal(inserted?.payload.birth_date, "1985-10-12");
+  assert.equal(inserted?.payload.nationality, "FR");
+  assert.equal(inserted?.payload.sex, "F");
+  assert.equal(inserted?.payload.place_of_birth, "PARIS");
+  assert.equal(inserted?.payload.usage_name, "Durand");
+  assert.equal(writes.some((row) => row.op === "update"), false);
+  assert.equal(
+    writes.some((row) => row.op === "delete" && row.eqs.some(([, value]) => value === "pass-1")),
+    false
+  );
 });
 
 test("an unknown traveller is refused before the file is stored", async () => {
@@ -424,7 +672,7 @@ test("notifier_piece can target only the traveller", async () => {
   );
 });
 
-type Write = { op: string; table: string; payload: Record<string, unknown> };
+type Write = { op: string; table: string; payload: Record<string, unknown>; eqs: [string, unknown][] };
 
 function fakeCrm(
   options: {
@@ -517,7 +765,7 @@ function fakeCrm(
     }
 
     function finish(one: boolean) {
-      if (op !== "select") writes.push({ op, table, payload });
+      if (op !== "select") writes.push({ op, table, payload, eqs: eqs.slice() as [string, unknown][] });
       if (op === "insert" && table === "crm_travel_documents") {
         const row = { id: "doc-1", ...payload };
         documents.push(row);
