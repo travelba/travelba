@@ -1,6 +1,6 @@
 # Concierge WhatsApp — audit et plan (phase 1)
 
-Statut : **plan seulement**. Aucun message envoyé, aucun webhook modifié, aucune migration, rien fusionné.
+Statut : le MVP est dans la pull request du Concierge. La phase 2 (savoir, parcours, propositions à approuver) est dans la pull request empilée. Aucun message envoyé, aucun webhook modifié, aucune migration appliquée, rien fusionné.
 
 Public : Benjamin, Travel Business Agency. Le bot parle au nom de l’agence, signature **Le Concierge**, vouvoiement, ton de conciergerie.
 
@@ -284,14 +284,18 @@ Fichiers principaux : `lib/crm/whatsapp-inbound.ts`, `whatsapp-concierge.ts`, `w
 
 Pas de nouveau fournisseur. Le modèle reste `openai/gpt-4.1-mini` via l’AI Gateway.
 
-### Ensuite
+### Ensuite — phase 2, pull request empilée
 
-- Modèles Utility fr / en / he pour reprendre la parole hors des 24 h.
-- Bouton qui applique une modification déjà préparée, avec les gardes carnet (le débit suit la visibilité, une annulation retire les débits).
-- Lien de paiement : réutiliser le parcours Transactions, jamais un PAN.
-- OCR passeport sur une photo WhatsApp, uniquement dans l’écran de relecture déjà prévu pour les pièces.
-- Pistes hôtel à partir du catalogue, côté agence seulement, sans prix et sans contact dans la réponse client.
-- Recherche de disponibilités le jour où un fournisseur (vols ou hôtels) existera dans le dépôt. Il n’y en a pas aujourd’hui.
+Livré dans le code, pas encore branché sur Twilio :
+
+- Base de savoir éditable (`/admin/concierge`) : services, ton, conditions, questions, partenaires, formalités. Le Concierge classe les textes (recouvrement + vecteur déterministe, colonne `vector(64)`, fonction `crm_concierge_match`) et passe les faits au modèle. Les exemples importés règlent le ton, ils ne deviennent pas des faits. Benjamin déposera plus tard de vraies conversations.
+- Parcours : questions (destination, dates, voyageurs, budget, souhaits), deux ou trois pistes, relance dans les 24 h en texte libre, au-delà par des modèles Utility rédigés et non soumis à Meta, rappel avant départ, arrivée, aide sur place, retour.
+- Recherche hôtel / vol / transfert derrière `CONCIERGE_SEARCH` (`off` par défaut, `mock`, `staging`). RateHawk n’est pas dans le dépôt. Amadeus y lit des billets, il ne cherche pas un vol. Little Emperors et Rolzo ne sont pas appelés sans clé de test, et jamais vers la production. Le catalogue ne montre ni prix ni contact.
+- Devis d’hébergement : marge d’au moins 12 % du net. Sur un tarif commissionnable, commission hôtel + 2 % ; le manque pour atteindre 12 % est ajouté au prix client. Le texte chiffré reste dans la file « À approuver ». Le client ne le reçoit qu’après l’accord, et seulement si `CONCIERGE_OUTBOUND=1` (coupé en aperçu, non posé).
+- Lien de règlement : montant de l’encours publié, moyens Stripe déjà en place. Aucun PaymentIntent n’est créé ici.
+- Console : fil en direct, reprise déjà en place, approbation, revue hebdomadaire, relances stockées en `planned` (aucun envoi).
+
+Pas de nouveau webhook. Pas de soumission Meta. Pas d’envoi.
 
 ---
 

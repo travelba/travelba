@@ -19,7 +19,11 @@ import {
   sharedPhoneReply,
   type HandoffKind,
 } from "./whatsapp-concierge";
-import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
+import { type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
+import { planPhase2 } from "./concierge-phase2";
+import { knowledgeSeed, type KnowledgeChunk } from "./concierge-knowledge";
+import type { PlannedFollowup, ProposalDraft, TripBrief } from "./concierge-journey";
+import type { QualityMark } from "./concierge-quality";
 import { sessionAddress } from "./whatsapp-session";
 import { nextParisMorning, threadIsPaused } from "./whatsapp-takeover";
 import { loadCollaboratorTripOwnerIds } from "./company-peers";
@@ -85,6 +89,13 @@ export type WhatsappStore = {
   /** Faux si un humain a repris le fil et que la pause tient encore. */
   threadOpen?(phone: string): Promise<boolean>;
   pauseThread?(phone: string, customerId: string | null): Promise<void>;
+  loadBrief?(phone: string): Promise<TripBrief | null>;
+  saveBrief?(brief: TripBrief, customerId: string | null): Promise<void>;
+  insertProposal?(row: ProposalDraft & { phone: string; customerId: string | null; bookingId: string | null }): Promise<void>;
+  insertQuality?(marks: QualityMark[]): Promise<void>;
+  /** Savoir publié. Tableau vide si la migration n’est pas là : l’appelant reprend le dépôt. */
+  loadKnowledge?(): Promise<KnowledgeChunk[]>;
+  saveFollowups?(phone: string, customerId: string | null, rows: PlannedFollowup[]): Promise<void>;
 };
 
 const PIECE_TYPES = new Set([
@@ -350,12 +361,20 @@ export async function receiveWhatsappWebhook(input: {
         .filter((row) => row.twilio_sid !== sid)
         .slice(-16)
         .map((row) => ({ direction: row.direction, body: row.body }));
-      const turn = await planConciergeConversation({
+      const brief = (await input.store.loadBrief?.(e164)) || null;
+      const storedKnowledge = await input.store.loadKnowledge?.();
+      const phase = await planPhase2({
+        phone: e164,
         message: content || said,
         dossier,
         history: prior,
+        brief,
         generate: allowed ? input.converse : undefined,
+        knowledge: storedKnowledge?.length ? storedKnowledge : knowledgeSeed(),
+        balance: dossier.balances[0]?.balance ?? null,
+        currency: dossier.balances[0]?.currency || "EUR",
       });
+      const turn = phase.turn;
       bookingId = turn.bookingId;
       handoff = turn.handoff;
       const replyLang = messageLanguage(content || said);
@@ -371,6 +390,17 @@ export async function receiveWhatsappWebhook(input: {
       } else if (!turn.access) {
         mediaUrl = turn.cover;
         if (hadPiece) reply = prefixSigned(reply, pieceSavedLine(replyLang));
+        if (phase.brief) await input.store.saveBrief?.(phase.brief, customer.id);
+        if (phase.proposal) {
+          await input.store.insertProposal?.({
+            ...phase.proposal,
+            phone: e164,
+            customerId: customer.id,
+            bookingId,
+          });
+        }
+        if (phase.marks.length) await input.store.insertQuality?.(phase.marks.map((mark) => ({ ...mark, phone: e164 })));
+        if (phase.followups.length) await input.store.saveFollowups?.(e164, customer.id, phase.followups);
       }
       if (stopping) {
         await input.store.optOut?.(customer.id);
@@ -645,6 +675,109 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         updated_at: now.toISOString(),
       });
       if (error) console.error("[whatsapp-concierge] pause", error.code || "error");
+    },
+    async loadBrief(phone) {
+      const { data, error } = await admin
+        .from("crm_concierge_briefs")
+        .select("phone, destination, start_on, end_on, travellers, budget, wishes, stage")
+        .eq("phone", phone)
+        .maybeSingle();
+      if (error || !data) return null;
+      return {
+        phone,
+        destination: data.destination,
+        start: data.start_on,
+        end: data.end_on,
+        travellers: data.travellers,
+        budget: data.budget,
+        wishes: data.wishes,
+        stage: data.stage,
+      };
+    },
+    async saveBrief(brief, customerId) {
+      const { error } = await admin.from("crm_concierge_briefs").upsert({
+        phone: brief.phone,
+        customer_id: customerId,
+        destination: brief.destination,
+        start_on: brief.start,
+        end_on: brief.end,
+        travellers: brief.travellers,
+        budget: brief.budget,
+        wishes: brief.wishes,
+        stage: brief.stage,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) console.error("[whatsapp-concierge] brief", error.code || "error");
+    },
+    async insertProposal(row) {
+      const { error } = await admin.from("crm_concierge_proposals").insert({
+        phone: row.phone,
+        customer_id: row.customerId,
+        booking_id: row.bookingId,
+        kind: row.kind,
+        status: "pending",
+        draft_body: row.draftBody,
+        amounts: row.amounts,
+        simulated: row.simulated,
+      });
+      if (error) console.error("[whatsapp-concierge] proposition", error.code || "error");
+    },
+    async insertQuality(marks) {
+      if (!marks.length) return;
+      const { error } = await admin.from("crm_concierge_quality").insert(
+        marks.map((mark) => ({ phone: mark.phone, flag: mark.flag, note: mark.note, marked_at: mark.at }))
+      );
+      if (error) console.error("[whatsapp-concierge] qualite", error.code || "error");
+    },
+    async loadKnowledge() {
+      const { data, error } = await admin
+        .from("crm_concierge_knowledge")
+        .select("id, kind, title, body, locale, tags, published")
+        .eq("published", true)
+        .limit(80);
+      if (error || !data?.length) return [];
+      return data.flatMap((row) => {
+        const kind = row.kind;
+        if (
+          kind !== "service" &&
+          kind !== "tone" &&
+          kind !== "conditions" &&
+          kind !== "faq" &&
+          kind !== "partner" &&
+          kind !== "formality" &&
+          kind !== "example"
+        ) {
+          return [];
+        }
+        return [
+          {
+            id: String(row.id),
+            kind,
+            title: String(row.title || ""),
+            body: String(row.body || ""),
+            locale: String(row.locale || "fr"),
+            tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
+            published: true,
+          },
+        ];
+      });
+    },
+    async saveFollowups(phone, customerId, rows) {
+      if (!rows.length) return;
+      const { error } = await admin.from("crm_concierge_followups").upsert(
+        rows.map((row) => ({
+          phone,
+          customer_id: customerId,
+          kind: row.kind,
+          channel: row.channel,
+          template_key: row.templateKey,
+          draft_body: row.body,
+          due_at: row.dueAt,
+          status: "planned",
+        })),
+        { onConflict: "phone,kind" }
+      );
+      if (error) console.error("[whatsapp-concierge] relance", error.code || "error");
     },
     async savePiece({ customerId, bytes, contentType }) {
       const type = pieceContentType(contentType);
