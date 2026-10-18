@@ -14,7 +14,8 @@ import {
 import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
-import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
+import { loadLedgerCountedStayAmounts } from "@/lib/crm/displayed-stay";
+import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
@@ -139,8 +140,45 @@ async function companyNames(admin: SupabaseClient, ids: (string | null | undefin
   const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
   if (!unique.length) return new Map<string, string | null>();
   const { data, error } = await admin.from("crm_billing_companies").select("id, company_name").in("id", unique);
-  if (error) logRead("societes", error);
+  if (error) {
+    logRead("societes", error);
+    throw new McpReadError("Lecture de la société impossible.");
+  }
   return new Map(((data || []) as { id: string; company_name: string | null }[]).map((row) => [row.id, row.company_name]));
+}
+
+async function dossierAmounts(admin: SupabaseClient, rows: BookingRow[]) {
+  try {
+    return await loadLedgerCountedStayAmounts(admin, rows);
+  } catch (err) {
+    logRead("montant", err as { code?: string; message?: string });
+    throw new McpReadError("Lecture du montant impossible.");
+  }
+}
+
+async function bookingCards(admin: SupabaseClient, bookingId: string) {
+  const { data, error } = await admin
+    .from("crm_booking_items")
+    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details, lifecycle, visible_to_client, sort_order")
+    .eq("booking_id", bookingId)
+    .order("sort_order");
+  if (error) {
+    logRead("cartes", error);
+    throw new McpReadError("Lecture des cartes impossible.");
+  }
+  return ((data || []) as CrmBookingItem[]).filter((item) => isActiveItem(item));
+}
+
+async function bookingTravelers(admin: SupabaseClient, bookingId: string) {
+  const { data, error } = await admin
+    .from("crm_booking_travelers")
+    .select("first_name, last_name")
+    .eq("booking_id", bookingId);
+  if (error) {
+    logRead("voyageurs", error);
+    throw new McpReadError("Lecture des voyageurs impossible.");
+  }
+  return (data || []) as { first_name: string | null; last_name: string | null }[];
 }
 
 type VisaTaskRow = {
@@ -421,8 +459,10 @@ function applyBookingFilters(query: FilterableQuery, input: { etat: BookingState
   return next;
 }
 
-export async function readChercherDossiers(input: { q?: string; etat?: BookingStateFilter | null }) {
-  const admin = db();
+export async function readChercherDossiers(
+  input: { q?: string; etat?: BookingStateFilter | null },
+  admin = db()
+) {
   const q = (input.q || "").trim();
   const etat = input.etat ?? (q ? null : "a-venir");
   const today = todayIsoDate();
@@ -458,7 +498,7 @@ export async function readChercherDossiers(input: { q?: string; etat?: BookingSt
   const rows = sortBookingsByProximity(data || [], stayToday()).slice(0, LIST_LIMIT);
   const [names, amounts, companies] = await Promise.all([
     customerNames(admin, rows.map((row) => row.customer_id)),
-    loadDisplayedStayAmounts(admin, rows),
+    dossierAmounts(admin, rows),
     companyNames(admin, rows.map((row) => row.billing_company_id)),
   ]);
   return {
@@ -515,8 +555,7 @@ function visaStepLabel(step: string | null) {
   return step;
 }
 
-export async function readFicheDossier(input: { id?: string; reference?: string }) {
-  const admin = db();
+export async function readFicheDossier(input: { id?: string; reference?: string }, admin = db()) {
   const id = (input.id || "").trim();
   const reference = (input.reference || "").trim();
   if (!id && !reference) return { message: "Indiquez l’identifiant ou la référence du dossier." };
@@ -542,35 +581,30 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     return { choix: rows.map((row) => bookingLine(row, names, new Map(), companies)) };
   }
   const booking = rows[0];
-  const [{ data: items }, { data: travelers }, { data: visas }, { data: tasks }, names, amounts, companies] = await Promise.all([
-    admin
-      .from("crm_booking_items")
-      .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details, lifecycle, visible_to_client, sort_order")
-      .eq("booking_id", booking.id)
-      .order("sort_order"),
-    admin.from("crm_booking_travelers").select("first_name, last_name").eq("booking_id", booking.id),
+  const [cards, travelers, visas, tasks, names, amounts, companies] = await Promise.all([
+    bookingCards(admin, booking.id),
+    bookingTravelers(admin, booking.id),
     admin.from("crm_visa_requests").select("country, status, step").eq("booking_id", booking.id),
     admin.from("crm_visa_tasks").select("holder_name, reasons, done_at").eq("booking_id", booking.id).is("done_at", null),
     customerNames(admin, [booking.customer_id]),
-    loadDisplayedStayAmounts(admin, [booking]),
+    dossierAmounts(admin, [booking]),
     companyNames(admin, [booking.billing_company_id]),
   ]);
-  const cards = ((items || []) as CrmBookingItem[]).filter((item) => isActiveItem(item)).map(cardLine);
+  if (visas.error) logRead("visas", visas.error);
+  if (tasks.error) logRead("taches", tasks.error);
   return {
     ...bookingLine(booking, names, amounts, companies),
-    voyageurs: ((travelers || []) as { first_name: string | null; last_name: string | null }[]).map((row) =>
-      [row.first_name, row.last_name].filter(Boolean).join(" ").trim()
-    ),
-    cartes: cards,
+    voyageurs: travelers.map((row) => [row.first_name, row.last_name].filter(Boolean).join(" ").trim()),
+    cartes: cards.map(cardLine),
     formalites: [
-      ...((visas || []) as { country: string; status: string | null; step: string | null }[])
+      ...((visas.data || []) as { country: string; status: string | null; step: string | null }[])
         .filter((row) => row.status === "refuse" || (row.step !== "piece" && row.status !== "piece"))
         .map((row) => ({
           pays: corridorName(row.country),
           etape: visaStepLabel(row.step),
           statut: row.status,
         })),
-      ...((tasks || []) as { holder_name: string; reasons: DeskTask["reasons"] }[]).map((row) => ({
+      ...((tasks.data || []) as { holder_name: string; reasons: DeskTask["reasons"] }[]).map((row) => ({
         tache: reasonLabel(row.reasons || []),
         voyageur: row.holder_name,
       })),

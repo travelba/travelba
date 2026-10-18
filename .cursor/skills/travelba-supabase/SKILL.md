@@ -56,6 +56,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261016180000_mcp_passport_scan_kind.sql` | `kind` lecture ou scan sur le même journal. Sans chemin, sans URL |
 | `20261016210000_mcp_pliant_card_events.sql` | journal `crm_mcp_card_events` : création et lecture de carte Pliant. Sans PAN |
 | `20261017193000_travel_document_eta.sql` | `doc_type` `eta` sur `crm_travel_documents` (autorisation de voyage, distincte du visa) |
+| `20261018120000_service_role_crm_private_usage.sql` | `usage` sur `crm_private` pour `service_role` (index `fold_search`, sinon 42501) |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 
