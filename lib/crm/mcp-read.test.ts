@@ -1,9 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readFormalites } from "./mcp-read";
+import { dossierPayerLine, readFormalites } from "./mcp-read";
 
 const BOOKING = "22222222-2222-4222-8222-222222222222";
+
+test("fiche et recherche montrent la société à côté du contact", () => {
+  assert.deepEqual(dossierPayerLine({ payer_kind: "company", billing_company_id: "soc" }, "NILOS FRANCE"), {
+    societe: "NILOS FRANCE",
+    paye_par: "société",
+  });
+  assert.deepEqual(dossierPayerLine({ payer_kind: "personal", billing_company_id: null }, "NILOS FRANCE"), {
+    societe: null,
+    paye_par: "particulier",
+  });
+  assert.deepEqual(dossierPayerLine({ billing_company_id: "soc" }, "EXPONENTIEL"), {
+    societe: "EXPONENTIEL",
+    paye_par: "société",
+  });
+});
 
 test("formalites lists visa requests by created_at", async () => {
   const orders: { table: string; column: string }[] = [];
