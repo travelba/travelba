@@ -32,7 +32,7 @@ import {
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
-import { addHotel, addVol, addVoyageur, createDossier, updateVol } from "@/lib/crm/mcp-trip";
+import { addAccueilVip, addHotel, addVol, addVoyageur, createDossier, updateVol } from "@/lib/crm/mcp-trip";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
@@ -666,6 +666,30 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
     },
     run: (args) => addHotel(args),
+  },
+  {
+    name: "ajouter_accueil_vip",
+    write: true,
+    description:
+      "Ajoute un accueil VIP collé à un vol du dossier. Chaque étape (arrivée, départ) exige le vol correspondant : l’aéroport et l’heure sont ceux de ce vol, et suivent le vol s’il change. Un aller-retour se relie à deux vols. Le prix est facultatif. Le séjour caché ne débite pas. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      fournisseur: z.string().trim().describe("Prestataire, ex. Coral Thailand"),
+      type: z.string().trim().describe("arrivée, départ ou aller-retour"),
+      vol_arrivee: z.string().trim().max(80).optional().describe("Vol d’arrivée du dossier. Obligatoire pour une arrivée ou un aller-retour"),
+      vol_depart: z.string().trim().max(80).optional().describe("Vol de départ du dossier. Obligatoire pour un départ ou un aller-retour"),
+      passagers: z.union([z.number(), z.string()]).describe("Nombre de voyageurs"),
+      bagages: z.union([z.number(), z.string()]).describe("Nombre de bagages"),
+      hotline: z.string().trim().max(40).optional().describe("Téléphone du prestataire"),
+      email: z.string().trim().max(200).optional().describe("E-mail du prestataire"),
+      confirmation: z.string().trim().max(80).optional().describe("Référence de réservation"),
+      informations: z.string().trim().describe("Texte à montrer au client, listes à puces conservées"),
+      prix: z.union([z.number(), z.string()]).optional().describe("Prix vendu, facultatif"),
+      devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
+      document_id: z.string().trim().max(80).optional().describe("Confirmation déjà déposée sur le dossier"),
+    },
+    run: (args) => addAccueilVip(args),
   },
 ];
 

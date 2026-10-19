@@ -7,6 +7,7 @@ import { itemSellingAmount } from "@/lib/crm/bookings";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import { createClient, McpWriteError, updateClient } from "@/lib/crm/mcp-write";
 import {
+  addAccueilVip,
   addHotel,
   addVol,
   addVoyageur,
@@ -640,6 +641,114 @@ test("prix_total est le total du groupe, et modifier_vol garde l’heure locale"
     () => updateVol({ dossier_id: dossier.id, carte_id: inbound.id, voyageurs: [] }, client),
     /au moins un voyageur/
   );
+});
+
+test("ajouter_accueil_vip exige un vol et suit son horaire", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Phuket & Krabi", devise: "EUR" }, client);
+  const arrival = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Air France",
+      numero: "AF956",
+      depart_iata: "CDG",
+      arrivee_iata: "HKT",
+      ville_depart: "Paris",
+      ville_arrivee: "Phuket",
+      depart: "2026-12-25T23:20",
+      arrivee: "2026-12-26T05:50",
+    },
+    client
+  );
+  const departure = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Air France",
+      numero: "AF157",
+      depart_iata: "HKT",
+      arrivee_iata: "CDG",
+      ville_depart: "Phuket",
+      ville_arrivee: "Paris",
+      depart: "2027-01-08T11:55",
+      arrivee: "2027-01-08T19:15",
+    },
+    client
+  );
+  const text = "Ce qui est inclus\n- Arrivée AF956\n- Départ AF157";
+  await assert.rejects(
+    () =>
+      addAccueilVip(
+        {
+          dossier_id: dossier.id,
+          fournisseur: "Coral Thailand",
+          type: "arrivee",
+          passagers: 2,
+          bagages: 4,
+          informations: text,
+        },
+        client
+      ),
+    /vol/
+  );
+  await assert.rejects(
+    () =>
+      addAccueilVip(
+        {
+          dossier_id: dossier.id,
+          fournisseur: "Coral Thailand",
+          type: "aller-retour",
+          vol_arrivee: arrival.id,
+          vol_depart: arrival.id,
+          passagers: 2,
+          bagages: 4,
+          informations: text,
+        },
+        client
+      ),
+    /deux vols/
+  );
+  const vip = await addAccueilVip(
+    {
+      reference: dossier.reference,
+      fournisseur: "Coral Thailand",
+      type: "aller_retour",
+      vol_arrivee: arrival.id,
+      vol_depart: departure.id,
+      passagers: 2,
+      bagages: 4,
+      hotline: "+66 92 915 9515",
+      email: "booking@coralthailand.com",
+      confirmation: "PNR-021811",
+      informations: text,
+    },
+    client
+  );
+  assert.equal(vip.notifie, false);
+  assert.equal(vip.visible, false);
+  assert.equal(vip.titre, "Accueil VIP à Phuket");
+  assert.equal(vip.titre.includes("Paris"), false);
+  assert.equal(vip.etapes.length, 2);
+  assert.equal(vip.etapes[0].horaire, "2026-12-26T05:50:00");
+  assert.equal(vip.etapes[0].aeroport, "HKT");
+  assert.equal(vip.etapes[1].vol, "AF157");
+  const row = db.tables.crm_booking_items.find((item) => item.kind === "accueil_vip");
+  assert.equal(row?.include_in_ledger, false);
+  assert.equal(row?.amount, null);
+  assert.equal(db.tables.crm_transactions?.length || 0, 0);
+  await updateVol(
+    {
+      dossier_id: dossier.id,
+      carte_id: arrival.id,
+      arrivee: "2026-12-26T06:05",
+    },
+    client
+  );
+  const synced = db.tables.crm_booking_items.find((item) => item.id === vip.id);
+  const legs = (synced?.details as { legs?: { role: string; at: string }[] }).legs || [];
+  assert.equal(legs.find((leg) => leg.role === "arrival")?.at, "2026-12-26T06:05:00");
 });
 
 test("une société se facture sur le dossier, sans doublon de SIRET", async () => {

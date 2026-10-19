@@ -21,7 +21,7 @@ export const INGEST_ITEM_KINDS = [
   "checkin",
 ] as const;
 
-export const BOOKING_ITEM_KINDS = [...INGEST_ITEM_KINDS, "expense"] as const;
+export const BOOKING_ITEM_KINDS = [...INGEST_ITEM_KINDS, "expense", "accueil_vip"] as const;
 
 export type BookingItemKind = (typeof BOOKING_ITEM_KINDS)[number];
 
@@ -40,6 +40,7 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   visa: "Visa",
   expense: "Dépense",
   checkin: "Enregistrement",
+  accueil_vip: "Accueil VIP",
 };
 
 /** Cartes hors séjour (total + publication). */

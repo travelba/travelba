@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { planStayNotice, stayNoticeLine } from "./concierge-notices";
 import { whatsappModifyHref } from "./carnet";
-import { stayAtPhrase, stayDestinationPhrase } from "./stay-phrase";
+import { placeFromPreposition, stayAtPhrase, stayDestinationPhrase } from "./stay-phrase";
 import type { TripStep } from "./layover";
 
 function flight(from: string, to: string, start: string, end: string, iataFrom = "", iataTo = ""): TripStep {
@@ -25,6 +25,12 @@ const TEL_AVIV = [
   flight("Tel Aviv", "Seychelles", "2027-08-11T09:00:00", "2027-08-11T18:00:00", "TLV", "SEZ"),
   flight("Seychelles", "Paris", "2027-08-25T20:00:00", "2027-08-26T06:00:00", "SEZ", "CDG"),
 ];
+
+test("prépositions de départ", () => {
+  assert.equal(placeFromPreposition("Phuket"), "de Phuket");
+  assert.equal(placeFromPreposition("Le Havre"), "du Havre");
+  assert.equal(placeFromPreposition("Ajaccio"), "d'Ajaccio");
+});
 
 test("prépositions : ville, pays, archipel", () => {
   assert.equal(stayAtPhrase(["Tel Aviv"]), "à Tel Aviv");

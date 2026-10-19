@@ -523,6 +523,17 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
       montre: item.visible_to_client,
     };
   }
+  if (item.kind === "accueil_vip") {
+    return {
+      kind: "accueil VIP",
+      titre: item.title,
+      fournisseur: item.supplier,
+      debut: item.start_at,
+      fin: item.end_at,
+      reference: item.confirmation_ref,
+      montre: item.visible_to_client,
+    };
+  }
   if (item.kind === "hotel") {
     return {
       kind: "hôtel",

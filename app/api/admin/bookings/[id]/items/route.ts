@@ -16,6 +16,8 @@ import { parseMoney } from "@/lib/crm/money";
 import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
+import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
+import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { BOOKING_ITEM_KINDS, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 
 function knownKind(value: unknown) {
@@ -63,6 +65,50 @@ async function billingCompanyPatch(supabase: SupabaseClient, bookingId: string, 
   return { billing_company_id: parsed.id };
 }
 
+async function dossierFlights(supabase: SupabaseClient, bookingId: string) {
+  const { data, error } = await supabase
+    .from("crm_booking_items")
+    .select("id, kind, title, start_at, end_at, lifecycle, details")
+    .eq("booking_id", bookingId)
+    .eq("kind", "flight");
+  if (error) return { error: "Vols du dossier illisibles." };
+  return { flights: (data || []) as AccueilVipFlight[] };
+}
+
+function frozenAccueilVip(
+  flights: AccueilVipFlight[],
+  source: {
+    supplier?: unknown;
+    confirmation_ref?: unknown;
+    amount?: unknown;
+    details?: unknown;
+  }
+) {
+  const details =
+    source.details && typeof source.details === "object" && !Array.isArray(source.details)
+      ? (source.details as Record<string, unknown>)
+      : {};
+  const amount = parseMoney(moneyField(source.amount));
+  const composed = composeAccueilVip(
+    readAccueilVipFields({
+      supplier: typeof source.supplier === "string" ? source.supplier : null,
+      confirmation_ref: typeof source.confirmation_ref === "string" ? source.confirmation_ref : null,
+      amount,
+      details,
+    }),
+    flights
+  );
+  if (!composed.ok) return composed;
+  return {
+    ok: true as const,
+    card: {
+      ...composed.card,
+      details: { ...details, ...composed.card.details },
+      include_in_ledger: composed.card.amount == null ? false : undefined,
+    },
+  };
+}
+
 async function insertBookingItem(
   supabase: SupabaseClient,
   bookingId: string,
@@ -72,13 +118,35 @@ async function insertBookingItem(
   const title = String(body.title || "").trim();
   const kind = knownKind(body.kind || "fee");
   if (!kind) return { error: jsonError("Type de carte inconnu") };
-  if (!title) return { error: jsonError("Titre requis") };
+  if (!title && kind !== "accueil_vip") return { error: jsonError("Titre requis") };
   const amount = parseMoney(moneyField(body.amount));
   if (isLedgerExpenseKind(kind) && (amount == null || amount <= 0)) {
     return { error: jsonError("Montant requis") };
   }
   const details = parseItemDetails(body.details);
   if ("error" in details) return { error: jsonError(details.error) };
+  let titleForInsert = title;
+  let supplier = body.supplier || null;
+  let confirmation = body.confirmation_ref || null;
+  let startAt = body.start_at || null;
+  let endAt = body.end_at || null;
+  let amountForInsert = amount;
+  let detailsForInsert = details.details;
+  let ledger = isLedgerExpenseKind(kind) ? true : parseIncludeInLedger(body.include_in_ledger, false);
+  if (kind === "accueil_vip") {
+    const loaded = await dossierFlights(supabase, bookingId);
+    if ("error" in loaded) return { error: jsonError(loaded.error || "Vols du dossier illisibles.") };
+    const frozen = frozenAccueilVip(loaded.flights, { ...body, amount, details: details.details });
+    if (!frozen.ok) return { error: jsonError(frozen.error) };
+    titleForInsert = frozen.card.title;
+    supplier = frozen.card.supplier;
+    confirmation = frozen.card.confirmation_ref;
+    startAt = frozen.card.start_at;
+    endAt = frozen.card.end_at;
+    amountForInsert = frozen.card.amount;
+    detailsForInsert = frozen.card.details;
+    if (frozen.card.amount == null) ledger = false;
+  }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: jsonError(company.error) };
   const { data, error } = await supabase
@@ -86,17 +154,15 @@ async function insertBookingItem(
     .insert({
       booking_id: bookingId,
       kind,
-      title,
-      supplier: body.supplier || null,
-      confirmation_ref: body.confirmation_ref || null,
-      start_at: body.start_at || null,
-      end_at: body.end_at || null,
-      amount,
-      include_in_ledger: isLedgerExpenseKind(kind)
-        ? true
-        : parseIncludeInLedger(body.include_in_ledger, false),
+      title: titleForInsert,
+      supplier,
+      confirmation_ref: confirmation,
+      start_at: startAt,
+      end_at: endAt,
+      amount: amountForInsert,
+      include_in_ledger: ledger,
       sort_order: sortOrder,
-      details: details.details,
+      details: detailsForInsert,
       visible_to_client: body.visible_to_client === true,
       ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
     })
@@ -115,7 +181,7 @@ async function updateBookingItem(
   if (!itemId) return { error: jsonError("id requis") };
   const { data: current, error: currentError } = await supabase
     .from("crm_booking_items")
-    .select("kind, amount, details, lifecycle")
+    .select("kind, amount, details, lifecycle, supplier, confirmation_ref, start_at, end_at")
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .maybeSingle();
@@ -168,6 +234,25 @@ async function updateBookingItem(
     const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
     if ("error" in company && company.error) return { error: jsonError(company.error) };
     if ("billing_company_id" in company) patch.billing_company_id = company.billing_company_id;
+  }
+  if (nextKind === "accueil_vip") {
+    const loaded = await dossierFlights(supabase, bookingId);
+    if ("error" in loaded) return { error: jsonError(loaded.error || "Vols du dossier illisibles.") };
+    const frozen = frozenAccueilVip(loaded.flights, {
+      supplier: "supplier" in patch ? patch.supplier : current.supplier,
+      confirmation_ref: "confirmation_ref" in patch ? patch.confirmation_ref : current.confirmation_ref,
+      amount: "amount" in patch ? patch.amount : current.amount,
+      details: "details" in patch ? patch.details : current.details,
+    });
+    if (!frozen.ok) return { error: jsonError(frozen.error) };
+    patch.title = frozen.card.title;
+    patch.supplier = frozen.card.supplier;
+    patch.confirmation_ref = frozen.card.confirmation_ref;
+    patch.start_at = frozen.card.start_at;
+    patch.end_at = frozen.card.end_at;
+    patch.amount = frozen.card.amount;
+    patch.details = frozen.card.details;
+    if (frozen.card.amount == null) patch.include_in_ledger = false;
   }
   if (!Object.keys(patch).length) return { error: jsonError("Rien à mettre à jour") };
   const { data, error } = await supabase
@@ -226,6 +311,11 @@ async function commitStaySteps(
   } catch (error) {
     return dbError(error as { message?: string; code?: string }, 400);
   }
+  try {
+    await resyncAccueilVip(supabase, bookingId);
+  } catch (error) {
+    return dbError(error as { message?: string; code?: string }, 400);
+  }
   scheduleFormalitySync(bookingId);
   return NextResponse.json({
     ok: true,
@@ -278,6 +368,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
       return dbError(error as { message?: string; code?: string }, 400);
     }
   }
+  if (body?.kind === "flight" || body?.kind === "accueil_vip" || body?.start_at !== undefined || body?.end_at !== undefined || body?.details !== undefined) {
+    try {
+      await resyncAccueilVip(auth.supabase, bookingId);
+    } catch (error) {
+      return dbError(error as { message?: string; code?: string }, 400);
+    }
+  }
   scheduleFormalitySync(bookingId);
   return NextResponse.json({
     item: updated.item,
@@ -311,6 +408,11 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
+  try {
+    await resyncAccueilVip(auth.supabase, bookingId);
+  } catch (syncError) {
+    return dbError(syncError as { message?: string; code?: string }, 400);
+  }
   scheduleFormalitySync(bookingId);
   return NextResponse.json({
     ok: true,

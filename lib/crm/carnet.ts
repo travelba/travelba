@@ -10,6 +10,7 @@ import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { cityLabel, cityPlaceKey, isOriginHub } from "./city-names";
 import { labelIncludesCity, splitPlaceLabel, tripCityPlan } from "./layover";
 import { stayDestinationLine } from "./stay-phrase";
+import { accueilVipTimelineDays, placeAccueilVipBesideFlights, withLiveAccueilVip } from "./accueil-vip";
 import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
@@ -127,19 +128,30 @@ export function itemDayKey(item: Pick<CrmBookingItem, "start_at">) {
   return item.start_at.slice(0, 10);
 }
 
+type DayItem = Pick<CrmBookingItem, "kind" | "start_at" | "end_at"> & {
+  details?: Record<string, unknown> | null;
+};
+
 /** Premier jour de l’événement (check-in / départ / prise en charge). */
-export function itemFirstDayKey(item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at">) {
+export function itemFirstDayKey(item: DayItem) {
   if (item.kind === "hotel" || item.kind === "car") {
     return stayNightDates(item.start_at, item.end_at)[0] || itemDayKey(item);
+  }
+  if (item.kind === "accueil_vip") {
+    return accueilVipTimelineDays(item)[0] || itemDayKey(item);
   }
   return itemDayKey(item);
 }
 
 /** Jours où la carte apparaît : hôtel et location répétés, vol/autres = jour de début. */
-export function itemTimelineDays(item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at">) {
+export function itemTimelineDays(item: DayItem) {
   if (item.kind === "hotel" || item.kind === "car") {
     const nights = stayNightDates(item.start_at, item.end_at);
     return nights.length ? nights : [itemDayKey(item)];
+  }
+  if (item.kind === "accueil_vip") {
+    const days = accueilVipTimelineDays(item);
+    return days.length ? days : [itemDayKey(item)];
   }
   return [itemDayKey(item)];
 }
@@ -152,7 +164,8 @@ export function isTimelineKind(kind: string) {
     kind === "activity" ||
     kind === "rail" ||
     kind === "car" ||
-    kind === "cruise"
+    kind === "cruise" ||
+    kind === "accueil_vip"
   );
 }
 
@@ -177,8 +190,9 @@ export function timelineItems(items: CrmBookingItem[]) {
 }
 
 export function groupByDay(items: CrmBookingItem[]) {
+  const live = withLiveAccueilVip(items);
   const map = new Map<string, CrmBookingItem[]>();
-  for (const item of items) {
+  for (const item of live) {
     if (item.kind === "insurance" || item.kind === "fee" || isLedgerExpenseKind(item.kind)) continue;
     for (const key of itemTimelineDays(item)) {
       if (!key) continue;
@@ -187,15 +201,17 @@ export function groupByDay(items: CrmBookingItem[]) {
       map.set(key, list);
     }
   }
-  for (const list of map.values()) {
+  for (const [day, list] of map) {
     list.sort(compareItemsByOrder);
+    map.set(day, placeAccueilVipBesideFlights(list, day));
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
 export function undatedTimeline(items: CrmBookingItem[]) {
+  const live = withLiveAccueilVip(items);
   return sortItemsByOrder(
-    timelineItems(items).filter((item) => itemTimelineDays(item).every((key) => !key))
+    timelineItems(live).filter((item) => itemTimelineDays(item).every((key) => !key))
   );
 }
 
@@ -268,6 +284,8 @@ export function kindIcon(kind: string) {
       return "directions_car";
     case "cruise":
       return "directions_boat";
+    case "accueil_vip":
+      return "user_star";
     case "activity":
       return "local_activity";
     case "insurance":

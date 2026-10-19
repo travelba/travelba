@@ -26,6 +26,16 @@ export function stayDestinationLine(input: Parameters<typeof stayDestinationName
   return stayDestinationNames(input).join(" · ");
 }
 
+/** « de Phuket », « du Havre », « d’Ajaccio ». */
+export function placeFromPreposition(name: string) {
+  const raw = name.replace(/[\r\n]+/g, " ").trim();
+  if (!raw) return "";
+  if (/^le\s+/i.test(raw)) return `du ${raw.replace(/^le\s+/i, "")}`;
+  if (/^les\s+/i.test(raw)) return `des ${raw.replace(/^les\s+/i, "")}`;
+  if (/^[aeiouhéèêëàâîïôùûüœæh]/i.test(raw)) return `d'${raw}`;
+  return `de ${raw}`;
+}
+
 /** « à Tel Aviv et aux Seychelles ». */
 export function stayDestinationPhrase(input: Parameters<typeof stayDestinationNames>[0]) {
   const phrase = stayAtPhrase(stayDestinationNames(input));

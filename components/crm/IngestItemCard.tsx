@@ -120,7 +120,7 @@ export function IngestItemCard({
   const included = Array.isArray(d.included) ? d.included.join("\n") : String(d.included || "");
   const roomRows = Array.isArray(d.rooms) ? d.rooms : [];
   const kinds = BOOKING_ITEM_KINDS.filter(
-    (kind) => !isLedgerExpenseKind(kind) && (!isExtraItemKind(kind) || item.kind === kind)
+    (kind) => kind !== "accueil_vip" && !isLedgerExpenseKind(kind) && (!isExtraItemKind(kind) || item.kind === kind)
   );
 
   return (
