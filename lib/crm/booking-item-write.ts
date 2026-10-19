@@ -11,6 +11,7 @@ import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
+import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 
@@ -60,22 +61,56 @@ export async function addStaffBookingCard(
   const title = String(body.title || "").trim();
   const kind = knownKind(body.kind || "fee");
   if (!kind) return { error: "Type de carte inconnu", status: 400 };
-  if (!title) return { error: "Titre requis", status: 400 };
+  if (!title && kind !== "accueil_vip") return { error: "Titre requis", status: 400 };
   const amount = parseMoney(moneyField(body.amount));
   if (isLedgerExpenseKind(kind) && (amount == null || amount <= 0)) {
     return { error: "Montant requis", status: 400 };
   }
   const { data: existing, error: existingError } = await supabase
     .from("crm_booking_items")
-    .select("sort_order, kind, lifecycle, details")
+    .select("id, sort_order, kind, title, start_at, end_at, lifecycle, details")
     .eq("booking_id", bookingId);
   if (existingError) return { error: dbErrorMessage(existingError as DbErrorLike, "Carte non créée."), status: 400 };
-  const rows = (existing || []) as { sort_order?: number | null; kind?: string | null; lifecycle?: string | null; details?: Record<string, unknown> | null }[];
+  const rows = (existing || []) as {
+    id?: string;
+    sort_order?: number | null;
+    kind?: string | null;
+    title?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    lifecycle?: string | null;
+    details?: Record<string, unknown> | null;
+  }[];
   const maxSort = rows.reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1);
   const sortOrder = body.sort_order == null || body.sort_order === "" ? maxSort + 1 : parseSortOrder(body.sort_order);
   if (sortOrder == null) return { error: SORT_ORDER_ERROR, status: 400 };
   const details = parseItemDetails(body.details);
   if ("error" in details) return { error: details.error, status: 400 };
+  let nextBody = body;
+  let nextDetails = details.details;
+  let nextAmount = amount;
+  if (kind === "accueil_vip") {
+    const composed = composeAccueilVip(
+      readAccueilVipFields({
+        supplier: typeof body.supplier === "string" ? body.supplier : null,
+        confirmation_ref: typeof body.confirmation_ref === "string" ? body.confirmation_ref : null,
+        amount,
+        details: details.details,
+      }),
+      rows as AccueilVipFlight[]
+    );
+    if (!composed.ok) return { error: composed.error, status: 400 };
+    nextBody = {
+      ...body,
+      title: composed.card.title,
+      supplier: composed.card.supplier,
+      confirmation_ref: composed.card.confirmation_ref,
+      start_at: composed.card.start_at,
+      end_at: composed.card.end_at,
+    };
+    nextAmount = composed.card.amount;
+    nextDetails = { ...details.details, ...composed.card.details };
+  }
   const txId = isLedgerExpenseKind(kind) ? pliantExpenseTransactionId(details.details) : null;
   if (
     txId &&
@@ -92,15 +127,18 @@ export async function addStaffBookingCard(
     .insert({
       booking_id: bookingId,
       kind,
-      title,
-      supplier: body.supplier || null,
-      confirmation_ref: body.confirmation_ref || null,
-      start_at: body.start_at || null,
-      end_at: body.end_at || null,
-      amount,
-      include_in_ledger: isLedgerExpenseKind(kind) ? true : parseIncludeInLedger(body.include_in_ledger, false),
+      title: String(nextBody.title || title).trim(),
+      supplier: nextBody.supplier || null,
+      confirmation_ref: nextBody.confirmation_ref || null,
+      start_at: nextBody.start_at || null,
+      end_at: nextBody.end_at || null,
+      amount: nextAmount,
+      include_in_ledger:
+        isLedgerExpenseKind(kind) || (kind === "accueil_vip" && nextAmount == null)
+          ? isLedgerExpenseKind(kind)
+          : parseIncludeInLedger(body.include_in_ledger, false),
       sort_order: sortOrder,
-      details: details.details,
+      details: nextDetails,
       visible_to_client: false,
       ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
     })

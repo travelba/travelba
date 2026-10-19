@@ -1,6 +1,7 @@
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { itemClock, flightCities, flightIata, hotelDisplayName, detailStr } from "@/lib/crm/carnet";
+import { accueilVipTitle, readAccueilVipLegs } from "@/lib/crm/accueil-vip";
 import { civilClock, timezoneForIata, zoneOffsetMinutes } from "@/lib/crm/airport-time";
 import { addIsoDays } from "./dates";
 
@@ -119,6 +120,11 @@ function serviceZone(item: CrmBookingItem) {
 /** Heure locale de l’aéroport : les chiffres restent, le fuseau est celui de la carte (#443). */
 function timeZones(item: CrmBookingItem) {
   if (item.kind === "hotel" || !hasRealTime(item.start_at)) return { start: null, end: null };
+  if (item.kind === "accueil_vip") {
+    const leg = readAccueilVipLegs(item.details)[0];
+    const zone = zoneForClock(leg?.timezone || null, leg?.at || item.start_at);
+    return { start: zone, end: zone };
+  }
   if (item.kind === "flight") {
     const start = zoneForClock(flightZone(item, "departure"), item.start_at);
     const end = zoneForClock(flightZone(item, "arrival"), item.end_at) || zoneForClock(flightZone(item, "departure"), item.end_at);
@@ -135,6 +141,7 @@ export function itemHasCalendarDate(item: Pick<CrmBookingItem, "kind" | "start_a
 
 function itemSummary(item: CrmBookingItem) {
   const kind = visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind] || item.kind);
+  if (item.kind === "accueil_vip") return visibleServiceCopy(item.title);
   if (item.kind === "flight") {
     return visibleServiceCopy(`${kind} ${flightIata(item) || item.title}`.trim());
   }
@@ -150,6 +157,7 @@ function itemDescription(item: CrmBookingItem, booking: CrmBooking) {
     booking.reference,
     item.kind === "flight" ? flightCities(item) : "",
     item.confirmation_ref ? `Réf. ${item.confirmation_ref}` : "",
+    item.kind === "accueil_vip" ? detailStr(item, "client_info") : "",
   ].filter(Boolean);
   return bits.join("\n");
 }
@@ -160,6 +168,12 @@ function itemLocation(item: CrmBookingItem) {
     const city = detailStr(item, "city_from");
     if (city && iata) return `${city} (${iata})`;
     return iata || city;
+  }
+  if (item.kind === "accueil_vip") {
+    const leg = readAccueilVipLegs(item.details)[0];
+    if (!leg) return "";
+    if (leg.airport_city && leg.airport_iata) return `${leg.airport_city} (${leg.airport_iata})`;
+    return leg.airport_city || leg.airport_iata;
   }
   if (item.kind === "hotel") {
     const name = hotelDisplayName(item);
@@ -240,7 +254,12 @@ function veventLines(item: CrmBookingItem, booking: CrmBooking, zones: Map<strin
   const location = itemLocation(item);
   if (location) lines.push(`LOCATION:${icsEscape(location)}`);
 
-  if (item.kind === "hotel" || !hasRealTime(item.start_at)) {
+  if (item.kind === "accueil_vip" && hasRealTime(item.start_at)) {
+    const zonesForItem = timeZones(item);
+    const stamp = timedStamp(item.start_at!);
+    lines.push(zonedStamp("DTSTART", stamp, zonesForItem.start, zones));
+    lines.push(zonedStamp("DTEND", plusHours(stamp, 1), zonesForItem.start, zones));
+  } else if (item.kind === "hotel" || !hasRealTime(item.start_at)) {
     const endExclusive = item.end_at ? item.end_at.slice(0, 10) : addIsoDays(start, 1);
     const end = endExclusive > start ? endExclusive : addIsoDays(start, 1);
     lines.push(`DTSTART;VALUE=DATE:${allDay(start)}`);
@@ -257,9 +276,27 @@ function veventLines(item: CrmBookingItem, booking: CrmBooking, zones: Map<strin
   return lines;
 }
 
+/** Un aller-retour devient un événement par vol, pas une plage du premier au dernier jour. */
+export function calendarUnits(item: CrmBookingItem): CrmBookingItem[] {
+  if (item.kind !== "accueil_vip") return [item];
+  const legs = readAccueilVipLegs(item.details);
+  if (legs.length <= 1) return [item];
+  return legs.map((leg) => ({
+    ...item,
+    id: `${item.id}-${leg.role}`,
+    title: accueilVipTitle(leg.role, [leg]),
+    start_at: leg.at,
+    end_at: null,
+    details: { ...(item.details || {}), legs: [leg] },
+  }));
+}
+
 export function veventFromItem(item: CrmBookingItem, booking: CrmBooking): string | null {
-  const lines = veventLines(item, booking, new Map());
-  return lines ? lines.join("\r\n") : null;
+  const zones = new Map<string, string[]>();
+  const blocks = calendarUnits(item)
+    .map((unit) => veventLines(unit, booking, zones))
+    .filter((lines): lines is string[] => Boolean(lines));
+  return blocks.length ? blocks.map((lines) => lines.join("\r\n")).join("\r\n") : null;
 }
 
 export function veventFromStay(booking: CrmBooking): string | null {
@@ -287,14 +324,14 @@ export function buildBookingIcs(opts: {
   const zones = new Map<string, string[]>();
   const events: string[][] = [];
   const named = opts.itemId ? opts.items.find((row) => row.id === opts.itemId) : null;
-  if (opts.itemId) {
-    const event = named ? veventLines(named, opts.booking, zones) : null;
-    if (event) events.push(event);
-  } else {
+  const listed = opts.itemId ? (named ? [named] : []) : opts.items;
+  if (!opts.itemId) {
     const stay = veventFromStay(opts.booking);
     if (stay) events.push(stay.split("\r\n"));
-    for (const item of opts.items) {
-      const event = veventLines(item, opts.booking, zones);
+  }
+  for (const item of listed) {
+    for (const unit of calendarUnits(item)) {
+      const event = veventLines(unit, opts.booking, zones);
       if (event) events.push(event);
     }
   }
@@ -380,18 +417,19 @@ function googleDates(item: CrmBookingItem) {
 
 /** Android : Google Agenda prérempli, prêt à enregistrer sur le téléphone. */
 export function googleCalendarHref(item: CrmBookingItem, booking: CrmBooking): string | null {
-  if (!itemHasCalendarDate(item)) return null;
-  const dates = googleDates(item);
+  const unit = item.kind === "accueil_vip" ? calendarUnits(item)[0] || item : item;
+  if (!itemHasCalendarDate(unit)) return null;
+  const dates = googleDates(unit);
   if (!dates) return null;
   const params = new URLSearchParams({
     action: "TEMPLATE",
-    text: itemSummary(item),
+    text: itemSummary(unit),
     dates,
-    details: itemDescription(item, booking),
+    details: itemDescription(unit, booking),
   });
-  const location = itemLocation(item);
+  const location = itemLocation(unit);
   if (location) params.set("location", location);
-  const zone = timeZones(item).start;
+  const zone = timeZones(unit).start;
   if (zone && dates.includes("T")) params.set("ctz", zone);
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
@@ -399,6 +437,16 @@ export function googleCalendarHref(item: CrmBookingItem, booking: CrmBooking): s
 export function googlePhoneMap(booking: CrmBooking, items: CrmBookingItem[]) {
   const mapped: Record<string, { google: string | null }> = {};
   for (const item of items) {
+    if (item.kind === "accueil_vip") {
+      for (const unit of calendarUnits(item)) {
+        const google = googleCalendarHref(unit, booking);
+        const day = (unit.start_at || "").slice(0, 10);
+        if (!google) continue;
+        if (day) mapped[`${item.id}:${day}`] = { google };
+        if (!mapped[item.id]) mapped[item.id] = { google };
+      }
+      continue;
+    }
     const google = googleCalendarHref(item, booking);
     if (!google) continue;
     mapped[item.id] = { google };

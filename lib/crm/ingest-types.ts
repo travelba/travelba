@@ -88,6 +88,23 @@ const detailsObjectLoose = z
         })
       )
       .optional(),
+    vip_service: looseString,
+    passenger_count: looseNumber,
+    bag_count: looseNumber,
+    client_info: looseString,
+    legs: z
+      .array(
+        z.object({
+          role: looseString,
+          flight_id: looseString,
+          airport_iata: looseString,
+          airport_city: looseString,
+          at: looseString,
+          flight_number: looseString,
+          timezone: looseString,
+        })
+      )
+      .optional(),
   });
 
 export const detailsSchemaLoose = detailsObjectLoose.optional().default({});

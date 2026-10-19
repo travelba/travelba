@@ -67,6 +67,7 @@ const AGENCY_ACTIVITY: Record<string, number> = {
   activity: 22,
   chauffeur: 22,
   greeter: 22,
+  accueil_vip: 22,
   visa: 22,
   checkin: 22,
   expense: 22,

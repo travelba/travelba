@@ -53,6 +53,7 @@ import {
   stayDatesFromExtract,
 } from "@/lib/crm/item-lifecycle";
 import { findHotelBookingCard, findMatchingItem, hotelMatchKeepsStay, keptHotelStayFields } from "@/lib/crm/item-match";
+import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import {
@@ -505,6 +506,7 @@ async function upsertItemsAndTravelers(
   if (saved) {
     try {
       await persistBookingCardOrder(supabase, bookingId, { createdIds });
+      await resyncAccueilVip(supabase, bookingId);
     } catch (error) {
       throw dbFailure(error as { message?: string; code?: string }, "Ordre des cartes non enregistré.");
     }

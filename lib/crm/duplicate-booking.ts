@@ -15,6 +15,7 @@ import {
 import { nextBookingReference, refreshBookingLedger } from "@/lib/crm/bookings";
 import { deleteBookingById } from "@/lib/crm/delete-booking";
 import { copyCrmFile, removeCrmFiles } from "@/lib/crm/files";
+import { remapAccueilVipLinks } from "@/lib/crm/accueil-vip";
 import { isUuid } from "@/lib/crm/ids";
 import type { CrmBooking } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -71,6 +72,15 @@ async function copyChildren(
       .single();
     if (error || !data) throw new Error(error?.message || "Carte non copiée");
     itemIdMap.set(item.id, data.id as string);
+  }
+
+  for (const item of (items || []) as Record<string, unknown>[]) {
+    if (item.kind !== "accueil_vip" || typeof item.id !== "string") continue;
+    const remapped = remapAccueilVipLinks(item.details, itemIdMap);
+    const newId = itemIdMap.get(item.id);
+    if (!remapped || !newId) continue;
+    const { error } = await admin.from("crm_booking_items").update({ details: remapped }).eq("id", newId);
+    if (error) throw new Error(error.message);
   }
 
   for (const doc of (docs || []) as Record<string, unknown>[]) {
