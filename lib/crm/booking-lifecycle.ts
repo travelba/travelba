@@ -1,3 +1,4 @@
+import { agencyFeeRateColumn, parseStoredAgencyFeeRate } from "@/lib/crm/agency-fee-rate";
 import { safeFileName } from "@/lib/crm/files";
 
 export type ArchiveSource = {
@@ -23,6 +24,7 @@ export type DuplicateSource = {
   total_amount?: number | null;
   include_in_ledger?: boolean | null;
   agency_commission?: boolean | null;
+  agency_fee_rate?: number | string | null;
   client_settles_stay?: boolean | null;
   notes_client?: string | null;
   notes_internal?: string | null;
@@ -79,6 +81,9 @@ export function duplicateBookingInsert(source: DuplicateSource, reference: strin
     total_amount: Number(source.total_amount) || 0,
     include_in_ledger: source.include_in_ledger !== false,
     agency_commission: Boolean(source.agency_commission),
+    ...(parseStoredAgencyFeeRate(source.agency_fee_rate) != null
+      ? { agency_fee_rate: agencyFeeRateColumn(parseStoredAgencyFeeRate(source.agency_fee_rate)) }
+      : {}),
     client_settles_stay: Boolean(source.client_settles_stay),
     notes_client: source.notes_client ?? null,
     notes_internal: duplicateInternalNote(source.notes_internal, source.reference),

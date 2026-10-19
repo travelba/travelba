@@ -103,7 +103,7 @@ export type ClientExpenseLine = {
 
 /**
  * Prix lu sur la réservation : cartes + frais d’agence + billeterie + dépenses libres.
- * Les 10 % portent sur les étapes (séjour + extras) et les dépenses, pas sur la billeterie.
+ * La commission porte sur les étapes (séjour + extras) et les dépenses, pas sur la billeterie.
  * L’assiette stockée (`total_amount`) reste la somme des cartes du séjour.
  */
 export function stayPriceWithExpenses(input: {
@@ -112,6 +112,7 @@ export function stayPriceWithExpenses(input: {
   expenses: { amount: number | null }[];
   extras?: { amount: number | null }[];
   ticketingFee?: number;
+  agencyFeeRate?: number | null;
 }) {
   const stay = Number(input.stayTotal);
   let sum = Number.isFinite(stay) ? stay : 0;
@@ -121,7 +122,8 @@ export function stayPriceWithExpenses(input: {
         stayTotal: sum,
         expenses: input.expenses,
         extras: input.extras,
-      })
+      }),
+      input.agencyFeeRate ?? undefined
     );
   }
   for (const expense of input.expenses) {
@@ -142,6 +144,7 @@ export function clientStayPriceLabel(input: {
   expenses: { amount: number | null }[];
   extras?: { amount: number | null }[];
   ticketingFee?: number;
+  agencyFeeRate?: number | null;
 }) {
   if (!input.pricesVisible) return HIDDEN_PRICE_LABEL;
   return formatMoney(stayPriceWithExpenses(input), input.currency);
@@ -157,6 +160,7 @@ export function clientStayExpenseLines(input: {
   extras?: { amount: number | null }[];
   ticketingFee?: number;
   ticketCount?: number;
+  agencyFeeRate?: number | null;
 }): ClientExpenseLine[] {
   const lines: ClientExpenseLine[] = [];
   if (input.agencyCommission) {
@@ -169,7 +173,8 @@ export function clientStayExpenseLines(input: {
             stayTotal: input.stayTotal,
             expenses: input.expenses,
             extras: input.extras,
-          })
+          }),
+          input.agencyFeeRate ?? undefined
         ),
         input.currency,
         input.pricesVisible

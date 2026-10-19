@@ -274,9 +274,9 @@ function ManualNewBookingForm({
       <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
         <input type="checkbox" name="agency_commission" className="mt-1" disabled={saving} />
         <span>
-          Appliquer la commission de 10 %
+          Appliquer la commission d’agence
           <span className="mt-0.5 block text-xs font-normal text-muted">
-            10 % des étapes et des dépenses de cette réservation. Une ligne dans les transactions, qui suit les ajouts et les retraits.
+            Le taux du compte, ou 10 % s’il n’en a pas. Une ligne dans les transactions, qui suit les ajouts et les retraits.
           </span>
         </span>
       </label>

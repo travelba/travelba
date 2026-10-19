@@ -91,8 +91,11 @@ export function ClientInterfacePreview({
   ledger = null,
   initialScreen = "stay",
   settled = [],
+  agencyFeeRate,
 }: {
   booking: CrmBooking;
+  /** Montant seulement. Le pourcentage n’est pas affiché. */
+  agencyFeeRate?: number;
   items: CrmBookingItem[];
   documents: CrmBookingDocument[];
   travelers: CrmBookingTraveler[];
@@ -169,6 +172,7 @@ export function ClientInterfacePreview({
           ledger={ledger}
           showStay={hasCarnet}
           settled={settled}
+          agencyFeeRate={agencyFeeRate}
         />
       )}
     </section>
@@ -234,6 +238,7 @@ function ClientScreen({
   ledger,
   showStay,
   settled = [],
+  agencyFeeRate,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -260,6 +265,7 @@ function ClientScreen({
   ledger: ClientLedgerView | null;
   showStay: boolean;
   settled?: string[];
+  agencyFeeRate?: number;
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
   const coverage = tripDocCoverage(travelers, identityDocs);
@@ -298,6 +304,7 @@ function ClientScreen({
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: booking.agency_commission === true,
+    agencyFeeRate,
     stayTotal: Number(booking.total_amount),
     currency: booking.currency,
     pricesVisible,
@@ -476,6 +483,7 @@ function ClientScreen({
                     currency: booking.currency,
                     pricesVisible,
                     agencyCommission: booking.agency_commission === true,
+                    agencyFeeRate,
                     expenses: expenseChoices,
                     extras: feeExtras,
                     ticketingFee,

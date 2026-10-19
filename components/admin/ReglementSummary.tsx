@@ -28,6 +28,7 @@ export function ReglementSummary({
   state,
   invoiceNumber,
   checks,
+  commissionCaption = null,
 }: {
   amount: number;
   currency: string;
@@ -37,6 +38,7 @@ export function ReglementSummary({
   state: TripAccountingState | null;
   invoiceNumber: string | null;
   checks: ReglementCheck[];
+  commissionCaption?: string | null;
 }) {
   const todo = checks.filter((check) => check.state === "todo").length;
   return (
@@ -52,6 +54,7 @@ export function ReglementSummary({
           <p className="mt-1 text-sm text-muted">
             {payerCaption} · {ledgerCaption}
           </p>
+          {commissionCaption ? <p className="mt-1 text-sm font-semibold text-[var(--admin-navy)]">{commissionCaption}</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {state ? <StatusChip tone={stateTone(state)}>{TRIP_ACCOUNTING_LABELS[state]}</StatusChip> : null}

@@ -278,6 +278,9 @@ test("fiche et recherche montrent la société, les cartes et le même montant",
   assert.equal(fiche79.paye_par, "société");
   assert.equal(fiche79.cartes.length, 7);
   assert.equal(fiche79.montant, formatMoney(3774.17, "EUR"));
+  assert.equal(fiche79.commission_agence, "10 %");
+  assert.equal(fiche79.commission_source, "defaut");
+  assert.equal(fiche79.commission_appliquee, false);
 
   const fiche82 = await readFicheDossier({ reference: "TB-2026-0082" }, admin);
   assert.ok("cartes" in fiche82);

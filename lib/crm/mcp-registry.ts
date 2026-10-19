@@ -185,7 +185,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (villes puis code aéroport), voyageurs, état, société facturée (societe, paye_par). id ou reference. Pas les contacts d’hôtel.",
+      "Un dossier : cartes (villes puis code aéroport), voyageurs, état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). id ou reference. Pas les contacts d’hôtel.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -269,7 +269,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "comptabilite_voyage",
     description:
-      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées. id ou reference. Lecture seule, jamais montré au client.",
+      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). id ou reference. Lecture seule, jamais montré au client.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -424,7 +424,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes ou les dates d’un dossier, puis le grand livre. L’état du dossier est En préparation, Visible ou Archivée.",
+      "Met à jour les notes, les dates ou la commission d’agence d’un dossier, puis le grand livre. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. L’état du dossier est En préparation, Visible ou Archivée.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -432,6 +432,12 @@ export const MCP_TOOLS: ToolDef[] = [
       notes_internes: z.string().max(5000).optional().describe("Note interne à l’agence"),
       date_depart: z.string().max(40).optional().describe("Date de départ, AAAA-MM-JJ, vide pour effacer"),
       date_retour: z.string().max(40).optional().describe("Date de retour, AAAA-MM-JJ, vide pour effacer"),
+      commission_agence: z
+        .string()
+        .trim()
+        .max(20)
+        .optional()
+        .describe("Taux du dossier : 10, 7,5 ou 5. « compte » retire la dérogation."),
     },
     run: (args) => updateBooking(args),
   },
@@ -477,7 +483,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_client",
     write: true,
     description:
-      "Met à jour le prénom, le nom, l’e-mail, le téléphone ou la société d’un client déjà identifié. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). Ne crée pas de fiche. Aucun message.",
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). Ne crée pas de fiche. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       prenom: z.string().max(80).optional().describe("Prénom"),
@@ -485,6 +491,12 @@ export const MCP_TOOLS: ToolDef[] = [
       email: z.string().trim().optional().describe("E-mail"),
       telephone: z.string().max(40).optional().describe("Téléphone"),
       societe: z.string().max(200).optional().describe("Raison sociale, comme raison_sociale"),
+      commission_agence: z
+        .string()
+        .trim()
+        .max(20)
+        .optional()
+        .describe("Taux du compte : 10, 7,5 ou 5. « defaut » remet 10 %."),
       ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),

@@ -91,6 +91,9 @@ test("a booking update only accepts notes and dates", () => {
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, statut: "Confirmée" }), /Rien à modifier/);
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, date_depart: "hier" }), /Date de départ/);
   assert.throws(() => prepareBookingUpdate({ reference: "TB-1" }), /Rien à modifier/);
+  assert.equal(prepareBookingUpdate({ id: BOOKING, commission_agence: "7,5" }).patch.agency_fee_rate, "0.0750");
+  assert.equal(prepareBookingUpdate({ id: BOOKING, commission_agence: "compte" }).patch.agency_fee_rate, null);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, commission_agence: "12" }), /7,5/);
 });
 
 test("an email leaves the queue only with an explicit action", () => {
@@ -117,6 +120,9 @@ test("a client is created with an email and a name, and updated by id", () => {
   assert.equal(Object.keys(siretOnly.patch).length, 0);
   assert.equal(siretOnly.company?.siret, "73282932000074");
   assert.equal(siretOnly.company?.billing_city, "Paris");
+  assert.equal(prepareClientUpdate({ id: CLIENT, commission_agence: "5" }).patch.agency_fee_rate, "0.0500");
+  assert.equal(prepareClientUpdate({ id: CLIENT, commission_agence: "defaut" }).patch.agency_fee_rate, null);
+  assert.throws(() => prepareClientUpdate({ id: CLIENT, commission_agence: "8" }), /7,5/);
   assert.throws(() => prepareClientUpdate({ id: CLIENT }), /Rien à modifier/);
   assert.throws(() => prepareClientUpdate({ id: "nom", prenom: "Ada" }), /Client invalide/);
 });

@@ -3,6 +3,8 @@
 import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Plus } from "lucide-react";
+import { agencyFeeRateKey, formatAgencyFeePercent, parseStoredAgencyFeeRate } from "@/lib/crm/agency-fee-rate";
+import { AgencyFeeRateField } from "@/components/admin/AgencyFeeRateField";
 import type { CrmBillingCompany, CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
@@ -101,6 +103,7 @@ function ficheSnapshot(values: {
   spendingAllowance: string;
   onHold: boolean;
   companyDrafts: unknown;
+  feeChoice: string;
 }) {
   return JSON.stringify(values);
 }
@@ -154,6 +157,8 @@ export function CustomerEditor({
   const [saving, setSaving] = useState(false);
   const savingLock = useRef(false);
   const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
+  const storedFeeKey = agencyFeeRateKey(parseStoredAgencyFeeRate(customer.agency_fee_rate) ?? 0.1);
+  const [feeChoice, setFeeChoice] = useState(storedFeeKey);
   const hasPassport = vaultDocumentsForPerson(documents, null).length > 0;
   const [openIdentity, setOpenIdentity] = useState(!customer.first_name && !hasPassport);
   const [openContact, setOpenContact] = useState(!customer.phone);
@@ -192,6 +197,7 @@ export function CustomerEditor({
     spendingAllowance,
     onHold,
     companyDrafts,
+    feeChoice,
   });
   const [initial, setInitial] = useState(snapshot);
   /** La barre Enregistrer ne se fixe en bas que lorsqu’il y a quelque chose à enregistrer. */
@@ -204,6 +210,7 @@ export function CustomerEditor({
     : "Aucune société";
   const companyLine = [
     companyRoleLabel(companyRole),
+    `Commission ${formatAgencyFeePercent(Number(feeChoice))}`,
     iban || null,
   ]
     .filter(Boolean)
@@ -253,6 +260,7 @@ export function CustomerEditor({
           spending_allowance: companyRole ? spendingAllowance : null,
           on_hold: onHold,
           billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
+          ...(feeChoice === storedFeeKey ? {} : { agency_fee_rate: Number(feeChoice) }),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -286,6 +294,7 @@ export function CustomerEditor({
           spendingAllowance,
           onHold,
           companyDrafts: nextDrafts,
+          feeChoice,
         })
       );
       router.refresh();
@@ -471,6 +480,28 @@ export function CustomerEditor({
                 placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
               />
             </Field>
+            <AgencyFeeRateField
+              label="Commission d’agence"
+              value={feeChoice}
+              onChange={setFeeChoice}
+              options={[
+                {
+                  value: "0.1000",
+                  title: "10 %",
+                  hint: "Taux du compte. Les dossiers sans dérogation prennent 10 %.",
+                },
+                {
+                  value: "0.0750",
+                  title: "7,5 %",
+                  hint: "Les dossiers sans dérogation prennent 7,5 %.",
+                },
+                {
+                  value: "0.0500",
+                  title: "5 %",
+                  hint: "Les dossiers sans dérogation prennent 5 %.",
+                },
+              ]}
+            />
             <CompanyRoleFields
               heading={false}
               role={companyRole}

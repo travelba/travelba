@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectPublishIssues } from "@/lib/crm/booking-issues";
+import { agencyFeeColumnMissing } from "@/lib/crm/agency-fee-rate";
 import {
+  bookingMetaError,
   bookingMetaPatch,
   setCarnetPublished,
   syncBookingLedger,
@@ -49,6 +51,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (!current) return jsonError("Réservation introuvable", 404);
   const prev = current as CrmBooking;
 
+  const rateError = bookingMetaError(body);
+  if (rateError) return jsonError(rateError);
   const patch = bookingMetaPatch(body);
   if ("title" in patch && !patch.title) return jsonError("Le titre du voyage est obligatoire.");
 
@@ -128,7 +132,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .eq("id", id)
       .select("*")
       .single();
-    if (error) return dbError(error, 400);
+    if (error) {
+      if ("agency_fee_rate" in patch && agencyFeeColumnMissing(error)) {
+        return jsonError("Le taux de commission n’est pas encore en place. Appliquez la migration, puis enregistrez.");
+      }
+      return dbError(error, 400);
+    }
     booking = data as CrmBooking;
     if (patch.payer_kind === "personal") {
       await auth.supabase
