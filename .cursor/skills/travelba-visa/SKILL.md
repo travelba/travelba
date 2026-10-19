@@ -53,7 +53,7 @@ Auth0 (`infinnityprodinternal`) n’accorde qu’une poignée de jetons par jour
 
 ## Carte depuis le MCP
 
-`creer_carte_pliant` reprend l’onglet Carte du dossier : `PLIANT_VIRTUAL`, contrôles vides, plafond saisi, une transaction par défaut. `lire_carte_pliant` lit le numéro chez Pliant (`readPliantCardSecrets`, hôte PCI) pour cette carte seulement. Le jeton est `TRAVELBA_MCP_CARD_TOKENS`, pas le jeton passeport. Pas de PAN stocké. Journal `crm_mcp_card_events`.
+`creer_carte_pliant` reprend l’onglet Carte du dossier : `PLIANT_VIRTUAL`, contrôles vides, plafond saisi, une transaction par défaut. La carte reste liée au dossier ; une dépense s’y rattache dès l’autorisation, en attente, puis se confirme au règlement. `lire_carte_pliant` lit le numéro chez Pliant (`readPliantCardSecrets`, hôte PCI) pour cette carte seulement. Le jeton est `TRAVELBA_MCP_CARD_TOKENS`, pas le jeton passeport. Pas de PAN stocké. Journal `crm_mcp_card_events`.
 
 ## Scan pour le formulaire
 

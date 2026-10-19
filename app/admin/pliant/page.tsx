@@ -2,7 +2,8 @@ import { PliantAccount, type PliantLine } from "@/components/admin/PliantAccount
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
-import { pliantStayForCard, type PliantStayRef } from "@/lib/crm/pliant-tx";
+import { loadPliantStayRefs } from "@/lib/crm/pliant-dossier-run";
+import { pliantStayForCard } from "@/lib/crm/pliant-tx";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmPliantTransaction } from "@/lib/crm/types";
 import Link from "next/link";
@@ -47,28 +48,7 @@ export default async function AdminPliantPage({
         if (from + PLIANT_PAGE >= limit) more = limit < PLIANT_MAX;
       }
       const cardIds = [...new Set(rows.map((row) => row.card_id).filter((id): id is string => Boolean(id)))];
-      const stays: PliantStayRef[] = [];
-      for (let index = 0; index < cardIds.length; index += 100) {
-        const { data: arrivals } = await admin
-          .from("crm_hotel_arrivals")
-          .select("pliant_card_id, card_last4, booking_id")
-          .in("pliant_card_id", cardIds.slice(index, index + 100));
-        for (const arrival of (arrivals || []) as { pliant_card_id: string | null; card_last4: string | null; booking_id: string }[]) {
-          if (!arrival.pliant_card_id) continue;
-          stays.push({ cardId: arrival.pliant_card_id, bookingId: arrival.booking_id, reference: null, last4: arrival.card_last4 });
-        }
-      }
-      const stayBookingIds = [...new Set(stays.map((row) => row.bookingId))];
-      if (stayBookingIds.length) {
-        const { data: bookings } = await admin.from("crm_bookings").select("id, reference, title, destination").in("id", stayBookingIds);
-        const references = new Map(
-          ((bookings || []) as { id: string; reference: string | null; title: string | null; destination: string | null }[]).map((row) => [
-            row.id,
-            [row.reference, (row.title || row.destination || "").trim()].filter(Boolean).join(" · ") || null,
-          ])
-        );
-        for (const stay of stays) stay.reference = references.get(stay.bookingId) || null;
-      }
+      const stays = await loadPliantStayRefs(admin, cardIds);
 
       const [queue, costs] = await Promise.all([
         loadOutgoingQueue({ source: "pliant", limit: PLIANT_MAX }, admin),
@@ -128,6 +108,9 @@ export default async function AdminPliantPage({
           category: row.category,
           comment: row.comment,
           reference: stay?.reference || null,
+          title: stay?.title || null,
+          client: stay?.client || null,
+          company: stay?.company || null,
           bookingId: stay?.bookingId || null,
           matchStatus: row.match_status || "unmatched",
           outgoing: outgoing.get(row.id) || null,

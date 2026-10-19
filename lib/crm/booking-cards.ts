@@ -3,6 +3,7 @@ import "server-only";
 import { pliantDesignation } from "./eta-il-fee";
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardDraft, sameCardNameCount } from "./manual-stay-card";
+import { rememberPliantCard } from "./pliant-card-run";
 import {
   issuePliantCard,
   lockPliantCard,
@@ -29,10 +30,10 @@ export async function issueBookingCard(
 ) {
   const { data: bookingData } = await admin
     .from("crm_bookings")
-    .select("id, end_date")
+    .select("id, end_date, customer_id")
     .eq("id", input.bookingId)
     .maybeSingle();
-  const booking = bookingData as { id: string; end_date: string | null } | null;
+  const booking = bookingData as { id: string; end_date: string | null; customer_id: string | null } | null;
   if (!booking) throw new Error("Dossier introuvable.");
 
   if (!pliantDesignation(input.designation)) throw new Error("Indiquez le nom de la carte.");
@@ -82,6 +83,19 @@ export async function issueBookingCard(
     last4,
   });
   if (error) throw new Error("La carte a été créée, mais le dossier ne l’a pas enregistrée.");
+  await rememberPliantCard(admin, {
+    pliant_card_id: issued.cardId,
+    booking_id: input.bookingId,
+    customer_id: booking.customer_id,
+    label: draft.body.label,
+    last4,
+    limit_cents: draft.body.limit.value,
+    currency: "EUR",
+    status: "active",
+    limit_manual: true,
+    transaction_limit_cents: draft.body.transactionLimit.value,
+    max_transaction_count: draft.body.maxTransactionCount,
+  });
   return { ok: true as const };
 }
 

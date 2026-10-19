@@ -7,7 +7,11 @@ import {
   referenceInText,
   saleLines,
   settlementLabel,
+  costSuggestionReasonLabel,
+  isOwnAccountTransfer,
+  pliantSpendSettlement,
   suggestCostTargets,
+  suggestItem,
   tripAccountingState,
   tripCostFromPliant,
   tripCostFromRevolut,
@@ -72,7 +76,24 @@ describe("coûts du voyage", () => {
     const refund = tripCostFromPliant({ ...base, type: "REFUND", billing_cents: -10000 });
     assert.equal(refund?.amountEur, -100);
     assert.equal(tripCostFromPliant({ ...base, status: "DECLINED" }), null);
+    assert.equal(tripCostFromPliant({ ...base, status: "PENDING" }), null);
     assert.equal(tripCostFromPliant({ ...base, type: "STATUS_INQUIRY" }), null);
+    const pending = pliantSpendSettlement({
+      ...base,
+      id: "coral",
+      status: "PENDING",
+      merchant: "WWW.CORALTHAILAND.COM",
+      billing_cents: -24082,
+      transaction_cents: -900000,
+      transaction_currency: "THB",
+    });
+    assert.equal(pending?.state, "pending");
+    assert.equal(pending?.draft.amountEur, 240.82);
+    assert.equal(pending?.draft.originalAmount, 9000);
+    assert.equal(pending?.draft.originalCurrency, "THB");
+    const settled = pliantSpendSettlement({ ...base, billing_cents: -24100 });
+    assert.equal(settled?.state, "posted");
+    assert.equal(settled?.draft.amountEur, 241);
   });
 
   it("prend le montant en euros d’une sortie Revolut, sinon le coût saisi", () => {
@@ -131,6 +152,13 @@ describe("coûts du voyage", () => {
     assert.equal(hidden.lines.length, 0);
     assert.equal(hidden.unsold.length, 1);
     assert.equal(tripTotals(hidden.lines, hidden.unsold).unsoldCost, 1500);
+    const pending = cost({ id: "pending:coral", amountEur: 240.82, state: "pending" });
+    const posted = cost({ id: "booked", amountEur: 100, state: "posted" });
+    const waiting = accountLines(saleLines(ledger, BOOKING), [pending, posted]);
+    assert.equal(waiting.unsold.some((row) => row.id === "pending:coral"), true);
+    const totals = tripTotals(waiting.lines, waiting.unsold);
+    assert.equal(totals.unsoldCost, 100);
+    assert.equal(totals.margin, roundSale(waiting.lines) - 100);
   });
 
   it("état du voyage : à pointer, pointé, comptabilisé", () => {
@@ -200,4 +228,84 @@ describe("coûts du voyage", () => {
     }
     for (const party of ["DUTY FREE PARIS", "AIR FRANCE", "HASSLER ROMA", "FREELANCE DJ"]) assert.equal(isFixedCostParty(party), false, party);
   });
+
+  it("ne propose pas From treso à Anantara, et ne prétend un nom que s’il est vraiment là", () => {
+    const phuket = [
+      {
+        id: "6ca304b2-ed11-4a68-882f-e6833b07359d",
+        reference: "TB-2026-0088",
+        title: "Phuket & Krabi",
+        items: [
+          {
+            id: "anantara",
+            kind: "hotel",
+            title: "Anantara Layan Phuket Resort",
+            supplier: "Little Emperors",
+            amount: 21842.11,
+            details: { hotel_name: "Anantara Layan Phuket Resort" },
+          },
+          {
+            id: "phulay",
+            kind: "hotel",
+            title: "Phulay Bay, a Ritz-Carlton Reserve",
+            supplier: "Little Emperors",
+            amount: 17162.28,
+            details: { hotel_name: "Phulay Bay, a Ritz-Carlton Reserve" },
+          },
+          { id: "flight", kind: "flight", title: "Paris → Phuket", supplier: "Air France", amount: 6669 },
+        ],
+      },
+    ];
+    const supplierSentence = "Le nom du fournisseur correspond à cette prestation.";
+    assert.equal(costSuggestionReasonLabel("supplier"), supplierSentence);
+    for (const example of [
+      { party: "From treso", text: "", amount: 5000 },
+      { party: "From treso", text: "", amount: 15000 },
+      { party: "From treso", text: "From treso", amount: 5000 },
+      { party: "treso", text: "To treso", amount: 10000 },
+      { party: "To treso", text: "", amount: 7000 },
+      { party: "EUR Main", text: "To EUR Main", amount: 2800 },
+      { party: "Qonto", text: "Virement interne", amount: 5000 },
+    ]) {
+      const hits = suggestCostTargets(example, phuket);
+      assert.equal(hits.length, 0, `${example.party} ${example.amount}`);
+      assert.equal(
+        hits.map((hit) => costSuggestionReasonLabel(hit.reason)).includes(supplierSentence),
+        false,
+        example.party
+      );
+    }
+    assert.equal(suggestItem(phuket[0], { party: "From treso", amount: 5000 }).reason, null);
+    assert.equal(isOwnAccountTransfer({ party: "From treso", text: "" }), true);
+    assert.equal(
+      isOwnAccountTransfer({
+        party: "EUR Main",
+        text: "To EUR Main",
+        raw: {
+          type: "transfer",
+          legs: [
+            { account_id: "a9d3877d-5707-e25d-00c0-353b087b6c17", description: "To EUR Main", amount: -2800 },
+            { account_id: "ec33edb7-412b-e2f7-00c0-3576ad72045d", amount: 2800 },
+          ],
+        },
+      }),
+      true
+    );
+    const named = suggestCostTargets({ text: "", party: "ANANTARA LAYAN", amount: 1 }, phuket);
+    assert.equal(named[0]?.itemId, "anantara");
+    assert.equal(named[0]?.reason, "supplier");
+    assert.equal(costSuggestionReasonLabel(named[0].reason), supplierSentence);
+    const france = suggestCostTargets({ text: "", party: "AIRFRANCE", amount: 62.15 }, phuket);
+    assert.equal(france[0]?.itemId, "flight");
+    assert.equal(france[0]?.reason, "supplier");
+    assert.equal(suggestCostTargets({ text: "", party: "HIVERNAGE MARRAKECH", amount: 1 }, [
+      { id: "b3", reference: "TB-2026-0003", title: "Marrakech", items: [{ id: "i4", kind: "hotel", title: "Hivernage Hotel And Spa", amount: 2000 }] },
+    ])[0]?.itemId, "i4");
+    assert.equal(suggestItem(phuket[0], { party: "To Europe Hotel", amount: 5000 }).reason, null);
+    assert.equal(isOwnAccountTransfer({ party: "To Europe Hotel", text: "" }), false);
+  });
 });
+
+function roundSale(lines: { sale: number; cost: number }[]) {
+  return Math.round(lines.reduce((sum, line) => sum + line.sale - line.cost, 0) * 100) / 100;
+}

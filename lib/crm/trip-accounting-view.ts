@@ -14,6 +14,7 @@ import {
   type TripAccountingView,
   type TripCost,
 } from "./trip-costs";
+import { loadDossierPendingCosts } from "./pliant-dossier-run";
 import { loadOutgoingQueue, loadTripCosts } from "./trip-costs-db";
 
 export type PieceRow = {
@@ -73,8 +74,13 @@ export async function buildTripAccountingView(
   inputs: DossierAccountingInputs
 ): Promise<TripAccountingView> {
   const proposed = await loadOutgoingQueue({ bookingId: booking.id }, admin).catch(() => []);
+  const pending = await loadDossierPendingCosts(
+    admin,
+    booking.id,
+    inputs.costs.map((cost) => cost.sourceId)
+  ).catch(() => []);
   const sales = saleLines(inputs.charges, booking.id);
-  const { lines, unsold } = accountLines(sales, inputs.costs);
+  const { lines, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
   const mbLines = mb3mDossierLines(inputs.charges, items, marginByTransaction(lines));
   const valid = inputs.pieces.filter((row) => row.printed_at && !row.credited_at);
   const stale = valid.filter((row) =>

@@ -858,6 +858,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     fournisseur: cost.supplier,
     montant: eur(cost.amountEur),
     date: cost.occurredOn ? formatDateFr(cost.occurredOn) : null,
+    etat: cost.state === "pending" ? "en attente" : "confirmé",
   });
   return {
     lien: `/admin/reservations/${booking.id}?tab=reglement`,
