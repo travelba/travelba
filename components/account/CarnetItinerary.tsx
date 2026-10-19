@@ -33,6 +33,12 @@ import {
   undatedTimeline,
 } from "@/lib/crm/carnet";
 import { itemTicketCount } from "@/lib/crm/item-match";
+import {
+  accueilVipDayTitle,
+  accueilVipLegOnDay,
+  accueilVipPartyLine,
+} from "@/lib/crm/accueil-vip";
+import { ClientInfo } from "@/components/crm/ClientInfo";
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-open";
@@ -109,8 +115,16 @@ function CardBody({
   const flightSubtitle =
     item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
   const tickets = itemTicketCount(item);
-  const clock = itemClock(item.start_at);
-  const endClock = itemClock(item.end_at);
+  const vipLeg = item.kind === "accueil_vip" ? accueilVipLegOnDay(item, day) : null;
+  const vipTitle = item.kind === "accueil_vip" ? accueilVipDayTitle(item, day || "") : "";
+  const vipClock = vipLeg ? itemClock(vipLeg.at) : "";
+  const vipPlace = vipLeg ? [vipLeg.airport_city, vipLeg.airport_iata].filter(Boolean).join(" ") : "";
+  const clientInfo = item.kind === "accueil_vip" ? detailStr(item, "client_info") : "";
+  const hotline = item.kind === "accueil_vip" ? detailStr(item, "phone") : "";
+  const providerMail = item.kind === "accueil_vip" ? detailStr(item, "email") : "";
+  const party = item.kind === "accueil_vip" ? accueilVipPartyLine(item.details) : "";
+  const clock = item.kind === "accueil_vip" ? vipClock : itemClock(item.start_at);
+  const endClock = item.kind === "accueil_vip" ? "" : itemClock(item.end_at);
   const occupancy = detailStr(item, "occupancy");
   const special = detailStr(item, "special_requests");
   const pickupNote = detailStr(item, "pickup_note");
@@ -146,7 +160,9 @@ function CardBody({
               ? hotelName
               : item.kind === "flight" || item.kind === "rail"
                 ? flightTitle
-                : visibleServiceCopy(item.title)}
+                : item.kind === "accueil_vip"
+                  ? vipTitle
+                  : visibleServiceCopy(item.title)}
           </p>
           {item.kind === "flight" || item.kind === "rail" ? (
             <>
@@ -164,6 +180,10 @@ function CardBody({
                 <p className="truncate text-xs text-muted">{hotelStayLabel(item)}</p>
               )}
             </>
+          ) : item.kind === "accueil_vip" ? (
+            <p className="break-words text-xs text-muted">
+              {[item.supplier, vipLeg?.flight_number, vipPlace, item.confirmation_ref].filter(Boolean).join(" · ")}
+            </p>
           ) : (
             <p className="truncate text-xs text-muted">
               {[item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
@@ -282,6 +302,22 @@ function CardBody({
         </div>
       </div>
     </details>
+    {item.kind === "accueil_vip" && (clientInfo || hotline || providerMail || party) ? (
+      <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3">
+        {party ? <p className="text-xs text-muted">{party}</p> : null}
+        {hotline ? (
+          <a href={`tel:${hotline.replace(/\s/g, "")}`} className="block text-sm font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline">
+            Hotline {hotline}
+          </a>
+        ) : null}
+        {providerMail ? (
+          <a href={`mailto:${providerMail}`} className="block text-sm text-[var(--admin-navy)] underline-offset-2 hover:underline">
+            {providerMail}
+          </a>
+        ) : null}
+        <ClientInfo text={clientInfo} />
+      </div>
+    ) : null}
     {item.kind === "hotel" ? (
       <div className="px-3.5 pb-3">
         <HotelContactButton item={withoutHotelRoster(item)} roster={false} />
@@ -441,7 +477,11 @@ export function CarnetItinerary({
                     docs={docs}
                     compactHotel={row.item.kind === "hotel"}
                     calendarHref={itemHref(row.item.id)}
-                    calendarPhone={phones?.items[row.item.id]}
+                    calendarPhone={
+                      row.item.kind === "accueil_vip"
+                        ? phones?.items[`${row.item.id}:${day}`] || phones?.items[row.item.id]
+                        : phones?.items[row.item.id]
+                    }
                     day={day}
                     partage={partage}
                     pricesVisible={pricesVisible}
