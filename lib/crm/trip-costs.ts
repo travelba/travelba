@@ -27,6 +27,8 @@ export type TripCost = {
   instrument: TripCostInstrument | null;
   /** Carte Pliant : 4 derniers chiffres. */
   instrumentDetail: string | null;
+  /** Autorisation pas encore réglée. Absent = confirmé, pour les coûts déjà en base. */
+  state?: "pending" | "posted";
 };
 
 export type TripCostDraft = Omit<TripCost, "id" | "bookingId" | "bookingItemId">;
@@ -44,6 +46,7 @@ export type TripCostRow = {
   occurred_on: string | null;
   instrument?: string | null;
   instrument_detail?: string | null;
+  state?: string | null;
 };
 
 const INSTRUMENTS = new Set<TripCostInstrument>(["pliant_card", "revolut_transfer", "revolut_card", "revolut_other"]);
@@ -64,6 +67,7 @@ export function mapTripCost(row: TripCostRow): TripCost {
     occurredOn: row.occurred_on ? String(row.occurred_on).slice(0, 10) : null,
     instrument: stored && INSTRUMENTS.has(stored) ? stored : source === "pliant" ? "pliant_card" : null,
     instrumentDetail: (row.instrument_detail || "").trim() || null,
+    state: row.state === "pending" ? "pending" : "posted",
   };
 }
 
@@ -97,6 +101,7 @@ export function settlementLabel(cost: Pick<TripCost, "source" | "instrument" | "
 }
 
 const PLIANT_POSTABLE = new Set(["BOOKED", "CONFIRMED"]);
+const PLIANT_PENDING = "PENDING";
 const PLIANT_OUT = new Set(["PURCHASE", "CASH_WITHDRAWAL"]);
 const PLIANT_IN = new Set(["REFUND", "CHARGEBACK"]);
 
@@ -136,6 +141,27 @@ export function tripCostFromPliant(row: {
     instrument: "pliant_card",
     instrumentDetail: (row.card_last4 || "").trim() || null,
   };
+}
+
+/**
+ * Même coût qu’une dépense comptabilisée, dès l’autorisation.
+ * `pending` tant que Pliant n’a pas réglé : le montant en euros peut encore bouger.
+ */
+export function pliantSpendSettlement(row: Parameters<typeof tripCostFromPliant>[0]): {
+  draft: TripCostDraft;
+  state: "pending" | "posted";
+} | null {
+  const status = (row.status || "").toUpperCase();
+  if (status === PLIANT_PENDING) {
+    const draft = tripCostFromPliant({ ...row, status: "BOOKED" });
+    return draft ? { draft, state: "pending" } : null;
+  }
+  const draft = tripCostFromPliant(row);
+  return draft ? { draft, state: "posted" } : null;
+}
+
+export function tripCostIsPending(cost: Pick<TripCost, "state">) {
+  return cost.state === "pending";
 }
 
 /**
@@ -261,7 +287,7 @@ export function accountLines(lines: SaleLine[], costs: TripCost[]) {
   const accounted: AccountedLine[] = lines.map((line) => {
     const own = line.itemId ? byItem.get(line.itemId) || [] : [];
     const attached = line === stay ? [...own, ...loose] : own;
-    const cost = round(attached.reduce((sum, item) => sum + item.amountEur, 0));
+    const cost = round(attached.filter((item) => !tripCostIsPending(item)).reduce((sum, item) => sum + item.amountEur, 0));
     return { ...line, costs: attached, cost, margin: round(line.sale - cost) };
   });
   const unsold: TripCost[] = [];
@@ -281,7 +307,7 @@ export type TripAccountingTotals = {
 
 export function tripTotals(lines: AccountedLine[], unsold: TripCost[]): TripAccountingTotals {
   const sale = round(lines.reduce((sum, line) => sum + line.sale, 0));
-  const unsoldCost = round(unsold.reduce((sum, cost) => sum + cost.amountEur, 0));
+  const unsoldCost = round(unsold.filter((cost) => !tripCostIsPending(cost)).reduce((sum, cost) => sum + cost.amountEur, 0));
   const cost = round(lines.reduce((sum, line) => sum + line.cost, 0) + unsoldCost);
   return { sale, cost, margin: round(sale - cost), unsoldCost };
 }
@@ -370,12 +396,36 @@ function withinTrip(date: string | null | undefined, booking: CostTargetBooking)
   return Number.isFinite(day) && day >= start && day <= end;
 }
 
-function itemNames(item: CostTargetItem) {
+function itemFields(item: CostTargetItem) {
   const details = item.details || {};
-  const names = [item.title, item.supplier, details.hotel_name, details.airline, details.operator];
-  return names
-    .map((value) => (typeof value === "string" ? normalizeMatchText(value) : ""))
-    .filter((value) => value.length >= 3);
+  return [item.title, item.supplier, details.hotel_name, details.airline, details.operator].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
+}
+
+/** Mots du libellé, et chaque champ collé (« Air France » → airfrance) pour un commerçant sans espace. */
+function itemNames(item: CostTargetItem) {
+  const words = new Set<string>();
+  const glued: string[] = [];
+  for (const field of itemFields(item)) {
+    const compact = normalizeMatchText(field);
+    if (compact.length >= 3) glued.push(compact);
+    for (const token of matchTokens(field)) {
+      if (token.length >= 3) words.add(token);
+    }
+  }
+  return { words: [...words], glued };
+}
+
+/**
+ * Le mot du commerçant est celui du fournisseur, ou l’un commence l’autre (au moins 5 lettres).
+ * Pas de sous-chaîne au milieu : « treso » n’est pas dans « Phuket Resort ».
+ */
+function namesTouch(token: string, name: string) {
+  if (token === name) return true;
+  const shorter = token.length <= name.length ? token : name;
+  const longer = token.length <= name.length ? name : token;
+  return shorter.length >= 5 && longer.startsWith(shorter);
 }
 
 /** Mots trop courants pour désigner un fournisseur : « spa » ne rapproche pas El Silencio de l’Hivernage. */
@@ -385,6 +435,8 @@ const GENERIC_SUPPLIER_WORDS = new Set([
   "the", "and", "les", "des", "del", "de", "la", "le", "el", "los", "las", "by", "air", "airline", "airlines",
   "airways", "travel", "trvl", "tours", "voyages", "voyage", "sarl", "sas", "ltd", "llc", "inc", "gmbh", "co",
   "international", "paris", "www", "com", "fr",
+  "airport", "airports", "aeroport", "aeroports", "taxi", "taxis", "transfer", "transfers",
+  "transfert", "transferts", "vip", "shuttle", "navette",
 ]);
 
 function supplierTokens(value: string | null | undefined) {
@@ -395,7 +447,10 @@ function nameHit(party: string | null | undefined, item: CostTargetItem) {
   const tokens = supplierTokens(party);
   if (!tokens.length) return false;
   const names = itemNames(item);
-  return names.some((name) => tokens.some((token) => name.includes(token) || (name.length >= 4 && token.includes(name))));
+  if (tokens.some((token) => names.words.some((word) => namesTouch(token, word)))) return true;
+  if (tokens.some((token) => names.glued.some((name) => namesTouch(token, name)))) return true;
+  const joined = tokens.join("");
+  return joined.length >= 5 && names.glued.some((name) => namesTouch(joined, name));
 }
 
 function amountHit(amount: number, item: CostTargetItem) {
@@ -421,10 +476,46 @@ export function suggestItem(
  * billets d’une période ; le virement de trésorerie vers Pliant (bénéficiaire l’agence elle-même,
  * désignation « treso Rev - pliant ») alimente les cartes. Aucune proposition, rien dans les dossiers.
  */
-const SETTLEMENT_PARTY = /\bIATA\b|\bBSP\b|\bPLIANT\b|TRAVEL\s+BUSINESS\s+AGENCY/i;
+const SETTLEMENT_PARTY = /\bIATA\b|\bBSP\b|\bPLIANT\b|TRAVEL\s+BUSINESS\s+AGENCY|\bTR[ÉE]SO(?:RERIE)?\b/i;
 
 export function isSettlementParty(text: string | null | undefined) {
   return SETTLEMENT_PARTY.test(text || "");
+}
+
+/**
+ * Libellé d’un mouvement entre comptes de l’agence, Revolut ou Qonto :
+ * trésorerie, poche « EUR Main », virement interne. « To Europe » ne compte pas.
+ */
+const OWN_ACCOUNT_LABEL =
+  /\bEUR\s+MAIN\b|^(?:FROM|TO)\s+EUR\b|\bVIREMENT\s+INTERNE\b|\bENTRE\s+COMPTES\b|\bOWN\s+ACCOUNT\b/i;
+
+/**
+ * Virement entre les comptes de l’agence : trésorerie (« treso », « From treso », « To treso »)
+ * ou mouvement Revolut à deux jambes sans contrepartie externe (« To EUR Main », Qonto interne).
+ * Jamais un règlement fournisseur.
+ */
+export function isOwnAccountTransfer(input: {
+  party?: string | null;
+  text?: string | null;
+  raw?: unknown;
+}) {
+  if (isSettlementParty(input.party) || isSettlementParty(input.text)) return true;
+  if (OWN_ACCOUNT_LABEL.test(input.party || "") || OWN_ACCOUNT_LABEL.test(input.text || "")) return true;
+  const raw = input.raw && typeof input.raw === "object" ? (input.raw as Record<string, unknown>) : null;
+  if (!raw) return false;
+  const type = typeof raw.type === "string" ? raw.type.toLowerCase() : "";
+  if (type !== "transfer") return false;
+  const legs = Array.isArray(raw.legs) ? raw.legs : [];
+  if (legs.length < 2) return false;
+  return legs.every((leg) => {
+    if (!leg || typeof leg !== "object") return false;
+    const row = leg as Record<string, unknown>;
+    if (typeof row.account_id !== "string" || !row.account_id) return false;
+    const counterparty = row.counterparty;
+    if (!counterparty || typeof counterparty !== "object") return true;
+    const accountType = String((counterparty as { account_type?: unknown }).account_type || "").toLowerCase();
+    return accountType !== "external";
+  });
 }
 
 /**
@@ -459,10 +550,12 @@ export function suggestCostTargets(
     customerId?: string | null;
     /** Jour de la sortie : départage les voyages du client. */
     date?: string | null;
+    /** Payload Revolut : deux jambes internes = trésorerie, pas un fournisseur. */
+    raw?: unknown;
   },
   bookings: CostTargetBooking[]
 ): CostSuggestion[] {
-  if (isNonTripParty(input.party) || isSettlementParty(input.text)) return [];
+  if (isNonTripParty(input.party) || isSettlementParty(input.text) || isOwnAccountTransfer(input)) return [];
   const out: CostSuggestion[] = [];
   const seen = new Set<string>();
   const push = (bookingId: string, itemId: string | null, score: number, reason: CostSuggestion["reason"]) => {

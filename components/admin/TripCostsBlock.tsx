@@ -57,6 +57,7 @@ function spendAmount(row: PliantCardRecap["spends"][number]) {
 /** « Carte Pliant ···· 5454 · HASSLER ROMA · 10/10/2026 » : le mode de règlement d’abord, c’est ce que la compta pointe. */
 function costCaption(cost: TripCost) {
   return [
+    cost.state === "pending" ? "En attente" : "",
     settlementLabel(cost),
     cost.supplier || "—",
     cost.occurredOn ? formatDateFr(cost.occurredOn) : "",
@@ -66,6 +67,11 @@ function costCaption(cost: TripCost) {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** Coût synthétique, lu avant l’écriture en base : pas de Retirer ni de Déplacer. */
+function costPersisted(cost: TripCost) {
+  return !cost.id.startsWith("pending:");
 }
 
 /**
@@ -283,14 +289,16 @@ export function TripCostsBlock({
                       <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
                         <span className="min-w-0 break-words">{costCaption(cost)}</span>
                         <span className="tabular-nums">{eur(cost.amountEur)}</span>
-                        <button
-                          type="button"
-                          disabled={locked}
-                          onClick={() => void detach(cost.id)}
-                          className="admin-tap text-[#9e7e51] underline disabled:opacity-50"
-                        >
-                          Retirer
-                        </button>
+                        {costPersisted(cost) ? (
+                          <button
+                            type="button"
+                            disabled={locked}
+                            onClick={() => void detach(cost.id)}
+                            className="admin-tap text-[#9e7e51] underline disabled:opacity-50"
+                          >
+                            Retirer
+                          </button>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -345,14 +353,16 @@ export function TripCostsBlock({
                             <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
                               <span>{costCaption(cost)}</span>
                               <span className="tabular-nums">{eur(cost.amountEur)}</span>
-                              <button
-                                type="button"
-                                disabled={locked}
-                                onClick={() => void detach(cost.id)}
-                                className="text-[#9e7e51] underline disabled:opacity-50"
-                              >
-                                Retirer
-                              </button>
+                              {costPersisted(cost) ? (
+                                <button
+                                  type="button"
+                                  disabled={locked}
+                                  onClick={() => void detach(cost.id)}
+                                  className="text-[#9e7e51] underline disabled:opacity-50"
+                                >
+                                  Retirer
+                                </button>
+                              ) : null}
                             </li>
                           ))}
                         </ul>
@@ -388,10 +398,15 @@ export function TripCostsBlock({
 
       {view.unsold.length ? (
         <div className="rounded-2xl bg-[var(--admin-sky)]/60 px-4 py-3 text-sm">
-          <p className="font-semibold text-[var(--admin-navy)]">Coûts sans vente ({eur(view.totals.unsoldCost)})</p>
+          <p className="font-semibold text-[var(--admin-navy)]">
+            {view.unsold.every((cost) => cost.state === "pending")
+              ? "Dépenses en attente"
+              : `Coûts sans vente (${eur(view.totals.unsoldCost)})`}
+          </p>
           <p className="text-xs text-muted">
-            Ce coût ne tient à aucune ligne vendue : le séjour n’est pas visible, la ligne n’est pas au grand livre, ou le coût
-            est posé sur le montant du séjour alors que les cartes sont vendues une à une. Déplacez-le sur la bonne ligne.
+            {view.unsold.some((cost) => cost.state === "pending")
+              ? "Une autorisation de carte n’est pas encore réglée. Le montant en euros se confirme au règlement de Pliant."
+              : "Ce coût ne tient à aucune ligne vendue : le séjour n’est pas visible, la ligne n’est pas au grand livre, ou le coût est posé sur le montant du séjour alors que les cartes sont vendues une à une. Déplacez-le sur la bonne ligne."}
           </p>
           <ul className="mt-2 space-y-2">
             {view.unsold.map((cost) => (
@@ -399,7 +414,7 @@ export function TripCostsBlock({
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                   <span>{costCaption(cost)}</span>
                   <span className="tabular-nums">{eur(cost.amountEur)}</span>
-                  {retargets.length ? (
+                  {costPersisted(cost) && retargets.length ? (
                     <button
                       type="button"
                       disabled={locked}
@@ -410,14 +425,16 @@ export function TripCostsBlock({
                       Déplacer
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    disabled={locked}
-                    onClick={() => void detach(cost.id)}
-                    className="text-[#9e7e51] underline disabled:opacity-50"
-                  >
-                    Retirer
-                  </button>
+                  {costPersisted(cost) ? (
+                    <button
+                      type="button"
+                      disabled={locked}
+                      onClick={() => void detach(cost.id)}
+                      className="text-[#9e7e51] underline disabled:opacity-50"
+                    >
+                      Retirer
+                    </button>
+                  ) : null}
                 </div>
                 {moving === cost.id ? (
                   <div className="flex flex-wrap gap-2" role="group" aria-label="Ligne vendue">

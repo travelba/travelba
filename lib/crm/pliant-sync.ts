@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/admin";
+import { linkDossierPliantSpends } from "./pliant-dossier-run";
 import { fetchPliantTransactions, pliantConfigured } from "./pliant";
 import { mapPliantTransaction, type PliantTransactionRow } from "./pliant-tx";
 
@@ -20,8 +21,14 @@ export async function syncPliantAccount() {
     });
     if (error) throw new Error("Les transactions Pliant n’ont pas pu être enregistrées.");
   }
-  // Aucune écriture au grand livre : chaque dépense attend son rattachement à un voyage (clic agent).
-  return { fetched: fetched.length, stored: rows.length, auto_matched: 0 };
+  // Une carte émise depuis un dossier rattache sa dépense dès l’autorisation. Le client n’est pas débité.
+  let linked = 0;
+  try {
+    linked = await linkDossierPliantSpends(admin);
+  } catch (err) {
+    console.error("[pliant] lien dossier", err instanceof Error ? err.message : "échec");
+  }
+  return { fetched: fetched.length, stored: rows.length, auto_matched: linked };
 }
 
 /** Un passage API sans libellé ne doit pas effacer une carte déjà connue. */

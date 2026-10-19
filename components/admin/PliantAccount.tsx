@@ -8,9 +8,9 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { StatusChip } from "@/components/crm/ui";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { PliantAccountBalance } from "@/components/admin/PliantCardDesk";
+import { PliantExpenseIdentity } from "@/components/admin/PliantExpenseIdentity";
 import {
   pliantCardDisplay,
-  pliantCategoryLabel,
   pliantSignedCents,
   pliantStatusLabel,
   pliantStatusTone,
@@ -35,6 +35,9 @@ export type PliantLine = {
   category: string | null;
   comment: string | null;
   reference: string | null;
+  title: string | null;
+  client: string | null;
+  company: string | null;
   bookingId: string | null;
   matchStatus: "unmatched" | "matched" | "ignored";
   /** Sortie à rattacher (dépense comptabilisée, pas encore sur un voyage). */
@@ -50,25 +53,24 @@ function lineView(row: PliantLine) {
     amount: signed == null ? "—" : euros(signed, row.currency),
     origin: originAmount(row),
     card: pliantCardDisplay(row.cardLabel, row.last4),
-    category: pliantCategoryLabel(row.category),
   };
 }
 
-function LineMeta({ row, view }: { row: PliantLine; view: ReturnType<typeof lineView> }) {
+function LineMeta({ row }: { row: PliantLine }) {
+  const dossier = row.bookingId
+    ? { reference: row.reference, title: row.title, client: row.client, company: row.company }
+    : null;
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2">
-      <span className="text-xs text-muted">
-        {row.holderName ? `${row.holderName} · ` : ""}
-        {pliantTypeLabel(row.type)}
-        {view.category ? ` · ${view.category}` : ""}
-        {row.comment ? ` · ${row.comment}` : ""}
-      </span>
+      <PliantExpenseIdentity
+        dossier={dossier}
+        holderName={row.holderName}
+        type={row.type}
+        category={row.category}
+        comment={row.comment}
+        href={row.bookingId ? `/admin/reservations/${row.bookingId}?tab=reglement` : null}
+      />
       <StatusChip tone={pliantStatusTone(row.status)}>{pliantStatusLabel(row.status)}</StatusChip>
-      {row.reference && row.bookingId ? (
-        <Link href={`/admin/reservations/${row.bookingId}`} className="text-xs font-semibold text-[#9e7e51] underline">
-          {row.reference}
-        </Link>
-      ) : null}
     </div>
   );
 }
@@ -231,7 +233,7 @@ export function PliantAccount({
                   <dt className="text-muted">Carte</dt>
                   <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{view.card.number}</dd>
                 </dl>
-                <LineMeta row={row} view={view} />
+                <LineMeta row={row} />
                 {tripCell(row)}
               </li>
             );
@@ -257,7 +259,7 @@ export function PliantAccount({
                     <td className="px-5 py-3 text-muted">{formatDateFr(row.bookedAt)}</td>
                     <td className="px-5 py-3">
                       <p className="font-medium text-[var(--admin-navy)]">{view.merchant}</p>
-                      <LineMeta row={row} view={view} />
+                      <LineMeta row={row} />
                     </td>
                     <td className="px-5 py-3 font-semibold text-[var(--admin-navy)]">{view.card.label}</td>
                     <td className="px-5 py-3 font-semibold tabular-nums text-[var(--admin-navy)]">{view.card.number}</td>

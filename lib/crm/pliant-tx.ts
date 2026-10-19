@@ -23,8 +23,95 @@ export type PliantStayRef = {
   cardId: string;
   bookingId: string;
   reference: string | null;
+  title?: string | null;
+  client?: string | null;
+  company?: string | null;
   last4: string | null;
 };
+
+export type PliantDossierFace = {
+  reference: string | null;
+  title: string | null;
+  client: string | null;
+  company: string | null;
+};
+
+/** Dossier et client d’abord, le porteur Pliant (membre de l’agence) en dernier. */
+export function pliantExpenseCaption(input: {
+  holderName?: string | null;
+  type?: string | null;
+  category?: string | null;
+  comment?: string | null;
+  dossier?: PliantDossierFace | null;
+}) {
+  const stay = [input.dossier?.reference, input.dossier?.title]
+    .map((value) => (value || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+  const client = (input.dossier?.client || "").trim();
+  const company = (input.dossier?.company || "").trim();
+  const same = client && company && client.localeCompare(company, "fr", { sensitivity: "accent" }) === 0;
+  const who = [client, same ? "" : company].filter(Boolean).join(" · ");
+  const detailBits = [pliantTypeLabel(input.type || null), pliantCategoryLabel(input.category || null), (input.comment || "").trim()].filter(
+    (value): value is string => Boolean(value)
+  );
+  const holder = (input.holderName || "").trim();
+  if (!stay && !who) {
+    return { stay: "", who: "", detail: [holder, ...detailBits].filter(Boolean).join(" · ") };
+  }
+  return { stay, who, detail: [...detailBits, holder].filter(Boolean).join(" · ") };
+}
+
+export type PliantDossierLink = { cardId: string; bookingId: string; last4?: string | null };
+export type PliantDossierBooking = {
+  id: string;
+  reference: string | null;
+  title: string | null;
+  destination: string | null;
+  customerId: string | null;
+  companyId: string | null;
+};
+export type PliantDossierPerson = { id: string; name: string; companyName: string | null };
+export type PliantDossierCompany = { id: string; name: string | null };
+
+/** Une carte, un dossier : la première source gagne (carte du dossier, puis registre, puis hôtel). */
+export function pliantDossierLabels(input: {
+  links: PliantDossierLink[];
+  bookings: PliantDossierBooking[];
+  people: PliantDossierPerson[];
+  companies: PliantDossierCompany[];
+}): PliantStayRef[] {
+  const bookings = new Map(input.bookings.map((row) => [row.id, row]));
+  const people = new Map(input.people.map((row) => [row.id, row]));
+  const companies = new Map(input.companies.map((row) => [row.id, (row.name || "").trim()]));
+  const byCard = new Map<string, PliantStayRef>();
+  for (const link of input.links) {
+    if (!link.cardId || !link.bookingId) continue;
+    const booking = bookings.get(link.bookingId);
+    if (!booking) continue;
+    const person = booking.customerId ? people.get(booking.customerId) : undefined;
+    const billed = booking.companyId ? companies.get(booking.companyId) || "" : "";
+    const company = billed || (person?.companyName || "").trim();
+    const client = (person?.name || "").trim();
+    const next: PliantStayRef = {
+      cardId: link.cardId,
+      bookingId: booking.id,
+      reference: (booking.reference || "").trim() || null,
+      title: (booking.title || booking.destination || "").trim() || null,
+      client: client || null,
+      company: company && client.localeCompare(company, "fr", { sensitivity: "accent" }) !== 0 ? company : company && !client ? company : null,
+      last4: link.last4 && /^\d{4}$/.test(link.last4) ? link.last4 : null,
+    };
+    const prev = byCard.get(link.cardId);
+    if (!prev) {
+      byCard.set(link.cardId, next);
+      continue;
+    }
+    if (prev.bookingId !== next.bookingId) continue;
+    if (!prev.last4 && next.last4) prev.last4 = next.last4;
+  }
+  return [...byCard.values()];
+}
 
 const INBOUND = new Set(["REFUND", "CHARGEBACK", "RECHARGE"]);
 

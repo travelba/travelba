@@ -8,6 +8,7 @@ import { revolutDebitLine } from "./revolut-inbox";
 import {
   accountLines,
   isFixedCostParty,
+  isOwnAccountTransfer,
   mapTripCost,
   saleLines,
   suggestCostTargets,
@@ -29,6 +30,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 
 const COST_SELECT =
   "id, booking_id, booking_item_id, source, source_id, amount_eur, original_amount, original_currency, supplier, occurred_on, instrument, instrument_detail";
+const COST_SELECT_STATE = `${COST_SELECT}, state`;
 
 const PLIANT_SELECT =
   "id, pliant_transaction_id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, card_last4, match_status, customer_id, matched_customer_id";
@@ -76,13 +78,21 @@ export class TripCostError extends Error {
 }
 
 export async function loadTripCosts(bookingId: string, admin: SupabaseClient = createServiceClient()) {
-  const { data, error } = await admin
+  const first = await admin
     .from("crm_trip_costs")
-    .select(COST_SELECT)
+    .select(COST_SELECT_STATE)
     .eq("booking_id", bookingId)
     .order("occurred_on", { ascending: true, nullsFirst: false });
-  if (error) throw new TripCostError(error.message, 500);
-  return ((data || []) as TripCostRow[]).map(mapTripCost);
+  const fallback =
+    first.error && /state/i.test(first.error.message || "")
+      ? await admin
+          .from("crm_trip_costs")
+          .select(COST_SELECT)
+          .eq("booking_id", bookingId)
+          .order("occurred_on", { ascending: true, nullsFirst: false })
+      : first;
+  if (fallback.error) throw new TripCostError(fallback.error.message, 500);
+  return ((fallback.data || []) as TripCostRow[]).map(mapTripCost);
 }
 
 async function pliantRow(admin: SupabaseClient, id: string) {
@@ -297,6 +307,10 @@ export async function detachTripCost(costId: string, admin: SupabaseClient = cre
   const { error } = await admin.from("crm_trip_costs").delete().eq("id", costId);
   if (error) throw new TripCostError(error.message, 500);
   await markSource(admin, cost.source, cost.sourceId, "unmatched");
+  if (cost.source === "pliant") {
+    const { error: released } = await admin.from("crm_pliant_transactions").update({ link_released: true }).eq("id", cost.sourceId);
+    if (released && !/link_released/i.test(released.message || "")) throw new TripCostError(released.message, 500);
+  }
   return cost;
 }
 
@@ -552,10 +566,25 @@ export async function loadOutgoingQueue(
       const line = revolutDebitLine(row);
       if (isFixedCostParty(line.party) || isFixedCostParty(row.counterparty_name)) continue;
       const draft = tripCostFromRevolut(row, null);
-      const suggestions = suggestCostTargets(
-        { text: `${line.reference} ${row.reference || ""}`, party: line.party, amount: line.amount },
-        targets
-      );
+      const ownAccounts = isOwnAccountTransfer({
+        party: line.party,
+        text: `${line.reference} ${row.reference || ""} ${row.counterparty_name || ""}`,
+        raw: row.raw,
+      });
+      // Trésorerie (From treso, To treso, EUR Main, virement interne) : jamais proposée à un voyage.
+      // Elle reste dans la file globale, sans motif, pour Hors voyage.
+      if (ownAccounts && filter.bookingId) continue;
+      const suggestions = ownAccounts
+        ? []
+        : suggestCostTargets(
+            {
+              text: `${line.reference} ${row.reference || ""}`,
+              party: line.party,
+              amount: line.amount,
+              raw: row.raw,
+            },
+            targets
+          );
       lines.push({
         source: "revolut",
         id: row.id,

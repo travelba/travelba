@@ -125,7 +125,7 @@ export async function changePliantCardLimit(admin: Admin, cardId: string, limitC
 export async function showPliantLast4(
   admin: Admin,
   input: {
-    bookingCards?: { pliant_card_id: string; last4?: string | null }[];
+    bookingCards?: { pliant_card_id: string; last4?: string | null; booking_id?: string | null }[];
     arrivals?: { pliant_card_id: string | null; card_last4: string | null }[];
     registry?: { pliant_card_id: string; last4: string | null } | null;
   }
@@ -150,7 +150,12 @@ export async function showPliantLast4(
     }
     if (input.registry?.pliant_card_id === cardId) input.registry.last4 = last4;
     try {
-      await rememberPliantCard(admin, { pliant_card_id: cardId, last4 });
+      const bookingId = (input.bookingCards || []).find((card) => card.pliant_card_id === cardId)?.booking_id || null;
+      await rememberPliantCard(admin, {
+        pliant_card_id: cardId,
+        last4,
+        ...(bookingId ? { booking_id: bookingId } : {}),
+      });
       await admin.from("crm_booking_cards").update({ last4 }).eq("pliant_card_id", cardId).is("last4", null);
       await admin.from("crm_hotel_arrivals").update({ card_last4: last4 }).eq("pliant_card_id", cardId).is("card_last4", null);
     } catch {
