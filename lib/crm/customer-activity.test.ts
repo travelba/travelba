@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  activitySharesViewWindow,
   cleanClientPath,
+  clientDownloadSummary,
   clientPathSummary,
+  downloadActivityPath,
   companionActivityDetail,
   companionActivitySummary,
   documentActivitySummary,
@@ -141,4 +144,50 @@ test("la même page revue tout de suite ne se réécrit pas", () => {
   assert.equal(shouldRecordView(null, now), true);
   assert.equal(shouldRecordView("2026-10-06T09:19:00.000Z", now), false);
   assert.equal(shouldRecordView("2026-10-06T09:17:00.000Z", now), true);
+  assert.equal(activitySharesViewWindow("view"), true);
+  assert.equal(activitySharesViewWindow("download"), true);
+  assert.equal(activitySharesViewWindow("document"), false);
+});
+
+test("un téléchargement ne recopie ni le nom du fichier ni un numéro", () => {
+  const path = "customers/client-1/documents/1710000000000-passeport-12AB34567.pdf";
+  assert.equal(
+    clientDownloadSummary({ scope: "own", path, customerId: "client-1" }),
+    "A téléchargé une pièce"
+  );
+  assert.equal(
+    clientDownloadSummary({
+      scope: "own",
+      path: "customers/client-1/releves/releve-de-compte.pdf",
+      customerId: "client-1",
+    }),
+    "A téléchargé un relevé"
+  );
+  assert.equal(
+    clientDownloadSummary({
+      scope: "own",
+      path: "customers/client-1/avatar.webp",
+      customerId: "client-1",
+    }),
+    null
+  );
+  assert.equal(
+    clientDownloadSummary({
+      scope: "booking",
+      path: "bookings/booking-1/secret.pdf",
+      customerId: "client-1",
+      reference: "TB-2026-0055",
+      title: "Tel-Aviv",
+      destination: "Tel-Aviv",
+    }),
+    "A téléchargé un document du séjour Tel-Aviv (TB-2026-0055)"
+  );
+  const key = downloadActivityPath(path);
+  assert.match(key || "", /^download\/[0-9a-f]+$/);
+  assert.equal(key?.includes("12AB34567"), false);
+  assert.equal(key?.includes("passeport"), false);
+  assert.equal(
+    downloadActivityPath("11111111-1111-4111-8111-111111111111"),
+    "download/11111111-1111-4111-8111-111111111111"
+  );
 });
