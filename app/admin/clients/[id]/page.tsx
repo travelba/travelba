@@ -47,7 +47,7 @@ import {
 } from "@/lib/crm/types";
 import { documentExpiryStatus } from "@/lib/crm/identity";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
-import { stayHeadline } from "@/lib/crm/carnet";
+import { listStayTitle } from "@/lib/crm/carnet";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { StatusChip } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
@@ -361,7 +361,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-20 shrink-0 rounded-xl lg:w-24" />
                     <span className="min-w-0">
                       <span className="block break-words font-medium lg:truncate">
-                        {stayHeadline(b.title, b.destination, places.route[b.id], "Séjour", places.layovers[b.id])}
+                        {listStayTitle(b.title, b.destination, places.arrival[b.id], places.route[b.id], places.layovers[b.id], "Séjour", b.customer_id === c.id ? c.city : null)}
                       </span>
                       <span className="block break-words text-xs text-muted lg:truncate">
                         {b.reference} · {formatDateFr(b.start_date)}
@@ -397,7 +397,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     href={`/admin/reservations/${b.id}`}
                     className="min-w-0 break-words text-[var(--admin-navy)] sm:truncate"
                   >
-                    {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id], "Séjour", places.layovers[b.id])}
+                    {b.reference} · {listStayTitle(b.title, b.destination, places.arrival[b.id], places.route[b.id], places.layovers[b.id], "Séjour", b.customer_id === c.id ? c.city : null)}
                   </Link>
                   <RestoreBookingButton iconOnly bookingId={b.id} />
                 </li>

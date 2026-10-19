@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { EmptyState } from "@/components/crm/ui";
-import { stayHeadline } from "@/lib/crm/carnet";
+import { listStayTitle } from "@/lib/crm/carnet";
 import { formatMoney } from "@/lib/crm/money";
 import {
   reservationDayMonth,
@@ -170,7 +170,7 @@ function StayRow({
           {booking.reference} · {when}
         </p>
         <p className="truncate font-semibold text-[var(--admin-navy)]">
-          {stayHeadline(booking.title, booking.destination, places.route[booking.id], "Séjour", places.layovers?.[booking.id])}
+          {listStayTitle(booking.title, booking.destination, places.arrival[booking.id], places.route[booking.id], places.layovers?.[booking.id])}
         </p>
         <p className="truncate text-xs text-muted">{names.get(booking.customer_id) || "Client"}</p>
         {payerLabels[booking.id] ? (

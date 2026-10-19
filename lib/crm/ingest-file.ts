@@ -79,8 +79,8 @@ Voyageurs :
 - Si des noms sont imprimés, ne pas ajouter de voyageurs « Adulte N ».
 - Ne pas créer d’enfant sans nom.
 
-title : villes du voyage séparées par « · », domicile compris. destination : villes d’arrivée, pas le domicile.
-Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) n’est ni dans le titre ni dans la destination. La destination d’un aller simple est la dernière ville. Celle d’un aller-retour est la ville où l’on fait demi-tour. Une nuit d’hôtel garde la ville.`;
+title et destination : villes où l’on séjourne, séparées par « · ». Jamais la ville de départ, ni le retour au même endroit, ni le domicile du client. Un aller simple vers une ville où l’on reste garde cette ville, même Paris.
+Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) n’est ni dans le titre ni dans la destination. La destination d’un aller simple est la dernière ville. Celle d’un aller-retour est la ville où l’on fait demi-tour. Une nuit d’hôtel garde la ville, sauf si c’est seulement le domicile.`;
 
 const PROMPT_FLIGHT = `Vol :
 - Aller et retour = DEUX items si les deux sont imprimés (même PDF). Correspondance = DEUX items. Pas de retour fantôme.

@@ -20,7 +20,7 @@ import {
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
@@ -59,8 +59,9 @@ export default async function ExampleReservationPage({ params }: Props) {
   const coverage = tripDocCoverage(party, session.documents);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination);
-  const headline = stayTitleFromItems(b.title, b.destination, visibleItems);
-  const placeLine = tripPlaceLine(headline, b.destination);
+  const labels = nextStayLabels(b.title, b.destination, visibleItems, "Séjour", session.customer.city);
+  const headline = labels.title || "Séjour";
+  const placeLine = tripPlaceLine(headline, labels.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
   // Même formule que la page réelle : commission + billetterie + dépenses.

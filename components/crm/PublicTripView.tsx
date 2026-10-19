@@ -3,7 +3,7 @@ import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BrandMark } from "@/components/crm/ui";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { tripPlaceLine } from "@/lib/crm/carnet";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { formatDateFr } from "@/lib/crm/money";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
@@ -28,9 +28,10 @@ export function PublicTripView({
   phones?: PhoneCalendarLinks | null;
 }) {
   const shown = items.map((item) => ({ ...item, amount: null }));
-  const headline = stayTitleFromItems(booking.title, booking.destination, items);
+  const labels = nextStayLabels(booking.title, booking.destination, items);
+  const headline = labels.title || "Séjour";
   const clientNote = shownClientNote(booking.notes_client);
-  const placeLine = tripPlaceLine(headline, booking.destination);
+  const placeLine = tripPlaceLine(headline, labels.destination);
   const attachments = attachmentPreviews(docs, shown, booking.reference).map((file) => ({
     ...file,
     partage,

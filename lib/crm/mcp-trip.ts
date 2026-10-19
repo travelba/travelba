@@ -15,7 +15,7 @@ import { itemTicketCount } from "@/lib/crm/item-match";
 import { parseMoney } from "@/lib/crm/money";
 import { type PayerCompany } from "@/lib/crm/payer";
 import { sameRecordedTraveler } from "@/lib/crm/person-match";
-import { staffStayLabel } from "@/lib/crm/staff-stay";
+import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { cloneTravelDocument, insertTravelDocument } from "@/lib/crm/travel-document-write";
@@ -542,7 +542,7 @@ export async function createDossier(input: Record<string, unknown>, admin?: Admi
   try {
     const { data: traveler, error: travelerError } = await db
       .from("crm_customers")
-      .select("id, company_role, billing_parent_id")
+      .select("id, company_role, billing_parent_id, city")
       .eq("id", draft.customer_id)
       .maybeSingle();
     if (travelerError || !traveler) throw new McpWriteError("Client introuvable.");
@@ -557,10 +557,13 @@ export async function createDossier(input: Record<string, unknown>, admin?: Admi
     const companies = (companyRows || []) as (PayerCompany & { company_name?: string | null })[];
     const choice = dossierPayerChoice({ societeId, facturerSociete: billCompany, companies });
     if ("error" in choice) throw new McpWriteError(choice.error);
+    const home = typeof traveler.city === "string" ? traveler.city : "";
     const created = await createStaffBooking(
       db,
       {
         ...draft,
+        title: withoutHomeCity(draft.title, home) || draft.title,
+        destination: withoutHomeCity(draft.destination, home) || draft.destination,
         payer_kind: choice.payer_kind,
         billing_company_id: choice.billing_company_id ?? undefined,
       },

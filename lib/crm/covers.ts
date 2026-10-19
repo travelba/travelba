@@ -2,11 +2,13 @@ import type { CrmBooking } from "@/lib/crm/types";
 import { coverQuery, isOriginHub, stayArrivalPlaces } from "@/lib/crm/carnet";
 import {
   cityCoverPhoto,
+  cityGeneratedCoverId,
   countryCodeForPlace,
   countryCoverPhoto,
   coverSearchHits,
   lookupCoverPhoto,
 } from "@/lib/crm/cover-catalog";
+import { tripCityPlan, type TripStep } from "@/lib/crm/layover";
 
 /** Photo retouchée du catalogue, ou rien (fond marine) si le fichier n’existe pas. */
 export function catalogCoverUrl(photoId: string) {
@@ -96,7 +98,14 @@ export function unsplashKeywordMatch(booking: Pick<CrmBooking, "destination" | "
   return countryCoverPhoto(codes[0]);
 }
 
-export type CoverPlaceItem = { kind?: string | null; details?: Record<string, unknown> | null };
+export type CoverPlaceItem = {
+  kind?: string | null;
+  title?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  sort_order?: number | null;
+  details?: Record<string, unknown> | null;
+};
 
 export type CoverPlan =
   | { mode: "single"; src: string; fallback: string | null }
@@ -134,12 +143,22 @@ function arrivalPlaces(
   booking: Pick<CrmBooking, "destination" | "title">,
   options?: { items?: CoverPlaceItem[]; places?: string[] }
 ) {
-  if (options?.places?.length) return options.places;
-  const fromItems = options?.items?.length
-    ? stayArrivalPlaces(null, null, options.items)
-    : [];
-  if (fromItems.length) return fromItems;
-  return stayArrivalPlaces(booking.destination, booking.title);
+  const listed = options?.places?.length
+    ? options.places
+    : options?.items?.length
+      ? stayArrivalPlaces(null, null, options.items)
+      : [];
+  const raw = listed.length ? listed : stayArrivalPlaces(booking.destination, booking.title);
+  const origins = new Set(
+    (options?.items?.length ? tripCityPlan(options.items as TripStep[]).origins : []).map((city) => placeKey(city))
+  );
+  const stayed = raw.filter((place) => {
+    const key = placeKey(place);
+    if (origins.has(key)) return false;
+    if (!isOriginHub(place)) return true;
+    return raw.every((other) => isOriginHub(other));
+  });
+  return stayed.length ? stayed : raw;
 }
 
 /** Une ville : sa photo, ou une image générée de cette ville. Deux villes : diagonale. */
@@ -166,11 +185,15 @@ export function bookingCoverPlan(
     if (code && !countries.includes(code)) countries.push(code);
   }
   const allowed = new Set(coverPlaces.map((place) => placeKey(place)));
+  const originKeys = new Set(
+    (options?.items?.length ? tripCityPlan(options.items as TripStep[]).origins : []).map((city) => placeKey(city))
+  );
   for (const token of [...labelTokens(booking.destination), ...labelTokens(booking.title)]) {
     const key = placeKey(token);
     const code = countryCodeForPlace(key);
     if (!code || countries.includes(code)) continue;
-    if (allowed.size && cityCoverPhoto(key) && !allowed.has(key) && !isOriginHub(token)) continue;
+    if ((isOriginHub(token) || originKeys.has(key)) && countries.length) continue;
+    if (allowed.size && cityCoverPhoto(key) && !allowed.has(key)) continue;
     countries.push(code);
   }
   if (coverPlaces.length >= 2 && countries.length === 1) {
@@ -193,6 +216,17 @@ export function bookingCoverPlan(
       .slice(0, 2);
     if (photos.length === 2) {
       return { mode: "split", src: catalogUrl(photos[0]), srcB: catalogUrl(photos[1]) };
+    }
+    const missing = coverPlaces
+      .map((place) => {
+        const key = placeKey(place);
+        const code = countryCodeForPlace(key);
+        if (code && countryCoverPhoto(code)) return null;
+        return cityCoverPhoto(key) || (code ? cityGeneratedCoverId(key) : null);
+      })
+      .filter((photo): photo is string => Boolean(photo && !photos.includes(photo)));
+    if (photos.length === 1 && missing[0]) {
+      return { mode: "split", src: catalogUrl(photos[0]), srcB: catalogUrl(missing[0]) };
     }
     if (photos.length === 1) return { mode: "single", src: catalogUrl(photos[0]), fallback: null };
   }

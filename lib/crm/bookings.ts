@@ -806,14 +806,14 @@ export async function syncBookingLedger(
 }
 
 /**
- * Le titre suit les villes des étapes, sauf un nom choisi (« 40 ans »).
- * Une escale pure en sort. La destination ne change que si elle n’est qu’une liste de villes
- * qui cite cette escale — un nom choisi et les dates restent.
+ * Le titre suit les villes où l’on séjourne, sauf un nom choisi (« 40 ans »).
+ * Le domicile (départ, retour d’un aller-retour, ville de la fiche) en sort, ainsi qu’une escale pure.
+ * La destination ne change que si elle n’est qu’une liste de villes qui cite ce domicile ou cette escale.
  */
 export async function syncBookingTitleFromSteps(supabase: SupabaseClient, bookingId: string) {
   const { data: booking } = await supabase
     .from("crm_bookings")
-    .select("title, destination")
+    .select("title, destination, customer_id")
     .eq("id", bookingId)
     .maybeSingle();
   if (!booking) return "";
@@ -821,7 +821,16 @@ export async function syncBookingTitleFromSteps(supabase: SupabaseClient, bookin
     .from("crm_booking_items")
     .select("id, kind, title, start_at, end_at, sort_order, details, lifecycle")
     .eq("booking_id", bookingId);
-  const labels = nextStayLabels(booking.title, booking.destination, items || [], "");
+  let home = "";
+  if (booking.customer_id) {
+    const { data: customer } = await supabase
+      .from("crm_customers")
+      .select("city")
+      .eq("id", booking.customer_id)
+      .maybeSingle();
+    home = typeof customer?.city === "string" ? customer.city : "";
+  }
+  const labels = nextStayLabels(booking.title, booking.destination, items || [], "", home);
   const current = (booking.title || "").trim();
   const patch: { title?: string; destination?: string } = {};
   if (labels.title && labels.title !== current) patch.title = labels.title;

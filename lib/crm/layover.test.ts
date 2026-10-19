@@ -51,7 +51,7 @@ test("Paris – Amsterdam – Tel Aviv : Amsterdam est une escale, pas la destin
   assert.deepEqual(plan.destinations, ["Tel Aviv"]);
   assert.equal(
     stayTitleFromItems("Paris · Amsterdam · Tel Aviv", "Tel Aviv", PARIS_TLV),
-    "Paris · Tel Aviv"
+    "Tel Aviv"
   );
   assert.equal(stayHeadline("40 ans", "Tel Aviv", plan.cities, "Séjour", plan.layovers), "40 ans");
   const facts = staffStayFacts({ destination: "Tel Aviv", items: PARIS_TLV });
@@ -59,7 +59,7 @@ test("Paris – Amsterdam – Tel Aviv : Amsterdam est une escale, pas la destin
   assert.equal(facts.placeLine, "Paris · Tel Aviv");
   assert.equal(facts.segments.some((segment) => segment.place === "Paris → Amsterdam"), true);
   const diff = layoverDossierDiff("Paris · Amsterdam · Tel Aviv", "Tel Aviv", PARIS_TLV);
-  assert.equal(diff?.title?.to, "Paris · Tel Aviv");
+  assert.equal(diff?.title?.to, "Tel Aviv");
   assert.equal(diff?.destination, null);
   assert.equal(layoverDossierDiff("Paris · Tel Aviv", "Tel Aviv", PARIS_TLV), null);
 });
@@ -86,7 +86,7 @@ test("une correspondance de nuit sans hôtel reste une escale", () => {
   const plan = tripCityPlan(items);
   assert.deepEqual(plan.layovers, ["Amsterdam"]);
   assert.deepEqual(plan.destinations, ["Tel Aviv"]);
-  assert.equal(stayTitleFromItems("Paris · Amsterdam · Tel Aviv", "Amsterdam · Tel Aviv", items), "Paris · Tel Aviv");
+  assert.equal(stayTitleFromItems("Paris · Amsterdam · Tel Aviv", "Amsterdam · Tel Aviv", items), "Tel Aviv");
   const labels = nextStayLabels("Paris · Amsterdam · Tel Aviv", "Amsterdam · Tel Aviv", items);
   assert.equal(labels.destinationChanged, true);
   assert.equal(labels.destination, "Tel Aviv");
@@ -126,7 +126,7 @@ test("un voyage à plusieurs villes garde chaque séjour", () => {
   assert.deepEqual(plan.layovers, []);
   assert.deepEqual(plan.cities, ["Paris", "Milan", "Rome"]);
   assert.deepEqual(plan.destinations, ["Milan", "Rome"]);
-  assert.equal(stayTitleFromItems("Paris · Milan", "Paris · Milan", items), "Paris · Milan · Rome");
+  assert.equal(stayTitleFromItems("Paris · Milan", "Paris · Milan", items), "Milan · Rome");
 });
 
 test("un nom choisi qui cite l’escale n’est pas réécrit", () => {
@@ -166,7 +166,7 @@ test("Singapour et Singapore sont la même ville, Zurich et Munich des escales",
   assert.deepEqual(plan.cities, ["Tel Aviv", "Singapour"]);
   assert.deepEqual(plan.destinations, ["Singapour"]);
   const diff = layoverDossierDiff("Tel Aviv · Zurich · Singapour · Singapore · Munich", "Singapore · Singapore", items);
-  assert.equal(diff?.title?.to, "Tel Aviv · Singapour");
+  assert.equal(diff?.title?.to, "Singapour");
   assert.equal(diff?.destination, null);
 });
 

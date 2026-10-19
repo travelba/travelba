@@ -1,5 +1,5 @@
 import { phoneSearchDigits } from "./admin-list";
-import { stayHeadline } from "./carnet";
+import { listStayTitle } from "./carnet";
 import { formatDateFr, formatMoney } from "./money";
 import { staffStayLabel } from "./staff-stay";
 
@@ -34,7 +34,7 @@ export function bookingListSearchText(input: {
     input.reference,
     input.title,
     input.destination,
-    stayHeadline(input.title, input.destination, routes.length ? routes : places, "Séjour", input.layovers),
+    listStayTitle(input.title, input.destination, places, routes, input.layovers),
     input.customer,
     input.company,
     input.email,

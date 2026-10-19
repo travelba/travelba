@@ -54,24 +54,6 @@ function markQuoteItems(items: BookingExtract["items"], sourceNames: Set<string>
   });
 }
 
-function uniqueCities(extract: BookingExtract): string[] {
-  const cities: string[] = [];
-  const push = (value: string | null | undefined) => {
-    const city = (value || "").trim();
-    if (!city) return;
-    if (!cities.some((row) => row.toLowerCase() === city.toLowerCase())) {
-      cities.push(city);
-    }
-  };
-  for (const part of (extract.destination || "").split("·")) push(part);
-  for (const item of extract.items || []) {
-    push(item.details?.city_to);
-    push(item.details?.city);
-    push(item.details?.city_from);
-  }
-  return cities;
-}
-
 function pickDate(
   values: Array<string | null | undefined>,
   mode: "min" | "max"
@@ -193,11 +175,10 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
   if (labels.destinationChanged && labels.destination) merged.destination = labels.destination;
   else if (!merged.destination && labels.suggestedDestination) merged.destination = labels.suggestedDestination;
   if (!merged.title || !merged.destination) {
-    const cities = (labels.plan.cities.length ? labels.plan.cities : uniqueCities(merged)).filter(
-      (city) => !labels.plan.layovers.some((stop) => city.toLowerCase() === stop.toLowerCase())
-    );
-    if (!merged.title && cities.length) merged.title = cities.join(" · ");
-    if (!merged.destination && cities.length) merged.destination = labels.suggestedDestination || cities.join(" · ");
+    const stays = labels.plan.destinations.length ? labels.plan.destinations : labels.suggestedDestination.split(" · ").filter(Boolean);
+    const line = stays.join(" · ");
+    if (!merged.title && line) merged.title = line;
+    if (!merged.destination && line) merged.destination = line;
   }
   merged.start_date = pickDate(
     [merged.start_date, ...merged.items.map((item) => item.start_at)],
