@@ -322,6 +322,49 @@ export function shouldRecordView(previousAt: string | null, now: Date, windowMs 
   return now.getTime() - previous > windowMs;
 }
 
+/** Une page revue, ou le même fichier retéléchargé, ne s’écrit qu’une fois dans la fenêtre. */
+export function activitySharesViewWindow(action: string) {
+  return action === "view" || action === "download";
+}
+
+/** Libellé d’un téléchargement. Jamais le nom du fichier (il peut porter un numéro de pièce). */
+export function clientDownloadSummary(input: {
+  scope: "booking" | "own";
+  path: string;
+  customerId: string;
+  reference?: string | null;
+  title?: string | null;
+  destination?: string | null;
+}) {
+  if (input.scope === "booking") {
+    const mention = tidyName(input.reference)
+      ? stayMention(input.reference || "", input.title, input.destination)
+      : "";
+    return mention ? `A téléchargé un document du séjour ${mention}` : "A téléchargé un document";
+  }
+  const prefix = `customers/${input.customerId}/`;
+  if (!input.path.startsWith(prefix) || input.path.includes("..")) return null;
+  const rest = input.path.slice(prefix.length);
+  if (rest.startsWith("documents/")) return "A téléchargé une pièce";
+  if (rest.startsWith("releves/")) return "A téléchargé un relevé";
+  return null;
+}
+
+/** Clé de dédoublonnage. Un identifiant reste lisible ; un chemin de fichier n’est pas recopié. */
+export function downloadActivityPath(seed: string) {
+  const clean = seed.trim();
+  if (!clean || clean.length > 500) return null;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean)) {
+    return `download/${clean.toLowerCase()}`;
+  }
+  let hash = 2166136261;
+  for (let i = 0; i < clean.length; i += 1) {
+    hash ^= clean.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `download/${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 export type CustomerActivityInput = {
   customerId: string;
   authUserId: string;
@@ -347,12 +390,12 @@ export async function recordCustomerActivity(input: CustomerActivityInput) {
 
     const { createServiceClient } = await import("@/lib/supabase/admin");
     const admin = createServiceClient();
-    if (input.action === "view" && input.path) {
+    if (activitySharesViewWindow(input.action) && input.path) {
       const { data } = await admin
         .from("crm_customer_activity")
         .select("created_at")
         .eq("customer_id", customerId)
-        .eq("action", "view")
+        .eq("action", input.action)
         .eq("path", input.path)
         .order("created_at", { ascending: false })
         .limit(1)

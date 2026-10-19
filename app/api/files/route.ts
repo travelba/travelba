@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer, requireStaff } from "@/lib/crm/auth";
+import { clientDownloadSummary, downloadActivityPath, recordCustomerActivity } from "@/lib/crm/customer-activity";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExampleFile } from "@/lib/crm/example-store";
 import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
@@ -104,12 +105,13 @@ export async function GET(request: Request) {
 
   const scope = customerPathScope(path, client.customer.id);
   if (scope.kind === "denied") return jsonError("Accès refusé", 403);
+  const download = url.searchParams.get("download") === "1" && url.searchParams.get("thumb") !== "1";
 
   if (scope.kind === "booking") {
     const bookingId = scope.bookingId;
     const { data: booking } = await client.supabase
       .from("crm_bookings")
-      .select("id, cover_image_path")
+      .select("id, cover_image_path, reference, title, destination")
       .eq("id", bookingId)
       .eq("customer_id", client.customer.id)
       .maybeSingle();
@@ -125,6 +127,41 @@ export async function GET(request: Request) {
       .eq("visible_to_client", true)
       .maybeSingle();
     if (!doc) return jsonError("Document non publié", 403);
+    if (download) {
+      const summary = clientDownloadSummary({
+        scope: "booking",
+        path,
+        customerId: client.customer.id,
+        reference: booking.reference,
+        title: booking.title,
+        destination: booking.destination,
+      });
+      if (summary) {
+        await recordCustomerActivity({
+          customerId: client.customer.id,
+          authUserId: client.user.id,
+          action: "download",
+          summary,
+          bookingId,
+          path: downloadActivityPath(typeof doc.id === "string" ? doc.id : bookingId),
+        });
+      }
+    }
+  } else if (download) {
+    const summary = clientDownloadSummary({
+      scope: "own",
+      path,
+      customerId: client.customer.id,
+    });
+    if (summary) {
+      await recordCustomerActivity({
+        customerId: client.customer.id,
+        authUserId: client.user.id,
+        action: "download",
+        summary,
+        path: downloadActivityPath(path),
+      });
+    }
   }
 
   return sendCrmFile(path, url);
