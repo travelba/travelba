@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { agencyFeeColumnMissing, agencyFeeRateColumn, agencyFeeRateField } from "@/lib/crm/agency-fee-rate";
 import { parseBody, patchCustomerSchema } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
+import { syncInheritedAgencyFees } from "@/lib/crm/bookings";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
@@ -36,6 +38,11 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (flags.error !== null) return jsonError(flags.error, 400);
   const { patch, error: patchError } = customerPatchFromBody(body, { allowEmail: true });
   if (patchError) return jsonError(patchError);
+  if ("agency_fee_rate" in body) {
+    const parsed = agencyFeeRateField(body.agency_fee_rate);
+    if ("error" in parsed) return jsonError(parsed.error);
+    patch.agency_fee_rate = agencyFeeRateColumn(parsed.rate);
+  }
   if (flags.data.on_hold !== undefined) patch.on_hold = flags.data.on_hold;
 
   const { data: current } = await auth.supabase
@@ -98,7 +105,19 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .eq("id", id)
     .select("*")
     .single();
-  if (error) return dbError(error, 400);
+  if (error) {
+    if ("agency_fee_rate" in patch && agencyFeeColumnMissing(error)) {
+      return jsonError("Le taux de commission n’est pas encore en place. Appliquez la migration, puis enregistrez.");
+    }
+    return dbError(error, 400);
+  }
+  if ("agency_fee_rate" in patch) {
+    try {
+      await syncInheritedAgencyFees(createServiceClient(), id);
+    } catch (syncError) {
+      console.error("[crm] commission", syncError instanceof Error ? syncError.message : "error");
+    }
+  }
   if (flags.data.billing_companies) {
     const saved = await saveCustomerBillingCompanies(auth.supabase, id, flags.data.billing_companies);
     if ("error" in saved) return jsonError(saved.error);

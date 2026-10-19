@@ -58,6 +58,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261017193000_travel_document_eta.sql` | `doc_type` `eta` sur `crm_travel_documents` (autorisation de voyage, distincte du visa) |
 | `20261018085001_service_role_crm_private_usage.sql` | `usage` sur `crm_private` pour `service_role` (index `fold_search`, sinon 42501). Version déjà enregistrée en prod |
 | `20261019161000_booking_item_kind_accueil_vip.sql` | kind `accueil_vip` — accueil aéroport de l’agence, distinct de `greeter`. Non appliquée tant que l’agence ne l’a pas jouée |
+| `20261019201000_agency_fee_rate.sql` | `agency_fee_rate` sur le compte et le dossier (10 %, 7,5 % ou 5 %). Null = 10 % / héritage. Pas de grant client. À jouer à la main |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

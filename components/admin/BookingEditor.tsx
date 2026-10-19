@@ -35,6 +35,14 @@ import { settledAuthorizationCountries } from "@/lib/crm/visa-cover";
 import type { UkEtaTravelerLine } from "@/lib/crm/uk-eta-ui";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { agencyFeeExtraAmounts, bookingTotalFromItems, flightsInStayTotal, isStayAmountKind } from "@/lib/crm/bookings";
+import {
+  agencyFeeRateKey,
+  agencyFeeSourceLabel,
+  formatAgencyFeePercent,
+  parseStoredAgencyFeeRate,
+  type AgencyFeeSource,
+} from "@/lib/crm/agency-fee-rate";
+import { AgencyFeeRateField } from "@/components/admin/AgencyFeeRateField";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
@@ -291,8 +299,16 @@ export function BookingEditor({
   customerActivity = [],
   mb3m,
   accounting = null,
+  agencyFee,
 }: {
   booking: CrmBooking;
+  /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
+  agencyFee?: {
+    rate: number;
+    source: AgencyFeeSource;
+    inheritedRate: number;
+    inheritedSource: AgencyFeeSource;
+  };
   items: CrmBookingItem[];
   travelers: CrmBookingTraveler[];
   documents: CrmBookingDocument[];
@@ -457,6 +473,14 @@ export function BookingEditor({
   const [currencyDraft, setCurrencyDraft] = useMirror(serverCurrency);
   const serverIncludeInLedger = booking.include_in_ledger !== false;
   const [includeInLedger, setIncludeInLedger] = useMirror(serverIncludeInLedger);
+  const inheritedFee = agencyFee || {
+    rate: parseStoredAgencyFeeRate(booking.agency_fee_rate) ?? 0.1,
+    source: (parseStoredAgencyFeeRate(booking.agency_fee_rate) != null ? "dossier" : "defaut") as AgencyFeeSource,
+    inheritedRate: 0.1,
+    inheritedSource: "defaut" as AgencyFeeSource,
+  };
+  const serverFeeChoice = parseStoredAgencyFeeRate(booking.agency_fee_rate) == null ? "compte" : agencyFeeRateKey(inheritedFee.rate);
+  const [feeChoice, setFeeChoice] = useMirror(serverFeeChoice);
   const [notesInternal, setNotesInternal] = useMirror(booking.notes_internal || "");
   const [notesClient, setNotesClient] = useMirror(booking.notes_client || "");
   const datesInverted = Boolean(startDraft && endDraft && endDraft < startDraft);
@@ -478,6 +502,7 @@ export function BookingEditor({
     (!clientSettles && includeInLedger !== serverIncludeInLedger) ||
     notesInternal !== (booking.notes_internal || "") ||
     notesClient !== (booking.notes_client || "") ||
+    feeChoice !== serverFeeChoice ||
     (clientPick?.id || null) !== (customer?.id || null) ||
     (payerPick?.id || null) !== serverPayerPickId;
   const unsaved = dirty || stepsPending;
@@ -581,6 +606,10 @@ export function BookingEditor({
     };
     if (settles) delete payload.include_in_ledger;
     else payload.include_in_ledger = fd.get("include_in_ledger") === "on";
+    delete payload.agency_fee_rate;
+    if (feeChoice !== serverFeeChoice) {
+      payload.agency_fee_rate = feeChoice === "compte" ? null : Number(feeChoice);
+    }
     return payload;
   }
 
@@ -910,9 +939,12 @@ export function BookingEditor({
     : "Aucun voyageur";
   const mailGroups = groupAttachedEmails(attachedEmails);
   const payerCaption = payingCompanyCaption(payerKind, payerCompanies, payerCompanyId);
+  const previewFeeRate = feeChoice === "compte" ? inheritedFee.inheritedRate : Number(feeChoice);
+  const previewFeeSource: AgencyFeeSource = feeChoice === "compte" ? inheritedFee.inheritedSource : "dossier";
   const stayAmount = stayPriceWithExpenses({
     stayTotal: bookingTotalFromItems(pricedItems),
     agencyCommission: booking.agency_commission === true,
+    agencyFeeRate: previewFeeRate,
     expenses: pricedItems
       .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
       .map((item) => ({ ...item, agencyFee: !isAutoTicketingExpense(item) })),
@@ -1878,6 +1910,7 @@ export function BookingEditor({
             <ReglementSummary
               amount={stayAmount}
               currency={stayCurrency(booking.currency)}
+              commissionCaption={`Commission d’agence ${formatAgencyFeePercent(previewFeeRate)} · ${agencyFeeSourceLabel(previewFeeSource)}`}
               ledgerCaption={staffLedgerCaption({
                 ...booking,
                 include_in_ledger: includeInLedger,
@@ -1926,12 +1959,48 @@ export function BookingEditor({
                 </select>
               </label>
             </div>
+            <AgencyFeeRateField
+              label="Commission d’agence"
+              value={feeChoice}
+              onChange={setFeeChoice}
+              options={[
+                {
+                  value: "compte",
+                  title: "Compte",
+                  hint: `Suit le compte : ${formatAgencyFeePercent(inheritedFee.inheritedRate)}${
+                    inheritedFee.inheritedSource === "defaut" ? " par défaut" : ""
+                  }.`,
+                },
+                {
+                  value: "0.1000",
+                  title: "10 %",
+                  hint: "Ce dossier garde 10 %, même si le compte change.",
+                },
+                {
+                  value: "0.0750",
+                  title: "7,5 %",
+                  hint: "Ce dossier garde 7,5 %, même si le compte change.",
+                },
+                {
+                  value: "0.0500",
+                  title: "5 %",
+                  hint: "Ce dossier garde 5 %, même si le compte change.",
+                },
+              ]}
+            />
+            <p className="text-sm text-[var(--admin-navy)]">
+              Taux retenu : {formatAgencyFeePercent(previewFeeRate)} · {agencyFeeSourceLabel(previewFeeSource)}.
+              {booking.agency_commission === true
+                ? " La ligne est dans les dépenses."
+                : " Cochez la commission pour l’ajouter aux dépenses."}
+            </p>
             <BookingExpensesPanel
               bookingId={booking.id}
               items={pricedItems}
               visible={booking.visible_to_client}
               currency={booking.currency}
               agencyCommission={booking.agency_commission === true}
+              agencyFeeRate={previewFeeRate}
               onExpenseWrite={onExpenseWrite}
             />
           </section>
@@ -2134,6 +2203,7 @@ export function BookingEditor({
       {tab === "interface" ? (
         <ClientInterfacePreview
           booking={booking}
+          agencyFeeRate={previewFeeRate}
           items={items}
           documents={documents}
           travelers={travelers}

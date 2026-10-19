@@ -116,10 +116,11 @@ export function paymentSlips(input: {
   clientSettlesStay: boolean;
   pricesVisible: boolean;
   expenses: { amount: number | null }[];
-  /** Extras (chauffeur, VIP, visa, enregistrement) : dans les 10 %, pas dans le séjour encaissé. */
+  /** Extras (chauffeur, VIP, visa, enregistrement) : dans la commission, pas dans le séjour encaissé. */
   extras?: { amount: number | null }[];
   /** Frais de billeterie déjà dus au grand livre. Même facture que les autres frais. */
   ticketingFee?: number;
+  agencyFeeRate?: number | null;
   stayKind: PayerKind;
   stayCompanyId: string | null;
   feesFollowStay: boolean;
@@ -135,7 +136,8 @@ export function paymentSlips(input: {
         stayTotal: Number.isFinite(stay) ? stay : 0,
         expenses: input.expenses,
         extras: input.extras,
-      })
+      }),
+      input.agencyFeeRate ?? undefined
     );
   }
   for (const expense of input.expenses) {
@@ -214,6 +216,7 @@ export function collectableStayAmount(input: {
   pricesVisible: boolean;
   expenses: { amount: number | null }[];
   extras?: { amount: number | null }[];
+  agencyFeeRate?: number | null;
 }) {
   const payable = paymentSlips({
     ...input,

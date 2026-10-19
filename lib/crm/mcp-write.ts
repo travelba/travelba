@@ -1,12 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { createTransactionSchema, isIsoDate, parseBody } from "@/lib/crm/admin-schemas";
+import {
+  agencyFeeForBooking,
+  agencyFeeRateColumn,
+  agencyFeeRateField,
+  formatAgencyFeePercent,
+} from "@/lib/crm/agency-fee-rate";
 import { BookingIssuesError, collectPublishIssues } from "@/lib/crm/booking-issues";
 import {
   bookingMetaPatch,
   setCarnetPublished,
   syncBookingLedger,
   syncBookingTotalFromItems,
+  syncInheritedAgencyFees,
 } from "@/lib/crm/bookings";
 import { upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
@@ -160,6 +167,11 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     if (raw && !isIsoDate(raw)) throw new McpWriteError("Date de retour invalide (AAAA-MM-JJ).");
     body.end_date = raw;
   }
+  if ("commission_agence" in input) {
+    const parsed = agencyFeeRateField(input.commission_agence);
+    if ("error" in parsed) throw new McpWriteError(parsed.error);
+    body.agency_fee_rate = parsed.rate;
+  }
   const patch = bookingMetaPatch(body);
   if (!Object.keys(patch).length) throw new McpWriteError("Rien à modifier.");
   return { ...target, patch };
@@ -247,6 +259,11 @@ export function prepareClientUpdate(input: Record<string, unknown>) {
   const company = clientBillingInput(input);
   const { patch, error } = customerPatchFromBody(body, { allowEmail: true });
   if (error) throw new McpWriteError(error);
+  if ("commission_agence" in input) {
+    const parsed = agencyFeeRateField(input.commission_agence);
+    if ("error" in parsed) throw new McpWriteError(parsed.error);
+    patch.agency_fee_rate = agencyFeeRateColumn(parsed.rate);
+  }
   if (!Object.keys(patch).length && !company) throw new McpWriteError("Rien à modifier.");
   return { id, patch, company };
 }
@@ -557,6 +574,15 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     | Pick<CrmBooking, "id" | "reference" | "status" | "visible_to_client" | "archived_at" | "start_date" | "end_date" | "notes_client" | "notes_internal">
     | null;
   const row = saved || booking;
+  let commission_agence = "10 %";
+  let commission_source: "dossier" | "compte" | "defaut" = "defaut";
+  try {
+    const fee = await agencyFeeForBooking(db, booking);
+    commission_agence = formatAgencyFeePercent(fee.rate);
+    commission_source = fee.source;
+  } catch (err) {
+    console.error("[mcp] commission", err instanceof Error ? err.message : "error");
+  }
   return {
     id: row.id,
     reference: row.reference,
@@ -565,6 +591,8 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     date_retour: row.end_date,
     notes_client: row.notes_client,
     notes_internes: row.notes_internal,
+    commission_agence,
+    commission_source,
   };
 }
 
@@ -755,6 +783,20 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     if ("error" in result) throw new McpWriteError(result.error);
     saved = result.company;
   }
+  if ("agency_fee_rate" in patch) {
+    try {
+      await syncInheritedAgencyFees(db, id);
+    } catch (err) {
+      console.error("[mcp] commission", err instanceof Error ? err.message : "error");
+    }
+  }
+  const rateRead = await db.from("crm_customers").select("agency_fee_rate").eq("id", id).maybeSingle();
+  const storedRate = rateRead.error
+    ? "agency_fee_rate" in patch
+      ? patch.agency_fee_rate
+      : null
+    : rateRead.data?.agency_fee_rate;
+  const commission_agence = formatAgencyFeePercent(typeof storedRate === "number" ? storedRate : Number(storedRate));
   return {
     id: row.id,
     nom: customerFullName(row),
@@ -764,5 +806,6 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     societe_id: saved?.id ?? null,
     siret: saved?.siret ?? null,
     tva: saved?.vat_number ?? null,
+    commission_agence,
   };
 }

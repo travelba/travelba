@@ -46,14 +46,14 @@ test("la section Dépenses liste le libellé et le montant", () => {
   const html = renderToStaticMarkup(
     createElement(StayExpenses, {
       lines: [
-        { id: "fee", title: "Frais d’agence 10 %", amountLabel: "100,00 €" },
+        { id: "fee", title: "Commission d’agence", amountLabel: "100,00 €" },
         { id: "tip", title: "Pourboire", amountLabel: "40,00 €" },
       ],
     })
   );
   assert.match(html, /Dépenses/);
   assert.match(html, /En plus du montant du séjour/);
-  assert.match(html, /Frais d’agence 10 %/);
+  assert.match(html, /Commission d’agence/);
   assert.match(html, /100,00 €/);
   assert.match(html, /Pourboire/);
   assert.match(html, /40,00 €/);

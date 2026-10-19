@@ -218,6 +218,7 @@ export function dossierStayAmount(input: {
   agencyCommission: boolean;
   status: string;
   travelerCount: number;
+  agencyFeeRate?: number | null;
 }) {
   const items = input.items.map((item) => ({
     ...item,
@@ -235,6 +236,7 @@ export function dossierStayAmount(input: {
       status: input.status,
       travelerCount: input.travelerCount,
     }),
+    agencyFeeRate: input.agencyFeeRate,
   });
 }
 

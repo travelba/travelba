@@ -1,3 +1,4 @@
+import { coerceAgencyFeeRate, DEFAULT_AGENCY_FEE_RATE } from "./agency-fee-rate";
 import { formatDateFr } from "./dates";
 
 export { formatDateFr, formatDateTimeFr } from "./dates";
@@ -26,13 +27,13 @@ export function centsToAmount(cents: number) {
   return cents / 100;
 }
 
-/** Commission d’agence : 10 % des étapes et des dépenses, si le voyage l’active. */
-export const AGENCY_FEE_RATE = 0.1;
+/** Commission d’agence par défaut : 10 % des étapes et des dépenses, si le voyage l’active. */
+export const AGENCY_FEE_RATE = DEFAULT_AGENCY_FEE_RATE;
 
-export function agencyFeeFromGross(gross: number) {
+export function agencyFeeFromGross(gross: number, rate: number = AGENCY_FEE_RATE) {
   const n = Number(gross);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.round(n * AGENCY_FEE_RATE * 100) / 100;
+  return Math.round(n * coerceAgencyFeeRate(rate) * 100) / 100;
 }
 
 function addPositiveAmounts(sum: number, rows: { amount: number | null }[] | undefined) {
@@ -44,7 +45,7 @@ function addPositiveAmounts(sum: number, rows: { amount: number | null }[] | und
   return sum;
 }
 
-/** Assiette des 10 % : étapes (montant du séjour + extras) et dépenses. Hors billeterie. */
+/** Assiette de la commission : étapes (montant du séjour + extras) et dépenses. Hors billeterie. */
 export function agencyFeeBaseAmount(input: {
   stayTotal: number;
   expenses?: { amount: number | null; agencyFee?: boolean }[];

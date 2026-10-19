@@ -6,6 +6,7 @@ import { settledFormalityCountries } from "@/lib/crm/visa-cover";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { visaRequestShown, type ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
+import { agencyFeeForBooking } from "@/lib/crm/agency-fee-rate";
 import { todayIsoDate } from "@/lib/crm/money";
 import { insuranceLineLabel, itemPriceLabel, unlinkedDocuments, whatsappModifyHref } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
@@ -114,9 +115,11 @@ export async function ClientStayRest({
     status: b.status,
     travelerCount: party.length,
   });
+  const agencyFee = await agencyFeeForBooking(supabase, b);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
+    agencyFeeRate: agencyFee.rate,
     stayTotal: Number(b.total_amount),
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
@@ -246,6 +249,7 @@ export async function ClientStayRest({
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,
+              agencyFeeRate: agencyFee.rate,
               expenses: expenseChoices,
               extras: feeExtras,
               ticketingFee,

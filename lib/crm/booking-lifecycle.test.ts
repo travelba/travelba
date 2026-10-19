@@ -62,6 +62,17 @@ test("dupliquer ouvre un brouillon avec une nouvelle référence", () => {
   assert.equal(copy.title, "Avoriaz");
   assert.equal(copy.offer_chauffeur, true);
   assert.equal(copy.offer_visa, true);
+  assert.equal("agency_fee_rate" in copy, false);
+  const rated = duplicateBookingInsert(
+    {
+      customer_id: "client",
+      reference: "TB-1042",
+      title: "Avoriaz",
+      agency_fee_rate: "0.0500",
+    },
+    "TB-1101"
+  );
+  assert.equal(rated.agency_fee_rate, "0.0500");
   assert.match(String(copy.notes_internal), /Copie de TB-1042/);
   assert.match(String(copy.notes_internal), /Suite/);
 });

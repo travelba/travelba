@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { DEFAULT_AGENCY_FEE_RATE, loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
 import { syncBookingTitleFromSteps } from "@/lib/crm/bookings";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
@@ -408,9 +409,22 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     costs: accountingInputs.costs,
   });
 
+  const [appliedFees, inheritedFees] = await Promise.all([
+    loadResolvedAgencyFees(supabase, [b]),
+    loadResolvedAgencyFees(supabase, [{ ...b, agency_fee_rate: null }]),
+  ]);
+  const appliedFee = appliedFees.get(b.id) || { rate: DEFAULT_AGENCY_FEE_RATE, source: "defaut" as const };
+  const inheritedFee = inheritedFees.get(b.id) || { rate: DEFAULT_AGENCY_FEE_RATE, source: "defaut" as const };
+
   return (
     <BookingEditor
           booking={b}
+          agencyFee={{
+            rate: appliedFee.rate,
+            source: appliedFee.source,
+            inheritedRate: inheritedFee.rate,
+            inheritedSource: inheritedFee.source,
+          }}
           items={bookingItems}
           travelers={bookingTravelers}
           documents={(documents || []) as CrmBookingDocument[]}

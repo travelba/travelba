@@ -139,8 +139,8 @@ export function filterAgencyReceipts<T extends { direction: string; kind: string
   return rows.filter(isAgencyReceipt);
 }
 
-/** Libellé ledger de la commission 10 % sur les étapes et les dépenses de la réservation. */
-export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
+/** Libellé client de la commission d’agence. Le pourcentage n’y figure pas. */
+export { AGENCY_FEE_LABEL } from "./agency-fee-rate";
 
 export type CrmStaff = {
   id: string;
@@ -191,6 +191,8 @@ export type CrmCustomer = {
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */
   on_hold?: boolean;
+  /** Taux du compte : 0.1, 0.075 ou 0.05. Null = 10 %. */
+  agency_fee_rate?: number | string | null;
   created_at: string;
   updated_at: string;
 };
@@ -263,8 +265,10 @@ export type CrmBooking = {
   total_amount: number;
   /** Si false : montant du séjour affiché au carnet, pas au grand livre. */
   include_in_ledger: boolean;
-  /** Si true : 10 % des étapes et des dépenses, en une ligne du dossier. */
+  /** Si true : commission d’agence des étapes et des dépenses, en une ligne du dossier. */
   agency_commission?: boolean;
+  /** Dérogation du dossier. Null = taux du compte, sinon 10 %. */
+  agency_fee_rate?: number | string | null;
   /** `ticketing_off` : la billeterie automatique ne se recrée pas après un retrait. */
   fee_mode?: string | null;
   /** Si true : le client règle le séjour sur sa carte. Le montant sort du grand livre. */
