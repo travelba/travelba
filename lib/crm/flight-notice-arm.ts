@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { flightNoticeDrafts, flightNoticeVariables, type FlightNoticeKind } from "./flight-watch";
 import { isVercelPreview, productionOnlySecret } from "./preview-secrets";
 import { sendContentTemplate } from "./whatsapp";
+import { contentSidV2Name, whatsappContentApproved } from "./twilio-content-sid";
 
 const CONTENT_URL = "https://content.twilio.com/v1/Content";
 
@@ -114,8 +115,14 @@ export async function ensureFlightNoticeSids(
   const resolved: Partial<Record<FlightNoticeKind, string>> = {};
   for (const draft of flightNoticeDrafts()) {
     const kind = KIND_BY_ENV[draft.env];
+    if (!kind) continue;
+    const next = productionOnlySecret(process.env[contentSidV2Name(draft.env)]);
+    if (next && (await whatsappContentApproved(next, fetchImpl))) {
+      resolved[kind] = next;
+      continue;
+    }
     const fromEnv = productionOnlySecret(process.env[draft.env]);
-    if (kind && fromEnv) resolved[kind] = fromEnv;
+    if (fromEnv) resolved[kind] = fromEnv;
   }
   const missing = flightNoticeDrafts().filter((draft) => {
     const kind = KIND_BY_ENV[draft.env];

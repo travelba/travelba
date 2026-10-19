@@ -6,6 +6,7 @@ import { generatedCityCoverSpec } from "./cover-catalog";
 import { unsplashKeywordMatch } from "./covers";
 import { siteConfig } from "../site";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
+import { resolveContentSid } from "./twilio-content-sid";
 
 /** Fenêtre de regroupement des pièces ajoutées. */
 export const PIECES_WINDOW_MS = 60 * 60 * 1000;
@@ -91,6 +92,13 @@ export type ConciergeTemplate = keyof typeof CONCIERGE_TEMPLATE_ENV;
 /** SID lu dans l’environnement. Vide tant que Meta n’a pas approuvé : aucun SID inventé. */
 export function conciergeContentSid(template: ConciergeTemplate) {
   return process.env[CONCIERGE_TEMPLATE_ENV[template]]?.trim() || "";
+}
+
+/**
+ * SID d’envoi. `TWILIO_CONTENT_*_V2` ne remplace l’ancien qu’après l’approbation Meta.
+ */
+export function resolveConciergeContentSid(template: ConciergeTemplate, fetchImpl?: typeof fetch) {
+  return resolveContentSid(CONCIERGE_TEMPLATE_ENV[template], fetchImpl);
 }
 
 export function reservationPath(reference: string) {
