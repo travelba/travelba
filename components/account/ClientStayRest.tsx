@@ -134,11 +134,17 @@ export async function ClientStayRest({
         />
       </section>
     );
-  const passportRows = passportVaultRows(party, identity, todayIsoDate(), {
-    first_name: customer.first_name,
-    last_name: customer.last_name,
-    usage_name: customer.usage_name,
-  });
+  const passportRows = passportVaultRows(
+    party,
+    identity,
+    todayIsoDate(),
+    {
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      usage_name: customer.usage_name,
+    },
+    b
+  );
 
   return (
     <ClientTripBody

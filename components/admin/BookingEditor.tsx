@@ -1784,7 +1784,7 @@ export function BookingEditor({
             documents={identityDocs}
             holder={holderProfile}
             companions={companions}
-            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
+            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile, booking)}
             scans={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
             onRemove={(id) => removeTraveler(id)}
           />

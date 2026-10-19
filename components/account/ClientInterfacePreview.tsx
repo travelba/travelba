@@ -300,11 +300,17 @@ function ClientScreen({
     ticketingFee,
     ticketCount,
   });
-  const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), {
-    first_name: customer.first_name,
-    last_name: customer.last_name,
-    usage_name: customer.usage_name,
-  });
+  const passportRows = passportVaultRows(
+    travelers,
+    identityDocs,
+    todayIsoDate(),
+    {
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      usage_name: customer.usage_name,
+    },
+    booking
+  );
   const encoursPay =
     ledger && !ledger.member && ledger.owed.total > 0 ? (
       <EncoursPayment

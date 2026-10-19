@@ -197,11 +197,17 @@ export default async function ExampleReservationPage({ params }: Props) {
       }
       passports={
         <TripPassportGroup
-          rows={passportVaultRows(party, session.documents, todayIsoDate(), {
-            first_name: session.customer.first_name,
-            last_name: session.customer.last_name,
-            usage_name: session.customer.usage_name,
-          })}
+          rows={passportVaultRows(
+            party,
+            session.documents,
+            todayIsoDate(),
+            {
+              first_name: session.customer.first_name,
+              last_name: session.customer.last_name,
+              usage_name: session.customer.usage_name,
+            },
+            b
+          )}
           hrefFor={() => `${EXAMPLE_BASE}/profil/documents`}
           passports={passportPreviewsForStay(party, session.documents, session.customer, b.reference)}
           missingHref={`${EXAMPLE_BASE}/profil/documents`}
