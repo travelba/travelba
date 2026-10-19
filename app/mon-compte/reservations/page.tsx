@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { AccountPage } from "@/components/account/AccountPage";
-import { HIDDEN_PRICE_LABEL, stayHeadline } from "@/lib/crm/carnet";
+import { HIDDEN_PRICE_LABEL, listStayTitle } from "@/lib/crm/carnet";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { isClientPastStay, isClientUpcomingStay } from "@/lib/crm/client-stays";
 import {
@@ -163,7 +163,7 @@ export default async function ReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {stayHeadline(b.title, b.destination, places.route[b.id], "Séjour", places.layovers[b.id])}
+                      {listStayTitle(b.title, b.destination, places.arrival[b.id], places.route[b.id], places.layovers[b.id], "Séjour", customer.city)}
                     </h2>
                   </div>
                 </BookingHero>

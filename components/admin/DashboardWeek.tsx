@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { EmptyState } from "@/components/crm/ui";
-import { stayHeadline } from "@/lib/crm/carnet";
+import { listStayTitle } from "@/lib/crm/carnet";
 import type { DashboardWeekEntry } from "@/lib/crm/dashboard-week";
 import { formatDateFr, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
@@ -96,7 +96,7 @@ export function DashboardWeek({
                                   : ""}
                             </p>
                             <p className="truncate font-semibold text-[var(--admin-navy)]">
-                              {stayHeadline(booking.title, booking.destination, places.route[booking.id], "Séjour", places.layovers?.[booking.id])}
+                              {listStayTitle(booking.title, booking.destination, places.arrival[booking.id], places.route[booking.id], places.layovers?.[booking.id])}
                             </p>
                             <p className="truncate text-xs text-muted">
                               {names.get(booking.customer_id) || "Client"} · {formatDateFr(when)}

@@ -7,6 +7,7 @@ import {
   hotelStayLabel,
   itemClock,
 } from "./carnet";
+import { stayDestinationLine } from "./stay-phrase";
 import { unsplashKeywordMatch } from "./covers";
 import { countryName } from "./countries";
 import { greetingGivenName } from "./identity";
@@ -487,7 +488,8 @@ function nextStay(stays: ConciergeStay[]) {
 }
 
 function stayHeadline(stay: ConciergeStay, lang: ReplyLang) {
-  const place = stay.destination || stay.title;
+  const place =
+    stayDestinationLine({ destination: stay.destination, title: stay.title }) || stay.destination || stay.title;
   const start = dateLabel(stay.startDate, lang);
   const end = dateLabel(stay.endDate, lang);
   const dates =

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { IMPORT_AUTO_NOTE } from "@/lib/crm/email-detach";
+import { IMPORT_AUTO_NOTE, withImportStamp } from "@/lib/crm/email-detach";
 import { AUTO_STAY_NOTE, runEmailAutoCreate } from "@/lib/crm/email-ingest-create";
 import {
   applyCancellationToBooking,
@@ -87,7 +87,11 @@ export async function autoCreateBookingFromIngestId(id: string) {
         // le carnet n’est pas montré, et un détachement peut encore retirer le dossier.
         await admin
           .from("crm_bookings")
-          .update({ notes_internal: IMPORT_AUTO_NOTE, status: "draft" })
+          .update({
+            notes_client: null,
+            notes_internal: withImportStamp(booking.notes_internal, IMPORT_AUTO_NOTE),
+            status: "draft",
+          })
           .eq("id", booking.id);
         return { id: booking.id };
       },

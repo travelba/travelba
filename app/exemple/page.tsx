@@ -8,7 +8,7 @@ import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -23,13 +23,15 @@ export default async function ExampleHomePage() {
   const balance = session.ledger.balanceValue;
   const firstName = greetingGivenName(session.customer.first_name) || "Camille";
   const countdown = jMinusLabel(nextTrip.start_date);
-  const tripName = stayTitleFromItems(
+  const labels = nextStayLabels(
     nextTrip.title,
     nextTrip.destination,
     clientVisibleItems(session.items),
-    "Prochain séjour"
+    "Prochain séjour",
+    session.customer.city
   );
-  const tripPlace = tripPlaceLine(tripName, nextTrip.destination);
+  const tripName = labels.title || "Prochain séjour";
+  const tripPlace = tripPlaceLine(tripName, labels.destination);
   const tripHref = `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`;
   const weather = await destinationWeather(nextTrip.destination, nextTrip.title);
   const visibleItems = clientVisibleItems(session.items);

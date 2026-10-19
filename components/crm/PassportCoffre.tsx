@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { PassportVaultRow } from "@/lib/crm/passport-vault";
+import { passportVaultToneClass, type PassportVaultRow } from "@/lib/crm/passport-vault";
 
 export function PassportCoffre({
   rows,
@@ -20,12 +20,7 @@ export function PassportCoffre({
       <ul className="mt-3 space-y-2">
         {rows.map((row) => {
           const href = row.tone === "ok" ? null : hrefFor(row);
-          const tone =
-            row.tone === "ok"
-              ? "bg-[#0B192C] text-[#C5A880]"
-              : row.tone === "soon"
-                ? "bg-[#C5A880]/25 text-[#0B192C]"
-                : "bg-[#f3e6e2] text-[#0B192C]";
+          const tone = passportVaultToneClass(row.tone);
           return (
             <li key={row.travelerId} className="flex items-center justify-between gap-3">
               <span className="min-w-0 truncate text-sm font-semibold text-[#0B192C]">{row.name}</span>

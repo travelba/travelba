@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { passportVaultRows } from "./passport-vault";
+import { passportVaultRows, passportVaultToneClass } from "./passport-vault";
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 function traveler(partial: Partial<CrmBookingTraveler>): CrmBookingTraveler {
@@ -69,4 +69,56 @@ test("coffre : à jour, bientôt, manquant, sans numéro", () => {
     ["Camille Martin:Passeport à jour", "Léa Martin:Expire bientôt", "Noé Martin:Passeport manquant"]
   );
   assert.equal(JSON.stringify(rows).includes("SECRET"), false);
+});
+
+const AUGUST_2027 = { start_date: "2027-08-04", end_date: "2027-08-25" };
+
+test("sur un dossier, le passeport se juge au retour, pas à aujourd’hui", () => {
+  const rows = passportVaultRows(
+    [
+      traveler({ id: "alma", first_name: "Alma" }),
+      traveler({ id: "charles", first_name: "Charles-Elie", is_account_holder: false }),
+      traveler({ id: "return-day", first_name: "Hugo", is_account_holder: false }),
+      traveler({ id: "six", first_name: "Iris", is_account_holder: false }),
+      traveler({ id: "short", first_name: "Noé", is_account_holder: false }),
+    ],
+    [
+      doc({ id: "alma", number: null, first_name: "Alma", expires_on: "2027-07-17" }),
+      doc({ id: "charles", number: null, first_name: "Charles-Elie", expires_on: "2027-09-12" }),
+      doc({ id: "return-day", number: null, first_name: "Hugo", expires_on: "2027-08-25" }),
+      doc({ id: "six", number: null, first_name: "Iris", expires_on: "2028-02-25" }),
+      doc({ id: "short", number: null, first_name: "Noé", expires_on: "2028-02-24" }),
+    ],
+    "2026-10-19",
+    null,
+    AUGUST_2027
+  );
+  assert.deepEqual(
+    rows.map((row) => `${row.name}:${row.label}:${row.tone}`),
+    [
+      "Alma Martin:Expire avant le voyage:alert",
+      "Charles-Elie Martin:Moins de 6 mois après le retour:soon",
+      "Hugo Martin:Expire avant le voyage:alert",
+      "Iris Martin:Passeport à jour:ok",
+      "Noé Martin:Moins de 6 mois après le retour:soon",
+    ]
+  );
+  assert.match(passportVaultToneClass("alert"), /admin-red/);
+  assert.match(passportVaultToneClass("soon"), /C5A880/);
+
+  const withoutTrip = passportVaultRows(
+    [
+      traveler({ id: "alma", first_name: "Alma" }),
+      traveler({ id: "charles", first_name: "Charles-Elie", is_account_holder: false }),
+    ],
+    [
+      doc({ id: "alma", number: null, first_name: "Alma", expires_on: "2027-07-17" }),
+      doc({ id: "charles", number: null, first_name: "Charles-Elie", expires_on: "2027-09-12" }),
+    ],
+    "2026-10-19"
+  );
+  assert.deepEqual(
+    withoutTrip.map((row) => row.label),
+    ["Passeport à jour", "Passeport à jour"]
+  );
 });

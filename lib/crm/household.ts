@@ -1,4 +1,4 @@
-import { isPlaceholderTraveler, matchTravelerToParty } from "./person-match";
+import { foldName, isPlaceholderTraveler, matchTravelerToParty } from "./person-match";
 import type { CrmCompanion, CrmCustomer } from "./types";
 
 export type HouseholdMember = {
@@ -91,13 +91,14 @@ export function attachTravelerToHousehold(
     companions
   );
   if (!match) return traveler;
+  const firstNameOnly = !foldName(traveler.last_name);
   if (match.kind === "holder") {
     return {
       ...traveler,
       is_account_holder: true,
       companion_id: null,
-      first_name: traveler.first_name || holder.first_name,
-      last_name: traveler.last_name || holder.last_name,
+      first_name: firstNameOnly ? holder.first_name || traveler.first_name : traveler.first_name || holder.first_name,
+      last_name: firstNameOnly ? holder.last_name || traveler.last_name : traveler.last_name || holder.last_name,
     };
   }
   const companion = companions.find((row) => row.id === match.id);
@@ -105,8 +106,12 @@ export function attachTravelerToHousehold(
     ...traveler,
     is_account_holder: false,
     companion_id: match.id,
-    first_name: traveler.first_name || companion?.first_name || null,
-    last_name: traveler.last_name || companion?.last_name || null,
+    first_name: firstNameOnly
+      ? companion?.first_name || traveler.first_name
+      : traveler.first_name || companion?.first_name || null,
+    last_name: firstNameOnly
+      ? companion?.last_name || traveler.last_name
+      : traveler.last_name || companion?.last_name || null,
   };
 }
 

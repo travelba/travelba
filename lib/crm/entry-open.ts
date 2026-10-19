@@ -86,13 +86,17 @@ async function stayBehindCode(origin: string, code: string): Promise<{ stay: Ent
     const admin = entryAdmin();
     const { data: booking } = await admin
       .from("crm_bookings")
-      .select("reference, destination, title, cover_image_path, visible_to_client, archived_at")
+      .select("id, reference, destination, title, cover_image_path, visible_to_client, archived_at")
       .eq("reference", reference)
       .maybeSingle();
     if (!booking?.reference || booking.archived_at) return { stay: null, nextPath: link.next_path };
+    const { data: items } = await admin
+      .from("crm_booking_items")
+      .select("kind, title, start_at, end_at, sort_order, details, lifecycle")
+      .eq("booking_id", booking.id);
     const now = new Date();
     const alive = !link.revoked_at && now.getTime() <= entryLinkExpiresAt(link).getTime();
-    const place = stayPlaceName(booking.destination, booking.title);
+    const place = stayPlaceName(booking.destination, booking.title, items || []);
     const hasCover =
       alive && link.show_cover === true && Boolean(booking.visible_to_client) && stayHasPublishedCover(booking);
     return {

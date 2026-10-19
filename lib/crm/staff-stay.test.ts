@@ -161,7 +161,7 @@ test("le titre suit chaque ville ajoutée, sans répéter Milan ni Rome", () => 
       details: { city_from: "Rome", city_to: "Paris" },
     },
   ];
-  assert.equal(stayTitleFromItems("Paris · Milan", "Paris · Milan", items), "Paris · Milan · Rome");
+  assert.equal(stayTitleFromItems("Paris · Milan", "Paris · Milan", items), "Milan · Rome");
   assert.equal(stayTitleFromItems("40 ans", "Paris · Milan", items), "40 ans");
   const facts = staffStayFacts({
     destination: "Paris · Milan",
