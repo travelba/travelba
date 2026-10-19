@@ -1,8 +1,7 @@
 import { inferAirlineIata } from "./brand-marks";
 import { extractHotelEmail, extractHotelPhone, extractHotelWebsite } from "./hotel-contact";
 import { redactIngestText } from "./ingest-redact";
-import { detectCancellationDocument, type BookingExtract } from "./ingest-types";
-import { shownClientNote } from "./public-booking";
+import { detectCancellationDocument, joinAgencyNotes, type BookingExtract } from "./ingest-types";
 import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
 import { tripCityPlan } from "./layover";
@@ -823,6 +822,8 @@ export function parseExpediaTaap(text: string): {
 export const SUPPLIER_CANCELLATION_NOTE =
   "Annulation fournisseur — à rattacher au dossier existant, sans créer de voyage.";
 
+export const QUOTE_CAVEAT_NOTE = "Devis — tarifs non bloqués, à confirmer.";
+
 /** Le nom imprimé du voyageur devient le titulaire si le mail ne l’a pas recopié. */
 export function applyPrintedGuestNames(extract: BookingExtract): BookingExtract {
   const first = (extract.customer_first_name || "").trim();
@@ -877,8 +878,8 @@ export function reopenFalseSupplierCancellation(
   subject: string
 ): BookingExtract {
   const stamped = applyPrintedGuestNames(extract);
-  const notes = (stamped.notes_client || "")
-    .split("\n")
+  const notes = [stamped.notes_client, stamped.notes_internal]
+    .flatMap((value) => (value || "").split("\n"))
     .map((line) => line.trim())
     .filter(Boolean);
   const onlyAutoNote = notes.length > 0 && notes.every((line) => line === SUPPLIER_CANCELLATION_NOTE);
@@ -889,7 +890,7 @@ export function reopenFalseSupplierCancellation(
     confirmation &&
     !detectCancellationDocument(subject || "")
   ) {
-    return { ...stamped, document_status: "confirmed", notes_client: null };
+    return { ...stamped, document_status: "confirmed", notes_client: null, notes_internal: null };
   }
   return stamped;
 }
@@ -1822,7 +1823,7 @@ export function parsedItemsFromText(text: string): {
   if (car) items.push(withDocumentPrice(carToItem(car), money));
   if (isQuoteDocument(clean)) {
     status = "quote";
-    notes.push("Devis — tarifs non bloqués, à confirmer.");
+    notes.push(QUOTE_CAVEAT_NOTE);
   }
   if (detectCancellationDocument(clean)) {
     status = "cancelled";
@@ -1884,12 +1885,13 @@ export function applyStructuredHints(
     status = "confirmed";
   }
 
-  const notes =
-    [extract.notes_client, ...extraNotes]
-      .map((row) => shownClientNote(row) || "")
-      .filter((row) => row && (status === "cancelled" || row !== SUPPLIER_CANCELLATION_NOTE))
-      .filter((row, index, all) => all.indexOf(row) === index)
-      .join("\n") || null;
+  const rawNotes = joinAgencyNotes(extract.notes_internal, extract.notes_client, ...extraNotes);
+  const notes_internal =
+    status === "cancelled" || !rawNotes
+      ? rawNotes
+      : joinAgencyNotes(
+          ...rawNotes.split("\n").filter((row) => row.trim() !== SUPPLIER_CANCELLATION_NOTE)
+        );
 
   return applyPrintedGuestNames(
     fillStayFromItems({
@@ -1897,7 +1899,8 @@ export function applyStructuredHints(
       document_status: status,
       title: title || extract.title,
       destination: destination || extract.destination,
-      notes_client: notes,
+      notes_client: null,
+      notes_internal,
       travelers,
       items: mergeExtractItems(items),
     })

@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SET_PASSWORD_PATH, shouldForcePasswordSetup } from "./session";
 import { safeInternalPath } from "./safe-path";
+import { stayPhrase } from "./stay-phrase";
 
 const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -353,7 +354,8 @@ export function stayPreviewCopy(input: {
   entryCode?: string | null;
 }): EntryPreview {
   const base = input.origin.replace(/\/$/, "");
-  const title = input.place ? `Séjour à ${input.place}` : `Réservation ${input.reference}`;
+  const phrase = input.place ? stayPhrase(input.place) : "";
+  const title = phrase ? `Séjour ${phrase}` : `Réservation ${input.reference}`;
   const code = input.entryCode && isEntryCode(input.entryCode) ? input.entryCode : null;
   return {
     title,

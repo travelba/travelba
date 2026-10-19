@@ -5,7 +5,7 @@ import { Icon } from "@/components/crm/icons";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
 import { destinationWeather } from "@/lib/crm/destination-weather";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { getSessionUser } from "@/lib/crm/auth";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 
@@ -63,8 +63,9 @@ export async function HomeTripHeading({
   destination: string | null;
 }) {
   const rows = await homeTripItems(bookingId);
-  const tripName = stayTitleFromItems(title, destination, rows, "Prochain séjour");
-  const tripPlace = tripPlaceLine(tripName, destination);
+  const labels = nextStayLabels(title, destination, rows, "Prochain séjour");
+  const tripName = labels.title || "Prochain séjour";
+  const tripPlace = tripPlaceLine(tripName, labels.destination);
   return (
     <>
       <h2 className="mt-1 font-display text-2xl font-bold leading-tight text-white">{tripName}</h2>

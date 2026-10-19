@@ -16,6 +16,18 @@ export const IMPORT_CREATED_BOOKING_NOTES = [
   IMPORT_AUTO_NOTE,
 ] as const;
 
+/** Remplace le tampon de création et garde les réserves lues à l’import. */
+export function withImportStamp(previous: string | null | undefined, stamp: string) {
+  const stamps = new Set<string>(IMPORT_CREATED_BOOKING_NOTES);
+  const kept: string[] = [];
+  for (const line of String(previous || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || stamps.has(trimmed) || kept.includes(trimmed)) continue;
+    kept.push(trimmed);
+  }
+  return [stamp, ...kept].join("\n");
+}
+
 const BLOCKED_MESSAGE =
   "L’arrivée hôtel a déjà avancé (lien, paiement ou message). Rien n’a été retiré.";
 

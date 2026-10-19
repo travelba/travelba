@@ -409,7 +409,7 @@ export function BookingEditor({
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover" | "invoice">("idle");
   // Champs du formulaire méta : `useMirror` — un champ touché par l’agent gagne, un champ intact suit
   // le serveur à chaque `router.refresh()` (une étape ajoutée met déjà à jour la ligne du dossier).
-  const routeTitle = stayTitleFromItems(booking.title, booking.destination, items);
+  const routeTitle = stayTitleFromItems(booking.title, booking.destination, items, "Séjour", customer?.city);
   const [titleDraft, setTitleDraft] = useMirror(routeTitle);
   const titleEdit = stayNameField(routeTitle, titleDraft);
   const [coverOpen, setCoverOpen] = useState(false);
@@ -1784,7 +1784,7 @@ export function BookingEditor({
             documents={identityDocs}
             holder={holderProfile}
             companions={companions}
-            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
+            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile, booking)}
             scans={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
             onRemove={(id) => removeTraveler(id)}
           />

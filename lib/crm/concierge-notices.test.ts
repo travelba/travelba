@@ -98,7 +98,7 @@ test("sans couverture, le séjour part sans image", () => {
     reference,
     mediaUrl: plan.mediaUrl,
   });
-  assert.deepEqual(variables, { "1": "Avoriaz, réservation TB-2026-0004,", "2": "c/K7MQ2PX4" });
+  assert.deepEqual(variables, { "1": "à Avoriaz, réservation TB-2026-0004,", "2": "c/K7MQ2PX4" });
   assert.equal(
     stayNoticeLine("Avoriaz", reference),
     "Votre séjour à Avoriaz, réservation TB-2026-0004, est dans votre espace."
@@ -175,7 +175,7 @@ test("la couverture publiée est une URL HTTPS portée par le code du lien, pas 
     coverAccess: { entryCode: "K7MQ2PX4" },
   });
   assert.ok(plan);
-  assert.equal(plan.place, "Marrakech");
+  assert.equal(plan.place, "à Marrakech");
   assert.equal(plan.mediaUrl, `https://travelba.fr/api/covers/sejour/${reference}?e=K7MQ2PX4`);
   assert.match(plan.mediaUrl, /^https:\/\//);
   assert.equal(/token=|supabase\.co/i.test(plan.mediaUrl), false);
@@ -190,7 +190,7 @@ test("la couverture publiée est une URL HTTPS portée par le code du lien, pas 
     mediaUrl: plan.mediaUrl,
   });
   assert.deepEqual(variables, {
-    "1": "Marrakech, réservation TB-2026-0004,",
+    "1": "à Marrakech, réservation TB-2026-0004,",
     "2": plan.mediaUrl,
     "3": "c/K7MQ2PX4",
   });
@@ -268,7 +268,7 @@ test("plusieurs pièces dans l’heure tiennent dans un seul message", () => {
   });
   assert.equal(plans.length, 1);
   assert.equal(plans[0].ids.length, 3);
-  assert.equal(plans[0].place, "Avoriaz");
+  assert.equal(plans[0].place, "à Avoriaz");
   assert.match(
     plans[0].body,
     /Vos billets et la confirmation d'hôtel sont dans la réservation TB-2026-0004, séjour à Avoriaz\./
@@ -311,7 +311,7 @@ test("l’hôtel et le transfert nomment la réservation et le séjour", () => {
   });
   assert.equal(plans.length, 1);
   assert.equal(plans[0].template, "pieces_composees");
-  assert.equal(plans[0].place, "Avoriaz");
+  assert.equal(plans[0].place, "à Avoriaz");
   assert.match(
     plans[0].body,
     /Votre confirmation d'hôtel et le transfert sont dans la réservation TB-2026-0004, séjour à Avoriaz\./
@@ -461,7 +461,7 @@ test("hôtel, vol, transfert et formalité nomment le séjour, sans photo", () =
     reference,
     mediaUrl: cover,
   });
-  assert.equal(hotel?.["1"], "Avoriaz, réservation TB-2026-0004,");
+  assert.equal(hotel?.["1"], "à Avoriaz, réservation TB-2026-0004,");
   assert.equal(hotel?.["2"], "c/K7MQ2PX4");
   assert.equal(hotel?.["3"], undefined);
   assert.equal(JSON.stringify(hotel).includes("/api/covers/"), false);
@@ -474,7 +474,7 @@ test("hôtel, vol, transfert et formalité nomment le séjour, sans photo", () =
     reference,
     mediaUrl: hotelJpg,
   });
-  assert.equal(hotelPhoto?.["1"], "Avoriaz, réservation TB-2026-0004,");
+  assert.equal(hotelPhoto?.["1"], "à Avoriaz, réservation TB-2026-0004,");
   assert.equal(hotelPhoto?.["2"], hotelJpg);
   assert.equal(hotelPhoto?.["3"], "c/K7MQ2PX4");
   assert.equal(
@@ -506,7 +506,7 @@ test("hôtel, vol, transfert et formalité nomment le séjour, sans photo", () =
     mediaUrl: cover,
   });
   assert.equal(esta?.["1"], "ESTA");
-  assert.equal(esta?.["2"], "Avoriaz, réservation TB-2026-0004,");
+  assert.equal(esta?.["2"], "à Avoriaz, réservation TB-2026-0004,");
   assert.equal(esta?.["3"], "c/K7MQ2PX4");
   assert.equal(esta?.["4"], undefined);
   const invite = conciergeContentVariables({

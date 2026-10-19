@@ -8,7 +8,7 @@ import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
-import { stayHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { listStayDestination, listStayTitle, tripPlaceLine } from "@/lib/crm/carnet";
 import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -149,14 +149,22 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
 
   const countdown = jMinusLabel(nextTrip.start_date);
   const tripHref = `/mon-compte/reservations/${nextTrip.reference}`;
-  const tripName = stayHeadline(
+  const arrival = places?.arrival[nextTrip.id];
+  const route = places?.route[nextTrip.id];
+  const layovers = places?.layovers[nextTrip.id];
+  const tripName = listStayTitle(
     nextTrip.title,
     nextTrip.destination,
-    places?.route[nextTrip.id],
+    arrival,
+    route,
+    layovers,
     "Prochain séjour",
-    places?.layovers[nextTrip.id]
+    customer.city
   );
-  const tripPlace = tripPlaceLine(tripName, nextTrip.destination);
+  const tripPlace = tripPlaceLine(
+    tripName,
+    listStayDestination(nextTrip.destination, arrival, route, layovers, customer.city)
+  );
 
   return (
     <>

@@ -171,7 +171,7 @@ function linesFor(
         attemptAt: row.dispatch_attempt_at,
         nowMs,
         stay: {
-          place: stayPlaceName(booking.destination || null, booking.title || null),
+          place: stayPlaceName(booking.destination || null, booking.title || null, items),
           reference: booking.reference || null,
           departureOn: dates.departure,
           phone: holder?.phone || null,
@@ -450,7 +450,7 @@ export async function sendUkEtaToClient(
       phone: account?.phone || null,
       email: account?.email || null,
       name: authorizationTravelerName(person.first_name, person.last_name),
-      place: stayPlaceName(loaded.booking.destination || null, loaded.booking.title || null),
+      place: stayPlaceName(loaded.booking.destination || null, loaded.booking.title || null, loaded.items),
       reference: loaded.booking.reference,
       validUntil: row.valid_until,
       optInAt: account?.whatsapp_opt_in_at,

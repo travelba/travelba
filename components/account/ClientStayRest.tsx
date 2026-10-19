@@ -97,7 +97,11 @@ export async function ClientStayRest({
   const coverage = tripDocCoverage(party, identity);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const missingCount = coverage.total - coverage.ready;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination);
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination, {
+    title: b.title,
+    homeCity: customer.city,
+    items: visibleItems,
+  });
   const shareCompanions = companionsForShare(party, companions);
   const formalities = frenchPassportTrip(visibleItems, party.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
@@ -134,11 +138,17 @@ export async function ClientStayRest({
         />
       </section>
     );
-  const passportRows = passportVaultRows(party, identity, todayIsoDate(), {
-    first_name: customer.first_name,
-    last_name: customer.last_name,
-    usage_name: customer.usage_name,
-  });
+  const passportRows = passportVaultRows(
+    party,
+    identity,
+    todayIsoDate(),
+    {
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      usage_name: customer.usage_name,
+    },
+    b
+  );
 
   return (
     <ClientTripBody

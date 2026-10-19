@@ -51,6 +51,7 @@ import {
 } from "@/lib/crm/household";
 import {
   emptyBookingExtract,
+  joinAgencyNotes,
   MAX_INGEST_BYTES,
   MAX_INGEST_FILES,
   sanitizeExtractedPrices,
@@ -191,10 +192,13 @@ function mergeRetryExtract(
     title: previous.title || incoming.title,
     currency: previous.currency || incoming.currency,
     destination: incoming.destination || previous.destination,
-    notes_client: [previous.notes_client, incoming.notes_client]
-      .map((row) => (row || "").trim())
-      .filter(Boolean)
-      .join("\n"),
+    notes_client: null,
+    notes_internal: joinAgencyNotes(
+      previous.notes_internal,
+      previous.notes_client,
+      incoming.notes_internal,
+      incoming.notes_client
+    ),
     items: mergeExtractItems([...kept, ...(incoming.items || [])]),
     travelers: [...(previous.travelers || []), ...(incoming.travelers || [])],
   });

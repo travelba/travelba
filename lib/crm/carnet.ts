@@ -8,7 +8,8 @@ import {
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { cityLabel, cityPlaceKey, isOriginHub } from "./city-names";
-import { tripCityPlan } from "./layover";
+import { labelIncludesCity, splitPlaceLabel, tripCityPlan } from "./layover";
+import { stayDestinationLine } from "./stay-phrase";
 import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
@@ -606,8 +607,10 @@ function titleTracksCities(named: string, cities: string[], extra: string[] = []
 }
 
 /**
- * Le titre suit toutes les villes du voyage, dans l’ordre.
- * Un nom choisi (« 40 ans ») reste. Une liste de villes (Paris · Milan) s’allonge.
+ * Le titre suit les villes où l’on séjourne.
+ * Un nom choisi (« 40 ans ») reste. Une liste de villes s’allonge.
+ * Le domicile et les escales, passés à part, sortent de la liste : un titre
+ * recalculé ne remet pas Paris devant Tel Aviv.
  */
 export function stayHeadline(
   title: string | null | undefined,
@@ -616,8 +619,11 @@ export function stayHeadline(
   fallback = "Séjour",
   layovers?: string[] | null
 ) {
-  const cities = (places || []).map((place) => place.trim()).filter(Boolean);
+  const listed = (places || []).map((place) => place.trim()).filter(Boolean);
   const stops = (layovers || []).map((place) => place.trim()).filter(Boolean);
+  const stopKeys = new Set(stops.map((place) => cityPlaceKey(place)).filter(Boolean));
+  const stayed = listed.filter((place) => !stopKeys.has(cityPlaceKey(place)));
+  const cities = stayed.length ? stayed : listed;
   const stored = (title || "").trim();
   const dest = (destination || "").trim();
   const named = stored || dest;
@@ -627,6 +633,61 @@ export function stayHeadline(
   if (cities.length >= 2 && (tracks || echoesDestination)) return cities.join(" · ");
   if (stops.length && tracks && cities.length) return cities.join(" · ");
   return named || fallback;
+}
+
+function stayExtras(
+  stayed: string[],
+  route?: string[] | null,
+  layovers?: string[] | null,
+  homeCity?: string | null
+) {
+  const keys = new Set(stayed.map((place) => cityPlaceKey(place)));
+  const extra = [...(layovers || [])];
+  for (const city of route || []) {
+    if (!keys.has(cityPlaceKey(city))) extra.push(city);
+  }
+  const home = (homeCity || "").trim();
+  if (home && !keys.has(cityPlaceKey(home))) extra.push(home);
+  return extra;
+}
+
+/** Titre de liste : les villes où l’on séjourne. Le trajet sert à reconnaître l’ancienne liste. */
+export function listStayTitle(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  arrival?: string[] | null,
+  route?: string[] | null,
+  layovers?: string[] | null,
+  fallback = "Séjour",
+  homeCity?: string | null
+) {
+  const stayed = (arrival || []).map((place) => place.trim()).filter(Boolean);
+  if (!stayed.length) {
+    const routeCities = (route || []).map((place) => place.trim()).filter(Boolean);
+    const rest = routeCities.filter((city) => !isOriginHub(city));
+    const places = rest.length ? rest : routeCities;
+    return stayHeadline(title, destination, places, fallback, stayExtras(places, routeCities, layovers, homeCity));
+  }
+  return stayHeadline(title, destination, stayed, fallback, stayExtras(stayed, route, layovers, homeCity));
+}
+
+/** Destination affichée : une liste de villes perd le domicile et les escales. Un nom choisi reste. */
+export function listStayDestination(
+  destination: string | null | undefined,
+  arrival?: string[] | null,
+  route?: string[] | null,
+  layovers?: string[] | null,
+  homeCity?: string | null
+) {
+  const current = (destination || "").trim();
+  const stayed = (arrival || []).map((place) => place.trim()).filter(Boolean);
+  if (!current || !stayed.length) return current;
+  const extra = stayExtras(stayed, route, layovers, homeCity);
+  if (!extra.some((city) => labelIncludesCity(current, city))) return current;
+  const known = new Set([...stayed, ...extra].map((city) => cityPlaceKey(city)).filter(Boolean));
+  const parts = splitPlaceLabel(current);
+  if (!parts.length || !parts.every((part) => known.has(cityPlaceKey(part)))) return current;
+  return stayed.join(" · ");
 }
 
 /**
@@ -650,9 +711,20 @@ export function coverQuery(destination: string | null, title: string | null) {
 export function whatsappModifyHref(
   phone: string,
   reference: string,
-  destination: string | null
+  destination: string | null,
+  context?: {
+    title?: string | null;
+    homeCity?: string | null;
+    items?: Parameters<typeof stayDestinationLine>[0]["items"];
+  }
 ) {
-  const dest = (destination || "").trim();
+  const dest =
+    stayDestinationLine({
+      destination,
+      title: context?.title,
+      homeCity: context?.homeCity,
+      items: context?.items,
+    }) || "";
   const text = dest
     ? `Bonjour, je voudrais modifier ${reference} — ${dest}.`
     : `Bonjour, je voudrais modifier ${reference}.`;

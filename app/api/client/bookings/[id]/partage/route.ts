@@ -76,7 +76,9 @@ export async function POST(request: Request, ctx: Ctx) {
     title: stayTitleFromItems(
       booking.title,
       booking.destination,
-      clientVisibleItems(itemRows || [])
+      clientVisibleItems(itemRows || []),
+      "Séjour",
+      auth.customer.city
     ),
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,

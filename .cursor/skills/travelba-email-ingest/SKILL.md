@@ -139,12 +139,14 @@ Document `identity` : pas de proposition de voyage. Prix document manquant : pas
 Confirmation avec une carte (vol, hôtel, transfert…) et une date, sans candidat
 de voyage fort : le cron crée le dossier et le laisse en **brouillon**
 (`status=draft`, même si le mail est une confirmation, `visible_to_client=false`,
-note `IMPORT_AUTO_NOTE`). Client déjà reconnu →
+note `IMPORT_AUTO_NOTE`). Une réserve de devis (« Plusieurs options tarifaires »,
+« Devis — tarifs non bloqués, à confirmer. ») reste dans `notes_internal`.
+L’import n’écrit pas `notes_client`. Client déjà reconnu →
 dossier sur cette fiche. Sinon fiche nouvelle. L'e-mail voyageur utilisable
 est enregistré. S'il manque, ou s'il est celui du fournisseur ou de l'agence,
 la fiche est créée avec le nom seul : pas d'invitation. Devis, extrait mince,
 identité : pas de création. Une correspondance aérienne (moins de 24 h, sans hôtel)
-n’est pas la destination : le titre garde le domicile et la ville du séjour.
+n’est pas la destination : le titre ne garde que la ville du séjour, pas le domicile.
 
 Le clic **Créer un dossier** reste disponible (`persistNewBookingFromExtract`).
 

@@ -7,7 +7,6 @@ import {
   flightIata,
   hotelDisplayName,
   nightsBetween,
-  stayArrivalPlaces,
   stayHeadline,
 } from "@/lib/crm/carnet";
 import { labelIncludesCity, splitPlaceLabel, tripCityPlan, type TripStep } from "@/lib/crm/layover";
@@ -145,22 +144,34 @@ function carnetSteps(items: Step[]) {
     });
 }
 
-function knownCityKeys(items: Step[]) {
-  const plan = tripCityPlan(items);
-  return new Set(
-    [...plan.cities, ...plan.destinations, ...plan.layovers]
+/** Liste de villes déjà posée par l’agence, pas un nom choisi (« 40 ans »). */
+export function isAutoCityList(
+  value: string | null | undefined,
+  items: Step[],
+  homeCity?: string | null
+) {
+  const parts = splitPlaceLabel(value);
+  if (!parts.length) return false;
+  const plan = tripCityPlan(items, undefined, homeCity);
+  const keys = new Set(
+    [...plan.cities, ...plan.destinations, ...plan.layovers, ...plan.origins]
       .map((city) => cityPlaceKey(city))
       .filter(Boolean)
   );
-}
-
-/** Liste de villes déjà posée par l’agence, pas un nom choisi (« 40 ans »). */
-export function isAutoCityList(value: string | null | undefined, items: Step[]) {
-  const parts = splitPlaceLabel(value);
-  if (!parts.length) return false;
-  const keys = knownCityKeys(items);
   if (!keys.size) return false;
   return parts.every((part) => keys.has(cityPlaceKey(part)));
+}
+
+/** Retire le domicile d’une liste de villes. Une ville seule reste : ce peut être l’arrivée. */
+export function withoutHomeCity(value: string | null | undefined, homeCity: string | null | undefined) {
+  const home = cityPlaceKey(homeCity || "");
+  const raw = (value || "").trim();
+  if (!home || !raw) return raw;
+  const parts = splitPlaceLabel(raw);
+  if (parts.length < 2) return raw;
+  const kept = parts.filter((part) => cityPlaceKey(part) !== home);
+  if (!kept.length || kept.length === parts.length) return raw;
+  return kept.join(" · ");
 }
 
 /**
@@ -172,15 +183,23 @@ export function nextStayLabels(
   title: string | null | undefined,
   destination: string | null | undefined,
   items: Step[],
-  fallback = "Séjour"
+  fallback = "Séjour",
+  homeCity?: string | null
 ) {
-  const plan = tripCityPlan(items as TripStep[]);
-  const nextTitle = stayHeadline(title, destination, plan.cities, fallback, plan.layovers).trim();
+  const plan = tripCityPlan(items as TripStep[], undefined, homeCity);
+  const stayed = plan.destinations.length
+    ? plan.destinations
+    : plan.cities.filter((city) => !plan.origins.some((origin) => cityPlaceKey(origin) === cityPlaceKey(city)));
+  const nextTitle = stayHeadline(title, destination, stayed, fallback, [...plan.layovers, ...plan.origins]).trim();
   const currentDest = (destination || "").trim();
-  const suggested = stayArrivalPlaces(null, null, items).join(" · ");
+  const suggested = stayed.join(" · ");
   const destHasLayover = plan.layovers.some((city) => labelIncludesCity(currentDest, city));
+  const destHasOrigin = plan.origins.some((city) => labelIncludesCity(currentDest, city));
   const destinationChanged = Boolean(
-    destHasLayover && isAutoCityList(currentDest, items) && suggested && suggested !== currentDest
+    (destHasLayover || destHasOrigin) &&
+      isAutoCityList(currentDest, items, homeCity) &&
+      suggested &&
+      suggested !== currentDest
   );
   return {
     title: nextTitle,
@@ -200,9 +219,10 @@ export function stayTitleFromItems(
   title: string | null | undefined,
   destination: string | null | undefined,
   items: Step[],
-  fallback = "Séjour"
+  fallback = "Séjour",
+  homeCity?: string | null
 ) {
-  return nextStayLabels(title, destination, items, fallback).title || fallback;
+  return nextStayLabels(title, destination, items, fallback, homeCity).title || fallback;
 }
 
 /** Villes dans l’ordre des étapes, Paris compris quand le vol en part. Les escales pures n’y sont pas. */
@@ -246,6 +266,43 @@ export function layoverDossierDiff(
     destination: destAuto && nextDest !== currentDest ? { from: currentDest, to: nextDest } : null,
     customTitle: titleHas && !titleAuto,
     customDestination: destHas && !destAuto,
+  };
+}
+
+export type OriginDossierDiff = {
+  origins: string[];
+  title: LayoverFieldChange | null;
+  destination: LayoverFieldChange | null;
+  customTitle: boolean;
+  customDestination: boolean;
+};
+
+/**
+ * Ce que le rattrapage écrirait. Rien si le titre et la destination ne citent pas le domicile.
+ * Un nom choisi qui cite le domicile est signalé et laissé.
+ */
+export function originDossierDiff(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  items: Step[],
+  homeCity?: string | null
+): OriginDossierDiff | null {
+  const plan = tripCityPlan(items, undefined, homeCity);
+  const currentTitle = (title || "").trim();
+  const currentDest = (destination || "").trim();
+  const hit = (value: string) => plan.origins.some((city) => labelIncludesCity(value, city));
+  if (!hit(currentTitle) && !hit(currentDest)) return null;
+  const next = nextStayLabels(currentTitle, currentDest, items, currentTitle || "Séjour", homeCity);
+  const titleAuto = hit(currentTitle) && isAutoCityList(currentTitle, items, homeCity);
+  const destAuto = hit(currentDest) && isAutoCityList(currentDest, items, homeCity);
+  const nextTitle = titleAuto ? next.title : currentTitle;
+  const nextDest = destAuto && next.destinationChanged ? next.destination : currentDest;
+  return {
+    origins: plan.origins,
+    title: titleAuto && nextTitle !== currentTitle ? { from: currentTitle, to: nextTitle } : null,
+    destination: destAuto && nextDest !== currentDest ? { from: currentDest, to: nextDest } : null,
+    customTitle: hit(currentTitle) && !titleAuto,
+    customDestination: hit(currentDest) && !destAuto,
   };
 }
 
