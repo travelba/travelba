@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { AccueilVipForm } from "@/components/admin/AccueilVipForm";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { accueilVipQuietLine, composeAccueilVip, readAccueilVipFields } from "@/lib/crm/accueil-vip";
-import { dayHeading, groupByDay } from "@/lib/crm/carnet";
+import { dayHeading, groupByDay, kindIcon } from "@/lib/crm/carnet";
+import { Icon } from "@/components/crm/icons";
 import type { PublicBooking } from "@/lib/crm/public-booking";
 import type { CrmBookingItem } from "@/lib/crm/types";
 
@@ -184,11 +185,16 @@ export function AccueilVipPreview() {
           <div key={day} className="space-y-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">{dayHeading(day)}</p>
             {rows.map((row) => (
-              <article key={`${row.id}-${day}`} className="rounded-2xl border border-[#e5e3dc] bg-white px-3 py-3">
-                <p className="text-sm font-semibold">{row.kind === "accueil_vip" ? row.title : row.title}</p>
-                <p className="text-xs text-muted">
-                  {row.kind === "accueil_vip" ? accueilVipQuietLine(row) : row.confirmation_ref}
-                </p>
+              <article key={`${row.id}-${day}`} className="flex items-start gap-3 rounded-2xl border border-[#e5e3dc] bg-white px-3 py-3">
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-peach)] text-[var(--admin-navy)]">
+                  <Icon name={kindIcon(row.kind)} className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{row.title}</p>
+                  <p className="text-xs text-muted">
+                    {row.kind === "accueil_vip" ? accueilVipQuietLine(row) : row.confirmation_ref}
+                  </p>
+                </div>
               </article>
             ))}
           </div>

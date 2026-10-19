@@ -11,6 +11,8 @@ import {
 } from "@/lib/crm/accueil-vip";
 import { itemClock } from "@/lib/crm/carnet";
 import { Field, MoneyInput } from "@/components/crm/fields";
+import { Icon } from "@/components/crm/icons";
+import { kindIcon } from "@/lib/crm/carnet";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import type { CrmBookingItem } from "@/lib/crm/types";
 
@@ -171,7 +173,10 @@ export function AccueilVipForm({
   return (
     <div className="space-y-3 rounded-2xl border border-border bg-white p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-[var(--admin-navy)]">Accueil VIP</p>
+        <p className="flex items-center gap-2 text-sm font-semibold text-[var(--admin-navy)]">
+          <Icon name={kindIcon("accueil_vip")} className="h-4 w-4 shrink-0" />
+          Accueil VIP
+        </p>
         {onRemove ? (
           <button type="button" className="text-sm font-semibold text-muted underline-offset-2 hover:underline" onClick={onRemove}>
             Retirer

@@ -285,7 +285,7 @@ export function kindIcon(kind: string) {
     case "cruise":
       return "directions_boat";
     case "accueil_vip":
-      return "support_agent";
+      return "user_star";
     case "activity":
       return "local_activity";
     case "insurance":

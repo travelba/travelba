@@ -603,7 +603,8 @@ export function BookingItemsPanel({
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">
-          <button type="button" className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm" onClick={startVip}>
+          <button type="button" className="admin-af-btn admin-tap inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm" onClick={startVip}>
+            <Icon name={kindIcon("accueil_vip")} className="h-4 w-4" />
             Accueil VIP
           </button>
           <button type="button" className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm" onClick={startNew}>
