@@ -303,6 +303,12 @@ describe("coûts du voyage", () => {
     ])[0]?.itemId, "i4");
     assert.equal(suggestItem(phuket[0], { party: "To Europe Hotel", amount: 5000 }).reason, null);
     assert.equal(isOwnAccountTransfer({ party: "To Europe Hotel", text: "" }), false);
+    const taxi = suggestCostTargets({ text: "", party: "TAXI2AIRPORT.COM B.V.", amount: 41.19 }, phuket);
+    assert.equal(taxi.length, 0);
+    assert.equal(
+      taxi.map((hit) => costSuggestionReasonLabel(hit.reason)).includes(supplierSentence),
+      false
+    );
   });
 });
 

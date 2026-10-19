@@ -28,8 +28,7 @@ export default async function AdminPliantPage({
   const account = configured ? await loadPliantAccountBalance() : null;
   let lines: PliantLine[] = [];
   let more = false;
-  if (configured) {
-    try {
+  try {
       const admin = createServiceClient();
       const rows: CrmPliantTransaction[] = [];
       for (let from = 0; from < limit; from += PLIANT_PAGE) {
@@ -122,7 +121,6 @@ export default async function AdminPliantPage({
       lines = [];
       more = false;
     }
-  }
 
   return (
     <div>

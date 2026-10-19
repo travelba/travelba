@@ -435,6 +435,8 @@ const GENERIC_SUPPLIER_WORDS = new Set([
   "the", "and", "les", "des", "del", "de", "la", "le", "el", "los", "las", "by", "air", "airline", "airlines",
   "airways", "travel", "trvl", "tours", "voyages", "voyage", "sarl", "sas", "ltd", "llc", "inc", "gmbh", "co",
   "international", "paris", "www", "com", "fr",
+  "airport", "airports", "aeroport", "aeroports", "taxi", "taxis", "transfer", "transfers",
+  "transfert", "transferts", "vip", "shuttle", "navette",
 ]);
 
 function supplierTokens(value: string | null | undefined) {
