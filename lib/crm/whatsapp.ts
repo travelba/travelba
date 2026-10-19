@@ -1,4 +1,5 @@
 import { entryButtonSuffix, entryCodeFromLink } from "./entry-link";
+import { resolveContentSid } from "./twilio-content-sid";
 import { greetingGivenName } from "./identity";
 import { toE164 } from "./phone";
 
@@ -135,7 +136,7 @@ export async function sendConnexionWhatsapp(input: {
   if (!variables) return { ok: false, reason: "rejected", detail: "lien court absent" };
   return deliverTwilioContent({
     to,
-    contentSid: connexionContentSid(),
+    contentSid: await resolveContentSid("TWILIO_CONTENT_CONNEXION", input.fetchImpl),
     variables,
     fetchImpl: input.fetchImpl,
   });

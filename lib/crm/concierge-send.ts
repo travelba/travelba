@@ -32,6 +32,7 @@ import {
   noticeCardTemplate,
   pieceCardTemplate,
   planStayNotice,
+  resolveConciergeContentSid,
   stayCoverUrl,
   stayHasPublishedCover,
   stayNoticeDispatch,
@@ -233,7 +234,7 @@ async function deliverTemplate(admin: Admin, input: {
     }
   }
   const photoTemplate = conciergePhotoTemplate(input.card || template);
-  const photoSid = photoTemplate ? conciergeContentSid(photoTemplate) : "";
+  const photoSid = photoTemplate ? await resolveConciergeContentSid(photoTemplate) : "";
   const photoMedia = photoTemplate ? await liveConciergeImage(conciergeTemplateImage(photoTemplate)) : null;
   const photoVariables =
     photoTemplate && photoSid && photoMedia
@@ -263,7 +264,7 @@ async function deliverTemplate(admin: Admin, input: {
       return "done";
     }
   }
-  const cardSid = input.card ? conciergeContentSid(input.card) : "";
+  const cardSid = input.card ? await resolveConciergeContentSid(input.card) : "";
   const cardVariables =
     input.card && cardSid
       ? conciergeContentVariables({
@@ -292,7 +293,7 @@ async function deliverTemplate(admin: Admin, input: {
       return "done";
     }
   }
-  const contentSid = conciergeContentSid(template);
+  const contentSid = await resolveConciergeContentSid(template);
   if (!contentSid) return input.holdWithoutCover ? "held" : "done";
   const variables = conciergeContentVariables({
     template,
@@ -344,7 +345,7 @@ async function openStayNotice(
   return stayNoticeDispatch({
     hasCover: true,
     coverReady,
-    templateReady: Boolean(conciergeContentSid("sejour")),
+    templateReady: Boolean(await resolveConciergeContentSid("sejour")),
     waits,
   });
 }
@@ -374,7 +375,7 @@ function stayPlace(
 
 /** Modèle sans bouton. Le numéro vient du compagnon, jamais du client du séjour. */
 async function deliverTravellerPlain(admin: Admin, row: QueueRow, booking: CrmBooking) {
-  const sid = conciergeContentSid("formalite_prete_voyageur");
+  const sid = await resolveConciergeContentSid("formalite_prete_voyageur");
   if (!sid || !row.payload?.travelerId) return;
   const handset = await loadTravellerHandset(admin, booking.id, row.payload.travelerId);
   if (!handset) {
