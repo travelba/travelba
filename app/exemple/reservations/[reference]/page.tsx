@@ -58,7 +58,11 @@ export default async function ExampleReservationPage({ params }: Props) {
   const party = session.travelers;
   const coverage = tripDocCoverage(party, session.documents);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination);
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination, {
+    title: b.title,
+    homeCity: session.customer.city,
+    items: visibleItems,
+  });
   const labels = nextStayLabels(b.title, b.destination, visibleItems, "Séjour", session.customer.city);
   const headline = labels.title || "Séjour";
   const placeLine = tripPlaceLine(headline, labels.destination);

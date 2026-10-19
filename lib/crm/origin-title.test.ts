@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { listStayDestination, listStayTitle } from "./carnet";
+import { listStayDestination, listStayTitle, stayHeadline } from "./carnet";
 import { bookingCoverPlan } from "./covers";
 import { nextStayLabels, stayTitleFromItems, withoutHomeCity } from "./staff-stay";
 import { tripCityPlan, type TripStep } from "./layover";
@@ -45,6 +45,20 @@ test("CDG → Tel Aviv → Seychelles → CDG : ni Paris ni la tour Eiffel", () 
   assert.equal(labels.destination, "Tel Aviv · Seychelles");
   assert.equal(
     stayTitleFromItems("CDG · Tel Aviv · Seychelles", "CDG · Tel Aviv · Seychelles", SEYCHELLES),
+    "Tel Aviv · Seychelles"
+  );
+  assert.equal(
+    stayHeadline(
+      "Paris · Tel Aviv · Seychelles",
+      "Paris · Tel Aviv · Seychelles",
+      plan.cities,
+      "Séjour",
+      [...plan.layovers, ...plan.origins]
+    ),
+    "Tel Aviv · Seychelles"
+  );
+  assert.equal(
+    stayHeadline("Tel Aviv · Seychelles", "Tel Aviv · Seychelles", plan.cities, "Séjour", plan.origins),
     "Tel Aviv · Seychelles"
   );
   const cover = bookingCoverPlan(

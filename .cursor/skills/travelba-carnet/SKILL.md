@@ -76,7 +76,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Check-in / horaires absents = **rien** (pas « 15:00 », pas « non indiqué »).
 - **Contacts d’hôtel** : le catalogue Little Emperors (`crm_hotel_contacts`) peut exister ailleurs. **Sur la fiche réservation**, pas de liste rôle · nom · e-mail. Le nom de l’hôtel suffit. **Interface client** (`/mon-compte`, aperçu Interface client, lien public `/v/`, exemple) : aucun roster. `withoutHotelRoster` retire `hotel_contacts` et les e-mails ou téléphones qui n’existent que dans cette liste, avant le rendu. Milano = Milan. Pas d’écriture dossier par dossier.
 - Rapprochement `matchHotelDirectory` : nom identique, ou mêmes mots une fois la ville retirée. Milano = Milan, Londres = London, Venise = Venice (`CITY_ALIASES` dans `lib/crm/hotel-catalog.ts`). Nouvelle graphie = une ligne d’alias + un test `hotel-catalog.test.ts`. Deux hôtels possibles : aucun. Hôtel absent du catalogue : pas de contact inventé.
-- Copy client : **l’agence**. Modifier un séjour : WhatsApp `Bonjour, je voudrais modifier {réf} — {destination}.` (`whatsappModifyHref`).
+- Copy client : **l’agence**. Les phrases qui nomment le séjour (`stayDestinationPhrase`, même liste que le titre) citent chaque ville où l’on reste, avec la préposition : « à Tel Aviv et aux Seychelles », « en Italie », « au Maroc », « aux Maldives ». Jamais le départ ni une escale. Modifier un séjour : WhatsApp `Bonjour, je voudrais modifier {réf} — {destinations}.` (`whatsappModifyHref`).
 - Conciergerie 24/7 WhatsApp — **pas** de cloche de notif fictive.
 
 ## Visibilité / ingest client

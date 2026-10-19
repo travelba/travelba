@@ -12,6 +12,7 @@ import { toE164 } from "./phone";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { sendContentTemplate, type WhatsappSendResult } from "./whatsapp";
 import { isTravelAuthorization, type CrmBooking, type CrmBookingItem, type CrmBookingTraveler, type CrmTravelDocument } from "./types";
+import type { TripStep } from "./layover";
 import {
   conciergeContentSid,
   conciergeContentVariables,
@@ -50,6 +51,7 @@ type CustomerRow = {
   first_name: string | null;
   whatsapp_opt_in_at: string | null;
   whatsapp_opt_out_at?: string | null;
+  city?: string | null;
 };
 
 type QueuePayload = {
@@ -106,7 +108,7 @@ async function loadBooking(admin: Admin, bookingId: string) {
 async function loadCustomer(admin: Admin, customerId: string) {
   const { data } = await admin
     .from("crm_customers")
-    .select("id, email, phone, phone_secondary, first_name, whatsapp_opt_in_at, whatsapp_opt_out_at")
+    .select("id, email, phone, phone_secondary, first_name, city, whatsapp_opt_in_at, whatsapp_opt_out_at")
     .eq("id", customerId)
     .maybeSingle();
   return (data as CustomerRow | null) || null;
@@ -353,9 +355,21 @@ async function noteCoverWait(admin: Admin, row: QueueRow) {
   await admin.from("crm_whatsapp_messages").update({ payload }).eq("id", row.id).eq("status", "queued");
 }
 
-/** Lieu d’arrivée. Seul le modèle « Votre séjour » porte la couverture : les autres cartes ont leur image de type. */
-function stayPlace(booking: { destination: string | null; title: string | null }) {
-  return stayPlaceName(booking.destination, booking.title);
+async function loadStaySteps(admin: Admin, bookingId: string) {
+  const { data } = await admin
+    .from("crm_booking_items")
+    .select("kind, title, start_at, end_at, sort_order, details, lifecycle")
+    .eq("booking_id", bookingId);
+  return (data || []) as TripStep[];
+}
+
+/** Villes du séjour. Seul le modèle « Votre séjour » porte la couverture : les autres cartes ont leur image de type. */
+function stayPlace(
+  booking: { destination: string | null; title: string | null },
+  steps?: TripStep[] | null,
+  homeCity?: string | null
+) {
+  return stayPlaceName(booking.destination, booking.title, steps, homeCity);
 }
 
 /** Modèle sans bouton. Le numéro vient du compagnon, jamais du client du séjour. */
@@ -406,6 +420,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
   }
   const customer = await loadCustomer(admin, row.customer_id);
   if (!customer) return;
+  const steps = await loadStaySteps(admin, booking.id);
+  const homeCity = customer.city || null;
   const key = row.dedupe_key;
 
   if (key.startsWith("sejour:")) {
@@ -414,6 +430,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       reference: booking.reference,
       destination: booking.destination,
       title: booking.title,
+      items: steps,
+      homeCity,
       hasCover: stayHasPublishedCover(booking),
     });
     if (!preview) {
@@ -434,6 +452,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
             reference: booking.reference,
             destination: booking.destination,
             title: booking.title,
+            items: steps,
+            homeCity,
             hasCover: false,
           }) || preview;
     const outcome = await deliverTemplate(admin, {
@@ -455,6 +475,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
           reference: booking.reference,
           destination: booking.destination,
           title: booking.title,
+          items: steps,
+          homeCity,
           hasCover: false,
         });
         if (text) {
@@ -484,6 +506,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       reference: booking.reference,
       destination: booking.destination,
       title: booking.title,
+      items: steps,
+      homeCity,
       pieces,
     });
     const plan = plans[0];
@@ -520,7 +544,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       path: plan.path,
       body: plan.body,
       variable: plan.variable,
-      place: stayPlace(booking),
+      place: stayPlace(booking, steps, homeCity),
       reference: booking.reference,
       card: noticeCardTemplate(plan.template),
     });
@@ -546,7 +570,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       path: plan.path,
       body: plan.body,
       variable: plan.variable,
-      place: stayPlace(booking),
+      place: stayPlace(booking, steps, homeCity),
       reference: booking.reference,
       card: noticeCardTemplate(plan.template),
     });
@@ -608,11 +632,17 @@ export async function notifyStayPublished(bookingId: string) {
   const admin = createServiceClient();
   const booking = await loadBooking(admin, bookingId);
   if (!booking?.visible_to_client) return;
+  const [steps, customer] = await Promise.all([
+    loadStaySteps(admin, booking.id),
+    loadCustomer(admin, booking.customer_id),
+  ]);
   const plan = planStayNotice({
     published: true,
     reference: booking.reference,
     destination: booking.destination,
     title: booking.title,
+    items: steps,
+    homeCity: customer?.city || null,
     hasCover: stayHasPublishedCover(booking),
   });
   if (!plan) return;
@@ -666,11 +696,17 @@ export async function queuePublishedPieces(
     .gte("created_at", pieces[0].at)
     .limit(1);
   if (sent?.length) return;
+  const [steps, customer] = await Promise.all([
+    loadStaySteps(admin, booking.id),
+    loadCustomer(admin, booking.customer_id),
+  ]);
   const plans = planPiecesNotices({
     published: true,
     reference: booking.reference,
     destination: booking.destination,
     title: booking.title,
+    items: steps,
+    homeCity: customer?.city || null,
     pieces,
   });
   const plan = plans[0];

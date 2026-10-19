@@ -9,6 +9,7 @@ import {
 import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { cityLabel, cityPlaceKey, isOriginHub } from "./city-names";
 import { labelIncludesCity, splitPlaceLabel, tripCityPlan } from "./layover";
+import { stayDestinationLine } from "./stay-phrase";
 import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
@@ -606,8 +607,10 @@ function titleTracksCities(named: string, cities: string[], extra: string[] = []
 }
 
 /**
- * Le titre suit toutes les villes du voyage, dans l’ordre.
- * Un nom choisi (« 40 ans ») reste. Une liste de villes (Paris · Milan) s’allonge.
+ * Le titre suit les villes où l’on séjourne.
+ * Un nom choisi (« 40 ans ») reste. Une liste de villes s’allonge.
+ * Le domicile et les escales, passés à part, sortent de la liste : un titre
+ * recalculé ne remet pas Paris devant Tel Aviv.
  */
 export function stayHeadline(
   title: string | null | undefined,
@@ -616,8 +619,11 @@ export function stayHeadline(
   fallback = "Séjour",
   layovers?: string[] | null
 ) {
-  const cities = (places || []).map((place) => place.trim()).filter(Boolean);
+  const listed = (places || []).map((place) => place.trim()).filter(Boolean);
   const stops = (layovers || []).map((place) => place.trim()).filter(Boolean);
+  const stopKeys = new Set(stops.map((place) => cityPlaceKey(place)).filter(Boolean));
+  const stayed = listed.filter((place) => !stopKeys.has(cityPlaceKey(place)));
+  const cities = stayed.length ? stayed : listed;
   const stored = (title || "").trim();
   const dest = (destination || "").trim();
   const named = stored || dest;
@@ -656,7 +662,12 @@ export function listStayTitle(
   homeCity?: string | null
 ) {
   const stayed = (arrival || []).map((place) => place.trim()).filter(Boolean);
-  if (!stayed.length) return stayHeadline(title, destination, route, fallback, layovers);
+  if (!stayed.length) {
+    const routeCities = (route || []).map((place) => place.trim()).filter(Boolean);
+    const rest = routeCities.filter((city) => !isOriginHub(city));
+    const places = rest.length ? rest : routeCities;
+    return stayHeadline(title, destination, places, fallback, stayExtras(places, routeCities, layovers, homeCity));
+  }
   return stayHeadline(title, destination, stayed, fallback, stayExtras(stayed, route, layovers, homeCity));
 }
 
@@ -700,9 +711,20 @@ export function coverQuery(destination: string | null, title: string | null) {
 export function whatsappModifyHref(
   phone: string,
   reference: string,
-  destination: string | null
+  destination: string | null,
+  context?: {
+    title?: string | null;
+    homeCity?: string | null;
+    items?: Parameters<typeof stayDestinationLine>[0]["items"];
+  }
 ) {
-  const dest = (destination || "").trim();
+  const dest =
+    stayDestinationLine({
+      destination,
+      title: context?.title,
+      homeCity: context?.homeCity,
+      items: context?.items,
+    }) || "";
   const text = dest
     ? `Bonjour, je voudrais modifier ${reference} — ${dest}.`
     : `Bonjour, je voudrais modifier ${reference}.`;

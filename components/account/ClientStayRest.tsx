@@ -97,7 +97,11 @@ export async function ClientStayRest({
   const coverage = tripDocCoverage(party, identity);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const missingCount = coverage.total - coverage.ready;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination);
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination, {
+    title: b.title,
+    homeCity: customer.city,
+    items: visibleItems,
+  });
   const shareCompanions = companionsForShare(party, companions);
   const formalities = frenchPassportTrip(visibleItems, party.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);

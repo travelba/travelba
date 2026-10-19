@@ -265,7 +265,11 @@ function ClientScreen({
   const coverage = tripDocCoverage(travelers, identityDocs);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const missingCount = coverage.total - coverage.ready;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination);
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination, {
+    title: booking.title,
+    homeCity: customer.city,
+    items,
+  });
   const labels = nextStayLabels(booking.title, booking.destination, items, "Séjour", customer.city);
   const headline = labels.title || "Séjour";
   const clientNote = shownClientNote(booking.notes_client);
