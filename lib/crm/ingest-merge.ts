@@ -2,16 +2,15 @@ import { foldLetters } from "./text";
 import { sortItemsByOrder } from "./carnet";
 import { nextStayLabels } from "./staff-stay";
 import { isEmailBodyFile } from "./ingest-title";
-import type { IngestFamily } from "./ingest-parse";
-import { tagSourceFileName } from "./ingest-parse";
+import { QUOTE_CAVEAT_NOTE, tagSourceFileName, type IngestFamily } from "./ingest-parse";
 import {
   emptyBookingExtract,
+  joinAgencyNotes,
   sanitizeExtractedPrices,
   type BookingExtract,
   type IngestWarning,
 } from "./ingest-types";
 import { mergeExtractItems } from "./item-match";
-import { shownClientNote } from "./public-booking";
 import { QUOTE_REVIEW_REASON } from "./review-doubt";
 
 export type FileExtractResult = {
@@ -149,6 +148,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     };
     items = mergeExtractItems([...items, ...tagged.items]);
     travelers.push(...(tagged.travelers || []));
+    if (tagged.notes_internal) notes.push(tagged.notes_internal);
     if (tagged.notes_client) notes.push(tagged.notes_client);
     if (!title && tagged.title && !isEmailBodyFile(row.name)) title = tagged.title;
     if (!destination && tagged.destination) destination = tagged.destination;
@@ -166,7 +166,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
       "Le lot mélange un devis et des confirmations : les cartes devis restent à vérifier."
     );
   } else if (hasQuote) {
-    notes.push("Devis — tarifs non bloqués, à confirmer.");
+    notes.push(QUOTE_CAVEAT_NOTE);
   }
 
   const merged: BookingExtract = {
@@ -182,9 +182,8 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     customer_email: email,
     customer_first_name: firstName,
     customer_last_name: lastName,
-    notes_client: [...new Set(notes.map((row) => shownClientNote(row)).filter(Boolean))].join(
-      "\n"
-    ),
+    notes_client: null,
+    notes_internal: joinAgencyNotes(...notes),
     items: sortItemsByOrder(items),
     travelers: dedupeTravelers(travelers),
   };

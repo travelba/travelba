@@ -30,6 +30,8 @@ import {
   bookingExtractLlmSchema,
   detectCancellationDocument,
   emptyBookingExtract,
+  joinAgencyNotes,
+  parkAgencyNotes,
   guessIngestMime,
   openaiApiKey,
   sanitizeExtractedPrices,
@@ -44,10 +46,12 @@ const MAX_RASTER_PAGES = 5;
 const MAX_NATIVE_PDF_BYTES = 8 * 1024 * 1024;
 
 const PROMPT_COMMON = `Tu es l’assistant d’une agence de voyage française (Travel Business Agency).
-Un dépôt = UN séjour. Si plusieurs voyages : extraire le plus complet et le dire dans notes_client.
+Un dépôt = UN séjour. Si plusieurs voyages : extraire le plus complet et le dire dans notes_internal.
+notes_client = toujours null. L’import n’écrit jamais une note visible par le client.
+notes_internal = réserves d’agence seulement (plusieurs options tarifaires, « Devis — tarifs non bloqués, à confirmer. »).
 
 document_status : confirmed | quote | identity | cancelled.
-- quote = « none are on hold », plusieurs options tarifaires, pas de nom de réservation.
+- quote = « none are on hold », plusieurs options tarifaires, pas de nom de réservation. La réserve va dans notes_internal, jamais dans notes_client.
 - identity = passeport → ne pas créer de prestation.
 - cancelled = le fournisseur annule la réservation (« Cancellation confirmation », « has been cancelled », « a été annulée »). PAS une politique d’annulation ni « free cancellation ».
 
@@ -392,7 +396,8 @@ function compactForReconcile(extract: BookingExtract) {
     destination: extract.destination,
     start_date: extract.start_date,
     end_date: extract.end_date,
-    notes_client: extract.notes_client,
+    notes_client: null,
+    notes_internal: extract.notes_internal,
     travelers: extract.travelers,
     items: (extract.items || []).map((item) => ({
       kind: item.kind,
@@ -439,7 +444,7 @@ async function reconcileExtract(extract: BookingExtract): Promise<BookingExtract
       type: "text",
       text: `${PROMPT_COMMON}
 
-Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champs vides (title, destination, voyageurs s’ils sont imprimés dans les libellés). Ne jamais inventer d’horaire, d’inclus, de prix, de PNR. Si un champ est douteux : details.needs_review=true et details.review_reason = une phrase courte qui nomme ce champ. Ne fusionne pas un aller et un retour. Ne change pas source_file_name.`,
+Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champs vides (title, destination, voyageurs s’ils sont imprimés dans les libellés). Ne jamais inventer d’horaire, d’inclus, de prix, de PNR. Si un champ est douteux : details.needs_review=true et details.review_reason = une phrase courte qui nomme ce champ. Ne fusionne pas un aller et un retour. Ne change pas source_file_name. notes_client reste null. Une réserve d’agence va dans notes_internal.`,
     },
     { type: "text", text: JSON.stringify(compactForReconcile(extract)) },
   ];
@@ -448,11 +453,16 @@ Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champ
     const result = await generateExtract(content, !key);
     if (!result.output) return extract;
     const next = sanitizeExtractedPrices(result.output as BookingExtract);
+    const parked = parkAgencyNotes({
+      notes_client: next.notes_client,
+      notes_internal: joinAgencyNotes(extract.notes_internal, extract.notes_client, next.notes_internal),
+    });
     return {
       ...extract,
       title: extract.title || next.title,
       destination: extract.destination || next.destination,
-      notes_client: extract.notes_client || next.notes_client,
+      notes_client: null,
+      notes_internal: parked.notes_internal,
       travelers: (extract.travelers || []).length ? extract.travelers : next.travelers,
       items: extract.items.map((item, index) => {
         const incoming = next.items[index];
@@ -544,7 +554,8 @@ async function processPreparedFile(
             (family === "quote" ? "quote" : detectCancellationDocument(text) ? "cancelled" : "confirmed"),
           title: parsed.title || "",
           destination: parsed.destination || "",
-          notes_client: parsed.notes.join("\n") || null,
+          notes_client: null,
+          notes_internal: parsed.notes.join("\n") || null,
           travelers: parsed.travelers,
           items:
             family === "little_emperors"
