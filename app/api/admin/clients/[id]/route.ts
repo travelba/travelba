@@ -4,6 +4,7 @@ import { dbError, jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
+import { backfillEmptyPassportIdentity } from "@/lib/crm/travel-document-write";
 import { customerDeleteConfirmed, DELETE_CUSTOMER_CONFIRM_ERROR } from "@/lib/crm/delete-confirm";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
 import { customerFullName } from "@/lib/crm/types";
@@ -99,6 +100,16 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  try {
+    await backfillEmptyPassportIdentity(auth.supabase, {
+      customerId: id,
+      companionId: null,
+      birthDate: data.birth_date,
+      sex: data.sex,
+    });
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "La pièce n’a pas reçu la fiche", 400);
+  }
   if (flags.data.billing_companies) {
     const saved = await saveCustomerBillingCompanies(auth.supabase, id, flags.data.billing_companies);
     if ("error" in saved) return jsonError(saved.error);

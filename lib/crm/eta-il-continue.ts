@@ -1,5 +1,5 @@
 import "server-only";
-import { buildEtaIlDraft } from "@/lib/crm/eta-il-draft";
+import { buildEtaIlDraft, type EtaIlProfiles } from "@/lib/crm/eta-il-draft";
 import { executeEtaIlFill } from "@/lib/crm/eta-il-run";
 import { openaiApiKey } from "@/lib/crm/ingest-types";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -27,20 +27,32 @@ export async function continueEtaIlRequest(bookingId: string) {
   const row = current as { step?: ClientVisaStep; traveler_ids?: string[] | null; accepted_at?: string | null } | null;
   if (!row?.accepted_at || row.step !== "preparation") return;
 
-  const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }] = await Promise.all([
+  const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }, { data: companions }] =
+    await Promise.all([
     service.from("crm_booking_items").select("*").eq("booking_id", b.id),
     service.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
     service.from("crm_travel_documents").select("*").eq("customer_id", b.customer_id),
-    service.from("crm_customers").select("first_name, last_name, usage_name").eq("id", b.customer_id).maybeSingle(),
+    service
+      .from("crm_customers")
+      .select("first_name, last_name, usage_name, birth_date, sex")
+      .eq("id", b.customer_id)
+      .maybeSingle(),
+    service.from("crm_travel_companions").select("id, birth_date, sex").eq("customer_id", b.customer_id),
   ]);
+  const holder = customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name" | "birth_date" | "sex"> | null;
+  const profiles: EtaIlProfiles = {
+    holder,
+    companions: (companions || []) as { id: string; birth_date: string | null; sex: string | null }[],
+  };
   const draft = buildEtaIlDraft({
     items: (items || []) as CrmBookingItem[],
     travelers: (travelers || []) as CrmBookingTraveler[],
     documents: (documents || []) as CrmTravelDocument[],
-    holder: customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name"> | null,
+    holder,
     startDate: b.start_date,
     endDate: b.end_date,
     travelerIds: row?.traveler_ids || [],
+    profiles,
   });
   if (draft.phase !== "prêt") return;
 

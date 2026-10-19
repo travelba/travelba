@@ -3,7 +3,7 @@ import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
-import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
+import { backfillEmptyPassportIdentity, deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 import { companionActivityDetail, companionActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 import { loyaltyPatchFromBody, normalizeLoyaltyMap } from "@/lib/crm/loyalty";
 
@@ -52,6 +52,16 @@ export async function POST(request: Request) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  try {
+    await backfillEmptyPassportIdentity(auth.supabase, {
+      customerId: auth.customer.id,
+      companionId: data.id,
+      birthDate: data.birth_date,
+      sex: data.sex,
+    });
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "La pièce n’a pas reçu la fiche", 400);
+  }
   await recordCustomerActivity({
     customerId: auth.customer.id,
     authUserId: auth.user.id,
@@ -95,6 +105,16 @@ export async function PATCH(request: Request) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  try {
+    await backfillEmptyPassportIdentity(auth.supabase, {
+      customerId: auth.customer.id,
+      companionId: data.id,
+      birthDate: data.birth_date,
+      sex: data.sex,
+    });
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "La pièce n’a pas reçu la fiche", 400);
+  }
   await recordCustomerActivity({
     customerId: auth.customer.id,
     authUserId: auth.user.id,
