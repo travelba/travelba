@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  firstNameOnlyMatches,
   firstNamesMatch,
   isPlaceholderTraveler,
   lastNamesMatch,
@@ -94,6 +95,53 @@ test("un placeholder et un nom trop différent ne matchent pas", () => {
       { first_name: "Noah", last_name: "Moreau" }
     ),
     false
+  );
+});
+
+test("un prénom seul se rattache au foyer, une seule fois", () => {
+  assert.equal(firstNameOnlyMatches("Charles-Elie", "Charles Elie John Haim"), true);
+  assert.equal(firstNameOnlyMatches("CHARLES ELIE", "Charles-Elie"), true);
+  assert.equal(firstNameOnlyMatches("Meryl", "Méryl"), true);
+  assert.equal(firstNameOnlyMatches("Elie", "Charles Elie John Haim"), false);
+  assert.equal(firstNameOnlyMatches("Nathan", "Nathanael"), false);
+  const holder = { first_name: "Nathanaël", last_name: "Martin" };
+  const companions = [
+    { id: "meryl", first_name: "Méryl", last_name: "Martin" },
+    { id: "charles", first_name: "Charles Elie John Haim", last_name: "Martin" },
+    { id: "daniel", first_name: "Daniel", last_name: "Martin" },
+  ];
+  assert.deepEqual(
+    matchTravelerToParty({ first_name: "Nathanael", last_name: null }, holder, companions),
+    { kind: "holder" }
+  );
+  assert.deepEqual(
+    matchTravelerToParty({ first_name: "Charles-Elie", last_name: "" }, holder, companions),
+    { kind: "companion", id: "charles" }
+  );
+  assert.deepEqual(
+    matchTravelerToParty({ first_name: "meryl", last_name: null }, holder, companions),
+    { kind: "companion", id: "meryl" }
+  );
+  assert.equal(
+    matchTravelerToParty({ first_name: "Daniel", last_name: null }, holder, [
+      ...companions,
+      { id: "daniel-2", first_name: "Daniel", last_name: "Bernard" },
+    ]),
+    null
+  );
+  assert.equal(
+    matchTravelerToParty({ first_name: "Daniel", last_name: null }, { first_name: "Daniel", last_name: "Martin" }, [
+      { id: "daniel-2", first_name: "Daniel", last_name: "Bernard" },
+    ]),
+    null
+  );
+  assert.equal(
+    matchTravelerToParty({ first_name: "Meryl", last_name: "Dupont" }, holder, companions),
+    null
+  );
+  assert.equal(
+    matchTravelerToParty({ first_name: "Gary", last_name: null }, holder, companions),
+    null
   );
 });
 
