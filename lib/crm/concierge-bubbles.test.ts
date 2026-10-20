@@ -2,11 +2,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { conciergeOpening, conciergeSkillVersion, packBubbles } from "../concierge/bubbles";
+import { conciergeOpening, packBubbles } from "../concierge/bubbles";
+import { conciergeSkillVersion } from "../concierge/skill-prompt";
+import { CONCIERGE_EXAMPLES_MD, CONCIERGE_SKILL_MD, CONCIERGE_SKILL_VERSION } from "../concierge/skill/text";
 
 test("la skill du concierge est en version 1 et montre vingt échanges", () => {
   assert.equal(conciergeSkillVersion(), "1");
+  const skill = readFileSync(join(process.cwd(), "lib/concierge/skill/SKILL.md"), "utf8");
   const examples = readFileSync(join(process.cwd(), "lib/concierge/skill/examples.md"), "utf8");
+  assert.equal(CONCIERGE_SKILL_MD, skill);
+  assert.equal(CONCIERGE_EXAMPLES_MD, examples);
+  assert.equal(CONCIERGE_SKILL_VERSION, skill.match(/^version:\s*(\S+)/m)?.[1] || "");
   const clients = examples.match(/^Client :/gm) || [];
   assert.ok(clients.length >= 20, String(clients.length));
 });

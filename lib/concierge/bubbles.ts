@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { parisMoment } from "../crm/concierge-when";
 import { CONCIERGE_SIGNATURE } from "../crm/whatsapp";
 
@@ -16,22 +14,6 @@ export type BubbleHistory = {
 
 const GREETING = /^(?:bonjour|hello|שלום)\b[^,\n]*,\s*/i;
 const SIGNATURE = /(?:^|\n)[ \t]*le concierge\.?[ \t]*$/i;
-
-function skillDir() {
-  return join(process.cwd(), "lib/concierge/skill");
-}
-
-/** Style et exemples, lus à chaque appel pour qu’un edit de Benjamin soit pris au prochain message. */
-export function conciergeSkillPrompt() {
-  const skill = readFileSync(join(skillDir(), "SKILL.md"), "utf8").trim();
-  const examples = readFileSync(join(skillDir(), "examples.md"), "utf8").trim();
-  return `${skill}\n\n${examples}`;
-}
-
-export function conciergeSkillVersion() {
-  const skill = readFileSync(join(skillDir(), "SKILL.md"), "utf8");
-  return skill.match(/^version:\s*(\S+)/m)?.[1] || "";
-}
 
 /** Premier message du jour à Paris : salutation et signature. Un fil déjà ouvert aujourd’hui n’en a plus. */
 export function conciergeOpening(history: BubbleHistory[] | undefined, now: Date) {

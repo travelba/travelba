@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { conciergeSkillVersion } from "../concierge/bubbles";
+import { conciergeSkillVersion } from "../concierge/skill-prompt";
 import { parisMoment, relativeWhen } from "./concierge-when";
 import { twilioRequestSignature } from "./twilio-signature";
 import { receiveWhatsappWebhook, type WhatsappStore } from "./whatsapp-inbound";

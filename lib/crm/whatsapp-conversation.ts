@@ -25,7 +25,8 @@ import {
   type ReplyLang,
 } from "./whatsapp-concierge";
 import { parisMoment } from "./concierge-when";
-import { conciergeOpening, conciergeSkillPrompt, packBubbles } from "../concierge/bubbles";
+import { conciergeOpening, packBubbles } from "../concierge/bubbles";
+import { conciergeSkillPrompt } from "../concierge/skill-prompt";
 
 const MODEL_TIMEOUT_MS = 8_000;
 const HISTORY_LIMIT = 16;
