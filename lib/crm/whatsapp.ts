@@ -23,9 +23,19 @@ export function greetingForWhatsapp(firstName: string | null | undefined) {
   return greetingGivenName(firstName) || "";
 }
 
+/** Enlève une signature de fin, répétée, avec ou sans point. Le « Le Concierge » d’une phrase reste. */
+function stripConciergeSignature(body: string) {
+  let text = body.replace(/\s+$/u, "");
+  const tail = /(?:^|\n)[ \t]*le concierge\.?[ \t]*$/i;
+  while (tail.test(text)) {
+    text = text.replace(tail, "").replace(/\s+$/u, "");
+  }
+  return text.trim();
+}
+
 export function withConciergeSignature(body: string) {
-  const trimmed = body.replace(/\s+$/u, "");
-  if (trimmed.endsWith(CONCIERGE_SIGNATURE)) return trimmed;
+  const trimmed = stripConciergeSignature(body);
+  if (!trimmed) return CONCIERGE_SIGNATURE;
   return `${trimmed}\n\n${CONCIERGE_SIGNATURE}`;
 }
 
