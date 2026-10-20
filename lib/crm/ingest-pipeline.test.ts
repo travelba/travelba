@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   classifyIngestFamily,
@@ -12,7 +13,8 @@ import {
   ingestTmpPath,
   parseIngestTmpPath,
 } from "./ingest-storage";
-import { emptyBookingExtract } from "./ingest-types";
+import { bookingNotesFromImport, emptyBookingExtract } from "./ingest-types";
+import { IMPORT_AUTO_NOTE, IMPORT_QUOTE_NOTE, withImportStamp } from "./email-detach";
 
 const AMADEUS = `
 Reçu de Billet Electronique Reference du dossier XL8LPD CheckMyTrip App
@@ -171,7 +173,8 @@ describe("mergeFileExtracts", () => {
     );
     assert.equal(devis?.details?.needs_review, true);
     assert.equal(devis?.details?.review_reason, "Issue d’un devis, pas d’une confirmation.");
-    assert.match(merged.extract.notes_client || "", /devis/i);
+    assert.equal(merged.extract.notes_client, null);
+    assert.match(merged.extract.notes_internal || "", /devis/i);
   });
 
   it("ne met pas tout le dossier en identity si un passeport est mélangé", () => {
@@ -196,6 +199,36 @@ describe("mergeFileExtracts", () => {
     assert.equal(merged.extract.document_status, "confirmed");
     assert.equal(merged.extract.items.length > 0, true);
     assert.equal(merged.warnings.some((row) => row.file === "passeport.jpg"), true);
+  });
+
+  it("range la réserve de devis en note interne, jamais côté client", () => {
+    const quote = mergeFileExtracts([
+      {
+        name: "options.pdf",
+        family: "quote",
+        extract: {
+          ...emptyBookingExtract(),
+          document_status: "quote",
+          notes_client: "Plusieurs options tarifaires.",
+        },
+      },
+    ]);
+    assert.equal(quote.extract.notes_client, null);
+    assert.match(quote.extract.notes_internal || "", /Plusieurs options tarifaires/);
+    assert.match(quote.extract.notes_internal || "", /Devis — tarifs non bloqués, à confirmer/);
+    const saved = bookingNotesFromImport(quote.extract, IMPORT_QUOTE_NOTE);
+    assert.equal(saved.notes_client, null);
+    assert.match(saved.notes_internal || "", /Plusieurs options tarifaires/);
+    assert.match(saved.notes_internal || "", /Devis importé — tarifs non bloqués/);
+    const stamped = withImportStamp(saved.notes_internal, IMPORT_AUTO_NOTE);
+    assert.match(stamped, /Dossier créé automatiquement/);
+    assert.match(stamped, /Plusieurs options tarifaires/);
+    assert.match(stamped, /Devis — tarifs non bloqués/);
+    assert.equal(stamped.includes("Devis importé"), false);
+    const prompt = readFileSync(new URL("./ingest-file.ts", import.meta.url), "utf8");
+    assert.match(prompt, /notes_client = toujours null/);
+    assert.match(prompt, /notes_internal = réserves d’agence seulement/);
+    assert.equal(prompt.includes("le dire dans notes_client"), false);
   });
 
   it("dédupe les voyageurs sans tenir compte de la casse", () => {

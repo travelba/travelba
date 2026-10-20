@@ -5,6 +5,7 @@ import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
 import { parseMoney } from "./money";
+import { shownClientNote } from "./public-booking";
 import { stayCurrency } from "./stay-currency";
 import { INGEST_ITEM_KINDS, type BookingStatus } from "./types";
 import type { PickableCustomer } from "./customer-search";
@@ -87,6 +88,23 @@ const detailsObjectLoose = z
         })
       )
       .optional(),
+    vip_service: looseString,
+    passenger_count: looseNumber,
+    bag_count: looseNumber,
+    client_info: looseString,
+    legs: z
+      .array(
+        z.object({
+          role: looseString,
+          flight_id: looseString,
+          airport_iata: looseString,
+          airport_city: looseString,
+          at: looseString,
+          flight_number: looseString,
+          timezone: looseString,
+        })
+      )
+      .optional(),
   });
 
 export const detailsSchemaLoose = detailsObjectLoose.optional().default({});
@@ -119,6 +137,7 @@ export const bookingExtractSchema = z.object({
   currency: z.string().nullable().optional().default("EUR"),
   total_amount: looseNumber,
   notes_client: looseString,
+  notes_internal: looseString,
   customer_email: looseString,
   customer_first_name: looseString,
   customer_last_name: looseString,
@@ -215,6 +234,7 @@ export const bookingExtractLlmSchema = z.object({
   currency: strictString,
   total_amount: strictNumber,
   notes_client: strictString,
+  notes_internal: strictString,
   customer_email: strictString,
   customer_first_name: strictString,
   customer_last_name: strictString,
@@ -304,6 +324,7 @@ export function emptyBookingExtract(): BookingExtract {
     currency: "EUR",
     total_amount: null,
     notes_client: "",
+    notes_internal: "",
     customer_email: "",
     customer_first_name: "",
     customer_last_name: "",
@@ -363,9 +384,51 @@ export function detectCancellationDocument(text: string | null | undefined) {
   return CANCEL_PHRASE.test(raw);
 }
 
-export function isCancellationExtract(extract: Pick<BookingExtract, "document_status" | "title" | "notes_client">) {
+export function isCancellationExtract(
+  extract: Pick<BookingExtract, "document_status" | "title" | "notes_client"> & {
+    notes_internal?: string | null;
+  }
+) {
   if (extract.document_status === "cancelled") return true;
-  return detectCancellationDocument(`${extract.title || ""}\n${extract.notes_client || ""}`);
+  return detectCancellationDocument(
+    `${extract.title || ""}\n${extract.notes_client || ""}\n${extract.notes_internal || ""}`
+  );
+}
+
+/** Lignes d’agence, sans doublon et sans le mot « null ». */
+export function joinAgencyNotes(...parts: Array<string | null | undefined>): string | null {
+  const lines: string[] = [];
+  for (const part of parts) {
+    for (const line of String(part || "").split("\n")) {
+      const trimmed = shownClientNote(line);
+      if (!trimmed || lines.includes(trimmed)) continue;
+      lines.push(trimmed);
+    }
+  }
+  return lines.length ? lines.join("\n") : null;
+}
+
+/** Une réserve lue à l’import reste interne. notes_client n’est pas rempli. */
+export function parkAgencyNotes<T extends { notes_client?: string | null; notes_internal?: string | null }>(
+  extract: T
+): T {
+  return {
+    ...extract,
+    notes_client: null,
+    notes_internal: joinAgencyNotes(extract.notes_internal, extract.notes_client),
+  };
+}
+
+/** Notes écrites à la création d’un dossier importé. notes_client reste vide. */
+export function bookingNotesFromImport(
+  extract: { notes_client?: string | null; notes_internal?: string | null },
+  stamp: string
+) {
+  const parked = parkAgencyNotes(extract);
+  return {
+    notes_client: null as string | null,
+    notes_internal: joinAgencyNotes(stamp, parked.notes_internal),
+  };
 }
 
 /** Carte hôtel : title = nom d’établissement, ville dans details.city. */

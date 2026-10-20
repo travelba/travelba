@@ -5,6 +5,8 @@ import {
   mapPliantTransaction,
   pliantAvailableLimit,
   pliantCardDisplay,
+  pliantDossierLabels,
+  pliantExpenseCaption,
   pliantSignedCents,
   pliantStayForCard,
   pliantSyncSummary,
@@ -100,4 +102,52 @@ test("le séjour se retrouve par la carte, pas par un autre dossier", () => {
     { cents: 90000, currency: "EUR" }
   );
   assert.equal(pliantAvailableLimit({ name: "Travelba" }), null);
+});
+
+test("une carte de dossier nomme le séjour et le client avant le membre Pliant", () => {
+  const caption = pliantExpenseCaption({
+    holderName: "Benjamin Boukris",
+    type: "PURCHASE",
+    category: "FOOD_AND_DRINKS",
+    dossier: {
+      reference: "TB-2026-0088",
+      title: "Phuket & Krabi",
+      client: "Andréa Bensaïd",
+      company: "AB GLOBAL VENTURES",
+    },
+  });
+  assert.equal(caption.stay, "TB-2026-0088 · Phuket & Krabi");
+  assert.equal(caption.who, "Andréa Bensaïd · AB GLOBAL VENTURES");
+  assert.equal(caption.detail, "Achat · Restaurants · Benjamin Boukris");
+  assert.ok(caption.detail.endsWith("Benjamin Boukris"));
+  const alone = pliantExpenseCaption({
+    holderName: "Benjamin Boukris",
+    type: "PURCHASE",
+    category: "FOOD_AND_DRINKS",
+  });
+  assert.equal(alone.stay, "");
+  assert.equal(alone.detail.startsWith("Benjamin Boukris"), true);
+  const labels = pliantDossierLabels({
+    links: [
+      { cardId: CARD, bookingId: "6ca304b2-ed11-4a68-882f-e6833b07359d", last4: "5701" },
+      { cardId: CARD, bookingId: "autre", last4: "1111" },
+    ],
+    bookings: [
+      {
+        id: "6ca304b2-ed11-4a68-882f-e6833b07359d",
+        reference: "TB-2026-0088",
+        title: "Phuket & Krabi",
+        destination: "Phuket",
+        customerId: "client",
+        companyId: "societe",
+      },
+    ],
+    people: [{ id: "client", name: "Andréa Bensaïd", companyName: "AB GLOBAL VENTURES" }],
+    companies: [{ id: "societe", name: "AB GLOBAL VENTURES" }],
+  });
+  assert.equal(labels.length, 1);
+  assert.equal(labels[0].reference, "TB-2026-0088");
+  assert.equal(labels[0].client, "Andréa Bensaïd");
+  assert.equal(labels[0].company, "AB GLOBAL VENTURES");
+  assert.equal(labels[0].last4, "5701");
 });

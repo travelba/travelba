@@ -4,7 +4,7 @@ import type { CrmBooking } from "./types";
  * Colonnes d’un dossier qu’un composant « use client » peut recevoir.
  * React sérialise l’objet entier dans le flux RSC : la ligne brute de
  * `crm_bookings` (notes_internal, total_amount, customer_id, billing_*,
- * agency_commission, include_in_ledger, client_settles_stay, archived_*…)
+ * agency_commission, agency_fee_rate, include_in_ledger, client_settles_stay, archived_*…)
  * ne doit jamais partir vers le navigateur d’un client ou d’un visiteur.
  * Les montants affichés se calculent côté serveur et passent en prop dédiée.
  */

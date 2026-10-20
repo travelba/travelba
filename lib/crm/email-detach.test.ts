@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   EMAIL_DETACH_MARGIN_MS,
+  IMPORT_AUTO_NOTE,
   IMPORT_DOCUMENTS_NOTE,
+  IMPORT_QUOTE_NOTE,
   attachedEmailLabel,
   planEmailDetach,
+  withImportStamp,
   type EmailDetachInput,
 } from "./email-detach";
 
@@ -285,6 +288,19 @@ describe("planEmailDetach", () => {
     );
     assert.equal(plan.deleteBooking, false);
     assert.deepEqual(plan.itemIds, ["item-1"]);
+  });
+});
+
+describe("withImportStamp", () => {
+  it("garde la réserve de devis et remplace le tampon de création", () => {
+    const stamped = withImportStamp(
+      `${IMPORT_QUOTE_NOTE}\nPlusieurs options tarifaires.\nDevis — tarifs non bloqués, à confirmer.`,
+      IMPORT_AUTO_NOTE
+    );
+    assert.match(stamped, /^Dossier créé automatiquement/);
+    assert.match(stamped, /Plusieurs options tarifaires/);
+    assert.match(stamped, /Devis — tarifs non bloqués/);
+    assert.equal(stamped.includes(IMPORT_QUOTE_NOTE), false);
   });
 });
 

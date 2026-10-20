@@ -17,7 +17,7 @@ function failure(err: unknown, partner: boolean) {
     return jsonError(partner ? littleEmperorsPartnerMessage(err.code) : err.message, err.status);
   }
   console.error("[little-emperors]", err instanceof Error ? err.message : "error");
-  return jsonError(partner ? "The staging API could not be read." : "Opération Little Emperors impossible.", 502);
+  return jsonError(partner ? littleEmperorsPartnerMessage("upstream") : "Opération Little Emperors impossible.", 502);
 }
 
 export async function POST(request: Request) {

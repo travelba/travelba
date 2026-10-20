@@ -1,10 +1,12 @@
 import { isTripShareCode } from "./trip-share";
 import { isEntryCode } from "./entry-link";
-import { coverQuery } from "./carnet";
+import { stayDestinationPhrase, stayPhrase } from "./stay-phrase";
+import type { TripStep } from "./layover";
 import { generatedCityCoverSpec } from "./cover-catalog";
 import { unsplashKeywordMatch } from "./covers";
 import { siteConfig } from "../site";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
+import { resolveContentSid } from "./twilio-content-sid";
 
 /** Fenêtre de regroupement des pièces ajoutées. */
 export const PIECES_WINDOW_MS = 60 * 60 * 1000;
@@ -92,16 +94,31 @@ export function conciergeContentSid(template: ConciergeTemplate) {
   return process.env[CONCIERGE_TEMPLATE_ENV[template]]?.trim() || "";
 }
 
+/**
+ * SID d’envoi. `TWILIO_CONTENT_*_V2` ne remplace l’ancien qu’après l’approbation Meta.
+ */
+export function resolveConciergeContentSid(template: ConciergeTemplate, fetchImpl?: typeof fetch) {
+  return resolveContentSid(CONCIERGE_TEMPLATE_ENV[template], fetchImpl);
+}
+
 export function reservationPath(reference: string) {
   if (!REFERENCE.test(reference)) return null;
   return `/mon-compte/reservations/${reference}`;
 }
 
-/** Ville ou station d’arrivée. Pas de repli inventé (ni « voyage », ni un hub de départ). */
-export function stayPlaceName(destination: string | null, title: string | null) {
-  const place = coverQuery(destination, title).replace(/[\r\n]+/g, " ").trim();
-  if (!place || place.toLowerCase() === "voyage" || HUB.test(place)) return null;
-  return place;
+/**
+ * Phrase du séjour : « à Tel Aviv et aux Seychelles ».
+ * Toutes les villes où l’on reste. Pas de repli inventé, pas le domicile seul.
+ */
+export function stayPlaceName(
+  destination: string | null,
+  title: string | null,
+  items?: TripStep[] | null,
+  homeCity?: string | null
+) {
+  const phrase = stayDestinationPhrase({ destination, title, items, homeCity });
+  if (!phrase || HUB.test(phrase)) return null;
+  return phrase;
 }
 
 export function stayHasPublishedCover(booking: {
@@ -273,13 +290,20 @@ export async function liveStayCover(url: string | null, fetchImpl: typeof fetch 
   }
 }
 
-/** {{1}} du modèle « Votre séjour à {{1}} est dans votre espace. » */
+/**
+ * {{1}} du modèle « Votre séjour {{1}} est dans votre espace. »
+ * La préposition est dans la variable : « à Avoriaz », « aux Seychelles ».
+ */
 export function stayTemplateSlot(place: string, reference: string) {
-  return `${place}, réservation ${reference},`;
+  const phrase = stayPhrase(place);
+  if (!phrase) return "";
+  return `${phrase}, réservation ${reference},`;
 }
 
 export function stayNoticeLine(place: string, reference: string) {
-  return `Votre séjour à ${stayTemplateSlot(place, reference)} est dans votre espace.`;
+  const slot = stayTemplateSlot(place, reference);
+  if (!slot) return "";
+  return `Votre séjour ${slot} est dans votre espace.`;
 }
 
 export type StayPlan = {
@@ -298,11 +322,13 @@ export function planStayNotice(input: {
   hasCover: boolean;
   /** Preuve d’accès à la couverture. Absente au moment du plan : la photo est résolue à l’envoi. */
   coverAccess?: StayCoverAccess | null;
+  items?: TripStep[] | null;
+  homeCity?: string | null;
 }): StayPlan | null {
   if (!input.published) return null;
   const path = reservationPath(input.reference);
   if (!path) return null;
-  const place = stayPlaceName(input.destination, input.title);
+  const place = stayPlaceName(input.destination, input.title, input.items, input.homeCity);
   if (!place) return null;
   const mediaUrl = stayCoverUrl(input.reference, input.hasCover, input.coverAccess);
   return {
@@ -355,7 +381,8 @@ export type PiecesPlan = {
 };
 
 function bookingTail(reference: string, place: string | null) {
-  return place ? `${reference}, séjour à ${place}` : reference;
+  const phrase = place ? stayPhrase(place) : "";
+  return phrase ? `${reference}, séjour ${phrase}` : reference;
 }
 
 function articulated(noun: Noun, plural: boolean) {
@@ -443,11 +470,13 @@ export function planPiecesNotices(input: {
   destination?: string | null;
   title?: string | null;
   pieces: PieceStamp[];
+  items?: TripStep[] | null;
+  homeCity?: string | null;
 }): PiecesPlan[] {
   if (!input.published) return [];
   const path = reservationPath(input.reference);
   if (!path) return [];
-  const place = stayPlaceName(input.destination ?? null, input.title ?? null);
+  const place = stayPlaceName(input.destination ?? null, input.title ?? null, input.items, input.homeCity);
   const plans: PiecesPlan[] = [];
   for (const group of clusterPieces(input.pieces)) {
     const sentence = piecesSentence(group.map((piece) => piece.kind), input.reference, place);
@@ -632,7 +661,7 @@ function mediaTemplate(body: string, title: string, mediaVariable: string, butto
   };
 }
 
-const STAY_LINE = "Votre séjour à {{1}} est dans votre espace.";
+const STAY_LINE = "Votre séjour {{1}} est dans votre espace.";
 const STAY_LINE_BARE = "Votre séjour est dans votre espace.";
 
 function contentDraft(input: {
@@ -654,7 +683,7 @@ function contentDraft(input: {
  * elle ne sert plus d’exemple.
  */
 const SAMPLE_COVER = `${siteConfig.url}/whatsapp/hotel.jpg`;
-const SAMPLE_STAY = "Avoriaz, réservation TB-EXEMPLE,";
+const SAMPLE_STAY = "à Avoriaz, réservation TB-EXEMPLE,";
 const SAMPLE_CODE = "c/23456789";
 
 function signed(body: string) {
@@ -799,7 +828,7 @@ export function conciergeContentDrafts() {
       friendlyName: "sejour_publie_texte",
       create: contentDraft({
         friendlyName: "sejour_publie_texte",
-        variables: { "1": "Avoriaz", "2": code },
+        variables: { "1": SAMPLE_STAY, "2": code },
         types: textTemplate(stayBody, "Voir le séjour", "2"),
       }),
     },
@@ -981,7 +1010,7 @@ export function conciergeContentDrafts() {
       photo: "piece_hotel_photo",
       textName: "piece_hotel_bouton",
       photoName: "piece_hotel_photo",
-      body: "Votre confirmation d'hôtel pour le séjour à {{1}} est dans votre espace.",
+      body: "Votre confirmation d'hôtel pour le séjour {{1}} est dans votre espace.",
       button: "Voir l'hôtel",
       image: whatsappTypeImageUrl("hotel"),
     }),
@@ -990,7 +1019,7 @@ export function conciergeContentDrafts() {
       photo: "piece_vol_photo",
       textName: "piece_vol_bouton",
       photoName: "piece_vol_photo",
-      body: "Votre billet pour le séjour à {{1}} est dans votre espace.",
+      body: "Votre billet pour le séjour {{1}} est dans votre espace.",
       button: "Voir le billet",
       image: whatsappTypeImageUrl("billet"),
     }),
@@ -999,7 +1028,7 @@ export function conciergeContentDrafts() {
       photo: "piece_transfert_photo",
       textName: "piece_transfert_bouton",
       photoName: "piece_transfert_photo",
-      body: "Votre transfert pour le séjour à {{1}} est dans votre espace.",
+      body: "Votre transfert pour le séjour {{1}} est dans votre espace.",
       button: "Voir le transfert",
       image: whatsappTypeImageUrl("transfert"),
     }),
@@ -1008,7 +1037,7 @@ export function conciergeContentDrafts() {
       photo: "pieces_regroupees_photo",
       textName: "pieces_regroupees_bouton",
       photoName: "pieces_regroupees_photo",
-      body: "Vos billets, la confirmation d'hôtel et le transfert pour le séjour à {{1}} sont dans votre espace.",
+      body: "Vos billets, la confirmation d'hôtel et le transfert pour le séjour {{1}} sont dans votre espace.",
       button: "Ouvrir la réservation",
       image: whatsappTypeImageUrl("pieces"),
     }),
@@ -1017,7 +1046,7 @@ export function conciergeContentDrafts() {
       photo: "passeport_carte_photo",
       textName: "passeport_sejour_bouton",
       photoName: "passeport_sejour_photo",
-      body: "Avant le départ du séjour à {{1}} le passeport manque. Déposez-le dans vos pièces.",
+      body: "Avant le départ du séjour {{1}} le passeport manque. Déposez-le dans vos pièces.",
       button: "Déposer le passeport",
       image: whatsappTypeImageUrl("passeport"),
     }),
@@ -1026,7 +1055,7 @@ export function conciergeContentDrafts() {
       photo: "passeports_carte_photo",
       textName: "passeports_sejour_bouton",
       photoName: "passeports_sejour_photo",
-      body: "Avant le départ du séjour à {{1}} des passeports manquent. Déposez-les dans vos pièces.",
+      body: "Avant le départ du séjour {{1}} des passeports manquent. Déposez-les dans vos pièces.",
       button: "Déposer les passeports",
       image: whatsappTypeImageUrl("passeport"),
     }),
@@ -1035,7 +1064,7 @@ export function conciergeContentDrafts() {
       photo: "encours_photo",
       textName: "encours_sejour_bouton",
       photoName: "encours_sejour_photo",
-      body: "Votre encours pour le séjour à {{1}} est dans votre espace.",
+      body: "Votre encours pour le séjour {{1}} est dans votre espace.",
       button: "Voir l'encours",
       image: whatsappTypeImageUrl("encours"),
     }),
@@ -1044,7 +1073,7 @@ export function conciergeContentDrafts() {
       photo: "chauffeur_photo",
       textName: "chauffeur_sejour_bouton",
       photoName: "chauffeur_sejour_photo",
-      body: "Votre chauffeur pour le séjour à {{1}} est dans votre espace.",
+      body: "Votre chauffeur pour le séjour {{1}} est dans votre espace.",
       button: "Voir le chauffeur",
       image: whatsappTypeImageUrl("chauffeur"),
     }),
@@ -1053,7 +1082,7 @@ export function conciergeContentDrafts() {
       photo: "rappel_photo",
       textName: "rappel_depart_bouton",
       photoName: "rappel_depart_photo",
-      body: "Votre séjour à {{1}} approche. Tout est dans votre espace.",
+      body: "Votre séjour {{1}} approche. Tout est dans votre espace.",
       button: "Voir le séjour",
       image: whatsappTypeImageUrl("rappel"),
     }),
@@ -1062,7 +1091,7 @@ export function conciergeContentDrafts() {
       photo: "document_photo",
       textName: "document_sejour_bouton",
       photoName: "document_sejour_photo",
-      body: "Une pièce pour le séjour à {{1}} est dans votre espace.",
+      body: "Une pièce pour le séjour {{1}} est dans votre espace.",
       button: "Voir la pièce",
       image: whatsappTypeImageUrl("document"),
     }),
@@ -1075,7 +1104,7 @@ export function conciergeContentDrafts() {
         friendlyName: "formalite_prete_bouton",
         variables: { "1": "ESTA", "2": SAMPLE_STAY, "3": SAMPLE_CODE },
         types: textTemplate(
-          signed("Votre {{1}} pour le séjour à {{2}} est dans vos pièces."),
+          signed("Votre {{1}} pour le séjour {{2}} est dans vos pièces."),
           "Voir la formalité",
           "3"
         ),
@@ -1090,7 +1119,7 @@ export function conciergeContentDrafts() {
         friendlyName: "formalite_prete_photo",
         variables: { "1": "ESTA", "2": SAMPLE_STAY, "3": whatsappTypeImageUrl("visa"), "4": SAMPLE_CODE },
         types: mediaTemplate(
-          signed("Votre {{1}} pour le séjour à {{2}} est dans vos pièces."),
+          signed("Votre {{1}} pour le séjour {{2}} est dans vos pièces."),
           "Voir la formalité",
           "3",
           "4"
@@ -1106,7 +1135,7 @@ export function conciergeContentDrafts() {
         friendlyName: "formalite_manquante_bouton",
         variables: { "1": "visa", "2": SAMPLE_STAY, "3": SAMPLE_CODE },
         types: textTemplate(
-          signed("Votre {{1}} pour le séjour à {{2}} manque avant le départ."),
+          signed("Votre {{1}} pour le séjour {{2}} manque avant le départ."),
           "Voir la formalité",
           "3"
         ),
@@ -1121,7 +1150,7 @@ export function conciergeContentDrafts() {
         friendlyName: "formalite_manquante_photo",
         variables: { "1": "visa", "2": SAMPLE_STAY, "3": whatsappTypeImageUrl("visa"), "4": SAMPLE_CODE },
         types: mediaTemplate(
-          signed("Votre {{1}} pour le séjour à {{2}} manque avant le départ."),
+          signed("Votre {{1}} pour le séjour {{2}} manque avant le départ."),
           "Voir la formalité",
           "3",
           "4"
@@ -1141,7 +1170,7 @@ export function conciergeContentDrafts() {
             [
               "Enchanté {{1}},",
               "Je suis Le Concierge de chez TBA.",
-              "Votre séjour à {{2}} est dans votre espace.",
+              "Votre séjour {{2}} est dans votre espace.",
               "Ce lien vous y conduit, il reste valable 24 heures.",
             ].join("\n")
           ),
@@ -1163,7 +1192,7 @@ export function conciergeContentDrafts() {
             [
               "Enchanté {{1}},",
               "Je suis Le Concierge de chez TBA.",
-              "Votre séjour à {{2}} est dans votre espace.",
+              "Votre séjour {{2}} est dans votre espace.",
               "Ce lien vous y conduit, il reste valable 24 heures.",
             ].join("\n")
           ),
@@ -1182,7 +1211,7 @@ export function conciergeContentDrafts() {
       body: [
         "Bonjour {{1}},",
         "",
-        "Nous n’avons pas trouvé d’ESTA en cours pour le séjour à {{2}} avant le départ.",
+        "Nous n’avons pas trouvé d’ESTA en cours pour le séjour {{2}} avant le départ.",
         "La demande se fait uniquement sur esta.cbp.dhs.gov, au moins 72 h avant le départ. L’agence peut s’en charger.",
       ].join("\n"),
     }),
@@ -1195,7 +1224,7 @@ export function conciergeContentDrafts() {
       body: [
         "Bonjour {{1}},",
         "",
-        "Votre ESTA pour le séjour à {{2}} expire le {{3}}, avant votre retour.",
+        "Votre ESTA pour le séjour {{2}} expire le {{3}}, avant votre retour.",
         "Renouvelez-le uniquement sur esta.cbp.dhs.gov, au moins 72 h avant le départ. L’agence peut s’en charger.",
       ].join("\n"),
     }),
@@ -1208,7 +1237,7 @@ export function conciergeContentDrafts() {
       body: [
         "Bonjour {{1}},",
         "",
-        "Votre ESTA pour le séjour à {{2}} est lié à un ancien passeport.",
+        "Votre ESTA pour le séjour {{2}} est lié à un ancien passeport.",
         "Une nouvelle demande est nécessaire avec le passeport actuel, uniquement sur esta.cbp.dhs.gov. L’agence peut s’en charger.",
       ].join("\n"),
     }),
@@ -1221,7 +1250,7 @@ export function conciergeContentDrafts() {
       body: [
         "Bonjour {{1}},",
         "",
-        "Votre ESTA pour le séjour à {{2}} est valable jusqu’au {{3}}. Il couvre tout le séjour.",
+        "Votre ESTA pour le séjour {{2}} est valable jusqu’au {{3}}. Il couvre tout le séjour.",
       ].join("\n"),
     }),
     ...authorizationCardPair({
@@ -1233,7 +1262,7 @@ export function conciergeContentDrafts() {
       body: [
         "Bonjour {{1}},",
         "",
-        "Nous n’avons pas trouvé d’ETA Royaume-Uni en cours pour le séjour à {{2}} avant le départ.",
+        "Nous n’avons pas trouvé d’ETA Royaume-Uni en cours pour le séjour {{2}} avant le départ.",
         "Elle est obligatoire. Elle coûte 20 £ par personne, enfants compris. La demande se fait uniquement sur gov.uk/eta ou dans l’application UK ETA. L’agence peut s’en charger.",
       ].join("\n"),
     }),
@@ -1246,7 +1275,7 @@ export function conciergeContentDrafts() {
       body: [
         "Bonjour {{1}},",
         "",
-        "Votre ETA Royaume-Uni pour le séjour à {{2}} expire le {{3}}, avant votre retour.",
+        "Votre ETA Royaume-Uni pour le séjour {{2}} expire le {{3}}, avant votre retour.",
         "Il faut en demander une nouvelle, uniquement sur gov.uk/eta. Elle coûte 20 £ par personne, enfants compris. L’agence peut s’en charger.",
       ].join("\n"),
     }),
@@ -1259,7 +1288,7 @@ export function conciergeContentDrafts() {
       body: [
         "Bonjour {{1}},",
         "",
-        "Votre ETA Royaume-Uni pour le séjour à {{2}} est liée à un ancien passeport.",
+        "Votre ETA Royaume-Uni pour le séjour {{2}} est liée à un ancien passeport.",
         "Une nouvelle demande est nécessaire avec le passeport actuel, uniquement sur gov.uk/eta. L’agence peut s’en charger.",
       ].join("\n"),
     }),
@@ -1272,7 +1301,7 @@ export function conciergeContentDrafts() {
       body: [
         "Bonjour {{1}},",
         "",
-        "Votre ETA Royaume-Uni pour le séjour à {{2}} est valable jusqu’au {{3}}. Elle couvre tout le séjour.",
+        "Votre ETA Royaume-Uni pour le séjour {{2}} est valable jusqu’au {{3}}. Elle couvre tout le séjour.",
       ].join("\n"),
     }),
   ];
@@ -1292,7 +1321,8 @@ function cleanToken(value: string) {
  * La pièce, la référence et le lieu tiennent dans l’emplacement déjà approuvé.
  */
 export function pieceTemplateSlot(piece: string, reference: string, place: string | null) {
-  const stay = place ? `, séjour à ${place}` : "";
+  const phrase = place ? stayPhrase(place) : "";
+  const stay = phrase ? `, séjour ${phrase}` : "";
   return `${piece}, réservation ${reference}${stay},`;
 }
 
@@ -1337,6 +1367,7 @@ export function conciergeContentVariables(input: {
   if (input.template === "sejour" || input.template === "sejour_texte") {
     if (!place || !REFERENCE.test(reference) || HUB.test(place)) return null;
     const slot = stayTemplateSlot(place, reference);
+    if (!slot) return null;
     if (input.template === "sejour_texte") return { "1": slot, "2": suffix };
     if (!isStayCoverMedia(media)) return null;
     return { "1": slot, "2": media, "3": suffix };
@@ -1354,30 +1385,42 @@ export function conciergeContentVariables(input: {
   }
   if (STAY_CARDS.has(input.template)) {
     if (!place || !REFERENCE.test(reference) || HUB.test(place)) return null;
-    return { "1": stayTemplateSlot(place, reference), "2": suffix };
+    const slot = stayTemplateSlot(place, reference);
+    if (!slot) return null;
+    return { "1": slot, "2": suffix };
   }
   if (STAY_PHOTO.has(input.template)) {
     if (!place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
-    return { "1": stayTemplateSlot(place, reference), "2": media, "3": suffix };
+    const slot = stayTemplateSlot(place, reference);
+    if (!slot) return null;
+    return { "1": slot, "2": media, "3": suffix };
   }
   if (input.template === "formalite_prete_carte" || input.template === "formalite_manquante_carte") {
     if (!text || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
-    return { "1": text, "2": stayTemplateSlot(place, reference), "3": suffix };
+    const slot = stayTemplateSlot(place, reference);
+    if (!slot) return null;
+    return { "1": text, "2": slot, "3": suffix };
   }
   if (
     input.template === "formalite_prete_carte_photo" ||
     input.template === "formalite_manquante_carte_photo"
   ) {
     if (!text || !place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
-    return { "1": text, "2": stayTemplateSlot(place, reference), "3": media, "4": suffix };
+    const slot = stayTemplateSlot(place, reference);
+    if (!slot) return null;
+    return { "1": text, "2": slot, "3": media, "4": suffix };
   }
   if (input.template === "connexion_carte") {
     if (!text || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
-    return { "1": text, "2": stayTemplateSlot(place, reference), "3": suffix };
+    const slot = stayTemplateSlot(place, reference);
+    if (!slot) return null;
+    return { "1": text, "2": slot, "3": suffix };
   }
   if (input.template === "connexion_carte_photo") {
     if (!text || !place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
-    return { "1": text, "2": stayTemplateSlot(place, reference), "3": media, "4": suffix };
+    const slot = stayTemplateSlot(place, reference);
+    if (!slot) return null;
+    return { "1": text, "2": slot, "3": media, "4": suffix };
   }
   if (!text) return null;
   return { "1": text, "2": suffix };
@@ -1429,6 +1472,7 @@ function authorizationVariables(
   if (!name || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
   if (/\d/.test(name) && name.replace(/[^A-Za-z0-9]/g, "").length >= 6) return null;
   const stay = stayTemplateSlot(place, reference);
+  if (!stay) return null;
   const dated = AUTHORIZATION_DATED.has(template);
   if (dated && !/^\d{2}\/\d{2}\/\d{4}$/.test(when)) return null;
   if (AUTHORIZATION_PHOTO.has(template)) {

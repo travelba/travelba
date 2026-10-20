@@ -4,10 +4,11 @@ import { MYLER_PARTNER, MYLER_SHEET, mylerRefreshNotice, partnerVisibleProbeErro
 
 test("la fiche agence parle du compte de production, sans bac à sable", () => {
   assert.equal(MYLER_SHEET.host, "Compte de production");
-  assert.equal(MYLER_SHEET.keyOff, "Clé de production : pas encore émise.");
-  assert.match(MYLER_SHEET.keyPending, /appellera l’API de production/);
+  assert.equal(MYLER_SHEET.keyOff, "Clé de production : absente sur cet environnement.");
+  assert.match(MYLER_SHEET.keyPending, /appelle l’API de production/);
   assert.match(MYLER_SHEET.keyNote, /compte de production/);
-  assert.match(MYLER_SHEET.blocked, /appellera l’API de production/);
+  assert.match(MYLER_SHEET.keyNote, /La production appelle l’API de production/);
+  assert.match(MYLER_SHEET.blocked, /appelle l’API de production/);
   assert.match(MYLER_SHEET.intro.join(" "), /back-office interne/);
   assert.match(MYLER_SHEET.intro.join(" "), /24 septembre/);
   assert.match(MYLER_SHEET.sync, /liste vide est une réponse réussie/);
@@ -24,6 +25,7 @@ test("la fiche agence parle du compte de production, sans bac à sable", () => {
   assert.equal(text.includes("n’appelle pas"), false);
   assert.equal(text.includes("Clé de test : absente"), false);
   assert.equal(text.includes("api-staging"), false);
+  assert.equal(text.includes("appellera"), false);
   assert.equal(text.includes("LITTLE_EMPERORS_API_KEY"), false);
   assert.equal(text.includes("sk_"), false);
 });
@@ -32,7 +34,8 @@ test("la fiche partenaire est en anglais et ne dit pas que le SSO est utilisé",
   const text = JSON.stringify(MYLER_PARTNER);
   assert.equal(MYLER_PARTNER.keyOn, "Test key: present.");
   assert.match(MYLER_PARTNER.keyNote, /calls the Little Emperors staging API with the test key/);
-  assert.match(MYLER_PARTNER.keyNote, /production API once that key is issued/);
+  assert.match(MYLER_PARTNER.keyNote, /Production calls the Little Emperors production API/);
+  assert.equal(text.includes("once that key is issued"), false);
   assert.match(MYLER_PARTNER.intro.join(" "), /internal back office/);
   assert.match(MYLER_PARTNER.intro.join(" "), /24 September/);
   assert.match(MYLER_PARTNER.intro.join(" "), /match them to Travel BA clients/);

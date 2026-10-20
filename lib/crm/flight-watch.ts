@@ -1,4 +1,5 @@
 import { airlineIataFromFlightNumber } from "./brand-marks";
+import { placeWithPreposition } from "./stay-phrase";
 
 /** 0,005 $ par jeu de résultats. 200 appels couvrent la journée, soit 1 $. */
 export const AEROAPI_DAILY_CALL_CAP = 200;
@@ -512,60 +513,13 @@ function noticeDraft(
   };
 }
 
-const MASCULINE_E = new Set(["mexique", "cambodge", "mozambique", "zimbabwe", "belize", "suriname"]);
-const AT_COUNTRY = new Set([
-  "cuba",
-  "madagascar",
-  "malte",
-  "chypre",
-  "sri lanka",
-  "singapour",
-  "monaco",
-  "haïti",
-  "haiti",
-  "maurice",
-  "bahreïn",
-  "bahrein",
-  "djibouti",
-]);
-const PLURAL_COUNTRY = new Set([
-  "états-unis",
-  "etats-unis",
-  "pays-bas",
-  "philippines",
-  "émirats arabes unis",
-  "emirats arabes unis",
-  "bahamas",
-  "seychelles",
-  "maldives",
-  "comores",
-]);
-
-function countryKey(name: string) {
-  return name
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-}
-
 /** « à Marrakech », « au Maroc », « en France », « aux États-Unis ». */
 export function welcomePlace(input: { city?: string | null; country?: string | null }) {
   const city = (input.city || "").replace(/[\r\n]+/g, " ").trim();
-  if (city) {
-    if (/^le\s+/i.test(city)) return `au ${city.replace(/^le\s+/i, "")}`;
-    if (/^les\s+/i.test(city)) return `aux ${city.replace(/^les\s+/i, "")}`;
-    return `à ${city}`;
-  }
+  if (city) return placeWithPreposition(city, "city");
   const country = (input.country || "").replace(/[\r\n]+/g, " ").trim();
   if (!country) return null;
-  const key = countryKey(country);
-  if (PLURAL_COUNTRY.has(key)) return `aux ${country}`;
-  if (AT_COUNTRY.has(key)) return `à ${country}`;
-  if (MASCULINE_E.has(key)) return `au ${country}`;
-  if (/[eé]$/i.test(country)) return `en ${country}`;
-  if (/^[aeiouhéèêëh]/i.test(country)) return `en ${country}`;
-  return `au ${country}`;
+  return placeWithPreposition(country, "country");
 }
 
 /** Modèles Utility. Le SID reste dans l’environnement, jamais ici. */

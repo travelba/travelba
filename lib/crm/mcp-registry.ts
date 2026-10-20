@@ -32,7 +32,7 @@ import {
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
-import { addHotel, addVol, addVoyageur, createDossier, updateVol } from "@/lib/crm/mcp-trip";
+import { addAccueilVip, addHotel, addVol, addVoyageur, createDossier, updateVol } from "@/lib/crm/mcp-trip";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
@@ -185,7 +185,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (villes puis code aéroport), voyageurs, état, société facturée (societe, paye_par). id ou reference. Pas les contacts d’hôtel.",
+      "Un dossier : cartes (villes puis code aéroport), voyageurs, état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). id ou reference. Pas les contacts d’hôtel.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -269,7 +269,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "comptabilite_voyage",
     description:
-      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées. id ou reference. Lecture seule, jamais montré au client.",
+      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). id ou reference. Lecture seule, jamais montré au client.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -424,7 +424,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes ou les dates d’un dossier, puis le grand livre. L’état du dossier est En préparation, Visible ou Archivée.",
+      "Met à jour les notes, les dates ou la commission d’agence d’un dossier, puis le grand livre. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. L’état du dossier est En préparation, Visible ou Archivée.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -432,6 +432,12 @@ export const MCP_TOOLS: ToolDef[] = [
       notes_internes: z.string().max(5000).optional().describe("Note interne à l’agence"),
       date_depart: z.string().max(40).optional().describe("Date de départ, AAAA-MM-JJ, vide pour effacer"),
       date_retour: z.string().max(40).optional().describe("Date de retour, AAAA-MM-JJ, vide pour effacer"),
+      commission_agence: z
+        .string()
+        .trim()
+        .max(20)
+        .optional()
+        .describe("Taux du dossier : 10, 7,5 ou 5. « compte » retire la dérogation."),
     },
     run: (args) => updateBooking(args),
   },
@@ -477,7 +483,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_client",
     write: true,
     description:
-      "Met à jour le prénom, le nom, l’e-mail, le téléphone ou la société d’un client déjà identifié. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). Ne crée pas de fiche. Aucun message.",
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). Ne crée pas de fiche. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       prenom: z.string().max(80).optional().describe("Prénom"),
@@ -485,6 +491,12 @@ export const MCP_TOOLS: ToolDef[] = [
       email: z.string().trim().optional().describe("E-mail"),
       telephone: z.string().max(40).optional().describe("Téléphone"),
       societe: z.string().max(200).optional().describe("Raison sociale, comme raison_sociale"),
+      commission_agence: z
+        .string()
+        .trim()
+        .max(20)
+        .optional()
+        .describe("Taux du compte : 10, 7,5 ou 5. « defaut » remet 10 %."),
       ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),
@@ -538,7 +550,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "creer_dossier",
     write: true,
     description:
-      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination : aller simple = dernière ville, aller-retour = ville où l’on fait demi-tour. societe_id ou facturer_societe facture la société du client (payer_kind société) ; sinon le séjour reste particulier. Erreur s’il n’y a aucune société ou plusieurs sans societe_id. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
+      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. societe_id ou facturer_societe facture la société du client (payer_kind société) ; sinon le séjour reste particulier. Erreur s’il n’y a aucune société ou plusieurs sans societe_id. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
     input: {
       client_id: z.string().trim().describe("Identifiant du client"),
       titre: z.string().trim().describe("Titre du séjour"),
@@ -591,7 +603,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_vol",
     write: true,
     description:
-      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) sort du titre et d’une destination qui n’est qu’une liste de villes. Une nuit d’hôtel garde la ville. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
+      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) sort du titre et d’une destination qui n’est qu’une liste de villes. Le domicile (départ, retour, ville de la fiche) en sort aussi. Une nuit d’hôtel garde la ville, sauf si c’est seulement le domicile. Un aller simple vers une ville où l’on reste la garde. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -666,6 +678,30 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
     },
     run: (args) => addHotel(args),
+  },
+  {
+    name: "ajouter_accueil_vip",
+    write: true,
+    description:
+      "Ajoute un accueil VIP collé à un vol du dossier. Chaque étape (arrivée, départ) exige le vol correspondant : l’aéroport et l’heure sont ceux de ce vol, et suivent le vol s’il change. Un aller-retour se relie à deux vols. Le prix est facultatif. Le séjour caché ne débite pas. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      fournisseur: z.string().trim().describe("Prestataire, ex. Coral Thailand"),
+      type: z.string().trim().describe("arrivée, départ ou aller-retour"),
+      vol_arrivee: z.string().trim().max(80).optional().describe("Vol d’arrivée du dossier. Obligatoire pour une arrivée ou un aller-retour"),
+      vol_depart: z.string().trim().max(80).optional().describe("Vol de départ du dossier. Obligatoire pour un départ ou un aller-retour"),
+      passagers: z.union([z.number(), z.string()]).describe("Nombre de voyageurs"),
+      bagages: z.union([z.number(), z.string()]).describe("Nombre de bagages"),
+      hotline: z.string().trim().max(40).optional().describe("Téléphone du prestataire"),
+      email: z.string().trim().max(200).optional().describe("E-mail du prestataire"),
+      confirmation: z.string().trim().max(80).optional().describe("Référence de réservation"),
+      informations: z.string().trim().describe("Texte à montrer au client, listes à puces conservées"),
+      prix: z.union([z.number(), z.string()]).optional().describe("Prix vendu, facultatif"),
+      devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
+      document_id: z.string().trim().max(80).optional().describe("Confirmation déjà déposée sur le dossier"),
+    },
+    run: (args) => addAccueilVip(args),
   },
 ];
 

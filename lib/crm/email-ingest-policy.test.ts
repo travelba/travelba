@@ -42,7 +42,8 @@ describe("pas de rattachement autonome", () => {
     assert.match(createRun, /applyCancellationToBooking/);
     assert.match(createRun, /visibleToClient:\s*false/);
     assert.match(createRun, /status:\s*"draft"/);
-    assert.match(createRun, /notes_internal:\s*IMPORT_AUTO_NOTE,\s*status:\s*"draft"/);
+    assert.match(createRun, /withImportStamp\(booking\.notes_internal,\s*IMPORT_AUTO_NOTE\)/);
+    assert.match(createRun, /notes_client:\s*null/);
     assert.match(createRun, /IMPORT_AUTO_NOTE/);
   });
 

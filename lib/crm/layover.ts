@@ -1,4 +1,4 @@
-import { cityLabel, cityPlaceKey, isOriginHub } from "./city-names";
+import { cityLabel, cityPlaceKey } from "./city-names";
 import { stepChronoKey } from "./item-order";
 import { countsAsCarnetCard, isActiveItem } from "./types";
 
@@ -17,12 +17,14 @@ export type TripStep = {
 };
 
 export type TripCityPlan = {
-  /** Villes du titre, domicile compris, escales pures exclues. */
+  /** Villes du trajet, domicile compris, escales pures exclues. */
   cities: string[];
-  /** Destinations : ni domicile, ni hub de départ, ni escale pure. */
+  /** Villes où l’on séjourne : ni domicile, ni escale pure. */
   destinations: string[];
   /** Escales pures, dans l’ordre où on les voit. */
   layovers: string[];
+  /** Domicile à retirer du titre, de la destination et de la photo. */
+  origins: string[];
   /** Ville de départ quand un vol y revient. */
   homeKey: string;
 };
@@ -190,7 +192,7 @@ function airLegs(items: TripStep[], alias: Map<string, Place>) {
   const legs: AirLeg[] = [];
   const seen = new Set<string>();
   for (const item of orderedCards(items)) {
-    if (item.kind !== "flight") continue;
+    if (item.kind !== "flight" && item.kind !== "rail") continue;
     const ends = legEnds(item, alias);
     if (!ends?.from || !ends.to) continue;
     const depart = wall(item.start_at);
@@ -265,12 +267,39 @@ function homeKeyOf(legs: AirLeg[]) {
   return legs.some((leg) => leg.to.key === start) ? start : "";
 }
 
+function labelForKey(legs: AirLeg[], key: string) {
+  for (const leg of legs) {
+    if (leg.from.key === key) return leg.from.label;
+    if (leg.to.key === key) return leg.to.label;
+  }
+  return "";
+}
+
+/** Domicile : on en part et, à l’aller-retour, on y revient. Une ville où l’on séjourne reste. */
+function originLabels(legs: AirLeg[], homeKey: string, destinations: string[]) {
+  const stayed = new Set(destinations.map((city) => cityPlaceKey(city)));
+  const found: string[] = [];
+  const push = (label: string) => {
+    const key = cityPlaceKey(label);
+    if (!label || !key || stayed.has(key)) return;
+    if (found.some((item) => cityPlaceKey(item) === key)) return;
+    found.push(label);
+  };
+  if (homeKey) push(labelForKey(legs, homeKey));
+  else push(legs[0]?.from.label || "");
+  return found;
+}
+
 /**
  * Villes du voyage. Une ville est une escale quand on y arrive et qu’on en repart
  * en avion dans la fenêtre, sans hôtel ni autre service sur place pendant ce passage.
  * Tous les passages doivent être des escales : une nuit d’hôtel, ou un arrêt plus long, la garde.
  */
-export function tripCityPlan(items: TripStep[], maxHours = layoverMaxHours()): TripCityPlan {
+export function tripCityPlan(
+  items: TripStep[],
+  maxHours = layoverMaxHours(),
+  homeCity?: string | null
+): TripCityPlan {
   const active = items.filter((item) => isActiveItem(item));
   const alias = new Map<string, Place>();
   for (const item of active) {
@@ -321,21 +350,27 @@ export function tripCityPlan(items: TripStep[], maxHours = layoverMaxHours()): T
   const arrivals: string[] = [];
   for (const item of cards) {
     if (item.kind === "hotel") {
-      const place = resolvePlace(textOf(item.details, "city"), alias);
-      if (place && (isOriginHub(place.label) || isOriginHub(place.key))) continue;
-      pushCity(hotels, place, skipDest);
+      pushCity(hotels, resolvePlace(textOf(item.details, "city"), alias), skipDest);
     }
     if (item.kind === "flight" || item.kind === "rail") {
-      const ends = legEnds(item, alias);
-      const place = ends?.to || null;
-      if (place && (isOriginHub(place.label) || isOriginHub(place.key))) continue;
-      pushCity(arrivals, place, skipDest);
+      pushCity(arrivals, legEnds(item, alias)?.to || null, skipDest);
     }
+  }
+  let destinations = hotels.length ? hotels : arrivals;
+  const firstKey = legs[0]?.from.key || "";
+  if (firstKey && destinations.some((city) => cityPlaceKey(city) !== firstKey)) {
+    destinations = destinations.filter((city) => cityPlaceKey(city) !== firstKey);
+  }
+  const origins = originLabels(legs, homeKey, destinations);
+  const home = namedPlace(homeCity || "");
+  if (home && destinations.length && !destinations.some((city) => cityPlaceKey(city) === home.key)) {
+    if (!origins.some((city) => cityPlaceKey(city) === home.key)) origins.push(home.label);
   }
   return {
     cities,
-    destinations: hotels.length ? hotels : arrivals,
+    destinations,
     layovers,
+    origins,
     homeKey,
   };
 }

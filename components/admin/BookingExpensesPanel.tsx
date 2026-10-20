@@ -7,6 +7,7 @@ import { LedgerWarningNotice } from "@/components/crm/LedgerWarningNotice";
 import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { readLedgerWarning } from "@/lib/crm/ledger-warning";
 import { agencyFeeBaseFromItems } from "@/lib/crm/bookings";
+import { formatAgencyFeePercent } from "@/lib/crm/agency-fee-rate";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import { isAutoTicketingExpense, ticketingExpenseTouched, AUTO_TICKETING_FEE } from "@/lib/crm/ticketing-fee";
 import {
@@ -35,6 +36,7 @@ export function BookingExpensesPanel({
   visible = false,
   currency = "EUR",
   agencyCommission = false,
+  agencyFeeRate = 0.1,
   onExpenseWrite,
 }: {
   bookingId: string;
@@ -42,6 +44,7 @@ export function BookingExpensesPanel({
   visible?: boolean;
   currency?: string;
   agencyCommission?: boolean;
+  agencyFeeRate?: number;
   /** Le prix dans Transactions suit tout de suite, sans recharger la page. */
   onExpenseWrite?: (change: ExpenseWrite) => void;
 }) {
@@ -187,7 +190,8 @@ export function BookingExpensesPanel({
     router.refresh();
   }
 
-  const commissionAmount = agencyFeeFromGross(agencyFeeBaseFromItems(items));
+  const commissionAmount = agencyFeeFromGross(agencyFeeBaseFromItems(items), agencyFeeRate);
+  const commissionPercent = formatAgencyFeePercent(agencyFeeRate);
 
   const form = editingId ? (
     <div className="mt-3 space-y-3 rounded-2xl border border-border p-3">
@@ -246,9 +250,9 @@ export function BookingExpensesPanel({
           onChange={(event) => void toggleCommission(event.target.checked)}
         />
         <span>
-          Appliquer la commission de 10 %
+          Appliquer la commission d’agence
           <span className="mt-0.5 block text-xs font-normal text-muted">
-            10 % des étapes et des dépenses de cette réservation. Une ligne dans les transactions, qui suit les ajouts et les retraits.
+            {commissionPercent} des étapes et des dépenses de cette réservation. Une ligne dans les transactions, qui suit les ajouts et les retraits.
           </span>
         </span>
       </label>
@@ -259,7 +263,7 @@ export function BookingExpensesPanel({
         <div className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm">
           <div className="min-w-0">
             <p className="font-medium">
-              {AGENCY_FEE_LABEL}
+              {AGENCY_FEE_LABEL} · {commissionPercent}
               <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
                 Transactions
               </span>

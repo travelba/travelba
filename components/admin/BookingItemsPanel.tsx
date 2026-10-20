@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Reorder, useDragControls } from "framer-motion";
 import {
   countsAsCarnetCard,
+  isActiveItem,
   isExtraItemKind,
   isLedgerExpenseKind,
   visibleServiceCopy,
@@ -38,6 +39,8 @@ import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
+import { AccueilVipForm } from "@/components/admin/AccueilVipForm";
+import { composeAccueilVip, accueilVipQuietLine, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
@@ -46,7 +49,9 @@ import { LedgerWarningNotice } from "@/components/crm/LedgerWarningNotice";
 import type { CrmBookingDocument } from "@/lib/crm/types";
 import type { HouseholdMember } from "@/lib/crm/household";
 
-type ItemDraft = BookingExtract["items"][number];
+type ItemDraft = Omit<BookingExtract["items"][number], "kind"> & {
+  kind: BookingExtract["items"][number]["kind"] | "accueil_vip";
+};
 
 function emptyDraft(): ItemDraft {
   return {
@@ -59,6 +64,44 @@ function emptyDraft(): ItemDraft {
     amount: null,
     include_in_ledger: false,
     details: {},
+  };
+}
+
+function savedFlights(rows: CrmBookingItem[]): AccueilVipFlight[] {
+  return rows.filter(
+    (item) => item.kind === "flight" && isActiveItem(item) && !item.id.startsWith(DRAFT_STEP_PREFIX)
+  );
+}
+
+function prepareStepDraft(
+  source: ItemDraft,
+  rows: CrmBookingItem[]
+): { ok: true; draft: ItemDraft } | { ok: false; error: string } {
+  if (source.kind !== "accueil_vip") {
+    if (!source.title.trim()) return { ok: false, error: "Titre requis." };
+    return { ok: true, draft: source };
+  }
+  const fields = readAccueilVipFields({
+    supplier: source.supplier,
+    confirmation_ref: source.confirmation_ref,
+    amount: source.amount,
+    details: (source.details || {}) as Record<string, unknown>,
+  });
+  const composed = composeAccueilVip(fields, savedFlights(rows));
+  if (!composed.ok) return composed;
+  return {
+    ok: true,
+    draft: {
+      ...source,
+      title: composed.card.title,
+      supplier: composed.card.supplier || "",
+      confirmation_ref: composed.card.confirmation_ref || "",
+      start_at: composed.card.start_at || "",
+      end_at: composed.card.end_at || "",
+      amount: composed.card.amount,
+      include_in_ledger: composed.card.amount == null ? false : Boolean(source.include_in_ledger),
+      details: { ...(source.details || {}), ...composed.card.details },
+    },
   };
 }
 
@@ -132,6 +175,10 @@ function stepSubtitle(item: CrmBookingItem) {
     const city = detailText(item, "city");
     if (room) parts.push(room);
     if (city) parts.push(city);
+  } else if (item.kind === "accueil_vip") {
+    const quiet = accueilVipQuietLine(item);
+    if (quiet) parts.push(quiet);
+    if (item.supplier) parts.push(item.supplier);
   } else if (item.supplier) {
     parts.push(item.supplier);
   }
@@ -304,6 +351,22 @@ export function BookingItemsPanel({
     setError(null);
   }
 
+  function startVip() {
+    setEditingId("new");
+    setDraft({
+      kind: "accueil_vip",
+      title: "Accueil VIP",
+      supplier: "",
+      confirmation_ref: "",
+      start_at: "",
+      end_at: "",
+      amount: null,
+      include_in_ledger: false,
+      details: { vip_service: "arrival", passenger_count: 1, bag_count: 0, client_info: "" },
+    });
+    setError(null);
+  }
+
   function remember(next: CrmBookingItem[]) {
     const cards = stayCards(next);
     rowsRef.current = next;
@@ -397,16 +460,25 @@ export function BookingItemsPanel({
     onLiveItemsRef.current = onLiveItems;
   });
   useEffect(() => {
-    const next =
-      editingId && draft.title.trim()
-        ? applyDraftToRows(rows, editingId, draft, `${DRAFT_STEP_PREFIX}live`) || rows
-        : rows;
+    if (!editingId) {
+      onLiveItemsRef.current?.(rows);
+      return;
+    }
+    const ready = prepareStepDraft(draft, rows);
+    const next = ready.ok
+      ? applyDraftToRows(rows, editingId, ready.draft, `${DRAFT_STEP_PREFIX}live`) || rows
+      : rows;
     onLiveItemsRef.current?.(next);
   }, [rows, editingId, draft, applyDraftToRows]);
 
   function keepDraft() {
     if (!editingId) return;
-    const next = applyDraftToRows(rowsRef.current, editingId, draft);
+    const ready = prepareStepDraft(draft, rowsRef.current);
+    if (!ready.ok) {
+      setError(ready.error);
+      return;
+    }
+    const next = applyDraftToRows(rowsRef.current, editingId, ready.draft);
     if (!next) {
       setError("Titre requis.");
       return;
@@ -420,7 +492,12 @@ export function BookingItemsPanel({
     let current = rowsRef.current;
     const editing = editingRef.current;
     if (editing) {
-      const next = applyDraftToRows(current, editing, draftRef.current);
+      const ready = prepareStepDraft(draftRef.current, current);
+      if (!ready.ok) {
+        setError(ready.error);
+        return false;
+      }
+      const next = applyDraftToRows(current, editing, ready.draft);
       if (!next) {
         setError("Titre requis.");
         return false;
@@ -525,9 +602,15 @@ export function BookingItemsPanel({
     <section className="admin-af-card rounded-3xl p-4 sm:p-5">
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
-        <button type="button" className="admin-af-btn admin-tap self-start rounded-full px-4 py-2 text-sm sm:self-auto" onClick={startNew}>
-          Ajouter une étape
-        </button>
+        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <button type="button" className="admin-af-btn admin-tap inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm" onClick={startVip}>
+            <Icon name={kindIcon("accueil_vip")} className="h-4 w-4" />
+            Accueil VIP
+          </button>
+          <button type="button" className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm" onClick={startNew}>
+            Ajouter une étape
+          </button>
+        </div>
       </div>
       <p className="mt-1 text-xs text-muted">Déplacez une étape par sa poignée, ou Monter / Descendre dans son menu. Par défaut, l’ordre suit les dates.</p>
       {pending ? (
@@ -601,13 +684,23 @@ export function BookingItemsPanel({
             >
             {editingId === item.id ? (
               <div className="space-y-2">
+                {draft.kind === "accueil_vip" ? (
+                  <AccueilVipForm
+                    item={draft}
+                    flights={savedFlights(rows)}
+                    currency={currency || "EUR"}
+                    onChange={setDraft}
+                    onRemove={() => setEditingId(null)}
+                  />
+                ) : (
                 <IngestItemCard
-                  item={draft}
+                  item={draft as BookingExtract["items"][number]}
                   household={household}
                   lockStayLedger={clientSettlesStay}
                   onChange={setDraft}
                   onRemove={() => setEditingId(null)}
                 />
+                )}
                 {item.id.startsWith(DRAFT_STEP_PREFIX) ? null : (
                 <ItemAttachments
                   bookingId={bookingId}
@@ -814,13 +907,23 @@ export function BookingItemsPanel({
       />
       {editingId === "new" ? (
         <div className="mt-3 space-y-2">
+          {draft.kind === "accueil_vip" ? (
+            <AccueilVipForm
+              item={draft}
+              flights={savedFlights(rows)}
+              currency={currency || "EUR"}
+              onChange={setDraft}
+              onRemove={() => setEditingId(null)}
+            />
+          ) : (
           <IngestItemCard
-            item={draft}
+            item={draft as BookingExtract["items"][number]}
             household={household}
             lockStayLedger={clientSettlesStay}
             onChange={setDraft}
             onRemove={() => setEditingId(null)}
           />
+          )}
           <button
             type="button"
             disabled={busy}

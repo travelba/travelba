@@ -6,6 +6,7 @@ import { settledFormalityCountries } from "@/lib/crm/visa-cover";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { visaRequestShown, type ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
+import { agencyFeeForBooking } from "@/lib/crm/agency-fee-rate";
 import { todayIsoDate } from "@/lib/crm/money";
 import { insuranceLineLabel, itemPriceLabel, unlinkedDocuments, whatsappModifyHref } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
@@ -97,7 +98,11 @@ export async function ClientStayRest({
   const coverage = tripDocCoverage(party, identity);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const missingCount = coverage.total - coverage.ready;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination);
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination, {
+    title: b.title,
+    homeCity: customer.city,
+    items: visibleItems,
+  });
   const shareCompanions = companionsForShare(party, companions);
   const formalities = frenchPassportTrip(visibleItems, party.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
@@ -110,9 +115,11 @@ export async function ClientStayRest({
     status: b.status,
     travelerCount: party.length,
   });
+  const agencyFee = await agencyFeeForBooking(supabase, b);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
+    agencyFeeRate: agencyFee.rate,
     stayTotal: Number(b.total_amount),
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
@@ -134,11 +141,17 @@ export async function ClientStayRest({
         />
       </section>
     );
-  const passportRows = passportVaultRows(party, identity, todayIsoDate(), {
-    first_name: customer.first_name,
-    last_name: customer.last_name,
-    usage_name: customer.usage_name,
-  });
+  const passportRows = passportVaultRows(
+    party,
+    identity,
+    todayIsoDate(),
+    {
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      usage_name: customer.usage_name,
+    },
+    b
+  );
 
   return (
     <ClientTripBody
@@ -236,6 +249,7 @@ export async function ClientStayRest({
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,
+              agencyFeeRate: agencyFee.rate,
               expenses: expenseChoices,
               extras: feeExtras,
               ticketingFee,

@@ -39,7 +39,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const code = await ensureTripShareCode(admin, booking.id);
   if (!code) return jsonError("Ce voyage n’est pas publié", 404);
 
-  const [{ data: travelers }, { data: companions }] = await Promise.all([
+  const [{ data: travelers }, { data: companions }, { data: customer }] = await Promise.all([
     auth.supabase
       .from("crm_booking_travelers")
       .select("companion_id, is_account_holder")
@@ -48,6 +48,7 @@ export async function POST(request: Request, ctx: Ctx) {
       .from("crm_travel_companions")
       .select("id, first_name, phone")
       .eq("customer_id", booking.customer_id),
+    auth.supabase.from("crm_customers").select("city").eq("id", booking.customer_id).maybeSingle(),
   ]);
 
   const plan = planTripShareSend({
@@ -73,7 +74,9 @@ export async function POST(request: Request, ctx: Ctx) {
     title: stayTitleFromItems(
       booking.title,
       booking.destination,
-      clientVisibleItems(itemRows || [])
+      clientVisibleItems(itemRows || []),
+      "Séjour",
+      typeof customer?.city === "string" ? customer.city : null
     ),
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,

@@ -6,7 +6,7 @@ import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { formatDateFr } from "@/lib/crm/money";
 import { carnetVisible, clientVisibleItems, tripPlaceLine } from "@/lib/crm/carnet";
 import { HiddenStayNotice } from "@/components/account/HiddenStayNotice";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
@@ -85,8 +85,9 @@ export default async function ReservationDetailPage({ params }: Props) {
   if (!carnetVisible(b, rawItems)) return <HiddenStayNotice reference={b.reference} />;
 
   const headerItems = withoutHotelRosterItems(rawItems);
-  const headline = stayTitleFromItems(b.title, b.destination, headerItems);
-  const placeLine = tripPlaceLine(headline, b.destination);
+  const labels = nextStayLabels(b.title, b.destination, headerItems, "Séjour", customer.city);
+  const headline = labels.title || "Séjour";
+  const placeLine = tripPlaceLine(headline, labels.destination);
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));

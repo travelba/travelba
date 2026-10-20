@@ -3,7 +3,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { redactIngestText } from "./ingest-redact";
 import {
+  bookingNotesFromImport,
   bookingStatusFromExtract,
+  emptyBookingExtract,
   keepAgentPrices,
   normalizeHotelExtractItem,
   sanitizeExtractedPrices,
@@ -33,6 +35,7 @@ import {
   shouldUseVision,
   structuredHintFromPdfText,
 } from "./ingest-parse";
+import { IMPORT_QUOTE_NOTE } from "./email-detach";
 import { decideEmailIngestAction } from "./email-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
 
@@ -418,6 +421,23 @@ Départ : 4 mars 2026
     assert.equal(reopened.customer_first_name, "Camille");
     assert.equal(reopened.customer_last_name, "Martin");
     assert.equal(reopened.notes_client, null);
+  });
+
+  it("laisse la réserve de devis en note interne", () => {
+    const text = "Devis\nnone are on hold\nHôtel Exemple";
+    const parsed = parsedItemsFromText(text);
+    assert.equal(parsed.status, "quote");
+    assert.equal(parsed.notes.includes("Devis — tarifs non bloqués, à confirmer."), true);
+    const hinted = applyStructuredHints(
+      { ...emptyBookingExtract(), notes_client: "Plusieurs options tarifaires." },
+      [text]
+    );
+    assert.equal(hinted.notes_client, null);
+    assert.match(hinted.notes_internal || "", /Plusieurs options tarifaires/);
+    assert.match(hinted.notes_internal || "", /Devis — tarifs non bloqués, à confirmer/);
+    const saved = bookingNotesFromImport(hinted, IMPORT_QUOTE_NOTE);
+    assert.equal(saved.notes_client, null);
+    assert.match(saved.notes_internal || "", /Plusieurs options tarifaires/);
   });
 });
 

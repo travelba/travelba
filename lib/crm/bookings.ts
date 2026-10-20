@@ -33,6 +33,7 @@ import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
 import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
+import { agencyFeeForBooking, agencyFeeRateColumn, agencyFeeRateField } from "@/lib/crm/agency-fee-rate";
 import { agencyFeeBaseAmount, agencyFeeFromGross } from "@/lib/crm/money";
 import { must } from "@/lib/crm/must";
 import { visibilityOnRequest } from "@/lib/crm/visa-flow";
@@ -84,6 +85,7 @@ const BOOKING_META_KEYS = [
   "fees_follow_stay",
   "include_in_ledger",
   "agency_commission",
+  "agency_fee_rate",
   "client_settles_stay",
   "offer_chauffeur",
   "offer_greeter",
@@ -124,6 +126,11 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
       if (kind === "company" || kind === "personal") patch[key] = kind;
       continue;
     }
+    if (key === "agency_fee_rate") {
+      const parsed = agencyFeeRateField(body[key]);
+      if (!("error" in parsed)) patch[key] = agencyFeeRateColumn(parsed.rate);
+      continue;
+    }
     if (key === "title") {
       patch[key] = String(body[key] ?? "").trim();
       continue;
@@ -144,6 +151,13 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     patch[key] = body[key];
   }
   return patch;
+}
+
+/** Message si le taux envoyé n’est pas 10 %, 7,5 % ou 5 %. Absent du corps : rien. */
+export function bookingMetaError(body: Record<string, unknown>) {
+  if (!("agency_fee_rate" in body)) return null;
+  const parsed = agencyFeeRateField(body.agency_fee_rate);
+  return "error" in parsed ? parsed.error : null;
 }
 
 export function bookingDebitIntent(input: {
@@ -351,16 +365,17 @@ export function agencyFeeExtraAmounts(items: AgencyFeeItem[]) {
   return extras;
 }
 
-/** 10 % de l’assiette, seulement si le voyage l’active et qu’il est au livre. */
+/** Commission de l’assiette, seulement si le voyage l’active et qu’il est au livre. Défaut 10 %. */
 export function agencyCommissionAmount(input: {
   enabled: boolean;
   status: BookingStatus;
   base: number;
   visibleToClient?: boolean | null;
+  rate?: number | null;
 }) {
   const active = input.enabled && input.visibleToClient !== false && input.status !== "cancelled";
   if (!active) return 0;
-  return agencyFeeFromGross(input.base);
+  return agencyFeeFromGross(input.base, input.rate ?? undefined);
 }
 
 export function bookingChargeExternalId(
@@ -613,11 +628,13 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
       .eq("booking_id", booking.id),
     "Assiette des frais d’agence"
   );
+  const fee = await agencyFeeForBooking(supabase, booking);
   const amount = agencyCommissionAmount({
     enabled: booking.agency_commission === true,
     status: booking.status,
     base: agencyFeeBaseFromItems(itemRows || []),
     visibleToClient: booking.visible_to_client,
+    rate: fee.rate,
   });
   const externalId = agencyCommissionExternalId(booking.id);
   const { data: existing } = await supabase
@@ -671,6 +688,41 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
       .eq("id", debit.id),
     "Frais d’agence"
   );
+}
+
+/**
+ * Un compte change de taux : les dossiers sans dérogation suivent.
+ * Ceux qui ont leur propre taux ne bougent pas.
+ */
+const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function syncInheritedAgencyFees(supabase: SupabaseClient, customerId: string) {
+  if (!ACCOUNT_ID.test(customerId)) return;
+  const { data: members, error: memberError } = await supabase
+    .from("crm_customers")
+    .select("id")
+    .eq("billing_parent_id", customerId)
+    .eq("company_role", "member");
+  if (memberError) throw memberError;
+  const accountIds = [customerId, ...((members || []) as { id: string }[]).map((row) => row.id)].filter((id) =>
+    ACCOUNT_ID.test(id)
+  );
+  const [billed, traveled] = await Promise.all([
+    supabase.from("crm_bookings").select("*").is("agency_fee_rate", null).in("billing_customer_id", accountIds),
+    supabase.from("crm_bookings").select("*").is("agency_fee_rate", null).in("customer_id", accountIds),
+  ]);
+  const missing = billed.error || traveled.error;
+  if (missing) {
+    if (missing.code === "42703" || missing.code === "PGRST204") return;
+    throw missing;
+  }
+  const rows = new Map<string, CrmBooking>();
+  for (const booking of [...(billed.data || []), ...(traveled.data || [])] as CrmBooking[]) {
+    rows.set(booking.id, booking);
+  }
+  for (const booking of rows.values()) {
+    await syncAgencyCommission(supabase, booking);
+  }
 }
 
 export async function syncBookingItemDebits(supabase: SupabaseClient, booking: CrmBooking) {
@@ -806,14 +858,14 @@ export async function syncBookingLedger(
 }
 
 /**
- * Le titre suit les villes des étapes, sauf un nom choisi (« 40 ans »).
- * Une escale pure en sort. La destination ne change que si elle n’est qu’une liste de villes
- * qui cite cette escale — un nom choisi et les dates restent.
+ * Le titre suit les villes où l’on séjourne, sauf un nom choisi (« 40 ans »).
+ * Le domicile (départ, retour d’un aller-retour, ville de la fiche) en sort, ainsi qu’une escale pure.
+ * La destination ne change que si elle n’est qu’une liste de villes qui cite ce domicile ou cette escale.
  */
 export async function syncBookingTitleFromSteps(supabase: SupabaseClient, bookingId: string) {
   const { data: booking } = await supabase
     .from("crm_bookings")
-    .select("title, destination")
+    .select("title, destination, customer_id")
     .eq("id", bookingId)
     .maybeSingle();
   if (!booking) return "";
@@ -821,7 +873,16 @@ export async function syncBookingTitleFromSteps(supabase: SupabaseClient, bookin
     .from("crm_booking_items")
     .select("id, kind, title, start_at, end_at, sort_order, details, lifecycle")
     .eq("booking_id", bookingId);
-  const labels = nextStayLabels(booking.title, booking.destination, items || [], "");
+  let home = "";
+  if (booking.customer_id) {
+    const { data: customer } = await supabase
+      .from("crm_customers")
+      .select("city")
+      .eq("id", booking.customer_id)
+      .maybeSingle();
+    home = typeof customer?.city === "string" ? customer.city : "";
+  }
+  const labels = nextStayLabels(booking.title, booking.destination, items || [], "", home);
   const current = (booking.title || "").trim();
   const patch: { title?: string; destination?: string } = {};
   if (labels.title && labels.title !== current) patch.title = labels.title;

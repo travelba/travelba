@@ -686,7 +686,7 @@ export function countryCodeForPlace(key: string) {
   return countryAlias.get(key) || null;
 }
 
-/** Vrai pour un pays du catalogue, pas pour une ville. */
+/** Nom de pays du catalogue. Une ville homonyme (Tel Aviv, Singapour) reste une ville. */
 export function isCountryName(key: string) {
   if (!key || cities.has(key) || nearbyCity.has(key)) return false;
   return countryAlias.has(key);

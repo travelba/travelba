@@ -3,15 +3,17 @@ import { countryCodeForPlace, isCountryName } from "./cover-catalog";
 import { tripCityPlan, type TripStep } from "./layover";
 
 /**
- * Villes où l’on séjourne. Le domicile et les escales n’y entrent pas.
+ * Même liste que le titre : les villes où l’on séjourne.
+ * Le domicile et les escales n’y entrent pas. Un aller simple vers Paris les garde.
  */
 export function stayDestinationNames(input: {
   title?: string | null;
   destination?: string | null;
+  homeCity?: string | null;
   items?: TripStep[] | null;
 }) {
   if (input.items?.length) {
-    const found = tripCityPlan(input.items).destinations;
+    const found = tripCityPlan(input.items, undefined, input.homeCity).destinations;
     if (found.length) return found;
   }
   const fromDestination = namesFromLabel(input.destination);
@@ -24,9 +26,20 @@ export function stayDestinationLine(input: Parameters<typeof stayDestinationName
   return stayDestinationNames(input).join(" · ");
 }
 
+/** « de Phuket », « du Havre », « d’Ajaccio ». */
+export function placeFromPreposition(name: string) {
+  const raw = name.replace(/[\r\n]+/g, " ").trim();
+  if (!raw) return "";
+  if (/^le\s+/i.test(raw)) return `du ${raw.replace(/^le\s+/i, "")}`;
+  if (/^les\s+/i.test(raw)) return `des ${raw.replace(/^les\s+/i, "")}`;
+  if (/^[aeiouhéèêëàâîïôùûüœæh]/i.test(raw)) return `d'${raw}`;
+  return `de ${raw}`;
+}
+
 /** « à Tel Aviv et aux Seychelles ». */
 export function stayDestinationPhrase(input: Parameters<typeof stayDestinationNames>[0]) {
-  return stayAtPhrase(stayDestinationNames(input)) || null;
+  const phrase = stayAtPhrase(stayDestinationNames(input));
+  return phrase || null;
 }
 
 /** Deux lieux : « et ». Trois et plus : virgules, « et » devant le dernier. */
@@ -37,7 +50,10 @@ export function stayAtPhrase(names: string[]) {
   return `${phrases.slice(0, -1).join(", ")} et ${phrases[phrases.length - 1]}`;
 }
 
-/** Une ville : « à ». Un pays : « aux », « en » ou « au ». */
+/**
+ * Une ville : « à ». Un pays : « aux », « en » ou « au ».
+ * `city` force la ville (bienvenue à l’arrivée). `country` force le pays.
+ */
 export function placeWithPreposition(name: string, kind: "auto" | "city" | "country" = "auto") {
   const raw = name.replace(/[\r\n]+/g, " ").trim();
   if (!raw) return "";
@@ -51,7 +67,7 @@ export function placeWithPreposition(name: string, kind: "auto" | "city" | "coun
   return countryPreposition(raw, key);
 }
 
-/** Phrase déjà formée, ou liste « Paris · Tel Aviv · Seychelles ». Un hub seul ne reste pas. */
+/** Phrase déjà formée, ou liste « Paris · Tel Aviv · Seychelles ». Un hub seul reste (« à Paris »). */
 export function stayPhrase(value: string) {
   const raw = value.replace(/[\r\n]+/g, " ").trim();
   if (!raw) return "";
@@ -65,7 +81,6 @@ export function stayPhrase(value: string) {
     if (!stayed.length) return "";
     return stayAtPhrase(stayed);
   }
-  if (isOriginHub(raw)) return "";
   return placeWithPreposition(raw);
 }
 

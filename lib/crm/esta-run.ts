@@ -317,7 +317,7 @@ export async function syncEstaForBooking(
     holder: input.holder,
     returnOn: dates.returnOn,
     departureOn: dates.departure,
-    place: stayPlaceName(input.booking.destination || null, input.booking.title || null),
+    place: stayPlaceName(input.booking.destination || null, input.booking.title || null, input.items),
     reference: input.booking.reference || null,
     phone: input.phone,
     email: input.email,
@@ -394,7 +394,7 @@ export async function loadEstaForBookingId(admin: Admin, bookingId: string) {
     holder: bundle.holder,
     returnOn: dates.returnOn,
     departureOn: dates.departure,
-    place: stayPlaceName(bundle.booking.destination, bundle.booking.title),
+    place: stayPlaceName(bundle.booking.destination, bundle.booking.title, bundle.items),
     reference: bundle.booking.reference,
     phone: bundle.phone,
     email: bundle.email,
@@ -476,10 +476,11 @@ async function stayContext(admin: Admin, bookingId: string) {
   };
   const { data: items } = await admin
     .from("crm_booking_items")
-    .select("kind, lifecycle, details, start_at, end_at")
+    .select("kind, lifecycle, title, details, start_at, end_at, sort_order")
     .eq("booking_id", bookingId);
-  const dates = tripEstaDates((items || []) as CrmBookingItem[], row);
-  return { booking: row, dates };
+  const steps = (items || []) as CrmBookingItem[];
+  const dates = tripEstaDates(steps, row);
+  return { booking: row, dates, items: steps };
 }
 
 export async function sendEstaToClient(
@@ -555,7 +556,7 @@ export async function sendEstaToClient(
       phone: account?.phone || null,
       email: account?.email || null,
       name: authorizationTravelerName(person.first_name, person.last_name),
-      place: stayPlaceName(stay.booking.destination, stay.booking.title),
+      place: stayPlaceName(stay.booking.destination, stay.booking.title, stay.items),
       reference: stay.booking.reference,
       validUntil: row.valid_until,
       optInAt: account?.whatsapp_opt_in_at,

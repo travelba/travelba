@@ -409,7 +409,9 @@ export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   if (
     extract.document_status !== "identity" &&
     (isBookingCancellationLabel(row.label) ||
-      detectCancellationDocument(`${row.subject || ""}\n${extract.title || ""}\n${extract.notes_client || ""}`))
+      detectCancellationDocument(
+        `${row.subject || ""}\n${extract.title || ""}\n${extract.notes_client || ""}\n${extract.notes_internal || ""}`
+      ))
   ) {
     extract.document_status = "cancelled";
   }

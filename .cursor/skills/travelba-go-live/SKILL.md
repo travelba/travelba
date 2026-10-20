@@ -49,6 +49,10 @@ Reprendre `.env.example`. Toutes **sauf** `NEXT_PUBLIC_*` sont server-only.
 | `REVOLUT_SANDBOX` | `0` |
 | `REVOLUT_WEBHOOK_SECRET` | si webhook Revolut activé |
 | `CRON_SECRET` | aléatoire long ; Vercel Cron envoie `Authorization: Bearer …` |
+| `LITTLE_EMPERORS_API_KEY` | clé de production émise le 15/10/2026. Preview et local gardent la clé de test. Lecture seule |
+| `LITTLE_EMPERORS_API_BASE` | vide en Production : `https://api.littleemperors.com`. Sinon un hôte `littleemperors.com` seulement. Ne pas y mettre le staging |
+
+`LITTLE_EMPERORS_API_KEY` n’est pas un `productionOnlySecret` : Preview garde la clé de test, Production la clé de production, même nom de variable. L’hôte suit `VERCEL_ENV`. Actualiser ne fait qu’un `GET /v2/hotels/bookings`.
 | `MB3M_PROD_API_USER` / `MB3M_PROD_API_PASSWORD` | login de la base agence. Vides tant que MB3M n’a pas ouvert l’accès. Jamais le user `@partner` |
 | `MB3M_PROD_ACTIVITY_ID` | inutilisé. Chaque dépense du dossier prend l’activité du fichier agence |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | compte WhatsApp déjà en Production |

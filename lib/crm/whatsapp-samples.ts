@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { conciergeContentDrafts, conciergeContentSid, type ConciergeTemplate } from "./concierge-notices";
+import { conciergeContentDrafts, resolveConciergeContentSid, type ConciergeTemplate } from "./concierge-notices";
 import { flightNoticeDrafts } from "./flight-watch";
 import { isVercelPreview } from "./preview-secrets";
 import { siteConfig } from "../site";
-import { connexionContentSid, connexionContentVariables, sendContentTemplate, whatsappAddress } from "./whatsapp";
+import { connexionContentVariables, sendContentTemplate, whatsappAddress } from "./whatsapp";
+import { resolveContentSid } from "./twilio-content-sid";
 import { sendWhatsappSession, whatsappSessionConfigured } from "./whatsapp-session";
 import { whatsappCatalog } from "./whatsapp-catalog";
 
@@ -104,30 +105,29 @@ function windowClosed(detail: string | undefined) {
   return /window|template|fenêtre/i.test(detail || "");
 }
 
-function draftVariables(modelName: string | null) {
+async function draftVariables(modelName: string | null) {
   if (!modelName) return null;
   if (modelName === "connexion_espace") {
     return {
-      sid: connexionContentSid(),
+      sid: await resolveContentSid("TWILIO_CONTENT_CONNEXION"),
       variables: connexionContentVariables("Camille", `${siteConfig.url}/e/c/23456789`),
     };
   }
   const concierge = conciergeContentDrafts().find((draft) => draft.friendlyName === modelName);
   if (concierge) {
     return {
-      sid: conciergeContentSid(concierge.template as ConciergeTemplate),
+      sid: await resolveConciergeContentSid(concierge.template as ConciergeTemplate),
       variables: concierge.create.variables,
     };
   }
   const flight = flightNoticeDrafts().find((draft) => draft.friendlyName === modelName);
   if (!flight) return null;
-  const sid = (process.env[flight.env] || "").trim();
-  return { sid, variables: flight.create.variables };
+  return { sid: await resolveContentSid(flight.env), variables: flight.create.variables };
 }
 
-function approvedDraft(sample: CatalogSample) {
+async function approvedDraft(sample: CatalogSample) {
   for (const name of [sample.modelName, sample.fallbackName, sample.earlierName]) {
-    const draft = draftVariables(name);
+    const draft = await draftVariables(name);
     if (draft?.sid && draft.variables) return draft;
   }
   return null;
@@ -217,7 +217,7 @@ export async function sendCatalogSamples(
       }
     }
 
-    const draft = approvedDraft(sample);
+    const draft = await approvedDraft(sample);
     if (draft?.sid && draft.variables) {
       const template = await deliverTemplate({
         phone: samplePhone(),

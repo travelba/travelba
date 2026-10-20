@@ -64,6 +64,18 @@ export function firstNamesMatch(a: string | null | undefined, b: string | null |
   return left.some((token) => right.includes(token));
 }
 
+/**
+ * Prénom seul, sans nom de famille : le début des prénoms enregistrés.
+ * « Charles-Elie » = « Charles Elie John Haim », « Meryl » = « Méryl ».
+ * Un prénom plus loin dans la liste (« Elie » devant « Charles Elie ») ne compte pas.
+ */
+export function firstNameOnlyMatches(query: string | null | undefined, given: string | null | undefined) {
+  const left = nameTokens(query);
+  const right = nameTokens(given);
+  if (!left.length || !right.length || left.length > right.length) return false;
+  return left.every((token, index) => token === right[index]);
+}
+
 /** Une lettre d’écart, seulement à partir de 4 lettres (Leoh / Leo). Ali ≠ Alice. */
 function givenTokenClose(a: string, b: string) {
   if (a === b) return true;
@@ -144,7 +156,16 @@ export function matchTravelerToParty(
   companions: (PersonName & { id: string })[]
 ): PartyMatch | null {
   if (isPlaceholderTraveler(traveler.first_name, traveler.last_name)) return null;
-  if (!nameTokens(traveler.first_name).length || !foldName(traveler.last_name)) return null;
+  if (!nameTokens(traveler.first_name).length) return null;
+  if (!foldName(traveler.last_name)) {
+    const holderHit = firstNameOnlyMatches(traveler.first_name, holder.first_name);
+    const companionHits = companions.filter((companion) =>
+      firstNameOnlyMatches(traveler.first_name, companion.first_name)
+    );
+    if (holderHit && companionHits.length === 0) return { kind: "holder" };
+    if (!holderHit && companionHits.length === 1) return { kind: "companion", id: companionHits[0].id };
+    return null;
+  }
   const holderHit = namesReferToSamePerson(traveler, holder);
   const companionHits = companions.filter((companion) => namesReferToSamePerson(traveler, companion));
   if (holderHit && companionHits.length === 0) return { kind: "holder" };

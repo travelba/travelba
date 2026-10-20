@@ -20,7 +20,7 @@ import {
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
@@ -58,9 +58,14 @@ export default async function ExampleReservationPage({ params }: Props) {
   const party = session.travelers;
   const coverage = tripDocCoverage(party, session.documents);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination);
-  const headline = stayTitleFromItems(b.title, b.destination, visibleItems);
-  const placeLine = tripPlaceLine(headline, b.destination);
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination, {
+    title: b.title,
+    homeCity: session.customer.city,
+    items: visibleItems,
+  });
+  const labels = nextStayLabels(b.title, b.destination, visibleItems, "Séjour", session.customer.city);
+  const headline = labels.title || "Séjour";
+  const placeLine = tripPlaceLine(headline, labels.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
   // Même formule que la page réelle : commission + billetterie + dépenses.
@@ -197,11 +202,17 @@ export default async function ExampleReservationPage({ params }: Props) {
       }
       passports={
         <TripPassportGroup
-          rows={passportVaultRows(party, session.documents, todayIsoDate(), {
-            first_name: session.customer.first_name,
-            last_name: session.customer.last_name,
-            usage_name: session.customer.usage_name,
-          })}
+          rows={passportVaultRows(
+            party,
+            session.documents,
+            todayIsoDate(),
+            {
+              first_name: session.customer.first_name,
+              last_name: session.customer.last_name,
+              usage_name: session.customer.usage_name,
+            },
+            b
+          )}
           hrefFor={() => `${EXAMPLE_BASE}/profil/documents`}
           passports={passportPreviewsForStay(party, session.documents, session.customer, b.reference)}
           missingHref={`${EXAMPLE_BASE}/profil/documents`}

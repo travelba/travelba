@@ -11,7 +11,7 @@ import {
   type AuthorizationKind,
 } from "./authorization-notice";
 import {
-  conciergeContentSid,
+  resolveConciergeContentSid,
   conciergeContentVariables,
   conciergeTemplateImage,
   liveConciergeImage,
@@ -149,7 +149,7 @@ export async function sendAuthorizationWhatsapp(
       date: formatAuthorizationDate(input.validUntil),
     });
     if (!variables) continue;
-    const sid = conciergeContentSid(attempt.template) || attempt.sid;
+    const sid = (await resolveConciergeContentSid(attempt.template)) || attempt.sid;
     const result = await sendContentTemplate({ phone: input.phone, contentSid: sid, variables });
     if (result.ok) {
       await admin

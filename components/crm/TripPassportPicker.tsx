@@ -17,7 +17,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewLink } from "@/components/crm/FilePreview";
 import type { FilePreviewModel } from "@/lib/crm/preview-files";
-import type { PassportVaultRow } from "@/lib/crm/passport-vault";
+import { passportVaultToneClass, type PassportVaultRow } from "@/lib/crm/passport-vault";
 
 function travelerBirthLine(
   traveler: CrmBookingTraveler,
@@ -229,12 +229,7 @@ export function TripPassportPicker({
 
           const badge = badges.find((row) => row.travelerId === traveler.id);
           const scan = scans.find((file) => file.label === name);
-          const badgeTone =
-            badge?.tone === "ok"
-              ? "bg-[#0B192C] text-[#C5A880]"
-              : badge?.tone === "soon"
-                ? "bg-[#C5A880]/25 text-[#0B192C]"
-                : "bg-[#f3e6e2] text-[#0B192C]";
+          const badgeTone = passportVaultToneClass(badge?.tone || "missing");
           return (
             <li key={traveler.id} className={mosaic ? "space-y-1 rounded-2xl bg-[#faf9f6] px-3 py-3" : "space-y-1"}>
               <div className="flex items-start justify-between gap-3">

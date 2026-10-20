@@ -37,9 +37,18 @@ const CITY_LABELS: Record<string, string> = {
   moscow: "Moscou",
   beijing: "Pékin",
   "new york": "New York",
+  paris: "Paris",
 };
 
-/** Hubs de départ FR : jamais une destination (le client part de Paris). */
+/** Aéroports du domicile : la même ville que Paris. */
+const AIRPORT_CITY: Record<string, string> = {
+  cdg: "paris",
+  ory: "paris",
+  lbg: "paris",
+  bva: "paris",
+};
+
+/** Hubs de départ FR. La photo les ignore dès qu’une autre ville de séjour existe. Un aller simple vers Paris les garde. */
 const ORIGIN_HUBS = /^(paris|cdg|ory|lbg|bva|france|ile-de-france|île-de-france)$/i;
 
 export function isOriginHub(value: string) {
@@ -62,7 +71,8 @@ export function cityPlaceKey(value: string) {
   const token = (value.split(",")[0] || "").trim();
   const folded = foldCityName(token);
   if (!folded) return "";
-  return CITY_ALIASES[folded] || folded;
+  const named = CITY_ALIASES[folded] || folded;
+  return AIRPORT_CITY[named] || named;
 }
 
 /** Nom affiché. Une graphie connue prend le libellé français. */

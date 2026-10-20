@@ -25,7 +25,7 @@ import {
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
 import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
@@ -91,8 +91,11 @@ export function ClientInterfacePreview({
   ledger = null,
   initialScreen = "stay",
   settled = [],
+  agencyFeeRate,
 }: {
   booking: CrmBooking;
+  /** Montant seulement. Le pourcentage n’est pas affiché. */
+  agencyFeeRate?: number;
   items: CrmBookingItem[];
   documents: CrmBookingDocument[];
   travelers: CrmBookingTraveler[];
@@ -169,6 +172,7 @@ export function ClientInterfacePreview({
           ledger={ledger}
           showStay={hasCarnet}
           settled={settled}
+          agencyFeeRate={agencyFeeRate}
         />
       )}
     </section>
@@ -234,6 +238,7 @@ function ClientScreen({
   ledger,
   showStay,
   settled = [],
+  agencyFeeRate,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -260,15 +265,21 @@ function ClientScreen({
   ledger: ClientLedgerView | null;
   showStay: boolean;
   settled?: string[];
+  agencyFeeRate?: number;
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
   const coverage = tripDocCoverage(travelers, identityDocs);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const missingCount = coverage.total - coverage.ready;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination);
-  const headline = stayTitleFromItems(booking.title, booking.destination, items);
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination, {
+    title: booking.title,
+    homeCity: customer.city,
+    items,
+  });
+  const labels = nextStayLabels(booking.title, booking.destination, items, "Séjour", customer.city);
+  const headline = labels.title || "Séjour";
   const clientNote = shownClientNote(booking.notes_client);
-  const placeLine = tripPlaceLine(headline, booking.destination);
+  const placeLine = tripPlaceLine(headline, labels.destination);
   const formalities = frenchPassportTrip(items, travelers.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
   const expenseChoices = allItems
@@ -293,6 +304,7 @@ function ClientScreen({
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: booking.agency_commission === true,
+    agencyFeeRate,
     stayTotal: Number(booking.total_amount),
     currency: booking.currency,
     pricesVisible,
@@ -300,11 +312,17 @@ function ClientScreen({
     ticketingFee,
     ticketCount,
   });
-  const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), {
-    first_name: customer.first_name,
-    last_name: customer.last_name,
-    usage_name: customer.usage_name,
-  });
+  const passportRows = passportVaultRows(
+    travelers,
+    identityDocs,
+    todayIsoDate(),
+    {
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      usage_name: customer.usage_name,
+    },
+    booking
+  );
   const encoursPay =
     ledger && !ledger.member && ledger.owed.total > 0 ? (
       <EncoursPayment
@@ -465,6 +483,7 @@ function ClientScreen({
                     currency: booking.currency,
                     pricesVisible,
                     agencyCommission: booking.agency_commission === true,
+                    agencyFeeRate,
                     expenses: expenseChoices,
                     extras: feeExtras,
                     ticketingFee,

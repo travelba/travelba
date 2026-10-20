@@ -2,16 +2,15 @@ import { foldLetters } from "./text";
 import { sortItemsByOrder } from "./carnet";
 import { nextStayLabels } from "./staff-stay";
 import { isEmailBodyFile } from "./ingest-title";
-import type { IngestFamily } from "./ingest-parse";
-import { tagSourceFileName } from "./ingest-parse";
+import { QUOTE_CAVEAT_NOTE, tagSourceFileName, type IngestFamily } from "./ingest-parse";
 import {
   emptyBookingExtract,
+  joinAgencyNotes,
   sanitizeExtractedPrices,
   type BookingExtract,
   type IngestWarning,
 } from "./ingest-types";
 import { mergeExtractItems } from "./item-match";
-import { shownClientNote } from "./public-booking";
 import { QUOTE_REVIEW_REASON } from "./review-doubt";
 
 export type FileExtractResult = {
@@ -53,24 +52,6 @@ function markQuoteItems(items: BookingExtract["items"], sourceNames: Set<string>
       },
     };
   });
-}
-
-function uniqueCities(extract: BookingExtract): string[] {
-  const cities: string[] = [];
-  const push = (value: string | null | undefined) => {
-    const city = (value || "").trim();
-    if (!city) return;
-    if (!cities.some((row) => row.toLowerCase() === city.toLowerCase())) {
-      cities.push(city);
-    }
-  };
-  for (const part of (extract.destination || "").split("·")) push(part);
-  for (const item of extract.items || []) {
-    push(item.details?.city_to);
-    push(item.details?.city);
-    push(item.details?.city_from);
-  }
-  return cities;
 }
 
 function pickDate(
@@ -149,6 +130,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     };
     items = mergeExtractItems([...items, ...tagged.items]);
     travelers.push(...(tagged.travelers || []));
+    if (tagged.notes_internal) notes.push(tagged.notes_internal);
     if (tagged.notes_client) notes.push(tagged.notes_client);
     if (!title && tagged.title && !isEmailBodyFile(row.name)) title = tagged.title;
     if (!destination && tagged.destination) destination = tagged.destination;
@@ -166,7 +148,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
       "Le lot mélange un devis et des confirmations : les cartes devis restent à vérifier."
     );
   } else if (hasQuote) {
-    notes.push("Devis — tarifs non bloqués, à confirmer.");
+    notes.push(QUOTE_CAVEAT_NOTE);
   }
 
   const merged: BookingExtract = {
@@ -182,9 +164,8 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     customer_email: email,
     customer_first_name: firstName,
     customer_last_name: lastName,
-    notes_client: [...new Set(notes.map((row) => shownClientNote(row)).filter(Boolean))].join(
-      "\n"
-    ),
+    notes_client: null,
+    notes_internal: joinAgencyNotes(...notes),
     items: sortItemsByOrder(items),
     travelers: dedupeTravelers(travelers),
   };
@@ -194,11 +175,10 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
   if (labels.destinationChanged && labels.destination) merged.destination = labels.destination;
   else if (!merged.destination && labels.suggestedDestination) merged.destination = labels.suggestedDestination;
   if (!merged.title || !merged.destination) {
-    const cities = (labels.plan.cities.length ? labels.plan.cities : uniqueCities(merged)).filter(
-      (city) => !labels.plan.layovers.some((stop) => city.toLowerCase() === stop.toLowerCase())
-    );
-    if (!merged.title && cities.length) merged.title = cities.join(" · ");
-    if (!merged.destination && cities.length) merged.destination = labels.suggestedDestination || cities.join(" · ");
+    const stays = labels.plan.destinations.length ? labels.plan.destinations : labels.suggestedDestination.split(" · ").filter(Boolean);
+    const line = stays.join(" · ");
+    if (!merged.title && line) merged.title = line;
+    if (!merged.destination && line) merged.destination = line;
   }
   merged.start_date = pickDate(
     [merged.start_date, ...merged.items.map((item) => item.start_at)],

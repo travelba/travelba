@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
 import { itemIncludedInLedger, itemSellingAmount } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
@@ -9,6 +10,9 @@ type StayRow = {
   status: string;
   total_amount: number | string | null;
   agency_commission?: boolean | null;
+  agency_fee_rate?: number | string | null;
+  customer_id?: string | null;
+  billing_customer_id?: string | null;
 };
 
 type StayItemRow = {
@@ -21,12 +25,13 @@ type StayItemRow = {
 
 /**
  * Montant lu par le client : cartes + commission d’agence + billetterie + dépenses libres.
- * Les 10 % portent sur les étapes et les dépenses. Une seule formule pour la liste, le détail et l’aperçu.
+ * La commission porte sur les étapes et les dépenses. Une seule formule pour la liste, le détail et l’aperçu.
  */
 export function displayedStayAmount(
   booking: Pick<StayRow, "status" | "total_amount" | "agency_commission">,
   items: StayItemRow[],
-  travelerCount: number
+  travelerCount: number,
+  agencyFeeRate?: number | null
 ) {
   const active = items.filter((item) => isActiveItem(item));
   const amounts = (kind: (value: string | null | undefined) => boolean) =>
@@ -46,6 +51,7 @@ export function displayedStayAmount(
       status: booking.status,
       travelerCount,
     }),
+    agencyFeeRate,
   });
 }
 
@@ -53,12 +59,13 @@ export function displayedStayAmount(
  * Montant des cartes comptées au grand livre.
  * Le total stocké porte les étapes (aller-retour une fois). La billeterie compte une fois :
  * la ligne de dépense si elle existe, sinon le forfait. Un extra inclus (visa) s’ajoute.
- * Un extra hors livre ne s’ajoute pas. Le prix affiché client, lui, laisse l’extra dans l’assiette des 10 % seulement.
+ * Un extra hors livre ne s’ajoute pas. Le prix affiché client, lui, laisse l’extra dans l’assiette de la commission seulement.
  */
 export function ledgerCountedStayAmount(
   booking: StayRow & { client_settles_stay?: boolean | null; include_in_ledger?: boolean | null },
   items: StayItemRow[],
-  travelerCount: number
+  travelerCount: number,
+  agencyFeeRate?: number | null
 ) {
   const settles = booking.client_settles_stay === true;
   const active = items.filter((item) => isActiveItem(item));
@@ -68,13 +75,15 @@ export function ledgerCountedStayAmount(
     return sum + (itemSellingAmount({ ...item, amount: Number.isFinite(amount) ? amount : null }) || 0);
   }, 0);
   const stayInLedger = !settles && booking.include_in_ledger !== false;
-  const headline = stayInLedger ? displayedStayAmount(booking, active, travelerCount) : expenseHeadline(booking, active, travelerCount);
+  const headline = stayInLedger
+    ? displayedStayAmount(booking, active, travelerCount, agencyFeeRate)
+    : expenseHeadline(booking, active, travelerCount, agencyFeeRate);
   return Math.round((headline + extraSum) * 100) / 100;
 }
 
 /** Dépenses, billeterie et commission, sans le montant du séjour (réglé par le client, ou hors livre). */
-function expenseHeadline(booking: StayRow, items: StayItemRow[], travelerCount: number) {
-  return displayedStayAmount({ ...booking, total_amount: 0 }, items, travelerCount);
+function expenseHeadline(booking: StayRow, items: StayItemRow[], travelerCount: number, agencyFeeRate?: number | null) {
+  return displayedStayAmount({ ...booking, total_amount: 0 }, items, travelerCount, agencyFeeRate);
 }
 
 const STAY_AMOUNT_KINDS = ["expense", "flight", "chauffeur", "greeter", "visa", "checkin"] as const;
@@ -119,11 +128,17 @@ export async function loadDisplayedStayAmounts(supabase: SupabaseClient, booking
       travelers.set(row.booking_id, (travelers.get(row.booking_id) || 0) + 1);
     }
   }
+  const fees = await loadResolvedAgencyFees(supabase, bookings);
   const amounts = new Map<string, number>();
   for (const booking of bookings) {
     amounts.set(
       booking.id,
-      displayedStayAmount(booking, itemsByBooking.get(booking.id) || [], travelers.get(booking.id) || 0)
+      displayedStayAmount(
+        booking,
+        itemsByBooking.get(booking.id) || [],
+        travelers.get(booking.id) || 0,
+        fees.get(booking.id)?.rate
+      )
     );
   }
   return amounts;
@@ -152,11 +167,17 @@ export async function loadLedgerCountedStayAmounts(
       travelers.set(row.booking_id, (travelers.get(row.booking_id) || 0) + 1);
     }
   }
+  const fees = await loadResolvedAgencyFees(supabase, bookings);
   const amounts = new Map<string, number>();
   for (const booking of bookings) {
     amounts.set(
       booking.id,
-      ledgerCountedStayAmount(booking, itemsByBooking.get(booking.id) || [], travelers.get(booking.id) || 0)
+      ledgerCountedStayAmount(
+        booking,
+        itemsByBooking.get(booking.id) || [],
+        travelers.get(booking.id) || 0,
+        fees.get(booking.id)?.rate
+      )
     );
   }
   return amounts;

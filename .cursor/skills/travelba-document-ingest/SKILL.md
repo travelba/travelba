@@ -25,7 +25,7 @@ Gmail labels → `crm_email_ingest` → suggestions, clic agence : skill `travel
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
 2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule. Un total `5,920.33` (virgule = milliers) vaut 5920.33, pas 920.33. `£` = GBP.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
-4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
+4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_internal`. L’import n’écrit jamais `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
 6. **Ne pas persister** les PDF d’entraînement en prod. **Ne pas committer** PDF / RAW / PII.
 
@@ -109,7 +109,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 - Dates header → `start_at` / `end_at` **sans heure** si seule la date est une date de séjour.
 - Politique 15:00 / 14:00 / 12:00 / Pick Up 00:00 → **ignorer** (pas l’horloge de la carte, pas un transfert).
 - Nantipa `08/02/2026` = 2 août (US), pas 8 février.
-- Devis : `quoted`, `rooms` = options, **pas** un item par tarif. Invisible tant que non publié.
+- Devis : `quoted`, `rooms` = options, **pas** un item par tarif. Invisible tant que non publié. La réserve (« Devis — tarifs non bloqués, à confirmer. », plusieurs options tarifaires) va dans `notes_internal`, jamais dans `notes_client`.
 
 ## Transfert / voiture / reste
 

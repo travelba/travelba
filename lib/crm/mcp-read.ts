@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
+import { formatAgencyFeePercent, loadResolvedAgencyFees, type ResolvedAgencyFee } from "@/lib/crm/agency-fee-rate";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import {
@@ -529,6 +530,17 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
       montre: item.visible_to_client,
     };
   }
+  if (item.kind === "accueil_vip") {
+    return {
+      kind: "accueil VIP",
+      titre: item.title,
+      fournisseur: item.supplier,
+      debut: item.start_at,
+      fin: item.end_at,
+      reference: item.confirmation_ref,
+      montre: item.visible_to_client,
+    };
+  }
   if (item.kind === "hotel") {
     return {
       kind: "hôtel",
@@ -598,8 +610,18 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
   ]);
   if (visas.error) logRead("visas", visas.error);
   if (tasks.error) logRead("taches", tasks.error);
+  let commission: ResolvedAgencyFee = { rate: 0.1, source: "defaut" };
+  try {
+    const fees = await loadResolvedAgencyFees(admin, [booking]);
+    commission = fees.get(booking.id) || commission;
+  } catch (err) {
+    logRead("commission", err as { code?: string; message?: string });
+  }
   return {
     ...bookingLine(booking, names, amounts, companies),
+    commission_agence: formatAgencyFeePercent(commission.rate),
+    commission_source: commission.source,
+    commission_appliquee: booking.agency_commission === true,
     voyageurs: travelers.map((row) => [row.first_name, row.last_name].filter(Boolean).join(" ").trim()),
     cartes: cards.map(cardLine),
     formalites: [
@@ -830,7 +852,9 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
   const id = (input.id || "").trim();
   const reference = (input.reference || "").trim();
   if (!id && !reference) return { message: "Indiquez l’identifiant ou la référence du dossier." };
-  let query = admin.from("crm_bookings").select("id, reference, title, destination, client_settles_stay");
+  let query = admin
+    .from("crm_bookings")
+    .select("id, reference, title, destination, client_settles_stay, agency_commission, customer_id, billing_customer_id");
   if (id) {
     if (!UUID.test(id)) return { message: "Identifiant inconnu." };
     query = query.eq("id", id);
@@ -842,7 +866,16 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     logRead("comptabilite", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = (data || []) as { id: string; reference: string; title: string | null; destination: string | null; client_settles_stay: boolean | null }[];
+  const rows = (data || []) as {
+    id: string;
+    reference: string;
+    title: string | null;
+    destination: string | null;
+    client_settles_stay: boolean | null;
+    agency_commission?: boolean | null;
+    customer_id?: string | null;
+    billing_customer_id?: string | null;
+  }[];
   if (!rows.length) return { introuvable: true };
   if (rows.length > 1) return { choix: rows.map((row) => ({ id: row.id, reference: row.reference, titre: row.title || row.destination })) };
   const booking = rows[0];
@@ -858,17 +891,28 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     ),
     inputs
   );
+  let commission: ResolvedAgencyFee = { rate: 0.1, source: "defaut" };
+  try {
+    const fees = await loadResolvedAgencyFees(admin, [booking]);
+    commission = fees.get(booking.id) || commission;
+  } catch (err) {
+    logRead("commission", err as { code?: string; message?: string });
+  }
   const eur = (value: number) => formatMoney(value, "EUR");
   const costLine = (cost: TripCost) => ({
     source: cost.source === "pliant" ? "Pliant" : "Revolut",
     fournisseur: cost.supplier,
     montant: eur(cost.amountEur),
     date: cost.occurredOn ? formatDateFr(cost.occurredOn) : null,
+    etat: cost.state === "pending" ? "en attente" : "confirmé",
   });
   return {
     lien: `/admin/reservations/${booking.id}?tab=reglement`,
     reference: booking.reference,
     titre: booking.title || booking.destination,
+    commission_agence: formatAgencyFeePercent(commission.rate),
+    commission_source: commission.source,
+    commission_appliquee: booking.agency_commission === true,
     etat: TRIP_ACCOUNTING_LABELS[view.state],
     lignes: view.lines.map((line) => ({
       vente: line.label,

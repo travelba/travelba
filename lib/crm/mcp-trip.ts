@@ -3,6 +3,8 @@ import WebSocket from "ws";
 import { createBookingSchema, isIsoDate, parseBody } from "@/lib/crm/admin-schemas";
 import { dossierFlightStamp, timezoneForIata } from "@/lib/crm/airport-time";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
+import { composeAccueilVip, parseAccueilVipService, readAccueilVipLegs, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
+import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { createStaffBooking, StaffWriteError, type StaffBookingInput } from "@/lib/crm/booking-create";
 import { ledgerWarning, refreshTicketingFee } from "@/lib/crm/bookings";
@@ -15,7 +17,7 @@ import { itemTicketCount } from "@/lib/crm/item-match";
 import { parseMoney } from "@/lib/crm/money";
 import { type PayerCompany } from "@/lib/crm/payer";
 import { sameRecordedTraveler } from "@/lib/crm/person-match";
-import { staffStayLabel } from "@/lib/crm/staff-stay";
+import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { cloneTravelDocument, insertTravelDocument } from "@/lib/crm/travel-document-write";
@@ -542,7 +544,7 @@ export async function createDossier(input: Record<string, unknown>, admin?: Admi
   try {
     const { data: traveler, error: travelerError } = await db
       .from("crm_customers")
-      .select("id, company_role, billing_parent_id")
+      .select("id, company_role, billing_parent_id, city")
       .eq("id", draft.customer_id)
       .maybeSingle();
     if (travelerError || !traveler) throw new McpWriteError("Client introuvable.");
@@ -557,10 +559,13 @@ export async function createDossier(input: Record<string, unknown>, admin?: Admi
     const companies = (companyRows || []) as (PayerCompany & { company_name?: string | null })[];
     const choice = dossierPayerChoice({ societeId, facturerSociete: billCompany, companies });
     if ("error" in choice) throw new McpWriteError(choice.error);
+    const home = typeof traveler.city === "string" ? traveler.city : "";
     const created = await createStaffBooking(
       db,
       {
         ...draft,
+        title: withoutHomeCity(draft.title, home) || draft.title,
+        destination: withoutHomeCity(draft.destination, home) || draft.destination,
         payer_kind: choice.payer_kind,
         billing_company_id: choice.billing_company_id ?? undefined,
       },
@@ -940,6 +945,7 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
   stampFlightZones(details);
   const saved = await patchStaffBookingCard(db, booking.id, carteId, patch);
   if ("error" in saved) throw new McpWriteError(saved.error);
+  await resyncAccueilVip(db, booking.id);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
 }
 
@@ -1007,4 +1013,88 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
   const saved = await addStaffBookingCard(db, booking.id, body);
   if ("error" in saved) throw new McpWriteError(saved.error);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
+}
+
+function wholeInput(value: unknown, label: string) {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) return Number(value.trim());
+  throw new McpWriteError(`${label} invalide.`);
+}
+
+/** Accueil VIP collé à un vol du dossier. L’aéroport et l’heure viennent de ce vol. Aucun message. */
+export async function addAccueilVip(input: Record<string, unknown>, admin?: Admin) {
+  const target = dossierTarget(input);
+  const service = parseAccueilVipService(input.type);
+  if (!service) throw new McpWriteError("Type d’accueil invalide (arrivée, départ ou aller-retour).");
+  const provider = requiredText(input.fournisseur, "Prestataire", 160);
+  const clientInfo = requiredText(input.informations, "Informations", 8000);
+  const passengers = wholeInput(input.passagers, "Voyageurs");
+  const bags = wholeInput(input.bagages, "Bagages");
+  const hotline = optionalText(input.hotline, "Hotline", 40) || "";
+  const email = optionalText(input.email, "E-mail", 200) || "";
+  const confirmation = optionalText(input.confirmation, "Confirmation", 80) || "";
+  const prix = positiveMoney(input.prix, "Prix");
+  const devise = currencyOf(input.devise);
+  const arrivalFlightId = optionalId(input.vol_arrivee, "Vol d’arrivée");
+  const departureFlightId = optionalId(input.vol_depart, "Vol de départ");
+  const documentId = optionalId(input.document_id, "Document");
+  const db = client(admin);
+  const booking = await loadBooking(db, target);
+  const { data, error } = await db
+    .from("crm_booking_items")
+    .select("id, kind, title, start_at, end_at, lifecycle, details")
+    .eq("booking_id", booking.id);
+  if (error) throw new McpWriteError("Vol introuvable sur ce dossier.");
+  const price = hotelPrice({ prix, devise, dossierDevise: booking.currency || "EUR" });
+  const composed = composeAccueilVip(
+    {
+      service,
+      provider,
+      arrivalFlightId,
+      departureFlightId,
+      passengers,
+      bags,
+      hotline,
+      email,
+      confirmation,
+      clientInfo,
+      amount: price.amount,
+      documentAmount: price.documentAmount,
+      documentCurrency: price.documentCurrency,
+    },
+    (data || []) as AccueilVipFlight[]
+  );
+  if (!composed.ok) throw new McpWriteError(composed.error);
+  const saved = await addStaffBookingCard(db, booking.id, {
+    ...composed.card,
+    title: composed.card.title,
+    include_in_ledger: false,
+  });
+  if ("error" in saved) throw new McpWriteError(saved.error);
+  if (documentId) {
+    const { data: doc, error: docError } = await db
+      .from("crm_booking_documents")
+      .select("id")
+      .eq("id", documentId)
+      .eq("booking_id", booking.id)
+      .maybeSingle();
+    if (docError || !doc) throw new McpWriteError("Ce document n’est pas sur le dossier.");
+    const itemId = String(saved.item.id);
+    const { error: linkError } = await db.from("crm_booking_items").update({ source_document_id: documentId }).eq("id", itemId);
+    if (linkError) throw new McpWriteError("Document non relié.");
+    await db.from("crm_booking_documents").update({ booking_item_id: itemId }).eq("id", documentId);
+  }
+  const legs = readAccueilVipLegs(composed.card.details);
+  return {
+    ...cardReply(saved.item, booking, price, saved.ledgerWarning),
+    prestataire: composed.card.supplier,
+    etapes: legs.map((leg) => ({
+      sens: leg.role === "arrival" ? "arrivée" : "départ",
+      vol_id: leg.flight_id,
+      vol: leg.flight_number,
+      aeroport: leg.airport_iata,
+      ville: leg.airport_city,
+      horaire: leg.at,
+    })),
+  };
 }

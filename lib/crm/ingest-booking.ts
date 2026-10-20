@@ -18,7 +18,6 @@ import {
   uploadCrmFile,
 } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
-import { shownClientNote } from "@/lib/crm/public-booking";
 import { dossierTitle } from "@/lib/crm/ingest-title";
 import { bookingCurrencyFromReview } from "@/lib/crm/stay-currency";
 import { parseMoney } from "@/lib/crm/money";
@@ -26,6 +25,7 @@ import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
 import {
   bookingExtractSchema,
   aiGatewayConfigured,
+  bookingNotesFromImport,
   bookingStatusFromExtract,
   guessIngestMime,
   isCancellationExtract,
@@ -53,6 +53,7 @@ import {
   stayDatesFromExtract,
 } from "@/lib/crm/item-lifecycle";
 import { findHotelBookingCard, findMatchingItem, hotelMatchKeepsStay, keptHotelStayFields } from "@/lib/crm/item-match";
+import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import {
@@ -505,6 +506,7 @@ async function upsertItemsAndTravelers(
   if (saved) {
     try {
       await persistBookingCardOrder(supabase, bookingId, { createdIds });
+      await resyncAccueilVip(supabase, bookingId);
     } catch (error) {
       throw dbFailure(error as { message?: string; code?: string }, "Ordre des cartes non enregistré.");
     }
@@ -561,6 +563,14 @@ export async function persistNewBookingFromExtract(opts: {
   const title = dossierTitle(extract);
   const totalAmount = sellingTotalFromExtract(extract);
   const status = bookingStatusFromExtract(extract, opts.status);
+  const notes = bookingNotesFromImport(
+    extract,
+    extract.document_status === "quote"
+      ? IMPORT_QUOTE_NOTE
+      : opts.staged?.length || opts.files?.length
+        ? IMPORT_DOCUMENTS_NOTE
+        : IMPORT_AGENCY_NOTE
+  );
   const { data, error } = await admin
     .from("crm_bookings")
     .insert({
@@ -576,13 +586,8 @@ export async function persistNewBookingFromExtract(opts: {
       end_date: stayDates.end,
       currency: bookingCurrencyFromReview(extract.currency, extract.items),
       total_amount: totalAmount,
-      notes_client: shownClientNote(extract.notes_client),
-      notes_internal:
-        extract.document_status === "quote"
-          ? IMPORT_QUOTE_NOTE
-          : (opts.staged?.length || opts.files?.length)
-            ? IMPORT_DOCUMENTS_NOTE
-            : IMPORT_AGENCY_NOTE,
+      notes_client: notes.notes_client,
+      notes_internal: notes.notes_internal,
       visible_to_client: false,
     })
     .select("*")

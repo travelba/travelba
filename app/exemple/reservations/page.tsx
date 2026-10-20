@@ -133,8 +133,8 @@ export default async function ExampleReservationsPage({
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
                       {b.id === session.booking.id
-                        ? stayTitleFromItems(b.title, b.destination, clientVisibleItems(session.items))
-                        : stayTitleFromItems(b.title, b.destination, [])}
+                        ? stayTitleFromItems(b.title, b.destination, clientVisibleItems(session.items), "Séjour", session.customer.city)
+                        : stayTitleFromItems(b.title, b.destination, [], "Séjour", session.customer.city)}
                     </h2>
                   </div>
                 </BookingHero>

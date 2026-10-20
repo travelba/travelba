@@ -5,7 +5,7 @@ import type { CustomerNameRow } from "@/lib/crm/customer-search";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
-import { stayHeadline } from "@/lib/crm/carnet";
+import { listStayTitle } from "@/lib/crm/carnet";
 import {
   ArchiveBookingButton,
   DuplicateBookingButton,
@@ -107,7 +107,7 @@ export function BookingsTable({
               />
                 <div className="min-w-0">
                   <p className="break-words font-semibold text-[var(--admin-navy)]">
-                    {b.reference} · {stayHeadline(b.title, b.destination, routes[b.id] || places[b.id], "Séjour", layovers[b.id])}
+                    {b.reference} · {listStayTitle(b.title, b.destination, places[b.id], routes[b.id], layovers[b.id])}
                   </p>
                   <p className="text-xs text-muted">
                     {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)} →{" "}
