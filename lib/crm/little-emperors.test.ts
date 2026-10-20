@@ -9,8 +9,11 @@ import {
   isLeCancelled,
   leDateOnly,
   littleEmperorsActionAllowed,
+  littleEmperorsApiKey,
+  littleEmperorsProductionBlocked,
   listLittleEmperorsBookings,
   littleEmperorsOrigin,
+  LITTLE_EMPERORS_PRODUCTION_ORIGIN,
   littleEmperorsWebhookAuthorized,
   littleEmperorsWebhookConfigured,
   parseLeBooking,
@@ -49,23 +52,86 @@ const sample = {
 };
 
 describe("little emperors staging client", () => {
-  it("refuse l’API de production et Vercel production", () => {
+  it("appelle l’API de production sur Vercel Production, le staging ailleurs", () => {
     const previousBase = process.env.LITTLE_EMPERORS_API_BASE;
     const previousEnv = process.env.VERCEL_ENV;
-    process.env.LITTLE_EMPERORS_API_BASE = "https://api.littleemperors.com/v2";
+    const previousKey = process.env.LITTLE_EMPERORS_API_KEY;
     delete process.env.VERCEL_ENV;
+    delete process.env.LITTLE_EMPERORS_API_BASE;
+    assert.equal(littleEmperorsProductionBlocked(), false);
+    assert.equal(littleEmperorsOrigin(), LITTLE_EMPERORS_STAGING_ORIGIN);
+    process.env.LITTLE_EMPERORS_API_BASE = "https://api.littleemperors.com/v2";
     assert.throws(() => littleEmperorsOrigin(), (err: unknown) => {
       return err instanceof LittleEmperorsError && err.code === "production_refused";
     });
-    process.env.LITTLE_EMPERORS_API_BASE = LITTLE_EMPERORS_STAGING_ORIGIN;
-    process.env.VERCEL_ENV = "production";
+    process.env.LITTLE_EMPERORS_API_BASE = "https://evil.example/v2";
     assert.throws(() => littleEmperorsOrigin(), (err: unknown) => {
-      return err instanceof LittleEmperorsError && err.code === "vercel_production";
+      return err instanceof LittleEmperorsError && err.code === "staging_only";
+    });
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.LITTLE_EMPERORS_API_BASE;
+    assert.equal(littleEmperorsOrigin(), LITTLE_EMPERORS_STAGING_ORIGIN);
+    process.env.VERCEL_ENV = "production";
+    process.env.LITTLE_EMPERORS_API_KEY = "prod-key";
+    delete process.env.LITTLE_EMPERORS_API_BASE;
+    assert.equal(littleEmperorsProductionBlocked(), false);
+    assert.equal(littleEmperorsApiKey(), "prod-key");
+    assert.equal(littleEmperorsOrigin(), LITTLE_EMPERORS_PRODUCTION_ORIGIN);
+    process.env.LITTLE_EMPERORS_API_BASE = "https://api.littleemperors.com/v2";
+    assert.equal(littleEmperorsOrigin(), LITTLE_EMPERORS_PRODUCTION_ORIGIN);
+    process.env.LITTLE_EMPERORS_API_BASE = "https://api-staging.littleemperors.com";
+    assert.equal(littleEmperorsOrigin(), LITTLE_EMPERORS_STAGING_ORIGIN);
+    process.env.LITTLE_EMPERORS_API_BASE = "https://evil.example";
+    assert.throws(() => littleEmperorsOrigin(), (err: unknown) => {
+      return err instanceof LittleEmperorsError && err.code === "host_refused";
+    });
+    process.env.LITTLE_EMPERORS_API_BASE = "https://api.littleemperors.com.evil.com";
+    assert.throws(() => littleEmperorsOrigin(), (err: unknown) => {
+      return err instanceof LittleEmperorsError && err.code === "host_refused";
+    });
+    process.env.LITTLE_EMPERORS_API_BASE = "http://api.littleemperors.com";
+    assert.throws(() => littleEmperorsOrigin(), (err: unknown) => {
+      return err instanceof LittleEmperorsError && err.code === "bad_base";
+    });
+    process.env.LITTLE_EMPERORS_API_BASE = "https://user:secret@api.littleemperors.com";
+    assert.throws(() => littleEmperorsOrigin(), (err: unknown) => {
+      return err instanceof LittleEmperorsError && err.code === "bad_base";
     });
     if (previousBase === undefined) delete process.env.LITTLE_EMPERORS_API_BASE;
     else process.env.LITTLE_EMPERORS_API_BASE = previousBase;
     if (previousEnv === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = previousEnv;
+    if (previousKey === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
+    else process.env.LITTLE_EMPERORS_API_KEY = previousKey;
+  });
+
+  it("en production, la lecture est un GET /v2/hotels/bookings", async () => {
+    const previousBase = process.env.LITTLE_EMPERORS_API_BASE;
+    const previousEnv = process.env.VERCEL_ENV;
+    const previousKey = process.env.LITTLE_EMPERORS_API_KEY;
+    process.env.VERCEL_ENV = "production";
+    process.env.LITTLE_EMPERORS_API_KEY = "prod-key";
+    delete process.env.LITTLE_EMPERORS_API_BASE;
+    let called = "";
+    let method = "";
+    let auth = "";
+    const fetchImpl: typeof fetch = async (input, init) => {
+      called = String(input);
+      method = init?.method || "";
+      auth = new Headers(init?.headers).get("authorization") || "";
+      return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const rows = await listLittleEmperorsBookings(fetchImpl);
+    assert.deepEqual(rows, []);
+    assert.equal(called, "https://api.littleemperors.com/v2/hotels/bookings");
+    assert.equal(method, "GET");
+    assert.equal(auth, "Bearer prod-key");
+    if (previousBase === undefined) delete process.env.LITTLE_EMPERORS_API_BASE;
+    else process.env.LITTLE_EMPERORS_API_BASE = previousBase;
+    if (previousEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousEnv;
+    if (previousKey === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
+    else process.env.LITTLE_EMPERORS_API_KEY = previousKey;
   });
 
   it("ne garde ni téléphone ni e-mail d’hôtel", () => {
@@ -102,6 +168,7 @@ describe("little emperors staging client", () => {
     const previous = process.env.LITTLE_EMPERORS_API_KEY;
     const previousEnv = process.env.VERCEL_ENV;
     delete process.env.VERCEL_ENV;
+    const previousBase = process.env.LITTLE_EMPERORS_API_BASE;
     process.env.LITTLE_EMPERORS_API_KEY = "test-key";
     process.env.LITTLE_EMPERORS_API_BASE = LITTLE_EMPERORS_STAGING_ORIGIN;
     const fetchImpl: typeof fetch = async () =>
@@ -114,6 +181,8 @@ describe("little emperors staging client", () => {
     });
     if (previous === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
     else process.env.LITTLE_EMPERORS_API_KEY = previous;
+    if (previousBase === undefined) delete process.env.LITTLE_EMPERORS_API_BASE;
+    else process.env.LITTLE_EMPERORS_API_BASE = previousBase;
     if (previousEnv === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = previousEnv;
   });
