@@ -32,7 +32,17 @@ import {
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
-import { addAccueilVip, addHotel, addVol, addVoyageur, createDossier, updateVol } from "@/lib/crm/mcp-trip";
+import {
+  addAccueilVip,
+  addHotel,
+  addVol,
+  addVoyageur,
+  createDossier,
+  mergeCompagnon,
+  removeCarte,
+  removeVoyageur,
+  updateVol,
+} from "@/lib/crm/mcp-trip";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
@@ -50,9 +60,9 @@ const COMPANY_FIELDS = {
   pays: z.string().trim().max(80).optional().describe("Pays de facturation"),
 };
 
-const PRIX_BILLET = "Prix d’un billet (unitaire). Le séjour le multiplie par le nombre de billets.";
+const PRIX_BILLET = "Prix d’un billet (unitaire). Zéro est accepté. Le séjour le multiplie par le nombre de billets.";
 const PRIX_GROUPE =
-  "Total du groupe pour cette carte. Unitaire = total / billets. Un aller-retour au même prix n’est compté qu’une fois ; deux prix différents comptent tous les deux.";
+  "Total du groupe pour cette carte. Zéro est accepté. Unitaire = total / billets. Un aller-retour au même prix n’est compté qu’une fois ; deux prix différents comptent tous les deux.";
 
 const text = (value: unknown, keepPieceNumber = false, keepSignedUrl = false, keepCardSecrets = false) => ({
   content: [
@@ -550,7 +560,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "creer_dossier",
     write: true,
     description:
-      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. societe_id ou facturer_societe facture la société du client (payer_kind société) ; sinon le séjour reste particulier. Erreur s’il n’y a aucune société ou plusieurs sans societe_id. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
+      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. La société de la fiche est facturée par défaut : l’unique société, ou la première s’il y en a plusieurs. societe_id en choisit une autre. particulier : true laisse le séjour particulier. Sans société sur la fiche, le séjour reste particulier. facturer_societe sans société est une erreur. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
     input: {
       client_id: z.string().trim().describe("Identifiant du client"),
       titre: z.string().trim().describe("Titre du séjour"),
@@ -561,10 +571,14 @@ export const MCP_TOOLS: ToolDef[] = [
       notes_internes: z.string().trim().max(5000).optional().describe("Note interne, jamais côté client"),
       devise: z.string().trim().max(12).optional().describe("Devise du dossier, 3 lettres. EUR si omise. THB reste THB"),
       societe_id: z.string().trim().max(80).optional().describe("Société de facturation déjà sur la fiche"),
+      particulier: z
+        .boolean()
+        .optional()
+        .describe("Séjour particulier, même si la fiche a une société. Sinon la société est facturée"),
       facturer_societe: z
         .boolean()
         .optional()
-        .describe("Facturer l’unique société du client. Erreur s’il n’y en a aucune ou plusieurs"),
+        .describe("Demande explicite de facturer la société. Erreur s’il n’y en a aucune"),
     },
     run: (args) => createDossier(args),
   },
@@ -572,13 +586,14 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_voyageur",
     write: true,
     description:
-      "Ajoute un voyageur au dossier et à la liste du client. Civilité, prénoms, nom, naissance, nationalité, téléphone. Le passeport est enregistré comme sur la fiche. Le numéro n’est pas renvoyé. L’e-mail n’ouvre pas de compte et n’est pas enregistré. Aucun message.",
+      "Ajoute un voyageur au dossier et à la liste du client. Le nom d’usage et le premier prénom rattachent un compagnon déjà en fiche (Victoria Boukris = Victoria Marie Tetard, nom d’usage Boukris). compagnon_id rattache ce compagnon. Plusieurs homonymes : celui qui a un passeport, sinon il faut compagnon_id. Civilité, prénoms, nom, naissance, nationalité, téléphone. Le passeport est enregistré comme sur la fiche. Le numéro n’est pas renvoyé. L’e-mail n’ouvre pas de compte et n’est pas enregistré. Aucun message.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
-      prenoms: z.string().trim().describe("Prénoms"),
-      nom: z.string().trim().describe("Nom"),
+      compagnon_id: z.string().trim().max(80).optional().describe("Compagnon déjà en fiche. Prénoms et nom deviennent facultatifs"),
+      prenoms: z.string().trim().optional().describe("Prénoms. Le premier suffit pour reconnaître un compagnon"),
+      nom: z.string().trim().optional().describe("Nom de naissance ou nom d’usage"),
       civilite: z.string().trim().max(40).optional().describe("Monsieur, Madame ou autre"),
       sexe: z.string().trim().max(20).optional().describe("M, F ou X"),
       date_naissance: z.string().trim().max(40).optional().describe("Naissance, AAAA-MM-JJ"),
@@ -600,10 +615,34 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => addVoyageur(args),
   },
   {
+    name: "retirer_voyageur",
+    write: true,
+    description:
+      "Retire un voyageur du séjour, et des cartes qui le citent. Le frais de billeterie suit le nombre de voyageurs. Le compagnon reste sur la fiche. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      voyageur_id: z.string().trim().max(80).optional().describe("Identifiant du voyageur sur le séjour"),
+      compagnon_id: z.string().trim().max(80).optional().describe("Compagnon à retirer de ce séjour"),
+    },
+    run: (args) => removeVoyageur(args),
+  },
+  {
+    name: "fusionner_compagnon",
+    write: true,
+    description:
+      "Reprend les séjours d’un compagnon sans pièce sur le compagnon conservé, puis retire le doublon. Un compagnon qui a un passeport ou une autre pièce n’est pas retiré. Aucun message.",
+    input: {
+      garder_id: z.string().trim().describe("Compagnon conservé"),
+      retirer_id: z.string().trim().describe("Doublon sans pièce"),
+    },
+    run: (args) => mergeCompagnon(args),
+  },
+  {
     name: "ajouter_vol",
     write: true,
     description:
-      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) sort du titre et d’une destination qui n’est qu’une liste de villes. Le domicile (départ, retour, ville de la fiche) en sort aussi. Une nuit d’hôtel garde la ville, sauf si c’est seulement le domicile. Un aller simple vers une ville où l’on reste la garde. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
+      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie (ils ne reviennent pas). Un vol à 0 €, sans autre vol payant sur le dossier, ne crée pas ces frais. Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) sort du titre et d’une destination qui n’est qu’une liste de villes. Le domicile (départ, retour, ville de la fiche) en sort aussi. Une nuit d’hôtel garde la ville, sauf si c’est seulement le domicile. Un aller simple vers une ville où l’on reste la garde. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -621,6 +660,10 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
       prix: z.union([z.number(), z.string()]).optional().describe(PRIX_BILLET),
       prix_total: z.union([z.number(), z.string()]).optional().describe(PRIX_GROUPE),
+      sans_frais: z
+        .boolean()
+        .optional()
+        .describe("Pas de frais de billeterie sur ce dossier. La ligne ne revient pas"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
       fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
     },
@@ -630,7 +673,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_vol",
     write: true,
     description:
-      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
+      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -649,10 +692,26 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs. Omis : les billets déjà sur la carte restent"),
       prix: z.union([z.number(), z.string()]).optional().describe(PRIX_BILLET),
       prix_total: z.union([z.number(), z.string()]).optional().describe(PRIX_GROUPE),
+      sans_frais: z
+        .boolean()
+        .optional()
+        .describe("Pas de frais de billeterie sur ce dossier. La ligne ne revient pas"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
       fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
     },
     run: (args) => updateVol(args),
+  },
+  {
+    name: "retirer_carte",
+    write: true,
+    description:
+      "Retire une carte du dossier. Les frais de billeterie ne sont pas recréés, et leur débit au grand livre est annulé. Le séjour caché ne débite pas. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().describe("Identifiant de la carte"),
+    },
+    run: (args) => removeCarte(args),
   },
   {
     name: "ajouter_hotel",

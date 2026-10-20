@@ -36,8 +36,11 @@ const EXPECTED = [
   "notifier_piece",
   "creer_dossier",
   "ajouter_voyageur",
+  "retirer_voyageur",
+  "fusionner_compagnon",
   "ajouter_vol",
   "modifier_vol",
+  "retirer_carte",
   "ajouter_hotel",
   "ajouter_accueil_vip",
 ];
@@ -59,8 +62,11 @@ const WRITE_TOOLS = [
   "notifier_piece",
   "creer_dossier",
   "ajouter_voyageur",
+  "retirer_voyageur",
+  "fusionner_compagnon",
   "ajouter_vol",
   "modifier_vol",
+  "retirer_carte",
   "ajouter_hotel",
   "ajouter_accueil_vip",
 ];
@@ -101,7 +107,7 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "ajouter_vol", "modifier_vol", "ajouter_hotel", "ajouter_accueil_vip"]) {
+  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "ajouter_hotel", "ajouter_accueil_vip"]) {
     const tool = MCP_TOOLS.find((item) => item.name === name);
     assert.equal(tool?.write, true);
     assert.equal(tool?.openWorld, undefined);

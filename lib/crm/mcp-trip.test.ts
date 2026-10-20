@@ -16,10 +16,15 @@ import {
   buildHotelCard,
   createDossier,
   dossierPayerChoice,
+  dropPartyFromDetails,
   flightPrice,
   flightSchedule,
   hotelPrice,
   isoCurrencyCode,
+  mergeCompagnon,
+  removeCarte,
+  removeVoyageur,
+  retargetCompanionDetails,
   travelerSex,
 } from "@/lib/crm/mcp-trip";
 import type { CrmBookingItem } from "@/lib/crm/types";
@@ -752,14 +757,34 @@ test("ajouter_accueil_vip exige un vol et suit son horaire", async () => {
 });
 
 test("une société se facture sur le dossier, sans doublon de SIRET", async () => {
-  assert.deepEqual(dossierPayerChoice({ societeId: "", facturerSociete: false, companies: [{ id: "a", sort_order: 0 }] }), {
+  assert.deepEqual(dossierPayerChoice({ societeId: "", particulier: false, companies: [{ id: "a", sort_order: 0 }] }), {
+    payer_kind: "company",
+    billing_company_id: "a",
+  });
+  assert.deepEqual(
+    dossierPayerChoice({
+      societeId: "",
+      particulier: false,
+      companies: [
+        { id: "b", sort_order: 1 },
+        { id: "a", sort_order: 0 },
+      ],
+    }),
+    { payer_kind: "company", billing_company_id: "a" }
+  );
+  assert.deepEqual(dossierPayerChoice({ societeId: "b", particulier: false, companies: [{ id: "a", sort_order: 0 }, { id: "b", sort_order: 1 }] }), {
+    payer_kind: "company",
+    billing_company_id: "b",
+  });
+  assert.deepEqual(dossierPayerChoice({ societeId: "", particulier: true, companies: [{ id: "a", sort_order: 0 }] }), {
     payer_kind: "personal",
     billing_company_id: null,
   });
-  assert.equal(
-    "error" in dossierPayerChoice({ societeId: "", facturerSociete: true, companies: [] }),
-    true
-  );
+  assert.equal("error" in dossierPayerChoice({ societeId: "a", particulier: true, companies: [{ id: "a", sort_order: 0 }] }), true);
+  assert.deepEqual(dossierPayerChoice({ societeId: "", particulier: false, companies: [] }), {
+    payer_kind: "personal",
+    billing_company_id: null,
+  });
   const { db, client } = adminOf({ crm_customers: [], crm_billing_companies: [] });
   const created = await createClient(
     {
@@ -801,10 +826,9 @@ test("une société se facture sur le dossier, sans doublon de SIRET", async () 
   assert.equal(db.tables.crm_billing_companies.length, 2);
   assert.equal(db.tables.crm_customers[0].company_name, "NILOS FRANCE");
   await assert.rejects(() => updateClient({ id: created.id, ville: "Nice" }, client), /Plusieurs sociétés/);
-  await assert.rejects(
-    () => createDossier({ client_id: created.id, titre: "Phuket", facturer_societe: true }, client),
-    /Plusieurs sociétés/
-  );
+  const primary = await createDossier({ client_id: created.id, titre: "Phuket" }, client);
+  assert.equal(primary.paye_par, "société");
+  assert.equal(primary.societe, "NILOS FRANCE");
   const billed = await createDossier(
     { client_id: created.id, titre: "Phuket", societe_id: second.societe_id },
     client
@@ -812,14 +836,14 @@ test("une société se facture sur le dossier, sans doublon de SIRET", async () 
   assert.equal(billed.paye_par, "société");
   assert.equal(billed.societe, "EXPONENTIEL");
   assert.equal(billed.notifie, false);
-  const booking = db.tables.crm_bookings[0];
-  assert.equal(booking.payer_kind, "company");
-  assert.equal(booking.billing_company_id, second.societe_id);
-  assert.equal(booking.visible_to_client, false);
-  const personal = await createDossier({ client_id: created.id, titre: "Rome" }, client);
+  const booking = db.tables.crm_bookings.find((row) => row.id === billed.id);
+  assert.equal(booking?.payer_kind, "company");
+  assert.equal(booking?.billing_company_id, second.societe_id);
+  assert.equal(booking?.visible_to_client, false);
+  const personal = await createDossier({ client_id: created.id, titre: "Rome", particulier: true }, client);
   assert.equal(personal.paye_par, "particulier");
-  assert.equal(db.tables.crm_bookings[1].payer_kind, "personal");
-  assert.equal(db.tables.crm_bookings[1].billing_company_id, null);
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === personal.id)?.payer_kind, "personal");
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === personal.id)?.billing_company_id, null);
   const alone = await createClient(
     { email: "seul@example.com", prenom: "Léa", nom: "Martin", societe: "ATELIER" },
     client
@@ -841,6 +865,180 @@ test("une société se facture sur le dossier, sans doublon de SIRET", async () 
     () => createClient({ email: "mauvais@example.com", prenom: "Noa", nom: "Bernard", siret: "123" }, client),
     /14 chiffres/
   );
+});
+
+test("un vol à 0 € est accepté, et les frais de billeterie ne s’ouvrent pas", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Tel Aviv", devise: "EUR" }, client);
+  const traveler = await addVoyageur({ dossier_id: dossier.id, prenoms: "Léa", nom: "Martin" }, client);
+  const flight = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY320",
+      depart_iata: "CDG",
+      arrivee_iata: "TLV",
+      depart: "2026-12-01T10:00",
+      arrivee: "2026-12-01T16:00",
+      voyageurs: [traveler.voyageur_id],
+      prix_total: 0,
+    },
+    client
+  );
+  assert.equal(flight.prix_vendu, 0);
+  assert.equal(flight.prix_billet, 0);
+  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
+  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
+  assert.equal(db.tables.crm_bookings[0].total_amount, 0);
+  await assert.rejects(
+    () =>
+      updateVol(
+        { dossier_id: dossier.id, carte_id: flight.id, prix_total: -1 },
+        client
+      ),
+    /positif ou nul/
+  );
+});
+
+test("sans_frais retire les frais déjà créés, et retirer_carte annule le débit", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Tel Aviv", devise: "EUR" }, client);
+  db.tables.crm_bookings[0].visible_to_client = true;
+  const traveler = await addVoyageur({ dossier_id: dossier.id, prenoms: "Léa", nom: "Martin" }, client);
+  const flight = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY320",
+      depart_iata: "CDG",
+      arrivee_iata: "TLV",
+      depart: "2026-12-01T10:00",
+      arrivee: "2026-12-01T16:00",
+      voyageurs: [traveler.voyageur_id],
+      prix: 200,
+    },
+    client
+  );
+  const fee = db.tables.crm_booking_items.find((row) => row.kind === "expense");
+  assert.equal(fee?.amount, 25);
+  const debit = db.tables.crm_transactions.find((row) => String(row.external_id).includes(":expense:"));
+  assert.equal(debit?.status, "posted");
+  assert.equal(debit?.amount, 25);
+  const cleared = await updateVol({ dossier_id: dossier.id, carte_id: flight.id, sans_frais: true }, client);
+  assert.equal(cleared.notifie, false);
+  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
+  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
+  assert.equal(db.tables.crm_transactions.find((row) => row.id === debit?.id)?.status, "void");
+  const again = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY325",
+      depart_iata: "TLV",
+      arrivee_iata: "CDG",
+      depart: "2026-12-08T10:00",
+      arrivee: "2026-12-08T14:00",
+      prix: 200,
+    },
+    client
+  );
+  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
+  const removed = await removeCarte({ dossier_id: dossier.id, carte_id: again.id }, client);
+  assert.equal(removed.retiree, true);
+  assert.equal(removed.notifie, false);
+  assert.equal(db.tables.crm_booking_items.some((row) => row.id === again.id), false);
+});
+
+test("le nom d’usage et le premier prénom rattachent le compagnon, et le doublon sans pièce se retire", async () => {
+  const kept = "33333333-3333-4333-8333-333333333333";
+  const thin = "44444444-4444-4444-8444-444444444444";
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Benjamin", "Martin")],
+    crm_billing_companies: [],
+    crm_travel_companions: [
+      {
+        id: kept,
+        customer_id: CLIENT,
+        first_name: "Victoria Marie Rebecca",
+        last_name: "Tetard",
+        usage_name: "Martin",
+      },
+      { id: thin, customer_id: CLIENT, first_name: "Victoria", last_name: "Martin", usage_name: null },
+    ],
+    crm_travel_documents: [
+      {
+        id: "55555555-5555-4555-8555-555555555555",
+        customer_id: CLIENT,
+        companion_id: kept,
+        doc_type: "passport",
+        number: "SECRET",
+      },
+    ],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Tel Aviv" }, client);
+  const added = await addVoyageur({ dossier_id: dossier.id, prenoms: "Victoria", nom: "Martin" }, client);
+  assert.equal(added.compagnon_id, kept);
+  assert.equal(added.notifie, false);
+  assert.equal(JSON.stringify(added).includes("SECRET"), false);
+  assert.equal(db.tables.crm_travel_companions.length, 2);
+  const traveler = db.tables.crm_booking_travelers[0];
+  assert.equal(traveler.companion_id, kept);
+  assert.equal(traveler.first_name, "Victoria Marie Rebecca");
+  assert.equal(traveler.last_name, "Tetard");
+  await removeVoyageur({ dossier_id: dossier.id, voyageur_id: added.voyageur_id }, client);
+  const byId = await addVoyageur({ dossier_id: dossier.id, compagnon_id: thin }, client);
+  assert.equal(byId.compagnon_id, thin);
+  await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      depart_iata: "CDG",
+      arrivee_iata: "TLV",
+      depart: "2026-12-01T10:00",
+      arrivee: "2026-12-01T16:00",
+      voyageurs: [byId.voyageur_id],
+      prix_total: 0,
+    },
+    client
+  );
+  const merged = await mergeCompagnon({ garder_id: kept, retirer_id: thin }, client);
+  assert.equal(merged.notifie, false);
+  assert.equal(merged.sejours, 1);
+  assert.equal(db.tables.crm_travel_companions.some((row) => row.id === thin), false);
+  assert.equal(db.tables.crm_booking_travelers.some((row) => row.companion_id === thin), false);
+  const flight = db.tables.crm_booking_items.find((row) => row.kind === "flight");
+  const details = flight?.details as { party_keys: string[]; passengers: { last_name: string }[] };
+  assert.equal(details.party_keys.includes(`companion:${kept}`), true);
+  assert.equal(details.party_keys.includes(`companion:${thin}`), false);
+  assert.equal(details.passengers[0].last_name, "Tetard");
+  await assert.rejects(
+    () => mergeCompagnon({ garder_id: thin, retirer_id: kept }, client),
+    /introuvable|pièce/
+  );
+  const dropped = dropPartyFromDetails(
+    { party_keys: ["holder", `companion:${kept}`], passengers: [{ first_name: "A" }, { first_name: "B" }], ticket_count: 2 },
+    `companion:${kept}`
+  );
+  assert.deepEqual(dropped?.party_keys, ["holder"]);
+  assert.deepEqual(dropped?.passengers, [{ first_name: "A" }]);
+  assert.equal(dropped?.ticket_count, 1);
+  const moved = retargetCompanionDetails(
+    { party_keys: [`companion:${thin}`], passengers: [{ first_name: "Victoria", last_name: "Martin" }] },
+    thin,
+    { id: kept, first_name: "Victoria Marie Rebecca", last_name: "Tetard" }
+  );
+  assert.equal((moved?.party_keys as string[])[0], `companion:${kept}`);
+  assert.equal((moved?.passengers as { last_name: string }[])[0].last_name, "Tetard");
+  const removed = await removeVoyageur({ dossier_id: dossier.id, compagnon_id: kept }, client);
+  assert.equal(removed.retire, true);
+  assert.equal(removed.notifie, false);
+  assert.equal(db.tables.crm_booking_travelers.some((row) => row.companion_id === kept), false);
 });
 
 test("ces outils n’envoient ni message ni synchro de formalité", () => {
