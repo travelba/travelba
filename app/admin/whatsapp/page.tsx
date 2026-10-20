@@ -1,129 +1,153 @@
 import Link from "next/link";
 import { requireStaffPage } from "@/lib/crm/auth";
-import { HANDOFF_LABELS, type HandoffKind } from "@/lib/crm/whatsapp-concierge";
+import { createServiceClient } from "@/lib/supabase/admin";
+import { isVercelPreview } from "@/lib/crm/preview-secrets";
+import { stayDestinationLine } from "@/lib/crm/stay-phrase";
+import {
+  approvedManualTemplates,
+  foldThreads,
+  pauseStillActive,
+  readStamp,
+  sessionWindowOpenNow,
+  threadKey,
+  type InboxMessage,
+} from "@/lib/crm/whatsapp-inbox";
+import { WhatsappInbox } from "@/components/admin/WhatsappInbox";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { formatDateTimeFr } from "@/lib/crm/money";
-import { WhatsappResolve } from "@/components/admin/WhatsappResolve";
 
 export const metadata = { title: "WhatsApp" };
 
-type Row = {
+type RawMessage = {
   id: string;
-  kind: string;
-  body: string;
+  customer_id: string | null;
   booking_id: string | null;
-  customer_id: string | null;
-  phone: string | null;
-  created_at: string;
-};
-
-type ThreadRow = {
-  id: string;
-  customer_id: string | null;
   direction: string;
   body: string;
-  created_at: string;
+  status: string | null;
   template_key: string | null;
+  created_at: string;
+  phone?: string | null;
+  author_staff_id?: string | null;
+  media_path?: string | null;
+  tools?: string[] | null;
 };
 
-function label(kind: string) {
-  if (kind in HANDOFF_LABELS) return HANDOFF_LABELS[kind as HandoffKind];
-  return "Demande";
-}
+const RICH =
+  "id, customer_id, booking_id, direction, body, status, template_key, created_at, phone, author_staff_id, media_path, tools";
+const BASE = "id, customer_id, booking_id, direction, body, status, template_key, created_at";
 
-export default async function WhatsappQueuePage() {
-  const { supabase } = await requireStaffPage();
-  const rich = await supabase
-    .from("crm_whatsapp_requests")
-    .select("id, kind, body, booking_id, customer_id, phone, created_at")
-    .eq("status", "open")
-    .order("created_at", { ascending: false })
-    .limit(40);
-  const pendingMigration = Boolean(rich.error);
-  const rows = (pendingMigration ? [] : rich.data || []) as Row[];
-  const thread = await supabase
-    .from("crm_whatsapp_messages")
-    .select("id, customer_id, direction, body, created_at, template_key")
-    .order("created_at", { ascending: false })
-    .limit(24);
-  const messages = (thread.error ? [] : thread.data || []) as ThreadRow[];
+export default async function WhatsappInboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ fil?: string }>;
+}) {
+  await requireStaffPage();
+  const { fil } = await searchParams;
+  const admin = createServiceClient();
+  const loaded = await admin.from("crm_whatsapp_messages").select(RICH).order("created_at", { ascending: false }).limit(500);
+  const rows = (
+    loaded.error ? ((await admin.from("crm_whatsapp_messages").select(BASE).order("created_at", { ascending: false }).limit(500)).data || []) : loaded.data || []
+  ) as RawMessage[];
+  const customerIds = [...new Set(rows.map((row) => row.customer_id).filter(Boolean))] as string[];
+  const bookingIds = [...new Set(rows.map((row) => row.booking_id).filter(Boolean))] as string[];
+  const staffIds = [...new Set(rows.map((row) => row.author_staff_id).filter(Boolean))] as string[];
+  const [customers, bookings, staff, threads, requests, proposals] = await Promise.all([
+    customerIds.length
+      ? admin.from("crm_customers").select("id, first_name, last_name, phone").in("id", customerIds)
+      : Promise.resolve({ data: [] }),
+    bookingIds.length
+      ? admin.from("crm_bookings").select("id, reference, title, destination").in("id", bookingIds)
+      : Promise.resolve({ data: [] }),
+    staffIds.length ? admin.from("crm_staff").select("id, full_name").in("id", staffIds) : Promise.resolve({ data: [] }),
+    admin.from("crm_whatsapp_threads").select("phone, paused_until, staff_read_at, customer_id"),
+    admin.from("crm_whatsapp_requests").select("id, phone, message_id, kind, status").eq("status", "open"),
+    admin.from("crm_concierge_proposals").select("id, phone, draft_body, status").eq("status", "pending"),
+  ]);
+  const names = new Map(
+    ((customers.data || []) as { id: string; first_name: string | null; last_name: string | null; phone: string | null }[]).map((row) => [
+      row.id,
+      { name: [row.first_name, row.last_name].filter(Boolean).join(" "), phone: row.phone },
+    ])
+  );
+  const stays = new Map(
+    ((bookings.data || []) as { id: string; reference: string; title: string | null; destination: string | null }[]).map((row) => [
+      row.id,
+      { reference: row.reference, place: stayDestinationLine(row) },
+    ])
+  );
+  const agents = new Map(((staff.data || []) as { id: string; full_name: string | null }[]).map((row) => [row.id, row.full_name || "L’agence"]));
+  const openRequests = ((requests.data || []) as { id: string; phone: string | null; message_id: string | null; kind: string }[]) || [];
+  const requestByMessage = new Map(openRequests.filter((row) => row.message_id).map((row) => [row.message_id as string, row.id]));
+  const messages: InboxMessage[] = rows.map((row) => {
+    const customer = row.customer_id ? names.get(row.customer_id) : null;
+    const stay = row.booking_id ? stays.get(row.booking_id) : null;
+    return {
+      id: row.id,
+      phone: row.phone || customer?.phone || null,
+      customerId: row.customer_id,
+      customerName: customer?.name || null,
+      bookingId: row.booking_id,
+      bookingReference: stay ? `${stay.reference}${stay.place ? ` · ${stay.place}` : ""}` : null,
+      direction: row.direction === "inbound" ? "inbound" : "outbound",
+      body: row.body,
+      createdAt: row.created_at,
+      status: row.status,
+      templateKey: row.template_key,
+      authorName: row.author_staff_id ? agents.get(row.author_staff_id) || "L’agence" : null,
+      mediaPath: row.media_path || null,
+      tools: Array.isArray(row.tools) ? row.tools : [],
+      requestId: requestByMessage.get(row.id) || null,
+    };
+  });
+  const threadRows = threads.error
+    ? []
+    : ((threads.data || []) as { phone: string; paused_until: string | null; staff_read_at?: string | null; customer_id: string | null }[]);
+  const paused = threadRows.filter((row) => pauseStillActive(row.paused_until)).map((row) => row.phone);
+  const readAt: Record<string, string | null> = {};
+  for (const row of threadRows) {
+    if (row.staff_read_at) readAt[row.phone] = row.staff_read_at;
+  }
+  const escalated = openRequests.map((row) => row.phone).filter(Boolean) as string[];
+  const folded = foldThreads(messages, { paused, escalated, readAt });
+  const activeKey = fil || folded[0]?.key || null;
+  const activeMessages = messages.filter((row) => threadKey(row) === activeKey);
+  const active = folded.find((row) => row.key === activeKey) || null;
+  const lastInbound = [...activeMessages].filter((row) => row.direction === "inbound").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (active?.phone && fil) {
+    const marked = await admin.from("crm_whatsapp_threads").upsert({
+      phone: active.phone,
+      customer_id: active.customerId,
+      staff_read_at: readStamp(),
+      updated_at: readStamp(),
+    });
+    if (marked.error && !/column|schema cache/i.test(marked.error.message || "")) {
+      console.error("[whatsapp] lu", marked.error.code || "error");
+    }
+  }
+  const pending = ((proposals.data || []) as { id: string; phone: string; draft_body: string }[]).filter(
+    (row) => row.phone === active?.phone
+  );
 
   return (
-    <div className="space-y-6">
-      <div>
-        <PageEyebrow>Espace agence</PageEyebrow>
-        <PageTitle title="WhatsApp" subtitle="Demandes du Concierge. Une proposition n’est pas un envoi. Rien n’est modifié sur le séjour." />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <PageEyebrow>Concierge</PageEyebrow>
+          <PageTitle title="WhatsApp" subtitle="Conversations, reprise et modèles." />
+        </div>
+        <Link href="/admin/whatsapp/revue" className="text-sm text-[var(--color-ink-soft)] underline">
+          Revue
+        </Link>
       </div>
-      <p className="flex flex-wrap gap-4 text-sm">
-        <Link href="/admin/whatsapp/propositions" className="font-semibold underline-offset-2 hover:underline">
-          À approuver
-        </Link>
-        <Link href="/admin/whatsapp/revue" className="font-semibold underline-offset-2 hover:underline">
-          Revue de la semaine
-        </Link>
-        <Link href="/admin/concierge" className="font-semibold underline-offset-2 hover:underline">
-          Savoir
-        </Link>
-      </p>
-      {pendingMigration ? (
-        <p className="text-sm text-muted">La file s’affiche après la migration WhatsApp.</p>
-      ) : null}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-[var(--admin-navy)]">Fil en direct</h2>
-        {thread.error ? (
-          <p className="text-sm text-muted">Le fil s’affiche après la migration WhatsApp.</p>
-        ) : messages.length ? (
-          <ul className="space-y-2">
-            {messages.map((message) => (
-              <li key={message.id} className="admin-af-card rounded-3xl px-5 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
-                  {message.direction === "inbound" ? "Client" : message.template_key === "staff" ? "Agence" : "Concierge"}
-                </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--admin-navy)]">
-                  {message.body.length > 220 ? `${message.body.slice(0, 220)}…` : message.body}
-                </p>
-                <p className="mt-1 text-xs text-muted">{formatDateTimeFr(message.created_at)}</p>
-                {message.customer_id ? (
-                  <Link href={`/admin/clients/${message.customer_id}`} className="mt-2 inline-block text-sm font-semibold underline-offset-2 hover:underline">
-                    Ouvrir la fiche
-                  </Link>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted">Aucun message journalisé.</p>
-        )}
-      </section>
-      {rows.length ? (
-        <ul className="space-y-3">
-          {rows.map((row) => (
-            <li key={row.id} className="admin-af-card rounded-3xl px-5 py-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
-                {label(row.kind)}
-                {row.phone && !row.customer_id ? ` · ${row.phone}` : ""}
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--admin-navy)]">{row.body}</p>
-              <p className="mt-1 text-xs text-muted">{formatDateTimeFr(row.created_at)}</p>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                {row.customer_id ? (
-                  <Link href={`/admin/clients/${row.customer_id}`} className="text-sm font-semibold underline-offset-2 hover:underline">
-                    Ouvrir la fiche
-                  </Link>
-                ) : null}
-                {row.booking_id ? (
-                  <Link href={`/admin/reservations/${row.booking_id}`} className="text-sm font-semibold underline-offset-2 hover:underline">
-                    Ouvrir le séjour
-                  </Link>
-                ) : null}
-                <WhatsappResolve requestId={row.id} />
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : pendingMigration ? null : (
-        <p className="text-sm text-muted">Aucune demande en attente.</p>
-      )}
+      <WhatsappInbox
+        threads={folded}
+        messages={activeMessages}
+        activeKey={activeKey}
+        proposals={pending.map((row) => ({ id: row.id, draft: row.draft_body }))}
+        templates={approvedManualTemplates()}
+        windowOpen={sessionWindowOpenNow(lastInbound?.createdAt || null)}
+        previewBlocked={isVercelPreview()}
+      />
     </div>
   );
 }

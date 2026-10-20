@@ -6,7 +6,7 @@ import { hashEmbedding, knowledgeSeed, parseExampleImport, rankKnowledge } from 
 import { conciergeSearchMode, searchCatalog, searchSuppliers } from "./concierge-search";
 import { advanceJourney, absorbBrief, emptyBrief, planFollowups } from "./concierge-journey";
 import { conciergeOutboundArmed, decideProposal, paymentDraft } from "./concierge-proposals";
-import { CONCIERGE_TEMPLATES, templateIsArmed } from "./concierge-templates";
+import { CONCIERGE_TEMPLATES, templateDestination, templateIsArmed } from "./concierge-templates";
 import { qualityMarks, weeklyReview } from "./concierge-quality";
 import { runConciergeEval } from "./concierge-eval";
 import { planPhase2 } from "./concierge-phase2";
@@ -106,6 +106,66 @@ test("un règlement reprend l’encours, sans lien, et l’accord n’envoie rie
 test("les modèles restent des brouillons, la revue compte la semaine", () => {
   assert.ok(CONCIERGE_TEMPLATES.every((template) => template.status === "draft_not_submitted" && !templateIsArmed(template)));
   assert.equal(CONCIERGE_TEMPLATES.some((template) => template.bodies.he.length > 0), true);
+  const reprise = CONCIERGE_TEMPLATES.find((template) => template.key === "concierge_reprise");
+  assert.match(reprise?.bodies.fr || "", /Nous l’avons bien reçu/);
+  assert.equal(reprise?.variables.includes("destination" as "prenom"), false);
+  const depart = CONCIERGE_TEMPLATES.find((template) => template.key === "concierge_depart");
+  assert.match(depart?.bodies.fr || "", /votre séjour \{\{destination\}\} approche !/);
+  assert.match(depart?.bodies.en || "", /your stay \{\{destination\}\}/);
+  const phrase = templateDestination({ destination: "Paris · Tel Aviv · Seychelles" }, "fr");
+  assert.equal(phrase, "à Tel Aviv et aux Seychelles");
+  assert.equal(phrase.includes("Paris"), false);
+  assert.equal(templateDestination({ destination: "Paris · Tel Aviv · Seychelles" }, "en"), "in Tel Aviv and the Seychelles");
+  assert.equal(templateDestination({ destination: "Paris · Tel Aviv · Seychelles" }, "he").includes("à "), false);
+  const fromItems = templateDestination(
+    {
+      items: [
+        {
+          kind: "flight",
+          title: "Paris → Amsterdam",
+          start_at: "2026-10-24T14:30:00",
+          end_at: "2026-10-24T15:45:00",
+          details: { city_from: "Paris", city_to: "Amsterdam", from: "CDG", to: "AMS" },
+        },
+        {
+          kind: "flight",
+          title: "Amsterdam → Tel Aviv",
+          start_at: "2026-10-24T16:35:00",
+          end_at: "2026-10-24T23:50:00",
+          details: { city_from: "Amsterdam", city_to: "Tel Aviv", from: "AMS", to: "TLV" },
+        },
+        {
+          kind: "hotel",
+          title: "Tel Aviv",
+          start_at: "2026-10-24",
+          end_at: "2026-10-28",
+          details: { city: "Tel Aviv", hotel_name: "Hôtel" },
+        },
+        {
+          kind: "hotel",
+          title: "Seychelles",
+          start_at: "2026-10-28",
+          end_at: "2026-11-04",
+          details: { city: "Seychelles", hotel_name: "Villa" },
+        },
+      ],
+    },
+    "fr"
+  );
+  assert.equal(fromItems, "à Tel Aviv et aux Seychelles");
+  const departFollowup = planFollowups({
+    now: new Date("2026-10-18T12:00:00Z"),
+    lastInbound: null,
+    stayStart: "2026-10-20",
+    stayEnd: "2026-10-24",
+    briefOpen: false,
+    firstName: "Camille",
+    stay: { destination: "Paris · Tel Aviv · Seychelles" },
+  }).find((row) => row.templateKey === "concierge_depart");
+  assert.match(departFollowup?.body || "", /Camille/);
+  assert.match(departFollowup?.body || "", /à Tel Aviv et aux Seychelles/);
+  assert.equal(/Paris/.test(departFollowup?.body || ""), false);
+  assert.match(departFollowup?.body || "", /non soumis à Meta/);
   const now = new Date("2026-10-18T12:00:00Z");
   const marks = qualityMarks({
     phone: "+33601020304",

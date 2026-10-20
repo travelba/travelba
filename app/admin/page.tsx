@@ -135,6 +135,7 @@ export default async function AdminHomePage() {
     departTomorrow: departTomorrowCount ?? 0,
     expiring: badges.pieces,
     whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
+    unread: badges.whatsapp,
   });
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
 

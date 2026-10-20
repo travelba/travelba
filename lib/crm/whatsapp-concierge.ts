@@ -167,6 +167,7 @@ export type ConciergeTurn = {
   cover: string | null;
   optOut: boolean;
   access: boolean;
+  tools?: string[];
 };
 
 type RawBooking = Pick<

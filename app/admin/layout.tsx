@@ -3,6 +3,7 @@ import { AdminNav } from "@/components/admin/AdminNav";
 import { getSessionUser, getStaffForUser } from "@/lib/crm/auth";
 import { adminBadges, EMPTY_ADMIN_BADGES } from "@/lib/crm/admin-badges";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
+import { emptyDockSnapshot, loadDockSnapshot } from "@/lib/crm/whatsapp-dock-load";
 
 export const metadata = {
   title: {
@@ -21,6 +22,7 @@ export default async function AdminLayout({
   const staff = user ? await getStaffForUser(user.id) : null;
   // Comptés une fois par requête : le tableau de bord réutilise le même résultat (A-23, D-41).
   const badges = staff && staff.role !== "partner" ? await adminBadges() : EMPTY_ADMIN_BADGES;
+  const dock = staff && staff.role !== "partner" ? await loadDockSnapshot() : emptyDockSnapshot();
 
   return (
     <div className="admin-af min-h-screen">
@@ -30,6 +32,10 @@ export default async function AdminLayout({
         emailCount={badges.emails}
         leCount={badges.le}
         pieceCount={badges.pieces}
+        whatsappCount={badges.whatsapp}
+        whatsappThreads={dock.threads}
+        whatsappTemplates={dock.templates}
+        whatsappPreview={dock.previewBlocked}
         staffName={staff?.full_name || ""}
         staffRole={staff?.role}
         showExample={exampleSessionEnabled()}

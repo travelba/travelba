@@ -37,6 +37,10 @@ export type WhatsappMessageInsert = {
   twilio_sid: string | null;
   status: "received" | "sent" | "failed";
   error: string | null;
+  phone?: string | null;
+  tools?: string[] | null;
+  author_staff_id?: string | null;
+  media_path?: string | null;
 };
 
 export type WhatsappRequestInsert = {
@@ -96,6 +100,9 @@ export type WhatsappStore = {
   /** Savoir publié. Tableau vide si la migration n’est pas là : l’appelant reprend le dépôt. */
   loadKnowledge?(): Promise<KnowledgeChunk[]>;
   saveFollowups?(phone: string, customerId: string | null, rows: PlannedFollowup[]): Promise<void>;
+  updateStatus?(sid: string, status: string): Promise<void>;
+  /** Chemin de la dernière pièce enregistrée, puis oublié. */
+  takePiecePath?(): string | null;
 };
 
 const PIECE_TYPES = new Set([
@@ -248,7 +255,12 @@ export async function receiveWhatsappWebhook(input: {
   if (!verifyTwilioSignature({ authToken: token, url: input.url, params, signature: input.signature })) {
     return { status: 403 };
   }
-  if (statusCallbackOnly(params)) return { status: 200 };
+  if (statusCallbackOnly(params)) {
+    const sid = (params.MessageSid || "").trim();
+    const state = (params.MessageStatus || "").trim();
+    if (sid && state) await input.store.updateStatus?.(sid, state);
+    return { status: 200 };
+  }
 
   const sid = (params.MessageSid || "").trim();
   if (!sid) return { status: 400 };
@@ -273,6 +285,7 @@ export async function receiveWhatsappWebhook(input: {
       twilio_sid: sid,
       status: "received",
       error: null,
+      phone: clientPhone,
     });
     if (clientPhone) await input.store.pauseThread?.(clientPhone, holder?.id || null);
     return { status: 200 };
@@ -312,6 +325,8 @@ export async function receiveWhatsappWebhook(input: {
     twilio_sid: sid,
     status: "received",
     error: null,
+    phone: e164,
+    media_path: piece === "saved" ? input.store.takePiecePath?.() || null : null,
   });
   if ("duplicate" in inbound) return { status: 200 };
 
@@ -328,6 +343,7 @@ export async function receiveWhatsappWebhook(input: {
 
   let bookingId: string | null = null;
   let handoff: HandoffKind | null = null;
+  let tools: string[] | null = null;
   let reply = leadReply(messageLanguage(clientText));
   let mediaUrl: string | null = null;
   const lang = messageLanguage(clientText);
@@ -375,6 +391,7 @@ export async function receiveWhatsappWebhook(input: {
         currency: dossier.balances[0]?.currency || "EUR",
       });
       const turn = phase.turn;
+      tools = turn.tools?.length ? turn.tools : null;
       bookingId = turn.bookingId;
       handoff = turn.handoff;
       const replyLang = messageLanguage(content || said);
@@ -441,6 +458,8 @@ export async function receiveWhatsappWebhook(input: {
     twilio_sid: sent.ok ? sent.sid || null : null,
     status: sent.ok ? "sent" : "failed",
     error: sent.ok ? null : sent.detail || "rejected",
+    phone: e164,
+    tools,
   });
   if (handoff && !("duplicate" in outbound)) {
     const request: WhatsappRequestInsert = {
@@ -495,6 +514,7 @@ async function storeInboundPieces(input: {
 }
 
 export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStore {
+  let lastPiecePath: string | null = null;
   return {
     async findBySid(sid) {
       const { data, error } = await admin
@@ -590,14 +610,44 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       };
     },
     async insertMessage(row) {
-      const { data, error } = await admin
+      const base = {
+        customer_id: row.customer_id,
+        booking_id: row.booking_id,
+        direction: row.direction,
+        template_key: row.template_key,
+        body: row.body,
+        twilio_sid: row.twilio_sid,
+        status: row.status,
+        error: row.error,
+      };
+      const extra = {
+        phone: row.phone ?? null,
+        tools: row.tools ?? null,
+        author_staff_id: row.author_staff_id ?? null,
+        media_path: row.media_path ?? null,
+      };
+      let attempt = await admin
         .from("crm_whatsapp_messages")
-        .insert(row)
+        .insert({ ...base, ...extra })
         .select("id")
         .single();
-      if (error?.code === "23505") return { duplicate: true };
-      if (error || !data) throw error || new Error("journal WhatsApp");
-      return { id: data.id as string };
+      if (attempt.error && /column|schema cache/i.test(attempt.error.message || "")) {
+        attempt = await admin.from("crm_whatsapp_messages").insert(base).select("id").single();
+      }
+      if (attempt.error?.code === "23505") return { duplicate: true };
+      if (attempt.error || !attempt.data) throw attempt.error || new Error("journal WhatsApp");
+      return { id: attempt.data.id as string };
+    },
+    async updateStatus(sid, status) {
+      const mapped = status === "undelivered" ? "failed" : status;
+      if (!["queued", "sent", "delivered", "read", "failed", "received"].includes(mapped)) return;
+      const { error } = await admin.from("crm_whatsapp_messages").update({ status: mapped }).eq("twilio_sid", sid);
+      if (error) console.error("[whatsapp-concierge] statut", error.code || "error");
+    },
+    takePiecePath() {
+      const path = lastPiecePath;
+      lastPiecePath = null;
+      return path;
     },
     async insertRequest(row) {
       const { error } = await admin.from("crm_whatsapp_requests").insert(row);
@@ -786,6 +836,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       const ext = type === "application/pdf" ? "pdf" : type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
       const path = `customers/${customerId}/whatsapp/${crypto.randomUUID()}.${ext}`;
       await uploadCrmFile(path, Buffer.from(bytes), type);
+      lastPiecePath = path;
       const { error } = await admin.from("crm_travel_documents").insert(
         whatsappPieceInsert({ customerId, path, contentType: type, ext })
       );
