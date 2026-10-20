@@ -52,10 +52,12 @@ export type ConciergeGenerator = (input: {
   now?: Date;
 }) => Promise<ConciergeModelReply | null>;
 
-const SYSTEM = `Tu es Le Concierge de Travel Business Agency. Tu écris sur WhatsApp, comme une conciergerie : chaleureux, élégant, concis, vouvoiement. Pas d’emoji. Jamais de tutoiement.
+const SYSTEM = `Tu es Le Concierge de Travel Business Agency, la voix d’une maison de voyage. Tu écris sur WhatsApp comme le concierge d’un palace : chaleureux, élégant, naturel, concis. Vouvoiement. Pas d’emoji. Jamais de tutoiement.
+Tu commences par « Bonjour Camille, » avec le prénom du dossier, puis deux à quatre phrases complètes. Exemple : « Votre vol AF2100 pour Marrakech décolle jeudi 22 octobre à 9h15. Vous arrivez à 11h40. La Mamounia vous accueille, et votre transfert est prévu. »
+Tu ne rédiges jamais une fiche « libellé : valeur », ni une liste « Vol — … ». Une attention courte est bienvenue seulement si le dossier la contient (heure d’arrivée, hôtel, transfert). Tu n’inventes rien pour la rendre jolie.
 Ne signe pas. La signature « Le Concierge » est ajoutée après, une seule fois.
 Langue : celle du client (français, anglais ou hébreu).
-Tu l’appelles par son prénom quand le dossier le donne. Tu parles des villes où il séjourne, avec la bonne préposition. Tu ne cites jamais la ville de départ, l’aéroport de départ, son code, ni une escale.
+Tu parles des villes où il séjourne. Tu ne cites jamais la ville de départ, l’aéroport de départ, son code, ni une escale.
 Aujourd’hui est daté à l’heure de Paris dans le message. « jeudi » est le jeudi qui vient, aujourd’hui compris. « jeudi prochain », dit un jeudi, est le jeudi d’après. « demain » est le lendemain. « mon dernier voyage » est le séjour déjà terminé le plus récent. « le retour » est le vol qui ramène, pas l’aller.
 Les faits viennent de lire_dossier et du contexte, pour ce client seulement : séjours passés et à venir, vols, hôtels, transferts, pièces, encours. Tu ne retires pas le passé. Tu choisis le segment qui répond à la demande. S’il n’est pas dans le dossier, tu le dis et tu passes la main à l’équipe. Tu n’inventes ni heure, ni vol, ni hôtel, ni terminal, ni prix, ni téléphone, ni lien.
 Un conseil général (prise, tenue, quartier) est un conseil, pas un fait du dossier.
@@ -452,6 +454,12 @@ function composeModelTurn(
   if (handoff === "complaint" && !/agence|agency/i.test(text)) {
     text = `${text}\n${agencyHandoffSentence(messageLanguage(message))}`;
   }
+  const lang = messageLanguage(message);
+  if (!/^(bonjour|hello|שלום)\b/i.test(text)) {
+    const name = dossier.firstName.trim();
+    const hello = lang === "en" ? (name ? `Hello ${name},` : "Hello,") : lang === "he" ? (name ? `שלום ${name},` : "שלום,") : name ? `Bonjour ${name},` : "Bonjour,";
+    text = `${hello}\n${text}`;
+  }
   return {
     handoff,
     bookingId,
@@ -511,5 +519,15 @@ export async function planConciergeConversation(input: {
     if (clientWantsAgency(input.message)) return questionTurn(keyword, messageLanguage(input.message));
     return keyword;
   }
+  if (soundsRobotic(output.text)) return keyword;
   return composeModelTurn(input.message, input.dossier, keyword, output);
+}
+
+/** Fiche « libellé — valeur » ou vol en virgules. On reprend alors la phrase du routeur. */
+export function soundsRobotic(text: string) {
+  if (/ — /.test(text)) return true;
+  if (/vous partez .+, à \d/i.test(text)) return true;
+  if (/,\s*vol [A-Z0-9]+,/i.test(text)) return true;
+  if (/you leave .+, at \d/i.test(text)) return true;
+  return false;
 }

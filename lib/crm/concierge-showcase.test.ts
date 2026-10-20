@@ -140,7 +140,17 @@ function assertClientSafe(text: string) {
   assert.equal(/\bParis\b/.test(text), false, text);
   assert.equal(/\bCDG\b/.test(text), false, text);
   assert.equal(/Charles de Gaulle/.test(text), false, text);
+  assert.equal(/ — /.test(text), false, text);
   assert.equal(signatures(text), 1, text);
+}
+
+function assertPalace(text: string, name: string, english = false) {
+  assert.match(text, english ? new RegExp(`^Hello ${name},`) : new RegExp(`^Bonjour ${name},`), text);
+  assert.equal(/ — /.test(text), false, text);
+  const rest = text.replace(/\n+Le Concierge\s*$/u, "").trim().split(/\n+/).slice(1).join(" ");
+  const sentences = rest.split(/(?<=[.!?])\s+/).filter((part) => part.trim());
+  const count = 1 + sentences.length;
+  assert.ok(count >= 2 && count <= 4, `${count}\n${text}`);
 }
 
 function reply(text: string): ConciergeModelReply {
@@ -151,16 +161,17 @@ test("le jeudi qui vient est le 22 octobre, pas le vol passé", () => {
   const turn = planConciergeTurn("Pouvez vous me dire à quelle heure je pars jeudi ?", dossier(), NOW);
   assert.equal(turn.handoff, null);
   assert.equal(turn.bookingId, "stay-next");
-  assert.match(turn.text, /Camille/);
-  assert.match(turn.text, /22 octobre 2026/);
-  assert.match(turn.text, /09h15/);
-  assert.match(turn.text, /AF2100/);
-  assert.match(turn.text, /Marrakech/);
+  assert.match(turn.text, /^Bonjour Camille,/);
+  assert.match(turn.text, /Votre vol AF2100 pour Marrakech décolle jeudi 22 octobre à 9h15/);
+  assert.match(turn.text, /Vous arrivez à 11h40/);
+  assert.match(turn.text, /La Mamounia vous accueille/);
   assert.equal(turn.text.includes("8 octobre"), false);
   assert.equal(turn.text.includes("15h30"), false);
+  assert.equal(turn.text.includes("09h15"), false);
   assert.equal(turn.text.includes("AF1876"), false);
   assert.equal(turn.text.includes("Je regarde"), false);
   assertClientSafe(turn.text);
+  assertPalace(turn.text, "Camille");
 });
 
 test("une réponse modèle sur le mauvais jeudi, signature doublée, est remplacée", async () => {
@@ -172,11 +183,12 @@ test("une réponse modèle sur le mauvais jeudi, signature doublée, est remplac
     now: NOW,
     generate: async () => reply(bad),
   });
-  assert.match(turn.text, /22 octobre 2026/);
+  assert.match(turn.text, /décolle jeudi 22 octobre à 9h15/);
   assert.match(turn.text, /AF2100/);
   assert.equal(turn.text.includes("8 octobre"), false);
   assert.equal(turn.text.includes("AF1876"), false);
   assertClientSafe(turn.text);
+  assertPalace(turn.text, "Camille");
 });
 
 test("une bonne réponse modèle ne garde la signature qu’une fois", async () => {
@@ -187,12 +199,14 @@ test("une bonne réponse modèle ne garde la signature qu’une fois", async () 
     now: NOW,
     generate: async () => reply(good),
   });
-  assert.match(turn.text, /22 octobre 2026/);
-  assert.match(turn.text, /09h15/);
+  assert.match(turn.text, /^Bonjour Camille,/);
+  assert.match(turn.text, /décolle jeudi 22 octobre à 9h15/);
   assert.match(turn.text, /AF2100/);
-  assert.match(turn.text, /Marrakech/);
+  assert.match(turn.text, /pour Marrakech/);
+  assert.equal(turn.text.includes("09h15"), false);
   assert.equal(turn.handoff, null);
   assertClientSafe(turn.text);
+  assertPalace(turn.text, "Camille");
 });
 
 test("le contexte garde le passé et date aujourd’hui à Paris", () => {
@@ -213,27 +227,27 @@ test("vingt-cinq questions du carnet, passées et à venir", () => {
   const file = dossier();
   const cases: { message: string; now?: Date; expect: RegExp; absent?: RegExp; handoff?: string | null }[] = [
     { message: "Pouvez vous me dire à quelle heure je pars jeudi ?", expect: /AF2100/, absent: /AF1876|8 octobre|\bParis\b/, handoff: null },
-    { message: "Je pars demain ?", expect: /21 octobre 2026/, absent: /AF2100/, handoff: "question" },
+    { message: "Je pars demain ?", expect: /21 octobre/, absent: /AF2100/, handoff: "question" },
     { message: "Je pars après-demain", expect: /AF2100/, absent: /\bParis\b/, handoff: null },
-    { message: "Quel était mon dernier voyage ?", expect: /12 octobre 2026/, absent: /AF2100|\bCDG\b/, handoff: null },
+    { message: "Quel était mon dernier voyage ?", expect: /12 octobre/, absent: /AF2100|\bCDG\b/, handoff: null },
     { message: "À quelle heure est mon vol de retour ?", expect: /AF2101/, absent: /\bParis\b|\bCDG\b/, handoff: null },
     { message: "Quel est mon hôtel jeudi ?", expect: /La Mamounia/, absent: /\bCDG\b/, handoff: null },
-    { message: "À quelle heure est le transfert jeudi ?", expect: /Transfert vers l'hôtel/, absent: /\bCDG\b/, handoff: null },
-    { message: "Où est l’accueil VIP jeudi ?", expect: /Accueil à l.arrivée/, absent: /Charles|CDG|\bParis\b/, handoff: null },
+    { message: "À quelle heure est le transfert jeudi ?", expect: /transfert vers l'hôtel/i, absent: /\bCDG\b/, handoff: null },
+    { message: "Où est l’accueil VIP jeudi ?", expect: /accueil à l.arrivée/i, absent: /Charles|CDG|\bParis\b/, handoff: null },
     { message: "Où est mon passeport ?", expect: /Passeport/, absent: /12AB34567/, handoff: null },
     { message: "Où en est la formalité du séjour TB-2026-1022 ?", expect: /en cours/, handoff: null },
     { message: "Je souhaite un surclassement", expect: /Je transmets à l’agence/, handoff: "change" },
     { message: "Pouvez-vous réserver un restaurant jeudi ?", expect: /restaurant/, absent: /Nobu|Mamounia/, handoff: "question" },
     { message: "C’est inacceptable, quel est le prix ?", expect: /Je transmets à l’agence/, absent: /9999/, handoff: "complaint" },
     { message: "Parlez-moi de mon séjour", expect: /Je n’ai pas de séjour publié/, handoff: null },
-    { message: "What time is my flight on Thursday?", expect: /22 October 2026/, absent: /\bParis\b|\bCDG\b/, handoff: null },
+    { message: "What time is my flight on Thursday?", expect: /22 October/, absent: /\bParis\b|\bCDG\b|09:15/, handoff: null },
     { message: "À quelle heure suis-je parti le 8 octobre ?", expect: /AF1876/, absent: /\bParis\b|Charles/, handoff: null },
     { message: "Annulez mon vol de jeudi", expect: /Je transmets à l’agence/, handoff: "cancel" },
     { message: "J’ai fait un virement, merci de le rapprocher", expect: /Je transmets à l’agence/, handoff: "payment" },
     { message: "Quel est mon encours ?", expect: /840/, handoff: null },
     { message: "Bonjour", expect: /Bonjour Camille/, handoff: null },
     { message: "Combien coûte le séjour TB-2026-1022 ?", expect: /Je n’ai pas ce prix/, absent: /9999/, handoff: null },
-    { message: "Je pars jeudi", expect: /22 octobre 2026/, absent: /15h30/, handoff: "question" },
+    { message: "Je pars jeudi", expect: /22 octobre/, absent: /15h30/, handoff: "question" },
     { message: "À quelle heure part mon vol ?", expect: /Je n’ai pas l’horaire/, handoff: null },
     { message: "Comment vont les baleines cette année ?", expect: /Souhaitez-vous que j’en parle à l’agence/, handoff: null },
     { message: "Je pars jeudi prochain", now: THURSDAY, expect: /AF2101/, absent: /AF2100|\bParis\b/, handoff: null },
@@ -283,6 +297,10 @@ test("vingt-cinq questions du carnet, passées et à venir", () => {
     if (row.absent) assert.equal(row.absent.test(turn.text), false, `${row.message}\n${turn.text}`);
     assert.equal(signatures(turn.text), 1, row.message);
     assert.equal(turn.text.includes("Je regarde"), row.handoff === "change" || row.handoff === "cancel" || row.handoff === "payment", row.message);
+    if (row.handoff !== "change" && row.handoff !== "cancel" && row.handoff !== "payment") {
+      const name = row.message === "À quelle heure part mon vol ?" ? "Simon" : "Camille";
+      assertPalace(turn.text, name, row.message.startsWith("What "));
+    }
   }
   assert.match(UNKNOWN_NUMBER_REPLY, /conseiller/);
   assert.equal(signatures(UNKNOWN_NUMBER_REPLY), 1);
