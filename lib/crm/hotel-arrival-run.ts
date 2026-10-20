@@ -8,12 +8,18 @@ import { holidaysFor } from "./holidays";
 import {
   CHECKIN_CARD_CENTS,
   addIsoDays,
-  cardCloseDate,
   emailAddress,
+  hotelCardOriginNote,
+  hotelCardWindow,
   hotelChannel,
   isoDate,
   leStayAmount,
   parisIsoDate,
+  PAST_STAY_LOG,
+  pliantEurLimitCents,
+  pliantRefusalIsFinal,
+  pliantStopCovers,
+  pliantStopNote,
   documentMoney,
   majorToCents,
   planHotelArrival,
@@ -35,6 +41,7 @@ import {
 } from "./manual-stay-card";
 import { manualPliantCardIds, rememberPliantCard, setRememberedCardLimit } from "./pliant-card-run";
 import { issuePliantCard, pliantConfigured, readPliantCardFace, setPliantCardLimit } from "./pliant";
+import { pliantReferenceRates } from "./visa-ecb";
 import { isActiveItem } from "./types";
 import type {
   CrmBookingItem,
@@ -53,9 +60,21 @@ type Reply = { from: string; subject: string; body: string; receivedAtMs: number
 export type ArrivalDeps = {
   now?: Date;
   fetchImpl?: typeof fetch;
+  /** Unités de devise pour 1 euro. Le cron les charge une fois. */
+  fxRates?: Record<string, number>;
   issueCard?: (body: unknown) => Promise<{ cardId: string | null }>;
   setLimit?: (cardId: string, limit: { value: number; currency: string }, count: number) => Promise<void>;
   findReplies?: (emails: string[], sinceMs: number) => Promise<Reply[]>;
+};
+
+type CardAttempt = {
+  cardId: string | null;
+  row: CrmHotelArrival;
+  note: string;
+  final: boolean;
+  alert: boolean;
+  limitCents: number;
+  originNote: string;
 };
 
 type BookingRow = {
@@ -199,14 +218,14 @@ export async function issueManualStayCard(
   if (existing?.pliant_card_id) throw new Error("Une carte est déjà liée à ce séjour.");
 
   const today = parisIsoDate(new Date());
-  const checkout = isoDate(item.end_at) || isoDate(item.start_at) || today;
-  const closeOn = cardCloseDate(checkout);
+  const window = hotelCardWindow(today, isoDate(item.end_at));
+  if (!window.ok) throw new Error("Ce séjour est déjà passé.");
   const draft = manualStayCardDraft({
     amount: input.amount,
     firstName: input.firstName,
     lastName: input.lastName,
-    validFrom: today,
-    validTo: closeOn < today ? today : closeOn,
+    validFrom: window.validFrom,
+    validTo: window.validTo,
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
   });
   if ("error" in draft) throw new Error(draft.error);
@@ -257,6 +276,55 @@ function stayProvisionFor(
   });
 }
 
+async function referenceRates(deps: ArrivalDeps) {
+  if (deps.fxRates) return deps.fxRates;
+  const rates = await pliantReferenceRates(deps.fetchImpl || fetch);
+  deps.fxRates = rates;
+  return rates;
+}
+
+async function eurCeilingFor(provision: { ceilingCents: number; currency: string }, deps: ArrivalDeps) {
+  const code = currencyCode(provision.currency);
+  if (code === "EUR") return pliantEurLimitCents(provision.ceilingCents, "EUR", 1);
+  const rates = await referenceRates(deps);
+  return pliantEurLimitCents(provision.ceilingCents, code, rates[code]);
+}
+
+function keptTaskNote(previous: string | null, originNote: string) {
+  if (originNote && (!previous || previous.startsWith("Pliant") || previous === PAST_STAY_LOG)) return originNote;
+  if (previous?.startsWith("Pliant") || previous === PAST_STAY_LOG) return originNote || null;
+  return previous;
+}
+
+/** Carte non créée : séjour passé ou refus définitif, une seule fois. */
+async function saveUnissued(
+  admin: Admin,
+  row: CrmHotelArrival,
+  patch: Partial<CrmHotelArrival>,
+  ready: CardAttempt
+): Promise<CrmHotelArrival | null> {
+  if (ready.cardId) return null;
+  if (ready.note === PAST_STAY_LOG) {
+    if (row.blocked_reason === "past" && row.task_note === PAST_STAY_LOG) return { ...row, ...patch };
+    const next: Partial<CrmHotelArrival> = {
+      ...patch,
+      status: "blocked",
+      blocked_reason: "past",
+      task_open: false,
+      task_note: PAST_STAY_LOG,
+    };
+    await save(admin, row.id, next);
+    return { ...row, ...next, pliant_card_id: null };
+  }
+  if (ready.final && !ready.alert) return row;
+  if (ready.alert) console.error("[hotel-arrival] alerte", ready.note);
+  const next: Partial<CrmHotelArrival> = ready.final
+    ? { ...patch, status: "blocked", blocked_reason: "pliant", task_open: true, task_note: ready.note }
+    : { ...patch, task_open: true, task_note: ready.note || "Pliant n'a pas créé la carte." };
+  await save(admin, row.id, next);
+  return { ...row, ...next, pliant_card_id: null };
+}
+
 /** Émet ou aligne la carte Pliant sur le prix de l'hôtel, plus 30 %. */
 async function alignStayCard(input: {
   admin: Admin;
@@ -293,21 +361,17 @@ async function alignStayCard(input: {
     channel,
     amount_cents: provision.baseCents,
     currency: provision.currency,
-    card_limit_cents: provision.ceilingCents,
   };
   const open = input.bookingStatus === "confirmed" && stayDatesOpen(input.bookingEndDate, input.parisToday);
-  const aligned =
-    row.amount_cents === provision.baseCents &&
-    row.card_limit_cents === provision.ceilingCents &&
-    row.currency === provision.currency &&
-    row.channel === channel;
+  const priceMoved =
+    row.amount_cents !== provision.baseCents || row.currency !== provision.currency || row.channel !== channel;
   if (!open) {
-    if (!aligned) await save(input.admin, row.id, basePatch);
+    if (priceMoved) await save(input.admin, row.id, basePatch);
     return { ...row, ...basePatch };
   }
   if (!row.pliant_card_id) {
     if (!isActiveItem(input.item)) {
-      if (!aligned) await save(input.admin, row.id, basePatch);
+      if (priceMoved) await save(input.admin, row.id, basePatch);
       return { ...row, ...basePatch };
     }
     const donor = stayCardDonor(input.item, input.stayItems || [], input.stayArrivals || []);
@@ -318,14 +382,17 @@ async function alignStayCard(input: {
         previous.pliant_card_id = null;
         previous.card_last4 = null;
       }
+      const eur = await eurCeilingFor(provision, input.deps);
       await save(input.admin, row.id, {
         ...basePatch,
+        card_limit_cents: eur ?? row.card_limit_cents,
         pliant_card_id: donor.cardId,
         card_last4: donor.last4,
       });
       return {
         ...row,
         ...basePatch,
+        card_limit_cents: eur ?? row.card_limit_cents,
         pliant_card_id: donor.cardId,
         card_last4: donor.last4,
       };
@@ -339,44 +406,72 @@ async function alignStayCard(input: {
       limitCents: provision.ceilingCents,
       currency: provision.currency,
       parisToday: input.parisToday,
-      checkOut: isoDate(input.item.end_at) || isoDate(input.item.start_at),
+      checkOut: isoDate(input.item.end_at),
       deps: input.deps,
     });
-    if (!ready.cardId) {
-      const note = ready.note || "Pliant n'a pas créé la carte.";
-      await save(input.admin, row.id, { ...basePatch, task_open: true, task_note: note });
-      return { ...row, ...basePatch, pliant_card_id: null, task_open: true, task_note: note };
-    }
-    const cleared = row.task_note?.startsWith("Pliant") ? { task_open: false, task_note: null } : {};
-    await save(input.admin, row.id, {
+    const stopped = await saveUnissued(input.admin, row, basePatch, ready);
+    if (stopped) return stopped;
+    const note = keptTaskNote(row.task_note, ready.originNote);
+    const reopened = row.blocked_reason === "pliant" || row.blocked_reason === "past";
+    const patch = {
       ...basePatch,
+      card_limit_cents: ready.limitCents,
       pliant_card_id: ready.cardId,
       card_last4: ready.row.card_last4,
-      ...cleared,
-    });
-    return { ...ready.row, ...basePatch, pliant_card_id: ready.cardId, ...cleared };
+      task_note: note,
+      task_open: note && note !== ready.originNote ? row.task_open : false,
+      ...(reopened ? { blocked_reason: null, status: row.status === "blocked" ? "pending" : row.status } : {}),
+    };
+    await save(input.admin, row.id, patch);
+    return { ...ready.row, ...patch };
   }
-  if (aligned && !row.task_note?.startsWith("Pliant")) return row;
-  if (row.card_limit_cents !== provision.ceilingCents && !input.limitManual) {
+  const eurCeiling = await eurCeilingFor(provision, input.deps);
+  const originNote = hotelCardOriginNote(provision.ceilingCents, provision.currency);
+  if (
+    eurCeiling != null &&
+    !input.limitManual &&
+    (row.card_limit_cents || 0) < eurCeiling &&
+    !pliantStopCovers(row.task_note, provision.ceilingCents, provision.currency)
+  ) {
     try {
       if (!pliantConfigured() && !input.deps.setLimit) throw new Error("Pliant n'est pas branché.");
       const setLimit = input.deps.setLimit || setPliantCardLimit;
-      await setLimit(row.pliant_card_id, { value: provision.ceilingCents, currency: provision.currency }, 20);
+      await setLimit(row.pliant_card_id, { value: eurCeiling, currency: "EUR" }, 20);
       await rememberPliantCard(input.admin, {
         pliant_card_id: row.pliant_card_id,
         booking_id: row.booking_id,
-        limit_cents: provision.ceilingCents,
-        currency: provision.currency,
+        limit_cents: eurCeiling,
+        currency: "EUR",
+        ...(originNote ? { note: originNote } : {}),
       });
+      row.card_limit_cents = eurCeiling;
     } catch (error) {
-      const note = error instanceof Error && error.message.startsWith("Pliant") ? error.message : "Pliant n'a pas modifié le plafond.";
+      const message = error instanceof Error ? error.message : "Pliant n'a pas modifié le plafond.";
+      if (pliantRefusalIsFinal(message)) {
+        const note = pliantStopNote(message, provision.ceilingCents, provision.currency);
+        if (row.task_note === note && row.blocked_reason === "pliant") return row;
+        console.error("[hotel-arrival] alerte", message);
+        const patch: Partial<CrmHotelArrival> = {
+          ...basePatch,
+          status: "blocked",
+          blocked_reason: "pliant",
+          task_open: true,
+          task_note: note,
+        };
+        await save(input.admin, row.id, patch);
+        return { ...row, ...patch };
+      }
+      const note = message.startsWith("Pliant") ? message : "Pliant n'a pas modifié le plafond.";
       await save(input.admin, row.id, { ...basePatch, task_open: true, task_note: note });
       return { ...row, ...basePatch, task_open: true, task_note: note };
     }
   }
-  const cleared = row.task_note?.startsWith("Pliant") ? { task_open: false, task_note: null } : {};
-  await save(input.admin, row.id, { ...basePatch, ...cleared });
-  return { ...row, ...basePatch, ...cleared };
+  const note = keptTaskNote(row.task_note, originNote);
+  const patch = { ...basePatch, card_limit_cents: row.card_limit_cents, task_note: note };
+  if (priceMoved || note !== row.task_note || row.card_limit_cents !== input.row.card_limit_cents) {
+    await save(input.admin, row.id, patch);
+  }
+  return { ...row, ...patch };
 }
 
 export async function syncStayCards(
@@ -464,20 +559,18 @@ async function raiseSharedStayLimit(
   if (!cardId || manualCards.has(cardId)) return;
   const onCard = open.filter((row) => row.pliant_card_id === cardId);
   if (onCard.length < 2) return;
-  const currency = onCard[0].currency;
-  if (!currency || onCard.some((row) => row.currency !== currency)) return;
   const sum = onCard.reduce((total, row) => total + (row.card_limit_cents || 0), 0);
   if (sum <= 0) return;
   try {
     if (!pliantConfigured() && !deps.setLimit) return;
     const setLimit = deps.setLimit || ((id, limit, count) => setRememberedCardLimit(admin, id, limit, count, false));
-    await setLimit(cardId, { value: sum, currency }, 20);
+    await setLimit(cardId, { value: sum, currency: "EUR" }, 20);
     if (deps.setLimit) {
       await rememberPliantCard(admin, {
         pliant_card_id: cardId,
         booking_id: onCard.find((row) => row.booking_id)?.booking_id || null,
         limit_cents: sum,
-        currency,
+        currency: "EUR",
       });
     }
   } catch (error) {
@@ -485,7 +578,7 @@ async function raiseSharedStayLimit(
   }
 }
 
-async function save(admin: Admin, id: string, patch: Record<string, unknown>) {
+async function save(admin: Admin, id: string, patch: Partial<CrmHotelArrival>) {
   const allowed = [
     "channel",
     "status",
@@ -505,7 +598,7 @@ async function save(admin: Admin, id: string, patch: Record<string, unknown>) {
     "blocked_reason",
     "task_open",
     "task_note",
-  ];
+  ] as const satisfies readonly (keyof CrmHotelArrival)[];
   const row: Record<string, unknown> = {};
   for (const key of allowed) {
     if (key in patch) row[key] = patch[key];
@@ -756,7 +849,7 @@ async function stepArrival(input: {
     if (plan.action === "close") {
       if (row.pliant_card_id && !row.card_closed_at) {
         const setLimit = input.deps.setLimit || setPliantCardLimit;
-        await setLimit(row.pliant_card_id, { value: 0, currency: currencyCode(row.currency) }, 0);
+        await setLimit(row.pliant_card_id, { value: 0, currency: "EUR" }, 0);
       }
       row = { ...row, status: "closed", card_closed_at: input.now.toISOString(), card_limit_cents: 0 };
       await save(input.admin, row.id, row);
@@ -771,6 +864,7 @@ async function stepArrival(input: {
         await save(input.admin, row.id, row);
         break;
       }
+      const payCurrency = provision?.currency || currencyCode(quoted.currency);
       const ready = await ensureCard({
         admin: input.admin,
         row,
@@ -778,24 +872,37 @@ async function stepArrival(input: {
         travelers: input.travelers,
         holder: input.holder,
         limitCents,
-        currency: provision?.currency || currencyCode(quoted.currency),
+        currency: payCurrency,
         parisToday: input.parisToday,
-        checkOut,
+        checkOut: isoDate(input.item.end_at),
         deps: input.deps,
       });
-      if (!ready.cardId) {
-        row = { ...row, status: "blocked", blocked_reason: "pliant", task_open: true, task_note: ready.note };
-        await save(input.admin, row.id, row);
+      const stopped = await saveUnissued(input.admin, row, {
+        amount_cents: provision?.baseCents ?? quoted.cents,
+        currency: payCurrency,
+      }, ready);
+      if (stopped) {
+        row = stopped;
         break;
       }
-      row = { ...ready.row, status: "paying", card_limit_cents: limitCents, amount_cents: provision?.baseCents ?? quoted.cents };
+      row = {
+        ...ready.row,
+        status: "paying",
+        card_limit_cents: ready.limitCents,
+        amount_cents: provision?.baseCents ?? quoted.cents,
+        currency: payCurrency,
+        task_note: ready.originNote || row.task_note,
+        task_open: ready.originNote ? false : row.task_open,
+      };
       await save(input.admin, row.id, {
         pliant_card_id: row.pliant_card_id,
         card_last4: row.card_last4,
-        card_limit_cents: limitCents,
+        card_limit_cents: ready.limitCents,
         amount_cents: provision?.baseCents ?? quoted.cents,
-        currency: provision?.currency || currencyCode(quoted.currency),
+        currency: payCurrency,
         status: "paying",
+        task_note: row.task_note,
+        task_open: row.task_open,
       });
       const outcome = await classifyLink(row.payment_url || "", input.fetchImpl);
       if (outcome === "paid") {
@@ -882,43 +989,77 @@ async function ensureCard(input: {
   parisToday: string;
   checkOut: string;
   deps: ArrivalDeps;
-}) {
-  if (input.row.pliant_card_id) return { cardId: input.row.pliant_card_id, row: input.row, note: "" };
-  if (!pliantConfigured() && !input.deps.issueCard) return { cardId: null, row: input.row, note: "Pliant n'est pas branché." };
+}): Promise<CardAttempt> {
+  const empty = (note: string, extra: Partial<CardAttempt> = {}): CardAttempt => ({
+    cardId: null,
+    row: input.row,
+    note,
+    final: false,
+    alert: false,
+    limitCents: input.limitCents,
+    originNote: "",
+    ...extra,
+  });
+  if (input.row.pliant_card_id) {
+    return { ...empty(""), cardId: input.row.pliant_card_id, limitCents: input.row.card_limit_cents || input.limitCents };
+  }
+  const window = hotelCardWindow(input.parisToday, input.checkOut);
+  if (!window.ok) {
+    const already = input.row.task_note === PAST_STAY_LOG && input.row.blocked_reason === "past";
+    if (!already) console.error("[hotel-arrival] séjour passé");
+    return empty(PAST_STAY_LOG, { final: true });
+  }
+  const code = currencyCode(input.currency);
+  if (pliantStopCovers(input.row.task_note, input.limitCents, code)) {
+    return empty(input.row.task_note || "", { final: true });
+  }
+  const eurCents = await eurCeilingFor({ ceilingCents: input.limitCents, currency: code }, input.deps);
+  if (eurCents == null) {
+    const message = `Cours indisponible (${code}).`;
+    return empty(pliantStopNote(message, input.limitCents, code), { final: true, alert: true });
+  }
+  if (!pliantConfigured() && !input.deps.issueCard) return empty("Pliant n'est pas branché.", { limitCents: eurCents });
+  const originNote = hotelCardOriginNote(input.limitCents, code);
   const guest = guestName(input.travelers, input.holder);
   const spec = cardBody({
     firstName: guest.firstName,
     lastName: guest.lastName,
     designation: hotelDisplayName(input.item),
-    limitCents: input.limitCents,
-    currency: input.currency,
-    validFrom: input.parisToday,
-    validTo: cardCloseDate(input.checkOut || input.parisToday),
+    limitCents: eurCents,
+    currency: "EUR",
+    validFrom: window.validFrom,
+    validTo: window.validTo,
   });
   try {
     const issue = input.deps.issueCard || ((body) => issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", body));
     const issued = await issue(spec.body);
-    if (!issued.cardId) return { cardId: null, row: input.row, note: "Pliant n'a pas créé la carte." };
+    if (!issued.cardId) return empty("Pliant n'a pas créé la carte.", { limitCents: eurCents, originNote });
     const last4 = input.deps.issueCard ? null : (await readPliantCardFace(issued.cardId)).last4;
+    const recordLabel = originNote ? `${spec.body.label} · ${originNote.replace(/^Origine /, "")}` : spec.body.label;
     await rememberPliantCard(input.admin, {
       pliant_card_id: issued.cardId,
       booking_id: input.row.booking_id,
-      label: spec.body.label,
+      label: recordLabel,
       last4,
-      limit_cents: input.limitCents,
-      currency: input.currency,
+      limit_cents: eurCents,
+      currency: "EUR",
+      ...(originNote ? { note: originNote } : {}),
     });
     const row = {
       ...input.row,
       pliant_card_id: issued.cardId,
       card_last4: last4 || input.row.card_last4,
-      card_limit_cents: input.limitCents,
+      card_limit_cents: eurCents,
       currency: input.currency,
     };
-    return { cardId: issued.cardId, row, note: "" };
+    return { cardId: issued.cardId, row, note: originNote, final: false, alert: false, limitCents: eurCents, originNote };
   } catch (error) {
-    console.error("[hotel-arrival] pliant", error instanceof Error ? error.message : "carte");
-    return { cardId: null, row: input.row, note: "Pliant n'a pas créé la carte." };
+    const message = error instanceof Error ? error.message : "carte";
+    console.error("[hotel-arrival] pliant", message);
+    if (pliantRefusalIsFinal(message)) {
+      return empty(pliantStopNote(message, input.limitCents, code), { final: true, alert: true, limitCents: eurCents });
+    }
+    return empty("Pliant n'a pas créé la carte.", { limitCents: eurCents });
   }
 }
 

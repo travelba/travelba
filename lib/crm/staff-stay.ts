@@ -50,6 +50,8 @@ export function staffBlockingChips(input: {
   costsToPoint?: number;
   /** Facture imprimée dont la marge a changé. */
   marginStale?: boolean;
+  /** Cartes hôtel dont Pliant a refusé l’émission, une fois pour toutes. */
+  cardAlerts?: number;
 }): StaffBlocker[] {
   const missing = new Set(input.missingPassportIds);
   const chips: StaffBlocker[] = [];
@@ -70,6 +72,13 @@ export function staffBlockingChips(input: {
     chips.push({ id: "costs", label: costs > 1 ? `${costs} coûts à pointer` : "Coût à pointer", tab: "argent" });
   }
   if (input.marginStale) chips.push({ id: "margin", label: "Marge à corriger", tab: "argent" });
+  const cardAlerts = input.cardAlerts || 0;
+  if (cardAlerts > 0) {
+    chips.push({
+      id: "pliant-card",
+      label: cardAlerts > 1 ? `${cardAlerts} cartes hôtel refusées` : "Carte hôtel refusée",
+    });
+  }
   return chips;
 }
 

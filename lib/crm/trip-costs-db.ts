@@ -459,7 +459,12 @@ async function cardBookings(admin: SupabaseClient, cardIds: string[]) {
         label: entry.info.label || (row.label || "").trim() || null,
         holder: entry.info.holder || holder || null,
         limit: entry.info.limit ?? (limitCents == null ? null : limitCents / 100),
-        currency: entry.info.currency !== "EUR" ? entry.info.currency : (row.currency || "EUR").toUpperCase(),
+        currency:
+          row.card_limit_cents != null && row.limit_cents == null && row.ceiling_cents == null
+            ? "EUR"
+            : entry.info.currency !== "EUR"
+              ? entry.info.currency
+              : (row.currency || "EUR").toUpperCase(),
         validFrom: entry.info.validFrom || row.valid_from || null,
         validTo: entry.info.validTo || row.valid_to || null,
         countries: entry.info.countries.length ? entry.info.countries : row.countries || [],

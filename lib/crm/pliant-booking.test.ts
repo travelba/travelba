@@ -78,6 +78,27 @@ test("les cartes du dossier précèdent l’hôtel, et un même identifiant ne c
   assert.equal(cards[2]?.last4, "1111");
 });
 
+test("le plafond hôtel est en euros et garde le montant d’origine", () => {
+  const [card] = pliantBookingCards({
+    bookingCards: [],
+    arrivals: [
+      {
+        pliant_card_id: "card-sgd",
+        booking_item_id: "stay-sgd",
+        card_last4: "4242",
+        card_limit_cents: 432045,
+        currency: "SGD",
+        task_note: "Origine 5907,49 SGD",
+      },
+    ],
+    hotelNames: { "stay-sgd": "Raffles" },
+    registry: null,
+  });
+  assert.equal(card?.currency, "EUR");
+  assert.equal(card?.ceilingCents, 432045);
+  assert.equal(card?.label, "Raffles · 5907,49 SGD");
+});
+
 test("la mosaïque aligne les cartes émises puis les cartes liées, sans doublon", () => {
   const slots = bookingCardMosaic(
     [
