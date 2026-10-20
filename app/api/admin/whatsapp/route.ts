@@ -6,7 +6,8 @@ import { toE164 } from "@/lib/crm/phone";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { stayDestinationLine } from "@/lib/crm/stay-phrase";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { draftTemplateRefused } from "@/lib/crm/whatsapp-inbox";
+import { draftTemplateRefused, readStamp } from "@/lib/crm/whatsapp-inbox";
+import { loadDockSnapshot, loadDockThread } from "@/lib/crm/whatsapp-dock-load";
 import { agencySignoff, nextParisMorning } from "@/lib/crm/whatsapp-takeover";
 import { sendContentTemplate } from "@/lib/crm/whatsapp";
 import { sendWhatsappSession, sessionAddress } from "@/lib/crm/whatsapp-session";
@@ -14,6 +15,23 @@ import { sendWhatsappSession, sessionAddress } from "@/lib/crm/whatsapp-session"
 export const runtime = "nodejs";
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function GET(request: Request) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const fil = new URL(request.url).searchParams.get("fil")?.trim() || "";
+  try {
+    if (!fil) {
+      const snapshot = await loadDockSnapshot();
+      return NextResponse.json(snapshot);
+    }
+    if (fil.length > 40) return jsonError("Fil inconnu", 400);
+    const thread = await loadDockThread(fil);
+    return NextResponse.json(thread);
+  } catch {
+    return jsonError("Service indisponible", 503);
+  }
+}
 
 export async function POST(request: Request) {
   const auth = await requireStaff();
@@ -38,10 +56,10 @@ export async function POST(request: Request) {
   const customerId = body?.customerId && ID.test(body.customerId) ? body.customerId : null;
   const bookingId = body?.bookingId && ID.test(body.bookingId) ? body.bookingId : null;
   const requestId = body?.requestId && ID.test(body.requestId) ? body.requestId : null;
-  if (action !== "reply" && action !== "resume" && action !== "done" && action !== "create-client") {
+  if (action !== "reply" && action !== "resume" && action !== "done" && action !== "create-client" && action !== "read") {
     return jsonError("Action inconnue", 400);
   }
-  if ((action === "reply" || action === "resume") && !phone) return jsonError("Téléphone manquant", 400);
+  if ((action === "reply" || action === "resume" || action === "read") && !phone) return jsonError("Téléphone manquant", 400);
 
   let admin: ReturnType<typeof createServiceClient>;
   try {
@@ -75,6 +93,19 @@ export async function POST(request: Request) {
     await admin.from("crm_whatsapp_messages").update({ customer_id: id }).eq("phone", phone);
     await admin.from("crm_whatsapp_threads").update({ customer_id: id }).eq("phone", phone);
     return NextResponse.json({ ok: true, customerId: id, invited: false });
+  }
+
+  if (action === "read") {
+    const marked = await admin.from("crm_whatsapp_threads").upsert({
+      phone,
+      customer_id: customerId,
+      staff_read_at: readStamp(),
+      updated_at: readStamp(),
+    });
+    if (marked.error && !/column|schema cache/i.test(marked.error.message || "")) {
+      console.error("[whatsapp] lu", marked.error.code || "error");
+    }
+    return NextResponse.json({ ok: true });
   }
 
   if (action === "resume") {

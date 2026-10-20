@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { AgencyLogo } from "@/components/AgencyLogo";
 import { AdminOmnibar } from "@/components/admin/AdminOmnibar";
 import { HotelReplyToasts } from "@/components/admin/HotelReplyToasts";
+import { WhatsappDock } from "@/components/admin/WhatsappDock";
+import type { InboxThread } from "@/lib/crm/whatsapp-inbox";
 import { Icon } from "@/components/crm/icons";
 import { MobileTabBar, MoreSheet, SearchOverlay, SidebarGroups, UserMenu } from "@/components/admin/AdminNavParts";
 import {
@@ -57,6 +59,9 @@ export function AdminNav({
   leCount = 0,
   pieceCount = 0,
   whatsappCount = 0,
+  whatsappThreads = [],
+  whatsappTemplates = [],
+  whatsappPreview = false,
   staffName = "",
   staffRole = "",
   showExample = false,
@@ -68,6 +73,9 @@ export function AdminNav({
   leCount?: number;
   pieceCount?: number;
   whatsappCount?: number;
+  whatsappThreads?: InboxThread[];
+  whatsappTemplates?: { key: string; label: string }[];
+  whatsappPreview?: boolean;
   staffName?: string;
   staffRole?: "admin" | "agent" | "partner" | "";
   showExample?: boolean;
@@ -230,6 +238,9 @@ export function AdminNav({
         <MobileTabBar pathname={pathname} counts={counts} moreOpen={moreOpen} onMore={() => setMoreOpen((open) => !open)} />
       )}
       {partner ? null : <HotelReplyToasts />}
+      {partner ? null : (
+        <WhatsappDock threads={whatsappThreads} templates={whatsappTemplates} previewBlocked={whatsappPreview} />
+      )}
     </>
   );
 }
