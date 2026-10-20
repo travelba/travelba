@@ -1,10 +1,10 @@
 /** Menu de l’espace agence : groupes repliables, badges, entrée active, barre basse mobile. */
 
-export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces";
+export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp";
 
 export type AdminNavCounts = Record<AdminBadgeKey, number>;
 
-export const EMPTY_NAV_COUNTS: AdminNavCounts = { revolut: 0, stripe: 0, emails: 0, le: 0, pieces: 0 };
+export const EMPTY_NAV_COUNTS: AdminNavCounts = { revolut: 0, stripe: 0, emails: 0, le: 0, pieces: 0, whatsapp: 0 };
 
 export type AdminNavItem = {
   href: string;
@@ -72,6 +72,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
       label: "Boîtes de réception",
       items: [
         { href: "/admin/emails", label: "E-mails", icon: "mail", badge: "emails" },
+        { href: "/admin/whatsapp", label: "WhatsApp", icon: "forum", badge: "whatsapp" },
         { href: "/admin/little-emperors", label: "Little Emperors", icon: "hotel", badge: "le" },
       ],
     },
@@ -82,6 +83,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
         { href: "/admin/outils/whatsapp", label: "Messages types WhatsApp", icon: "forum" },
         { href: "/admin/outils/mails", label: "E-mails au client", icon: "mail" },
         { href: "/admin/outils/gmail", label: "Diagnostic Gmail", icon: "activity" },
+        { href: "/admin/concierge", label: "Savoir du Concierge", icon: "menu_book" },
         ...(input.showExample
           ? [{ href: "/exemple", label: "Aperçu espace client", icon: "eye", newTab: true } satisfies AdminNavItem]
           : []),
@@ -189,8 +191,8 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     id: "plus",
     label: "Plus",
     icon: "more_horiz",
-    paths: ["/admin/emails", "/admin/little-emperors", "/admin/outils", "/admin/equipe"],
-    badges: ["emails", "le"],
+    paths: ["/admin/emails", "/admin/whatsapp", "/admin/little-emperors", "/admin/concierge", "/admin/outils", "/admin/equipe"],
+    badges: ["emails", "le", "whatsapp"],
   },
 ];
 

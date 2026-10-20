@@ -30,6 +30,7 @@ export type ConciergeModelReply = {
   text: string;
   bookingReference: string | null;
   handoff: "complaint" | "question" | null;
+  tools?: string[];
 };
 
 export type ConciergeHistoryTurn = {
@@ -42,6 +43,8 @@ export type ConciergeGenerator = (input: {
   dossier: ConciergeDossier;
   history: ConciergeHistoryTurn[];
   lang: ReplyLang;
+  /** Faits du savoir agence déjà classés. Les exemples de ton n’y sont pas. */
+  knowledge?: string;
 }) => Promise<ConciergeModelReply | null>;
 
 const SYSTEM = `Tu es Le Concierge de Travel Business Agency. Tu réponds sur WhatsApp à un client déjà identifié.
@@ -206,9 +209,14 @@ function replyContainsPan(text: string) {
   return candidates.some((raw) => looksLikePan(raw));
 }
 
-/** Vrai si la réponse cite une heure, un montant, un téléphone, une référence ou un lien absents du dossier et de l’historique. */
-export function replyUsesUnknownFact(text: string, dossier: ConciergeDossier, history: ConciergeHistoryTurn[]) {
-  const corpus = `${conciergeContextText(dossier)}\n${history.map((row) => row.body).join("\n")}`.replace(
+/** Vrai si la réponse cite une heure, un montant, un téléphone, une référence ou un lien absents du dossier, de l’historique et du savoir agence. */
+export function replyUsesUnknownFact(
+  text: string,
+  dossier: ConciergeDossier,
+  history: ConciergeHistoryTurn[],
+  extra = ""
+) {
+  const corpus = `${conciergeContextText(dossier)}\n${history.map((row) => row.body).join("\n")}\n${extra}`.replace(
     /T00:00(?::00)?/g,
     "T"
   );
@@ -325,20 +333,27 @@ function userPrompt(input: {
   dossier: ConciergeDossier;
   history: ConciergeHistoryTurn[];
   lang: ReplyLang;
+  knowledge?: string;
 }) {
   const history = input.history
     .slice(-HISTORY_LIMIT)
     .map((row) => `${row.direction === "inbound" ? "Client" : "Concierge"}: ${row.body.slice(0, 1500)}`)
     .join("\n");
   const lang = input.lang === "en" ? "anglais" : input.lang === "he" ? "hébreu" : "français";
+  const knowledge = (input.knowledge || "").trim();
   return [
     `Langue de réponse : ${lang}.`,
-    "Appelle lire_dossier avant de citer un fait. N’invente rien au-delà de sa réponse.",
+    "Appelle lire_dossier avant de citer un fait du dossier. N’invente rien au-delà de sa réponse.",
+    knowledge
+      ? `Savoir de l’agence, seulement s’il répond à la question. Pas un prix, pas une disponibilité :\n${knowledge.slice(0, 1800)}`
+      : "",
     "Historique :",
     history || "(aucun)",
     "Message du client :",
     input.message.slice(0, 1500),
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function conciergeModel() {
@@ -353,6 +368,7 @@ export async function generateConciergeReply(input: {
   dossier: ConciergeDossier;
   history: ConciergeHistoryTurn[];
   lang: ReplyLang;
+  knowledge?: string;
 }): Promise<ConciergeModelReply | null> {
   if (!aiGatewayConfigured()) return null;
   const key = openaiApiKey();
@@ -382,10 +398,20 @@ export async function generateConciergeReply(input: {
     const stay = request?.bookingId
       ? input.dossier.stays.find((row) => row.id === request.bookingId)
       : null;
+    const tools = [
+      ...new Set(
+        (result.steps || []).flatMap((step) =>
+          (step.toolCalls || [])
+            .map((call) => ("toolName" in call ? String(call.toolName) : ""))
+            .filter(Boolean)
+        )
+      ),
+    ];
     return {
       text,
       bookingReference: stay?.reference || null,
       handoff: request?.kind === "complaint" || request?.kind === "question" ? request.kind : null,
+      tools,
     };
   } catch (err) {
     console.error("[whatsapp-concierge] turn", err instanceof Error ? err.name : "error");
@@ -417,6 +443,7 @@ function composeModelTurn(
     cover: handoff ? null : keyword.cover,
     optOut: false,
     access: false,
+    tools: output.tools || [],
   };
 }
 
@@ -430,6 +457,7 @@ export async function planConciergeConversation(input: {
   dossier: ConciergeDossier;
   history?: ConciergeHistoryTurn[];
   generate?: ConciergeGenerator;
+  knowledge?: string;
 }): Promise<ConciergeTurn> {
   const history = input.history || [];
   const keyword = planConciergeTurn(input.message, input.dossier);
@@ -446,6 +474,7 @@ export async function planConciergeConversation(input: {
       dossier: input.dossier,
       history: history.slice(-HISTORY_LIMIT),
       lang: messageLanguage(input.message),
+      knowledge: input.knowledge,
     });
   } catch (err) {
     console.error("[whatsapp-concierge] turn", err instanceof Error ? err.name : "error");
@@ -455,7 +484,7 @@ export async function planConciergeConversation(input: {
     if (clientWantsAgency(input.message)) return questionTurn(keyword, messageLanguage(input.message));
     return keyword;
   }
-  if (replyUsesUnknownFact(output.text, input.dossier, history)) {
+  if (replyUsesUnknownFact(output.text, input.dossier, history, input.knowledge || "")) {
     if (clientWantsAgency(input.message)) return questionTurn(keyword, messageLanguage(input.message));
     return keyword;
   }
