@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyDockMessage,
+  clampBubblePosition,
   closeDockTab,
+  defaultBubblePosition,
   dockInitials,
   dockLabel,
   dockStatusLabel,
+  DOCK_BUBBLE_SIZE,
+  DOCK_CHROME_BAR,
   ensureDockTab,
   freshDockThreads,
+  inboundDockTabs,
   openDockTab,
   readDockState,
   splitDockTabs,
@@ -87,4 +92,32 @@ test("le panneau remonte le fil entrant et ouvre un onglet sans en déplier deux
   assert.deepEqual(readDockState("{"), { panelOpen: false, tabs: [] });
   assert.equal(readDockState(JSON.stringify({ panelOpen: true, tabs: [{ key: older.key, expanded: true }] })).panelOpen, true);
   assert.equal(freshDockThreads([older], next).some((row) => row.key === older.key), true);
+});
+
+test("sur téléphone un message entrant ne déplie pas le fil", () => {
+  const open = [{ key: "+33601020304", expanded: true }];
+  assert.equal(inboundDockTabs(open, "+33611111111", true), open);
+  assert.equal(inboundDockTabs([], "+33611111111", true).length, 0);
+  const parked = inboundDockTabs(open, "+33611111111", false);
+  assert.equal(parked.at(-1)?.key, "+33611111111");
+  assert.equal(parked.at(-1)?.expanded, false);
+  assert.equal(parked[0]?.expanded, true);
+});
+
+test("la bulle reste au-dessus de la barre sur iPhone", () => {
+  for (const frame of [
+    { width: 375, height: 812, topInset: 47, bottomInset: 34 },
+    { width: 390, height: 844, topInset: 47, bottomInset: 34 },
+    { width: 375, height: 812, topInset: 0, bottomInset: 0 },
+  ]) {
+    const parked = defaultBubblePosition(frame);
+    const low = clampBubblePosition({ x: frame.width, y: frame.height }, frame);
+    for (const point of [parked, low]) {
+      assert.ok(point.x >= 8, "marge gauche");
+      assert.ok(point.x + DOCK_BUBBLE_SIZE <= frame.width - 8, "marge droite");
+      assert.ok(point.y >= frame.topInset + DOCK_CHROME_BAR, "sous l’en-tête");
+      const navTop = frame.height - frame.bottomInset - DOCK_CHROME_BAR;
+      assert.ok(point.y + DOCK_BUBBLE_SIZE <= navTop, `au-dessus de la barre ${frame.width}x${frame.height}`);
+    }
+  }
 });

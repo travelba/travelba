@@ -1,24 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/crm/icons";
 import { createClient } from "@/lib/supabase/client";
 import {
   applyDockMessage,
+  BUBBLE_STORAGE_KEY,
+  clampBubblePosition,
   clearDockUnread,
   closeDockTab,
   collapseDockTab,
+  defaultBubblePosition,
+  DOCK_MOBILE_MQ,
   DOCK_STORAGE_KEY,
   dockInitials,
   dockLabel,
   dockStatusLabel,
-  ensureDockTab,
   freshDockThreads,
+  inboundDockTabs,
   openDockTab,
   readDockState,
   splitDockTabs,
+  type BubbleFrame,
   type DockTab,
 } from "@/lib/crm/whatsapp-dock";
 import {
@@ -99,11 +104,29 @@ export function WhatsappDock({
   const setTabsRef = useRef<(next: DockTab[] | ((current: DockTab[]) => DockTab[])) => void>(() => undefined);
   const seen = useRef(new Set<string>());
   const threadsRef = useRef(threads);
+  const drawerRef = useRef(drawer);
+  const expandedKeyRef = useRef<string | null>(null);
+
+  function arrive(message: InboxMessage) {
+    const key = threadKey(message);
+    if (!key) return;
+    const mark = `${key}:${message.createdAt}`;
+    const known = seen.current.has(mark);
+    seen.current.add(mark);
+    setThreads((current) => applyDockMessage(current, message));
+    if (known || !booted.current || message.direction !== "inbound") return;
+    setTabs((current) => inboundDockTabs(current, key, dockIsMobile()));
+    chime();
+    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+      new Notification("WhatsApp", { body: message.body.slice(0, 120) });
+    }
+  }
 
   useEffect(() => {
     panelRef.current = panelOpen;
     tabsRef.current = tabs;
     threadsRef.current = threads;
+    drawerRef.current = drawer;
     arriveRef.current = arrive;
     setTabsRef.current = setTabs;
   });
@@ -114,21 +137,6 @@ export function WhatsappDock({
     }
     booted.current = true;
   }, [threads]);
-
-  function arrive(message: InboxMessage) {
-    const key = threadKey(message);
-    if (!key) return;
-    const mark = `${key}:${message.createdAt}`;
-    const known = seen.current.has(mark);
-    seen.current.add(mark);
-    setThreads((current) => applyDockMessage(current, message));
-    if (known || !booted.current || message.direction !== "inbound") return;
-    setTabs((current) => ensureDockTab(current, key));
-    chime();
-    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
-      new Notification("WhatsApp", { body: message.body.slice(0, 120) });
-    }
-  }
 
   useEffect(() => {
     if (!live) return;
@@ -185,7 +193,7 @@ export function WhatsappDock({
             if (seen.current.has(mark)) continue;
             seen.current.add(mark);
             if (!booted.current) continue;
-            onTabs((current) => ensureDockTab(current, thread.key));
+            onTabs((current) => inboundDockTabs(current, thread.key, dockIsMobile()));
             chime();
           }
         })
@@ -205,6 +213,66 @@ export function WhatsappDock({
   const lastInbound = [...messages].filter((row) => row.direction === "inbound").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const windowOpen = sessionWindowOpenNow(lastInbound?.createdAt || null);
   const unread = threads.reduce((sum, thread) => sum + thread.unread, 0);
+  const chatFrame = useVisualFrame(Boolean(expanded));
+  const listFrame = useVisualFrame(drawer);
+  const chatSwipe = useSwipeDown(() => {
+    const key = expandedKeyRef.current;
+    if (key) setTabs((current) => closeDockTab(current, key));
+  });
+  const listSwipe = useSwipeDown(() => setDrawer(false));
+
+  useEffect(() => {
+    expandedKeyRef.current = expanded?.key ?? null;
+    const lock = dockIsMobile() && (drawer || Boolean(expanded));
+    if (lock && document.body.dataset.waDockLock !== "1") {
+      document.body.dataset.waDockPrev = document.body.style.overflow;
+      document.body.dataset.waDockLock = "1";
+      document.body.style.overflow = "hidden";
+    } else if (!lock && document.body.dataset.waDockLock === "1") {
+      document.body.style.overflow = document.body.dataset.waDockPrev || "";
+      delete document.body.dataset.waDockLock;
+      delete document.body.dataset.waDockPrev;
+    }
+  });
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape" || !dockIsMobile()) return;
+      const key = expandedKeyRef.current;
+      if (!key && !drawerRef.current) return;
+      event.preventDefault();
+      if (key) {
+        setTabsRef.current((current) => closeDockTab(current, key));
+        return;
+      }
+      setDrawer(false);
+    }
+    const mobileQuery = window.matchMedia(DOCK_MOBILE_MQ);
+    function onViewport() {
+      if (!mobileQuery.matches) setDrawer(false);
+    }
+    mobileQuery.addEventListener("change", onViewport);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      mobileQuery.removeEventListener("change", onViewport);
+      window.removeEventListener("keydown", onKey);
+      if (document.body.dataset.waDockLock === "1") {
+        document.body.style.overflow = document.body.dataset.waDockPrev || "";
+        delete document.body.dataset.waDockLock;
+        delete document.body.dataset.waDockPrev;
+      }
+    };
+  }, []);
+
+  function closeExpanded() {
+    if (!expanded) return;
+    setTabs((current) => closeDockTab(current, expanded.key));
+  }
+
+  function minimiseExpanded() {
+    if (!expanded) return;
+    setTabs((current) => collapseDockTab(current, expanded.key));
+  }
 
   function choose(key: string) {
     setTabs((current) => openDockTab(current, key, true));
@@ -263,11 +331,14 @@ export function WhatsappDock({
   }
 
   const panel = (
-    <section className="flex h-full flex-col bg-white" aria-label="Discussions WhatsApp">
-      <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[#0B192C] px-3 py-3 text-white">
-        <p className="text-sm font-medium">Discussions</p>
-        <button type="button" className="text-xs text-[#C5A880]" onClick={() => { setPanelOpen(false); setDrawer(false); }}>
+    <section className="flex h-full min-h-0 flex-col bg-white" aria-label="Discussions WhatsApp">
+      <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[#0B192C] px-3 py-3 text-white max-lg:px-2 max-lg:py-1">
+        <p className="min-w-0 flex-1 truncate text-sm font-medium">Discussions</p>
+        <button type="button" className="text-xs text-[#C5A880] max-lg:hidden" onClick={() => { setPanelOpen(false); setDrawer(false); }}>
           Replier
+        </button>
+        <button type="button" aria-label="Fermer les discussions" className={`${sheetIconButton} lg:hidden`} onClick={() => setDrawer(false)}>
+          <Icon name="close" className="h-6 w-6" />
         </button>
       </header>
       <div className="border-b border-[var(--border)] p-2">
@@ -316,12 +387,15 @@ export function WhatsappDock({
       <aside
         className={`sticky top-0 z-30 hidden h-dvh shrink-0 border-l border-[var(--border)] bg-white lg:flex lg:flex-col ${panelOpen ? "w-80" : "w-11"}`}
       >
-        {panelOpen ? (
+        {panelOpen && !drawer ? (
           panel
         ) : (
           <button
             type="button"
-            onClick={() => setPanelOpen(true)}
+            onClick={() => {
+              setDrawer(false);
+              setPanelOpen(true);
+            }}
             aria-expanded={false}
             aria-label={unread > 0 ? `Ouvrir les discussions, ${unread} non lus` : "Ouvrir les discussions"}
             className="flex h-full w-full flex-col items-center gap-3 bg-[#0B192C] py-5 text-[#C5A880]"
@@ -337,24 +411,28 @@ export function WhatsappDock({
       </aside>
 
       {drawer ? (
-        <div className="fixed inset-0 z-[70] lg:hidden">
-          <button type="button" aria-label="Fermer les discussions" className="absolute inset-0 bg-[#0B192C]/40" onClick={() => setDrawer(false)} />
-          <aside className="absolute inset-y-0 right-0 w-[min(100%,22rem)] shadow-xl">{panel}</aside>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Discussions WhatsApp"
+          className={`fixed inset-x-0 z-[70] flex flex-col overflow-hidden bg-white lg:hidden ${listFrame.height ? "" : "h-dvh"}`}
+          style={mobileSheetStyle(listFrame, listSwipe.offset)}
+          onPointerDown={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (event.clientY - bounds.top > 140) return;
+            listSwipe.binds.onPointerDown(event);
+          }}
+          onPointerMove={listSwipe.binds.onPointerMove}
+          onPointerUp={listSwipe.binds.onPointerUp}
+          onPointerCancel={listSwipe.binds.onPointerCancel}
+        >
+          <div className="flex h-6 shrink-0 items-center justify-center bg-[#0B192C]" aria-hidden>
+            <span className="h-1 w-10 rounded-full bg-white/40" />
+          </div>
+          {panel}
         </div>
       ) : (
-        <button
-          type="button"
-          aria-label={unread > 0 ? `Discussions WhatsApp, ${unread} non lus` : "Discussions WhatsApp"}
-          onClick={() => setDrawer(true)}
-          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-[55] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#0B192C] text-[#C5A880] shadow-lg lg:hidden"
-        >
-          <Icon name="forum" className="h-6 w-6" />
-          {unread > 0 ? (
-            <span className="absolute -right-1 -top-1 rounded-full bg-[#C5A880] px-1.5 text-[10px] font-semibold text-[#0B192C]">
-              {unread}
-            </span>
-          ) : null}
-        </button>
+        <DockBubble unread={unread} hidden={Boolean(expanded)} onOpen={() => setDrawer(true)} />
       )}
 
       <div className={`fixed bottom-0 z-50 hidden items-end gap-2 lg:flex ${panelOpen ? "right-80" : "right-11"}`}>
@@ -421,8 +499,15 @@ export function WhatsappDock({
       </div>
 
       {expandedThread && expanded ? (
-        <div className="fixed inset-x-2 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[65] max-h-[70vh] overflow-hidden rounded-3xl shadow-xl lg:hidden">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Discussion avec ${dockLabel(expandedThread)}`}
+          className={`fixed inset-x-0 z-[80] flex flex-col overflow-hidden bg-[#efe7da] lg:hidden ${chatFrame.height ? "" : "h-dvh"}`}
+          style={mobileSheetStyle(chatFrame, chatSwipe.offset)}
+        >
           <ChatPane
+            sheet
             thread={expandedThread}
             messages={messages}
             templates={templates}
@@ -432,6 +517,9 @@ export function WhatsappDock({
             template={template}
             note={note}
             busy={busy}
+            swipe={chatSwipe.binds}
+            onClose={closeExpanded}
+            onMinimise={minimiseExpanded}
             onDraft={setDraft}
             onTemplate={setTemplate}
             onSend={() => void send()}
@@ -444,6 +532,10 @@ export function WhatsappDock({
 }
 
 function ChatPane({
+  sheet = false,
+  swipe,
+  onClose,
+  onMinimise,
   thread,
   messages,
   templates,
@@ -458,6 +550,10 @@ function ChatPane({
   onSend,
   onResume,
 }: {
+  sheet?: boolean;
+  swipe?: SwipeBinds;
+  onClose?: () => void;
+  onMinimise?: () => void;
   thread: InboxThread;
   messages: InboxMessage[];
   templates: { key: string; label: string }[];
@@ -473,23 +569,53 @@ function ChatPane({
   onResume: () => void;
 }) {
   const ordered = [...messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const label = dockLabel(thread);
+  const linkClass = sheet ? "inline-flex min-h-11 items-center underline" : "underline";
   return (
-    <div className="flex max-h-[28rem] flex-col bg-[#efe7da]">
-      <header className="flex items-start justify-between gap-2 bg-[#0B192C] px-3 py-2 text-white">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{dockLabel(thread)}</p>
-          <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{dockStatusLabel(thread.status)}</p>
-        </div>
-        <button type="button" className="shrink-0 rounded-full bg-[#C5A880] px-2 py-1 text-[10px] text-[#0B192C]" onClick={onResume}>
-          Rendre au Concierge
-        </button>
-      </header>
-      <div className="flex gap-2 px-3 py-1 text-[10px]">
-        {thread.customerId ? <Link className="underline" href={`/admin/clients/${thread.customerId}`}>Fiche</Link> : null}
-        {thread.bookingId ? <Link className="underline" href={`/admin/reservations/${thread.bookingId}?onglet=whatsapp`}>Dossier</Link> : null}
-        {thread.phone ? <Link className="underline" href={`/admin/whatsapp?fil=${encodeURIComponent(thread.phone)}`}>Fil complet</Link> : null}
+    <div className={sheet ? "flex h-full min-h-0 flex-1 flex-col bg-[#efe7da]" : "flex max-h-[28rem] flex-col bg-[#efe7da]"}>
+      {sheet ? (
+        <header className="shrink-0 bg-[#0B192C] text-white" style={{ touchAction: "none" }} {...swipe}>
+          <div className="flex justify-center pt-2" aria-hidden>
+            <span className="h-1 w-10 rounded-full bg-white/40" />
+          </div>
+          <div className="flex items-center gap-1 px-2 pb-1">
+            <button type="button" aria-label="Retour" className={sheetIconButton} onClick={onMinimise}>
+              <Icon name="chevron_left" className="h-6 w-6" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{label}</p>
+              <p className="truncate text-[10px] uppercase tracking-wide text-[#C5A880]">{dockStatusLabel(thread.status)}</p>
+            </div>
+            <button type="button" aria-label={`Réduire ${label}`} className={sheetIconButton} onClick={onMinimise}>
+              <Icon name="minus" className="h-6 w-6" />
+            </button>
+            <button type="button" aria-label={`Fermer ${label}`} className={sheetIconButton} onClick={onClose}>
+              <Icon name="close" className="h-6 w-6" />
+            </button>
+          </div>
+          <div className="flex justify-end px-3 pb-2">
+            <button type="button" className="inline-flex min-h-11 items-center rounded-full bg-[#C5A880] px-3 text-xs font-medium text-[#0B192C]" onClick={onResume}>
+              Rendre au Concierge
+            </button>
+          </div>
+        </header>
+      ) : (
+        <header className="flex items-start justify-between gap-2 bg-[#0B192C] px-3 py-2 text-white">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{label}</p>
+            <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{dockStatusLabel(thread.status)}</p>
+          </div>
+          <button type="button" className="shrink-0 rounded-full bg-[#C5A880] px-2 py-1 text-[10px] text-[#0B192C]" onClick={onResume}>
+            Rendre au Concierge
+          </button>
+        </header>
+      )}
+      <div className={sheet ? "flex shrink-0 gap-3 px-3 text-sm" : "flex gap-2 px-3 py-1 text-[10px]"}>
+        {thread.customerId ? <Link className={linkClass} href={`/admin/clients/${thread.customerId}`}>Fiche</Link> : null}
+        {thread.bookingId ? <Link className={linkClass} href={`/admin/reservations/${thread.bookingId}?onglet=whatsapp`}>Dossier</Link> : null}
+        {thread.phone ? <Link className={linkClass} href={`/admin/whatsapp?fil=${encodeURIComponent(thread.phone)}`}>Fil complet</Link> : null}
       </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 py-2">
+      <div className={sheet ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-2 py-2" : "min-h-0 flex-1 space-y-2 overflow-y-auto px-2 py-2"}>
         {ordered.map((message) => {
           const speaker = messageSpeaker(message);
           const mine = speaker !== "client";
@@ -505,7 +631,7 @@ function ChatPane({
         })}
       </div>
       <form
-        className="bg-white p-2"
+        className={sheet ? "shrink-0 bg-white p-2" : "bg-white p-2"}
         onSubmit={(event) => {
           event.preventDefault();
           onSend();
@@ -525,7 +651,7 @@ function ChatPane({
         )}
         <textarea value={draft} onChange={(event) => onDraft(event.target.value)} rows={2} disabled={!windowOpen} placeholder={windowOpen ? "Écrire au client" : "Texte libre hors fenêtre"} className="w-full rounded-2xl border px-2 py-1 text-xs disabled:bg-[#f6f3ee]" />
         <div className="mt-1 flex justify-end">
-          <button type="submit" disabled={busy || previewBlocked} className="rounded-full bg-[#0B192C] px-3 py-1 text-xs text-white disabled:opacity-50">
+          <button type="submit" disabled={busy || previewBlocked} className={sheet ? "inline-flex h-11 items-center rounded-full bg-[#0B192C] px-4 text-sm text-white disabled:opacity-50" : "rounded-full bg-[#0B192C] px-3 py-1 text-xs text-white disabled:opacity-50"}>
             Envoyer
           </button>
         </div>
@@ -577,5 +703,228 @@ function chime() {
     window.setTimeout(() => void context.close(), 400);
   } catch {
     // Le navigateur peut refuser le son sans geste.
+  }
+}
+
+const sheetIconButton = "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-white";
+
+type SwipeBinds = {
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerCancel: () => void;
+};
+
+function dockIsMobile() {
+  return typeof window !== "undefined" && window.matchMedia(DOCK_MOBILE_MQ).matches;
+}
+
+function useVisualFrame(active: boolean) {
+  const [frame, setFrame] = useState({ top: 0, height: 0, keyboard: false });
+  useEffect(() => {
+    if (!active) return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const sync = () => {
+      const keyboard = window.innerHeight - viewport.height - viewport.offsetTop > 80;
+      setFrame({ top: viewport.offsetTop, height: viewport.height, keyboard });
+    };
+    viewport.addEventListener("resize", sync);
+    viewport.addEventListener("scroll", sync);
+    window.requestAnimationFrame(sync);
+    return () => {
+      viewport.removeEventListener("resize", sync);
+      viewport.removeEventListener("scroll", sync);
+    };
+  }, [active]);
+  return frame;
+}
+
+function mobileSheetStyle(frame: { top: number; height: number; keyboard: boolean }, drag: number): CSSProperties {
+  return {
+    top: frame.height ? frame.top : 0,
+    height: frame.height || undefined,
+    paddingTop: "env(safe-area-inset-top)",
+    paddingBottom: frame.keyboard ? "0px" : "env(safe-area-inset-bottom)",
+    transform: drag > 0 ? `translateY(${Math.min(drag, 220)}px)` : undefined,
+  };
+}
+
+function useSwipeDown(onClose: () => void) {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const [offset, setOffset] = useState(0);
+  const binds: SwipeBinds = {
+    onPointerDown(event) {
+      if (event.button !== 0) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("button, a, input, textarea, select")) return;
+      start.current = { x: event.clientX, y: event.clientY };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    onPointerMove(event) {
+      if (!start.current) return;
+      const dy = event.clientY - start.current.y;
+      const dx = event.clientX - start.current.x;
+      if (dy <= 0 || Math.abs(dx) > dy) {
+        setOffset(0);
+        return;
+      }
+      setOffset(dy);
+    },
+    onPointerUp(event) {
+      if (!start.current) return;
+      const dy = event.clientY - start.current.y;
+      const dx = Math.abs(event.clientX - start.current.x);
+      start.current = null;
+      setOffset(0);
+      if (dy > 72 && dy > dx) onCloseRef.current();
+    },
+    onPointerCancel() {
+      start.current = null;
+      setOffset(0);
+    },
+  };
+  return { offset, binds };
+}
+
+const bubbleListeners = new Set<() => void>();
+let bubbleDrag: { x: number; y: number } | null = null;
+
+function subscribeBubble(callback: () => void) {
+  bubbleListeners.add(callback);
+  window.addEventListener("resize", callback);
+  return () => {
+    bubbleListeners.delete(callback);
+    window.removeEventListener("resize", callback);
+  };
+}
+
+function publishBubble() {
+  for (const listener of bubbleListeners) listener();
+}
+
+function readBubbleSnapshot() {
+  const saved = bubbleDrag || readSavedBubble();
+  if (!saved) return "";
+  const next = clampBubblePosition(saved, measureBubbleFrame());
+  return `${Math.round(next.x)}:${Math.round(next.y)}`;
+}
+
+function parseBubblePoint(raw: string) {
+  if (!raw) return null;
+  const [x, y] = raw.split(":").map(Number);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function placeBubble(point: { x: number; y: number }, persist: boolean) {
+  bubbleDrag = point;
+  if (persist) {
+    try {
+      window.localStorage.setItem(BUBBLE_STORAGE_KEY, JSON.stringify(point));
+    } catch {
+      // La bulle reste où le doigt l’a laissée pour cette page.
+    }
+  }
+  publishBubble();
+}
+
+function DockBubble({ unread, hidden, onOpen }: { unread: number; hidden: boolean; onOpen: () => void }) {
+  const raw = useSyncExternalStore(subscribeBubble, readBubbleSnapshot, () => "");
+  const point = parseBubblePoint(raw);
+  const drag = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+
+  if (hidden) return null;
+  const label =
+    unread > 1 ? `Discussions WhatsApp, ${unread} non lus` : unread === 1 ? "Discussions WhatsApp, 1 non lu" : "Discussions WhatsApp";
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={() => {
+        if (suppressClick.current) {
+          suppressClick.current = false;
+          return;
+        }
+        onOpen();
+      }}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        const origin = point ?? defaultBubblePosition(measureBubbleFrame());
+        drag.current = { x: event.clientX, y: event.clientY, left: origin.x, top: origin.y, moved: false };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        const current = drag.current;
+        if (!current) return;
+        const dx = event.clientX - current.x;
+        const dy = event.clientY - current.y;
+        if (Math.hypot(dx, dy) > 8) current.moved = true;
+        if (!current.moved) return;
+        placeBubble(clampBubblePosition({ x: current.left + dx, y: current.top + dy }, measureBubbleFrame()), false);
+      }}
+      onPointerUp={() => {
+        const current = drag.current;
+        drag.current = null;
+        if (!current?.moved || !bubbleDrag) return;
+        suppressClick.current = true;
+        placeBubble(bubbleDrag, true);
+      }}
+      style={point ? { left: point.x, top: point.y, right: "auto", bottom: "auto", touchAction: "none" } : { touchAction: "none" }}
+      className={
+        point
+          ? "fixed z-[55] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#0B192C] text-[#C5A880] shadow-lg lg:hidden"
+          : "fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-[55] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#0B192C] text-[#C5A880] shadow-lg lg:hidden"
+      }
+    >
+      <Icon name="forum" className="h-6 w-6" />
+      {unread > 0 ? (
+        <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#C5A880] px-1.5 text-[10px] font-semibold text-[#0B192C]">
+          {unread}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function measureBubbleFrame(): BubbleFrame {
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    topInset: readSafeInset("top"),
+    bottomInset: readSafeInset("bottom"),
+  };
+}
+
+function readSafeInset(edge: "top" | "bottom") {
+  const probe = document.createElement("div");
+  probe.style.position = "fixed";
+  probe.style.visibility = "hidden";
+  probe.style.pointerEvents = "none";
+  probe.style.paddingTop = "env(safe-area-inset-top)";
+  probe.style.paddingBottom = "env(safe-area-inset-bottom)";
+  document.body.appendChild(probe);
+  const style = getComputedStyle(probe);
+  const raw = edge === "top" ? style.paddingTop : style.paddingBottom;
+  probe.remove();
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function readSavedBubble() {
+  try {
+    const raw = window.localStorage.getItem(BUBBLE_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    if (typeof data.x !== "number" || typeof data.y !== "number") return null;
+    if (!Number.isFinite(data.x) || !Number.isFinite(data.y)) return null;
+    return { x: data.x, y: data.y };
+  } catch {
+    return null;
   }
 }

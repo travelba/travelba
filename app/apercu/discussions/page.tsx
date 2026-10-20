@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { PreviewMobileBar } from "@/app/apercu/discussions/mobile-bar";
 import { WhatsappDock } from "@/components/admin/WhatsappDock";
+import { Icon } from "@/components/crm/icons";
 import type { InboxMessage, InboxThread } from "@/lib/crm/whatsapp-inbox";
 
 export const metadata = { title: "Discussions — exemple", robots: { index: false, follow: false } };
@@ -132,10 +134,18 @@ export default async function DiscussionsPreviewPage({
       <div className="lg:pl-72">
         <div className="flex min-w-0 items-stretch">
           <div className="min-w-0 flex-1">
+            <header className="sticky top-0 z-40 bg-[#0B192C] pt-[env(safe-area-inset-top)] text-white lg:hidden">
+              <div className="flex h-14 items-center justify-between gap-2 px-3">
+                <p className="truncate text-sm font-semibold">Réservations</p>
+                <button type="button" aria-label="Rechercher" className="inline-flex h-11 w-11 items-center justify-center rounded-lg">
+                  <Icon name="search" className="h-5 w-5" />
+                </button>
+              </div>
+            </header>
             <header className="sticky top-0 z-30 hidden h-20 items-center border-b border-[var(--border)] bg-[#faf9f6]/90 px-8 lg:flex">
               <p className="text-sm text-[#8a7350]">Dossier</p>
             </header>
-            <main className="px-4 py-6 lg:px-8 lg:py-8">
+            <main className="px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:px-8 lg:py-8">
               <p className="text-xs uppercase tracking-[0.14em] text-[#8a7350]">Réservations</p>
               <h1 className="mt-1 font-display text-3xl text-[#0B192C]">Tel Aviv et les Seychelles</h1>
               <p className="mt-2 text-sm text-[#5c5346]">TB-EXEMPLE · 24 oct. — 4 nov. 2026 · En préparation</p>
@@ -171,6 +181,7 @@ export default async function DiscussionsPreviewPage({
           />
         </div>
       </div>
+      <PreviewMobileBar />
     </div>
   );
 }

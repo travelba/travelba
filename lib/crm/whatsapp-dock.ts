@@ -4,6 +4,20 @@ import { threadKey } from "./whatsapp-inbox";
 /** Onglets visibles avant le menu de débordement. */
 export const DOCK_TAB_LIMIT = 4;
 export const DOCK_STORAGE_KEY = "tba-wa-dock";
+/** Position de la bulle téléphone, distincte des onglets. */
+export const BUBBLE_STORAGE_KEY = "tba-wa-bubble";
+/** Sous `lg` (1024px) : le téléphone. Le bureau commence à 1024. */
+export const DOCK_MOBILE_MQ = "(max-width: 1023px)";
+/** Bulle, en-tête et barre basse : 56px. */
+export const DOCK_CHROME_BAR = 56;
+export const DOCK_BUBBLE_SIZE = 56;
+
+export type BubbleFrame = {
+  width: number;
+  height: number;
+  topInset: number;
+  bottomInset: number;
+};
 
 export type DockTab = { key: string; expanded: boolean };
 
@@ -65,6 +79,40 @@ export function openDockTab(tabs: DockTab[], key: string, expand: boolean): Dock
 export function ensureDockTab(tabs: DockTab[], key: string): DockTab[] {
   if (tabs.some((tab) => tab.key === key)) return tabs;
   return [...tabs, { key, expanded: false }].slice(-12);
+}
+
+/**
+ * Un message entrant sur téléphone ne crée pas d’onglet et n’en déplie aucun :
+ * seul le badge de la bulle bouge. Le bureau garde l’onglet replié.
+ */
+export function inboundDockTabs(tabs: DockTab[], key: string, mobile: boolean): DockTab[] {
+  if (mobile) return tabs;
+  return ensureDockTab(tabs, key);
+}
+
+/** La bulle reste sous l’en-tête et au-dessus de la barre basse, insets compris. */
+export function clampBubblePosition(point: { x: number; y: number }, frame: BubbleFrame, margin = 8) {
+  const size = DOCK_BUBBLE_SIZE;
+  const minX = margin;
+  const maxX = Math.max(minX, frame.width - size - margin);
+  const minYHeader = frame.topInset + DOCK_CHROME_BAR + margin;
+  const maxY = Math.max(margin, frame.height - frame.bottomInset - DOCK_CHROME_BAR - size - margin);
+  const minY = Math.min(minYHeader, maxY);
+  return {
+    x: Math.min(maxX, Math.max(minX, point.x)),
+    y: Math.min(maxY, Math.max(minY, point.y)),
+  };
+}
+
+/** Coin bas droit, au-dessus de la barre, sans la recouvrir. */
+export function defaultBubblePosition(frame: BubbleFrame) {
+  return clampBubblePosition(
+    {
+      x: frame.width - DOCK_BUBBLE_SIZE - 16,
+      y: frame.height - frame.bottomInset - DOCK_CHROME_BAR - DOCK_BUBBLE_SIZE - 16,
+    },
+    frame
+  );
 }
 
 export function closeDockTab(tabs: DockTab[], key: string) {
