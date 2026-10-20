@@ -23,7 +23,7 @@ import {
 type Admin = { from: (table: string) => any };
 
 const CARD_COLUMNS =
-  "pliant_card_id, customer_id, booking_id, label, last4, ceiling_cents, currency, status, limit_manual, transaction_limit_cents, max_transaction_count";
+  "pliant_card_id, customer_id, booking_id, label, last4, ceiling_cents, currency, status, limit_manual, transaction_limit_cents, max_transaction_count, note";
 
 export async function rememberPliantCard(admin: Admin, incoming: PliantCardPatch) {
   try {
@@ -46,6 +46,7 @@ export async function rememberPliantCard(admin: Admin, incoming: PliantCardPatch
         limit_manual: row.limit_manual,
         transaction_limit_cents: row.transaction_limit_cents,
         max_transaction_count: row.max_transaction_count,
+        note: row.note,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "pliant_card_id" }
@@ -373,6 +374,7 @@ function asDraft(data: unknown): PliantCardDraft | null {
     limit_manual: row.limit_manual === true,
     transaction_limit_cents: numberOrNull(row.transaction_limit_cents),
     max_transaction_count: numberOrNull(row.max_transaction_count),
+    note: typeof row.note === "string" && row.note.trim() ? row.note.trim().slice(0, 180) : null,
   };
 }
 

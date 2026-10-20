@@ -32,6 +32,8 @@ export type PliantCardDraft = {
   limit_manual: boolean;
   transaction_limit_cents: number | null;
   max_transaction_count: number | null;
+  /** Montant d’origine hors euro. Vide pour une carte déjà en euros. */
+  note: string | null;
 };
 
 export type PliantCardPatch = Partial<Omit<PliantCardDraft, "pliant_card_id">> & {
@@ -53,6 +55,7 @@ export function mergePliantCard(existing: PliantCardDraft | null, incoming: Plia
     limit_manual: incoming.limit_manual === true ? true : existing?.limit_manual === true,
     transaction_limit_cents: incoming.transaction_limit_cents ?? existing?.transaction_limit_cents ?? null,
     max_transaction_count: incoming.max_transaction_count ?? existing?.max_transaction_count ?? null,
+    note: incoming.note !== undefined ? incoming.note : (existing?.note ?? null),
   };
 }
 

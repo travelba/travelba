@@ -64,6 +64,25 @@ test("les coûts à pointer et la marge à corriger ouvrent Règlement", () => {
   assert.deepEqual(one.map((chip) => chip.label), ["Coût à pointer"]);
 });
 
+test("une carte hôtel refusée reste une alerte, pas une répétition", () => {
+  const chips = staffBlockingChips({
+    travelers: [],
+    missingPassportIds: [],
+    hotelLettersOpen: 0,
+    amountHidden: false,
+    cardAlerts: 1,
+  });
+  assert.deepEqual(chips.map((chip) => chip.label), ["Carte hôtel refusée"]);
+  const two = staffBlockingChips({
+    travelers: [],
+    missingPassportIds: [],
+    hotelLettersOpen: 0,
+    amountHidden: false,
+    cardAlerts: 2,
+  });
+  assert.equal(two[0]?.label, "2 cartes hôtel refusées");
+});
+
 test("le grand livre suit la visibilité, une annulation ne débite pas", () => {
   assert.equal(
     staffLedgerCaption({ status: "draft", visible_to_client: false, include_in_ledger: true }),

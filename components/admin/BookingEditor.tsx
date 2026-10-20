@@ -68,7 +68,7 @@ import { InvoiceBlock } from "@/components/admin/InvoiceBlock";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
 import type { TripAccountingView } from "@/lib/crm/trip-costs";
 import { reglementChecklist, reglementCostsToPoint } from "@/lib/crm/reglement-checklist";
-import { principalGuest } from "@/lib/crm/hotel-arrival";
+import { hotelCardNeedsAlert, principalGuest } from "@/lib/crm/hotel-arrival";
 import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
 import { WhatsappThread, type WhatsappThreadMessage, type WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
 import { BookingExpensesPanel, type ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
@@ -932,6 +932,7 @@ export function BookingEditor({
     amountHidden: !booking.archived_at && (!booking.visible_to_client || booking.prices_visible === false),
     costsToPoint,
     marginStale: Boolean(accounting?.invoice.printed && accounting.invoice.marginStale),
+    cardAlerts: arrivals.filter((row) => hotelCardNeedsAlert(row)).length,
   });
   const travelerLabel = travelers.length
     ? travelers.length <= 4

@@ -28,6 +28,68 @@ export function parseEcbRates(xml: string): { date: string; rates: EurFx } | nul
   return { date, rates: { USD: usd, GBP: gbp, ILS: ils } };
 }
 
+/** Cours BCE du 19 octobre 2026 (unités de devise pour 1 euro), si le flux est injoignable. */
+export const HOTEL_FX_SNAPSHOT: { date: string; rates: Record<string, number> } = {
+  date: "2026-10-19",
+  rates: {
+    USD: 1.1225,
+    JPY: 177.63,
+    CZK: 24.343,
+    DKK: 7.4747,
+    GBP: 0.84205,
+    HUF: 363.4,
+    PLN: 4.3713,
+    RON: 5.3264,
+    SEK: 11.104,
+    CHF: 0.9261,
+    ISK: 136.4,
+    NOK: 10.5555,
+    TRY: 55.6227,
+    AUD: 1.6068,
+    BRL: 5.6633,
+    CAD: 1.5798,
+    CNY: 7.4991,
+    HKD: 8.8097,
+    IDR: 20253.16,
+    ILS: 3.489,
+    INR: 106.559,
+    KRW: 1492.35,
+    MXN: 20.7481,
+    MYR: 4.5826,
+    NZD: 1.9792,
+    PHP: 70.715,
+    SGD: 1.4357,
+    THB: 37.665,
+    ZAR: 18.4469,
+  },
+};
+
+/** Toutes les devises du flux quotidien BCE. */
+export function parseEcbBoard(xml: string): { date: string; rates: Record<string, number> } | null {
+  const date = xml.match(/time='(\d{4}-\d{2}-\d{2})'/)?.[1];
+  if (!date) return null;
+  const rates: Record<string, number> = {};
+  for (const match of xml.matchAll(/currency='([A-Z]{3})' rate='([0-9.]+)'/g)) {
+    const value = Number(match[2]);
+    if (value > 0) rates[match[1]] = value;
+  }
+  if (!(rates.USD > 0) || !(rates.SGD > 0) || !(rates.HKD > 0)) return null;
+  return { date, rates };
+}
+
+/** Frankfurter republie le cours BCE : `{ rates: { SGD: 1.43 } }` pour 1 euro. */
+export function parseFrankfurterRates(json: unknown): Record<string, number> | null {
+  if (!json || typeof json !== "object") return null;
+  const rates = (json as { rates?: unknown }).rates;
+  if (!rates || typeof rates !== "object") return null;
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(rates)) {
+    if (/^[A-Z]{3}$/.test(key) && typeof value === "number" && value > 0) out[key] = value;
+  }
+  if (!(out.SGD > 0) || !(out.HKD > 0)) return null;
+  return out;
+}
+
 export function coverCents(foreignAmount: number, unitsPerEur: number) {
   if (!(foreignAmount > 0) || !(unitsPerEur > 0)) return null;
   return Math.ceil((foreignAmount / unitsPerEur) * FX_COVER * 100);

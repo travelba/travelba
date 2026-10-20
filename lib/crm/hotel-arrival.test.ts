@@ -32,6 +32,13 @@ import {
   shownStayProvision,
   stayCardFace,
   tripStayCard,
+  hotelCardNeedsAlert,
+  hotelCardWindow,
+  PAST_STAY_LOG,
+  pliantEurLimitCents,
+  pliantRefusalIsFinal,
+  pliantStopCovers,
+  pliantStopNote,
   stayCardDonor,
   stayProvision,
   stayRevealNeedsAgencyCode,
@@ -463,4 +470,46 @@ test("le même hôtel reprend la CB déjà ouverte, sans en émettre une seconde
     ]),
     null
   );
+});
+
+test("un séjour déjà fini n’ouvre pas de carte", () => {
+  assert.deepEqual(hotelCardWindow("2026-10-20", "2026-10-12"), { ok: false, reason: PAST_STAY_LOG });
+  const today = hotelCardWindow("2026-10-20", "2026-10-20");
+  assert.equal(today.ok, true);
+  if (!today.ok) return;
+  assert.equal(today.validFrom, "2026-10-20");
+  assert.equal(today.validTo, cardCloseDate("2026-10-20"));
+  assert.ok(today.validTo > today.validFrom);
+});
+
+test("sans départ, la validité part d’aujourd’hui, pas d’une arrivée passée", () => {
+  const window = hotelCardWindow("2026-10-20", "");
+  assert.equal(window.ok, true);
+  if (!window.ok) return;
+  assert.equal(window.validFrom, "2026-10-20");
+  assert.equal(window.validTo, "2027-01-18");
+  assert.ok(window.validTo > window.validFrom);
+  assert.notEqual(window.validTo, cardCloseDate("2026-09-01"));
+});
+
+test("5907,49 SGD et 35843,60 HKD deviennent des euros, avec 5 %", () => {
+  assert.equal(pliantEurLimitCents(590749, "SGD", 1.4357), 432045);
+  assert.equal(pliantEurLimitCents(3584360, "HKD", 8.8097), 427209);
+  assert.equal(pliantEurLimitCents(10000, "EUR", null), 10000);
+  assert.equal(pliantEurLimitCents(590749, "SGD", null), null);
+});
+
+test("un refus définitif ne se répète pas pour le même montant", () => {
+  const note = pliantStopNote("Invalid currency (SGD) in CreateCardRequest: not EUR", 590749, "SGD");
+  assert.equal(pliantStopCovers(note, 590749, "SGD"), true);
+  assert.equal(pliantStopCovers(note, 100, "SGD"), false);
+  assert.equal(
+    pliantRefusalIsFinal("Pliant a refusé la carte : Invalid currency (SGD) in CreateCardRequest: not EUR"),
+    true
+  );
+  assert.equal(pliantRefusalIsFinal("Pliant a refusé la carte (503)."), false);
+  assert.equal(pliantRefusalIsFinal("Pliant n'accepte que l'euro."), true);
+  assert.equal(hotelCardNeedsAlert({ task_open: true, blocked_reason: "pliant", task_note: note }), true);
+  assert.equal(hotelCardNeedsAlert({ task_open: true, blocked_reason: "pliant", task_note: "Pliant n'a pas créé la carte." }), false);
+  assert.equal(hotelCardNeedsAlert({ task_open: false, blocked_reason: "past", task_note: PAST_STAY_LOG }), false);
 });
