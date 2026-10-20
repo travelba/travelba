@@ -30,6 +30,7 @@ export type ConciergeModelReply = {
   text: string;
   bookingReference: string | null;
   handoff: "complaint" | "question" | null;
+  tools?: string[];
 };
 
 export type ConciergeHistoryTurn = {
@@ -397,10 +398,20 @@ export async function generateConciergeReply(input: {
     const stay = request?.bookingId
       ? input.dossier.stays.find((row) => row.id === request.bookingId)
       : null;
+    const tools = [
+      ...new Set(
+        (result.steps || []).flatMap((step) =>
+          (step.toolCalls || [])
+            .map((call) => ("toolName" in call ? String(call.toolName) : ""))
+            .filter(Boolean)
+        )
+      ),
+    ];
     return {
       text,
       bookingReference: stay?.reference || null,
       handoff: request?.kind === "complaint" || request?.kind === "question" ? request.kind : null,
+      tools,
     };
   } catch (err) {
     console.error("[whatsapp-concierge] turn", err instanceof Error ? err.name : "error");
@@ -432,6 +443,7 @@ function composeModelTurn(
     cover: handoff ? null : keyword.cover,
     optOut: false,
     access: false,
+    tools: output.tools || [],
   };
 }
 

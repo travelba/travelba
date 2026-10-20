@@ -30,6 +30,7 @@ export default async function AdminLayout({
         emailCount={badges.emails}
         leCount={badges.le}
         pieceCount={badges.pieces}
+        whatsappCount={badges.whatsapp}
         staffName={staff?.full_name || ""}
         staffRole={staff?.role}
         showExample={exampleSessionEnabled()}

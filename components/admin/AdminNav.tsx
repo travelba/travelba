@@ -56,6 +56,7 @@ export function AdminNav({
   emailCount = 0,
   leCount = 0,
   pieceCount = 0,
+  whatsappCount = 0,
   staffName = "",
   staffRole = "",
   showExample = false,
@@ -66,6 +67,7 @@ export function AdminNav({
   emailCount?: number;
   leCount?: number;
   pieceCount?: number;
+  whatsappCount?: number;
   staffName?: string;
   staffRole?: "admin" | "agent" | "partner" | "";
   showExample?: boolean;
@@ -75,8 +77,8 @@ export function AdminNav({
   const searchParams = useSearchParams();
   const router = useRouter();
   const counts: AdminNavCounts = useMemo(
-    () => ({ revolut: unmatchedCount, stripe: stripeCount, emails: emailCount, le: leCount, pieces: pieceCount }),
-    [unmatchedCount, stripeCount, emailCount, leCount, pieceCount]
+    () => ({ revolut: unmatchedCount, stripe: stripeCount, emails: emailCount, le: leCount, pieces: pieceCount, whatsapp: whatsappCount }),
+    [unmatchedCount, stripeCount, emailCount, leCount, pieceCount, whatsappCount]
   );
   const groups = useMemo(() => adminNavGroups({ role: staffRole, showExample }), [staffRole, showExample]);
   const partner = staffRole === "partner";

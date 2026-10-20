@@ -1,6 +1,7 @@
 import { withConciergeSignature } from "@/lib/crm/whatsapp";
 import type { ReplyLang } from "@/lib/crm/whatsapp-concierge";
 import { messageLanguage } from "@/lib/crm/whatsapp-concierge";
+import { renderConciergeTemplate, templateDestination, type StayPhraseInput } from "@/lib/crm/concierge-templates";
 import { priceAccommodation } from "@/lib/crm/concierge-pricing";
 import { searchSuppliers, type SearchMode, type StayHit } from "@/lib/crm/concierge-search";
 import type { HotelDirectoryEntry } from "@/lib/crm/hotel-catalog";
@@ -291,7 +292,15 @@ export function planFollowups(input: {
   stayStart: string | null;
   stayEnd: string | null;
   briefOpen: boolean;
+  firstName?: string | null;
+  stay?: StayPhraseInput | null;
+  lang?: ReplyLang;
 }): PlannedFollowup[] {
+  const lang = input.lang === "en" || input.lang === "he" ? input.lang : "fr";
+  const destination = templateDestination(input.stay || {}, lang);
+  const reprise = renderConciergeTemplate("concierge_reprise", lang, { prenom: input.firstName });
+  const depart = renderConciergeTemplate("concierge_depart", lang, { prenom: input.firstName, destination });
+  const retour = renderConciergeTemplate("concierge_retour", lang, { prenom: input.firstName, destination });
   const out: PlannedFollowup[] = [];
   if (input.lastInbound) {
     const age = input.now.getTime() - input.lastInbound.getTime();
@@ -311,7 +320,7 @@ export function planFollowups(input: {
         channel: "template",
         templateKey: "concierge_reprise",
         dueAt: input.now.toISOString(),
-        body: "Modèle hors fenêtre. Non soumis à Meta.",
+        body: `${reprise}\nModèle non soumis à Meta.`,
       });
     }
   }
@@ -322,7 +331,7 @@ export function planFollowups(input: {
       channel: "template",
       templateKey: "concierge_depart",
       dueAt: input.now.toISOString(),
-      body: "Rappel avant départ. Modèle non soumis.",
+      body: `${depart}\nModèle non soumis à Meta.`,
     });
   }
   if (input.stayStart === today) {
@@ -340,7 +349,7 @@ export function planFollowups(input: {
       channel: "template",
       templateKey: "concierge_retour",
       dueAt: input.now.toISOString(),
-      body: "Retour de séjour. Modèle non soumis.",
+      body: `${retour}\nModèle non soumis à Meta.`,
     });
   }
   return out;

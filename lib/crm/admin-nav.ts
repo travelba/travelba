@@ -1,10 +1,10 @@
 /** Menu de l’espace agence : groupes repliables, badges, entrée active, barre basse mobile. */
 
-export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces";
+export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp";
 
 export type AdminNavCounts = Record<AdminBadgeKey, number>;
 
-export const EMPTY_NAV_COUNTS: AdminNavCounts = { revolut: 0, stripe: 0, emails: 0, le: 0, pieces: 0 };
+export const EMPTY_NAV_COUNTS: AdminNavCounts = { revolut: 0, stripe: 0, emails: 0, le: 0, pieces: 0, whatsapp: 0 };
 
 export type AdminNavItem = {
   href: string;
@@ -72,7 +72,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
       label: "Boîtes de réception",
       items: [
         { href: "/admin/emails", label: "E-mails", icon: "mail", badge: "emails" },
-        { href: "/admin/whatsapp", label: "WhatsApp", icon: "forum" },
+        { href: "/admin/whatsapp", label: "WhatsApp", icon: "forum", badge: "whatsapp" },
         { href: "/admin/little-emperors", label: "Little Emperors", icon: "hotel", badge: "le" },
       ],
     },
@@ -192,7 +192,7 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     label: "Plus",
     icon: "more_horiz",
     paths: ["/admin/emails", "/admin/whatsapp", "/admin/little-emperors", "/admin/concierge", "/admin/outils", "/admin/equipe"],
-    badges: ["emails", "le"],
+    badges: ["emails", "le", "whatsapp"],
   },
 ];
 

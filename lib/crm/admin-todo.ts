@@ -17,8 +17,15 @@ export function adminTodoLines(input: {
   departTomorrow: number;
   expiring: number;
   whatsapp: number;
+  unread?: number;
 }): AdminTodoLine[] {
   const lines: AdminTodoLine[] = [
+    {
+      id: "whatsapp-unread",
+      count: input.unread || 0,
+      label: `${plural(input.unread || 0, "fil WhatsApp non lu", "fils WhatsApp non lus")}`,
+      href: "/admin/whatsapp?filtre=non-lus",
+    },
     {
       id: "whatsapp",
       count: input.whatsapp,

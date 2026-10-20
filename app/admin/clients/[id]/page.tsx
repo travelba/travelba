@@ -59,7 +59,8 @@ import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } fr
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 import { WhatsappThread } from "@/components/admin/WhatsappThread";
-import { WhatsappDesk } from "@/components/admin/WhatsappDesk";
+import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
+import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { threadIsPaused } from "@/lib/crm/whatsapp-takeover";
 
 type Props = { params: Promise<{ id: string }> };
@@ -417,7 +418,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
         messages={threadMessages}
         requests={whatsappRequests.error ? [] : whatsappRequests.data || []}
         bookings={activeBookings.map((booking) => ({ id: booking.id, reference: booking.reference }))}
-        desk={<WhatsappDesk customerId={c.id} phone={c.phone} paused={conciergePaused} />}
+        phone={c.phone}
+        customerId={c.id}
+        customerName={[c.first_name, c.last_name].filter(Boolean).join(" ")}
+        paused={conciergePaused}
+        templates={approvedManualTemplates()}
+        previewBlocked={isVercelPreview()}
       />
         </div>
 
