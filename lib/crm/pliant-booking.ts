@@ -102,6 +102,7 @@ export function pliantBookingCards(input: {
     card_last4: string | null;
     card_limit_cents: number | null;
     currency: string | null;
+    task_note?: string | null;
   }[];
   hotelNames: Record<string, string>;
   registry: {
@@ -132,13 +133,15 @@ export function pliantBookingCards(input: {
   }
   for (const arrival of input.arrivals) {
     if (!arrival.pliant_card_id) continue;
+    const hotel = input.hotelNames[arrival.booking_item_id] || "Hôtel";
+    const origin = (arrival.task_note || "").match(/^Origine (.+)$/)?.[1];
     push(
       face({
         pliantCardId: arrival.pliant_card_id,
-        label: input.hotelNames[arrival.booking_item_id] || "Hôtel",
+        label: origin ? `${hotel} · ${origin}` : hotel,
         last4: arrival.card_last4,
         ceilingCents: arrival.card_limit_cents,
-        currency: arrival.currency,
+        currency: "EUR",
       })
     );
   }

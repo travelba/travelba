@@ -177,11 +177,27 @@ function rethrowTokenFailure(err: unknown) {
   if (err instanceof Error && isPliantTokenFailure(err.message)) throw err;
 }
 
+function moneyCode(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const currency = (value as { currency?: unknown }).currency;
+  if (typeof currency !== "string" || !currency.trim()) return null;
+  return currency.trim().toUpperCase();
+}
+
 export async function issuePliantCard(cardholderId: string, body: unknown) {
   const raw = (body && typeof body === "object" ? body : {}) as Record<string, unknown> & {
     organizationId?: string;
     cardConfig?: string;
   };
+  const codes = [moneyCode(raw.limit), moneyCode(raw.transactionLimit)].filter((code): code is string => Boolean(code));
+  if (codes.some((code) => code !== "EUR")) {
+    console.error("[pliant] emission", "devise");
+    throw new Error("Pliant n'accepte que l'euro.");
+  }
+  if (typeof raw.validFrom === "string" && typeof raw.validTo === "string" && raw.validTo <= raw.validFrom) {
+    console.error("[pliant] emission", "validité");
+    throw new Error("Pliant : la fin de validité doit suivre le début.");
+  }
   const resolved = await resolvePliantIssue({
     organizationId: raw.organizationId || process.env.PLIANT_ORGANIZATION_ID || "",
     cardholderId: cardholderId || process.env.PLIANT_CARDHOLDER_ID || "",
@@ -200,7 +216,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
   });
   const text = await res.text();
   if (!res.ok) {
-    console.error("[eta-il] pliant", res.status);
+    console.error("[pliant] emission", res.status);
     throw new Error(pliantRefusal(res.status, text));
   }
   const json = JSON.parse(text) as { cardId?: string; id?: string; status?: string };

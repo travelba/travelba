@@ -241,6 +241,83 @@ export function cardCloseDate(checkOut: string) {
   return addIsoDays(checkOut, 3);
 }
 
+/** Même fenêtre qu’une carte de dossier sans date de fin. */
+export const HOTEL_CARD_OPEN_DAYS = 90;
+
+/** Pliant n’accepte que l’euro. Marge de change au-dessus du cours. */
+export const PLIANT_FX_BUFFER = 1.05;
+
+export const PAST_STAY_LOG = "séjour passé";
+
+export const PLIANT_STOP_PREFIX = "Pliant refus : ";
+
+export type HotelCardWindow =
+  | { ok: false; reason: typeof PAST_STAY_LOG }
+  | { ok: true; validFrom: string; validTo: string };
+
+/**
+ * Aujourd’hui jusqu’à trois jours après le départ.
+ * Un départ déjà passé n’ouvre pas de carte.
+ * Sans départ, la fin n’est pas l’arrivée : au moins aujourd’hui plus la fenêtre.
+ * Pliant exige validFrom strictement avant validTo.
+ */
+export function hotelCardWindow(today: string, departure: string | null | undefined): HotelCardWindow {
+  const from = isoDate(today) || today;
+  const end = isoDate(departure);
+  if (end && from && end < from) return { ok: false, reason: PAST_STAY_LOG };
+  const close = end ? cardCloseDate(end) : addIsoDays(from, HOTEL_CARD_OPEN_DAYS);
+  const validTo = close > from ? close : addIsoDays(from, HOTEL_CARD_OPEN_DAYS);
+  return { ok: true, validFrom: from, validTo };
+}
+
+/** Plafond en centimes d’euro. Hors euro : cours (unités pour 1 €), 5 %, centime supérieur. */
+export function pliantEurLimitCents(foreignCents: number, currency: string, unitsPerEur: number | null | undefined) {
+  if (!(foreignCents > 0) || !Number.isFinite(foreignCents)) return null;
+  const code = (currency || "EUR").trim().toUpperCase();
+  if (code === "EUR") return Math.ceil(foreignCents);
+  if (unitsPerEur == null || !(unitsPerEur > 0) || !Number.isFinite(unitsPerEur)) return null;
+  return Math.ceil((foreignCents * PLIANT_FX_BUFFER) / unitsPerEur);
+}
+
+export function hotelCardOriginNote(cents: number, currency: string) {
+  const code = (currency || "").trim().toUpperCase();
+  if (!code || code === "EUR") return "";
+  return `Origine ${formatArrivalAmount(cents, code)}`;
+}
+
+export function pliantStopNote(message: string, cents: number, currency: string) {
+  const safe = message.replace(/\s+/g, " ").trim().slice(0, 120);
+  const code = (currency || "EUR").trim().toUpperCase();
+  return `${PLIANT_STOP_PREFIX}${safe} · ${Math.round(cents)} ${code}`;
+}
+
+export function pliantStopCovers(note: string | null | undefined, cents: number, currency: string) {
+  if (!note?.startsWith(PLIANT_STOP_PREFIX)) return false;
+  const code = (currency || "EUR").trim().toUpperCase();
+  return note.endsWith(` · ${Math.round(cents)} ${code}`);
+}
+
+/** Un refus de contenu (devise, dates, 400) ne changera pas au prochain cron. */
+export function pliantRefusalIsFinal(message: string) {
+  const text = message.toLowerCase();
+  if (/n'accepte que l'euro|fin de validité|cours indisponible/.test(text)) return true;
+  if (/pliant a refusé la carte\s*:/.test(text)) return true;
+  const status = Number(text.match(/pliant a refusé la carte\s*\((\d+)\)/)?.[1]);
+  if (status === 400 || status === 404 || status === 409 || status === 422) return true;
+  if (/organisation configurée est introuvable|porteur configuré est introuvable|configuration de carte est introuvable/.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+export function hotelCardNeedsAlert(row: {
+  task_open?: boolean | null;
+  blocked_reason?: string | null;
+  task_note?: string | null;
+}) {
+  return row.task_open === true && row.blocked_reason === "pliant" && (row.task_note || "").startsWith(PLIANT_STOP_PREFIX);
+}
+
 export function foldCountry(value: string) {
   return value
     .normalize("NFD")

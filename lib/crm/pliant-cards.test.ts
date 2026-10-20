@@ -14,6 +14,7 @@ const existing: PliantCardDraft = {
   limit_manual: true,
   transaction_limit_cents: 4000,
   max_transaction_count: 3,
+  note: null,
 };
 
 test("un plafond saisi n’est pas réécrit par la synchro", () => {
