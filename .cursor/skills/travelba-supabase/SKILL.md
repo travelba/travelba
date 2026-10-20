@@ -60,6 +60,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261019161000_booking_item_kind_accueil_vip.sql` | kind `accueil_vip` — accueil aéroport de l’agence, distinct de `greeter`. Non appliquée tant que l’agence ne l’a pas jouée |
 | `20261019201000_agency_fee_rate.sql` | `agency_fee_rate` sur le compte et le dossier (10 %, 7,5 % ou 5 %). Null = 10 % / héritage. Pas de grant client. À jouer à la main |
 | `20261020140000_pliant_card_note.sql` | `crm_pliant_cards.note` : montant d’origine hors euro. Pas de PAN |
+| `20261020170000_mcp_pliant_card_block.sql` | `crm_mcp_card_events.kind` : `blocage` et `deblocage`. Pas de PAN |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

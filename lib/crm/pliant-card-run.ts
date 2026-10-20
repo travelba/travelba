@@ -1,6 +1,6 @@
 import "server-only";
 
-import { pliantCardNomination, pliantDesignation } from "./eta-il-fee";
+import { pliantCardCaption, pliantCardNomination, pliantDesignation } from "./eta-il-fee";
 import { cardTransactionRules } from "./manual-stay-card";
 import { addIsoDays, parisIsoDate } from "./hotel-arrival";
 import {
@@ -194,6 +194,7 @@ export async function issueCustomerPliantCard(
   const name = pliantCardNomination({ firstName: input.firstName, lastName: input.lastName });
   const designation = pliantDesignation(input.designation);
   if (!designation) throw new Error("Indiquez le nom de la carte.");
+  const caption = pliantCardCaption({ client: input.lastName, place: input.designation });
   const rules = cardTransactionRules({
     limitCents: input.limitCents,
     transactionAmount: input.transactionAmount || "",
@@ -205,7 +206,8 @@ export async function issueCustomerPliantCard(
   const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
     cardConfig: "PLIANT_VIRTUAL",
-    label: designation || name.label,
+    label: caption?.label || designation || name.label,
+    purpose: caption?.purpose || designation || name.label,
     customFirstName: name.customFirstName,
     customLastName: name.customLastName,
     limit: money,
@@ -222,7 +224,7 @@ export async function issueCustomerPliantCard(
     pliant_card_id: issued.cardId,
     customer_id: input.customerId,
     booking_id: null,
-    label: designation || face.label || name.label,
+    label: caption?.label || designation || face.label || name.label,
     last4: face.last4,
     limit_cents: input.limitCents,
     currency: input.currency,

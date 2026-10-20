@@ -13,10 +13,120 @@ export const ETA_IL_FEE_ILS = VISA_OFFICIAL.IL.amount;
 
 const NAME_CHARS = /[^A-Za-z0-9äöüÄÖÜ.\-]+/g;
 const LABEL_MAX = 40;
+const PURPOSE_MAX = 200;
 const NAME_MAX = 50;
+const CAPTION_SEP = " – ";
+
+/** Lettres latines sans accent. `Andréa` devient `Andrea`, pas `Andr-a`. */
+function pliantFold(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ß/g, "ss")
+    .replace(/ẞ/g, "SS")
+    .replace(/œ/g, "oe")
+    .replace(/Œ/g, "OE")
+    .replace(/æ/g, "ae")
+    .replace(/Æ/g, "AE")
+    .replace(/ø/gi, "o")
+    .replace(/ł/gi, "l")
+    .replace(/đ/gi, "d");
+}
 
 export function pliantCardName(value: string) {
-  return value.replace(NAME_CHARS, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, NAME_MAX);
+  return pliantFold(value).replace(NAME_CHARS, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, NAME_MAX);
+}
+
+/** Texte du libellé Pliant : lettres, espaces, sans le jeu strict du titulaire. */
+export function pliantReadable(value: string) {
+  return pliantFold(value)
+    .replace(/[^\p{L}\p{N} .'’&·-]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fitPliantCaption(parts: string[], max: number) {
+  const full = parts.join(CAPTION_SEP);
+  if (full.length <= max) return full;
+  if (parts.length === 1) return parts[0].slice(0, max);
+  const reference = parts.length >= 3 ? parts[parts.length - 1] : "";
+  const client = parts[0];
+  const place = (parts.length >= 3 ? parts.slice(1, -1) : parts.slice(1)).join(CAPTION_SEP);
+  if (reference) {
+    const tail = `${CAPTION_SEP}${reference}`;
+    const room = max - client.length - CAPTION_SEP.length - tail.length;
+    if (room >= 1) {
+      const cut = place.slice(0, room).replace(/[\s–-]+$/u, "");
+      if (cut) return `${client}${CAPTION_SEP}${cut}${tail}`.slice(0, max);
+    }
+    const two = `${client}${CAPTION_SEP}${reference}`;
+    if (two.length <= max) return two;
+    const roomClient = max - tail.length;
+    if (roomClient >= 1) {
+      const cut = client.slice(0, roomClient).replace(/[\s–-]+$/u, "");
+      if (cut) return `${cut}${tail}`.slice(0, max);
+    }
+    return reference.slice(0, max);
+  }
+  const room = max - client.length - CAPTION_SEP.length;
+  if (room >= 1) {
+    const cut = place.slice(0, room).replace(/[\s–-]+$/u, "");
+    if (cut) return `${client}${CAPTION_SEP}${cut}`.slice(0, max);
+  }
+  return client.slice(0, max);
+}
+
+/**
+ * Nom vu dans Pliant : client, hôtel ou fournisseur, référence.
+ * `label` tient en 40 caractères, `purpose` en 200. Ce n’est pas le titulaire.
+ */
+export function pliantCardCaption(input: { client?: string | null; place?: string | null; reference?: string | null }) {
+  const parts = [input.client, input.place, input.reference].map((part) => pliantReadable(part || "")).filter(Boolean);
+  if (!parts.length) return null;
+  return {
+    label: fitPliantCaption(parts, LABEL_MAX),
+    purpose: fitPliantCaption(parts, PURPOSE_MAX),
+  };
+}
+
+/**
+ * Libellé (40) et objet (200). L’hôtel prime. La désignation s’ajoute
+ * si elle tient encore ; sinon elle reste dans l’objet.
+ */
+export function pliantStayCaption(input: {
+  client?: string | null;
+  hotels?: Array<string | null | undefined>;
+  designation?: string | null;
+  reference?: string | null;
+}) {
+  const hotelPlace = pliantCardPlace({ hotels: input.hotels });
+  const fullPlace = pliantCardPlace({ hotels: input.hotels, designation: input.designation });
+  const full = pliantCardCaption({ client: input.client, place: fullPlace, reference: input.reference });
+  const shown = pliantCardCaption({
+    client: input.client,
+    place: hotelPlace || input.designation,
+    reference: input.reference,
+  });
+  const label = full && full.label === full.purpose ? full.label : shown?.label || full?.label || "";
+  const purpose = full?.purpose || shown?.purpose || label;
+  if (!label && !purpose) return null;
+  return { label, purpose };
+}
+
+/** Hôtel d’abord, puis la désignation si elle dit autre chose. Sans doublon. */
+export function pliantCardPlace(input: { hotels?: Array<string | null | undefined>; designation?: string | null }) {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  const add = (value: string | null | undefined) => {
+    const text = (value || "").trim();
+    const key = pliantReadable(text).toLowerCase();
+    if (!text || !key || seen.has(key)) return;
+    seen.add(key);
+    parts.push(text);
+  };
+  for (const hotel of input.hotels || []) add(hotel);
+  add(input.designation);
+  return parts.join(" · ");
 }
 
 /** Désignation interne Pliant (`label`, 40 caractères). Vide si rien n’est saisi. */

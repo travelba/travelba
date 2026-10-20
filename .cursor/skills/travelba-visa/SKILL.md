@@ -53,7 +53,7 @@ Auth0 (`infinnityprodinternal`) n’accorde qu’une poignée de jetons par jour
 
 ## Carte depuis le MCP
 
-`creer_carte_pliant` reprend l’onglet Carte du dossier : `PLIANT_VIRTUAL`, contrôles vides, plafond saisi, une transaction par défaut. La carte reste liée au dossier ; une dépense s’y rattache dès l’autorisation, en attente, puis se confirme au règlement. `lire_carte_pliant` lit le numéro chez Pliant (`readPliantCardSecrets`, hôte PCI) pour cette carte seulement. Le jeton est `TRAVELBA_MCP_CARD_TOKENS`, pas le jeton passeport. Pas de PAN stocké. Journal `crm_mcp_card_events`.
+`creer_carte_pliant` reprend l’onglet Carte du dossier : `PLIANT_VIRTUAL`, contrôles vides, plafond saisi, une transaction par défaut. La carte reste liée au dossier ; une dépense s’y rattache dès l’autorisation, en attente, puis se confirme au règlement. Le libellé (`label`, 40) et l’objet (`purpose`, 200) portent le client, l’hôtel ou le fournisseur et la référence (`Bensaid – Phulay Bay – TB-2026-0088`). Les accents deviennent des lettres (`Andréa` → `Andrea`). Le prénom et le nom du titulaire restent la personne, pas cette phrase. `lire_carte_pliant` lit le numéro chez Pliant (`readPliantCardSecrets`, hôte PCI) pour cette carte seulement. `bloquer_carte_pliant` gèle la carte (`POST /cards/{id}/lock`) et `debloquer` la rouvre (`unlock`) ; le statut `locked` ou `active` est sur le dossier. Pas de suppression. Le jeton est `TRAVELBA_MCP_CARD_TOKENS`, pas le jeton passeport. Pas de PAN stocké. Journal `crm_mcp_card_events` (`creation`, `reveal`, `blocage`, `deblocage`).
 
 ## Scan pour le formulaire
 

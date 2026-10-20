@@ -170,6 +170,34 @@ async function bookingCards(admin: SupabaseClient, bookingId: string) {
   return ((data || []) as CrmBookingItem[]).filter((item) => isActiveItem(item));
 }
 
+function pliantStatusLabel(status: string | null | undefined) {
+  if (status === "locked") return "bloquée";
+  if (status === "terminated") return "supprimée";
+  return "active";
+}
+
+async function bookingPliantCards(admin: SupabaseClient, bookingId: string) {
+  const { data, error } = await admin
+    .from("crm_booking_cards")
+    .select("id, label, limit_cents, currency, status, last4")
+    .eq("booking_id", bookingId)
+    .order("created_at");
+  if (error) {
+    logRead("cartes pliant", error);
+    throw new McpReadError("Lecture des cartes Pliant impossible.");
+  }
+  return ((data || []) as { id: string; label: string | null; limit_cents: number | null; currency: string | null; status: string | null; last4: string | null }[]).map(
+    (row) => ({
+      carte_id: row.id,
+      nom: row.label || "Carte",
+      plafond: row.limit_cents == null ? null : row.limit_cents / 100,
+      devise: row.currency || "EUR",
+      quatre_derniers: row.last4 && /^\d{4}$/.test(row.last4) ? row.last4 : null,
+      statut: pliantStatusLabel(row.status),
+    })
+  );
+}
+
 async function bookingTravelers(admin: SupabaseClient, bookingId: string) {
   const { data, error } = await admin
     .from("crm_booking_travelers")
@@ -599,8 +627,9 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     return { choix: rows.map((row) => bookingLine(row, names, new Map(), companies)) };
   }
   const booking = rows[0];
-  const [cards, travelers, visas, tasks, names, amounts, companies] = await Promise.all([
+  const [cards, pliantCards, travelers, visas, tasks, names, amounts, companies] = await Promise.all([
     bookingCards(admin, booking.id),
+    bookingPliantCards(admin, booking.id),
     bookingTravelers(admin, booking.id),
     admin.from("crm_visa_requests").select("country, status, step").eq("booking_id", booking.id),
     admin.from("crm_visa_tasks").select("holder_name, reasons, done_at").eq("booking_id", booking.id).is("done_at", null),
@@ -624,6 +653,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     commission_appliquee: booking.agency_commission === true,
     voyageurs: travelers.map((row) => [row.first_name, row.last_name].filter(Boolean).join(" ").trim()),
     cartes: cards.map(cardLine),
+    cartes_pliant: pliantCards,
     formalites: [
       ...((visas.data || []) as { country: string; status: string | null; step: string | null }[])
         .filter((row) => row.status === "refuse" || (row.step !== "piece" && row.status !== "piece"))

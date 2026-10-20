@@ -1,4 +1,4 @@
-import { pliantCardNomination, pliantDesignation } from "./eta-il-fee";
+import { pliantCardNomination, pliantStayCaption } from "./eta-il-fee";
 import { addIsoDays, cardCloseDate, isoDate, parseEurosToCents } from "./hotel-arrival";
 
 /** Marque une carte dont le montant a été choisi sur le dossier. Le cron ne la réécrit pas. */
@@ -73,6 +73,12 @@ export function manualStayCardBody(input: {
   organizationId: string;
   existingCards?: number;
   designation?: string | null;
+  /** Nom du client, distinct du titulaire imprimé sur la carte. */
+  client?: string | null;
+  /** Hôtel ou fournisseur. La désignation sert si ce champ est vide. */
+  place?: string | null;
+  hotels?: Array<string | null | undefined>;
+  reference?: string | null;
   transactionLimitCents?: number;
   maxTransactionCount?: number;
   currency?: string;
@@ -82,6 +88,23 @@ export function manualStayCardBody(input: {
     lastName: input.lastName,
     existingCards: input.existingCards,
   });
+  const ordinal = Math.max(0, Math.floor(Number(input.existingCards)) || 0) + 1;
+  const mark = (value: string | null | undefined) => {
+    const text = (value || "").trim();
+    if (!text) return "";
+    return ordinal > 1 ? `${text} ${ordinal}` : text;
+  };
+  const hotels = [...(input.hotels || []), input.place].map((hotel) => mark(hotel)).filter(Boolean);
+  const designation = mark(input.designation);
+  const caption =
+    hotels.length || designation || (input.reference || "").trim()
+      ? pliantStayCaption({
+          client: input.client || input.lastName,
+          hotels,
+          designation,
+          reference: input.reference,
+        })
+      : null;
   const code = (input.currency || "EUR").trim().toUpperCase();
   const currency = /^[A-Z]{3}$/.test(code) ? code : "EUR";
   const money = { value: input.limitCents, currency };
@@ -89,7 +112,8 @@ export function manualStayCardBody(input: {
   return {
     organizationId: input.organizationId,
     cardConfig: "PLIANT_VIRTUAL" as const,
-    label: pliantDesignation(input.designation) || name.label,
+    label: caption?.label || name.label,
+    purpose: caption?.purpose || name.label,
     customFirstName: name.customFirstName,
     customLastName: name.customLastName,
     limit: money,
@@ -111,6 +135,10 @@ export function manualStayCardDraft(input: {
   organizationId: string;
   existingCards?: number;
   designation?: string | null;
+  client?: string | null;
+  place?: string | null;
+  hotels?: Array<string | null | undefined>;
+  reference?: string | null;
   transactionAmount?: string;
   transactionCount?: string;
   currency?: string;
@@ -139,6 +167,10 @@ export function manualStayCardDraft(input: {
       organizationId: input.organizationId,
       existingCards: input.existingCards,
       designation: input.designation,
+      client: input.client,
+      place: input.place,
+      hotels: input.hotels,
+      reference: input.reference,
       transactionLimitCents: rules?.transactionLimitCents,
       maxTransactionCount: rules?.maxTransactionCount,
       currency: input.currency,

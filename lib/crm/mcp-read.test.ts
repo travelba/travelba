@@ -264,6 +264,23 @@ function dossierClient(options: { fail?: "societe" | "cartes" | "montant" } = {}
         if (table === "crm_customers") {
           return { data: [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }], error: null };
         }
+        if (table === "crm_booking_cards") {
+          const bookingId = calls.find((call) => call.method === "eq" && call.args[0] === "booking_id")?.args[1];
+          if (bookingId !== DOSSIER_88) return { data: [], error: null };
+          return {
+            data: [
+              {
+                id: "card-88",
+                label: "Phulay Bay",
+                limit_cents: 1000,
+                currency: "EUR",
+                status: "locked",
+                last4: "4242",
+              },
+            ],
+            error: null,
+          };
+        }
         return { data: [], error: null };
       });
     },
@@ -289,6 +306,10 @@ test("fiche et recherche montrent la société, les cartes et le même montant",
 
   const fiche88 = await readFicheDossier({ reference: "TB-2026-0088" }, admin);
   assert.ok("cartes" in fiche88);
+  assert.ok("cartes_pliant" in fiche88);
+  assert.equal(fiche88.cartes_pliant.length, 1);
+  assert.equal(fiche88.cartes_pliant[0]?.statut, "bloquée");
+  assert.equal(fiche88.cartes_pliant[0]?.nom, "Phulay Bay");
   assert.equal(fiche88.societe, "ATELIER");
   assert.equal(fiche88.paye_par, "société");
   assert.equal(fiche88.montant, formatMoney(52292.39, "EUR"));

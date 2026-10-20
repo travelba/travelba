@@ -3,7 +3,7 @@ import test from "node:test";
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity } from "./manual-stay-card";
 import { runWithMcpAccess } from "./mcp-auth";
-import { createPliantCard, readPliantCard, type CardDeps } from "./mcp-pliant-card";
+import { blockPliantCard, createPliantCard, readPliantCard, type CardDeps } from "./mcp-pliant-card";
 import { McpReadError } from "./mcp-passport";
 import { McpWriteError } from "./mcp-write";
 
@@ -20,13 +20,17 @@ type State = {
   customers: Row[];
   travelers: Row[];
   cards: Row[];
+  items: Row[];
   audits: Row[];
   registry: Row[];
   order: string[];
   issued: unknown[];
+  locks: string[];
+  unlocks: string[];
   secretCalls: number;
   failAudit: boolean;
   failCardInsert: boolean;
+  failCardUpdate: boolean;
 };
 
 function baseState(): State {
@@ -43,13 +47,17 @@ function baseState(): State {
     customers: [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }],
     travelers: [],
     cards: [],
+    items: [],
     audits: [],
     registry: [],
     order: [],
     issued: [],
+    locks: [],
+    unlocks: [],
     secretCalls: 0,
     failAudit: false,
     failCardInsert: false,
+    failCardUpdate: false,
   };
 }
 
@@ -65,6 +73,8 @@ function fakeAdmin(state: State) {
               ? state.travelers
               : table === "crm_booking_cards"
                 ? state.cards
+                : table === "crm_booking_items"
+                  ? state.items
                 : table === "crm_pliant_cards"
                   ? state.registry
                   : table === "crm_mcp_card_events"
@@ -105,6 +115,31 @@ function fakeAdmin(state: State) {
           state.registry.push(payload);
           return { error: null };
         },
+        update(payload: Row) {
+          const result = {
+            eq(col: string, val: unknown) {
+              filters.push({ col, val });
+              return result;
+            },
+            select() {
+              return result;
+            },
+            then(
+              onFulfilled: (value: { data: Row[] | null; error: { code: string } | null }) => unknown,
+              onRejected?: (reason: unknown) => unknown
+            ) {
+              const apply = async () => {
+                if (table !== "crm_booking_cards") return { data: null, error: null };
+                if (state.failCardUpdate) return { data: null, error: { code: "XX000" } };
+                const rows = matched();
+                for (const row of rows) Object.assign(row, payload);
+                return { data: rows, error: null };
+              };
+              return apply().then(onFulfilled, onRejected);
+            },
+          };
+          return result;
+        },
         then(
           onFulfilled: (value: { data: Row[]; error: null }) => unknown,
           onRejected?: (reason: unknown) => unknown
@@ -130,6 +165,14 @@ function deps(state: State): CardDeps {
       state.secretCalls += 1;
       state.order.push("secrets");
       return { pan: PAN, expiry: "06/28", cvc: CVV };
+    },
+    lock: async (cardId: string) => {
+      state.locks.push(cardId);
+      state.order.push("lock");
+    },
+    unlock: async (cardId: string) => {
+      state.unlocks.push(cardId);
+      state.order.push("unlock");
     },
   };
 }
@@ -175,7 +218,7 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
   assert.equal("pan" in value, false);
   assert.equal("cvv" in value, false);
   if (!("cree" in value) || !value.cree) assert.fail("carte non créée");
-  assert.equal(value.nom, "Visa");
+  assert.equal(value.nom, "Martin – Visa – TB-2026-0082");
   assert.equal(value.titulaire, "Camille Martin");
   assert.equal(value.plafond, 10);
   assert.equal(value.devise, "EUR");
@@ -188,6 +231,9 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
 
   const body = state.issued[0] as {
     label: string;
+    purpose: string;
+    customFirstName: string;
+    customLastName: string;
     cardConfig: string;
     maxTransactionCount: number;
     limit: { value: number; currency: string };
@@ -195,7 +241,11 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
     cardControls?: unknown;
     validTo: string;
   };
-  assert.equal(body.label, "Visa");
+  assert.equal(body.label, "Martin – Visa – TB-2026-0082");
+  assert.equal(body.purpose, "Martin – Visa – TB-2026-0082");
+  assert.equal(body.customFirstName, "Camille");
+  assert.equal(body.customLastName, "Martin");
+  assert.equal(body.label.includes("Camille"), false);
   assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
   assert.equal(body.maxTransactionCount, 1);
   assert.deepEqual(body.limit, { value: 1000, currency: "EUR" });
@@ -217,7 +267,7 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
   assert.equal(audit?.booking_id, BOOKING);
   assert.equal(audit?.reference, "TB-2026-0082");
   assert.equal(audit?.pliant_card_id, "pliant-visa-1");
-  assert.equal(audit?.label, "Visa");
+  assert.equal(audit?.label, "Martin – Visa – TB-2026-0082");
   assert.equal(audit?.limit_cents, 1000);
   assert.equal(audit?.currency, "EUR");
   const blob = JSON.stringify(state.audits) + JSON.stringify(lines);
@@ -369,4 +419,119 @@ test("un refus Pliant ne laisse pas sortir le numéro", async () => {
   assert.equal(blob.includes(PAN), false);
   assert.equal(state.audits.at(-1)?.outcome, "erreur");
   assert.equal(state.cards.length, 0);
+});
+
+test("le libellé Pliant porte le client, l’hôtel et la référence, pas le titulaire", async () => {
+  const state = baseState();
+  state.bookings[0] = { ...state.bookings[0], reference: "TB-2026-0088" };
+  state.customers[0] = { id: CLIENT, first_name: "Andréa", last_name: "Bensaïd" };
+  state.items.push({
+    booking_id: BOOKING,
+    kind: "hotel",
+    title: "Phulay Bay",
+    supplier: "Little Emperors",
+    details: { hotel_name: "Phulay Bay" },
+    lifecycle: "active",
+  });
+  const created = await runWithMcpAccess(CARDS, () =>
+    createPliantCard(
+      { reference: "TB-2026-0088", nom: "Visa", plafond: 10, prenom: "Andréa", nom_titulaire: "Dupont" },
+      fakeAdmin(state),
+      deps(state)
+    )
+  );
+  const body = state.issued[0] as { label: string; purpose: string; customFirstName: string; customLastName: string };
+  assert.equal(body.customFirstName, "Andrea");
+  assert.equal(body.customLastName, "Dupont");
+  assert.equal(body.customFirstName.includes("Bensaid"), false);
+  assert.equal(body.customLastName.includes("Phulay"), false);
+  assert.equal(body.label, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(body.purpose, "Bensaid – Phulay Bay · Visa – TB-2026-0088");
+  assert.equal(body.label.includes("Andr-a"), false);
+  assert.equal(body.label.includes("Andrea"), false);
+  if (!("cree" in created) || !created.cree) assert.fail("carte non créée");
+  assert.equal(created.titulaire, "Andréa Dupont");
+  assert.equal(state.cards[0]?.first_name, "Andréa");
+  assert.equal(state.cards[0]?.last_name, "Dupont");
+});
+
+test("bloquer_carte_pliant gèle puis rouvre la carte du dossier, sans numéro", async () => {
+  const state = baseState();
+  state.cards.push(card(), card({ id: "55555555-5555-4555-8555-555555555555", pliant_card_id: "pliant-hotel", label: "Hôtel" }));
+  const choice = await runWithMcpAccess(CARDS, () =>
+    blockPliantCard({ reference: "TB-2026-0082" }, fakeAdmin(state), deps(state))
+  );
+  assert.equal("choix" in choice, true);
+  assert.equal(state.locks.length, 0);
+
+  const blocked = await runWithMcpAccess(CARDS, () =>
+    blockPliantCard(
+      { dossier_id: BOOKING, carte_id: "44444444-4444-4444-8444-444444444444" },
+      fakeAdmin(state),
+      deps(state)
+    )
+  );
+  if (!("bloquee" in blocked) || !blocked.bloquee) assert.fail("carte non gelée");
+  assert.equal(blocked.statut, "bloquée");
+  assert.equal("pan" in blocked, false);
+  assert.deepEqual(state.locks, ["pliant-visa-1"]);
+  assert.equal(state.unlocks.length, 0);
+  assert.equal(state.cards[0]?.status, "locked");
+  assert.equal(state.cards[1]?.status, "active");
+  assert.equal(state.registry.at(-1)?.status, "locked");
+  assert.equal(state.audits.at(-1)?.kind, "blocage");
+  assert.equal(state.audits.at(-1)?.outcome, "ok");
+  assert.equal(JSON.stringify(state.audits).includes(PAN), false);
+
+  const opened = await runWithMcpAccess(CARDS, () =>
+    blockPliantCard(
+      { reference: "TB-2026-0082", carte_id: "pliant-visa-1", debloquer: true },
+      fakeAdmin(state),
+      deps(state)
+    )
+  );
+  if (!("debloquee" in opened) || !opened.debloquee) assert.fail("carte non rouverte");
+  assert.equal(opened.statut, "active");
+  assert.deepEqual(state.unlocks, ["pliant-visa-1"]);
+  assert.equal(state.cards[0]?.status, "active");
+  assert.equal(state.audits.at(-1)?.kind, "deblocage");
+});
+
+test("sans le jeton carte, ou si Pliant refuse, la carte reste active", async () => {
+  const state = baseState();
+  state.cards.push(card());
+  await assert.rejects(
+    () =>
+      runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+        blockPliantCard({ reference: "TB-2026-0082" }, fakeAdmin(state), deps(state))
+      ),
+    (err: unknown) => err instanceof McpWriteError && /pas autorisé/.test(err.message)
+  );
+  assert.equal(state.locks.length, 0);
+  assert.equal(state.cards[0]?.status, "active");
+  assert.equal(state.audits[0]?.kind, "blocage");
+  assert.equal(state.audits[0]?.outcome, "refuse");
+
+  const failing = deps(state);
+  failing.lock = async () => {
+    throw new Error("Pliant n’a pas bloqué la carte.");
+  };
+  await assert.rejects(
+    () => runWithMcpAccess(CARDS, () => blockPliantCard({ reference: "TB-2026-0082" }, fakeAdmin(state), failing)),
+    (err: unknown) => err instanceof McpWriteError && err.message === "Pliant n’a pas bloqué la carte."
+  );
+  assert.equal(state.cards[0]?.status, "active");
+  assert.equal(state.audits.at(-1)?.outcome, "erreur");
+
+  const stale = baseState();
+  stale.cards.push(card());
+  stale.failCardUpdate = true;
+  const locking = deps(stale);
+  await assert.rejects(
+    () => runWithMcpAccess(CARDS, () => blockPliantCard({ reference: "TB-2026-0082" }, fakeAdmin(stale), locking)),
+    McpWriteError
+  );
+  assert.deepEqual(stale.locks, ["pliant-visa-1"]);
+  assert.equal(stale.cards[0]?.status, "active");
+  assert.equal(stale.registry.length, 0);
 });
