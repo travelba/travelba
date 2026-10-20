@@ -179,6 +179,23 @@ test("le rattachement exige un seul candidat", () => {
   );
 });
 
+test("le premier prénom et le nom d’usage désignent la même personne", () => {
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Victoria", last_name: "Martin" },
+      { first_name: "Victoria Marie Rebecca", last_name: "Tetard", usage_name: "Martin" }
+    ),
+    true
+  );
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Rebecca", last_name: "Martin" },
+      { first_name: "Victoria Marie Rebecca", last_name: "Tetard", usage_name: "Martin" }
+    ),
+    true
+  );
+});
+
 test("le nom d’épouse désigne la même personne que le nom de naissance", () => {
   assert.equal(
     namesReferToSamePerson(
