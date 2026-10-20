@@ -59,6 +59,9 @@ import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } fr
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 import { WhatsappThread } from "@/components/admin/WhatsappThread";
+import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
+import { isVercelPreview } from "@/lib/crm/preview-secrets";
+import { threadIsPaused } from "@/lib/crm/whatsapp-takeover";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -228,6 +231,10 @@ export default async function AdminClientDetailPage({ params }: Props) {
     supabase,
     bookingRows.map((row) => row.id)
   );
+  const pauseRow = c.phone
+    ? await supabase.from("crm_whatsapp_threads").select("paused_until").eq("phone", c.phone).maybeSingle()
+    : { data: null };
+  const conciergePaused = !pauseRow.data ? false : threadIsPaused(pauseRow.data.paused_until, new Date());
   const threadMessages = whatsappMessages.error
     ? (
         await supabase
@@ -411,6 +418,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
         messages={threadMessages}
         requests={whatsappRequests.error ? [] : whatsappRequests.data || []}
         bookings={activeBookings.map((booking) => ({ id: booking.id, reference: booking.reference }))}
+        phone={c.phone}
+        customerId={c.id}
+        customerName={[c.first_name, c.last_name].filter(Boolean).join(" ")}
+        paused={conciergePaused}
+        templates={approvedManualTemplates()}
+        previewBlocked={isVercelPreview()}
       />
         </div>
 

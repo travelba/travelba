@@ -1,9 +1,13 @@
 import { secretEquals } from "./secret-equals";
 
-/** API de test uniquement. La clé de test ne part pas vers api.littleemperors.com ni vers Vercel Production. */
+/** Preview, développement, et toute revue hors Vercel Production. */
 export const LITTLE_EMPERORS_STAGING_ORIGIN = "https://api-staging.littleemperors.com";
 
+/** Vercel Production, sauf si LITTLE_EMPERORS_API_BASE désigne un autre hôte littleemperors.com. */
+export const LITTLE_EMPERORS_PRODUCTION_ORIGIN = "https://api.littleemperors.com";
+
 const PRODUCTION_HOST = "api.littleemperors.com";
+const STAGING_HOST = "api-staging.littleemperors.com";
 
 export class LittleEmperorsError extends Error {
   constructor(
@@ -44,11 +48,19 @@ export type LeHotelPublic = {
   website: string | null;
 };
 
+/**
+ * Le blocage de production est levé : Little Emperors a émis la clé le 15 octobre 2026.
+ * L’écran reste interne. Les appels restent des lectures.
+ */
 export function littleEmperorsProductionBlocked() {
+  return false;
+}
+
+export function littleEmperorsOnProduction() {
   return process.env.VERCEL_ENV === "production";
 }
 
-/** Vide en production Vercel, même si la variable a été copiée par erreur. */
+/** Clé de l’environnement courant. Production : clé de production. Ailleurs : clé de test. */
 export function littleEmperorsApiKey() {
   if (littleEmperorsProductionBlocked()) return "";
   return (process.env.LITTLE_EMPERORS_API_KEY || "").trim();
@@ -58,17 +70,23 @@ export function littleEmperorsConfigured() {
   return Boolean(littleEmperorsApiKey());
 }
 
+function littleEmperorsHost(hostname: string) {
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  return host === "littleemperors.com" || host.endsWith(".littleemperors.com");
+}
+
 export function littleEmperorsOrigin() {
   if (littleEmperorsProductionBlocked()) {
     throw new LittleEmperorsError(
-      "La production appellera l’API de production Little Emperors dès que la clé sera émise. La clé de test reste sur la revue.",
+      "La production appelle l’API de production Little Emperors. La clé de test reste sur la revue.",
       403,
       "vercel_production"
     );
   }
-  const raw = (process.env.LITTLE_EMPERORS_API_BASE || LITTLE_EMPERORS_STAGING_ORIGIN)
-    .trim()
-    .replace(/\/$/, "");
+  const onProduction = littleEmperorsOnProduction();
+  const fallback = onProduction ? LITTLE_EMPERORS_PRODUCTION_ORIGIN : LITTLE_EMPERORS_STAGING_ORIGIN;
+  const configured = (process.env.LITTLE_EMPERORS_API_BASE || "").trim();
+  const raw = (configured || fallback).replace(/\/$/, "");
   let url: URL;
   try {
     url = new URL(raw);
@@ -79,18 +97,32 @@ export function littleEmperorsOrigin() {
       "bad_base"
     );
   }
-  if (url.hostname === PRODUCTION_HOST) {
+  if (url.protocol !== "https:" || url.username || url.password) {
     throw new LittleEmperorsError(
-      "La clé de test reste sur l’API de staging. La production utilise la clé de production.",
+      "L’adresse de l’API Little Emperors est invalide.",
+      500,
+      "bad_base"
+    );
+  }
+  if (!onProduction && url.hostname === PRODUCTION_HOST) {
+    throw new LittleEmperorsError(
+      "La clé de test reste sur l’API de staging. La production appelle l’API de production.",
       403,
       "production_refused"
     );
   }
-  if (url.hostname !== "api-staging.littleemperors.com") {
+  if (!onProduction && url.hostname !== STAGING_HOST) {
     throw new LittleEmperorsError(
       "Cette revue appelle l’API de staging Little Emperors.",
       403,
       "staging_only"
+    );
+  }
+  if (onProduction && !littleEmperorsHost(url.hostname)) {
+    throw new LittleEmperorsError(
+      "La production n’appelle qu’un hôte littleemperors.com.",
+      403,
+      "host_refused"
     );
   }
   return url.origin;
@@ -108,21 +140,30 @@ export function littleEmperorsWebhookConfigured() {
 
 /** Message montré au partenaire. Le texte français de l’agence ne part pas tel quel. */
 export function littleEmperorsPartnerMessage(code: string) {
+  const production = littleEmperorsOnProduction();
   switch (code) {
     case "vercel_production":
-      return "Production will call the Little Emperors production API once that key is issued. The test key stays on the staging review.";
+      return "Production calls the Little Emperors production API. The test key stays on the staging review.";
     case "not_configured":
-      return "The Little Emperors key is not on this environment yet.";
+      return production
+        ? "The Little Emperors production key is not on this environment yet."
+        : "The Little Emperors key is not on this environment yet.";
     case "bookings_null":
-      return "Little Emperors has not attached an account to the test key. No reservation was created.";
+      return production
+        ? "Little Emperors has not attached an account to the production key. No reservation was created."
+        : "Little Emperors has not attached an account to the test key. No reservation was created.";
     case "unauthorized":
-      return "The staging API refused the key.";
+      return production ? "The production API refused the key." : "The staging API refused the key.";
+    case "host_refused":
+      return "Production calls a Little Emperors host only.";
     case "staging_only":
     case "production_refused":
     case "bad_base":
-      return "This staging deployment calls the Little Emperors staging API.";
+      return production
+        ? "Production calls the Little Emperors production API."
+        : "This staging deployment calls the Little Emperors staging API.";
     default:
-      return "The staging API could not be read.";
+      return production ? "The production API could not be read." : "The staging API could not be read.";
   }
 }
 
@@ -186,8 +227,9 @@ function redact(message: string) {
 function mapUpstream(status: number, message: string) {
   const clean = redact(message).slice(0, 400);
   if (clean.includes("bookings() on null")) {
+    const keyLabel = littleEmperorsOnProduction() ? "la clé de production" : "la clé de test";
     return new LittleEmperorsError(
-      "Little Emperors n’a pas rattaché de compte à la clé de test. Leur API répond : bookings() on null. Aucune réservation n’a été créée.",
+      `Little Emperors n’a pas rattaché de compte à ${keyLabel}. Leur API répond : bookings() on null. Aucune réservation n’a été créée.`,
       status,
       "bookings_null"
     );

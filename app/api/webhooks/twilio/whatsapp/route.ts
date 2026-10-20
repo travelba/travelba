@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { notifyConciergeRequest } from "@/lib/crm/whatsapp-alert";
 import { issueConciergeMagicLink } from "@/lib/crm/whatsapp-access";
 import { generateConciergeReply } from "@/lib/crm/whatsapp-conversation";
 import { createWhatsappSupabaseStore, receiveWhatsappWebhook } from "@/lib/crm/whatsapp-inbound";
 import { sendWhatsappSession } from "@/lib/crm/whatsapp-session";
+import { rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
 import { twilioWebhookUrl } from "@/lib/crm/twilio-signature";
 
 export const runtime = "nodejs";
@@ -28,6 +30,10 @@ export async function POST(request: Request) {
       authToken: token,
       accountSid: process.env.TWILIO_ACCOUNT_SID,
       burstWaitMs: 1200,
+      agencyFrom: process.env.TWILIO_WHATSAPP_FROM,
+      allow: (phone) =>
+        rateLimit({ key: rateLimitKey("whatsapp", phone), limit: 20, windowSeconds: 600 }),
+      alert: (row) => notifyConciergeRequest(row).then(() => undefined),
       store,
       openAccess: (customer) => issueConciergeMagicLink(createServiceClient(), customer.email),
       converse: generateConciergeReply,

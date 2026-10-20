@@ -1,0 +1,135 @@
+import { NextResponse } from "next/server";
+import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { toE164 } from "@/lib/crm/phone";
+import { createServiceClient } from "@/lib/supabase/admin";
+import { embeddingLiteral, isKnowledgeKind, knowledgeSeed, parseExampleImport } from "@/lib/crm/concierge-knowledge";
+import { conciergeOutboundArmed, decideProposal } from "@/lib/crm/concierge-proposals";
+import { sendWhatsappSession, sessionAddress } from "@/lib/crm/whatsapp-session";
+
+export const runtime = "nodejs";
+
+const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function POST(request: Request) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const body = (await request.json().catch(() => null)) as {
+    action?: string;
+    kind?: string;
+    title?: string;
+    text?: string;
+    proposalId?: string;
+    edited?: string;
+  } | null;
+  const action = body?.action;
+  let admin: ReturnType<typeof createServiceClient>;
+  try {
+    admin = createServiceClient();
+  } catch {
+    return jsonError("Service indisponible", 503);
+  }
+
+  if (action === "seed") {
+    const rows = knowledgeSeed().map((item) => ({
+      kind: item.kind,
+      title: item.title,
+      body: item.body,
+      locale: item.locale,
+      tags: item.tags,
+      published: true,
+      embedding: embeddingLiteral(`${item.title}\n${item.body}`),
+    }));
+    const { error } = await admin.from("crm_concierge_knowledge").insert(rows);
+    if (error) return jsonError("La migration du Concierge n’est pas encore appliquée.", 503);
+    return NextResponse.json({ ok: true, count: rows.length });
+  }
+
+  if (action === "save") {
+    const kind = body?.kind || "";
+    const title = (body?.title || "").trim();
+    const text = (body?.text || "").trim();
+    if (!isKnowledgeKind(kind) || title.length < 2 || text.length < 2) return jsonError("Texte incomplet", 400);
+    const titleCut = title.slice(0, 120);
+    const bodyCut = text.slice(0, 4000);
+    const { error } = await admin.from("crm_concierge_knowledge").insert({
+      kind,
+      title: titleCut,
+      body: bodyCut,
+      locale: "fr",
+      tags: [kind],
+      published: true,
+      embedding: embeddingLiteral(`${titleCut}\n${bodyCut}`),
+    });
+    if (error) return jsonError("La migration du Concierge n’est pas encore appliquée.", 503);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "import") {
+    const rows = parseExampleImport(body?.text || "");
+    if (!rows.length) return jsonError("Aucun exemple", 400);
+    const { error } = await admin.from("crm_concierge_knowledge").insert(
+      rows.map((item) => ({
+        kind: "example",
+        title: item.title,
+        body: item.body,
+        locale: "fr",
+        tags: item.tags,
+        published: true,
+        embedding: embeddingLiteral(`${item.title}\n${item.body}`),
+      }))
+    );
+    if (error) return jsonError("La migration du Concierge n’est pas encore appliquée.", 503);
+    return NextResponse.json({ ok: true, count: rows.length });
+  }
+
+  if (action === "approve" || action === "reject" || action === "edit") {
+    const proposalId = body?.proposalId || "";
+    if (!ID.test(proposalId)) return jsonError("Proposition manquante", 400);
+    const { data, error } = await admin
+      .from("crm_concierge_proposals")
+      .select("id, draft_body, status, phone, customer_id, booking_id")
+      .eq("id", proposalId)
+      .maybeSingle();
+    if (error || !data) return jsonError("La migration du Concierge n’est pas encore appliquée.", 503);
+    const decision = decideProposal(
+      { draftBody: String(data.draft_body || "") },
+      action,
+      body?.edited || null,
+      conciergeOutboundArmed()
+    );
+    if ("error" in decision && decision.error) return jsonError(decision.error, 400);
+    const { error: updateError } = await admin
+      .from("crm_concierge_proposals")
+      .update({
+        status: decision.status,
+        draft_body: decision.body || data.draft_body,
+        decided_by: auth.staff.id,
+        decided_at: new Date().toISOString(),
+      })
+      .eq("id", proposalId);
+    if (updateError) return jsonError("La proposition n’a pas été mise à jour.", 503);
+    let sent = false;
+    const phone = toE164(String(data.phone || ""), "FR");
+    const outbound = decision.body;
+    const to = phone ? sessionAddress(phone) : null;
+    if (decision.send && typeof outbound === "string" && to) {
+      const result = await sendWhatsappSession({ to, body: outbound });
+      sent = result.ok;
+      if (result.ok) {
+        await admin.from("crm_whatsapp_messages").insert({
+          customer_id: data.customer_id,
+          booking_id: data.booking_id,
+          direction: "outbound",
+          template_key: "chat",
+          body: outbound,
+          twilio_sid: result.sid,
+          status: "sent",
+          error: null,
+        });
+      }
+    }
+    return NextResponse.json({ ok: true, sent, status: decision.status });
+  }
+
+  return jsonError("Action inconnue", 400);
+}

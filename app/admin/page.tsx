@@ -127,6 +127,10 @@ export default async function AdminHomePage() {
     ),
   ]);
   const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
+  const whatsappOpen = await supabase
+    .from("crm_whatsapp_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "open");
   const todo = adminTodoLines({
     emails: badges.emails,
     le: badges.le,
@@ -134,6 +138,8 @@ export default async function AdminHomePage() {
     services: serviceLines.length,
     departTomorrow: departTomorrowCount ?? 0,
     expiring: badges.pieces,
+    whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
+    unread: badges.whatsapp,
   });
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
 

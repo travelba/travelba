@@ -215,10 +215,12 @@ test("numéro inconnu : une phrase, pas de dossier", async () => {
   assert.equal(sent[0].mediaUrl ?? null, null);
   assert.deepEqual(
     writes.map((write) => write.table),
-    ["crm_whatsapp_messages", "crm_whatsapp_messages"]
+    ["crm_whatsapp_messages", "crm_whatsapp_messages", "crm_whatsapp_requests"]
   );
   assert.equal(writes.every((write) => write.row.customer_id == null), true);
-  assert.equal(writes.some((write) => write.table === "crm_whatsapp_requests"), false);
+  const lead = writes.find((write) => write.table === "crm_whatsapp_requests");
+  assert.equal(lead?.row.kind, "lead");
+  assert.equal(lead?.row.phone, "+33699001122");
   assert.equal(JSON.stringify(writes).includes("Tokyo"), true);
   assert.equal(JSON.stringify(writes).includes("crm_bookings"), false);
 });

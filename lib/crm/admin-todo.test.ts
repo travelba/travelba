@@ -10,18 +10,21 @@ test("la liste À faire suit l’ordre du travail et cache les zéros", () => {
     services: 1,
     departTomorrow: 1,
     expiring: 3,
+    whatsapp: 2,
   });
   assert.deepEqual(
     lines.map((line) => line.id),
-    ["le", "formalities", "services", "depart-tomorrow", "expiring"]
+    ["whatsapp", "le", "formalities", "services", "depart-tomorrow", "expiring"]
   );
-  assert.equal(lines[0].label, "1 séjour Little Emperors sans dossier");
-  assert.equal(lines[1].label, "1 formalité ouverte");
-  assert.equal(lines[1].href, "/admin/formalites");
-  assert.equal(lines[2].label, "1 service à confirmer");
-  assert.equal(lines[2].href, "/admin/services");
-  assert.equal(lines[3].href, "/admin/reservations?etat=a-venir");
-  assert.equal(adminTodoTotal(lines), 7);
+  assert.equal(lines[0].label, "2 demandes WhatsApp à traiter");
+  assert.equal(lines[0].href, "/admin/whatsapp");
+  assert.equal(lines[1].label, "1 séjour Little Emperors sans dossier");
+  assert.equal(lines[2].label, "1 formalité ouverte");
+  assert.equal(lines[2].href, "/admin/formalites");
+  assert.equal(lines[3].label, "1 service à confirmer");
+  assert.equal(lines[3].href, "/admin/services");
+  assert.equal(lines[4].href, "/admin/reservations?etat=a-venir");
+  assert.equal(adminTodoTotal(lines), 9);
 });
 
 test("rien à faire : liste vide", () => {
@@ -32,6 +35,7 @@ test("rien à faire : liste vide", () => {
     services: 0,
     departTomorrow: 0,
     expiring: 0,
+    whatsapp: 0,
   });
   assert.deepEqual(lines, []);
   assert.equal(adminTodoTotal(lines), 0);
