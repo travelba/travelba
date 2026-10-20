@@ -32,6 +32,13 @@ test("le prénom d’accueil est le premier", () => {
 test("la signature n’est pas doublée", () => {
   const once = withConciergeSignature("Bonjour Simon.");
   assert.equal(withConciergeSignature(once), once);
+  const doubled = withConciergeSignature("je reste à votre disposition.\n\nLe Concierge.\n\nLe Concierge");
+  assert.equal(doubled, "je reste à votre disposition.\n\nLe Concierge");
+  assert.equal(doubled.match(/Le Concierge/g)?.length, 1);
+  const sentence = withConciergeSignature("Je suis Le Concierge de chez TBA.\n\nLe Concierge.");
+  assert.match(sentence, /Je suis Le Concierge de chez TBA\./);
+  assert.equal(sentence.trimEnd().endsWith(CONCIERGE_SIGNATURE), true);
+  assert.equal(sentence.match(/Le Concierge/g)?.length, 2);
 });
 
 test("un téléphone invalide ne devient pas une adresse WhatsApp", () => {

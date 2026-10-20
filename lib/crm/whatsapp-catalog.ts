@@ -229,6 +229,17 @@ function session(id: string, title: string, when: string, body: string, image: s
   });
 }
 
+const SAMPLE_ITEM = {
+  date: null,
+  weekday: "",
+  flightNumber: "",
+  terminal: "",
+  fromPlace: "",
+  toPlace: "",
+  fromCode: "",
+  toCode: "",
+};
+
 function sampleStay(reference: string, destination: string): ConciergeStay {
   return {
     id: reference,
@@ -250,6 +261,7 @@ function sampleStay(reference: string, destination: string): ConciergeStay {
         clock: "10h15",
         included: [],
         amount: null,
+        ...SAMPLE_ITEM,
       },
       {
         kind: "hotel",
@@ -258,6 +270,7 @@ function sampleStay(reference: string, destination: string): ConciergeStay {
         clock: "",
         included: ["Petit-déjeuner"],
         amount: null,
+        ...SAMPLE_ITEM,
       },
       {
         kind: "chauffeur",
@@ -266,6 +279,7 @@ function sampleStay(reference: string, destination: string): ConciergeStay {
         clock: "",
         included: [],
         amount: null,
+        ...SAMPLE_ITEM,
       },
     ],
     documents: ["Confirmation d’hôtel"],
@@ -651,10 +665,11 @@ function catalogGroups(): WhatsappCatalogGroup[] {
                 {
                   kind: "flight",
                   label: "Vol",
-                  lines: ["Paris — Avoriaz"],
+                  lines: ["Vol sans horaire"],
                   clock: "",
                   included: [],
                   amount: null,
+                  ...SAMPLE_ITEM,
                 },
               ],
             },
