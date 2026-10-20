@@ -18,6 +18,7 @@ import {
   partnerAdminDestination,
   mayShowPasswordSetup,
   mustSetPassword,
+  isOnboardingReplay,
   needsClientOnboarding,
 } from "@/lib/crm/session";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
@@ -165,6 +166,7 @@ export async function updateSession(request: NextRequest) {
     const dest = clientAreaRedirect(pathname, {
       mustSetPassword: showPasswordSetup,
       needsOnboarding: access.needsOnboarding,
+      replay: isOnboardingReplay(request.nextUrl.search),
     });
     if (dest) {
       const url = request.nextUrl.clone();

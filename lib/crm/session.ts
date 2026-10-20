@@ -2,7 +2,29 @@ import { safeInternalPath } from "./safe-path";
 
 export const SET_PASSWORD_PATH = "/connexion/mot-de-passe";
 export const ONBOARDING_PATH = "/mon-compte/bienvenue";
+/** Relecture volontaire, une fois la première visite passée. */
+export const ONBOARDING_REPLAY_PARAM = "revoir";
 export const MIN_PASSWORD_LENGTH = 8;
+
+export function onboardingReplayHref(base = "/mon-compte") {
+  return `${base}/bienvenue?${ONBOARDING_REPLAY_PARAM}=1`;
+}
+
+/** `?revoir=1` seulement. Une autre valeur ne rouvre pas la visite. */
+export function isOnboardingReplay(
+  input: string | URLSearchParams | { revoir?: string | string[] } | null | undefined
+) {
+  if (!input) return false;
+  if (typeof input === "string") {
+    return new URLSearchParams(input.replace(/^\?/, "")).get(ONBOARDING_REPLAY_PARAM) === "1";
+  }
+  if (typeof URLSearchParams !== "undefined" && input instanceof URLSearchParams) {
+    return input.get(ONBOARDING_REPLAY_PARAM) === "1";
+  }
+  const value = "revoir" in input ? input.revoir : undefined;
+  if (Array.isArray(value)) return value.includes("1");
+  return value === "1";
+}
 
 export function mustSetPassword(user: {
   app_metadata?: Record<string, unknown> | null;
@@ -143,14 +165,14 @@ export function withoutMustSetPassword(meta: Record<string, unknown>): Record<st
   return { ...meta, must_set_password: false };
 }
 
-/** Redirection dans /mon-compte, ou null pour laisser passer. */
+/** Redirection dans /mon-compte, ou null pour laisser passer. `replay` garde la visite déjà vue. */
 export function clientAreaRedirect(
   pathname: string,
-  opts: { mustSetPassword: boolean; needsOnboarding: boolean }
+  opts: { mustSetPassword: boolean; needsOnboarding: boolean; replay?: boolean }
 ) {
   if (opts.mustSetPassword) return SET_PASSWORD_PATH;
   if (opts.needsOnboarding && pathname !== ONBOARDING_PATH) return ONBOARDING_PATH;
-  if (!opts.needsOnboarding && pathname === ONBOARDING_PATH) return "/mon-compte";
+  if (!opts.needsOnboarding && pathname === ONBOARDING_PATH && !opts.replay) return "/mon-compte";
   return null;
 }
 

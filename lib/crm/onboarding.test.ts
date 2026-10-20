@@ -1,25 +1,59 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
-import { CLIENT_ONBOARDING_STEPS, PROFILE_ONBOARDING_HINTS, onboardingCopyBlob } from "./onboarding";
-import { CLIENT_PROFILE_NAV } from "./profile-nav";
+import {
+  CLIENT_ONBOARDING_STEPS,
+  ONBOARDING_BACK_LABEL,
+  ONBOARDING_NEXT_LABEL,
+  ONBOARDING_REPLAY_LABEL,
+  ONBOARDING_SKIP_LABEL,
+  onboardingCopyBlob,
+} from "./onboarding";
+import { onboardingReplayHref } from "./session";
 
-test("la bienvenue décrit le carnet publié, le livre comptabilisé et les quatre onglets", () => {
+test("la bienvenue suit les captures de l’espace client, dans l’ordre de la présentation", () => {
   assert.deepEqual(
     CLIENT_ONBOARDING_STEPS.map((step) => step.id),
-    ["carnet", "transactions", "profil"]
+    [
+      "connexion",
+      "accueil",
+      "a-venir",
+      "a-jour",
+      "itineraire",
+      "pieces",
+      "whatsapp",
+      "concierge",
+      "encours",
+      "paiement",
+      "coffre",
+    ]
   );
-  assert.deepEqual(
-    CLIENT_PROFILE_NAV.map((section) => section.label),
-    ["Vous", "Pièces", "Voyageurs", "Facturation"]
-  );
-  for (const section of CLIENT_PROFILE_NAV) {
-    assert.ok(PROFILE_ONBOARDING_HINTS[section.label]);
+  for (const step of CLIENT_ONBOARDING_STEPS) {
+    assert.match(step.image, /^\/onboarding\/.+\.webp$/);
+    assert.equal(fs.existsSync(`public${step.image}`), true, step.image);
+    assert.equal(step.title.length > 0, true);
+    assert.equal(step.legend.length > 0, true);
   }
+  assert.equal(
+    CLIENT_ONBOARDING_STEPS[0].title,
+    "Un espace client privé, ouvert sur invitation"
+  );
+  assert.equal(
+    CLIENT_ONBOARDING_STEPS.at(-1)?.title,
+    "Passeports, ESTA, ETA et visas : rien n’est oublié"
+  );
 });
 
-test("la bienvenue ne promet ni brouillon ni carte", () => {
-  const blob = onboardingCopyBlob().toLowerCase();
-  assert.equal(blob.includes("brouillon"), false);
-  assert.equal(blob.includes("carte"), false);
-  assert.equal(blob.includes("draft"), false);
+test("la bienvenue se passe et se revoit, sans promettre un brouillon", () => {
+  const blob = onboardingCopyBlob();
+  const lower = blob.toLowerCase();
+  assert.equal(blob.includes(ONBOARDING_SKIP_LABEL), true);
+  assert.equal(blob.includes(ONBOARDING_BACK_LABEL), true);
+  assert.equal(blob.includes(ONBOARDING_NEXT_LABEL), true);
+  assert.equal(ONBOARDING_NEXT_LABEL, "Suivant");
+  assert.equal(blob.includes(ONBOARDING_REPLAY_LABEL), true);
+  assert.equal(lower.includes("brouillon"), false);
+  assert.equal(lower.includes("draft"), false);
+  assert.equal(onboardingReplayHref(), "/mon-compte/bienvenue?revoir=1");
+  assert.equal(onboardingReplayHref("/exemple"), "/exemple/bienvenue?revoir=1");
 });
