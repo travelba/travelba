@@ -141,7 +141,7 @@ test("une heure absente du dossier ne sort pas dans la réponse", async () => {
   assert.equal(turn.text.includes("18h40"), false);
   assert.equal(turn.text.includes("18:40"), false);
   assert.equal(turn.text, keyword.text);
-  assert.match(turn.text, new RegExp(MISSING_CLOCK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(turn.text, new RegExp(MISSING_CLOCK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
 
   const priced = await planConciergeConversation({
     message: "À quelle heure part mon vol ?",
@@ -157,7 +157,7 @@ test("une heure absente du dossier ne sort pas dans la réponse", async () => {
     generate: async () => reply("Appelez le 06 12 34 56 78."),
   });
   assert.equal(phone.text.includes("06 12 34 56 78"), false);
-  assert.match(phone.text, new RegExp(MISSING_DRIVER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(phone.text, new RegExp(MISSING_DRIVER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   assert.equal(replyUsesUnknownFact("Appelez le +33 6 12 34 56 78.", dossier, []), true);
 });
 

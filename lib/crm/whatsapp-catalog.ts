@@ -239,6 +239,7 @@ const SAMPLE_ITEM = {
   fromCode: "",
   toCode: "",
   arrival: "",
+  endDate: null,
 };
 
 function sampleStay(reference: string, destination: string): ConciergeStay {

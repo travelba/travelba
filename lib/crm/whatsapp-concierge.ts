@@ -39,6 +39,7 @@ import {
 } from "./types";
 import { clientVisaStepCopy, type ClientVisaStep } from "./visa-flow";
 import { stayCoverUrl, whatsappTypeImageUrl, type WhatsappImageKind } from "./concierge-notices";
+import { packBubbles, conciergeOpening, type BubbleHistory } from "../concierge/bubbles";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 
 export const HANDOFF_SENTENCE = "Je transmets à l’agence.";
@@ -123,6 +124,7 @@ export type ConciergeItem = {
   fromCode: string;
   toCode: string;
   arrival: string;
+  endDate: string | null;
 };
 
 export type ConciergeFormality = {
@@ -183,6 +185,8 @@ export type ConciergeTurn = {
   handoff: HandoffKind | null;
   bookingId: string | null;
   text: string;
+  /** Bulles WhatsApp, dans l’ordre d’envoi. `text` est leur jointure. */
+  messages?: string[];
   /** Image du sujet : billet, visa, hôtel… La couverture du lieu seulement pour le séjour lui-même. */
   cover: string | null;
   optOut: boolean;
@@ -388,6 +392,7 @@ function itemLines(item: RawItem, prices: boolean): ConciergeItem {
     fromCode,
     toCode,
     arrival: endClock,
+    endDate: segmentDate(item.end_at),
   };
 }
 
@@ -600,16 +605,13 @@ function describeStay(stay: ConciergeStay, lang: ReplyLang, now: Date) {
   const end = stay.endDate ? bareDate(stay.endDate, lang, now) : "";
   const dates =
     start && end ? (lang === "en" ? `from ${start} to ${end}` : `du ${start} au ${end}`) : start || end;
+  const hotel = stay.items.find((item) => item.kind === "hotel");
+  const name = hotel ? hotelName(hotel) : "";
   const intro =
     lang === "en"
-      ? `Your stay${at ? ` ${at}` : ""}${dates ? ` runs ${dates}` : ""}.`
-      : `Votre séjour${at ? ` ${at}` : ""}${dates ? ` va ${dates}` : ""}.`;
-  const flight = stay.items.find((item) => item.kind === "flight" && (item.flightNumber || item.clock || item.date));
-  const hotel = stay.items.find((item) => item.kind === "hotel");
-  const detail = [flight ? flightSentence(flight, stay, lang, now) : "", hotel ? hotelSentence(hotel, stay, lang, now) : ""]
-    .filter(Boolean)
-    .join(" ");
-  return [intro, detail, stay.notesClient, stayClientUrl(stay.reference)].filter(Boolean).join("\n");
+      ? `Your stay${at ? ` ${at}` : ""}${dates ? ` runs ${dates}` : ""}${name ? `, at ${name}` : ""}.`
+      : `Votre séjour${at ? ` ${at}` : ""}${dates ? ` va ${dates}` : ""}${name ? `, à ${name}` : ""}.`;
+  return [intro, stay.notesClient, stayClientUrl(stay.reference)].filter(Boolean).join("\n");
 }
 
 function whichStayText(stays: ConciergeStay[], lang: ReplyLang) {
@@ -922,21 +924,6 @@ export function conciergeBrief(dossier: ConciergeDossier, now: Date = new Date()
   return lines.join("\n");
 }
 
-function greet(dossier: ConciergeDossier, lang: ReplyLang) {
-  const name = dossier.firstName.trim();
-  if (lang === "en") return name ? `Hello ${name},` : "Hello,";
-  if (lang === "he") return name ? `שלום ${name},` : "שלום,";
-  return name ? `Bonjour ${name},` : "Bonjour,";
-}
-
-/** Salutation, puis le texte. Les retours d’agence gardent leur première phrase. */
-function present(dossier: ConciergeDossier, lang: ReplyLang, body: string) {
-  const trimmed = body.trim();
-  if (/^(bonjour|hello|שלום)\b/i.test(trimmed)) return trimmed;
-  if (trimmed.startsWith(FOLLOW_UP_TONE) || trimmed.startsWith("I’ll look") || trimmed.startsWith("אני בודק")) return trimmed;
-  return `${greet(dossier, lang)}\n${trimmed}`;
-}
-
 function bareDate(iso: string, lang: ReplyLang, now: Date) {
   const sameYear = iso.slice(0, 4) === parisMoment(now).date.slice(0, 4);
   if (lang === "en") {
@@ -972,27 +959,22 @@ function flightSentence(item: ConciergeItem, stay: ConciergeStay, lang: ReplyLan
   const clock = item.clock ? spokenClock(item.clock, lang) : "";
   const past = Boolean(item.date && item.date < parisMoment(now).date);
   const number = item.flightNumber ? ` ${item.flightNumber}` : "";
+  const landed = !past && item.arrival && item.arrival !== item.clock ? spokenClock(item.arrival, lang) : "";
   if (lang === "en") {
     const verb = past ? "left" : "leaves";
     const kind = returning ? "return flight" : "flight";
     const toward = !returning && dest ? ` to ${dest}` : "";
-    return `Your ${kind}${number}${toward} ${verb} on ${when}${clock ? ` at ${clock}` : ""}.`;
+    const land = landed ? ` and lands at ${landed}` : "";
+    return `Your ${kind}${number}${toward} ${verb} on ${when}${clock ? ` at ${clock}` : ""}${land}.`;
   }
   if (lang === "he") {
-    return [returning ? "טיסת חזור" : "הטיסה", item.flightNumber, dest, when, clock].filter(Boolean).join(" ");
+    return [returning ? "טיסת חזור" : "הטיסה", item.flightNumber, dest, when, clock, landed].filter(Boolean).join(" ");
   }
   const verb = past ? "a décollé" : "décolle";
   const kind = returning ? "vol de retour" : "vol";
   const toward = !returning && dest ? ` pour ${dest}` : "";
-  return `Votre ${kind}${number}${toward} ${verb} ${when}${clock ? ` à ${clock}` : ""}.`;
-}
-
-function arrivalSentence(item: ConciergeItem, lang: ReplyLang) {
-  if (!item.arrival || item.arrival === item.clock) return "";
-  const clock = spokenClock(item.arrival, lang);
-  if (lang === "en") return `You land at ${clock}.`;
-  if (lang === "he") return "";
-  return `Vous arrivez à ${clock}.`;
+  const land = landed ? ` et atterrit à ${landed}` : "";
+  return `Votre ${kind}${number}${toward} ${verb} ${when}${clock ? ` à ${clock}` : ""}${land}.`;
 }
 
 function hotelName(item: ConciergeItem) {
@@ -1001,16 +983,35 @@ function hotelName(item: ConciergeItem) {
   return name || item.label;
 }
 
-function hotelSentence(item: ConciergeItem, stay: ConciergeStay, lang: ReplyLang, now: Date) {
-  const name = hotelName(item);
-  const city = (item.toPlace && cityIsStay(item.toPlace, [stay]) ? item.toPlace : "") || stayCities(stay)[0] || "";
-  const when = clientWhen(item.date, lang, now);
-  if (lang === "en") {
-    return `${when ? `On ${when}, you are` : "You are"} at ${name}${city ? ` in ${city}` : ""}.`;
+function staySpan(start: string, end: string | null, lang: ReplyLang, now: Date) {
+  if (!end || end === start) {
+    const one = bareDate(start, lang, now);
+    return lang === "en" ? `on ${one}` : `le ${one}`;
   }
-  if (lang === "he") return [name, city, when].filter(Boolean).join(" ");
-  const day = when ? `Le ${when}, vous êtes` : "Vous êtes";
-  return `${day} à ${name}${city ? `, ${placeWithPreposition(city)}` : ""}.`;
+  const sameYear = start.slice(0, 4) === end.slice(0, 4) && start.slice(0, 4) === parisMoment(now).date.slice(0, 4);
+  const sameMonth = sameYear && start.slice(5, 7) === end.slice(5, 7);
+  if (sameMonth) {
+    const startDay = Number(start.slice(8, 10));
+    const endDay = Number(end.slice(8, 10));
+    if (lang === "en") {
+      const month = englishLongDate(start).replace(/^\d+\s/, "").replace(/ \d{4}$/, "");
+      return `from ${startDay} to ${endDay} ${month}`;
+    }
+    const month = frenchLongDate(start).split(" ")[1] || "";
+    return `du ${startDay} au ${endDay} ${month}`;
+  }
+  const from = bareDate(start, lang, now);
+  const to = bareDate(end, lang, now);
+  return lang === "en" ? `from ${from} to ${to}` : `du ${from} au ${to}`;
+}
+
+function hotelSentence(item: ConciergeItem, lang: ReplyLang, now: Date) {
+  const name = hotelName(item);
+  if (!item.date) return lang === "en" ? `You are staying at ${name}.` : `Vous séjournez à ${name}.`;
+  const span = staySpan(item.date, item.endDate, lang, now);
+  if (lang === "en") return `You are staying at ${name} ${span}.`;
+  if (lang === "he") return [name, span].filter(Boolean).join(" ");
+  return `Vous séjournez à ${name} ${span}.`;
 }
 
 function safeLine(item: ConciergeItem, dossier: ConciergeDossier) {
@@ -1041,24 +1042,36 @@ function welcomeSentence(item: ConciergeItem, lang: ReplyLang, now: Date, dossie
   return `${head} est prévu ${when}${clock ? ` à ${clock}` : ""}.`.replace(/\s+/g, " ").trim();
 }
 
-function serviceTouch(stay: ConciergeStay, date: string, lang: ReplyLang, dossier: ConciergeDossier) {
-  const hotel = stay.items.find((item) => item.kind === "hotel" && item.date === date);
-  const transfer = stay.items.find((item) => (item.kind === "transfer" || item.kind === "chauffeur") && item.date === date);
-  const hotelLine = hotel ? `${hotelName(hotel)} vous accueille${stayCities(stay)[0] ? ` ${placeWithPreposition(stayCities(stay)[0])}` : ""}` : "";
-  const transferLine = transfer
-    ? `votre ${safeLine(transfer, dossier) && /^transfert/i.test(safeLine(transfer, dossier)) ? safeLine(transfer, dossier).charAt(0).toLowerCase() + safeLine(transfer, dossier).slice(1) : "transfert"} est prévu${transfer.clock ? ` à ${spokenClock(transfer.clock, lang)}` : ""}`
-    : "";
-  if (lang === "en") {
-    const hotelEn = hotel ? `${hotelName(hotel)} is ready for you${stayCities(stay)[0] ? ` in ${stayCities(stay)[0]}` : ""}` : "";
-    const transferEn = transfer ? `your transfer is planned${transfer.clock ? ` at ${spokenClock(transfer.clock, "en")}` : ""}` : "";
-    const touch = [hotelEn, transferEn].filter(Boolean).join(", and ");
-    return touch ? `${touch.charAt(0).toUpperCase()}${touch.slice(1)}.` : "";
+function clockMinutes(clock: string) {
+  const match = clock.match(/^(\d{1,2})h(\d{2})$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/** Un transfert entre le décollage et l’atterrissage du même jour ne se cite pas. */
+function transferClashes(stay: ConciergeStay, date: string) {
+  const flights = stay.items.filter((item) => (item.kind === "flight" || item.flightNumber) && item.date === date);
+  const transfers = stay.items.filter(
+    (item) => (item.kind === "transfer" || item.kind === "chauffeur") && item.date === date && item.clock
+  );
+  for (const flight of flights) {
+    const depart = clockMinutes(flight.clock);
+    const land = clockMinutes(flight.arrival);
+    if (depart == null || land == null || !(depart < land)) continue;
+    for (const transfer of transfers) {
+      const at = clockMinutes(transfer.clock);
+      if (at != null && depart < at && at < land) return true;
+    }
   }
-  if (lang !== "fr") return "";
-  if (hotelLine && transferLine) return `${hotelLine}, et ${transferLine}.`;
-  if (hotelLine) return `${hotelLine}.`;
-  if (transferLine) return `${transferLine.charAt(0).toUpperCase()}${transferLine.slice(1)}.`;
-  return "";
+  return false;
+}
+
+function confirmTransfer(lang: ReplyLang) {
+  return say(lang, {
+    fr: "Le transfert vers l'hôtel sera confirmé par l'équipe.",
+    en: "The transfer will be confirmed by the team.",
+    he: "ההעברה תאושר על ידי הצוות.",
+  });
 }
 
 function itemsOn(dossier: ConciergeDossier, date: string) {
@@ -1165,9 +1178,7 @@ function lastTripAnswer(dossier: ConciergeDossier, lang: ReplyLang, now: Date): 
     en: `Your last trip${at ? ` ${at}` : ""} ended${end ? ` on ${end}` : ""}.`,
     he: `הטיול האחרון${place ? ` ${place}` : ""} הסתיים${end ? ` ${end}` : ""}.`,
   });
-  const flight = [...stay.items].reverse().find((item) => item.kind === "flight");
-  const memory = flight ? flightSentence(flight, stay, lang, now) : "";
-  return { body: [intro, memory].filter(Boolean).join(" "), handoff: null, stay };
+  return { body: intro, handoff: null, stay };
 }
 
 function returnAnswer(dossier: ConciergeDossier, lang: ReplyLang, now: Date): RelativeAnswer {
@@ -1182,8 +1193,7 @@ function returnAnswer(dossier: ConciergeDossier, lang: ReplyLang, now: Date): Re
     });
     return { body: confirmGap(lang, detail), handoff: "question", stay: null };
   }
-  const body = [flightSentence(row.item, row.stay, lang, now), arrivalSentence(row.item, lang)].filter(Boolean).join(" ");
-  return { body, handoff: null, stay: row.stay };
+  return { body: flightSentence(row.item, row.stay, lang, now), handoff: null, stay: row.stay };
 }
 
 function dayAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, date: string, now: Date): RelativeAnswer {
@@ -1201,28 +1211,34 @@ function dayAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, 
   else if (wantsVip) rows = rows.filter((row) => row.item.kind === "accueil_vip" || row.item.kind === "greeter");
   else if (wantsFlight) rows = rows.filter((row) => row.item.kind === "flight" || row.item.flightNumber);
   if (!rows.length) return missingSegment(lang, date, wantsHotel || wantsTransfer || wantsVip || wantsFlight ? kind : "any", now);
-  const sentences = rows.slice(0, 2).map((row) => {
-    if (row.item.kind === "flight" || row.item.flightNumber) return flightSentence(row.item, row.stay, lang, now);
-    if (row.item.kind === "hotel") return hotelSentence(row.item, row.stay, lang, now);
-    if (row.item.kind === "transfer" || row.item.kind === "chauffeur") return transferSentence(row.item, lang, now, dossier);
-    if (row.item.kind === "accueil_vip" || row.item.kind === "greeter") return welcomeSentence(row.item, lang, now, dossier);
-    return row.item.lines[0] || row.item.label;
-  });
   const primary = rows[0];
   const past = Boolean(primary.item.date && primary.item.date < parisMoment(now).date);
-  if (rows.length === 1 && (primary.item.kind === "flight" || primary.item.flightNumber) && !past) {
-    const landed = arrivalSentence(primary.item, lang);
-    const touch = serviceTouch(primary.stay, date, lang, dossier);
-    if (landed) sentences.push(landed);
-    if (touch) sentences.push(touch);
-  } else if (rows.length === 1 && primary.item.kind === "hotel") {
-    const transfer = primary.stay.items.find((item) => (item.kind === "transfer" || item.kind === "chauffeur") && item.date === date);
-    if (transfer) sentences.push(transferSentence(transfer, lang, now, dossier));
-  } else if (rows.length === 1 && (primary.item.kind === "transfer" || primary.item.kind === "chauffeur")) {
-    const hotel = primary.stay.items.find((item) => item.kind === "hotel" && item.date === date);
-    if (hotel) sentences.push(hotelSentence(hotel, primary.stay, lang, now));
+  const clash = rows.some((row) => transferClashes(row.stay, date));
+  if (wantsHotel) return { body: hotelSentence(primary.item, lang, now), handoff: null, stay: primary.stay };
+  if (wantsTransfer) {
+    if (clash) return { body: confirmTransfer(lang), handoff: "question", stay: primary.stay };
+    return { body: transferSentence(primary.item, lang, now, dossier), handoff: null, stay: primary.stay };
   }
-  return { body: sentences.filter(Boolean).slice(0, 3).join(" "), handoff: null, stay: primary.stay };
+  if (wantsVip) return { body: welcomeSentence(primary.item, lang, now, dossier), handoff: null, stay: primary.stay };
+  const flight = rows.find((row) => row.item.kind === "flight" || row.item.flightNumber);
+  if (flight && (wantsFlight || rows.length === 1)) {
+    const line = flightSentence(flight.item, flight.stay, lang, now);
+    if (clash && !past) return { body: `${line}\n${confirmTransfer(lang)}`, handoff: "question", stay: flight.stay };
+    return { body: line, handoff: null, stay: flight.stay };
+  }
+  const line = rows
+    .slice(0, 2)
+    .map((row) => {
+      if (row.item.kind === "hotel") return hotelSentence(row.item, lang, now);
+      if (row.item.kind === "transfer" || row.item.kind === "chauffeur") {
+        return clash ? confirmTransfer(lang) : transferSentence(row.item, lang, now, dossier);
+      }
+      if (row.item.kind === "accueil_vip" || row.item.kind === "greeter") return welcomeSentence(row.item, lang, now, dossier);
+      return flightSentence(row.item, row.stay, lang, now);
+    })
+    .filter(Boolean)
+    .join("\n");
+  return { body: line, handoff: clash && !past ? "question" : null, stay: primary.stay };
 }
 
 function scheduleText(message: string, dossier: ConciergeDossier, lang: ReplyLang, now: Date) {
@@ -1231,15 +1247,19 @@ function scheduleText(message: string, dossier: ConciergeDossier, lang: ReplyLan
   const pool = stay ? [stay] : dossier.stays;
   const known = pool.flatMap((row) => row.items.filter((item) => item.clock).map((item) => ({ stay: row, item })));
   if (!known.length) return lang === "en" ? "I don’t have the time in your file." : MISSING_CLOCK;
-  return known
-    .slice(0, 3)
+  const lines = known
     .map((row) => {
-      if (row.item.kind === "hotel") return hotelSentence(row.item, row.stay, lang, now);
+      const clash = Boolean(row.item.date && transferClashes(row.stay, row.item.date));
+      if ((row.item.kind === "transfer" || row.item.kind === "chauffeur") && clash) return "";
+      if (row.item.kind === "hotel") return hotelSentence(row.item, lang, now);
       if (row.item.kind === "transfer" || row.item.kind === "chauffeur") return transferSentence(row.item, lang, now, dossier);
       if (row.item.kind === "accueil_vip" || row.item.kind === "greeter") return welcomeSentence(row.item, lang, now, dossier);
       return flightSentence(row.item, row.stay, lang, now);
     })
-    .join(" ");
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!lines.length) return lang === "en" ? "I don’t have the time in your file." : MISSING_CLOCK;
+  return lines.join("\n");
 }
 
 function includedText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
@@ -1402,12 +1422,30 @@ function replyImage(message: string, topic: string, stay: ConciergeStay | null, 
   return null;
 }
 
-export function planConciergeTurn(message: string, dossier: ConciergeDossier, now: Date = new Date()): ConciergeTurn {
+function spoken(body: string, dossier: ConciergeDossier, lang: ReplyLang, now: Date, history?: BubbleHistory[], block = false) {
+  const messages = packBubbles({
+    text: body,
+    opening: conciergeOpening(history, now),
+    firstName: dossier.firstName,
+    lang,
+    block,
+  });
+  return { text: messages.join("\n\n"), messages };
+}
+
+export function planConciergeTurn(
+  message: string,
+  dossier: ConciergeDossier,
+  now: Date = new Date(),
+  history?: BubbleHistory[]
+): ConciergeTurn {
   const lang = messageLanguage(message);
   const empty = { cover: null as string | null, optOut: false, access: false };
+  const sayTurn = (body: string, block = false) => spoken(body, dossier, lang, now, history, block);
 
   if (isConciergeStop(message) && !classifyHandoff(message)) {
-    return { ...empty, handoff: null, bookingId: null, text: sign(stopText(lang)), optOut: true };
+    const text = sign(stopText(lang));
+    return { ...empty, handoff: null, bookingId: null, text, messages: [text], optOut: true };
   }
   if (asksForSpaceAccess(message) && !classifyHandoff(message)) {
     return { ...empty, handoff: null, bookingId: null, text: "", access: true };
@@ -1425,11 +1463,13 @@ export function planConciergeTurn(message: string, dossier: ConciergeDossier, no
           he: `זה נוגע לשהות ${stay.reference}.`,
         })}\n${stayClientUrl(stay.reference)}`
       : "";
+    const agency = sayTurn(conciergeFollowUp(`${sentence}${focused}${which}`, lang), true);
     return {
       ...empty,
       handoff,
       bookingId: stay?.id || null,
-      text: conciergeFollowUp(`${sentence}${focused}${which}`, lang),
+      text: agency.text,
+      messages: agency.messages,
     };
   }
 
@@ -1471,29 +1511,35 @@ export function planConciergeTurn(message: string, dossier: ConciergeDossier, no
   if (complaint && (thin || answerHandoff)) {
     if (!/agence|agency|סוכנות/.test(body)) body = `${body}\n${handoffSentence(lang)}`;
     const stay = pinned || subjectStay(message, dossier, topic);
+    const packed = sayTurn(body);
     return {
       ...empty,
       handoff: "complaint",
       bookingId: stay?.id || null,
-      text: sign(present(dossier, lang, body)),
+      text: packed.text,
+      messages: packed.messages,
     };
   }
   if (answerHandoff === "question") {
     const stay = pinned || subjectStay(message, dossier, topic);
+    const packed = sayTurn(body);
     return {
       ...empty,
       handoff: "question",
       bookingId: stay?.id || null,
-      text: sign(present(dossier, lang, body)),
+      text: packed.text,
+      messages: packed.messages,
     };
   }
 
   const stay = pinned || subjectStay(message, dossier, topic);
+  const packed = sayTurn(body);
   return {
     ...empty,
     handoff: null,
     bookingId: stay?.id || null,
-    text: sign(present(dossier, lang, body)),
+    text: packed.text,
+    messages: packed.messages,
     cover: replyImage(message, topic, stay, thin),
   };
 }

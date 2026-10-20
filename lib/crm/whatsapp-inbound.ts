@@ -6,6 +6,7 @@ import { looksLikePan } from "./pan";
 import { formParams, verifyTwilioSignature } from "./twilio-signature";
 import { liveConciergeImage, stayHasPublishedCover } from "./concierge-notices";
 import { ensureTripShareCode } from "./trip-share-code";
+import { CONCIERGE_BUBBLE_DELAY_MS } from "../concierge/bubbles";
 import { withConciergeSignature } from "./whatsapp";
 import {
   accessLinkReply,
@@ -250,6 +251,10 @@ export async function receiveWhatsappWebhook(input: {
   alert?: (row: WhatsappRequestInsert) => Promise<void>;
   /** Réponse du Concierge. Coupé par défaut (`CONCIERGE_AUTOREPLY`). */
   autoreply?: boolean;
+  /** Pause entre deux bulles. Défaut 1,2 s. */
+  bubbleDelayMs?: number;
+  /** Instant du message. Les tests figent le jeudi. */
+  now?: Date;
   env?: Record<string, string | undefined>;
   store: WhatsappStore;
   send(message: { to: string; body: string; mediaUrl?: string | null }): Promise<{
@@ -368,6 +373,7 @@ export async function receiveWhatsappWebhook(input: {
   let handoff: HandoffKind | null = null;
   let tools: string[] | null = null;
   let reply = leadReply(messageLanguage(clientText));
+  let turnMessages: string[] | null = null;
   let mediaUrl: string | null = null;
   const lang = messageLanguage(clientText);
   const allowed = input.allow ? await input.allow(e164) : true;
@@ -399,7 +405,7 @@ export async function receiveWhatsappWebhook(input: {
       const prior: ConciergeHistoryTurn[] = history
         .filter((row) => row.twilio_sid !== sid)
         .slice(-16)
-        .map((row) => ({ direction: row.direction, body: row.body }));
+        .map((row) => ({ direction: row.direction, body: row.body, at: row.created_at }));
       const brief = (await input.store.loadBrief?.(e164)) || null;
       const storedKnowledge = await input.store.loadKnowledge?.();
       const phase = await planPhase2({
@@ -412,6 +418,7 @@ export async function receiveWhatsappWebhook(input: {
         knowledge: storedKnowledge?.length ? storedKnowledge : knowledgeSeed(),
         balance: dossier.balances[0]?.balance ?? null,
         currency: dossier.balances[0]?.currency || "EUR",
+        now: input.now,
       });
       const turn = phase.turn;
       tools = turn.tools?.length ? turn.tools : null;
@@ -424,6 +431,7 @@ export async function receiveWhatsappWebhook(input: {
         : turn.access
           ? accessLinkReply(replyLang, (await input.openAccess?.(customer)) || null)
           : turn.text;
+      if (!limited && !turn.access && turn.messages?.length) turnMessages = turn.messages;
       if (limited) {
         handoff = null;
         mediaUrl = null;
@@ -471,19 +479,27 @@ export async function receiveWhatsappWebhook(input: {
   if (customer && bookingId) await input.store.tagMessage?.(inbound.id, bookingId);
 
   if (mediaUrl) mediaUrl = await liveConciergeImage(mediaUrl, input.fetchImpl);
-  const sent = await input.send({ to, body: reply, mediaUrl });
-  const outbound = await input.store.insertMessage({
-    customer_id: customer?.id || null,
-    booking_id: bookingId,
-    direction: "outbound",
-    template_key: "chat",
-    body: reply,
-    twilio_sid: sent.ok ? sent.sid || null : null,
-    status: sent.ok ? "sent" : "failed",
-    error: sent.ok ? null : sent.detail || "rejected",
-    phone: e164,
-    tools,
-  });
+  const planned = turnMessages;
+  const bubbles = (planned && reply === planned.join("\n\n") ? planned : [reply]).filter((line) => line.trim()).slice(0, 3);
+  const delayMs = input.bubbleDelayMs ?? CONCIERGE_BUBBLE_DELAY_MS;
+  let outbound: { id: string } | { duplicate: true } = { duplicate: true };
+  for (let index = 0; index < bubbles.length; index += 1) {
+    if (index > 0 && delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const sent = await input.send({ to, body: bubbles[index], mediaUrl: index === 0 ? mediaUrl : null });
+    const stored = await input.store.insertMessage({
+      customer_id: customer?.id || null,
+      booking_id: bookingId,
+      direction: "outbound",
+      template_key: "chat",
+      body: bubbles[index],
+      twilio_sid: sent.ok ? sent.sid || null : null,
+      status: sent.ok ? "sent" : "failed",
+      error: sent.ok ? null : sent.detail || "rejected",
+      phone: e164,
+      tools: index === 0 ? tools : null,
+    });
+    if (index === 0) outbound = stored;
+  }
   if (handoff && !("duplicate" in outbound)) {
     const request: WhatsappRequestInsert = {
       customer_id: customers.length === 1 || companion ? customer?.id || null : null,
