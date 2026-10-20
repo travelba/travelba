@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Icon } from "@/components/crm/icons";
 import type { ClientActivityGroup } from "@/lib/crm/client-activity-feed";
 
-/** Connexions des clients à leur espace, sur le tableau de bord agence. */
+/** Connexions et visites de l’espace client, sur le tableau de bord agence. */
 export function ClientActivity({
   groups,
   initialOpen = [],
@@ -30,7 +30,7 @@ export function ClientActivity({
           </p>
         ) : null}
       </div>
-      <p className="mt-1 text-sm text-muted">Connexions à l’espace client, sur sept jours.</p>
+      <p className="mt-1 text-sm text-muted">Connexions et visites de l’espace client, sur sept jours.</p>
 
       {groups.length ? (
         <div className="mt-3 overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">

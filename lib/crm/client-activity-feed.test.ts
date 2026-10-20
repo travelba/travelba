@@ -148,7 +148,7 @@ test("les connexions se groupent sur sept jours, sans l’agence", () => {
 
   assert.deepEqual(
     groups.map((group) => group.label),
-    ["Aujourd’hui", "Hier", "Lundi 12 octobre"]
+    ["Aujourd’hui", "Hier", "Samedi 17 octobre", "Lundi 12 octobre"]
   );
   const today = groups[0].rows;
   assert.deepEqual(
@@ -178,10 +178,12 @@ test("les connexions se groupent sur sept jours, sans l’agence", () => {
   assert.equal(today[0].events[1].time, "09h20");
   assert.equal(groups[1].rows[0].meta, "Dernière connexion à 20h00 · 1 geste");
   assert.equal(groups[1].rows[0].events[1].text, "A ouvert l’accueil");
-  assert.equal(groups[2].rows[0].meta, "Dernière connexion à 00h30");
+  assert.equal(groups[2].rows[0].name, "Jonas Keller");
+  assert.equal(groups[2].rows[0].meta, "Actif à 12h00 (session déjà ouverte) · 1 geste");
+  assert.equal(groups[2].rows[0].events[0].text, "A ouvert ses pièces");
+  assert.equal(groups[3].rows[0].meta, "Dernière connexion à 00h30");
   assert.equal(JSON.stringify(groups).includes("Agence Martin"), false);
   assert.equal(JSON.stringify(groups).includes("Ouverture par l’agence"), false);
-  assert.equal(JSON.stringify(groups).includes("A ouvert ses pièces"), false);
 });
 
 test("sans connexion, le bloc le dit, et le nom n’est pas coupé par un badge", () => {
@@ -209,6 +211,7 @@ test("sans connexion, le bloc le dit, et le nom n’est pas coupé par un badge"
     createElement(ClientActivity, { groups, initialOpen: [groups[0].rows[0].id] })
   );
   assert.match(html, /Activité clients/);
+  assert.match(html, /Connexions et visites de l’espace client, sur sept jours/);
   assert.match(html, /Aujourd’hui/);
   assert.match(html, /1 aujourd’hui/);
   assert.match(html, /href="\/admin\/clients\/client-1"/);
@@ -222,4 +225,118 @@ test("sans connexion, le bloc le dit, et le nom n’est pas coupé par un badge"
   assert.match(html, /A ouvert le séjour/);
   assert.match(html, /aria-expanded="true"/);
   assert.doesNotMatch(html, /truncate/);
+});
+
+test("une visite sans connexion du jour reste une ligne, et une journée mixte garde la dernière connexion", () => {
+  const groups = buildClientActivityFeed({
+    today: TODAY,
+    staffAuthIds: ["user-agent"],
+    customers: [CAMILLE, JONAS, AGENT],
+    bookings: [STAY],
+    logins: [
+      login({ id: "morning", created_at: "2026-10-19T07:15:00.000Z", method: "magiclink" }),
+      login({ id: "desk-only", created_at: "2026-10-18T15:58:00.000Z", method: "desk", staff_id: "staff-1" }),
+      login({
+        id: "agent",
+        created_at: "2026-10-19T19:40:00.000Z",
+        customer_id: "staff-customer",
+        auth_user_id: "user-agent",
+      }),
+    ],
+    activity: [
+      gesture({
+        id: "after-login",
+        created_at: "2026-10-19T08:00:00.000Z",
+        summary: "A ouvert l’accueil",
+      }),
+      gesture({
+        id: "view-accueil",
+        created_at: "2026-10-19T15:58:00.000Z",
+        customer_id: "client-2",
+        auth_user_id: "user-jonas",
+        summary: "A ouvert l’accueil",
+      }),
+      gesture({
+        id: "view-stay",
+        created_at: "2026-10-19T19:35:00.000Z",
+        customer_id: "client-2",
+        auth_user_id: "user-jonas",
+        summary: "A ouvert le séjour Tel-Aviv (TB-2026-0055)",
+        detail: "5 pages",
+        booking_id: "booking-1",
+      }),
+      gesture({
+        id: "view-pieces",
+        created_at: "2026-10-19T19:37:00.000Z",
+        customer_id: "client-2",
+        auth_user_id: "user-jonas",
+        summary: "A ouvert ses pièces",
+      }),
+      gesture({
+        id: "blank",
+        created_at: "2026-10-19T19:50:00.000Z",
+        customer_id: "client-2",
+        auth_user_id: "user-jonas",
+        summary: "   ",
+      }),
+      gesture({
+        id: "staff-browse",
+        created_at: "2026-10-19T19:45:00.000Z",
+        customer_id: "client-1",
+        auth_user_id: "user-agent",
+        summary: "A ouvert l’accueil pour l’agence",
+      }),
+      gesture({
+        id: "agent-own",
+        created_at: "2026-10-19T19:46:00.000Z",
+        customer_id: "staff-customer",
+        auth_user_id: "user-agent",
+        summary: "A ouvert l’accueil",
+      }),
+      gesture({
+        id: "yesterday-open",
+        created_at: "2026-10-18T15:58:00.000Z",
+        summary: "A ouvert ses transactions",
+      }),
+    ],
+  });
+
+  assert.deepEqual(
+    groups.map((group) => group.label),
+    ["Aujourd’hui", "Hier"]
+  );
+  assert.deepEqual(
+    groups[0].rows.map((row) => row.name),
+    ["Jonas Keller", "Camille Morel"]
+  );
+  assert.equal(groups[0].rows[0].meta, "Actif à 21h37 (session déjà ouverte) · 3 gestes");
+  assert.equal(groups[0].rows[0].href, "/admin/clients/client-2");
+  assert.deepEqual(
+    groups[0].rows[0].events.map((event) => `${event.time} ${event.text}`),
+    [
+      "17h58 A ouvert l’accueil",
+      "21h35 A ouvert le séjour Tel-Aviv (TB-2026-0055)",
+      "21h37 A ouvert ses pièces",
+    ]
+  );
+  assert.equal(groups[0].rows[0].events[1].detail, "5 pages");
+  assert.deepEqual(groups[0].rows[0].dossiers, [
+    {
+      id: "booking-1",
+      href: "/admin/reservations/booking-1",
+      label: "Tel-Aviv (TB-2026-0055)",
+    },
+  ]);
+  assert.equal(groups[0].rows[1].meta, "Dernière connexion à 09h15 · 1 geste");
+  assert.deepEqual(
+    groups[0].rows[1].events.map((event) => event.text),
+    ["Connexion · Lien magique", "A ouvert l’accueil"]
+  );
+  assert.equal(groups[1].rows.length, 1);
+  assert.equal(groups[1].rows[0].name, "Camille Morel");
+  assert.equal(groups[1].rows[0].meta, "Actif à 17h58 (session déjà ouverte) · 1 geste");
+  assert.equal(groups[1].rows[0].events[0].text, "A ouvert ses transactions");
+  assert.equal(JSON.stringify(groups).includes("Agence Martin"), false);
+  assert.equal(JSON.stringify(groups).includes("pour l’agence"), false);
+  assert.equal(JSON.stringify(groups).includes("Ouverture par l’agence"), false);
 });

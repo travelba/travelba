@@ -147,7 +147,15 @@ function isStaffAuth(id: string | null | undefined, staff: Set<string>) {
 }
 
 function rowMeta(time: string, sessions: number, actions: number) {
-  const parts = [time ? `Dernière connexion à ${time}` : "Connexion"];
+  const openSession = sessions === 0 && actions > 0;
+  const headline = openSession
+    ? time
+      ? `Actif à ${time} (session déjà ouverte)`
+      : "Session déjà ouverte"
+    : time
+      ? `Dernière connexion à ${time}`
+      : "Connexion";
+  const parts = [headline];
   if (sessions > 1) parts.push(`${sessions} connexions`);
   if (actions === 1) parts.push("1 geste");
   else if (actions > 1) parts.push(`${actions} gestes`);
@@ -160,7 +168,8 @@ function tidyDetail(value: string | null | undefined) {
 }
 
 /**
- * Connexions titulaire des sept derniers jours, groupées par jour de Paris.
+ * Connexions et visites de l’espace client sur sept jours, groupées par jour de Paris.
+ * Une visite sans nouvelle connexion (session déjà ouverte) reste une ligne.
  * Une ouverture par l’agence et un compte staff ou partenaire n’apparaissent pas.
  */
 export function buildClientActivityFeed(input: {
@@ -212,23 +221,22 @@ export function buildClientActivityFeed(input: {
     if (!keptCustomer(event.customer_id)) continue;
     const day = parisCalendarDay(event.created_at);
     if (!inWindow(day, input.today)) continue;
-    const row = byDay.get(day)?.get(event.customer_id);
-    if (!row?.logins.length) continue;
-    row.activity.push(event);
+    bucket(day, event.customer_id).activity.push(event);
   }
 
   const groups: ClientActivityGroup[] = [];
   for (const [day, people] of byDay) {
     const built: { lastAt: string; row: ClientActivityRow }[] = [];
     for (const [customerId, bucketRow] of people) {
-      if (!bucketRow.logins.length) continue;
+      if (!bucketRow.logins.length && !bucketRow.activity.length) continue;
       const customer = customers.get(customerId);
       if (!customer) continue;
       const logins = [...bucketRow.logins].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
       const activity = [...bucketRow.activity].sort(
         (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
       );
-      const last = logins[logins.length - 1];
+      const last = logins.at(-1) || activity.at(-1);
+      if (!last) continue;
       const dossierIds = new Set<string>();
       for (const event of activity) {
         if (event.booking_id && bookings.has(event.booking_id)) dossierIds.add(event.booking_id);
@@ -360,10 +368,13 @@ export async function loadClientActivityFeed(
 ): Promise<ClientActivityGroup[]> {
   try {
     const since = clientActivitySinceIso(today);
-    const logins = await readLogins(supabase, since);
-    if (!logins?.length) return [];
-    const activity = await readActivity(supabase, since);
-    const customerIds = [...new Set(logins.map((row) => row.customer_id).filter(Boolean))];
+    const [loginRows, activity] = await Promise.all([readLogins(supabase, since), readActivity(supabase, since)]);
+    const logins = loginRows ?? [];
+    if (!logins.length && !activity.length) return [];
+    const customerIds = [
+      ...new Set([...logins, ...activity].map((row) => row.customer_id).filter(Boolean)),
+    ];
+    if (!customerIds.length) return [];
     const [staffRes, customersRes] = await Promise.all([
       supabase.from("crm_staff").select("auth_user_id").limit(200),
       supabase.from("crm_customers").select("id, first_name, last_name, auth_user_id").in("id", customerIds),
