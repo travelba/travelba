@@ -153,10 +153,11 @@ function assertChat(text: string, name: string, english = false, messages: strin
   for (const bubble of bubbles) assert.ok(bubble.length <= 260, bubble);
   const hello = english ? new RegExp(`^Hello ${name}, [a-z]`) : new RegExp(`^Bonjour ${name}, [a-zàâäéèêëïîôùûüçœ]`);
   assert.match(bubbles[0], hello, bubbles[0]);
-  assert.equal(bubbles[0].includes("Le Concierge"), true, bubbles[0]);
-  for (const extra of bubbles.slice(1)) {
-    assert.equal(/^(Bonjour|Hello)\b/.test(extra), false, extra);
-    assert.equal(extra.includes("Le Concierge"), false, extra);
+  assert.match(bubbles[bubbles.length - 1], /\nLe Concierge$/, bubbles[bubbles.length - 1]);
+  for (const [index, bubble] of bubbles.entries()) {
+    assert.notEqual(bubble.trim(), "Le Concierge", bubble);
+    if (index !== bubbles.length - 1) assert.equal(bubble.includes("Le Concierge"), false, bubble);
+    if (index !== 0) assert.equal(/^(Bonjour|Hello)\b/.test(bubble), false, bubble);
   }
   assert.equal((text.match(/Le Concierge/g) || []).length, 1, text);
   assert.equal(/ — /.test(text), false, text);
@@ -415,9 +416,8 @@ test("deux bulles partent l’une après l’autre et s’enregistrent chacune",
   assert.equal(raw.firstName, "Camille");
   assert.equal(sent.length, 2);
   assert.match(sent[0].body, /^Bonjour Camille, votre vol AF2100/);
-  assert.match(sent[0].body, /Le Concierge/);
-  assert.match(sent[1].body, /sera confirmé/);
-  assert.equal(sent[1].body.includes("Le Concierge"), false);
+  assert.equal(sent[0].body.includes("Le Concierge"), false);
+  assert.match(sent[1].body, /sera confirmé par l'équipe\.\nLe Concierge$/);
   assert.equal(writes.filter((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "outbound").length, 2);
   assert.equal(writes.find((row) => row.table === "crm_whatsapp_requests")?.row?.kind, "question");
   assert.equal(gaps.length, 1);

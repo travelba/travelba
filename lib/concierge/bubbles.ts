@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parisMoment } from "../crm/concierge-when";
-import { withConciergeSignature } from "../crm/whatsapp";
+import { CONCIERGE_SIGNATURE } from "../crm/whatsapp";
 
 export const CONCIERGE_MAX_BUBBLES = 3;
 export const CONCIERGE_MAX_BUBBLE_CHARS = 220;
@@ -99,9 +99,18 @@ function lead(text: string, lang: BubbleLang) {
   return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
 }
 
+/** La signature ferme la dernière bulle, sur une ligne à elle, jamais une bulle seule. */
+function signLast(pieces: string[]) {
+  const last = pieces.length - 1;
+  const body = stripSignature(pieces[last]).trim();
+  if (!body) return pieces.slice(0, last);
+  pieces[last] = `${body}\n${CONCIERGE_SIGNATURE}`;
+  return pieces;
+}
+
 /**
  * Découpe une réponse en bulles courtes.
- * À l’ouverture du jour, la première bulle porte la salutation (suite en minuscule) et la signature.
+ * À l’ouverture du jour, la première bulle salue. La signature est la dernière ligne de la dernière bulle.
  */
 export function packBubbles(input: {
   text: string;
@@ -114,7 +123,7 @@ export function packBubbles(input: {
   if (!raw) return [];
   if (input.block) {
     const body = stripSignature(raw);
-    return [input.opening ? withConciergeSignature(body) : body];
+    return input.opening && body ? [`${body}\n${CONCIERGE_SIGNATURE}`] : body ? [body] : [];
   }
   let pieces = splitPieces(raw)
     .map(clip)
@@ -128,7 +137,5 @@ export function packBubbles(input: {
     pieces =
       merged.length <= CONCIERGE_MAX_BUBBLE_CHARS ? [merged, ...pieces.slice(1)] : [hello, first, ...pieces.slice(1)];
   }
-  pieces = pieces.slice(0, CONCIERGE_MAX_BUBBLES);
-  pieces[0] = withConciergeSignature(pieces[0]);
-  return pieces;
+  return signLast(pieces.slice(0, CONCIERGE_MAX_BUBBLES));
 }

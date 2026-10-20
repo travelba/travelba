@@ -11,7 +11,7 @@ test("la skill du concierge est en version 1 et montre vingt échanges", () => {
   assert.ok(clients.length >= 20, String(clients.length));
 });
 
-test("une ouverture salue en minuscule et ne signe que la première bulle", () => {
+test("la signature ferme la dernière bulle et n’en forme jamais une seule", () => {
   const messages = packBubbles({
     text: "Votre vol AF2100 pour Marrakech décolle jeudi à 9h15.\nLe transfert vers l'hôtel sera confirmé par l'équipe.",
     opening: true,
@@ -20,9 +20,17 @@ test("une ouverture salue en minuscule et ne signe que la première bulle", () =
   });
   assert.equal(messages.length, 2);
   assert.match(messages[0], /^Bonjour Camille, votre vol/);
-  assert.match(messages[0], /\n\nLe Concierge$/);
-  assert.equal(messages[1].includes("Le Concierge"), false);
-  assert.equal(/^Bonjour/.test(messages[1]), false);
+  assert.equal(messages[0].includes("Le Concierge"), false);
+  assert.match(messages[1], /confirmé par l'équipe\.\nLe Concierge$/);
+  assert.equal(messages.some((bubble) => bubble.trim() === "Le Concierge"), false);
+  const alone = packBubbles({
+    text: "Vous séjournez à La Mamounia du 22 au 29 octobre.",
+    opening: true,
+    firstName: "Camille",
+    lang: "fr",
+  });
+  assert.equal(alone.length, 1);
+  assert.match(alone[0], /octobre\.\nLe Concierge$/);
 });
 
 test("un fil du jour ne resalue pas", () => {
