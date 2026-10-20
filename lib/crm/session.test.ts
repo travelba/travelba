@@ -4,6 +4,8 @@ import {
   ONBOARDING_PATH,
   SET_PASSWORD_PATH,
   clientAreaRedirect,
+  isOnboardingReplay,
+  onboardingReplayHref,
   destinationAfterPassword,
   destinationForConnexionVisit,
   hasChosenPassword,
@@ -87,6 +89,19 @@ test("le mot de passe ouvre la bienvenue une fois, puis l’accueil ou la fiche"
   assert.equal(destinationAfterPassword(again, ""), "/mon-compte");
 });
 
+test("revoir=1 rouvre la visite, une autre valeur non", () => {
+  assert.equal(isOnboardingReplay("?revoir=1"), true);
+  assert.equal(isOnboardingReplay("revoir=1&suivant=accueil"), true);
+  assert.equal(isOnboardingReplay(new URLSearchParams("revoir=1")), true);
+  assert.equal(isOnboardingReplay({ revoir: "1" }), true);
+  assert.equal(isOnboardingReplay({ revoir: ["1"] }), true);
+  assert.equal(isOnboardingReplay("?revoir=true"), false);
+  assert.equal(isOnboardingReplay("?revoir=2"), false);
+  assert.equal(isOnboardingReplay(""), false);
+  assert.equal(isOnboardingReplay(null), false);
+  assert.equal(onboardingReplayHref(), "/mon-compte/bienvenue?revoir=1");
+});
+
 test("l’espace client force la bienvenue tant qu’elle n’est pas passée", () => {
   assert.equal(
     clientAreaRedirect("/mon-compte", { mustSetPassword: false, needsOnboarding: true }),
@@ -103,6 +118,18 @@ test("l’espace client force la bienvenue tant qu’elle n’est pas passée", 
   assert.equal(
     clientAreaRedirect(ONBOARDING_PATH, { mustSetPassword: false, needsOnboarding: false }),
     "/mon-compte"
+  );
+  assert.equal(
+    clientAreaRedirect(ONBOARDING_PATH, { mustSetPassword: false, needsOnboarding: false, replay: true }),
+    null
+  );
+  assert.equal(
+    clientAreaRedirect("/mon-compte", { mustSetPassword: false, needsOnboarding: false, replay: true }),
+    null
+  );
+  assert.equal(
+    clientAreaRedirect(ONBOARDING_PATH, { mustSetPassword: true, needsOnboarding: false, replay: true }),
+    SET_PASSWORD_PATH
   );
   assert.equal(
     clientAreaRedirect("/mon-compte/reservations", { mustSetPassword: true, needsOnboarding: true }),
