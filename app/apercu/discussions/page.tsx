@@ -117,10 +117,11 @@ const CAMILLE: InboxMessage[] = [
 export default async function DiscussionsPreviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tiroir?: string }>;
+  searchParams: Promise<{ tiroir?: string; ouvert?: string }>;
 }) {
   if (process.env.NODE_ENV === "production") notFound();
-  const { tiroir } = await searchParams;
+  const { tiroir, ouvert } = await searchParams;
+  const open = ouvert === "1";
   return (
     <div className="admin-af min-h-screen bg-[#f6f3ee] text-[#0B192C]">
       <aside className="fixed inset-y-0 left-0 hidden w-72 bg-[#0B192C] px-5 py-6 text-white lg:block">
@@ -128,42 +129,48 @@ export default async function DiscussionsPreviewPage({
         <p className="mt-1 text-sm">Espace agence</p>
         <p className="mt-8 text-sm text-white/80">Réservations</p>
       </aside>
-      <header className="sticky top-0 z-30 hidden h-20 items-center border-b border-[var(--border)] bg-[#faf9f6]/90 px-8 lg:flex lg:pl-[calc(18rem+2rem)]">
-        <p className="text-sm text-[#8a7350]">Dossier</p>
-      </header>
-      <main className="px-4 py-6 lg:py-8 lg:pl-[calc(18rem+2rem)] lg:pr-8">
-        <p className="text-xs uppercase tracking-[0.14em] text-[#8a7350]">Réservations</p>
-        <h1 className="mt-1 font-display text-3xl text-[#0B192C]">Tel Aviv et les Seychelles</h1>
-        <p className="mt-2 text-sm text-[#5c5346]">TB-EXEMPLE · 24 oct. — 4 nov. 2026 · En préparation</p>
-        <div className="mt-6 grid gap-3">
-          <article className="rounded-3xl border border-[var(--border)] bg-white p-4">
-            <p className="text-sm font-medium">Paris → Tel Aviv</p>
-            <p className="text-xs text-[#8a7350]">CDG → TLV · 24 oct.</p>
-          </article>
-          <article className="rounded-3xl border border-[var(--border)] bg-white p-4">
-            <p className="text-sm font-medium">Villa aux Seychelles</p>
-            <p className="text-xs text-[#8a7350]">28 oct. — 4 nov.</p>
-          </article>
+      <div className="lg:pl-72">
+        <div className="flex min-w-0 items-stretch">
+          <div className="min-w-0 flex-1">
+            <header className="sticky top-0 z-30 hidden h-20 items-center border-b border-[var(--border)] bg-[#faf9f6]/90 px-8 lg:flex">
+              <p className="text-sm text-[#8a7350]">Dossier</p>
+            </header>
+            <main className="px-4 py-6 lg:px-8 lg:py-8">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#8a7350]">Réservations</p>
+              <h1 className="mt-1 font-display text-3xl text-[#0B192C]">Tel Aviv et les Seychelles</h1>
+              <p className="mt-2 text-sm text-[#5c5346]">TB-EXEMPLE · 24 oct. — 4 nov. 2026 · En préparation</p>
+              <div className="mt-6 grid gap-3">
+                <article className="rounded-3xl border border-[var(--border)] bg-white p-4">
+                  <p className="text-sm font-medium">Paris → Tel Aviv</p>
+                  <p className="text-xs text-[#8a7350]">CDG → TLV · 24 oct.</p>
+                </article>
+                <article className="rounded-3xl border border-[var(--border)] bg-white p-4">
+                  <p className="text-sm font-medium">Villa aux Seychelles</p>
+                  <p className="text-xs text-[#8a7350]">28 oct. — 4 nov.</p>
+                </article>
+              </div>
+            </main>
+          </div>
+          <WhatsappDock
+            threads={THREADS}
+            messagesByKey={{ "+33601020304": CAMILLE }}
+            templates={[{ key: "sejour_texte", label: "Le séjour est dans l’espace" }]}
+            previewBlocked
+            live={false}
+            persist={false}
+            initialPanelOpen={open}
+            initialDrawer={tiroir === "1"}
+            initialTabs={
+              open
+                ? [
+                    { key: "+33611111111", expanded: false },
+                    { key: "+33601020304", expanded: true },
+                  ]
+                : []
+            }
+          />
         </div>
-      </main>
-      <WhatsappDock
-        threads={THREADS}
-        messagesByKey={{ "+33601020304": CAMILLE }}
-        templates={[{ key: "sejour_texte", label: "Le séjour est dans l’espace" }]}
-        previewBlocked
-        live={false}
-        persist={false}
-        initialPanelOpen
-        initialDrawer={tiroir === "1"}
-        initialTabs={
-          tiroir === "1"
-            ? []
-            : [
-                { key: "+33611111111", expanded: false },
-                { key: "+33601020304", expanded: true },
-              ]
-        }
-      />
+      </div>
     </div>
   );
 }

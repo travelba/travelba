@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "@/components/crm/icons";
 import { createClient } from "@/lib/supabase/client";
 import {
   applyDockMessage,
@@ -42,7 +43,6 @@ export function WhatsappDock({
   initialDrawer = false,
   persist = true,
   live = true,
-  anchor = "admin",
 }: {
   threads: InboxThread[];
   templates: { key: string; label: string }[];
@@ -53,7 +53,6 @@ export function WhatsappDock({
   initialDrawer?: boolean;
   persist?: boolean;
   live?: boolean;
-  anchor?: "admin" | "page";
 }) {
   const router = useRouter();
   const [threads, setThreads] = useState(initialThreads);
@@ -205,7 +204,7 @@ export function WhatsappDock({
   const messages = expanded ? cache[expanded.key] || [] : [];
   const lastInbound = [...messages].filter((row) => row.direction === "inbound").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const windowOpen = sessionWindowOpenNow(lastInbound?.createdAt || null);
-  const left = anchor === "admin" ? "lg:left-72" : "lg:left-0";
+  const unread = threads.reduce((sum, thread) => sum + thread.unread, 0);
 
   function choose(key: string) {
     setTabs((current) => openDockTab(current, key, true));
@@ -314,45 +313,51 @@ export function WhatsappDock({
 
   return (
     <>
-      {panelOpen ? (
-        <aside className={`fixed bottom-0 top-20 z-40 hidden w-80 border-r border-[var(--border)] shadow-[8px_0_24px_rgba(11,25,44,0.06)] lg:block ${left}`}>
-          {panel}
-        </aside>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setPanelOpen(true)}
-          className={`fixed top-24 z-40 hidden rounded-r-2xl bg-[#0B192C] px-2 py-3 text-[10px] uppercase tracking-wide text-[#C5A880] lg:block ${left}`}
-        >
-          Discussions
-          {threads.some((thread) => thread.unread > 0) ? (
-            <span className="mt-1 block rounded-full bg-[#C5A880] text-[#0B192C]">{threads.reduce((sum, thread) => sum + thread.unread, 0)}</span>
-          ) : null}
-        </button>
-      )}
+      <aside
+        className={`sticky top-0 z-30 hidden h-dvh shrink-0 border-l border-[var(--border)] bg-white lg:flex lg:flex-col ${panelOpen ? "w-80" : "w-11"}`}
+      >
+        {panelOpen ? (
+          panel
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPanelOpen(true)}
+            aria-expanded={false}
+            aria-label={unread > 0 ? `Ouvrir les discussions, ${unread} non lus` : "Ouvrir les discussions"}
+            className="flex h-full w-full flex-col items-center gap-3 bg-[#0B192C] py-5 text-[#C5A880]"
+          >
+            <Icon name="forum" className="h-5 w-5" />
+            {unread > 0 ? (
+              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#C5A880] px-1.5 text-[10px] font-semibold text-[#0B192C]">
+                {unread}
+              </span>
+            ) : null}
+          </button>
+        )}
+      </aside>
 
       {drawer ? (
         <div className="fixed inset-0 z-[70] lg:hidden">
           <button type="button" aria-label="Fermer les discussions" className="absolute inset-0 bg-[#0B192C]/40" onClick={() => setDrawer(false)} />
-          <aside className="absolute inset-y-0 left-0 w-[min(100%,22rem)] shadow-xl">{panel}</aside>
+          <aside className="absolute inset-y-0 right-0 w-[min(100%,22rem)] shadow-xl">{panel}</aside>
         </div>
-      ) : null}
+      ) : (
+        <button
+          type="button"
+          aria-label={unread > 0 ? `Discussions WhatsApp, ${unread} non lus` : "Discussions WhatsApp"}
+          onClick={() => setDrawer(true)}
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-[55] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#0B192C] text-[#C5A880] shadow-lg lg:hidden"
+        >
+          <Icon name="forum" className="h-6 w-6" />
+          {unread > 0 ? (
+            <span className="absolute -right-1 -top-1 rounded-full bg-[#C5A880] px-1.5 text-[10px] font-semibold text-[#0B192C]">
+              {unread}
+            </span>
+          ) : null}
+        </button>
+      )}
 
-      <button
-        type="button"
-        aria-label="Discussions WhatsApp"
-        onClick={() => setDrawer(true)}
-        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-[55] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#0B192C] text-xs font-semibold text-[#C5A880] shadow-lg lg:hidden"
-      >
-        WA
-        {threads.some((thread) => thread.unread > 0) ? (
-          <span className="absolute -right-1 -top-1 rounded-full bg-[#C5A880] px-1.5 text-[10px] text-[#0B192C]">
-            {threads.reduce((sum, thread) => sum + thread.unread, 0)}
-          </span>
-        ) : null}
-      </button>
-
-      <div className="fixed bottom-0 right-3 z-50 hidden items-end gap-2 lg:flex">
+      <div className={`fixed bottom-0 z-50 hidden items-end gap-2 lg:flex ${panelOpen ? "right-80" : "right-11"}`}>
         {overflow.length ? (
           <div className="relative mb-3">
             <button

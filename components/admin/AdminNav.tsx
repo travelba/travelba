@@ -215,32 +215,38 @@ export function AdminNav({
         </div>
       </aside>
 
-      <header className="sticky top-0 z-40 hidden h-20 items-center justify-between border-b border-[var(--border)] bg-[rgba(250,249,246,0.9)] px-8 shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-xl lg:flex lg:pl-[calc(18rem+2rem)]">
-        {partner ? (
-          <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Little Emperors</p>
-        ) : (
-        <AdminOmnibar
-          value={query}
-          onValueChange={setQuery}
-          onSubmit={goSearch}
-          onNavigate={goHit}
-          highlighted={searching}
-        />
-        )}
-        <div className="ml-6 flex items-center gap-4">
-          <UserMenu name={staffName} role={staffRole} onSignOut={signOut} />
+      <div className="lg:pl-72">
+        <div className="flex min-w-0 items-stretch">
+          <div className="min-w-0 flex-1">
+            <header className="sticky top-0 z-40 hidden h-20 items-center justify-between border-b border-[var(--border)] bg-[rgba(250,249,246,0.9)] px-8 shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-xl lg:flex">
+              {partner ? (
+                <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Little Emperors</p>
+              ) : (
+              <AdminOmnibar
+                value={query}
+                onValueChange={setQuery}
+                onSubmit={goSearch}
+                onNavigate={goHit}
+                highlighted={searching}
+              />
+              )}
+              <div className="ml-6 flex items-center gap-4">
+                <UserMenu name={staffName} role={staffRole} onSignOut={signOut} />
+              </div>
+            </header>
+            <main className={`min-w-0 max-w-full px-4 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pb-8 lg:pt-8 ${partner ? "pb-8" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}>
+              {children}
+            </main>
+          </div>
+          {partner ? null : (
+            <WhatsappDock threads={whatsappThreads} templates={whatsappTemplates} previewBlocked={whatsappPreview} />
+          )}
         </div>
-      </header>
-      <main className={`min-w-0 max-w-full px-4 pt-6 sm:px-6 sm:pt-8 lg:pt-8 lg:pb-8 lg:pl-[calc(18rem+2rem)] lg:pr-8 ${partner ? "pb-8" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}>
-        {children}
-      </main>
+      </div>
       {partner ? null : (
         <MobileTabBar pathname={pathname} counts={counts} moreOpen={moreOpen} onMore={() => setMoreOpen((open) => !open)} />
       )}
       {partner ? null : <HotelReplyToasts />}
-      {partner ? null : (
-        <WhatsappDock threads={whatsappThreads} templates={whatsappTemplates} previewBlocked={whatsappPreview} />
-      )}
     </>
   );
 }

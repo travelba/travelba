@@ -76,6 +76,7 @@ test("le panneau remonte le fil entrant et ouvre un onglet sans en déplier deux
   assert.equal(tabs.at(-1)?.key, other.key);
   const parked = ensureDockTab(tabs, "+33622222222");
   assert.equal(parked.at(-1)?.expanded, false);
+  assert.equal(readDockState(JSON.stringify({ panelOpen: false, tabs: parked })).panelOpen, false);
   const split = splitDockTabs(
     ["a", "b", "c", "d", "e"].map((key, index) => ({ key, expanded: index === 0 })),
     4
