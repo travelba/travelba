@@ -44,11 +44,11 @@ import {
   updateVol,
 } from "@/lib/crm/mcp-trip";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
-import { createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
+import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 40;
+export const MCP_TOOL_CAP = 41;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -417,6 +417,26 @@ export const MCP_TOOLS: ToolDef[] = [
         dossier_id: str(args, "dossier_id"),
         reference: str(args, "reference"),
         carte_id: str(args, "carte_id"),
+      }),
+  },
+  {
+    name: "bloquer_carte_pliant",
+    write: true,
+    openWorld: true,
+    description:
+      "Gèle une carte virtuelle Pliant du dossier : elle ne peut plus payer, et le gel se retire. dossier_id ou reference, et carte_id s’il y a plusieurs cartes. debloquer vrai retire le gel (lock Pliant, pas une suppression). Le statut est enregistré sur le dossier. Ne renvoie pas le numéro. Réservé à l’assistant autorisé.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0088"),
+      carte_id: z.string().trim().max(80).optional().describe("Identifiant de la carte sur le dossier, celui de creer_carte_pliant"),
+      debloquer: z.boolean().optional().describe("Vrai pour retirer le gel. Absent ou faux : la carte est gelée"),
+    },
+    run: (args) =>
+      blockPliantCard({
+        dossier_id: str(args, "dossier_id"),
+        reference: str(args, "reference"),
+        carte_id: str(args, "carte_id"),
+        debloquer: args.debloquer === true,
       }),
   },
   {

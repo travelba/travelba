@@ -5,9 +5,11 @@ import {
   etaIlPliantCard,
   pickListedId,
   pickTravelConfig,
+  pliantCardCaption,
   pliantCardName,
   pliantDesignation,
   pliantRefusal,
+  pliantStayCaption,
 } from "./eta-il-fee";
 import { corridorCeilingCents, ECB_SNAPSHOT, centsToEur } from "./visa-fees";
 import type { Db } from "../supabase/db";
@@ -16,6 +18,33 @@ const NAME_CHARS = /^[A-Za-z0-9äöüÄÖÜ.\-]+$/;
 
 test("le nom sur la carte Pliant n’a que les caractères acceptés", () => {
   assert.equal(pliantCardName("Simon, Iony"), "Simon-Iony");
+  assert.equal(pliantCardName("Andréa"), "Andrea");
+  assert.equal(pliantCardName("Bensaïd"), "Bensaid");
+  assert.equal(pliantCardName("Andréa").includes("-"), false);
+});
+
+test("le libellé Pliant montre le client, l’hôtel et la référence", () => {
+  const shown = pliantStayCaption({
+    client: "Bensaïd",
+    hotels: ["Phulay Bay"],
+    designation: "Visa",
+    reference: "TB-2026-0088",
+  });
+  assert.equal(shown?.label, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(shown?.purpose, "Bensaid – Phulay Bay · Visa – TB-2026-0088");
+  assert.equal((shown?.label.length || 0) <= 40, true);
+  assert.equal((shown?.purpose.length || 0) <= 200, true);
+
+  const long = pliantCardCaption({
+    client: "Bensaid",
+    place: "Phulay Bay a Ritz-Carlton Reserve Koh Lanta",
+    reference: "TB-2026-0088",
+  });
+  assert.equal(long?.label.startsWith("Bensaid – "), true);
+  assert.equal(long?.label.endsWith("TB-2026-0088"), true);
+  assert.equal(long?.label.length <= 40, true);
+  assert.equal(long?.purpose.includes("Ritz-Carlton"), true);
+  assert.equal(long?.purpose.endsWith("TB-2026-0088"), true);
 });
 
 test("la désignation interne garde les accents et tient dans quarante caractères", () => {

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Resend } from "resend";
-import { pliantCardNomination, pliantDesignation } from "./eta-il-fee";
+import { pliantCardCaption, pliantCardNomination } from "./eta-il-fee";
 import { downloadCrmFile, removeCrmFiles, uploadCrmFile } from "./files";
 import { agencyCardObjectPath, agencyCardSiblingPaths, clientCardMime, isAgencyCardPath, isSafeCrmPath } from "./files-access";
 import { getThread, gmailConfigured, searchInbox } from "./gmail";
@@ -991,7 +991,7 @@ async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: Cr
   let cardId = arrival?.pliant_card_id || "";
   if (!cardId) {
     if (!pliantConfigured()) throw new Error("Pliant n'est pas branché.");
-    const { data: booking } = await admin.from("crm_bookings").select("customer_id").eq("id", bookingId).maybeSingle();
+    const { data: booking } = await admin.from("crm_bookings").select("customer_id, reference").eq("id", bookingId).maybeSingle();
     const customerId = (booking as { customer_id?: string } | null)?.customer_id || "";
     const [{ data: travelers }, { data: customer }] = await Promise.all([
       admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
@@ -999,18 +999,25 @@ async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: Cr
         ? admin.from("crm_customers").select("first_name, last_name").eq("id", customerId).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+    const account = customer as { first_name: string; last_name: string } | null;
     const guest = principalGuest({
       travelers: (travelers || []) as CrmBookingTraveler[],
-      holder: customer as { first_name: string; last_name: string } | null,
+      holder: account,
     });
     const name = pliantCardNomination({ firstName: guest.firstName, lastName: guest.lastName });
+    const caption = pliantCardCaption({
+      client: (account?.last_name || "").trim() || guest.lastName,
+      place: hotelDisplayName(item),
+      reference: (booking as { reference?: string | null } | null)?.reference || null,
+    });
     const today = parisIsoDate(new Date());
     const validTo = cardCloseDate((item.end_at || item.start_at || today).slice(0, 10));
     const money = { value: CHECKIN_CARD_CENTS, currency: CHECKIN_CARD_CURRENCY };
     const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
       cardConfig: "PLIANT_VIRTUAL",
-      label: pliantDesignation(hotelDisplayName(item)) || name.label,
+      label: caption?.label || name.label,
+      purpose: caption?.purpose || name.label,
       customFirstName: name.customFirstName,
       customLastName: name.customLastName,
       limit: money,

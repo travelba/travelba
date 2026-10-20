@@ -1,9 +1,11 @@
 import "server-only";
 
+import { hotelDisplayName } from "./carnet";
 import { pliantDesignation } from "./eta-il-fee";
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardDraft, sameCardNameCount } from "./manual-stay-card";
 import { rememberPliantCard } from "./pliant-card-run";
+import { isActiveItem, type CrmBookingItem } from "./types";
 import {
   issuePliantCard,
   lockPliantCard,
@@ -30,21 +32,27 @@ export async function issueBookingCard(
 ) {
   const { data: bookingData } = await admin
     .from("crm_bookings")
-    .select("id, end_date, customer_id")
+    .select("id, end_date, customer_id, reference")
     .eq("id", input.bookingId)
     .maybeSingle();
-  const booking = bookingData as { id: string; end_date: string | null; customer_id: string | null } | null;
+  const booking = bookingData as { id: string; end_date: string | null; customer_id: string | null; reference: string | null } | null;
   if (!booking) throw new Error("Dossier introuvable.");
 
   if (!pliantDesignation(input.designation)) throw new Error("Indiquez le nom de la carte.");
 
   const today = parisIsoDate(new Date());
   const window = bookingCardValidity(today, booking.end_date);
-  const { data: priorData } = await admin
-    .from("crm_booking_cards")
-    .select("first_name, last_name")
-    .eq("booking_id", input.bookingId);
+  const [{ data: priorData }, { data: customerData }, { data: itemData }] = await Promise.all([
+    admin.from("crm_booking_cards").select("first_name, last_name").eq("booking_id", input.bookingId),
+    booking.customer_id
+      ? admin.from("crm_customers").select("last_name").eq("id", booking.customer_id).maybeSingle()
+      : Promise.resolve({ data: null as { last_name?: string | null } | null }),
+    admin.from("crm_booking_items").select("kind, title, supplier, details, lifecycle").eq("booking_id", input.bookingId),
+  ]);
   const prior = (priorData || []) as { first_name: string; last_name: string }[];
+  const hotels = ((itemData || []) as Pick<CrmBookingItem, "kind" | "title" | "supplier" | "details" | "lifecycle">[])
+    .filter((item) => item.kind === "hotel" && isActiveItem(item))
+    .map((item) => hotelDisplayName(item as CrmBookingItem));
   const draft = manualStayCardDraft({
     amount: input.amount,
     firstName: input.firstName,
@@ -53,6 +61,9 @@ export async function issueBookingCard(
     validTo: window.validTo,
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
     designation: input.designation,
+    client: (customerData as { last_name?: string | null } | null)?.last_name || input.lastName,
+    hotels,
+    reference: booking.reference,
     transactionAmount: input.transactionAmount ?? "",
     transactionCount: input.transactionCount ?? "",
     existingCards: sameCardNameCount(
@@ -72,8 +83,8 @@ export async function issueBookingCard(
     booking_id: input.bookingId,
     pliant_card_id: issued.cardId,
     label: draft.body.label,
-    first_name: draft.body.customFirstName,
-    last_name: draft.body.customLastName,
+    first_name: input.firstName.trim(),
+    last_name: input.lastName.trim(),
     limit_cents: draft.body.limit.value,
     transaction_limit_cents: draft.body.transactionLimit.value,
     max_transaction_count: draft.body.maxTransactionCount,
@@ -123,6 +134,11 @@ export async function setBookingCardLocked(admin: Admin, bookingId: string, card
     .eq("id", row.id)
     .eq("booking_id", bookingId);
   if (error) throw new Error("Pliant a répondu, mais le dossier n’a pas enregistré le blocage.");
+  await rememberPliantCard(admin, {
+    pliant_card_id: row.pliant_card_id,
+    booking_id: bookingId,
+    status: locked ? "locked" : "active",
+  });
 }
 
 export async function terminateBookingCard(admin: Admin, bookingId: string, cardRowId: string) {

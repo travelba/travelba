@@ -26,6 +26,7 @@ const EXPECTED = [
   "rapprocher_pliant",
   "creer_carte_pliant",
   "lire_carte_pliant",
+  "bloquer_carte_pliant",
   "publier_carnet",
   "mettre_a_jour_dossier",
   "confirmer_service",
@@ -52,6 +53,7 @@ const WRITE_TOOLS = [
   "crediter_stripe",
   "rapprocher_pliant",
   "creer_carte_pliant",
+  "bloquer_carte_pliant",
   "publier_carnet",
   "mettre_a_jour_dossier",
   "confirmer_service",
@@ -102,6 +104,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.cardSecrets, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "lire_carte_pliant")?.write, undefined);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.write, true);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.openWorld, true);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.cardSecrets, undefined);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.description || "", /debloquer/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);

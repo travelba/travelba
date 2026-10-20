@@ -68,9 +68,11 @@ test("carte manuelle : la désignation interne remplace le libellé du nom", () 
     organizationId: "org",
     designation: "  Hôtel Milan  ",
   });
-  assert.equal(named.label, "Hôtel Milan");
+  assert.equal(named.label, "Martin – Hotel Milan");
+  assert.equal(named.purpose, "Martin – Hotel Milan");
   assert.equal(named.customFirstName, "Camille");
   assert.equal(named.customLastName, "Martin");
+  assert.equal(named.customFirstName.includes("Milan"), false);
   const blank = manualStayCardDraft({
     amount: "100",
     firstName: "Camille",
@@ -95,7 +97,9 @@ test("carte manuelle : la désignation interne remplace le libellé du nom", () 
     designation: "Séjour d’été " + "x".repeat(40),
   });
   assert.equal(long.label.length, 40);
-  assert.equal(long.label.startsWith("Séjour d’été"), true);
+  assert.equal(long.label.startsWith("Martin – "), true);
+  assert.equal(long.purpose.startsWith("Martin – Sejour"), true);
+  assert.equal(long.purpose.length <= 200, true);
 });
 
 test("carte manuelle : le libellé tient dans quarante caractères", () => {

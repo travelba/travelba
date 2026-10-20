@@ -1,6 +1,6 @@
 import "server-only";
 
-import { pliantCardNomination, pliantDesignation } from "./eta-il-fee";
+import { pliantCardCaption, pliantCardNomination, pliantDesignation } from "./eta-il-fee";
 import { gmailConfigured, searchInbox } from "./gmail";
 import { hotelContact, leHotelIdFromItem } from "./hotel-contact";
 import { hotelDisplayName } from "./carnet";
@@ -126,20 +126,29 @@ function hotelEmails(item: CrmBookingItem) {
 function cardBody(input: {
   firstName: string;
   lastName: string;
+  /** Nom du compte. Distinct du titulaire imprimé. */
+  client?: string | null;
   designation: string;
+  reference?: string | null;
   limitCents: number;
   currency: string;
   validFrom: string;
   validTo: string;
 }) {
   const name = pliantCardNomination({ firstName: input.firstName, lastName: input.lastName });
+  const caption = pliantCardCaption({
+    client: (input.client || "").trim() || input.lastName,
+    place: input.designation,
+    reference: input.reference,
+  });
   const money = { value: input.limitCents, currency: input.currency };
   return {
     holder: `${name.customFirstName} ${name.customLastName}`.trim(),
     body: {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
       cardConfig: "PLIANT_VIRTUAL",
-      label: pliantDesignation(input.designation) || name.label,
+      label: caption?.label || pliantDesignation(input.designation) || name.label,
+      purpose: caption?.purpose || caption?.label || name.label,
       customFirstName: name.customFirstName,
       customLastName: name.customLastName,
       limit: money,
@@ -194,7 +203,7 @@ export async function ensureHotelArrivals(admin: Admin, bookingId: string, items
   if (rows.length) await admin.from("crm_hotel_arrivals").insert(rows);
 }
 
-/** Carte au montant saisi, libellée nom et prénom, sans plafond de transactions, sur le porteur configuré. */
+/** Carte au montant saisi. Le libellé Pliant porte le client, l’hôtel et la référence. */
 export async function issueManualStayCard(
   admin: Admin,
   input: { bookingId: string; itemId: string; amount: string; firstName: string; lastName: string }
@@ -220,6 +229,16 @@ export async function issueManualStayCard(
   const today = parisIsoDate(new Date());
   const window = hotelCardWindow(today, isoDate(item.end_at));
   if (!window.ok) throw new Error("Ce séjour est déjà passé.");
+  const { data: bookingData } = await admin
+    .from("crm_bookings")
+    .select("reference, customer_id")
+    .eq("id", input.bookingId)
+    .maybeSingle();
+  const booking = bookingData as { reference?: string | null; customer_id?: string | null } | null;
+  const { data: customerData } = booking?.customer_id
+    ? await admin.from("crm_customers").select("last_name").eq("id", booking.customer_id).maybeSingle()
+    : { data: null };
+  const account = ((customerData as { last_name?: string | null } | null)?.last_name || "").trim();
   const draft = manualStayCardDraft({
     amount: input.amount,
     firstName: input.firstName,
@@ -227,6 +246,9 @@ export async function issueManualStayCard(
     validFrom: window.validFrom,
     validTo: window.validTo,
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
+    client: account || input.lastName,
+    place: hotelDisplayName(item),
+    reference: booking?.reference || null,
   });
   if ("error" in draft) throw new Error(draft.error);
   if (!pliantConfigured()) throw new Error("Pliant n'est pas branché.");
@@ -1021,10 +1043,17 @@ async function ensureCard(input: {
   if (!pliantConfigured() && !input.deps.issueCard) return empty("Pliant n'est pas branché.", { limitCents: eurCents });
   const originNote = hotelCardOriginNote(input.limitCents, code);
   const guest = guestName(input.travelers, input.holder);
+  const { data: bookingRow } = await input.admin
+    .from("crm_bookings")
+    .select("reference")
+    .eq("id", input.row.booking_id)
+    .maybeSingle();
   const spec = cardBody({
     firstName: guest.firstName,
     lastName: guest.lastName,
+    client: (input.holder?.last_name || "").trim() || guest.lastName,
     designation: hotelDisplayName(input.item),
+    reference: (bookingRow as { reference?: string | null } | null)?.reference || null,
     limitCents: eurCents,
     currency: "EUR",
     validFrom: window.validFrom,
