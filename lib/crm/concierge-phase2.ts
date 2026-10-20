@@ -79,6 +79,7 @@ export async function planPhase2(input: {
       history,
       generate: input.generate,
       knowledge: facts,
+      now,
     });
     if (turn.handoff === "quote") {
       const step = await advanceJourney({
