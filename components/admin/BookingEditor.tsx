@@ -295,6 +295,8 @@ export function BookingEditor({
   whatsappMessages = [],
   whatsappRequests = [],
   whatsappBookings = [],
+  whatsappTemplates = [],
+  whatsappPreviewBlocked = false,
   customerLogins = [],
   customerActivity = [],
   mb3m,
@@ -379,6 +381,8 @@ export function BookingEditor({
   whatsappMessages?: WhatsappThreadMessage[];
   whatsappRequests?: WhatsappThreadRequest[];
   whatsappBookings?: { id: string; reference: string }[];
+  whatsappTemplates?: { key: string; label: string }[];
+  whatsappPreviewBlocked?: boolean;
   customerLogins?: CrmCustomerLogin[];
   customerActivity?: CrmCustomerActivity[];
   mb3m: { blocker: string | null; piece: { number: string } | null };
@@ -1897,10 +1901,15 @@ export function BookingEditor({
 
       {tab === "whatsapp" ? (
         <WhatsappThread
-          expanded
           messages={whatsappMessages}
           requests={whatsappRequests}
           bookings={whatsappBookings}
+          phone={customer?.phone || null}
+          customerId={customer?.id || null}
+          customerName={customer ? [customer.first_name, customer.last_name].filter(Boolean).join(" ") : null}
+          bookingId={booking.id}
+          templates={whatsappTemplates}
+          previewBlocked={whatsappPreviewBlocked}
         />
       ) : null}
 

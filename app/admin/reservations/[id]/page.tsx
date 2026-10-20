@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
+import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { DEFAULT_AGENCY_FEE_RATE, loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
 import { syncBookingTitleFromSteps } from "@/lib/crm/bookings";
 import { BookingEditor } from "@/components/admin/BookingEditor";
@@ -490,6 +492,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           whatsappMessages={threadMessages}
           whatsappRequests={whatsappRequests.error ? [] : whatsappRequests.data || []}
           whatsappBookings={(stayRefs || []) as { id: string; reference: string }[]}
+          whatsappTemplates={approvedManualTemplates()}
+          whatsappPreviewBlocked={isVercelPreview()}
           customerLogins={customerLogins}
           customerActivity={customerActivity}
           ficheBillingCompanies={ficheBillingCompanies}

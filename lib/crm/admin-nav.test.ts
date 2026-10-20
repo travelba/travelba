@@ -21,7 +21,7 @@ test("le menu est groupé par domaine, Équipe pour les admins, aperçu hors pro
     agent.map((group) => group.label),
     ["Activité", "Clients", "Dossiers", "Argent", "Boîtes de réception", "Outils"]
   );
-  assert.equal(agent.find((g) => g.id === "outils")?.items.length, 3);
+  assert.equal(agent.find((g) => g.id === "outils")?.items.length, 4);
   assert.ok(agent.find((g) => g.id === "outils")?.items.some((item) => item.href === "/admin/outils/mails"));
   const admin = adminNavGroups({ role: "admin", showExample: true });
   assert.equal(admin.at(-1)?.label, "Équipe");
@@ -48,7 +48,7 @@ test("l’entrée active suit le chemin, la requête l’emporte, les ancres ne 
 });
 
 test("badges : seulement quand le compte est positif", () => {
-  const counts = { revolut: 3, stripe: 1, emails: 0, le: 1, pieces: 4 };
+  const counts = { revolut: 3, stripe: 1, emails: 0, le: 1, pieces: 4, whatsapp: 2 };
   const groups = adminNavGroups({});
   const items = groups.flatMap((group) => group.items);
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/revolut")!, counts), null);
@@ -56,6 +56,7 @@ test("badges : seulement quand le compte est positif", () => {
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/emails")!, counts), null);
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/clients?pieces=echeance")!, counts), 4);
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/clients")!, counts), null);
+  assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/whatsapp")!, counts), 2);
 });
 
 test("groupes repliés : mémorisés, mais celui de la page reste ouvert", () => {
@@ -72,7 +73,7 @@ test("groupes repliés : mémorisés, mais celui de la page reste ouvert", () =>
 
 test("barre basse : cinq entrées, Plus porte les badges des boîtes", () => {
   assert.equal(ADMIN_MOBILE_TABS.length, 5);
-  const counts = { revolut: 2, stripe: 1, emails: 5, le: 1, pieces: 0 };
+  const counts = { revolut: 2, stripe: 1, emails: 5, le: 1, pieces: 0, whatsapp: 0 };
   const argent = ADMIN_MOBILE_TABS.find((tab) => tab.id === "argent")!;
   const plus = ADMIN_MOBILE_TABS.find((tab) => tab.id === "plus")!;
   assert.equal(mobileTabBadge(argent, counts), null);
