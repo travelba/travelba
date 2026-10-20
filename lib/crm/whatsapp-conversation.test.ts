@@ -19,6 +19,7 @@ import {
 
 const URL_HOOK = "https://travelba.fr/api/webhooks/twilio/whatsapp";
 const TOKEN = "twilio-test-token";
+process.env.CONCIERGE_AUTOREPLY = "1";
 const OFFER = "Je n’ai pas cette information. Souhaitez-vous que j’en parle à l’agence ?\n\nLe Concierge";
 
 function signed(params: Record<string, string>) {

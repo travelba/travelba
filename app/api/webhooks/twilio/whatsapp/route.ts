@@ -3,7 +3,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { notifyConciergeRequest } from "@/lib/crm/whatsapp-alert";
 import { issueConciergeMagicLink } from "@/lib/crm/whatsapp-access";
 import { generateConciergeReply } from "@/lib/crm/whatsapp-conversation";
-import { createWhatsappSupabaseStore, receiveWhatsappWebhook } from "@/lib/crm/whatsapp-inbound";
+import { conciergeAutoreplyEnabled, createWhatsappSupabaseStore, receiveWhatsappWebhook } from "@/lib/crm/whatsapp-inbound";
 import { sendWhatsappSession } from "@/lib/crm/whatsapp-session";
 import { rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
 import { twilioWebhookUrl } from "@/lib/crm/twilio-signature";
@@ -39,6 +39,7 @@ export async function POST(request: Request) {
       converse: generateConciergeReply,
       send: (message) =>
         sendWhatsappSession({ to: message.to, body: message.body, mediaUrl: message.mediaUrl }),
+      autoreply: conciergeAutoreplyEnabled(),
     });
     return new NextResponse(null, { status: result.status });
   } catch {

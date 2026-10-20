@@ -217,6 +217,12 @@ export function scopeCompanionDossier(raw: DossierRaw, bookingIds: string[]): Do
   };
 }
 
+/** Seuls `1` et `true` ouvrent la réponse automatique. Tout le reste, y compris l’absence, la coupe. */
+export function conciergeAutoreplyEnabled(env: Record<string, string | undefined> = process.env) {
+  const raw = (env.CONCIERGE_AUTOREPLY || "").trim().toLowerCase();
+  return raw === "1" || raw === "true";
+}
+
 export function whatsappPieceInsert(input: { customerId: string; path: string; contentType: string; ext: string }) {
   return {
     customer_id: input.customerId,
@@ -242,6 +248,9 @@ export async function receiveWhatsappWebhook(input: {
   /** Numéro de l’agence. Un message qui en part est une prise de main, sans réponse du bot. */
   agencyFrom?: string | null;
   alert?: (row: WhatsappRequestInsert) => Promise<void>;
+  /** Réponse du Concierge. Coupé par défaut (`CONCIERGE_AUTOREPLY`). */
+  autoreply?: boolean;
+  env?: Record<string, string | undefined>;
   store: WhatsappStore;
   send(message: { to: string; body: string; mediaUrl?: string | null }): Promise<{
     ok: boolean;
@@ -251,6 +260,7 @@ export async function receiveWhatsappWebhook(input: {
 }): Promise<{ status: number }> {
   const token = input.authToken?.trim() || "";
   if (!token) return { status: 503 };
+  const autoreply = input.autoreply ?? conciergeAutoreplyEnabled(input.env);
   const params = formParams(input.params);
   if (!verifyTwilioSignature({ authToken: token, url: input.url, params, signature: input.signature })) {
     return { status: 403 };
@@ -331,6 +341,19 @@ export async function receiveWhatsappWebhook(input: {
   if ("duplicate" in inbound) return { status: 200 };
 
   if (customer && (await input.store.threadOpen?.(e164)) === false) return { status: 200 };
+
+  if (!autoreply) {
+    await holdInboundForAgency({
+      store: input.store,
+      alert: input.alert,
+      customer,
+      shared: customers.length > 1,
+      phone: e164,
+      messageId: inbound.id,
+      body: journal,
+    });
+    return { status: 200 };
+  }
 
   let said = journal;
   if (customer && input.store.recentThread) {
@@ -479,6 +502,33 @@ export async function receiveWhatsappWebhook(input: {
     }
   }
   return { status: 200 };
+}
+
+/** Le message est déjà dans le fil. L’agence est prévenue. Rien ne part sur WhatsApp. */
+async function holdInboundForAgency(input: {
+  store: WhatsappStore;
+  alert?: (row: WhatsappRequestInsert) => Promise<void>;
+  customer: WhatsappCustomer | null;
+  shared: boolean;
+  phone: string;
+  messageId: string;
+  body: string;
+}) {
+  const request: WhatsappRequestInsert = {
+    customer_id: input.shared ? null : input.customer?.id || null,
+    phone: input.phone,
+    booking_id: null,
+    message_id: input.messageId,
+    kind: input.customer || input.shared ? "question" : "lead",
+    body: redactIngestText(input.body),
+    status: "open",
+  };
+  await input.store.insertRequest(request);
+  try {
+    await input.alert?.(request);
+  } catch (err) {
+    console.error("[whatsapp-concierge] alerte", err instanceof Error ? err.name : "error");
+  }
 }
 
 async function storeInboundPieces(input: {

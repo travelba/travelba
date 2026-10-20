@@ -26,6 +26,7 @@ import { agencySignoff, nextParisMorning, threadIsPaused } from "./whatsapp-take
 
 const URL_HOOK = "https://travelba.fr/api/webhooks/twilio/whatsapp";
 const TOKEN = "twilio-test-token";
+process.env.CONCIERGE_AUTOREPLY = "1";
 const SHOT = "Bonjour, je voudrais modifier TB-2026-0051 — Paris · Marrakech.";
 
 function signed(params: Record<string, string>) {

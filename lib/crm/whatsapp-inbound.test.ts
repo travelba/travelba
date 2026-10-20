@@ -20,6 +20,7 @@ import { issueConciergeMagicLink } from "./whatsapp-access";
 
 const URL_HOOK = "https://travelba.fr/api/webhooks/twilio/whatsapp";
 const TOKEN = "twilio-test-token";
+process.env.CONCIERGE_AUTOREPLY = "1";
 
 function signed(params: Record<string, string>, signature = "") {
   return signature || twilioRequestSignature(TOKEN, URL_HOOK, params);

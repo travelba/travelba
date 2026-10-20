@@ -63,6 +63,8 @@ Une seule route entrante : `app/api/webhooks/twilio/whatsapp/route.ts`.
 
 `POST` lit le corps brut, vérifie `TWILIO_AUTH_TOKEN`, ouvre le client service Supabase, appelle `receiveWhatsappWebhook`, répond sans corps (`200`, `403`, `503` ou `500`). Runtime Node. Pas de limite de débit sur cette route.
 
+`CONCIERGE_AUTOREPLY` est coupé par défaut. Seuls `1` et `true` l’ouvrent. Fermé, la signature est toujours vérifiée, le message entrant est enregistré (client connu, numéro inconnu, numéro partagé), une pièce est rangée et un statut est mis à jour. L’alerte CRM part, le badge de non-lus monte, le temps réel ouvre l’onglet du bas. Rien n’est renvoyé : ni réponse du robot, ni phrase de prospect, ni phrase fixe, ni lien d’accès. Les réponses libres saisies dans `/admin/whatsapp` ne dépendent pas de ce drapeau.
+
 URL signée attendue : `https://travelba.fr/api/webhooks/twilio/whatsapp`, ou `TWILIO_WHATSAPP_WEBHOOK_URL` si elle est posée (`lib/crm/twilio-signature.ts`). Signature HMAC-SHA1 Twilio. Jeton absent → `503`. Signature fausse → `403`, rien n’est écrit. Rappel de statut (`MessageStatus` sans texte) → `200` ignoré. `MessageSid` déjà vu → `200` sans second envoi.
 
 ### Identification
