@@ -6,8 +6,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "node scripts/stage-chromium.mjs && next build",
+    "dev": "node scripts/build-concierge-skill.mjs && next dev",
+    "build": "node scripts/stage-chromium.mjs && node scripts/build-concierge-skill.mjs && next build",
+    "skill:build": "node scripts/build-concierge-skill.mjs",
     "postinstall": "node scripts/stage-chromium.mjs",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",

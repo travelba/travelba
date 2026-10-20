@@ -68,6 +68,7 @@ export async function planPhase2(input: {
       handoff: "quote",
       bookingId: null,
       text: step.reply,
+      messages: [step.reply],
       cover: null,
       optOut: false,
       access: false,
@@ -93,7 +94,7 @@ export async function planPhase2(input: {
       });
       brief = step.brief;
       proposal = step.proposal;
-      turn = { ...turn, text: step.reply, cover: null };
+      turn = { ...turn, text: step.reply, messages: [step.reply], cover: null };
     }
   }
 

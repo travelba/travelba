@@ -75,7 +75,7 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
   assert.ok(attente);
   assert.equal(attente.messages.every((message) => message.wired === false), true);
   const missing = byId.get("reponse-Fait absent du dossier");
-  assert.match(missing?.bubble.body || "", /Je n’ai pas l’horaire dans votre dossier\./);
+  assert.match(missing?.bubble.body || "", /je n’ai pas l’horaire dans votre dossier\./i);
   assert.equal(
     catalog.reduce((count, group) => count + group.messages.filter((message) => message.wired).length, 0) > 10,
     true
