@@ -278,6 +278,11 @@ async function leJson(path: string, init: RequestInit = {}, fetchImpl: typeof fe
   }
 }
 
+/** Lecture JSON déjà authentifiée. Le chemin commence par `/v2`. */
+export function littleEmperorsJson(path: string, init?: RequestInit, fetchImpl?: typeof fetch) {
+  return leJson(path, init, fetchImpl);
+}
+
 /** Fiche hôtel : nom, adresse, lieu, site. Téléphone et e-mail ignorés, même s’ils apparaissaient. */
 export function hotelPublicFields(payload: unknown): LeHotelPublic {
   const row = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};

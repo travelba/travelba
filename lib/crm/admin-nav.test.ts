@@ -21,7 +21,8 @@ test("le menu est groupé par domaine, Équipe pour les admins, aperçu hors pro
     agent.map((group) => group.label),
     ["Activité", "Clients", "Dossiers", "Argent", "Boîtes de réception", "Outils"]
   );
-  assert.equal(agent.find((g) => g.id === "outils")?.items.length, 4);
+  assert.equal(agent.find((g) => g.id === "outils")?.items.length, 5);
+  assert.ok(agent.find((g) => g.id === "outils")?.items.some((item) => item.href === "/admin/hotels-demandes"));
   assert.ok(agent.find((g) => g.id === "outils")?.items.some((item) => item.href === "/admin/outils/mails"));
   const admin = adminNavGroups({ role: "admin", showExample: true });
   assert.equal(admin.at(-1)?.label, "Équipe");
@@ -81,6 +82,7 @@ test("barre basse : cinq entrées, Plus porte les badges des boîtes", () => {
   assert.equal(mobileTabActive(argent, "/admin/revolut"), true);
   assert.equal(mobileTabActive(argent, "/admin/stripe"), true);
   assert.equal(mobileTabActive(plus, "/admin/outils/whatsapp"), true);
+  assert.equal(mobileTabActive(plus, "/admin/hotels-demandes"), true);
   assert.equal(mobileTabActive(ADMIN_MOBILE_TABS[0], "/admin/clients"), false);
   assert.equal(mobileTabActive(ADMIN_MOBILE_TABS[0], "/admin"), true);
   const dossiers = ADMIN_MOBILE_TABS.find((tab) => tab.id === "dossiers")!;
@@ -96,6 +98,7 @@ test("le titre court suit la page, la feuille Plus porte boîtes, outils et équ
   assert.equal(adminPageTitle(groups, "/admin/reservations"), "Réservations");
   assert.equal(adminPageTitle(groups, "/admin/formalites"), "Formalités");
   assert.equal(adminPageTitle(groups, "/admin/services"), "Services à confirmer");
+  assert.equal(adminPageTitle(groups, "/admin/hotels-demandes"), "Demandes hôtels");
   assert.equal(adminPageTitle(groups, "/admin/reservations/nouveau"), "Nouveau dossier");
   assert.equal(adminPageTitle(groups, "/admin/reservations/abc-123"), "Dossier");
   assert.equal(adminPageTitle(groups, "/admin/clients/abc"), "Fiche client");
