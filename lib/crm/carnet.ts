@@ -318,9 +318,11 @@ export function flightCities(item: CrmBookingItem) {
   return cityFrom || cityTo || "";
 }
 
-/** Titre de carte : les villes. Le code aéroport va en dessous. */
+/** Titre de carte : les villes. Le code aéroport va en dessous, ou en titre si une seule ville est lue. */
 export function flightCardTitle(item: CrmBookingItem) {
-  return flightCities(item) || flightIata(item) || item.title;
+  const cities = flightCities(item);
+  if (cities.includes("→")) return cities;
+  return flightIata(item) || cities || item.title;
 }
 
 export function flightCardSubtitle(item: CrmBookingItem) {

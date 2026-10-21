@@ -286,6 +286,13 @@ describe("inferAirportIata", () => {
     assert.equal(inferAirportIata("AÉROPORT DE GENÈVE GENÈVE")?.iata, "GVA");
     assert.equal(inferAirportIata("HEATHROW LONDRES")?.iata, "LHR");
     assert.equal(inferAirportIata("MARSEILLE PROVENCE MARSEILLE")?.iata, "MRS");
+    assert.equal(inferAirportIata("Seychelles")?.iata, "SEZ");
+    assert.equal(inferAirportIata("Mahé")?.iata, "SEZ");
+    assert.equal(inferAirportIata("Dubai")?.iata, "DXB");
+    assert.equal(inferAirportIata("Dubaï")?.iata, "DXB");
+    assert.equal(inferAirportIata("Al Maktoum International")?.iata, "DWC");
+    assert.equal(inferAirportIata("Dubai World Central")?.iata, "DWC");
+    assert.equal(inferAirportIata("Paris"), null);
   });
 });
 
