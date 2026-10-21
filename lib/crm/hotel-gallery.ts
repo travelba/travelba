@@ -456,6 +456,19 @@ function roomSummary(item: HotelLike) {
   return [...counts.entries()].map(([label, count]) => (count > 1 ? `${label} × ${count}` : label)).join(" · ");
 }
 
+/** Nom de chambre sur la carte : la réservation, sinon la légende d’une photo de chambre. */
+export function hotelRoomLine(item: HotelLike, photos: HotelPhoto[] = []) {
+  const booked = roomSummary(item);
+  if (booked) return booked;
+  return photos.find((photo) => photo.kind === "room" && photo.caption)?.caption || "";
+}
+
+/** Pastille de la vignette. « 1 photo », « 12 photos ». */
+export function photoCountLabel(count: number) {
+  const n = Math.max(0, Math.floor(count));
+  return `${n} photo${n > 1 ? "s" : ""}`;
+}
+
 function guestSummary(item: HotelLike) {
   const fromRooms = unique(hotelRooms(asItem(item)).map((room) => room.guests));
   if (fromRooms.length) return fromRooms.join(", ");

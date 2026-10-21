@@ -6,7 +6,9 @@ import {
   attachHotelGallery,
   clearHotelGalleryCache,
   hotelPhotos,
+  hotelRoomLine,
   hotelStayFacts,
+  photoCountLabel,
   benefitLine,
   catalogNameAgrees,
   pickLeStay,
@@ -348,5 +350,32 @@ describe("carte hôtel", () => {
     });
     assert.equal(hotelPhotos(again[0])[0]?.caption, "Deluxe Marina Bay King");
     assert.equal(hotelPhotos(again[0]).length, 5);
+  });
+});
+
+describe("ligne de chambre et pastille photo", () => {
+  it("prend la chambre réservée, puis la légende d’une photo de chambre", () => {
+    const item = {
+      kind: "hotel",
+      details: {
+        rooms: [{ room: "Grand Premium Garden View Room with Balcony" }, { room: "Grand Premium Garden View Room with Balcony" }],
+      },
+    };
+    assert.equal(hotelRoomLine(item, []), "Grand Premium Garden View Room with Balcony × 2");
+    assert.equal(
+      hotelRoomLine(
+        { kind: "hotel", details: { rooms: [{ room: "Deluxe Room" }, { room: "Twin Room" }] } },
+        []
+      ),
+      "Deluxe Room · Twin Room"
+    );
+    const photos = [
+      { url: "https://photos.example/lobby.jpg", thumb: "https://photos.example/lobby.jpg", caption: "Lobby", kind: "hotel" as const },
+      { url: "https://photos.example/room.jpg", thumb: "https://photos.example/room.jpg", caption: "Garden View Room", kind: "room" as const },
+    ];
+    assert.equal(hotelRoomLine({ kind: "hotel", details: {} }, photos), "Garden View Room");
+    assert.equal(hotelRoomLine({ kind: "hotel", details: {} }, photos.slice(0, 1)), "");
+    assert.equal(photoCountLabel(1), "1 photo");
+    assert.equal(photoCountLabel(12), "12 photos");
   });
 });

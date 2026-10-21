@@ -14,30 +14,37 @@ function personLabel(person: { type: string; first_name: string; last_name: stri
 export function HotelContactButton({
   item,
   roster = true,
+  trailingArrow = false,
 }: {
   item: CrmBookingItem;
   /** Faux sur l’interface client : pas de liste, pas de compteur, pas d’e-mail de contact. */
   roster?: boolean;
+  /** Carte compacte : le lien se termine par une flèche, sans icône d’hôtel. */
+  trailingArrow?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const sheet = roster ? item : withoutHotelRoster(item);
   const contact = hotelContact(sheet);
   const people = roster ? contact.people : [];
+  const label = people.length
+    ? `Voir l’hôtel · ${people.length} contact${people.length > 1 ? "s" : ""}`
+    : "Voir l’hôtel";
   return (
     <>
       <button
         type="button"
+        data-card-control=""
         className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#9e7e51]"
         aria-label={`Voir l’hôtel ${contact.name}`}
         onClick={(event) => {
+          event.preventDefault();
           event.stopPropagation();
           setOpen(true);
         }}
       >
-        <Icon name="hotel" className="h-3.5 w-3.5" />
-        {people.length
-          ? `Voir l’hôtel · ${people.length} contact${people.length > 1 ? "s" : ""}`
-          : "Voir l’hôtel"}
+        {trailingArrow ? null : <Icon name="hotel" className="h-3.5 w-3.5" />}
+        {label}
+        {trailingArrow ? <Icon name="arrow_forward" className="h-3.5 w-3.5" /> : null}
       </button>
       {people.length ? (
         <ul className="mt-2 space-y-1">
