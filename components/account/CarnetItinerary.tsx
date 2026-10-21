@@ -11,9 +11,9 @@ import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { HotelContactButton } from "@/components/crm/HotelContact";
-import { HotelGallery } from "@/components/crm/HotelGallery";
+import { HotelReservationCard } from "@/components/crm/HotelReservationCard";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
-import { hotelPhotos } from "@/lib/crm/hotel-gallery";
+import { hotelPhotos, hotelRoomLine } from "@/lib/crm/hotel-gallery";
 import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
 import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
@@ -145,10 +145,118 @@ function CardBody({
   const photos = item.kind === "hotel" ? hotelPhotos(item) : [];
   const checkInDay = (item.start_at || "").slice(0, 10);
   const showGallery = photos.length > 0 && (!day || day === checkInDay);
+  const roomLine = item.kind === "hotel" ? hotelRoomLine(item, photos) : "";
+  const roomShown =
+    roomLine && roomLine.localeCompare(hotelName, "fr", { sensitivity: "accent" }) !== 0 ? roomLine : "";
+  const hotelKicker = [visibleServiceCopy(BOOKING_ITEM_LABELS.hotel), hotelCity].filter(Boolean).join(" · ");
+
+  const panel = (
+    <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
+      {item.kind === "flight" || item.kind === "rail" ? (
+        <>
+          {airline ? <p>{airline}</p> : null}
+          {detailStr(item, "flight_number") ? <p>{detailStr(item, "flight_number")}</p> : null}
+          {cities ? <p>{cities}</p> : null}
+          {iata ? <p>{iata}</p> : null}
+          {cabin ? <p>Classe {cabin}</p> : null}
+          {baggage ? <p>Bagages {baggage}</p> : null}
+          {seat ? <p>Siège {seat}</p> : null}
+          {gate ? <p>Porte {gate}</p> : null}
+          {terminal ? <p>Terminal {terminal}</p> : null}
+        </>
+      ) : null}
+      {item.kind === "hotel" ? (
+        <>
+          <HotelStayFacts item={item} />
+          {occupancy ? <p>{occupancy}</p> : null}
+          {special ? <p>Demandes : {special}</p> : null}
+        </>
+      ) : null}
+      {item.kind === "chauffeur" || item.kind === "greeter" ? (
+        <>
+          {detailStr(item, "pickup") ? <p>{detailStr(item, "pickup")}</p> : null}
+          {item.kind === "greeter" ? (
+            <p className="text-muted">
+              Accueil à la sortie chauffeur, enregistrement, sûreté, porte ou salon.
+            </p>
+          ) : (
+            <p className="text-muted">Trajet domicile ↔ aéroport, mis en place par l’agence.</p>
+          )}
+        </>
+      ) : null}
+      {item.kind === "transfer" ? (
+        <>
+          <p>
+            {[detailStr(item, "pickup"), detailStr(item, "dropoff")].filter(Boolean).join(" → ")}
+          </p>
+          {pickupNote ? <p>{pickupNote}</p> : null}
+        </>
+      ) : null}
+      {item.kind === "car" ? (
+        <p>
+          {[detailStr(item, "vehicle"), detailStr(item, "driver"), detailStr(item, "pickup"), detailStr(item, "dropoff")]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      ) : null}
+      {item.kind === "activity" || item.kind === "cruise" ? (
+        <>
+          <p>
+            {[detailStr(item, "meeting_point") || city, detailStr(item, "duration")].filter(Boolean).join(" · ")}
+          </p>
+          {included.length ? (
+            <ul className="list-disc pl-4 text-muted">
+              {included.map((row) => (
+                <li key={row}>{row}</li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : null}
+      {item.confirmation_ref ? (
+        <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
+      ) : null}
+      <div className="flex flex-wrap items-end gap-3">
+        {documentsForItem(item, docs).map((doc) => (
+          <FilePreviewTile
+            key={doc.id}
+            file={{
+              id: doc.id,
+              path: doc.storage_path,
+              fileName: doc.file_name || "document",
+              mimeType: doc.mime_type,
+              label: doc.id === item.source_document_id ? "Confirmation" : doc.file_name || "Pièce jointe",
+              shareText: "Bonjour, je vous transmets une pièce de la réservation.",
+              partage,
+            }}
+          />
+        ))}
+        {calendarHref ? (
+          <AgendaLink href={calendarHref} phone={calendarPhone}>
+            Ajouter à l’agenda
+          </AgendaLink>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  if (showGallery) {
+    return (
+      <HotelReservationCard
+        photos={photos}
+        title={hotelName || item.title}
+        kicker={hotelKicker}
+        room={roomShown}
+        price={price}
+        item={withoutHotelRoster(item)}
+      >
+        {panel}
+      </HotelReservationCard>
+    );
+  }
 
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
-    {showGallery ? <HotelGallery photos={photos} title={hotelName || item.title} /> : null}
     <details className="group min-w-0">
       <summary className="flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 py-3 [&::-webkit-details-marker]:hidden">
         <BrandMark item={item} className="h-10 w-10" />
@@ -206,93 +314,7 @@ function CardBody({
           </p>
         ) : null}
       </summary>
-      <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
-        {item.kind === "flight" || item.kind === "rail" ? (
-          <>
-            {airline ? <p>{airline}</p> : null}
-            {detailStr(item, "flight_number") ? <p>{detailStr(item, "flight_number")}</p> : null}
-            {cities ? <p>{cities}</p> : null}
-            {iata ? <p>{iata}</p> : null}
-            {cabin ? <p>Classe {cabin}</p> : null}
-            {baggage ? <p>Bagages {baggage}</p> : null}
-            {seat ? <p>Siège {seat}</p> : null}
-            {gate ? <p>Porte {gate}</p> : null}
-            {terminal ? <p>Terminal {terminal}</p> : null}
-          </>
-        ) : null}
-        {item.kind === "hotel" ? (
-          <>
-            <HotelStayFacts item={item} />
-            {occupancy ? <p>{occupancy}</p> : null}
-            {special ? <p>Demandes : {special}</p> : null}
-          </>
-        ) : null}
-        {item.kind === "chauffeur" || item.kind === "greeter" ? (
-          <>
-            {detailStr(item, "pickup") ? <p>{detailStr(item, "pickup")}</p> : null}
-            {item.kind === "greeter" ? (
-              <p className="text-muted">
-                Accueil à la sortie chauffeur, enregistrement, sûreté, porte ou salon.
-              </p>
-            ) : (
-              <p className="text-muted">Trajet domicile ↔ aéroport, mis en place par l’agence.</p>
-            )}
-          </>
-        ) : null}
-        {item.kind === "transfer" ? (
-          <>
-            <p>
-              {[detailStr(item, "pickup"), detailStr(item, "dropoff")].filter(Boolean).join(" → ")}
-            </p>
-            {pickupNote ? <p>{pickupNote}</p> : null}
-          </>
-        ) : null}
-        {item.kind === "car" ? (
-          <p>
-            {[detailStr(item, "vehicle"), detailStr(item, "driver"), detailStr(item, "pickup"), detailStr(item, "dropoff")]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        ) : null}
-        {item.kind === "activity" || item.kind === "cruise" ? (
-          <>
-            <p>
-              {[detailStr(item, "meeting_point") || city, detailStr(item, "duration")].filter(Boolean).join(" · ")}
-            </p>
-            {included.length ? (
-              <ul className="list-disc pl-4 text-muted">
-                {included.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : null}
-          </>
-        ) : null}
-        {item.confirmation_ref ? (
-          <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
-        ) : null}
-        <div className="flex flex-wrap items-end gap-3">
-          {documentsForItem(item, docs).map((doc) => (
-            <FilePreviewTile
-              key={doc.id}
-              file={{
-                id: doc.id,
-                path: doc.storage_path,
-                fileName: doc.file_name || "document",
-                mimeType: doc.mime_type,
-                label: doc.id === item.source_document_id ? "Confirmation" : doc.file_name || "Pièce jointe",
-                shareText: "Bonjour, je vous transmets une pièce de la réservation.",
-                partage,
-              }}
-            />
-          ))}
-          {calendarHref ? (
-            <AgendaLink href={calendarHref} phone={calendarPhone}>
-              Ajouter à l’agenda
-            </AgendaLink>
-          ) : null}
-        </div>
-      </div>
+      {panel}
     </details>
     {item.kind === "accueil_vip" && (clientInfo || hotline || providerMail || party) ? (
       <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3">
