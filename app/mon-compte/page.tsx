@@ -13,6 +13,8 @@ import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
+import { HotelSearch } from "@/components/account/HotelSearch";
+import { hotelSearchAllowed } from "@/lib/crm/hotel-search";
 import {
   BoardingPassSkeleton,
   HomeBoardingPass,
@@ -43,6 +45,8 @@ export default async function AccountHomePage() {
             Bonjour {firstName}
           </h1>
         </section>
+
+        {hotelSearchAllowed(customer) ? <HotelSearch /> : null}
 
         <Suspense fallback={<HomeEncoursSkeleton />}>
           <HomeEncours customer={customer} />
