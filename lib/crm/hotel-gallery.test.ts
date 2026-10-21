@@ -42,6 +42,7 @@ const fairmont = {
     photo("lobby", "Lobby"),
     photo("exterior", "Exterior"),
     photo("pool", "Swimming Pool"),
+    photo("harbour-orphan", "Deluxe Harbour King"),
     photo("prego", "Prego"),
   ],
   child_rooms: [
@@ -56,7 +57,15 @@ describe("photos de chambre Little Emperors", () => {
     assert.equal(roomCaptionMatches("Deluxe Marina Bay King", "Deluxe Room"), false);
     assert.equal(roomCaptionMatches("Deluxe Marina Bay King", "Deluxe Harbour King"), false);
     assert.equal(roomCaptionMatches("Deluxe Marina Bay King", "deluxe marina bay king room"), true);
-    assert.equal(roomCaptionMatches("Panoramic Sea View Room - Twin", "Panoramic Sea View Room"), true);
+    assert.equal(roomCaptionMatches("Panoramic Sea View Room - Twin", "Panoramic Sea View Room"), false);
+    assert.equal(roomCaptionMatches("Terrace Queen", "Terrace King"), false);
+    assert.equal(roomCaptionMatches("Terrace Queen", "Terrace"), false);
+    assert.equal(roomCaptionMatches("Deluxe Room Plaza", "Deluxe Room"), false);
+    assert.equal(roomCaptionMatches("Connecting Junior Suites", "Junior Suite"), false);
+    assert.equal(roomCaptionMatches("Ocean-View Room", "Ocean-View Room - 2 Doubles"), false);
+    assert.equal(roomCaptionMatches("Deluxe Room, 1 King", "Deluxe Room, 2 Queen"), false);
+    assert.equal(roomCaptionMatches("2 Twin Beds Ocean View Deluxe", "1 King Bed Ocean View Deluxe"), false);
+    assert.equal(roomCaptionMatches("Superior Room", "Superior Room"), true);
     assert.equal(roomCaptionMatches("SO Lofty", "SO Lofty"), true);
     const presentation = presentationFromLeHotel(fairmont, ["Deluxe Marina Bay King"]);
     assert.deepEqual(
@@ -78,6 +87,7 @@ describe("photos de chambre Little Emperors", () => {
       photo("harbour", "Deluxe Harbour King"),
       photo("lobby", "Lobby"),
       photo("exterior", "Exterior"),
+      photo("blank", ""),
     ];
     const presentation = presentationFromLeHotel(
       { ...fairmont, images_gallery: gallery },
@@ -88,7 +98,90 @@ describe("photos de chambre Little Emperors", () => {
       ["Exterior", "Lobby", "Swimming Pool"]
     );
     assert.ok(presentation.photos.every((row) => row.kind === "hotel"));
-    assert.equal(presentation.photos.some((row) => /deluxe/i.test(row.caption)), false);
+    assert.equal(presentation.photos.some((row) => /deluxe|harbour/i.test(row.caption)), false);
+  });
+
+  it("garde la catégorie sur d’autres hôtels, sans cas particulier", () => {
+    const nobu = presentationFromLeHotel(
+      {
+        name: "Nobu Hotel Marbella",
+        images_gallery: [
+          photo("plaza", "Deluxe Room Plaza"),
+          photo("deluxe", "Deluxe Room"),
+          photo("junior", "Junior Suite"),
+          photo("pool", "Swimming Pool"),
+          photo("beach", "Beach"),
+        ],
+        child_rooms: [
+          { name: "Deluxe Room Plaza" },
+          { name: "Deluxe Room" },
+          { name: "Junior Suite" },
+          { name: "Connecting Junior Suites" },
+        ],
+      },
+      ["Deluxe Room Plaza"]
+    );
+    assert.deepEqual(
+      nobu.photos.map((row) => row.caption),
+      ["Deluxe Room Plaza", "Beach", "Swimming Pool"]
+    );
+    assert.equal(nobu.photos[0]?.kind, "room");
+    const connecting = presentationFromLeHotel(
+      {
+        name: "Nobu Hotel Marbella",
+        images_gallery: [photo("junior", "Junior Suite"), photo("beach", "Beach")],
+        child_rooms: [{ name: "Junior Suite" }, { name: "Connecting Junior Suites" }],
+      },
+      ["Connecting Junior Suites"]
+    );
+    assert.deepEqual(connecting.photos.map((row) => row.caption), ["Beach"]);
+    const gansevoort = presentationFromLeHotel(
+      {
+        name: "Gansevoort Meatpacking NYC",
+        images_gallery: [
+          photo("terrace", "Terrace"),
+          photo("grand", "Grand Deluxe"),
+          photo("queen", "Grand Deluxe Queen"),
+          photo("exterior", "Exterior"),
+          photo("pool", "Swimming Pool"),
+        ],
+        child_rooms: [{ name: "Terrace Queen" }, { name: "Terrace King" }, { name: "Grand Deluxe King" }, { name: "Grand Deluxe Queen" }],
+      },
+      ["Terrace Queen"]
+    );
+    assert.deepEqual(gansevoort.photos.map((row) => row.caption), ["Exterior", "Swimming Pool", "Terrace"]);
+    assert.ok(gansevoort.photos.every((row) => row.kind === "hotel"));
+    const cabos = presentationFromLeHotel(
+      {
+        name: "Four Seasons Resort Los Cabos at Costa Palmas",
+        images_gallery: [photo("ocean", "Ocean-View Room"), photo("doubles", "Ocean-View Room - 2 Doubles"), photo("beach", "Beach")],
+        child_rooms: [{ name: "Ocean-View Room" }, { name: "Ocean-View Room - 2 Doubles" }],
+      },
+      ["Ocean-View Room"]
+    );
+    assert.deepEqual(
+      cabos.photos.filter((row) => row.kind === "room").map((row) => row.caption),
+      ["Ocean-View Room"]
+    );
+    const sof = presentationFromLeHotel(
+      {
+        name: "Sofitel Marrakech Palais Imperial",
+        images_gallery: [photo("sup", "Superior Room"), photo("deluxe", "Deluxe Room"), photo("lobby", "Lobby")],
+        child_rooms: [{ name: "Superior Room" }, { name: "Deluxe Room" }],
+      },
+      ["Superior Room"]
+    );
+    assert.equal(sof.photos[0]?.caption, "Superior Room");
+    assert.equal(sof.photos.some((row) => row.caption === "Deluxe Room"), false);
+    const palais = presentationFromLeHotel(
+      {
+        name: "Hotel Du Palais Biarritz",
+        images_gallery: [photo("king", "1 King Bed Ocean View Deluxe"), photo("lobby", "Lobby")],
+        child_rooms: [{ name: "2 Twin Beds Ocean View Deluxe" }, { name: "1 King Bed Ocean View Deluxe" }],
+      },
+      ["2 Twin Beds Ocean View Deluxe"]
+    );
+    assert.deepEqual(palais.photos.map((row) => row.caption), ["Lobby"]);
   });
 
   it("retombe sur l’hôtel quand la chambre n’a pas de photo", () => {

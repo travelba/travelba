@@ -23,11 +23,13 @@ function Fact({ fact }: { fact: HotelFact }) {
 export function HotelStayFacts({ item }: { item: CrmBookingItem }) {
   const facts = hotelStayFacts(item);
   if (!facts.length) return null;
-  const benefits = facts.find((fact) => fact.label === "Avantages" && "lines" in fact);
+  const benefits = facts.find((fact) => (fact.label === "Avantages" || fact.label === "Inclus") && "lines" in fact);
   const rest = facts.filter((fact) => fact !== benefits);
   return (
     <div className="space-y-3">
-      {benefits && "lines" in benefits ? <HotelBenefits lines={benefits.lines} /> : null}
+      {benefits && "lines" in benefits ? (
+        <HotelBenefits lines={benefits.lines} title={benefits.label === "Avantages" ? "Vos avantages exclusifs" : "Inclus"} />
+      ) : null}
       {rest.map((fact) => (
         <Fact key={fact.label} fact={fact} />
       ))}
