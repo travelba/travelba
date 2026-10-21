@@ -10,6 +10,7 @@ import { McpWriteError } from "./mcp-write";
 import { pliantDesignation } from "./eta-il-fee";
 import { hotelDisplayName } from "./carnet";
 import { rememberPliantCard } from "./pliant-card-run";
+import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
 import { issuePliantCard, lockPliantCard, pliantConfigured, readPliantCardFace, readPliantCardSecrets, unlockPliantCard } from "./pliant";
 import { isActiveItem, type CrmBookingItem } from "./types";
 
@@ -103,7 +104,7 @@ function currencyOf(value: unknown) {
 }
 
 function transactionCount(value: unknown) {
-  if (value == null || value === "") return 1;
+  if (value == null || value === "") return DEFAULT_PLIANT_TRANSACTIONS;
   const raw = typeof value === "number" ? String(value) : clean(value);
   if (!/^\d+$/.test(raw)) return null;
   const count = Number(raw);

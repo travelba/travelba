@@ -41,6 +41,7 @@ import {
 } from "./manual-stay-card";
 import { manualPliantCardIds, rememberPliantCard, setRememberedCardLimit } from "./pliant-card-run";
 import { issuePliantCard, pliantConfigured, readPliantCardFace, setPliantCardLimit } from "./pliant";
+import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
 import { pliantReferenceRates } from "./visa-ecb";
 import { isActiveItem } from "./types";
 import type {
@@ -154,7 +155,7 @@ function cardBody(input: {
       limit: money,
       transactionLimit: money,
       limitRenewFrequency: "TOTAL" as const,
-      maxTransactionCount: input.limitCents === CHECKIN_CARD_CENTS ? 20 : 8,
+      maxTransactionCount: DEFAULT_PLIANT_TRANSACTIONS,
       validFrom: input.validFrom,
       validTo: input.validTo,
       validTimezone: "Europe/Paris",

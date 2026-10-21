@@ -1,5 +1,6 @@
 import { pliantCardNomination, pliantStayCaption } from "./eta-il-fee";
 import { addIsoDays, cardCloseDate, isoDate, parseEurosToCents } from "./hotel-arrival";
+import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
 
 /** Marque une carte dont le montant a été choisi sur le dossier. Le cron ne la réécrit pas. */
 export const MANUAL_CARD_NOTE = "Saisie agence";
@@ -37,7 +38,7 @@ export function bookingCardValidity(today: string, endDate: string | null | unde
   return { validFrom: today, validTo: close < today ? today : close };
 }
 
-/** Pliant plafonne une carte voyage à 3 transactions si ce champ est absent. */
+/** Plafond Pliant d’un nombre saisi. Le défaut d’émission est 2, pas ce maximum. */
 export const MANUAL_CARD_TX_MAX = 999_999_999;
 
 /** Nombre de paiements et montant maximum de chacun. Le montant reste sous le plafond. */
@@ -119,7 +120,7 @@ export function manualStayCardBody(input: {
     limit: money,
     transactionLimit: { value: perTransaction, currency },
     limitRenewFrequency: "TOTAL" as const,
-    maxTransactionCount: input.maxTransactionCount ?? MANUAL_CARD_TX_MAX,
+    maxTransactionCount: input.maxTransactionCount ?? DEFAULT_PLIANT_TRANSACTIONS,
     validFrom: input.validFrom,
     validTo: input.validTo,
     validTimezone: "Europe/Paris" as const,
@@ -153,7 +154,7 @@ export function manualStayCardDraft(input: {
     ? cardTransactionRules({
         limitCents,
         transactionAmount: input.transactionAmount || "",
-        transactionCount: input.transactionCount || "",
+        transactionCount: (input.transactionCount || "").trim() || String(DEFAULT_PLIANT_TRANSACTIONS),
       })
     : null;
   if (rules && "error" in rules) return { error: rules.error };

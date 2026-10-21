@@ -18,6 +18,7 @@ import {
   setPliantCardLimit,
   unlockPliantCard,
 } from "./pliant";
+import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Admin = { from: (table: string) => any };
@@ -198,7 +199,7 @@ export async function issueCustomerPliantCard(
   const rules = cardTransactionRules({
     limitCents: input.limitCents,
     transactionAmount: input.transactionAmount || "",
-    transactionCount: input.transactionCount || "",
+    transactionCount: input.transactionCount?.trim() || String(DEFAULT_PLIANT_TRANSACTIONS),
   });
   if ("error" in rules) throw new Error(rules.error);
   const today = parisIsoDate(new Date());

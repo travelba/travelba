@@ -235,7 +235,6 @@ async function clearPliantCardControls(cardId: string, token: string) {
   const url = `${endpoints().api}/cards/${encodeURIComponent(cardId)}/card-controls`;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
-    if (await pliantCardControlsAreOpen(url, headers)) return;
     const res = await fetch(url, {
       method: "PUT",
       signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),

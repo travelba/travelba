@@ -208,7 +208,7 @@ async function silence<T>(run: () => Promise<T>) {
   }
 }
 
-test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, sans numéro", async () => {
+test("creer_carte_pliant émet une carte à deux transactions rattachée au dossier, sans numéro", async () => {
   const state = baseState();
   const { value, lines } = await silence(() =>
     runWithMcpAccess(CARDS, () =>
@@ -222,7 +222,7 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
   assert.equal(value.titulaire, "Camille Martin");
   assert.equal(value.plafond, 10);
   assert.equal(value.devise, "EUR");
-  assert.equal(value.transactions, 1);
+  assert.equal(value.transactions, 2);
   assert.equal(value.montant_transaction, 10);
   assert.equal(value.dossier_id, BOOKING);
   assert.equal(value.reference, "TB-2026-0082");
@@ -247,7 +247,7 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
   assert.equal(body.customLastName, "Martin");
   assert.equal(body.label.includes("Camille"), false);
   assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
-  assert.equal(body.maxTransactionCount, 1);
+  assert.equal(body.maxTransactionCount, 2);
   assert.deepEqual(body.limit, { value: 1000, currency: "EUR" });
   assert.deepEqual(body.transactionLimit, { value: 1000, currency: "EUR" });
   assert.equal(Object.hasOwn(body, "cardControls"), false);
@@ -258,7 +258,7 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
   assert.equal(state.registry[0]?.booking_id, BOOKING);
   assert.equal(state.registry[0]?.customer_id, CLIENT);
   assert.equal(state.registry[0]?.limit_manual, true);
-  assert.equal(state.registry[0]?.max_transaction_count, 1);
+  assert.equal(state.registry[0]?.max_transaction_count, 2);
 
   const audit = state.audits.at(-1);
   assert.equal(audit?.kind, "creation");
@@ -273,6 +273,43 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
   const blob = JSON.stringify(state.audits) + JSON.stringify(lines);
   assert.equal(blob.includes(PAN), false);
   assert.equal(blob.includes(CVV), false);
+});
+
+test("transactions précisé garde le nombre et n’ajoute aucun blocage", async () => {
+  const state = baseState();
+  const value = await runWithMcpAccess(CARDS, () =>
+    createPliantCard(
+      { reference: "TB-2026-0082", nom: "Visa", plafond: "10", transactions: 5, montant_transaction: 4 },
+      fakeAdmin(state),
+      deps(state)
+    )
+  );
+  if (!("cree" in value) || !value.cree) assert.fail("carte non créée");
+  assert.equal(value.transactions, 5);
+  assert.equal(value.montant_transaction, 4);
+  assert.equal(value.plafond, 10);
+  const body = state.issued[0] as {
+    maxTransactionCount: number;
+    limit: { value: number };
+    transactionLimit: { value: number };
+    cardConfig: string;
+    currencies?: unknown;
+    countries?: unknown;
+    merchants?: unknown;
+    categories?: unknown;
+    acceptanceMethods?: unknown;
+    cardControls?: unknown;
+  };
+  assert.equal(body.maxTransactionCount, 5);
+  assert.equal(body.limit.value, 1000);
+  assert.equal(body.transactionLimit.value, 400);
+  assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
+  assert.equal(body.currencies, undefined);
+  assert.equal(body.countries, undefined);
+  assert.equal(body.merchants, undefined);
+  assert.equal(body.categories, undefined);
+  assert.equal(body.acceptanceMethods, undefined);
+  assert.equal(body.cardControls, undefined);
 });
 
 test("sans le jeton carte, rien n’est émis et le refus est noté", async () => {

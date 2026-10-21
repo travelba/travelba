@@ -146,6 +146,7 @@ function syntheticCard(existingCards: number, firstName = "Prenom", lastName = "
 
 test("la première carte porte le prénom et le nom, sans préfixe", () => {
   const card = syntheticCard(0);
+  assert.equal(card.body.maxTransactionCount, 2);
   assert.equal(card.body.label, "Prenom Nom");
   assert.equal(card.body.customFirstName, "Prenom");
   assert.equal(card.body.customLastName, "Nom");

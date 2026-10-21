@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StayCard } from "@/components/crm/StayCard";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
+import { DEFAULT_PLIANT_TRANSACTIONS } from "@/lib/crm/pliant-controls";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { pliantSignedCents, pliantStatusLabel } from "@/lib/crm/pliant-tx";
 import type { PliantSpendLine } from "@/lib/crm/pliant-cards";
@@ -91,7 +92,7 @@ export function PliantCardDesk({
   const [limit, setLimit] = useState(ceilingCents != null ? (ceilingCents / 100).toFixed(2).replace(".", ",") : "");
   const [note, setNote] = useState("");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionCountInput, setTransactionCountInput] = useState("");
+  const [transactionCountInput, setTransactionCountInput] = useState(String(DEFAULT_PLIANT_TRANSACTIONS));
   const ceilingLabel = ceilingCents != null && ceilingCents > 0 ? formatMoney(ceilingCents / 100, currency) : null;
   const issuedTransactions = issuedTransactionLine(transactionCount, transactionLimitCents, currency);
   const draftCeiling = parseEurosToCents(limit);

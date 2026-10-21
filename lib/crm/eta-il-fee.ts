@@ -1,4 +1,5 @@
 import { ETA_IL_PORTAL } from "./eta-il-draft";
+import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
 import {
   centsToEur,
   corridorCeilingCents,
@@ -308,7 +309,7 @@ export function etaIlPliantCard(input: {
       limit: money,
       transactionLimit: money,
       limitRenewFrequency: "TOTAL" as const,
-      maxTransactionCount: count,
+      maxTransactionCount: Math.max(DEFAULT_PLIANT_TRANSACTIONS, count),
       validFrom,
       validTo,
       validTimezone: "Europe/Paris",
