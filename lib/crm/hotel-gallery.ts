@@ -5,9 +5,25 @@ import type { CrmBookingItem } from "@/lib/crm/types";
 export const LE_PUBLIC_HOTEL = "https://api.littleemperors.com/api/hotels";
 
 const PHOTO_CAP = 8;
-const BED_TOKEN = /^(twin|king|queen|double|doubles|single|2)$/;
+const FILLER = new Set([
+  "room",
+  "rooms",
+  "chambre",
+  "king",
+  "kings",
+  "twin",
+  "twins",
+  "queen",
+  "double",
+  "doubles",
+  "single",
+  "bed",
+  "beds",
+  "bedroom",
+]);
 const HOTEL_SPACE =
   /^(exterior|exterieur|lobby|hall|reception|swimming pool|pool|piscine|beach|plage|garden|jardin|spa|facade|facade hotel)$/;
+const SPACE_RANK = ["exterior", "exterieur", "facade", "lobby", "hall", "reception", "garden", "jardin", "beach", "plage", "spa", "piscine", "pool", "swimming pool"];
 
 export type HotelPhoto = {
   url: string;
@@ -117,20 +133,49 @@ function roomNamesOf(item: HotelLike) {
   return names;
 }
 
-/** Même chambre, ou le même nom plus un type de lit (Twin, King). Pas une autre chambre Deluxe. */
-export function roomCaptionMatches(booked: string, caption: string) {
-  const left = fold(booked);
-  const right = fold(caption);
-  if (!left || !right || left.length < 4 || right.length < 4) return false;
-  if (left === right) return true;
-  const shorter = left.length <= right.length ? left : right;
-  const longer = left.length <= right.length ? right : left;
-  if (!longer.startsWith(`${shorter} `)) return false;
-  return longer
-    .slice(shorter.length)
-    .trim()
+function significantTokens(value: string) {
+  return fold(value)
     .split(" ")
-    .every((token) => BED_TOKEN.test(token));
+    .filter((token) => token && !FILLER.has(token) && !/^\d+$/.test(token));
+}
+
+/**
+ * Même chambre une fois retirés la casse et les mots de lit (Room, King, Twin).
+ * « Deluxe Marina Bay King » n’est pas « Deluxe Room » ni « Deluxe Harbour King ».
+ */
+export function roomCaptionMatches(booked: string, caption: string) {
+  const left = significantTokens(booked);
+  const right = significantTokens(caption);
+  if (!left.length || !right.length) return false;
+  return left.join(" ") === right.join(" ");
+}
+
+/** Chambre plus générale du catalogue quand la vue réservée n’a pas sa propre photo. */
+function familyRoomImages(images: GalleryImage[], bookedNames: string[]) {
+  let bestScore = 0;
+  let bestKey = "";
+  const groups = new Map<string, GalleryImage[]>();
+  for (const name of bookedNames) {
+    const booked = significantTokens(name);
+    if (booked.length < 2) continue;
+    const bookedSet = new Set(booked);
+    for (const image of images) {
+      const tokens = significantTokens(image.caption);
+      if (!tokens.length || tokens.length >= booked.length) continue;
+      if (tokens.some((token) => !bookedSet.has(token))) continue;
+      const prefix = tokens.every((token, index) => booked[index] === token);
+      const score = tokens.length * 10 + (prefix ? 1 : 0);
+      const key = tokens.join(" ");
+      const list = groups.get(key) || [];
+      list.push(image);
+      groups.set(key, list);
+      if (score > bestScore) {
+        bestScore = score;
+        bestKey = key;
+      }
+    }
+  }
+  return bestKey ? groups.get(bestKey) || [] : [];
 }
 
 function unique(lines: string[]) {
@@ -193,18 +238,35 @@ function hotelFallback(images: GalleryImage[], booked: string[], catalogRooms: s
     else if (!image.caption || !catalogRooms.length) atmosphere.push(image);
     else atmosphere.push(image);
   }
-  const picked = [...spaces, ...atmosphere];
-  return dedupePhotos(picked, "hotel");
+  const picked = [...spaces, ...atmosphere].sort((a, b) => spaceRank(a.caption) - spaceRank(b.caption));
+  return dedupePhotos(picked, "hotel", PHOTO_CAP);
 }
 
-function dedupePhotos(images: GalleryImage[], kind: HotelPhoto["kind"]) {
+function spaceRank(caption: string) {
+  const folded = fold(caption);
+  const index = SPACE_RANK.findIndex((word) => folded === word || folded.includes(word));
+  return index === -1 ? SPACE_RANK.length : index;
+}
+
+function dedupePhotos(images: GalleryImage[], kind: HotelPhoto["kind"], cap: number) {
   const seen = new Set<string>();
   const photos: HotelPhoto[] = [];
   for (const image of images) {
     if (seen.has(image.url)) continue;
     seen.add(image.url);
     photos.push({ url: image.url, thumb: image.thumb || image.url, caption: image.caption, kind });
-    if (photos.length >= PHOTO_CAP) break;
+    if (photos.length >= cap) break;
+  }
+  return photos;
+}
+
+function withHotelAfter(room: HotelPhoto[], hotel: HotelPhoto[]) {
+  const photos = [...room];
+  const seen = new Set(room.map((photo) => photo.url));
+  for (const photo of hotel) {
+    if (photos.length >= PHOTO_CAP || seen.has(photo.url)) continue;
+    seen.add(photo.url);
+    photos.push(photo);
   }
   return photos;
 }
@@ -216,25 +278,54 @@ function clockFromShortInfo(row: Record<string, unknown>, key: string) {
 }
 
 /**
- * Photos de la chambre réservée si le catalogue les nomme.
- * Sinon les photos de l’hôtel (façade, hall, piscine), jamais une autre chambre.
- * Heures seulement si `short_info` les donne.
+ * D’abord toutes les photos de la chambre réservée, puis l’hôtel.
+ * Sans photo à ce nom, la chambre deluxe (ou la famille la plus proche), jamais une autre vue.
+ * Sans aucune photo de chambre, façade et hall avant la piscine.
  */
 export function presentationFromLeHotel(payload: unknown, roomNames: string[]): HotelPresentation {
   const row = record(payload) || {};
   const images = galleryImages(row);
   const catalogRooms = childRoomNames(row);
   const booked = unique(roomNames);
-  const roomPhotos = dedupePhotos(
-    images.filter((image) => booked.some((room) => roomCaptionMatches(room, image.caption))),
-    "room"
-  );
+  const exact = images.filter((image) => booked.some((room) => roomCaptionMatches(room, image.caption)));
+  const roomPhotos = dedupePhotos(exact.length ? exact : familyRoomImages(images, booked), "room", PHOTO_CAP);
+  const hotelPhotos = hotelFallback(images, booked, catalogRooms);
   return {
-    photos: roomPhotos.length ? roomPhotos : hotelFallback(images, booked, catalogRooms),
+    photos: roomPhotos.length ? withHotelAfter(roomPhotos, hotelPhotos) : hotelPhotos,
     check_in_time: clockFromShortInfo(row, "check_in_time"),
     check_out_time: clockFromShortInfo(row, "check_out_time"),
     address: text(row.address) || null,
   };
+}
+
+export type BenefitTone = "upgrade" | "breakfast" | "credit" | "schedule" | "night" | "gift";
+
+export type BenefitLine = { title: string; note: string; tone: BenefitTone };
+
+/** Titre court et réserve (« sous réserve », exclusions) à part. */
+export function benefitLine(raw: string): BenefitLine {
+  const line = raw.replace(/\s+/g, " ").trim();
+  const dash = line.split(/\s+—\s+/);
+  let title = line;
+  let note = "";
+  if (dash.length > 1) {
+    title = dash[0].trim();
+    note = dash.slice(1).join(" — ").trim();
+  } else {
+    const caveat = line.match(/^(.*?)(?:,\s*|\s+)(sous réserve\b.*|hors dates\b.*|subject to\b.*)$/i);
+    if (caveat && caveat[1].trim().length > 3) {
+      title = caveat[1].trim();
+      note = caveat[2].trim();
+    }
+  }
+  const folded = fold(title);
+  let tone: BenefitTone = "gift";
+  if (/surclass|upgrade/.test(folded)) tone = "upgrade";
+  else if (/petit dejeuner|breakfast|repas/.test(folded)) tone = "breakfast";
+  else if (/credit/.test(folded)) tone = "credit";
+  else if (/enregistrement|depart|arrivee|check/.test(folded)) tone = "schedule";
+  else if (/nuit/.test(folded)) tone = "night";
+  return { title, note, tone };
 }
 
 export function storedHotelPhotos(details: Record<string, unknown> | null | undefined): HotelPhoto[] {

@@ -7,6 +7,7 @@ import {
   clearHotelGalleryCache,
   hotelPhotos,
   hotelStayFacts,
+  benefitLine,
   catalogNameAgrees,
   pickLeStay,
   presentationFromLeHotel,
@@ -54,24 +55,47 @@ describe("photos de chambre Little Emperors", () => {
   it("prend la chambre nommée, pas une autre chambre Deluxe", () => {
     assert.equal(roomCaptionMatches("Deluxe Marina Bay King", "Deluxe Room"), false);
     assert.equal(roomCaptionMatches("Deluxe Marina Bay King", "Deluxe Harbour King"), false);
+    assert.equal(roomCaptionMatches("Deluxe Marina Bay King", "deluxe marina bay king room"), true);
     assert.equal(roomCaptionMatches("Panoramic Sea View Room - Twin", "Panoramic Sea View Room"), true);
     assert.equal(roomCaptionMatches("SO Lofty", "SO Lofty"), true);
     const presentation = presentationFromLeHotel(fairmont, ["Deluxe Marina Bay King"]);
     assert.deepEqual(
       presentation.photos.map((row) => row.caption),
-      ["Deluxe Marina Bay King"]
+      ["Deluxe Marina Bay King", "Exterior", "Lobby", "Swimming Pool", "Prego"]
     );
     assert.equal(presentation.photos[0]?.kind, "room");
+    assert.equal(presentation.photos[1]?.kind, "hotel");
     assert.equal(presentation.check_in_time, null);
     assert.equal(JSON.stringify(presentation).includes("999"), false);
     assert.equal(JSON.stringify(presentation).includes("commission"), false);
+  });
+
+  it("ouvre sur la chambre deluxe quand la vue Marina Bay n’est pas photographiée", () => {
+    const gallery = [
+      photo("pool", "Swimming Pool"),
+      photo("deluxe-a", "Deluxe Room"),
+      photo("deluxe-b", "Deluxe Room"),
+      photo("harbour", "Deluxe Harbour King"),
+      photo("lobby", "Lobby"),
+      photo("exterior", "Exterior"),
+    ];
+    const presentation = presentationFromLeHotel(
+      { ...fairmont, images_gallery: gallery },
+      ["Deluxe Marina Bay King"]
+    );
+    assert.deepEqual(
+      presentation.photos.map((row) => row.caption),
+      ["Deluxe Room", "Deluxe Room", "Exterior", "Lobby", "Swimming Pool"]
+    );
+    assert.equal(presentation.photos[0]?.kind, "room");
+    assert.equal(presentation.photos.some((row) => row.caption === "Deluxe Harbour King"), false);
   });
 
   it("retombe sur l’hôtel quand la chambre n’a pas de photo", () => {
     const presentation = presentationFromLeHotel(fairmont, ["Royal Suite"]);
     assert.deepEqual(
       presentation.photos.map((row) => row.caption),
-      ["Lobby", "Exterior", "Swimming Pool", "Prego"]
+      ["Exterior", "Lobby", "Swimming Pool", "Prego"]
     );
     assert.ok(presentation.photos.every((row) => row.kind === "hotel"));
     assert.equal(presentation.address, "80 Bras Basah Road, Singapore 189560");
@@ -191,6 +215,18 @@ describe("carte hôtel", () => {
     assert.equal(catalogNameAgrees("Crowne Plaza Changi Airport", "Fairmont Singapore"), false);
     assert.equal(catalogNameAgrees("Fairmont Singapore", "Fairmont Singapore"), true);
     assert.equal(catalogNameAgrees("SO/ Sotogrande", "SO/ Sotogrande Spa & Golf Resort"), true);
+    const upgrade = benefitLine("Surclassement à l'enregistrement, sous réserve de disponibilité");
+    assert.equal(upgrade.title, "Surclassement à l'enregistrement");
+    assert.equal(upgrade.note, "sous réserve de disponibilité");
+    assert.equal(upgrade.tone, "upgrade");
+    const early = benefitLine(
+      "Enregistrement anticipé et départ tardif — sous réserve de disponibilité et hors dates d'exclusion (hors suites spéciales)"
+    );
+    assert.equal(early.tone, "schedule");
+    assert.match(early.note, /sous réserve/);
+    assert.equal(benefitLine("Petit-déjeuner quotidien pour deux personnes").tone, "breakfast");
+    assert.equal(benefitLine("Crédit hôtel de 100 $ par séjour").tone, "credit");
+    assert.equal(benefitLine("Troisième nuit offerte").tone, "night");
   });
 
   it("charge la galerie du catalogue pour une carte sans photo", async () => {
@@ -217,6 +253,7 @@ describe("carte hôtel", () => {
     const again = await attachHotelGallery([item], async () => {
       throw new Error("pas de second appel");
     });
-    assert.equal(hotelPhotos(again[0]).length, 1);
+    assert.equal(hotelPhotos(again[0])[0]?.caption, "Deluxe Marina Bay King");
+    assert.equal(hotelPhotos(again[0]).length, 5);
   });
 });
