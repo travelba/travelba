@@ -10,8 +10,9 @@ import {
   stayCardCanBeShared,
   stayCardIsManual,
 } from "./manual-stay-card";
+import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
 
-test("carte manuelle : plafond reçu, transactions illimitées, aucun blocage", () => {
+test("carte manuelle : plafond reçu, deux transactions, aucun blocage", () => {
   const body = manualStayCardBody({
     firstName: "Camille",
     lastName: "Martin",
@@ -26,7 +27,8 @@ test("carte manuelle : plafond reçu, transactions illimitées, aucun blocage", 
   assert.deepEqual(body.limit, { value: 150050, currency: "EUR" });
   assert.deepEqual(body.transactionLimit, { value: 150050, currency: "EUR" });
   assert.equal(body.limitRenewFrequency, "TOTAL");
-  assert.equal(body.maxTransactionCount, MANUAL_CARD_TX_MAX);
+  assert.equal(body.maxTransactionCount, DEFAULT_PLIANT_TRANSACTIONS);
+  assert.equal(body.maxTransactionCount, 2);
   assert.equal(body.validTimezone, "Europe/Paris");
   assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
   assert.equal(body.label.length <= 40, true);
@@ -56,6 +58,23 @@ test("carte manuelle : nombre et montant de transaction choisis", () => {
   assert.equal(ready.body.transactionLimit.value, 20000);
   assert.equal(ready.body.maxTransactionCount, 3);
   assert.equal(ready.body.transactionLimit.value <= ready.body.limit.value, true);
+  const blankCount = manualStayCardDraft({
+    amount: "500",
+    firstName: "Camille",
+    lastName: "Martin",
+    validFrom: "2026-10-04",
+    validTo: "2026-10-12",
+    organizationId: "org",
+    transactionAmount: "200",
+    transactionCount: "",
+  });
+  if (!("body" in blankCount)) {
+    assert.fail(blankCount.error);
+    return;
+  }
+  assert.equal(blankCount.body.maxTransactionCount, 2);
+  assert.equal(blankCount.body.transactionLimit.value, 20000);
+  assert.equal(MANUAL_CARD_TX_MAX > 2, true);
 });
 
 test("carte manuelle : la désignation interne remplace le libellé du nom", () => {

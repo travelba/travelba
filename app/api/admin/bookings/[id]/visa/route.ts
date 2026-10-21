@@ -8,6 +8,7 @@ import { continueEtaIlRequest } from "@/lib/crm/eta-il-continue";
 import { customerPliantCardCount, etaIlPliantCard } from "@/lib/crm/eta-il-fee";
 import { pliantLimitIsManual, rememberPliantCard } from "@/lib/crm/pliant-card-run";
 import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/pliant";
+import { DEFAULT_PLIANT_TRANSACTIONS } from "@/lib/crm/pliant-controls";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { openAcceptedVisa } from "@/lib/crm/visa-accept";
 import { postVisaCharge } from "@/lib/crm/visa-post";
@@ -344,7 +345,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const limit = { value: cents, currency: "EUR" as const };
   spec.body.limit = limit;
   spec.body.transactionLimit = limit;
-  spec.body.maxTransactionCount = Math.max(count, countries.length * count);
+  spec.body.maxTransactionCount = Math.max(DEFAULT_PLIANT_TRANSACTIONS, count, countries.length * count);
 
   let cardId = (card as { pliant_card_id?: string } | null)?.pliant_card_id || null;
   if (pliantConfigured()) {
