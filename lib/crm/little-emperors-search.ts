@@ -1,5 +1,12 @@
 import { littleEmperorsConfigured, littleEmperorsJson, LittleEmperorsError } from "./little-emperors";
-import { offersFromLeAvailability, parseLePredictive, pickLeSearchTarget, type LeSearchHit } from "./little-emperors-availability";
+import {
+  offersFromLeAvailability,
+  parseLePredictive,
+  pickLeSearchTarget,
+  profileFromLeHotel,
+  type LeHotelProfile,
+  type LeSearchHit,
+} from "./little-emperors-availability";
 import { supplierRoomOccupancy, type HotelOffer, type HotelRoomOccupancy, type HotelSearchTarget, type PlaceSuggestion } from "./hotel-search";
 
 const SEARCH_TIMEOUT_MS = 8000;
@@ -74,5 +81,41 @@ export async function loadLittleEmperorsOffers(input: {
   } catch (err) {
     console.error("[hotels] disponibilités", failureCode(err));
     return [];
+  }
+}
+
+export async function loadLittleEmperorsHotelFile(input: {
+  hotelId: number;
+  checkIn: string;
+  checkOut: string;
+  rooms: HotelRoomOccupancy[];
+  fetchImpl?: typeof fetch;
+}): Promise<{ offers: HotelOffer[]; profile: LeHotelProfile } | null> {
+  if (!littleEmperorsConfigured()) return null;
+  try {
+    const [availability, hotel] = await Promise.all([
+      littleEmperorsJson(
+        "/v2/hotels/availability",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            start_date: input.checkIn,
+            end_date: input.checkOut,
+            currency: "EUR",
+            hotel_id: input.hotelId,
+            rooms: supplierRoomOccupancy(input.rooms),
+          }),
+          signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+        },
+        input.fetchImpl
+      ),
+      littleEmperorsJson(`/v2/hotels/${input.hotelId}`, { method: "GET", signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) }, input.fetchImpl).catch(
+        () => null
+      ),
+    ]);
+    return { offers: offersFromLeAvailability(availability, ""), profile: profileFromLeHotel(hotel) };
+  } catch (err) {
+    console.error("[hotels] fiche", failureCode(err));
+    return null;
   }
 }

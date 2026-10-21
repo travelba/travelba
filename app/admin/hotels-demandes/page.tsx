@@ -38,6 +38,8 @@ export default async function HotelRequestsPage() {
         checkOut: row.check_out,
         adults: row.adults,
         party: stayPartyLabel(roomsFromStored(row.rooms, row.adults)),
+        travelers: Array.isArray(row.guests) ? row.guests.filter((name): name is string => typeof name === "string").join(", ") : "",
+        rate: row.rate_title || "",
         sellCents: row.sell_cents,
         currency: row.currency,
         benefits: row.benefits,

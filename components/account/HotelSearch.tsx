@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { HotelJourney } from "@/components/account/HotelJourney";
+import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { parisTodayIso } from "@/lib/crm/dates";
+import { HOTEL_THEMES, presentHotels, type HotelSort, type HotelThemeId } from "@/lib/crm/hotel-journey";
 import {
   nightsBetween,
   occupancyKey,
@@ -85,7 +88,26 @@ function monthTitle(year: number, monthIndex: number) {
   return label.charAt(0).toLocaleUpperCase("fr") + label.slice(1);
 }
 
-export function HotelSearch() {
+type RecentStay = {
+  destination: string;
+  city: string;
+  checkIn: string;
+  checkOut: string;
+  rooms: DraftRoom[];
+  target: HotelSearchTarget | null;
+  party: string;
+};
+
+function readRecent(): RecentStay[] {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem("hotel-recent") || "[]") as RecentStay[];
+    return Array.isArray(parsed) ? parsed.slice(0, 4) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = {}) {
   const today = useMemo(() => parisTodayIso(), []);
   const [destination, setDestination] = useState("");
   const [city, setCity] = useState("");
@@ -104,10 +126,15 @@ export function HotelSearch() {
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [note, setNote] = useState("");
-  const [asked, setAsked] = useState<Record<string, string>>({});
-  const [asking, setAsking] = useState<string | null>(null);
   const [serverFirst, setServerFirst] = useState<number | null>(null);
   const [clientFirst, setClientFirst] = useState<number | null>(null);
+  const [theme, setTheme] = useState<HotelThemeId>(initialTheme || "a");
+  const [sort, setSort] = useState<HotelSort>("prix");
+  const [needs, setNeeds] = useState<(keyof HotelPerks)[]>([]);
+  const [layout, setLayout] = useState<"liste" | "carte">("liste");
+  const [opened, setOpened] = useState<ClientHotel | null>(null);
+  const [recent, setRecent] = useState<RecentStay[]>([]);
+  const [committed, setCommitted] = useState<{ rooms: HotelRoomOccupancy[] } | null>(null);
   const suggestAbort = useRef<AbortController | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
 
@@ -165,6 +192,7 @@ export function HotelSearch() {
 
   function openSheet(next: Panel) {
     setNote("");
+    setRecent(readRecent());
     setPanel(next);
     setSheet(true);
   }
@@ -228,6 +256,24 @@ export function HotelSearch() {
     setNote("");
     setSheet(false);
     setSearched(true);
+    setOpened(null);
+    setCommitted({ rooms: stayRooms });
+    try {
+      const entry: RecentStay = {
+        destination: destination.trim(),
+        city,
+        checkIn,
+        checkOut,
+        rooms,
+        target,
+        party: stayPartyLabel(stayRooms),
+      };
+      const nextRecent = [entry, ...readRecent().filter((row) => row.destination !== entry.destination || row.checkIn !== entry.checkIn)].slice(0, 4);
+      sessionStorage.setItem("hotel-recent", JSON.stringify(nextRecent));
+      setRecent(nextRecent);
+    } catch {
+      /* la session du navigateur peut refuser l’écriture */
+    }
     const key = `${destination.trim().toLocaleLowerCase("fr")}|${checkIn}|${checkOut}|${occupancyKey(stayRooms)}|${target ? `${target.kind}${target.id}` : ""}`;
     const fresh = memory && memory.key === key && Date.now() - memory.at < 10 * 60 * 1000 ? memory.hotels : null;
     const started = performance.now();
@@ -292,53 +338,55 @@ export function HotelSearch() {
     }
   }
 
-  async function ask(hotel: ClientHotel) {
-    if (!hotel.offerId || asking) return;
-    setAsking(hotel.hotelKey);
-    try {
-      const response = await fetch("/api/client/hotels/demandes", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ offerId: hotel.offerId }),
-      });
-      const json = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
-      setAsked((current) => ({
-        ...current,
-        [hotel.hotelKey]: json?.message || json?.error || "La demande n’a pas pu être envoyée.",
-      }));
-    } finally {
-      setAsking(null);
-    }
-  }
-
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Dates";
 
+  const shown = presentHotels(hotels, sort, needs);
+  const canMap = hotels.some((hotel) => hotel.coords);
+
   return (
-    <section className="space-y-4" data-hotel-search="1" data-t-client={clientFirst ?? ""} data-t-server={serverFirst ?? ""}>
+    <section className="hotel-theme space-y-4" data-hotel-theme={theme} data-hotel-search="1" data-t-client={clientFirst ?? ""} data-t-server={serverFirst ?? ""}>
+      <div className="flex gap-5 text-xs" data-hotel-themes="1">
+        {HOTEL_THEMES.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={theme === item.id}
+            onClick={() => setTheme(item.id)}
+            className={theme === item.id ? "h-on pb-1" : "h-muted pb-1"}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {opened && committed ? (
+        <HotelJourney
+          hotel={opened}
+          stayRooms={committed.rooms}
+          datesLabel={summaryDates}
+          party={party}
+          query={{ destination, city, checkIn, checkOut, rooms: committed.rooms }}
+          onBack={() => setOpened(null)}
+        />
+      ) : null}
+      {opened ? null : <>
       {searched ? (
         <button
           type="button"
           data-hotel-summary="1"
           onClick={() => openSheet("where")}
-          className="sticky top-16 z-30 w-full rounded-2xl border border-[var(--admin-gold)]/50 bg-[#faf9f6]/95 px-4 py-3 text-left shadow-[0_10px_30px_rgba(11,25,44,0.06)] backdrop-blur-md"
+          className="h-field sticky top-16 z-30 w-full px-4 py-3 text-left"
         >
-          <span className="block font-display text-lg font-bold leading-tight text-[var(--admin-navy)]">{destination}</span>
-          <span className="mt-0.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9e7e51]">
-            {summaryDates} · {party}
-          </span>
+          <span className="block text-base font-semibold h-ink">{destination}</span>
+          <span className="mt-0.5 block text-xs h-muted">{summaryDates} · {party}</span>
         </button>
       ) : (
-        <button
-          type="button"
-          onClick={() => openSheet("where")}
-          className="w-full rounded-[28px] border border-[var(--admin-gold)]/45 bg-white p-5 text-left shadow-[0_18px_50px_rgba(11,25,44,0.06)]"
-        >
-          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9e7e51]">Séjour</p>
-          <p className="mt-1 font-display text-[1.85rem] font-bold leading-tight tracking-tight text-[var(--admin-navy)]">
-            Où allez-vous ?
-          </p>
-          <p className="mt-2 text-sm text-[#5c5348]">Une destination ou un hôtel, les dates, les chambres.</p>
+        <button type="button" onClick={() => openSheet("where")} className="h-field flex w-full items-center gap-3 px-4 py-4 text-left">
+          <Icon name="search" className="h-4 w-4 h-gold" />
+          <span>
+            <span className="block text-base font-medium h-ink">Où allez-vous ?</span>
+            <span className="block text-xs h-muted">Destination ou hôtel</span>
+          </span>
         </button>
       )}
 
@@ -352,48 +400,80 @@ export function HotelSearch() {
       <div className="space-y-4" aria-live="polite">
         {searching && hotels.length === 0
           ? [0, 1, 2].map((index) => (
-              <div key={index} className="overflow-hidden rounded-[28px] border border-[#e5e3dc] bg-white" aria-hidden>
-                <div className="h-72 animate-pulse bg-[#0B192C]/10" />
+              <div key={index} className="h-card h-line overflow-hidden border" aria-hidden>
+                <div className="h-56 animate-pulse h-skel" />
                 <div className="space-y-2 p-4">
-                  <div className="h-5 w-2/3 animate-pulse rounded bg-[#0B192C]/10" />
-                  <div className="h-8 w-1/3 animate-pulse rounded bg-[#C5A880]/30" />
+                  <div className="h-5 w-2/3 animate-pulse h-skel" />
+                  <div className="h-4 w-1/3 animate-pulse h-skel" />
                 </div>
               </div>
             ))
           : null}
-        {hotels.map((hotel, index) => (
-          <HotelCard
-            key={hotel.hotelKey}
-            hotel={hotel}
-            first={index === 0}
-            message={asked[hotel.hotelKey]}
-            asking={asking === hotel.hotelKey}
-            onAsk={() => void ask(hotel)}
-            whatsapp={whatsapp}
-          />
-        ))}
+        {searched && hotels.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex gap-3">
+                <button type="button" className={layout === "liste" ? "h-on" : "h-muted"} onClick={() => setLayout("liste")}>Liste</button>
+                {canMap ? (
+                  <button type="button" className={layout === "carte" ? "h-on" : "h-muted"} onClick={() => setLayout("carte")}>Carte</button>
+                ) : null}
+              </div>
+              <p className="h-muted">{shown.length} {shown.length > 1 ? "hôtels" : "hôtel"}</p>
+            </div>
+            <div className="flex gap-4 text-sm">
+              <button type="button" className={sort === "prix" ? "h-on" : "h-muted"} onClick={() => setSort("prix")}>Prix</button>
+              <button type="button" className={sort === "avantages" ? "h-on" : "h-muted"} onClick={() => setSort("avantages")}>Avantages</button>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+              {PERK_LABEL.slice(0, 4).map((perk) => {
+                const on = needs.includes(perk.key);
+                return (
+                  <button
+                    key={perk.key}
+                    type="button"
+                    aria-pressed={on}
+                    className={on ? "h-on" : "h-muted"}
+                    onClick={() => setNeeds((current) => (on ? current.filter((key) => key !== perk.key) : [...current, perk.key]))}
+                  >
+                    {perk.label}
+                  </button>
+                );
+              })}
+            </div>
+            {layout === "carte" && canMap ? <HotelMap hotels={shown} onOpen={setOpened} /> : null}
+          </div>
+        ) : null}
+        {layout === "liste" || !canMap
+          ? shown.map((hotel, index) => (
+              <HotelCard key={hotel.hotelKey} hotel={hotel} first={index === 0} onOpen={() => setOpened(hotel)} />
+            ))
+          : null}
         {searched && !searching && hotels.length === 0 ? (
-          <article className="rounded-[28px] border border-[#e5e3dc] bg-white p-5">
-            <h3 className="font-display text-xl font-bold text-[var(--admin-navy)]">Aucun hôtel pour ces dates</h3>
-            <p className="mt-1 text-sm text-[#5c5348]">Écrivez à l’agence, nous cherchons autrement.</p>
-            <a href={whatsapp} className="mt-4 inline-flex text-sm font-semibold text-[var(--admin-navy)]">
+          <article className="h-card h-line border p-4">
+            <h3 className="text-lg font-semibold h-ink">Aucun hôtel pour ces dates</h3>
+            <p className="mt-1 text-sm h-muted">Écrivez à l’agence, nous cherchons autrement.</p>
+            <a href={whatsapp} className="mt-4 inline-flex text-sm font-semibold h-ink">
               WhatsApp
             </a>
           </article>
         ) : null}
+        {searched && !searching && hotels.length > 0 && shown.length === 0 ? (
+          <p className="text-sm h-muted">Aucun hôtel avec ces avantages.</p>
+        ) : null}
       </div>
+      </>}
 
       {sheet ? (
-        <div className="hotel-sheet fixed inset-0 z-[60] flex flex-col bg-[#faf9f6]" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
-          <header className="flex items-center justify-between px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
-            <p className="font-display text-2xl font-bold text-[var(--admin-navy)]">Votre séjour</p>
-            <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-11 w-11 place-items-center rounded-full text-[var(--admin-navy)]">
+        <div className="hotel-sheet h-bg fixed inset-0 z-[60] flex flex-col" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
+          <header className="h-header flex items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+            <p className="text-base font-semibold">Où allez-vous ?</p>
+            <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-10 w-10 place-items-center">
               <Icon name="close" className="h-5 w-5" />
             </button>
           </header>
           <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-8">
-            <label className="block rounded-[24px] border border-[#e5e3dc] bg-white px-4 py-3">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Destination ou hôtel</span>
+            <label className="h-field flex items-center gap-3 px-4 py-3">
+              <Icon name="search" className="h-4 w-4 h-gold" />
               <input
                 value={destination}
                 onChange={(event) => {
@@ -403,8 +483,8 @@ export function HotelSearch() {
                   setPanel("where");
                 }}
                 onFocus={() => setPanel("where")}
-                className="mt-1 w-full bg-transparent font-display text-2xl font-bold text-[var(--admin-navy)] outline-none placeholder:text-[#c4b8a8]"
-                placeholder="Paris, Rome, un hôtel…"
+                className="w-full bg-transparent text-base h-ink outline-none"
+                placeholder="Destination ou hôtel"
                 autoComplete="off"
                 role="combobox"
                 aria-autocomplete="list"
@@ -413,32 +493,61 @@ export function HotelSearch() {
               />
             </label>
             {panel === "where" && (destinations.length > 0 || hotelNames.length > 0) ? (
-              <div id="hotel-suggest-list" role="listbox" className="rounded-[24px] border border-[#e5e3dc] bg-white py-2">
+              <div id="hotel-suggest-list" role="listbox" className="h-card h-line border py-1">
                 <SuggestGroup title="Destinations" items={destinations} onPick={pickPlace} />
                 <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
+              </div>
+            ) : null}
+            {panel === "where" && folded.length < 2 && recent.length ? (
+              <div>
+                <p className="px-1 pb-1 text-xs font-semibold uppercase tracking-[0.14em] h-gold">Recherches récentes</p>
+                {recent.map((item) => (
+                  <button
+                    key={`${item.destination}-${item.checkIn}`}
+                    type="button"
+                    onClick={() => {
+                      setDestination(item.destination);
+                      setCity(item.city);
+                      setCheckIn(item.checkIn);
+                      setCheckOut(item.checkOut);
+                      setRooms(item.rooms);
+                      setTarget(item.target);
+                      setPanel("when");
+                    }}
+                    className="flex w-full items-start gap-3 py-3 text-left"
+                  >
+                    <Icon name="hotel" className="mt-0.5 h-4 w-4 h-gold" />
+                    <span>
+                      <span className="block text-sm font-medium h-ink">{item.destination}</span>
+                      <span className="block text-xs h-muted">
+                        {formatDateRangeShort(item.checkIn, item.checkOut)} · {item.party}
+                      </span>
+                    </span>
+                  </button>
+                ))}
               </div>
             ) : null}
 
             <button
               type="button"
               onClick={() => setPanel("when")}
-              className="w-full rounded-[24px] border border-[#e5e3dc] bg-white px-4 py-3 text-left"
+              className="h-field w-full px-4 py-3 text-left"
             >
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dates</span>
-              <span className="mt-1 block font-display text-xl font-bold text-[var(--admin-navy)]">{summaryDates}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">Dates</span>
+              <span className="mt-1 block text-base font-medium h-ink">{summaryDates}</span>
             </button>
             {panel === "when" ? (
-              <div className="rounded-[24px] border border-[#e5e3dc] bg-white p-4">
+              <div className="h-card h-line border p-4">
                 <div className="flex items-center justify-between">
-                  <button type="button" aria-label="Mois précédent" onClick={() => shiftMonth(-1)} className="grid h-10 w-10 place-items-center rounded-full text-[var(--admin-navy)]">
+                  <button type="button" aria-label="Mois précédent" onClick={() => shiftMonth(-1)} className="grid h-10 w-10 place-items-center h-ink">
                     <Icon name="chevron_left" className="h-5 w-5" />
                   </button>
-                  <p className="font-display text-lg font-bold text-[var(--admin-navy)]">{monthTitle(cursor.year, cursor.month)}</p>
-                  <button type="button" aria-label="Mois suivant" onClick={() => shiftMonth(1)} className="grid h-10 w-10 place-items-center rounded-full text-[var(--admin-navy)]">
+                  <p className="text-base font-semibold h-ink">{monthTitle(cursor.year, cursor.month)}</p>
+                  <button type="button" aria-label="Mois suivant" onClick={() => shiftMonth(1)} className="grid h-10 w-10 place-items-center h-ink">
                     <Icon name="chevron_right" className="h-5 w-5" />
                   </button>
                 </div>
-                <div className="mt-3 grid grid-cols-7 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+                <div className="mt-3 grid grid-cols-7 text-center text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">
                   {WEEKDAYS.map((day, index) => (
                     <span key={`${day}-${index}`}>{day}</span>
                   ))}
@@ -457,13 +566,7 @@ export function HotelSearch() {
                         disabled={past}
                         onClick={() => pickDay(iso)}
                         className={`grid h-11 place-items-center text-sm ${
-                          endpoint
-                            ? "rounded-full bg-[#0B192C] font-semibold text-white"
-                            : inside
-                              ? "bg-[#f3eadc] text-[#0B192C]"
-                              : past
-                                ? "text-[#d5cbbd]"
-                                : "text-[#0B192C]"
+                          endpoint ? "h-day-on" : inside ? "h-range" : past ? "h-faint" : "h-ink"
                         }`}
                       >
                         {Number(iso.slice(-2))}
@@ -477,13 +580,13 @@ export function HotelSearch() {
             <button
               type="button"
               onClick={() => setPanel("who")}
-              className="w-full rounded-[24px] border border-[#e5e3dc] bg-white px-4 py-3 text-left"
+              className="h-field w-full px-4 py-3 text-left"
             >
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Chambres et voyageurs</span>
-              <span className="mt-1 block font-display text-xl font-bold text-[var(--admin-navy)]">{party}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">Chambres et voyageurs</span>
+              <span className="mt-1 block text-base font-medium h-ink">{party}</span>
             </button>
             {panel === "who" ? (
-              <div className="space-y-3 rounded-[24px] border border-[#e5e3dc] bg-white p-4">
+              <div className="h-card h-line space-y-3 border p-4">
                 <Stepper
                   label="Chambres"
                   value={rooms.length}
@@ -498,7 +601,7 @@ export function HotelSearch() {
                 />
                 {rooms.map((room, index) => (
                   <div key={index} className="space-y-3 border-t border-[#e5e3dc] pt-3">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Chambre {index + 1}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">Chambre {index + 1}</p>
                     <Stepper
                       label="Adultes"
                       value={room.adults}
@@ -522,7 +625,7 @@ export function HotelSearch() {
                       }
                     />
                     {room.children.map((age, childIndex) => (
-                      <label key={childIndex} className="flex items-center justify-between gap-3 text-sm text-[var(--admin-navy)]">
+                      <label key={childIndex} className="flex items-center justify-between gap-3 text-sm h-ink">
                         <span>Âge, enfant {childIndex + 1}</span>
                         <select
                           value={age ?? ""}
@@ -532,7 +635,7 @@ export function HotelSearch() {
                             next[childIndex] = Number(event.target.value);
                             updateRoom(index, { ...room, children: next });
                           }}
-                          className="rounded-full border border-[var(--admin-gold)]/70 bg-[#faf9f6] px-3 py-2 text-sm text-[var(--admin-navy)]"
+                          className="h-field px-3 py-2 text-sm h-ink"
                         >
                           <option value="">Âge</option>
                           {Array.from({ length: 18 }, (_, value) => (
@@ -549,14 +652,9 @@ export function HotelSearch() {
             ) : null}
             {note ? <p className="text-sm text-[#8a5a2a]">{note}</p> : null}
           </div>
-          <footer className="border-t border-[#e5e3dc] bg-[#faf9f6] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <button
-              type="button"
-              onClick={() => void onSearch()}
-              className="account-press flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0B192C] text-sm font-semibold text-white"
-            >
-              <Icon name="search" className="h-4 w-4 text-[var(--admin-gold)]" />
-              Voir les hôtels
+          <footer className="h-bg border-t h-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <button type="button" onClick={() => void onSearch()} className="h-btn flex h-12 w-full items-center justify-center text-sm font-semibold">
+              Rechercher
             </button>
           </footer>
         </div>
@@ -577,7 +675,7 @@ function SuggestGroup({
   if (!items.length) return null;
   return (
     <div>
-      <p className="px-4 pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9e7e51]">{title}</p>
+      <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.16em] h-gold">{title}</p>
       {items.map((item) => (
         <button
           key={`${item.kind}-${item.id ?? ""}-${item.label}-${item.detail}`}
@@ -585,10 +683,13 @@ function SuggestGroup({
           role="option"
           aria-selected={false}
           onClick={() => onPick(item)}
-          className="flex w-full items-baseline justify-between gap-3 px-4 py-3 text-left hover:bg-[#faf9f6]"
+          className="flex w-full items-center gap-3 px-4 py-3 text-left"
         >
-          <span className="font-medium text-[var(--admin-navy)]">{item.label}</span>
-          {item.detail ? <span className="shrink-0 text-[11px] uppercase tracking-[0.12em] text-[#9e7e51]">{item.detail}</span> : null}
+          <Icon name={item.kind === "hotel" ? "bed" : "pin"} className="h-4 w-4 h-gold" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium h-ink">{item.label}</span>
+            {item.detail ? <span className="block text-xs h-muted">{item.detail}</span> : null}
+          </span>
         </button>
       ))}
     </div>
@@ -610,24 +711,24 @@ function Stepper({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm font-medium text-[var(--admin-navy)]">{label}</span>
+      <span className="text-sm font-medium h-ink">{label}</span>
       <span className="flex items-center gap-3">
         <button
           type="button"
           aria-label={`Retirer ${label.toLocaleLowerCase("fr")}`}
           disabled={value <= min}
           onClick={() => onChange(Math.max(min, value - 1))}
-          className="grid h-9 w-9 place-items-center rounded-full border border-[var(--admin-gold)] text-lg text-[var(--admin-navy)] disabled:opacity-30"
+          className="h-btn-line grid h-9 w-9 place-items-center text-lg disabled:opacity-30"
         >
           −
         </button>
-        <span className="w-4 text-center font-display text-lg font-bold text-[var(--admin-navy)]">{value}</span>
+        <span className="w-4 text-center text-lg font-semibold h-ink">{value}</span>
         <button
           type="button"
           aria-label={`Ajouter ${label.toLocaleLowerCase("fr")}`}
           disabled={value >= max}
           onClick={() => onChange(Math.min(max, value + 1))}
-          className="grid h-9 w-9 place-items-center rounded-full border border-[var(--admin-gold)] text-lg text-[var(--admin-navy)] disabled:opacity-30"
+          className="h-btn-line grid h-9 w-9 place-items-center text-lg disabled:opacity-30"
         >
           +
         </button>
@@ -636,95 +737,62 @@ function Stepper({
   );
 }
 
-function HotelCard({
-  hotel,
-  first,
-  message,
-  asking,
-  onAsk,
-  whatsapp,
-}: {
-  hotel: ClientHotel;
-  first: boolean;
-  message?: string;
-  asking: boolean;
-  onAsk: () => void;
-  whatsapp: string;
-}) {
+function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolean; onOpen: () => void }) {
   const [photoFailed, setPhotoFailed] = useState(false);
-  const photo = !photoFailed ? hotel.photo || hotel.thumb : null;
-  const chips = PERK_LABEL.filter((perk) => hotel.perks[perk.key]);
-  const nightsLabel = hotel.nights > 1 ? `${hotel.nights} nuits` : "1 nuit";
+  const photo = !photoFailed ? hotel.photo || hotel.thumb || hotel.images?.[0] : null;
+  const lines = hotel.benefits.length ? hotel.benefits : PERK_LABEL.filter((perk) => hotel.perks[perk.key]).map((perk) => perk.label);
   return (
-    <article className="hotel-rise overflow-hidden rounded-[28px] border border-[#e5e3dc] bg-white shadow-[0_16px_40px_rgba(11,25,44,0.06)]">
-      <div className="relative h-72 bg-[#0B192C]">
-        {photo ? (
-          // eslint-disable-next-line @next/next/no-img-element -- photo fournisseur https, hors next/image
-          <img
-            src={photo}
-            alt={hotel.name}
-            width={800}
-            height={560}
-            sizes="(max-width: 480px) 100vw, 480px"
-            loading={first ? "eager" : "lazy"}
-            decoding="async"
-            fetchPriority={first ? "high" : "auto"}
-            referrerPolicy="no-referrer"
-            className="h-full w-full object-cover"
-            onError={() => setPhotoFailed(true)}
-          />
-        ) : (
-          <div className="grid h-full place-items-center text-[var(--admin-gold)]">
-            <Icon name="hotel" className="h-10 w-10" />
+    <article className="hotel-rise h-card h-line overflow-hidden border">
+      <button type="button" onClick={onOpen} className="block w-full text-left">
+        <div className="h-56 bg-[var(--h-header)]">
+          {photo ? (
+            // eslint-disable-next-line @next/next/no-img-element -- photo fournisseur https, hors next/image
+            <img
+              src={photo}
+              alt={hotel.name}
+              width={800}
+              height={560}
+              sizes="(max-width: 480px) 100vw, 480px"
+              loading={first ? "eager" : "lazy"}
+              decoding="async"
+              fetchPriority={first ? "high" : "auto"}
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover"
+              onError={() => setPhotoFailed(true)}
+            />
+          ) : (
+            <div className="grid h-full place-items-center h-gold">
+              <Icon name="hotel" className="h-8 w-8" />
+            </div>
+          )}
+        </div>
+        <div className="space-y-3 p-4">
+          <div>
+            <h3 className="text-lg font-semibold h-ink">{hotel.name}</h3>
+            {hotel.city ? <p className="text-sm h-muted">{hotel.city}</p> : null}
           </div>
-        )}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0B192C]/80 via-[#0B192C]/10 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 p-4">
-          {hotel.city ? (
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">{hotel.city}</p>
+          {lines.length ? (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] h-gold">Avantages</p>
+              <ul className="space-y-1.5">
+                {lines.slice(0, 4).map((line) => (
+                  <li key={line} className="flex gap-2 text-sm h-ink">
+                    <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 h-gold" />
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
-          <h3 className="font-display text-[1.75rem] font-bold leading-tight text-white">{hotel.name}</h3>
+          <div className="flex items-end justify-between gap-3 border-t h-line pt-3">
+            <div>
+              <p className="text-xl font-semibold h-ink">{euros(hotel.sellCents, hotel.currency)}</p>
+              <p className="text-[11px] uppercase tracking-[0.12em] h-muted">{euros(hotel.perNightCents, hotel.currency)} / nuit</p>
+            </div>
+            <span className="text-sm font-semibold h-ink">Voir l’hôtel</span>
+          </div>
         </div>
-      </div>
-      <div className="space-y-3 p-4">
-        {hotel.room ? <p className="text-sm text-[#5c5348]">{hotel.room}</p> : null}
-        {chips.length ? (
-          <ul className="flex flex-wrap gap-1.5">
-            {chips.map((perk) => (
-              <li key={perk.key} className="rounded-full border border-[var(--admin-gold)]/70 bg-[#f8f3eb] px-2.5 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
-                {perk.label}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <div>
-          <p className="font-display text-[2rem] font-bold leading-none tracking-tight text-[var(--admin-navy)]">
-            {euros(hotel.sellCents, hotel.currency)}
-          </p>
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9e7e51]">
-            {euros(hotel.perNightCents, hotel.currency)} / nuit · {nightsLabel}
-          </p>
-        </div>
-        {message ? (
-          <p className="text-sm text-[var(--admin-navy)]">
-            {message}{" "}
-            <a href={whatsapp} className="font-semibold underline decoration-[var(--admin-gold)]">
-              WhatsApp
-            </a>
-          </p>
-        ) : (
-          <button
-            type="button"
-            disabled={!hotel.offerId || asking}
-            onClick={onAsk}
-            className="account-press flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0B192C] text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {hotel.offerId ? "Demander cette réservation" : "Préparation du tarif"}
-            <Icon name="arrow_forward" className="h-4 w-4 text-[var(--admin-gold)]" />
-          </button>
-        )}
-        <p className="text-[11px] leading-relaxed text-[#5c5348]">Aucun paiement n’est lancé. L’agence valide la demande.</p>
-      </div>
+      </button>
     </article>
   );
 }

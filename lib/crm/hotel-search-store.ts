@@ -45,9 +45,13 @@ export async function saveHotelOffer(
           free_cancellation: stay.perks.freeCancellation,
           advantage_score: stay.score,
           account: stay.account,
+          room_key: stay.roomKey || "",
+          rate_key: stay.rateKey || "",
+          rate_title: stay.rateTitle || null,
+          cancellation_policy: stay.cancellation || null,
           expires_at: expires,
         },
-        { onConflict: "customer_id,hotel_key,check_in,check_out,occupancy_key" }
+        { onConflict: "customer_id,hotel_key,check_in,check_out,occupancy_key,room_key,rate_key" }
       )
       .select("id")
       .single();
@@ -63,12 +67,12 @@ export async function saveHotelOffer(
   }
 }
 
-export async function createHotelRequest(customerId: string, offerId: string) {
+export async function createHotelRequest(customerId: string, offerId: string, guests: string[]) {
   const db = admin();
   const { data: offer, error } = await db
     .from("crm_hotel_search_offers")
     .select(
-      "id, customer_id, hotel_name, city, room_label, check_in, check_out, adults, rooms, sell_cents, currency, benefits, account, expires_at"
+      "id, customer_id, hotel_name, city, room_label, rate_title, cancellation_policy, check_in, check_out, adults, rooms, sell_cents, currency, benefits, account, expires_at"
     )
     .eq("id", offerId)
     .eq("customer_id", customerId)
@@ -83,6 +87,8 @@ export async function createHotelRequest(customerId: string, offerId: string) {
     check_out: string;
     adults: number;
     rooms: HotelRoomOccupancy[];
+    rate_title: string | null;
+    cancellation_policy: string | null;
     sell_cents: number;
     currency: string;
     benefits: unknown;
@@ -91,6 +97,10 @@ export async function createHotelRequest(customerId: string, offerId: string) {
   };
   if (Date.parse(row.expires_at) <= Date.now()) {
     return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
+  }
+  const expected = Array.isArray(row.rooms) && row.rooms.length ? row.rooms.length : 1;
+  if (guests.length !== expected) {
+    return { ok: false as const, message: "Indiquez le prénom et le nom de chaque chambre." };
   }
   const { data: pending } = await db
     .from("crm_hotel_search_requests")
@@ -116,6 +126,9 @@ export async function createHotelRequest(customerId: string, offerId: string) {
     currency: row.currency,
     benefits: Array.isArray(row.benefits) ? row.benefits : [],
     account: row.account,
+    guests,
+    rate_title: row.rate_title,
+    cancellation_policy: row.cancellation_policy,
   });
   if (insertError) {
     console.error("[hotels] demande", insertError.code ?? "?");
@@ -139,6 +152,8 @@ export type HotelRequestRow = {
   currency: string;
   benefits: string[];
   account: string;
+  guests?: unknown;
+  rate_title?: string | null;
   pliant_card_id: string | null;
   created_at: string;
 };
@@ -148,7 +163,7 @@ export async function listHotelRequests(): Promise<HotelRequestRow[]> {
   const { data, error } = await db
     .from("crm_hotel_search_requests")
     .select(
-      "id, customer_id, status, hotel_name, city, room_label, check_in, check_out, adults, rooms, sell_cents, currency, benefits, account, pliant_card_id, created_at"
+      "id, customer_id, status, hotel_name, city, room_label, rate_title, check_in, check_out, adults, rooms, guests, sell_cents, currency, benefits, account, pliant_card_id, created_at"
     )
     .order("created_at", { ascending: false })
     .limit(40);

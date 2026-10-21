@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { guestNameOk, presentHotels } from "./hotel-journey";
 import {
   HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID,
   HOTEL_SEARCH_BENJAMIN_USER_ID,
@@ -380,6 +381,29 @@ test("suggestions : catalogue ville et hôtel, fusion sans doublon", () => {
   assert.ok(merged.some((item) => item.label === "Rome"));
 });
 
+test("la liste se trie et se filtre, le nom de chambre exige prénom et nom", () => {
+  const perks = {
+    breakfast: false,
+    freeCancellation: false,
+    upgrade: false,
+    credit: false,
+    earlyCheckIn: false,
+    lateCheckOut: false,
+  };
+  const hotels = [
+    toClientHotel(priced({ account: "little_emperors", hotelName: "Ritz", city: "Paris", proposed: 300, currency: "EUR", benefits: ["Petit-déjeuner"], freeCancellation: true }), 2, "a"),
+    toClientHotel(priced({ account: "little_emperors", hotelName: "Bristol", city: "Paris", proposed: 200, currency: "EUR" }), 2, "b"),
+  ];
+  assert.equal(presentHotels(hotels, "prix", []).map((hotel) => hotel.name).join(","), "Bristol,Ritz");
+  assert.equal(presentHotels(hotels, "prix", ["breakfast"]).length, 1);
+  assert.equal(presentHotels(hotels, "avantages", [])[0]?.name, "Ritz");
+  assert.equal(guestNameOk("Jean"), false);
+  assert.equal(guestNameOk("Jean D"), false);
+  assert.equal(guestNameOk("Jean Du"), true);
+  assert.equal(hotels[0]?.perks.breakfast, true);
+  assert.equal(perks.breakfast, false);
+});
+
 test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fournisseur", () => {
   const home = readFileSync(join(root, "app/mon-compte/page.tsx"), "utf8");
   const searchAt = home.indexOf("<HotelSearch");
@@ -396,4 +420,14 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /Hôtels/);
   assert.match(ui, /data-hotel-summary/);
   assert.match(ui, /data-hotel-sheet/);
+  assert.match(ui, /data-hotel-themes/);
+  assert.match(ui, /Voir l’hôtel/);
+  assert.doesNotMatch(ui, /bg-gradient|rounded-\[28px\]|commission/i);
+  const journey = readFileSync(join(root, "components/account/HotelJourney.tsx"), "utf8");
+  assert.match(journey, /data-hotel-detail/);
+  assert.match(journey, /data-hotel-rate/);
+  assert.match(journey, /data-hotel-guests/);
+  assert.match(journey, /data-hotel-confirm/);
+  assert.match(journey, /Choisir/);
+  assert.doesNotMatch(journey, /bg-gradient|commission/i);
 });

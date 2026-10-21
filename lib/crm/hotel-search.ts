@@ -66,6 +66,15 @@ export type HotelOffer = {
   net?: number | null;
   commissionable?: boolean;
   hotelCommission?: number | null;
+  hotelId?: number | null;
+  description?: string;
+  images?: string[];
+  coords?: { lat: number; lng: number } | null;
+  footnotes?: string[];
+  roomKey?: string;
+  rateKey?: string;
+  rateTitle?: string;
+  cancellation?: string;
 };
 
 export type PricedStay = {
@@ -81,6 +90,15 @@ export type PricedStay = {
   perks: HotelPerks;
   score: number;
   account: HotelAccountId;
+  hotelId: number | null;
+  description: string;
+  images: string[];
+  coords: { lat: number; lng: number } | null;
+  footnotes: string[];
+  roomKey: string;
+  rateKey: string;
+  rateTitle: string;
+  cancellation: string;
 };
 
 export type ClientHotel = {
@@ -97,6 +115,11 @@ export type ClientHotel = {
   nights: number;
   benefits: string[];
   perks: HotelPerks;
+  hotelId: number | null;
+  description: string;
+  images: string[];
+  coords: { lat: number; lng: number } | null;
+  footnotes: string[];
 };
 
 export type HotelChild = { age: number };
@@ -433,12 +456,14 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
   const benefits = visibleBenefits(offer.benefits || []).slice(0, 8);
   const { score, perks } = scoreStay({ benefits, freeCancellation: Boolean(offer.freeCancellation) });
   const room = (offer.roomLabel || "").replace(/\s+/g, " ").trim();
+  const images = (offer.images || []).map((url) => safeHotelPhoto(url)).filter((url): url is string => Boolean(url)).slice(0, 12);
+  const coords = offer.coords && Math.abs(offer.coords.lat) <= 90 && Math.abs(offer.coords.lng) <= 180 ? offer.coords : null;
   return {
     hotelKey: stayHotelKey(name, city),
     hotelName: name,
     city,
     roomLabel: room ? room.slice(0, 120) : null,
-    photoUrl: safeHotelPhoto(offer.photoUrl),
+    photoUrl: safeHotelPhoto(offer.photoUrl) || images[0] || null,
     thumbUrl: safeHotelPhoto(offer.thumbUrl),
     sellCents: money.sellCents,
     currency: money.currency,
@@ -446,6 +471,36 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
     perks,
     score,
     account: offer.account,
+    hotelId: typeof offer.hotelId === "number" && offer.hotelId > 0 ? offer.hotelId : null,
+    description: publicHotelText(offer.description || "").slice(0, 1600),
+    images,
+    coords,
+    footnotes: visibleBenefits(offer.footnotes || []).slice(0, 4),
+    roomKey: (offer.roomKey || "").slice(0, 60),
+    rateKey: (offer.rateKey || "").slice(0, 80),
+    rateTitle: publicHotelText(offer.rateTitle || "").slice(0, 120),
+    cancellation: publicHotelText(offer.cancellation || "").slice(0, 400),
+  };
+}
+
+export function publicHotelText(value: string) {
+  return value.replace(BRAND, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function fillStay(base: PricedStay, extra: PricedStay): PricedStay {
+  return {
+    ...base,
+    hotelId: base.hotelId ?? extra.hotelId,
+    description: base.description || extra.description,
+    images: base.images.length ? base.images : extra.images,
+    coords: base.coords ?? extra.coords,
+    photoUrl: base.photoUrl || extra.photoUrl,
+    thumbUrl: base.thumbUrl || extra.thumbUrl,
+    footnotes: base.footnotes.length ? base.footnotes : extra.footnotes,
+    roomKey: base.roomKey || extra.roomKey,
+    rateKey: base.rateKey || extra.rateKey,
+    rateTitle: base.rateTitle || extra.rateTitle,
+    cancellation: base.cancellation || extra.cancellation,
   };
 }
 
@@ -467,9 +522,17 @@ export function mergeOffers(state: Map<string, PricedStay>, offers: HotelOffer[]
       changes.push({ stay: priced, replaced: false });
       continue;
     }
-    if (!replaces(current, priced)) continue;
-    state.set(priced.hotelKey, priced);
-    changes.push({ stay: priced, replaced: true });
+    if (!replaces(current, priced)) {
+      const filled = fillStay(current, priced);
+      if (filled !== current && (filled.hotelId !== current.hotelId || filled.coords !== current.coords || filled.images !== current.images)) {
+        state.set(priced.hotelKey, filled);
+        changes.push({ stay: filled, replaced: true });
+      }
+      continue;
+    }
+    const next = fillStay(priced, current);
+    state.set(priced.hotelKey, next);
+    changes.push({ stay: next, replaced: true });
   }
   return changes;
 }
@@ -489,6 +552,11 @@ export function toClientHotel(stay: PricedStay, nights: number, offerId: string 
     nights,
     benefits: stay.benefits,
     perks: stay.perks,
+    hotelId: stay.hotelId,
+    description: stay.description,
+    images: stay.images,
+    coords: stay.coords,
+    footnotes: stay.footnotes,
   };
 }
 
