@@ -3,7 +3,7 @@ import { productionOnlySecret } from "./preview-secrets";
 import { bookingTotalFromItems } from "./bookings";
 import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
-import { mergeExtractItems } from "./item-match";
+import { collapseSharedTicketPrice, mergeExtractItems } from "./item-match";
 import { parseMoney } from "./money";
 import { shownClientNote } from "./public-booking";
 import { stayCurrency } from "./stay-currency";
@@ -481,7 +481,7 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
       )
     )
   );
-  const merged = mergeExtractItems(items);
+  const merged = collapseSharedTicketPrice(mergeExtractItems(items));
   const priced: BookingExtract = {
     ...extract,
     items: merged,
@@ -508,11 +508,13 @@ export function keepAgentPrices(extract: BookingExtract): BookingExtract {
     ...extract,
     currency: stayCurrency(extract.currency),
     total_amount: parseMoney(extract.total_amount),
-    items: sortItemsByOrder(
-      (extract.items || []).map((item) => ({
-        ...item,
-        amount: parseMoney(item.amount),
-      }))
+    items: collapseSharedTicketPrice(
+      sortItemsByOrder(
+        (extract.items || []).map((item) => ({
+          ...item,
+          amount: parseMoney(item.amount),
+        }))
+      )
     ),
   };
   return redactIngestValue(next);

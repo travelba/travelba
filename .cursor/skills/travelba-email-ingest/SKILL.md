@@ -205,8 +205,11 @@ est annulé) :
   `lifecycle=superseded`, la nouvelle reprend ce prix vendu et reste cachée.
   Le jour de départ ne compte pas : un Crowne Plaza jusqu’au 19 et un Fairmont
   à partir du 19 s’ajoutent. Le choix d’une carte n’apparaît que pour **une**
-  carte nouvelle face à plusieurs cartes du même séjour. Plusieurs cartes
-  nouvelles rejoignent le séjour (bouton **Mettre à jour le séjour**) ;
+  carte d’hôtel nouvelle face à plusieurs hôtels du même séjour. Un vol ou un
+  train qui ne correspond à aucune carte s’ajoute, même s’il y a déjà d’autres
+  trajets : le rattachement n’attend pas un choix et n’affiche pas « Choisissez
+  la carte à remplacer ». Plusieurs cartes nouvelles rejoignent le séjour
+  (bouton **Mettre à jour le séjour**) ;
 - une carte hôtel sans numéro et sans date d’arrivée ne remplace rien et
   n’ouvre pas une seconde carte. Dans le même mail, elle se replie sur l’hôtel
   du même nom qui a déjà des dates : les avantages s’ajoutent, les dates et le

@@ -152,6 +152,11 @@ export function formatDateRangeShort(start?: string | null, end?: string | null)
   const b = end ? parseFrDate(end) : null;
   if (!a && !b) return "Dates à confirmer";
   if (a && b) {
+    const sameDay =
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    if (sameDay) return formatDateFr(start || end);
     const sameMonth =
       a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
     const month = b.toLocaleDateString("fr-FR", { month: "long" });

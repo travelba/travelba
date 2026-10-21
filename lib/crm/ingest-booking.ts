@@ -764,9 +764,13 @@ export async function applyReplacementToBooking(opts: {
     opts.replaceItemId
   );
   if (plan.choices.length) {
-    throw new BookingIssuesError("Choisissez la carte à remplacer.", [
-      { field: "item_id", message: "Choisissez la carte à remplacer." },
-    ]);
+    const names = plan.choices
+      .map((row) => row.title.trim())
+      .filter(Boolean)
+      .slice(0, 4);
+    const listed = names.length ? ` (${names.join(", ")})` : "";
+    const message = `Plusieurs cartes correspondent${listed}. Choisissez celle que ce mail remplace.`;
+    throw new BookingIssuesError(message, [{ field: "item_id", message }]);
   }
   return applyExtractToBooking({
     ...opts,

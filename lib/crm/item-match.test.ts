@@ -9,6 +9,7 @@ import {
   hotelRefsShareBooking,
   itemMatchKey,
   keptHotelStayFields,
+  collapseSharedTicketPrice,
   mergeExtractItems,
 } from "./item-match";
 
@@ -297,5 +298,50 @@ describe("itemMatchKey", () => {
       ),
       true
     );
+  });
+});
+
+describe("collapseSharedTicketPrice", () => {
+  it("garde le total du billet une fois quand les segments ont le même montant", () => {
+    const items = collapseSharedTicketPrice([
+      {
+        kind: "flight",
+        title: "EK 706",
+        confirmation_ref: "X97UJQ",
+        start_at: "2027-08-25T08:25:00",
+        details: { document_amount: 5235, document_currency: "EUR" },
+      },
+      {
+        kind: "flight",
+        title: "EK 75",
+        confirmation_ref: "X97UJQ",
+        start_at: "2027-08-25T14:40:00",
+        details: { document_amount: "5235", document_currency: "EUR" },
+      },
+    ]);
+    assert.equal(items[0]?.details?.document_amount, 5235);
+    assert.equal(items[1]?.details?.document_amount, undefined);
+    assert.equal(items[1]?.details?.document_currency, "EUR");
+  });
+
+  it("laisse deux montants différents chacun sur son segment", () => {
+    const items = collapseSharedTicketPrice([
+      {
+        kind: "flight",
+        title: "Aller",
+        confirmation_ref: "ABC123",
+        start_at: "2027-08-04T12:40:00",
+        details: { document_amount: 800 },
+      },
+      {
+        kind: "flight",
+        title: "Retour",
+        confirmation_ref: "ABC123",
+        start_at: "2027-08-25T14:40:00",
+        details: { document_amount: 900 },
+      },
+    ]);
+    assert.equal(items[0]?.details?.document_amount, 800);
+    assert.equal(items[1]?.details?.document_amount, 900);
   });
 });

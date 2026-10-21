@@ -190,6 +190,97 @@ describe("replacementPlan", () => {
     );
   });
 
+  it("ajoute le second segment d’un billet au lieu de demander quelle carte remplacer", () => {
+    const existing = [
+      {
+        id: "ly",
+        kind: "flight",
+        title: "Paris → Tel Aviv",
+        confirmation_ref: "X8YYVJ",
+        start_at: "2027-08-04T12:40:00",
+        details: { flight_number: "LY 222" },
+      },
+      {
+        id: "iz",
+        kind: "flight",
+        title: "Tel Aviv → Seychelles",
+        confirmation_ref: "X972RT",
+        start_at: "2027-08-11T07:30:00",
+        details: { flight_number: "IZ611" },
+      },
+      {
+        id: "ek",
+        kind: "flight",
+        title: "Seychelles → Paris via Dubaï",
+        confirmation_ref: "X97UJQ",
+        start_at: "2027-08-25T08:25:00",
+        end_at: "2027-08-25T20:00:00",
+        details: { flight_number: "EK706" },
+      },
+    ];
+    const incoming = [
+      {
+        kind: "flight",
+        title: "Emirates - EK 706",
+        confirmation_ref: "X97UJQ",
+        start_at: "2027-08-25T08:25:00",
+        end_at: "2027-08-25T12:55:00",
+        details: { flight_number: "EK 706" },
+      },
+      {
+        kind: "flight",
+        title: "Emirates - EK 75",
+        confirmation_ref: "X97UJQ",
+        start_at: "2027-08-25T14:40:00",
+        end_at: "2027-08-25T20:00:00",
+        details: { flight_number: "EK 75" },
+      },
+    ];
+    const plan = replacementPlan(incoming, existing);
+    assert.deepEqual(plan.updates, [{ itemId: "ek" }]);
+    assert.equal(plan.adds, 1);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.choices.length, 0);
+    const gesture = inboxStayAction({
+      documentStatus: "confirmed",
+      incoming,
+      bookingStatus: "quoted",
+      items: existing,
+    });
+    assert.equal(gesture.action, "attach");
+    assert.equal(gesture.choices.length, 0);
+    assert.equal(gesture.label, "Mettre à jour le séjour");
+  });
+
+  it("ajoute un vol isolé même s’il reste d’autres vols, sauf si une carte est choisie", () => {
+    const existing = [
+      {
+        id: "old",
+        kind: "flight",
+        title: "Aller",
+        confirmation_ref: "OLD111",
+        start_at: "2027-08-04T12:40:00",
+        details: { flight_number: "LY222" },
+      },
+    ];
+    const incoming = [
+      {
+        kind: "flight",
+        title: "Retour",
+        confirmation_ref: "NEW111",
+        start_at: "2027-08-25T14:40:00",
+        details: { flight_number: "EK75" },
+      },
+    ];
+    const plan = replacementPlan(incoming, existing);
+    assert.equal(plan.adds, 1);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.choices.length, 0);
+    const chosen = replacementPlan(incoming, existing, "old");
+    assert.equal(chosen.replacements[0]?.itemId, "old");
+    assert.equal(chosen.adds, 0);
+  });
+
   it("ajoute plusieurs hôtels nouveaux sans demander une carte", () => {
     const plan = replacementPlan(
       [

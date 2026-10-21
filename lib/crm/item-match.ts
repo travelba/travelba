@@ -393,3 +393,53 @@ export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
   }
   return out;
 }
+
+function positiveDocumentAmount(details?: Record<string, unknown> | null): number | null {
+  const raw = details?.document_amount;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number(raw.replace(/\s/g, "").replace(",", "."));
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+/**
+ * Même référence, même total imprimé sur chaque segment : c’est le total du billet, une seule fois.
+ * Deux montants différents restent, chacun sur son segment.
+ */
+export function collapseSharedTicketPrice<T extends MatchableItem>(items: T[]): T[] {
+  const groups = new Map<string, number[]>();
+  items.forEach((item, index) => {
+    const kind = item.kind || "";
+    if (kind !== "flight" && kind !== "rail") return;
+    const ref = norm(item.confirmation_ref);
+    if (!ref) return;
+    const list = groups.get(ref) || [];
+    list.push(index);
+    groups.set(ref, list);
+  });
+  const next = items.map((item) => ({
+    ...item,
+    details: item.details ? { ...item.details } : item.details,
+  }));
+  for (const indexes of groups.values()) {
+    if (indexes.length < 2) continue;
+    const amounts = indexes.map((index) => positiveDocumentAmount(next[index].details));
+    const present = amounts.filter((amount): amount is number => amount != null);
+    if (present.length < 2) continue;
+    const first = present[0];
+    if (!present.every((amount) => Math.abs(amount - first) < 0.01)) continue;
+    const ordered = [...indexes].sort((a, b) =>
+      String(next[a].start_at || "").localeCompare(String(next[b].start_at || ""))
+    );
+    for (const index of ordered.slice(1)) {
+      const details = next[index].details;
+      if (!details || positiveDocumentAmount(details) == null) continue;
+      const rest = { ...details };
+      delete rest.document_amount;
+      next[index].details = rest;
+    }
+  }
+  return next;
+}

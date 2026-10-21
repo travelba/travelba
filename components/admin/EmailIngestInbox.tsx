@@ -27,18 +27,17 @@ import {
 } from "@/lib/crm/customer-search";
 import { emailCardTitle } from "@/lib/crm/ingest-title";
 import { formatDateFr, formatDateRangeShort, formatDateTimeFr, formatMoney } from "@/lib/crm/money";
-import { sanitizeEmailHtml } from "@/lib/crm/email-source";
+import { emailHtmlHasText, sanitizeEmailHtml } from "@/lib/crm/email-source";
+import { collapseSharedTicketPrice } from "@/lib/crm/item-match";
 import { inboxStayAction, type LifecycleCard } from "@/lib/crm/item-lifecycle";
 
 type ExtractItem = {
   kind?: string;
   title?: string;
   confirmation_ref?: string | null;
+  start_at?: string | null;
   amount?: number | null;
-  details?: {
-    document_amount?: number | string | null;
-    document_currency?: string | null;
-  } | null;
+  details?: Record<string, unknown> | null;
 };
 
 function formatDocumentPrice(amount: number, currency: string) {
@@ -71,6 +70,9 @@ type BookingCard = {
   confirmation_ref: string | null;
   lifecycle: string | null;
   amount: number | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  details?: Record<string, unknown> | null;
 };
 
 type BookingOption = {
@@ -97,17 +99,18 @@ function printedTravelers(row: CrmEmailIngest) {
 function OriginalMail({ row }: { row: CrmEmailIngest }) {
   const html = sanitizeEmailHtml(row.body_html);
   const text = (row.body_text || "").trim();
+  const htmlVisible = emailHtmlHasText(row.body_html);
   return (
     <aside className="rounded-2xl border border-[#C5A880] bg-[#FAF9F6] p-3">
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">
         Message d’origine
       </p>
-      <p className="mt-2 text-sm font-semibold text-[#0B192C]">{row.subject || "Sans objet"}</p>
+      <p className="mt-2 text-sm font-semibold text-[#0B192C]">{row.subject?.trim() || "Sans objet"}</p>
       <p className="mt-1 text-xs text-muted">
         {row.from_email || "Expéditeur inconnu"}
         {row.received_at ? ` · ${formatDateTimeFr(row.received_at)}` : ""}
       </p>
-      {html ? (
+      {htmlVisible ? (
         <div
           className="mt-3 max-h-[32rem] overflow-auto rounded-xl bg-white p-3 text-sm text-[#0B192C]"
           dangerouslySetInnerHTML={{ __html: html }}
@@ -118,11 +121,25 @@ function OriginalMail({ row }: { row: CrmEmailIngest }) {
         </pre>
       ) : (
         <p className="mt-3 text-sm text-muted">
-          Le corps de ce message n’a pas encore été conservé. Les prochains mails afficheront le texte reçu.
+          Ce mail n’a pas de texte. Le document est dans les pièces jointes.
         </p>
       )}
     </aside>
   );
+}
+
+function pendingLabel(action: string) {
+  if (action === "new_booking") return "Création…";
+  if (action === "refuse") return "Refus…";
+  if (action === "rematch") return "Nouvelle proposition…";
+  if (action === "replace_booking") return "Remplacement…";
+  return "Rattachement…";
+}
+
+function doneLabel(action: string) {
+  if (action === "new_booking") return "Le dossier est créé. Le mail quitte la file.";
+  if (action === "refuse") return "Le mail est classé sans dossier.";
+  return "Le mail est rattaché au voyage.";
 }
 
 function itemLabel(kind: string | undefined) {
@@ -143,10 +160,12 @@ export function EmailIngestInbox({
     return map;
   }, [customers]);
 
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<{ id: string; action: string } | null>(null);
   // L’autosave du titre a son propre état : il ne verrouille plus Rattacher / Créer (A-55).
   const [savingTitle, setSavingTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<Record<string, string>>({});
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [pickFor, setPickFor] = useState<string | null>(null);
   const [bookings, setBookings] = useState<Record<string, BookingOption[]>>({});
@@ -241,8 +260,9 @@ export function EmailIngestInbox({
 
   /** Reproposer : relance client / voyage sur l’extract stocké, sans rattacher. */
   async function rematch(rowId: string) {
-    setBusy(rowId);
+    setBusy({ id: rowId, action: "rematch" });
     setError(null);
+    setNotice(null);
     const result = await adminAction(`/api/admin/email-ingest/${rowId}`, { method: "POST", body: { action: "rematch" } });
     setBusy(null);
     if (!result.ok) {
@@ -307,8 +327,15 @@ export function EmailIngestInbox({
     },
     opts?: { refresh?: boolean }
   ) {
-    setBusy(rowId);
+    setBusy({ id: rowId, action: payload.action });
     setError(null);
+    setNotice(null);
+    setRowError((prev) => {
+      if (!(rowId in prev)) return prev;
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
     try {
       const res = await fetch(`/api/admin/email-ingest/${rowId}`, {
         method: "POST",
@@ -321,12 +348,16 @@ export function EmailIngestInbox({
       };
       if (!res.ok) {
         const detail = (data.issues || []).map((issue) => issue.message).filter(Boolean).join(" ");
-        setError(detail || data.error || "Opération impossible");
+        setRowError((prev) => ({
+          ...prev,
+          [rowId]: detail || data.error || "Opération impossible",
+        }));
         return;
       }
+      setNotice(doneLabel(payload.action));
       if (opts?.refresh !== false) router.refresh();
     } catch {
-      setError("Réseau indisponible, réessayez.");
+      setRowError((prev) => ({ ...prev, [rowId]: "Réseau indisponible, réessayez." }));
     } finally {
       setBusy(null);
     }
@@ -343,15 +374,31 @@ export function EmailIngestInbox({
 
   return (
     <div className="space-y-4">
+      {notice ? (
+        <p
+          role="status"
+          className="rounded-lg border border-[#C5A880] bg-[#FAF9F6] px-3 py-2 text-sm text-[#0B192C]"
+        >
+          {notice}
+        </p>
+      ) : null}
       {error ? (
-        <p className="rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-sm text-accent">
+        <p role="alert" className="rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-sm text-accent">
           {error}
         </p>
       ) : null}
 
       {rows.map((row) => {
         const extract = viewOf(row);
-        const items = Array.isArray(extract.items) ? extract.items : [];
+        const sourceItems = Array.isArray(extract.items) ? extract.items : [];
+        const items = collapseSharedTicketPrice(
+          sourceItems.map((item) => ({ ...item, kind: item.kind || "fee" }))
+        );
+        const ticketTotalOnce = items.some(
+          (item, index) =>
+            readDocumentAmount(sourceItems[index]?.details) != null &&
+            readDocumentAmount(item.details) == null
+        );
         const customerId = chosenCustomer(row);
         const customerName = customerId
           ? customerLabelById.get(customerId) || "Client choisi"
@@ -366,7 +413,7 @@ export function EmailIngestInbox({
         const options = bookings[row.id];
         const loadingBookings = Boolean(loadingRows[row.id]);
         const bookingsError = loadingBookings ? null : loadErrors[row.id] || null;
-        const isBusy = busy === row.id;
+        const isBusy = busy?.id === row.id;
         const cardTitle =
           titles[row.id] ??
           emailCardTitle({
@@ -537,11 +584,22 @@ export function EmailIngestInbox({
                           Retirer
                         </button>
                       </div>
-                      {cancelling ? null : needsPrice ? (
+                      {cancelling ? null : needsPrice &&
+                        item.kind === "flight" &&
+                        readDocumentAmount(sourceItems[index]?.details) != null &&
+                        readDocumentAmount(item.details) == null ? (
+                        <p className="mt-2 text-xs text-muted">
+                          Même total que l’autre vol de ce billet : il n’est pas répété.
+                        </p>
+                      ) : needsPrice ? (
                         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_7.5rem]">
                           <Field
                             label="Prix imprimé sur le document"
-                            hint="Facultatif. Montant lu sur le PDF, s’il est imprimé."
+                            hint={
+                              ticketTotalOnce && item.kind === "flight"
+                                ? "Total du billet, une fois pour ces vols."
+                                : "Facultatif. Montant lu sur le PDF, s’il est imprimé."
+                            }
                           >
                             <MoneyInput
                               value={amount}
@@ -700,7 +758,7 @@ export function EmailIngestInbox({
                               setSelectedItem((prev) => ({ ...prev, [row.id]: event.target.value }))
                             }
                           >
-                            <option value="">Choisir la carte</option>
+                            <option value="">Choisir la carte à remplacer</option>
                             {gesture.choices.map((card) => (
                               <option key={card.id} value={card.id}>
                                 {itemLabel(card.kind)} — {card.title}
@@ -711,6 +769,7 @@ export function EmailIngestInbox({
                         <button
                           type="button"
                           disabled={isBusy || !selectedBooking[row.id] || waitingForCard}
+                          aria-busy={isBusy || undefined}
                           className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                           onClick={() =>
                             act(row.id, {
@@ -727,7 +786,7 @@ export function EmailIngestInbox({
                             })
                           }
                         >
-                          {gesture?.label || "Rattacher au voyage"}
+                          {isBusy ? pendingLabel(busy?.action || "") : gesture?.label || "Rattacher au voyage"}
                         </button>
                         {gesture?.hint ? (
                           <p className="text-xs text-muted sm:col-span-2">{gesture.hint}</p>
@@ -773,7 +832,7 @@ export function EmailIngestInbox({
                   }
                 >
                   <Icon name="add" className="h-4 w-4" />
-                  Créer un dossier
+                  {isBusy && busy?.action === "new_booking" ? "Création…" : "Créer un dossier"}
                 </button>
                 {row.extract ? (
                   <button
@@ -783,7 +842,7 @@ export function EmailIngestInbox({
                     onClick={() => void rematch(row.id)}
                   >
                     <Icon name="sync_alt" className="h-4 w-4" />
-                    Reproposer
+                    {isBusy && busy?.action === "rematch" ? "Nouvelle proposition…" : "Reproposer"}
                   </button>
                 ) : null}
                 <button
@@ -793,9 +852,14 @@ export function EmailIngestInbox({
                   onClick={() => act(row.id, { action: "refuse" })}
                 >
                   <Icon name="close" className="h-4 w-4" />
-                  Refuser
+                  {isBusy && busy?.action === "refuse" ? "Refus…" : "Refuser"}
                 </button>
               </div>
+              {rowError[row.id] ? (
+                <p role="alert" className="mt-2 text-sm text-accent">
+                  {rowError[row.id]}
+                </p>
+              ) : null}
             </div>
 
             <CustomerPickDialog
