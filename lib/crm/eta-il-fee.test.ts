@@ -85,6 +85,15 @@ test("plusieurs hôtels : le nom choisi garde cet hôtel dans le libellé", () =
   assert.match(other?.purpose || "", /Phulay Bay/);
   assert.match(other?.purpose || "", /Visa/);
   assert.equal((other?.purpose || "").split("TB-2026-0088").length, 2);
+
+  const catalog = pliantStayCaption({
+    client: "Bensaïd",
+    hotels: ["Anantara Layan Phuket Resort", "Phulay Bay, a Ritz-Carlton Reserve"],
+    designation: "Phulay Bay",
+    reference: "TB-2026-0088",
+  });
+  assert.equal(catalog?.label, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(catalog?.label.includes("Anantara"), false);
 });
 
 test("la désignation interne garde les accents et tient dans quarante caractères", () => {

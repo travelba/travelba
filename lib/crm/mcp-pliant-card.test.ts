@@ -463,17 +463,17 @@ test("plusieurs hôtels : le nom Phulay Bay reste le libellé", async () => {
     {
       booking_id: BOOKING,
       kind: "hotel",
-      title: "Anantara Layan",
+      title: "Anantara Layan Phuket Resort",
       supplier: "Little Emperors",
-      details: { hotel_name: "Anantara Layan" },
+      details: { hotel_name: "Anantara Layan Phuket Resort" },
       lifecycle: "active",
     },
     {
       booking_id: BOOKING,
       kind: "hotel",
-      title: "Phulay Bay",
+      title: "Phulay Bay, a Ritz-Carlton Reserve",
       supplier: "Little Emperors",
-      details: { hotel_name: "Phulay Bay" },
+      details: { hotel_name: "Phulay Bay, a Ritz-Carlton Reserve" },
       lifecycle: "active",
     }
   );

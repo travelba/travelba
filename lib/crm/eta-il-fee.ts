@@ -93,6 +93,35 @@ function pliantKey(value: string | null | undefined) {
   return pliantReadable(value || "").toLowerCase();
 }
 
+const CAPTION_PART = /\s+(?:–|—|-)\s+/u;
+
+function sharedLeadingWords(hotelKey: string, needle: string) {
+  const hotelWords = hotelKey.split(" ").filter(Boolean);
+  const nameWords = needle.split(" ").filter(Boolean);
+  const shared: string[] = [];
+  for (let i = 0; i < hotelWords.length && i < nameWords.length; i += 1) {
+    if (hotelWords[i] !== nameWords[i]) break;
+    shared.push(hotelWords[i]);
+  }
+  return shared.join(" ");
+}
+
+/** Le nom cite cet hôtel : le nom d’hôtel est dedans, ou c’est le début d’un nom plus long. */
+function hotelCited(hotelKey: string, designation: string | null | undefined) {
+  const needle = pliantKey(designation);
+  if (!hotelKey || !needle) return false;
+  if (needle.includes(hotelKey)) return true;
+  if (needle.length >= 4 && hotelKey.includes(needle)) return true;
+  if (sharedLeadingWords(hotelKey, needle).length >= 8) return true;
+  const parts = (designation || "")
+    .split(CAPTION_PART)
+    .map((part) => pliantKey(part))
+    .filter((key) => key.length >= 4 && key !== needle);
+  return parts.some(
+    (part) => hotelKey.includes(part) || part.includes(hotelKey) || sharedLeadingWords(hotelKey, part).length >= 8
+  );
+}
+
 /**
  * Un nom saisi ne garde que les hôtels qu’il cite (sans accent, en minuscules).
  * Aucun nom, ou aucun hôtel dedans : on garde tous les hôtels.
@@ -102,16 +131,31 @@ function hotelsNamedInDesignation(
   designation: string | null | undefined
 ) {
   const list = (hotels || []).map((hotel) => (hotel || "").trim()).filter(Boolean);
-  const needle = pliantKey(designation);
-  if (!needle) return list;
-  const matched = list.filter((hotel) => {
-    const key = pliantKey(hotel);
-    return key.length > 0 && needle.includes(key);
-  });
-  return matched.length ? matched : list;
+  if (!pliantKey(designation)) return { hotels: list, cited: false };
+  const matched = list.filter((hotel) => hotelCited(pliantKey(hotel), designation));
+  if (!matched.length) return { hotels: list, cited: false };
+  return { hotels: matched, cited: true };
 }
 
-const CAPTION_PART = /\s+(?:–|—|-)\s+/u;
+/** Morceau du nom d’hôtel qui correspond au nom saisi, avec la casse de la fiche. */
+function hotelNameSlice(hotel: string, key: string) {
+  const readable = pliantReadable(hotel);
+  const folded = readable.toLowerCase();
+  const at = folded.indexOf(key);
+  if (at >= 0) return readable.slice(at, at + key.length).trim();
+  const shared = sharedLeadingWords(folded, key);
+  if (shared.length >= 8) return readable.slice(0, shared.length).trim();
+  return "";
+}
+
+/** Le nom saisi est plus court que la fiche hôtel : ce morceau tient dans le libellé. */
+function citedBrief(hotels: string[], middle: string) {
+  const key = pliantKey(middle);
+  if (key.length < 4 || !hotels.length) return "";
+  const slices = hotels.map((hotel) => hotelNameSlice(hotel, key)).filter(Boolean);
+  if (slices.length !== hotels.length) return "";
+  return slices[0];
+}
 
 /**
  * « Client – Hôtel – Réf » est déjà le libellé. On ne garde que le milieu,
@@ -143,9 +187,11 @@ export function pliantStayCaption(input: {
   designation?: string | null;
   reference?: string | null;
 }) {
-  const hotels = hotelsNamedInDesignation(input.hotels, input.designation);
-  const hotelPlace = pliantCardPlace({ hotels });
+  const selected = hotelsNamedInDesignation(input.hotels, input.designation);
   const middle = designationPlace(input.designation, input.client, input.reference);
+  const brief = selected.cited ? citedBrief(selected.hotels, middle) : "";
+  const hotels = brief ? [brief] : selected.hotels;
+  const hotelPlace = pliantCardPlace({ hotels });
   const designation = middle && pliantKey(middle) !== pliantKey(hotelPlace) ? middle : "";
   const fullPlace = pliantCardPlace({ hotels, designation });
   const full = pliantCardCaption({ client: input.client, place: fullPlace, reference: input.reference });
