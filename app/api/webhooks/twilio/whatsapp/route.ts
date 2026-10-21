@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { notifyConciergeRequest } from "@/lib/crm/whatsapp-alert";
 import { issueConciergeMagicLink } from "@/lib/crm/whatsapp-access";
 import { generateConciergeReply } from "@/lib/crm/whatsapp-conversation";
+import { settleTakeoverIdle } from "@/lib/crm/whatsapp-handoff";
 import { conciergeAutoreplyEnabled, createWhatsappSupabaseStore, receiveWhatsappWebhook } from "@/lib/crm/whatsapp-inbound";
 import { sendWhatsappSession } from "@/lib/crm/whatsapp-session";
 import { rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
@@ -16,8 +17,10 @@ export async function POST(request: Request) {
   if (!token) return new NextResponse(null, { status: 503 });
 
   let store: ReturnType<typeof createWhatsappSupabaseStore>;
+  let admin: ReturnType<typeof createServiceClient>;
   try {
-    store = createWhatsappSupabaseStore(createServiceClient());
+    admin = createServiceClient();
+    store = createWhatsappSupabaseStore(admin);
   } catch {
     return new NextResponse(null, { status: 503 });
   }
@@ -35,7 +38,16 @@ export async function POST(request: Request) {
         rateLimit({ key: rateLimitKey("whatsapp", phone), limit: 20, windowSeconds: 600 }),
       alert: (row) => notifyConciergeRequest(row).then(() => undefined),
       store,
-      openAccess: (customer) => issueConciergeMagicLink(createServiceClient(), customer.email),
+      beforeReply: async (phone) => {
+        try {
+          const settled = await settleTakeoverIdle(admin, phone);
+          return settled.handled ? "stop" : "continue";
+        } catch {
+          console.error("[whatsapp-handoff] entree");
+          return "continue";
+        }
+      },
+      openAccess: (customer) => issueConciergeMagicLink(admin, customer.email),
       converse: generateConciergeReply,
       send: (message) =>
         sendWhatsappSession({ to: message.to, body: message.body, mediaUrl: message.mediaUrl }),

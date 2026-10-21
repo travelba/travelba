@@ -4,17 +4,20 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConciergeProposalDesk } from "@/components/admin/ConciergeProposalDesk";
+import { WhatsappHoldButton, type HandoffResult } from "@/components/admin/WhatsappHoldButton";
 import {
+  conversationBadge,
   deliveryLabel,
   filterThreads,
   messageSpeaker,
+  messagesNewestFirst,
   parisStamp,
   speakerLabel,
-  statusLabel,
   type InboxFilter,
   type InboxMessage,
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
+import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
 
 export type InboxProposal = { id: string; draft: string };
 export type InboxTemplate = { key: string; label: string };
@@ -58,7 +61,15 @@ export function WhatsappInbox({
   const [lastName, setLastName] = useState("");
   const visible = useMemo(() => filterThreads(threads, { query, filter }), [threads, query, filter]);
   const active = threads.find((thread) => thread.key === activeKey) || null;
-  const ordered = [...messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const serverHeld = Boolean(active && (active.held ?? active.status === "agency"));
+  const [localHold, setLocalHold] = useState<{ key: string; held: boolean; seenServer: boolean; notes: InboxMessage[] } | null>(null);
+  const liveHold = localHold && localHold.key === (active?.key || "") && localHold.seenServer === serverHeld ? localHold : null;
+  const held = liveHold ? liveHold.held : serverHeld;
+  const notes = liveHold?.notes || [];
+  const ordered = messagesNewestFirst([
+    ...messages,
+    ...notes.filter((note) => !messages.some((row) => row.templateKey === "systeme" && row.body === note.body)),
+  ]);
 
   useEffect(() => {
     if (embedded) return;
@@ -166,7 +177,10 @@ export function WhatsappInbox({
                   </span>
                   <span className="mt-1 block truncate text-xs text-[var(--color-ink-soft)]">{thread.lastBody}</span>
                   <span className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-[#8a7350]">
-                    <span>{statusLabel(thread.status)}{thread.prospect ? " · Prospect" : ""}</span>
+                    <span>
+                      {conversationBadge(thread.status, Boolean(thread.held ?? thread.status === "agency"))}
+                      {thread.prospect ? " · Prospect" : ""}
+                    </span>
                     <span>{thread.bookingReference || parisStamp(thread.lastAt)}</span>
                   </span>
                 </Link>
@@ -183,12 +197,12 @@ export function WhatsappInbox({
             <div>
               <p className="text-sm font-medium">{active.customerName || active.phone}</p>
               <p className="text-xs text-[#C5A880]">
-                {statusLabel(active.status)}
+                {conversationBadge(active.status, held)}
                 {active.bookingReference ? ` · ${active.bookingReference}` : ""}
                 {active.customerId ? "" : " · Prospect"}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs">
+            <div className="flex flex-wrap items-start gap-2 text-xs">
               {active.customerId ? (
                 <Link className="rounded-full bg-white/10 px-3 py-1" href={`/admin/clients/${active.customerId}`}>
                   Fiche
@@ -200,14 +214,13 @@ export function WhatsappInbox({
                 </Link>
               ) : null}
               {active.phone ? (
-                <button
-                  type="button"
-                  className="rounded-full bg-[#C5A880] px-3 py-1 text-[#0B192C]"
-                  disabled={busy}
-                  onClick={() => void post({ action: "resume", phone: active.phone })}
-                >
-                  Rendre au Concierge
-                </button>
+                <WhatsappHoldButton
+                  phone={active.phone}
+                  customerId={active.customerId}
+                  held={held}
+                  className="rounded-full bg-[#C5A880] px-3 py-1 text-[#0B192C] disabled:opacity-60"
+                  onResult={(result) => applyHandoff(active, result, serverHeld, setLocalHold, () => router.refresh())}
+                />
               ) : null}
             </div>
           </header>
@@ -217,6 +230,13 @@ export function WhatsappInbox({
 
         <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
           {ordered.map((message) => {
+            if (isHandoffNote(message)) {
+              return (
+                <p key={message.id} role="status" className="text-center text-xs font-medium text-[#8a7350]">
+                  {message.body}
+                </p>
+              );
+            }
             const speaker = messageSpeaker(message);
             const mine = speaker !== "client";
             return (
@@ -338,6 +358,42 @@ export function WhatsappInbox({
       </section>
     </div>
   );
+}
+
+function applyHandoff(
+  active: InboxThread,
+  result: HandoffResult,
+  seenServer: boolean,
+  setLocalHold: (value: { key: string; held: boolean; seenServer: boolean; notes: InboxMessage[] }) => void,
+  refresh: () => void
+) {
+  const note: InboxMessage | null =
+    result.line && result.at
+      ? {
+          id: `handoff-${result.at}`,
+          phone: active.phone,
+          customerId: active.customerId,
+          customerName: active.customerName,
+          bookingId: active.bookingId,
+          bookingReference: active.bookingReference,
+          direction: "outbound",
+          body: result.line,
+          createdAt: result.at,
+          status: "sent",
+          templateKey: "systeme",
+          authorName: null,
+          mediaPath: null,
+          tools: [],
+          requestId: null,
+        }
+      : null;
+  setLocalHold({
+    key: active.key,
+    held: result.status === "agency",
+    seenServer,
+    notes: note ? [note] : [],
+  });
+  refresh();
 }
 
 function fileToBase64(file: File) {

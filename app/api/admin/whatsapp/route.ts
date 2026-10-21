@@ -8,6 +8,7 @@ import { stayDestinationLine } from "@/lib/crm/stay-phrase";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { draftTemplateRefused, readStamp } from "@/lib/crm/whatsapp-inbox";
 import { loadDockSnapshot, loadDockThread } from "@/lib/crm/whatsapp-dock-load";
+import { releaseThreadToConcierge } from "@/lib/crm/whatsapp-handoff";
 import { agencySignoff, nextParisMorning } from "@/lib/crm/whatsapp-takeover";
 import { sendContentTemplate } from "@/lib/crm/whatsapp";
 import { sendWhatsappSession, sessionAddress } from "@/lib/crm/whatsapp-session";
@@ -56,10 +57,10 @@ export async function POST(request: Request) {
   const customerId = body?.customerId && ID.test(body.customerId) ? body.customerId : null;
   const bookingId = body?.bookingId && ID.test(body.bookingId) ? body.bookingId : null;
   const requestId = body?.requestId && ID.test(body.requestId) ? body.requestId : null;
-  if (action !== "reply" && action !== "resume" && action !== "done" && action !== "create-client" && action !== "read") {
+  if (action !== "reply" && action !== "resume" && action !== "takeover" && action !== "done" && action !== "create-client" && action !== "read") {
     return jsonError("Action inconnue", 400);
   }
-  if ((action === "reply" || action === "resume" || action === "read") && !phone) return jsonError("Téléphone manquant", 400);
+  if ((action === "reply" || action === "resume" || action === "takeover" || action === "read") && !phone) return jsonError("Téléphone manquant", 400);
 
   let admin: ReturnType<typeof createServiceClient>;
   try {
@@ -109,12 +110,25 @@ export async function POST(request: Request) {
   }
 
   if (action === "resume") {
-    const { error } = await admin
-      .from("crm_whatsapp_threads")
-      .update({ paused_at: null, paused_until: null, paused_by: null, updated_at: new Date().toISOString() })
-      .eq("phone", phone);
-    if (error) return jsonError("La migration WhatsApp n’est pas encore appliquée.", 503);
-    return NextResponse.json({ ok: true });
+    if (!phone) return jsonError("Téléphone manquant", 400);
+    const released = await releaseThreadToConcierge(admin, { phone, customerId });
+    if (!released.ok) return jsonError("La conversation n’a pas pu être rendue au Concierge. Réessayez.", 503);
+    return NextResponse.json({ ok: true, status: released.status, at: released.at, line: released.line });
+  }
+
+  if (action === "takeover") {
+    if (!phone) return jsonError("Téléphone manquant", 400);
+    const now = new Date();
+    const { error } = await admin.from("crm_whatsapp_threads").upsert({
+      phone,
+      customer_id: customerId,
+      paused_at: now.toISOString(),
+      paused_until: nextParisMorning(now).toISOString(),
+      paused_by: auth.staff.id,
+      updated_at: now.toISOString(),
+    });
+    if (error) return jsonError("La reprise en main n’a pas abouti. Réessayez.", 503);
+    return NextResponse.json({ ok: true, status: "agency", at: now.toISOString() });
   }
 
   const template = (body?.template || "").trim();

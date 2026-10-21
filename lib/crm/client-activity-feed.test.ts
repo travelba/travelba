@@ -187,9 +187,12 @@ test("les connexions se groupent sur sept jours, sans l’agence", () => {
 });
 
 test("sans connexion, le bloc le dit, et le nom n’est pas coupé par un badge", () => {
-  const empty = renderToStaticMarkup(createElement(ClientActivity, { groups: [] }));
+  const empty = renderToStaticMarkup(createElement(ClientActivity, { groups: [], today: TODAY }));
   assert.match(empty, /Aucune connexion/);
-  assert.match(empty, /ces sept derniers jours/);
+  assert.match(empty, /Aucune connexion aujourd’hui ni hier/);
+  assert.match(empty, /Voir plus/);
+  assert.match(empty, /Aucune connexion les jours précédents/);
+  assert.doesNotMatch(empty, /ces sept derniers jours/);
   assert.doesNotMatch(empty, /Activité clients[\s\S]*truncate/);
 
   const groups = buildClientActivityFeed({
@@ -208,10 +211,11 @@ test("sans connexion, le bloc le dit, et le nom n’est pas coupé par un badge"
     ],
   });
   const html = renderToStaticMarkup(
-    createElement(ClientActivity, { groups, initialOpen: [groups[0].rows[0].id] })
+    createElement(ClientActivity, { groups, today: TODAY, initialOpen: [groups[0].rows[0].id] })
   );
   assert.match(html, /Activité clients/);
-  assert.match(html, /Connexions et visites de l’espace client, sur sept jours/);
+  assert.match(html, /Connexions et visites de l’espace client, aujourd’hui et hier/);
+  assert.doesNotMatch(html, /Voir plus/);
   assert.match(html, /Aujourd’hui/);
   assert.match(html, /1 aujourd’hui/);
   assert.match(html, /href="\/admin\/clients\/client-1"/);
@@ -339,4 +343,28 @@ test("une visite sans connexion du jour reste une ligne, et une journée mixte g
   assert.equal(JSON.stringify(groups).includes("Agence Martin"), false);
   assert.equal(JSON.stringify(groups).includes("pour l’agence"), false);
   assert.equal(JSON.stringify(groups).includes("Ouverture par l’agence"), false);
+});
+
+test("le tableau n’ouvre qu’aujourd’hui et hier, le reste se déplie", () => {
+  const groups = buildClientActivityFeed({
+    today: TODAY,
+    staffAuthIds: [],
+    customers: [CAMILLE, JONAS],
+    bookings: [],
+    logins: [
+      login({ id: "now", created_at: "2026-10-19T12:00:00.000Z" }),
+      login({ id: "yesterday", created_at: "2026-10-18T12:00:00.000Z" }),
+      login({ id: "older", created_at: "2026-10-17T12:00:00.000Z", customer_id: "client-2", auth_user_id: "user-jonas" }),
+    ],
+    activity: [],
+  });
+  const html = renderToStaticMarkup(createElement(ClientActivity, { groups, today: TODAY }));
+  assert.match(html, /Aujourd’hui/);
+  assert.match(html, /Hier/);
+  assert.match(html, /Voir plus/);
+  assert.match(html, /Voir moins/);
+  assert.match(html, /Samedi 17 octobre/);
+  const foldAt = html.indexOf("Voir plus");
+  assert.match(html.slice(foldAt), /Samedi 17 octobre/);
+  assert.doesNotMatch(html.slice(0, foldAt), /Samedi 17 octobre/);
 });

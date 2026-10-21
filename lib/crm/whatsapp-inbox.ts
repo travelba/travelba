@@ -34,6 +34,8 @@ export type InboxThread = {
   lastAt: string;
   unread: number;
   status: InboxThreadStatus;
+  /** Vrai tant qu’un humain tient le fil (pause encore active). */
+  held?: boolean;
 };
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -129,11 +131,8 @@ export function foldThreads(
     const booking = [...ordered].reverse().find((row) => row.bookingReference);
     const seen = readAt[key] || null;
     const unread = ordered.filter((row) => row.direction === "inbound" && (!seen || row.createdAt > seen)).length;
-    const status: InboxThreadStatus = escalated.has(key)
-      ? "escalated"
-      : (phone && paused.has(phone)) || paused.has(key)
-        ? "agency"
-        : "robot";
+    const held = Boolean((phone && paused.has(phone)) || paused.has(key));
+    const status: InboxThreadStatus = escalated.has(key) ? "escalated" : held ? "agency" : "robot";
     threads.push({
       key,
       phone,
@@ -146,6 +145,7 @@ export function foldThreads(
       lastAt: last?.createdAt || "",
       unread: seen ? unread : last?.direction === "inbound" ? Math.min(unread, 1) : 0,
       status,
+      held,
     });
   }
   return threads.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
@@ -174,6 +174,18 @@ export function statusLabel(status: InboxThreadStatus) {
   if (status === "escalated") return "Escaladé";
   if (status === "agency") return "Repris par l’agence";
   return "Le Concierge";
+}
+
+/** Pastille du fil : qui répond, tout de suite après une remise ou une reprise. */
+export function conversationBadge(status: InboxThreadStatus, held: boolean) {
+  const holder = held ? "Repris par l’agence" : "Le Concierge";
+  if (status === "escalated") return `Escaladé · ${holder}`;
+  return holder;
+}
+
+/** Du plus récent au plus ancien : le dernier message est en haut à l’ouverture. */
+export function messagesNewestFirst<T extends { createdAt: string; id: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
 }
 
 export function speakerLabel(speaker: InboxSpeaker, authorName: string | null) {

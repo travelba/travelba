@@ -175,7 +175,7 @@ export default async function AdminHomePage() {
         )}
       </section>
 
-      <ClientActivity groups={clientActivity} />
+      <ClientActivity groups={clientActivity} today={today} />
 
       <RecentMails mails={recentMails} />
 
