@@ -2,6 +2,7 @@ import { shownPersonName } from "@/lib/crm/identity";
 import { documentPriceIssues } from "@/lib/crm/booking-issues";
 import { cityPlaceKey } from "@/lib/crm/city-names";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
+import { hotelRefsShareBooking } from "@/lib/crm/item-match";
 import {
   firstNamesMatch,
   foldName,
@@ -191,6 +192,14 @@ export function referenceTokens(value: string | null | undefined): string[] {
     .split(/[\s;,/|]+/)
     .map((token) => normalizeMatchText(token))
     .filter((token) => token.length >= 4);
+}
+
+/** Même confirmation, y compris `64570` et `64570SH046795`. */
+export function confirmationRefsAlign(a: string | null | undefined, b: string | null | undefined) {
+  const left = referenceTokens(a);
+  const right = new Set(referenceTokens(b));
+  if (left.some((token) => right.has(token))) return true;
+  return hotelRefsShareBooking(a, b);
 }
 
 /** Toutes les références présentes dans un extract (items + réf. dossier). */
@@ -445,7 +454,7 @@ export function suggestBookingByReference(
       } else {
         const items = itemsByBooking.get(booking.id) || [];
         const hit = items.some((item) =>
-          referenceTokens(item.confirmation_ref).some((token) => refs.has(token))
+          [...refs].some((token) => confirmationRefsAlign(token, item.confirmation_ref))
         );
         if (hit) {
           score = 90;

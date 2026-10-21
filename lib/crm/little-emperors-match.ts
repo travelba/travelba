@@ -1,11 +1,13 @@
 import {
+  confirmationRefsAlign,
   mergeBookingSuggestions,
   suggestBookingByReference,
   suggestBookingByTripSignals,
+  suggestCustomerFromExtract,
   type BookingSuggestion,
   type TripBooking,
 } from "@/lib/crm/email-match";
-import { roomsFromStay } from "@/lib/crm/hotel-gallery";
+import { catalogNameAgrees, roomsFromStay } from "@/lib/crm/hotel-gallery";
 import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
 import { emptyBookingExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import {
@@ -69,6 +71,79 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
     },
   ];
   return extract;
+}
+
+export type LeAutoDecision =
+  | { kind: "link"; bookingId: string }
+  | { kind: "create"; customerId: string }
+  | { kind: "wait" };
+
+/**
+ * Dossier déjà proposé → on le relie. Sinon une fiche unique (score ≥ 85)
+ * ouvre le dossier. Annulation, ignorer, homonyme ou ex æquo : la file attend.
+ * Aucune fiche n’est créée ici.
+ */
+export function decideLittleEmperorsAuto(input: {
+  booking: LeBooking;
+  suggestion: BookingSuggestion;
+  customers: CustomerLite[];
+  linkedBookingId?: string | null;
+  ignored?: boolean;
+}): LeAutoDecision {
+  if (input.linkedBookingId) return { kind: "link", bookingId: input.linkedBookingId };
+  if (input.suggestion.autoBookingId) return { kind: "link", bookingId: input.suggestion.autoBookingId };
+  if (input.ignored || isLeCancelled(input.booking.state) || input.suggestion.candidates.length) {
+    return { kind: "wait" };
+  }
+  const customer = suggestCustomerFromExtract(input.customers, leBookingExtract(input.booking));
+  const chosen = customer.candidates.find((row) => row.customer_id === customer.autoCustomerId);
+  if (!customer.autoCustomerId || !chosen || chosen.score < 85) return { kind: "wait" };
+  return { kind: "create", customerId: customer.autoCustomerId };
+}
+
+/** Cartes hôtel du dossier qui reçoivent l’identifiant Little Emperors. Pas le montant. */
+export function leItemsForHotelStamp(
+  items: {
+    id: string;
+    title?: string | null;
+    confirmation_ref?: string | null;
+    details?: Record<string, unknown> | null;
+  }[],
+  booking: Pick<LeBooking, "confirmation_number" | "hotel_name" | "hotel_id">
+) {
+  const hotelName = (booking.hotel_name || "").trim();
+  return items
+    .filter((item) => {
+      const details = item.details || {};
+      const current = details.le_hotel_id;
+      if (booking.hotel_id != null && current != null && current !== "" && Number(current) !== booking.hotel_id) {
+        return false;
+      }
+      if (confirmationRefsAlign(item.confirmation_ref, booking.confirmation_number)) return true;
+      const rooms = Array.isArray(details.rooms) ? details.rooms : [];
+      if (
+        rooms.some((room) =>
+          confirmationRefsAlign(
+            room && typeof room === "object" ? (room as { confirmation_ref?: string | null }).confirmation_ref : null,
+            booking.confirmation_number
+          )
+        )
+      ) {
+        return true;
+      }
+      const itemName =
+        (typeof details.hotel_name === "string" && details.hotel_name.trim()) || (item.title || "").trim();
+      if (!itemName || !hotelName || !catalogNameAgrees(itemName, hotelName)) return false;
+      if (
+        item.confirmation_ref &&
+        booking.confirmation_number &&
+        !confirmationRefsAlign(item.confirmation_ref, booking.confirmation_number)
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .map((item) => item.id);
 }
 
 export function suggestLittleEmperorsBooking(

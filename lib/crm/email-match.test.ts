@@ -145,6 +145,29 @@ describe("suggestBookingByReference", () => {
     assert.equal(res.candidates[0].reason, "Référence fournisseur");
   });
 
+  it("prend 64570 et 64570SH046795 pour la même confirmation", () => {
+    const extract = extractWith({
+      items: [
+        {
+          kind: "hotel",
+          title: "Hôtel",
+          supplier: "Little Emperors",
+          confirmation_ref: "64570SH046795",
+          start_at: null,
+          end_at: null,
+          amount: null,
+          details: {},
+        },
+      ],
+    });
+    const res = suggestBookingByReference(
+      extract,
+      bookings,
+      new Map([["b1", [{ confirmation_ref: "64570" }]]])
+    );
+    assert.equal(res.autoBookingId, "b1");
+  });
+
   it("ne suggère rien sans référence connue", () => {
     const extract = extractWith({
       items: [

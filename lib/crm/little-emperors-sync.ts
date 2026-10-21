@@ -1,7 +1,15 @@
-import { cancellationApplyPlan } from "@/lib/crm/email-match";
+import { deleteBookingById } from "@/lib/crm/delete-booking";
+import { cancellationApplyPlan, confirmationRefsAlign, referenceTokens } from "@/lib/crm/email-match";
 import { applyCancellationToBooking, persistNewBookingFromExtract } from "@/lib/crm/ingest-booking";
+import { hotelBookingStem } from "@/lib/crm/item-match";
 import { persistLittleEmperorsHotelContacts } from "@/lib/crm/le-hotel-contacts";
-import { leBookingExtract, suggestLittleEmperorsBooking } from "@/lib/crm/little-emperors-match";
+import {
+  decideLittleEmperorsAuto,
+  leBookingExtract,
+  leItemsForHotelStamp,
+  suggestLittleEmperorsBooking,
+  type LeAutoDecision,
+} from "@/lib/crm/little-emperors-match";
 import {
   applyHotelPublicFields,
   cancelLittleEmperorsBooking,
@@ -31,6 +39,7 @@ export type LeSyncResult = {
   ok: boolean;
   fetched: number;
   linked: number;
+  created: number;
   cancelled: number;
   message?: string;
   status?: number;
@@ -144,6 +153,114 @@ async function loadMatchContext(admin: SupabaseClient) {
   };
 }
 
+/** Un seul dossier ouvert porte cette confirmation. Plusieurs : on ne crée pas. */
+async function findUniqueDossierByConfirmation(admin: SupabaseClient, confirmation: string | null) {
+  const stem = hotelBookingStem(confirmation);
+  const needles = [
+    ...new Set(
+      [...referenceTokens(confirmation), ...(stem ? [stem.toLowerCase()] : [])].map((token) =>
+        token.replace(/[%_]/g, "")
+      )
+    ),
+  ].filter((token) => token.length >= 4);
+  if (!needles.length) return null;
+  const { data } = await admin
+    .from("crm_booking_items")
+    .select("booking_id, confirmation_ref")
+    .eq("kind", "hotel")
+    .or(needles.map((token) => `confirmation_ref.ilike.%${token}%`).join(","))
+    .limit(30);
+  const ids = new Set<string>();
+  for (const row of data || []) {
+    if (!confirmationRefsAlign(row.confirmation_ref, confirmation)) continue;
+    if (row.booking_id) ids.add(row.booking_id);
+  }
+  if (!ids.size) return null;
+  const { data: dossiers } = await admin
+    .from("crm_bookings")
+    .select("id, status, archived_at")
+    .in("id", [...ids]);
+  const open = (dossiers || []).filter((row) => row.status !== "cancelled" && !row.archived_at);
+  if (open.length === 1) return open[0].id as string;
+  if (open.length > 1) return "many" as const;
+  return null;
+}
+
+async function saveLeRow(
+  admin: SupabaseClient,
+  leBookingId: number,
+  existingId: string | undefined,
+  payload: Record<string, unknown>
+) {
+  if (existingId) {
+    const linkedId = (payload.crm_booking_id as string | null) || null;
+    if (linkedId) {
+      await admin.from("crm_le_bookings").update(payload).eq("id", existingId);
+      return { id: existingId, crmBookingId: linkedId };
+    }
+    const rest = { ...payload };
+    delete rest.crm_booking_id;
+    await admin.from("crm_le_bookings").update(rest).eq("id", existingId);
+    const { data } = await admin
+      .from("crm_le_bookings")
+      .select("crm_booking_id")
+      .eq("id", existingId)
+      .maybeSingle();
+    return { id: existingId, crmBookingId: (data?.crm_booking_id as string | null) || null };
+  }
+  const { data: inserted } = await admin.from("crm_le_bookings").insert(payload).select("id").maybeSingle();
+  if (inserted?.id) return { id: inserted.id as string, crmBookingId: (payload.crm_booking_id as string | null) || null };
+  const { data: again } = await admin
+    .from("crm_le_bookings")
+    .select("id, crm_booking_id")
+    .eq("le_booking_id", leBookingId)
+    .maybeSingle();
+  return {
+    id: (again?.id as string | undefined) || null,
+    crmBookingId: (again?.crm_booking_id as string | null) || null,
+  };
+}
+
+async function stampLeStay(admin: SupabaseClient, crmBookingId: string, booking: LeBooking) {
+  const { data: items } = await admin
+    .from("crm_booking_items")
+    .select("id, title, confirmation_ref, details")
+    .eq("booking_id", crmBookingId)
+    .eq("kind", "hotel");
+  const ids = new Set(leItemsForHotelStamp(items || [], booking));
+  for (const item of items || []) {
+    if (!ids.has(item.id)) continue;
+    const details = { ...(item.details || {}) } as Record<string, unknown>;
+    if (booking.hotel_id != null && details.le_hotel_id == null) details.le_hotel_id = booking.hotel_id;
+    if (!details.source_family) details.source_family = "little_emperors";
+    await admin.from("crm_booking_items").update({ details }).eq("id", item.id);
+  }
+}
+
+async function ensureLeDossier(opts: {
+  admin: SupabaseClient;
+  rowId: string;
+  booking: LeBooking;
+  decision: LeAutoDecision;
+}) {
+  if (opts.decision.kind !== "create") {
+    return { crmBookingId: null as string | null, created: false, lastError: null as string | null };
+  }
+  const found = await findUniqueDossierByConfirmation(opts.admin, opts.booking.confirmation_number);
+  if (found === "many") return { crmBookingId: null, created: false, lastError: null };
+  if (found) return { crmBookingId: found, created: false, lastError: null };
+  try {
+    const result = await attachLittleEmperorsBooking({
+      id: opts.rowId,
+      customerId: opts.decision.customerId,
+    });
+    return { crmBookingId: result.bookingId as string, created: !result.already, lastError: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Création du dossier impossible.";
+    return { crmBookingId: null, created: false, lastError: message };
+  }
+}
+
 async function reflectCancellation(admin: SupabaseClient, crmBookingId: string, booking: LeBooking) {
   const { data: dossier } = await admin
     .from("crm_bookings")
@@ -178,12 +295,13 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
     const status = err instanceof LittleEmperorsError ? err.status : 502;
     const code = err instanceof LittleEmperorsError ? err.code : "upstream";
     await rememberProbe(admin, { last_status: status, last_error: message, last_ok_at: null });
-    return { ok: false, fetched: 0, linked: 0, cancelled: 0, message, status, code };
+    return { ok: false, fetched: 0, linked: 0, created: 0, cancelled: 0, message, status, code };
   }
 
   const context = await loadMatchContext(admin);
   const rememberHotel = hotelCatalogCache(admin, fetchImpl);
   let linked = 0;
+  let created = 0;
   let cancelled = 0;
   for (const booking of fetched) {
     const { data: existing } = await admin
@@ -206,21 +324,32 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
         reason: row.reason,
         score: row.score,
       }));
-    const autoId = existing?.crm_booking_id || suggestion.autoBookingId;
+    const decision = decideLittleEmperorsAuto({
+      booking,
+      suggestion,
+      customers: context.customers,
+      linkedBookingId: existing?.crm_booking_id,
+      ignored: existing?.status === "ignored",
+    });
+    let crmBookingId = decision.kind === "link" ? decision.bookingId : null;
     const cancelledRemote = isLeCancelled(booking.state);
     let lastError: string | null = null;
-    if (cancelledRemote && autoId) {
-      const result = await reflectCancellation(admin, autoId, booking);
+    if (cancelledRemote && crmBookingId) {
+      const result = await reflectCancellation(admin, crmBookingId, booking);
       if (result === "cancelled") cancelled += 1;
       if (result === "unmatched_card") {
         lastError = "Annulation Little Emperors reçue, sans carte hôtel correspondante sur le dossier.";
       }
     }
-    const status = autoId ? "linked" : existing?.status === "ignored" ? "ignored" : "unmatched";
-    if (autoId && !existing?.crm_booking_id) linked += 1;
-    const catalog = booking.hotel_id != null ? await rememberHotel(booking.hotel_id, autoId || null) : null;
+    let status: "linked" | "unmatched" | "ignored" = crmBookingId
+      ? "linked"
+      : existing?.status === "ignored"
+        ? "ignored"
+        : "unmatched";
+    if (crmBookingId && !existing?.crm_booking_id) linked += 1;
+    const catalog = booking.hotel_id != null ? await rememberHotel(booking.hotel_id, null) : null;
     const payload = rowFromBooking(booking, {
-      crm_booking_id: autoId,
+      crm_booking_id: crmBookingId,
       status,
       candidates,
       last_event: cancelledRemote ? "hotel_booking_cancel" : "sync",
@@ -228,10 +357,30 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
       ...(catalog?.country ? { country: catalog.country } : {}),
       ...(catalog?.website && !booking.website ? { website: catalog.website } : {}),
     });
-    if (existing?.id) {
-      await admin.from("crm_le_bookings").update(payload).eq("id", existing.id);
-    } else {
-      await admin.from("crm_le_bookings").insert(payload);
+    const saved = await saveLeRow(admin, booking.id, existing?.id, payload);
+    const rowId = saved.id;
+    if (saved.crmBookingId && !crmBookingId) crmBookingId = saved.crmBookingId;
+    if (decision.kind === "create" && rowId && !crmBookingId) {
+      const outcome = await ensureLeDossier({ admin, rowId, booking, decision });
+      if (outcome.created) created += 1;
+      else if (outcome.crmBookingId) linked += 1;
+      crmBookingId = outcome.crmBookingId;
+      if (outcome.lastError) lastError = outcome.lastError;
+      if (crmBookingId) status = "linked";
+      if (crmBookingId || outcome.lastError) {
+        await admin
+          .from("crm_le_bookings")
+          .update({
+            crm_booking_id: crmBookingId,
+            status: crmBookingId ? "linked" : status,
+            last_error: lastError,
+          })
+          .eq("id", rowId);
+      }
+    }
+    if (crmBookingId && booking.hotel_id != null) {
+      await stampLeStay(admin, crmBookingId, booking);
+      await rememberHotel(booking.hotel_id, crmBookingId);
     }
   }
   await rememberProbe(admin, {
@@ -239,7 +388,7 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
     last_error: null,
     last_ok_at: new Date().toISOString(),
   });
-  return { ok: true, fetched: fetched.length, linked, cancelled };
+  return { ok: true, fetched: fetched.length, linked, created, cancelled };
 }
 
 export async function upsertLittleEmperorsWebhook(event: string, booking: LeBooking) {
@@ -274,7 +423,14 @@ export async function upsertLittleEmperorsWebhook(event: string, booking: LeBook
     context.itemsByBooking,
     context.customers
   );
-  const crmBookingId = existing?.crm_booking_id || suggestion.autoBookingId;
+  const decision = decideLittleEmperorsAuto({
+    booking: merged,
+    suggestion,
+    customers: context.customers,
+    linkedBookingId: existing?.crm_booking_id,
+    ignored: existing?.status === "ignored",
+  });
+  let crmBookingId = decision.kind === "link" ? decision.bookingId : null;
   let lastError: string | null = null;
   let cancelled = 0;
   if (cancelledRemote && crmBookingId) {
@@ -286,28 +442,43 @@ export async function upsertLittleEmperorsWebhook(event: string, booking: LeBook
   } else if (cancelledRemote && !crmBookingId) {
     lastError = null;
   }
+  const candidates = suggestion.candidates
+    .filter((row) => row.customer_id)
+    .map((row) => ({
+      customer_id: row.customer_id as string,
+      booking_id: row.booking_id,
+      label: row.label,
+      reason: row.reason,
+      score: row.score,
+    }));
   const payload = rowFromBooking(merged, {
     crm_booking_id: crmBookingId,
     status: crmBookingId ? "linked" : existing?.status === "ignored" ? "ignored" : "unmatched",
-    candidates: suggestion.candidates
-      .filter((row) => row.customer_id)
-      .map((row) => ({
-        customer_id: row.customer_id as string,
-        booking_id: row.booking_id,
-        label: row.label,
-        reason: row.reason,
-        score: row.score,
-      })),
+    candidates,
     last_event: event,
     last_error: lastError,
     ...(catalog?.country ? { country: catalog.country } : {}),
   });
-  if (existing?.id) {
-    await admin.from("crm_le_bookings").update(payload).eq("id", existing.id);
-  } else {
-    await admin.from("crm_le_bookings").insert(payload);
+  const saved = await saveLeRow(admin, merged.id, existing?.id, payload);
+  const rowId = saved.id;
+  if (saved.crmBookingId && !crmBookingId) crmBookingId = saved.crmBookingId;
+  if (decision.kind === "create" && rowId && !crmBookingId) {
+    const outcome = await ensureLeDossier({ admin, rowId, booking: merged, decision });
+    crmBookingId = outcome.crmBookingId;
+    if (outcome.lastError) lastError = outcome.lastError;
+    if (crmBookingId || outcome.lastError) {
+      await admin
+        .from("crm_le_bookings")
+        .update({
+          crm_booking_id: crmBookingId,
+          status: crmBookingId ? "linked" : existing?.status === "ignored" ? "ignored" : "unmatched",
+          last_error: lastError,
+        })
+        .eq("id", rowId);
+    }
   }
-  if (crmBookingId && catalog && booking.hotel_id != null) {
+  if (crmBookingId && booking.hotel_id != null) {
+    await stampLeStay(admin, crmBookingId, merged);
     await persistLittleEmperorsHotelContacts({
       hotelId: booking.hotel_id,
       catalog,
@@ -370,6 +541,8 @@ export async function attachLittleEmperorsBooking(opts: {
     .from("crm_bookings")
     .update({
       notes_internal: "Réservation importée depuis Little Emperors.",
+      status: "draft",
+      visible_to_client: false,
     })
     .eq("id", created.id);
   if (booking.website || booking.hotel_id != null) {
@@ -393,10 +566,26 @@ export async function attachLittleEmperorsBooking(opts: {
       admin,
     });
   }
-  await admin
+  const { data: claimed } = await admin
     .from("crm_le_bookings")
     .update({ crm_booking_id: created.id, status: "linked", last_error: null })
-    .eq("id", row.id);
+    .eq("id", row.id)
+    .is("crm_booking_id", null)
+    .select("id")
+    .maybeSingle();
+  if (!claimed) {
+    try {
+      await deleteBookingById(created.id);
+    } catch {
+      // Le dossier gagnant reste. Celui-ci sera repris au prochain passage s’il survit.
+    }
+    const { data: winner } = await admin
+      .from("crm_le_bookings")
+      .select("crm_booking_id")
+      .eq("id", row.id)
+      .maybeSingle();
+    return { bookingId: (winner?.crm_booking_id as string) || created.id, already: true };
+  }
   return { bookingId: created.id, already: false };
 }
 
