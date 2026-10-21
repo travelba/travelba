@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { suggestLittleEmperorsBooking, leBookingExtract } from "./little-emperors-match";
+import {
+  decideLittleEmperorsAuto,
+  leBookingExtract,
+  leItemsForHotelStamp,
+  suggestLittleEmperorsBooking,
+} from "./little-emperors-match";
+import { suggestBookingByReference } from "./email-match";
+import { emptyBookingExtract } from "./ingest-types";
 import {
   LITTLE_EMPERORS_STAGING_ORIGIN,
   applyHotelPublicFields,
@@ -274,6 +281,161 @@ describe("little emperors staging client", () => {
     assert.equal(canRemoteCancel({ is_cancellable: null }), false);
     assert.equal(splitGuestName("Nico Santos")?.last_name, "Santos");
     assert.equal(splitGuestName("Madonna"), null);
+  });
+
+  it("crée le dossier pour une fiche unique et laisse le doute en attente", () => {
+    const booking = parseLeBooking(sample);
+    assert.ok(booking);
+    const nico = {
+      id: "c1",
+      first_name: "Nico",
+      last_name: "Santos",
+      company_name: null,
+      email: "nico@example.com",
+    };
+    const unique = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers: [nico],
+    });
+    assert.deepEqual(unique, { kind: "create", customerId: "c1" });
+
+    const homonyms = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers: [nico, { ...nico, id: "c2", email: "autre@example.com" }],
+    });
+    assert.equal(homonyms.kind, "wait");
+
+    const nobody = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers: [],
+    });
+    assert.equal(nobody.kind, "wait");
+
+    const fuzzy = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers: [
+        { id: "c9", first_name: "Zoé", last_name: "Santoz", company_name: null, email: "zoe@example.com" },
+      ],
+    });
+    assert.equal(fuzzy.kind, "wait");
+
+    const cancelled = parseLeBooking({ ...sample, state: "cancelled" });
+    assert.ok(cancelled);
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking: cancelled,
+        suggestion: { autoBookingId: null, candidates: [] },
+        customers: [nico],
+      }).kind,
+      "wait"
+    );
+    assert.deepEqual(
+      decideLittleEmperorsAuto({
+        booking: cancelled,
+        suggestion: { autoBookingId: null, candidates: [] },
+        customers: [nico],
+        linkedBookingId: "b-deja",
+      }),
+      { kind: "link", bookingId: "b-deja" }
+    );
+
+    const tied = decideLittleEmperorsAuto({
+      booking,
+      suggestion: {
+        autoBookingId: null,
+        candidates: [
+          { booking_id: "b1", customer_id: "c1", label: "TB1", reason: "Référence fournisseur", score: 90 },
+          { booking_id: "b2", customer_id: "c1", label: "TB2", reason: "Référence fournisseur", score: 90 },
+        ],
+      },
+      customers: [nico],
+    });
+    assert.equal(tied.kind, "wait");
+
+    assert.deepEqual(
+      decideLittleEmperorsAuto({
+        booking,
+        suggestion: { autoBookingId: "b-mail", candidates: [] },
+        customers: [nico],
+      }),
+      { kind: "link", bookingId: "b-mail" }
+    );
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking,
+        suggestion: { autoBookingId: null, candidates: [] },
+        customers: [nico],
+        ignored: true,
+      }).kind,
+      "wait"
+    );
+    assert.equal(leBookingExtract(booking).customer_email, "");
+  });
+
+  it("relie la confirmation du mail et celle de l’API, puis pose l’hôtel", () => {
+    const booking = parseLeBooking({ ...sample, confirmation_number: "64570" });
+    assert.ok(booking);
+    const suggestion = suggestLittleEmperorsBooking(
+      booking,
+      [
+        {
+          id: "b-mail",
+          reference: "TB9",
+          title: "Londres",
+          destination: "London",
+          customer_id: "c1",
+          status: "draft",
+          start_date: "2026-11-02",
+          end_date: "2026-11-05",
+        },
+      ],
+      new Map([["b-mail", [{ confirmation_ref: "64570SH046795" }]]]),
+      [{ id: "c1", first_name: "Nico", last_name: "Santos", company_name: null, email: "nico@example.com" }]
+    );
+    assert.equal(suggestion.autoBookingId, "b-mail");
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking,
+        suggestion,
+        customers: [{ id: "c1", first_name: "Nico", last_name: "Santos", company_name: null, email: "" }],
+      }).kind,
+      "link"
+    );
+
+    const extract = emptyBookingExtract();
+    extract.items = [
+      {
+        kind: "hotel",
+        title: "Nobu Hotel London Portman Square",
+        supplier: "Little Emperors",
+        confirmation_ref: "64570SH046795",
+        start_at: "2026-11-02",
+        end_at: "2026-11-05",
+        amount: null,
+        details: {},
+      },
+    ];
+    const fromMail = suggestBookingByReference(
+      extract,
+      [{ id: "b-api", reference: "TB8", title: "Londres", destination: "London", customer_id: "c1" }],
+      new Map([["b-api", [{ confirmation_ref: "64570" }]]])
+    );
+    assert.equal(fromMail.autoBookingId, "b-api");
+
+    const ids = leItemsForHotelStamp(
+      [
+        { id: "room", title: "Nobu", confirmation_ref: "64570SH046795", details: { hotel_name: "Nobu Hotel London Portman Square" } },
+        { id: "other", title: "Autre hôtel", confirmation_ref: "99999", details: { hotel_name: "Autre hôtel" } },
+        { id: "named", title: "Nobu Hotel London Portman Square", confirmation_ref: null, details: {} },
+        { id: "wrong", title: "Nobu Hotel London Portman Square", confirmation_ref: null, details: { le_hotel_id: 4 } },
+      ],
+      { confirmation_number: "64570", hotel_name: "Nobu Hotel London Portman Square", hotel_id: 9626 }
+    );
+    assert.deepEqual(ids, ["room", "named"]);
   });
 
   it("la preview enregistre la lecture MyLER, pas les autres secrets", () => {
