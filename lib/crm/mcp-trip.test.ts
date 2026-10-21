@@ -475,6 +475,10 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
       prix: 12000,
       devise: "THB",
       annulation: "Annulation gratuite jusqu’au 1er novembre.",
+      adresse: "3 Thanon Khao",
+      heure_arrivee: "15:00",
+      heure_depart: "12:00",
+      photos: [{ url: "https://photos.example/siam.jpg", legende: "Suite" }],
       voyageurs: [traveler.voyageur_id],
     },
     client
@@ -495,6 +499,12 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
   assert.equal(hotelDetails.document_currency, "THB");
   assert.equal(hotelDetails.country, "Thaïlande");
   assert.equal(hotelDetails.notes, "Annulation gratuite jusqu’au 1er novembre.");
+  assert.deepEqual(hotelDetails.conditions, ["Annulation gratuite jusqu’au 1er novembre."]);
+  assert.equal(hotelDetails.address, "3 Thanon Khao");
+  assert.equal(hotelDetails.check_in_time, "15:00");
+  assert.equal(hotelDetails.check_out_time, "12:00");
+  assert.equal((hotelDetails.photos as { url: string }[])[0]?.url, "https://photos.example/siam.jpg");
+  assert.equal(JSON.stringify(hotelDetails).includes("total_cost"), false);
   assert.deepEqual(hotelDetails.included, ["petit-déjeuner", "transfert"]);
   assert.equal(hotelDisplayName(card(hotelRow)), "The Siam");
   assert.equal(db.tables.crm_transactions?.length || 0, 0);

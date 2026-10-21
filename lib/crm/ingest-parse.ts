@@ -522,6 +522,15 @@ export function frenchLeBenefitLine(raw: string): string {
     line.match(/^(USD|GBP|EUR)\s+(\d+(?:[.,]\d+)?)\s+hotel credit(?: per stay)?$/i);
   if (credit) return `Crédit hôtel de ${leMoney(credit[1], credit[2])} par séjour`;
   if (/^petit[- ]d[eé]jeuner$/i.test(line)) return "Petit-déjeuner";
+  if (/^upgrade at time of check[-\s]?in(?: \(subject to availability\))?$/i.test(line)) {
+    return "Surclassement à l'enregistrement, sous réserve de disponibilité";
+  }
+  const breakfastCredit = line.match(
+    /^([$£€]|USD|GBP|EUR)\s*(\d+(?:[.,]\d+)?)\s+daily \(for 2 people\) breakfast credit$/i
+  );
+  if (breakfastCredit) {
+    return `Crédit petit-déjeuner de ${leMoney(breakfastCredit[1], breakfastCredit[2])} par jour pour 2 personnes`;
+  }
   return line;
 }
 
@@ -541,6 +550,8 @@ function looksLikeLeBenefit(line: string) {
     /^daily \(for 2 people\) breakfast credit$/i.test(flat) ||
     /^complimentary breakfast$/i.test(flat) ||
     /^priority upgrade at check-?in$/i.test(flat) ||
+    /^upgrade at time of check[-\s]?in(?: \(subject to availability\))?$/i.test(flat) ||
+    /^(?:[$£€]|USD|GBP|EUR)\s*\d+(?:[.,]\d+)?\s+daily \(for 2 people\) breakfast credit$/i.test(flat) ||
     /^early check-?in,? subject to availability$/i.test(flat) ||
     /^early check[-\s]?in\s*\/\s*late check[-\s]?out$/i.test(flat) ||
     /^guaranteed\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+late check-?out$/i.test(flat) ||

@@ -247,6 +247,45 @@ function idList(value: unknown, label: string) {
   return ids;
 }
 
+function httpsPhoto(value: unknown, label: string) {
+  const raw = text(typeof value === "string" ? value : "", label, 500);
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new McpWriteError(`${label} : adresse https requise.`);
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new McpWriteError(`${label} : adresse https requise.`);
+  }
+  return url.toString();
+}
+
+function hotelPhotoInput(value: unknown) {
+  if (value == null || value === "") return [];
+  if (!Array.isArray(value)) throw new McpWriteError("Photos : liste attendue.");
+  if (value.length > 8) throw new McpWriteError("Huit photos au plus.");
+  return value.map((entry, index) => {
+    const label = `Photo ${index + 1}`;
+    const row = typeof entry === "string" ? { url: entry } : entry;
+    if (!row || typeof row !== "object") throw new McpWriteError(`${label} invalide.`);
+    const url = httpsPhoto((row as { url?: unknown }).url, label);
+    const caption = optionalText((row as { legende?: unknown }).legende, "Légende", 120) || "";
+    return { url, thumb: url, caption, kind: "hotel" as const };
+  });
+}
+
+function clockField(value: unknown, label: string) {
+  if (value == null || value === "") return null;
+  const raw = text(value, label, 5);
+  if (!/^\d{2}:\d{2}$/.test(raw)) throw new McpWriteError(`${label} : HH:mm.`);
+  const [hour, minute] = raw.split(":").map(Number);
+  if (hour > 23 || minute > 59 || (hour === 0 && minute === 0)) {
+    throw new McpWriteError(`${label} : une heure réelle.`);
+  }
+  return raw;
+}
+
 function lines(value: unknown, label: string) {
   if (value == null || value === "") return [];
   const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/\n+/) : null;
@@ -436,16 +475,27 @@ export function buildHotelCard(input: {
   confirmation: string | null;
   fournisseur: string | null;
   annulation: string | null;
+  adresse?: string | null;
+  arriveeHeure?: string | null;
+  departHeure?: string | null;
+  photos?: { url: string; thumb: string; caption: string; kind: "hotel" }[];
   price: PricePlan;
   guests: FlightPassenger[];
 }) {
   const details: Record<string, unknown> = { hotel_name: input.nom };
   if (input.ville) details.city = input.ville;
   if (input.pays) details.country = input.pays;
+  if (input.adresse) details.address = input.adresse;
   if (input.chambre) details.room = input.chambre;
   if (input.pension) details.board = input.pension;
   if (input.inclus.length) details.included = input.inclus;
-  if (input.annulation) details.notes = input.annulation;
+  if (input.annulation) {
+    details.notes = input.annulation;
+    details.conditions = [input.annulation];
+  }
+  if (input.arriveeHeure) details.check_in_time = input.arriveeHeure;
+  if (input.departHeure) details.check_out_time = input.departHeure;
+  if (input.photos?.length) details.photos = input.photos;
   if (input.price.documentAmount != null) details.document_amount = input.price.documentAmount;
   if (input.price.documentCurrency) details.document_currency = input.price.documentCurrency;
   const guestLine = input.guests.map(personLine).filter(Boolean).join(", ");
@@ -1087,6 +1137,10 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
   const confirmation = optionalText(input.confirmation, "Confirmation", 80);
   const fournisseur = optionalText(input.fournisseur, "Fournisseur", 120);
   const annulation = optionalText(input.annulation, "Annulation", 2000);
+  const adresse = optionalText(input.adresse, "Adresse", 240);
+  const arriveeHeure = clockField(input.heure_arrivee, "Heure d’arrivée");
+  const departHeure = clockField(input.heure_depart, "Heure de départ");
+  const photos = hotelPhotoInput(input.photos);
   const prix = optionalMoney(input.prix, "Prix");
   const devise = currencyOf(input.devise);
   const voyageurs = idList(input.voyageurs, "Voyageur");
@@ -1106,6 +1160,10 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
     confirmation,
     fournisseur,
     annulation,
+    adresse,
+    arriveeHeure,
+    departHeure,
+    photos,
     price,
     guests,
   });

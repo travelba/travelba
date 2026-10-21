@@ -27,6 +27,7 @@ function FileThumb({ file }: { file: FilePreviewModel }) {
   const pdf = isPreviewPdf(file.mimeType, file.fileName);
   const inline = fileInlineHref(file.path, accessOf(file));
   const [mode, setMode] = useState<"thumb" | "frame" | "icon">(image || pdf ? "thumb" : "icon");
+  const [ready, setReady] = useState(false);
   if (mode === "icon") {
     return (
       <Icon
@@ -45,15 +46,21 @@ function FileThumb({ file }: { file: FilePreviewModel }) {
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- vignette servie par /api/files
-    <img
-      src={pdf || file.sealed ? fileThumbHref(file.path, accessOf(file)) : inline}
-      alt=""
-      referrerPolicy="no-referrer"
-      draggable={false}
-      className={`h-full w-full bg-white object-cover object-top ${file.sealed ? SEAL : ""}`}
-      onError={() => setMode(pdf ? "frame" : "icon")}
-    />
+    <>
+      {ready ? null : (
+        <Icon name={pdf ? "picture_as_pdf" : "photo"} className="h-12 w-12 text-[#C5A880]" />
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element -- vignette servie par /api/files */}
+      <img
+        src={pdf || file.sealed ? fileThumbHref(file.path, accessOf(file)) : inline}
+        alt=""
+        referrerPolicy="no-referrer"
+        draggable={false}
+        className={`h-full w-full bg-white object-cover object-top ${ready ? "" : "absolute opacity-0"} ${file.sealed ? SEAL : ""}`}
+        onLoad={() => setReady(true)}
+        onError={() => setMode(pdf ? "frame" : "icon")}
+      />
+    </>
   );
 }
 

@@ -11,6 +11,9 @@ import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { HotelContactButton } from "@/components/crm/HotelContact";
+import { HotelGallery } from "@/components/crm/HotelGallery";
+import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
+import { hotelPhotos } from "@/lib/crm/hotel-gallery";
 import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
 import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
@@ -26,7 +29,6 @@ import {
   groupByDay,
   hotelCityLine,
   hotelDisplayName,
-  hotelRooms,
   hotelStayLabel,
   itemClock,
   itemPriceLabel,
@@ -108,7 +110,6 @@ function CardBody({
 }) {
   const price = showPrice ? itemPriceLabel(item, currency, day, pricesVisible) : null;
   const included = detailList(item, "included");
-  const rooms = hotelRooms(item);
   const iata = flightIata(item);
   const cities = flightCities(item);
   const flightTitle = item.kind === "flight" || item.kind === "rail" ? flightCardTitle(item) : "";
@@ -136,14 +137,17 @@ function CardBody({
   const cabin = detailStr(item, "cabin");
   const airline = detailStr(item, "airline") || item.supplier || "";
   const city = detailStr(item, "city");
-  const board = detailStr(item, "board");
   const hotelName = item.kind === "hotel" ? hotelDisplayName(item) : "";
   const ticketTravelers =
     item.kind === "flight" || item.kind === "rail" ? ticketTravelerNames(item.details).join(", ") : "";
   const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
+  const photos = item.kind === "hotel" ? hotelPhotos(item) : [];
+  const checkInDay = (item.start_at || "").slice(0, 10);
+  const showGallery = photos.length > 0 && (!day || day === checkInDay);
 
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
+    {showGallery ? <HotelGallery photos={photos} title={hotelName || item.title} /> : null}
     <details className="group min-w-0">
       <summary className="flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 py-3 [&::-webkit-details-marker]:hidden">
         <BrandMark item={item} className="h-10 w-10" />
@@ -217,21 +221,8 @@ function CardBody({
         ) : null}
         {item.kind === "hotel" ? (
           <>
-            {city ? <p>{city}</p> : null}
-            {board ? <p>{board}</p> : null}
+            <HotelStayFacts item={item} />
             {occupancy ? <p>{occupancy}</p> : null}
-            {rooms.map((room, index) => (
-              <p key={index} className="text-muted">
-                {[room.room, room.guests, room.confirmation_ref].filter(Boolean).join(" · ")}
-              </p>
-            ))}
-            {included.length ? (
-              <ul className="list-disc pl-4 text-muted">
-                {included.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : null}
             {special ? <p>Demandes : {special}</p> : null}
           </>
         ) : null}
