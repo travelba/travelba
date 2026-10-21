@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { WhatsappHoldButton } from "@/components/admin/WhatsappHoldButton";
 
 export function WhatsappDesk({
   customerId,
@@ -16,16 +17,17 @@ export function WhatsappDesk({
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [held, setHeld] = useState(paused);
   if (!phone) return null;
 
-  async function post(action: "reply" | "resume", message = "") {
+  async function post(message = "") {
     setBusy(true);
     setNote("");
     try {
       const response = await fetch("/api/admin/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, customerId, phone, text: message }),
+        body: JSON.stringify({ action: "reply", customerId, phone, text: message }),
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
@@ -33,9 +35,7 @@ export function WhatsappDesk({
         return;
       }
       setText("");
-      setNote(
-        action === "resume" ? "Le Concierge reprend ce fil." : "Message envoyé. Le Concierge se tait jusqu’à demain matin."
-      );
+      setNote("Message envoyé. Le Concierge se tait jusqu’à demain matin.");
       router.refresh();
     } finally {
       setBusy(false);
@@ -47,11 +47,11 @@ export function WhatsappDesk({
       className="mt-4 space-y-2 border-t border-[var(--border)] pt-4"
       onSubmit={(event) => {
         event.preventDefault();
-        void post("reply", text);
+        void post(text);
       }}
     >
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
-        {paused ? "Le Concierge est en pause" : "Répondre à la place du Concierge"}
+        {held ? "Repris par l’agence" : "Le Concierge"}
       </p>
       <textarea
         value={text}
@@ -69,14 +69,17 @@ export function WhatsappDesk({
         >
           Envoyer
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void post("resume")}
+        <WhatsappHoldButton
+          phone={phone}
+          customerId={customerId}
+          held={held}
           className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
-        >
-          Rendre au Concierge
-        </button>
+          onResult={(result) => {
+            setHeld(result.status === "agency");
+            if (result.line) setNote(result.line);
+            router.refresh();
+          }}
+        />
       </div>
       {note ? <p className="text-sm text-muted">{note}</p> : null}
     </form>

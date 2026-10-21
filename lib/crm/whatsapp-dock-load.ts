@@ -3,6 +3,7 @@ import { stayDestinationLine } from "@/lib/crm/stay-phrase";
 import {
   approvedManualTemplates,
   foldThreads,
+  messagesNewestFirst,
   pauseStillActive,
   sessionWindowOpenNow,
   threadKey,
@@ -127,8 +128,6 @@ async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: stri
   const escalated = openRequests.map((row) => row.phone).filter(Boolean) as string[];
   const folded = foldThreads(messages, { paused, escalated, readAt });
   if (!fil) return { threads: folded, messages: [] as InboxMessage[] };
-  const mine = messages
-    .filter((row) => threadKey(row) === fil)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const mine = messagesNewestFirst(messages.filter((row) => threadKey(row) === fil));
   return { threads: folded.filter((row) => row.key === fil), messages: mine };
 }

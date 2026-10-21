@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter } from "next/navigation";
+import { WhatsappHoldButton } from "@/components/admin/WhatsappHoldButton";
 import { Icon } from "@/components/crm/icons";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -27,9 +28,11 @@ import {
   type DockTab,
 } from "@/lib/crm/whatsapp-dock";
 import {
+  conversationBadge,
   deliveryLabel,
   filterThreads,
   messageSpeaker,
+  messagesNewestFirst,
   parisStamp,
   sessionWindowOpenNow,
   speakerLabel,
@@ -37,6 +40,7 @@ import {
   type InboxMessage,
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
+import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
 
 export function WhatsappDock({
   threads: initialThreads,
@@ -264,6 +268,21 @@ export function WhatsappDock({
     };
   }, []);
 
+  function markHeld(key: string, nextHeld: boolean) {
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.key === key
+          ? {
+              ...thread,
+              held: nextHeld,
+              status: thread.status === "escalated" ? "escalated" : nextHeld ? "agency" : "robot",
+            }
+          : thread
+      )
+    );
+    if (live) void loadThread(key);
+  }
+
   function closeExpanded() {
     if (!expanded) return;
     setTabs((current) => closeDockTab(current, expanded.key));
@@ -480,7 +499,7 @@ export function WhatsappDock({
                   onDraft={setDraft}
                   onTemplate={setTemplate}
                   onSend={() => void send()}
-                  onResume={() => void post({ action: "resume", phone: expandedThread.phone }, true)}
+                  onHeldChange={(next) => markHeld(expandedThread.key, next)}
                 />
               ) : null}
               <div className="flex items-center gap-1 rounded-t-2xl bg-[#0B192C] px-2 py-2 text-white">
@@ -523,7 +542,7 @@ export function WhatsappDock({
             onDraft={setDraft}
             onTemplate={setTemplate}
             onSend={() => void send()}
-            onResume={() => void post({ action: "resume", phone: expandedThread.phone }, true)}
+            onHeldChange={(next) => markHeld(expandedThread.key, next)}
           />
         </div>
       ) : null}
@@ -548,7 +567,7 @@ function ChatPane({
   onDraft,
   onTemplate,
   onSend,
-  onResume,
+  onHeldChange,
 }: {
   sheet?: boolean;
   swipe?: SwipeBinds;
@@ -566,10 +585,43 @@ function ChatPane({
   onDraft: (value: string) => void;
   onTemplate: (value: string) => void;
   onSend: () => void;
-  onResume: () => void;
+  onHeldChange: (held: boolean) => void;
 }) {
-  const ordered = [...messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const serverHeld = thread.held ?? thread.status === "agency";
+  const [heldState, setHeldState] = useState<{ key: string; held: boolean; seen: boolean } | null>(null);
+  const [noteState, setNoteState] = useState<{ key: string; notes: InboxMessage[] }>({ key: "", notes: [] });
+  const heldLive = heldState && heldState.key === thread.key && heldState.seen === serverHeld ? heldState : null;
+  const held = heldLive ? heldLive.held : serverHeld;
+  const notes = (noteState.key === thread.key ? noteState.notes : []).filter(
+    (note) => !messages.some((row) => row.templateKey === "systeme" && row.body === note.body)
+  );
+  const ordered = messagesNewestFirst([...messages, ...notes]);
   const label = dockLabel(thread);
+  function onHandoff(result: { status: "agency" | "robot"; line?: string; at?: string }) {
+    const note: InboxMessage | null =
+      result.line && result.at
+        ? {
+            id: `handoff-${result.at}`,
+            phone: thread.phone,
+            customerId: thread.customerId,
+            customerName: thread.customerName,
+            bookingId: thread.bookingId,
+            bookingReference: thread.bookingReference,
+            direction: "outbound",
+            body: result.line,
+            createdAt: result.at,
+            status: "sent",
+            templateKey: "systeme",
+            authorName: null,
+            mediaPath: null,
+            tools: [],
+            requestId: null,
+          }
+        : null;
+    setHeldState({ key: thread.key, held: result.status === "agency", seen: serverHeld });
+    if (note) setNoteState({ key: thread.key, notes: [note] });
+    onHeldChange(result.status === "agency");
+  }
   const linkClass = sheet ? "inline-flex min-h-11 items-center underline" : "underline";
   return (
     <div className={sheet ? "flex h-full min-h-0 flex-1 flex-col bg-[#efe7da]" : "flex max-h-[28rem] flex-col bg-[#efe7da]"}>
@@ -584,7 +636,7 @@ function ChatPane({
             </button>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{label}</p>
-              <p className="truncate text-[10px] uppercase tracking-wide text-[#C5A880]">{dockStatusLabel(thread.status)}</p>
+              <p className="truncate text-[10px] uppercase tracking-wide text-[#C5A880]">{conversationBadge(thread.status, held)}</p>
             </div>
             <button type="button" aria-label={`Réduire ${label}`} className={sheetIconButton} onClick={onMinimise}>
               <Icon name="minus" className="h-6 w-6" />
@@ -593,21 +645,33 @@ function ChatPane({
               <Icon name="close" className="h-6 w-6" />
             </button>
           </div>
-          <div className="flex justify-end px-3 pb-2">
-            <button type="button" className="inline-flex min-h-11 items-center rounded-full bg-[#C5A880] px-3 text-xs font-medium text-[#0B192C]" onClick={onResume}>
-              Rendre au Concierge
-            </button>
-          </div>
+          {thread.phone ? (
+            <div className="flex justify-end px-3 pb-2">
+              <WhatsappHoldButton
+                phone={thread.phone}
+                customerId={thread.customerId}
+                held={held}
+                className="inline-flex min-h-11 items-center rounded-full bg-[#C5A880] px-3 text-xs font-medium text-[#0B192C] disabled:opacity-60"
+                onResult={onHandoff}
+              />
+            </div>
+          ) : null}
         </header>
       ) : (
         <header className="flex items-start justify-between gap-2 bg-[#0B192C] px-3 py-2 text-white">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{label}</p>
-            <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{dockStatusLabel(thread.status)}</p>
+            <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{conversationBadge(thread.status, held)}</p>
           </div>
-          <button type="button" className="shrink-0 rounded-full bg-[#C5A880] px-2 py-1 text-[10px] text-[#0B192C]" onClick={onResume}>
-            Rendre au Concierge
-          </button>
+          {thread.phone ? (
+            <WhatsappHoldButton
+              phone={thread.phone}
+              customerId={thread.customerId}
+              held={held}
+              className="shrink-0 rounded-full bg-[#C5A880] px-2 py-1 text-[10px] text-[#0B192C] disabled:opacity-60"
+              onResult={onHandoff}
+            />
+          ) : null}
         </header>
       )}
       <div className={sheet ? "flex shrink-0 gap-3 px-3 text-sm" : "flex gap-2 px-3 py-1 text-[10px]"}>
@@ -617,6 +681,13 @@ function ChatPane({
       </div>
       <div className={sheet ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-2 py-2" : "min-h-0 flex-1 space-y-2 overflow-y-auto px-2 py-2"}>
         {ordered.map((message) => {
+          if (isHandoffNote(message)) {
+            return (
+              <p key={message.id} role="status" className="text-center text-[10px] font-medium text-[#8a7350]">
+                {message.body}
+              </p>
+            );
+          }
           const speaker = messageSpeaker(message);
           const mine = speaker !== "client";
           return (

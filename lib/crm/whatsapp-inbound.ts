@@ -257,6 +257,11 @@ export async function receiveWhatsappWebhook(input: {
   now?: Date;
   env?: Record<string, string | undefined>;
   store: WhatsappStore;
+  /**
+   * Avant de répondre. `stop` : la remise au Concierge a déjà traité ce message
+   * (ou une réponse est déjà partie). `continue` : la pause habituelle s’applique.
+   */
+  beforeReply?(phone: string): Promise<"stop" | "continue">;
   send(message: { to: string; body: string; mediaUrl?: string | null }): Promise<{
     ok: boolean;
     sid?: string;
@@ -345,6 +350,11 @@ export async function receiveWhatsappWebhook(input: {
   });
   if ("duplicate" in inbound) return { status: 200 };
 
+  if (input.beforeReply) {
+    const gate = await input.beforeReply(e164);
+    if (gate === "stop") return { status: 200 };
+  }
+
   if (customer && (await input.store.threadOpen?.(e164)) === false) return { status: 200 };
 
   if (!autoreply) {
@@ -403,7 +413,7 @@ export async function receiveWhatsappWebhook(input: {
     } else {
       const history = input.store.conversationHistory ? await input.store.conversationHistory(customer.id) : [];
       const prior: ConciergeHistoryTurn[] = history
-        .filter((row) => row.twilio_sid !== sid)
+        .filter((row) => row.twilio_sid !== sid && !row.body.startsWith("Conversation rendue au Concierge"))
         .slice(-16)
         .map((row) => ({ direction: row.direction, body: row.body, at: row.created_at }));
       const brief = (await input.store.loadBrief?.(e164)) || null;

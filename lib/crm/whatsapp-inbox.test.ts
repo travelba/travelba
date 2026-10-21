@@ -5,8 +5,10 @@ import {
   deliveryLabel,
   draftTemplateRefused,
   filterThreads,
+  conversationBadge,
   foldThreads,
   messageSpeaker,
+  messagesNewestFirst,
   sessionWindowOpen,
   type InboxMessage,
 } from "./whatsapp-inbox";
@@ -58,7 +60,17 @@ test("le fil regroupe, marque le non-lu et distingue robot, agence et escalade",
   assert.equal(threads[0].status, "escalated");
   assert.equal(threads[0].unread, 1);
   assert.equal(threads[1].status, "agency");
+  assert.equal(threads[1].held, true);
   assert.equal(threads[1].unread, 0);
+  assert.equal(conversationBadge("agency", true), "Repris par l’agence");
+  assert.equal(conversationBadge("escalated", false), "Escaladé · Le Concierge");
+  assert.deepEqual(
+    messagesNewestFirst([
+      message({ id: "a", createdAt: "2026-10-20T08:00:00Z", direction: "inbound", body: "Ancien" }),
+      message({ id: "b", createdAt: "2026-10-20T10:00:00Z", direction: "inbound", body: "Récent" }),
+    ]).map((row) => row.body),
+    ["Récent", "Ancien"]
+  );
   assert.equal(messageSpeaker(message({ id: "2", createdAt: "2026-10-20T08:01:00Z", direction: "outbound", body: "x", authorName: "Victoria" })), "agency");
   assert.equal(messageSpeaker(message({ id: "2", createdAt: "2026-10-20T08:01:00Z", direction: "outbound", body: "x", templateKey: "chat" })), "robot");
   const found = filterThreads(threads, { query: "hôtel", filter: "prospects" });
