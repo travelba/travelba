@@ -181,7 +181,7 @@ export function HotelJourney({
   }
 
   return (
-    <div className="h-bg -mx-4 min-h-[70vh]">
+    <div className="h-bg -mx-4 min-h-[calc(100dvh-4rem)]">
       <header className="h-header sticky top-16 z-30 flex items-center gap-3 px-4 py-3">
         <button type="button" aria-label="Retour" onClick={() => (step === "hotel" ? onBack() : setStep(step === "confirm" ? "hotel" : step === "guests" ? "room" : "hotel"))} className="grid h-10 w-10 place-items-center">
           <Icon name="chevron_left" className="h-5 w-5" />
@@ -204,14 +204,12 @@ export function HotelJourney({
             ) : null}
           </div>
           {!file ? <div className="h-skel mx-4 mt-4 h-24 h-radius" /> : null}
-          <div className="space-y-5 px-4 py-5">
+          <div className="h-night space-y-4 px-4 py-5" data-hotel-hero="1">
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight h-ink">{file?.name || hotel.name}</h2>
+              <h2 className="h-display text-2xl font-semibold tracking-tight h-ink">{file?.name || hotel.name}</h2>
               <p className="mt-1 text-sm h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
               {file?.address ? <p className="mt-1 text-sm h-ink">{file.address}</p> : null}
             </div>
-            {file?.description ? <p className="text-sm leading-relaxed h-ink">{file.description}</p> : null}
-            {file?.funFact ? <p className="text-sm h-gold">{file.funFact}</p> : null}
             {file && (file.benefits.length || PERK_LABEL.some((perk) => hotel.perks[perk.key])) ? (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] h-gold">Avantages</p>
@@ -221,6 +219,10 @@ export function HotelJourney({
                 ))}
               </div>
             ) : null}
+          </div>
+          <div className="space-y-5 px-4 py-5">
+            {file?.description ? <p className="h-copy text-sm leading-relaxed h-ink">{file.description}</p> : null}
+            {file?.funFact ? <p className="text-sm h-gold">{file.funFact}</p> : null}
             {file?.checkInTime || file?.checkOutTime ? (
               <p className="text-sm h-ink">
                 {file.checkInTime ? `Arrivée ${file.checkInTime}` : ""}
@@ -282,7 +284,7 @@ export function HotelJourney({
           </div>
           <div>
             <p className="text-sm h-muted">{file?.name}</p>
-            <h2 className="text-2xl font-semibold h-ink">{room.name}</h2>
+            <h2 className="h-display text-2xl font-semibold h-ink">{room.name}</h2>
           </div>
           {room.rates.map((item) => (
             <article key={`${item.title}-${item.sellCents}`} className="h-card h-line space-y-3 border p-4">
@@ -292,7 +294,7 @@ export function HotelJourney({
               {item.footnotes.map((line) => (
                 <p key={line} className="text-xs h-muted">{line}</p>
               ))}
-              <div className="flex items-end justify-between gap-3">
+              <div className="h-night -mx-4 -mb-4 flex items-end justify-between gap-3 px-4 py-4" data-hotel-rate-cta="1">
                 <div>
                   <p className="text-2xl font-semibold h-ink">{euros(item.sellCents, item.currency)}</p>
                   <p className="text-[11px] uppercase tracking-[0.12em] h-muted">{euros(item.perNightCents, item.currency)} / nuit · total</p>
@@ -310,7 +312,7 @@ export function HotelJourney({
         <div data-hotel-guests="1" className="space-y-4 px-4 py-5">
           <div>
             <p className="text-sm h-muted">{file?.name || hotel.name} · {rate.room}</p>
-            <h2 className="text-xl font-semibold h-ink">{rate.title}</h2>
+            <h2 className="h-display text-xl font-semibold h-ink">{rate.title}</h2>
             <p className="mt-1 text-sm h-ink">{euros(rate.sellCents, rate.currency)} · {datesLabel}</p>
           </div>
           {stayRooms.map((stay, index) => (

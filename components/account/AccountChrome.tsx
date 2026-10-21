@@ -216,7 +216,7 @@ export function AccountChrome({
                 }`}
               >
                 <span
-                  className={`flex h-7 w-10 shrink-0 items-center justify-center rounded-full ${
+                  className={`account-tab-icon flex h-7 w-10 shrink-0 items-center justify-center rounded-full ${
                     active ? "bg-[var(--admin-navy)] text-[var(--admin-gold)]" : "text-[var(--admin-navy)]"
                   }`}
                 >

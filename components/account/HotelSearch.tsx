@@ -128,7 +128,7 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
   const [note, setNote] = useState("");
   const [serverFirst, setServerFirst] = useState<number | null>(null);
   const [clientFirst, setClientFirst] = useState<number | null>(null);
-  const [theme, setTheme] = useState<HotelThemeId>(initialTheme || "a");
+  const [theme, setTheme] = useState<HotelThemeId>(initialTheme || "d");
   const [sort, setSort] = useState<HotelSort>("prix");
   const [needs, setNeeds] = useState<(keyof HotelPerks)[]>([]);
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
@@ -137,6 +137,13 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
   const [committed, setCommitted] = useState<{ rooms: HotelRoomOccupancy[] } | null>(null);
   const suggestAbort = useRef<AbortController | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.hotelTheme = theme;
+    return () => {
+      delete document.documentElement.dataset.hotelTheme;
+    };
+  }, [theme]);
 
   const folded = destination.trim().toLocaleLowerCase("fr");
   const suggestions = useMemo(() => {
@@ -346,7 +353,7 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
 
   return (
     <section className="hotel-theme space-y-4" data-hotel-theme={theme} data-hotel-search="1" data-t-client={clientFirst ?? ""} data-t-server={serverFirst ?? ""}>
-      <div className="flex gap-5 text-xs" data-hotel-themes="1">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" data-hotel-themes="1">
         {HOTEL_THEMES.map((item) => (
           <button
             key={item.id}
@@ -375,7 +382,7 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
           type="button"
           data-hotel-summary="1"
           onClick={() => openSheet("where")}
-          className="h-field sticky top-16 z-30 w-full px-4 py-3 text-left"
+          className="h-field h-summary sticky top-16 z-30 w-full px-4 py-3 text-left"
         >
           <span className="block text-base font-semibold h-ink">{destination}</span>
           <span className="mt-0.5 block text-xs h-muted">{summaryDates} · {party}</span>
@@ -464,7 +471,7 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
       </>}
 
       {sheet ? (
-        <div className="hotel-sheet h-bg fixed inset-0 z-[60] flex flex-col" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
+        <div className="hotel-sheet h-search fixed inset-0 z-[60] flex flex-col" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
           <header className="h-header flex items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
             <p className="text-base font-semibold">Où allez-vous ?</p>
             <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-10 w-10 place-items-center">
@@ -652,7 +659,7 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
             ) : null}
             {note ? <p className="text-sm text-[#8a5a2a]">{note}</p> : null}
           </div>
-          <footer className="h-bg border-t h-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <footer className="border-t h-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <button type="button" onClick={() => void onSearch()} className="h-btn flex h-12 w-full items-center justify-center text-sm font-semibold">
               Rechercher
             </button>
@@ -768,7 +775,7 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
         </div>
         <div className="space-y-3 p-4">
           <div>
-            <h3 className="text-lg font-semibold h-ink">{hotel.name}</h3>
+            <h3 className="h-display text-lg font-semibold h-ink">{hotel.name}</h3>
             {hotel.city ? <p className="text-sm h-muted">{hotel.city}</p> : null}
           </div>
           {lines.length ? (

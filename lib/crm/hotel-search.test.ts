@@ -421,9 +421,14 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /data-hotel-summary/);
   assert.match(ui, /data-hotel-sheet/);
   assert.match(ui, /data-hotel-themes/);
+  assert.match(ui, /initialTheme \|\| "d"/);
   assert.match(ui, /Voir l’hôtel/);
   assert.doesNotMatch(ui, /bg-gradient|rounded-\[28px\]|commission/i);
+  const themes = readFileSync(join(root, "lib/crm/hotel-journey.ts"), "utf8");
+  assert.match(themes, /label: "Mix"/);
   const journey = readFileSync(join(root, "components/account/HotelJourney.tsx"), "utf8");
+  assert.match(journey, /data-hotel-hero/);
+  assert.match(journey, /data-hotel-rate-cta/);
   assert.match(journey, /data-hotel-detail/);
   assert.match(journey, /data-hotel-rate/);
   assert.match(journey, /data-hotel-guests/);
