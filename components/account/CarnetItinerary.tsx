@@ -35,6 +35,7 @@ import {
   undatedTimeline,
 } from "@/lib/crm/carnet";
 import { itemTicketCount } from "@/lib/crm/item-match";
+import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import {
   accueilVipDayTitle,
   accueilVipLegOnDay,
@@ -348,7 +349,7 @@ export function CarnetItinerary({
     whatsappHref?: string;
   } | null;
 }) {
-  const liveItems = items.filter((item) => isActiveItem(item));
+  const liveItems = completeFlightRoutes(items).filter((item) => isActiveItem(item));
   const days = groupByDay(liveItems);
   const undated = undatedTimeline(liveItems);
   const now = new Date();

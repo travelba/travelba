@@ -95,7 +95,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 - « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
 - Email agence ≠ `customer_email`.
 
-Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
+Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`, Seychelles/Mahé `SEZ`, Dubaï `DXB`, Al Maktoum/World Central `DWC`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM. Dans la même réservation, l’arrivée d’un segment remplit le départ du suivant. Les deux codes connus retirent l’avertissement « codes IATA non imprimés ». Le titre du vol reste « ville → ville ».
 
 ## Hôtel
 

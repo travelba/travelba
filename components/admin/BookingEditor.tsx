@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { greetingGivenName, shownPersonName } from "@/lib/crm/identity";
+import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import {
   countsAsCarnetCard,
   isActiveItem,
@@ -255,7 +256,7 @@ function Segmented<T extends string>({
 
 export function BookingEditor({
   booking,
-  items,
+  items: sourceItems,
   travelers,
   documents,
   identityDocs,
@@ -389,6 +390,7 @@ export function BookingEditor({
   /** Comptabilité du voyage : ventes, coûts rattachés, marge, sorties proposées. */
   accounting?: TripAccountingView | null;
 }) {
+  const items = useMemo(() => completeFlightRoutes(sourceItems), [sourceItems]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

@@ -195,7 +195,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (villes puis code aéroport), voyageurs, état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). id ou reference. Pas les contacts d’hôtel.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs, état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). carte_id sert à modifier_vol. id ou reference. Pas les contacts d’hôtel.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -279,7 +279,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "comptabilite_voyage",
     description:
-      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). id ou reference. Lecture seule, jamais montré au client.",
+      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). Chaque ligne a carte_id quand la vente est rattachée à une carte. id ou reference. Lecture seule, jamais montré au client.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -693,7 +693,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_vol",
     write: true,
     description:
-      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
+      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -718,6 +718,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Pas de frais de billeterie sur ce dossier. La ligne ne revient pas"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
       fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
+      effacer_avertissement: z
+        .boolean()
+        .optional()
+        .describe("Retire la lecture douteuse de cette carte, y compris l’avertissement sur les codes IATA"),
     },
     run: (args) => updateVol(args),
   },

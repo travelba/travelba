@@ -294,6 +294,8 @@ test("fiche et recherche montrent la société, les cartes et le même montant",
   assert.equal(fiche79.societe, "NILOS FRANCE");
   assert.equal(fiche79.paye_par, "société");
   assert.equal(fiche79.cartes.length, 7);
+  assert.equal(fiche79.cartes[0]?.carte_id, "f1");
+  assert.ok(fiche79.cartes.every((carte) => carte.carte_id));
   assert.equal(fiche79.montant, formatMoney(3774.17, "EUR"));
   assert.equal(fiche79.commission_agence, "10 %");
   assert.equal(fiche79.commission_source, "defaut");

@@ -542,13 +542,14 @@ export async function readChercherDossiers(
   };
 }
 
-function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "confirmation_ref" | "start_at" | "end_at" | "details" | "visible_to_client">) {
+function cardLine(item: Pick<CrmBookingItem, "id" | "kind" | "title" | "supplier" | "confirmation_ref" | "start_at" | "end_at" | "details" | "visible_to_client">) {
   const full = item as CrmBookingItem;
   const city = typeof item.details?.city === "string" ? item.details.city : null;
   if (item.kind === "flight") {
     const from = typeof item.details?.from === "string" ? item.details.from : null;
     const to = typeof item.details?.to === "string" ? item.details.to : null;
     return {
+      carte_id: item.id,
       kind: "vol",
       titre: flightCities(full) || item.title,
       aeroports: flightIata(full) || null,
@@ -560,6 +561,7 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
   }
   if (item.kind === "accueil_vip") {
     return {
+      carte_id: item.id,
       kind: "accueil VIP",
       titre: item.title,
       fournisseur: item.supplier,
@@ -571,6 +573,7 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
   }
   if (item.kind === "hotel") {
     return {
+      carte_id: item.id,
       kind: "hôtel",
       titre: hotelDisplayName(full),
       ville: city,
@@ -581,6 +584,7 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
     };
   }
   return {
+    carte_id: item.id,
     kind: item.kind,
     titre: item.title,
     fournisseur: item.supplier,
@@ -945,6 +949,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     commission_appliquee: booking.agency_commission === true,
     etat: TRIP_ACCOUNTING_LABELS[view.state],
     lignes: view.lines.map((line) => ({
+      carte_id: line.itemId,
       vente: line.label,
       vendu: eur(line.sale),
       cout: eur(line.cost),
