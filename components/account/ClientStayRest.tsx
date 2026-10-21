@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
@@ -46,8 +47,30 @@ import {
 } from "@/lib/crm/types";
 import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
 import { toPublicBooking } from "@/lib/crm/public-booking";
+import { clientHotelCancelOffers, type LeCancelRow } from "@/lib/crm/le-free-cancel";
+import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 
 type VisaRow = { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null };
+
+async function loadLeCancelRows(bookingId: string): Promise<LeCancelRow[]> {
+  try {
+    const admin = createServiceClient();
+    const { data, error } = await admin
+      .from("crm_le_bookings")
+      .select(
+        "id, le_booking_id, confirmation_number, hotel_id, hotel_name, check_in, check_out, state, is_cancellable, cancellation_deadline, cancellation_policies, status"
+      )
+      .eq("crm_booking_id", bookingId);
+    if (error || !data) return [];
+    return (data as LeCancelRow[]).map((row) => ({
+      ...row,
+      le_booking_id: Number(row.le_booking_id),
+      cancellation_policies: Array.isArray(row.cancellation_policies) ? row.cancellation_policies : [],
+    }));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Hôtel, grand livre et formalités : sous l’en-tête, sans le retenir.
@@ -84,16 +107,21 @@ export async function ClientStayRest({
   const visibleDocs = docs;
   const identity = identityDocs;
 
-  const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl] = await Promise.all([
+  const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl, leRows] = await Promise.all([
     loadHotelContacts(b.id, rawItems),
     loadClientLedger(supabase, customer, "client"),
     settledCountries(b, party, identity, customer),
     loadExpenseChoices(b.id, rawItems),
     loadPayerCompanies(supabase, b),
     loadShareUrl(b.id),
+    b.customer_id === customer.id ? loadLeCancelRows(b.id) : Promise.resolve([] as LeCancelRow[]),
   ]);
 
   const visibleItems = withoutHotelRosterItems(catalogItems);
+  const jar = await cookies();
+  const desk = Boolean(customer.auth_user_id && deskBypass(jar.get(DESK_COOKIE)?.value, customer.auth_user_id));
+  const hotelCancels =
+    b.customer_id === customer.id && !desk ? clientHotelCancelOffers(visibleItems, leRows, new Date()) : [];
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
   const coverage = tripDocCoverage(party, identity);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
@@ -172,6 +200,7 @@ export async function ClientStayRest({
             whatsappHref: modifyHref,
           }}
           refusals={refusals}
+          hotelCancels={hotelCancels}
         />
       }
       services={

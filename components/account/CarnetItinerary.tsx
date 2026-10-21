@@ -46,6 +46,8 @@ import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-open";
 import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
+import { HotelFreeCancel } from "@/components/account/HotelFreeCancel";
+import type { ClientHotelCancelOffer } from "@/lib/crm/le-free-cancel";
 import {
   bookingHasFlight,
   composeItineraryDay,
@@ -97,6 +99,8 @@ function CardBody({
   partage = null,
   pricesVisible = true,
   showPrice = true,
+  reference = null,
+  cancelOffer = null,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -108,6 +112,8 @@ function CardBody({
   partage?: string | null;
   pricesVisible?: boolean;
   showPrice?: boolean;
+  reference?: string | null;
+  cancelOffer?: ClientHotelCancelOffer | null;
 }) {
   const price = showPrice ? itemPriceLabel(item, currency, day, pricesVisible) : null;
   const included = detailList(item, "included");
@@ -215,6 +221,9 @@ function CardBody({
       ) : null}
       {item.confirmation_ref ? (
         <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
+      ) : null}
+      {cancelOffer && reference && item.kind === "hotel" ? (
+        <HotelFreeCancel reference={reference} offer={cancelOffer} />
       ) : null}
       <div className="flex flex-wrap items-end gap-3">
         {documentsForItem(item, docs).map((doc) => (
@@ -351,6 +360,7 @@ export function CarnetItinerary({
   refusals = [],
   partage = null,
   pricesVisible = true,
+  hotelCancels = [],
 }: {
   booking: PublicBooking;
   items: CrmBookingItem[];
@@ -362,6 +372,8 @@ export function CarnetItinerary({
   partage?: string | null;
   /** Faux : chaque ligne qui aurait un montant affiche « Prix à la publication ». */
   pricesVisible?: boolean;
+  /** Titulaire seulement. Absent de l’aperçu, du lien public et de l’exemple. */
+  hotelCancels?: ClientHotelCancelOffer[];
   refusals?: ServiceRefusal[];
   services?: {
     variant: "admin" | "client";
@@ -500,6 +512,8 @@ export function CarnetItinerary({
                     partage={partage}
                     pricesVisible={pricesVisible}
                     showPrice={flightCountsInStay(row.item, items)}
+                    reference={booking.reference}
+                    cancelOffer={hotelCancels.find((offer) => offer.itemId === row.item.id) || null}
                   />
                 )
               ) : (
@@ -524,6 +538,8 @@ export function CarnetItinerary({
                 pricesVisible={pricesVisible}
                 showPrice={flightCountsInStay(item, items)}
                 partage={partage}
+                reference={booking.reference}
+                cancelOffer={hotelCancels.find((offer) => offer.itemId === item.id) || null}
               />
             ))}
           </div>
