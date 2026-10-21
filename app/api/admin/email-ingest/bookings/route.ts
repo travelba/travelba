@@ -29,12 +29,22 @@ export async function GET(request: Request) {
   const ids = rows.map((row) => row.id);
   const itemsByBooking = new Map<
     string,
-    { id: string; kind: string; title: string; confirmation_ref: string | null; lifecycle: string | null; amount: number | null }[]
+    {
+      id: string;
+      kind: string;
+      title: string;
+      confirmation_ref: string | null;
+      lifecycle: string | null;
+      amount: number | null;
+      start_at: string | null;
+      end_at: string | null;
+      details: Record<string, unknown> | null;
+    }[]
   >();
   if (ids.length) {
     const { data: items, error: itemsError } = await auth.supabase
       .from("crm_booking_items")
-      .select("id, booking_id, kind, title, confirmation_ref, lifecycle, amount")
+      .select("id, booking_id, kind, title, confirmation_ref, lifecycle, amount, start_at, end_at, details")
       .in("booking_id", ids);
     if (itemsError) {
       console.error("[email-ingest/bookings]", itemsError.code ?? "?", itemsError.message ?? "");
@@ -48,6 +58,9 @@ export async function GET(request: Request) {
       confirmation_ref: string | null;
       lifecycle: string | null;
       amount: number | null;
+      start_at: string | null;
+      end_at: string | null;
+      details: Record<string, unknown> | null;
     }[]) {
       const list = itemsByBooking.get(item.booking_id) || [];
       list.push({
@@ -57,6 +70,9 @@ export async function GET(request: Request) {
         confirmation_ref: item.confirmation_ref,
         lifecycle: item.lifecycle,
         amount: item.amount,
+        start_at: item.start_at,
+        end_at: item.end_at,
+        details: item.details,
       });
       itemsByBooking.set(item.booking_id, list);
     }

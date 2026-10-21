@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { amountToCents, centsToAmount, formatMoney, maskMoneyTyping, moneyToInput, parseMoney } from "./money";
+import { amountToCents, centsToAmount, formatDateRangeShort, formatMoney, maskMoneyTyping, moneyToInput, parseMoney } from "./money";
+import { formatDateFr } from "./dates";
 import { amountToCents as payerAmountToCents } from "./payer";
+
+test("un aller-retour le même jour s’écrit une seule fois", () => {
+  assert.equal(formatDateRangeShort("2027-08-25", "2027-08-25"), formatDateFr("2027-08-25"));
+  assert.equal(formatDateRangeShort("2027-08-25", "2027-08-25").includes("—"), false);
+  assert.match(formatDateRangeShort("2027-08-04", "2027-08-25"), /4 — 25/);
+});
 
 test("parses french and dot decimals", () => {
   assert.equal(parseMoney("1234,50"), 1234.5);

@@ -232,6 +232,47 @@ describe("keepAgentPrices", () => {
     assert.equal(kept.currency, "EUR");
     assert.equal(kept.items[1].details?.document_amount, undefined);
   });
+
+  it("ne recopie pas le total du billet sur chaque segment du même dossier", () => {
+    const kept = keepAgentPrices({
+      document_status: "confirmed",
+      title: "Seychelles",
+      destination: "Seychelles",
+      start_date: "2027-08-25",
+      end_date: "2027-08-25",
+      currency: "EUR",
+      total_amount: null,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items: [
+        {
+          kind: "flight",
+          title: "EK 706",
+          supplier: "Emirates",
+          confirmation_ref: "X97UJQ",
+          start_at: "2027-08-25T08:25:00",
+          end_at: "2027-08-25T12:55:00",
+          amount: null,
+          details: { document_amount: 5235, document_currency: "EUR" },
+        },
+        {
+          kind: "flight",
+          title: "EK 75",
+          supplier: "Emirates",
+          confirmation_ref: "X97UJQ",
+          start_at: "2027-08-25T14:40:00",
+          end_at: "2027-08-25T20:00:00",
+          amount: null,
+          details: { document_amount: 5235, document_currency: "EUR" },
+        },
+      ],
+      travelers: [],
+    });
+    assert.equal(kept.items[0].details?.document_amount, 5235);
+    assert.equal(kept.items[1].details?.document_amount, undefined);
+  });
 });
 
 describe("inferAirportIata", () => {

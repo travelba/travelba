@@ -79,3 +79,16 @@ export function sanitizeEmailHtml(html: string | null | undefined) {
     .replace(DROP_VOID, "");
   return stripped.replace(/<\/?[^>]+>/g, (tag) => sanitizeTag(tag));
 }
+
+/** Vrai quand le HTML conservé contient autre chose qu’une coquille vide. */
+export function emailHtmlHasText(html: string | null | undefined) {
+  const clean = sanitizeEmailHtml(html);
+  if (!clean) return false;
+  const text = clean
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > 0;
+}

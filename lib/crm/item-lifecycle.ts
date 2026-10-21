@@ -244,6 +244,23 @@ export function replacementPlan(
       adds += group.length;
       continue;
     }
+    // Un vol ou un train qui ne correspond à aucune carte s’ajoute.
+    // Il ne remplace pas un autre trajet du séjour, et le rattachement n’attend pas un choix.
+    // Une carte choisie explicitement reste un remplacement.
+    if (kind === "flight" || kind === "rail") {
+      const picked = chosenId ? targets.find((row) => row.id === chosenId) || null : null;
+      if (picked) {
+        replacements.push({
+          itemId: picked.id,
+          kind: picked.kind,
+          amount: picked.amount ?? null,
+          includeInLedger: Boolean(picked.include_in_ledger),
+        });
+      } else {
+        adds += 1;
+      }
+      continue;
+    }
     const incoming = group[0];
     const stayTargets =
       kind === "hotel" ? targets.filter((row) => hotelSameStay(row, incoming)) : targets;
@@ -285,6 +302,8 @@ export type InboxStayAction = {
 
 const REPLACE_HINT =
   "Le prix vendu reste celui déjà saisi. Le client voit la nouvelle carte quand vous montrez le séjour.";
+const CHOICE_HINT =
+  "Plusieurs cartes du séjour peuvent correspondre. Choisissez celle que ce mail remplace : le bouton s’allume ensuite.";
 const UPDATE_STAY_HINT =
   "Les cartes déjà là sont complétées. Le prix vendu ne change pas. Une carte nouvelle reste cachée.";
 const CANCEL_CARD_HINT = "Seule cette carte sort du total et du carnet. L’argent déjà reçu reste.";
@@ -358,7 +377,7 @@ export function inboxStayAction(input: {
       label: replaceLabel,
       itemId,
       choices: open.choices,
-      hint: REPLACE_HINT,
+      hint: itemId ? REPLACE_HINT : CHOICE_HINT,
     };
   }
   if (plan.replacements.length) {
