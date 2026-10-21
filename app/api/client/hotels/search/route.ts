@@ -37,7 +37,18 @@ export async function POST(request: Request) {
       try {
         const accounts = cached
           ? []
-          : [() => loadLittleEmperorsOffers({ ...parsed.query, fetchImpl: fetch })];
+          : [
+              () =>
+                loadLittleEmperorsOffers({
+                  destination: parsed.query.destination,
+                  city: parsed.query.city,
+                  checkIn: parsed.query.checkIn,
+                  checkOut: parsed.query.checkOut,
+                  rooms: parsed.query.rooms,
+                  target: parsed.query.target,
+                  fetchImpl: fetch,
+                }),
+            ];
         for await (const event of streamHotelSearch({ accounts, cached, timeoutMs: 9000 })) {
           if (event.type === "start") {
             send({ type: "start" });

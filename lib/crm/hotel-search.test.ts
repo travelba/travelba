@@ -8,12 +8,15 @@ import {
   HOTEL_SEARCH_BENJAMIN_USER_ID,
   clearHotelSearchCache,
   hotelSearchAllowed,
+  hotelSearchCacheKey,
   mergeOffers,
   mergePlaceSuggestions,
   parseHotelSearchQuery,
   priceStayOffer,
   streamHotelSearch,
+  stayPartyLabel,
   suggestionsFromCatalog,
+  supplierRoomOccupancy,
   toClientHotel,
   type HotelOffer,
   type HotelStreamEvent,
@@ -205,7 +208,57 @@ test("la recherche refuse une arrivée passée, zéro nuit, zéro voyageur, une 
     today
   );
   assert.equal(ok.ok, true);
-  if (ok.ok) assert.equal(ok.nights, 2);
+  if (ok.ok) {
+    assert.equal(ok.nights, 2);
+    assert.deepEqual(ok.query.rooms, [{ adults: 2, children: [] }]);
+  }
+});
+
+test("les chambres portent les adultes et l’âge de chaque enfant, un hôtel choisi reste cet hôtel", () => {
+  const today = "2026-10-21";
+  const parsed = parseHotelSearchQuery(
+    {
+      destination: "Ritz",
+      city: "Paris",
+      checkIn: "2026-11-12",
+      checkOut: "2026-11-14",
+      rooms: [
+        { adults: 2, children: [{ age: 5 }] },
+        { adults: 1, children: [] },
+      ],
+      target: { kind: "hotel", id: 15 },
+    },
+    today
+  );
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.query.target?.kind, "hotel");
+  assert.equal(parsed.query.target?.id, 15);
+  assert.deepEqual(supplierRoomOccupancy(parsed.query.rooms), [
+    { adults: 2, children: [{ age: 5 }] },
+    { adults: 1, children: [] },
+  ]);
+  assert.equal(stayPartyLabel(parsed.query.rooms), "2 chambres, 3 adultes, 1 enfant");
+  const otherAge = {
+    ...parsed.query,
+    rooms: [
+      { adults: 2, children: [{ age: 7 }] },
+      { adults: 1, children: [] },
+    ],
+  };
+  assert.notEqual(hotelSearchCacheKey(parsed.query), hotelSearchCacheKey(otherAge));
+  assert.equal(
+    parseHotelSearchQuery(
+      {
+        destination: "Paris",
+        checkIn: "2026-11-12",
+        checkOut: "2026-11-14",
+        rooms: [{ adults: 2, children: [{ age: 40 }] }],
+      },
+      today
+    ).ok,
+    false
+  );
 });
 
 test("le premier compte répond avant le compte lent, le cache ne rappelle personne", async () => {
@@ -309,6 +362,13 @@ test("suggestions : catalogue ville et hôtel, fusion sans doublon", () => {
   );
   assert.ok(catalog.some((item) => item.kind === "ville" && item.label === "Paris"));
   assert.ok(catalog.some((item) => item.kind === "hotel" && item.label === "Ritz Paris"));
+  const named = suggestionsFromCatalog([{ hotel_name: "Ritz Paris", city: "Paris", le_hotel_id: 15 }], "ritz");
+  assert.equal(named.find((item) => item.kind === "hotel")?.id, 15);
+  const kept = mergePlaceSuggestions([
+    [{ label: "Ritz", kind: "hotel", detail: "Paris" }],
+    [{ label: "Ritz", kind: "hotel", detail: "Paris", id: 15 }],
+  ]);
+  assert.equal(kept[0]?.id, 15);
   const merged = mergePlaceSuggestions([
     catalog,
     [
@@ -332,4 +392,8 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /data-t-server/);
   assert.match(ui, /loading=\{first \? "eager" : "lazy"\}/);
   assert.match(ui, /animate-pulse/);
+  assert.match(ui, /Destinations/);
+  assert.match(ui, /Hôtels/);
+  assert.match(ui, /data-hotel-summary/);
+  assert.match(ui, /data-hotel-sheet/);
 });

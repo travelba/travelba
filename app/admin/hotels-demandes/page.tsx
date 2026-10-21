@@ -1,6 +1,7 @@
 import { HotelSearchDesk, type HotelRequestView } from "@/components/admin/HotelSearchDesk";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { roomsFromStored, stayPartyLabel } from "@/lib/crm/hotel-search";
 import { listHotelRequests, loadRequestCustomers } from "@/lib/crm/hotel-search-store";
 import { pliantConfigured } from "@/lib/crm/pliant";
 
@@ -36,6 +37,7 @@ export default async function HotelRequestsPage() {
         checkIn: row.check_in,
         checkOut: row.check_out,
         adults: row.adults,
+        party: stayPartyLabel(roomsFromStored(row.rooms, row.adults)),
         sellCents: row.sell_cents,
         currency: row.currency,
         benefits: row.benefits,

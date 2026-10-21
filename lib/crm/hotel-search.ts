@@ -99,18 +99,38 @@ export type ClientHotel = {
   perks: HotelPerks;
 };
 
+export type HotelChild = { age: number };
+
+export type HotelRoomOccupancy = {
+  adults: number;
+  children: HotelChild[];
+};
+
+/** Cible choisie dans l’autocomplétion. Un hôtel part sur cet hôtel, pas sur la ville. */
+export type HotelSearchTarget = {
+  kind: "ville" | "hotel";
+  id: number;
+};
+
 export type HotelSearchQuery = {
   destination: string;
+  city: string;
   checkIn: string;
   checkOut: string;
-  adults: number;
+  rooms: HotelRoomOccupancy[];
+  target: HotelSearchTarget | null;
 };
 
 export type PlaceSuggestion = {
   label: string;
   kind: "ville" | "hotel";
   detail: string;
+  id?: number | null;
 };
+
+export const HOTEL_MAX_ROOMS = 4;
+export const HOTEL_MAX_ADULTS = 6;
+export const HOTEL_MAX_CHILDREN = 4;
 
 export type HotelStreamEvent =
   | { type: "start" }
@@ -147,8 +167,31 @@ export function clearHotelSearchCache() {
   suggestCache.clear();
 }
 
+export function occupancyKey(rooms: HotelRoomOccupancy[]) {
+  return rooms.map((room) => `${room.adults}:${room.children.map((child) => child.age).join(".")}`).join("/");
+}
+
 export function hotelSearchCacheKey(query: HotelSearchQuery) {
-  return [foldHotelLabel(query.destination), query.checkIn, query.checkOut, String(query.adults)].join("|");
+  const target = query.target ? `${query.target.kind}:${query.target.id}` : "";
+  return [foldHotelLabel(query.destination), query.checkIn, query.checkOut, occupancyKey(query.rooms), target].join("|");
+}
+
+/** Même occupation pour chaque compte fournisseur. Little Emperors lit `children[].age`. */
+export function supplierRoomOccupancy(rooms: HotelRoomOccupancy[]) {
+  return rooms.map((room) => ({
+    adults: room.adults,
+    children: room.children.map((child) => ({ age: child.age })),
+  }));
+}
+
+export function stayPartyLabel(rooms: HotelRoomOccupancy[]) {
+  const roomCount = rooms.length;
+  const adults = rooms.reduce((sum, room) => sum + room.adults, 0);
+  const children = rooms.reduce((sum, room) => sum + room.children.length, 0);
+  const roomWord = roomCount > 1 ? `${roomCount} chambres` : "1 chambre";
+  const adultWord = adults > 1 ? `${adults} adultes` : "1 adulte";
+  const childWord = children > 1 ? `${children} enfants` : children === 1 ? "1 enfant" : "";
+  return [roomWord, adultWord, childWord].filter(Boolean).join(", ");
 }
 
 export function readHotelSearchCache(key: string, now = Date.now()): PricedStay[] | null {
@@ -195,17 +238,58 @@ export function suggestQuery(value: unknown): string | null {
   return clean;
 }
 
+function childAge(value: unknown) {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (value && typeof value === "object" && "age" in value) {
+    const age = Number((value as { age?: unknown }).age);
+    return Number.isInteger(age) ? age : null;
+  }
+  return null;
+}
+
+export function parseStayRooms(value: unknown): HotelRoomOccupancy[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > HOTEL_MAX_ROOMS) return null;
+  const rooms: HotelRoomOccupancy[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") return null;
+    const adults = Number((row as { adults?: unknown }).adults);
+    if (!Number.isInteger(adults) || adults < 1 || adults > HOTEL_MAX_ADULTS) return null;
+    const rawChildren = (row as { children?: unknown }).children;
+    const list = rawChildren == null ? [] : Array.isArray(rawChildren) ? rawChildren : null;
+    if (!list || list.length > HOTEL_MAX_CHILDREN) return null;
+    const children: HotelChild[] = [];
+    for (const child of list) {
+      const age = childAge(child);
+      if (age == null || age < 0 || age > 17) return null;
+      children.push({ age });
+    }
+    rooms.push({ adults, children });
+  }
+  return rooms;
+}
+
+function parseSearchTarget(value: unknown): HotelSearchTarget | null {
+  if (!value || typeof value !== "object") return null;
+  const kind = (value as { kind?: unknown }).kind;
+  const id = Number((value as { id?: unknown }).id);
+  if ((kind !== "ville" && kind !== "hotel") || !Number.isInteger(id) || id < 1) return null;
+  return { kind, id };
+}
+
 export function parseHotelSearchQuery(
   input: unknown,
   today: string
 ): { ok: true; query: HotelSearchQuery; nights: number } | { ok: false; message: string } {
   const body = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const destination = typeof body.destination === "string" ? body.destination.replace(/\s+/g, " ").trim() : "";
+  const city = typeof body.city === "string" ? body.city.replace(/\s+/g, " ").trim().slice(0, 80) : "";
   const checkIn = typeof body.checkIn === "string" ? body.checkIn.trim() : "";
   const checkOut = typeof body.checkOut === "string" ? body.checkOut.trim() : "";
-  const adults = Number(body.adults);
+  const rooms = Array.isArray(body.rooms)
+    ? parseStayRooms(body.rooms)
+    : parseStayRooms([{ adults: Number(body.adults), children: [] }]);
   if (destination.length < 2 || destination.length > 80) {
-    return { ok: false, message: "Indiquez une destination." };
+    return { ok: false, message: "Indiquez une destination ou un hôtel." };
   }
   if (!isValidIsoDate(checkIn) || !isValidIsoDate(checkOut)) {
     return { ok: false, message: "Indiquez les dates du séjour." };
@@ -214,10 +298,15 @@ export function parseHotelSearchQuery(
   const nights = nightsBetween(checkIn, checkOut);
   if (nights < 1) return { ok: false, message: "Le départ suit l’arrivée." };
   if (nights > 30) return { ok: false, message: "La recherche couvre trente nuits au plus." };
-  if (!Number.isInteger(adults) || adults < 1 || adults > 8) {
-    return { ok: false, message: "Indiquez le nombre de voyageurs." };
-  }
-  return { ok: true, query: { destination, checkIn, checkOut, adults }, nights };
+  if (!rooms) return { ok: false, message: "Indiquez les chambres, les adultes et l’âge de chaque enfant." };
+  return { ok: true, query: { destination, city, checkIn, checkOut, rooms, target: parseSearchTarget(body.target) }, nights };
+}
+
+export function roomsFromStored(value: unknown, adults: number): HotelRoomOccupancy[] {
+  const parsed = parseStayRooms(value);
+  if (parsed) return parsed;
+  const count = Number.isInteger(adults) && adults >= 1 ? Math.min(adults, HOTEL_MAX_ADULTS) : 2;
+  return [{ adults: count, children: [] }];
 }
 
 export function nightsBetween(checkIn: string, checkOut: string) {
@@ -480,7 +569,15 @@ export async function* streamHotelSearch(input: {
   };
 }
 
-export function suggestionsFromCatalog(rows: { hotel_name: string; city: string }[], query: string): PlaceSuggestion[] {
+function suggestionId(value: unknown) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+export function suggestionsFromCatalog(
+  rows: { hotel_name: string; city: string; le_hotel_id?: number | null }[],
+  query: string
+): PlaceSuggestion[] {
   const needle = foldHotelLabel(query);
   if (!needle) return [];
   const cities = new Set<string>();
@@ -492,28 +589,38 @@ export function suggestionsFromCatalog(rows: { hotel_name: string; city: string 
       cities.add(foldHotelLabel(city));
     }
     if (name && foldHotelLabel(name).includes(needle)) {
-      hotels.push({ label: name, kind: "hotel", detail: city });
+      hotels.push({ label: name, kind: "hotel", detail: city, id: suggestionId(row.le_hotel_id) });
     }
   }
   const places = [...cities].map((city) => {
     const original = rows.find((row) => foldHotelLabel(row.city) === city)?.city || city;
-    return { label: original.replace(/\s+/g, " ").trim(), kind: "ville" as const, detail: "" };
+    return { label: original.replace(/\s+/g, " ").trim(), kind: "ville" as const, detail: "", id: null };
   });
   return [...places, ...hotels];
 }
 
-export function mergePlaceSuggestions(lists: PlaceSuggestion[][], limit = 8): PlaceSuggestion[] {
-  const seen = new Set<string>();
+export function mergePlaceSuggestions(lists: PlaceSuggestion[][], limit = 16): PlaceSuggestion[] {
+  const seen = new Map<string, number>();
   const out: PlaceSuggestion[] = [];
   for (const list of lists) {
     for (const item of list) {
       const label = item.label.replace(/\s+/g, " ").trim();
       if (!label) continue;
       const key = `${item.kind}|${foldHotelLabel(label)}|${foldHotelLabel(item.detail)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ label, kind: item.kind, detail: item.detail.replace(/\s+/g, " ").trim() });
+      const next: PlaceSuggestion = {
+        label,
+        kind: item.kind,
+        detail: item.detail.replace(/\s+/g, " ").trim(),
+        id: suggestionId(item.id),
+      };
+      const at = seen.get(key);
+      if (at != null) {
+        if (next.id != null && out[at]?.id == null) out[at] = next;
+        continue;
+      }
       if (out.length >= limit) return out;
+      seen.set(key, out.length);
+      out.push(next);
     }
   }
   return out;

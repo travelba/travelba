@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/admin";
-import type { HotelSearchQuery, PricedStay } from "./hotel-search";
+import { occupancyKey, type HotelRoomOccupancy, type HotelSearchQuery, type PricedStay } from "./hotel-search";
 
 type Admin = ReturnType<typeof createServiceClient>;
 
@@ -38,14 +38,16 @@ export async function saveHotelOffer(
           nights,
           check_in: query.checkIn,
           check_out: query.checkOut,
-          adults: query.adults,
+          adults: query.rooms.reduce((sum, room) => sum + room.adults, 0),
+          rooms: query.rooms,
+          occupancy_key: occupancyKey(query.rooms),
           benefits: stay.benefits,
           free_cancellation: stay.perks.freeCancellation,
           advantage_score: stay.score,
           account: stay.account,
           expires_at: expires,
         },
-        { onConflict: "customer_id,hotel_key,check_in,check_out,adults" }
+        { onConflict: "customer_id,hotel_key,check_in,check_out,occupancy_key" }
       )
       .select("id")
       .single();
@@ -66,7 +68,7 @@ export async function createHotelRequest(customerId: string, offerId: string) {
   const { data: offer, error } = await db
     .from("crm_hotel_search_offers")
     .select(
-      "id, customer_id, hotel_name, city, room_label, check_in, check_out, adults, sell_cents, currency, benefits, account, expires_at"
+      "id, customer_id, hotel_name, city, room_label, check_in, check_out, adults, rooms, sell_cents, currency, benefits, account, expires_at"
     )
     .eq("id", offerId)
     .eq("customer_id", customerId)
@@ -80,6 +82,7 @@ export async function createHotelRequest(customerId: string, offerId: string) {
     check_in: string;
     check_out: string;
     adults: number;
+    rooms: HotelRoomOccupancy[];
     sell_cents: number;
     currency: string;
     benefits: unknown;
@@ -108,6 +111,7 @@ export async function createHotelRequest(customerId: string, offerId: string) {
     check_in: row.check_in,
     check_out: row.check_out,
     adults: row.adults,
+    rooms: Array.isArray(row.rooms) ? row.rooms : [],
     sell_cents: row.sell_cents,
     currency: row.currency,
     benefits: Array.isArray(row.benefits) ? row.benefits : [],
@@ -130,6 +134,7 @@ export type HotelRequestRow = {
   check_in: string;
   check_out: string;
   adults: number;
+  rooms: unknown;
   sell_cents: number;
   currency: string;
   benefits: string[];
@@ -143,7 +148,7 @@ export async function listHotelRequests(): Promise<HotelRequestRow[]> {
   const { data, error } = await db
     .from("crm_hotel_search_requests")
     .select(
-      "id, customer_id, status, hotel_name, city, room_label, check_in, check_out, adults, sell_cents, currency, benefits, account, pliant_card_id, created_at"
+      "id, customer_id, status, hotel_name, city, room_label, check_in, check_out, adults, rooms, sell_cents, currency, benefits, account, pliant_card_id, created_at"
     )
     .order("created_at", { ascending: false })
     .limit(40);

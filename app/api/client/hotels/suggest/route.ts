@@ -20,10 +20,14 @@ async function catalogSuggestions(query: string): Promise<PlaceSuggestion[]> {
     const db = createServiceClient();
     const like = `%${query.replace(/[%_\\]/g, "")}%`;
     const [cities, names] = await Promise.all([
-      db.from("crm_le_hotels").select("hotel_name, city").ilike("city", like).limit(12),
-      db.from("crm_le_hotels").select("hotel_name, city").ilike("hotel_name", like).limit(12),
+      db.from("crm_le_hotels").select("le_hotel_id, hotel_name, city").ilike("city", like).limit(12),
+      db.from("crm_le_hotels").select("le_hotel_id, hotel_name, city").ilike("hotel_name", like).limit(12),
     ]);
-    const rows = [...(cities.data || []), ...(names.data || [])] as { hotel_name: string; city: string }[];
+    const rows = [...(cities.data || []), ...(names.data || [])] as {
+      le_hotel_id: number;
+      hotel_name: string;
+      city: string;
+    }[];
     return suggestionsFromCatalog(rows, query);
   } catch {
     return [];

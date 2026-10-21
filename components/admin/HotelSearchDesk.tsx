@@ -14,6 +14,7 @@ export type HotelRequestView = {
   checkIn: string;
   checkOut: string;
   adults: number;
+  party: string;
   sellCents: number;
   currency: string;
   benefits: string[];
@@ -64,7 +65,7 @@ export function HotelSearchDesk({ rows, canIssue, blockedReason }: { rows: Hotel
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{STATUS[row.status]}</p>
               <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">{row.hotelName}</h2>
               <p className="text-sm text-[#5c5348]">
-                {row.guest} · {row.city} · {formatDateFr(row.checkIn)} – {formatDateFr(row.checkOut)} · {row.adults} voyageurs
+                {row.guest} · {row.city} · {formatDateFr(row.checkIn)} – {formatDateFr(row.checkOut)} · {row.party}
               </p>
               {row.room ? <p className="text-sm text-[#5c5348]">{row.room}</p> : null}
             </div>

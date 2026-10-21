@@ -181,6 +181,20 @@
   animation: hotel-rise 460ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+@keyframes hotel-sheet {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.account-app .hotel-sheet {
+  animation: hotel-sheet 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(*),
   ::view-transition-new(*),
@@ -190,7 +204,8 @@
   }
   .account-tab-mark,
   .account-app .account-press,
-  .account-app .hotel-rise {
+  .account-app .hotel-rise,
+  .account-app .hotel-sheet {
     transition: none;
     animation: none;
   }
