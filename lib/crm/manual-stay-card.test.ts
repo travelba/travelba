@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  MANUAL_CARD_TX_MAX,
   bookingCardValidity,
   cardTransactionRules,
   manualStayCardBody,
@@ -10,9 +9,9 @@ import {
   stayCardCanBeShared,
   stayCardIsManual,
 } from "./manual-stay-card";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
+import { PLIANT_SINGLE_USE } from "./pliant-controls";
 
-test("carte manuelle : plafond reçu, deux transactions, aucun blocage", () => {
+test("carte manuelle : plafond reçu, usage unique, aucun blocage", () => {
   const body = manualStayCardBody({
     firstName: "Camille",
     lastName: "Martin",
@@ -27,18 +26,17 @@ test("carte manuelle : plafond reçu, deux transactions, aucun blocage", () => {
   assert.deepEqual(body.limit, { value: 150050, currency: "EUR" });
   assert.deepEqual(body.transactionLimit, { value: 150050, currency: "EUR" });
   assert.equal(body.limitRenewFrequency, "TOTAL");
-  assert.equal(body.maxTransactionCount, DEFAULT_PLIANT_TRANSACTIONS);
-  assert.equal(body.maxTransactionCount, 2);
+  assert.equal(Object.hasOwn(body, "maxTransactionCount"), false);
   assert.equal(body.validTimezone, "Europe/Paris");
-  assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
+  assert.equal(body.cardConfig, PLIANT_SINGLE_USE);
   assert.equal(body.label.length <= 40, true);
   assert.equal(Object.hasOwn(body, "cardControls"), false);
 });
 
-test("carte manuelle : nombre et montant de transaction choisis", () => {
-  const over = cardTransactionRules({ limitCents: 10000, transactionAmount: "200", transactionCount: "2" });
+test("carte manuelle : le montant par achat reste sous le plafond, sans nombre de transactions", () => {
+  const over = cardTransactionRules({ limitCents: 10000, transactionAmount: "200" });
   assert.equal("error" in over, true);
-  const missing = cardTransactionRules({ limitCents: 50000, transactionAmount: "", transactionCount: "2" });
+  const missing = cardTransactionRules({ limitCents: 50000, transactionAmount: "" });
   assert.equal("error" in missing, true);
   const ready = manualStayCardDraft({
     amount: "500",
@@ -56,7 +54,8 @@ test("carte manuelle : nombre et montant de transaction choisis", () => {
   }
   assert.equal(ready.body.limit.value, 50000);
   assert.equal(ready.body.transactionLimit.value, 20000);
-  assert.equal(ready.body.maxTransactionCount, 3);
+  assert.equal(ready.body.cardConfig, PLIANT_SINGLE_USE);
+  assert.equal(Object.hasOwn(ready.body, "maxTransactionCount"), false);
   assert.equal(ready.body.transactionLimit.value <= ready.body.limit.value, true);
   const blankCount = manualStayCardDraft({
     amount: "500",
@@ -72,9 +71,8 @@ test("carte manuelle : nombre et montant de transaction choisis", () => {
     assert.fail(blankCount.error);
     return;
   }
-  assert.equal(blankCount.body.maxTransactionCount, 2);
+  assert.equal(Object.hasOwn(blankCount.body, "maxTransactionCount"), false);
   assert.equal(blankCount.body.transactionLimit.value, 20000);
-  assert.equal(MANUAL_CARD_TX_MAX > 2, true);
 });
 
 test("carte manuelle : la désignation interne remplace le libellé du nom", () => {

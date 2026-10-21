@@ -1,6 +1,6 @@
 import { pliantCardNomination, pliantStayCaption } from "./eta-il-fee";
 import { addIsoDays, cardCloseDate, isoDate, parseEurosToCents } from "./hotel-arrival";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
+import { PLIANT_SINGLE_USE } from "./pliant-controls";
 
 /** Marque une carte dont le montant a été choisi sur le dossier. Le cron ne la réécrit pas. */
 export const MANUAL_CARD_NOTE = "Saisie agence";
@@ -38,31 +38,17 @@ export function bookingCardValidity(today: string, endDate: string | null | unde
   return { validFrom: today, validTo: close < today ? today : close };
 }
 
-/** Plafond Pliant d’un nombre saisi. Le défaut d’émission est 2, pas ce maximum. */
-export const MANUAL_CARD_TX_MAX = 999_999_999;
-
-/** Nombre de paiements et montant maximum de chacun. Le montant reste sous le plafond. */
+/** Montant maximum d’un achat. La carte est à usage unique : pas de nombre de transactions. */
 export function cardTransactionRules(input: {
   limitCents: number;
   transactionAmount: string;
-  transactionCount: string;
-}): { error: string } | { transactionLimitCents: number; maxTransactionCount: number } {
+}): { error: string } | { transactionLimitCents: number } {
   const transactionLimitCents = parseEurosToCents(input.transactionAmount);
   if (transactionLimitCents == null) return { error: "Indiquez le montant par transaction." };
   if (transactionLimitCents > input.limitCents) {
     return { error: "Le montant par transaction ne peut pas dépasser le plafond." };
   }
-  const maxTransactionCount = parseTransactionCount(input.transactionCount);
-  if (maxTransactionCount == null) return { error: "Indiquez le nombre de transactions." };
-  return { transactionLimitCents, maxTransactionCount };
-}
-
-function parseTransactionCount(value: string) {
-  const raw = value.trim().replace(/\s/g, "");
-  if (!/^\d+$/.test(raw)) return null;
-  const count = Number(raw);
-  if (!Number.isInteger(count) || count < 1 || count > MANUAL_CARD_TX_MAX) return null;
-  return count;
+  return { transactionLimitCents };
 }
 
 export function manualStayCardBody(input: {
@@ -81,7 +67,6 @@ export function manualStayCardBody(input: {
   hotels?: Array<string | null | undefined>;
   reference?: string | null;
   transactionLimitCents?: number;
-  maxTransactionCount?: number;
   currency?: string;
 }) {
   const name = pliantCardNomination({
@@ -112,7 +97,7 @@ export function manualStayCardBody(input: {
   const perTransaction = input.transactionLimitCents ?? input.limitCents;
   return {
     organizationId: input.organizationId,
-    cardConfig: "PLIANT_VIRTUAL" as const,
+    cardConfig: PLIANT_SINGLE_USE,
     label: caption?.label || name.label,
     purpose: caption?.purpose || name.label,
     customFirstName: name.customFirstName,
@@ -120,7 +105,6 @@ export function manualStayCardBody(input: {
     limit: money,
     transactionLimit: { value: perTransaction, currency },
     limitRenewFrequency: "TOTAL" as const,
-    maxTransactionCount: input.maxTransactionCount ?? DEFAULT_PLIANT_TRANSACTIONS,
     validFrom: input.validFrom,
     validTo: input.validTo,
     validTimezone: "Europe/Paris" as const,
@@ -141,6 +125,7 @@ export function manualStayCardDraft(input: {
   hotels?: Array<string | null | undefined>;
   reference?: string | null;
   transactionAmount?: string;
+  /** Ignoré. La carte est à usage unique : un nombre de transactions n’est pas envoyé. */
   transactionCount?: string;
   currency?: string;
 }): { error: string } | { body: ReturnType<typeof manualStayCardBody> } {
@@ -149,14 +134,13 @@ export function manualStayCardDraft(input: {
   const lastName = input.lastName.trim();
   if (limitCents == null) return { error: "Indiquez un montant en euros." as const };
   if (!firstName || !lastName) return { error: "Indiquez le nom et le prénom." as const };
-  const asked = input.transactionAmount != null || input.transactionCount != null;
-  const rules = asked
-    ? cardTransactionRules({
-        limitCents,
-        transactionAmount: input.transactionAmount || "",
-        transactionCount: (input.transactionCount || "").trim() || String(DEFAULT_PLIANT_TRANSACTIONS),
-      })
-    : null;
+  const rules =
+    input.transactionAmount != null
+      ? cardTransactionRules({
+          limitCents,
+          transactionAmount: input.transactionAmount,
+        })
+      : null;
   if (rules && "error" in rules) return { error: rules.error };
   return {
     body: manualStayCardBody({
@@ -173,7 +157,6 @@ export function manualStayCardDraft(input: {
       hotels: input.hotels,
       reference: input.reference,
       transactionLimitCents: rules?.transactionLimitCents,
-      maxTransactionCount: rules?.maxTransactionCount,
       currency: input.currency,
     }),
   };

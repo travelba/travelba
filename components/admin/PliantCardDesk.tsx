@@ -4,7 +4,6 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StayCard } from "@/components/crm/StayCard";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "@/lib/crm/pliant-controls";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { pliantSignedCents, pliantStatusLabel } from "@/lib/crm/pliant-tx";
 import type { PliantSpendLine } from "@/lib/crm/pliant-cards";
@@ -92,17 +91,11 @@ export function PliantCardDesk({
   const [limit, setLimit] = useState(ceilingCents != null ? (ceilingCents / 100).toFixed(2).replace(".", ",") : "");
   const [note, setNote] = useState("");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionCountInput, setTransactionCountInput] = useState(String(DEFAULT_PLIANT_TRANSACTIONS));
   const ceilingLabel = ceilingCents != null && ceilingCents > 0 ? formatMoney(ceilingCents / 100, currency) : null;
   const issuedTransactions = issuedTransactionLine(transactionCount, transactionLimitCents, currency);
   const draftCeiling = parseEurosToCents(limit);
   const draftAmount = parseEurosToCents(transactionAmount);
-  const draftCount = Number(transactionCountInput.replace(/\s/g, ""));
-  const draftTransactions = issuedTransactionLine(
-    Number.isInteger(draftCount) && draftCount > 0 ? draftCount : null,
-    draftAmount,
-    currency
-  );
+  const draftTransactions = issuedTransactionLine(null, draftAmount, currency);
 
   async function post(body: Record<string, unknown>, failure: string) {
     setBusy(true);
@@ -167,7 +160,7 @@ export function PliantCardDesk({
             </div>
           ) : (
             <p className="mt-4 text-sm text-white/70">
-              Indiquez le plafond, le montant par transaction et le nombre de transactions.
+              Indiquez le plafond et le montant de l’achat. La carte est à usage unique.
             </p>
           )}
         </div>
@@ -229,7 +222,6 @@ export function PliantCardDesk({
                 limit,
                 designation: note,
                 transactionAmount,
-                transactionCount: transactionCountInput,
               },
               "Pliant n’a pas créé la carte."
             );
@@ -247,24 +239,13 @@ export function PliantCardDesk({
             />
           </label>
           <label className="text-sm text-[var(--admin-navy)]">
-            Montant par transaction
+            Montant de l’achat
             <input
               className="mt-1 w-36 rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm outline-none focus:border-[#0B192C]"
               inputMode="decimal"
               value={transactionAmount}
               onChange={(event) => setTransactionAmount(event.target.value)}
-              aria-label="Montant par transaction"
-              required
-            />
-          </label>
-          <label className="text-sm text-[var(--admin-navy)]">
-            Nombre de transactions
-            <input
-              className="mt-1 w-36 rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm outline-none focus:border-[#0B192C]"
-              inputMode="numeric"
-              value={transactionCountInput}
-              onChange={(event) => setTransactionCountInput(event.target.value)}
-              aria-label="Nombre de transactions"
+              aria-label="Montant de l’achat"
               required
             />
           </label>

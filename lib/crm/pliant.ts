@@ -12,7 +12,13 @@ import {
   type PliantTokenStore,
 } from "./pliant-auth";
 import { pliantOtpToken, pliantPciWidgetUrl } from "./pliant-pci";
-import { emptyPliantCardControls, pliantControlsAreOpen, pliantIssuePayload } from "./pliant-controls";
+import {
+  emptyPliantCardControls,
+  PLIANT_SINGLE_USE,
+  pliantConfigIsSingleUse,
+  pliantControlsAreOpen,
+  pliantIssuePayload,
+} from "./pliant-controls";
 import {
   annotatePliantPayload,
   pliantAvailableLimit,
@@ -201,7 +207,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
   const resolved = await resolvePliantIssue({
     organizationId: raw.organizationId || process.env.PLIANT_ORGANIZATION_ID || "",
     cardholderId: cardholderId || process.env.PLIANT_CARDHOLDER_ID || "",
-    cardConfig: raw.cardConfig || "PLIANT_VIRTUAL",
+    cardConfig: raw.cardConfig || PLIANT_SINGLE_USE,
   });
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${resolved.cardholderId}`, {
@@ -269,7 +275,13 @@ async function resolvePliantIssue(preferred: { organizationId: string; cardholde
   const available = await pliantJson(`/cards/available-cards?organizationId=${encodeURIComponent(organizationId)}`);
   const configs = Array.isArray(available?.cardConfigs) ? available.cardConfigs : null;
   const cardConfig = configs ? pickTravelConfig(preferred.cardConfig, configs) : preferred.cardConfig;
-  if (!cardConfig) throw new Error("Pliant : la configuration de carte est introuvable.");
+  if (!cardConfig) {
+    throw new Error(
+      pliantConfigIsSingleUse(preferred.cardConfig)
+        ? "Pliant : la carte à usage unique n’est pas disponible sur ce compte."
+        : "Pliant : la configuration de carte est introuvable."
+    );
+  }
   return { organizationId, cardholderId, cardConfig };
 }
 
@@ -438,10 +450,16 @@ export async function readPliantCardFace(cardId: string) {
 export async function setPliantCardLimit(
   cardId: string,
   limit: { value: number; currency: string },
-  count: number,
+  count: number | null,
   transactionLimit?: { value: number; currency: string }
 ) {
   const token = await accessToken();
+  const payload: Record<string, unknown> = {
+    limit,
+    transactionLimit: transactionLimit || limit,
+    limitRenewFrequency: "TOTAL",
+  };
+  if (typeof count === "number" && count >= 1) payload.maxTransactionCount = count;
   const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
     method: "PATCH",
     signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
@@ -450,12 +468,7 @@ export async function setPliantCardLimit(
       "content-type": "application/json",
       "Pliant-API-Version": "2.1.0",
     },
-    body: JSON.stringify({
-      limit,
-      transactionLimit: transactionLimit || limit,
-      limitRenewFrequency: "TOTAL",
-      maxTransactionCount: count,
-    }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Pliant n’a pas modifié le plafond.");
 }

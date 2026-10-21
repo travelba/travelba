@@ -10,7 +10,6 @@ import { McpWriteError } from "./mcp-write";
 import { pliantDesignation } from "./eta-il-fee";
 import { hotelDisplayName } from "./carnet";
 import { rememberPliantCard } from "./pliant-card-run";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
 import { issuePliantCard, lockPliantCard, pliantConfigured, readPliantCardFace, readPliantCardSecrets, unlockPliantCard } from "./pliant";
 import { isActiveItem, type CrmBookingItem } from "./types";
 
@@ -19,7 +18,6 @@ type Admin = { from: (table: string) => any };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_MAJOR = 100_000;
-const MAX_TRANSACTIONS = 20;
 
 type CardKind = "creation" | "reveal" | "blocage" | "deblocage";
 type CardOutcome = "ok" | "refuse" | "introuvable" | "invalide" | "choix" | "erreur";
@@ -101,15 +99,6 @@ function currencyOf(value: unknown) {
   if (!raw) return "EUR";
   const code = raw.toUpperCase();
   return /^[A-Z]{3}$/.test(code) ? code : null;
-}
-
-function transactionCount(value: unknown) {
-  if (value == null || value === "") return DEFAULT_PLIANT_TRANSACTIONS;
-  const raw = typeof value === "number" ? String(value) : clean(value);
-  if (!/^\d+$/.test(raw)) return null;
-  const count = Number(raw);
-  if (!Number.isInteger(count) || count < 1 || count > MAX_TRANSACTIONS) return null;
-  return count;
 }
 
 function sameId(left: string, right: string) {
@@ -257,7 +246,6 @@ export async function createPliantCard(
   const label = pliantDesignation(input.nom);
   const limitCents = major(input.plafond);
   const currency = currencyOf(input.devise);
-  const count = transactionCount(input.transactions);
   const perTx = input.montant_transaction == null || input.montant_transaction === "" ? limitCents : major(input.montant_transaction);
   const auditBase = {
     actor: access.actor,
@@ -277,11 +265,10 @@ export async function createPliantCard(
     await writeCardAudit(admin, { ...auditBase, outcome: "invalide" });
     return { message: "Indiquez un identifiant de dossier ou une référence." };
   }
-  if (query.kind === "invalid" || !label || !currency || count == null) {
+  if (query.kind === "invalid" || !label || !currency) {
     await writeCardAudit(admin, { ...auditBase, outcome: "invalide" });
     if (!label) return { message: "Indiquez le nom de la carte." };
     if (!currency) return { message: "Devise inconnue." };
-    if (count == null) return { message: `Le nombre de transactions va de 1 à ${MAX_TRANSACTIONS}.` };
     return { message: "Identifiant inconnu." };
   }
   if (limitCents == null) {
@@ -356,7 +343,6 @@ export async function createPliantCard(
     hotels: context.hotels,
     reference: context.reference,
     transactionLimitCents: perTx,
-    maxTransactionCount: count,
     currency,
   });
 
@@ -407,7 +393,7 @@ export async function createPliantCard(
     last_name: named.lastName,
     limit_cents: body.limit.value,
     transaction_limit_cents: body.transactionLimit.value,
-    max_transaction_count: body.maxTransactionCount,
+    max_transaction_count: null,
     currency: body.limit.currency,
     valid_from: body.validFrom,
     valid_to: body.validTo,
@@ -440,7 +426,7 @@ export async function createPliantCard(
     status: "active",
     limit_manual: true,
     transaction_limit_cents: body.transactionLimit.value,
-    max_transaction_count: body.maxTransactionCount,
+    max_transaction_count: null,
   });
 
   await writeCardAudit(admin, {
@@ -465,7 +451,6 @@ export async function createPliantCard(
     titulaire: holder(named.firstName, named.lastName),
     plafond: majorFromCents(body.limit.value),
     devise: body.limit.currency,
-    transactions: body.maxTransactionCount,
     montant_transaction: majorFromCents(body.transactionLimit.value),
     valable_du: body.validFrom,
     valable_au: body.validTo,

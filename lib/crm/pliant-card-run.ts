@@ -18,7 +18,7 @@ import {
   setPliantCardLimit,
   unlockPliantCard,
 } from "./pliant";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
+import { PLIANT_SINGLE_USE } from "./pliant-controls";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Admin = { from: (table: string) => any };
@@ -94,7 +94,7 @@ export async function setRememberedCardLimit(
   admin: Admin,
   cardId: string,
   limit: { value: number; currency: string },
-  count: number,
+  count: number | null,
   manual: boolean
 ) {
   if (manual) return;
@@ -199,14 +199,13 @@ export async function issueCustomerPliantCard(
   const rules = cardTransactionRules({
     limitCents: input.limitCents,
     transactionAmount: input.transactionAmount || "",
-    transactionCount: input.transactionCount?.trim() || String(DEFAULT_PLIANT_TRANSACTIONS),
   });
   if ("error" in rules) throw new Error(rules.error);
   const today = parisIsoDate(new Date());
   const money = { value: input.limitCents, currency: input.currency };
   const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
-    cardConfig: "PLIANT_VIRTUAL",
+    cardConfig: PLIANT_SINGLE_USE,
     label: caption?.label || designation || name.label,
     purpose: caption?.purpose || designation || name.label,
     customFirstName: name.customFirstName,
@@ -214,7 +213,6 @@ export async function issueCustomerPliantCard(
     limit: money,
     transactionLimit: { value: rules.transactionLimitCents, currency: input.currency },
     limitRenewFrequency: "TOTAL",
-    maxTransactionCount: rules.maxTransactionCount,
     validFrom: today,
     validTo: addIsoDays(today, 365),
     validTimezone: "Europe/Paris",
@@ -232,7 +230,7 @@ export async function issueCustomerPliantCard(
     status: "active",
     limit_manual: true,
     transaction_limit_cents: rules.transactionLimitCents,
-    max_transaction_count: rules.maxTransactionCount,
+    max_transaction_count: null,
   });
   return { cardId: issued.cardId, created: true as const };
 }
@@ -392,11 +390,11 @@ async function rememberedTransactionRules(admin: Admin, cardId: string, limitCen
     const count = numberOrNull(row?.max_transaction_count);
     const tx = numberOrNull(row?.transaction_limit_cents);
     return {
-      count: count != null && count >= 1 ? count : 20,
+      count: count != null && count >= 1 ? count : null,
       transactionLimitCents: tx != null && tx > 0 ? Math.min(tx, limitCents) : limitCents,
     };
   } catch {
-    return { count: 20, transactionLimitCents: limitCents };
+    return { count: null, transactionLimitCents: limitCents };
   }
 }
 

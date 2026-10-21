@@ -370,7 +370,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée une carte virtuelle Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Visa). Plafond obligatoire, en euros par défaut. Deux transactions par défaut (20 au plus si transactions est précisé). Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. Le paramètre transactions ne pose aucun blocage. Elle est rattachée au dossier pour les débits. Ne renvoie pas le numéro : lire_carte_pliant. Réservé à l’assistant autorisé.",
+      "Crée une carte Pliant à usage unique sur le dossier (dossier_id ou reference), au nom indiqué (ex. Visa). Plafond obligatoire, en euros par défaut. Un seul achat : un contrôle de passerelle ne compte pas. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. Le paramètre transactions est ignoré. Elle est rattachée au dossier pour les débits. Ne renvoie pas le numéro : lire_carte_pliant. Réservé à l’assistant autorisé.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0082"),
@@ -380,7 +380,7 @@ export const MCP_TOOLS: ToolDef[] = [
       transactions: z
         .union([z.number(), z.string()])
         .optional()
-        .describe("Nombre de paiements. Défaut 2, maximum 20. Ne pose aucune restriction"),
+        .describe("Ignoré. La carte est à usage unique : un nombre de transactions n’est pas envoyé"),
       montant_transaction: z
         .union([z.number(), z.string()])
         .optional()

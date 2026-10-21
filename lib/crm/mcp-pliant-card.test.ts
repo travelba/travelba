@@ -208,7 +208,7 @@ async function silence<T>(run: () => Promise<T>) {
   }
 }
 
-test("creer_carte_pliant émet une carte à deux transactions rattachée au dossier, sans numéro", async () => {
+test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, sans numéro", async () => {
   const state = baseState();
   const { value, lines } = await silence(() =>
     runWithMcpAccess(CARDS, () =>
@@ -222,7 +222,7 @@ test("creer_carte_pliant émet une carte à deux transactions rattachée au doss
   assert.equal(value.titulaire, "Camille Martin");
   assert.equal(value.plafond, 10);
   assert.equal(value.devise, "EUR");
-  assert.equal(value.transactions, 2);
+  assert.equal("transactions" in value, false);
   assert.equal(value.montant_transaction, 10);
   assert.equal(value.dossier_id, BOOKING);
   assert.equal(value.reference, "TB-2026-0082");
@@ -235,7 +235,7 @@ test("creer_carte_pliant émet une carte à deux transactions rattachée au doss
     customFirstName: string;
     customLastName: string;
     cardConfig: string;
-    maxTransactionCount: number;
+    maxTransactionCount?: number;
     limit: { value: number; currency: string };
     transactionLimit: { value: number; currency: string };
     cardControls?: unknown;
@@ -246,8 +246,8 @@ test("creer_carte_pliant émet une carte à deux transactions rattachée au doss
   assert.equal(body.customFirstName, "Camille");
   assert.equal(body.customLastName, "Martin");
   assert.equal(body.label.includes("Camille"), false);
-  assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
-  assert.equal(body.maxTransactionCount, 2);
+  assert.equal(body.cardConfig, "PLIANT_SINGLE_USE");
+  assert.equal(Object.hasOwn(body, "maxTransactionCount"), false);
   assert.deepEqual(body.limit, { value: 1000, currency: "EUR" });
   assert.deepEqual(body.transactionLimit, { value: 1000, currency: "EUR" });
   assert.equal(Object.hasOwn(body, "cardControls"), false);
@@ -258,7 +258,7 @@ test("creer_carte_pliant émet une carte à deux transactions rattachée au doss
   assert.equal(state.registry[0]?.booking_id, BOOKING);
   assert.equal(state.registry[0]?.customer_id, CLIENT);
   assert.equal(state.registry[0]?.limit_manual, true);
-  assert.equal(state.registry[0]?.max_transaction_count, 2);
+  assert.equal(state.registry[0]?.max_transaction_count, null);
 
   const audit = state.audits.at(-1);
   assert.equal(audit?.kind, "creation");
@@ -275,7 +275,7 @@ test("creer_carte_pliant émet une carte à deux transactions rattachée au doss
   assert.equal(blob.includes(CVV), false);
 });
 
-test("transactions précisé garde le nombre et n’ajoute aucun blocage", async () => {
+test("transactions précisé est ignoré et n’ajoute aucun blocage", async () => {
   const state = baseState();
   const value = await runWithMcpAccess(CARDS, () =>
     createPliantCard(
@@ -285,11 +285,11 @@ test("transactions précisé garde le nombre et n’ajoute aucun blocage", async
     )
   );
   if (!("cree" in value) || !value.cree) assert.fail("carte non créée");
-  assert.equal(value.transactions, 5);
+  assert.equal("transactions" in value, false);
   assert.equal(value.montant_transaction, 4);
   assert.equal(value.plafond, 10);
   const body = state.issued[0] as {
-    maxTransactionCount: number;
+    maxTransactionCount?: number;
     limit: { value: number };
     transactionLimit: { value: number };
     cardConfig: string;
@@ -300,10 +300,10 @@ test("transactions précisé garde le nombre et n’ajoute aucun blocage", async
     acceptanceMethods?: unknown;
     cardControls?: unknown;
   };
-  assert.equal(body.maxTransactionCount, 5);
+  assert.equal(Object.hasOwn(body, "maxTransactionCount"), false);
   assert.equal(body.limit.value, 1000);
   assert.equal(body.transactionLimit.value, 400);
-  assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
+  assert.equal(body.cardConfig, "PLIANT_SINGLE_USE");
   assert.equal(body.currencies, undefined);
   assert.equal(body.countries, undefined);
   assert.equal(body.merchants, undefined);
@@ -349,7 +349,7 @@ test("un plafond manquant ou trop large ne crée pas de carte", async () => {
   const refused = await runWithMcpAccess(CARDS, () =>
     createPliantCard({ reference: "TB-2026-0082", nom: "Visa", plafond: 100001, transactions: 21 }, fakeAdmin(wide), deps(wide))
   );
-  assert.equal("message" in refused && refused.message, "Le nombre de transactions va de 1 à 20.");
+  assert.equal("message" in refused && refused.message, "Le plafond dépasse 100 000.");
   assert.equal(wide.issued.length, 0);
 });
 
