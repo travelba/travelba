@@ -656,6 +656,50 @@ test("prix_total est le total du groupe, et modifier_vol garde l’heure locale"
     () => updateVol({ dossier_id: dossier.id, carte_id: inbound.id, voyageurs: [] }, client),
     /au moins un voyageur/
   );
+
+  const warned = db.tables.crm_booking_items.find((row) => row.id === outbound.id);
+  assert.ok(warned);
+  warned.details = {
+    ...(warned.details as Record<string, unknown>),
+    city_from: "Paris",
+    city_to: "Bangkok",
+    needs_review: true,
+    review_reason: "Les codes IATA de provenance et de destination ne sont pas imprimés",
+  };
+  warned.title = "Bangkok";
+  const cleared = await updateVol(
+    { dossier_id: dossier.id, carte_id: outbound.id, depart_iata: "CDG", arrivee_iata: "BKK" },
+    client
+  );
+  assert.equal(cleared.titre, "Paris → Bangkok");
+  const clearedRow = db.tables.crm_booking_items.find((row) => row.id === outbound.id);
+  assert.equal((clearedRow?.details as Record<string, unknown>).needs_review, undefined);
+  assert.equal((clearedRow?.details as Record<string, unknown>).review_reason, undefined);
+  assert.equal((clearedRow?.details as Record<string, unknown>).from, "CDG");
+  assert.equal((clearedRow?.details as Record<string, unknown>).to, "BKK");
+
+  const other = db.tables.crm_booking_items.find((row) => row.id === inbound.id);
+  assert.ok(other);
+  other.details = {
+    ...(other.details as Record<string, unknown>),
+    needs_review: true,
+    review_reason: "Horaire illisible.",
+  };
+  const keptDoubt = await updateVol(
+    { dossier_id: dossier.id, carte_id: inbound.id, depart_iata: "HKT", arrivee_iata: "CDG" },
+    client
+  );
+  assert.equal(keptDoubt.notifie, false);
+  const keptDoubtRow = db.tables.crm_booking_items.find((row) => row.id === inbound.id);
+  assert.equal((keptDoubtRow?.details as Record<string, unknown>).needs_review, true);
+  assert.equal((keptDoubtRow?.details as Record<string, unknown>).review_reason, "Horaire illisible.");
+  await updateVol(
+    { dossier_id: dossier.id, carte_id: inbound.id, effacer_avertissement: true },
+    client
+  );
+  const erased = db.tables.crm_booking_items.find((row) => row.id === inbound.id);
+  assert.equal((erased?.details as Record<string, unknown>).needs_review, undefined);
+  assert.equal((erased?.details as Record<string, unknown>).review_reason, undefined);
 });
 
 test("ajouter_accueil_vip exige un vol et suit son horaire", async () => {

@@ -5,22 +5,10 @@ import type { CrmBookingItem } from "@/lib/crm/types";
 export const LE_PUBLIC_HOTEL = "https://api.littleemperors.com/api/hotels";
 
 const PHOTO_CAP = 8;
-const FILLER = new Set([
-  "room",
-  "rooms",
-  "chambre",
-  "king",
-  "kings",
-  "twin",
-  "twins",
-  "queen",
-  "double",
-  "doubles",
-  "single",
-  "bed",
-  "beds",
-  "bedroom",
-]);
+/** Mots de structure. King, Twin, Queen et Double restent : ils séparent deux catégories. */
+const GENERIC = new Set(["room", "rooms", "chambre", "bed", "beds", "bedroom"]);
+const ROOMISH =
+  /\b(room|rooms|chambre|suite|suites|villa|villas|king|queen|twin|twins|double|doubles|deluxe|superior|premier|studio|bedroom|loft|penthouse)\b/;
 const HOTEL_SPACE =
   /^(exterior|exterieur|lobby|hall|reception|swimming pool|pool|piscine|beach|plage|garden|jardin|spa|facade|facade hotel)$/;
 const SPACE_RANK = ["exterior", "exterieur", "facade", "lobby", "hall", "reception", "garden", "jardin", "beach", "plage", "spa", "piscine", "pool", "swimming pool"];
@@ -133,21 +121,24 @@ function roomNamesOf(item: HotelLike) {
   return names;
 }
 
-function significantTokens(value: string) {
+/** Catégorie, une fois retirés Room / chambre / bed et les chiffres. Le type de lit reste. */
+export function categoryKey(value: string) {
   return fold(value)
     .split(" ")
-    .filter((token) => token && !FILLER.has(token) && !/^\d+$/.test(token));
+    .filter((token) => token && !GENERIC.has(token) && !/^\d+$/.test(token))
+    .join(" ");
 }
 
 /**
- * Même catégorie une fois retirés la casse et les mots de lit (Room, King, Twin).
- * « Deluxe Marina Bay King » n’est pas « Deluxe Room » ni « Deluxe Harbour King ».
+ * Même catégorie. La casse et le mot Room ne comptent pas.
+ * King, Twin, Queen ou Double comptent : Terrace Queen n’est pas Terrace King,
+ * et Deluxe Room n’est pas un Deluxe Marina Bay King.
  */
 export function roomCaptionMatches(booked: string, caption: string) {
-  const left = significantTokens(booked);
-  const right = significantTokens(caption);
-  if (!left.length || !right.length) return false;
-  return left.join(" ") === right.join(" ");
+  const left = categoryKey(booked);
+  const right = categoryKey(caption);
+  if (!left || !right) return false;
+  return left === right;
 }
 
 function unique(lines: string[]) {
@@ -201,13 +192,18 @@ function isOtherRoom(caption: string, booked: string[], catalogRooms: string[]) 
   return catalogRooms.some((room) => roomCaptionMatches(room, caption) || fold(room) === fold(caption));
 }
 
+function looksLikeRoom(caption: string) {
+  return ROOMISH.test(fold(caption));
+}
+
 function hotelFallback(images: GalleryImage[], booked: string[], catalogRooms: string[]) {
   const spaces: GalleryImage[] = [];
   const atmosphere: GalleryImage[] = [];
   for (const image of images) {
-    if (isOtherRoom(image.caption, booked, catalogRooms)) continue;
+    if (!image.caption) continue;
+    if (booked.some((room) => roomCaptionMatches(room, image.caption))) continue;
+    if (isOtherRoom(image.caption, booked, catalogRooms) || looksLikeRoom(image.caption)) continue;
     if (HOTEL_SPACE.test(fold(image.caption))) spaces.push(image);
-    else if (!image.caption || !catalogRooms.length) atmosphere.push(image);
     else atmosphere.push(image);
   }
   const picked = [...spaces, ...atmosphere].sort((a, b) => spaceRank(a.caption) - spaceRank(b.caption));
@@ -251,7 +247,8 @@ function clockFromShortInfo(row: Record<string, unknown>, key: string) {
 
 /**
  * D’abord toutes les photos de la catégorie réservée, puis l’hôtel.
- * Une autre catégorie du catalogue (Deluxe Room pour un Deluxe Marina Bay King) ne compte pas.
+ * Une autre catégorie ne compte pas, même si seul le lit change
+ * (Deluxe Room pour un Deluxe Marina Bay King, Terrace King pour une Terrace Queen).
  * Sans photo de cette catégorie, façade et hall avant la piscine.
  */
 export function presentationFromLeHotel(payload: unknown, roomNames: string[]): HotelPresentation {

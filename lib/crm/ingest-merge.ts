@@ -12,6 +12,7 @@ import {
 } from "./ingest-types";
 import { mergeExtractItems } from "./item-match";
 import { QUOTE_REVIEW_REASON } from "./review-doubt";
+import { completeFlightRoutes } from "./flight-route";
 
 export type FileExtractResult = {
   name: string;
@@ -188,6 +189,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     [merged.end_date, ...merged.items.map((item) => item.end_at || item.start_at)],
     "max"
   );
+  merged.items = completeFlightRoutes(merged.items);
 
   return { extract: sanitizeExtractedPrices(merged), warnings };
 }

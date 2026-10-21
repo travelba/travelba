@@ -3,6 +3,7 @@ import WebSocket from "ws";
 import { createBookingSchema, isIsoDate, parseBody } from "@/lib/crm/admin-schemas";
 import { dossierFlightStamp, timezoneForIata } from "@/lib/crm/airport-time";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
+import { clearPrintedIataDoubt } from "@/lib/crm/flight-route";
 import { composeAccueilVip, parseAccueilVipService, readAccueilVipLegs, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
@@ -1089,6 +1090,15 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
   }
 
   stampFlightZones(details);
+  clearPrintedIataDoubt(details);
+  const routeFrom = detailText(details, "city_from");
+  const routeTo = detailText(details, "city_to");
+  const currentTitle = typeof patch.title === "string" ? patch.title : typeof item.title === "string" ? item.title : "";
+  if (routeFrom && routeTo && !currentTitle.includes("→")) patch.title = `${routeFrom} → ${routeTo}`;
+  if (flag(input.effacer_avertissement, "Effacer l’avertissement")) {
+    delete details.needs_review;
+    delete details.review_reason;
+  }
   if (sansFrais || (await freeFlights(db, booking.id, prix, prixTotal, carteId))) {
     await dismissTicketing(db, booking.id);
   }

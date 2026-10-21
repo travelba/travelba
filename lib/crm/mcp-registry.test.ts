@@ -108,6 +108,9 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.cardSecrets, undefined);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.description || "", /debloquer/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /carte_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_voyage")?.description || "", /carte_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);
