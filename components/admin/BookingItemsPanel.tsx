@@ -39,6 +39,9 @@ import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
+import { HotelGallery } from "@/components/crm/HotelGallery";
+import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
+import { hotelPhotos } from "@/lib/crm/hotel-gallery";
 import { AccueilVipForm } from "@/components/admin/AccueilVipForm";
 import { composeAccueilVip, accueilVipQuietLine, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -881,7 +884,13 @@ export function BookingItemsPanel({
                   </div>
               </div>
               {openStep === item.id ? (
-                <div className="mt-3 border-t border-[var(--border)] pt-3">
+                <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
+                  {item.kind === "hotel" && hotelPhotos(item).length ? (
+                    <div className="overflow-hidden rounded-2xl">
+                      <HotelGallery photos={hotelPhotos(item)} title={stepTitle(item)} />
+                    </div>
+                  ) : null}
+                  {item.kind === "hotel" ? <HotelStayFacts item={item} /> : null}
                   <ItemAttachments
                     bookingId={bookingId}
                     itemId={item.id}

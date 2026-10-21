@@ -737,7 +737,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_hotel",
     write: true,
     description:
-      "Ajoute une carte hôtel : nom, ville, pays, dates, chambre, pension, inclus, confirmation, fournisseur, prix (THB compris) et texte d’annulation s’il est indiqué. Le séjour caché ne débite pas. Aucun message.",
+      "Ajoute une carte hôtel : nom, ville, pays, dates, chambre, pension, inclus, confirmation, fournisseur, prix (THB compris), adresse, heures d’arrivée et de départ, photos https et texte d’annulation s’ils sont indiqués. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -754,6 +754,22 @@ export const MCP_TOOLS: ToolDef[] = [
       prix: z.union([z.number(), z.string()]).optional().describe("Prix du séjour hôtel"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. THB reste THB"),
       annulation: z.string().trim().max(2000).optional().describe("Conditions d’annulation, seulement si elles sont connues"),
+      adresse: z.string().trim().max(240).optional().describe("Adresse de l’hôtel"),
+      heure_arrivee: z.string().trim().max(5).optional().describe("Heure d’arrivée HH:mm, seulement si elle est connue"),
+      heure_depart: z.string().trim().max(5).optional().describe("Heure de départ HH:mm, seulement si elle est connue"),
+      photos: z
+        .array(
+          z.union([
+            z.string().trim().max(500),
+            z.object({
+              url: z.string().trim().max(500).describe("Adresse https de la photo"),
+              legende: z.string().trim().max(120).optional().describe("Légende"),
+            }),
+          ])
+        )
+        .max(8)
+        .optional()
+        .describe("Jusqu’à huit photos https de la chambre ou de l’hôtel"),
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
     },
     run: (args) => addHotel(args),

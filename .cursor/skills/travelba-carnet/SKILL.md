@@ -70,6 +70,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 ## Cartes
 
 - **Un hôtel** par établissement même si 2 chambres / 2 réf. → `details.rooms[]`. `title` = nom d’hôtel, pas la ville.
+- Carte hôtel Little Emperors : galerie de la chambre réservée (`images_gallery` du catalogue public, légende = nom de chambre). Sans photo de cette chambre, photos de l’hôtel (façade, hall, piscine), jamais une autre chambre. Heures d’arrivée et de départ seulement si `short_info` les donne. Adresse, avantages, conditions, nuits et voyageurs viennent de la réservation déjà stockée. Aucun coût, aucune marge, aucune commission sur la carte. Une carte saisie à la main sans ces champs reste comme avant. `ajouter_hotel` accepte `photos`, `adresse`, `heure_arrivee`, `heure_depart`.
 - Cartes **à la main** autorisées (mêmes types que l’ingest).
 - Réimport **même réf.** (vol : réf. + n° + date) = **remplace** la carte, n’ajoute pas un doublon.
 - Illisible : on **enregistre**. Le bandeau nomme l’étape et ce qui est douteux (`details.needs_review`, phrase `details.review_reason`, sinon le fichier option ou le nom qui est la ville). Pas un refus global, pas une phrase qui ne dit que « lecture douteuse ».

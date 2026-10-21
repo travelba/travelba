@@ -264,6 +264,10 @@ describe("little emperors staging client", () => {
     assert.equal(withSite.items[0]?.details?.website, "https://www.maison-test.example/hotel");
     assert.equal(withSite.items[0]?.details?.le_hotel_id, cancelled.hotel_id);
     assert.deepEqual(withSite.items[0]?.details?.included, ["Petit-déjeuner offert"]);
+    assert.deepEqual(withSite.items[0]?.details?.conditions, ["Free cancellation before 16:00 on 1 Oct"]);
+    assert.equal(withSite.items[0]?.details?.rooms?.[0]?.guests, "Nico Santos");
+    assert.equal(withSite.items[0]?.details?.rooms?.[0]?.type, "Superior Double-Double");
+    assert.equal(JSON.stringify(withSite.items[0]).includes("243.83"), false);
     assert.equal(withSite.items[0]?.details?.phone, undefined);
     assert.equal(withSite.items[0]?.details?.email, undefined);
     assert.equal(canRemoteCancel({ is_cancellable: false }), false);
