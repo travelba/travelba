@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   findHotelBookingCard,
+  findHotelExactStay,
   findHotelSameStay,
   findMatchingItem,
+  joinConfirmationRefs,
   hotelMatchKeepsStay,
   hotelSameStay,
   hotelRefsShareBooking,
@@ -161,6 +163,7 @@ describe("itemMatchKey", () => {
     };
     assert.equal(findHotelSameStay(existing, incoming), null);
     assert.equal(findMatchingItem(existing, incoming), null);
+    assert.equal(findHotelExactStay(existing, incoming)?.title, "Hotel Eden");
   });
 
   it("ne choisit pas entre deux hôtels au même nom", () => {
@@ -237,6 +240,9 @@ describe("itemMatchKey", () => {
     );
     assert.equal(kept.title, "Four Seasons Hotel Milan");
     assert.equal(kept.confirmation_ref, "64570SH046795");
+    assert.equal(joinConfirmationRefs("HTL99881", "6504SG013242"), "HTL99881;6504SG013242");
+    assert.equal(joinConfirmationRefs("6504SG013242", "htl99881"), "6504SG013242;htl99881");
+    assert.equal(joinConfirmationRefs("64570SH046795", "64570"), "64570SH046795");
     assert.equal(kept.end_at, "2026-12-09");
     assert.deepEqual(kept.details.included, ["Petit-déjeuner", "Surclassement"]);
     assert.equal(kept.details.hotel_name, "Four Seasons Hotel Milan");

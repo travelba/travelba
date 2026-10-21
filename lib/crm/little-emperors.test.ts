@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   decideLittleEmperorsAuto,
   leBookingExtract,
+  leHotelStampPatch,
   leItemsForHotelStamp,
   suggestLittleEmperorsBooking,
 } from "./little-emperors-match";
@@ -436,6 +437,114 @@ describe("little emperors staging client", () => {
       { confirmation_number: "64570", hotel_name: "Nobu Hotel London Portman Square", hotel_id: 9626 }
     );
     assert.deepEqual(ids, ["room", "named"]);
+
+    const hotelNumber = {
+      id: "hotel-conf",
+      title: "Nobu",
+      confirmation_ref: "HTL99881",
+      start_at: "2026-11-02",
+      end_at: "2026-11-05",
+      details: { hotel_name: "Nobu Hotel London Portman Square", le_hotel_id: 9626 },
+    };
+    const byStay = leItemsForHotelStamp(
+      [hotelNumber],
+      {
+        confirmation_number: "LECONF88",
+        hotel_name: "Nobu Hotel London Portman Square",
+        hotel_id: 9626,
+        check_in: "2026-11-02",
+        check_out: "2026-11-05",
+      }
+    );
+    assert.deepEqual(byStay, ["hotel-conf"]);
+    const otherNight = leItemsForHotelStamp(
+      [{ ...hotelNumber, end_at: "2026-11-06" }],
+      {
+        confirmation_number: "LECONF88",
+        hotel_name: "Nobu Hotel London Portman Square",
+        hotel_id: 9626,
+        check_in: "2026-11-02",
+        check_out: "2026-11-05",
+      }
+    );
+    assert.deepEqual(otherNight, []);
+    const one = leHotelStampPatch(hotelNumber, { confirmation_number: "LECONF88", hotel_id: 9626 }, 1);
+    assert.equal(one.confirmation_ref, "HTL99881;LECONF88");
+    assert.equal(one.details.le_hotel_id, 9626);
+    const many = leHotelStampPatch(hotelNumber, { confirmation_number: "LECONF88", hotel_id: 9626 }, 2);
+    assert.equal(many.confirmation_ref, undefined);
+    assert.equal(many.details.le_hotel_id, 9626);
+  });
+
+  it("relie par hôtel, dates et voyageur quand les numéros diffèrent, et n’en crée pas un second", () => {
+    const booking = parseLeBooking(sample);
+    assert.ok(booking);
+    const nico = {
+      id: "c1",
+      first_name: "Nico",
+      last_name: "Santos",
+      company_name: null,
+      email: "nico@example.com",
+    };
+    const dossier = {
+      id: "b-mail",
+      reference: "TB9",
+      title: "Londres",
+      destination: "London",
+      customer_id: "c1",
+      status: "draft",
+      start_date: "2026-11-02",
+      end_date: "2026-11-05",
+    };
+    const card = {
+      kind: "hotel" as const,
+      title: "Nobu Hotel London Portman Square",
+      confirmation_ref: "HTL99881",
+      start_at: "2026-11-02",
+      end_at: "2026-11-05",
+      details: { hotel_name: "Nobu Hotel London Portman Square", le_hotel_id: booking.hotel_id },
+    };
+    const suggestion = suggestLittleEmperorsBooking(
+      booking,
+      [dossier],
+      new Map([["b-mail", [card]]]),
+      [nico]
+    );
+    assert.equal(suggestion.autoBookingId, "b-mail");
+    assert.equal(suggestion.candidates[0]?.reason, "Hôtel, dates et voyageur");
+    assert.equal(
+      decideLittleEmperorsAuto({ booking, suggestion, customers: [nico] }).kind,
+      "link"
+    );
+
+    const second = { ...dossier, id: "b2", reference: "TB2" };
+    const tied = suggestLittleEmperorsBooking(
+      booking,
+      [dossier, second],
+      new Map([
+        ["b-mail", [card]],
+        ["b2", [{ ...card }]],
+      ]),
+      [nico]
+    );
+    assert.equal(tied.autoBookingId, null);
+    assert.equal(decideLittleEmperorsAuto({ booking, suggestion: tied, customers: [nico] }).kind, "wait");
+
+    const otherGuest = suggestLittleEmperorsBooking(
+      booking,
+      [dossier],
+      new Map([["b-mail", [card]]]),
+      [{ ...nico, first_name: "Ada", last_name: "Lovelace" }]
+    );
+    assert.equal(otherGuest.candidates.length, 0);
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking,
+        suggestion: otherGuest,
+        customers: [{ ...nico, first_name: "Ada", last_name: "Lovelace" }],
+      }).kind,
+      "wait"
+    );
   });
 
   it("la preview enregistre la lecture MyLER, pas les autres secrets", () => {

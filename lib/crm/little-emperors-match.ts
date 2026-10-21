@@ -1,12 +1,15 @@
 import {
   confirmationRefsAlign,
   mergeBookingSuggestions,
+  suggestBookingByHotelStay,
   suggestBookingByReference,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
   type BookingSuggestion,
+  type HotelStayCard,
   type TripBooking,
 } from "@/lib/crm/email-match";
+import { joinConfirmationRefs } from "@/lib/crm/item-match";
 import { catalogNameAgrees, roomsFromStay } from "@/lib/crm/hotel-gallery";
 import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
 import { emptyBookingExtract, type BookingExtract } from "@/lib/crm/ingest-types";
@@ -101,17 +104,29 @@ export function decideLittleEmperorsAuto(input: {
   return { kind: "create", customerId: customer.autoCustomerId };
 }
 
+function stayDay(value: string | null | undefined) {
+  const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] || "";
+}
+
 /** Cartes hôtel du dossier qui reçoivent l’identifiant Little Emperors. Pas le montant. */
 export function leItemsForHotelStamp(
   items: {
     id: string;
     title?: string | null;
     confirmation_ref?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
     details?: Record<string, unknown> | null;
   }[],
-  booking: Pick<LeBooking, "confirmation_number" | "hotel_name" | "hotel_id">
+  booking: Pick<LeBooking, "confirmation_number" | "hotel_name" | "hotel_id"> & {
+    check_in?: string | null;
+    check_out?: string | null;
+  }
 ) {
   const hotelName = (booking.hotel_name || "").trim();
+  const checkIn = stayDay(booking.check_in);
+  const checkOut = stayDay(booking.check_out);
   return items
     .filter((item) => {
       const details = item.details || {};
@@ -119,6 +134,15 @@ export function leItemsForHotelStamp(
       if (booking.hotel_id != null && current != null && current !== "" && Number(current) !== booking.hotel_id) {
         return false;
       }
+      const itemStart = stayDay(item.start_at);
+      const itemEnd = stayDay(item.end_at);
+      const sameDates = Boolean(checkIn && checkOut && itemStart === checkIn && itemEnd === checkOut);
+      const itemName =
+        (typeof details.hotel_name === "string" && details.hotel_name.trim()) || (item.title || "").trim();
+      const sameName = Boolean(itemName && hotelName && catalogNameAgrees(itemName, hotelName));
+      const sameId =
+        booking.hotel_id != null && current != null && current !== "" && Number(current) === booking.hotel_id;
+      if (sameDates && (sameId || sameName)) return true;
       if (confirmationRefsAlign(item.confirmation_ref, booking.confirmation_number)) return true;
       const rooms = Array.isArray(details.rooms) ? details.rooms : [];
       if (
@@ -131,9 +155,7 @@ export function leItemsForHotelStamp(
       ) {
         return true;
       }
-      const itemName =
-        (typeof details.hotel_name === "string" && details.hotel_name.trim()) || (item.title || "").trim();
-      if (!itemName || !hotelName || !catalogNameAgrees(itemName, hotelName)) return false;
+      if (!sameName) return false;
       if (
         item.confirmation_ref &&
         booking.confirmation_number &&
@@ -146,15 +168,49 @@ export function leItemsForHotelStamp(
     .map((item) => item.id);
 }
 
+type LeMatchItem = Pick<CrmBookingItem, "confirmation_ref"> & Partial<HotelStayCard>;
+
+/** Une seule carte : les deux numéros. Plusieurs cartes : on ne choisit pas le numéro. */
+export function leHotelStampPatch(
+  item: { confirmation_ref?: string | null; details?: Record<string, unknown> | null },
+  booking: Pick<LeBooking, "confirmation_number" | "hotel_id">,
+  matchCount: number
+) {
+  const details = { ...(item.details || {}) };
+  if (booking.hotel_id != null && (details.le_hotel_id == null || details.le_hotel_id === "")) {
+    details.le_hotel_id = booking.hotel_id;
+  }
+  if (!details.source_family) details.source_family = "little_emperors";
+  if (matchCount !== 1) return { details };
+  const confirmation_ref = joinConfirmationRefs(item.confirmation_ref, booking.confirmation_number);
+  return confirmation_ref ? { details, confirmation_ref } : { details };
+}
+
 export function suggestLittleEmperorsBooking(
   booking: LeBooking,
   bookings: TripBooking[],
-  itemsByBooking: Map<string, Pick<CrmBookingItem, "confirmation_ref">[]>,
+  itemsByBooking: Map<string, LeMatchItem[]>,
   customers: CustomerLite[]
 ): BookingSuggestion {
   const extract = leBookingExtract(booking);
+  const cards: HotelStayCard[] = [];
+  for (const [bookingId, items] of itemsByBooking) {
+    for (const item of items) {
+      cards.push({
+        booking_id: item.booking_id || bookingId,
+        kind: item.kind,
+        title: item.title,
+        confirmation_ref: item.confirmation_ref,
+        start_at: item.start_at,
+        end_at: item.end_at,
+        details: item.details,
+        lifecycle: item.lifecycle,
+      });
+    }
+  }
   return mergeBookingSuggestions(
     suggestBookingByReference(extract, bookings, itemsByBooking),
+    suggestBookingByHotelStay(extract, bookings, cards, customers),
     suggestBookingByTripSignals(extract, bookings, customers)
   );
 }

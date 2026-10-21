@@ -531,6 +531,81 @@ describe("autoCreatePlan", () => {
       email: null,
     });
   });
+
+  it("ne crée pas un second dossier quand deux séjours ont le même hôtel, les mêmes dates et le même voyageur", () => {
+    const extract = stay();
+    const candidates = [
+      {
+        customer_id: "c1",
+        booking_id: "b1",
+        label: "TB-1",
+        reason: "Hôtel, dates et voyageur",
+        score: 91,
+      },
+      {
+        customer_id: "c1",
+        booking_id: "b2",
+        label: "TB-2",
+        reason: "Hôtel, dates et voyageur",
+        score: 91,
+      },
+    ];
+    const decision = decideEmailIngestAction({
+      extract,
+      suggestedCustomerId: "c1",
+      suggestedBookingId: null,
+      candidates,
+    });
+    assert.equal(decision.kind, "review");
+    const outcome = autoCreatePlan({ extract, decision, candidates });
+    assert.equal(outcome.plan, null);
+    assert.equal(outcome.hold, "review");
+  });
+
+  it("met à jour la carte et ne crée pas quand l’hôtel, les dates et le voyageur désignent un seul séjour", () => {
+    const extract = stay();
+    const candidates = [
+      {
+        customer_id: "c1",
+        booking_id: "b1",
+        label: "TB-1",
+        reason: "Hôtel, dates et voyageur",
+        score: 91,
+      },
+    ];
+    const decision = decideEmailIngestAction({
+      extract,
+      suggestedCustomerId: "c1",
+      suggestedBookingId: "b1",
+      candidates,
+    });
+    assert.equal(decision.kind, "apply");
+    const outcome = autoCreatePlan({
+      extract,
+      decision,
+      candidates,
+      items: [
+        {
+          id: "h1",
+          kind: "hotel",
+          title: "Memmo Alfama",
+          confirmation_ref: "HTL99881",
+          start_at: "2026-11-02",
+          end_at: "2026-11-05",
+          amount: 900,
+          include_in_ledger: false,
+          lifecycle: "active",
+          details: { hotel_name: "Memmo Alfama" },
+        },
+      ],
+    });
+    assert.deepEqual(outcome.plan, {
+      kind: "apply_stay",
+      bookingId: "b1",
+      customerId: "c1",
+      gesture: "replace",
+    });
+  });
 });
 
 describe("runEmailAutoCreate", () => {

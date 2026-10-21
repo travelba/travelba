@@ -52,7 +52,13 @@ import {
   replacementPlan,
   stayDatesFromExtract,
 } from "@/lib/crm/item-lifecycle";
-import { findHotelBookingCard, findMatchingItem, hotelMatchKeepsStay, keptHotelStayFields } from "@/lib/crm/item-match";
+import {
+  findHotelBookingCard,
+  findHotelExactStay,
+  findMatchingItem,
+  hotelMatchKeepsStay,
+  keptHotelStayFields,
+} from "@/lib/crm/item-match";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
@@ -345,6 +351,10 @@ async function upsertItemsAndTravelers(
     };
     let match = findMatchingItem(pool, probe);
     let sameBooking = Boolean(match && hotelMatchKeepsStay(match, probe));
+    if (!match) {
+      match = findHotelExactStay(pool, probe);
+      if (match) sameBooking = true;
+    }
     if (!match && opts?.keepSellingPrice) {
       match = findHotelBookingCard(pool, probe);
       sameBooking = Boolean(match);

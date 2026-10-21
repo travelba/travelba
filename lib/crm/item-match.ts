@@ -1,3 +1,4 @@
+import { catalogNameAgrees } from "@/lib/crm/hotel-gallery";
 import type { BookingItemKind } from "@/lib/crm/types";
 
 export type MatchableItem = {
@@ -177,6 +178,53 @@ export function findHotelSameStay<T extends MatchableItem>(
   return hits.length === 1 ? hits[0] : null;
 }
 
+function leHotelId(item: MatchableItem): number | null {
+  const value = item.details?.le_hotel_id;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return null;
+}
+
+function hotelNamesAgree(a: MatchableItem, b: MatchableItem) {
+  const left = hotelLabels(a);
+  const right = hotelLabels(b);
+  return left.some((name) =>
+    right.some((other) => Boolean(name.trim() && other.trim() && catalogNameAgrees(name, other)))
+  );
+}
+
+/**
+ * Même hôtel (nom ou `le_hotel_id`) et dates exactes.
+ * Deux numéros différents ne se bloquent pas : confirmation hôtel et numéro Little Emperors.
+ * Deux identifiants d’hôtel différents ne se rejoignent pas.
+ */
+export function hotelExactStay(current: MatchableItem, incoming: MatchableItem) {
+  if ((current.kind || "") !== "hotel" || (incoming.kind || "") !== "hotel") return false;
+  const leftStart = day(current.start_at);
+  const rightStart = day(incoming.start_at);
+  const leftEnd = day(current.end_at);
+  const rightEnd = day(incoming.end_at);
+  if (!leftStart || !rightStart || !leftEnd || !rightEnd) return false;
+  if (leftStart !== rightStart || leftEnd !== rightEnd) return false;
+  const leftId = leHotelId(current);
+  const rightId = leHotelId(incoming);
+  if (leftId != null && rightId != null && leftId !== rightId) return false;
+  if (leftId != null && rightId != null) return true;
+  return hotelNamesAgree(current, incoming);
+}
+
+/** Une seule carte a cet hôtel et ces dates. Deux cartes : aucun choix. */
+export function findHotelExactStay<T extends MatchableItem>(
+  existing: T[],
+  incoming: MatchableItem
+): T | null {
+  if ((incoming.kind || "") !== "hotel") return null;
+  const hits = existing.filter((row) => hotelExactStay(row, incoming));
+  return hits.length === 1 ? hits[0] : null;
+}
+
 /** Compléter la carte déjà là : garder le nom, écrire la référence manquante. */
 export function hotelMatchKeepsStay(current: MatchableItem, incoming: MatchableItem) {
   if ((current.kind || "") !== "hotel") return false;
@@ -206,6 +254,35 @@ export function findHotelBookingCard<T extends MatchableItem>(
 
 function filled(value: string | null | undefined) {
   return (value || "").trim();
+}
+
+/**
+ * Les deux numéros restent, dans leur casse d’origine.
+ * `64570` disparaît si `64570SH046795` est déjà là : c’est la même réservation.
+ */
+export function joinConfirmationRefs(a?: string | null, b?: string | null): string | null {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [a, b]) {
+    for (const token of String(raw || "").split(/[;,\s/|]+/)) {
+      const trimmed = token.trim();
+      const key = norm(trimmed);
+      if (key.length < 5 || seen.has(key)) continue;
+      seen.add(key);
+      parts.push(trimmed);
+    }
+  }
+  const roomStems = new Set<string>();
+  for (const token of parts) {
+    const room = norm(token).match(LE_ROOM_REF);
+    if (room) roomStems.add(room[1]);
+  }
+  const kept = parts.filter((token) => {
+    const key = norm(token);
+    return !(roomStems.has(key) && LE_BOOKING_REF.test(key));
+  });
+  if (kept.length) return kept.join(";");
+  return filled(a) || filled(b) || null;
 }
 
 /**
@@ -240,7 +317,7 @@ export function keptHotelStayFields(
   if (included.length) details.included = [...new Set(included)];
   return {
     title: filled(current.title) || filled(incoming.title),
-    confirmation_ref: filled(current.confirmation_ref) || filled(incoming.confirmation_ref) || null,
+    confirmation_ref: joinConfirmationRefs(current.confirmation_ref, incoming.confirmation_ref),
     supplier: filled(current.supplier) || filled(incoming.supplier) || null,
     start_at: filled(current.start_at) || filled(incoming.start_at) || null,
     end_at: filled(current.end_at) || filled(incoming.end_at) || null,

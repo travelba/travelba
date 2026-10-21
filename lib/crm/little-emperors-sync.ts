@@ -6,6 +6,7 @@ import { persistLittleEmperorsHotelContacts } from "@/lib/crm/le-hotel-contacts"
 import {
   decideLittleEmperorsAuto,
   leBookingExtract,
+  leHotelStampPatch,
   leItemsForHotelStamp,
   suggestLittleEmperorsBooking,
   type LeAutoDecision,
@@ -21,7 +22,7 @@ import {
   type LeBooking,
 } from "@/lib/crm/little-emperors";
 import type { LeHotelCatalog } from "@/lib/crm/hotel-contact";
-import { countsAsCarnetCard, type CrmBookingItem, type CrmCustomer } from "@/lib/crm/types";
+import { countsAsCarnetCard, isActiveItem, type CrmBookingItem, type CrmCustomer } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -128,20 +129,39 @@ function hotelCatalogCache(admin: SupabaseClient, fetchImpl?: typeof fetch) {
 }
 
 async function loadMatchContext(admin: SupabaseClient) {
-  const [{ data: bookings }, { data: items }, { data: customers }] = await Promise.all([
+  const [{ data: bookings }, { data: items }, { data: hotels }, { data: customers }] = await Promise.all([
     admin
       .from("crm_bookings")
       .select("id, reference, title, destination, customer_id, status, start_date, end_date")
       .neq("status", "cancelled")
       .is("archived_at", null),
     admin.from("crm_booking_items").select("booking_id, confirmation_ref"),
+    admin
+      .from("crm_booking_items")
+      .select("booking_id, kind, title, confirmation_ref, start_at, end_at, details, lifecycle")
+      .eq("kind", "hotel"),
     admin.from("crm_customers").select("id, first_name, last_name, usage_name, company_name, email"),
   ]);
-  const itemsByBooking = new Map<string, Pick<CrmBookingItem, "confirmation_ref">[]>();
+  const itemsByBooking = new Map<
+    string,
+    (Pick<CrmBookingItem, "confirmation_ref"> & {
+      kind?: string | null;
+      title?: string | null;
+      start_at?: string | null;
+      end_at?: string | null;
+      details?: Record<string, unknown> | null;
+      lifecycle?: string | null;
+    })[]
+  >();
   for (const item of items || []) {
     const list = itemsByBooking.get(item.booking_id) || [];
     list.push({ confirmation_ref: item.confirmation_ref });
     itemsByBooking.set(item.booking_id, list);
+  }
+  for (const hotel of hotels || []) {
+    const list = itemsByBooking.get(hotel.booking_id) || [];
+    list.push(hotel);
+    itemsByBooking.set(hotel.booking_id, list);
   }
   return {
     bookings: bookings || [],
@@ -224,16 +244,16 @@ async function saveLeRow(
 async function stampLeStay(admin: SupabaseClient, crmBookingId: string, booking: LeBooking) {
   const { data: items } = await admin
     .from("crm_booking_items")
-    .select("id, title, confirmation_ref, details")
+    .select("id, title, confirmation_ref, start_at, end_at, details, lifecycle")
     .eq("booking_id", crmBookingId)
     .eq("kind", "hotel");
-  const ids = new Set(leItemsForHotelStamp(items || [], booking));
-  for (const item of items || []) {
-    if (!ids.has(item.id)) continue;
-    const details = { ...(item.details || {}) } as Record<string, unknown>;
-    if (booking.hotel_id != null && details.le_hotel_id == null) details.le_hotel_id = booking.hotel_id;
-    if (!details.source_family) details.source_family = "little_emperors";
-    await admin.from("crm_booking_items").update({ details }).eq("id", item.id);
+  const active = (items || []).filter((item) => isActiveItem(item));
+  const ids = leItemsForHotelStamp(active, booking);
+  const matched = new Set(ids);
+  for (const item of active) {
+    if (!matched.has(item.id)) continue;
+    const patch = leHotelStampPatch(item, booking, ids.length);
+    await admin.from("crm_booking_items").update(patch).eq("id", item.id);
   }
 }
 

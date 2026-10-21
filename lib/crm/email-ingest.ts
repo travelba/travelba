@@ -44,12 +44,13 @@ import {
 import { autoCreateBookingFromIngestId } from "@/lib/crm/email-ingest-create-run";
 import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
-  extractReferences,
   mergeBookingSuggestions,
   suggestBookingByDestination,
+  suggestBookingByHotelStay,
   suggestBookingByReference,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
+  type HotelStayCard,
 } from "@/lib/crm/email-match";
 import {
   EMAIL_INBOX_QUEUE_STATUSES,
@@ -321,28 +322,38 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   > & { customer_id: string })[];
   const ids = bookingList.map((b) => b.id);
   const itemsByBooking = new Map<string, Pick<CrmBookingItem, "confirmation_ref">[]>();
-  if (ids.length && extractReferences(extract).size) {
-    const { data: items } = await admin
-      .from("crm_booking_items")
-      .select("booking_id, confirmation_ref")
-      .in("booking_id", ids);
+  const hotelCards: HotelStayCard[] = [];
+  if (ids.length) {
+    const [{ data: items }, { data: hotels }] = await Promise.all([
+      admin.from("crm_booking_items").select("booking_id, confirmation_ref").in("booking_id", ids),
+      admin
+        .from("crm_booking_items")
+        .select("booking_id, kind, title, confirmation_ref, start_at, end_at, details, lifecycle")
+        .eq("kind", "hotel")
+        .in("booking_id", ids),
+    ]);
     for (const item of (items || []) as { booking_id: string; confirmation_ref: string | null }[]) {
       const arr = itemsByBooking.get(item.booking_id) || [];
       arr.push({ confirmation_ref: item.confirmation_ref });
       itemsByBooking.set(item.booking_id, arr);
+    }
+    for (const hotel of (hotels || []) as HotelStayCard[]) {
+      if (hotel.booking_id) hotelCards.push(hotel);
     }
   }
 
   const destination = isCancellationExtract(extract)
     ? { autoBookingId: null, candidates: [] }
     : suggestBookingByDestination(extract, bookingList, people);
+  const hotelStay = suggestBookingByHotelStay(extract, bookingList, hotelCards, people);
   const booking = mergeBookingSuggestions(
     suggestBookingByReference(extract, bookingList, itemsByBooking),
+    hotelStay,
     suggestBookingByTripSignals(extract, bookingList, people),
     destination
   );
   let suggestedBookingId = booking.autoBookingId;
-  if (!suggestedBookingId && destination.candidates.length === 1) {
+  if (!suggestedBookingId && hotelStay.candidates.length === 0 && destination.candidates.length === 1) {
     suggestedBookingId = destination.candidates[0].booking_id;
   }
 
