@@ -2,7 +2,7 @@ import { shownPersonName } from "@/lib/crm/identity";
 import { documentPriceIssues } from "@/lib/crm/booking-issues";
 import { cityPlaceKey } from "@/lib/crm/city-names";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
-import { hotelRefsShareBooking } from "@/lib/crm/item-match";
+import { hotelExactStay, hotelRefsShareBooking } from "@/lib/crm/item-match";
 import {
   firstNamesMatch,
   foldName,
@@ -15,6 +15,7 @@ import {
   type CrmBookingItem,
   type CrmCustomer,
   type EmailIngestCandidate,
+  isActiveItem,
 } from "@/lib/crm/types";
 import { normalizeMatchText } from "@/lib/crm/revolut-match";
 
@@ -34,6 +35,10 @@ type ExtractPerson = { first_name: string; last_name: string };
 
 /** Score mini pour rattacher un voyage automatiquement (réf. ou trio nom+lieu+dates). */
 export const STRONG_BOOKING_SCORE = 84;
+
+/** Au-dessus du seuil fort, sous la référence dossier. Un ex æquo ne choisit pas. */
+export const HOTEL_STAY_SCORE = 91;
+export const HOTEL_STAY_REASON = "Hôtel, dates et voyageur";
 
 const AGENCY_INBOXES = new Set(
   [
@@ -520,6 +525,126 @@ export function suggestBookingByTripSignals(
     });
   }
 
+  candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
+  return { autoBookingId: pickAutoBookingId(candidates), candidates };
+}
+
+export type HotelStayCard = {
+  booking_id: string;
+  kind?: string | null;
+  title?: string | null;
+  confirmation_ref?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  details?: Record<string, unknown> | null;
+  lifecycle?: string | null;
+};
+
+function guestPerson(value: string): ExtractPerson | null {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  return { first_name: parts.slice(0, -1).join(" "), last_name: parts[parts.length - 1] };
+}
+
+function cardGuests(card: HotelStayCard): ExtractPerson[] {
+  const details = card.details || {};
+  const raw: string[] = [];
+  if (typeof details.guests === "string") raw.push(...details.guests.split(","));
+  const rooms = Array.isArray(details.rooms) ? details.rooms : [];
+  for (const room of rooms) {
+    if (!room || typeof room !== "object") continue;
+    const guests = (room as { guests?: unknown }).guests;
+    if (typeof guests === "string") raw.push(...guests.split(","));
+  }
+  const people: ExtractPerson[] = [];
+  for (const value of raw) {
+    const person = guestPerson(value);
+    if (person) people.push(person);
+  }
+  return people;
+}
+
+/** Nom et prénom exacts. Le nom de famille seul, ou un nom approchant, ne suffit pas. */
+function travelerNameMatches(
+  person: ExtractPerson,
+  first: string | null | undefined,
+  last: string | null | undefined,
+  usage?: string | null
+) {
+  if (!person.first_name.trim() || !person.last_name.trim()) return false;
+  const incoming = compactName(person.last_name);
+  const lasts = [compactName(last), compactName(usage)].filter(Boolean);
+  if (!incoming || !lasts.includes(incoming)) return false;
+  return firstNamesAlign(person.first_name, first);
+}
+
+/**
+ * Séjour déjà ouvert : même hôtel (nom ou `le_hotel_id`), mêmes dates, même voyageur.
+ * La confirmation peut différer (numéro d’hôtel et numéro Little Emperors).
+ * Deux dossiers : aucun rattachement automatique.
+ */
+export function suggestBookingByHotelStay(
+  extract: BookingExtract,
+  bookings: TripBooking[],
+  cards: HotelStayCard[],
+  customers: CustomerLite[]
+): BookingSuggestion {
+  const people = extractPeople(extract).filter((person) => person.first_name && person.last_name);
+  const hotels = (extract.items || []).filter((item) => (item.kind || "") === "hotel");
+  if (!people.length || !hotels.length) return { autoBookingId: null, candidates: [] };
+  const byCustomer = new Map(customers.map((row) => [row.id, row]));
+  const byBooking = new Map<string, HotelStayCard[]>();
+  for (const card of cards) {
+    if (!card.booking_id || !isActiveItem(card)) continue;
+    if (card.kind && card.kind !== "hotel") continue;
+    const list = byBooking.get(card.booking_id) || [];
+    list.push(card);
+    byBooking.set(card.booking_id, list);
+  }
+  const candidates: BookingSuggestion["candidates"] = [];
+  for (const booking of bookings) {
+    if (booking.status === "cancelled") continue;
+    const customer = booking.customer_id ? byCustomer.get(booking.customer_id) : undefined;
+    const stayCards = byBooking.get(booking.id) || [];
+    const hit = hotels.some((item) => {
+      const incoming = {
+        kind: "hotel",
+        title: item.title,
+        confirmation_ref: item.confirmation_ref,
+        start_at: item.start_at,
+        end_at: item.end_at,
+        details: item.details || null,
+      };
+      return stayCards.some((card) => {
+        const current = {
+          kind: card.kind || "hotel",
+          title: card.title,
+          confirmation_ref: card.confirmation_ref,
+          start_at: card.start_at,
+          end_at: card.end_at,
+          details: card.details || null,
+        };
+        if (!hotelExactStay(current, incoming)) return false;
+        const holder = customer
+          ? people.some((person) =>
+              travelerNameMatches(person, customer.first_name, customer.last_name, customer.usage_name)
+            )
+          : false;
+        if (holder) return true;
+        return cardGuests(card).some((guest) =>
+          people.some((person) => travelerNameMatches(person, guest.first_name, guest.last_name))
+        );
+      });
+    });
+    if (!hit) continue;
+    candidates.push({
+      booking_id: booking.id,
+      customer_id: booking.customer_id || null,
+      label: bookingLabel(booking),
+      reason: HOTEL_STAY_REASON,
+      score: HOTEL_STAY_SCORE,
+    });
+  }
   candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
   return { autoBookingId: pickAutoBookingId(candidates), candidates };
 }

@@ -56,6 +56,71 @@ describe("replacementPlan", () => {
     assert.equal(plan.adds, 0);
   });
 
+  it("met à jour la carte quand l’hôtel et les dates sont les mêmes, même si le numéro change", () => {
+    const plan = replacementPlan(
+      [
+        {
+          kind: "hotel",
+          title: "Nobu Hotel London Portman Square",
+          confirmation_ref: "LECONF88",
+          start_at: "2026-11-02",
+          end_at: "2026-11-05",
+          details: { hotel_name: "Nobu Hotel London Portman Square" },
+        },
+      ],
+      [
+        hotel({
+          title: "Nobu Hotel London Portman Square",
+          confirmation_ref: "HTL99881",
+          start_at: "2026-11-02",
+          end_at: "2026-11-05",
+          details: { hotel_name: "Nobu Hotel London Portman Square" },
+        }),
+      ]
+    );
+    assert.deepEqual(plan.updates, [{ itemId: "h1" }]);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.adds, 0);
+    assert.equal(plan.choices.length, 0);
+  });
+
+  it("ne choisit pas entre deux cartes du même hôtel aux mêmes dates", () => {
+    const incoming = [
+      {
+        kind: "hotel",
+        title: "NoMad London",
+        confirmation_ref: "HTLNEW11111",
+        start_at: "2026-10-30",
+        end_at: "2026-11-03",
+        details: { hotel_name: "NoMad London" },
+      },
+    ];
+    const plan = replacementPlan(incoming, [
+      hotel({
+        title: "NoMad London",
+        confirmation_ref: "3104088572",
+        start_at: "2026-10-30",
+        end_at: "2026-11-03",
+        details: { hotel_name: "NoMad London" },
+      }),
+      hotel({
+        id: "h2",
+        title: "NoMad London",
+        confirmation_ref: "3105358205",
+        start_at: "2026-10-30",
+        end_at: "2026-11-03",
+        details: { hotel_name: "NoMad London" },
+      }),
+    ]);
+    assert.equal(plan.updates.length, 0);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.adds, 0);
+    assert.deepEqual(
+      plan.choices.map((row) => row.id),
+      ["h1", "h2"]
+    );
+  });
+
   it("remplace l’unique hôtel quand la référence change, au prix vendu", () => {
     const plan = replacementPlan(
       [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620171" }],

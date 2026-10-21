@@ -1,4 +1,4 @@
-import { findHotelBookingCard, findMatchingItem, hotelSameStay } from "@/lib/crm/item-match";
+import { findHotelBookingCard, findHotelExactStay, findMatchingItem, hotelSameStay } from "@/lib/crm/item-match";
 import { countsAsCarnetCard, isActiveItem } from "@/lib/crm/types";
 
 export type LifecycleCard = {
@@ -207,6 +207,8 @@ export function replacementPlan(
     const hit =
       findMatchingItem(pool, probe) ||
       findMatchingItem(matched, probe) ||
+      findHotelExactStay(pool, probe) ||
+      findHotelExactStay(matched, probe) ||
       findHotelBookingCard(pool, probe) ||
       findHotelBookingCard(matched, probe);
     if (!hit) {
