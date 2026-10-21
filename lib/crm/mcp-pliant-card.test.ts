@@ -455,6 +455,41 @@ test("le libellé Pliant porte le client, l’hôtel et la référence, pas le t
   assert.equal(state.cards[0]?.last_name, "Dupont");
 });
 
+test("plusieurs hôtels : le nom Phulay Bay reste le libellé", async () => {
+  const state = baseState();
+  state.bookings[0] = { ...state.bookings[0], reference: "TB-2026-0088" };
+  state.customers[0] = { id: CLIENT, first_name: "Andréa", last_name: "Bensaïd" };
+  state.items.push(
+    {
+      booking_id: BOOKING,
+      kind: "hotel",
+      title: "Anantara Layan",
+      supplier: "Little Emperors",
+      details: { hotel_name: "Anantara Layan" },
+      lifecycle: "active",
+    },
+    {
+      booking_id: BOOKING,
+      kind: "hotel",
+      title: "Phulay Bay",
+      supplier: "Little Emperors",
+      details: { hotel_name: "Phulay Bay" },
+      lifecycle: "active",
+    }
+  );
+  await runWithMcpAccess(CARDS, () =>
+    createPliantCard(
+      { reference: "TB-2026-0088", nom: "Phulay Bay", plafond: 10, prenom: "Andréa", nom_titulaire: "Dupont" },
+      fakeAdmin(state),
+      deps(state)
+    )
+  );
+  const body = state.issued[0] as { label: string; purpose: string };
+  assert.equal(body.label, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(body.purpose, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(body.label.includes("Anantara"), false);
+});
+
 test("bloquer_carte_pliant gèle puis rouvre la carte du dossier, sans numéro", async () => {
   const state = baseState();
   state.cards.push(card(), card({ id: "55555555-5555-4555-8555-555555555555", pliant_card_id: "pliant-hotel", label: "Hôtel" }));

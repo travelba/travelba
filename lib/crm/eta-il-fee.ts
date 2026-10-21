@@ -89,9 +89,53 @@ export function pliantCardCaption(input: { client?: string | null; place?: strin
   };
 }
 
+function pliantKey(value: string | null | undefined) {
+  return pliantReadable(value || "").toLowerCase();
+}
+
+/**
+ * Un nom saisi ne garde que les hôtels qu’il cite (sans accent, en minuscules).
+ * Aucun nom, ou aucun hôtel dedans : on garde tous les hôtels.
+ */
+function hotelsNamedInDesignation(
+  hotels: Array<string | null | undefined> | undefined,
+  designation: string | null | undefined
+) {
+  const list = (hotels || []).map((hotel) => (hotel || "").trim()).filter(Boolean);
+  const needle = pliantKey(designation);
+  if (!needle) return list;
+  const matched = list.filter((hotel) => {
+    const key = pliantKey(hotel);
+    return key.length > 0 && needle.includes(key);
+  });
+  return matched.length ? matched : list;
+}
+
+const CAPTION_PART = /\s+(?:–|—|-)\s+/u;
+
+/**
+ * « Client – Hôtel – Réf » est déjà le libellé. On ne garde que le milieu,
+ * pour ne pas recoller le client et la référence.
+ */
+function designationPlace(
+  designation: string | null | undefined,
+  client: string | null | undefined,
+  reference: string | null | undefined
+) {
+  const named = (designation || "").trim();
+  if (!named) return "";
+  const head = pliantKey(client);
+  const tail = pliantKey(reference);
+  const parts = named.split(CAPTION_PART).map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 3 || !head || !tail) return named;
+  if (pliantKey(parts[0]) !== head || pliantKey(parts[parts.length - 1]) !== tail) return named;
+  return parts.slice(1, -1).join(" · ");
+}
+
 /**
  * Libellé (40) et objet (200). L’hôtel prime. La désignation s’ajoute
  * si elle tient encore ; sinon elle reste dans l’objet.
+ * Un nom qui cite un hôtel ne garde que celui-là.
  */
 export function pliantStayCaption(input: {
   client?: string | null;
@@ -99,12 +143,15 @@ export function pliantStayCaption(input: {
   designation?: string | null;
   reference?: string | null;
 }) {
-  const hotelPlace = pliantCardPlace({ hotels: input.hotels });
-  const fullPlace = pliantCardPlace({ hotels: input.hotels, designation: input.designation });
+  const hotels = hotelsNamedInDesignation(input.hotels, input.designation);
+  const hotelPlace = pliantCardPlace({ hotels });
+  const middle = designationPlace(input.designation, input.client, input.reference);
+  const designation = middle && pliantKey(middle) !== pliantKey(hotelPlace) ? middle : "";
+  const fullPlace = pliantCardPlace({ hotels, designation });
   const full = pliantCardCaption({ client: input.client, place: fullPlace, reference: input.reference });
   const shown = pliantCardCaption({
     client: input.client,
-    place: hotelPlace || input.designation,
+    place: hotelPlace || designation || input.designation,
     reference: input.reference,
   });
   const label = full && full.label === full.purpose ? full.label : shown?.label || full?.label || "";

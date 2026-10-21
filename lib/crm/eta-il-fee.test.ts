@@ -47,6 +47,46 @@ test("le libellé Pliant montre le client, l’hôtel et la référence", () => 
   assert.equal(long?.purpose.endsWith("TB-2026-0088"), true);
 });
 
+test("plusieurs hôtels : le nom choisi garde cet hôtel dans le libellé", () => {
+  const shown = pliantStayCaption({
+    client: "Bensaid",
+    hotels: ["Anantara Layan", "Phulay Bay"],
+    designation: "Phulay Bay",
+    reference: "TB-2026-0088",
+  });
+  assert.equal(shown?.label, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(shown?.purpose, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(shown?.label.includes("Anantara"), false);
+
+  const folded = pliantStayCaption({
+    client: "Bensaïd",
+    hotels: ["Anantara Layan", "Phulày Bay"],
+    designation: "phulay bay",
+    reference: "TB-2026-0088",
+  });
+  assert.equal(folded?.label, "Bensaid – Phulay Bay – TB-2026-0088");
+
+  const copied = pliantStayCaption({
+    client: "Bensaïd",
+    hotels: ["Anantara Layan", "Phulay Bay"],
+    designation: "Bensaid – Phulay Bay – TB-2026-0088",
+    reference: "TB-2026-0088",
+  });
+  assert.equal(copied?.label, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(copied?.purpose, "Bensaid – Phulay Bay – TB-2026-0088");
+
+  const other = pliantStayCaption({
+    client: "Bensaid",
+    hotels: ["Anantara Layan", "Phulay Bay"],
+    designation: "Visa",
+    reference: "TB-2026-0088",
+  });
+  assert.match(other?.purpose || "", /Anantara Layan/);
+  assert.match(other?.purpose || "", /Phulay Bay/);
+  assert.match(other?.purpose || "", /Visa/);
+  assert.equal((other?.purpose || "").split("TB-2026-0088").length, 2);
+});
+
 test("la désignation interne garde les accents et tient dans quarante caractères", () => {
   assert.equal(pliantDesignation("  Hôtel d’été  "), "Hôtel d’été");
   assert.equal(pliantDesignation("   "), null);
