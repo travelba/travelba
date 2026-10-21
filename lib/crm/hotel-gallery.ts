@@ -140,7 +140,7 @@ function significantTokens(value: string) {
 }
 
 /**
- * Même chambre une fois retirés la casse et les mots de lit (Room, King, Twin).
+ * Même catégorie une fois retirés la casse et les mots de lit (Room, King, Twin).
  * « Deluxe Marina Bay King » n’est pas « Deluxe Room » ni « Deluxe Harbour King ».
  */
 export function roomCaptionMatches(booked: string, caption: string) {
@@ -148,34 +148,6 @@ export function roomCaptionMatches(booked: string, caption: string) {
   const right = significantTokens(caption);
   if (!left.length || !right.length) return false;
   return left.join(" ") === right.join(" ");
-}
-
-/** Chambre plus générale du catalogue quand la vue réservée n’a pas sa propre photo. */
-function familyRoomImages(images: GalleryImage[], bookedNames: string[]) {
-  let bestScore = 0;
-  let bestKey = "";
-  const groups = new Map<string, GalleryImage[]>();
-  for (const name of bookedNames) {
-    const booked = significantTokens(name);
-    if (booked.length < 2) continue;
-    const bookedSet = new Set(booked);
-    for (const image of images) {
-      const tokens = significantTokens(image.caption);
-      if (!tokens.length || tokens.length >= booked.length) continue;
-      if (tokens.some((token) => !bookedSet.has(token))) continue;
-      const prefix = tokens.every((token, index) => booked[index] === token);
-      const score = tokens.length * 10 + (prefix ? 1 : 0);
-      const key = tokens.join(" ");
-      const list = groups.get(key) || [];
-      list.push(image);
-      groups.set(key, list);
-      if (score > bestScore) {
-        bestScore = score;
-        bestKey = key;
-      }
-    }
-  }
-  return bestKey ? groups.get(bestKey) || [] : [];
 }
 
 function unique(lines: string[]) {
@@ -278,9 +250,9 @@ function clockFromShortInfo(row: Record<string, unknown>, key: string) {
 }
 
 /**
- * D’abord toutes les photos de la chambre réservée, puis l’hôtel.
- * Sans photo à ce nom, la chambre deluxe (ou la famille la plus proche), jamais une autre vue.
- * Sans aucune photo de chambre, façade et hall avant la piscine.
+ * D’abord toutes les photos de la catégorie réservée, puis l’hôtel.
+ * Une autre catégorie du catalogue (Deluxe Room pour un Deluxe Marina Bay King) ne compte pas.
+ * Sans photo de cette catégorie, façade et hall avant la piscine.
  */
 export function presentationFromLeHotel(payload: unknown, roomNames: string[]): HotelPresentation {
   const row = record(payload) || {};
@@ -288,7 +260,7 @@ export function presentationFromLeHotel(payload: unknown, roomNames: string[]): 
   const catalogRooms = childRoomNames(row);
   const booked = unique(roomNames);
   const exact = images.filter((image) => booked.some((room) => roomCaptionMatches(room, image.caption)));
-  const roomPhotos = dedupePhotos(exact.length ? exact : familyRoomImages(images, booked), "room", PHOTO_CAP);
+  const roomPhotos = dedupePhotos(exact, "room", PHOTO_CAP);
   const hotelPhotos = hotelFallback(images, booked, catalogRooms);
   return {
     photos: roomPhotos.length ? withHotelAfter(roomPhotos, hotelPhotos) : hotelPhotos,

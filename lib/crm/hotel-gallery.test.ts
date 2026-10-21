@@ -70,7 +70,7 @@ describe("photos de chambre Little Emperors", () => {
     assert.equal(JSON.stringify(presentation).includes("commission"), false);
   });
 
-  it("ouvre sur la chambre deluxe quand la vue Marina Bay n’est pas photographiée", () => {
+  it("ne prend pas Deluxe Room pour un Deluxe Marina Bay King", () => {
     const gallery = [
       photo("pool", "Swimming Pool"),
       photo("deluxe-a", "Deluxe Room"),
@@ -85,10 +85,10 @@ describe("photos de chambre Little Emperors", () => {
     );
     assert.deepEqual(
       presentation.photos.map((row) => row.caption),
-      ["Deluxe Room", "Deluxe Room", "Exterior", "Lobby", "Swimming Pool"]
+      ["Exterior", "Lobby", "Swimming Pool"]
     );
-    assert.equal(presentation.photos[0]?.kind, "room");
-    assert.equal(presentation.photos.some((row) => row.caption === "Deluxe Harbour King"), false);
+    assert.ok(presentation.photos.every((row) => row.kind === "hotel"));
+    assert.equal(presentation.photos.some((row) => /deluxe/i.test(row.caption)), false);
   });
 
   it("retombe sur l’hôtel quand la chambre n’a pas de photo", () => {
