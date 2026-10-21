@@ -47,7 +47,7 @@ import {
 import { shouldSyncHotelReplies } from "./hotel-reply-notice";
 import { precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
+import { PLIANT_SINGLE_USE } from "./pliant-controls";
 import { agencyCopyCc, tokenMailCc } from "./outbound-mail";
 import { cardLinkExpiresAt, cardLinkNote, redactCardLinks } from "./card-link";
 import { createCardLink, settleCardLinks } from "./card-link-run";
@@ -1016,7 +1016,7 @@ async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: Cr
     const money = { value: CHECKIN_CARD_CENTS, currency: CHECKIN_CARD_CURRENCY };
     const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
-      cardConfig: "PLIANT_VIRTUAL",
+      cardConfig: PLIANT_SINGLE_USE,
       label: caption?.label || name.label,
       purpose: caption?.purpose || name.label,
       customFirstName: name.customFirstName,
@@ -1024,7 +1024,6 @@ async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: Cr
       limit: money,
       transactionLimit: money,
       limitRenewFrequency: "TOTAL",
-      maxTransactionCount: DEFAULT_PLIANT_TRANSACTIONS,
       validFrom: today,
       validTo,
       validTimezone: "Europe/Paris",

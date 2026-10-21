@@ -241,4 +241,23 @@ test("un identifiant Pliant absent est remplacé seulement s’il n’y en a qu�
     pickTravelConfig("UNKNOWN", [{ cardConfig: "ORG_VIRTUAL_TRAVEL", type: "VIRTUAL", canBeIssued: true }]),
     null
   );
+  assert.equal(
+    pickTravelConfig("PLIANT_SINGLE_USE", [
+      { cardConfig: "PLIANT_VIRTUAL", type: "VIRTUAL", canBeIssued: true },
+      { cardConfig: "PLIANT_SINGLE_USE", type: "SINGLE_USE", canBeIssued: true },
+      { cardConfig: "PLIANT_VIRTUAL_TRAVEL", type: "VIRTUAL", canBeIssued: true },
+    ]),
+    "PLIANT_SINGLE_USE"
+  );
+  assert.equal(
+    pickTravelConfig("PLIANT_SINGLE_USE", [{ cardConfig: "PLIANT_VIRTUAL", type: "VIRTUAL", canBeIssued: true }]),
+    null
+  );
+  assert.equal(
+    pickTravelConfig("PLIANT_SINGLE_USE", [
+      { cardConfig: "ORG_SINGLE_USE", type: "SINGLE_USE", canBeIssued: true },
+      { cardConfig: "PLIANT_SINGLE_USE", type: "SINGLE_USE", canBeIssued: false },
+    ]),
+    "ORG_SINGLE_USE"
+  );
 });

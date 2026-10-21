@@ -41,7 +41,7 @@ import {
 } from "./manual-stay-card";
 import { manualPliantCardIds, rememberPliantCard, setRememberedCardLimit } from "./pliant-card-run";
 import { issuePliantCard, pliantConfigured, readPliantCardFace, setPliantCardLimit } from "./pliant";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
+import { PLIANT_SINGLE_USE } from "./pliant-controls";
 import { pliantReferenceRates } from "./visa-ecb";
 import { isActiveItem } from "./types";
 import type {
@@ -64,7 +64,7 @@ export type ArrivalDeps = {
   /** Unités de devise pour 1 euro. Le cron les charge une fois. */
   fxRates?: Record<string, number>;
   issueCard?: (body: unknown) => Promise<{ cardId: string | null }>;
-  setLimit?: (cardId: string, limit: { value: number; currency: string }, count: number) => Promise<void>;
+  setLimit?: (cardId: string, limit: { value: number; currency: string }, count: number | null) => Promise<void>;
   findReplies?: (emails: string[], sinceMs: number) => Promise<Reply[]>;
 };
 
@@ -147,7 +147,7 @@ function cardBody(input: {
     holder: `${name.customFirstName} ${name.customLastName}`.trim(),
     body: {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
-      cardConfig: "PLIANT_VIRTUAL",
+      cardConfig: PLIANT_SINGLE_USE,
       label: caption?.label || pliantDesignation(input.designation) || name.label,
       purpose: caption?.purpose || caption?.label || name.label,
       customFirstName: name.customFirstName,
@@ -155,7 +155,6 @@ function cardBody(input: {
       limit: money,
       transactionLimit: money,
       limitRenewFrequency: "TOTAL" as const,
-      maxTransactionCount: DEFAULT_PLIANT_TRANSACTIONS,
       validFrom: input.validFrom,
       validTo: input.validTo,
       validTimezone: "Europe/Paris",
@@ -459,7 +458,7 @@ async function alignStayCard(input: {
     try {
       if (!pliantConfigured() && !input.deps.setLimit) throw new Error("Pliant n'est pas branché.");
       const setLimit = input.deps.setLimit || setPliantCardLimit;
-      await setLimit(row.pliant_card_id, { value: eurCeiling, currency: "EUR" }, 20);
+      await setLimit(row.pliant_card_id, { value: eurCeiling, currency: "EUR" }, null);
       await rememberPliantCard(input.admin, {
         pliant_card_id: row.pliant_card_id,
         booking_id: row.booking_id,
@@ -587,7 +586,7 @@ async function raiseSharedStayLimit(
   try {
     if (!pliantConfigured() && !deps.setLimit) return;
     const setLimit = deps.setLimit || ((id, limit, count) => setRememberedCardLimit(admin, id, limit, count, false));
-    await setLimit(cardId, { value: sum, currency: "EUR" }, 20);
+    await setLimit(cardId, { value: sum, currency: "EUR" }, null);
     if (deps.setLimit) {
       await rememberPliantCard(admin, {
         pliant_card_id: cardId,

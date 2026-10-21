@@ -1,5 +1,5 @@
 import { ETA_IL_PORTAL } from "./eta-il-draft";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "./pliant-controls";
+import { DEFAULT_PLIANT_TRANSACTIONS, PLIANT_SINGLE_USE, pliantConfigIsSingleUse } from "./pliant-controls";
 import {
   centsToEur,
   corridorCeilingCents,
@@ -342,7 +342,11 @@ export function pickListedId(preferred: string, ids: string[]) {
   return null;
 }
 
-/** Carte virtuelle sans la liste de commerçants du produit voyage. */
+/**
+ * Config émissible du compte, hors produit voyage.
+ * Une demande à usage unique ne retombe pas sur `PLIANT_VIRTUAL`.
+ * Une demande virtuelle (formalité) reste sur `PLIANT_VIRTUAL`.
+ */
 export function pickTravelConfig(
   preferred: string,
   configs: { cardConfig?: string | null; canBeIssued?: boolean | null; type?: string | null }[]
@@ -350,6 +354,13 @@ export function pickTravelConfig(
   const open = configs.filter(
     (row) => row.canBeIssued !== false && row.cardConfig && !/TRAVEL/i.test(row.cardConfig)
   );
+  if (pliantConfigIsSingleUse(preferred)) {
+    const single = open.filter(
+      (row) => row.type === "SINGLE_USE" || pliantConfigIsSingleUse(row.cardConfig || "")
+    );
+    if (preferred && single.some((row) => row.cardConfig === preferred)) return preferred;
+    return single.find((row) => row.cardConfig === PLIANT_SINGLE_USE)?.cardConfig || single[0]?.cardConfig || null;
+  }
   const virtual = open.filter((row) => row.type === "VIRTUAL" || /VIRTUAL/i.test(row.cardConfig || ""));
   if (preferred && virtual.some((row) => row.cardConfig === preferred)) return preferred;
   return virtual.find((row) => row.cardConfig === "PLIANT_VIRTUAL")?.cardConfig || virtual[0]?.cardConfig || null;

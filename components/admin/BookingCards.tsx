@@ -7,7 +7,6 @@ import { stayCardFace } from "@/lib/crm/hotel-arrival";
 import { shownPersonName } from "@/lib/crm/identity";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { bookingCardMosaic, type PliantCardRecap } from "@/lib/crm/pliant-booking";
-import { DEFAULT_PLIANT_TRANSACTIONS } from "@/lib/crm/pliant-controls";
 import type { CrmBookingCard } from "@/lib/crm/types";
 
 function cardTransactionLine(card: CrmBookingCard) {
@@ -41,7 +40,6 @@ export function BookingCards({
   const router = useRouter();
   const [amount, setAmount] = useState("");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionCount, setTransactionCount] = useState(String(DEFAULT_PLIANT_TRANSACTIONS));
   const [designation, setDesignation] = useState("");
   const [first, setFirst] = useState(firstName);
   const [last, setLast] = useState(lastName);
@@ -87,7 +85,6 @@ export function BookingCards({
           lastName: last,
           designation,
           transactionAmount,
-          transactionCount,
         }),
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -97,7 +94,6 @@ export function BookingCards({
       }
       setAmount("");
       setTransactionAmount("");
-      setTransactionCount(String(DEFAULT_PLIANT_TRANSACTIONS));
       setDesignation("");
       router.refresh();
     } catch {
@@ -117,10 +113,10 @@ export function BookingCards({
         <div>
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Générer une carte</h2>
           <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--admin-navy)]/70">
-            Autant de cartes que le dossier en a besoin. Le plafond, chaque transaction, le nom de la carte et le
-            titulaire sont ceux saisis ici. Deux transactions par défaut. La carte accepte tous les commerçants,
-            toutes les catégories, toutes les devises et tous les pays. La carte est émise sur le compte Pliant de
-            l’agence.
+            Autant de cartes que le dossier en a besoin. Le plafond, le montant de l’achat, le nom de la carte et le
+            titulaire sont ceux saisis ici. Carte à usage unique : un seul règlement, un contrôle de passerelle ne
+            compte pas. La carte accepte tous les commerçants, toutes les catégories, toutes les devises et tous les
+            pays, jusqu’au plafond en euros. La carte est émise sur le compte Pliant de l’agence.
           </p>
         </div>
         <form className="space-y-3" onSubmit={submit}>
@@ -153,30 +149,18 @@ export function BookingCards({
               />
             </label>
             <label className="block text-sm text-[var(--admin-navy)]">
-              Montant par transaction (€)
+              Montant de l’achat (€)
               <input
                 className={`${fieldClass} mt-1`}
                 inputMode="decimal"
                 value={transactionAmount}
                 disabled={busy}
                 required
-                aria-label="Montant par transaction"
+                aria-label="Montant de l’achat"
                 onChange={(event) => setTransactionAmount(event.target.value)}
               />
             </label>
           </div>
-          <label className="block text-sm text-[var(--admin-navy)]">
-            Nombre de transactions
-            <input
-              className={`${fieldClass} mt-1`}
-              inputMode="numeric"
-              value={transactionCount}
-              disabled={busy}
-              required
-              aria-label="Nombre de transactions"
-              onChange={(event) => setTransactionCount(event.target.value)}
-            />
-          </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm text-[var(--admin-navy)]">
               Nom

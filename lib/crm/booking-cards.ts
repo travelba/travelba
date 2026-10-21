@@ -87,7 +87,7 @@ export async function issueBookingCard(
     last_name: input.lastName.trim(),
     limit_cents: draft.body.limit.value,
     transaction_limit_cents: draft.body.transactionLimit.value,
-    max_transaction_count: draft.body.maxTransactionCount,
+    max_transaction_count: null,
     currency: "EUR",
     valid_from: draft.body.validFrom,
     valid_to: draft.body.validTo,
@@ -105,7 +105,7 @@ export async function issueBookingCard(
     status: "active",
     limit_manual: true,
     transaction_limit_cents: draft.body.transactionLimit.value,
-    max_transaction_count: draft.body.maxTransactionCount,
+    max_transaction_count: null,
   });
   return { ok: true as const };
 }
