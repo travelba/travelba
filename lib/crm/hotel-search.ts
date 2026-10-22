@@ -158,6 +158,7 @@ export const HOTEL_MAX_CHILDREN = 4;
 export type HotelStreamEvent =
   | { type: "start" }
   | { type: "hotel"; stay: PricedStay; replaced: boolean }
+  | { type: "supplier_error" }
   | { type: "done"; tFirstMs: number | null; tDoneMs: number; cached: boolean; count: number };
 
 type PerkKey = keyof HotelPerks;
@@ -622,7 +623,10 @@ export async function* streamHotelSearch(input: {
   const timeoutMs = input.timeoutMs ?? 9000;
   const tasks = input.accounts.map((search) => deadline(search(), timeoutMs));
   for await (const result of yieldAsCompleted(tasks)) {
-    if (!result.ok) continue;
+    if (!result.ok) {
+      yield { type: "supplier_error" };
+      continue;
+    }
     for (const change of mergeOffers(state, result.value)) {
       if (tFirst == null) tFirst = Math.max(0, clock() - t0);
       yield { type: "hotel", stay: change.stay, replaced: change.replaced };

@@ -14,6 +14,7 @@ import { foldHotelLabel } from "@/lib/crm/hotel-catalog";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
+export const maxDuration = 15;
 
 async function catalogSuggestions(query: string): Promise<PlaceSuggestion[]> {
   try {
@@ -43,19 +44,8 @@ export async function GET(request: Request) {
   const key = foldHotelLabel(query);
   const cached = readSuggestCache(key);
   if (cached) return NextResponse.json({ suggestions: cached });
-  const catalog = await catalogSuggestions(query);
-  const remote = loadLittleEmperorsSuggestions(query);
-  const quick = await Promise.race([
-    remote.catch(() => [] as PlaceSuggestion[]),
-    new Promise<PlaceSuggestion[]>((resolve) => setTimeout(() => resolve([]), 280)),
-  ]);
-  const suggestions = mergePlaceSuggestions([catalog, quick]);
-  writeSuggestCache(key, suggestions);
-  void remote
-    .then((items) => {
-      const full = mergePlaceSuggestions([catalog, items]);
-      if (full.length) writeSuggestCache(key, full);
-    })
-    .catch(() => {});
+  const [catalog, remote] = await Promise.all([catalogSuggestions(query), loadLittleEmperorsSuggestions(query)]);
+  const suggestions = mergePlaceSuggestions([catalog, remote || []]);
+  if (remote) writeSuggestCache(key, suggestions);
   return NextResponse.json({ suggestions });
 }

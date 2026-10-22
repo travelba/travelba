@@ -14,7 +14,7 @@ import { loadLittleEmperorsHotelFile } from "@/lib/crm/little-emperors-search";
 import type { ClientHotelFile, ClientRate, ClientRoom } from "@/lib/crm/hotel-journey";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 function clock(value: string) {
   return /^\d{1,2}:\d{2}$/.test(value) ? value : "";
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     rooms: parsed.query.rooms,
     fetchImpl: fetch,
   });
-  if (!loaded) return jsonError("Les chambres ne sont pas disponibles pour ces dates.", 404);
+  if (!loaded) return jsonError("La fiche n’a pas abouti. Réessayez.", 503);
 
   const profile = loaded.profile;
   const city = profile.location.split(",")[0]?.trim() || parsed.query.city || parsed.query.destination;

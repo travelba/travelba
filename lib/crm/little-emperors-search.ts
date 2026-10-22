@@ -9,11 +9,14 @@ import {
 } from "./little-emperors-availability";
 import { supplierRoomOccupancy, type HotelOffer, type HotelRoomOccupancy, type HotelSearchTarget, type PlaceSuggestion } from "./hotel-search";
 
-const SEARCH_TIMEOUT_MS = 8000;
-const SUGGEST_TIMEOUT_MS = 2500;
+const SEARCH_TIMEOUT_MS = 25_000;
+const SUGGEST_TIMEOUT_MS = 8_000;
 
 function failureCode(err: unknown) {
-  return err instanceof LittleEmperorsError ? err.code : "error";
+  if (err instanceof LittleEmperorsError) return err.code;
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) return "timeout";
+  if (err instanceof Error && err.name === "TypeError") return "type";
+  return "error";
 }
 
 async function predictive(query: string, fetchImpl: typeof fetch | undefined, timeoutMs: number): Promise<LeSearchHit[]> {
@@ -28,7 +31,10 @@ async function predictive(query: string, fetchImpl: typeof fetch | undefined, ti
   return parseLePredictive(payload);
 }
 
-export async function loadLittleEmperorsSuggestions(query: string, fetchImpl?: typeof fetch): Promise<PlaceSuggestion[]> {
+export async function loadLittleEmperorsSuggestions(
+  query: string,
+  fetchImpl?: typeof fetch
+): Promise<PlaceSuggestion[] | null> {
   if (!littleEmperorsConfigured()) return [];
   try {
     const hits = await predictive(query, fetchImpl, SUGGEST_TIMEOUT_MS);
@@ -40,7 +46,7 @@ export async function loadLittleEmperorsSuggestions(query: string, fetchImpl?: t
     }));
   } catch (err) {
     console.error("[hotels] suggestions", failureCode(err));
-    return [];
+    return null;
   }
 }
 
@@ -51,6 +57,7 @@ export async function loadLittleEmperorsOffers(input: {
   checkOut: string;
   rooms: HotelRoomOccupancy[];
   target?: HotelSearchTarget | null;
+  timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }): Promise<HotelOffer[]> {
   if (!littleEmperorsConfigured()) return [];
@@ -73,15 +80,53 @@ export async function loadLittleEmperorsOffers(input: {
           ...(target.kind === "hotel" ? { hotel_id: target.id } : { location_id: target.id }),
           rooms: supplierRoomOccupancy(input.rooms),
         }),
-        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+        signal: AbortSignal.timeout(input.timeoutMs ?? SEARCH_TIMEOUT_MS),
       },
       input.fetchImpl
     );
     return offersFromLeAvailability(payload, input.city || input.destination);
   } catch (err) {
     console.error("[hotels] disponibilités", failureCode(err));
-    return [];
+    throw new Error("supplier");
   }
+}
+
+/** Hôtels déjà connus : une disponibilité par hôtel, pour ne pas attendre toute la ville. */
+export async function loadKnownHotelOffers(input: {
+  destination: string;
+  city?: string;
+  checkIn: string;
+  checkOut: string;
+  rooms: HotelRoomOccupancy[];
+  hotelIds: number[];
+  fetchImpl?: typeof fetch;
+}): Promise<HotelOffer[]> {
+  const ids = [...new Set(input.hotelIds.filter((id) => Number.isInteger(id) && id > 0))].slice(0, 8);
+  const offers: HotelOffer[] = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < ids.length) {
+      const id = ids[cursor];
+      cursor += 1;
+      try {
+        const rows = await loadLittleEmperorsOffers({
+          destination: input.destination,
+          city: input.city,
+          checkIn: input.checkIn,
+          checkOut: input.checkOut,
+          rooms: input.rooms,
+          target: { kind: "hotel", id },
+          timeoutMs: 12_000,
+          fetchImpl: input.fetchImpl,
+        });
+        offers.push(...rows);
+      } catch {
+        /* un hôtel en échec laisse les autres */
+      }
+    }
+  }
+  await Promise.all([worker(), worker(), worker()]);
+  return offers;
 }
 
 export async function loadLittleEmperorsHotelFile(input: {

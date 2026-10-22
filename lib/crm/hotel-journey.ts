@@ -1,14 +1,6 @@
 import { HOTEL_PERK_WEIGHTS, type ClientHotel, type HotelPerks } from "./hotel-search";
 
-export type HotelThemeId = "a" | "b" | "c" | "d";
 export type HotelSort = "prix" | "avantages";
-
-export const HOTEL_THEMES: { id: HotelThemeId; label: string }[] = [
-  { id: "d", label: "Mix" },
-  { id: "a", label: "Noir & or" },
-  { id: "b", label: "Éditorial" },
-  { id: "c", label: "Nuit" },
-];
 
 export type ClientRate = {
   offerId: string | null;

@@ -94,10 +94,20 @@ function cityFrom(location: string, fallback: string) {
   return head || fallback;
 }
 
+function listFrom(payload: unknown, keys: string[]) {
+  if (Array.isArray(payload)) return payload;
+  const row = record(payload);
+  if (!row) return [];
+  for (const key of keys) {
+    if (Array.isArray(row[key])) return row[key] as unknown[];
+  }
+  return [];
+}
+
 export function parseLePredictive(payload: unknown): LeSearchHit[] {
-  if (!Array.isArray(payload)) return [];
+  const rows = listFrom(payload, ["data", "results"]);
   const out: LeSearchHit[] = [];
-  for (const row of payload) {
+  for (const row of rows) {
     const item = record(row);
     if (!item) continue;
     const id = integer(item.id);
@@ -207,9 +217,13 @@ function pushOffer(
 }
 
 export function offersFromLeAvailability(payload: unknown, cityHint = ""): HotelOffer[] {
-  if (!Array.isArray(payload)) return [];
+  let rows = listFrom(payload, ["data", "hotels", "results"]);
+  if (!rows.length) {
+    const row = record(payload);
+    if (row && (text(row.hotel_name) || integer(row.hotel_id))) rows = [row];
+  }
   const out: HotelOffer[] = [];
-  for (const row of payload) {
+  for (const row of rows) {
     const hotel = record(row);
     if (!hotel || hotel.is_available === false) continue;
     const name = text(hotel.hotel_name);
