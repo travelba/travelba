@@ -299,8 +299,8 @@
 }
 .hotel-theme .h-journey {
   position: fixed;
-  z-index: 45;
-  top: 4rem;
+  z-index: 46;
+  top: 0;
   left: 50%;
   display: flex;
   width: min(480px, 100%);

@@ -15,6 +15,8 @@ test("chambre, pension et annulation se lisent en français", () => {
   assert.equal(frenchHotelLine("Junior Suite"), "Suite junior");
   assert.equal(frenchHotelLine("Room only"), "Chambre seule");
   assert.equal(frenchHotelLine("Flexible Rate, Bed and Breakfast"), "Tarif flexible · Petit-déjeuner inclus");
+  assert.equal(frenchHotelLine("Best Available Rate"), "Meilleur tarif disponible");
+  assert.equal(frenchHotelLine("Best Available Rate (BAR)"), "Meilleur tarif disponible");
   assert.equal(frenchCancellation("Free cancellation until 18:00 on 12 Mar 2026"), "Gratuite jusqu’au 12 mars 2026, 18 h");
   assert.equal(frenchCancellation("Non-refundable"), "Non remboursable");
   assert.equal(frenchCancellation("Room"), "Confirmée par l’agence avant tout paiement");
