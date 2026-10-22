@@ -299,6 +299,19 @@ export function HotelJourney({
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState("");
   const roomsRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
+  useEffect(() => {
+    scrollerRef.current?.scrollTo({ top: 0 });
+  }, [step]);
 
   useEffect(() => {
     if (!hotel.hotelId) return;
@@ -389,8 +402,8 @@ export function HotelJourney({
   const cheapestRoomRate = room?.rates.slice().sort((a, b) => a.sellCents - b.sellCents)[0];
 
   return (
-    <div className="h-bg -mx-4 min-h-[calc(100dvh-4rem)] pb-28">
-      <header className="h-header sticky top-16 z-30">
+    <div className="h-journey h-bg">
+      <header className="h-header shrink-0">
         <div className="flex items-center gap-2 px-2 py-2">
           <button type="button" aria-label="Retour" onClick={back} className="h-hit h-press grid h-11 w-11 place-items-center">
             <Icon name="chevron_left" className="h-5 w-5" />
@@ -416,7 +429,8 @@ export function HotelJourney({
         </div>
       </header>
 
-      <div key={step} className="hotel-step">
+      <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div key={step} className="hotel-step pb-6">
         {step === "hotel" ? (
           <div data-hotel-detail="1">
             <Gallery images={images} alt={file?.name || hotel.name} />
@@ -632,6 +646,7 @@ export function HotelJourney({
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
         ) : null}
+      </div>
       </div>
 
       {step === "hotel" ? (
