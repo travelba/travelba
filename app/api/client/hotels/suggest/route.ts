@@ -44,8 +44,15 @@ export async function GET(request: Request) {
   const key = foldHotelLabel(query);
   const cached = readSuggestCache(key);
   if (cached) return NextResponse.json({ suggestions: cached });
-  const [catalog, remote] = await Promise.all([catalogSuggestions(query), loadLittleEmperorsSuggestions(query)]);
-  const suggestions = mergePlaceSuggestions([catalog, remote || []]);
-  if (remote) writeSuggestCache(key, suggestions);
+  const alias = foldHotelLabel(query) === "londres" ? "London" : "";
+  const [catalog, remote, aliasCatalog, aliasRemote] = await Promise.all([
+    catalogSuggestions(query),
+    loadLittleEmperorsSuggestions(query),
+    alias ? catalogSuggestions(alias) : Promise.resolve([] as PlaceSuggestion[]),
+    alias ? loadLittleEmperorsSuggestions(alias) : Promise.resolve([] as PlaceSuggestion[] | null),
+  ]);
+  const suggestions = mergePlaceSuggestions([catalog, remote || [], aliasCatalog, aliasRemote || []]);
+  const remoteFailed = remote == null || (alias !== "" && aliasRemote == null);
+  if (!remoteFailed) writeSuggestCache(key, suggestions);
   return NextResponse.json({ suggestions });
 }
