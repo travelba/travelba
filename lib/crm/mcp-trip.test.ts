@@ -11,6 +11,8 @@ import {
   addHotel,
   addVol,
   addVoyageur,
+  planSupplierNet,
+  updateHotel,
   updateVol,
   buildFlightCard,
   buildHotelCard,
@@ -702,6 +704,59 @@ test("prix_total est le total du groupe, et modifier_vol garde l’heure locale"
   assert.equal((erased?.details as Record<string, unknown>).review_reason, undefined);
 });
 
+test("deux vols à 611,20 et 611,19 sans frais donnent 1 222,39", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Marrakech" }, client);
+  const lea = await addVoyageur({ dossier_id: dossier.id, prenoms: "Léa", nom: "Martin" }, client);
+  const camille = await addVoyageur({ dossier_id: dossier.id, prenoms: "Camille", nom: "Martin" }, client);
+  await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Air France",
+      depart_iata: "ORY",
+      arrivee_iata: "RAK",
+      depart: "2026-10-08T18:45",
+      arrivee: "2026-10-08T21:15",
+      prix: 611.2,
+      sans_frais: true,
+    },
+    client
+  );
+  const back = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Air France",
+      depart_iata: "RAK",
+      arrivee_iata: "ORY",
+      depart: "2026-10-11T11:40",
+      arrivee: "2026-10-11T16:05",
+      prix: 611.19,
+      sans_frais: true,
+    },
+    client
+  );
+  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
+  assert.equal(db.tables.crm_bookings[0].total_amount, 1222.39);
+  const moved = await updateVol(
+    { dossier_id: dossier.id, carte_id: back.id, voyageur_ids: [lea.voyageur_id, camille.voyageur_id] },
+    client
+  );
+  assert.equal(moved.billets, 2);
+  const onlyLea = await updateVol(
+    { dossier_id: dossier.id, carte_id: back.id, voyageur_ids: [lea.voyageur_id] },
+    client
+  );
+  assert.equal(onlyLea.billets, 1);
+  const passengers = (db.tables.crm_booking_items.find((row) => row.id === back.id)?.details as { passengers?: { first_name?: string }[] })
+    .passengers;
+  assert.equal(passengers?.length, 1);
+  assert.equal(passengers?.[0]?.first_name, "Léa");
+  assert.equal(db.tables.crm_bookings[0].total_amount, 1222.39);
+});
+
 test("ajouter_accueil_vip exige un vol et suit son horaire", async () => {
   const { db, client } = adminOf({
     crm_customers: [customer(CLIENT, "Camille", "Martin")],
@@ -1104,4 +1159,151 @@ test("ces outils n’envoient ni message ni synchro de formalité", () => {
   assert.match(bookings, /createStaffBooking/);
   assert.match(items, /addStaffBookingCard/);
   assert.match(items, /scheduleFormalitySync/);
+});
+
+test("le coût net en dirhams garde l’euro indiqué, sans taux inventé", () => {
+  assert.deepEqual(planSupplierNet({ prixNet: 12000, devise: "MAD", prixNetEur: 1160, leNet: null }), {
+    supplier_net: 12000,
+    supplier_currency: "MAD",
+    supplier_net_eur: 1160,
+  });
+  assert.equal(planSupplierNet({ prixNet: 1160, devise: "EUR", prixNetEur: null, leNet: null })?.supplier_net_eur, 1160);
+  assert.equal(planSupplierNet({ prixNet: null, devise: null, prixNetEur: null, leNet: null }), null);
+  assert.throws(
+    () => planSupplierNet({ prixNet: 100, devise: "EUR", prixNetEur: 90, leNet: null }),
+    /ne correspond pas/
+  );
+});
+
+test("modifier_hotel garde le prix de vente, et l’aligne seulement si prix est indiqué", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Marrakech", devise: "EUR" }, client);
+  const traveler = await addVoyageur({ dossier_id: dossier.id, prenoms: "Camille", nom: "Martin" }, client);
+  const hotel = await addHotel(
+    {
+      dossier_id: dossier.id,
+      nom: "Hôtel provisoire",
+      ville: "Marrakech",
+      arrivee: "2026-12-01",
+      depart: "2026-12-04",
+      prix: 900,
+      confirmation: "OLD100",
+      voyageurs: [traveler.voyageur_id],
+    },
+    client
+  );
+  assert.equal(hotel.prix_vendu, 900);
+
+  const netOnly = await updateHotel(
+    {
+      dossier_id: dossier.id,
+      carte_id: hotel.id,
+      nom: "La Mamounia",
+      prix_net: "12 000",
+      devise_net: "MAD",
+      prix_net_eur: 1160,
+      pension: "Petit-déjeuner",
+      annulation: "Annulation gratuite jusqu’au 1er novembre.",
+      avantages: ["Petit-déjeuner", "Surclassement"],
+      notes: "Arrivée tardive",
+    },
+    client
+  );
+  assert.equal(netOnly.prix_vendu, 900);
+  assert.equal(netOnly.prix_net, 12000);
+  assert.equal(netOnly.devise_net, "MAD");
+  assert.equal(netOnly.prix_net_eur, 1160);
+  assert.equal(netOnly.notifie, false);
+  const row = db.tables.crm_booking_items.find((item) => item.id === hotel.id);
+  assert.equal(row?.amount, 900);
+  assert.equal(row?.title, "La Mamounia");
+  const details = row?.details as Record<string, unknown>;
+  assert.equal(details.supplier_net, 12000);
+  assert.equal(details.supplier_currency, "MAD");
+  assert.equal(details.supplier_net_eur, 1160);
+  assert.equal(details.board, "Petit-déjeuner");
+  assert.equal(details.notes, "Arrivée tardive");
+  assert.deepEqual(details.conditions, ["Annulation gratuite jusqu’au 1er novembre."]);
+  assert.deepEqual(details.included, ["Petit-déjeuner", "Surclassement"]);
+  assert.equal(JSON.stringify(details).includes("total_cost"), false);
+  assert.equal(db.tables.crm_transactions?.length || 0, 0);
+
+  const sold = await updateHotel(
+    { dossier_id: dossier.id, carte_id: hotel.id, prix: 1160 },
+    client
+  );
+  assert.equal(sold.prix_vendu, 1160);
+  assert.equal(sold.prix_net, 12000);
+  assert.equal(db.tables.crm_booking_items.find((item) => item.id === hotel.id)?.amount, 1160);
+  assert.notEqual(sold.prix_vendu, Math.round(1160 * 1.3));
+
+  db.tables.crm_le_bookings = [
+    {
+      le_booking_id: 90,
+      confirmation_number: "64570SH046795",
+      state: "booked",
+      hotel_id: 44,
+      hotel_name: "La Mamounia",
+      city: "Marrakech",
+      address: "Avenue Bab Jdid",
+      check_in: "2026-12-02",
+      check_out: "2026-12-06",
+      currency: "MAD",
+      total_cost: "12000",
+      guest_names: ["Camille Martin"],
+      room_types: ["Suite"],
+      cancellation_policies: ["Free cancellation before 1 Nov"],
+      crm_booking_id: dossier.id,
+      status: "linked",
+      raw: {
+        id: 90,
+        benefits: ["Complimentary breakfast"],
+        board: "Petit-déjeuner",
+        public_price: "15000",
+        public_currency: "MAD",
+        hotel_confirmations: ["H998877"],
+      },
+    },
+  ];
+  const fromLe = await updateHotel(
+    { dossier_id: dossier.id, carte_id: hotel.id, reference_le: "64570" },
+    client
+  );
+  assert.equal(fromLe.prix_vendu, 1160);
+  assert.equal(fromLe.prix_net, 12000);
+  assert.equal(fromLe.devise_net, "MAD");
+  assert.equal(fromLe.prix_net_eur, 1160);
+  assert.equal(fromLe.hotel, "La Mamounia");
+  assert.equal(fromLe.arrivee, "2026-12-02");
+  const filled = db.tables.crm_booking_items.find((item) => item.id === hotel.id);
+  assert.equal(filled?.amount, 1160);
+  const filledDetails = filled?.details as Record<string, unknown>;
+  assert.equal(filledDetails.address, "Avenue Bab Jdid");
+  assert.equal(filledDetails.le_hotel_id, 44);
+  assert.deepEqual(filledDetails.included, ["Petit-déjeuner offert"]);
+  assert.equal(String(filled?.confirmation_ref).includes("64570SH046795"), true);
+  assert.equal(String(filled?.confirmation_ref).includes("H998877"), true);
+  assert.equal(String(filled?.confirmation_ref).includes("OLD100"), true);
+  assert.equal(filledDetails.document_amount, undefined);
+  assert.equal(JSON.stringify(filledDetails).includes("15000"), false);
+
+  const flight = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Royal Air Maroc",
+      depart_iata: "CDG",
+      arrivee_iata: "RAK",
+      depart: "2026-12-02T09:00",
+      arrivee: "2026-12-02T12:00",
+    },
+    client
+  );
+  await assert.rejects(
+    () => updateHotel({ dossier_id: dossier.id, carte_id: flight.id, nom: "Autre" }, client),
+    /n’est pas un hôtel/
+  );
+  await assert.rejects(() => updateHotel({ dossier_id: dossier.id, carte_id: hotel.id }, client), /Rien à modifier/);
 });

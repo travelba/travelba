@@ -227,6 +227,8 @@ describe("carte hôtel", () => {
         room: "Suite",
         board: "Petit-déjeuner",
         total_cost: "100",
+        supplier_net: 12500,
+        supplier_net_eur: 1160,
         commission: "12",
         margin: "40",
         photos: [{ url: "https://photos.example/suite.jpg", caption: "Suite", kind: "room" }],
@@ -234,6 +236,8 @@ describe("carte hôtel", () => {
     };
     const facts = hotelStayFacts(manual);
     assert.equal(JSON.stringify(facts).includes("100"), false);
+    assert.equal(JSON.stringify(facts).includes("12500"), false);
+    assert.equal(JSON.stringify(facts).includes("1160"), false);
     assert.equal(JSON.stringify(facts).includes("commission"), false);
     assert.equal(facts.find((row) => row.label === "Chambre") && "value" in facts[0], true);
     assert.equal(facts.some((row) => row.label === "Nuits" && "value" in row && row.value === "3 nuits"), true);

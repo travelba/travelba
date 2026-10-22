@@ -91,6 +91,9 @@ const detailsObjectLoose = z
     review_reason: looseString,
     document_amount: looseNumber,
     document_currency: looseString,
+    supplier_net: looseNumber,
+    supplier_currency: looseString,
+    supplier_net_eur: looseNumber,
     ticket_count: looseNumber,
     party_keys: z.array(z.string()).optional(),
     passengers: z

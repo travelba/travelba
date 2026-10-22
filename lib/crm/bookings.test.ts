@@ -499,6 +499,23 @@ test("stay total is always the sum of card selling prices", () => {
   );
   assert.equal(
     bookingTotalFromItems([
+      {
+        kind: "flight",
+        amount: 611.2,
+        start_at: "2026-10-08T18:45:00",
+        details: { from: "ORY", to: "RAK" },
+      },
+      {
+        kind: "flight",
+        amount: 611.19,
+        start_at: "2026-10-11T11:40:00",
+        details: { from: "RAK", to: "ORY" },
+      },
+    ]),
+    1222.39
+  );
+  assert.equal(
+    bookingTotalFromItems([
       { kind: "hotel", amount: 900, lifecycle: "superseded" },
       { kind: "hotel", amount: 900, lifecycle: "active" },
       { kind: "hotel", amount: 400, lifecycle: "cancelled" },

@@ -1,3 +1,4 @@
+import { hotelRefsShareBooking } from "./item-match";
 import { secretEquals } from "./secret-equals";
 
 /** Preview, développement, et toute revue hors Vercel Production. */
@@ -20,6 +21,14 @@ export class LittleEmperorsError extends Error {
   }
 }
 
+export type LeRoom = {
+  guest_name: string | null;
+  room_type: string | null;
+  board: string | null;
+  hotel_confirmation: string | null;
+  cancellation_policy: string | null;
+};
+
 export type LeBooking = {
   id: number;
   hotel_id: number | null;
@@ -33,12 +42,20 @@ export type LeBooking = {
   confirmation_number: string | null;
   total_cost: string | null;
   currency: string | null;
+  /** Prix public, seulement s’il est distinct du net. */
+  public_price?: string | null;
+  public_currency?: string | null;
+  /** Régime, s’il est écrit. */
+  board?: string | null;
+  /** Confirmations de l’hôtel, distinctes de la référence Little Emperors. */
+  hotel_confirmations?: string[];
   is_cancellable: boolean | null;
   cancellation_deadline: string | null;
   guest_names: string[];
   cancellation_policies: string[];
   room_types: string[];
   benefits: string[];
+  rooms?: LeRoom[];
 };
 
 export type LeHotelPublic = {
@@ -299,16 +316,73 @@ export function benefitsFromLeRaw(raw: unknown): string[] {
   return stringList((raw as { benefits?: unknown }).benefits);
 }
 
+const BOARD_KEYS = ["board", "board_type", "meal_plan", "meal_basis", "rate_plan", "pension"];
+const PUBLIC_PRICE_KEYS = ["public_price", "total_price", "selling_price", "public_rate", "rack_rate"];
+const HOTEL_CONFIRMATION_KEYS = ["hotel_confirmation", "hotel_confirmation_number", "hotel_reference", "confirmation"];
+
+function firstText(row: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const line = text(row[key]);
+    if (line) return line;
+  }
+  return null;
+}
+
+function moneyText(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return text(value);
+}
+
+function publicPriceOf(row: Record<string, unknown>) {
+  for (const key of PUBLIC_PRICE_KEYS) {
+    const value = row[key];
+    const direct = moneyText(value);
+    if (direct) {
+      const nestedCurrency =
+        value && typeof value === "object"
+          ? text((value as { currency?: unknown }).currency)
+          : null;
+      return { amount: direct, currency: nestedCurrency };
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const amount = moneyText((value as { amount?: unknown }).amount ?? (value as { value?: unknown }).value);
+      if (amount) return { amount, currency: text((value as { currency?: unknown }).currency) };
+    }
+  }
+  return { amount: null, currency: null };
+}
+
+function sameBookingRef(value: string, bookingRef: string | null) {
+  if (!bookingRef) return false;
+  const fold = (raw: string) => raw.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return fold(value) === fold(bookingRef) || hotelRefsShareBooking(value, bookingRef);
+}
+
+function hotelConfirmationOf(row: Record<string, unknown>, bookingRef: string | null) {
+  const value = firstText(row, HOTEL_CONFIRMATION_KEYS);
+  if (!value || value.includes("@") || value.startsWith("+")) return null;
+  if (sameBookingRef(value, bookingRef)) return null;
+  return value;
+}
+
 export function parseLeBooking(payload: unknown): LeBooking | null {
   if (!payload || typeof payload !== "object") return null;
   const row = payload as Record<string, unknown>;
   const id = integer(row.id);
   if (id == null) return null;
   const rooms = Array.isArray(row.rooms) ? row.rooms : [];
+  const confirmation = text(row.confirmation_number);
   const guestNames: string[] = [];
   const policies: string[] = [];
   const roomTypes: string[] = [];
   const benefits: string[] = [];
+  const boards: string[] = [];
+  const hotelConfirmations: string[] = [];
+  const parsedRooms: LeRoom[] = [];
+  const bookingBoard = firstText(row, BOARD_KEYS);
+  if (bookingBoard) boards.push(bookingBoard);
+  const bookingHotelConfirmation = hotelConfirmationOf(row, confirmation);
+  if (bookingHotelConfirmation) hotelConfirmations.push(bookingHotelConfirmation);
   for (const room of rooms) {
     if (!room || typeof room !== "object") continue;
     const item = room as Record<string, unknown>;
@@ -319,8 +393,21 @@ export function parseLeBooking(payload: unknown): LeBooking | null {
     const roomType = text(item.room_type);
     if (roomType) roomTypes.push(roomType);
     for (const benefit of stringList(item.benefits)) benefits.push(benefit);
+    const board = firstText(item, BOARD_KEYS);
+    if (board) boards.push(board);
+    const hotelConfirmation = hotelConfirmationOf(item, confirmation);
+    if (hotelConfirmation) hotelConfirmations.push(hotelConfirmation);
+    parsedRooms.push({
+      guest_name: guest,
+      room_type: roomType,
+      board,
+      hotel_confirmation: hotelConfirmation,
+      cancellation_policy: policy,
+    });
   }
   const cost = row.total_cost;
+  const listed = publicPriceOf(row);
+  const unique = (values: string[]) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
   return {
     id,
     hotel_id: integer(row.hotel_id),
@@ -331,15 +418,20 @@ export function parseLeBooking(payload: unknown): LeBooking | null {
     check_in: leDateOnly(text(row.check_in)),
     check_out: leDateOnly(text(row.check_out)),
     state: text(row.state),
-    confirmation_number: text(row.confirmation_number),
+    confirmation_number: confirmation,
     total_cost: typeof cost === "number" && Number.isFinite(cost) ? String(cost) : text(cost),
     currency: text(row.currency),
+    public_price: listed.amount,
+    public_currency: listed.currency || (listed.amount ? text(row.currency) : null),
+    board: unique(boards)[0] || null,
+    hotel_confirmations: unique(hotelConfirmations),
     is_cancellable: typeof row.is_cancellable === "boolean" ? row.is_cancellable : null,
     cancellation_deadline: text(row.cancellation_deadline),
     guest_names: guestNames,
     cancellation_policies: policies,
     room_types: roomTypes,
     benefits,
+    rooms: parsedRooms,
   };
 }
 

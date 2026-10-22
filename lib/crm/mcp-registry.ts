@@ -41,14 +41,16 @@ import {
   mergeCompagnon,
   removeCarte,
   removeVoyageur,
+  updateHotel,
   updateVol,
 } from "@/lib/crm/mcp-trip";
+import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 41;
+export const MCP_TOOL_CAP = 43;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -195,7 +197,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs, état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). carte_id sert à modifier_vol. id ou reference. Pas les contacts d’hôtel.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). carte_id sert à modifier_vol et à modifier_hotel. voyageur_id sert à modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -297,6 +299,19 @@ export const MCP_TOOLS: ToolDef[] = [
     description:
       "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, ou rattacher au dossier désigné.",
     run: () => readEmailsEnAttente(),
+  },
+  {
+    name: "reservation_little_emperors",
+    description:
+      "Lit une réservation Little Emperors, y compris déjà rattachée à un dossier. Par référence, ou par nom du client et hôtel (dates facultatives). Renvoie référence, statut, hôtel, dates, chambres, régime, voyageurs, prix net, prix public, avantages, conditions d’annulation, confirmations hôtel et le dossier lié. Lecture seule. N’invente aucun prix.",
+    input: {
+      confirmation: z.string().trim().max(80).optional().describe("Référence Little Emperors ou confirmation hôtel"),
+      nom: z.string().trim().max(120).optional().describe("Nom du client, avec l’hôtel"),
+      hotel: z.string().trim().max(160).optional().describe("Hôtel, avec le nom du client"),
+      arrivee: z.string().trim().max(10).optional().describe("Arrivée, AAAA-MM-JJ"),
+      depart: z.string().trim().max(10).optional().describe("Départ, AAAA-MM-JJ"),
+    },
+    run: (args) => readReservationLittleEmperors(args),
   },
   {
     name: "little_emperors_en_attente",
@@ -693,7 +708,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_vol",
     write: true,
     description:
-      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
+      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier). Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -709,7 +724,11 @@ export const MCP_TOOLS: ToolDef[] = [
       decalage_jour: z.number().optional().describe("Jours à ajouter si l’arrivée est encore le jour du départ, 0 à 3"),
       cabine: z.string().trim().max(80).optional().describe("Cabine"),
       pnr: z.string().trim().max(40).optional().describe("PNR"),
-      voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs. Omis : les billets déjà sur la carte restent"),
+      voyageur_ids: z
+        .array(z.string())
+        .optional()
+        .describe("Identifiants des voyageurs du dossier. Remplace les passagers de la carte"),
+      voyageurs: z.array(z.string()).optional().describe("Même liste que voyageur_ids. Omis : les billets déjà sur la carte restent"),
       prix: z.union([z.number(), z.string()]).optional().describe(PRIX_BILLET),
       prix_total: z.union([z.number(), z.string()]).optional().describe(PRIX_GROUPE),
       sans_frais: z
@@ -777,6 +796,66 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
     },
     run: (args) => addHotel(args),
+  },
+  {
+    name: "modifier_hotel",
+    write: true,
+    description:
+      "Corrige une carte hôtel déjà au dossier : hôtel, ville, dates, chambres, régime, confirmations, voyageurs, coût net, conditions d’annulation, avantages, notes. Le prix de vente ne change que si prix est indiqué, y compris égal au coût net, sans marge. Un coût net en devise (MAD) garde son équivalent en euros ; aucun taux n’est inventé. reference_le remplit la carte depuis la réservation Little Emperors, sans changer le prix de vente. Le séjour caché ne débite pas. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().describe("Identifiant de la carte hôtel"),
+      nom: z.string().trim().max(160).optional().describe("Nom de l’hôtel"),
+      ville: z.string().trim().max(80).optional().describe("Ville"),
+      pays: z.string().trim().max(80).optional().describe("Pays"),
+      adresse: z.string().trim().max(240).optional().describe("Adresse"),
+      arrivee: z.string().trim().max(10).optional().describe("Arrivée, AAAA-MM-JJ"),
+      depart: z.string().trim().max(10).optional().describe("Départ, AAAA-MM-JJ"),
+      chambre: z.string().trim().max(120).optional().describe("Chambre, s’il n’y en a qu’une"),
+      chambres: z
+        .array(
+          z.union([
+            z.string().trim().max(120),
+            z.object({
+              type: z.string().trim().max(120).optional().describe("Type de chambre"),
+              regime: z.string().trim().max(120).optional().describe("Régime de cette chambre"),
+              confirmation: z.string().trim().max(80).optional().describe("Confirmation hôtel de cette chambre"),
+              voyageurs: z.string().trim().max(240).optional().describe("Voyageurs de cette chambre"),
+            }),
+          ])
+        )
+        .max(8)
+        .optional()
+        .describe("Chambres de la carte"),
+      pension: z.string().trim().max(120).optional().describe("Régime, ex. petit-déjeuner"),
+      regime: z.string().trim().max(120).optional().describe("Régime, comme pension"),
+      confirmation: z.string().trim().max(80).optional().describe("Confirmation. Le numéro déjà sur la carte reste"),
+      confirmations: z.array(z.string().trim().max(80)).max(8).optional().describe("Confirmations hôtel"),
+      voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
+      fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
+      prix_net: z.union([z.number(), z.string()]).optional().describe("Coût net fournisseur. Ce n’est pas le prix de vente"),
+      devise_net: z.string().trim().max(12).optional().describe("Devise du coût net, ex. MAD. EUR si omise"),
+      prix_net_eur: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe("Équivalent en euros du coût net, s’il est connu. Aucun taux n’est inventé"),
+      prix: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe("Prix de vente client. Absent : le prix de vente ne change pas. Peut être égal au coût net, sans marge. Zéro est accepté"),
+      devise: z.string().trim().max(12).optional().describe("Devise du prix de vente. Celle du dossier si omise"),
+      annulation: z.union([z.string(), z.array(z.string())]).optional().describe("Conditions d’annulation, seulement si elles sont connues"),
+      avantages: z.union([z.string(), z.array(z.string())]).optional().describe("Avantages, une ligne ou une liste"),
+      notes: z.string().trim().max(2000).optional().describe("Notes de la carte"),
+      reference_le: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Référence Little Emperors. Remplit la carte depuis cette réservation, sans changer le prix de vente"),
+    },
+    run: (args) => updateHotel(args),
   },
   {
     name: "ajouter_accueil_vip",

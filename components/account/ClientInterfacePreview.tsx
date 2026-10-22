@@ -27,7 +27,7 @@ import {
 } from "@/lib/crm/carnet";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
-import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
+import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { shownClientNote } from "@/lib/crm/public-booking";
@@ -282,6 +282,7 @@ function ClientScreen({
   const placeLine = tripPlaceLine(headline, labels.destination);
   const formalities = frenchPassportTrip(items, travelers.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
+  const stayTotal = bookingTotalFromItems(allItems);
   const expenseChoices = allItems
     .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
     .map((item) => ({
@@ -299,13 +300,14 @@ function ClientScreen({
     items: allItems,
     status: booking.status,
     travelerCount: travelers.length,
+    feeMode: booking.fee_mode,
   });
   const pricesVisible = booking.prices_visible !== false;
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: booking.agency_commission === true,
     agencyFeeRate,
-    stayTotal: Number(booking.total_amount),
+    stayTotal,
     currency: booking.currency,
     pricesVisible,
     extras: feeExtras,
@@ -479,7 +481,7 @@ function ClientScreen({
                 </p>
                 <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
                   {clientStayPriceLabel({
-                    stayTotal: Number(booking.total_amount),
+                    stayTotal,
                     currency: booking.currency,
                     pricesVisible,
                     agencyCommission: booking.agency_commission === true,
