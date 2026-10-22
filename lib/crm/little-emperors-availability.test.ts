@@ -103,3 +103,20 @@ test("la fiche reprend le lieu, les photos et les avantages, sans commission", (
   assert.equal(profile.sections[0]?.title, "Dining");
   assert.equal(profile.amenities[0], "Piscine");
 });
+
+test("une réponse enveloppée reste une liste d’hôtels", () => {
+  const offers = offersFromLeAvailability({
+    data: [
+      {
+        hotel_id: 4,
+        hotel_name: "La Mamounia",
+        is_available: true,
+        hotel_info: { location: "Marrakech, Morocco" },
+        lowest_rate: { total_to_book: 400, currency_code: "EUR" },
+      },
+    ],
+  });
+  assert.equal(offers.length, 1);
+  assert.equal(offers[0]?.hotelName, "La Mamounia");
+  assert.equal(offers[0]?.city, "Marrakech");
+});

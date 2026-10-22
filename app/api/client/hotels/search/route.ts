@@ -15,7 +15,7 @@ import { loadLittleEmperorsOffers } from "@/lib/crm/little-emperors-search";
 import { saveHotelOffer } from "@/lib/crm/hotel-search-store";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const auth = await requireCustomer();
@@ -34,6 +34,7 @@ export async function POST(request: Request) {
       };
       const stays: PricedStay[] = [];
       const links: Promise<void>[] = [];
+      let supplierFailed = false;
       try {
         const accounts = cached
           ? []
@@ -49,9 +50,13 @@ export async function POST(request: Request) {
                   fetchImpl: fetch,
                 }),
             ];
-        for await (const event of streamHotelSearch({ accounts, cached, timeoutMs: 9000 })) {
+        for await (const event of streamHotelSearch({ accounts, cached, timeoutMs: 55_000 })) {
           if (event.type === "start") {
             send({ type: "start" });
+            continue;
+          }
+          if (event.type === "supplier_error") {
+            supplierFailed = true;
             continue;
           }
           if (event.type === "hotel") {
@@ -71,6 +76,10 @@ export async function POST(request: Request) {
             continue;
           }
           await Promise.all(links);
+          if (supplierFailed && stays.length === 0) {
+            send({ type: "error", message: "La recherche n’a pas abouti. Réessayez." });
+            continue;
+          }
           if (!event.cached) writeHotelSearchCache(key, stays);
           send({
             type: "done",

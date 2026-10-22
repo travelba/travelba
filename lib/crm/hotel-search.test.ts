@@ -262,6 +262,21 @@ test("les chambres portent les adultes et l’âge de chaque enfant, un hôtel c
   );
 });
 
+test("un compte qui échoue signale l’erreur et n’invente pas d’hôtel", async () => {
+  const events: HotelStreamEvent[] = [];
+  for await (const event of streamHotelSearch({
+    accounts: [async () => Promise.reject(new Error("supplier"))],
+    cached: null,
+    timeoutMs: 1000,
+  })) {
+    events.push(event);
+  }
+  assert.equal(events.some((event) => event.type === "supplier_error"), true);
+  const finished = events.at(-1);
+  assert.equal(finished?.type, "done");
+  if (finished?.type === "done") assert.equal(finished.count, 0);
+});
+
 test("le premier compte répond avant le compte lent, le cache ne rappelle personne", async () => {
   clearHotelSearchCache();
   let slowDone = false;
@@ -420,13 +435,25 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /Hôtels/);
   assert.match(ui, /data-hotel-summary/);
   assert.match(ui, /data-hotel-sheet/);
-  assert.match(ui, /data-hotel-themes/);
-  assert.match(ui, /initialTheme \|\| "d"/);
+  assert.match(ui, /data-hotel-theme="a"/);
+  assert.doesNotMatch(ui, /data-hotel-themes|Noir & or|Éditorial|Mix|Nuit/);
   assert.match(ui, /Voir l’hôtel/);
   assert.doesNotMatch(ui, /bg-gradient|rounded-\[28px\]|commission/i);
   const themes = readFileSync(join(root, "lib/crm/hotel-journey.ts"), "utf8");
-  assert.match(themes, /label: "Mix"/);
+  assert.doesNotMatch(themes, /label: "Mix"|HotelThemeId/);
+  const css = readFileSync(join(root, "app/globals.css"), "utf8");
+  assert.doesNotMatch(css, /data-hotel-theme="b"|data-hotel-theme="c"|data-hotel-theme="d"/);
+  const supplier = readFileSync(join(root, "lib/crm/little-emperors-search.ts"), "utf8");
+  assert.match(supplier, /SEARCH_TIMEOUT_MS = 25_000/);
+  assert.match(supplier, /SUGGEST_TIMEOUT_MS = 8_000/);
+  const searchRoute = readFileSync(join(root, "app/api/client/hotels/search/route.ts"), "utf8");
+  assert.match(searchRoute, /timeoutMs: 55_000/);
+  assert.match(searchRoute, /supplierFailed && stays.length === 0/);
+  const suggestRoute = readFileSync(join(root, "app/api/client/hotels/suggest/route.ts"), "utf8");
+  assert.doesNotMatch(suggestRoute, /setTimeout\(\(\) => resolve\(\[\]\), 280\)/);
+  assert.match(suggestRoute, /if \(remote\) writeSuggestCache/);
   const journey = readFileSync(join(root, "components/account/HotelJourney.tsx"), "utf8");
+  assert.match(ui, /journeyQuery/);
   assert.match(journey, /data-hotel-hero/);
   assert.match(journey, /data-hotel-rate-cta/);
   assert.match(journey, /data-hotel-detail/);
@@ -435,4 +462,33 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(journey, /data-hotel-confirm/);
   assert.match(journey, /Choisir/);
   assert.doesNotMatch(journey, /bg-gradient|commission/i);
+});
+
+test("un délai du fournisseur n’est pas une liste vide", async () => {
+  const { loadLittleEmperorsOffers, loadLittleEmperorsSuggestions } = await import("./little-emperors-search");
+  const previousKey = process.env.LITTLE_EMPERORS_API_KEY;
+  process.env.LITTLE_EMPERORS_API_KEY = "test-key";
+  const timeout = new Error("timeout");
+  timeout.name = "TimeoutError";
+  const fetchImpl: typeof fetch = async () => {
+    throw timeout;
+  };
+  try {
+    await assert.rejects(
+      () =>
+        loadLittleEmperorsOffers({
+          destination: "Paris",
+          checkIn: "2026-11-12",
+          checkOut: "2026-11-14",
+          rooms: [{ adults: 2, children: [] }],
+          target: { kind: "ville", id: 12 },
+          fetchImpl,
+        }),
+      /supplier/
+    );
+    assert.equal(await loadLittleEmperorsSuggestions("Paris", fetchImpl), null);
+  } finally {
+    if (previousKey === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
+    else process.env.LITTLE_EMPERORS_API_KEY = previousKey;
+  }
 });

@@ -9,11 +9,14 @@ import {
 } from "./little-emperors-availability";
 import { supplierRoomOccupancy, type HotelOffer, type HotelRoomOccupancy, type HotelSearchTarget, type PlaceSuggestion } from "./hotel-search";
 
-const SEARCH_TIMEOUT_MS = 8000;
-const SUGGEST_TIMEOUT_MS = 2500;
+const SEARCH_TIMEOUT_MS = 25_000;
+const SUGGEST_TIMEOUT_MS = 8_000;
 
 function failureCode(err: unknown) {
-  return err instanceof LittleEmperorsError ? err.code : "error";
+  if (err instanceof LittleEmperorsError) return err.code;
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) return "timeout";
+  if (err instanceof Error && err.name === "TypeError") return "type";
+  return "error";
 }
 
 async function predictive(query: string, fetchImpl: typeof fetch | undefined, timeoutMs: number): Promise<LeSearchHit[]> {
@@ -28,7 +31,10 @@ async function predictive(query: string, fetchImpl: typeof fetch | undefined, ti
   return parseLePredictive(payload);
 }
 
-export async function loadLittleEmperorsSuggestions(query: string, fetchImpl?: typeof fetch): Promise<PlaceSuggestion[]> {
+export async function loadLittleEmperorsSuggestions(
+  query: string,
+  fetchImpl?: typeof fetch
+): Promise<PlaceSuggestion[] | null> {
   if (!littleEmperorsConfigured()) return [];
   try {
     const hits = await predictive(query, fetchImpl, SUGGEST_TIMEOUT_MS);
@@ -40,7 +46,7 @@ export async function loadLittleEmperorsSuggestions(query: string, fetchImpl?: t
     }));
   } catch (err) {
     console.error("[hotels] suggestions", failureCode(err));
-    return [];
+    return null;
   }
 }
 
@@ -80,7 +86,7 @@ export async function loadLittleEmperorsOffers(input: {
     return offersFromLeAvailability(payload, input.city || input.destination);
   } catch (err) {
     console.error("[hotels] disponibilités", failureCode(err));
-    return [];
+    throw new Error("supplier");
   }
 }
 

@@ -6,7 +6,7 @@ import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { parisTodayIso } from "@/lib/crm/dates";
-import { HOTEL_THEMES, presentHotels, type HotelSort, type HotelThemeId } from "@/lib/crm/hotel-journey";
+import { presentHotels, type HotelSort } from "@/lib/crm/hotel-journey";
 import {
   nightsBetween,
   occupancyKey,
@@ -107,7 +107,7 @@ function readRecent(): RecentStay[] {
   }
 }
 
-export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = {}) {
+export function HotelSearch() {
   const today = useMemo(() => parisTodayIso(), []);
   const [destination, setDestination] = useState("");
   const [city, setCity] = useState("");
@@ -128,7 +128,6 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
   const [note, setNote] = useState("");
   const [serverFirst, setServerFirst] = useState<number | null>(null);
   const [clientFirst, setClientFirst] = useState<number | null>(null);
-  const [theme, setTheme] = useState<HotelThemeId>(initialTheme || "d");
   const [sort, setSort] = useState<HotelSort>("prix");
   const [needs, setNeeds] = useState<(keyof HotelPerks)[]>([]);
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
@@ -137,13 +136,6 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
   const [committed, setCommitted] = useState<{ rooms: HotelRoomOccupancy[] } | null>(null);
   const suggestAbort = useRef<AbortController | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    document.documentElement.dataset.hotelTheme = theme;
-    return () => {
-      delete document.documentElement.dataset.hotelTheme;
-    };
-  }, [theme]);
 
   const folded = destination.trim().toLocaleLowerCase("fr");
   const suggestions = useMemo(() => {
@@ -350,29 +342,20 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
 
   const shown = presentHotels(hotels, sort, needs);
   const canMap = hotels.some((hotel) => hotel.coords);
+  const journeyQuery = useMemo(
+    () => ({ destination, city, checkIn, checkOut, rooms: committed?.rooms ?? [] }),
+    [destination, city, checkIn, checkOut, committed]
+  );
 
   return (
-    <section className="hotel-theme space-y-4" data-hotel-theme={theme} data-hotel-search="1" data-t-client={clientFirst ?? ""} data-t-server={serverFirst ?? ""}>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" data-hotel-themes="1">
-        {HOTEL_THEMES.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            aria-pressed={theme === item.id}
-            onClick={() => setTheme(item.id)}
-            className={theme === item.id ? "h-on pb-1" : "h-muted pb-1"}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+    <section className="hotel-theme space-y-4" data-hotel-theme="a" data-hotel-search="1" data-t-client={clientFirst ?? ""} data-t-server={serverFirst ?? ""}>
       {opened && committed ? (
         <HotelJourney
           hotel={opened}
           stayRooms={committed.rooms}
           datesLabel={summaryDates}
           party={party}
-          query={{ destination, city, checkIn, checkOut, rooms: committed.rooms }}
+          query={journeyQuery}
           onBack={() => setOpened(null)}
         />
       ) : null}
@@ -455,7 +438,7 @@ export function HotelSearch({ initialTheme }: { initialTheme?: HotelThemeId } = 
               <HotelCard key={hotel.hotelKey} hotel={hotel} first={index === 0} onOpen={() => setOpened(hotel)} />
             ))
           : null}
-        {searched && !searching && hotels.length === 0 ? (
+        {searched && !searching && hotels.length === 0 && !note ? (
           <article className="h-card h-line border p-4">
             <h3 className="text-lg font-semibold h-ink">Aucun hôtel pour ces dates</h3>
             <p className="mt-1 text-sm h-muted">Écrivez à l’agence, nous cherchons autrement.</p>
