@@ -5,6 +5,7 @@ import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { customerFullName } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
+import { hotelSearchAllowed } from "@/lib/crm/hotel-search";
 
 export const metadata = {
   title: `Mon compte — ${siteConfig.shortName}`,
@@ -35,7 +36,7 @@ export default async function AccountLayout({
   const desk = deskBypass(jar.get(DESK_COOKIE)?.value, user.id);
 
   return (
-    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk} desk={desk}>
+    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk} desk={desk} hotels={hotelSearchAllowed(customer)}>
       {children}
     </AccountChrome>
   );

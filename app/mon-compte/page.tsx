@@ -13,7 +13,6 @@ import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
-import { HotelSearch } from "@/components/account/HotelSearch";
 import { hotelSearchAllowed } from "@/lib/crm/hotel-search";
 import {
   BoardingPassSkeleton,
@@ -46,7 +45,18 @@ export default async function AccountHomePage() {
           </h1>
         </section>
 
-        {hotelSearchAllowed(customer) ? <HotelSearch /> : null}
+        {hotelSearchAllowed(customer) ? (
+          <Link
+            href="/mon-compte/hotels"
+            className="account-press flex items-center justify-between border border-[#e5e3dc] bg-white px-4 py-3"
+          >
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9a7b4f]">Hôtels</span>
+              <span className="text-sm font-semibold text-[var(--admin-navy)]">Réserver un séjour</span>
+            </span>
+            <Icon name="arrow_forward" className="h-4 w-4 text-[#c5a880]" />
+          </Link>
+        ) : null}
 
         <Suspense fallback={<HomeEncoursSkeleton />}>
           <HomeEncours customer={customer} />

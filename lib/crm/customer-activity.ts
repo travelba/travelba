@@ -52,6 +52,7 @@ export function clientPathSummary(path: string): string | null {
   const clean = cleanClientPath(path);
   if (!clean) return null;
   if (clean === "/mon-compte") return "A ouvert l’accueil";
+  if (clean === "/mon-compte/hotels") return "A ouvert les hôtels";
   if (clean === "/mon-compte/reservations") return "A ouvert ses séjours";
   const stay = clean.match(/^\/mon-compte\/reservations\/([^/]+)$/);
   if (stay) return `A ouvert le séjour ${decodeStay(stay[1])}`;

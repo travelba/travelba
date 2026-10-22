@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { guestNameOk, presentHotels } from "./hotel-journey";
+import { collapseRooms, guestNameOk, hotelJourneySearch, hotelJourneyStep, presentHotels, type ClientRate } from "./hotel-journey";
 import {
   HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID,
   HOTEL_SEARCH_BENJAMIN_USER_ID,
@@ -11,6 +11,7 @@ import {
   hotelSearchAllowed,
   hotelSearchCacheKey,
   mergeOffers,
+  offerBeats,
   mergePlaceSuggestions,
   parseHotelSearchQuery,
   priceStayOffer,
@@ -160,6 +161,119 @@ test("un hôtel, un prix : le moins cher, puis le plus d’avantages", () => {
     }),
   ]);
   assert.equal([...same.values()][0].account, "net");
+});
+
+test("une offre : le moins cher, à l’arrondi près celle qui a le plus d’avantages", () => {
+  const plain = { currency: "EUR", score: 1, benefits: ["Séjour"] };
+  const rich = { currency: "EUR", score: 13, benefits: ["Petit-déjeuner", "Surclassement"] };
+  assert.equal(offerBeats({ ...rich, sellCents: 20000 }, { ...plain, sellCents: 15000 }), true);
+  assert.equal(offerBeats({ ...plain, sellCents: 20000 }, { ...rich, sellCents: 20080 }), true);
+  assert.equal(offerBeats({ ...plain, sellCents: 20000 }, { ...rich, sellCents: 20300 }), false);
+
+  const near = new Map<string, PricedStay>();
+  mergeOffers(near, [
+    offer({
+      account: "net",
+      hotelName: "Molitor",
+      city: "Paris",
+      net: 100,
+      currency: "EUR",
+      commissionable: true,
+      hotelCommission: 0.1,
+      benefits: ["Petit-déjeuner"],
+    }),
+    offer({
+      account: "little_emperors",
+      hotelName: "Molitor",
+      city: "Paris",
+      proposed: 100.5,
+      currency: "EUR",
+      benefits: ["Petit-déjeuner", "Surclassement"],
+    }),
+  ]);
+  assert.equal([...near.values()][0].account, "little_emperors");
+
+  const cheaper = new Map<string, PricedStay>();
+  mergeOffers(cheaper, [
+    offer({
+      account: "net",
+      hotelName: "Normandy",
+      city: "Deauville",
+      net: 100,
+      currency: "EUR",
+      commissionable: true,
+      hotelCommission: 0.1,
+    }),
+    offer({
+      account: "little_emperors",
+      hotelName: "Normandy",
+      city: "Deauville",
+      proposed: 102,
+      currency: "EUR",
+      benefits: ["Petit-déjeuner", "Surclassement"],
+    }),
+  ]);
+  assert.equal([...cheaper.values()][0].account, "net");
+
+  const perks = {
+    breakfast: false,
+    freeCancellation: false,
+    upgrade: false,
+    credit: false,
+    earlyCheckIn: false,
+    lateCheckOut: false,
+  };
+  const roomRate = (room: string, sellCents: number, extra: Partial<ClientRate>): ClientRate => ({
+    offerId: room,
+    room,
+    title: extra.title || "Séjour",
+    detail: "",
+    cancellation: extra.cancellation || "Gratuite",
+    benefits: extra.benefits || [],
+    footnotes: [],
+    perks: extra.perks || perks,
+    sellCents,
+    perNightCents: sellCents,
+    currency: "EUR",
+    images: [],
+  });
+  const rooms = collapseRooms([
+    {
+      name: "Chambre deluxe",
+      detail: "",
+      images: [],
+      rates: [
+        roomRate("Chambre deluxe", 20000, { cancellation: "Non remboursable", benefits: [] }),
+        roomRate("Chambre deluxe", 20040, {
+          title: "Avec petit-déjeuner",
+          cancellation: "Gratuite",
+          benefits: ["Petit-déjeuner"],
+          perks: { ...perks, breakfast: true, freeCancellation: true },
+        }),
+      ],
+    },
+    {
+      name: "chambre deluxe",
+      detail: "",
+      images: [],
+      rates: [roomRate("chambre deluxe", 18000, { benefits: [], title: "Autre compte" })],
+    },
+    {
+      name: "Suite",
+      detail: "",
+      images: [],
+      rates: [roomRate("Suite", 40000, { benefits: ["Surclassement"], perks: { ...perks, upgrade: true } })],
+    },
+  ]);
+  assert.equal(rooms.length, 2);
+  const deluxe = rooms.find((room) => room.name === "Chambre deluxe");
+  assert.equal(deluxe?.rates.length, 1);
+  assert.equal(deluxe?.rates[0].sellCents, 18000);
+  assert.equal(rooms.find((room) => room.name === "Suite")?.rates.length, 1);
+  assert.equal(hotelJourneyStep("chambre"), "room");
+  assert.equal(hotelJourneyStep("voyageurs"), "guests");
+  assert.equal(hotelJourneyStep(null), "hotel");
+  assert.equal(hotelJourneySearch("12", "guests"), "hotel=12&etape=voyageurs");
 });
 
 test("le client ne reçoit ni compte, ni net, ni commission, ni marque", () => {
@@ -444,10 +558,24 @@ test("le client lit la chambre, la ville et l’annulation en français", () => 
 
 test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fournisseur", () => {
   const home = readFileSync(join(root, "app/mon-compte/page.tsx"), "utf8");
-  const searchAt = home.indexOf("<HotelSearch");
+  const shortcutAt = home.indexOf("/mon-compte/hotels");
   const encoursAt = home.indexOf("<HomeEncours");
-  assert.ok(searchAt > 0 && searchAt < encoursAt);
-  assert.match(home, /hotelSearchAllowed\(customer\) \? <HotelSearch \/> : null/);
+  assert.ok(shortcutAt > 0 && shortcutAt < encoursAt);
+  assert.match(home, /hotelSearchAllowed\(customer\)/);
+  assert.doesNotMatch(home, /<HotelSearch/);
+  const hotelsPage = readFileSync(join(root, "app/mon-compte/hotels/page.tsx"), "utf8");
+  assert.match(hotelsPage, /hotelSearchAllowed/);
+  assert.match(hotelsPage, /<HotelSearch/);
+  const chrome = readFileSync(join(root, "components/account/AccountChrome.tsx"), "utf8");
+  assert.match(chrome, /AccountNightTabs/);
+  assert.match(chrome, /suffix !== "\/hotels"/);
+  assert.match(chrome, /label: "Hôtels"/);
+  assert.match(chrome, /label: "Réservations"/);
+  assert.match(chrome, /label: "Transactions"/);
+  assert.match(chrome, /label: "Mon compte"/);
+  const night = readFileSync(join(root, "components/account/AccountNightTabs.tsx"), "utf8");
+  assert.match(night, /account-tabbar-night/);
+  assert.doesNotMatch(night, /rounded-full/);
   const ui = readFileSync(join(root, "components/account/HotelSearch.tsx"), "utf8");
   assert.doesNotMatch(ui, /little emperors|expedia|ratehawk|amadeus|\btaap\b/i);
   assert.match(ui, /data-t-client/);
@@ -495,6 +623,11 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(journey, /Ajouter un occupant/);
   assert.match(journey, /createPortal/);
   assert.match(css, /\.h-journey \{\s*position: fixed;\s*z-index: 46;\s*top: 0;/);
+  assert.match(css, /100dvh/);
+  assert.doesNotMatch(journey, />Avantages</);
+  assert.doesNotMatch(ui, />Avantages</);
+  assert.match(journey, /collapseRooms/);
+  assert.match(readFileSync(join(root, "app/api/client/hotels/fiche/route.ts"), "utf8"), /collapseRooms/);
   assert.match(ui, /Où souhaitez-vous séjourner/);
   assert.match(css, /hotel-step/);
   assert.match(css, /prefers-reduced-motion: reduce/);

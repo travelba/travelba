@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { parisTodayIso } from "@/lib/crm/dates";
-import { presentHotels, type HotelSort } from "@/lib/crm/hotel-journey";
+import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
 import {
   nightsBetween,
   occupancyKey,
@@ -128,12 +129,46 @@ export function HotelSearch() {
   const [note, setNote] = useState("");
   const [serverFirst, setServerFirst] = useState<number | null>(null);
   const [clientFirst, setClientFirst] = useState<number | null>(null);
-  const [sort, setSort] = useState<HotelSort>("prix");
   const [needs, setNeeds] = useState<(keyof HotelPerks)[]>([]);
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
-  const [opened, setOpened] = useState<ClientHotel | null>(null);
+  const router = useRouter();
+  const params = useSearchParams();
+  const hotelToken = params.get("hotel");
+  const journeyStep = hotelJourneyStep(params.get("etape"));
+  const [catalog, setCatalog] = useState<Record<string, ClientHotel>>({});
+  const [pending, setPending] = useState<string | null>(null);
+  const [trackedToken, setTrackedToken] = useState<string | null>(hotelToken);
   const [recent, setRecent] = useState<RecentStay[]>([]);
   const [committed, setCommitted] = useState<{ rooms: HotelRoomOccupancy[] } | null>(null);
+
+  function tokenOf(hotel: ClientHotel) {
+    return String(hotel.hotelId || hotel.hotelKey);
+  }
+
+  if (hotelToken !== trackedToken) {
+    setTrackedToken(hotelToken);
+    if (!hotelToken || hotelToken === pending) setPending(null);
+  }
+  const openedLive = (hotelToken ? catalog[hotelToken] : null) || (!hotelToken && pending ? catalog[pending] : null) || null;
+
+  function openHotel(hotel: ClientHotel) {
+    const token = tokenOf(hotel);
+    setCatalog((current) => (current[token] === hotel ? current : { ...current, [token]: hotel }));
+    setPending(token);
+    router.push(`/mon-compte/hotels?${hotelJourneySearch(token, "hotel")}`);
+  }
+
+  function onJourneyStep(next: HotelJourneyStep | "back") {
+    if (next === "back") {
+      router.back();
+      return;
+    }
+    if (!openedLive) return;
+    const href = `/mon-compte/hotels?${hotelJourneySearch(tokenOf(openedLive), next)}`;
+    if (`/mon-compte/hotels?${params.toString()}` === href) return;
+    router.push(href);
+  }
+
   const suggestAbort = useRef<AbortController | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
 
@@ -255,7 +290,8 @@ export function HotelSearch() {
     setNote("");
     setSheet(false);
     setSearched(true);
-    setOpened(null);
+    setPending(null);
+    if (hotelToken) router.replace("/mon-compte/hotels");
     setCommitted({ rooms: stayRooms });
     try {
       const entry: RecentStay = {
@@ -342,7 +378,7 @@ export function HotelSearch() {
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
   const nightLabel = nightCount > 0 ? `${nightCount} nuit${nightCount > 1 ? "s" : ""}` : "";
 
-  const shown = presentHotels(hotels, sort, needs);
+  const shown = presentHotels(hotels, "prix", needs);
   const canMap = hotels.some((hotel) => hotel.coords);
   const journeyQuery = useMemo(
     () => ({ destination, city, checkIn, checkOut, rooms: committed?.rooms ?? [] }),
@@ -351,17 +387,19 @@ export function HotelSearch() {
 
   return (
     <section className="hotel-theme space-y-4" data-hotel-theme="a" data-hotel-search="1" data-t-client={clientFirst ?? ""} data-t-server={serverFirst ?? ""}>
-      {opened && committed ? (
+      {openedLive && committed ? (
         <HotelJourney
-          hotel={opened}
+          hotel={openedLive}
           stayRooms={committed.rooms}
           datesLabel={summaryDates}
           party={party}
           query={journeyQuery}
-          onBack={() => setOpened(null)}
+          step={journeyStep}
+          onStep={onJourneyStep}
+          onBack={() => router.replace("/mon-compte/hotels")}
         />
       ) : null}
-      {opened ? null : <>
+      {openedLive ? null : <>
       {searched ? (
         <button
           type="button"
@@ -412,10 +450,6 @@ export function HotelSearch() {
               </div>
               <p className="h-muted">{shown.length} {shown.length > 1 ? "hôtels" : "hôtel"}</p>
             </div>
-            <div className="flex gap-4 text-sm">
-              <button type="button" className={`h-hit h-press ${sort === "prix" ? "h-on" : "h-muted"}`} onClick={() => setSort("prix")}>Prix</button>
-              <button type="button" className={`h-hit h-press ${sort === "avantages" ? "h-on" : "h-muted"}`} onClick={() => setSort("avantages")}>Avantages</button>
-            </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
               {PERK_LABEL.slice(0, 4).map((perk) => {
                 const on = needs.includes(perk.key);
@@ -432,12 +466,12 @@ export function HotelSearch() {
                 );
               })}
             </div>
-            {layout === "carte" && canMap ? <HotelMap hotels={shown} onOpen={setOpened} /> : null}
+            {layout === "carte" && canMap ? <HotelMap hotels={shown} onOpen={openHotel} /> : null}
           </div>
         ) : null}
         {layout === "liste" || !canMap
           ? shown.map((hotel, index) => (
-              <HotelCard key={hotel.hotelKey} hotel={hotel} first={index === 0} onOpen={() => setOpened(hotel)} />
+              <HotelCard key={hotel.hotelKey} hotel={hotel} first={index === 0} onOpen={() => openHotel(hotel)} />
             ))
           : null}
         {searched && !searching && hotels.length === 0 && !note ? (
@@ -450,7 +484,7 @@ export function HotelSearch() {
           </article>
         ) : null}
         {searched && !searching && hotels.length > 0 && shown.length === 0 ? (
-          <p className="text-sm h-muted">Aucun hôtel avec ces avantages. Retirez un filtre.</p>
+          <p className="text-sm h-muted">Aucun hôtel pour ces critères. Retirez un filtre.</p>
         ) : null}
       </div>
       </>}
@@ -732,7 +766,7 @@ function Stepper({
 function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolean; onOpen: () => void }) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const photo = !photoFailed ? hotel.photo || hotel.thumb || hotel.images?.[0] : null;
-  const lines = hotel.benefits.length ? hotel.benefits : PERK_LABEL.filter((perk) => hotel.perks[perk.key]).map((perk) => perk.label);
+  const perk = PERK_LABEL.find((item) => hotel.perks[item.key])?.label || "";
   return (
     <article className="hotel-rise h-card h-line overflow-hidden border">
       <button type="button" onClick={onOpen} className="block w-full text-left">
@@ -763,19 +797,7 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
             <h3 className="h-display text-lg font-semibold h-ink">{hotel.name}</h3>
             {hotel.city ? <p className="text-sm h-muted">{hotel.city}</p> : null}
           </div>
-          {lines.length ? (
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] h-gold">Avantages</p>
-              <ul className="space-y-1.5">
-                {lines.slice(0, 4).map((line) => (
-                  <li key={line} className="flex gap-2 text-sm h-ink">
-                    <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 h-gold" />
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          {perk ? <p className="text-xs h-muted">{perk}</p> : null}
           <div className="flex items-end justify-between gap-3 border-t h-line pt-3">
             <div>
               <p className="text-xl font-semibold h-ink">{euros(hotel.sellCents, hotel.currency)}</p>
