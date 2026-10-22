@@ -57,6 +57,7 @@ export async function loadLittleEmperorsOffers(input: {
   checkOut: string;
   rooms: HotelRoomOccupancy[];
   target?: HotelSearchTarget | null;
+  timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }): Promise<HotelOffer[]> {
   if (!littleEmperorsConfigured()) return [];
@@ -79,7 +80,7 @@ export async function loadLittleEmperorsOffers(input: {
           ...(target.kind === "hotel" ? { hotel_id: target.id } : { location_id: target.id }),
           rooms: supplierRoomOccupancy(input.rooms),
         }),
-        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+        signal: AbortSignal.timeout(input.timeoutMs ?? SEARCH_TIMEOUT_MS),
       },
       input.fetchImpl
     );
@@ -88,6 +89,44 @@ export async function loadLittleEmperorsOffers(input: {
     console.error("[hotels] disponibilités", failureCode(err));
     throw new Error("supplier");
   }
+}
+
+/** Hôtels déjà connus : une disponibilité par hôtel, pour ne pas attendre toute la ville. */
+export async function loadKnownHotelOffers(input: {
+  destination: string;
+  city?: string;
+  checkIn: string;
+  checkOut: string;
+  rooms: HotelRoomOccupancy[];
+  hotelIds: number[];
+  fetchImpl?: typeof fetch;
+}): Promise<HotelOffer[]> {
+  const ids = [...new Set(input.hotelIds.filter((id) => Number.isInteger(id) && id > 0))].slice(0, 8);
+  const offers: HotelOffer[] = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < ids.length) {
+      const id = ids[cursor];
+      cursor += 1;
+      try {
+        const rows = await loadLittleEmperorsOffers({
+          destination: input.destination,
+          city: input.city,
+          checkIn: input.checkIn,
+          checkOut: input.checkOut,
+          rooms: input.rooms,
+          target: { kind: "hotel", id },
+          timeoutMs: 12_000,
+          fetchImpl: input.fetchImpl,
+        });
+        offers.push(...rows);
+      } catch {
+        /* un hôtel en échec laisse les autres */
+      }
+    }
+  }
+  await Promise.all([worker(), worker(), worker()]);
+  return offers;
 }
 
 export async function loadLittleEmperorsHotelFile(input: {

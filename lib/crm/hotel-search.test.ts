@@ -449,6 +449,8 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   const searchRoute = readFileSync(join(root, "app/api/client/hotels/search/route.ts"), "utf8");
   assert.match(searchRoute, /timeoutMs: 55_000/);
   assert.match(searchRoute, /supplierFailed && stays.length === 0/);
+  assert.match(searchRoute, /loadKnownHotelOffers/);
+  assert.match(searchRoute, /londres/);
   const suggestRoute = readFileSync(join(root, "app/api/client/hotels/suggest/route.ts"), "utf8");
   assert.doesNotMatch(suggestRoute, /setTimeout\(\(\) => resolve\(\[\]\), 280\)/);
   assert.match(suggestRoute, /if \(remote\) writeSuggestCache/);
@@ -487,6 +489,38 @@ test("un délai du fournisseur n’est pas une liste vide", async () => {
       /supplier/
     );
     assert.equal(await loadLittleEmperorsSuggestions("Paris", fetchImpl), null);
+    const { loadKnownHotelOffers } = await import("./little-emperors-search");
+    const knownFetch: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body || "{}")) as { hotel_id?: number };
+      if (body.hotel_id === 2) {
+        const err = new Error("timeout");
+        err.name = "TimeoutError";
+        throw err;
+      }
+      return new Response(
+        JSON.stringify([
+          {
+            hotel_id: body.hotel_id,
+            hotel_name: "Hôtel de test",
+            is_available: true,
+            hotel_info: { location: "Paris, France" },
+            lowest_rate: { total_to_book: 200, currency_code: "EUR", requested_currency_code: "EUR" },
+          },
+        ]),
+        { status: 200 }
+      );
+    };
+    const known = await loadKnownHotelOffers({
+      destination: "Paris",
+      checkIn: "2026-11-12",
+      checkOut: "2026-11-14",
+      rooms: [{ adults: 2, children: [] }],
+      hotelIds: [1, 2, 1],
+      fetchImpl: knownFetch,
+    });
+    assert.equal(known.length, 1);
+    assert.equal(known[0]?.hotelId, 1);
+    assert.equal(known[0]?.net, null);
   } finally {
     if (previousKey === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
     else process.env.LITTLE_EMPERORS_API_KEY = previousKey;
