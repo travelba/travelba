@@ -372,6 +372,45 @@ function frenchRoom(value: string) {
   return [ [kind, ...adjectives].join(" "), ...beds, ...views ].filter(Boolean).join(", ");
 }
 
+const RATE_WORD: Record<string, string> = {
+  preferential: "préférentiel",
+  preferred: "préférentiel",
+  promotional: "promotionnel",
+  standard: "standard",
+  public: "public",
+  rack: "public",
+  corporate: "entreprise",
+  package: "forfait",
+  saver: "économique",
+  special: "spécial",
+  exclusive: "exclusif",
+  luxury: "prestige",
+  flexible: "flexible",
+  member: "membre",
+  advance: "anticipé",
+  purchase: "",
+  best: "meilleur",
+  available: "disponible",
+  the: "",
+  a: "",
+  and: "",
+};
+
+function frenchNamedRate(value: string) {
+  const words = value
+    .toLocaleLowerCase("fr")
+    .replace(/[^a-zàâäéèêëïîôùûüç\s-]/gi, " ")
+    .split(/[\s-]+/)
+    .filter(Boolean);
+  if (!words.length || words.length > 6 || !words.some((word) => word === "rate" || word === "rates")) return "";
+  const adjectives = words.filter((word) => word !== "rate" && word !== "rates");
+  if (!adjectives.length || adjectives.some((word) => !(word in RATE_WORD))) return "";
+  const label = adjectives.map((word) => RATE_WORD[word]).filter(Boolean).join(" ");
+  if (label === "meilleur disponible") return "Meilleur tarif disponible";
+  if (!label) return "Tarif";
+  return `Tarif ${label}`;
+}
+
 function frenchRateTitle(value: string) {
   let work = value;
   const bits: string[] = [];
@@ -397,7 +436,7 @@ export function frenchHotelLine(value: string): string {
     const cancellation: string = frenchCancellation(line);
     if (cancellation && cancellation !== line) return cancellation === "Gratuite" ? "Annulation gratuite" : cancellation;
   }
-  const rate = frenchRateTitle(line);
+  const rate = frenchRateTitle(line) || frenchNamedRate(line);
   if (rate) return rate;
   const room = frenchRoom(line);
   if (room) return room;
