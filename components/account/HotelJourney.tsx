@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { HotelMap } from "@/components/account/HotelMap";
 import { Icon } from "@/components/crm/icons";
 import { groupAdvantages, readStayRate } from "@/lib/crm/hotel-fr";
 import { guestNameOk, type ClientHotelFile, type ClientRate, type ClientRoom } from "@/lib/crm/hotel-journey";
+import { composeRoomGuests, roomOccupancyLabel } from "@/lib/crm/hotel-party";
 import type { ClientHotel, HotelPerks, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import { formatMoney } from "@/lib/crm/money";
 import { siteConfig } from "@/lib/site";
@@ -247,6 +248,87 @@ function fileFromCard(hotel: ClientHotel): ClientHotelFile {
   };
 }
 
+function sameName(left: string, right: string) {
+  return left.trim().toLocaleLowerCase("fr") === right.trim().toLocaleLowerCase("fr");
+}
+
+function RoomParty({
+  index,
+  occupancy,
+  principal,
+  others,
+  selfName,
+  skipSelf,
+  onPrincipal,
+  onSkip,
+  onOther,
+  onAdd,
+  onRemove,
+}: {
+  index: number;
+  occupancy: string;
+  principal: string;
+  others: string[];
+  selfName: string;
+  skipSelf: boolean;
+  onPrincipal: (value: string) => void;
+  onSkip: () => void;
+  onOther: (at: number, value: string) => void;
+  onAdd: () => void;
+  onRemove: (at: number) => void;
+}) {
+  return (
+    <section className="h-card h-line space-y-3 border p-4" data-hotel-room-party={index + 1}>
+      <div>
+        <p className="h-kicker">Chambre {index + 1}</p>
+        <p className="mt-1 text-sm h-ink">{occupancy}</p>
+      </div>
+      <label className="block">
+        <span className="h-kicker">Voyageur principal</span>
+        <input
+          value={principal}
+          onChange={(event) => onPrincipal(event.target.value)}
+          aria-label={`Voyageur principal, chambre ${index + 1}`}
+          placeholder="Prénom et nom"
+          autoComplete="name"
+          className="mt-2 h-11 w-full bg-transparent text-base h-ink outline-none"
+        />
+      </label>
+      {index === 0 && selfName ? (
+        <button
+          type="button"
+          onClick={onSkip}
+          aria-pressed={skipSelf}
+          className={`h-hit h-press border px-3 text-sm ${skipSelf ? "h-on" : "h-line h-ink"}`}
+        >
+          Je ne voyage pas
+        </button>
+      ) : null}
+      {others.map((name, at) => (
+        <label key={at} className="block border-t h-line pt-3">
+          <span className="flex items-center justify-between gap-3">
+            <span className="h-kicker">Autre occupant</span>
+            <button type="button" onClick={() => onRemove(at)} className="h-hit h-press text-xs h-gold">
+              Retirer
+            </button>
+          </span>
+          <input
+            value={name}
+            onChange={(event) => onOther(at, event.target.value)}
+            aria-label={`Autre occupant ${at + 1}, chambre ${index + 1}`}
+            placeholder="Prénom et nom"
+            autoComplete="name"
+            className="mt-2 h-11 w-full bg-transparent text-base h-ink outline-none"
+          />
+        </label>
+      ))}
+      <button type="button" onClick={onAdd} className="h-hit h-press text-sm font-semibold h-gold">
+        Ajouter un occupant
+      </button>
+    </section>
+  );
+}
+
 function Dock({
   label,
   price,
@@ -254,20 +336,22 @@ function Dock({
   disabled,
   onAction,
 }: {
-  label: string;
-  price: string;
+  label?: string;
+  price?: string;
   action: string;
   disabled?: boolean;
   onAction: () => void;
 }) {
   return (
     <div className="h-dock" data-hotel-dock="1">
-      <div className="flex items-center justify-between gap-3 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <div>
-          <p className="h-kicker">{label}</p>
-          <p className="text-lg font-semibold h-ink">{price}</p>
-        </div>
-        <button type="button" disabled={disabled} onClick={onAction} className="h-btn h-press h-11 px-5 text-sm font-semibold disabled:opacity-40">
+      <div className={`px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${price ? "flex items-center justify-between gap-3" : ""}`}>
+        {price ? (
+          <div>
+            <p className="h-kicker">{label}</p>
+            <p className="text-lg font-semibold h-ink">{price}</p>
+          </div>
+        ) : null}
+        <button type="button" disabled={disabled} onClick={onAction} className={`h-btn h-press h-11 text-sm font-semibold disabled:opacity-40 ${price ? "px-5" : "w-full"}`}>
           {action}
         </button>
       </div>
@@ -295,8 +379,17 @@ export function HotelJourney({
   const [note, setNote] = useState("");
   const [room, setRoom] = useState<ClientRoom | null>(null);
   const [rate, setRate] = useState<ClientRate | null>(null);
-  const [names, setNames] = useState<string[]>(() => stayRooms.map(() => ""));
+  const [selfName, setSelfName] = useState("");
+  const [known, setKnown] = useState<string[]>([]);
+  const [skipSelf, setSkipSelf] = useState(false);
+  const [lead, setLead] = useState<string[]>(() => stayRooms.map(() => ""));
+  const [more, setMore] = useState<string[][]>(() => stayRooms.map(() => []));
   const [sending, setSending] = useState(false);
+  const portal = useSyncExternalStore(
+    () => () => {},
+    () => document.body,
+    () => null,
+  );
   const [done, setDone] = useState("");
   const roomsRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -308,6 +401,25 @@ export function HotelJourney({
       document.body.style.overflow = previous;
     };
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/client/hotels/voyageurs", { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json: { self?: string; people?: string[] } | null) => {
+        if (!json) return;
+        if (typeof json.self === "string") setSelfName(json.self);
+        if (Array.isArray(json.people)) setKnown(json.people.filter((name) => typeof name === "string" && guestNameOk(name)));
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  function principalAt(index: number) {
+    const name = lead[index] || "";
+    if (index === 0 && !name.trim() && selfName && !skipSelf) return selfName;
+    return name;
+  }
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: 0 });
@@ -354,9 +466,52 @@ export function HotelJourney({
   function chooseRate(next: ClientRate) {
     if (!next.offerId) return;
     setRate(next);
-    setNames(stayRooms.map(() => ""));
+    setSkipSelf(false);
+    setLead(stayRooms.map((_, index) => (index === 0 && selfName ? selfName : "")));
+    setMore(stayRooms.map(() => []));
     setNote("");
     setStep("guests");
+  }
+
+  function guestLines() {
+    return stayRooms.map((_, index) => composeRoomGuests(principalAt(index), more[index] || []));
+  }
+
+  function guestsReady() {
+    return stayRooms.every((_, index) => {
+      if (!guestNameOk(principalAt(index))) return false;
+      return (more[index] || []).every((name) => !name.trim() || guestNameOk(name));
+    });
+  }
+
+  function placePerson(name: string) {
+    if (selfName && sameName(name, selfName)) setSkipSelf(false);
+    const currentLead = stayRooms.map((_, index) => principalAt(index));
+    const taken = (index: number) =>
+      [currentLead[index], ...(more[index] || [])].some((value) => value.trim() && sameName(value, name));
+    const empty = currentLead.findIndex((value, index) => !value.trim() && !taken(index));
+    if (empty >= 0) {
+      setLead(currentLead.map((value, index) => (index === empty ? name : value)));
+      return;
+    }
+    const roomIndex = stayRooms.findIndex((_, index) => !taken(index));
+    if (roomIndex < 0) return;
+    setMore((current) => current.map((list, index) => (index === roomIndex ? [...list, name] : list)));
+  }
+
+  function skipSelfToggle() {
+    setSkipSelf((on) => {
+      const next = !on;
+      setLead((current) =>
+        current.map((name, index) => {
+          if (index !== 0) return name;
+          if (next && selfName && sameName(name, selfName)) return "";
+          if (!next && !name.trim()) return selfName;
+          return name;
+        })
+      );
+      return next;
+    });
   }
 
   function go(next: Step) {
@@ -375,8 +530,9 @@ export function HotelJourney({
 
   async function send() {
     if (!rate?.offerId) return;
-    if (names.some((name) => !guestNameOk(name))) {
-      setNote("Indiquez le prénom et le nom de chaque chambre.");
+    const guests = guestLines();
+    if (!guestsReady()) {
+      setNote("Indiquez le prénom et le nom du voyageur principal de chaque chambre.");
       return;
     }
     setSending(true);
@@ -385,7 +541,7 @@ export function HotelJourney({
       const response = await fetch("/api/client/hotels/demandes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ offerId: rate.offerId, guests: names }),
+        body: JSON.stringify({ offerId: rate.offerId, guests }),
       });
       const json = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
       if (!response.ok) {
@@ -401,31 +557,31 @@ export function HotelJourney({
 
   const cheapestRoomRate = room?.rates.slice().sort((a, b) => a.sellCents - b.sellCents)[0];
 
-  return (
-    <div className="h-journey h-bg">
+  const panel = (
+    <div className="hotel-theme">
+    <div className="h-journey h-bg" data-hotel-journey="1">
       <header className="h-header shrink-0">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <button type="button" aria-label="Retour" onClick={back} className="h-hit h-press grid h-11 w-11 place-items-center">
+        <div className="flex items-stretch" data-hotel-steps="1">
+          <button type="button" aria-label="Retour" onClick={back} className="h-hit h-press grid w-11 shrink-0 place-items-center">
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-wide">{file?.name || hotel.name}</p>
-        </div>
-        <div className="flex border-t border-white/15" data-hotel-steps="1">
-          {STEPS.map((item, index) => {
-            const on = item.id === step;
-            const doneStep = index < stepAt;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => go(item.id)}
-                className={`h-hit h-press flex-1 text-[11px] uppercase tracking-[0.14em] ${on || doneStep ? "text-[#c5a880]" : "text-white/45"}`}
-                aria-current={on ? "step" : undefined}
-              >
-                <span className={`inline-block border-b-2 py-2 ${on ? "border-[#c5a880]" : "border-transparent"}`}>{item.label}</span>
-              </button>
-            );
-          })}
+          <div className="flex min-w-0 flex-1">
+            {STEPS.map((item, index) => {
+              const on = item.id === step;
+              const doneStep = index < stepAt;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => go(item.id)}
+                  className={`h-hit h-press min-w-0 flex-1 text-[11px] uppercase tracking-[0.12em] ${on || doneStep ? "text-[#c5a880]" : "text-white/45"}`}
+                  aria-current={on ? "step" : undefined}
+                >
+                  <span className={`inline-block max-w-full truncate border-b-2 py-3 ${on ? "border-[#c5a880]" : "border-transparent"}`}>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </header>
 
@@ -554,7 +710,6 @@ export function HotelJourney({
                     <div>
                       <p className="h-kicker">Total</p>
                       <p className="text-2xl font-semibold h-ink">{euros(item.sellCents, item.currency)}</p>
-                      <p className="text-[11px] uppercase tracking-[0.12em] h-muted">{euros(item.perNightCents, item.currency)} / nuit</p>
                     </div>
                     <button type="button" disabled={!item.offerId} onClick={() => chooseRate(item)} className="h-btn h-press h-11 px-5 text-sm font-semibold disabled:opacity-40">
                       {item.offerId ? "Choisir" : "Tarif en préparation"}
@@ -569,40 +724,55 @@ export function HotelJourney({
         {step === "guests" && rate && reading ? (
           <div data-hotel-guests="1" className="space-y-4 px-4 py-5">
             <div>
-              <p className="text-sm h-muted">{file?.name || hotel.name}</p>
-              <h2 className="h-display mt-1 text-xl font-semibold h-ink">{rate.room}</h2>
+              <p className="text-sm h-muted">{[file?.name || hotel.name, rate.room].filter(Boolean).join(" · ")}</p>
+              <h2 className="h-display mt-1 text-2xl font-semibold leading-tight h-ink">{reading.title}</h2>
               <div className="h-rule mt-3" />
-              <dl className="mt-4 space-y-3 text-sm">
-                <div>
-                  <dt className="h-kicker">Pension</dt>
-                  <dd className="mt-1 h-ink">{reading.board}</dd>
-                </div>
-                <div>
-                  <dt className="h-kicker">Annulation</dt>
-                  <dd className="mt-1 h-ink">{reading.cancellation}</dd>
-                </div>
-                <div>
-                  <dt className="h-kicker">Total</dt>
-                  <dd className="mt-1 text-lg font-semibold h-ink">{euros(rate.sellCents, rate.currency)} · {datesLabel}</dd>
-                </div>
-              </dl>
+              <p className="mt-3 text-sm h-ink">{reading.board}</p>
+              <p className="mt-1 text-sm h-muted">{reading.cancellation}</p>
+              <p className="mt-4 text-3xl font-semibold tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
+              <p className="mt-1 text-sm h-muted">{datesLabel}</p>
             </div>
+            {known.length ? (
+              <div>
+                <p className="h-kicker mb-2">Déjà avec vous</p>
+                <div className="flex flex-wrap gap-2">
+                  {known.map((name) => {
+                    const on = stayRooms.some((_, index) => sameName(principalAt(index), name)) || more.some((list) => list.some((value) => sameName(value, name)));
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => placePerson(name)}
+                        aria-pressed={on}
+                        className={`h-hit h-press border px-3 text-sm ${on ? "h-on" : "h-line h-ink"}`}
+                      >
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             {stayRooms.map((stay, index) => (
-              <label key={index} className="h-field block px-4 py-3">
-                <span className="h-kicker">Chambre {index + 1}</span>
-                <span className="mt-1 block text-xs h-muted">
-                  {stay.adults > 1 ? `${stay.adults} adultes` : "1 adulte"}
-                  {stay.children.length ? ` · ${stay.children.map((child) => (child.age === 0 ? "moins d’un an" : `${child.age} ans`)).join(", ")}` : ""}
-                </span>
-                <input
-                  value={names[index] || ""}
-                  onChange={(event) => setNames((current) => current.map((name, at) => (at === index ? event.target.value : name)))}
-                  aria-label={`Voyageur, chambre ${index + 1}`}
-                  placeholder="Prénom et nom"
-                  autoComplete="name"
-                  className="mt-2 h-11 w-full bg-transparent text-base h-ink outline-none"
-                />
-              </label>
+              <RoomParty
+                key={index}
+                index={index}
+                occupancy={roomOccupancyLabel(stay)}
+                principal={principalAt(index)}
+                others={more[index] || []}
+                selfName={selfName}
+                skipSelf={skipSelf}
+                onPrincipal={(value) => {
+                  if (index === 0 && selfName && !sameName(value, selfName)) setSkipSelf(value.trim() ? false : skipSelf);
+                  setLead((current) => current.map((name, at) => (at === index ? value : name)));
+                }}
+                onSkip={skipSelfToggle}
+                onOther={(at, value) =>
+                  setMore((current) => current.map((list, roomIndex) => (roomIndex === index ? list.map((name, place) => (place === at ? value : name)) : list)))
+                }
+                onAdd={() => setMore((current) => current.map((list, roomIndex) => (roomIndex === index ? [...list, ""] : list)))}
+                onRemove={(at) => setMore((current) => current.map((list, roomIndex) => (roomIndex === index ? list.filter((_, place) => place !== at) : list)))}
+              />
             ))}
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
@@ -628,7 +798,7 @@ export function HotelJourney({
               </dl>
               <Checks lines={rate.benefits} />
               <ul className="space-y-1 h-ink">
-                {names.map((name, index) => (
+                {guestLines().map((name, index) => (
                   <li key={`${name}-${index}`}>Chambre {index + 1} · {name}</li>
                 ))}
               </ul>
@@ -660,8 +830,6 @@ export function HotelJourney({
       ) : null}
       {step === "room" && cheapestRoomRate ? (
         <Dock
-          label="À partir de"
-          price={euros(cheapestRoomRate.sellCents, cheapestRoomRate.currency)}
           action={cheapestRoomRate.offerId ? "Choisir" : "Tarif en préparation"}
           disabled={!cheapestRoomRate.offerId}
           onAction={() => chooseRate(cheapestRoomRate)}
@@ -669,21 +837,20 @@ export function HotelJourney({
       ) : null}
       {step === "guests" && rate ? (
         <Dock
-          label="Total"
-          price={euros(rate.sellCents, rate.currency)}
           action="Récapitulatif"
-          onAction={() => (names.every(guestNameOk) ? setStep("confirm") : setNote("Indiquez le prénom et le nom de chaque chambre."))}
+          onAction={() => (guestsReady() ? setStep("confirm") : setNote("Indiquez le prénom et le nom du voyageur principal de chaque chambre."))}
         />
       ) : null}
       {step === "confirm" && rate && !done ? (
         <Dock
-          label="Total"
-          price={euros(rate.sellCents, rate.currency)}
           action={sending ? "Envoi…" : "Envoyer la demande"}
           disabled={sending || !rate.offerId}
           onAction={() => void send()}
         />
       ) : null}
     </div>
+    </div>
   );
+  if (!portal) return panel;
+  return createPortal(panel, portal);
 }

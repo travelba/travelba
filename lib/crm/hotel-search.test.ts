@@ -491,6 +491,10 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(journey, /data-hotel-steps/);
   assert.match(journey, /data-hotel-gallery/);
   assert.match(journey, /Pension/);
+  assert.match(journey, /Je ne voyage pas/);
+  assert.match(journey, /Ajouter un occupant/);
+  assert.match(journey, /createPortal/);
+  assert.match(css, /\.h-journey \{\s*position: fixed;\s*z-index: 46;\s*top: 0;/);
   assert.match(ui, /Où souhaitez-vous séjourner/);
   assert.match(css, /hotel-step/);
   assert.match(css, /prefers-reduced-motion: reduce/);
