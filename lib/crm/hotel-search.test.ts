@@ -453,7 +453,8 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(searchRoute, /londres/);
   const suggestRoute = readFileSync(join(root, "app/api/client/hotels/suggest/route.ts"), "utf8");
   assert.doesNotMatch(suggestRoute, /setTimeout\(\(\) => resolve\(\[\]\), 280\)/);
-  assert.match(suggestRoute, /if \(remote\) writeSuggestCache/);
+  assert.match(suggestRoute, /remoteFailed/);
+  assert.match(suggestRoute, /londres/);
   const journey = readFileSync(join(root, "components/account/HotelJourney.tsx"), "utf8");
   assert.match(ui, /journeyQuery/);
   assert.match(journey, /data-hotel-hero/);
