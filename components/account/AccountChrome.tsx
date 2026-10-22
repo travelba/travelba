@@ -9,12 +9,14 @@ import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 import { ONBOARDING_PATH } from "@/lib/crm/session";
 import { accountTabDirection } from "@/lib/crm/account-motion";
+import { AccountNightTabs, type NightTabIcon } from "@/components/account/AccountNightTabs";
 
 const TAB_DEFS = [
-  { suffix: "", label: "Accueil", exact: true, icon: "explore" },
-  { suffix: "/reservations", label: "Réservations", exact: false, icon: "luggage" },
-  { suffix: "/transactions", label: "Transactions", exact: false, icon: "receipt_long" },
-  { suffix: "/profil", label: "Mon compte", exact: false, icon: "badge" },
+  { suffix: "", label: "Accueil", exact: true, icon: "explore", night: "home" },
+  { suffix: "/hotels", label: "Hôtels", exact: false, icon: "hotel", night: "hotel" },
+  { suffix: "/reservations", label: "Réservations", exact: false, icon: "luggage", night: "stay" },
+  { suffix: "/transactions", label: "Transactions", exact: false, icon: "receipt_long", night: "ledger" },
+  { suffix: "/profil", label: "Mon compte", exact: false, icon: "badge", night: "account" },
 ] as const;
 
 /** Coupure seulement si le mot ne tient pas dans son quart d’écran. */
@@ -24,8 +26,8 @@ function tabLabel(label: string) {
   return label;
 }
 
-function tabsFor(basePath: string) {
-  return TAB_DEFS.map((tab) => ({
+function tabsFor(basePath: string, hotels: boolean) {
+  return TAB_DEFS.filter((tab) => hotels || tab.suffix !== "/hotels").map((tab) => ({
     ...tab,
     href: `${basePath}${tab.suffix}`,
   }));
@@ -38,6 +40,7 @@ export function AccountChrome({
   basePath = "/mon-compte",
   preview = false,
   desk = false,
+  hotels = false,
   children,
 }: {
   customerName: string;
@@ -49,11 +52,13 @@ export function AccountChrome({
   basePath?: string;
   /** Pas d’appel Auth : l’aperçu ne déconnecte pas une session réelle. */
   preview?: boolean;
+  /** Barre noire et onglet Hôtels. Réservé au compte autorisé, tant que la barre n’est pas validée. */
+  hotels?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const tabs = tabsFor(basePath);
+  const tabs = tabsFor(basePath, hotels);
   const activeIndex = tabs.findIndex((tab) =>
     tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
   );
@@ -128,7 +133,7 @@ export function AccountChrome({
           </div>
         </header>
         <div className="mx-auto hidden max-w-[480px] items-center gap-5 px-4 pb-3 sm:px-6 md:flex">
-          <nav className="flex min-w-0 items-center gap-5" aria-label="Sections">
+          <nav className={`flex min-w-0 items-center overflow-x-auto ${hotels ? "gap-3" : "gap-5"}`} aria-label="Sections">
             {tabs.map((tab) => {
               const active = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
               return (
@@ -197,6 +202,17 @@ export function AccountChrome({
         {children}
       </main>
 
+      {hotels ? (
+        <AccountNightTabs
+          tabs={tabs.map((tab) => ({
+            href: tab.href,
+            label: tab.label,
+            icon: tab.night as NightTabIcon,
+            active: tab.exact ? pathname === tab.href : pathname.startsWith(tab.href),
+            transition: accountTabDirection(pathname, tab.href, basePath),
+          }))}
+        />
+      ) : (
       <nav
         className="account-tabbar md:hidden"
         style={{ viewTransitionName: "account-tabbar" }}
@@ -233,7 +249,8 @@ export function AccountChrome({
           })}
         </div>
       </nav>
-      {mark ? (
+      )}
+      {mark && !hotels ? (
         <div
           className="pointer-events-none fixed inset-x-0 z-[51] md:hidden"
           style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 3px)" }}

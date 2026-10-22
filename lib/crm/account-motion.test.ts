@@ -6,10 +6,11 @@ const base = "/mon-compte";
 
 test("l’index suit l’ordre des onglets, y compris le détail", () => {
   assert.equal(accountTabIndex("/mon-compte", base), 0);
-  assert.equal(accountTabIndex("/mon-compte/reservations", base), 1);
-  assert.equal(accountTabIndex("/mon-compte/reservations/TB1", base), 1);
-  assert.equal(accountTabIndex("/mon-compte/transactions", base), 2);
-  assert.equal(accountTabIndex("/mon-compte/profil/documents", base), 3);
+  assert.equal(accountTabIndex("/mon-compte/hotels", base), 1);
+  assert.equal(accountTabIndex("/mon-compte/reservations", base), 2);
+  assert.equal(accountTabIndex("/mon-compte/reservations/TB1", base), 2);
+  assert.equal(accountTabIndex("/mon-compte/transactions", base), 3);
+  assert.equal(accountTabIndex("/mon-compte/profil/documents", base), 4);
   assert.equal(accountTabIndex("/admin", base), -1);
 });
 

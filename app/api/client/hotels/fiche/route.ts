@@ -20,7 +20,7 @@ import {
 import { warmHotelFrench } from "@/lib/crm/hotel-fr-translate";
 import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
 import { loadLittleEmperorsHotelFile } from "@/lib/crm/little-emperors-search";
-import type { ClientHotelFile, ClientRate, ClientRoom } from "@/lib/crm/hotel-journey";
+import { collapseRooms, type ClientHotelFile, type ClientRate, type ClientRoom } from "@/lib/crm/hotel-journey";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -99,10 +99,7 @@ export async function POST(request: Request) {
     groups.set(key, current);
   }
 
-  const rooms = [...groups.values()].map((room) => ({
-    ...room,
-    rates: room.rates.sort((a, b) => a.sellCents - b.sellCents),
-  }));
+  const rooms = collapseRooms([...groups.values()]);
   const file: ClientHotelFile = {
     name,
     city,

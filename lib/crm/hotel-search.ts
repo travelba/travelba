@@ -511,11 +511,22 @@ function fillStay(base: PricedStay, extra: PricedStay): PricedStay {
   };
 }
 
-function replaces(current: PricedStay, next: PricedStay) {
+/** Deux prix dans cet écart comptent pour le même : on garde alors le plus d’avantages. */
+export const OFFER_PRICE_TIE_CENTS = 100;
+
+export function offerBeats(
+  current: { sellCents: number; currency: string; score: number; benefits: readonly string[] },
+  next: { sellCents: number; currency: string; score: number; benefits: readonly string[] },
+) {
   if (current.currency !== next.currency) return next.currency === "EUR" && current.currency !== "EUR";
-  if (next.sellCents !== current.sellCents) return next.sellCents < current.sellCents;
+  if (Math.abs(next.sellCents - current.sellCents) > OFFER_PRICE_TIE_CENTS) return next.sellCents < current.sellCents;
   if (next.score !== current.score) return next.score > current.score;
-  return next.benefits.length > current.benefits.length;
+  if (next.benefits.length !== current.benefits.length) return next.benefits.length > current.benefits.length;
+  return next.sellCents < current.sellCents;
+}
+
+function replaces(current: PricedStay, next: PricedStay) {
+  return offerBeats(current, next);
 }
 
 export function mergeOffers(state: Map<string, PricedStay>, offers: HotelOffer[]) {

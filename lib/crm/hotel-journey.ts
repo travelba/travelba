@@ -1,4 +1,5 @@
-import { HOTEL_PERK_WEIGHTS, type ClientHotel, type HotelPerks } from "./hotel-search";
+import { foldHotelLabel } from "./hotel-catalog";
+import { HOTEL_PERK_WEIGHTS, offerBeats, type ClientHotel, type HotelPerks } from "./hotel-search";
 
 export type HotelSort = "prix" | "avantages";
 
@@ -46,6 +47,63 @@ const PERK_KEYS = Object.keys(HOTEL_PERK_WEIGHTS).filter((key) => key !== "other
 export function perkScore(hotel: Pick<ClientHotel, "perks" | "benefits">) {
   const flags = PERK_KEYS.reduce((sum, key) => sum + (hotel.perks[key] ? HOTEL_PERK_WEIGHTS[key] : 0), 0);
   return flags * 10 + hotel.benefits.length;
+}
+
+/** Une chambre, une offre : la moins chère au prix client ; à l’arrondi près, la plus avantagée. */
+export function collapseRooms(rooms: ClientRoom[]): ClientRoom[] {
+  const groups = new Map<string, ClientRoom>();
+  for (const room of rooms) {
+    const key = foldHotelLabel(room.name) || room.name.trim().toLocaleLowerCase("fr") || "sejour";
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, { ...room, rates: room.rates.slice() });
+      continue;
+    }
+    existing.rates.push(...room.rates);
+    if (!existing.images.length) existing.images = room.images;
+  }
+  const out: ClientRoom[] = [];
+  for (const room of groups.values()) {
+    const rate = room.rates.reduce<ClientRate | null>((best, next) => {
+      if (
+        !best ||
+        offerBeats(
+          { sellCents: best.sellCents, currency: best.currency, score: perkScore(best), benefits: best.benefits },
+          { sellCents: next.sellCents, currency: next.currency, score: perkScore(next), benefits: next.benefits },
+        )
+      ) {
+        return next;
+      }
+      return best;
+    }, null);
+    if (!rate) continue;
+    out.push({ ...room, images: room.images.length ? room.images : rate.images, rates: [rate] });
+  }
+  return out;
+}
+
+const JOURNEY_QUERY = {
+  hotel: "",
+  room: "chambre",
+  guests: "voyageurs",
+  confirm: "demande",
+} as const;
+
+export type HotelJourneyStep = keyof typeof JOURNEY_QUERY;
+
+export function hotelJourneyStep(value: string | null | undefined): HotelJourneyStep {
+  if (value === "chambre") return "room";
+  if (value === "voyageurs") return "guests";
+  if (value === "demande") return "confirm";
+  return "hotel";
+}
+
+export function hotelJourneySearch(hotel: string, step: HotelJourneyStep) {
+  const params = new URLSearchParams();
+  params.set("hotel", hotel);
+  const etape = JOURNEY_QUERY[step];
+  if (etape) params.set("etape", etape);
+  return params.toString();
 }
 
 export function presentHotels(hotels: ClientHotel[], sort: HotelSort, needs: (keyof HotelPerks)[]) {
