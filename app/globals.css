@@ -297,15 +297,21 @@
 .hotel-theme .h-header svg {
   color: #c5a880;
 }
-.hotel-theme .h-dock {
+.hotel-theme .h-journey {
   position: fixed;
+  z-index: 45;
+  top: 4rem;
   left: 50%;
-  z-index: 35;
+  display: flex;
   width: min(480px, 100%);
   transform: translateX(-50%);
+  flex-direction: column;
+  background: var(--h-bg);
+  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+}
+.hotel-theme .h-dock {
   border-top: 1px solid var(--h-line);
   background: #ffffff;
-  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
 }
 .hotel-theme .h-rule {
   height: 1px;
@@ -313,7 +319,7 @@
   width: 2.5rem;
 }
 @media (min-width: 768px) {
-  .hotel-theme .h-dock {
+  .hotel-theme .h-journey {
     bottom: 0;
   }
 }
