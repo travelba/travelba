@@ -22,7 +22,7 @@ import {
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
-import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
+import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { isActiveItem, isLedgerExpenseKind } from "@/lib/crm/types";
 import { findVisaExtra, visaProposed } from "@/lib/crm/extras";
@@ -77,6 +77,7 @@ export default async function ExampleReservationPage({ params }: Props) {
     items: session.items,
     status: b.status,
     travelerCount: party.length,
+    feeMode: b.fee_mode,
   });
   const expenseChoices = visibleItems
     .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
@@ -87,10 +88,11 @@ export default async function ExampleReservationPage({ params }: Props) {
       agencyFee: !isAutoTicketingExpense(item),
     }));
   const feeExtras = agencyFeeExtraAmounts(session.items);
+  const stayTotal = bookingTotalFromItems(session.items);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
-    stayTotal: Number(b.total_amount),
+    stayTotal,
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
     extras: feeExtras,
@@ -234,7 +236,7 @@ export default async function ExampleReservationPage({ params }: Props) {
           </p>
           <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
             {clientStayPriceLabel({
-              stayTotal: Number(b.total_amount),
+              stayTotal,
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,

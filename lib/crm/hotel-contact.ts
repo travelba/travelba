@@ -250,6 +250,9 @@ export function withoutHotelRoster<T extends { kind?: string | null; details?: R
   const nested = nestedRecord(details.hotel);
   const people = [...peopleFromDetails(details), ...peopleFromDetails(nested)];
   delete details.hotel_contacts;
+  for (const key of ["supplier_net", "supplier_currency", "supplier_net_eur", "total_cost", "commission", "margin"]) {
+    delete details[key];
+  }
   scrubRosterFields(details, people);
   if (nested) {
     const hotel = { ...nested };

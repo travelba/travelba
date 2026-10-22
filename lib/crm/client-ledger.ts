@@ -57,6 +57,7 @@ export type ClientLedgerBooking = {
   status?: string | null;
   total_amount?: number | string | null;
   agency_commission?: boolean | null;
+  fee_mode?: string | null;
 };
 
 export type ClientLedgerWallet = {
@@ -299,7 +300,7 @@ function serviceClientOrNull() {
 }
 
 const SPEND_BOOKING_SELECT =
-  "id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind, customer_id, billing_company_id, status, total_amount, agency_commission";
+  "id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind, customer_id, billing_company_id, status, total_amount, agency_commission, fee_mode";
 
 async function enrichSpendBookings(
   reader: SupabaseClient,
@@ -317,6 +318,7 @@ async function enrichSpendBookings(
         status: booking.status || "confirmed",
         total_amount: booking.total_amount ?? 0,
         agency_commission: booking.agency_commission === true,
+        fee_mode: booking.fee_mode,
       }))
     );
   } catch {

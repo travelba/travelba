@@ -27,7 +27,7 @@ import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
-import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
+import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
@@ -142,13 +142,15 @@ export async function ClientStayRest({
     items: allItems,
     status: b.status,
     travelerCount: party.length,
+    feeMode: b.fee_mode,
   });
   const agencyFee = await agencyFeeForBooking(supabase, b);
+  const stayTotal = bookingTotalFromItems(allItems);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
     agencyFeeRate: agencyFee.rate,
-    stayTotal: Number(b.total_amount),
+    stayTotal,
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
     extras: feeExtras,
@@ -274,7 +276,7 @@ export async function ClientStayRest({
           ) : null}
           <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
             {clientStayPriceLabel({
-              stayTotal: Number(b.total_amount),
+              stayTotal,
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,

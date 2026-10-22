@@ -172,6 +172,42 @@ describe("little emperors staging client", () => {
     assert.equal(merged.city, "London");
   });
 
+  it("garde le régime, le prix public et la confirmation hôtel, pas le numéro Little Emperors en double", () => {
+    const booking = parseLeBooking({
+      id: 90,
+      hotel_name: "La Mamounia",
+      currency: "MAD",
+      total_cost: 12000,
+      public_price: 15000,
+      confirmation_number: "64570",
+      state: "booked",
+      phone: "+212 5 24 00 00 00",
+      email: "stay@example.com",
+      rooms: [
+        {
+          guest_name: "Camille Martin",
+          room_type: "Suite",
+          board: "Petit-déjeuner",
+          hotel_confirmation: "H998877",
+          confirmation: "64570SH046795",
+          cancellation_policy: "Free cancellation before 1 Oct",
+          benefits: ["Complimentary breakfast"],
+          guest_email: "guest@example.com",
+        },
+      ],
+    });
+    assert.ok(booking);
+    assert.equal(booking.board, "Petit-déjeuner");
+    assert.equal(booking.public_price, "15000");
+    assert.equal(booking.public_currency, "MAD");
+    assert.equal(booking.total_cost, "12000");
+    assert.deepEqual(booking.hotel_confirmations, ["H998877"]);
+    assert.equal(booking.rooms?.[0]?.hotel_confirmation, "H998877");
+    assert.equal(JSON.stringify(booking).includes("guest@example.com"), false);
+    assert.equal(JSON.stringify(booking).includes("+212"), false);
+    assert.equal(JSON.stringify(booking).includes("stay@example.com"), false);
+  });
+
   it("ne fabrique pas de réservation quand la liste répond 400", async () => {
     const previous = process.env.LITTLE_EMPERORS_API_KEY;
     const previousEnv = process.env.VERCEL_ENV;

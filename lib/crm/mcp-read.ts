@@ -54,7 +54,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SERVICE_KINDS = ["chauffeur", "greeter", "checkin"] as const;
 
 const BOOKING_COLUMNS =
-  "id, reference, title, destination, status, start_date, end_date, created_at, currency, total_amount, agency_commission, visible_to_client, archived_at, customer_id, client_settles_stay, include_in_ledger, billing_company_id, payer_kind";
+  "id, reference, title, destination, status, start_date, end_date, created_at, currency, total_amount, agency_commission, fee_mode, visible_to_client, archived_at, customer_id, client_settles_stay, include_in_ledger, billing_company_id, payer_kind";
 
 type BookingRow = Pick<
   CrmBooking,
@@ -71,6 +71,7 @@ type BookingRow = Pick<
   | "customer_id"
 > & {
   agency_commission?: boolean | null;
+  fee_mode?: string | null;
   archived_at?: string | null;
   client_settles_stay?: boolean | null;
   include_in_ledger?: boolean | null;
@@ -201,13 +202,13 @@ async function bookingPliantCards(admin: SupabaseClient, bookingId: string) {
 async function bookingTravelers(admin: SupabaseClient, bookingId: string) {
   const { data, error } = await admin
     .from("crm_booking_travelers")
-    .select("first_name, last_name")
+    .select("id, first_name, last_name")
     .eq("booking_id", bookingId);
   if (error) {
     logRead("voyageurs", error);
     throw new McpReadError("Lecture des voyageurs impossible.");
   }
-  return (data || []) as { first_name: string | null; last_name: string | null }[];
+  return (data || []) as { id: string; first_name: string | null; last_name: string | null }[];
 }
 
 type VisaTaskRow = {
@@ -655,7 +656,10 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     commission_agence: formatAgencyFeePercent(commission.rate),
     commission_source: commission.source,
     commission_appliquee: booking.agency_commission === true,
-    voyageurs: travelers.map((row) => [row.first_name, row.last_name].filter(Boolean).join(" ").trim()),
+    voyageurs: travelers.map((row) => ({
+      voyageur_id: row.id,
+      nom: [row.first_name, row.last_name].filter(Boolean).join(" ").trim(),
+    })),
     cartes: cards.map(cardLine),
     cartes_pliant: pliantCards,
     formalites: [

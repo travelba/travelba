@@ -18,6 +18,7 @@ const EXPECTED = [
   "comptabilite_voyage",
   "stripe_en_attente",
   "emails_en_attente",
+  "reservation_little_emperors",
   "little_emperors_en_attente",
   "crediter_virement",
   "crediter_revolut",
@@ -43,6 +44,7 @@ const EXPECTED = [
   "modifier_vol",
   "retirer_carte",
   "ajouter_hotel",
+  "modifier_hotel",
   "ajouter_accueil_vip",
 ];
 
@@ -70,6 +72,7 @@ const WRITE_TOOLS = [
   "modifier_vol",
   "retirer_carte",
   "ajouter_hotel",
+  "modifier_hotel",
   "ajouter_accueil_vip",
 ];
 
@@ -109,14 +112,20 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.cardSecrets, undefined);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.description || "", /debloquer/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /carte_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /voyageur_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /voyageur_ids/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_voyage")?.description || "", /carte_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /prix de vente/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /MAD/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /déjà rattachée/);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.write, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "ajouter_hotel", "ajouter_accueil_vip"]) {
+  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
     const tool = MCP_TOOLS.find((item) => item.name === name);
     assert.equal(tool?.write, true);
     assert.equal(tool?.openWorld, undefined);

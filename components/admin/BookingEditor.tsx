@@ -960,6 +960,7 @@ export function BookingEditor({
       items: pricedItems,
       status: booking.status,
       travelerCount: travelers.length,
+      feeMode: booking.fee_mode,
     }),
   });
   const statementCustomer = billingCustomer || customer;

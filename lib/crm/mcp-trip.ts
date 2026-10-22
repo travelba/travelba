@@ -14,7 +14,9 @@ import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-e
 import { addIsoDays } from "@/lib/crm/dates";
 import { resolveNationality } from "@/lib/crm/countries";
 import { companionKey, holderKey } from "@/lib/crm/household";
-import { itemTicketCount } from "@/lib/crm/item-match";
+import { itemTicketCount, joinConfirmationRefs } from "@/lib/crm/item-match";
+import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
+import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
 import { sameRecordedTraveler, type PersonName } from "@/lib/crm/person-match";
@@ -1054,8 +1056,10 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
     else delete details.notes;
   }
 
-  const hasVoyageurs = input.voyageurs != null && input.voyageurs !== "";
-  const voyageurIds = hasVoyageurs ? idList(input.voyageurs, "Voyageur") : null;
+  const passengerInput =
+    input.voyageur_ids != null && input.voyageur_ids !== "" ? input.voyageur_ids : input.voyageurs;
+  const hasVoyageurs = passengerInput != null && passengerInput !== "";
+  const voyageurIds = hasVoyageurs ? idList(passengerInput, "Voyageur") : null;
   if (voyageurIds && !voyageurIds.length) throw new McpWriteError("Indiquez au moins un voyageur.");
   const passengers = voyageurIds ? await passengersOf(db, booking.id, voyageurIds) : null;
   if (passengers) {
@@ -1180,6 +1184,332 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
   const saved = await addStaffBookingCard(db, booking.id, body);
   if ("error" in saved) throw new McpWriteError(saved.error);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
+}
+
+type SupplierNet = {
+  supplier_net: number;
+  supplier_currency: string;
+  supplier_net_eur: number | null;
+};
+
+/**
+ * Coût fournisseur. Une devise autre que l’euro garde le montant d’origine
+ * et l’équivalent en euros s’il est indiqué. Aucun taux n’est calculé.
+ * Sans montant, rien ne change.
+ */
+export function planSupplierNet(input: {
+  prixNet: number | null;
+  devise: string | null;
+  prixNetEur: number | null;
+  leNet: { amount: number; currency: string | null } | null;
+}): SupplierNet | null {
+  const le = input.leNet && input.leNet.amount != null ? input.leNet : null;
+  const eurOnly = input.prixNetEur;
+  if (input.prixNet == null && input.devise == null && eurOnly != null && !le) {
+    return { supplier_net: eurOnly, supplier_currency: "EUR", supplier_net_eur: eurOnly };
+  }
+  if (input.prixNet == null && input.prixNetEur == null && input.devise == null && !le) return null;
+  if (input.devise && input.prixNet == null && !le) throw new McpWriteError("Indiquez le coût net.");
+  const currency = input.devise || (input.prixNet == null ? le?.currency : null) || "EUR";
+  const amount = input.prixNet != null ? input.prixNet : le?.amount;
+  if (amount == null) throw new McpWriteError("Indiquez le coût net.");
+  if (currency === "EUR") {
+    if (input.prixNetEur != null && Math.abs(input.prixNetEur - amount) > 0.05) {
+      throw new McpWriteError("Le coût net en euros ne correspond pas.");
+    }
+    return { supplier_net: amount, supplier_currency: "EUR", supplier_net_eur: amount };
+  }
+  return { supplier_net: amount, supplier_currency: currency, supplier_net_eur: input.prixNetEur };
+}
+
+function priceFromHotel(item: Record<string, unknown>, details: Record<string, unknown>, booking: CrmBooking): PricePlan {
+  const dossierDevise = booking.currency || "EUR";
+  const documentCurrency = detailText(details, "document_currency");
+  const documentAmount = typeof details.document_amount === "number" ? details.document_amount : null;
+  if (documentCurrency && documentCurrency !== dossierDevise) {
+    return { amount: null, ticketCount: null, documentAmount, documentCurrency, devise: documentCurrency };
+  }
+  const amount = typeof item.amount === "number" ? item.amount : item.amount == null ? null : Number(item.amount);
+  return {
+    amount: amount != null && Number.isFinite(amount) ? amount : null,
+    ticketCount: null,
+    documentAmount: null,
+    documentCurrency: null,
+    devise: dossierDevise,
+  };
+}
+
+type HotelRoomDraft = {
+  room: string | null;
+  type: string | null;
+  guests: string | null;
+  confirmation_ref: string | null;
+  board?: string;
+  party_keys?: string[];
+};
+
+function hotelRoomDrafts(value: unknown): HotelRoomDraft[] | null {
+  if (value == null || value === "") return null;
+  if (!Array.isArray(value) || !value.length) throw new McpWriteError("Indiquez au moins une chambre.");
+  return value.map((entry, index) => {
+    const label = `Chambre ${index + 1}`;
+    if (typeof entry === "string") {
+      const room = requiredText(entry, label, 120);
+      return { room, type: room, guests: null, confirmation_ref: null };
+    }
+    if (!entry || typeof entry !== "object") throw new McpWriteError(`${label} invalide.`);
+    const row = entry as Record<string, unknown>;
+    const room = optionalText(row.type ?? row.chambre, label, 120);
+    const regime = optionalText(row.regime ?? row.pension, "Régime", 120);
+    const confirmation = optionalText(row.confirmation, "Confirmation", 80);
+    const guests = optionalText(row.voyageurs ?? row.voyageur, "Voyageurs", 240);
+    return {
+      room,
+      type: room,
+      guests,
+      confirmation_ref: confirmation,
+      ...(regime ? { board: regime } : {}),
+    };
+  });
+}
+
+function dayPrefix(value: unknown) {
+  return typeof value === "string" ? value.slice(0, 10) : "";
+}
+
+function hotelReply(
+  item: Record<string, unknown>,
+  booking: CrmBooking,
+  price: PricePlan,
+  warning: string | null
+) {
+  const details = item.details && typeof item.details === "object" ? (item.details as Record<string, unknown>) : {};
+  const net = typeof details.supplier_net === "number" ? details.supplier_net : null;
+  const netEur = typeof details.supplier_net_eur === "number" ? details.supplier_net_eur : null;
+  return {
+    ...cardReply(item, booking, price, warning),
+    hotel: detailText(details, "hotel_name") || (typeof item.title === "string" ? item.title : null),
+    ville: detailText(details, "city"),
+    arrivee: dayPrefix(item.start_at) || null,
+    depart: dayPrefix(item.end_at) || null,
+    confirmation: typeof item.confirmation_ref === "string" ? item.confirmation_ref : null,
+    prix_net: net,
+    devise_net: net != null ? detailText(details, "supplier_currency") : null,
+    prix_net_eur: netEur,
+  };
+}
+
+/** Corrige une carte hôtel. Le prix de vente ne change que si `prix` est indiqué. */
+export async function updateHotel(input: Record<string, unknown>, admin?: Admin) {
+  const target = dossierTarget(input);
+  const carteId = uuid(input.carte_id, "Carte");
+  const db = client(admin);
+  const booking = await loadBooking(db, target);
+  const { data, error } = await db
+    .from("crm_booking_items")
+    .select("*")
+    .eq("id", carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  if (error || !data) throw new McpWriteError("Carte introuvable sur ce dossier.");
+  const item = data as Record<string, unknown>;
+  if (item.kind !== "hotel") throw new McpWriteError("Cette carte n’est pas un hôtel.");
+  const details: Record<string, unknown> = {
+    ...(item.details && typeof item.details === "object" ? (item.details as Record<string, unknown>) : {}),
+  };
+  const patch: Record<string, unknown> = { details };
+  const referenceLe = optionalText(input.reference_le, "Référence Little Emperors", 80);
+  let fill: ReturnType<typeof leCardFill> | null = null;
+  if (referenceLe) {
+    try {
+      const loaded = await loadLeReservation({ confirmation: referenceLe }, db);
+      fill = leCardFill(loaded.booking);
+    } catch (err) {
+      if (err instanceof McpReadError) throw new McpWriteError(err.message);
+      throw err;
+    }
+  }
+  if (fill?.nom) {
+    details.hotel_name = fill.nom;
+    patch.title = fill.nom;
+  }
+  if (fill?.ville) details.city = fill.ville;
+  if (fill?.adresse) details.address = fill.adresse;
+  if (fill?.arrivee) patch.start_at = fill.arrivee;
+  if (fill?.depart) patch.end_at = fill.depart;
+  if (fill?.pension) details.board = fill.pension;
+  if (fill?.inclus.length) details.included = fill.inclus;
+  if (fill?.conditions.length) details.conditions = fill.conditions;
+  if (fill?.guests.length) details.guests = fill.guests.join(", ");
+  if (fill?.rooms.length) details.rooms = fill.rooms;
+  if (fill?.confirmation) {
+    patch.confirmation_ref = joinConfirmationRefs(
+      typeof item.confirmation_ref === "string" ? item.confirmation_ref : null,
+      fill.confirmation
+    );
+  }
+  if (fill?.leHotelId != null) details.le_hotel_id = fill.leHotelId;
+  if (fill) {
+    details.source_family = details.source_family || "little_emperors";
+    if (!("fournisseur" in input)) patch.supplier = typeof item.supplier === "string" && item.supplier ? item.supplier : "Little Emperors";
+  }
+
+  if (input.nom != null && input.nom !== "") {
+    const nom = requiredText(input.nom, "Hôtel", 160);
+    details.hotel_name = nom;
+    patch.title = nom;
+  }
+  const ville = optionalText(input.ville, "Ville", 80);
+  if (ville) details.city = ville;
+  const pays = optionalText(input.pays, "Pays", 80);
+  if (pays) details.country = pays;
+  const adresse = optionalText(input.adresse, "Adresse", 240);
+  if (adresse) details.address = adresse;
+  const arrivee = input.arrivee != null && input.arrivee !== "" ? isoDay(input.arrivee, "Arrivée") : null;
+  const depart = input.depart != null && input.depart !== "" ? isoDay(input.depart, "Départ") : null;
+  if (arrivee) patch.start_at = arrivee;
+  if (depart) patch.end_at = depart;
+  const startDay = dayPrefix(patch.start_at ?? item.start_at);
+  const endDay = dayPrefix(patch.end_at ?? item.end_at);
+  if (startDay && endDay && endDay < startDay) throw new McpWriteError("La date de départ est avant l’arrivée.");
+
+  const pension = optionalText(input.pension ?? input.regime, "Régime", 120);
+  if (pension) details.board = pension;
+  const chambres = hotelRoomDrafts(input.chambres);
+  const chambre = optionalText(input.chambre, "Chambre", 120);
+  if (chambres) {
+    details.rooms = chambres;
+    const label = chambres.map((room) => room.room).filter(Boolean).join(" · ");
+    if (label) details.room = label;
+  } else if (chambre) {
+    details.room = chambre;
+    const current = Array.isArray(details.rooms) ? (details.rooms as Record<string, unknown>[]) : [];
+    if (current.length <= 1) {
+      const first = current[0] && typeof current[0] === "object" ? current[0] : {};
+      details.rooms = [{ ...first, room: chambre, type: chambre }];
+    }
+  }
+  const confirmations = lines(input.confirmations, "Confirmation");
+  const confirmation = optionalText(input.confirmation, "Confirmation", 80);
+  const confirmationParts = [...confirmations, ...(confirmation ? [confirmation] : [])];
+  if (confirmationParts.length) {
+    patch.confirmation_ref = confirmationParts.reduce<string | null>(
+      (acc, ref) => joinConfirmationRefs(acc, ref),
+      typeof patch.confirmation_ref === "string"
+        ? patch.confirmation_ref
+        : typeof item.confirmation_ref === "string"
+          ? item.confirmation_ref
+          : null
+    );
+    if (Array.isArray(details.rooms) && details.rooms.length === 1) {
+      const room = details.rooms[0] as Record<string, unknown>;
+      if (!room.confirmation_ref) room.confirmation_ref = confirmationParts[0];
+    }
+  }
+  if ("fournisseur" in input) patch.supplier = optionalText(input.fournisseur, "Fournisseur", 120);
+  const notes = optionalText(input.notes, "Notes", 2000);
+  if (notes) details.notes = notes;
+  const conditions = lines(input.annulation, "Annulation");
+  if (conditions.length) details.conditions = conditions;
+  const inclus = lines("avantages" in input ? input.avantages : input.inclus, "Avantages");
+  if (inclus.length) details.included = inclus;
+
+  const hasVoyageurs = input.voyageurs != null && input.voyageurs !== "";
+  if (hasVoyageurs) {
+    const ids = idList(input.voyageurs, "Voyageur");
+    if (!ids.length) throw new McpWriteError("Indiquez au moins un voyageur.");
+    const guests = await passengersOf(db, booking.id, ids);
+    const guestLine = guests.map(personLine).filter(Boolean).join(", ");
+    const keys = guests.map(partyKey).filter(Boolean);
+    if (guestLine) details.guests = guestLine;
+    else delete details.guests;
+    if (keys.length) details.party_keys = keys;
+    else delete details.party_keys;
+    if (Array.isArray(details.rooms)) {
+      details.rooms = (details.rooms as Record<string, unknown>[]).map((room, index) => {
+        const next = { ...room };
+        if (details.rooms && (details.rooms as unknown[]).length === 1) {
+          next.guests = guestLine || null;
+          if (keys.length) next.party_keys = keys;
+        } else if (guests.length === (details.rooms as unknown[]).length) {
+          next.guests = personLine(guests[index]) || null;
+          const key = partyKey(guests[index]);
+          if (key) next.party_keys = [key];
+        }
+        return next;
+      });
+    }
+  }
+
+  const prixNet = optionalMoney(input.prix_net, "Coût net");
+  const prixNetEur = optionalMoney(input.prix_net_eur, "Coût net en euros");
+  const deviseNet = input.devise_net == null || input.devise_net === "" ? null : currencyOf(input.devise_net);
+  const net = planSupplierNet({
+    prixNet,
+    devise: deviseNet,
+    prixNetEur,
+    leNet: fill && fill.prixNet != null ? { amount: fill.prixNet, currency: fill.deviseNet } : null,
+  });
+  if (net) {
+    if (prixNet == null && prixNetEur != null && !deviseNet && !fill?.prixNet && typeof details.supplier_net === "number") {
+      details.supplier_net_eur = prixNetEur;
+      if (detailText(details, "supplier_currency") === "EUR") details.supplier_net = prixNetEur;
+    } else {
+      const sameNet =
+        details.supplier_net === net.supplier_net && detailText(details, "supplier_currency") === net.supplier_currency;
+      details.supplier_net = net.supplier_net;
+      details.supplier_currency = net.supplier_currency;
+      if (net.supplier_net_eur != null) details.supplier_net_eur = net.supplier_net_eur;
+      else if (!sameNet) delete details.supplier_net_eur;
+    }
+  }
+
+  const hasPrix = input.prix != null && input.prix !== "";
+  let price = priceFromHotel(item, details, booking);
+  if (hasPrix) {
+    const prix = optionalMoney(input.prix, "Prix");
+    const devise = input.devise == null || input.devise === "" ? null : currencyOf(input.devise);
+    price = hotelPrice({ prix, devise, dossierDevise: booking.currency || "EUR" });
+    patch.amount = price.amount;
+    if (price.documentAmount != null) details.document_amount = price.documentAmount;
+    else delete details.document_amount;
+    if (price.documentCurrency) details.document_currency = price.documentCurrency;
+    else delete details.document_currency;
+  }
+
+  const asked = [
+    "reference_le",
+    "nom",
+    "ville",
+    "pays",
+    "adresse",
+    "arrivee",
+    "depart",
+    "chambre",
+    "chambres",
+    "pension",
+    "regime",
+    "confirmation",
+    "confirmations",
+    "voyageurs",
+    "fournisseur",
+    "notes",
+    "annulation",
+    "avantages",
+    "inclus",
+    "prix_net",
+    "devise_net",
+    "prix_net_eur",
+    "prix",
+    "devise",
+  ].some((key) => input[key] != null && input[key] !== "");
+  if (!asked) throw new McpWriteError("Rien à modifier.");
+
+  const saved = await patchStaffBookingCard(db, booking.id, carteId, patch);
+  if ("error" in saved) throw new McpWriteError(saved.error);
+  const savedDetails =
+    saved.item.details && typeof saved.item.details === "object" ? (saved.item.details as Record<string, unknown>) : details;
+  return hotelReply(saved.item, booking, hasPrix ? price : priceFromHotel(saved.item, savedDetails, booking), saved.ledgerWarning);
 }
 
 function wholeInput(value: unknown, label: string) {

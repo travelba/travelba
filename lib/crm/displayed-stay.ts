@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
-import { itemIncludedInLedger, itemSellingAmount } from "@/lib/crm/bookings";
+import { bookingTotalFromItems, itemIncludedInLedger, itemSellingAmount } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
 import { isActiveItem, isExtraItemKind, isLedgerExpenseKind } from "@/lib/crm/types";
@@ -11,6 +11,7 @@ type StayRow = {
   total_amount: number | string | null;
   agency_commission?: boolean | null;
   agency_fee_rate?: number | string | null;
+  fee_mode?: string | null;
   customer_id?: string | null;
   billing_customer_id?: string | null;
 };
@@ -18,6 +19,7 @@ type StayRow = {
 type StayItemRow = {
   kind: string;
   amount: number | string | null;
+  start_at?: string | null;
   lifecycle?: string | null;
   details?: Record<string, unknown> | null;
   include_in_ledger?: boolean | null;
@@ -28,7 +30,7 @@ type StayItemRow = {
  * La commission porte sur les étapes et les dépenses. Une seule formule pour la liste, le détail et l’aperçu.
  */
 export function displayedStayAmount(
-  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission">,
+  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode">,
   items: StayItemRow[],
   travelerCount: number,
   agencyFeeRate?: number | null
@@ -50,6 +52,7 @@ export function displayedStayAmount(
       items: active,
       status: booking.status,
       travelerCount,
+      feeMode: booking.fee_mode,
     }),
     agencyFeeRate,
   });
@@ -69,6 +72,7 @@ export function ledgerCountedStayAmount(
 ) {
   const settles = booking.client_settles_stay === true;
   const active = items.filter((item) => isActiveItem(item));
+  const bookingForStay = { ...booking, total_amount: bookingTotalFromItems(stayAmountItems(active)) };
   const extraSum = active.reduce((sum, item) => {
     if (!isExtraItemKind(item.kind) || !itemIncludedInLedger(item, settles)) return sum;
     const amount = item.amount == null || item.amount === "" ? null : Number(item.amount);
@@ -76,7 +80,7 @@ export function ledgerCountedStayAmount(
   }, 0);
   const stayInLedger = !settles && booking.include_in_ledger !== false;
   const headline = stayInLedger
-    ? displayedStayAmount(booking, active, travelerCount, agencyFeeRate)
+    ? displayedStayAmount(bookingForStay, active, travelerCount, agencyFeeRate)
     : expenseHeadline(booking, active, travelerCount, agencyFeeRate);
   return Math.round((headline + extraSum) * 100) / 100;
 }
@@ -86,7 +90,31 @@ function expenseHeadline(booking: StayRow, items: StayItemRow[], travelerCount: 
   return displayedStayAmount({ ...booking, total_amount: 0 }, items, travelerCount, agencyFeeRate);
 }
 
-const STAY_AMOUNT_KINDS = ["expense", "flight", "chauffeur", "greeter", "visa", "checkin"] as const;
+function stayAmountItems(items: StayItemRow[]) {
+  return items.map((item) => {
+    const raw = item.amount;
+    const amount = raw == null || raw === "" ? null : Number(raw);
+    return { ...item, amount: amount != null && Number.isFinite(amount) ? amount : null };
+  });
+}
+
+const STAY_AMOUNT_KINDS = [
+  "expense",
+  "flight",
+  "hotel",
+  "transfer",
+  "activity",
+  "rail",
+  "car",
+  "cruise",
+  "insurance",
+  "fee",
+  "accueil_vip",
+  "chauffeur",
+  "greeter",
+  "visa",
+  "checkin",
+] as const;
 
 type ItemQueryRow = StayItemRow & { booking_id: string };
 
@@ -113,12 +141,13 @@ export async function loadDisplayedStayAmounts(supabase: SupabaseClient, booking
   const travelers = new Map<string, number>();
   if (bookings.length) {
     const ids = bookings.map((booking) => booking.id);
-    const loaded = await loadStayItemRows(supabase, ids, "booking_id, kind, amount, lifecycle, details");
+    const loaded = await loadStayItemRows(supabase, ids, "booking_id, kind, amount, lifecycle, details, start_at");
     for (const row of loaded.items) {
       const list = itemsByBooking.get(row.booking_id) || [];
       list.push({
         kind: row.kind,
         amount: row.amount,
+        start_at: row.start_at,
         lifecycle: row.lifecycle,
         details: row.details,
       });
@@ -131,11 +160,12 @@ export async function loadDisplayedStayAmounts(supabase: SupabaseClient, booking
   const fees = await loadResolvedAgencyFees(supabase, bookings);
   const amounts = new Map<string, number>();
   for (const booking of bookings) {
+    const rows = itemsByBooking.get(booking.id) || [];
     amounts.set(
       booking.id,
       displayedStayAmount(
-        booking,
-        itemsByBooking.get(booking.id) || [],
+        { ...booking, total_amount: bookingTotalFromItems(stayAmountItems(rows)) },
+        rows,
         travelers.get(booking.id) || 0,
         fees.get(booking.id)?.rate
       )
@@ -156,7 +186,7 @@ export async function loadLedgerCountedStayAmounts(
     const loaded = await loadStayItemRows(
       supabase,
       ids,
-      "booking_id, kind, amount, lifecycle, details, include_in_ledger"
+      "booking_id, kind, amount, lifecycle, details, start_at, include_in_ledger"
     );
     for (const row of loaded.items) {
       const list = itemsByBooking.get(row.booking_id) || [];

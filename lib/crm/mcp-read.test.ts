@@ -207,6 +207,10 @@ const AMOUNT_ITEMS = [
   { booking_id: DOSSIER_82, kind: "hotel", amount: 994.08, lifecycle: "active", details: null, include_in_ledger: true },
   { booking_id: DOSSIER_82, kind: "expense", amount: 25, lifecycle: "active", details: { auto_fee: "ticketing" }, include_in_ledger: true },
   { booking_id: DOSSIER_82, kind: "visa", amount: 25, lifecycle: "active", details: null, include_in_ledger: true },
+  { booking_id: DOSSIER_88, kind: "flight", amount: 3495, start_at: "2026-12-25T12:10:00", lifecycle: "active", details: { ticket_count: 2, from: "CDG", to: "HKT" }, include_in_ledger: false },
+  { booking_id: DOSSIER_88, kind: "hotel", amount: 21842.11, lifecycle: "active", details: null, include_in_ledger: false },
+  { booking_id: DOSSIER_88, kind: "hotel", amount: 17062.28, lifecycle: "active", details: null, include_in_ledger: false },
+  { booking_id: DOSSIER_88, kind: "flight", amount: 3174, start_at: "2027-01-08T11:55:00", lifecycle: "active", details: { ticket_count: 2, from: "HKT", to: "CDG" }, include_in_ledger: false },
   { booking_id: DOSSIER_88, kind: "expense", amount: 50, lifecycle: "active", details: { auto_fee: "ticketing" }, include_in_ledger: true },
 ];
 
@@ -257,7 +261,12 @@ function dossierClient(options: { fail?: "societe" | "cartes" | "montant" } = {}
           const ids = calls.find((call) => call.method === "in" && call.args[0] === "booking_id")?.args[1];
           const wanted = new Set(Array.isArray(ids) ? (ids as string[]) : [DOSSIER_79]);
           return {
-            data: [...wanted].map((booking_id) => ({ booking_id, first_name: "Camille", last_name: "Martin" })),
+            data: [...wanted].map((booking_id) => ({
+              id: "trav-camille",
+              booking_id,
+              first_name: "Camille",
+              last_name: "Martin",
+            })),
             error: null,
           };
         }
@@ -297,6 +306,8 @@ test("fiche et recherche montrent la société, les cartes et le même montant",
   assert.equal(fiche79.cartes[0]?.carte_id, "f1");
   assert.ok(fiche79.cartes.every((carte) => carte.carte_id));
   assert.equal(fiche79.montant, formatMoney(3774.17, "EUR"));
+  assert.equal(fiche79.voyageurs[0]?.voyageur_id, "trav-camille");
+  assert.equal(fiche79.voyageurs[0]?.nom, "Camille Martin");
   assert.equal(fiche79.commission_agence, "10 %");
   assert.equal(fiche79.commission_source, "defaut");
   assert.equal(fiche79.commission_appliquee, false);
