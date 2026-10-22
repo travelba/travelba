@@ -306,7 +306,7 @@ export function frenchCancellation(value: string): string {
   if (/^gratuite\b/i.test(line) || /^non remboursable$/i.test(line) || /^annulation gratuite\b/i.test(line)) {
     return line;
   }
-  if (/non[-\s]?refundable/i.test(line)) return "Non remboursable";
+  if (/non[-\s]?refundable|non remboursable/i.test(line)) return "Non remboursable";
   if (/free\s+cancellation|annulation gratuite|fully\s+refundable/i.test(line)) {
     const date = frenchDate(line);
     const time = frenchClock(line);
@@ -314,7 +314,11 @@ export function frenchCancellation(value: string): string {
     if (date) return `Gratuite jusqu’au ${date}`;
     return "Gratuite";
   }
-  return frenchHotelLine(line) || line;
+  const translated = frenchHotelLine(line);
+  if (!translated || /^(chambre|suite|studio)$/i.test(translated) || needsFrench(translated)) {
+    return "Confirmée par l’agence avant tout paiement";
+  }
+  return translated;
 }
 
 function frenchRoom(value: string) {
@@ -352,6 +356,8 @@ function frenchRoom(value: string) {
       work = work.replace(pattern, " ");
     }
   }
+  const specific = !/^(chambre|suite|studio|appartement|villa)$/i.test(kind);
+  if (!specific && !adjectives.length && !beds.length && !views.length) return "";
   return [ [kind, ...adjectives].join(" "), ...beds, ...views ].filter(Boolean).join(", ");
 }
 
