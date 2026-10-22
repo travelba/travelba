@@ -298,6 +298,17 @@ function frenchDate(line: string) {
   return "";
 }
 
+const AGENCY_CANCELLATION = "Confirmée par l’agence avant tout paiement";
+
+function statedCancellation(value: string) {
+  const line = frenchCancellation(value);
+  if (!line || line === AGENCY_CANCELLATION) return "";
+  if (/^non remboursable$/i.test(line)) return line;
+  if (/^annulation gratuite\b/i.test(line)) return line;
+  if (/^gratuite\b/i.test(line)) return line.localeCompare("Gratuite", "fr", { sensitivity: "accent" }) === 0 ? "Annulation gratuite" : line;
+  return "";
+}
+
 export function frenchCancellation(value: string): string {
   const line = clean(value);
   if (!line) return "";
@@ -316,7 +327,7 @@ export function frenchCancellation(value: string): string {
   }
   const translated = frenchHotelLine(line);
   if (!translated || /^(chambre|suite|studio)$/i.test(translated) || needsFrench(translated)) {
-    return "Confirmée par l’agence avant tout paiement";
+    return AGENCY_CANCELLATION;
   }
   return translated;
 }
@@ -413,7 +424,8 @@ export function hotelTextNeedsModel(value: string) {
 
 export function readStayRate(input: { title: string; cancellation: string; benefits: string[] }) {
   const title = frenchHotelLine(input.title) || "Séjour";
-  const cancellation = frenchCancellation(input.cancellation) || "Confirmée par l’agence avant tout paiement";
+  const fromPolicy = frenchCancellation(input.cancellation);
+  const cancellation = (fromPolicy && fromPolicy !== AGENCY_CANCELLATION ? fromPolicy : "") || statedCancellation(input.title) || statedCancellation(title) || AGENCY_CANCELLATION;
   const blob = `${title} ${input.benefits.join(" ")} ${input.cancellation}`;
   let board = "";
   for (const [pattern, label] of BOARDS) {

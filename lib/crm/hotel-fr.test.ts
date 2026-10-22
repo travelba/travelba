@@ -29,6 +29,21 @@ test("chambre, pension et annulation se lisent en français", () => {
   assert.equal(read.title, "Tarif flexible");
   assert.equal(read.board, "Petit-déjeuner inclus");
   assert.equal(read.cancellation, "Gratuite jusqu’au 12 mars 2026, 18 h");
+  const firm = readStayRate({ title: "Non-refundable", cancellation: "Room", benefits: [] });
+  assert.equal(firm.title, "Non remboursable");
+  assert.equal(firm.cancellation, "Non remboursable");
+  const shown = readStayRate({
+    title: "Non remboursable",
+    cancellation: "Confirmée par l’agence avant tout paiement",
+    benefits: [],
+  });
+  assert.equal(shown.cancellation, "Non remboursable");
+  const kept = readStayRate({
+    title: "Non-refundable",
+    cancellation: "Free cancellation until 18:00 on 12 Mar 2026",
+    benefits: [],
+  });
+  assert.equal(kept.cancellation, "Gratuite jusqu’au 12 mars 2026, 18 h");
   assert.deepEqual(
     groupAdvantages(["Petit-déjeuner offert", "Surclassement"]).map((group) => group.title),
     ["Table", "Chambre"]
