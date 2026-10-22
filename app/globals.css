@@ -195,20 +195,34 @@
   animation: hotel-sheet 280ms ease;
 }
 
+@keyframes hotel-step {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.account-app .hotel-step {
+  animation: hotel-step 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .hotel-theme {
-  --h-bg: #f4f0e6;
-  --h-ink: #111111;
-  --h-muted: #5e584e;
+  --h-bg: #ffffff;
+  --h-ink: #0b192c;
+  --h-muted: #5c6570;
   --h-card: #ffffff;
-  --h-line: #cfc6b6;
+  --h-line: #e4dfd4;
   --h-gold: #9a7b4f;
-  --h-btn: #111111;
-  --h-btn-ink: #ffffff;
-  --h-header: #111111;
-  --h-header-ink: #f4f0e6;
-  --h-range: #e6dccb;
-  --h-faint: #b7ad9e;
-  --h-radius: 4px;
+  --h-btn: #0b192c;
+  --h-btn-ink: #f7f4ee;
+  --h-header: #0b192c;
+  --h-header-ink: #f7f4ee;
+  --h-range: #f3efe6;
+  --h-faint: #9aa3ad;
+  --h-radius: 0px;
   color: var(--h-ink);
   background: var(--h-bg);
 }
@@ -263,6 +277,46 @@
   white-space: nowrap;
 }
 .hotel-theme .h-search { background: var(--h-bg); }
+.hotel-theme .h-kicker {
+  color: var(--h-gold);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.hotel-theme .h-hit {
+  min-height: 44px;
+  min-width: 44px;
+}
+.hotel-theme .h-press {
+  transition: opacity 120ms ease;
+}
+.hotel-theme .h-press:active {
+  opacity: 0.72;
+}
+.hotel-theme .h-header svg {
+  color: #c5a880;
+}
+.hotel-theme .h-dock {
+  position: fixed;
+  left: 50%;
+  z-index: 35;
+  width: min(480px, 100%);
+  transform: translateX(-50%);
+  border-top: 1px solid var(--h-line);
+  background: #ffffff;
+  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+}
+.hotel-theme .h-rule {
+  height: 1px;
+  background: var(--h-gold);
+  width: 2.5rem;
+}
+@media (min-width: 768px) {
+  .hotel-theme .h-dock {
+    bottom: 0;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(*),
@@ -274,7 +328,9 @@
   .account-tab-mark,
   .account-app .account-press,
   .account-app .hotel-rise,
-  .account-app .hotel-sheet {
+  .account-app .hotel-sheet,
+  .account-app .hotel-step,
+  .hotel-theme .h-press {
     transition: none;
     animation: none;
   }

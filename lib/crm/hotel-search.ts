@@ -1,6 +1,8 @@
 import { priceAccommodation } from "./concierge-pricing";
 import { foldHotelLabel } from "./hotel-catalog";
 import { isValidIsoDate } from "./dates";
+import { frenchCancellation, frenchCity, frenchHotelLine, frenchHotelProse } from "./hotel-fr";
+import { frenchLeBenefitLine } from "./ingest-parse";
 import { amountToCents } from "./money";
 
 /**
@@ -427,6 +429,10 @@ export function visibleBenefits(lines: string[]) {
   return out;
 }
 
+function clientBenefits(lines: string[]) {
+  return visibleBenefits(visibleBenefits(lines).map((line) => frenchHotelLine(frenchLeBenefitLine(line))));
+}
+
 function sellCentsFor(offer: HotelOffer): { sellCents: number; currency: string } | null {
   const currency = currencyOf(offer.currency);
   if (offer.account === "little_emperors") {
@@ -453,10 +459,10 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
   if (!name) return null;
   const money = sellCentsFor(offer);
   if (!money) return null;
-  const city = offer.city.replace(/\s+/g, " ").trim();
-  const benefits = visibleBenefits(offer.benefits || []).slice(0, 8);
+  const city = frenchCity(offer.city);
+  const benefits = clientBenefits(offer.benefits || []).slice(0, 8);
   const { score, perks } = scoreStay({ benefits, freeCancellation: Boolean(offer.freeCancellation) });
-  const room = (offer.roomLabel || "").replace(/\s+/g, " ").trim();
+  const room = frenchHotelLine(publicHotelText(offer.roomLabel || ""));
   const images = (offer.images || []).map((url) => safeHotelPhoto(url)).filter((url): url is string => Boolean(url)).slice(0, 12);
   const coords = offer.coords && Math.abs(offer.coords.lat) <= 90 && Math.abs(offer.coords.lng) <= 180 ? offer.coords : null;
   return {
@@ -473,14 +479,14 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
     score,
     account: offer.account,
     hotelId: typeof offer.hotelId === "number" && offer.hotelId > 0 ? offer.hotelId : null,
-    description: publicHotelText(offer.description || "").slice(0, 1600),
+    description: frenchHotelProse(publicHotelText(offer.description || "")).slice(0, 1600),
     images,
     coords,
-    footnotes: visibleBenefits(offer.footnotes || []).slice(0, 4),
+    footnotes: clientBenefits(offer.footnotes || []).slice(0, 4),
     roomKey: (offer.roomKey || "").slice(0, 60),
     rateKey: (offer.rateKey || "").slice(0, 80),
-    rateTitle: publicHotelText(offer.rateTitle || "").slice(0, 120),
-    cancellation: publicHotelText(offer.cancellation || "").slice(0, 400),
+    rateTitle: frenchHotelLine(publicHotelText(offer.rateTitle || "")).slice(0, 120),
+    cancellation: frenchCancellation(publicHotelText(offer.cancellation || "")).slice(0, 400),
   };
 }
 

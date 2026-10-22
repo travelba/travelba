@@ -419,6 +419,29 @@ test("la liste se trie et se filtre, le nom de chambre exige prénom et nom", ()
   assert.equal(perks.breakfast, false);
 });
 
+test("le client lit la chambre, la ville et l’annulation en français", () => {
+  const stay = priced({
+    account: "little_emperors",
+    hotelName: "Ritz",
+    city: "London",
+    proposed: 400,
+    currency: "EUR",
+    roomLabel: "Deluxe King Room with City View",
+    rateTitle: "Flexible Rate, Bed and Breakfast",
+    cancellation: "Free cancellation until 18:00 on 12 Mar 2026",
+    benefits: ["Room upgrade"],
+    description: "Located in the heart of Mayfair, this hotel offers a swimming pool.",
+  });
+  assert.equal(stay.city, "Londres");
+  assert.equal(stay.roomLabel, "Chambre deluxe, lit king, vue ville");
+  assert.equal(stay.rateTitle, "Tarif flexible · Petit-déjeuner inclus");
+  assert.equal(stay.cancellation, "Gratuite jusqu’au 12 mars 2026, 18 h");
+  assert.deepEqual(stay.benefits, ["Surclassement"]);
+  assert.match(stay.description, /au cœur de Mayfair/i);
+  assert.match(stay.description, /piscine/);
+  assert.doesNotMatch(`${stay.roomLabel} ${stay.rateTitle} ${stay.cancellation} ${stay.description}`, /\b(room|free cancellation|breakfast|located)\b/i);
+});
+
 test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fournisseur", () => {
   const home = readFileSync(join(root, "app/mon-compte/page.tsx"), "utf8");
   const searchAt = home.indexOf("<HotelSearch");
@@ -464,7 +487,14 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(journey, /data-hotel-guests/);
   assert.match(journey, /data-hotel-confirm/);
   assert.match(journey, /Choisir/);
-  assert.doesNotMatch(journey, /bg-gradient|commission/i);
+  assert.match(journey, /data-hotel-dock/);
+  assert.match(journey, /data-hotel-steps/);
+  assert.match(journey, /data-hotel-gallery/);
+  assert.match(journey, /Pension/);
+  assert.match(ui, /Où souhaitez-vous séjourner/);
+  assert.match(css, /hotel-step/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
+  assert.doesNotMatch(journey, /bg-gradient|rounded-full|commission/i);
 });
 
 test("un délai du fournisseur n’est pas une liste vide", async () => {

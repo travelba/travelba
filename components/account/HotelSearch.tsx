@@ -338,7 +338,9 @@ export function HotelSearch() {
   }
 
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
-  const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Dates";
+  const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
+  const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
+  const nightLabel = nightCount > 0 ? `${nightCount} nuit${nightCount > 1 ? "s" : ""}` : "";
 
   const shown = presentHotels(hotels, sort, needs);
   const canMap = hotels.some((hotel) => hotel.coords);
@@ -368,22 +370,22 @@ export function HotelSearch() {
           className="h-field h-summary sticky top-16 z-30 w-full px-4 py-3 text-left"
         >
           <span className="block text-base font-semibold h-ink">{destination}</span>
-          <span className="mt-0.5 block text-xs h-muted">{summaryDates} · {party}</span>
+          <span className="mt-0.5 block text-xs h-muted">{[summaryDates, nightLabel, party].filter(Boolean).join(" · ")}</span>
         </button>
       ) : (
         <button type="button" onClick={() => openSheet("where")} className="h-field flex w-full items-center gap-3 px-4 py-4 text-left">
           <Icon name="search" className="h-4 w-4 h-gold" />
           <span>
-            <span className="block text-base font-medium h-ink">Où allez-vous ?</span>
+            <span className="block text-base font-medium h-ink">Où souhaitez-vous séjourner ?</span>
             <span className="block text-xs h-muted">Destination ou hôtel</span>
           </span>
         </button>
       )}
 
-      {note && !sheet ? <p className="text-sm text-[#8a5a2a]">{note}</p> : null}
+      {note && !sheet ? <p className="text-sm h-gold">{note}</p> : null}
       {searching ? (
         <div className="text-[var(--admin-navy)]">
-          <BusyBar label="Tarifs en cours" />
+          <BusyBar label="Nous préparons les tarifs" />
         </div>
       ) : null}
 
@@ -411,10 +413,10 @@ export function HotelSearch() {
               <p className="h-muted">{shown.length} {shown.length > 1 ? "hôtels" : "hôtel"}</p>
             </div>
             <div className="flex gap-4 text-sm">
-              <button type="button" className={sort === "prix" ? "h-on" : "h-muted"} onClick={() => setSort("prix")}>Prix</button>
-              <button type="button" className={sort === "avantages" ? "h-on" : "h-muted"} onClick={() => setSort("avantages")}>Avantages</button>
+              <button type="button" className={`h-hit h-press ${sort === "prix" ? "h-on" : "h-muted"}`} onClick={() => setSort("prix")}>Prix</button>
+              <button type="button" className={`h-hit h-press ${sort === "avantages" ? "h-on" : "h-muted"}`} onClick={() => setSort("avantages")}>Avantages</button>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
               {PERK_LABEL.slice(0, 4).map((perk) => {
                 const on = needs.includes(perk.key);
                 return (
@@ -422,7 +424,7 @@ export function HotelSearch() {
                     key={perk.key}
                     type="button"
                     aria-pressed={on}
-                    className={on ? "h-on" : "h-muted"}
+                    className={`h-hit h-press ${on ? "h-on" : "h-muted"}`}
                     onClick={() => setNeeds((current) => (on ? current.filter((key) => key !== perk.key) : [...current, perk.key]))}
                   >
                     {perk.label}
@@ -441,14 +443,14 @@ export function HotelSearch() {
         {searched && !searching && hotels.length === 0 && !note ? (
           <article className="h-card h-line border p-4">
             <h3 className="text-lg font-semibold h-ink">Aucun hôtel pour ces dates</h3>
-            <p className="mt-1 text-sm h-muted">Écrivez à l’agence, nous cherchons autrement.</p>
+            <p className="mt-1 text-sm h-muted">Écrivez-nous, nous cherchons autrement.</p>
             <a href={whatsapp} className="mt-4 inline-flex text-sm font-semibold h-ink">
               WhatsApp
             </a>
           </article>
         ) : null}
         {searched && !searching && hotels.length > 0 && shown.length === 0 ? (
-          <p className="text-sm h-muted">Aucun hôtel avec ces avantages.</p>
+          <p className="text-sm h-muted">Aucun hôtel avec ces avantages. Retirez un filtre.</p>
         ) : null}
       </div>
       </>}
@@ -456,7 +458,7 @@ export function HotelSearch() {
       {sheet ? (
         <div className="hotel-sheet h-search fixed inset-0 z-[60] flex flex-col" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
           <header className="h-header flex items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-            <p className="text-base font-semibold">Où allez-vous ?</p>
+            <p className="text-base font-semibold">Où souhaitez-vous séjourner ?</p>
             <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-10 w-10 place-items-center">
               <Icon name="close" className="h-5 w-5" />
             </button>
@@ -523,8 +525,8 @@ export function HotelSearch() {
               onClick={() => setPanel("when")}
               className="h-field w-full px-4 py-3 text-left"
             >
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">Dates</span>
-              <span className="mt-1 block text-base font-medium h-ink">{summaryDates}</span>
+              <span className="h-kicker">Vos dates</span>
+              <span className="mt-1 block text-base font-medium h-ink">{nightLabel ? `${summaryDates} · ${nightLabel}` : summaryDates}</span>
             </button>
             {panel === "when" ? (
               <div className="h-card h-line border p-4">
@@ -572,7 +574,7 @@ export function HotelSearch() {
               onClick={() => setPanel("who")}
               className="h-field w-full px-4 py-3 text-left"
             >
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">Chambres et voyageurs</span>
+              <span className="h-kicker">Chambres et voyageurs</span>
               <span className="mt-1 block text-base font-medium h-ink">{party}</span>
             </button>
             {panel === "who" ? (
@@ -640,11 +642,11 @@ export function HotelSearch() {
                 ))}
               </div>
             ) : null}
-            {note ? <p className="text-sm text-[#8a5a2a]">{note}</p> : null}
+            {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
           <footer className="border-t h-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <button type="button" onClick={() => void onSearch()} className="h-btn flex h-12 w-full items-center justify-center text-sm font-semibold">
-              Rechercher
+            <button type="button" onClick={() => void onSearch()} className="h-btn h-press flex h-12 w-full items-center justify-center text-sm font-semibold">
+              Voir les hôtels
             </button>
           </footer>
         </div>
@@ -708,7 +710,7 @@ function Stepper({
           aria-label={`Retirer ${label.toLocaleLowerCase("fr")}`}
           disabled={value <= min}
           onClick={() => onChange(Math.max(min, value - 1))}
-          className="h-btn-line grid h-9 w-9 place-items-center text-lg disabled:opacity-30"
+          className="h-btn-line h-press grid h-11 w-11 place-items-center text-lg disabled:opacity-30"
         >
           −
         </button>
@@ -718,7 +720,7 @@ function Stepper({
           aria-label={`Ajouter ${label.toLocaleLowerCase("fr")}`}
           disabled={value >= max}
           onClick={() => onChange(Math.min(max, value + 1))}
-          className="h-btn-line grid h-9 w-9 place-items-center text-lg disabled:opacity-30"
+          className="h-btn-line h-press grid h-11 w-11 place-items-center text-lg disabled:opacity-30"
         >
           +
         </button>
