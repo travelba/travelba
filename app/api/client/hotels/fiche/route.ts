@@ -10,6 +10,15 @@ import {
   visibleBenefits,
 } from "@/lib/crm/hotel-search";
 import { saveHotelOffer } from "@/lib/crm/hotel-search-store";
+import {
+  frenchCancellation,
+  frenchCity,
+  frenchHotelLine,
+  frenchHotelProse,
+  hotelTextNeedsModel,
+} from "@/lib/crm/hotel-fr";
+import { warmHotelFrench } from "@/lib/crm/hotel-fr-translate";
+import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
 import { loadLittleEmperorsHotelFile } from "@/lib/crm/little-emperors-search";
 import type { ClientHotelFile, ClientRate, ClientRoom } from "@/lib/crm/hotel-journey";
 
@@ -18,6 +27,10 @@ export const maxDuration = 60;
 
 function clock(value: string) {
   return /^\d{1,2}:\d{2}$/.test(value) ? value : "";
+}
+
+function line(value: string) {
+  return frenchHotelLine(frenchLeBenefitLine(publicHotelText(value)));
 }
 
 export async function POST(request: Request) {
@@ -40,7 +53,13 @@ export async function POST(request: Request) {
   if (!loaded) return jsonError("La fiche n’a pas abouti. Réessayez.", 503);
 
   const profile = loaded.profile;
-  const city = profile.location.split(",")[0]?.trim() || parsed.query.city || parsed.query.destination;
+  const prose = [
+    profile.description,
+    profile.funFact,
+    ...profile.sections.flatMap((section) => section.lines),
+  ].filter(hotelTextNeedsModel);
+  await warmHotelFrench(prose);
+  const city = frenchCity(profile.location.split(",")[0]?.trim() || parsed.query.city || parsed.query.destination);
   const name = profile.name || parsed.query.destination;
   const groups = new Map<string, ClientRoom>();
 
@@ -53,14 +72,14 @@ export async function POST(request: Request) {
     });
     if (!stay) continue;
     const offerId = await saveHotelOffer(auth.customer.id, parsed.query, parsed.nights, stay);
-    const roomName = stay.roomLabel || "Séjour";
+    const roomName = line(stay.roomLabel || "") || "Séjour";
     const key = stay.roomKey || roomName;
     const rate: ClientRate = {
       offerId,
       room: roomName,
-      title: stay.rateTitle || "Tarif du séjour",
+      title: line(stay.rateTitle || "") || "Séjour",
       detail: "",
-      cancellation: stay.cancellation,
+      cancellation: frenchCancellation(stay.cancellation),
       benefits: stay.benefits,
       footnotes: stay.footnotes,
       perks: stay.perks,
@@ -88,16 +107,16 @@ export async function POST(request: Request) {
     name,
     city,
     address: publicHotelText(profile.address),
-    description: publicHotelText(profile.description),
-    funFact: publicHotelText(profile.funFact),
+    description: frenchHotelProse(publicHotelText(profile.description)),
+    funFact: frenchHotelProse(publicHotelText(profile.funFact)),
     images: profile.images.length ? profile.images : rooms.flatMap((room) => room.images).slice(0, 12),
-    amenities: profile.amenities.map((line) => publicHotelText(line)).filter(Boolean),
+    amenities: profile.amenities.map((item) => line(item)).filter(Boolean),
     sections: profile.sections.map((section) => ({
-      title: publicHotelText(section.title),
-      lines: section.lines.map((line) => publicHotelText(line)).filter(Boolean),
+      title: line(section.title) || publicHotelText(section.title),
+      lines: section.lines.map((item) => frenchHotelProse(publicHotelText(item)) || line(item)).filter(Boolean),
     })),
-    benefits: visibleBenefits(profile.benefits),
-    footnotes: profile.footnotes.map((line) => publicHotelText(line)).filter(Boolean),
+    benefits: visibleBenefits(profile.benefits.map((item) => line(item))),
+    footnotes: profile.footnotes.map((item) => line(item)).filter(Boolean),
     checkInTime: clock(profile.checkInTime),
     checkOutTime: clock(profile.checkOutTime),
     coords: profile.coords,

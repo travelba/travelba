@@ -26,7 +26,7 @@ export function HotelMap({
   onOpen,
 }: {
   hotels: ClientHotel[];
-  onOpen: (hotel: ClientHotel) => void;
+  onOpen?: (hotel: ClientHotel) => void;
 }) {
   const placed = hotels.filter((hotel) => hotel.coords);
   if (!placed.length) return null;
@@ -61,15 +61,25 @@ export function HotelMap({
         const top = ((point.y - y0) / 3) * 100;
         if (left < -5 || left > 105 || top < -5 || top > 105) return null;
         return (
-          <button
-            key={hotel.hotelKey}
-            type="button"
-            onClick={() => onOpen(hotel)}
-            className="h-pin absolute -translate-x-1/2 -translate-y-full"
-            style={{ left: `${left}%`, top: `${top}%` }}
-          >
-            {formatMoney(hotel.sellCents / 100, hotel.currency)}
-          </button>
+          onOpen ? (
+            <button
+              key={hotel.hotelKey}
+              type="button"
+              onClick={() => onOpen(hotel)}
+              className="h-pin h-hit absolute -translate-x-1/2 -translate-y-full"
+              style={{ left: `${left}%`, top: `${top}%` }}
+            >
+              {formatMoney(hotel.sellCents / 100, hotel.currency)}
+            </button>
+          ) : (
+            <span
+              key={hotel.hotelKey}
+              className="h-pin absolute -translate-x-1/2 -translate-y-full"
+              style={{ left: `${left}%`, top: `${top}%` }}
+            >
+              {formatMoney(hotel.sellCents / 100, hotel.currency)}
+            </span>
+          )
         );
       })}
     </div>
