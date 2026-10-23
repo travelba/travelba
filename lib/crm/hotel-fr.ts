@@ -180,6 +180,7 @@ const KINDS: [RegExp, string][] = [
 
 const ADJECTIVES: [RegExp, string][] = [
   [/\bdeluxe\b/i, "deluxe"],
+  [/\bexecutive\b/i, "executive"],
   [/\bsuperior\b/i, "supérieure"],
   [/\bpremium\b/i, "premium"],
   [/\bclassic\b/i, "classique"],
@@ -333,7 +334,19 @@ export function frenchCancellation(value: string): string {
   return translated;
 }
 
+function frenchBedroomCount(value: string) {
+  const match = value.match(/\b(one|two|three|four|five|\d+)\s+bedrooms?\b/i);
+  if (!match || value.length > 80) return "";
+  const words: Record<string, string> = { one: "une", two: "deux", three: "trois", four: "quatre", five: "cinq" };
+  const count = words[match[1].toLocaleLowerCase("fr")] || match[1];
+  const noun = count === "une" || count === "1" ? "chambre" : "chambres";
+  if (/\bryads?\b|\briads?\b/i.test(value)) return `Ryad, ${count} ${noun}`;
+  return `${count} ${noun}`;
+}
+
 function frenchRoom(value: string) {
+  const bedrooms = frenchBedroomCount(value);
+  if (bedrooms) return bedrooms;
   if (!/\b(room|suite|studio|apartment|villa|king|queen|twin)\b/i.test(value)) return "";
   if (FRENCH_START.test(value)) return "";
   let work = value;
@@ -369,7 +382,10 @@ function frenchRoom(value: string) {
     }
   }
   const specific = !/^(chambre|suite|studio|appartement|villa)$/i.test(kind);
-  if (!specific && !adjectives.length && !beds.length && !views.length) return "";
+  if (!specific && !adjectives.length && !beds.length && !views.length) {
+    if (/^\s*rooms?\s*$/i.test(value)) return "";
+    return kind;
+  }
   return [ [kind, ...adjectives].join(" "), ...beds, ...views ].filter(Boolean).join(", ");
 }
 
@@ -473,7 +489,8 @@ export function hotelTextNeedsModel(value: string) {
 }
 
 export function readStayRate(input: { title: string; cancellation: string; benefits: string[] }) {
-  const title = frenchHotelLine(input.title) || "Séjour";
+  const rawTitle = input.title.replace(/\s+/g, " ").trim();
+  const title = rawTitle ? clientRateTitle(rawTitle) : "Séjour";
   const fromPolicy = frenchCancellation(input.cancellation);
   const cancellation = (fromPolicy && fromPolicy !== AGENCY_CANCELLATION ? fromPolicy : "") || statedCancellation(input.title) || statedCancellation(title) || AGENCY_CANCELLATION;
   const blob = `${title} ${input.benefits.join(" ")} ${input.cancellation}`;
