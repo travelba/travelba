@@ -5,6 +5,9 @@ import type { CrmBookingItem } from "@/lib/crm/types";
 export const LE_PUBLIC_HOTEL = "https://api.littleemperors.com/api/hotels";
 
 const PHOTO_CAP = 8;
+/** Galerie client : le catalogue entier, pas une douzaine de photos de chambre. */
+export const CLIENT_GALLERY_CAP = 90;
+const LEAD_SPACES = ["exterior", "exterieur", "facade", "lobby", "hall", "reception", "garden", "jardin"];
 /** Mots de structure. King, Twin, Queen et Double restent : ils séparent deux catégories. */
 const GENERIC = new Set(["room", "rooms", "chambre", "bed", "beds", "bedroom"]);
 const ROOMISH =
@@ -177,6 +180,32 @@ function galleryImages(row: Record<string, unknown>): GalleryImage[] {
     if (url) images.push({ url, thumb: url, caption: "" });
   }
   return images;
+}
+
+function isLeadSpace(caption: string) {
+  const folded = fold(caption);
+  return LEAD_SPACES.some((word) => folded === word || folded.startsWith(`${word} `));
+}
+
+/** Façade et hall d’abord, puis le reste du catalogue, sans doublon. */
+export function orderedGalleryUrls(payload: unknown, cap = CLIENT_GALLERY_CAP) {
+  const images = galleryImages(record(payload) || {});
+  const lead: GalleryImage[] = [];
+  const rest: GalleryImage[] = [];
+  for (const image of images) {
+    if (isLeadSpace(image.caption)) lead.push(image);
+    else rest.push(image);
+  }
+  lead.sort((left, right) => spaceRank(left.caption) - spaceRank(right.caption));
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const image of [...lead, ...rest]) {
+    if (seen.has(image.url)) continue;
+    seen.add(image.url);
+    urls.push(image.url);
+    if (urls.length >= cap) break;
+  }
+  return urls;
 }
 
 function childRoomNames(row: Record<string, unknown>) {
@@ -504,6 +533,12 @@ export function hotelStayFacts(item: HotelLike): HotelFact[] {
 
 const GALLERY_TTL_MS = 10 * 60 * 1000;
 const galleryCache = new Map<number, { at: number; payload: unknown | null }>();
+
+export async function publicHotelGallery(hotelId: number, fetchImpl?: typeof fetch) {
+  if (!Number.isInteger(hotelId) || hotelId <= 0) return [];
+  const payload = await loadLeHotelPayload(hotelId, fetchImpl);
+  return orderedGalleryUrls(payload);
+}
 
 async function loadLeHotelPayload(hotelId: number, fetchImpl?: typeof fetch) {
   const cached = galleryCache.get(hotelId);

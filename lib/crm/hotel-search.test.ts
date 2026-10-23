@@ -768,7 +768,86 @@ test("un délai du fournisseur n’est pas une liste vide", async () => {
     assert.equal(known.length, 1);
     assert.equal(known[0]?.hotelId, 1);
     assert.equal(known[0]?.net, null);
+    const { clearHotelGalleryCache } = await import("./hotel-gallery");
+    clearHotelGalleryCache();
   } finally {
+    if (previousKey === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
+    else process.env.LITTLE_EMPERORS_API_KEY = previousKey;
+  }
+});
+
+test("la fiche hôtel prend la galerie du catalogue, façade puis hall", async () => {
+  const { loadLittleEmperorsHotelFile } = await import("./little-emperors-search");
+  const { clearHotelGalleryCache } = await import("./hotel-gallery");
+  clearHotelGalleryCache();
+  const previousKey = process.env.LITTLE_EMPERORS_API_KEY;
+  process.env.LITTLE_EMPERORS_API_KEY = "test-key";
+  const cdn = "https://d13bre0qp8legl.cloudfront.net/hotels/184";
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("/api/hotels/184")) {
+      return new Response(
+        JSON.stringify({
+          name: "Prince De Galles",
+          images_gallery: [
+            { image_url: `${cdn}/restaurant.jpg`, description: "Restaurant" },
+            { image_url: `${cdn}/lobby.jpg`, description: "Lobby" },
+            { image_url: `${cdn}/exterior.jpg`, description: "Exterior" },
+            { image_url: `${cdn}/suite.jpg`, description: "Suite Vendome" },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (url.includes("/v2/hotels/availability")) {
+      return new Response(
+        JSON.stringify([
+          {
+            hotel_id: 184,
+            hotel_name: "Prince De Galles",
+            is_available: true,
+            hotel_info: { location: "Paris, France", images: [{ url: "https://cdn.example/partner.jpg" }] },
+            room_types: [
+              {
+                name: "Deluxe Room",
+                images: [{ url: "https://cdn.example/room.jpg" }],
+                rates: [{ title: "Best Available Rate", total_to_book: 900, currency_code: "EUR" }],
+              },
+            ],
+          },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (url.includes("/v2/hotels/184")) {
+      return new Response(
+        JSON.stringify({
+          name: "Prince De Galles",
+          images: [{ url: "https://cdn.example/partner.jpg" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    return new Response("no", { status: 404 });
+  };
+  try {
+    const loaded = await loadLittleEmperorsHotelFile({
+      hotelId: 184,
+      checkIn: "2026-11-12",
+      checkOut: "2026-11-14",
+      rooms: [{ adults: 2, children: [] }],
+      fetchImpl,
+    });
+    assert.deepEqual(loaded?.profile.images, [
+      `${cdn}/exterior.jpg`,
+      `${cdn}/lobby.jpg`,
+      `${cdn}/restaurant.jpg`,
+      `${cdn}/suite.jpg`,
+    ]);
+    assert.equal(loaded?.offers[0]?.images?.[0], "https://cdn.example/room.jpg");
+    assert.equal(loaded?.profile.name, "Prince De Galles");
+  } finally {
+    clearHotelGalleryCache();
     if (previousKey === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
     else process.env.LITTLE_EMPERORS_API_KEY = previousKey;
   }

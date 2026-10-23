@@ -1,3 +1,4 @@
+import { publicHotelGallery } from "./hotel-gallery";
 import { littleEmperorsConfigured, littleEmperorsJson, LittleEmperorsError } from "./little-emperors";
 import {
   offersFromLeAvailability,
@@ -11,6 +12,42 @@ import { supplierRoomOccupancy, type HotelOffer, type HotelRoomOccupancy, type H
 
 const SEARCH_TIMEOUT_MS = 25_000;
 const SUGGEST_TIMEOUT_MS = 8_000;
+/** La couverture catalogue ne retarde pas toute la ville : le reste garde la photo déjà reçue. */
+const COVER_BUDGET_MS = 8_000;
+
+async function withCatalogCovers(offers: HotelOffer[], fetchImpl?: typeof fetch) {
+  const ids = [...new Set(offers.map((offer) => offer.hotelId).filter((id): id is number => typeof id === "number" && id > 0))];
+  const covers = new Map<number, string>();
+  let cursor = 0;
+  async function worker() {
+    while (cursor < ids.length) {
+      const id = ids[cursor];
+      cursor += 1;
+      const urls = await publicHotelGallery(id, fetchImpl);
+      if (urls[0]) covers.set(id, urls[0]);
+    }
+  }
+  const work = Promise.all([worker(), worker(), worker(), worker()]);
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, COVER_BUDGET_MS);
+    work.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      () => {
+        clearTimeout(timer);
+        resolve();
+      }
+    );
+  });
+  if (!covers.size) return offers;
+  return offers.map((offer) => {
+    const cover = offer.hotelId ? covers.get(offer.hotelId) : "";
+    if (!cover) return offer;
+    return { ...offer, photoUrl: cover, thumbUrl: cover };
+  });
+}
 
 function failureCode(err: unknown) {
   if (err instanceof LittleEmperorsError) return err.code;
@@ -84,7 +121,7 @@ export async function loadLittleEmperorsOffers(input: {
       },
       input.fetchImpl
     );
-    return offersFromLeAvailability(payload, input.city || input.destination);
+    return withCatalogCovers(offersFromLeAvailability(payload, input.city || input.destination), input.fetchImpl);
   } catch (err) {
     console.error("[hotels] disponibilités", failureCode(err));
     throw new Error("supplier");
@@ -158,7 +195,10 @@ export async function loadLittleEmperorsHotelFile(input: {
         () => null
       ),
     ]);
-    return { offers: offersFromLeAvailability(availability, ""), profile: profileFromLeHotel(hotel) };
+    const profile = profileFromLeHotel(hotel);
+    const gallery = await publicHotelGallery(input.hotelId, input.fetchImpl);
+    if (gallery.length) profile.images = gallery;
+    return { offers: offersFromLeAvailability(availability, ""), profile };
   } catch (err) {
     console.error("[hotels] fiche", failureCode(err));
     return null;

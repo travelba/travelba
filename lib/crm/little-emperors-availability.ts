@@ -316,7 +316,7 @@ export function offersFromLeAvailability(payload: unknown, cityHint = ""): Hotel
           name,
           city,
           room: roomName,
-          photoUrl: roomImage.photoUrl || image.photoUrl || gallery[0] || null,
+          photoUrl: image.photoUrl || gallery[0] || roomImage.photoUrl || null,
           thumbUrl: roomImage.thumbUrl || image.thumbUrl,
           images: roomGallery.length ? roomGallery : gallery,
           benefits,
