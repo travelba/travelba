@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { refreshBookingLedger } from "./bookings";
 import { pliantAgencyCardLabel } from "./pliant-match";
 import { pliantExpenseTitle } from "./pliant-booking";
+import { withoutRefusedSuggestions, type TripCostActor } from "./pliant-link";
 import { revolutDebitLine } from "./revolut-inbox";
 import {
   accountLines,
@@ -160,6 +161,123 @@ async function markSource(
   if (error) throw new TripCostError(error.message, 500);
 }
 
+function missingEventsTable(message: string) {
+  return /crm_trip_cost_events|schema cache|does not exist/i.test(message);
+}
+
+async function bookingReference(admin: SupabaseClient, id: string | null) {
+  if (!id) return null;
+  const { data } = await admin.from("crm_bookings").select("reference").eq("id", id).maybeSingle();
+  return ((data as { reference?: string | null } | null)?.reference || "").trim() || null;
+}
+
+/** Qui, quand, de quel dossier vers quel dossier. Pas de numéro de carte. */
+async function recordTripCostEvent(
+  admin: SupabaseClient,
+  input: {
+    actor?: TripCostActor | null;
+    action: "attach" | "detach" | "move" | "refuse" | "correction";
+    source: TripCostSource;
+    sourceId: string;
+    fromBookingId?: string | null;
+    toBookingId?: string | null;
+    fromItemId?: string | null;
+    toItemId?: string | null;
+    fromReference?: string | null;
+    toReference?: string | null;
+    note?: string | null;
+  }
+) {
+  const { error } = await admin.from("crm_trip_cost_events").insert({
+    staff_id: input.actor?.staffId || null,
+    actor: (input.actor?.label || "").trim().slice(0, 80) || null,
+    action: input.action,
+    source: input.source,
+    source_id: input.sourceId,
+    from_booking_id: input.fromBookingId || null,
+    to_booking_id: input.toBookingId || null,
+    from_item_id: input.fromItemId || null,
+    to_item_id: input.toItemId || null,
+    from_reference: input.fromReference || null,
+    to_reference: input.toReference || null,
+    note: input.note ? input.note.slice(0, 500) : null,
+  });
+  if (error) {
+    if (missingEventsTable(error.message)) throw new TripCostError("Journal des rattachements indisponible.", 500);
+    throw new TripCostError(error.message, 500);
+  }
+}
+
+async function refusedBookingIds(admin: SupabaseClient, source: TripCostSource, ids: string[]) {
+  const map = new Map<string, string[]>();
+  if (!ids.length) return map;
+  for (let index = 0; index < ids.length; index += 100) {
+    const slice = ids.slice(index, index + 100);
+    const { data, error } = await admin
+      .from("crm_trip_cost_events")
+      .select("source_id, to_booking_id")
+      .eq("source", source)
+      .eq("action", "refuse")
+      .in("source_id", slice);
+    if (error) {
+      if (missingEventsTable(error.message)) return map;
+      throw new TripCostError(error.message, 500);
+    }
+    for (const row of (data || []) as { source_id: string; to_booking_id: string | null }[]) {
+      if (!row.to_booking_id) continue;
+      const list = map.get(row.source_id) || [];
+      if (!list.includes(row.to_booking_id)) list.push(row.to_booking_id);
+      map.set(row.source_id, list);
+    }
+  }
+  return map;
+}
+
+export type TripCostEventView = {
+  action: string;
+  at: string;
+  who: string | null;
+  fromReference: string | null;
+  toReference: string | null;
+};
+
+/** Dernier geste sur chaque dépense, pour la ligne sous la carte. */
+export async function loadLatestTripCostEvents(sourceIds: string[], admin: SupabaseClient = createServiceClient()) {
+  const map = new Map<string, TripCostEventView>();
+  const ids = [...new Set(sourceIds.filter(Boolean))];
+  for (let index = 0; index < ids.length; index += 100) {
+    const slice = ids.slice(index, index + 100);
+    const { data, error } = await admin
+      .from("crm_trip_cost_events")
+      .select("source_id, action, created_at, actor, from_reference, to_reference")
+      .eq("source", "pliant")
+      .in("source_id", slice)
+      .order("created_at", { ascending: false });
+    if (error) {
+      if (missingEventsTable(error.message)) return map;
+      throw new TripCostError(error.message, 500);
+    }
+    for (const row of (data || []) as {
+      source_id: string;
+      action: string;
+      created_at: string;
+      actor: string | null;
+      from_reference: string | null;
+      to_reference: string | null;
+    }[]) {
+      if (map.has(row.source_id)) continue;
+      map.set(row.source_id, {
+        action: row.action,
+        at: row.created_at,
+        who: row.actor,
+        fromReference: row.from_reference,
+        toReference: row.to_reference,
+      });
+    }
+  }
+  return map;
+}
+
 export type AttachInput = {
   source: TripCostSource;
   sourceId: string;
@@ -172,22 +290,11 @@ export type AttachInput = {
   newExpense?: { title?: string | null; amount: number } | null;
   /** Sortie Revolut hors euros : coût en euros saisi par l’agent. */
   eurAmount?: number | null;
+  /** Qui fait le geste. Le journal garde le nom, pas l’e-mail. */
+  actor?: TripCostActor | null;
 };
 
-/** Rattache une sortie à une ligne du dossier. Rien ne part au client : la vente ne bouge pas. */
-export async function attachOutgoing(input: AttachInput, admin: SupabaseClient = createServiceClient()) {
-  const { data: booking } = await admin
-    .from("crm_bookings")
-    .select("id, reference, customer_id, billing_customer_id")
-    .eq("id", input.bookingId)
-    .maybeSingle();
-  if (!booking) throw new TripCostError("Séjour introuvable.", 404);
-  const payer = (booking as { billing_customer_id?: string | null; customer_id?: string | null }).billing_customer_id
-    || (booking as { customer_id?: string | null }).customer_id
-    || null;
-  const draft = await draftFor(admin, input.source, input.sourceId, input.eurAmount);
-
-  let itemId = input.itemId || null;
+async function resolveCostItem(admin: SupabaseClient, input: AttachInput, draft: TripCostDraft) {
   if (input.newExpense) {
     const amount = Number(input.newExpense.amount);
     if (!Number.isFinite(amount) || amount <= 0) throw new TripCostError("Prix vendu requis.");
@@ -208,19 +315,35 @@ export async function attachOutgoing(input: AttachInput, admin: SupabaseClient =
       .select("id")
       .single();
     if (error || !item) throw new TripCostError(error?.message || "La dépense n’a pas pu être créée.", 500);
-    itemId = String(item.id);
     await refreshBookingLedger(admin, input.bookingId);
-  } else if (itemId) {
+    return String(item.id);
+  }
+  if (input.itemId) {
     const { data: item } = await admin
       .from("crm_booking_items")
       .select("id")
-      .eq("id", itemId)
+      .eq("id", input.itemId)
       .eq("booking_id", input.bookingId)
       .maybeSingle();
     if (!item) throw new TripCostError("Cette ligne n’est pas sur ce séjour.", 404);
-  } else if (!input.stayOnly) {
-    itemId = await defaultItemFor(admin, input.bookingId, draft);
+    return input.itemId;
   }
+  if (input.stayOnly) return null;
+  return defaultItemFor(admin, input.bookingId, draft);
+}
+
+/** Rattache une sortie à une ligne du dossier. Rien ne part au client : la vente ne bouge pas. */
+export async function attachOutgoing(input: AttachInput, admin: SupabaseClient = createServiceClient()) {
+  const { data: booking } = await admin
+    .from("crm_bookings")
+    .select("id, reference, customer_id, billing_customer_id")
+    .eq("id", input.bookingId)
+    .maybeSingle();
+  if (!booking) throw new TripCostError("Séjour introuvable.", 404);
+  const bookingRow = booking as { reference?: string | null; billing_customer_id?: string | null; customer_id?: string | null };
+  const payer = bookingRow.billing_customer_id || bookingRow.customer_id || null;
+  const draft = await draftFor(admin, input.source, input.sourceId, input.eurAmount);
+  const itemId = await resolveCostItem(admin, input, draft);
 
   const { data: inserted, error } = await admin
     .from("crm_trip_costs")
@@ -246,6 +369,15 @@ export async function attachOutgoing(input: AttachInput, admin: SupabaseClient =
     throw new TripCostError(error?.message || "Rattachement impossible.", 500);
   }
   await markSource(admin, draft.source, draft.sourceId, "matched", { bookingId: input.bookingId, customerId: payer });
+  await recordTripCostEvent(admin, {
+    actor: input.actor,
+    action: "attach",
+    source: draft.source,
+    sourceId: draft.sourceId,
+    toBookingId: input.bookingId,
+    toItemId: itemId,
+    toReference: (bookingRow.reference || "").trim() || null,
+  });
   return mapTripCost(inserted as TripCostRow);
 }
 
@@ -299,11 +431,16 @@ export async function retargetTripCost(costId: string, itemId: string | null, ad
   return { ...cost, bookingItemId: itemId };
 }
 
-/** Retire un coût : la sortie revient dans la file à rattacher. La vente reste. */
-export async function detachTripCost(costId: string, admin: SupabaseClient = createServiceClient()) {
+/** Retire un coût : la sortie revient à proposer. La vente reste. */
+export async function detachTripCost(
+  costId: string,
+  admin: SupabaseClient = createServiceClient(),
+  actor?: TripCostActor | null
+) {
   const { data } = await admin.from("crm_trip_costs").select(COST_SELECT).eq("id", costId).maybeSingle();
   if (!data) throw new TripCostError("Coût introuvable.", 404);
   const cost = mapTripCost(data as TripCostRow);
+  const fromReference = await bookingReference(admin, cost.bookingId);
   const { error } = await admin.from("crm_trip_costs").delete().eq("id", costId);
   if (error) throw new TripCostError(error.message, 500);
   await markSource(admin, cost.source, cost.sourceId, "unmatched");
@@ -311,7 +448,90 @@ export async function detachTripCost(costId: string, admin: SupabaseClient = cre
     const { error: released } = await admin.from("crm_pliant_transactions").update({ link_released: true }).eq("id", cost.sourceId);
     if (released && !/link_released/i.test(released.message || "")) throw new TripCostError(released.message, 500);
   }
+  await recordTripCostEvent(admin, {
+    actor,
+    action: "detach",
+    source: cost.source,
+    sourceId: cost.sourceId,
+    fromBookingId: cost.bookingId,
+    fromItemId: cost.bookingItemId,
+    fromReference,
+  });
   return cost;
+}
+
+/** Déplace le coût vers un autre dossier. Une dépense reste entière : pas de partage. */
+export async function moveOutgoing(input: AttachInput, admin: SupabaseClient = createServiceClient()) {
+  const { data: existing } = await admin
+    .from("crm_trip_costs")
+    .select(COST_SELECT)
+    .eq("source", input.source)
+    .eq("source_id", input.sourceId)
+    .maybeSingle();
+  if (!existing) throw new TripCostError("Cette dépense n’est pas rattachée.", 404);
+  const cost = mapTripCost(existing as TripCostRow);
+  const { data: booking } = await admin
+    .from("crm_bookings")
+    .select("id, reference, customer_id, billing_customer_id")
+    .eq("id", input.bookingId)
+    .maybeSingle();
+  if (!booking) throw new TripCostError("Séjour introuvable.", 404);
+  const bookingRow = booking as { reference?: string | null; billing_customer_id?: string | null; customer_id?: string | null };
+  const draft = await draftFor(admin, input.source, input.sourceId, input.eurAmount);
+  const itemId = await resolveCostItem(admin, input, draft);
+  if (cost.bookingId === input.bookingId && (cost.bookingItemId || null) === (itemId || null)) {
+    throw new TripCostError("Cette dépense est déjà sur ce dossier.");
+  }
+  const fromReference = await bookingReference(admin, cost.bookingId);
+  const { error } = await admin
+    .from("crm_trip_costs")
+    .update({
+      booking_id: input.bookingId,
+      booking_item_id: itemId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", cost.id);
+  if (error) throw new TripCostError(error.message, 500);
+  const payer = bookingRow.billing_customer_id || bookingRow.customer_id || null;
+  await markSource(admin, cost.source, cost.sourceId, "matched", { bookingId: input.bookingId, customerId: payer });
+  await recordTripCostEvent(admin, {
+    actor: input.actor,
+    action: "move",
+    source: cost.source,
+    sourceId: cost.sourceId,
+    fromBookingId: cost.bookingId,
+    toBookingId: input.bookingId,
+    fromItemId: cost.bookingItemId,
+    toItemId: itemId,
+    fromReference,
+    toReference: (bookingRow.reference || "").trim() || null,
+  });
+  return { ...cost, previousBookingId: cost.bookingId, bookingId: input.bookingId, bookingItemId: itemId };
+}
+
+/** Écarte la proposition affichée. La dépense reste à proposer. */
+export async function refuseOutgoingSuggestion(
+  input: { source: TripCostSource; sourceId: string; bookingId: string; actor?: TripCostActor | null },
+  admin: SupabaseClient = createServiceClient()
+) {
+  const { data: booking } = await admin.from("crm_bookings").select("id, reference").eq("id", input.bookingId).maybeSingle();
+  if (!booking) throw new TripCostError("Séjour introuvable.", 404);
+  if (input.source === "pliant") {
+    const row = await pliantRow(admin, input.sourceId);
+    if (!row) throw new TripCostError("Dépense introuvable.", 404);
+  } else {
+    const row = await revolutRow(admin, input.sourceId);
+    if (!row) throw new TripCostError("Sortie introuvable.", 404);
+  }
+  await recordTripCostEvent(admin, {
+    actor: input.actor,
+    action: "refuse",
+    source: input.source,
+    sourceId: input.sourceId,
+    toBookingId: input.bookingId,
+    toReference: ((booking as { reference?: string | null }).reference || "").trim() || null,
+    note: "Proposition écartée.",
+  });
 }
 
 /** Hors voyage : frais d’agence, abonnement, salaire. La sortie quitte la file sans dossier. */
@@ -511,6 +731,11 @@ export async function loadOutgoingQueue(
       admin,
       rows.map((row) => row.card_id || "")
     );
+    const refused = await refusedBookingIds(
+      admin,
+      "pliant",
+      rows.map((row) => row.id)
+    );
     for (const row of rows) {
       const draft = tripCostFromPliant(row);
       if (!draft) continue;
@@ -519,16 +744,19 @@ export async function loadOutgoingQueue(
       const card = row.card_id ? cards.get(row.card_id) || null : null;
       const cardBookingIds = card?.bookingIds || [];
       const cardBooking = cardBookingIds.map((id) => targets.find((target) => target.id === id)).find(Boolean) || null;
-      const suggestions = suggestCostTargets(
-        {
-          text: row.merchant,
-          party: row.merchant,
-          amount: Math.abs(draft.amountEur),
-          cardBookingIds,
-          customerId: row.customer_id || row.matched_customer_id || null,
-          date: draft.occurredOn,
-        },
-        targets
+      const suggestions = withoutRefusedSuggestions(
+        suggestCostTargets(
+          {
+            text: row.merchant,
+            party: row.merchant,
+            amount: Math.abs(draft.amountEur),
+            cardBookingIds,
+            customerId: row.customer_id || row.matched_customer_id || null,
+            date: draft.occurredOn,
+          },
+          targets
+        ),
+        refused.get(row.id) || []
       );
       lines.push({
         source: "pliant",
@@ -567,7 +795,13 @@ export async function loadOutgoingQueue(
     if (filter.from) query = query.gte("booked_at", filter.from);
     if (filter.to) query = query.lte("booked_at", `${filter.to}T23:59:59`);
     const { data } = await query;
-    for (const row of (data || []) as RevolutRow[]) {
+    const revolutRows = (data || []) as RevolutRow[];
+    const refused = await refusedBookingIds(
+      admin,
+      "revolut",
+      revolutRows.map((row) => row.id)
+    );
+    for (const row of revolutRows) {
       const line = revolutDebitLine(row);
       if (isFixedCostParty(line.party) || isFixedCostParty(row.counterparty_name)) continue;
       const draft = tripCostFromRevolut(row, null);
@@ -581,14 +815,17 @@ export async function loadOutgoingQueue(
       if (ownAccounts && filter.bookingId) continue;
       const suggestions = ownAccounts
         ? []
-        : suggestCostTargets(
-            {
-              text: `${line.reference} ${row.reference || ""}`,
-              party: line.party,
-              amount: line.amount,
-              raw: row.raw,
-            },
-            targets
+        : withoutRefusedSuggestions(
+            suggestCostTargets(
+              {
+                text: `${line.reference} ${row.reference || ""}`,
+                party: line.party,
+                amount: line.amount,
+                raw: row.raw,
+              },
+              targets
+            ),
+            refused.get(row.id) || []
           );
       lines.push({
         source: "revolut",

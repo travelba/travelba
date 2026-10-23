@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { OutgoingAttach } from "@/components/admin/OutgoingAttach";
+import { PliantMatchActions } from "@/components/admin/PliantMatchActions";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { StatusChip } from "@/components/crm/ui";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -43,7 +42,9 @@ export type PliantLine = {
   /** Sortie à rattacher (dépense comptabilisée, pas encore sur un voyage). */
   outgoing: OutgoingLine | null;
   /** Voyage auquel le coût est rattaché. */
-  cost: { bookingId: string; reference: string; itemLabel: string | null } | null;
+  cost: { id: string; bookingId: string; reference: string; itemLabel: string | null } | null;
+  /** Dernier geste de rattachement, déjà formulé. */
+  auditLabel: string | null;
 };
 
 function lineView(row: PliantLine) {
@@ -159,15 +160,8 @@ export function PliantAccount({
   }
 
   function tripCell(row: PliantLine) {
-    if (row.cost) {
-      return (
-        <p className="text-sm font-semibold text-[var(--admin-navy)]">
-          <Link href={`/admin/reservations/${row.cost.bookingId}?tab=reglement`} className="underline">
-            {row.cost.reference}
-          </Link>
-          {row.cost.itemLabel ? <span className="block text-xs font-normal text-muted">{row.cost.itemLabel}</span> : null}
-        </p>
-      );
+    if (row.cost || row.outgoing) {
+      return <PliantMatchActions id={row.id} linked={row.cost} outgoing={row.outgoing} auditLabel={row.auditLabel} />;
     }
     if (row.matchStatus === "ignored") {
       return (
@@ -184,8 +178,7 @@ export function PliantAccount({
         </p>
       );
     }
-    if (!row.outgoing) return <p className="text-sm text-muted">—</p>;
-    return <OutgoingAttach line={row.outgoing} />;
+    return <p className="text-sm text-muted">—</p>;
   }
 
   return (

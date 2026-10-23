@@ -8,7 +8,9 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmPliantTransaction } from "@/lib/crm/types";
 import Link from "next/link";
 import { parseLoadMore, type SearchParamValue } from "@/lib/crm/admin-list";
-import { itemLabelFor, loadOutgoingQueue } from "@/lib/crm/trip-costs-db";
+import { formatDateTimeFr } from "@/lib/crm/money";
+import { tripCostEventSentence } from "@/lib/crm/pliant-link";
+import { itemLabelFor, loadLatestTripCostEvents, loadOutgoingQueue } from "@/lib/crm/trip-costs-db";
 import type { OutgoingLine } from "@/lib/crm/trip-costs";
 
 /** Dépenses lues par page : 500, puis « Charger plus » (A-22). */
@@ -53,12 +55,12 @@ export default async function AdminPliantPage({
         loadOutgoingQueue({ source: "pliant", limit: PLIANT_MAX }, admin),
         admin
           .from("crm_trip_costs")
-          .select("source_id, booking_id, booking_item_id")
+          .select("id, source_id, booking_id, booking_item_id")
           .eq("source", "pliant")
           .in("source_id", rows.map((row) => row.id).slice(0, 1000)),
       ]);
       const outgoing = new Map<string, OutgoingLine>(queue.map((line) => [line.id, line]));
-      const costRows = (costs.data || []) as { source_id: string; booking_id: string; booking_item_id: string | null }[];
+      const costRows = (costs.data || []) as { id: string; source_id: string; booking_id: string; booking_item_id: string | null }[];
       const costBookingIds = [...new Set(costRows.map((row) => row.booking_id))];
       const costItemIds = costRows.map((row) => row.booking_item_id).filter((id): id is string => Boolean(id));
       const [{ data: costBookings }, { data: costItems }] = await Promise.all([
@@ -82,12 +84,14 @@ export default async function AdminPliantPage({
         costRows.map((row) => [
           row.source_id,
           {
+            id: row.id,
             bookingId: row.booking_id,
             reference: costReference.get(row.booking_id) || "Voyage",
             itemLabel: row.booking_item_id ? costItemLabel.get(row.booking_item_id) || null : "Montant du séjour",
           },
         ])
       );
+      const audits = await loadLatestTripCostEvents(rows.map((row) => row.id), admin);
 
       lines = rows.map((row) => {
         const stay = pliantStayForCard(row.card_id, stays);
@@ -114,6 +118,17 @@ export default async function AdminPliantPage({
           matchStatus: row.match_status || "unmatched",
           outgoing: outgoing.get(row.id) || null,
           cost: costById.get(row.id) || null,
+          auditLabel: (() => {
+            const event = audits.get(row.id);
+            if (!event) return null;
+            return tripCostEventSentence({
+              action: event.action,
+              who: event.who,
+              fromReference: event.fromReference,
+              toReference: event.toReference,
+              atLabel: formatDateTimeFr(event.at),
+            });
+          })(),
         };
       });
     } catch (err) {
