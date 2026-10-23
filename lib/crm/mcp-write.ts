@@ -411,7 +411,7 @@ export async function matchRevolutExpense(input: Record<string, unknown>, admin?
   if (!stay) throw new McpWriteError(revolutExpenseError("booking_not_found"));
   if (!bookingBelongsToCustomer(stay, clientId)) throw new McpWriteError(revolutExpenseError("booking_not_for_customer"));
   try {
-    await attachOutgoing({ source: "revolut", sourceId: depenseId, bookingId: dossierId }, db);
+    await attachOutgoing({ source: "revolut", sourceId: depenseId, bookingId: dossierId, actor: { label: "mcp" } }, db);
   } catch (err) {
     if (err instanceof TripCostError) throw new McpWriteError(err.message);
     throw err;
@@ -447,7 +447,7 @@ export async function reconcilePliantDebit(input: Record<string, unknown>, admin
   if (!stay) throw new McpWriteError("Dossier introuvable.");
   let cost: Awaited<ReturnType<typeof attachOutgoing>>;
   try {
-    cost = await attachOutgoing({ source: "pliant", sourceId: mouvementId, bookingId: dossierId }, db);
+    cost = await attachOutgoing({ source: "pliant", sourceId: mouvementId, bookingId: dossierId, actor: { label: "mcp" } }, db);
   } catch (err) {
     if (err instanceof TripCostError) throw new McpWriteError(err.status === 409 ? "Déjà rapprochée." : err.message);
     throw err;
