@@ -122,7 +122,6 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
   let email = "";
   let firstName = "";
   let lastName = "";
-  let currency = "EUR";
 
   for (const row of bookingRows) {
     const tagged = {
@@ -140,7 +139,6 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
       firstName = tagged.customer_first_name;
     }
     if (!lastName && tagged.customer_last_name) lastName = tagged.customer_last_name;
-    if (tagged.currency) currency = tagged.currency;
   }
 
   if (hasQuote && hasConfirmed) {
@@ -161,7 +159,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
         : "confirmed",
     title,
     destination,
-    currency: currency || "EUR",
+    currency: "EUR",
     customer_email: email,
     customer_first_name: firstName,
     customer_last_name: lastName,
