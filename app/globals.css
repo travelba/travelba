@@ -289,6 +289,9 @@
   padding: 14px 16px;
   box-shadow: 0 8px 22px rgba(26, 26, 26, 0.06);
 }
+.hotel-theme .h-recap.p-0 {
+  padding: 0;
+}
 .hotel-theme .h-room {
   background: #fff;
   border-radius: 12px;

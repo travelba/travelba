@@ -7,7 +7,7 @@ import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { parisTodayIso } from "@/lib/crm/dates";
-import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
+import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
 import {
   hotelSearchDraft,
   nightsBetween,
@@ -190,6 +190,8 @@ export function HotelSearch() {
   const [serverFirst, setServerFirst] = useState<number | null>(null);
   const [clientFirst, setClientFirst] = useState<number | null>(null);
   const [needs, setNeeds] = useState<(keyof HotelPerks)[]>([]);
+  const [sort, setSort] = useState<HotelSort>("prix");
+  const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
   const router = useRouter();
   const params = useSearchParams();
@@ -478,7 +480,7 @@ export function HotelSearch() {
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
   const nightLabel = nightCount > 0 ? `${nightCount} nuit${nightCount > 1 ? "s" : ""}` : "";
 
-  const shown = presentHotels(hotels, "prix", needs);
+  const shown = presentHotels(hotels, sort, needs);
   const canMap = hotels.some((hotel) => hotel.coords);
   const journeyQuery = useMemo(
     () => ({ destination, city, checkIn, checkOut, rooms: committed?.rooms ?? [] }),
@@ -722,23 +724,27 @@ export function HotelSearch() {
         </form>
       )}
 
-      {searched && note && !sheet ? <p className="text-sm h-gold">{note}</p> : null}
+      {searched && note && !sheet ? (
+        <article className="h-recap">
+          <p className="text-sm h-ink">{note}</p>
+        </article>
+      ) : null}
       {searching ? (
-        <div className="text-[var(--admin-navy)]">
+        <div className="h-ink">
           <BusyBar label="Nous préparons les tarifs" />
         </div>
       ) : null}
 
-      <div className="space-y-4" aria-live="polite">
+      <div className="space-y-3" aria-live="polite">
         {searching && hotels.length === 0
           ? [0, 1, 2].map((index) => (
-              <div key={index} className="-mx-4 overflow-hidden" aria-hidden>
+              <article key={index} className="-mx-4" aria-hidden>
                 <div className="h-72 animate-pulse h-skel" />
                 <div className="space-y-2 px-4 py-4">
                   <div className="h-5 w-2/3 animate-pulse h-skel" />
                   <div className="h-4 w-1/3 animate-pulse h-skel" />
                 </div>
-              </div>
+              </article>
             ))
           : null}
         {searched && hotels.length > 0 ? (
@@ -752,21 +758,13 @@ export function HotelSearch() {
               </div>
               <p className="h-muted">{shown.length} {shown.length > 1 ? "hôtels" : "hôtel"}</p>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-              {PERK_LABEL.slice(0, 4).map((perk) => {
-                const on = needs.includes(perk.key);
-                return (
-                  <button
-                    key={perk.key}
-                    type="button"
-                    aria-pressed={on}
-                    className={`h-hit h-press ${on ? "h-on" : "h-muted"}`}
-                    onClick={() => setNeeds((current) => (on ? current.filter((key) => key !== perk.key) : [...current, perk.key]))}
-                  >
-                    {perk.label}
-                  </button>
-                );
-              })}
+            <div className="flex gap-2">
+              <button type="button" className="h-pill" aria-pressed={needs.length > 0} onClick={() => setTool("filtre")}>
+                Filtres{needs.length ? ` · ${needs.length}` : ""}
+              </button>
+              <button type="button" className="h-pill" onClick={() => setTool("tri")}>
+                {sort === "prix" ? "Prix" : "Privilèges"}
+              </button>
             </div>
             {layout === "carte" && canMap ? <HotelMap hotels={shown} onOpen={openHotel} /> : null}
           </div>
@@ -777,16 +775,21 @@ export function HotelSearch() {
             ))
           : null}
         {searched && !searching && hotels.length === 0 && !note ? (
-          <article className="py-6">
-            <h3 className="h-serif text-[1.7rem] font-medium h-ink">Aucun hôtel pour ces dates</h3>
-            <p className="mt-1 text-sm h-muted">Écrivez-nous, nous cherchons autrement.</p>
-            <a href={whatsapp} className="mt-4 inline-flex text-sm font-semibold h-ink">
+          <article className="h-recap">
+            <h3 className="h-serif text-[1.35rem] font-semibold h-ink">Aucun hôtel pour ces dates</h3>
+            <p className="mt-2 text-sm h-muted">Écrivez-nous, nous cherchons autrement.</p>
+            <a href={whatsapp} className="h-btn mt-4 flex h-12 items-center justify-center text-sm font-semibold">
               WhatsApp
             </a>
           </article>
         ) : null}
         {searched && !searching && hotels.length > 0 && shown.length === 0 ? (
-          <p className="text-sm h-muted">Aucun hôtel pour ces critères. Retirez un filtre.</p>
+          <article className="h-recap">
+            <p className="text-sm h-ink">Aucun hôtel pour ces critères.</p>
+            <button type="button" className="h-btn-line mt-3 text-sm font-semibold h-ink" onClick={() => setNeeds([])}>
+              Retirer les filtres
+            </button>
+          </article>
         ) : null}
       </div>
       </>}
@@ -982,6 +985,66 @@ export function HotelSearch() {
           </footer>
         </div>
       ) : null}
+      {tool ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-end bg-[#1a1a1a]/40"
+          role="dialog"
+          aria-modal="true"
+          aria-label={tool === "tri" ? "Trier" : "Filtres"}
+          data-hotel-tools={tool}
+          onClick={() => setTool("")}
+        >
+          <div className="w-full bg-[#f4efe6] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-5" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <p className="h-serif text-[1.2rem] font-semibold h-ink">{tool === "tri" ? "Trier" : "Filtres"}</p>
+              <button type="button" aria-label="Fermer" onClick={() => setTool("")} className="grid h-10 w-10 place-items-center h-ink">
+                <Icon name="close" className="h-5 w-5" />
+              </button>
+            </div>
+            {tool === "tri" ? (
+              <div className="space-y-2">
+                {([
+                  ["prix", "Prix, du plus bas"],
+                  ["avantages", "Privilèges"],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={sort === key}
+                    className={`h-recap flex w-full items-center justify-between text-left text-sm ${sort === key ? "h-on" : "h-ink"}`}
+                    onClick={() => {
+                      setSort(key);
+                      setTool("");
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {PERK_LABEL.map((perk) => {
+                  const on = needs.includes(perk.key);
+                  return (
+                    <button
+                      key={perk.key}
+                      type="button"
+                      aria-pressed={on}
+                      className={`h-recap flex w-full items-center justify-between text-left text-sm ${on ? "h-on" : "h-ink"}`}
+                      onClick={() => setNeeds((current) => (on ? current.filter((key) => key !== perk.key) : [...current, perk.key]))}
+                    >
+                      {perk.label}
+                    </button>
+                  );
+                })}
+                <button type="button" className="h-btn mt-2 flex h-12 w-full items-center justify-center text-sm font-semibold" onClick={() => setTool("")}>
+                  Voir les hôtels
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -997,8 +1060,8 @@ function SuggestGroup({
 }) {
   if (!items.length) return null;
   return (
-    <div>
-      <p className="px-1 pb-1 pt-4 text-sm h-muted">{title}</p>
+    <div className="h-recap mt-2 p-0">
+      <p className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.14em] h-muted">{title}</p>
       {items.map((item) => (
         <button
           key={`${item.kind}-${item.id ?? ""}-${item.label}-${item.detail}`}
