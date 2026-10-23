@@ -616,7 +616,7 @@ export function HotelSearch() {
                 />
               </span>
             </label>
-            {(panel === null || panel === "where") && folded.length < 2 ? (
+            {panel !== "when" && panel !== "who" && destinations.length === 0 && hotelNames.length === 0 ? (
               <div data-hotel-recent="1" className="pt-1">
                 <p className="h-section">Dernières recherches</p>
                 {recent.length ? (
