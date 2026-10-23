@@ -54,6 +54,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
         { href: "/admin/reservations", label: "Réservations", icon: "luggage" },
         { href: "/admin/formalites", label: "Formalités", icon: "shield_check" },
         { href: "/admin/services", label: "Services à confirmer", icon: "headset" },
+        { href: "/admin/ratehawk", label: "Ratehawk", icon: "hotel" },
       ],
     },
     {
@@ -177,7 +178,7 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     label: "Dossiers",
     icon: "luggage",
     href: "/admin/reservations",
-    paths: ["/admin/reservations", "/admin/formalites", "/admin/services"],
+    paths: ["/admin/reservations", "/admin/formalites", "/admin/services", "/admin/ratehawk"],
     badges: [],
   },
   {
