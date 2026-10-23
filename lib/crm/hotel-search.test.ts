@@ -582,6 +582,9 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(night, /\["home", "stay", "hotel", "ledger", "account"\]/);
   assert.match(night, /account-hotel-fab/);
   assert.match(night, /rounded-full/);
+  assert.match(night, /top-\[-1\.75rem\]/);
+  assert.match(night, /bg-\[#C5A880\]/);
+  assert.match(readFileSync(join(root, "components/account/AccountChrome.tsx"), "utf8"), /account-hotel-desk/);
   assert.match(night, /min-h-11/);
   assert.match(night, /safe-area-inset-bottom/);
   assert.match(night, /text-\[10px\]/);
