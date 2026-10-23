@@ -54,7 +54,7 @@ function Photo({ src, alt, eager }: { src: string; alt: string; eager?: boolean 
       alt={alt}
       width={900}
       height={600}
-      className="h-full w-full object-cover"
+      className="h-fade h-full w-full object-cover"
       loading={eager ? "eager" : "lazy"}
       decoding="async"
       fetchPriority={eager ? "high" : "auto"}
@@ -99,7 +99,7 @@ function Gallery({ images, alt }: { images: string[]; alt: string }) {
 
   return (
     <div data-hotel-gallery="1" className="relative">
-      <div ref={scroller} onScroll={onScroll} className="h-gallery flex aspect-[4/3] snap-x snap-mandatory overflow-x-auto bg-[var(--h-header)]">
+      <div ref={scroller} onScroll={onScroll} className="h-gallery h-stage flex snap-x snap-mandatory overflow-x-auto bg-[#eceae6]">
         {images.length ? (
           images.map((src, imageIndex) => (
             <button
@@ -119,7 +119,7 @@ function Gallery({ images, alt }: { images: string[]; alt: string }) {
           <div className="h-skel h-full w-full shrink-0" />
         )}
       </div>
-      {images.length > 1 ? <p className="h-pin absolute bottom-3 right-3">{index + 1}/{images.length}</p> : null}
+      {images.length > 1 ? <p className="h-pin absolute bottom-10 right-4">{index + 1}/{images.length}</p> : null}
       {open && images[index] ? (
         <Lightbox
           images={images}
@@ -289,7 +289,7 @@ function RoomParty({
   onRemove: (at: number) => void;
 }) {
   return (
-    <section className="h-card h-line space-y-3 border p-4" data-hotel-room-party={index + 1}>
+    <section className="space-y-4 py-2" data-hotel-room-party={index + 1}>
       <div>
         <p className="h-kicker">Chambre {index + 1}</p>
         <p className="mt-1 text-sm h-ink">{occupancy}</p>
@@ -302,7 +302,7 @@ function RoomParty({
           aria-label={`Voyageur principal, chambre ${index + 1}`}
           placeholder="Prénom et nom"
           autoComplete="name"
-          className="mt-2 h-11 w-full bg-transparent text-base h-ink outline-none"
+          className="mt-1 h-11 w-full border-b border-[#efeae3] bg-transparent text-base h-ink outline-none"
         />
       </label>
       {index === 0 && selfName ? (
@@ -310,13 +310,13 @@ function RoomParty({
           type="button"
           onClick={onSkip}
           aria-pressed={skipSelf}
-          className={`h-hit h-press border px-3 text-sm ${skipSelf ? "h-on" : "h-line h-ink"}`}
+          className={`h-hit h-press px-1 text-sm ${skipSelf ? "h-on" : "h-muted"}`}
         >
           Je ne voyage pas
         </button>
       ) : null}
       {others.map((name, at) => (
-        <label key={at} className="block border-t h-line pt-3">
+        <label key={at} className="block pt-2">
           <span className="flex items-center justify-between gap-3">
             <span className="h-kicker">Autre occupant</span>
             <button type="button" onClick={() => onRemove(at)} className="h-hit h-press text-xs h-gold">
@@ -329,11 +329,11 @@ function RoomParty({
             aria-label={`Autre occupant ${at + 1}, chambre ${index + 1}`}
             placeholder="Prénom et nom"
             autoComplete="name"
-            className="mt-2 h-11 w-full bg-transparent text-base h-ink outline-none"
+            className="mt-1 h-11 w-full border-b border-[#efeae3] bg-transparent text-base h-ink outline-none"
           />
         </label>
       ))}
-      <button type="button" onClick={onAdd} className="h-hit h-press text-sm font-semibold h-gold">
+      <button type="button" onClick={onAdd} className="h-hit h-press text-sm h-ink">
         Ajouter un occupant
       </button>
     </section>
@@ -477,6 +477,11 @@ export function HotelJourney({
   const view: Step = step === "confirm" && rate ? "confirm" : step === "guests" && rate ? "guests" : step === "room" && room ? "room" : "hotel";
   const order = STEPS.map((item) => item.id);
   const stepAt = order.indexOf(view);
+  const immersive = view === "hotel" || view === "room";
+  const fromOffer = file?.rooms
+    .map((item) => item.rates[0])
+    .filter((item): item is ClientRate => Boolean(item))
+    .sort((left, right) => left.sellCents - right.sellCents)[0];
 
   function chooseRoom(next: ClientRoom) {
     const picked = collapseRooms([next])[0] || next;
@@ -536,13 +541,6 @@ export function HotelJourney({
     });
   }
 
-  function go(next: Step) {
-    if (order.indexOf(next) >= stepAt) return;
-    if (next === "room" && !room) return;
-    if ((next === "guests" || next === "confirm") && !rate) return;
-    onStep(next);
-  }
-
   function back() {
     if (done) onBack();
     else onStep("back");
@@ -577,28 +575,22 @@ export function HotelJourney({
   const panel = (
     <div className="hotel-theme">
     <div className="h-journey h-bg" data-hotel-journey="1">
-      <header className="h-header shrink-0">
-        <div className="flex items-stretch" data-hotel-steps="1">
-          <button type="button" aria-label="Retour" onClick={back} className="h-hit h-press grid w-11 shrink-0 place-items-center">
+      <header className={immersive ? "pointer-events-none absolute inset-x-0 top-0 z-30" : "shrink-0 bg-white"} data-hotel-steps="1">
+        <div className={`h-0.5 ${immersive ? "bg-white/30" : "bg-black/10"}`} aria-hidden>
+          <div className={`h-full ${immersive ? "bg-white" : "bg-[#0b192c]"}`} style={{ width: `${((stepAt + 1) / STEPS.length) * 100}%` }} />
+        </div>
+        <div className="flex items-center">
+          <button
+            type="button"
+            aria-label="Retour"
+            onClick={back}
+            className={`h-hit h-press pointer-events-auto grid w-11 shrink-0 place-items-center ${immersive ? "m-2 text-white [filter:drop-shadow(0_1px_2px_rgba(11,25,44,0.55))]" : "text-[#0b192c]"}`}
+          >
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          <div className="flex min-w-0 flex-1">
-            {STEPS.map((item, index) => {
-              const on = item.id === view;
-              const doneStep = index < stepAt;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => go(item.id)}
-                  className={`h-hit h-press min-w-0 flex-1 text-[10px] uppercase tracking-[0.06em] ${on || doneStep ? "text-[#c5a880]" : "text-white/45"}`}
-                  aria-current={on ? "step" : undefined}
-                >
-                  <span className={`inline-block max-w-full truncate border-b py-2 ${on ? "border-[#c5a880]" : "border-transparent"}`}>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {immersive ? null : (
+            <p className="h-serif min-w-0 flex-1 truncate pr-4 text-[1.45rem] leading-none h-ink">{STEPS.find((item) => item.id === view)?.label}</p>
+          )}
         </div>
       </header>
 
@@ -606,27 +598,23 @@ export function HotelJourney({
       <div key={view} className="hotel-step min-w-0 pb-4">
         {view === "hotel" ? (
           <div data-hotel-detail="1">
-            <Gallery images={images} alt={file?.name || hotel.name} />
-            {!file ? (
-              <div className="space-y-3 px-4 py-4" aria-hidden>
-                <div className="h-6 w-2/3 h-skel" />
-                <div className="h-4 w-1/2 h-skel" />
-              </div>
-            ) : null}
-            <div className="h-night space-y-6 px-4 py-5" data-hotel-hero="1">
+            <div className="sticky top-0 z-0">
+              <Gallery images={images} alt={file?.name || hotel.name} />
+            </div>
+            <div className="h-night h-over space-y-8 px-5 pb-8 pt-6" data-hotel-hero="1">
               <div>
-                <h2 className="h-serif text-[2rem] leading-[1.05] h-ink">{file?.name || hotel.name}</h2>
-                <p className="mt-2 text-sm h-muted">{file?.city || hotel.city}</p>
-                <p className="mt-1 text-sm h-ink">{[datesLabel, party].filter(Boolean).join(" · ")}</p>
+                <h2 className="h-serif text-[2.15rem] font-medium leading-[1.05] h-ink">{file?.name || hotel.name}</h2>
+                <p className="mt-2 text-[15px] h-muted">{file?.city || hotel.city}</p>
+                <p className="mt-1 text-[15px] h-ink">{[datesLabel, party].filter(Boolean).join(" · ")}</p>
                 {file?.address ? <p className="mt-1 text-sm h-ink">{file.address}</p> : null}
+                {!file ? <div className="mt-4 h-4 w-1/2 animate-pulse h-skel" aria-hidden /> : null}
               </div>
               {file?.rooms.length ? (
                 <div data-hotel-rooms="1" ref={roomsRef}>
                   <p className="h-section">
                     {file.rooms.length > 1 ? `${file.rooms.length} types de chambres disponibles` : "1 type de chambre disponible"}
                   </p>
-                  <div className="h-rule mt-2" />
-                  <div className="mt-3 -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
+                  <div className="mt-4 -mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2">
                     {file.rooms.map((item) => {
                       const offer = item.rates[0];
                       const photo = item.images[0];
@@ -637,14 +625,14 @@ export function HotelJourney({
                           key={item.name}
                           type="button"
                           onClick={() => chooseRoom(item)}
-                          className="h-card h-line h-press w-[78%] shrink-0 snap-start border text-left"
+                          className="h-press w-[82%] shrink-0 snap-start text-left"
                         >
-                          <span className="relative block aspect-[4/3] bg-[var(--h-header)]">
+                          <span className="relative block aspect-[4/3] overflow-hidden bg-[#eceae6]">
                             {photo ? <Photo src={photo} alt="" /> : null}
                             {item.images.length > 1 ? <span className="h-pin absolute bottom-2 right-2">{`1/${item.images.length}`}</span> : null}
                           </span>
-                          <span className="block space-y-2 p-3">
-                            <span className="h-serif block text-[1.35rem] leading-tight h-ink">{item.name}</span>
+                          <span className="block space-y-1.5 pt-3">
+                            <span className="h-serif block text-[1.45rem] font-medium leading-tight h-ink">{item.name}</span>
                             {outlook.view ? (
                               <span className="flex items-center gap-2 text-[13px] h-muted">
                                 <Icon name="eye" className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -669,7 +657,7 @@ export function HotelJourney({
                                 <span className="block text-[11px] h-muted">TTC</span>
                               </span>
                             ) : null}
-                            {perk ? <span className="inline-block border border-[#c5a880] px-1.5 py-0.5 text-[11px] h-ink">{perk}</span> : null}
+                            {perk ? <span className="inline-block pt-1 text-[12px] text-[#9a7b4f]">{perk}</span> : null}
                           </span>
                         </button>
                       );
@@ -680,7 +668,7 @@ export function HotelJourney({
                 <p className="text-sm h-muted">Aucune chambre pour ces dates. Écrivez-nous si le séjour vous tient à cœur.</p>
               ) : null}
               {file ? (
-                <details className="h-fold border-t h-line">
+                <details className="h-fold">
                   <summary className="text-sm font-semibold h-ink">Le lieu</summary>
                   <div className="space-y-3 pb-3">
                     {file.description ? <p className="text-sm leading-relaxed h-ink">{file.description}</p> : null}
@@ -713,10 +701,9 @@ export function HotelJourney({
                 </details>
               ) : null}
               {file?.coords ? (
-                <div className="border-t h-line pt-4">
+                <div>
                   <p className="h-section">Localisation</p>
-                  <div className="h-rule mt-2" />
-                  <div className="mt-3">
+                  <div className="mt-4">
                     <HotelMap hotels={[{ ...hotel, name: file.name || hotel.name, city: file.city || hotel.city, coords: file.coords }]} />
                   </div>
                   {file.address ? <p className="mt-2 text-sm leading-relaxed h-ink">{file.address}</p> : null}
@@ -725,18 +712,17 @@ export function HotelJourney({
               {others.length ? (
                 <div data-hotel-others="1">
                   <p className="h-section">Autres hôtels à {file?.city || hotel.city}</p>
-                  <div className="h-rule mt-2" />
-                  <div className="mt-3 -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
+                  <div className="mt-4 -mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2">
                     {others.map((item) => (
                       <button
                         key={item.hotelKey}
                         type="button"
                         onClick={() => onOpenOther?.(item)}
-                        className="h-card h-line h-press w-[68%] shrink-0 snap-start border text-left"
+                        className="h-press w-[72%] shrink-0 snap-start text-left"
                       >
-                        <span className="block aspect-[4/3] bg-[var(--h-header)]">{item.photo ? <Photo src={item.photo} alt="" /> : null}</span>
-                        <span className="block p-3">
-                          <span className="h-serif block text-xl leading-tight h-ink">{item.name}</span>
+                        <span className="block aspect-[4/3] overflow-hidden bg-[#eceae6]">{item.photo ? <Photo src={item.photo} alt="" /> : null}</span>
+                        <span className="block pt-3">
+                          <span className="h-serif block text-[1.35rem] font-medium leading-tight h-ink">{item.name}</span>
                           <span className="mt-1 block text-sm h-muted">{item.city}</span>
                           <span className="mt-2 block text-sm font-semibold h-ink">{euros(item.sellCents, item.currency)}</span>
                           <span className="block text-[11px] h-muted">TTC</span>
@@ -752,82 +738,70 @@ export function HotelJourney({
 
         {view === "room" && room && rate ? (
           <div data-hotel-rate="1">
-            <Gallery images={room.images.length ? room.images : images} alt={room.name} />
-            <div className="space-y-5 px-4 py-5">
+            <div className="sticky top-0 z-0">
+              <Gallery images={room.images.length ? room.images : images} alt={room.name} />
+            </div>
+            <div className="h-over space-y-7 px-5 pb-8 pt-6">
               <div>
-                <h2 className="h-serif text-[1.85rem] leading-[1.05] h-ink">{file?.name || hotel.name}</h2>
-                <p className="mt-1 text-sm h-muted">{file?.city || hotel.city}</p>
-                <p className="h-serif mt-4 text-[1.45rem] leading-tight h-ink">{room.name}</p>
+                <h2 className="h-serif text-[2rem] font-medium leading-[1.05] h-ink">{file?.name || hotel.name}</h2>
+                <p className="mt-2 text-[15px] h-muted">{file?.city || hotel.city}</p>
+                <p className="h-serif mt-5 text-[1.55rem] font-medium leading-tight h-ink">{room.name}</p>
               </div>
               {room.area || room.bed || room.outlook ? (
-                <div className="border-l border-[#c5a880] pl-3">
+                <div className="space-y-1">
                   {room.area ? <Fact icon="ruler" label="Surface intérieure" value={room.area} /> : null}
                   {splitOutlook(room.outlook || "").exterior ? <Fact icon="eye" label="Extérieur" value={splitOutlook(room.outlook || "").exterior} /> : null}
                   {splitOutlook(room.outlook || "").view ? <Fact icon="eye" label="Vue" value={splitOutlook(room.outlook || "").view.replace(/^vue\s+/i, "")} /> : null}
                   {room.bed ? <Fact icon="bed" label="Couchage" value={room.bed} /> : null}
                 </div>
               ) : null}
-              <article className="h-card h-line border p-4">
+              <div>
                 {cancellationPhrase(rate.cancellation) ? (
-                  <div className="border h-line px-3 py-2">
-                    <p className="text-sm h-ink">{cancellationPhrase(rate.cancellation)}</p>
+                  <div>
+                    <p className="text-[15px] leading-relaxed h-ink">{cancellationPhrase(rate.cancellation)}</p>
                     {rate.footnotes.length ? (
                       <details className="h-fold">
-                        <summary className="text-sm underline h-ink">Conditions</summary>
+                        <summary className="text-sm h-ink">Conditions</summary>
                         <div className="space-y-2 pb-1">
                           {rate.footnotes.map((line) => (
-                            <p key={line} className="text-xs h-muted">{line}</p>
+                            <p key={line} className="text-xs leading-relaxed h-muted">{line}</p>
                           ))}
                         </div>
                       </details>
                     ) : null}
                   </div>
                 ) : null}
-                <h3 className="h-serif mt-4 text-[1.7rem] leading-tight h-ink">{clientRateTitle(rate.title)}</h3>
+                <h3 className="h-serif mt-5 text-[1.7rem] font-medium leading-tight h-ink">{clientRateTitle(rate.title)}</h3>
                 {reading?.board && reading.board !== "Précisée à la confirmation" && !travelPrivileges(rate.perks, rate.benefits).some((line) => /petit-déjeuner/i.test(line) && /petit-déjeuner/i.test(reading.board)) ? (
-                  <p className="mt-1 text-sm h-muted">{reading.board}</p>
+                  <p className="mt-1 text-[15px] h-muted">{reading.board}</p>
                 ) : null}
                 {travelPrivileges(rate.perks, rate.benefits).length ? (
-                  <div className="mt-4">
-                    <p className="text-sm font-semibold h-ink">Privilèges Travel BA</p>
-                    <ul className="mt-2 space-y-1.5">
+                  <div className="mt-5">
+                    <p className="h-section">Privilèges Travel BA</p>
+                    <ul className="mt-3 space-y-2">
                       {travelPrivileges(rate.perks, rate.benefits).map((line) => (
-                        <li key={line} className="flex items-start gap-2 text-sm h-ink">
-                          <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-[#c5a880]" strokeWidth={1.75} />
+                        <li key={line} className="flex items-start gap-2.5 text-[15px] leading-snug h-ink">
+                          <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-[#9a7b4f]" strokeWidth={1.5} />
                           {line}
                         </li>
                       ))}
                     </ul>
                   </div>
                 ) : null}
-                <div className="sticky bottom-0 z-10 mt-4 flex items-end justify-between gap-3 border-t bg-white h-line pt-3">
-                  <div>
-                    <p className="text-2xl font-semibold tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
-                    <p className="text-[11px] h-muted">TTC</p>
-                  </div>
-                  <button
-                    type="button"
-                    data-hotel-rate-cta="1"
-                    disabled={!rate.offerId}
-                    onClick={() => chooseRate(rate)}
-                    className="h-btn h-press h-11 px-5 text-sm font-semibold disabled:opacity-40"
-                  >
-                    {rate.offerId ? "Sélectionner" : "Tarif en préparation"}
-                  </button>
-                </div>
-              </article>
+              </div>
             </div>
           </div>
         ) : null}
 
         {view === "guests" && rate && reading ? (
-          <div data-hotel-guests="1" className="space-y-3 px-4 py-4">
+          <div data-hotel-guests="1" className="space-y-8 px-5 py-6">
             <div className="min-w-0">
               <p className="truncate text-sm h-muted">{[file?.name || hotel.name, rate.room].filter(Boolean).join(" · ")}</p>
-              <h2 className="h-display mt-1 text-xl font-semibold leading-tight h-ink">{reading.title}</h2>
-              <p className="mt-2 text-sm h-ink">{reading.board} · {reading.cancellation}</p>
-              <p className="mt-2 text-xl font-semibold tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
-              <p className="text-sm h-muted">{datesLabel}</p>
+              <h2 className="h-serif mt-2 text-[2rem] font-medium leading-tight h-ink">{reading.title}</h2>
+              <p className="mt-3 text-[15px] leading-relaxed h-ink">{reading.board}</p>
+              <p className="mt-1 text-[15px] leading-relaxed h-muted">{reading.cancellation}</p>
+              <p className="mt-4 text-2xl font-medium tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
+              <p className="mt-1 text-sm h-muted">{datesLabel}</p>
             </div>
             {known.length ? (
               <div className="min-w-0">
@@ -841,7 +815,7 @@ export function HotelJourney({
                         type="button"
                         onClick={() => placePerson(name)}
                         aria-pressed={on}
-                        className={`h-hit h-press shrink-0 border px-3 text-sm ${on ? "h-on" : "h-line h-ink"}`}
+                        className={`h-hit h-press shrink-0 px-1 text-[15px] ${on ? "h-on" : "h-muted"}`}
                       >
                         {name}
                       </button>
@@ -876,21 +850,21 @@ export function HotelJourney({
         ) : null}
 
         {view === "confirm" && rate && reading ? (
-          <div data-hotel-confirm="1" className="space-y-3 px-4 py-4">
-            <h2 className="text-xl font-semibold h-ink">{done ? "Demande reçue" : "Récapitulatif"}</h2>
-            <article className="h-card h-line space-y-2 border p-4 text-sm">
-              <p className="text-base font-semibold h-ink">{file?.name || hotel.name}</p>
+          <div data-hotel-confirm="1" className="space-y-6 px-5 py-6">
+            <h2 className="h-serif text-[2rem] font-medium h-ink">{done ? "Demande reçue" : "Récapitulatif"}</h2>
+            <article className="space-y-3 text-[15px]">
+              <p className="h-serif text-[1.7rem] font-medium leading-tight h-ink">{file?.name || hotel.name}</p>
               <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
               <p className="h-ink">{rate.room}</p>
-              <p className="h-ink"><span className="h-kicker">Pension</span> {reading.board}</p>
-              <p className="h-ink"><span className="h-kicker">Annulation</span> {reading.cancellation}</p>
-              {discreetPerk(rate.perks) ? <p className="text-xs h-muted">{discreetPerk(rate.perks)}</p> : null}
+              <p className="h-ink"><span className="h-muted">Pension · </span>{reading.board}</p>
+              <p className="h-ink"><span className="h-muted">Annulation · </span>{reading.cancellation}</p>
+              {discreetPerk(rate.perks) ? <p className="text-[#9a7b4f]">{discreetPerk(rate.perks)}</p> : null}
               <ul className="space-y-1 h-ink">
                 {guestLines().map((name, index) => (
                   <li key={`${name}-${index}`}>Chambre {index + 1} · {name}</li>
                 ))}
               </ul>
-              <p className="text-xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
+              <p className="pt-2 text-2xl font-medium h-ink">{euros(rate.sellCents, rate.currency)}</p>
             </article>
             {done ? (
               <p className="text-sm h-ink">
@@ -906,6 +880,24 @@ export function HotelJourney({
       </div>
       </div>
 
+      {view === "hotel" && fromOffer ? (
+        <Dock
+          label="À partir de"
+          price={`${euros(fromOffer.sellCents, fromOffer.currency)} TTC`}
+          action="Voir les chambres"
+          onAction={() => roomsRef.current?.scrollIntoView({ behavior: smoothScroll() ? "smooth" : "auto", block: "start" })}
+        />
+      ) : null}
+      {view === "room" && rate ? (
+        <Dock
+          label="Séjour"
+          price={`${euros(rate.sellCents, rate.currency)} TTC`}
+          action={rate.offerId ? "Sélectionner" : "Tarif en préparation"}
+          disabled={!rate.offerId}
+          marker
+          onAction={() => chooseRate(rate)}
+        />
+      ) : null}
       {view === "guests" && rate ? (
         <Dock
           action="Récapitulatif"
