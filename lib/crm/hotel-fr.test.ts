@@ -75,6 +75,7 @@ test("la chambre et le tarif se lisent sans programme fournisseur", () => {
   assert.equal(clientRateTitle("Marriott Luminous"), "Meilleur tarif disponible");
   assert.equal(clientRateTitle("Best Available Rate"), "Meilleur tarif disponible");
   assert.equal(clientRateTitle("Public"), "Meilleur tarif disponible");
+  assert.equal(clientRateTitle("Saver"), "Tarif économique");
   assert.equal(clientRateTitle("Preferential Rate"), "Tarif préférentiel");
   assert.equal(
     cancellationPhrase("Gratuite jusqu’au 26 octobre 2026, 23 h 59"),
