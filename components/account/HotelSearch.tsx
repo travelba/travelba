@@ -13,6 +13,7 @@ import {
   nightsBetween,
   occupancyKey,
   parseHotelSearchDraft,
+  shiftStayForward,
   stayPartyLabel,
   type ClientHotel,
   type HotelPerks,
@@ -44,7 +45,11 @@ const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
 ];
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
-const INSPIRATION = ["Paris", "Londres", "Rome", "Milan", "Dubaï", "Marrakech"];
+const RECENT_KEY = "hotel-recent-list";
+const PERK_GROUPS: { title: string; keys: (keyof HotelPerks)[] }[] = [
+  { title: "Avantages", keys: ["breakfast", "freeCancellation", "upgrade", "credit"] },
+  { title: "Arrivée anticipée et départ tardif", keys: ["earlyCheckIn", "lateCheckOut"] },
+];
 
 let memory: { key: string; hotels: ClientHotel[]; at: number } | null = null;
 
@@ -120,13 +125,73 @@ type RecentStay = {
   party: string;
 };
 
-function readRecent(): RecentStay[] {
+function recentKey(row: RecentStay) {
+  const shifted = shiftStayForward(parisTodayIso(), row.checkIn, row.checkOut);
+  return `${row.destination.trim().toLocaleLowerCase("fr")}|${row.target?.kind || ""}|${row.target?.id || ""}|${shifted.checkIn}|${shifted.checkOut}|${row.party}`;
+}
+
+const EMPTY_RECENT = "[]";
+let recentSnapshot = EMPTY_RECENT;
+let recentFresh = false;
+const recentListeners = new Set<() => void>();
+
+function parseRecent(raw: string): RecentStay[] {
   try {
-    const parsed = JSON.parse(sessionStorage.getItem("hotel-recent") || "[]") as RecentStay[];
-    return Array.isArray(parsed) ? parsed.slice(0, 4) : [];
+    const parsed = JSON.parse(raw) as RecentStay[];
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const out: RecentStay[] = [];
+    for (const row of parsed) {
+      if (!row || typeof row.destination !== "string") continue;
+      const key = recentKey(row);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+      if (out.length === 5) break;
+    }
+    return out;
   } catch {
     return [];
   }
+}
+
+function readRecentSnapshot() {
+  if (recentFresh) return recentSnapshot;
+  try {
+    recentSnapshot = localStorage.getItem(RECENT_KEY) || sessionStorage.getItem("hotel-recent") || EMPTY_RECENT;
+  } catch {
+    recentSnapshot = EMPTY_RECENT;
+  }
+  recentFresh = true;
+  return recentSnapshot;
+}
+
+function emptyRecentSnapshot() {
+  return EMPTY_RECENT;
+}
+
+function subscribeRecent(onChange: () => void) {
+  const notify = () => {
+    recentFresh = false;
+    onChange();
+  };
+  recentListeners.add(notify);
+  window.addEventListener("storage", notify);
+  return () => {
+    recentListeners.delete(notify);
+    window.removeEventListener("storage", notify);
+  };
+}
+
+function writeRecent(entry: RecentStay) {
+  const next = [entry, ...parseRecent(readRecentSnapshot()).filter((row) => recentKey(row) !== recentKey(entry))].slice(0, 5);
+  const raw = JSON.stringify(next);
+  localStorage.setItem(RECENT_KEY, raw);
+  sessionStorage.setItem("hotel-recent", raw);
+  recentSnapshot = raw;
+  recentFresh = true;
+  recentListeners.forEach((listener) => listener());
+  return next;
 }
 
 function monthCursor(iso: string) {
@@ -200,7 +265,8 @@ export function HotelSearch() {
   const [catalog, setCatalog] = useState<Record<string, ClientHotel>>({});
   const [pending, setPending] = useState<string | null>(null);
   const [trackedToken, setTrackedToken] = useState<string | null>(hotelToken);
-  const [recent, setRecent] = useState<RecentStay[]>([]);
+  const recentRaw = useSyncExternalStore(subscribeRecent, readRecentSnapshot, emptyRecentSnapshot);
+  const recent = useMemo(() => parseRecent(recentRaw), [recentRaw]);
   const [committed, setCommitted] = useState<{ rooms: HotelRoomOccupancy[] } | null>(null);
 
   function tokenOf(hotel: ClientHotel) {
@@ -308,7 +374,6 @@ export function HotelSearch() {
 
   function openSheet(next: Panel) {
     setNote("");
-    setRecent(readRecent());
     setPanel(next);
     setSheet(true);
   }
@@ -402,12 +467,10 @@ export function HotelSearch() {
         target: nextTarget,
         party: stayPartyLabel(stayRooms),
       };
-      const nextRecent = [entry, ...readRecent().filter((row) => row.destination !== entry.destination || row.checkIn !== entry.checkIn)].slice(0, 4);
-      sessionStorage.setItem("hotel-recent", JSON.stringify(nextRecent));
+      writeRecent(entry);
       const stored = JSON.stringify(entry);
       sessionStorage.setItem(LAST_SEARCH_KEY, stored);
       localStorage.setItem(LAST_SEARCH_KEY, stored);
-      setRecent(nextRecent);
     } catch {
       /* la session du navigateur peut refuser l’écriture */
     }
@@ -481,6 +544,7 @@ export function HotelSearch() {
   const nightLabel = nightCount > 0 ? `${nightCount} nuit${nightCount > 1 ? "s" : ""}` : "";
 
   const shown = presentHotels(hotels, sort, needs);
+  const hotelCount = shown.length;
   const canMap = hotels.some((hotel) => hotel.coords);
   const journeyQuery = useMemo(
     () => ({ destination, city, checkIn, checkOut, rooms: committed?.rooms ?? [] }),
@@ -546,56 +610,38 @@ export function HotelSearch() {
                   role="combobox"
                   aria-autocomplete="list"
                   aria-label="Destination ou hôtel"
-                  onFocus={() => {
-                    setRecent(readRecent());
-                    setPanel("where");
-                  }}
+                  onFocus={() => setPanel("where")}
                   aria-expanded={panel === "where" && (destinations.length > 0 || hotelNames.length > 0)}
                   aria-controls="hotel-suggest-list"
                 />
               </span>
             </label>
-            {panel === "where" && folded.length < 2 && recent.length ? (
-              <div data-hotel-recent="1" className="pt-2">
-                <p className="h-section">Recherches récentes</p>
-                {recent.map((item) => (
-                  <button
-                    key={`${item.destination}-${item.checkIn}`}
-                    type="button"
-                    onClick={() => void onSearch(item)}
-                    className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
-                  >
-                    <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-                    <span className="min-w-0">
-                      <span className="h-serif block truncate text-xl leading-tight h-ink">{item.destination}</span>
-                      <span className="block text-xs h-muted">
-                        {formatDateRangeShort(item.checkIn, item.checkOut)} · {item.party}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {panel === "where" && folded.length < 2 ? (
-              <div data-hotel-inspiration="1" className="pt-1">
-                <p className="h-section">Inspiration</p>
-                <div className="mt-2 -mx-4 flex snap-x gap-2 overflow-x-auto px-4 pb-1">
-                  {INSPIRATION.map((place) => (
-                    <button
-                      key={place}
-                      type="button"
-                      onClick={() => {
-                        setDestination(place);
-                        setCity("");
-                        setTarget(null);
-                        setPanel(null);
-                      }}
-                      className="h-press min-h-11 shrink-0 snap-start rounded-full bg-white px-4 text-sm font-semibold h-ink"
-                    >
-                      {place}
-                    </button>
-                  ))}
-                </div>
+            {(panel === null || panel === "where") && folded.length < 2 ? (
+              <div data-hotel-recent="1" className="pt-1">
+                <p className="h-section">Dernières recherches</p>
+                {recent.length ? (
+                  recent.map((item) => {
+                    const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
+                    return (
+                      <button
+                        key={recentKey(item)}
+                        type="button"
+                        onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
+                        className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
+                      >
+                        <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{item.destination}</span>
+                          <span className="block truncate text-xs h-muted">
+                            {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="mt-2 text-sm h-muted">Aucune recherche pour le moment.</p>
+                )}
               </div>
             ) : null}
             {panel === "where" && (destinations.length > 0 || hotelNames.length > 0) ? (
@@ -715,11 +761,11 @@ export function HotelSearch() {
               </div>
             ) : null}
             {note ? <p className="text-sm h-gold">{note}</p> : null}
-            <div className="sticky bottom-0 bg-[#f4efe6] pb-1 pt-4">
-              <button type="submit" data-hotel-search-cta="1" className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold">
-                Rechercher
-              </button>
-            </div>
+          </div>
+          <div className="shrink-0 bg-[#f4efe6] pt-3">
+            <button type="submit" data-hotel-search-cta="1" className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold">
+              Rechercher
+            </button>
           </div>
         </form>
       )}
@@ -829,33 +875,32 @@ export function HotelSearch() {
                 <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
               </div>
             ) : null}
-            {panel === "where" && folded.length < 2 && recent.length ? (
+            {panel === "where" && folded.length < 2 ? (
               <div>
-                <p className="h-section px-1 pb-1">Recherches récentes</p>
-                {recent.map((item) => (
-                  <button
-                    key={`${item.destination}-${item.checkIn}`}
-                    type="button"
-                    onClick={() => {
-                      setDestination(item.destination);
-                      setCity(item.city);
-                      setCheckIn(item.checkIn);
-                      setCheckOut(item.checkOut);
-                      setRooms(item.rooms);
-                      setTarget(item.target);
-                      setPanel("when");
-                    }}
-                    className="flex w-full items-start gap-3 py-3 text-left"
-                  >
-                    <Icon name="hotel" className="mt-0.5 h-4 w-4 h-muted" strokeWidth={1.5} />
-                    <span>
-                      <span className="block text-sm font-medium h-ink">{item.destination}</span>
-                      <span className="block text-xs h-muted">
-                        {formatDateRangeShort(item.checkIn, item.checkOut)} · {item.party}
-                      </span>
-                    </span>
-                  </button>
-                ))}
+                <p className="h-section px-1 pb-1">Dernières recherches</p>
+                {recent.length ? (
+                  recent.map((item) => {
+                    const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
+                    return (
+                      <button
+                        key={recentKey(item)}
+                        type="button"
+                        onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
+                        className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
+                      >
+                        <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold h-ink">{item.destination}</span>
+                          <span className="block truncate text-xs h-muted">
+                            {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="px-1 text-sm h-muted">Aucune recherche pour le moment.</p>
+                )}
               </div>
             ) : null}
 
@@ -994,8 +1039,8 @@ export function HotelSearch() {
           data-hotel-tools={tool}
           onClick={() => setTool("")}
         >
-          <div className="max-h-[85dvh] w-full overflow-y-auto bg-[#f4efe6] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-5" onClick={(event) => event.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
+          <div className="flex max-h-[85dvh] w-full flex-col overflow-hidden bg-[#f4efe6] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-5" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex shrink-0 items-center justify-between">
               <p className="h-serif text-[1.2rem] font-semibold h-ink">{tool === "tri" ? "Trier" : "Filtres"}</p>
               <button type="button" aria-label="Fermer" onClick={() => setTool("")} className="grid h-10 w-10 place-items-center h-ink">
                 <Icon name="close" className="h-5 w-5" />
@@ -1022,25 +1067,51 @@ export function HotelSearch() {
                 ))}
               </div>
             ) : (
-              <div className="space-y-2">
-                {PERK_LABEL.map((perk) => {
-                  const on = needs.includes(perk.key);
-                  return (
-                    <button
-                      key={perk.key}
-                      type="button"
-                      aria-pressed={on}
-                      className={`h-recap flex w-full items-center justify-between text-left text-sm ${on ? "h-on" : "h-ink"}`}
-                      onClick={() => setNeeds((current) => (on ? current.filter((key) => key !== perk.key) : [...current, perk.key]))}
-                    >
-                      {perk.label}
-                    </button>
-                  );
-                })}
-                <button type="button" className="h-btn mt-2 flex h-12 w-full items-center justify-center text-sm font-semibold" onClick={() => setTool("")}>
-                  Voir les hôtels
+              <>
+                <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+                  <p className="text-sm h-muted">
+                    {needs.length ? `${needs.length} ${needs.length > 1 ? "filtres actifs" : "filtre actif"}` : "Aucun filtre"}
+                  </p>
+                  <button type="button" className="text-sm font-semibold h-ink disabled:opacity-40" onClick={() => setNeeds([])} disabled={needs.length === 0}>
+                    Tout effacer
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+                  {PERK_GROUPS.map((group) => (
+                    <div key={group.title}>
+                      <p className="h-section">{group.title}</p>
+                      <div className="mt-2 space-y-2">
+                        {group.keys.map((key) => {
+                          const perk = PERK_LABEL.find((row) => row.key === key);
+                          if (!perk) return null;
+                          const on = needs.includes(perk.key);
+                          return (
+                            <button
+                              key={perk.key}
+                              type="button"
+                              role="checkbox"
+                              aria-checked={on}
+                              className={`h-recap flex min-h-11 w-full items-center justify-between gap-3 text-left text-sm ${on ? "h-on" : "h-ink"}`}
+                              onClick={() => setNeeds((current) => (on ? current.filter((item) => item !== perk.key) : [...current, perk.key]))}
+                            >
+                              {perk.label}
+                              <span
+                                aria-hidden
+                                className={`grid h-5 w-5 shrink-0 place-items-center border ${on ? "border-[#1a1a1a] bg-[#1a1a1a] text-[#f4efe6]" : "border-[#1a1a1a]/30 bg-white"}`}
+                              >
+                                {on ? <Icon name="check" className="h-3.5 w-3.5" /> : null}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button type="button" className="h-btn mt-3 flex h-12 w-full shrink-0 items-center justify-center text-sm font-semibold" onClick={() => setTool("")}>
+                  {hotelCount ? `Voir ${hotelCount} ${hotelCount > 1 ? "hôtels" : "hôtel"}` : "Aucun hôtel"}
                 </button>
-              </div>
+              </>
             )}
           </div>
         </div>

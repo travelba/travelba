@@ -16,6 +16,7 @@ import {
   offerBeats,
   mergePlaceSuggestions,
   nightsBetween,
+  shiftStayForward,
   parseHotelSearchDraft,
   parseHotelSearchQuery,
   priceStayOffer,
@@ -530,6 +531,35 @@ test("la liste se trie et se filtre, le nom de chambre exige prénom et nom", ()
   assert.equal(presentHotels(hotels, "prix", []).map((hotel) => hotel.name).join(","), "Bristol,Ritz");
   assert.equal(presentHotels(hotels, "prix", ["breakfast"]).length, 1);
   assert.equal(presentHotels(hotels, "avantages", [])[0]?.name, "Ritz");
+  const both = toClientHotel(
+    priced({
+      account: "little_emperors",
+      hotelName: "Costes",
+      city: "Paris",
+      proposed: 250,
+      currency: "EUR",
+      benefits: ["Arrivée anticipée", "Départ tardif"],
+    }),
+    2,
+    "c"
+  );
+  const earlyOnly = toClientHotel(
+    priced({
+      account: "little_emperors",
+      hotelName: "Meurice",
+      city: "Paris",
+      proposed: 280,
+      currency: "EUR",
+      benefits: ["Arrivée anticipée"],
+    }),
+    2,
+    "d"
+  );
+  const withHours = [...hotels, both, earlyOnly];
+  assert.equal(both.perks.earlyCheckIn, true);
+  assert.equal(both.perks.lateCheckOut, true);
+  assert.equal(presentHotels(withHours, "prix", ["earlyCheckIn", "lateCheckOut"]).map((hotel) => hotel.name).join(","), "Costes");
+  assert.equal(presentHotels(withHours, "prix", ["breakfast", "earlyCheckIn"]).length, 0);
   assert.equal(guestNameOk("Jean"), false);
   assert.equal(guestNameOk("Jean D"), false);
   assert.equal(guestNameOk("Jean Du"), true);
@@ -659,9 +689,12 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, />\s*Rechercher\s*</);
   assert.match(ui, /Destination ou hôtel/);
   assert.match(ui, /data-hotel-recent/);
-  assert.match(ui, /data-hotel-inspiration/);
-  assert.match(ui, /Recherches récentes/);
-  assert.match(ui, /Inspiration/);
+  assert.match(ui, /Dernières recherches/);
+  assert.match(ui, /Aucune recherche pour le moment/);
+  assert.match(ui, /Tout effacer/);
+  assert.match(ui, /Arrivée anticipée et départ tardif/);
+  assert.match(ui, /Voir \$\{hotelCount\}/);
+  assert.doesNotMatch(ui, /Inspiration|Nouvelles adresses|Offres du moment/);
   assert.match(ui, /hotel-search-last/);
   assert.match(ui, /pointer: coarse/);
   assert.doesNotMatch(ui, /autoFocus/);
@@ -670,6 +703,21 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(css, /hotel-step/);
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.doesNotMatch(journey, /bg-gradient|rounded-full|commission/i);
+});
+
+test("une recherche passée repart aujourd’hui, pour la même durée", () => {
+  assert.deepEqual(shiftStayForward("2026-10-23", "2026-11-06", "2026-11-08"), {
+    checkIn: "2026-11-06",
+    checkOut: "2026-11-08",
+  });
+  assert.deepEqual(shiftStayForward("2026-10-23", "2026-10-01", "2026-10-04"), {
+    checkIn: "2026-10-23",
+    checkOut: "2026-10-26",
+  });
+  assert.deepEqual(shiftStayForward("2026-10-23", "2026-10-20", "2026-10-20"), {
+    checkIn: "2026-10-23",
+    checkOut: "2026-10-25",
+  });
 });
 
 test("le formulaire propose un vendredi, deux nuits, au moins quatorze jours plus tard", () => {

@@ -348,6 +348,14 @@ export function nightsBetween(checkIn: string, checkOut: string) {
   return Math.round((end - start) / 86_400_000);
 }
 
+/** Garde la durée. Si l’arrivée est passée, le séjour part d’aujourd’hui. */
+export function shiftStayForward(today: string, checkIn: string, checkOut: string) {
+  const nights = nightsBetween(checkIn, checkOut);
+  const span = nights >= 1 && nights <= 30 ? nights : 2;
+  if (checkIn >= today && checkOut > checkIn) return { checkIn, checkOut };
+  return { checkIn: today, checkOut: addIsoDays(today, span) };
+}
+
 /** Vendredi le plus proche, au moins quatorze jours après aujourd’hui, pour deux nuits. */
 export function defaultHotelStay(today: string) {
   const earliest = addIsoDays(today, 14);
