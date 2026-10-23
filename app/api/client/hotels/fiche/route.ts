@@ -93,7 +93,13 @@ export async function POST(request: Request) {
       detail: "",
       images: stay.images,
       rates: [] as ClientRate[],
+      area: stay.roomArea,
+      bed: stay.roomBed,
+      outlook: stay.roomOutlook,
     };
+    if (!current.area && stay.roomArea) current.area = stay.roomArea;
+    if (!current.bed && stay.roomBed) current.bed = stay.roomBed;
+    if (!current.outlook && stay.roomOutlook) current.outlook = stay.roomOutlook;
     current.rates.push(rate);
     if (!current.images.length) current.images = stay.images;
     groups.set(key, current);

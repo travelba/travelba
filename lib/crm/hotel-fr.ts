@@ -159,6 +159,7 @@ const BEDS: [RegExp, string][] = [
   [/\bking(?:\s+bed)?\b/i, "lit king"],
   [/\bqueen(?:\s+bed)?\b/i, "lit queen"],
   [/\btwin(?:\s+beds?)?\b/i, "lits jumeaux"],
+  [/\b(?:2\s+)?doubles\b/i, "lits doubles"],
   [/\bdouble(?:\s+bed)?\b/i, "lit double"],
   [/\bsingle(?:\s+bed)?\b/i, "lit simple"],
   [/\bsofa\s+bed\b/i, "canapé-lit"],
@@ -489,6 +490,92 @@ const ADVANTAGE_GROUPS: { title: string; test: RegExp }[] = [
   { title: "Horaires", test: /arrivée|départ|anticip|tardif/i },
   { title: "Crédit", test: /crédit/i },
 ];
+
+const PROGRAM = /little emperors|luminous|virtuoso|fine hotels|tablet|amex|hyatt privil|hilton impuls|\bslh\b|leading hotels|\bfhr\b/i;
+
+const VIEW_TOKEN: Record<string, string> = {
+  river: "vue fleuve",
+  garden: "vue jardin",
+  gardens: "vue jardin",
+  sea: "vue mer",
+  ocean: "vue océan",
+  city: "vue ville",
+  pool: "vue piscine",
+  courtyard: "vue cour",
+  partial: "vue partielle",
+};
+
+function frenchViewToken(value: string) {
+  const key = value.trim().toLowerCase().replace(/\s+view$/, "");
+  return VIEW_TOKEN[key] || "";
+}
+
+function frenchBedToken(value: string) {
+  const line = value.trim();
+  if (!line) return "";
+  if (/^kings?$/i.test(line)) return "lit king";
+  if (/^queens?$/i.test(line)) return "lit queen";
+  if (/^twins?$/i.test(line)) return "lits jumeaux";
+  if (/^(?:2\s+)?doubles$/i.test(line)) return "lits doubles";
+  if (/^doubles?$/i.test(line)) return "lit double";
+  if (/^singles?$/i.test(line)) return "lit simple";
+  return "";
+}
+
+/** Surface, couchage et vue seulement s’ils sont écrits. Rien n’est deviné. */
+export function roomSpec(value: string) {
+  const areaMatch = value.match(/(\d{2,3})\s*(?:m²|m2|sqm|sq\.?\s*m)/i);
+  const beds: string[] = [];
+  for (const [pattern, label] of BEDS) {
+    if (pattern.test(value) && !beds.includes(label)) beds.push(label);
+  }
+  const views: string[] = [];
+  for (const [pattern, label] of VIEWS) {
+    if (pattern.test(value) && !views.includes(label)) views.push(label);
+  }
+  if (/\bbalcon(?:y)?\b/i.test(value) && !views.includes("balcon")) views.push("balcon");
+  const frenchBed = value.match(/lits?\s+[a-zàâéèêëîïôùûüç]+/i)?.[0] || "";
+  const frenchView = value.match(/vue\s+[a-zàâéèêëîïôùûüç]+/i)?.[0] || "";
+  return {
+    area: areaMatch ? `${areaMatch[1]} m²` : "",
+    bed: beds[0] || frenchBed,
+    outlook: [...views, frenchView].filter((item, index, all) => item && all.indexOf(item) === index).join(", "),
+  };
+}
+
+/** Faits de chambre lus sur des champs séparés, puis sur le texte. */
+export function roomFacts(input: { name?: string; description?: string; size?: string; bed?: string; view?: string; exterior?: string }) {
+  const spec = roomSpec([input.name, input.description, input.size, input.bed, input.view, input.exterior].filter(Boolean).join(". "));
+  const outlook = [frenchViewToken(input.view || ""), spec.outlook, /\bbalcon(?:y)?\b/i.test(input.exterior || "") ? "balcon" : ""]
+    .flatMap((item) => item.split(",").map((part) => part.trim()))
+    .filter((item, index, all) => item && all.indexOf(item) === index);
+  return {
+    area: spec.area,
+    bed: frenchBedToken(input.bed || "") || spec.bed,
+    outlook: outlook.join(", "),
+  };
+}
+
+/** Le nom du tarif, en français, sans programme qui désigne un fournisseur. */
+export function clientRateTitle(value: string) {
+  if (PROGRAM.test(value) || /^public$/i.test(value.trim())) return /préférentiel|preferential|member/i.test(value) ? "Tarif préférentiel" : "Meilleur tarif disponible";
+  const french = frenchHotelLine(value);
+  if (!french || PROGRAM.test(french)) return "Meilleur tarif disponible";
+  if (/tarif préférentiel/i.test(french)) return "Tarif préférentiel";
+  if (/meilleur tarif disponible/i.test(french)) return "Meilleur tarif disponible";
+  return french;
+}
+
+export function cancellationPhrase(value: string) {
+  const line = value.replace(/\s+/g, " ").trim();
+  if (!line) return "";
+  if (/non remboursable/i.test(line)) return "Non remboursable";
+  if (/^gratuite\b/i.test(line)) {
+    const phrase = `Annulation ${line.charAt(0).toLocaleLowerCase("fr")}${line.slice(1)}`;
+    return phrase.replace(/(\d+)\s+h\s+(\d+)/, "$1h$2");
+  }
+  return line;
+}
 
 export function groupAdvantages(lines: string[]) {
   const used = new Set<string>();

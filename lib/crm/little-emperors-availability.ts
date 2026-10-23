@@ -1,4 +1,5 @@
 import { foldHotelLabel } from "./hotel-catalog";
+import { roomFacts } from "./hotel-fr";
 import { frenchLeBenefitLine } from "./ingest-parse";
 import type { HotelOffer } from "./hotel-search";
 import { safeHotelPhoto } from "./hotel-search";
@@ -18,6 +19,44 @@ export type LeSearchHit = {
 };
 
 export type LeTarget = { kind: "location" | "hotel"; id: number };
+
+function measure(raw: unknown): string {
+  if (typeof raw === "number" && raw >= 8 && raw <= 500) return `${Math.round(raw)} m2`;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (/^\d{2,3}(?:[.,]\d)?$/.test(trimmed)) {
+      const amount = Number(trimmed.replace(",", "."));
+      if (amount >= 8 && amount <= 500) return `${Math.round(amount)} m2`;
+    }
+    if (/\d{2,3}\s*(?:m²|m2|sqm|sq\.?\s*m)/i.test(trimmed)) return trimmed;
+  }
+  const row = record(raw);
+  if (!row) return "";
+  for (const key of ["sqm", "square_meters", "value", "size", "area"]) {
+    const found = measure(row[key]);
+    if (found) return found;
+  }
+  return "";
+}
+
+function sizeOf(room: Record<string, unknown>) {
+  for (const key of ["size", "room_size", "area", "size_sqm", "square_meters", "interior_size", "interior_sqm", "sqm"]) {
+    const found = measure(room[key]);
+    if (found) return found;
+  }
+  return "";
+}
+
+function field(room: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const direct = text(room[key]);
+    if (direct) return direct;
+    const row = record(room[key]);
+    const nested = text(row?.name) || text(row?.type) || text(row?.value) || text(row?.label);
+    if (nested) return nested;
+  }
+  return "";
+}
 
 function text(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
@@ -186,6 +225,9 @@ function pushOffer(
     rateKey?: string;
     rateTitle?: string;
     cancellation?: string;
+    roomArea?: string;
+    roomBed?: string;
+    roomOutlook?: string;
   }
 ) {
   const price = littleEmperorsProposedPrice(input.rate);
@@ -213,6 +255,9 @@ function pushOffer(
     rateKey: input.rateKey || "",
     rateTitle: input.rateTitle || "",
     cancellation: input.cancellation || "",
+    roomArea: input.roomArea || "",
+    roomBed: input.roomBed || "",
+    roomOutlook: input.roomOutlook || "",
   });
 }
 
@@ -246,6 +291,14 @@ export function offersFromLeAvailability(payload: unknown, cityHint = ""): Hotel
       const room = record(roomRow);
       if (!room) continue;
       const roomName = text(room.name) || null;
+      const spec = roomFacts({
+        name: roomName || "",
+        description: text(room.description),
+        size: sizeOf(room),
+        bed: field(room, ["bed_type", "bedding", "bedroom", "bed"]),
+        view: field(room, ["view", "view_from_room", "room_view"]),
+        exterior: field(room, ["exterior", "balcony", "outdoor", "outdoor_space"]),
+      });
       const roomImage = photos(room.images);
       const roomGallery = imageList(room.images);
       const rates = Array.isArray(room.rates) ? room.rates : [];
@@ -274,6 +327,9 @@ export function offersFromLeAvailability(payload: unknown, cityHint = ""): Hotel
           rateKey: text(rate.rate_index).slice(0, 80) || keyPart(`${title}-${priceKey(rate)}`),
           rateTitle: title,
           cancellation: text(rate.cancellation_policy),
+          roomArea: spec.area,
+          roomBed: spec.bed,
+          roomOutlook: spec.outlook,
         });
         emitted = true;
       }

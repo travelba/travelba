@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Space_Grotesk, Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Cormorant_Garamond, Space_Grotesk, Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { siteConfig } from "@/lib/site";
 import "./globals.css";
 
@@ -22,6 +22,14 @@ const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta",
   display: "swap",
   preload: true,
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  variable: "--font-cormorant",
+  display: "swap",
+  preload: false,
 });
 
 /* Barre système marine sur le chrome client, et les env(safe-area-inset-*) deviennent réels. */
@@ -56,7 +64,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable}`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${cormorant.variable}`}
     >
       <body className="bg-background text-foreground antialiased">{children}</body>
     </html>

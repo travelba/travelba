@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  cancellationPhrase,
+  clientRateTitle,
   frenchCancellation,
   frenchCity,
   frenchHotelLine,
@@ -8,7 +10,9 @@ import {
   groupAdvantages,
   readStayRate,
   rememberHotelFrench,
+  roomFacts,
 } from "./hotel-fr";
+import { travelPrivileges } from "./hotel-journey";
 
 test("chambre, pension et annulation se lisent en français", () => {
   assert.equal(frenchHotelLine("Deluxe King Room with City View"), "Chambre deluxe, lit king, vue ville");
@@ -51,6 +55,45 @@ test("chambre, pension et annulation se lisent en français", () => {
   assert.deepEqual(
     groupAdvantages(["Petit-déjeuner offert", "Surclassement"]).map((group) => group.title),
     ["Table", "Chambre"]
+  );
+});
+
+test("la chambre et le tarif se lisent sans programme fournisseur", () => {
+  const facts = roomFacts({
+    name: "Deluxe Guest Room, King",
+    size: "44 m2",
+    bed: "King",
+    view: "River",
+    exterior: "Balcony",
+  });
+  assert.equal(facts.area, "44 m²");
+  assert.equal(facts.bed, "lit king");
+  assert.match(facts.outlook, /vue fleuve/);
+  assert.match(facts.outlook, /balcon/);
+  assert.equal(roomFacts({ name: "Chambre", description: "Calme." }).area, "");
+  assert.equal(roomFacts({ bed: "2 Doubles" }).bed, "lits doubles");
+  assert.equal(clientRateTitle("Marriott Luminous"), "Meilleur tarif disponible");
+  assert.equal(clientRateTitle("Best Available Rate"), "Meilleur tarif disponible");
+  assert.equal(clientRateTitle("Public"), "Meilleur tarif disponible");
+  assert.equal(clientRateTitle("Preferential Rate"), "Tarif préférentiel");
+  assert.equal(
+    cancellationPhrase("Gratuite jusqu’au 26 octobre 2026, 23 h 59"),
+    "Annulation gratuite jusqu’au 26 octobre 2026, 23h59"
+  );
+  assert.equal(cancellationPhrase("Non remboursable"), "Non remboursable");
+  assert.deepEqual(
+    travelPrivileges(
+      { breakfast: true, freeCancellation: true, upgrade: true, credit: true, earlyCheckIn: true, lateCheckOut: true },
+      ["Breakfast for two", "Hotel credit"]
+    ),
+    ["Petit-déjeuner pour deux", "Surclassement prioritaire selon disponibilité", "Arrivée anticipée / départ tardif selon disponibilité"]
+  );
+  assert.deepEqual(
+    travelPrivileges(
+      { breakfast: true, freeCancellation: false, upgrade: false, credit: false, earlyCheckIn: false, lateCheckOut: false },
+      ["Breakfast"]
+    ),
+    ["Petit-déjeuner offert"]
   );
 });
 
