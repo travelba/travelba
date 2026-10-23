@@ -1,7 +1,7 @@
 import { priceAccommodation } from "./concierge-pricing";
 import { foldHotelLabel } from "./hotel-catalog";
 import { addIsoDays, isValidIsoDate } from "./dates";
-import { frenchCancellation, frenchCity, frenchHotelLine, frenchHotelProse } from "./hotel-fr";
+import { frenchCancellation, frenchCity, frenchHotelLine, frenchHotelProse, roomSpec } from "./hotel-fr";
 import { frenchLeBenefitLine } from "./ingest-parse";
 import { amountToCents } from "./money";
 
@@ -77,6 +77,9 @@ export type HotelOffer = {
   rateKey?: string;
   rateTitle?: string;
   cancellation?: string;
+  roomArea?: string;
+  roomBed?: string;
+  roomOutlook?: string;
 };
 
 export type PricedStay = {
@@ -101,6 +104,9 @@ export type PricedStay = {
   rateKey: string;
   rateTitle: string;
   cancellation: string;
+  roomArea: string;
+  roomBed: string;
+  roomOutlook: string;
 };
 
 export type ClientHotel = {
@@ -552,6 +558,7 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
   const city = frenchCity(offer.city);
   const benefits = clientBenefits(offer.benefits || []).slice(0, 8);
   const { score, perks } = scoreStay({ benefits, freeCancellation: Boolean(offer.freeCancellation) });
+  const spec = roomSpec([offer.roomLabel || "", offer.roomArea || "", offer.roomBed || "", offer.roomOutlook || ""].join(". "));
   const room = frenchHotelLine(publicHotelText(offer.roomLabel || ""));
   const images = (offer.images || []).map((url) => safeHotelPhoto(url)).filter((url): url is string => Boolean(url)).slice(0, 12);
   const coords = offer.coords && Math.abs(offer.coords.lat) <= 90 && Math.abs(offer.coords.lng) <= 180 ? offer.coords : null;
@@ -577,6 +584,9 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
     rateKey: (offer.rateKey || "").slice(0, 80),
     rateTitle: frenchHotelLine(publicHotelText(offer.rateTitle || "")).slice(0, 120),
     cancellation: frenchCancellation(publicHotelText(offer.cancellation || "")).slice(0, 400),
+    roomArea: offer.roomArea || spec.area,
+    roomBed: offer.roomBed || spec.bed,
+    roomOutlook: offer.roomOutlook || spec.outlook,
   };
 }
 
@@ -597,6 +607,9 @@ function fillStay(base: PricedStay, extra: PricedStay): PricedStay {
     roomKey: base.roomKey || extra.roomKey,
     rateKey: base.rateKey || extra.rateKey,
     rateTitle: base.rateTitle || extra.rateTitle,
+    roomArea: base.roomArea || extra.roomArea,
+    roomBed: base.roomBed || extra.roomBed,
+    roomOutlook: base.roomOutlook || extra.roomOutlook,
     cancellation: base.cancellation || extra.cancellation,
   };
 }

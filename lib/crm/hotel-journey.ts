@@ -23,6 +23,10 @@ export type ClientRoom = {
   detail: string;
   images: string[];
   rates: ClientRate[];
+  /** Surface intérieure, seulement si elle est connue. */
+  area?: string;
+  bed?: string;
+  outlook?: string;
 };
 
 export type ClientHotelFile = {
@@ -44,6 +48,18 @@ export type ClientHotelFile = {
 
 const PERK_KEYS = Object.keys(HOTEL_PERK_WEIGHTS).filter((key) => key !== "other") as (keyof HotelPerks)[];
 
+/** Les privilèges réellement lus. Aucun avantage n’est ajouté. */
+export function travelPrivileges(perks: HotelPerks, benefits: string[]) {
+  const blob = benefits.join(" ");
+  const lines: string[] = [];
+  if (perks.breakfast) lines.push(/pour deux|for two/i.test(blob) ? "Petit-déjeuner pour deux" : "Petit-déjeuner offert");
+  if (perks.upgrade) lines.push("Surclassement prioritaire selon disponibilité");
+  if (perks.earlyCheckIn && perks.lateCheckOut) lines.push("Arrivée anticipée / départ tardif selon disponibilité");
+  else if (perks.earlyCheckIn) lines.push("Arrivée anticipée selon disponibilité");
+  else if (perks.lateCheckOut) lines.push("Départ tardif selon disponibilité");
+  return lines;
+}
+
 export function perkScore(hotel: Pick<ClientHotel, "perks" | "benefits">) {
   const flags = PERK_KEYS.reduce((sum, key) => sum + (hotel.perks[key] ? HOTEL_PERK_WEIGHTS[key] : 0), 0);
   return flags * 10 + hotel.benefits.length;
@@ -61,6 +77,9 @@ export function collapseRooms(rooms: ClientRoom[]): ClientRoom[] {
     }
     existing.rates.push(...room.rates);
     if (!existing.images.length) existing.images = room.images;
+    if (!existing.area && room.area) existing.area = room.area;
+    if (!existing.bed && room.bed) existing.bed = room.bed;
+    if (!existing.outlook && room.outlook) existing.outlook = room.outlook;
   }
   const out: ClientRoom[] = [];
   for (const room of groups.values()) {

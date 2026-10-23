@@ -104,6 +104,48 @@ test("la fiche reprend le lieu, les photos et les avantages, sans commission", (
   assert.equal(profile.amenities[0], "Piscine");
 });
 
+test("surface, couchage et vue viennent des champs, jamais la commission", () => {
+  const offers = offersFromLeAvailability([
+    {
+      hotel_name: "Lapita",
+      is_available: true,
+      hotel_info: { location: "Dubai, United Arab Emirates" },
+      room_types: [
+        {
+          name: "Deluxe Guest Room, River View, King",
+          interior_size: 44,
+          bed_type: "King",
+          view: "River",
+          exterior: "Balcony",
+          images: [{ url: "https://cdn.example/room.jpg" }],
+          rates: [
+            {
+              title: "Best Available Rate",
+              total_to_book: 816.25,
+              currency_code: "EUR",
+              can_cancel: true,
+              cancellation_policy: "Free cancellation before 23:59 on 26 October 2026",
+              benefits: ["Priority upgrade at check-in", "Early check in/late check out"],
+              commission_percentage: "10",
+              net_rate: 700,
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  assert.equal(offers.length, 1);
+  assert.equal(offers[0]?.roomArea, "44 m²");
+  assert.equal(offers[0]?.roomBed, "lit king");
+  assert.match(offers[0]?.roomOutlook || "", /vue fleuve/);
+  assert.match(offers[0]?.roomOutlook || "", /balcon/);
+  assert.equal(offers[0]?.images?.[0], "https://cdn.example/room.jpg");
+  assert.equal(offers[0]?.net, null);
+  assert.equal(offers[0]?.hotelCommission, null);
+  assert.equal(offers[0]?.commissionable, false);
+  assert.doesNotMatch(JSON.stringify(offers[0]), /Luminous|10%/);
+});
+
 test("une réponse enveloppée reste une liste d’hôtels", () => {
   const offers = offersFromLeAvailability({
     data: [

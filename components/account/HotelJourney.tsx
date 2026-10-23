@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as
 import { createPortal } from "react-dom";
 import { HotelMap } from "@/components/account/HotelMap";
 import { Icon } from "@/components/crm/icons";
-import { readStayRate } from "@/lib/crm/hotel-fr";
-import { collapseRooms, guestNameOk, type ClientHotelFile, type ClientRate, type ClientRoom, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
+import { cancellationPhrase, clientRateTitle, readStayRate } from "@/lib/crm/hotel-fr";
+import { collapseRooms, guestNameOk, travelPrivileges, type ClientHotelFile, type ClientRate, type ClientRoom, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
 import { composeRoomGuests, roomOccupancyLabel } from "@/lib/crm/hotel-party";
 import type { ClientHotel, HotelPerks, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import { formatMoney } from "@/lib/crm/money";
@@ -64,55 +64,70 @@ function Photo({ src, alt, eager }: { src: string; alt: string; eager?: boolean 
   );
 }
 
-function Gallery({ images, alt, compact }: { images: string[]; alt: string; compact?: boolean }) {
+function Gallery({ images, alt }: { images: string[]; alt: string }) {
+  const scroller = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState(0);
   const [open, setOpen] = useState(false);
   const start = useRef<{ x: number; y: number } | null>(null);
   const index = images.length ? Math.min(at, images.length - 1) : 0;
-  const shown = images[index];
 
   function shift(delta: number) {
     if (images.length < 2) return;
-    setAt((current) => (current + delta + images.length) % images.length);
+    const next = (index + delta + images.length) % images.length;
+    setAt(next);
+    const node = scroller.current;
+    if (node) node.scrollTo({ left: next * node.clientWidth, behavior: smoothScroll() ? "smooth" : "auto" });
+  }
+
+  function onScroll() {
+    const node = scroller.current;
+    if (!node || node.clientWidth < 1) return;
+    setAt(Math.max(0, Math.min(images.length - 1, Math.round(node.scrollLeft / node.clientWidth))));
   }
 
   function onPointerDown(event: ReactPointerEvent) {
     start.current = { x: event.clientX, y: event.clientY };
   }
 
-  function onPointerUp(event: ReactPointerEvent, lightbox: boolean) {
+  function onPointerUp(event: ReactPointerEvent) {
     if (!start.current) return;
     const dx = event.clientX - start.current.x;
     const dy = event.clientY - start.current.y;
     start.current = null;
     if (Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy)) shift(dx > 0 ? -1 : 1);
-    else if (!lightbox && Math.abs(dx) < 10 && Math.abs(dy) < 10) setOpen(true);
   }
 
   return (
-    <div data-hotel-gallery="1">
-      <div
-        className={`relative bg-[var(--h-header)] ${compact ? "h-28" : "aspect-[3/2]"}`}
-        style={{ touchAction: "pan-y" }}
-        onPointerDown={onPointerDown}
-        onPointerUp={(event) => onPointerUp(event, false)}
-      >
-        {shown ? <Photo src={shown} alt={alt} eager /> : <div className="h-skel h-full w-full" />}
-        {images.length > 1 ? (
-          <p className="h-pin absolute bottom-3 right-3">{index + 1}/{images.length}</p>
-        ) : null}
-        <button type="button" className="sr-only" onClick={() => setOpen(true)}>
-          Ouvrir la galerie
-        </button>
+    <div data-hotel-gallery="1" className="relative">
+      <div ref={scroller} onScroll={onScroll} className="h-gallery flex aspect-[4/3] snap-x snap-mandatory overflow-x-auto bg-[var(--h-header)]">
+        {images.length ? (
+          images.map((src, imageIndex) => (
+            <button
+              key={`${src}-${imageIndex}`}
+              type="button"
+              onClick={() => {
+                setAt(imageIndex);
+                setOpen(true);
+              }}
+              className="h-full w-full shrink-0 snap-start"
+              aria-label={images.length > 1 ? `Photo ${imageIndex + 1} sur ${images.length}` : "Ouvrir la photo"}
+            >
+              <Photo src={src} alt={imageIndex === 0 ? alt : ""} eager={imageIndex === 0} />
+            </button>
+          ))
+        ) : (
+          <div className="h-skel h-full w-full shrink-0" />
+        )}
       </div>
-      {open && shown ? (
+      {images.length > 1 ? <p className="h-pin absolute bottom-3 right-3">{index + 1}/{images.length}</p> : null}
+      {open && images[index] ? (
         <Lightbox
           images={images}
           alt={alt}
           index={index}
           onShift={shift}
           onPointerDown={onPointerDown}
-          onPointerUp={(event) => onPointerUp(event, true)}
+          onPointerUp={onPointerUp}
           onClose={() => setOpen(false)}
         />
       ) : null}
@@ -177,6 +192,32 @@ function Lightbox({
       </div>
     </div>,
     document.body
+  );
+}
+
+function splitOutlook(value: string) {
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+  return {
+    view: parts.filter((part) => !/balcon|terrasse/i.test(part)).join(", "),
+    exterior: parts.filter((part) => /balcon|terrasse/i.test(part)).join(", "),
+  };
+}
+
+function shownLabel(value: string) {
+  const line = value.trim();
+  if (!line) return "";
+  return line.charAt(0).toLocaleUpperCase("fr") + line.slice(1);
+}
+
+function Fact({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-3 py-1.5">
+      <Icon name={icon} className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
+      <span className="min-w-0">
+        <span className="block text-[11px] leading-4 h-muted">{label}</span>
+        <span className="block text-sm h-ink">{shownLabel(value)}</span>
+      </span>
+    </div>
   );
 }
 
@@ -346,6 +387,8 @@ export function HotelJourney({
   step,
   onStep,
   onBack,
+  others = [],
+  onOpenOther,
 }: {
   hotel: ClientHotel;
   stayRooms: HotelRoomOccupancy[];
@@ -355,6 +398,8 @@ export function HotelJourney({
   step: HotelJourneyStep;
   onStep: (step: HotelJourneyStep | "back") => void;
   onBack: () => void;
+  others?: ClientHotel[];
+  onOpenOther?: (hotel: ClientHotel) => void;
 }) {
   const [file, setFile] = useState<ClientHotelFile | null>(hotel.hotelId ? null : fileFromCard(hotel));
   const [note, setNote] = useState("");
@@ -428,9 +473,6 @@ export function HotelJourney({
 
   const images = file?.images.length ? file.images : hotel.photo ? [hotel.photo] : [];
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
-  const priced = file?.rooms.flatMap((item) => item.rates) ?? [];
-  const from = priced.length ? Math.min(...priced.map((item) => item.sellCents)) : hotel.sellCents;
-  const currency = priced[0]?.currency || hotel.currency;
   const reading = rate ? readStayRate(rate) : null;
   const view: Step = step === "confirm" && rate ? "confirm" : step === "guests" && rate ? "guests" : step === "room" && room ? "room" : "hotel";
   const order = STEPS.map((item) => item.id);
@@ -532,8 +574,6 @@ export function HotelJourney({
     }
   }
 
-  const cheapestRoomRate = room?.rates.slice().sort((a, b) => a.sellCents - b.sellCents)[0];
-
   const panel = (
     <div className="hotel-theme">
     <div className="h-journey h-bg" data-hotel-journey="1">
@@ -566,36 +606,75 @@ export function HotelJourney({
       <div key={view} className="hotel-step min-w-0 pb-4">
         {view === "hotel" ? (
           <div data-hotel-detail="1">
-            <Gallery images={images} alt={file?.name || hotel.name} compact />
+            <Gallery images={images} alt={file?.name || hotel.name} />
             {!file ? (
               <div className="space-y-3 px-4 py-4" aria-hidden>
                 <div className="h-6 w-2/3 h-skel" />
                 <div className="h-4 w-1/2 h-skel" />
               </div>
             ) : null}
-            <div className="h-night space-y-3 px-4 py-3" data-hotel-hero="1">
+            <div className="h-night space-y-6 px-4 py-5" data-hotel-hero="1">
               <div>
-                <h2 className="h-display truncate text-xl font-semibold leading-tight tracking-tight h-ink">{file?.name || hotel.name}</h2>
-                <p className="mt-1 text-sm h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
-                {file?.address ? <p className="truncate text-sm h-ink">{file.address}</p> : null}
-                {discreetPerk(hotel.perks) ? <p className="mt-1 text-xs h-muted">{discreetPerk(hotel.perks)}</p> : null}
+                <h2 className="h-serif text-[2rem] leading-[1.05] h-ink">{file?.name || hotel.name}</h2>
+                <p className="mt-2 text-sm h-muted">{file?.city || hotel.city}</p>
+                <p className="mt-1 text-sm h-ink">{[datesLabel, party].filter(Boolean).join(" · ")}</p>
+                {file?.address ? <p className="mt-1 text-sm h-ink">{file.address}</p> : null}
               </div>
               {file?.rooms.length ? (
-                <div data-hotel-rooms="1" ref={roomsRef} className="space-y-2">
-                  <p className="h-kicker">{file.rooms.length > 1 ? `${file.rooms.length} chambres` : "Chambre"}</p>
-                  {file.rooms.map((item) => {
-                    const offer = item.rates[0];
-                    const photo = item.images[0];
-                    return (
-                      <button key={item.name} type="button" onClick={() => chooseRoom(item)} className="h-card h-line h-press flex w-full min-w-0 gap-3 border p-0 text-left">
-                        <div className="h-16 w-16 shrink-0 bg-[var(--h-header)]">{photo ? <Photo src={photo} alt="" /> : null}</div>
-                        <span className="flex min-w-0 flex-1 flex-col justify-center py-2 pr-3">
-                          <span className="truncate text-sm font-semibold h-ink">{item.name}</span>
-                          {offer ? <span className="text-sm font-semibold h-ink">{euros(offer.sellCents, offer.currency)}</span> : null}
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div data-hotel-rooms="1" ref={roomsRef}>
+                  <p className="h-section">
+                    {file.rooms.length > 1 ? `${file.rooms.length} types de chambres disponibles` : "1 type de chambre disponible"}
+                  </p>
+                  <div className="h-rule mt-2" />
+                  <div className="mt-3 -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
+                    {file.rooms.map((item) => {
+                      const offer = item.rates[0];
+                      const photo = item.images[0];
+                      const perk = offer ? travelPrivileges(offer.perks, offer.benefits)[0] : "";
+                      const outlook = splitOutlook(item.outlook || "");
+                      return (
+                        <button
+                          key={item.name}
+                          type="button"
+                          onClick={() => chooseRoom(item)}
+                          className="h-card h-line h-press w-[78%] shrink-0 snap-start border text-left"
+                        >
+                          <span className="relative block aspect-[4/3] bg-[var(--h-header)]">
+                            {photo ? <Photo src={photo} alt="" /> : null}
+                            {item.images.length > 1 ? <span className="h-pin absolute bottom-2 right-2">{`1/${item.images.length}`}</span> : null}
+                          </span>
+                          <span className="block space-y-2 p-3">
+                            <span className="h-serif block text-[1.35rem] leading-tight h-ink">{item.name}</span>
+                            {outlook.view ? (
+                              <span className="flex items-center gap-2 text-[13px] h-muted">
+                                <Icon name="eye" className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                {shownLabel(outlook.view)}
+                              </span>
+                            ) : null}
+                            {item.bed ? (
+                              <span className="flex items-center gap-2 text-[13px] h-muted">
+                                <Icon name="bed" className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                {shownLabel(item.bed)}
+                              </span>
+                            ) : null}
+                            {item.area ? (
+                              <span className="flex items-center gap-2 text-[13px] h-muted">
+                                <Icon name="ruler" className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                {item.area}
+                              </span>
+                            ) : null}
+                            {offer ? (
+                              <span className="block pt-1">
+                                <span className="block text-lg font-semibold tracking-tight h-ink">{euros(offer.sellCents, offer.currency)}</span>
+                                <span className="block text-[11px] h-muted">TTC</span>
+                              </span>
+                            ) : null}
+                            {perk ? <span className="inline-block border border-[#c5a880] px-1.5 py-0.5 text-[11px] h-ink">{perk}</span> : null}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : file ? (
                 <p className="text-sm h-muted">Aucune chambre pour ces dates. Écrivez-nous si le séjour vous tient à cœur.</p>
@@ -630,39 +709,114 @@ export function HotelJourney({
                         </ul>
                       </div>
                     ))}
-                    {file.coords ? (
-                      <HotelMap hotels={[{ ...hotel, name: file.name || hotel.name, city: file.city || hotel.city, coords: file.coords }]} />
-                    ) : null}
                   </div>
                 </details>
+              ) : null}
+              {file?.coords ? (
+                <div className="border-t h-line pt-4">
+                  <p className="h-section">Localisation</p>
+                  <div className="h-rule mt-2" />
+                  <div className="mt-3">
+                    <HotelMap hotels={[{ ...hotel, name: file.name || hotel.name, city: file.city || hotel.city, coords: file.coords }]} />
+                  </div>
+                  {file.address ? <p className="mt-2 text-sm leading-relaxed h-ink">{file.address}</p> : null}
+                </div>
+              ) : null}
+              {others.length ? (
+                <div data-hotel-others="1">
+                  <p className="h-section">Autres hôtels à {file?.city || hotel.city}</p>
+                  <div className="h-rule mt-2" />
+                  <div className="mt-3 -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
+                    {others.map((item) => (
+                      <button
+                        key={item.hotelKey}
+                        type="button"
+                        onClick={() => onOpenOther?.(item)}
+                        className="h-card h-line h-press w-[68%] shrink-0 snap-start border text-left"
+                      >
+                        <span className="block aspect-[4/3] bg-[var(--h-header)]">{item.photo ? <Photo src={item.photo} alt="" /> : null}</span>
+                        <span className="block p-3">
+                          <span className="h-serif block text-xl leading-tight h-ink">{item.name}</span>
+                          <span className="mt-1 block text-sm h-muted">{item.city}</span>
+                          <span className="mt-2 block text-sm font-semibold h-ink">{euros(item.sellCents, item.currency)}</span>
+                          <span className="block text-[11px] h-muted">TTC</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ) : null}
             </div>
           </div>
         ) : null}
 
         {view === "room" && room && rate ? (
-          <div data-hotel-rate="1" className="space-y-3 px-4 py-4">
-            <div className="min-w-0">
-              <p className="truncate text-sm h-muted">{file?.name}</p>
-              <h2 className="h-display mt-1 text-xl font-semibold leading-tight h-ink">{room.name}</h2>
-            </div>
-            <article className="h-card h-line border p-4">
-              <h3 className="text-base font-semibold h-ink">{reading?.title}</h3>
-              <p className="mt-2 text-sm h-ink"><span className="h-kicker">Pension</span> {reading?.board}</p>
-              <p className="mt-1 text-sm h-ink"><span className="h-kicker">Annulation</span> {reading?.cancellation}</p>
-              {discreetPerk(rate.perks) ? <p className="mt-2 text-xs h-muted">{discreetPerk(rate.perks)}</p> : null}
-              {rate.footnotes.length || room.images.length ? (
-                <details className="h-fold mt-2 border-t h-line">
-                  <summary className="text-sm h-ink">Le détail</summary>
-                  <div className="space-y-2 pb-2">
-                    {rate.footnotes.map((line) => (
-                      <p key={line} className="text-xs h-muted">{line}</p>
-                    ))}
-                    {room.images[0] ? <div className="h-24 bg-[var(--h-header)]"><Photo src={room.images[0]} alt="" /></div> : null}
-                  </div>
-                </details>
+          <div data-hotel-rate="1">
+            <Gallery images={room.images.length ? room.images : images} alt={room.name} />
+            <div className="space-y-5 px-4 py-5">
+              <div>
+                <h2 className="h-serif text-[1.85rem] leading-[1.05] h-ink">{file?.name || hotel.name}</h2>
+                <p className="mt-1 text-sm h-muted">{file?.city || hotel.city}</p>
+                <p className="h-serif mt-4 text-[1.45rem] leading-tight h-ink">{room.name}</p>
+              </div>
+              {room.area || room.bed || room.outlook ? (
+                <div className="border-l border-[#c5a880] pl-3">
+                  {room.area ? <Fact icon="ruler" label="Surface intérieure" value={room.area} /> : null}
+                  {splitOutlook(room.outlook || "").exterior ? <Fact icon="eye" label="Extérieur" value={splitOutlook(room.outlook || "").exterior} /> : null}
+                  {splitOutlook(room.outlook || "").view ? <Fact icon="eye" label="Vue" value={splitOutlook(room.outlook || "").view.replace(/^vue\s+/i, "")} /> : null}
+                  {room.bed ? <Fact icon="bed" label="Couchage" value={room.bed} /> : null}
+                </div>
               ) : null}
-            </article>
+              <article className="h-card h-line border p-4">
+                {cancellationPhrase(rate.cancellation) ? (
+                  <div className="border h-line px-3 py-2">
+                    <p className="text-sm h-ink">{cancellationPhrase(rate.cancellation)}</p>
+                    {rate.footnotes.length ? (
+                      <details className="h-fold">
+                        <summary className="text-sm underline h-ink">Conditions</summary>
+                        <div className="space-y-2 pb-1">
+                          {rate.footnotes.map((line) => (
+                            <p key={line} className="text-xs h-muted">{line}</p>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </div>
+                ) : null}
+                <h3 className="h-serif mt-4 text-[1.7rem] leading-tight h-ink">{clientRateTitle(rate.title)}</h3>
+                {reading?.board && reading.board !== "Précisée à la confirmation" && !travelPrivileges(rate.perks, rate.benefits).some((line) => /petit-déjeuner/i.test(line) && /petit-déjeuner/i.test(reading.board)) ? (
+                  <p className="mt-1 text-sm h-muted">{reading.board}</p>
+                ) : null}
+                {travelPrivileges(rate.perks, rate.benefits).length ? (
+                  <div className="mt-4">
+                    <p className="text-sm font-semibold h-ink">Privilèges Travel BA</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {travelPrivileges(rate.perks, rate.benefits).map((line) => (
+                        <li key={line} className="flex items-start gap-2 text-sm h-ink">
+                          <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-[#c5a880]" strokeWidth={1.75} />
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="sticky bottom-0 z-10 mt-4 flex items-end justify-between gap-3 border-t bg-white h-line pt-3">
+                  <div>
+                    <p className="text-2xl font-semibold tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
+                    <p className="text-[11px] h-muted">TTC</p>
+                  </div>
+                  <button
+                    type="button"
+                    data-hotel-rate-cta="1"
+                    disabled={!rate.offerId}
+                    onClick={() => chooseRate(rate)}
+                    className="h-btn h-press h-11 px-5 text-sm font-semibold disabled:opacity-40"
+                  >
+                    {rate.offerId ? "Sélectionner" : "Tarif en préparation"}
+                  </button>
+                </div>
+              </article>
+            </div>
           </div>
         ) : null}
 
@@ -752,25 +906,6 @@ export function HotelJourney({
       </div>
       </div>
 
-      {view === "hotel" ? (
-        <Dock
-          label="À partir de"
-          price={euros(from, currency)}
-          action={file?.rooms.length ? "Voir les chambres" : "Nous préparons la fiche"}
-          disabled={!file?.rooms.length}
-          onAction={() => roomsRef.current?.scrollIntoView({ behavior: smoothScroll() ? "smooth" : "auto", block: "start" })}
-        />
-      ) : null}
-      {view === "room" && cheapestRoomRate ? (
-        <Dock
-          label="Total"
-          price={euros(cheapestRoomRate.sellCents, cheapestRoomRate.currency)}
-          action={cheapestRoomRate.offerId ? "Choisir" : "Tarif en préparation"}
-          disabled={!cheapestRoomRate.offerId}
-          marker
-          onAction={() => chooseRate(cheapestRoomRate)}
-        />
-      ) : null}
       {view === "guests" && rate ? (
         <Dock
           action="Récapitulatif"
