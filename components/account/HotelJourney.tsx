@@ -14,10 +14,10 @@ import { siteConfig } from "@/lib/site";
 type Step = "hotel" | "room" | "guests" | "confirm";
 
 const STEPS: { id: Step; label: string }[] = [
-  { id: "hotel", label: "Hôtel" },
-  { id: "room", label: "Chambre" },
+  { id: "hotel", label: "L’hôtel" },
+  { id: "room", label: "La chambre" },
   { id: "guests", label: "Voyageurs" },
-  { id: "confirm", label: "Demande" },
+  { id: "confirm", label: "Récapitulatif" },
 ];
 
 const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
@@ -119,7 +119,7 @@ function Gallery({ images, alt }: { images: string[]; alt: string }) {
           <div className="h-skel h-full w-full shrink-0" />
         )}
       </div>
-      {images.length > 1 ? <p className="h-pin absolute bottom-10 right-4">{index + 1}/{images.length}</p> : null}
+      {images.length > 1 ? <p className="h-pin absolute bottom-3 right-3">{index + 1}/{images.length}</p> : null}
       {open && images[index] ? (
         <Lightbox
           images={images}
@@ -369,7 +369,7 @@ function Dock({
           disabled={disabled}
           onClick={onAction}
           data-hotel-rate-cta={marker ? "1" : undefined}
-          className={`h-btn h-press h-11 text-sm font-semibold disabled:opacity-40 ${price ? "shrink-0 px-5" : "w-full"}`}
+          className={`h-press h-11 text-sm font-semibold disabled:opacity-40 ${marker ? "h-select" : "h-btn"} ${price ? "shrink-0 px-5" : "w-full"}`}
         >
           {action}
         </button>
@@ -475,9 +475,6 @@ export function HotelJourney({
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const reading = rate ? readStayRate(rate) : null;
   const view: Step = step === "confirm" && rate ? "confirm" : step === "guests" && rate ? "guests" : step === "room" && room ? "room" : "hotel";
-  const order = STEPS.map((item) => item.id);
-  const stepAt = order.indexOf(view);
-  const immersive = view === "hotel" || view === "room";
   const fromOffer = file?.rooms
     .map((item) => item.rates[0])
     .filter((item): item is ClientRate => Boolean(item))
@@ -575,46 +572,58 @@ export function HotelJourney({
   const panel = (
     <div className="hotel-theme">
     <div className="h-journey h-bg" data-hotel-journey="1">
-      <header className={immersive ? "pointer-events-none absolute inset-x-0 top-0 z-30" : "shrink-0 bg-white"} data-hotel-steps="1">
-        <div className={`h-0.5 ${immersive ? "bg-white/30" : "bg-black/10"}`} aria-hidden>
-          <div className={`h-full ${immersive ? "bg-white" : "bg-[#0b192c]"}`} style={{ width: `${((stepAt + 1) / STEPS.length) * 100}%` }} />
-        </div>
-        <div className="flex items-center">
+      <header className="shrink-0 bg-white" data-hotel-steps="1">
+        <div className="grid grid-cols-[2.75rem_1fr_2.75rem] items-center">
           <button
             type="button"
             aria-label="Retour"
             onClick={back}
-            className={`h-hit h-press pointer-events-auto grid w-11 shrink-0 place-items-center ${immersive ? "m-2 text-white [filter:drop-shadow(0_1px_2px_rgba(11,25,44,0.55))]" : "text-[#0b192c]"}`}
+            className="h-hit h-press grid w-11 place-items-center text-[#1a1a1a]"
           >
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          {immersive ? null : (
-            <p className="h-serif min-w-0 flex-1 truncate pr-4 text-[1.45rem] leading-none h-ink">{STEPS.find((item) => item.id === view)?.label}</p>
-          )}
+          <p className="h-serif truncate text-center text-[17px] font-semibold leading-none h-ink">{STEPS.find((item) => item.id === view)?.label}</p>
+          <span />
         </div>
+        {view === "hotel" ? (
+          <div className="flex gap-2 overflow-x-auto px-4 pb-3">
+            <button
+              type="button"
+              className="h-pill h-press"
+              onClick={() => roomsRef.current?.scrollIntoView({ behavior: smoothScroll() ? "smooth" : "auto", block: "start" })}
+            >
+              Tarifs
+            </button>
+            <a className="h-pill h-press" href={whatsapp}>Contact</a>
+          </div>
+        ) : null}
       </header>
 
       <div ref={scrollerRef} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div key={view} className="hotel-step min-w-0 pb-4">
         {view === "hotel" ? (
-          <div data-hotel-detail="1">
-            <div className="sticky top-0 z-0">
-              <Gallery images={images} alt={file?.name || hotel.name} />
+          <div data-hotel-detail="1" className="h-paper pb-8">
+            <div className="px-4 pb-3 pt-3">
+              <article className="h-recap">
+                <h2 className="h-serif text-[1.15rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</h2>
+                <p className="mt-1 text-sm h-muted">{[datesLabel, party].filter(Boolean).join(" · ")}</p>
+              </article>
             </div>
-            <div className="h-night h-over space-y-8 px-5 pb-8 pt-6" data-hotel-hero="1">
-              <div>
-                <h2 className="h-serif text-[2.15rem] font-medium leading-[1.05] h-ink">{file?.name || hotel.name}</h2>
-                <p className="mt-2 text-[15px] h-muted">{file?.city || hotel.city}</p>
-                <p className="mt-1 text-[15px] h-ink">{[datesLabel, party].filter(Boolean).join(" · ")}</p>
-                {file?.address ? <p className="mt-1 text-sm h-ink">{file.address}</p> : null}
-                {!file ? <div className="mt-4 h-4 w-1/2 animate-pulse h-skel" aria-hidden /> : null}
-              </div>
+            <Gallery images={images} alt={file?.name || hotel.name} />
+            <div className="space-y-3 bg-white px-5 py-5" data-hotel-hero="1">
+              <h2 className="h-serif text-[1.35rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</h2>
+              <p className="text-sm h-muted">{file?.city || hotel.city}</p>
+              {file?.address ? <p className="text-sm h-ink">{file.address}</p> : null}
+              {file?.description ? <p className="text-[15px] leading-relaxed h-ink">{file.description}</p> : null}
+              {!file ? <div className="h-4 w-1/2 animate-pulse h-skel" aria-hidden /> : null}
+            </div>
+            <div className="space-y-8 px-5 pt-6">
               {file?.rooms.length ? (
                 <div data-hotel-rooms="1" ref={roomsRef}>
                   <p className="h-section">
                     {file.rooms.length > 1 ? `${file.rooms.length} types de chambres disponibles` : "1 type de chambre disponible"}
                   </p>
-                  <div className="mt-4 -mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2">
+                  <div className="mt-4 -mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2">
                     {file.rooms.map((item) => {
                       const offer = item.rates[0];
                       const photo = item.images[0];
@@ -625,39 +634,41 @@ export function HotelJourney({
                           key={item.name}
                           type="button"
                           onClick={() => chooseRoom(item)}
-                          className="h-press w-[82%] shrink-0 snap-start text-left"
+                          className="h-room h-press w-[78%] shrink-0 snap-start overflow-hidden text-left"
                         >
-                          <span className="relative block aspect-[4/3] overflow-hidden bg-[#eceae6]">
+                          <span className="relative block aspect-[5/4] overflow-hidden bg-[#eceae6]">
                             {photo ? <Photo src={photo} alt="" /> : null}
                             {item.images.length > 1 ? <span className="h-pin absolute bottom-2 right-2">{`1/${item.images.length}`}</span> : null}
                           </span>
-                          <span className="block space-y-1.5 pt-3">
-                            <span className="h-serif block text-[1.45rem] font-medium leading-tight h-ink">{item.name}</span>
-                            {outlook.view ? (
-                              <span className="flex items-center gap-2 text-[13px] h-muted">
-                                <Icon name="eye" className="h-3.5 w-3.5" strokeWidth={1.5} />
-                                {shownLabel(outlook.view)}
-                              </span>
-                            ) : null}
-                            {item.bed ? (
-                              <span className="flex items-center gap-2 text-[13px] h-muted">
-                                <Icon name="bed" className="h-3.5 w-3.5" strokeWidth={1.5} />
-                                {shownLabel(item.bed)}
-                              </span>
-                            ) : null}
-                            {item.area ? (
-                              <span className="flex items-center gap-2 text-[13px] h-muted">
-                                <Icon name="ruler" className="h-3.5 w-3.5" strokeWidth={1.5} />
-                                {item.area}
-                              </span>
-                            ) : null}
+                          <span className="block space-y-2 px-3 py-3">
+                            <span className="h-serif block text-[1.05rem] font-semibold leading-tight h-ink">{item.name}</span>
+                            <span className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] h-muted">
+                              {outlook.view ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <Icon name="eye" className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                  {shownLabel(outlook.view)}
+                                </span>
+                              ) : null}
+                              {item.bed ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <Icon name="bed" className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                  {shownLabel(item.bed)}
+                                </span>
+                              ) : null}
+                              {item.area ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <Icon name="ruler" className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                  {item.area}
+                                </span>
+                              ) : null}
+                            </span>
                             {offer ? (
-                              <span className="block pt-1">
-                                <span className="block text-lg font-semibold tracking-tight h-ink">{euros(offer.sellCents, offer.currency)}</span>
-                                <span className="block text-[11px] h-muted">TTC</span>
+                              <span className="block">
+                                <span className="block text-base font-semibold tracking-tight h-ink">{euros(offer.sellCents, offer.currency)}</span>
+                                <span className="block text-[11px] h-muted">Total TTC</span>
                               </span>
                             ) : null}
-                            {perk ? <span className="inline-block pt-1 text-[12px] text-[#9a7b4f]">{perk}</span> : null}
+                            {perk ? <span className="inline-block text-[12px] text-[#8c7352]">{perk}</span> : null}
                           </span>
                         </button>
                       );
@@ -671,7 +682,6 @@ export function HotelJourney({
                 <details className="h-fold">
                   <summary className="text-sm font-semibold h-ink">Le lieu</summary>
                   <div className="space-y-3 pb-3">
-                    {file.description ? <p className="text-sm leading-relaxed h-ink">{file.description}</p> : null}
                     {file.funFact ? <p className="text-sm h-gold">{file.funFact}</p> : null}
                     {file.checkInTime || file.checkOutTime ? (
                       <p className="text-sm h-ink">
@@ -737,16 +747,14 @@ export function HotelJourney({
         ) : null}
 
         {view === "room" && room && rate ? (
-          <div data-hotel-rate="1">
-            <div className="sticky top-0 z-0">
-              <Gallery images={room.images.length ? room.images : images} alt={room.name} />
-            </div>
-            <div className="h-over space-y-7 px-5 pb-8 pt-6">
-              <div>
-                <h2 className="h-serif text-[2rem] font-medium leading-[1.05] h-ink">{file?.name || hotel.name}</h2>
-                <p className="mt-2 text-[15px] h-muted">{file?.city || hotel.city}</p>
-                <p className="h-serif mt-5 text-[1.55rem] font-medium leading-tight h-ink">{room.name}</p>
-              </div>
+          <div data-hotel-rate="1" className="h-paper pb-8">
+            <Gallery images={room.images.length ? room.images : images} alt={room.name} />
+            <div className="space-y-5 px-4 pb-8 pt-4">
+              <article className="h-recap">
+                <p className="text-sm h-muted">{file?.city || hotel.city}</p>
+                <h2 className="h-serif mt-1 text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</h2>
+                <p className="h-serif mt-3 text-[1.05rem] font-semibold leading-tight h-ink">{room.name}</p>
+              </article>
               {room.area || room.bed || room.outlook ? (
                 <div className="space-y-1">
                   {room.area ? <Fact icon="ruler" label="Surface intérieure" value={room.area} /> : null}
@@ -771,7 +779,7 @@ export function HotelJourney({
                     ) : null}
                   </div>
                 ) : null}
-                <h3 className="h-serif mt-5 text-[1.7rem] font-medium leading-tight h-ink">{clientRateTitle(rate.title)}</h3>
+                <h3 className="h-serif mt-5 text-[1.15rem] font-semibold leading-tight h-ink">{clientRateTitle(rate.title)}</h3>
                 {reading?.board && reading.board !== "Précisée à la confirmation" && !travelPrivileges(rate.perks, rate.benefits).some((line) => /petit-déjeuner/i.test(line) && /petit-déjeuner/i.test(reading.board)) ? (
                   <p className="mt-1 text-[15px] h-muted">{reading.board}</p>
                 ) : null}
@@ -794,15 +802,15 @@ export function HotelJourney({
         ) : null}
 
         {view === "guests" && rate && reading ? (
-          <div data-hotel-guests="1" className="space-y-8 px-5 py-6">
-            <div className="min-w-0">
+          <div data-hotel-guests="1" className="h-paper space-y-6 px-4 py-4">
+            <article className="h-recap min-w-0">
               <p className="truncate text-sm h-muted">{[file?.name || hotel.name, rate.room].filter(Boolean).join(" · ")}</p>
-              <h2 className="h-serif mt-2 text-[2rem] font-medium leading-tight h-ink">{reading.title}</h2>
+              <h2 className="h-serif mt-1 text-[1.2rem] font-semibold leading-tight h-ink">{reading.title}</h2>
               <p className="mt-3 text-[15px] leading-relaxed h-ink">{reading.board}</p>
               <p className="mt-1 text-[15px] leading-relaxed h-muted">{reading.cancellation}</p>
-              <p className="mt-4 text-2xl font-medium tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
+              <p className="mt-4 text-2xl font-semibold tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
               <p className="mt-1 text-sm h-muted">{datesLabel}</p>
-            </div>
+            </article>
             {known.length ? (
               <div className="min-w-0">
                 <p className="h-kicker mb-2">Déjà avec vous</p>
@@ -850,10 +858,10 @@ export function HotelJourney({
         ) : null}
 
         {view === "confirm" && rate && reading ? (
-          <div data-hotel-confirm="1" className="space-y-6 px-5 py-6">
-            <h2 className="h-serif text-[2rem] font-medium h-ink">{done ? "Demande reçue" : "Récapitulatif"}</h2>
-            <article className="space-y-3 text-[15px]">
-              <p className="h-serif text-[1.7rem] font-medium leading-tight h-ink">{file?.name || hotel.name}</p>
+          <div data-hotel-confirm="1" className="h-paper space-y-4 px-4 py-4">
+            <h2 className="h-serif px-1 text-[1.2rem] font-semibold h-ink">{done ? "Demande reçue" : "Récapitulatif"}</h2>
+            <article className="h-recap space-y-3 text-[15px]">
+              <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
               <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
               <p className="h-ink">{rate.room}</p>
               <p className="h-ink"><span className="h-muted">Pension · </span>{reading.board}</p>

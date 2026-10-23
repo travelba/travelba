@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Space_Grotesk, Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Cormorant_Garamond, Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import { siteConfig } from "@/lib/site";
 import "./globals.css";
 
@@ -22,6 +22,14 @@ const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta",
   display: "swap",
   preload: true,
+});
+
+const nunito = Nunito_Sans({
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  variable: "--font-nunito",
+  display: "swap",
+  preload: false,
 });
 
 const cormorant = Cormorant_Garamond({
@@ -64,7 +72,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${cormorant.variable}`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${cormorant.variable} ${nunito.variable}`}
     >
       <body className="bg-background text-foreground antialiased">{children}</body>
     </html>
