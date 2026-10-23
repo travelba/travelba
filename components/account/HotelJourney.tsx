@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { HotelMap } from "@/components/account/HotelMap";
 import { Icon } from "@/components/crm/icons";
 import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
+import { HotelCardHold } from "@/components/account/HotelCardHold";
+import { PAY_COPY } from "@/lib/crm/hotel-direct";
 import { collapseRooms, guestNameOk, travelPrivileges, type ClientHotelFile, type ClientRate, type ClientRoom, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
 import { composeRoomGuests, roomOccupancyLabel } from "@/lib/crm/hotel-party";
 import type { ClientHotel, HotelPerks, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
@@ -389,6 +391,7 @@ export function HotelJourney({
   onBack,
   others = [],
   onOpenOther,
+  trial = true,
 }: {
   hotel: ClientHotel;
   stayRooms: HotelRoomOccupancy[];
@@ -400,6 +403,7 @@ export function HotelJourney({
   onBack: () => void;
   others?: ClientHotel[];
   onOpenOther?: (hotel: ClientHotel) => void;
+  trial?: boolean;
 }) {
   const [file, setFile] = useState<ClientHotelFile | null>(hotel.hotelId ? null : fileFromCard(hotel));
   const [note, setNote] = useState("");
@@ -417,6 +421,12 @@ export function HotelJourney({
     () => null,
   );
   const [done, setDone] = useState("");
+  const [payMethod, setPayMethod] = useState<"card" | "agency" | "">("");
+  const [arrival, setArrival] = useState("");
+  const [stayId, setStayId] = useState("");
+  const [stayCancel, setStayCancel] = useState<"cancel" | "ask" | "none">("none");
+  const [stayConditions, setStayConditions] = useState("");
+  const [cardSecret, setCardSecret] = useState<{ clientSecret: string; intentId: string } | null>(null);
   const roomsRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
@@ -543,8 +553,8 @@ export function HotelJourney({
     else onStep("back");
   }
 
-  async function send() {
-    if (!rate?.offerId) return;
+  async function send(intentId?: string) {
+    if (!rate?.offerId || !payMethod) return;
     const guests = guestLines();
     if (!guestsReady()) {
       setNote("Indiquez le prénom et le nom du voyageur principal de chaque chambre.");
@@ -553,17 +563,58 @@ export function HotelJourney({
     setSending(true);
     setNote("");
     try {
-      const response = await fetch("/api/client/hotels/demandes", {
+      const response = await fetch("/api/client/hotels/reserver", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ offerId: rate.offerId, guests }),
+        body: JSON.stringify({ offerId: rate.offerId, guests, payMethod, arrival, intentId }),
       });
-      const json = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+      const json = (await response.json().catch(() => null)) as {
+        error?: string;
+        clientSecret?: string;
+        intentId?: string;
+        view?: { id: string; label: string; cancel: "cancel" | "ask" | "none"; conditions: string };
+      } | null;
       if (!response.ok) {
         setNote(json?.error || "La demande n’a pas pu être envoyée.");
         return;
       }
-      setDone(json?.message || "Demande reçue. L’agence confirme le séjour avant tout paiement.");
+      if (json?.clientSecret && json.intentId) {
+        setCardSecret({ clientSecret: json.clientSecret, intentId: json.intentId });
+        return;
+      }
+      if (json?.view) {
+        setStayId(json.view.id);
+        setStayCancel(json.view.cancel);
+        setStayConditions(json.view.conditions);
+        setDone(json.view.label);
+        setCardSecret(null);
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function actStay(action: "cancel" | "ask") {
+    if (!stayId) return;
+    setSending(true);
+    setNote("");
+    try {
+      const response = await fetch("/api/client/hotels/sejour", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stayId, action }),
+      });
+      const json = (await response.json().catch(() => null)) as {
+        error?: string;
+        view?: { label: string; cancel: "cancel" | "ask" | "none"; conditions: string };
+      } | null;
+      if (!response.ok || !json?.view) {
+        setNote(json?.error || "L’action n’a pas abouti.");
+        return;
+      }
+      setStayCancel(json.view.cancel);
+      setStayConditions(json.view.conditions);
+      setDone(json.view.label);
     } finally {
       setSending(false);
     }
@@ -582,7 +633,7 @@ export function HotelJourney({
           >
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          <p className="h-serif truncate text-center text-[17px] font-semibold leading-none h-ink">{done && view === "confirm" ? "Demande reçue" : STEPS.find((item) => item.id === view)?.label}</p>
+          <p className="h-serif truncate text-center text-[17px] font-semibold leading-none h-ink">{done && view === "confirm" ? "Demande" : STEPS.find((item) => item.id === view)?.label}</p>
           <span />
         </div>
         {view === "hotel" ? (
@@ -860,15 +911,25 @@ export function HotelJourney({
         {view === "confirm" && rate && reading && done ? (
           <div data-hotel-confirm="1" data-hotel-done="1" className="h-paper space-y-4 px-4 py-6">
             <article className="h-recap space-y-3 text-[15px]">
-              <p className="h-ink">{done}</p>
+              <p className="h-ink" data-hotel-status="1">{done}</p>
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
               <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
               <p className="h-ink">{rate.room}</p>
-              <p className="h-ink"><span className="h-muted">Pension · </span>{reading.board}</p>
-              <p className="h-ink"><span className="h-muted">Annulation · </span>{reading.cancellation}</p>
               <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
+              {stayConditions ? <p className="h-muted">{stayConditions}</p> : null}
             </article>
-            <a href={whatsapp} className="h-btn flex h-12 items-center justify-center text-sm font-semibold">Écrire sur WhatsApp</a>
+            {stayCancel === "cancel" ? (
+              <button type="button" className="h-btn h-12 w-full text-sm font-semibold" disabled={sending} onClick={() => void actStay("cancel")}>
+                Annuler
+              </button>
+            ) : null}
+            {stayCancel === "ask" ? (
+              <button type="button" className="h-btn h-12 w-full text-sm font-semibold" disabled={sending} onClick={() => void actStay("ask")}>
+                Demander à l’agence
+              </button>
+            ) : null}
+            {note ? <p className="text-sm h-gold">{note}</p> : null}
+            <a href={whatsapp} className="flex h-12 items-center justify-center text-sm font-semibold h-ink">Écrire sur WhatsApp</a>
           </div>
         ) : null}
         {view === "confirm" && rate && reading && !done ? (
@@ -887,7 +948,43 @@ export function HotelJourney({
               </ul>
               <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
             </article>
-            <p className="px-1 text-sm h-muted">Aucun paiement n’est lancé. L’agence confirme d’abord.</p>
+            <div className="space-y-2" data-hotel-pay="1">
+              <button
+                type="button"
+                aria-pressed={payMethod === "card"}
+                className={`h-recap w-full px-4 py-3 text-left ${payMethod === "card" ? "ring-1 ring-[#C5A880]" : ""}`}
+                onClick={() => setPayMethod("card")}
+              >
+                <span className="block text-sm font-semibold h-ink">{PAY_COPY.cardTitle}</span>
+                <span className="mt-1 block text-sm h-muted">{PAY_COPY.card}</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={payMethod === "agency"}
+                className={`h-recap w-full px-4 py-3 text-left ${payMethod === "agency" ? "ring-1 ring-[#C5A880]" : ""}`}
+                onClick={() => setPayMethod("agency")}
+              >
+                <span className="block text-sm font-semibold h-ink">{PAY_COPY.agencyTitle}</span>
+                <span className="mt-1 block text-sm h-muted">{PAY_COPY.agency}</span>
+              </button>
+              <label className="block px-1 text-sm h-muted">
+                Heure d’arrivée
+                <input
+                  value={arrival}
+                  onChange={(event) => setArrival(event.target.value.slice(0, 12))}
+                  placeholder="18 h"
+                  className="mt-1 h-11 w-full rounded-2xl bg-white px-3 text-[15px] h-ink"
+                />
+              </label>
+              {trial ? <p className="px-1 text-sm h-muted">{PAY_COPY.trial}</p> : null}
+            </div>
+            {cardSecret ? (
+              <HotelCardHold
+                clientSecret={cardSecret.clientSecret}
+                onDone={() => void send(cardSecret.intentId)}
+                onFail={(message) => setNote(message)}
+              />
+            ) : null}
             {note ? <p className="px-1 text-sm h-gold">{note}</p> : null}
           </div>
         ) : null}
@@ -920,12 +1017,12 @@ export function HotelJourney({
           onAction={() => (guestsReady() ? onStep("confirm") : setNote("Indiquez le prénom et le nom du voyageur principal de chaque chambre."))}
         />
       ) : null}
-      {view === "confirm" && rate && !done ? (
+      {view === "confirm" && rate && !done && !cardSecret ? (
         <Dock
           label="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          action={sending ? "Envoi…" : "Envoyer la demande"}
-          disabled={sending || !rate.offerId}
+          action={sending ? "Envoi…" : "Transmettre à l’hôtel"}
+          disabled={sending || !rate.offerId || !payMethod}
           onAction={() => void send()}
         />
       ) : null}

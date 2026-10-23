@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { parisTodayIso } from "@/lib/crm/dates";
+import { hotelBookingEnabled } from "@/lib/crm/hotel-access";
 import {
-  hotelSearchAllowed,
   hotelSearchCacheKey,
   parseHotelSearchQuery,
   readHotelSearchCache,
@@ -42,7 +42,7 @@ async function knownHotelIds(destination: string, city: string) {
 export async function POST(request: Request) {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
-  if (!hotelSearchAllowed(auth.customer)) return jsonError("Introuvable", 404);
+  if (!hotelBookingEnabled(auth.customer)) return jsonError("Introuvable", 404);
   const body = await request.json().catch(() => null);
   const parsed = parseHotelSearchQuery(body, parisTodayIso());
   if (!parsed.ok) return jsonError(parsed.message, 400);

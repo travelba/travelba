@@ -191,6 +191,12 @@ export type CrmCustomer = {
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */
   on_hold?: boolean;
+  /** Réservation d’hôtels en autonomie. Faux par défaut. L’agence seule l’écrit. */
+  hotel_booking_enabled?: boolean;
+  /** Compte de démonstration : jamais de mode réel. */
+  hotel_demo?: boolean;
+  /** Envois réels (hôtel, carte, Stripe) pour ce client seulement. Défaut faux. */
+  hotel_direct_live?: boolean;
   /** Taux du compte : 0.1, 0.075 ou 0.05. Null = 10 %. */
   agency_fee_rate?: number | string | null;
   created_at: string;

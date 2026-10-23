@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { hotelBookingEnabled } from "@/lib/crm/hotel-access";
 import {
-  hotelSearchAllowed,
   mergePlaceSuggestions,
   readSuggestCache,
   suggestQuery,
@@ -38,7 +38,7 @@ async function catalogSuggestions(query: string): Promise<PlaceSuggestion[]> {
 export async function GET(request: Request) {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
-  if (!hotelSearchAllowed(auth.customer)) return jsonError("Introuvable", 404);
+  if (!hotelBookingEnabled(auth.customer)) return jsonError("Introuvable", 404);
   const query = suggestQuery(new URL(request.url).searchParams.get("q"));
   if (!query) return NextResponse.json({ suggestions: [] });
   const key = foldHotelLabel(query);

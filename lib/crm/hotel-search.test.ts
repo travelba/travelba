@@ -467,24 +467,11 @@ test("le premier compte répond avant le compte lent, le cache ne rappelle perso
   if (last?.type === "done") assert.equal(last.cached, true);
 });
 
-test("allowlist : Benjamin par défaut, une variable remplace, vide ferme", () => {
-  const open = {} as NodeJS.ProcessEnv;
-  assert.equal(
-    hotelSearchAllowed(
-      { id: "11111111-1111-4111-8111-111111111111", auth_user_id: HOTEL_SEARCH_BENJAMIN_USER_ID },
-      open
-    ),
-    true
-  );
-  assert.equal(hotelSearchAllowed({ id: HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID, auth_user_id: null }, open), true);
-  assert.equal(hotelSearchAllowed({ id: "11111111-1111-4111-8111-111111111111", auth_user_id: null }, open), false);
-
-  const replaced = { HOTEL_SEARCH_ALLOWLIST: "22222222-2222-4222-8222-222222222222" } as unknown as NodeJS.ProcessEnv;
-  assert.equal(hotelSearchAllowed({ id: HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID, auth_user_id: HOTEL_SEARCH_BENJAMIN_USER_ID }, replaced), false);
-  assert.equal(hotelSearchAllowed({ id: "22222222-2222-4222-8222-222222222222", auth_user_id: null }, replaced), true);
-
-  const closed = { HOTEL_SEARCH_ALLOWLIST: "" } as unknown as NodeJS.ProcessEnv;
-  assert.equal(hotelSearchAllowed({ id: HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID, auth_user_id: HOTEL_SEARCH_BENJAMIN_USER_ID }, closed), false);
+test("l’accès hôtel vient de la fiche, fermé sans interrupteur", () => {
+  assert.equal(hotelSearchAllowed({ hotel_booking_enabled: false }), false);
+  assert.equal(hotelSearchAllowed({}), false);
+  assert.equal(hotelSearchAllowed({ hotel_booking_enabled: true }), true);
+  assert.equal(HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID.length > 0 && HOTEL_SEARCH_BENJAMIN_USER_ID.length > 0, true);
 });
 
 test("suggestions : catalogue ville et hôtel, fusion sans doublon", () => {
@@ -603,10 +590,12 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   const shortcutAt = home.indexOf("/mon-compte/hotels");
   const encoursAt = home.indexOf("<HomeEncours");
   assert.ok(shortcutAt > 0 && shortcutAt < encoursAt);
-  assert.match(home, /hotelSearchAllowed\(customer\)/);
+  assert.match(home, /showHotelButton/);
   assert.doesNotMatch(home, /<HotelSearch/);
   const hotelsPage = readFileSync(join(root, "app/mon-compte/hotels/page.tsx"), "utf8");
-  assert.match(hotelsPage, /hotelSearchAllowed/);
+  assert.match(hotelsPage, /showHotelButton/);
+  assert.match(hotelsPage, /showPlatinumScreen/);
+  assert.match(hotelsPage, /HotelPlatinum/);
   assert.match(hotelsPage, /<HotelSearch/);
   const chrome = readFileSync(join(root, "components/account/AccountChrome.tsx"), "utf8");
   assert.match(chrome, /AccountNightTabs/);

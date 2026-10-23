@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { HotelAccessCard } from "@/components/admin/HotelAccessCard";
+import { HotelDirectDesk, type DirectDeskStay } from "@/components/admin/HotelDirectDesk";
+import { CLIENT_PHASE_LABEL, type ClientPhase } from "@/lib/crm/hotel-direct";
 import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
 import {
   ArchiveBookingButton,
@@ -27,6 +30,7 @@ import {
   type StripeMatchCustomer,
 } from "@/lib/crm/stripe-match";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { readPendingAccess } from "@/lib/crm/hotel-access-run";
 import { mb3mRealm } from "@/lib/crm/mb3m";
 import { mb3mFicheBlocker } from "@/lib/crm/mb3m-party";
 import {
@@ -77,6 +81,30 @@ export default async function AdminClientDetailPage({ params }: Props) {
     .maybeSingle();
   if (!customer) notFound();
   const c = customer as CrmCustomer;
+  const hotelRequest = await readPendingAccess(id).catch(() => null);
+  let hotelStays: DirectDeskStay[] = [];
+  try {
+    const { data } = await createServiceClient()
+      .from("crm_hotel_direct_stays")
+      .select("id, phase, pay_method, trial, state")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false })
+      .limit(8);
+    hotelStays = ((data || []) as { id: string; phase: string; pay_method: string; trial: boolean; state: { confirmation?: string | null; hotelName?: string } }[])
+      .filter((row) => row.phase in CLIENT_PHASE_LABEL)
+      .map(
+        (row): DirectDeskStay => ({
+          id: row.id,
+          phase: row.phase as ClientPhase,
+          payMethod: row.pay_method,
+          trial: row.trial !== false,
+          hotel: row.state?.hotelName || "",
+          confirmation: row.state?.confirmation || null,
+        })
+      );
+  } catch {
+    hotelStays = [];
+  }
   const { data: mb3mParty } = await createServiceClient()
     .from("crm_mb3m_parties")
     .select("id")
@@ -313,6 +341,16 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </div>
         </div>
       </header>
+
+      <HotelAccessCard
+        customerId={c.id}
+        enabled={c.hotel_booking_enabled === true}
+        demo={c.hotel_demo === true}
+        live={c.hotel_direct_live === true}
+        pendingAt={hotelRequest?.created_at || null}
+        admin={staff.role === "admin"}
+      />
+      <HotelDirectDesk customerId={c.id} stays={hotelStays} />
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-5">

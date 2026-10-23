@@ -229,7 +229,7 @@ function seedFromSnapshot(today: string, raw: string) {
   }
 }
 
-export function HotelSearch() {
+export function HotelSearch({ trial = true }: { trial?: boolean }) {
   const today = useMemo(() => parisTodayIso(), []);
   const storedDraft = useSyncExternalStore(subscribeHotelDraft, readHotelDraftSnapshot, emptyHotelDraftSnapshot);
   const seed = useMemo(() => seedFromSnapshot(today, storedDraft), [today, storedDraft]);
@@ -568,6 +568,7 @@ export function HotelSearch() {
           onBack={() => router.replace("/mon-compte/hotels")}
           others={shown.filter((item) => item.hotelKey !== openedLive.hotelKey).slice(0, 8)}
           onOpenOther={openHotel}
+          trial={trial}
         />
       ) : null}
       {openedLive ? null : <>
