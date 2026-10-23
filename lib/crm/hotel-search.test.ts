@@ -513,6 +513,14 @@ test("suggestions : catalogue ville et hôtel, fusion sans doublon", () => {
   ]);
   assert.equal(merged.filter((item) => item.label === "Paris" && item.kind === "ville").length, 1);
   assert.ok(merged.some((item) => item.label === "Rome"));
+  const london = mergePlaceSuggestions([
+    [{ label: "London", kind: "ville", detail: "" }],
+    [{ label: "Londres", kind: "ville", detail: "" }],
+    [{ label: "Hotel London", kind: "hotel", detail: "London", id: 4 }],
+  ]);
+  assert.equal(london.filter((item) => item.kind === "ville").map((item) => item.label).join(","), "Londres");
+  assert.equal(london.find((item) => item.kind === "hotel")?.label, "Hotel London");
+  assert.equal(london.find((item) => item.kind === "hotel")?.detail, "Londres");
 });
 
 test("la liste se trie et se filtre, le nom de chambre exige prénom et nom", () => {
