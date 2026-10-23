@@ -277,6 +277,22 @@
   white-space: nowrap;
 }
 .hotel-theme .h-search { background: var(--h-bg); }
+.hotel-theme .h-ask {
+  position: fixed;
+  z-index: 30;
+  top: calc(4rem + 1px);
+  right: 0;
+  left: 0;
+  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(480px, 100%);
+  margin-inline: auto;
+  padding: 1rem 1rem 2.75rem;
+  background: var(--h-bg);
+  overflow: hidden;
+}
 .hotel-theme .h-kicker {
   color: var(--h-gold);
   font-size: 11px;
@@ -335,6 +351,11 @@
 @media (min-width: 768px) {
   .hotel-theme .h-journey {
     height: 100dvh;
+  }
+  .hotel-theme .h-ask {
+    top: 7.25rem;
+    bottom: 0;
+    padding-bottom: 1rem;
   }
 }
 

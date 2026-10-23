@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelMap } from "@/components/account/HotelMap";
@@ -9,8 +9,10 @@ import { Icon } from "@/components/crm/icons";
 import { parisTodayIso } from "@/lib/crm/dates";
 import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
 import {
+  hotelSearchDraft,
   nightsBetween,
   occupancyKey,
+  parseHotelSearchDraft,
   stayPartyLabel,
   type ClientHotel,
   type HotelPerks,
@@ -30,6 +32,7 @@ type SearchEvent =
 
 type DraftRoom = { adults: number; children: (number | null)[] };
 type Panel = "where" | "when" | "who";
+const LAST_SEARCH_KEY = "hotel-search-last";
 
 const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
   { key: "breakfast", label: "Petit-déjeuner" },
@@ -108,21 +111,60 @@ function readRecent(): RecentStay[] {
   }
 }
 
+function monthCursor(iso: string) {
+  const [year, month] = iso.split("-").map(Number);
+  return { year, month: month - 1 };
+}
+
+function emptyHotelDraftSnapshot() {
+  return "";
+}
+
+function readHotelDraftSnapshot() {
+  try {
+    return localStorage.getItem(LAST_SEARCH_KEY) || sessionStorage.getItem(LAST_SEARCH_KEY) || sessionStorage.getItem("hotel-recent") || "";
+  } catch {
+    return "";
+  }
+}
+
+function subscribeHotelDraft(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+}
+
+function seedFromSnapshot(today: string, raw: string) {
+  if (!raw) return hotelSearchDraft(today, null);
+  try {
+    const value = JSON.parse(raw) as unknown;
+    const parsed = Array.isArray(value) ? parseHotelSearchDraft(value[0]) : parseHotelSearchDraft(value);
+    return hotelSearchDraft(today, parsed);
+  } catch {
+    return hotelSearchDraft(today, null);
+  }
+}
+
 export function HotelSearch() {
   const today = useMemo(() => parisTodayIso(), []);
-  const [destination, setDestination] = useState("");
-  const [city, setCity] = useState("");
-  const [target, setTarget] = useState<HotelSearchTarget | null>(null);
-  const [checkIn, setCheckIn] = useState("");
-  const [checkOut, setCheckOut] = useState("");
-  const [rooms, setRooms] = useState<DraftRoom[]>([{ adults: 2, children: [] }]);
+  const storedDraft = useSyncExternalStore(subscribeHotelDraft, readHotelDraftSnapshot, emptyHotelDraftSnapshot);
+  const seed = useMemo(() => seedFromSnapshot(today, storedDraft), [today, storedDraft]);
+  const [destinationText, setDestination] = useState<string | null>(null);
+  const [cityText, setCity] = useState<string | null>(null);
+  const [targetChoice, setTarget] = useState<HotelSearchTarget | null | undefined>(undefined);
+  const [checkInText, setCheckIn] = useState<string | null>(null);
+  const [checkOutText, setCheckOut] = useState<string | null>(null);
+  const [roomDraft, setRooms] = useState<DraftRoom[] | null>(null);
+  const destination = destinationText ?? seed.destination;
+  const city = cityText ?? seed.city;
+  const target = targetChoice === undefined ? seed.target : targetChoice;
+  const checkIn = checkInText ?? seed.checkIn;
+  const checkOut = checkOutText ?? seed.checkOut;
+  const rooms = roomDraft ?? seed.rooms.map((room) => ({ adults: room.adults, children: room.children.slice() }));
   const [remoteSuggest, setRemoteSuggest] = useState<{ key: string; items: PlaceSuggestion[] } | null>(null);
   const [sheet, setSheet] = useState(false);
-  const [panel, setPanel] = useState<Panel>("where");
-  const [cursor, setCursor] = useState(() => {
-    const [year, month] = parisTodayIso().split("-").map(Number);
-    return { year, month: month - 1 };
-  });
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const [cursorPick, setCursor] = useState<{ year: number; month: number } | null>(null);
+  const cursor = cursorPick ?? monthCursor(checkIn);
   const [hotels, setHotels] = useState<ClientHotel[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -171,6 +213,17 @@ export function HotelSearch() {
 
   const suggestAbort = useRef<AbortController | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
+  const destinationRef = useRef<HTMLInputElement>(null);
+  const focusReady = useRef(false);
+
+  useEffect(() => {
+    if (focusReady.current) return;
+    focusReady.current = true;
+    if (destinationRef.current?.value) return;
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+    if (!window.matchMedia("(min-width: 768px)").matches) return;
+    destinationRef.current?.focus({ preventScroll: true });
+  }, []);
 
   const folded = destination.trim().toLocaleLowerCase("fr");
   const suggestions = useMemo(() => {
@@ -192,7 +245,7 @@ export function HotelSearch() {
 
   useEffect(() => {
     const query = destination.trim();
-    if (!sheet || query.length < 2) return;
+    if (panel !== "where" || query.length < 2) return;
     const key = query.toLocaleLowerCase("fr");
     const timer = setTimeout(() => {
       suggestAbort.current?.abort();
@@ -208,7 +261,16 @@ export function HotelSearch() {
         .catch(() => {});
     }, 100);
     return () => clearTimeout(timer);
-  }, [destination, sheet]);
+  }, [destination, panel]);
+
+  useEffect(() => {
+    if (sheet || searched || openedLive) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [sheet, searched, openedLive]);
 
   useEffect(() => {
     if (!sheet) return;
@@ -260,14 +322,16 @@ export function HotelSearch() {
   }
 
   function shiftMonth(delta: number) {
-    setCursor((current) => {
-      const date = new Date(Date.UTC(current.year, current.month + delta, 1));
-      return { year: date.getUTCFullYear(), month: date.getUTCMonth() };
-    });
+    const date = new Date(Date.UTC(cursor.year, cursor.month + delta, 1));
+    setCursor({ year: date.getUTCFullYear(), month: date.getUTCMonth() });
   }
 
   function updateRoom(index: number, next: DraftRoom) {
-    setRooms((current) => current.map((room, at) => (at === index ? next : room)));
+    setRooms(rooms.map((room, at) => (at === index ? next : room)));
+  }
+
+  function resizeRooms(count: number) {
+    setRooms(count > rooms.length ? [...rooms, { adults: 1, children: [] }] : rooms.slice(0, count));
   }
 
   async function onSearch() {
@@ -305,6 +369,9 @@ export function HotelSearch() {
       };
       const nextRecent = [entry, ...readRecent().filter((row) => row.destination !== entry.destination || row.checkIn !== entry.checkIn)].slice(0, 4);
       sessionStorage.setItem("hotel-recent", JSON.stringify(nextRecent));
+      const stored = JSON.stringify(entry);
+      sessionStorage.setItem(LAST_SEARCH_KEY, stored);
+      localStorage.setItem(LAST_SEARCH_KEY, stored);
       setRecent(nextRecent);
     } catch {
       /* la session du navigateur peut refuser l’écriture */
@@ -411,16 +478,166 @@ export function HotelSearch() {
           <span className="mt-0.5 block text-xs h-muted">{[summaryDates, nightLabel, party].filter(Boolean).join(" · ")}</span>
         </button>
       ) : (
-        <button type="button" onClick={() => openSheet("where")} className="h-field flex w-full items-center gap-3 px-4 py-4 text-left">
-          <Icon name="search" className="h-4 w-4 h-gold" />
-          <span>
-            <span className="block text-base font-medium h-ink">Où souhaitez-vous séjourner ?</span>
-            <span className="block text-xs h-muted">Destination ou hôtel</span>
-          </span>
-        </button>
+        <form
+          className="h-ask"
+          data-hotel-ask="1"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onSearch();
+          }}
+        >
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+            <label className="block">
+              <span className="h-kicker">Destination</span>
+              <span className="h-field mt-1 flex min-h-11 items-center gap-3 px-4">
+                <Icon name="search" className="h-4 w-4 shrink-0 h-gold" />
+                <input
+                  ref={destinationRef}
+                  value={destination}
+                  data-hotel-destination="1"
+                  onChange={(event) => {
+                    setDestination(event.target.value);
+                    setTarget(null);
+                    setCity("");
+                    setPanel("where");
+                  }}
+                  onFocus={() => setPanel("where")}
+                  className="min-h-11 w-full bg-transparent text-base h-ink outline-none"
+                  placeholder="Ville ou nom d’hôtel"
+                  autoComplete="off"
+                  enterKeyHint="search"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-label="Destination ou hôtel"
+                  aria-expanded={panel === "where" && (destinations.length > 0 || hotelNames.length > 0)}
+                  aria-controls="hotel-suggest-list"
+                />
+              </span>
+            </label>
+            {panel === "where" && (destinations.length > 0 || hotelNames.length > 0) ? (
+              <div id="hotel-suggest-list" role="listbox" className="h-card h-line border py-1">
+                <SuggestGroup title="Destinations" items={destinations} onPick={pickPlace} />
+                <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
+              </div>
+            ) : null}
+            <button
+              type="button"
+              data-hotel-dates="1"
+              onClick={() => setPanel(panel === "when" ? null : "when")}
+              className="h-field h-press min-h-11 w-full px-4 py-2 text-left"
+            >
+              <span className="h-kicker">Vos dates</span>
+              <span className="mt-0.5 block text-base font-medium h-ink">{nightLabel ? `${summaryDates} · ${nightLabel}` : summaryDates}</span>
+            </button>
+            {panel === "when" ? (
+              <div className="h-card h-line border p-3">
+                <div className="flex items-center justify-between">
+                  <button type="button" aria-label="Mois précédent" onClick={() => shiftMonth(-1)} className="grid h-11 w-11 place-items-center h-ink">
+                    <Icon name="chevron_left" className="h-5 w-5" />
+                  </button>
+                  <p className="text-base font-semibold h-ink">{monthTitle(cursor.year, cursor.month)}</p>
+                  <button type="button" aria-label="Mois suivant" onClick={() => shiftMonth(1)} className="grid h-11 w-11 place-items-center h-ink">
+                    <Icon name="chevron_right" className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="mt-2 grid grid-cols-7 text-center text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">
+                  {WEEKDAYS.map((day, index) => (
+                    <span key={`${day}-${index}`}>{day}</span>
+                  ))}
+                </div>
+                <div className="mt-1 grid grid-cols-7">
+                  {monthCells(cursor.year, cursor.month).map((iso, index) => {
+                    if (!iso) return <span key={`empty-${index}`} />;
+                    const endpoint = iso === checkIn || iso === checkOut;
+                    const inside = Boolean(checkIn && checkOut && iso > checkIn && iso < checkOut);
+                    const past = iso < today;
+                    return (
+                      <button
+                        key={iso}
+                        type="button"
+                        data-date={iso}
+                        disabled={past}
+                        onClick={() => pickDay(iso)}
+                        className={`grid h-11 place-items-center text-sm ${
+                          endpoint ? "h-day-on" : inside ? "h-range" : past ? "h-faint" : "h-ink"
+                        }`}
+                      >
+                        {Number(iso.slice(-2))}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              data-hotel-party="1"
+              onClick={() => setPanel(panel === "who" ? null : "who")}
+              className="h-field h-press min-h-11 w-full px-4 py-2 text-left"
+            >
+              <span className="h-kicker">Chambres et voyageurs</span>
+              <span className="mt-0.5 block text-base font-medium h-ink">{party}</span>
+            </button>
+            {panel === "who" ? (
+              <div className="h-card h-line space-y-3 border p-4">
+                <Stepper
+                  label="Chambres"
+                  value={rooms.length}
+                  min={1}
+                  max={4}
+                  onChange={resizeRooms}
+                />
+                {rooms.map((room, index) => (
+                  <div key={index} className="space-y-3 border-t border-[#e5e3dc] pt-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">Chambre {index + 1}</p>
+                    <Stepper label="Adultes" value={room.adults} min={1} max={6} onChange={(adults) => updateRoom(index, { ...room, adults })} />
+                    <Stepper
+                      label="Enfants"
+                      value={room.children.length}
+                      min={0}
+                      max={4}
+                      onChange={(count) =>
+                        updateRoom(index, {
+                          ...room,
+                          children: count > room.children.length ? [...room.children, null] : room.children.slice(0, count),
+                        })
+                      }
+                    />
+                    {room.children.map((age, childIndex) => (
+                      <label key={childIndex} className="flex min-h-11 items-center justify-between gap-3 text-sm h-ink">
+                        <span>Âge, enfant {childIndex + 1}</span>
+                        <select
+                          value={age ?? ""}
+                          aria-label={`Âge, enfant ${childIndex + 1}, chambre ${index + 1}`}
+                          onChange={(event) => {
+                            const next = room.children.slice();
+                            next[childIndex] = Number(event.target.value);
+                            updateRoom(index, { ...room, children: next });
+                          }}
+                          className="h-field min-h-11 px-3 py-2 text-base h-ink"
+                        >
+                          <option value="">Âge</option>
+                          {Array.from({ length: 18 }, (_, value) => (
+                            <option key={value} value={value}>
+                              {value === 0 ? "Moins d’un an" : `${value} ans`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {note ? <p className="text-sm h-gold">{note}</p> : null}
+          </div>
+          <button type="submit" data-hotel-search-cta="1" className="h-btn h-press mt-3 flex h-12 w-full shrink-0 items-center justify-center text-sm font-semibold">
+            Rechercher
+          </button>
+        </form>
       )}
 
-      {note && !sheet ? <p className="text-sm h-gold">{note}</p> : null}
+      {searched && note && !sheet ? <p className="text-sm h-gold">{note}</p> : null}
       {searching ? (
         <div className="text-[var(--admin-navy)]">
           <BusyBar label="Nous préparons les tarifs" />
@@ -618,12 +835,7 @@ export function HotelSearch() {
                   value={rooms.length}
                   min={1}
                   max={4}
-                  onChange={(count) =>
-                    setRooms((current) => {
-                      if (count > current.length) return [...current, { adults: 1, children: [] }];
-                      return current.slice(0, count);
-                    })
-                  }
+                  onChange={resizeRooms}
                 />
                 {rooms.map((room, index) => (
                   <div key={index} className="space-y-3 border-t border-[#e5e3dc] pt-3">
@@ -680,7 +892,7 @@ export function HotelSearch() {
           </div>
           <footer className="border-t h-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <button type="button" onClick={() => void onSearch()} className="h-btn h-press flex h-12 w-full items-center justify-center text-sm font-semibold">
-              Voir les hôtels
+              Rechercher
             </button>
           </footer>
         </div>

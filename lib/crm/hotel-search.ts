@@ -1,6 +1,6 @@
 import { priceAccommodation } from "./concierge-pricing";
 import { foldHotelLabel } from "./hotel-catalog";
-import { isValidIsoDate } from "./dates";
+import { addIsoDays, isValidIsoDate } from "./dates";
 import { frenchCancellation, frenchCity, frenchHotelLine, frenchHotelProse } from "./hotel-fr";
 import { frenchLeBenefitLine } from "./ingest-parse";
 import { amountToCents } from "./money";
@@ -340,6 +340,96 @@ export function nightsBetween(checkIn: string, checkOut: string) {
   const end = Date.parse(`${checkOut}T12:00:00Z`);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
   return Math.round((end - start) / 86_400_000);
+}
+
+/** Vendredi le plus proche, au moins quatorze jours après aujourd’hui, pour deux nuits. */
+export function defaultHotelStay(today: string) {
+  const earliest = addIsoDays(today, 14);
+  const dow = new Date(`${earliest}T00:00:00Z`).getUTCDay();
+  const checkIn = addIsoDays(earliest, (5 - dow + 7) % 7);
+  return { checkIn, checkOut: addIsoDays(checkIn, 2) };
+}
+
+export type HotelSearchDraftRoom = { adults: number; children: number[] };
+
+export type HotelSearchDraft = {
+  destination: string;
+  city: string;
+  checkIn: string;
+  checkOut: string;
+  rooms: HotelSearchDraftRoom[];
+  target: HotelSearchTarget | null;
+};
+
+const DEFAULT_DRAFT_ROOMS: HotelSearchDraftRoom[] = [{ adults: 2, children: [] }];
+
+function draftTarget(value: unknown): HotelSearchTarget | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as { kind?: unknown; id?: unknown };
+  const id = typeof row.id === "number" ? row.id : Number(row.id);
+  if ((row.kind !== "ville" && row.kind !== "hotel") || !Number.isInteger(id) || id <= 0) return null;
+  return { kind: row.kind, id };
+}
+
+function draftRooms(value: unknown): HotelSearchDraftRoom[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 4) return null;
+  const rooms: HotelSearchDraftRoom[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") return null;
+    const adults = Number((row as { adults?: unknown }).adults);
+    if (!Number.isInteger(adults) || adults < 1 || adults > 6) return null;
+    const rawChildren = (row as { children?: unknown }).children;
+    if (!Array.isArray(rawChildren) || rawChildren.length > 4) return null;
+    const children: number[] = [];
+    for (const child of rawChildren) {
+      const age = typeof child === "number" ? child : Number((child as { age?: unknown })?.age);
+      if (!Number.isInteger(age) || age < 0 || age > 17) return null;
+      children.push(age);
+    }
+    rooms.push({ adults, children });
+  }
+  return rooms;
+}
+
+/** Relit la dernière recherche enregistrée sur l’appareil. Les dates passées ne sont pas reprises. */
+export function parseHotelSearchDraft(value: unknown): HotelSearchDraft | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.destination !== "string" || typeof row.checkIn !== "string" || typeof row.checkOut !== "string") return null;
+  const checkIn = row.checkIn.slice(0, 10);
+  const checkOut = row.checkOut.slice(0, 10);
+  if (!isValidIsoDate(checkIn) || !isValidIsoDate(checkOut)) return null;
+  return {
+    destination: row.destination,
+    city: typeof row.city === "string" ? row.city : "",
+    checkIn,
+    checkOut,
+    rooms: draftRooms(row.rooms) ?? DEFAULT_DRAFT_ROOMS.map((room) => ({ ...room, children: [] })),
+    target: draftTarget(row.target),
+  };
+}
+
+export function hotelSearchDraft(today: string, saved: HotelSearchDraft | null): HotelSearchDraft {
+  const dates = defaultHotelStay(today);
+  const blank: HotelSearchDraft = {
+    destination: "",
+    city: "",
+    checkIn: dates.checkIn,
+    checkOut: dates.checkOut,
+    rooms: DEFAULT_DRAFT_ROOMS.map((room) => ({ ...room, children: [] })),
+    target: null,
+  };
+  if (!saved) return blank;
+  const nights = nightsBetween(saved.checkIn, saved.checkOut);
+  const datesOk = saved.checkIn >= today && nights >= 1 && nights <= 30;
+  return {
+    destination: saved.destination.replace(/\s+/g, " ").trim().slice(0, 80),
+    city: saved.city.replace(/\s+/g, " ").trim().slice(0, 80),
+    checkIn: datesOk ? saved.checkIn : dates.checkIn,
+    checkOut: datesOk ? saved.checkOut : dates.checkOut,
+    rooms: saved.rooms.length ? saved.rooms : blank.rooms,
+    target: saved.target,
+  };
 }
 
 export function perNightCents(sellCents: number, nights: number) {

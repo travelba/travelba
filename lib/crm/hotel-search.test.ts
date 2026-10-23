@@ -8,11 +8,15 @@ import {
   HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID,
   HOTEL_SEARCH_BENJAMIN_USER_ID,
   clearHotelSearchCache,
+  defaultHotelStay,
   hotelSearchAllowed,
   hotelSearchCacheKey,
+  hotelSearchDraft,
   mergeOffers,
   offerBeats,
   mergePlaceSuggestions,
+  nightsBetween,
+  parseHotelSearchDraft,
   parseHotelSearchQuery,
   priceStayOffer,
   streamHotelSearch,
@@ -640,9 +644,65 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(journey, /collapseRooms/);
   assert.match(readFileSync(join(root, "app/api/client/hotels/fiche/route.ts"), "utf8"), /collapseRooms/);
   assert.match(ui, /Où souhaitez-vous séjourner/);
+  assert.match(ui, /data-hotel-ask/);
+  assert.match(ui, /data-hotel-destination/);
+  assert.match(ui, /data-hotel-dates/);
+  assert.match(ui, /data-hotel-party/);
+  assert.match(ui, /data-hotel-search-cta/);
+  assert.match(ui, />\s*Rechercher\s*</);
+  assert.match(ui, /Ville ou nom d’hôtel/);
+  assert.match(ui, /hotel-search-last/);
+  assert.match(ui, /pointer: coarse/);
+  assert.doesNotMatch(ui, /autoFocus/);
+  assert.match(css, /\.h-ask \{/);
+  assert.match(css, /padding: 1rem 1rem 2\.75rem/);
   assert.match(css, /hotel-step/);
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.doesNotMatch(journey, /bg-gradient|rounded-full|commission/i);
+});
+
+test("le formulaire propose un vendredi, deux nuits, au moins quatorze jours plus tard", () => {
+  const friday = defaultHotelStay("2026-10-23");
+  assert.equal(friday.checkIn, "2026-11-06");
+  assert.equal(friday.checkOut, "2026-11-08");
+  assert.equal(nightsBetween(friday.checkIn, friday.checkOut), 2);
+  assert.equal(new Date(`${friday.checkIn}T00:00:00Z`).getUTCDay(), 5);
+  const saturday = defaultHotelStay("2026-10-24");
+  assert.equal(saturday.checkIn, "2026-11-13");
+  assert.equal(saturday.checkOut, "2026-11-15");
+  assert.ok(saturday.checkIn >= "2026-11-07");
+
+  const fresh = hotelSearchDraft("2026-10-23", null);
+  assert.equal(fresh.destination, "");
+  assert.equal(fresh.checkIn, "2026-11-06");
+  assert.deepEqual(fresh.rooms, [{ adults: 2, children: [] }]);
+
+  const kept = hotelSearchDraft("2026-10-23", {
+    destination: "Ritz Paris",
+    city: "Paris",
+    checkIn: "2026-12-01",
+    checkOut: "2026-12-04",
+    rooms: [{ adults: 1, children: [4] }],
+    target: { kind: "hotel", id: 12 },
+  });
+  assert.equal(kept.destination, "Ritz Paris");
+  assert.equal(kept.checkIn, "2026-12-01");
+  assert.equal(kept.rooms[0]?.adults, 1);
+
+  const expired = hotelSearchDraft("2026-10-23", {
+    destination: "Paris",
+    city: "",
+    checkIn: "2026-10-01",
+    checkOut: "2026-10-03",
+    rooms: [{ adults: 2, children: [] }],
+    target: { kind: "ville", id: 3 },
+  });
+  assert.equal(expired.destination, "Paris");
+  assert.equal(expired.checkIn, "2026-11-06");
+  assert.equal(expired.target?.id, 3);
+
+  assert.equal(parseHotelSearchDraft({ destination: "Paris" }), null);
+  assert.equal(parseHotelSearchDraft(null), null);
 });
 
 test("un délai du fournisseur n’est pas une liste vide", async () => {
