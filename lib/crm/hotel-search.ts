@@ -804,13 +804,16 @@ export function mergePlaceSuggestions(lists: PlaceSuggestion[][], limit = 16): P
   const out: PlaceSuggestion[] = [];
   for (const list of lists) {
     for (const item of list) {
-      const label = item.label.replace(/\s+/g, " ").trim();
-      if (!label) continue;
-      const key = `${item.kind}|${foldHotelLabel(label)}|${foldHotelLabel(item.detail)}`;
+      const raw = item.label.replace(/\s+/g, " ").trim();
+      if (!raw) continue;
+      const label = item.kind === "ville" ? frenchCity(raw) : raw;
+      const detailRaw = item.detail.replace(/\s+/g, " ").trim();
+      const detail = item.kind === "hotel" ? frenchCity(detailRaw) : detailRaw;
+      const key = `${item.kind}|${foldHotelLabel(label)}|${foldHotelLabel(detail)}`;
       const next: PlaceSuggestion = {
         label,
         kind: item.kind,
-        detail: item.detail.replace(/\s+/g, " ").trim(),
+        detail,
         id: suggestionId(item.id),
       };
       const at = seen.get(key);

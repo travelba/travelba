@@ -21,6 +21,7 @@ import {
   type HotelSearchTarget,
   type PlaceSuggestion,
 } from "@/lib/crm/hotel-search";
+import { frenchCity } from "@/lib/crm/hotel-fr";
 import { formatDateRangeShort, formatMoney } from "@/lib/crm/money";
 import { siteConfig } from "@/lib/site";
 
@@ -127,7 +128,8 @@ type RecentStay = {
 
 function recentKey(row: RecentStay) {
   const shifted = shiftStayForward(parisTodayIso(), row.checkIn, row.checkOut);
-  return `${row.destination.trim().toLocaleLowerCase("fr")}|${row.target?.kind || ""}|${row.target?.id || ""}|${shifted.checkIn}|${shifted.checkOut}|${row.party}`;
+  const destination = frenchCity(row.destination.trim());
+  return `${destination.toLocaleLowerCase("fr")}|${row.target?.kind || ""}|${row.target?.id || ""}|${shifted.checkIn}|${shifted.checkOut}|${row.party}`;
 }
 
 const EMPTY_RECENT = "[]";
@@ -631,7 +633,7 @@ export function HotelSearch() {
                       >
                         <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
                         <span className="min-w-0">
-                          <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{item.destination}</span>
+                          <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{frenchCity(item.destination)}</span>
                           <span className="block truncate text-xs h-muted">
                             {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
                           </span>
@@ -890,7 +892,7 @@ export function HotelSearch() {
                       >
                         <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold h-ink">{item.destination}</span>
+                          <span className="block truncate text-sm font-semibold h-ink">{frenchCity(item.destination)}</span>
                           <span className="block truncate text-xs h-muted">
                             {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
                           </span>
