@@ -109,7 +109,10 @@ test("surface, couchage et vue viennent des champs, jamais la commission", () =>
     {
       hotel_name: "Lapita",
       is_available: true,
-      hotel_info: { location: "Dubai, United Arab Emirates" },
+      hotel_info: {
+        location: "Dubai, United Arab Emirates",
+        images: [{ url: "https://cdn.example/facade.jpg" }],
+      },
       room_types: [
         {
           name: "Deluxe Guest Room, River View, King",
@@ -140,6 +143,7 @@ test("surface, couchage et vue viennent des champs, jamais la commission", () =>
   assert.match(offers[0]?.roomOutlook || "", /vue fleuve/);
   assert.match(offers[0]?.roomOutlook || "", /balcon/);
   assert.equal(offers[0]?.images?.[0], "https://cdn.example/room.jpg");
+  assert.equal(offers[0]?.photoUrl, "https://cdn.example/facade.jpg");
   assert.equal(offers[0]?.net, null);
   assert.equal(offers[0]?.hotelCommission, null);
   assert.equal(offers[0]?.commissionable, false);

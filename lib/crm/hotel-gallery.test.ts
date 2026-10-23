@@ -12,6 +12,7 @@ import {
   benefitLine,
   catalogNameAgrees,
   pickLeStay,
+  orderedGalleryUrls,
   presentationFromLeHotel,
   roomCaptionMatches,
   roomsFromStay,
@@ -354,6 +355,28 @@ describe("carte hôtel", () => {
     });
     assert.equal(hotelPhotos(again[0])[0]?.caption, "Deluxe Marina Bay King");
     assert.equal(hotelPhotos(again[0]).length, 5);
+  });
+});
+
+describe("galerie client", () => {
+  it("met la façade et le hall avant la piscine, sans doublon", () => {
+    const urls = orderedGalleryUrls({
+      images_gallery: [
+        photo("indoor", "Ritz Club & Spa - Indoor Pool"),
+        photo("pool", "Swimming Pool"),
+        photo("restaurant", "Restaurant"),
+        photo("winter", "Jardin d'Hiver"),
+        photo("garden", "Garden"),
+        photo("lobby", "Lobby"),
+        photo("facade", "Exterior"),
+        photo("facade-again", "Exterior"),
+        photo("suite", "Suite Vendome"),
+      ],
+    });
+    assert.deepEqual(
+      urls.map((url) => url.split("/").pop()),
+      ["facade.jpg", "facade-again.jpg", "lobby.jpg", "garden.jpg", "winter.jpg", "indoor.jpg", "pool.jpg", "restaurant.jpg", "suite.jpg"]
+    );
   });
 });
 
