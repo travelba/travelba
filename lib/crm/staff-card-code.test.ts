@@ -32,6 +32,7 @@ test("le code maître agence est une empreinte", () => {
   assert.equal(AGENCY_MASTER_CODE_HASH.startsWith("scrypt$"), true);
   assert.equal(AGENCY_MASTER_CODE_HASH.toLowerCase().includes("travel"), false);
   assert.equal(staffCardCodeMatches("0000", AGENCY_MASTER_CODE_HASH), false);
+  assert.equal(staffCardCodeMatches("", AGENCY_MASTER_CODE_HASH), false);
 });
 
 test("un code inconnu ne s'ouvre pas, un premier code s'enregistre", () => {
