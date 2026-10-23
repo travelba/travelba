@@ -575,7 +575,12 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(chrome, /label: "Mon compte"/);
   const night = readFileSync(join(root, "components/account/AccountNightTabs.tsx"), "utf8");
   assert.match(night, /account-tabbar-night/);
+  assert.match(night, /strokeWidth="2"/);
+  assert.match(night, /width="26"/);
+  assert.match(night, /fillRule="evenodd"/);
+  assert.match(night, /text-\[10px\]/);
   assert.doesNotMatch(night, /rounded-full/);
+  assert.doesNotMatch(night, /gradient/);
   const ui = readFileSync(join(root, "components/account/HotelSearch.tsx"), "utf8");
   assert.doesNotMatch(ui, /little emperors|expedia|ratehawk|amadeus|\btaap\b/i);
   assert.match(ui, /data-t-client/);
@@ -593,6 +598,10 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   const themes = readFileSync(join(root, "lib/crm/hotel-journey.ts"), "utf8");
   assert.doesNotMatch(themes, /label: "Mix"|HotelThemeId/);
   const css = readFileSync(join(root, "app/globals.css"), "utf8");
+  const nightRule = css.indexOf(".account-tabbar.account-tabbar-night");
+  assert.ok(nightRule > css.indexOf(".account-tabbar {"));
+  assert.match(css.slice(nightRule), /#e6c36a/);
+  assert.match(css.slice(nightRule), /#f6e2b3/);
   assert.doesNotMatch(css, /data-hotel-theme="b"|data-hotel-theme="c"|data-hotel-theme="d"/);
   const supplier = readFileSync(join(root, "lib/crm/little-emperors-search.ts"), "utf8");
   assert.match(supplier, /SEARCH_TIMEOUT_MS = 25_000/);
