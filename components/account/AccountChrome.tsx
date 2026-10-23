@@ -170,7 +170,7 @@ export function AccountChrome({
         </div>
       </div>
 
-      <main className="mx-auto max-w-[480px] px-4 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 md:pb-28">
+      <main className={`mx-auto max-w-[480px] px-4 pt-4 sm:px-5 md:pb-28 ${hotels ? "pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]" : "pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]"}`}>
         {desk && !preview ? (
           <div
             role="status"
