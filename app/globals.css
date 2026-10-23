@@ -338,20 +338,6 @@
   }
 }
 
-.account-tabbar-night {
-  border-top: 1px solid rgba(197, 168, 128, 0.35);
-  background: #0b192c;
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-.account-tabbar-night a {
-  color: #9a7b4f;
-}
-.account-tabbar-night a[aria-current="page"] {
-  color: #c5a880;
-}
-
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(*),
   ::view-transition-new(*),
@@ -383,6 +369,24 @@
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   box-shadow: 0 -4px 16px rgba(11, 25, 44, 0.08);
+}
+
+/* Après .account-tabbar : même spécificité, ce bloc gagne le fond marine et l’or. */
+.account-tabbar.account-tabbar-night {
+  border-top: 1px solid rgba(230, 195, 106, 0.45);
+  background: #0b192c;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.account-tabbar.account-tabbar-night a {
+  color: #e6c36a;
+}
+.account-tabbar.account-tabbar-night a[aria-current="page"] {
+  color: #f6e2b3;
+}
+.account-tabbar.account-tabbar-night a[aria-current="page"] .account-tab-label {
+  color: #ffffff;
 }
 
 .account-app .aura-card {
