@@ -48,8 +48,8 @@ export function AccountNightTabs({
               aria-current={tab.active ? "page" : undefined}
               className="account-press account-hotel-tab relative flex h-14 min-h-11 min-w-11 flex-1 flex-col items-center"
             >
-              <span className="account-hotel-fab absolute left-1/2 top-1 flex -translate-x-1/2 items-center justify-center rounded-full">
-                <Mark name="hotel" filled size={22} />
+              <span className="account-hotel-fab absolute left-1/2 top-[-1.75rem] flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-[#C5A880] text-[#1a1a1a] shadow-[0_10px_22px_rgba(197,168,128,0.48)]">
+                <Mark name="hotel" filled size={28} />
               </span>
               <span className="account-tab-label absolute inset-x-0 top-8 text-center text-[10px] font-semibold leading-none">
                 {tab.label}

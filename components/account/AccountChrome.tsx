@@ -134,20 +134,29 @@ export function AccountChrome({
         </header>
         <div className="mx-auto hidden max-w-[480px] items-center gap-5 px-4 pb-3 sm:px-6 md:flex">
           <nav className={`flex min-w-0 items-center overflow-x-auto ${hotels ? "gap-3" : "gap-5"}`} aria-label="Sections">
-            {tabs.map((tab) => {
+            {(hotels
+              ? [...tabs].sort((a, b) => ["home", "stay", "hotel", "ledger", "account"].indexOf(a.night) - ["home", "stay", "hotel", "ledger", "account"].indexOf(b.night))
+              : tabs
+            ).map((tab) => {
               const active = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
+              const featured = hotels && tab.night === "hotel";
               return (
                 <Link
                   key={tab.href}
                   href={tab.href}
                   transitionTypes={[accountTabDirection(pathname, tab.href, basePath)]}
                   aria-current={active ? "page" : undefined}
-                  className={`account-press relative pb-1 text-sm tracking-wide ${
-                    active ? "font-bold text-[var(--admin-navy)]" : "font-medium text-[#5a5c60] hover:text-[var(--admin-navy)]"
-                  }`}
+                  className={
+                    featured
+                      ? "account-hotel-desk account-press"
+                      : `account-press relative pb-1 text-sm tracking-wide ${
+                          active ? "font-bold text-[var(--admin-navy)]" : "font-medium text-[#5a5c60] hover:text-[var(--admin-navy)]"
+                        }`
+                  }
                 >
+                  {featured ? <Icon name="hotel" className="h-4 w-4" /> : null}
                   {tab.label}
-                  {active ? (
+                  {active && !featured ? (
                     <span
                       aria-hidden
                       className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--admin-gold)]"
@@ -170,7 +179,7 @@ export function AccountChrome({
         </div>
       </div>
 
-      <main className={`mx-auto max-w-[480px] px-4 pt-4 sm:px-5 md:pb-28 ${hotels ? "pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]" : "pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]"}`}>
+      <main className={`mx-auto max-w-[480px] px-4 pt-4 sm:px-5 md:pb-28 ${hotels ? "pb-[calc(6.75rem+env(safe-area-inset-bottom,0px))]" : "pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]"}`}>
         {desk && !preview ? (
           <div
             role="status"

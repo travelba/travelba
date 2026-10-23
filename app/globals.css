@@ -496,15 +496,34 @@
   color: #f6f1e7;
 }
 .account-tabbar.account-tabbar-night .account-hotel-fab {
-  background: transparent;
-  color: #c5a880;
-  box-shadow: none;
+  background: #c5a880;
+  color: #1a1a1a;
+  box-shadow: 0 10px 22px rgba(197, 168, 128, 0.48);
+}
+.account-tabbar.account-tabbar-night .account-hotel-tab[aria-current="page"] .account-hotel-fab {
+  box-shadow: 0 0 0 3px #f6f1e7, 0 10px 22px rgba(197, 168, 128, 0.48);
 }
 .account-tabbar.account-tabbar-night .account-hotel-tab[aria-current="page"] .account-tab-label {
   color: #f6f1e7;
 }
 .account-tabbar.account-tabbar-night a:active {
   opacity: 0.82;
+}
+.account-hotel-desk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  background: #c5a880;
+  color: #1a1a1a;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 8px 16px rgba(197, 168, 128, 0.45);
+}
+.account-hotel-desk[aria-current="page"] {
+  box-shadow: 0 0 0 3px #1a1a1a, 0 8px 16px rgba(197, 168, 128, 0.45);
 }
 
 .account-app .aura-card {
