@@ -508,10 +508,10 @@ export function HotelSearch() {
           type="button"
           data-hotel-summary="1"
           onClick={() => openSheet("where")}
-          className="h-field h-summary sticky top-16 z-30 -mx-4 w-[calc(100%+2rem)] bg-white px-4 py-3 text-left"
+          className="h-recap sticky top-16 z-30 w-full text-left"
         >
-          <span className="block text-base font-semibold h-ink">{destination}</span>
-          <span className="mt-0.5 block text-xs h-muted">{[summaryDates, nightLabel, party].filter(Boolean).join(" · ")}</span>
+          <span className="h-serif block text-[1.15rem] font-semibold leading-tight h-ink">{destination}</span>
+          <span className="mt-1 block text-sm h-muted">{[summaryDates, nightLabel, party].filter(Boolean).join(" · ")}</span>
         </button>
       ) : (
         <form
@@ -523,6 +523,7 @@ export function HotelSearch() {
           }}
         >
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+            <p className="h-serif px-1 text-[1.35rem] font-semibold h-ink">Hôtels</p>
             <label className="block">
               <span className="h-field flex min-h-14 items-center gap-3 px-1">
                 <Icon name="search" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
@@ -587,7 +588,7 @@ export function HotelSearch() {
                         setTarget(null);
                         setPanel(null);
                       }}
-                      className="h-serif h-press min-h-11 shrink-0 snap-start px-1 text-[1.65rem] h-ink"
+                      className="h-press min-h-11 shrink-0 snap-start rounded-full bg-white px-4 text-sm font-semibold h-ink"
                     >
                       {place}
                     </button>
@@ -712,7 +713,7 @@ export function HotelSearch() {
               </div>
             ) : null}
             {note ? <p className="text-sm h-gold">{note}</p> : null}
-            <div className="sticky bottom-0 bg-[#f3efe6] pb-1 pt-4">
+            <div className="sticky bottom-0 bg-[#f4efe6] pb-1 pt-4">
               <button type="submit" data-hotel-search-cta="1" className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold">
                 Rechercher
               </button>
@@ -1089,7 +1090,7 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
           )}
         </div>
         <div className="space-y-1 px-4 pb-8 pt-3">
-          <h3 className="h-serif text-[1.85rem] font-medium leading-tight h-ink">{hotel.name}</h3>
+          <h3 className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{hotel.name}</h3>
           {hotel.city ? <p className="text-[15px] h-muted">{hotel.city}</p> : null}
           {perk ? <p className="pt-1 text-[12px] text-[#9a7b4f]">{perk}</p> : null}
           <p className="pt-2 text-lg font-medium h-ink">
