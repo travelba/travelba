@@ -1,8 +1,8 @@
 export type AccountMotion = "nav-forward" | "nav-back" | "nav-fade";
 
-const TAB_SUFFIXES = ["", "/hotels", "/reservations", "/transactions", "/profil"] as const;
+const TAB_SUFFIXES = ["", "/reservations", "/hotels", "/transactions", "/profil"] as const;
 
-/** Index de l’onglet (Accueil → Hôtels → Réservations → Transactions → Mon compte). -1 si hors espace. */
+/** Index de l’onglet (Accueil → Réservations → Hôtels → Transactions → Mon compte). -1 si hors espace. */
 export function accountTabIndex(pathname: string, basePath: string) {
   const path = (pathname.split("?")[0] || "/").replace(/\/$/, "") || "/";
   const base = basePath.replace(/\/$/, "") || "/";

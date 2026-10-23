@@ -316,7 +316,7 @@ function Dock({
 }) {
   return (
     <div className="h-dock shrink-0" data-hotel-dock="1">
-      <div className={`px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] ${price ? "flex items-center justify-between gap-3" : ""}`}>
+      <div className={`px-4 pt-2 pb-9 md:pb-[max(0.5rem,env(safe-area-inset-bottom))] ${price ? "flex items-center justify-between gap-3" : ""}`}>
         {price ? (
           <div className="min-w-0">
             <p className="h-kicker">{label}</p>
