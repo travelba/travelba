@@ -1,0 +1,410 @@
+@import "tailwindcss";
+
+@theme {
+  --color-marine: #0b192c;
+  --color-marine-soft: #12263c;
+  --color-lagoon: #1b3a56;
+  --color-champagne: #c5a880;
+  --color-champagne-bright: #e7d5b4;
+  --color-ivory: #f6f1e8;
+  --color-sand: #d9cbb8;
+  --color-ink: #14120f;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 480px at 10% -10%, rgba(197, 168, 128, 0.18), transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, rgba(27, 58, 86, 0.65), transparent 50%),
+    var(--color-marine);
+  color: var(--color-ivory);
+}
+
+.font-display {
+  font-family: var(--font-serif), "Times New Roman", serif;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--color-champagne);
+  outline-offset: 3px;
+}
+
+.kiosk-screen {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 2rem 1.25rem 2.5rem;
+  text-align: center;
+}
+
+.kiosk-start {
+  display: flex;
+  width: min(920px, 100%);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.kiosk-cta,
+.kiosk-next,
+.kiosk-back {
+  min-height: 4.25rem;
+  border-radius: 999px;
+  padding: 0.9rem 1.6rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.kiosk-cta,
+.kiosk-next {
+  border: 0;
+  background: var(--color-champagne);
+  color: var(--color-ink);
+}
+
+.kiosk-cta {
+  margin-top: 0.6rem;
+  animation: kiosk-pulse 2.6s ease-in-out infinite;
+}
+
+.kiosk-back {
+  border: 2px solid color-mix(in srgb, var(--color-champagne) 55%, transparent);
+  background: transparent;
+  color: var(--color-champagne-bright);
+}
+
+@keyframes kiosk-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+.kiosk-formulas {
+  display: grid;
+  width: min(1100px, 100%);
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kiosk-formula {
+  display: flex;
+  min-height: 16rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  border-radius: 1.4rem;
+  border: 2px solid color-mix(in srgb, var(--color-champagne) 35%, transparent);
+  background: color-mix(in srgb, var(--color-marine-soft) 90%, transparent);
+  padding: 1.3rem;
+  text-align: left;
+  color: inherit;
+}
+
+.kiosk-formula strong {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  line-height: 0.95;
+}
+
+.kiosk {
+  display: grid;
+  height: 100dvh;
+  grid-template-columns: 5.4rem minmax(0, 1fr) 23rem;
+  grid-template-areas: "days stage ticket";
+  overflow: hidden;
+}
+
+.kiosk-days {
+  grid-area: days;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow: auto;
+  border-right: 1px solid color-mix(in srgb, var(--color-champagne) 22%, transparent);
+  padding: 0.7rem 0.45rem;
+  background: rgba(8, 18, 32, 0.55);
+}
+
+.kiosk-day {
+  min-height: 3.4rem;
+  flex: 0 0 auto;
+  border-radius: 0.9rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-sand);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.kiosk-day[aria-current="step"] {
+  border-color: var(--color-champagne);
+  background: var(--color-champagne);
+  color: var(--color-ink);
+}
+
+.kiosk-stage {
+  grid-area: stage;
+  overflow: auto;
+  padding: 1.25rem 1.25rem 2rem;
+}
+
+.kiosk-section {
+  margin-top: 1.35rem;
+}
+
+.kiosk-grid,
+.kiosk-tiles {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.7rem;
+}
+
+.kiosk-grid {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+
+.kiosk-tiles {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kiosk-card,
+.kiosk-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.15rem;
+  border: 2px solid color-mix(in srgb, var(--color-champagne) 28%, transparent);
+  background: var(--color-marine-soft);
+  color: inherit;
+  text-align: left;
+}
+
+.kiosk-card[aria-pressed="true"],
+.kiosk-tile[aria-pressed="true"] {
+  border-color: var(--color-champagne);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-champagne) 45%, transparent);
+}
+
+.kiosk-card-photo {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--color-lagoon);
+}
+
+.kiosk-card-photo img,
+.kiosk-card-fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.kiosk-card-fallback {
+  display: flex;
+  align-items: flex-end;
+  padding: 0.8rem;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 1.7rem;
+  line-height: 1;
+  color: var(--color-champagne-bright);
+}
+
+.kiosk-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.85rem 0.95rem 1rem;
+}
+
+.kiosk-tile {
+  gap: 0.2rem;
+  padding: 0.85rem 0.95rem 1rem;
+}
+
+.kiosk-tile {
+  min-height: 7.5rem;
+  justify-content: flex-end;
+}
+
+.kiosk-card-name {
+  display: block;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.kiosk-card-meta {
+  display: block;
+  color: var(--color-sand);
+  font-size: 0.92rem;
+}
+
+.kiosk-card-price {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--color-champagne-bright);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.kiosk-chosen {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  border-radius: 999px;
+  background: var(--color-champagne);
+  color: var(--color-ink);
+  padding: 0.28rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kiosk-fiche {
+  margin-top: 0.9rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-champagne) 25%, transparent);
+  padding: 0.95rem 1rem;
+  color: var(--color-ivory);
+}
+
+.kiosk-ticket {
+  grid-area: ticket;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-left: 1px solid color-mix(in srgb, var(--color-champagne) 22%, transparent);
+  background: rgba(8, 18, 32, 0.78);
+}
+
+.kiosk-ticket-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 1rem 0.9rem;
+}
+
+.kiosk-line {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 2.2rem minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  border: 0;
+  border-radius: 0.7rem;
+  background: transparent;
+  color: var(--color-sand);
+  padding: 0.38rem 0.35rem;
+  text-align: left;
+  font-size: 0.86rem;
+}
+
+.kiosk-line[data-current="true"] {
+  background: color-mix(in srgb, var(--color-champagne) 16%, transparent);
+  color: var(--color-ivory);
+}
+
+.kiosk-recap {
+  justify-content: flex-start;
+  overflow: auto;
+}
+
+.kiosk-ticket-toggle {
+  display: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-sand);
+  padding: 0;
+  text-align: left;
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.kiosk-ticket-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-champagne) 28%, transparent);
+  padding: 0.85rem;
+}
+
+.kiosk-total {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 2.6rem;
+  line-height: 0.9;
+  color: var(--color-champagne-bright);
+}
+
+.kiosk-actions {
+  display: grid;
+  grid-template-columns: 0.7fr 1.3fr;
+  gap: 0.5rem;
+}
+
+@media (max-width: 900px) {
+  .kiosk-formulas,
+  .kiosk-tiles {
+    grid-template-columns: 1fr;
+  }
+
+  .kiosk {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "days"
+      "stage"
+      "ticket";
+  }
+
+  .kiosk-days {
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-champagne) 22%, transparent);
+  }
+
+  .kiosk-day {
+    min-width: 3.4rem;
+  }
+
+  .kiosk-ticket-toggle {
+    display: block;
+  }
+
+  .kiosk-ticket-scroll {
+    display: none;
+    max-height: 38dvh;
+  }
+
+  .kiosk-ticket-scroll[data-open="true"] {
+    display: block;
+  }
+
+  .kiosk-stage {
+    padding-bottom: 1rem;
+  }
+}
