@@ -31,6 +31,10 @@ test("chambre, pension et annulation se lisent en français", () => {
   assert.equal(frenchHotelLine("Executive Room"), "Chambre executive");
   assert.equal(frenchHotelLine("Guest Room"), "Chambre");
   assert.equal(frenchHotelLine("Three Bedroom Ryad"), "Ryad, trois chambres");
+  assert.equal(frenchHotelLine("Ocean Deluxe"), "Chambre deluxe");
+  assert.equal(frenchHotelLine("Ocean Deluxe Balcony"), "Chambre deluxe, balcon");
+  assert.equal(frenchHotelLine("Ocean Family Club"), "Chambre club familiale");
+  assert.equal(frenchHotelLine("One Bedroom Suite"), "Suite");
   const saver = readStayRate({ title: "Saver", cancellation: "Room", benefits: [] });
   assert.equal(saver.title, "Tarif économique");
   assert.equal(frenchCity("London, United Kingdom"), "Londres");

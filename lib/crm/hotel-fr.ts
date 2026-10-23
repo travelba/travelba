@@ -337,6 +337,7 @@ export function frenchCancellation(value: string): string {
 function frenchBedroomCount(value: string) {
   const match = value.match(/\b(one|two|three|four|five|\d+)\s+bedrooms?\b/i);
   if (!match || value.length > 80) return "";
+  if (/\b(suite|villa|apartment|studio)\b/i.test(value) && !/\bryads?\b|\briads?\b/i.test(value)) return "";
   const words: Record<string, string> = { one: "une", two: "deux", three: "trois", four: "quatre", five: "cinq" };
   const count = words[match[1].toLocaleLowerCase("fr")] || match[1];
   const noun = count === "une" || count === "1" ? "chambre" : "chambres";
@@ -457,7 +458,22 @@ export function frenchHotelLine(value: string): string {
   if (rate) return rate;
   const room = frenchRoom(line);
   if (room) return room;
+  const loose = frenchLooseRoom(line);
+  if (loose) return loose;
   return line;
+}
+
+function frenchLooseRoom(value: string) {
+  if (value.length > 60 || FRENCH_START.test(value) || /\b(chambre|lit|lits|vue|the|with|and|for|located)\b/i.test(value)) return "";
+  if (!/\b(deluxe|club|family|balcony)\b/i.test(value)) return "";
+  const adjectives: string[] = [];
+  if (/\bdeluxe\b/i.test(value)) adjectives.push("deluxe");
+  if (/\bclub\b/i.test(value)) adjectives.push("club");
+  if (/\bfamily\b/i.test(value)) adjectives.push("familiale");
+  const extras: string[] = [];
+  if (/\bbalcony\b/i.test(value)) extras.push("balcon");
+  if (!adjectives.length && !extras.length) return "";
+  return [["Chambre", ...adjectives].join(" "), ...extras].join(", ");
 }
 
 export function frenchHotelProse(value: string) {
