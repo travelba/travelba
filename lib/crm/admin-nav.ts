@@ -85,6 +85,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
         { href: "/admin/outils/gmail", label: "Diagnostic Gmail", icon: "activity" },
         { href: "/admin/concierge", label: "Savoir du Concierge", icon: "menu_book" },
         { href: "/admin/hotels-demandes", label: "Demandes hôtels", icon: "hotel" },
+        { href: "/admin/outils/hotels", label: "Accès Hôtels", icon: "hotel" },
         ...(input.showExample
           ? [{ href: "/exemple", label: "Aperçu espace client", icon: "eye", newTab: true } satisfies AdminNavItem]
           : []),

@@ -439,6 +439,24 @@ async function pliantCardAction(cardId: string, action: "lock" | "unlock") {
   return res.ok;
 }
 
+/** Nom du porteur configuré. Jamais le client, jamais l’hôtel. */
+export async function readPliantCardholderName(cardholderId: string) {
+  const id = cardholderId.trim();
+  if (!id) return null;
+  try {
+    const row = unwrapRecord(await pliantGet(`/cardholders/${encodeURIComponent(id)}`)) as {
+      firstName?: unknown;
+      lastName?: unknown;
+    } | null;
+    const firstName = typeof row?.firstName === "string" ? row.firstName.trim() : "";
+    const lastName = typeof row?.lastName === "string" ? row.lastName.trim() : "";
+    if (!firstName || !lastName) return null;
+    return { firstName, lastName };
+  } catch {
+    return null;
+  }
+}
+
 export async function readPliantCardFace(cardId: string) {
   try {
     return pliantCardFace(unwrapRecord(await pliantGet(`/cards/${encodeURIComponent(cardId)}`)));

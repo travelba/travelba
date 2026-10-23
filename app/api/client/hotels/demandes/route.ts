@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
-import { hotelSearchAllowed } from "@/lib/crm/hotel-search";
+import { hotelBookingEnabled } from "@/lib/crm/hotel-access";
 import { guestNameOk } from "@/lib/crm/hotel-journey";
 import { createHotelRequest } from "@/lib/crm/hotel-search-store";
 
@@ -11,7 +11,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function POST(request: Request) {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
-  if (!hotelSearchAllowed(auth.customer)) return jsonError("Introuvable", 404);
+  if (!hotelBookingEnabled(auth.customer)) return jsonError("Introuvable", 404);
   const body = (await request.json().catch(() => null)) as { offerId?: unknown; guests?: unknown } | null;
   const offerId = typeof body?.offerId === "string" ? body.offerId : "";
   const guests = Array.isArray(body?.guests)

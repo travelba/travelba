@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
-import { hotelSearchAllowed } from "@/lib/crm/hotel-search";
+import { hotelBookingEnabled } from "@/lib/crm/hotel-access";
 import { knownTravelerNames, travelerDisplayName, type NamedPerson } from "@/lib/crm/hotel-party";
 
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export async function GET() {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
-  if (!hotelSearchAllowed(auth.customer)) return jsonError("Introuvable", 404);
+  if (!hotelBookingEnabled(auth.customer)) return jsonError("Introuvable", 404);
   const self = travelerDisplayName(auth.customer);
   const [{ data: companions }, { data: travelers }] = await Promise.all([
     auth.supabase

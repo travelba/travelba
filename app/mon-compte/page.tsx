@@ -13,7 +13,8 @@ import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
-import { hotelSearchAllowed } from "@/lib/crm/hotel-search";
+import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
+import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 import {
   BoardingPassSkeleton,
   HomeBoardingPass,
@@ -32,6 +33,10 @@ export default async function AccountHomePage() {
   if (!customer) redirect("/connexion");
 
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
+  const hotels = showHotelButton({
+    enabled: hotelBookingEnabled(customer),
+    visibility: await readHotelButtonVisibility(),
+  });
 
   return (
     <AccountPage>
@@ -45,7 +50,7 @@ export default async function AccountHomePage() {
           </h1>
         </section>
 
-        {hotelSearchAllowed(customer) ? (
+        {hotels ? (
           <Link
             href="/mon-compte/hotels"
             className="account-press flex items-center justify-between bg-[#f4efe6] px-4 py-4 text-[#1a1a1a]"

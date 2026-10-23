@@ -16,7 +16,6 @@ import { amountToCents } from "./money";
 export const HOTEL_SEARCH_BENJAMIN_USER_ID = "c4d75f7e-c79f-438c-b797-7b234e37b6d0";
 export const HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID = "07b9dde3-de59-4b1a-88b7-03a6e23e98a6";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SEARCH_TTL_MS = 10 * 60 * 1000;
 const EMPTY_TTL_MS = 20 * 1000;
 const SUGGEST_TTL_MS = 10 * 60 * 1000;
@@ -174,24 +173,9 @@ type PerkKey = keyof HotelPerks;
 const searchCache = new Map<string, { at: number; stays: PricedStay[] }>();
 const suggestCache = new Map<string, { at: number; items: PlaceSuggestion[] }>();
 
-export function hotelSearchAllowIds(env: NodeJS.ProcessEnv = process.env): string[] {
-  if (!Object.prototype.hasOwnProperty.call(env, "HOTEL_SEARCH_ALLOWLIST")) {
-    return [HOTEL_SEARCH_BENJAMIN_USER_ID, HOTEL_SEARCH_BENJAMIN_CUSTOMER_ID];
-  }
-  return String(env.HOTEL_SEARCH_ALLOWLIST || "")
-    .split(",")
-    .map((part) => part.trim().toLowerCase())
-    .filter((part) => UUID.test(part));
-}
-
-export function hotelSearchAllowed(
-  customer: { id: string; auth_user_id?: string | null },
-  env: NodeJS.ProcessEnv = process.env
-) {
-  const ids = new Set(hotelSearchAllowIds(env));
-  if (ids.has(customer.id.toLowerCase())) return true;
-  const auth = customer.auth_user_id?.toLowerCase();
-  return Boolean(auth && ids.has(auth));
+/** L’accès se décide sur la fiche (`hotel_booking_enabled`), pas sur une liste codée. */
+export function hotelSearchAllowed(customer: { hotel_booking_enabled?: boolean | null }) {
+  return customer.hotel_booking_enabled === true;
 }
 
 export function clearHotelSearchCache() {

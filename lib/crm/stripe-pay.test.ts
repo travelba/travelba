@@ -152,4 +152,8 @@ test("rien n’est crédité avant succès, sans client, sans payeur, pour un vi
   assert.equal(stripeCreditFromIntent({ ...base, amount: 0 }), null);
   assert.equal(stripeCreditFromIntent({ ...base, amount: Number.NaN }), null);
   assert.equal(stripeCreditFromIntent({ ...base, metadata: null }), null);
+  assert.equal(
+    stripeCreditFromIntent({ ...base, metadata: { ...base.metadata, purpose: "hotel_direct" } }),
+    null
+  );
 });
