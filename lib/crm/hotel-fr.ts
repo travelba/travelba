@@ -457,6 +457,16 @@ export function frenchHotelProse(value: string) {
   return next.charAt(0).toLocaleUpperCase("fr") + next.slice(1);
 }
 
+const ENGLISH_LEFT =
+  /\b(the|and|with|from|this|that|your|our|located|offers|guests|swimming|complimentary|including|overview|policies|breakfast|free|cancellation)\b/i;
+
+/** Texte montré au client : une phrase encore anglaise ne s’affiche pas. */
+export function frenchClientProse(value: string) {
+  const shown = frenchHotelProse(value);
+  if (!shown || ENGLISH_LEFT.test(shown)) return "";
+  return shown;
+}
+
 export function hotelTextNeedsModel(value: string) {
   const shown = frenchHotelProse(value);
   return shown.length > 48 && needsFrench(shown);

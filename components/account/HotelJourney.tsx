@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as
 import { createPortal } from "react-dom";
 import { HotelMap } from "@/components/account/HotelMap";
 import { Icon } from "@/components/crm/icons";
-import { cancellationPhrase, clientRateTitle, hotelTextNeedsModel, readStayRate } from "@/lib/crm/hotel-fr";
+import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
 import { collapseRooms, guestNameOk, travelPrivileges, type ClientHotelFile, type ClientRate, type ClientRoom, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
 import { composeRoomGuests, roomOccupancyLabel } from "@/lib/crm/hotel-party";
 import type { ClientHotel, HotelPerks, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
@@ -31,12 +31,6 @@ const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
 
 function euros(cents: number, currency: string) {
   return formatMoney(cents / 100, currency);
-}
-
-function clientProse(value: string) {
-  const line = value.replace(/\s+/g, " ").trim();
-  if (!line || hotelTextNeedsModel(line)) return "";
-  return line;
 }
 
 function clockFr(value: string) {
@@ -620,7 +614,7 @@ export function HotelJourney({
               <h2 className="h-serif text-[1.35rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</h2>
               <p className="text-sm h-muted">{file?.city || hotel.city}</p>
               {file?.address ? <p className="text-sm h-ink">{file.address}</p> : null}
-              {clientProse(file?.description || "") ? <p className="text-[15px] leading-relaxed h-ink">{clientProse(file?.description || "")}</p> : null}
+              {frenchClientProse(file?.description || "") ? <p className="text-[15px] leading-relaxed h-ink">{frenchClientProse(file?.description || "")}</p> : null}
               {!file ? <div className="h-4 w-1/2 animate-pulse h-skel" aria-hidden /> : null}
             </div>
             <div className="space-y-8 px-5 pt-6">
@@ -866,7 +860,6 @@ export function HotelJourney({
         {view === "confirm" && rate && reading && done ? (
           <div data-hotel-confirm="1" data-hotel-done="1" className="h-paper space-y-4 px-4 py-6">
             <article className="h-recap space-y-3 text-[15px]">
-              <p className="h-serif text-[1.35rem] font-semibold leading-tight h-ink">Demande reçue</p>
               <p className="h-ink">{done}</p>
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
               <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>

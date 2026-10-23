@@ -994,7 +994,7 @@ export function HotelSearch() {
           data-hotel-tools={tool}
           onClick={() => setTool("")}
         >
-          <div className="w-full bg-[#f4efe6] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-5" onClick={(event) => event.stopPropagation()}>
+          <div className="max-h-[85dvh] w-full overflow-y-auto bg-[#f4efe6] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-5" onClick={(event) => event.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <p className="h-serif text-[1.2rem] font-semibold h-ink">{tool === "tri" ? "Trier" : "Filtres"}</p>
               <button type="button" aria-label="Fermer" onClick={() => setTool("")} className="grid h-10 w-10 place-items-center h-ink">
