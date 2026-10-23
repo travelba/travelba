@@ -6,6 +6,7 @@ import {
   frenchCancellation,
   frenchCity,
   frenchHotelLine,
+  frenchClientProse,
   frenchHotelProse,
   groupAdvantages,
   readStayRate,
@@ -96,6 +97,14 @@ test("la chambre et le tarif se lisent sans programme fournisseur", () => {
     ),
     ["Petit-déjeuner offert"]
   );
+});
+
+test("une description encore anglaise ne s’affiche pas", () => {
+  assert.equal(
+    frenchClientProse("Located in the heart of the city with a swimming pool and complimentary breakfast for guests."),
+    ""
+  );
+  assert.equal(frenchClientProse("Un palace sur la place Vendôme, avec son jardin intérieur."), "Un palace sur la place Vendôme, avec son jardin intérieur.");
 });
 
 test("un paragraphe reconnu reste en cache", () => {

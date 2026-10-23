@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as
 import { createPortal } from "react-dom";
 import { HotelMap } from "@/components/account/HotelMap";
 import { Icon } from "@/components/crm/icons";
-import { cancellationPhrase, clientRateTitle, readStayRate } from "@/lib/crm/hotel-fr";
+import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
 import { collapseRooms, guestNameOk, travelPrivileges, type ClientHotelFile, type ClientRate, type ClientRoom, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
 import { composeRoomGuests, roomOccupancyLabel } from "@/lib/crm/hotel-party";
 import type { ClientHotel, HotelPerks, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
@@ -289,7 +289,7 @@ function RoomParty({
   onRemove: (at: number) => void;
 }) {
   return (
-    <section className="space-y-4 py-2" data-hotel-room-party={index + 1}>
+    <section className="h-recap space-y-4" data-hotel-room-party={index + 1}>
       <div>
         <p className="h-kicker">Chambre {index + 1}</p>
         <p className="mt-1 text-sm h-ink">{occupancy}</p>
@@ -582,7 +582,7 @@ export function HotelJourney({
           >
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          <p className="h-serif truncate text-center text-[17px] font-semibold leading-none h-ink">{STEPS.find((item) => item.id === view)?.label}</p>
+          <p className="h-serif truncate text-center text-[17px] font-semibold leading-none h-ink">{done && view === "confirm" ? "Demande reçue" : STEPS.find((item) => item.id === view)?.label}</p>
           <span />
         </div>
         {view === "hotel" ? (
@@ -614,7 +614,7 @@ export function HotelJourney({
               <h2 className="h-serif text-[1.35rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</h2>
               <p className="text-sm h-muted">{file?.city || hotel.city}</p>
               {file?.address ? <p className="text-sm h-ink">{file.address}</p> : null}
-              {file?.description ? <p className="text-[15px] leading-relaxed h-ink">{file.description}</p> : null}
+              {frenchClientProse(file?.description || "") ? <p className="text-[15px] leading-relaxed h-ink">{frenchClientProse(file?.description || "")}</p> : null}
               {!file ? <div className="h-4 w-1/2 animate-pulse h-skel" aria-hidden /> : null}
             </div>
             <div className="space-y-8 px-5 pt-6">
@@ -823,7 +823,7 @@ export function HotelJourney({
                         type="button"
                         onClick={() => placePerson(name)}
                         aria-pressed={on}
-                        className={`h-hit h-press shrink-0 px-1 text-[15px] ${on ? "h-on" : "h-muted"}`}
+                        className={`h-pill h-press shrink-0 ${on ? "h-on" : ""}`}
                       >
                         {name}
                       </button>
@@ -857,9 +857,22 @@ export function HotelJourney({
           </div>
         ) : null}
 
-        {view === "confirm" && rate && reading ? (
+        {view === "confirm" && rate && reading && done ? (
+          <div data-hotel-confirm="1" data-hotel-done="1" className="h-paper space-y-4 px-4 py-6">
+            <article className="h-recap space-y-3 text-[15px]">
+              <p className="h-ink">{done}</p>
+              <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
+              <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
+              <p className="h-ink">{rate.room}</p>
+              <p className="h-ink"><span className="h-muted">Pension · </span>{reading.board}</p>
+              <p className="h-ink"><span className="h-muted">Annulation · </span>{reading.cancellation}</p>
+              <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
+            </article>
+            <a href={whatsapp} className="h-btn flex h-12 items-center justify-center text-sm font-semibold">Écrire sur WhatsApp</a>
+          </div>
+        ) : null}
+        {view === "confirm" && rate && reading && !done ? (
           <div data-hotel-confirm="1" className="h-paper space-y-4 px-4 py-4">
-            <h2 className="h-serif px-1 text-[1.2rem] font-semibold h-ink">{done ? "Demande reçue" : "Récapitulatif"}</h2>
             <article className="h-recap space-y-3 text-[15px]">
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
               <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
@@ -872,17 +885,10 @@ export function HotelJourney({
                   <li key={`${name}-${index}`}>Chambre {index + 1} · {name}</li>
                 ))}
               </ul>
-              <p className="pt-2 text-2xl font-medium h-ink">{euros(rate.sellCents, rate.currency)}</p>
+              <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
             </article>
-            {done ? (
-              <p className="text-sm h-ink">
-                {done}{" "}
-                <a href={whatsapp} className="font-semibold underline">Écrire sur WhatsApp</a>
-              </p>
-            ) : (
-              <p className="text-sm h-muted">Aucun paiement n’est lancé. L’agence confirme d’abord.</p>
-            )}
-            {note ? <p className="text-sm h-gold">{note}</p> : null}
+            <p className="px-1 text-sm h-muted">Aucun paiement n’est lancé. L’agence confirme d’abord.</p>
+            {note ? <p className="px-1 text-sm h-gold">{note}</p> : null}
           </div>
         ) : null}
       </div>
@@ -908,12 +914,16 @@ export function HotelJourney({
       ) : null}
       {view === "guests" && rate ? (
         <Dock
+          label="Séjour"
+          price={`${euros(rate.sellCents, rate.currency)} TTC`}
           action="Récapitulatif"
           onAction={() => (guestsReady() ? onStep("confirm") : setNote("Indiquez le prénom et le nom du voyageur principal de chaque chambre."))}
         />
       ) : null}
       {view === "confirm" && rate && !done ? (
         <Dock
+          label="Séjour"
+          price={`${euros(rate.sellCents, rate.currency)} TTC`}
           action={sending ? "Envoi…" : "Envoyer la demande"}
           disabled={sending || !rate.offerId}
           onAction={() => void send()}

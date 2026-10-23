@@ -48,13 +48,13 @@ export default async function AccountHomePage() {
         {hotelSearchAllowed(customer) ? (
           <Link
             href="/mon-compte/hotels"
-            className="account-press flex items-center justify-between border border-[#e5e3dc] bg-white px-4 py-3"
+            className="account-press flex items-center justify-between bg-[#f4efe6] px-4 py-4 text-[#1a1a1a]"
           >
             <span>
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9a7b4f]">Hôtels</span>
-              <span className="text-sm font-semibold text-[var(--admin-navy)]">Réserver un séjour</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8c7352]">Hôtels</span>
+              <span className="text-[15px] font-semibold">Réserver un séjour</span>
             </span>
-            <Icon name="arrow_forward" className="h-4 w-4 text-[#c5a880]" />
+            <Icon name="arrow_forward" className="h-4 w-4 text-[#8c7352]" />
           </Link>
         ) : null}
 
