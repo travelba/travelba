@@ -558,9 +558,13 @@ export function roomFacts(input: { name?: string; description?: string; size?: s
 
 /** Le nom du tarif, en français, sans programme qui désigne un fournisseur. */
 export function clientRateTitle(value: string) {
-  if (PROGRAM.test(value) || /^public$/i.test(value.trim())) return /préférentiel|preferential|member/i.test(value) ? "Tarif préférentiel" : "Meilleur tarif disponible";
-  const french = frenchHotelLine(value);
-  if (!french || PROGRAM.test(french)) return "Meilleur tarif disponible";
+  const raw = value.replace(/\s+/g, " ").trim();
+  if (/\bsaver\b/i.test(raw)) return "Tarif économique";
+  if (!raw || PROGRAM.test(raw) || /^public$/i.test(raw)) return /préférentiel|preferential|member/i.test(raw) ? "Tarif préférentiel" : "Meilleur tarif disponible";
+  const french = frenchHotelLine(raw);
+  if (!french || PROGRAM.test(french) || needsFrench(french) || (!FRENCH_START.test(french) && !/[àâéèêëîïôùûüç]/i.test(french))) {
+    return /préférentiel|preferential|member/i.test(raw) ? "Tarif préférentiel" : "Meilleur tarif disponible";
+  }
   if (/tarif préférentiel/i.test(french)) return "Tarif préférentiel";
   if (/meilleur tarif disponible/i.test(french)) return "Meilleur tarif disponible";
   return french;
