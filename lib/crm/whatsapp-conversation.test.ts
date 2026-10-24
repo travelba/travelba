@@ -143,9 +143,11 @@ test("une heure absente du dossier ne sort pas dans la réponse", async () => {
   assert.equal(turn.text, keyword.text);
   assert.match(turn.text, new RegExp(MISSING_CLOCK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
 
+  const when = new Date("2026-05-20T10:00:00Z");
   const priced = await planConciergeConversation({
     message: "À quelle heure part mon vol ?",
     dossier: dossierOf([flight]),
+    now: when,
     generate: async () => reply("Votre vol part à 18h40 et coûte 9999 euros."),
   });
   assert.equal(priced.text.includes("9999"), false);
@@ -165,6 +167,7 @@ test("l’heure écrite dans le dossier peut être répétée", async () => {
   const turn = await planConciergeConversation({
     message: "À quelle heure part mon vol ?",
     dossier: dossierOf([flight]),
+    now: new Date("2026-05-20T10:00:00Z"),
     generate: async () => reply("Votre vol part à 18h40."),
   });
   assert.match(turn.text, /18h40/);
@@ -236,7 +239,7 @@ test("une erreur du modèle retombe sur le routeur actuel", async () => {
   });
   assert.equal(turn.text, keyword.text);
   assert.equal(turn.handoff, null);
-  assert.match(turn.text, /Souhaitez-vous que j’en parle à l’agence/);
+  assert.match(turn.text, /Souhaitez-vous que j’en parle à Benjamin/);
 
   const asked = await planConciergeConversation({
     message: "Parlez-en à l’agence",

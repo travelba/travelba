@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
+import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
+import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { weeklyReview, type QualityFlag, type QualityMark } from "@/lib/crm/concierge-quality";
 
 export const metadata = { title: "Revue WhatsApp" };
@@ -12,6 +14,16 @@ const LABELS: Record<string, string> = {
   thin: "Réponses minces",
   complaint: "Plaintes",
 };
+
+const FOLLOWUP_LABELS: Record<string, string> = {
+  predeparture: "Veille du départ",
+  checkin: "Arrivée à l’hôtel",
+  feedback: "Retour",
+  silence_session: "Silence",
+  silence_template: "Reprise",
+};
+
+const SENDABLE = new Set(["predeparture", "checkin", "feedback"]);
 
 export default async function ConciergeReviewPage() {
   const { supabase } = await requireStaffPage();
@@ -56,14 +68,17 @@ export default async function ConciergeReviewPage() {
       {pendingMigration ? <p className="text-sm text-muted">La revue s’ouvre après la migration du Concierge.</p> : null}
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">Relances prévues</h2>
-        <p className="text-sm text-muted">Rien n’est envoyé. Au-delà de 24 h, le modèle Meta n’est pas soumis.</p>
+        <p className="text-sm text-muted">
+          Rien ne part seul. Dans la fenêtre de 24 h, Envoyer au client envoie le texte. Hors fenêtre, le modèle est défini et n’est pas soumis.
+        </p>
         {followups.length ? (
           <ul className="space-y-2">
             {followups.map((row) => (
               <li key={row.id} className="admin-af-card rounded-3xl px-5 py-4 text-sm">
-                {row.kind} · {row.channel}
-                {row.template_key ? ` · ${row.template_key}` : ""}
-                <p className="mt-1 text-muted">{row.draft_body}</p>
+                {FOLLOWUP_LABELS[row.kind] || row.kind}
+                {row.channel === "template" ? " · hors fenêtre" : " · fenêtre ouverte"}
+                <p className="mt-1 whitespace-pre-wrap text-muted">{row.draft_body}</p>
+                {SENDABLE.has(row.kind) ? <ConciergeFollowupSend id={row.id} previewBlocked={isVercelPreview()} /> : null}
               </li>
             ))}
           </ul>

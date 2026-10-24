@@ -18,9 +18,11 @@ import {
   pieceSavedLine,
   rateLimitedReply,
   sharedPhoneReply,
+  type ConciergePending,
   type HandoffKind,
 } from "./whatsapp-concierge";
 import { type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
+import { signalWhatsappTyping } from "./whatsapp-typing";
 import { planPhase2 } from "./concierge-phase2";
 import { knowledgeSeed, type KnowledgeChunk } from "./concierge-knowledge";
 import type { PlannedFollowup, ProposalDraft, TripBrief } from "./concierge-journey";
@@ -28,6 +30,7 @@ import type { QualityMark } from "./concierge-quality";
 import { sessionAddress } from "./whatsapp-session";
 import { nextParisMorning, threadIsPaused } from "./whatsapp-takeover";
 import { loadCollaboratorTripOwnerIds } from "./company-peers";
+import { filledLoyaltyLabels, loyaltyFromCustomer } from "./loyalty";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -104,6 +107,8 @@ export type WhatsappStore = {
   updateStatus?(sid: string, status: string): Promise<void>;
   /** Chemin de la dernière pièce enregistrée, puis oublié. */
   takePiecePath?(): string | null;
+  /** Demandes encore ouvertes, pour ne pas les oublier au tour suivant. */
+  openRequests?(customerId: string): Promise<ConciergePending[]>;
 };
 
 const PIECE_TYPES = new Set([
@@ -191,8 +196,11 @@ function inboundBody(params: Record<string, string>) {
 }
 
 function prefixSigned(signed: string, line: string) {
-  const signature = `\n\n${"Le Concierge"}`;
-  const body = signed.endsWith(signature) ? signed.slice(0, -signature.length).trim() : signed.trim();
+  const body = signed
+    .split("\n")
+    .filter((row) => !/^le concierge\.?$/i.test(row.trim()))
+    .join("\n")
+    .trim();
   return withConciergeSignature(`${line}\n${body}`.trim());
 }
 
@@ -253,6 +261,8 @@ export async function receiveWhatsappWebhook(input: {
   autoreply?: boolean;
   /** Pause entre deux bulles. Défaut 1,2 s. */
   bubbleDelayMs?: number;
+  /** Indicateur de saisie WhatsApp. Absent : on n’appelle pas Twilio. */
+  typingFetch?: typeof fetch;
   /** Instant du message. Les tests figent le jeudi. */
   now?: Date;
   env?: Record<string, string | undefined>;
@@ -286,10 +296,24 @@ export async function receiveWhatsappWebhook(input: {
   if (!sid) return { status: 400 };
   if (await input.store.findBySid(sid)) return { status: 200 };
 
+  const typing =
+    input.typingFetch && input.accountSid
+      ? signalWhatsappTyping({
+          messageSid: sid,
+          accountSid: input.accountSid,
+          authToken: token,
+          fetchImpl: input.typingFetch,
+        })
+      : Promise.resolve();
+  const done = async (status: number) => {
+    await typing;
+    return { status };
+  };
+
   const e164 = phoneFromWhatsapp(params.From);
   const to = e164 ? sessionAddress(e164) : null;
   const clientText = redactIngestText(inboundBody(params) || "Message vide.");
-  if (!to || !e164) return { status: 200 };
+  if (!to || !e164) return done(200);
 
   const agency = phoneFromWhatsapp(input.agencyFrom);
   if (agency && e164 === agency) {
@@ -308,7 +332,7 @@ export async function receiveWhatsappWebhook(input: {
       phone: clientPhone,
     });
     if (clientPhone) await input.store.pauseThread?.(clientPhone, holder?.id || null);
-    return { status: 200 };
+    return done(200);
   }
 
   const customers = await input.store.customersByPhone(e164);
@@ -348,14 +372,14 @@ export async function receiveWhatsappWebhook(input: {
     phone: e164,
     media_path: piece === "saved" ? input.store.takePiecePath?.() || null : null,
   });
-  if ("duplicate" in inbound) return { status: 200 };
+  if ("duplicate" in inbound) return done(200);
 
   if (input.beforeReply) {
     const gate = await input.beforeReply(e164);
-    if (gate === "stop") return { status: 200 };
+    if (gate === "stop") return done(200);
   }
 
-  if (customer && (await input.store.threadOpen?.(e164)) === false) return { status: 200 };
+  if (customer && (await input.store.threadOpen?.(e164)) === false) return done(200);
 
   if (!autoreply) {
     await holdInboundForAgency({
@@ -367,7 +391,7 @@ export async function receiveWhatsappWebhook(input: {
       messageId: inbound.id,
       body: journal,
     });
-    return { status: 200 };
+    return done(200);
   }
 
   let said = journal;
@@ -375,7 +399,7 @@ export async function receiveWhatsappWebhook(input: {
     const wait = input.burstWaitMs || 0;
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     const decision = burstReply(sid, await input.store.recentThread(customer.id));
-    if (!decision.send) return { status: 200 };
+    if (!decision.send) return done(200);
     if (decision.text) said = decision.text;
   }
 
@@ -418,6 +442,7 @@ export async function receiveWhatsappWebhook(input: {
         .map((row) => ({ direction: row.direction, body: row.body, at: row.created_at }));
       const brief = (await input.store.loadBrief?.(e164)) || null;
       const storedKnowledge = await input.store.loadKnowledge?.();
+      const pending = (await input.store.openRequests?.(customer.id)) || [];
       const phase = await planPhase2({
         phone: e164,
         message: content || said,
@@ -429,6 +454,7 @@ export async function receiveWhatsappWebhook(input: {
         balance: dossier.balances[0]?.balance ?? null,
         currency: dossier.balances[0]?.currency || "EUR",
         now: input.now,
+        pending,
       });
       const turn = phase.turn;
       tools = turn.tools?.length ? turn.tools : null;
@@ -527,7 +553,7 @@ export async function receiveWhatsappWebhook(input: {
       console.error("[whatsapp-concierge] alerte", err instanceof Error ? err.name : "error");
     }
   }
-  return { status: 200 };
+  return done(200);
 }
 
 /** Le message est déjà dans le fil. L’agence est prévenue. Rien ne part sur WhatsApp. */
@@ -617,7 +643,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
     async loadDossier(customerId) {
       const { data: holder, error: holderError } = await admin
         .from("crm_customers")
-        .select("id, company_role, billing_parent_id")
+        .select("id, company_role, billing_parent_id, language, flying_blue, loyalty")
         .eq("id", customerId)
         .maybeSingle();
       if (holderError) throw holderError;
@@ -644,7 +670,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         ids.length
           ? admin
               .from("crm_booking_items")
-              .select("id, booking_id, kind, title, start_at, end_at, amount, details, visible_to_client")
+              .select("id, booking_id, kind, title, supplier, start_at, end_at, amount, details, visible_to_client")
               .in("booking_id", ids)
           : Promise.resolve({ data: [], error: null }),
         ids.length
@@ -670,6 +696,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         admin
           .from("crm_travel_documents")
           .select("doc_type, first_name, last_name, expires_on")
+          // Le numéro et la MRZ ne sont pas lus.
           .eq("customer_id", customerId),
       ]);
       for (const result of [items, docs, visas, txs, balances, papers]) {
@@ -683,6 +710,8 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         transactions: txs.data || [],
         balances: balances.data || [],
         travelDocuments: papers.data || [],
+        preferences: filledLoyaltyLabels(loyaltyFromCustomer(holder || {})),
+        language: holder && "language" in holder ? String(holder.language || "") : null,
       };
     },
     async insertMessage(row) {
@@ -900,10 +929,30 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
           draft_body: row.body,
           due_at: row.dueAt,
           status: "planned",
+          slot: row.slot || "",
+          booking_id: row.bookingId || null,
         })),
-        { onConflict: "phone,kind" }
+        { onConflict: "phone,kind,slot" }
       );
       if (error) console.error("[whatsapp-concierge] relance", error.code || "error");
+    },
+    async openRequests(customerId) {
+      const { data, error } = await admin
+        .from("crm_whatsapp_requests")
+        .select("kind, booking_id, body")
+        .eq("customer_id", customerId)
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(6);
+      if (error) {
+        console.error("[whatsapp-concierge] demandes", error.code || "error");
+        return [];
+      }
+      return (data || []).flatMap((row) => {
+        const kind = row.kind as HandoffKind;
+        if (!row.body) return [];
+        return [{ kind, bookingId: row.booking_id, body: String(row.body) }];
+      });
     },
     async savePiece({ customerId, bytes, contentType }) {
       const type = pieceContentType(contentType);

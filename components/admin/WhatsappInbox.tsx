@@ -87,7 +87,7 @@ export function WhatsappInbox({
     sessionStorage.setItem("tba-wa-unread", String(unread));
   }, [embedded, threads]);
 
-  async function post(payload: Record<string, unknown>) {
+  async function post(payload: Record<string, unknown>, options?: { keepDraft?: boolean }) {
     setBusy(true);
     setNote("");
     const response = await fetch("/api/admin/whatsapp", {
@@ -101,7 +101,7 @@ export function WhatsappInbox({
       setNote(data?.error || "L’envoi n’a pas abouti.");
       return false;
     }
-    setBody("");
+    if (!options?.keepDraft) setBody("");
     router.refresh();
     return true;
   }
@@ -278,6 +278,38 @@ export function WhatsappInbox({
                     >
                       Marquer traitée
                     </button>
+                  ) : null}
+                  {speaker === "robot" ? (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        className={`text-[10px] underline ${message.conciergeMark === "good" ? "font-bold text-[#0B192C]" : ""}`}
+                        aria-pressed={message.conciergeMark === "good"}
+                        disabled={busy}
+                        onClick={() =>
+                          void post(
+                            { action: "mark", messageId: message.id, mark: message.conciergeMark === "good" ? "clear" : "good" },
+                            { keepDraft: true }
+                          )
+                        }
+                      >
+                        Bien
+                      </button>
+                      <button
+                        type="button"
+                        className={`text-[10px] underline ${message.conciergeMark === "bad" ? "font-bold text-[#0B192C]" : ""}`}
+                        aria-pressed={message.conciergeMark === "bad"}
+                        disabled={busy}
+                        onClick={() =>
+                          void post(
+                            { action: "mark", messageId: message.id, mark: message.conciergeMark === "bad" ? "clear" : "bad" },
+                            { keepDraft: true }
+                          )
+                        }
+                      >
+                        À revoir
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               </article>

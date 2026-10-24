@@ -4,6 +4,11 @@ import { toE164 } from "@/lib/crm/phone";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { embeddingLiteral, isKnowledgeKind, knowledgeSeed, parseExampleImport } from "@/lib/crm/concierge-knowledge";
 import { conciergeOutboundArmed, decideProposal } from "@/lib/crm/concierge-proposals";
+import { clientTouchpointBody, decideTouchpointDelivery } from "@/lib/crm/concierge-touchpoints";
+import { isVercelPreview } from "@/lib/crm/preview-secrets";
+import { proactiveWhatsappAllowed } from "@/lib/crm/whatsapp-concierge";
+import { withConciergeSignature } from "@/lib/crm/whatsapp";
+import { sessionWindowOpen } from "@/lib/crm/whatsapp-inbox";
 import { sendWhatsappSession, sessionAddress } from "@/lib/crm/whatsapp-session";
 
 export const runtime = "nodejs";
@@ -19,6 +24,7 @@ export async function POST(request: Request) {
     title?: string;
     text?: string;
     proposalId?: string;
+    followupId?: string;
     edited?: string;
   } | null;
   const action = body?.action;
@@ -129,6 +135,95 @@ export async function POST(request: Request) {
       }
     }
     return NextResponse.json({ ok: true, sent, status: decision.status });
+  }
+
+  if (action === "send-followup") {
+    const followupId = body?.followupId || "";
+    if (!ID.test(followupId)) return jsonError("Relance manquante", 400);
+    const loaded = await admin
+      .from("crm_concierge_followups")
+      .select("id, phone, customer_id, booking_id, kind, template_key, draft_body, due_at, status")
+      .eq("id", followupId)
+      .maybeSingle();
+    if (loaded.error || !loaded.data) return jsonError("La relance n’est pas encore disponible.", 503);
+    const row = loaded.data as {
+      id: string;
+      phone: string;
+      customer_id: string | null;
+      booking_id: string | null;
+      kind: string;
+      template_key: string | null;
+      draft_body: string;
+      due_at: string;
+      status: string;
+    };
+    if (row.status !== "planned") return jsonError("Cette relance est déjà traitée.", 400);
+    const customer = row.customer_id
+      ? await admin
+          .from("crm_customers")
+          .select("phone, whatsapp_opt_in_at, whatsapp_opt_out_at")
+          .eq("id", row.customer_id)
+          .maybeSingle()
+      : { data: null, error: null };
+    if (customer.error) return jsonError("La relance n’est pas encore disponible.", 503);
+    const person = customer.data as {
+      phone?: string | null;
+      whatsapp_opt_in_at?: string | null;
+      whatsapp_opt_out_at?: string | null;
+    } | null;
+    if (!person || !proactiveWhatsappAllowed({ whatsapp_opt_in_at: person.whatsapp_opt_in_at, whatsapp_opt_out_at: person.whatsapp_opt_out_at })) {
+      return jsonError("Le client a coupé WhatsApp.", 400);
+    }
+    const phone = toE164(String(row.phone || person.phone || ""), "FR");
+    const to = phone ? sessionAddress(phone) : null;
+    if (!to) return jsonError("Pas de téléphone pour WhatsApp.", 400);
+    const last = await admin
+      .from("crm_whatsapp_messages")
+      .select("created_at")
+      .eq("phone", phone)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const now = new Date();
+    const windowOpen = sessionWindowOpen((last.data as { created_at?: string } | null)?.created_at || null, now);
+    const decision = decideTouchpointDelivery({
+      kind: row.kind,
+      templateKey: row.template_key,
+      windowOpen,
+      preview: isVercelPreview(),
+      dueAt: row.due_at,
+      now,
+    });
+    if (!decision.send) return jsonError(decision.error, 409);
+    const plain = clientTouchpointBody(String(row.draft_body || ""));
+    if (!plain || /[A-Z0-9<]{20,}/.test(plain)) return jsonError("Le message n’est pas parti.", 400);
+    const claimed = await admin
+      .from("crm_concierge_followups")
+      .update({ status: "sent" })
+      .eq("id", followupId)
+      .eq("status", "planned")
+      .select("id");
+    if (claimed.error) return jsonError("La relance n’est pas encore disponible.", 503);
+    if (!claimed.data?.length) return jsonError("Cette relance est déjà traitée.", 400);
+    const text = withConciergeSignature(plain);
+    const result = await sendWhatsappSession({ to, body: text });
+    if (!result.ok) {
+      await admin.from("crm_concierge_followups").update({ status: "planned" }).eq("id", followupId).eq("status", "sent");
+      return jsonError("Le message n’est pas parti.", 502);
+    }
+    await admin.from("crm_whatsapp_messages").insert({
+      customer_id: row.customer_id,
+      booking_id: row.booking_id,
+      phone,
+      direction: "outbound",
+      template_key: "chat",
+      body: text,
+      twilio_sid: result.sid,
+      status: "sent",
+      error: null,
+    });
+    return NextResponse.json({ ok: true, sent: true });
   }
 
   return jsonError("Action inconnue", 400);

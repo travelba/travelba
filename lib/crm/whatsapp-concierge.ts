@@ -8,8 +8,10 @@ import {
   itemClock,
 } from "./carnet";
 import { placeWithPreposition, stayDestinationLine, stayDestinationNames } from "./stay-phrase";
+import { timezoneForIata } from "./airport-time";
 import {
   airportSpokenName,
+  civilDate,
   englishLongDate,
   englishWeekday,
   frenchLongDate,
@@ -51,6 +53,11 @@ export const MISSING_INCLUDED = "Je n’ai pas le détail des inclus dans votre 
 export const MISSING_PRICE = "Je n’ai pas ce prix dans votre dossier.";
 export const MISSING_DRIVER = "Je n’ai pas de chauffeur dans votre dossier.";
 export const MISSING_FORMALITY = "Je n’ai pas de formalité déposée dans votre dossier.";
+export const VERIFY_SENTENCE = "Je vérifie avec Benjamin.";
+/** Paiement, plainte, doute : Benjamin reprend. Le reste reste à l’agence. */
+export const BENJAMIN_HANDOFF = "Je transmets à Benjamin.";
+export const CONCIERGE_REPLY_MAX_CHARS = 280;
+export const CONCIERGE_REPLY_MAX_LINES = 3;
 
 export const HANDOFF_KINDS = [
   "change",
@@ -125,6 +132,14 @@ export type ConciergeItem = {
   toCode: string;
   arrival: string;
   endDate: string | null;
+  /** Fuseau du segment (départ du vol, sinon Paris). Le « aujourd’hui » s’y lit. */
+  timezone: string;
+};
+
+export type ConciergePending = {
+  kind: HandoffKind;
+  bookingId: string | null;
+  body: string;
 };
 
 export type ConciergeFormality = {
@@ -175,6 +190,10 @@ export type ConciergeBalance = {
 /** Uniquement ce qui est déjà publié. Les brouillons n’y entrent pas. */
 export type ConciergeDossier = {
   firstName: string;
+  /** Programmes connus, sans numéro. Notes client déjà publiées. */
+  preferences: string[];
+  /** Langue de la fiche. Le message du client prime. */
+  language: string | null;
   stays: ConciergeStay[];
   documents: ConciergeDocument[];
   movements: ConciergeMovement[];
@@ -216,7 +235,7 @@ type RawBooking = Pick<
 type RawItem = Pick<
   CrmBookingItem,
   "id" | "booking_id" | "kind" | "title" | "start_at" | "end_at" | "amount" | "details" | "visible_to_client"
->;
+> & { supplier?: string | null };
 
 type RawVisa = {
   booking_id: string;
@@ -232,6 +251,52 @@ function fold(value: string) {
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase();
+}
+
+const CLIENT_SECRET =
+  /little emperors|expedia(?:\s+taap)?|\btaap\b|\bpliant\b|\bfournisseur\b|\bcommission\b|\bprix net\b|\bco[uû]t net\b|\bnet price\b|\bwholesale\b|hotelbeds/i;
+
+const SECRET_MONEY = /\bnet\b.{0,24}\d|\d.{0,12}\bnet\b/i;
+
+function sentenceLeaks(part: string) {
+  return CLIENT_SECRET.test(part) || SECRET_MONEY.test(part);
+}
+
+/** Retire fournisseur, net, commission, MRZ. Le nom d’hôtel affiché reste. */
+export function scrubClientText(value: string, hiddenNames: string[] = []) {
+  let text = value;
+  for (const name of hiddenNames) {
+    const token = name.trim();
+    if (token.length < 3) continue;
+    text = text.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
+  }
+  return text
+    .split("\n")
+    .flatMap((line) => {
+      if (/[A-Z0-9<]{20,}/.test(line)) return [];
+      const pieces = line.split(/(?<=[.!?])\s+/).filter((part) => part.trim() && !sentenceLeaks(part));
+      if (!pieces.length) return [];
+      const cleaned = pieces
+        .join(" ")
+        .replace(new RegExp(CLIENT_SECRET.source, "gi"), "")
+        .replace(/\b\d+(?:[.,]\d+)?\s*%/g, "")
+        .replace(/\b\d[\d\s.,]*\s*(?:€|eur(?:os)?)/gi, "");
+      return cleaned.trim() ? [cleaned] : [];
+    })
+    .join("\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([,.;])/g, "$1")
+    .trim();
+}
+
+function hiddenSupplierNames(card: CrmBookingItem) {
+  const hotel = fold(hotelDisplayName(card));
+  return [card.supplier, detailStr(card, "supplier"), detailStr(card, "provider"), detailStr(card, "wholesaler")].filter(
+    (name): name is string => {
+      const token = (name || "").trim();
+      return token.length > 2 && fold(token) !== hotel;
+    }
+  );
 }
 
 function dateLabel(value: string | null | undefined, lang: ReplyLang = "fr") {
@@ -340,6 +405,7 @@ function itemLines(item: RawItem, prices: boolean): ConciergeItem {
   const card = item as CrmBookingItem;
   const clock = itemClock(card.start_at);
   const endClock = itemClock(card.end_at);
+  const hidden = hiddenSupplierNames(card);
   const lines: string[] = [];
   const included: string[] = [];
   const date = segmentDate(item.start_at);
@@ -373,7 +439,11 @@ function itemLines(item: RawItem, prices: boolean): ConciergeItem {
   const board = detailStr(card, "board");
   if (board) included.push(board);
   included.push(...detailList(card, "included"));
-  if (included.length) lines.push(included.join(", "));
+  const safeIncluded = included.map((row) => scrubClientText(row, hidden)).filter(Boolean);
+  if (safeIncluded.length) lines.push(safeIncluded.join(", "));
+  const spoken = lines.map((line) => scrubClientText(line, hidden)).filter(Boolean);
+  lines.length = 0;
+  lines.push(...spoken);
   const amount =
     prices && item.amount != null && Number.isFinite(Number(item.amount)) ? Number(item.amount) : null;
   return {
@@ -381,7 +451,7 @@ function itemLines(item: RawItem, prices: boolean): ConciergeItem {
     label: BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind,
     lines: lines.filter(Boolean),
     clock,
-    included,
+    included: safeIncluded,
     amount,
     date,
     weekday,
@@ -393,7 +463,27 @@ function itemLines(item: RawItem, prices: boolean): ConciergeItem {
     toCode,
     arrival: endClock,
     endDate: segmentDate(item.end_at),
+    timezone: itemTimezone(item.kind, fromCode, card),
   };
+}
+
+function storedZone(value: unknown) {
+  if (typeof value !== "string" || !value.includes("/")) return "";
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: value });
+    return value;
+  } catch {
+    return "";
+  }
+}
+
+function itemTimezone(kind: string, fromCode: string, card: CrmBookingItem) {
+  return (
+    storedZone(card.details?.departure_timezone) ||
+    storedZone(card.details?.timezone) ||
+    (kind === "flight" ? timezoneForIata(fromCode) : "") ||
+    "Europe/Paris"
+  );
 }
 
 function formalityCopy(row: RawVisa): string {
@@ -419,6 +509,9 @@ export function buildConciergeDossier(input: {
     CrmTravelDocument,
     "doc_type" | "first_name" | "last_name" | "expires_on"
   > & { number?: string | null })[] | null;
+  /** Libellés seulement. Jamais un numéro de programme. */
+  preferences?: string[] | null;
+  language?: string | null;
   visaRequests?: RawVisa[] | null;
   transactions?: Pick<
     CrmTransaction,
@@ -440,7 +533,7 @@ export function buildConciergeDossier(input: {
   for (const doc of input.bookingDocuments || []) {
     if (!visibleIds.has(doc.booking_id) || !doc.visible_to_client) continue;
     const related = (itemsByBooking.get(doc.booking_id) || []) as CrmBookingItem[];
-    const label = documentLabel(doc as CrmBookingDocument, related);
+    const label = scrubClientText(documentLabel(doc as CrmBookingDocument, related));
     const list = docsByBooking.get(doc.booking_id) || [];
     list.push(label);
     docsByBooking.set(doc.booking_id, list);
@@ -473,7 +566,7 @@ export function buildConciergeDossier(input: {
       totalAmount:
         prices && Number.isFinite(Number(booking.total_amount)) ? Number(booking.total_amount) : null,
       currency: booking.currency || "EUR",
-      notesClient: shownClientNote(booking.notes_client),
+      notesClient: scrubClientText(shownClientNote(booking.notes_client) || "") || null,
       cover: publishedCover(booking),
       shareCode: typeof booking.share_code === "string" && booking.share_code ? booking.share_code : null,
       items,
@@ -492,7 +585,7 @@ export function buildConciergeDossier(input: {
     .filter((row) => row.status === "posted")
     .map((row) => ({
       date: row.occurred_on,
-      label: row.label?.trim() || TX_KIND_LABELS[row.kind as TransactionKind] || row.kind,
+      label: scrubClientText(row.label?.trim() || TX_KIND_LABELS[row.kind as TransactionKind] || row.kind) || TX_KIND_LABELS[row.kind as TransactionKind] || row.kind,
       direction: row.direction,
       amount: Number(row.amount),
       currency: row.currency || "EUR",
@@ -503,8 +596,11 @@ export function buildConciergeDossier(input: {
     balance: Number(row.balance),
   }));
 
+  const preferences = [...new Set((input.preferences || []).map((row) => scrubClientText(row)).filter(Boolean))];
   return {
     firstName: greetingGivenName(input.firstName) || "",
+    preferences,
+    language: (input.language || "").trim() || null,
     stays,
     documents,
     movements,
@@ -572,20 +668,71 @@ export function isComplaint(message: string) {
   );
 }
 
+const GENERIC_STAY_WORDS = new Set([
+  "hotel",
+  "sejour",
+  "voyage",
+  "reservation",
+  "carnet",
+  "vol",
+  "vols",
+  "train",
+  "avec",
+  "pour",
+  "dans",
+  "votre",
+  "cette",
+  "chambre",
+  "nuits",
+  "nuit",
+]);
+
+function hasWord(text: string, token: string) {
+  if (token.length < 4) return false;
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(text);
+}
+
+/** Villes du séjour : destination, titre, ville d’hôtel. Pas le départ, pas « hôtel ». */
+export function stayCityTokens(stay: ConciergeStay) {
+  const found = new Set<string>();
+  const add = (value: string) => {
+    for (const word of fold(value).split(/[^a-z0-9]+/)) {
+      if (word.length > 3 && !GENERIC_STAY_WORDS.has(word)) found.add(word);
+    }
+  };
+  if (stay.destination) add(stay.destination);
+  add(stay.title);
+  for (const item of stay.items) {
+    if (item.kind !== "hotel") continue;
+    add(item.toPlace);
+    const line = item.lines[0] || "";
+    const city = line.split(",").at(-1)?.trim() || "";
+    if (city && fold(city) !== fold(line.split(",")[0] || "")) add(city);
+  }
+  return [...found];
+}
+
+/**
+ * La ville écrite gagne sur la référence. Deauville ne se rattache pas au dossier de Nice.
+ * Sans ville, la référence, puis l’unique séjour.
+ */
 function focusStay(message: string, stays: ConciergeStay[]) {
   if (!stays.length) return null;
   const text = fold(message);
+  const byCity = stays.filter((stay) => stayCityTokens(stay).some((token) => hasWord(text, token)));
+  if (byCity.length === 1) return byCity[0];
+  if (byCity.length > 1) return null;
   const byRef = stays.find((stay) => text.includes(fold(stay.reference)));
   if (byRef) return byRef;
-  const hits = stays.filter((stay) => {
-    const words = fold(`${stay.title} ${stay.destination || ""}`)
-      .split(/[^a-z0-9]+/)
-      .filter((word) => word.length > 3);
-    return words.some((word) => text.includes(word));
-  });
+  const hits = stays.filter((stay) => stayCityTokens(stay).some((token) => hasWord(text, token)));
   if (hits.length === 1) return hits[0];
   if (stays.length === 1) return stays[0];
   return null;
+}
+
+export function stayForRequest(message: string, stays: ConciergeStay[]) {
+  return focusStay(message, stays);
 }
 
 function nextStay(stays: ConciergeStay[]) {
@@ -888,8 +1035,40 @@ export function conciergeBrief(dossier: ConciergeDossier, now: Date = new Date()
   const today = parisMoment(now);
   const lines = [
     `Aujourd’hui : ${today.label} (Europe/Paris).`,
-    "« jeudi » = le jeudi qui vient, aujourd’hui compris. « demain » = le lendemain. « mon dernier voyage » = le séjour terminé le plus récent. « le retour » = le vol qui ramène.",
+    "« jeudi », « prochain » et « mon vol » = le prochain segment à venir, jamais une date passée. Le jour se lit dans le fuseau du trajet. « demain » = le lendemain. « mon dernier voyage » = le séjour terminé le plus récent. « le retour » = le vol qui ramène.",
+    "Ne jamais citer un taux d’agence, un prix d’achat, un nom de grossiste, un numéro de pièce ni une zone de lecture.",
   ];
+  if (dossier.firstName) lines.push(`Client : ${dossier.firstName}.`);
+  const langue = dossier.language === "en" ? "anglais" : dossier.language === "he" ? "hébreu" : "français";
+  lines.push(`Langue de la fiche : ${langue}. Répondre dans la langue du message.`);
+  const prefs = [
+    ...(dossier.preferences || []),
+    ...dossier.stays.map((stay) => stay.notesClient || "").filter(Boolean),
+  ];
+  if (prefs.length) lines.push(`Préférences : ${prefs.join(" · ")}.`);
+  const active = [...dossier.stays]
+    .filter((stay) => (stay.endDate || stay.startDate || "") >= today.date)
+    .sort((a, b) => (a.startDate || "9999").localeCompare(b.startDate || "9999"))[0];
+  if (active) {
+    const place = stayDestinationLine({ destination: active.destination, title: active.title }) || active.destination || "";
+    lines.push(
+      `Séjour actif : ${active.reference}${place ? `, ${place}` : ""}, du ${active.startDate || "?"} au ${active.endDate || "?"}.`
+    );
+    const upcoming = active.items.filter((item) => !segmentIsPast(item, now) && ["flight", "hotel", "transfer", "chauffeur"].includes(item.kind));
+    for (const item of upcoming.slice(0, 6)) {
+      const when = [item.weekday, item.date ? frenchLongDate(item.date) : "", item.clock].filter(Boolean).join(" ");
+      lines.push(`- À venir : ${item.label}${item.flightNumber ? ` ${item.flightNumber}` : ""}${when ? `, ${when}` : ""}${item.lines[0] ? `. ${item.lines[0]}` : ""}`);
+    }
+  }
+  const zone = tripZone(dossier, now);
+  const local = civilDate(now, zone);
+  if (zone !== "Europe/Paris") lines.push(`Fuseau du prochain trajet : ${zone}, date civile ${local}.`);
+  const nextFlight = nextUpcomingFlight(dossier, now);
+  if (nextFlight?.item.flightNumber) {
+    lines.push(
+      `Prochain vol : ${nextFlight.item.flightNumber} le ${nextFlight.item.date || "?"}. Ne pas citer un vol antérieur pour mon vol, jeudi ou prochain.`
+    );
+  }
   if (!dossier.stays.length) {
     lines.push("Aucun séjour publié.");
     return lines.join("\n");
@@ -1145,7 +1324,7 @@ function explicitCalendarDate(message: string, now: Date) {
 }
 
 function answerRelative(message: string, dossier: ConciergeDossier, lang: ReplyLang, now: Date): RelativeAnswer | null {
-  const when = relativeWhen(message, now);
+  const when = relativeWhen(message, now, tripZone(dossier, now));
   const explicit = explicitCalendarDate(message, now);
   const topic = topicOf(message);
   if (when?.kind === "last-trip") return lastTripAnswer(dossier, lang, now);
@@ -1241,25 +1420,175 @@ function dayAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, 
   return { body: line, handoff: clash && !past ? "question" : null, stay: primary.stay };
 }
 
+export function segmentIsPast(item: ConciergeItem, now: Date) {
+  if (!item.date) return false;
+  return item.date < civilDate(now, item.timezone || "Europe/Paris");
+}
+
+function flightSortKey(item: ConciergeItem) {
+  const minutes = clockMinutes(item.clock);
+  return `${item.date || "9999-99-99"}T${String(minutes ?? 0).padStart(4, "0")}`;
+}
+
+/** Le prochain vol dont la date n’est pas passée dans le fuseau du trajet. */
+export function nextUpcomingFlight(dossier: ConciergeDossier, now: Date) {
+  return (
+    allFlights(dossier)
+      .filter((row) => row.item.date && !segmentIsPast(row.item, now))
+      .sort((a, b) => flightSortKey(a.item).localeCompare(flightSortKey(b.item)))[0] || null
+  );
+}
+
+function nextUpcomingHotel(dossier: ConciergeDossier, now: Date) {
+  const rows: { stay: ConciergeStay; item: ConciergeItem }[] = [];
+  for (const stay of dossier.stays) {
+    for (const item of stay.items) {
+      if (item.kind !== "hotel") continue;
+      const end = item.endDate || item.date;
+      if (end && end < civilDate(now, item.timezone || "Europe/Paris")) continue;
+      rows.push({ stay, item });
+    }
+  }
+  return rows.sort((a, b) => flightSortKey(a.item).localeCompare(flightSortKey(b.item)))[0] || null;
+}
+
+function tripZone(dossier: ConciergeDossier, now: Date) {
+  return nextUpcomingFlight(dossier, now)?.item.timezone || nextUpcomingHotel(dossier, now)?.item.timezone || "Europe/Paris";
+}
+
+export function contestsMessage(message: string) {
+  const text = fold(message);
+  return /tu te trompes|vous vous trompez|t'es trompe|c'est faux|c'est pas (ca|le bon|mon)|ce n'est pas (ca|le bon|mon)|pas le bon vol|mauvais vol|vous etes sur|tu es sur|un doute|are you sure|not sure|you(?:'| a)re wrong|that(?:'| i)s wrong|not my flight/.test(
+    text
+  );
+}
+
+export function asksCheckIn(message: string) {
+  const text = fold(message);
+  return /check-?in|check in|enregistrement en ligne|\benregistrement\b/.test(text);
+}
+
+/** Carnet, billet ou confirmation d’hôtel déjà publiés. Pas un passeport. */
+export function asksPublishedResend(message: string): "carnet" | "flight" | "hotel" | null {
+  const text = fold(message);
+  if (/passeport|passport|\bmrz\b/.test(text)) return null;
+  if (!/renvoy|envoy|send|resend|forward|le lien|lien du/.test(text)) return null;
+  if (/billet|e-?ticket|embarquement|boarding/.test(text)) return "flight";
+  if (/confirmation/.test(text) && /hotel/.test(text)) return "hotel";
+  if (/carnet|itineraire|lien/.test(text)) return "carnet";
+  return null;
+}
+
+function asksNextFlight(message: string) {
+  const text = fold(message);
+  if (/dernier/.test(text)) return false;
+  return /\b(mon vol|le vol|my flight|the flight|prochain vol|vol prochain|next flight)\b/.test(text);
+}
+
+function asksNextHotel(message: string) {
+  const text = fold(message);
+  return /\b(mon hotel|my hotel|prochain hotel|hotel prochain)\b/.test(text);
+}
+
+function wantsClock(message: string) {
+  return /horaire|a quelle heure|quelle heure|what time|which time|when/.test(fold(message));
+}
+
+function missingClock(lang: ReplyLang) {
+  return lang === "en" ? "I don’t have the time in your file." : MISSING_CLOCK;
+}
+
+function recallsRoomChange(message: string, pending?: ConciergePending[]) {
+  if (!pending?.length || classifyHandoff(message)) return false;
+  if (!/chambre/.test(fold(message))) return false;
+  return pending.some((row) => row.kind === "change" && /chambre/.test(fold(row.body)));
+}
+
+/** Le modèle a dépassé trois lignes ou 280 caractères : on reprend le routeur. */
+export function replyOverCap(text: string) {
+  const body = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !/^le concierge\.?$/i.test(line))
+    .join("\n")
+    .trim();
+  if (!body) return false;
+  if (body.split(/\n+/).length > CONCIERGE_REPLY_MAX_LINES) return true;
+  return body.length > CONCIERGE_REPLY_MAX_CHARS;
+}
+
+/** Le coffre et son absence dans la même réponse, ou un passeport présent nié. */
+export function contradictsPassport(text: string, dossier: ConciergeDossier) {
+  const folded = fold(text);
+  if (!/passeport|passport/.test(folded)) return false;
+  const denies = /n'ai pas|n’ai pas|aucun passeport|pas de passeport|pas au coffre|introuvable|n'est pas au coffre|n’est pas au coffre/.test(
+    folded
+  );
+  const affirms = /coffre|on file|enregistre/.test(folded);
+  if (affirms && denies) return true;
+  if (!denies) return false;
+  return dossier.documents.some((doc) => {
+    if (!/passeport|passport/i.test(doc.label)) return false;
+    const first = fold(doc.holder).split(/[^a-z]+/).find((word) => word.length > 2) || "";
+    return Boolean(first) && folded.includes(first);
+  });
+}
+
+/** « mon vol », « jeudi », « prochain » : un numéro de vol déjà passé est un mauvais segment. */
+export function replyCitesPastSegment(message: string, text: string, dossier: ConciergeDossier, now: Date) {
+  const relative = relativeWhen(message, now, tripZone(dossier, now));
+  const upcoming = asksNextFlight(message) || asksNextHotel(message) || relative?.kind === "date" || /\bprochain\b|\bnext\b/.test(fold(message));
+  if (!upcoming || explicitCalendarDate(message, now)) return false;
+  const folded = fold(text);
+  for (const stay of dossier.stays) {
+    for (const item of stay.items) {
+      if (!item.flightNumber || !segmentIsPast(item, now)) continue;
+      if (folded.includes(fold(item.flightNumber))) return true;
+    }
+  }
+  return false;
+}
+
+/** La réponse nomme une autre ville ou une autre référence que celle demandée. */
+export function replyNamesWrongCity(message: string, text: string, dossier: ConciergeDossier) {
+  const asked = focusStay(message, dossier.stays);
+  const folded = fold(message);
+  const named = dossier.stays.filter((stay) => stayCityTokens(stay).some((token) => hasWord(folded, token)));
+  const target = named.length === 1 ? named[0] : asked;
+  if (!target || named.length !== 1) return false;
+  const answer = fold(text);
+  for (const stay of dossier.stays) {
+    if (stay.id === target.id) continue;
+    if (answer.includes(fold(stay.reference))) return true;
+    if (stayCityTokens(stay).some((token) => hasWord(answer, token) && !stayCityTokens(target).includes(token))) return true;
+  }
+  return false;
+}
+
 function scheduleText(message: string, dossier: ConciergeDossier, lang: ReplyLang, now: Date) {
   const stay = focusStay(message, dossier.stays);
-  if (!stay && dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
+  if (!stay && dossier.stays.length > 1 && !asksNextFlight(message) && !asksNextHotel(message)) {
+    return whichStayText(dossier.stays, lang);
+  }
   const pool = stay ? [stay] : dossier.stays;
-  const known = pool.flatMap((row) => row.items.filter((item) => item.clock).map((item) => ({ stay: row, item })));
-  if (!known.length) return lang === "en" ? "I don’t have the time in your file." : MISSING_CLOCK;
-  const lines = known
-    .map((row) => {
-      const clash = Boolean(row.item.date && transferClashes(row.stay, row.item.date));
-      if ((row.item.kind === "transfer" || row.item.kind === "chauffeur") && clash) return "";
-      if (row.item.kind === "hotel") return hotelSentence(row.item, lang, now);
-      if (row.item.kind === "transfer" || row.item.kind === "chauffeur") return transferSentence(row.item, lang, now, dossier);
-      if (row.item.kind === "accueil_vip" || row.item.kind === "greeter") return welcomeSentence(row.item, lang, now, dossier);
-      return flightSentence(row.item, row.stay, lang, now);
-    })
-    .filter(Boolean)
-    .slice(0, 2);
-  if (!lines.length) return lang === "en" ? "I don’t have the time in your file." : MISSING_CLOCK;
-  return lines.join("\n");
+  let known = pool.flatMap((row) =>
+    row.items.filter((item) => item.clock && !segmentIsPast(item, now)).map((item) => ({ stay: row, item }))
+  );
+  const text = fold(message);
+  if (/\bvol\b|flight|part|depart/.test(text)) {
+    known = known.filter((row) => row.item.kind === "flight" || row.item.flightNumber);
+  } else if (/hotel|chambre/.test(text)) {
+    known = known.filter((row) => row.item.kind === "hotel");
+  }
+  known.sort((a, b) => flightSortKey(a.item).localeCompare(flightSortKey(b.item)));
+  const row = known[0];
+  if (!row) return missingClock(lang);
+  const clash = Boolean(row.item.date && transferClashes(row.stay, row.item.date));
+  if ((row.item.kind === "transfer" || row.item.kind === "chauffeur") && clash) return confirmTransfer(lang);
+  if (row.item.kind === "hotel") return hotelSentence(row.item, lang, now);
+  if (row.item.kind === "transfer" || row.item.kind === "chauffeur") return transferSentence(row.item, lang, now, dossier);
+  if (row.item.kind === "accueil_vip" || row.item.kind === "greeter") return welcomeSentence(row.item, lang, now, dossier);
+  return flightSentence(row.item, row.stay, lang, now);
 }
 
 function includedText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
@@ -1324,8 +1653,10 @@ function helloText(dossier: ConciergeDossier, lang: ReplyLang, now: Date) {
 }
 
 function subjectStay(message: string, dossier: ConciergeDossier, topic: string) {
-  if (topic === "balance" || topic === "transactions" || topic === "documents" || topic === "unknown") return null;
   const focused = focusStay(message, dossier.stays);
+  const named = focused && stayCityTokens(focused).some((token) => hasWord(fold(message), token));
+  if (named && focused) return focused;
+  if (topic === "balance" || topic === "transactions" || topic === "documents" || topic === "unknown") return null;
   if (focused) return focused;
   if (dossier.stays.length === 1) return dossier.stays[0];
   return null;
@@ -1333,8 +1664,16 @@ function subjectStay(message: string, dossier: ConciergeDossier, topic: string) 
 
 function offerAgency(lang: ReplyLang) {
   return lang === "en"
-    ? "I don’t have that information. Would you like me to ask the agency?"
-    : "Je n’ai pas cette information. Souhaitez-vous que j’en parle à l’agence ?";
+    ? "I don’t have that information. Would you like me to ask Benjamin?"
+    : "Je n’ai pas cette information. Souhaitez-vous que j’en parle à Benjamin ?";
+}
+
+function benjaminHandoff(lang: ReplyLang) {
+  return say(lang, {
+    fr: BENJAMIN_HANDOFF,
+    en: "I’m passing this to Benjamin.",
+    he: "אני מעביר את זה ל-Benjamin.",
+  });
 }
 
 export function agencyHandoffSentence(lang: ReplyLang = "fr") {
@@ -1433,11 +1772,58 @@ function spoken(body: string, dossier: ConciergeDossier, lang: ReplyLang, now: D
   return { text: messages.join("\n\n"), messages };
 }
 
+function nextFlightAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, now: Date): RelativeAnswer | null {
+  if (!asksNextFlight(message) || explicitCalendarDate(message, now)) return null;
+  const row = nextUpcomingFlight(dossier, now);
+  if (!row) {
+    if (wantsClock(message)) return { body: missingClock(lang), handoff: null, stay: null };
+    const detail = say(lang, {
+      fr: "Je n’ai pas de vol à venir dans votre dossier.",
+      en: "I don’t have an upcoming flight in your file.",
+      he: "אין לי טיסה קרובה בתיק.",
+    });
+    return { body: confirmGap(lang, detail), handoff: "question", stay: null };
+  }
+  if (wantsClock(message) && !row.item.clock) return { body: missingClock(lang), handoff: null, stay: row.stay };
+  return { body: flightSentence(row.item, row.stay, lang, now), handoff: null, stay: row.stay };
+}
+
+function nextHotelAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, now: Date): RelativeAnswer | null {
+  if (!asksNextHotel(message) || explicitCalendarDate(message, now) || relativeWhen(message, now, tripZone(dossier, now))) return null;
+  const row = nextUpcomingHotel(dossier, now);
+  if (!row) return null;
+  return { body: hotelSentence(row.item, lang, now), handoff: null, stay: row.stay };
+}
+
+/** Heure, vol, hôtel, coffre : le routeur répond, le modèle ne parle pas. */
+export function routerCanAnswerAlone(
+  message: string,
+  turn: ConciergeTurn,
+  dossier: ConciergeDossier,
+  now: Date,
+  pending?: ConciergePending[]
+) {
+  if (turn.optOut || turn.access || turn.handoff) return true;
+  if (contestsMessage(message) || asksCheckIn(message) || recallsRoomChange(message, pending) || asksPublishedResend(message)) {
+    return true;
+  }
+  const topic = topicOf(message);
+  if (["schedule", "documents", "balance", "transactions", "price", "formality", "included", "chauffeur"].includes(topic)) {
+    return true;
+  }
+  if (asksNextFlight(message) || asksNextHotel(message)) return true;
+  if (relativeWhen(message, now, tripZone(dossier, now))) return true;
+  const text = fold(message);
+  if (/\b(vol|flight|hotel|chambre)\b/.test(text) && topic === "stay") return true;
+  return false;
+}
+
 export function planConciergeTurn(
   message: string,
   dossier: ConciergeDossier,
   now: Date = new Date(),
-  history?: BubbleHistory[]
+  history?: BubbleHistory[],
+  pending?: ConciergePending[]
 ): ConciergeTurn {
   const lang = messageLanguage(message);
   const empty = { cover: null as string | null, optOut: false, access: false };
@@ -1451,10 +1837,56 @@ export function planConciergeTurn(
     return { ...empty, handoff: null, bookingId: null, text: "", access: true };
   }
 
+  if (contestsMessage(message)) {
+    const stay = focusStay(message, dossier.stays);
+    const body = say(lang, {
+      fr: VERIFY_SENTENCE,
+      en: "I’ll check with Benjamin.",
+      he: "אני בודק מול הסוכנות.",
+    });
+    const packed = sayTurn(body);
+    return {
+      ...empty,
+      handoff: isComplaint(message) ? "complaint" : "question",
+      bookingId: stay?.id || null,
+      text: packed.text,
+      messages: packed.messages,
+    };
+  }
+
+  if (asksCheckIn(message) && !classifyHandoff(message)) {
+    const stay = focusStay(message, dossier.stays);
+    const agency = sayTurn(conciergeFollowUp(handoffSentence(lang), lang), true);
+    return {
+      ...empty,
+      handoff: "question",
+      bookingId: stay?.id || null,
+      text: agency.text,
+      messages: agency.messages,
+    };
+  }
+
+  if (recallsRoomChange(message, pending)) {
+    const stay = focusStay(message, dossier.stays) || dossier.stays.find((row) => row.id === pending?.find((item) => item.bookingId)?.bookingId);
+    const body = say(lang, {
+      fr: "Votre demande de changement de chambre est déjà chez l’agence.",
+      en: "Your room-change request is already with the agency.",
+      he: "בקשת שינוי החדר כבר אצל הסוכנות.",
+    });
+    const packed = sayTurn(body);
+    return {
+      ...empty,
+      handoff: "change",
+      bookingId: stay?.id || null,
+      text: packed.text,
+      messages: packed.messages,
+    };
+  }
+
   const handoff = classifyHandoff(message);
   if (handoff && AGENCY_HANDOFF.has(handoff)) {
     const stay = focusStay(message, dossier.stays);
-    const sentence = handoffSentence(lang);
+    const sentence = handoff === "payment" ? benjaminHandoff(lang) : handoffSentence(lang);
     const which = !stay && dossier.stays.length > 1 ? `\n${whichStayText(dossier.stays, lang)}` : "";
     const focused = stay
       ? `\n${say(lang, {
@@ -1478,20 +1910,62 @@ export function planConciergeTurn(
   let answerHandoff: HandoffKind | null = null;
   let pinned: ConciergeStay | null = null;
   const relative = isDiningRequest(message) ? null : answerRelative(message, dossier, lang, now);
-  if (isDiningRequest(message)) {
-    body = confirmGap(
-      lang,
-      say(lang, {
-        fr: "Je n’ai pas de restaurant dans votre dossier.",
-        en: "I don’t have a restaurant in your file.",
-        he: "אין לי מסעדה בתיק.",
-      })
-    );
+  const upcomingFlight = relative ? null : nextFlightAnswer(message, dossier, lang, now);
+  const upcomingHotel = relative || upcomingFlight ? null : nextHotelAnswer(message, dossier, lang, now);
+  const resendKind = asksPublishedResend(message);
+  if (resendKind) {
+    const stay =
+      focusStay(message, dossier.stays) ||
+      nextUpcomingFlight(dossier, now)?.stay ||
+      nextUpcomingHotel(dossier, now)?.stay ||
+      (dossier.stays.length === 1 ? dossier.stays[0] : null);
+    if (!stay && dossier.stays.length > 1) {
+      body = whichStayText(dossier.stays, lang);
+    } else if (!stay) {
+      body = say(lang, {
+        fr: "Je n’ai pas de carnet publié. Je transmets à l’agence.",
+        en: "I don’t have a published itinerary. I’m passing this to the agency.",
+        he: "אין לי מסלול שפורסם. אני מעביר לסוכנות.",
+      });
+      answerHandoff = "question";
+    } else {
+      const url = stayClientUrl(stay.reference);
+      body = say(lang, {
+        fr:
+          resendKind === "flight"
+            ? `Votre billet est dans le carnet.\n${url}`
+            : resendKind === "hotel"
+              ? `La confirmation d’hôtel est dans le carnet.\n${url}`
+              : `Voici votre carnet.\n${url}`,
+        en:
+          resendKind === "flight"
+            ? `Your ticket is in the itinerary.\n${url}`
+            : resendKind === "hotel"
+              ? `The hotel confirmation is in the itinerary.\n${url}`
+              : `Here is your itinerary.\n${url}`,
+        he: `${url}`,
+      });
+      pinned = stay;
+    }
+  } else if (isDiningRequest(message)) {
+    body = say(lang, {
+      fr: "Je transmets la demande de restaurant à l’agence. Rien n’est réservé.",
+      en: "I’m passing the restaurant request to the agency. Nothing is booked.",
+      he: "אני מעביר את בקשת המסעדה לסוכנות. שום דבר לא הוזמן.",
+    });
     answerHandoff = "question";
   } else if (relative) {
     body = relative.body;
     answerHandoff = relative.handoff;
     pinned = relative.stay;
+  } else if (upcomingFlight) {
+    body = upcomingFlight.body;
+    answerHandoff = upcomingFlight.handoff;
+    pinned = upcomingFlight.stay;
+  } else if (upcomingHotel) {
+    body = upcomingHotel.body;
+    answerHandoff = upcomingHotel.handoff;
+    pinned = upcomingHotel.stay;
   } else if (topic === "balance") body = balanceText(dossier, lang);
   else if (topic === "transactions") body = movementText(dossier, lang);
   else if (topic === "documents") body = documentText(dossier, lang);
@@ -1509,7 +1983,7 @@ export function planConciergeTurn(
   const complaint = isComplaint(message);
   const thin = answerIsThin(body) || body.includes("Lequel vous intéresse") || body.includes("Which one do you mean");
   if (complaint && (thin || answerHandoff)) {
-    if (!/agence|agency|סוכנות/.test(body)) body = `${body}\n${handoffSentence(lang)}`;
+    if (!/benjamin/i.test(body)) body = `${body}\n${benjaminHandoff(lang)}`;
     const stay = pinned || subjectStay(message, dossier, topic);
     const packed = sayTurn(body);
     return {

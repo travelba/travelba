@@ -198,7 +198,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     })(),
     supabase
       .from("crm_whatsapp_messages")
-      .select("id, direction, body, status, created_at, booking_id")
+      .select("id, direction, body, status, created_at, booking_id, concierge_mark")
       .eq("customer_id", id)
       .order("created_at", { ascending: true }),
     supabase

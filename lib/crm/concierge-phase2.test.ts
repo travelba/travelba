@@ -154,14 +154,14 @@ test("les modèles restent des brouillons, la revue compte la semaine", () => {
   );
   assert.equal(fromItems, "à Tel Aviv et aux Seychelles");
   const departFollowup = planFollowups({
-    now: new Date("2026-10-18T12:00:00Z"),
+    now: new Date("2026-10-19T12:00:00Z"),
     lastInbound: null,
     stayStart: "2026-10-20",
     stayEnd: "2026-10-24",
     briefOpen: false,
     firstName: "Camille",
     stay: { destination: "Paris · Tel Aviv · Seychelles" },
-  }).find((row) => row.templateKey === "concierge_depart");
+  }).find((row) => row.templateKey === "concierge_veille");
   assert.match(departFollowup?.body || "", /Camille/);
   assert.match(departFollowup?.body || "", /à Tel Aviv et aux Seychelles/);
   assert.equal(/Paris/.test(departFollowup?.body || ""), false);
@@ -196,14 +196,14 @@ test("les modèles restent des brouillons, la revue compte la semaine", () => {
   assert.equal(late.some((row) => row.channel === "session" && row.body.includes("http")), false);
 });
 
-test("l’évaluation simulée couvre les sept cas", async () => {
+test("l’évaluation simulée couvre le carnet et les échecs réels", async () => {
   const results = await runConciergeEval();
   const failed = results.filter((result) => !result.ok);
   assert.deepEqual(
     failed.map((result) => `${result.id}: ${result.detail}`),
     []
   );
-  assert.equal(results.length, 7);
+  assert.equal(results.length, 14);
 });
 
 test("les faits du savoir arrivent au modèle, pas les exemples", async () => {

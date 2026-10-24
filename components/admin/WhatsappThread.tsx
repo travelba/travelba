@@ -14,6 +14,7 @@ export type WhatsappThreadMessage = {
   media_path?: string | null;
   tools?: string[] | null;
   phone?: string | null;
+  concierge_mark?: string | null;
 };
 
 export type WhatsappThreadRequest = {
@@ -70,6 +71,7 @@ export function WhatsappThread({
     mediaPath: message.media_path || null,
     tools: message.tools || [],
     requestId: requestByMessage.get(message.id) || null,
+    conciergeMark: message.concierge_mark === "good" || message.concierge_mark === "bad" ? message.concierge_mark : null,
   }));
   const key = phone || customerId || "fil";
   const threads = foldThreads(inboxMessages, {

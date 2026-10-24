@@ -240,6 +240,7 @@ const SAMPLE_ITEM = {
   toCode: "",
   arrival: "",
   endDate: null,
+  timezone: "Europe/Paris",
 };
 
 function sampleStay(reference: string, destination: string): ConciergeStay {
@@ -299,6 +300,8 @@ function sampleStay(reference: string, destination: string): ConciergeStay {
 function sampleDossier(stays: ConciergeStay[]): ConciergeDossier {
   return {
     firstName: FIRST_NAME,
+    preferences: [],
+    language: "fr",
     stays,
     documents: [{ label: "Passeport", holder: FIRST_NAME, expiresOn: "2030-04-12" }],
     movements: [
