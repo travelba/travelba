@@ -2,6 +2,7 @@ import type { ConciergeDossier, ConciergePending, ConciergeTurn, ReplyLang } fro
 import { classifyHandoff, messageLanguage } from "@/lib/crm/whatsapp-concierge";
 import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "@/lib/crm/whatsapp-conversation";
 import { advanceJourney, inTripHelp, planFollowups, type PlannedFollowup, type ProposalDraft, type TripBrief } from "@/lib/crm/concierge-journey";
+import { factsFromDossier } from "@/lib/crm/concierge-touchpoints";
 import { paymentDraft, serviceDraft } from "@/lib/crm/concierge-proposals";
 import { rankKnowledge, knowledgePrompt, type KnowledgeChunk } from "@/lib/crm/concierge-knowledge";
 import { qualityMarks, type QualityMark } from "@/lib/crm/concierge-quality";
@@ -116,12 +117,19 @@ export async function planPhase2(input: {
     }
   }
 
+  const touch = factsFromDossier(input.dossier, now);
   const followups = planFollowups({
     now,
     lastInbound: input.lastInbound ?? null,
-    stayStart: input.stayStart ?? input.dossier.stays[0]?.startDate ?? null,
-    stayEnd: input.stayEnd ?? input.dossier.stays[0]?.endDate ?? null,
+    stayStart: input.stayStart ?? touch?.stay.startDate ?? null,
+    stayEnd: input.stayEnd ?? touch?.stay.endDate ?? null,
     briefOpen: Boolean(brief && brief.stage !== "ready"),
+    firstName: touch?.firstName,
+    stay: touch?.stay,
+    lang: touch?.lang,
+    facts: touch?.facts,
+    slot: touch?.bookingId,
+    bookingId: touch?.bookingId,
   });
   return {
     turn,

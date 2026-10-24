@@ -2,6 +2,16 @@ import { withConciergeSignature } from "@/lib/crm/whatsapp";
 import type { ReplyLang } from "@/lib/crm/whatsapp-concierge";
 import { messageLanguage } from "@/lib/crm/whatsapp-concierge";
 import { renderConciergeTemplate, templateDestination, type StayPhraseInput } from "@/lib/crm/concierge-templates";
+import { sessionWindowOpen } from "@/lib/crm/whatsapp-inbox";
+import {
+  arrivalSentence,
+  returnSentence,
+  templateTouchpointBody,
+  templateVolPhrase,
+  touchpointWindow,
+  veilleSentence,
+  type TouchpointFacts,
+} from "@/lib/crm/concierge-touchpoints";
 import { priceAccommodation } from "@/lib/crm/concierge-pricing";
 import { searchSuppliers, type SearchMode, type StayHit } from "@/lib/crm/concierge-search";
 import type { HotelDirectoryEntry } from "@/lib/crm/hotel-catalog";
@@ -42,6 +52,8 @@ export type PlannedFollowup = {
   templateKey: string | null;
   dueAt: string;
   body: string;
+  slot?: string;
+  bookingId?: string | null;
 };
 
 const MONTHS: Record<string, number> = {
@@ -286,8 +298,7 @@ export async function advanceJourney(input: {
   return { brief, reply: discoveryQuestion("ready", lang), proposal };
 }
 
-// TODO: ne pas envoyer ces relances (pré-départ, silence, retour, check-in).
-// Elles restent des brouillons `planned`. Aucun message sortant proactif tant que ce n’est pas décidé.
+// Le cron écrit ces brouillons. Rien ne part seul : le clic « Envoyer au client » envoie, dans la fenêtre de 24 h.
 export function planFollowups(input: {
   now: Date;
   lastInbound: Date | null;
@@ -297,12 +308,19 @@ export function planFollowups(input: {
   firstName?: string | null;
   stay?: StayPhraseInput | null;
   lang?: ReplyLang;
+  facts?: TouchpointFacts;
+  slot?: string;
+  bookingId?: string | null;
 }): PlannedFollowup[] {
   const lang = input.lang === "en" || input.lang === "he" ? input.lang : "fr";
   const destination = templateDestination(input.stay || {}, lang);
   const reprise = renderConciergeTemplate("concierge_reprise", lang, { prenom: input.firstName });
-  const depart = renderConciergeTemplate("concierge_depart", lang, { prenom: input.firstName, destination });
-  const retour = renderConciergeTemplate("concierge_retour", lang, { prenom: input.firstName, destination });
+  const open = sessionWindowOpen(input.lastInbound ? input.lastInbound.toISOString() : null, input.now);
+  const dueAt = input.now.toISOString();
+  const stamp = (row: PlannedFollowup): PlannedFollowup =>
+    row.kind === "silence_session" || row.kind === "silence_template"
+      ? row
+      : { ...row, slot: input.slot || "", bookingId: input.bookingId || null };
   const out: PlannedFollowup[] = [];
   if (input.lastInbound) {
     const age = input.now.getTime() - input.lastInbound.getTime();
@@ -312,7 +330,7 @@ export function planFollowups(input: {
         kind: "silence_session",
         channel: "session",
         templateKey: null,
-        dueAt: input.now.toISOString(),
+        dueAt,
         body: "Je reste à votre disposition pour ce séjour. Dites-moi si vous souhaitez que je continue.",
       });
     }
@@ -321,46 +339,65 @@ export function planFollowups(input: {
         kind: "silence_template",
         channel: "template",
         templateKey: "concierge_reprise",
-        dueAt: input.now.toISOString(),
+        dueAt,
         body: `${reprise}\nModèle non soumis à Meta.`,
       });
     }
   }
-  const today = input.now.toISOString().slice(0, 10);
-  if (input.stayStart && input.stayStart > today && input.stayStart <= addDays(today, 2)) {
-    out.push({
-      kind: "predeparture",
-      channel: "template",
-      templateKey: "concierge_depart",
-      dueAt: input.now.toISOString(),
-      body: `${depart}\nModèle non soumis à Meta.`,
-    });
+  const { today, tomorrow } = touchpointWindow(input.now);
+  const lieu = hotelLieu(lang, input.facts?.hotelName, destination);
+  if (input.stayStart && input.stayStart === tomorrow) {
+    const vol = templateVolPhrase(lang, input.facts);
+    out.push(
+      stamp({
+        kind: "predeparture",
+        channel: open ? "session" : "template",
+        templateKey: open ? null : "concierge_veille",
+        dueAt,
+        body: open
+          ? veilleSentence(lang, input.firstName, destination, input.facts)
+          : templateTouchpointBody("concierge_veille", lang, { prenom: input.firstName, destination, vol }),
+      })
+    );
   }
-  if (input.stayStart === today) {
-    out.push({
-      kind: "checkin",
-      channel: "session",
-      templateKey: null,
-      dueAt: input.now.toISOString(),
-      body: "Votre arrivée est aujourd’hui. Dites-moi si quelque chose coince.",
-    });
+  const arrival = input.facts?.hotelArrival ?? input.stayStart === today;
+  if (arrival) {
+    out.push(
+      stamp({
+        kind: "checkin",
+        channel: open ? "session" : "template",
+        templateKey: open ? null : "concierge_arrivee",
+        dueAt,
+        body: open
+          ? arrivalSentence(lang, input.firstName, input.facts?.hotelName, lieu)
+          : templateTouchpointBody("concierge_arrivee", lang, { prenom: input.firstName, lieu }),
+      })
+    );
   }
-  if (input.stayEnd && input.stayEnd < today && input.stayEnd >= addDays(today, -2)) {
-    out.push({
-      kind: "feedback",
-      channel: "template",
-      templateKey: "concierge_retour",
-      dueAt: input.now.toISOString(),
-      body: `${retour}\nModèle non soumis à Meta.`,
-    });
+  if (input.stayEnd && input.stayEnd === today) {
+    out.push(
+      stamp({
+        kind: "feedback",
+        channel: open ? "session" : "template",
+        templateKey: open ? null : "concierge_merci",
+        dueAt,
+        body: open
+          ? returnSentence(lang, input.firstName, destination)
+          : templateTouchpointBody("concierge_merci", lang, { prenom: input.firstName, destination }),
+      })
+    );
   }
   return out;
 }
 
-function addDays(isoDay: string, days: number) {
-  const date = new Date(`${isoDay}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
+function hotelLieu(lang: ReplyLang, hotelName: string | null | undefined, destination: string) {
+  const hotel = (hotelName || "").replace(/[\r\n]+/g, " ").trim();
+  if (hotel) {
+    if (lang === "en") return `to ${hotel}`;
+    if (lang === "he") return `ל-${hotel}`;
+    return `à ${hotel}`;
+  }
+  return destination;
 }
 
 export function inTripHelp(message: string) {

@@ -929,8 +929,10 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
           draft_body: row.body,
           due_at: row.dueAt,
           status: "planned",
+          slot: row.slot || "",
+          booking_id: row.bookingId || null,
         })),
-        { onConflict: "phone,kind" }
+        { onConflict: "phone,kind,slot" }
       );
       if (error) console.error("[whatsapp-concierge] relance", error.code || "error");
     },

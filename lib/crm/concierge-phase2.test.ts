@@ -154,14 +154,14 @@ test("les modèles restent des brouillons, la revue compte la semaine", () => {
   );
   assert.equal(fromItems, "à Tel Aviv et aux Seychelles");
   const departFollowup = planFollowups({
-    now: new Date("2026-10-18T12:00:00Z"),
+    now: new Date("2026-10-19T12:00:00Z"),
     lastInbound: null,
     stayStart: "2026-10-20",
     stayEnd: "2026-10-24",
     briefOpen: false,
     firstName: "Camille",
     stay: { destination: "Paris · Tel Aviv · Seychelles" },
-  }).find((row) => row.templateKey === "concierge_depart");
+  }).find((row) => row.templateKey === "concierge_veille");
   assert.match(departFollowup?.body || "", /Camille/);
   assert.match(departFollowup?.body || "", /à Tel Aviv et aux Seychelles/);
   assert.equal(/Paris/.test(departFollowup?.body || ""), false);

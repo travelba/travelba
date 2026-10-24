@@ -13,6 +13,7 @@ import {
   type InboxMessage,
 } from "@/lib/crm/whatsapp-inbox";
 import { WhatsappInbox } from "@/components/admin/WhatsappInbox";
+import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
 export const metadata = { title: "WhatsApp" };
@@ -52,7 +53,7 @@ export default async function WhatsappInboxPage({
   const customerIds = [...new Set(rows.map((row) => row.customer_id).filter(Boolean))] as string[];
   const bookingIds = [...new Set(rows.map((row) => row.booking_id).filter(Boolean))] as string[];
   const staffIds = [...new Set(rows.map((row) => row.author_staff_id).filter(Boolean))] as string[];
-  const [customers, bookings, staff, threads, requests, proposals] = await Promise.all([
+  const [customers, bookings, staff, threads, requests, proposals, followups] = await Promise.all([
     customerIds.length
       ? admin.from("crm_customers").select("id, first_name, last_name, phone").in("id", customerIds)
       : Promise.resolve({ data: [] }),
@@ -63,6 +64,13 @@ export default async function WhatsappInboxPage({
     admin.from("crm_whatsapp_threads").select("phone, paused_until, staff_read_at, customer_id"),
     admin.from("crm_whatsapp_requests").select("id, phone, message_id, kind, status").eq("status", "open"),
     admin.from("crm_concierge_proposals").select("id, phone, draft_body, status").eq("status", "pending"),
+    admin
+      .from("crm_concierge_followups")
+      .select("id, phone, kind, channel, draft_body, status")
+      .eq("status", "planned")
+      .in("kind", ["predeparture", "checkin", "feedback"])
+      .order("due_at", { ascending: true })
+      .limit(30),
   ]);
   const names = new Map(
     ((customers.data || []) as { id: string; first_name: string | null; last_name: string | null; phone: string | null }[]).map((row) => [
@@ -129,6 +137,19 @@ export default async function WhatsappInboxPage({
   const pending = ((proposals.data || []) as { id: string; phone: string; draft_body: string }[]).filter(
     (row) => row.phone === active?.phone
   );
+  const drafts = (followups.error ? [] : followups.data || []) as {
+    id: string;
+    phone: string;
+    kind: string;
+    channel: string;
+    draft_body: string;
+  }[];
+  const ready = drafts.filter((row) => row.phone === active?.phone);
+  const draftLabel: Record<string, string> = {
+    predeparture: "Veille du départ",
+    checkin: "Arrivée à l’hôtel",
+    feedback: "Retour",
+  };
 
   return (
     <div className="space-y-4">
@@ -141,6 +162,22 @@ export default async function WhatsappInboxPage({
           Revue
         </Link>
       </div>
+      {ready.length ? (
+        <ul className="space-y-2">
+          {ready.map((row) => (
+            <li key={row.id} className="rounded-3xl border border-[var(--border)] px-4 py-3 text-sm">
+              <p className="font-semibold text-[#0B192C]">{draftLabel[row.kind] || row.kind}</p>
+              <p className="mt-1 whitespace-pre-wrap text-[var(--color-ink-soft)]">{row.draft_body}</p>
+              <p className="mt-1 text-xs text-[var(--color-ink-soft)]">
+                {row.channel === "template"
+                  ? "Hors fenêtre de 24 h. Le modèle n’est pas soumis."
+                  : "Fenêtre de 24 h ouverte."}
+              </p>
+              <ConciergeFollowupSend id={row.id} previewBlocked={isVercelPreview()} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <WhatsappInbox
         threads={folded}
         messages={activeMessages}
