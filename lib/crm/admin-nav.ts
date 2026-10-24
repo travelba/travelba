@@ -71,7 +71,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
       id: "boites",
       label: "Boîtes de réception",
       items: [
-        { href: "/admin/emails", label: "E-mails", icon: "mail", badge: "emails" },
+        { href: "/admin/emails", label: "Boîte d'import", icon: "mail", badge: "emails" },
         { href: "/admin/whatsapp", label: "WhatsApp", icon: "forum", badge: "whatsapp" },
         { href: "/admin/little-emperors", label: "Little Emperors", icon: "hotel", badge: "le" },
       ],

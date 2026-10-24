@@ -150,6 +150,10 @@ Après l’import, le titre ne garde que les villes de séjour (pas le départ, 
 
 Chaque décision (auto ou humain) va dans `crm_audit_events` : qui, quand, quoi. MRZ, passeport (trois derniers caractères) et cartes sont masqués. Pas d’extract dans le journal.
 
+## Confiance et proposition
+
+Chaque champ lu porte une confiance et, quand la ligne est dans le mail, la citation. `crm_import_proposals` garde l’avant / après (ajouter, remplacer, annuler, joindre le mail). On n’applique seul que si la référence de confirmation est unique, la confiance est au moins 0,9 et il n’y a pas de conflit. Sans confiance notée, le rapprochement unique d’avant reste. `/admin/emails` a trois vues : à traiter, appliqués (24 h, Annuler), ignorés (remettre). Raccourcis A, I, E sur la première carte. Les champs peu sûrs sont en orange, citation au survol.
+
 ## Pas de voyage
 
 Confirmation avec une carte (vol, hôtel, transfert…) et une date, sans candidat
