@@ -11,7 +11,7 @@ import { cityLabel, cityPlaceKey, isOriginHub } from "./city-names";
 import { labelIncludesCity, splitPlaceLabel, tripCityPlan } from "./layover";
 import { stayDestinationLine } from "./stay-phrase";
 import { accueilVipTimelineDays, placeAccueilVipBesideFlights, withLiveAccueilVip } from "./accueil-vip";
-import { itemTicketCount } from "./item-match";
+import { statedTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
   const value = item.details?.[key];
@@ -373,8 +373,8 @@ export function itemPriceLabel(
   }
   if (!pricesVisible) return HIDDEN_PRICE_LABEL;
   const money = formatMoney(Number(item.amount), currency);
-  const count = itemTicketCount(item);
-  if (count > 1) return `${count} × ${money}`;
+  const count = statedTicketCount(item);
+  if (count != null && count > 1) return `${count} × ${money}`;
   return money;
 }
 

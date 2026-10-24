@@ -28,6 +28,9 @@ import {
   type PreparedIngestFile,
 } from "@/lib/crm/ingest-file";
 import { clipEmailBody } from "@/lib/crm/email-source";
+import { classifyInboundMail, dropInboundImage } from "@/lib/crm/email-prefilter";
+import { openThreadParent, sharesInboxGroup, type ThreadRow } from "@/lib/crm/email-thread";
+import { toAuditRow } from "@/lib/crm/audit-events";
 import { EMAIL_BODY_MISSING_MARK, bodyBackfillSince, hasBodyMissingMark, markBodyMissing } from "@/lib/crm/email-body-backfill";
 import { reopenFalseSupplierCancellation } from "@/lib/crm/ingest-parse";
 import {
@@ -45,6 +48,9 @@ import { autoCreateBookingFromIngestId } from "@/lib/crm/email-ingest-create-run
 import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
   mergeBookingSuggestions,
+  deterministicBookingId,
+  extractReferences,
+  suggestBookingByClientEmail,
   suggestBookingByDestination,
   suggestBookingByHotelStay,
   suggestBookingByReference,
@@ -346,14 +352,19 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
     ? { autoBookingId: null, candidates: [] }
     : suggestBookingByDestination(extract, bookingList, people);
   const hotelStay = suggestBookingByHotelStay(extract, bookingList, hotelCards, people);
+  const byEmail = suggestBookingByClientEmail(extract, bookingList, people);
   const booking = mergeBookingSuggestions(
     suggestBookingByReference(extract, bookingList, itemsByBooking),
+    byEmail,
     hotelStay,
     suggestBookingByTripSignals(extract, bookingList, people),
     destination
   );
+  const tier = deterministicBookingId(booking.candidates);
   let suggestedBookingId = booking.autoBookingId;
-  if (!suggestedBookingId && hotelStay.candidates.length === 0 && destination.candidates.length === 1) {
+  if (tier.tier === "reference") suggestedBookingId = tier.bookingId;
+  if (tier.tier === "email_dates") suggestedBookingId = null;
+  if (!suggestedBookingId && tier.tier === "human" && hotelStay.candidates.length === 0 && destination.candidates.length === 1) {
     suggestedBookingId = destination.candidates[0].booking_id;
   }
 
@@ -378,7 +389,52 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
     suggested_customer_id: bookingCustomerId || autoCustomerId,
     suggested_booking_id: suggestedBookingId,
     candidates: merged.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr")),
+    match_tier: tier.tier,
+    confirmation_refs: [...extractReferences(extract)],
   };
+}
+
+async function recordIngestAudit(
+  admin: Admin,
+  draft: Parameters<typeof toAuditRow>[0]
+) {
+  const { error } = await admin.from("crm_audit_events").insert(toAuditRow(draft));
+  if (error) console.error("[audit] écriture impossible");
+}
+
+/** Décision humaine (rattacher, refuser, créer). Le détail ne contient pas l’extract. */
+export async function noteIngestDecision(
+  admin: Admin,
+  draft: Parameters<typeof toAuditRow>[0]
+) {
+  await recordIngestAudit(admin, draft);
+}
+
+/** Ferme les autres messages du même fil ou de la même confirmation. N’efface rien. */
+export async function closeIngestSiblings(
+  admin: Admin,
+  row: ThreadRow,
+  status: "attached" | "refused" | "ignored",
+  actorId: string | null
+) {
+  const { data } = await admin
+    .from("crm_email_ingest")
+    .select("id, gmail_thread_id, confirmation_refs, grouped_into, extract")
+    .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
+    .neq("id", row.id)
+    .limit(400);
+  const ids = ((data || []) as ThreadRow[]).filter((other) => sharesInboxGroup(row, other)).map((other) => other.id);
+  if (!ids.length) return 0;
+  await admin.from("crm_email_ingest").update({ status, grouped_into: row.id }).in("id", ids);
+  await recordIngestAudit(admin, {
+    actorKind: actorId ? "human" : "auto",
+    actorId,
+    action: "group",
+    emailIngestId: row.id,
+    summary: `${ids.length} message(s) du même fil`,
+    detail: { status },
+  });
+  return ids.length;
 }
 
 /**
@@ -404,9 +460,20 @@ export async function matchAndStoreExtract(
       suggested_customer_id: suggestions.suggested_customer_id,
       suggested_booking_id: suggestions.suggested_booking_id,
       status: suggestions.suggested_customer_id ? "matched" : "parsed",
+      confirmation_refs: suggestions.confirmation_refs,
+      match_tier: suggestions.match_tier,
       error: null,
     })
     .eq("id", rowId);
+  await recordIngestAudit(admin, {
+    actorKind: "auto",
+    action: "suggest",
+    emailIngestId: rowId,
+    bookingId: suggestions.suggested_booking_id,
+    customerId: suggestions.suggested_customer_id,
+    summary: suggestions.match_tier,
+    detail: { tier: suggestions.match_tier },
+  });
   return suggestions;
 }
 
@@ -482,11 +549,66 @@ async function storeAttachment(
 export async function processEmailIngestRow(row: CrmEmailIngest) {
   const admin = createServiceClient();
   const message = await getMessage(row.gmail_message_id);
+  const bodyPreview = (message.text || "").trim();
+  const skip = classifyInboundMail({ subject: message.subject, text: bodyPreview, label: row.label });
+  const headerPatch = {
+    gmail_thread_id: message.threadId || row.gmail_thread_id,
+    from_email: message.fromEmail || row.from_email,
+    subject: message.subject || row.subject,
+    received_at: message.receivedAt || row.received_at,
+    body_text: clipEmailBody(bodyPreview),
+    body_html: clipEmailBody(message.html),
+  };
+  if (skip) {
+    await admin
+      .from("crm_email_ingest")
+      .update({ ...headerPatch, status: "ignored", ignore_reason: skip.reason, error: null })
+      .eq("id", row.id);
+    await recordIngestAudit(admin, {
+      actorKind: "auto",
+      action: "ignore",
+      emailIngestId: row.id,
+      summary: skip.reason,
+    });
+    return;
+  }
+
+  const { data: openRows } = await admin
+    .from("crm_email_ingest")
+    .select("id, gmail_thread_id, confirmation_refs, grouped_into, received_at, extract")
+    .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
+    .neq("id", row.id)
+    .limit(400);
+  const parent = openThreadParent(
+    {
+      id: row.id,
+      gmail_thread_id: message.threadId || row.gmail_thread_id,
+      received_at: message.receivedAt || row.received_at,
+      confirmation_refs: row.confirmation_refs,
+      extract: row.extract,
+    },
+    (openRows || []) as ThreadRow[]
+  );
+  if (parent) {
+    await admin
+      .from("crm_email_ingest")
+      .update({ ...headerPatch, status: "grouped", grouped_into: parent.id, error: null })
+      .eq("id", row.id);
+    await recordIngestAudit(admin, {
+      actorKind: "auto",
+      action: "group",
+      emailIngestId: row.id,
+      summary: "Message regroupé dans le fil",
+      detail: { parent_id: parent.id },
+    });
+    return;
+  }
 
   const prepared: PreparedIngestFile[] = [];
   const stored: EmailIngestAttachment[] = [];
   let count = 0;
   for (const att of message.attachments) {
+    if (dropInboundImage(att)) continue;
     if (count >= MAX_INGEST_FILES) break;
     if (!isAllowedIngestType(att.mimeType, att.filename)) continue;
     if (att.size && att.size > MAX_INGEST_BYTES) continue;
@@ -538,7 +660,34 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
   }
   await admin.from("crm_email_ingest").update(basePatch).eq("id", row.id);
   await matchAndStoreExtract(admin, row.id, extract, warnings, stored);
-  await autoCreateBookingFromIngestId(row.id);
+  const folded = await foldParsedConfirmation(admin, row.id);
+  if (!folded) await autoCreateBookingFromIngestId(row.id);
+}
+
+async function foldParsedConfirmation(admin: Admin, rowId: string) {
+  const { data: current } = await admin
+    .from("crm_email_ingest")
+    .select("id, gmail_thread_id, confirmation_refs, grouped_into, received_at, extract")
+    .eq("id", rowId)
+    .maybeSingle();
+  if (!current) return false;
+  const { data: openRows } = await admin
+    .from("crm_email_ingest")
+    .select("id, gmail_thread_id, confirmation_refs, grouped_into, received_at, extract")
+    .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
+    .neq("id", rowId)
+    .limit(400);
+  const parent = openThreadParent(current as ThreadRow, (openRows || []) as ThreadRow[]);
+  if (!parent) return false;
+  await admin.from("crm_email_ingest").update({ status: "grouped", grouped_into: parent.id }).eq("id", rowId);
+  await recordIngestAudit(admin, {
+    actorKind: "auto",
+    action: "group",
+    emailIngestId: rowId,
+    summary: "Même confirmation, regroupée",
+    detail: { parent_id: parent.id },
+  });
+  return true;
 }
 
 /** Traite en lot les lignes `received` (appelé par le cron / après capture). */

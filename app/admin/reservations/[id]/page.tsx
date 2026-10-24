@@ -411,6 +411,15 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     costs: accountingInputs.costs,
   });
 
+  const importTasksQuery = await supabase
+    .from("crm_booking_tasks")
+    .select("id, kind, title")
+    .eq("booking_id", id)
+    .order("created_at");
+  const importTasks = importTasksQuery.error
+    ? []
+    : ((importTasksQuery.data || []) as { id: string; kind: string; title: string }[]);
+
   const [appliedFees, inheritedFees] = await Promise.all([
     loadResolvedAgencyFees(supabase, [b]),
     loadResolvedAgencyFees(supabase, [{ ...b, agency_fee_rate: null }]),
@@ -500,6 +509,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           companyAdmins={companyAdmins}
           mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece }}
           accounting={accounting}
+          importTasks={importTasks}
         />
   );
 }

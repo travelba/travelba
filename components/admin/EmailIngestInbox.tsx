@@ -29,6 +29,7 @@ import { emailCardTitle } from "@/lib/crm/ingest-title";
 import { formatDateFr, formatDateRangeShort, formatDateTimeFr, formatMoney } from "@/lib/crm/money";
 import { emailHtmlHasText, sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { collapseSharedTicketPrice } from "@/lib/crm/item-match";
+import { collapseInboxRows } from "@/lib/crm/email-thread";
 import { inboxStayAction, type LifecycleCard } from "@/lib/crm/item-lifecycle";
 
 type ExtractItem = {
@@ -179,6 +180,8 @@ export function EmailIngestInbox({
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
   const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
+
+  const cards = useMemo(() => collapseInboxRows(rows), [rows]);
 
   const chosenCustomer = useCallback(
     (row: CrmEmailIngest) => chosen[row.id] ?? row.suggested_customer_id ?? "",
@@ -388,7 +391,7 @@ export function EmailIngestInbox({
         </p>
       ) : null}
 
-      {rows.map((row) => {
+      {cards.map(({ primary: row, members }) => {
         const extract = viewOf(row);
         const sourceItems = Array.isArray(extract.items) ? extract.items : [];
         const items = collapseSharedTicketPrice(
@@ -458,6 +461,11 @@ export function EmailIngestInbox({
                   {extract.document_status === "cancelled" ? (
                     <span className="rounded-full bg-[#F4F1EA] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
                       Annulation
+                    </span>
+                  ) : null}
+                  {members.length > 1 ? (
+                    <span className="rounded-full bg-[#C5A880]/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#0B192C]">
+                      Doublon possible · Fil de {members.length} messages
                     </span>
                   ) : null}
                 </div>

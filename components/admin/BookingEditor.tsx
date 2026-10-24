@@ -132,6 +132,7 @@ import {
 } from "@/lib/crm/booking-tabs";
 import { useMirror } from "@/lib/crm/use-mirror";
 import { adminAction } from "@/lib/crm/admin-action";
+import { TITLE_REVIEW_MARK } from "@/lib/crm/import-title";
 
 /** Assez pour recalculer le montant : prix, billets, aéroports, aller-retour. */
 function ledgerMoneyKey(view: ClientLedgerView | null) {
@@ -303,6 +304,7 @@ export function BookingEditor({
   mb3m,
   accounting = null,
   agencyFee,
+  importTasks = [],
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -389,6 +391,8 @@ export function BookingEditor({
   mb3m: { blocker: string | null; piece: { number: string } | null };
   /** Comptabilité du voyage : ventes, coûts rattachés, marge, sorties proposées. */
   accounting?: TripAccountingView | null;
+  /** Enregistrement, visa et pré-enregistrement issus d’un mail. Pas des étapes. */
+  importTasks?: { id: string; kind: string; title: string }[];
 }) {
   const items = useMemo(() => completeFlightRoutes(sourceItems), [sourceItems]);
   const router = useRouter();
@@ -1190,6 +1194,13 @@ export function BookingEditor({
                 Référence {booking.reference}
                 {jMinusLabel(facts.start) ? ` · ${jMinusLabel(facts.start)}` : ""}
               </p>
+              {(booking.notes_internal || "").includes(TITLE_REVIEW_MARK) || notesInternal.includes(TITLE_REVIEW_MARK) ? (
+                <p className="mt-1 px-1.5">
+                  <span className="rounded-full bg-[#C5A880]/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#0B192C]">
+                    Titre à vérifier
+                  </span>
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
@@ -2124,6 +2135,16 @@ export function BookingEditor({
 
       {tab === "todo" ? (
         <div className="space-y-6">
+          {importTasks.length ? (
+            <section className="admin-af-card space-y-2 rounded-3xl p-5">
+              <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">À faire, venus du mail</h2>
+              <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+                {importTasks.map((task) => (
+                  <li key={task.id}>{task.title}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           {passportGap.length ? (
             <section className="admin-af-card space-y-2 rounded-3xl p-5">
               <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Passeports à joindre</h2>

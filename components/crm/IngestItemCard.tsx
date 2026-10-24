@@ -9,7 +9,8 @@ import {
   isExtraItemKind,
   isLedgerExpenseKind,
 } from "@/lib/crm/types";
-import { parseMoney } from "@/lib/crm/money";
+import { formatMoney, parseMoney } from "@/lib/crm/money";
+import { parseTicketCountInput, statedTicketCount } from "@/lib/crm/item-match";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { BrandMark } from "@/components/crm/BrandMark";
@@ -238,7 +239,7 @@ export function IngestItemCard({
           </select>
         </Field>
         {item.kind === "flight" ? (
-          <Field label="Nombre de billets">
+          <Field label="Nombre de billets" hint="Facultatif. Vide : le prix est le total du billet.">
             <Text
               value={d.ticket_count == null ? "" : String(d.ticket_count)}
               onChange={(raw) =>
@@ -246,21 +247,36 @@ export function IngestItemCard({
                   ...item,
                   details: {
                     ...item.details,
-                    ticket_count: raw === "" ? null : Math.max(1, Math.round(Number(raw)) || 1),
+                    ticket_count: parseTicketCountInput(raw),
                   },
                 })
               }
+              aria-label="Nombre de billets"
             />
           </Field>
         ) : null}
-        <Field label={item.kind === "flight" ? "Prix du billet" : "Prix vendu"}>
+        <Field
+          label={item.kind === "flight" && statedTicketCount(item) != null ? "Prix du billet" : "Prix"}
+          hint={
+            item.kind === "flight" && statedTicketCount(item) == null
+              ? "Total. Sans nombre de billets, ce montant est enregistré tel quel."
+              : undefined
+          }
+        >
           <MoneyInput
             value={item.amount}
             onChange={(amount) => onChange({ ...item, amount })}
-            aria-label={item.kind === "flight" ? "Prix du billet" : "Prix vendu"}
+            aria-label={
+              item.kind === "flight" && statedTicketCount(item) != null ? "Prix du billet" : "Prix"
+            }
           />
         </Field>
-        {item.kind === "flight" ? (
+        {item.kind === "flight" && statedTicketCount(item) != null && statedTicketCount(item)! > 1 && item.amount != null ? (
+          <p className="text-xs text-muted sm:col-span-2">
+            {statedTicketCount(item)} × {formatMoney(item.amount, "EUR")}
+          </p>
+        ) : null}
+        {item.kind === "flight" && statedTicketCount(item) != null ? (
           <p className="text-xs text-muted sm:col-span-2">
             Aller-retour : ce prix couvre les deux vols, une fois par passager. Aller simple : le prix de ce vol.
           </p>

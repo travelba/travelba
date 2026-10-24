@@ -400,15 +400,37 @@ function mergeHotelConfirmation(a?: string | null, b?: string | null) {
   return tokens.join(";") || a || b || null;
 }
 
-/** Vols fusionnés : 1 e-ticket = 1 billet. Autres cartes = 1. */
+/**
+ * Nombre de billets saisi. Vide, absent ou invalide : pas de nombre.
+ * Le prix de la carte est alors le total, sans division ni prix unitaire.
+ */
+export function statedTicketCount(item: {
+  kind?: string | null;
+  details?: Record<string, unknown> | null;
+}): number | null {
+  if ((item.kind || "") !== "flight") return null;
+  const raw = item.details?.ticket_count;
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.min(99, Math.round(n));
+}
+
+/** Saisie du champ. Vide ou illisible : aucun nombre, pas de repli à 1. */
+export function parseTicketCountInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed.replace(",", "."));
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.min(99, Math.round(n));
+}
+
+/** Vols fusionnés : 1 e-ticket = 1 billet. Un vol sans nombre compte 1 seulement à la fusion. */
 export function itemTicketCount(item: {
   kind?: string | null;
   details?: Record<string, unknown> | null;
 }): number {
-  if ((item.kind || "") !== "flight") return 1;
-  const n = Number(item.details?.ticket_count);
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return Math.min(99, Math.round(n));
+  return statedTicketCount(item) ?? 1;
 }
 
 function mergeDetails(

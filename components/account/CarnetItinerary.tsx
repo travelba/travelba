@@ -34,7 +34,7 @@ import {
   itemPriceLabel,
   undatedTimeline,
 } from "@/lib/crm/carnet";
-import { itemTicketCount } from "@/lib/crm/item-match";
+import { statedTicketCount } from "@/lib/crm/item-match";
 import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import {
   accueilVipDayTitle,
@@ -122,7 +122,7 @@ function CardBody({
   const flightTitle = item.kind === "flight" || item.kind === "rail" ? flightCardTitle(item) : "";
   const flightSubtitle =
     item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
-  const tickets = itemTicketCount(item);
+  const tickets = statedTicketCount(item) ?? 0;
   const vipLeg = item.kind === "accueil_vip" ? accueilVipLegOnDay(item, day) : null;
   const vipTitle = item.kind === "accueil_vip" ? accueilVipDayTitle(item, day || "") : "";
   const vipClock = vipLeg ? itemClock(vipLeg.at) : "";
