@@ -65,6 +65,7 @@ export function AdminNav({
   staffName = "",
   staffRole = "",
   showExample = false,
+  refonteShell = false,
   children,
 }: {
   unmatchedCount?: number;
@@ -79,6 +80,8 @@ export function AdminNav({
   staffName?: string;
   staffRole?: "admin" | "agent" | "partner" | "";
   showExample?: boolean;
+  /** Aperçu /admin/preview/refonte : le menu actuel laisse la place au sien. */
+  refonteShell?: boolean;
   children?: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -106,6 +109,10 @@ export function AdminNav({
 
   if (pathname === "/admin/login") {
     return <main className="px-4 py-6 sm:px-6 sm:py-8">{children}</main>;
+  }
+
+  if (refonteShell && pathname.startsWith("/admin/preview/refonte")) {
+    return <div className="min-h-screen">{children}</div>;
   }
 
   async function signOut() {
