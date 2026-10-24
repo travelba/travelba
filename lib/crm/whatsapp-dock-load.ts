@@ -25,10 +25,11 @@ type RawMessage = {
   author_staff_id?: string | null;
   media_path?: string | null;
   tools?: string[] | null;
+  concierge_mark?: string | null;
 };
 
 const RICH =
-  "id, customer_id, booking_id, direction, body, status, template_key, created_at, phone, author_staff_id, media_path, tools";
+  "id, customer_id, booking_id, direction, body, status, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark";
 const BASE = "id, customer_id, booking_id, direction, body, status, template_key, created_at";
 
 export type DockSnapshot = {
@@ -115,6 +116,7 @@ async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: stri
       mediaPath: row.media_path || null,
       tools: Array.isArray(row.tools) ? row.tools : [],
       requestId: requestByMessage.get(row.id) || null,
+      conciergeMark: row.concierge_mark === "good" || row.concierge_mark === "bad" ? row.concierge_mark : null,
     };
   });
   const threadRows = threads.error

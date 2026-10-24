@@ -30,6 +30,7 @@ import type { QualityMark } from "./concierge-quality";
 import { sessionAddress } from "./whatsapp-session";
 import { nextParisMorning, threadIsPaused } from "./whatsapp-takeover";
 import { loadCollaboratorTripOwnerIds } from "./company-peers";
+import { filledLoyaltyLabels, loyaltyFromCustomer } from "./loyalty";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -642,7 +643,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
     async loadDossier(customerId) {
       const { data: holder, error: holderError } = await admin
         .from("crm_customers")
-        .select("id, company_role, billing_parent_id")
+        .select("id, company_role, billing_parent_id, language, flying_blue, loyalty")
         .eq("id", customerId)
         .maybeSingle();
       if (holderError) throw holderError;
@@ -669,7 +670,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         ids.length
           ? admin
               .from("crm_booking_items")
-              .select("id, booking_id, kind, title, start_at, end_at, amount, details, visible_to_client")
+              .select("id, booking_id, kind, title, supplier, start_at, end_at, amount, details, visible_to_client")
               .in("booking_id", ids)
           : Promise.resolve({ data: [], error: null }),
         ids.length
@@ -695,6 +696,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         admin
           .from("crm_travel_documents")
           .select("doc_type, first_name, last_name, expires_on")
+          // Le numéro et la MRZ ne sont pas lus.
           .eq("customer_id", customerId),
       ]);
       for (const result of [items, docs, visas, txs, balances, papers]) {
@@ -708,6 +710,8 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         transactions: txs.data || [],
         balances: balances.data || [],
         travelDocuments: papers.data || [],
+        preferences: filledLoyaltyLabels(loyaltyFromCustomer(holder || {})),
+        language: holder && "language" in holder ? String(holder.language || "") : null,
       };
     },
     async insertMessage(row) {

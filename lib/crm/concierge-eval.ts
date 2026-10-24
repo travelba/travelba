@@ -226,7 +226,7 @@ export async function runConciergeEval(): Promise<EvalResult[]> {
         [{ direction: "outbound", at: now.toISOString() }]
       );
       assert.equal(contested.handoff, "question");
-      assert.match(contested.text, /Je vérifie avec l’agence/);
+      assert.match(contested.text, /Je vérifie avec Benjamin/);
       assert.equal(contested.text.includes("AF1876"), false);
       assert.equal(contested.text.includes("LY320"), false);
     }),

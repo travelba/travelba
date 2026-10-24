@@ -239,7 +239,7 @@ test("une erreur du modèle retombe sur le routeur actuel", async () => {
   });
   assert.equal(turn.text, keyword.text);
   assert.equal(turn.handoff, null);
-  assert.match(turn.text, /Souhaitez-vous que j’en parle à l’agence/);
+  assert.match(turn.text, /Souhaitez-vous que j’en parle à Benjamin/);
 
   const asked = await planConciergeConversation({
     message: "Parlez-en à l’agence",

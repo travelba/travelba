@@ -20,6 +20,8 @@ export type InboxMessage = {
   mediaPath: string | null;
   tools: string[];
   requestId: string | null;
+  /** Note d’agence sur une réponse du Concierge. */
+  conciergeMark?: "good" | "bad" | null;
 };
 
 export type InboxThread = {

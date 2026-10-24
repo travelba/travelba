@@ -286,6 +286,8 @@ export async function advanceJourney(input: {
   return { brief, reply: discoveryQuestion("ready", lang), proposal };
 }
 
+// TODO: ne pas envoyer ces relances (pré-départ, silence, retour, check-in).
+// Elles restent des brouillons `planned`. Aucun message sortant proactif tant que ce n’est pas décidé.
 export function planFollowups(input: {
   now: Date;
   lastInbound: Date | null;

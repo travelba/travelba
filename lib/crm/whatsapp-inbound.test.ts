@@ -389,7 +389,7 @@ test("changer, rapprocher, déposer ou commander part à l’agence", () => {
     const turn = planConciergeTurn(message, dossier);
     assert.equal(turn.handoff, kind);
     assert.match(turn.text, new RegExp(`^${FOLLOW_UP_TONE}`));
-    assert.match(turn.text, /Je transmets à l’agence/);
+    assert.match(turn.text, kind === "payment" ? /Je transmets à Benjamin/ : /Je transmets à l’agence/);
     assert.match(turn.text, /Le Concierge/);
     assert.equal(turn.cover, null);
     assert.equal(turn.text.includes("brouillon"), false);
@@ -481,13 +481,13 @@ test("hors dossier : conseil sans fait inventé, sinon l’agence", () => {
   assert.equal(advice.handoff, null);
 
   const unknown = planConciergeTurn("Comment vont les baleines cette année ?", dossier);
-  assert.match(unknown.text, /Souhaitez-vous que j’en parle à l’agence/);
+  assert.match(unknown.text, /Souhaitez-vous que j’en parle à Benjamin/);
   assert.equal(unknown.text.includes("00h"), false);
   assert.equal(unknown.handoff, null);
 
   const complaint = planConciergeTurn("C’est inacceptable, à quelle heure part mon vol ?", dossier);
   assert.match(complaint.text, new RegExp(MISSING_CLOCK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
-  assert.match(complaint.text, /Je transmets à l’agence/);
+  assert.match(complaint.text, /Je transmets à Benjamin/);
   assert.equal(complaint.handoff, "complaint");
   assert.equal(complaint.text.includes(FOLLOW_UP_TONE), false);
 });
