@@ -193,10 +193,21 @@ export function UserMenu({
             {role ? <p className="text-xs text-muted">{role === "partner" ? "MyLER partner" : staffRoleLabel(role)}</p> : null}
           </div>
           {role === "partner" ? null : (
-          <a
+          <Link
             ref={(node) => {
               firstItemRef.current = node;
             }}
+            role="menuitem"
+            href="/admin/securite"
+            onClick={() => setOpen(false)}
+            className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
+          >
+            <Icon name="shield_check" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+            Sécurité
+          </Link>
+          )}
+          {role === "partner" ? null : (
+          <a
             role="menuitem"
             href={`https://wa.me/${siteConfig.whatsappNumber}`}
             target="_blank"

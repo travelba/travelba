@@ -2,7 +2,7 @@ import Link from "next/link";
 import { OutgoingQueue } from "@/components/admin/OutgoingQueue";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { firstParam, type SearchParamValue } from "@/lib/crm/admin-list";
-import { requireStaffPage } from "@/lib/crm/auth";
+import { requirePermissionPage } from "@/lib/crm/agency-guard";
 import type { TripCostSource } from "@/lib/crm/trip-costs";
 import { loadOutgoingQueue } from "@/lib/crm/trip-costs-db";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -36,7 +36,7 @@ export default async function AdminComptabilitePage({
 }: {
   searchParams: Promise<Record<string, SearchParamValue>>;
 }) {
-  await requireStaffPage();
+  await requirePermissionPage("view_finances");
   const params = await searchParams;
   const sourceParam = firstParam(params.source);
   const source: TripCostSource | null = sourceParam === "pliant" || sourceParam === "revolut" ? sourceParam : null;

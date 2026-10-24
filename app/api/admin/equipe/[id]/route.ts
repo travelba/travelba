@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { jsonError, requireAdmin } from "@/lib/crm/auth";
 import { appOrigin } from "@/lib/crm/invite";
-import { removeColleague, resendColleagueAccess, setColleagueRole, StaffTeamError } from "@/lib/crm/staff-directory";
+import { removeColleague, resendColleagueAccess, setColleagueActive, setColleagueRole, StaffTeamError } from "@/lib/crm/staff-directory";
 import { isUuid } from "@/lib/crm/ids";
 import { parseStaffRole, STAFF_COPY } from "@/lib/crm/staff-team";
 
@@ -34,10 +35,36 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   if (!isUuid(id)) return jsonError(STAFF_COPY.notFound, 404);
   const body = await request.json().catch(() => null);
+  if (typeof body?.active === "boolean") {
+    try {
+      const result = await setColleagueActive(id, body.active, auth.staff.id);
+      await recordAgencyJournal({
+        staffId: auth.staff.id,
+        action: "update",
+        entityType: "user",
+        entityId: id,
+        summary: result.active ? "Accès réactivé." : "Accès désactivé.",
+        diff: { actif: result.active },
+        path: `/api/admin/equipe/${id}`,
+      });
+      return NextResponse.json({ ok: true, active: result.active });
+    } catch (err) {
+      return teamError(err);
+    }
+  }
   const role = parseStaffRole(body?.role);
   if (!role) return jsonError(STAFF_COPY.role);
   try {
     const result = await setColleagueRole(id, role);
+    await recordAgencyJournal({
+      staffId: auth.staff.id,
+      action: "update",
+      entityType: "user",
+      entityId: id,
+      summary: "Rôle modifié.",
+      diff: { role: result.role },
+      path: `/api/admin/equipe/${id}`,
+    });
     return NextResponse.json({ ok: true, role: result.role });
   } catch (err) {
     return teamError(err);

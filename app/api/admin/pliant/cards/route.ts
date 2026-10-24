@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { hotelCardEstimateCents, pliantCeilingAllows, type StaffRole } from "@/lib/crm/agency-access";
+import { assertStaffPermission } from "@/lib/crm/agency-guard";
+import { loadAgencySettings } from "@/lib/crm/agency-log";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
@@ -18,6 +21,8 @@ const MAX_CENTS = 50_000_000;
 export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
+  const denied = await assertStaffPermission(auth.staff, "create_pliant_card");
+  if (denied) return denied;
   if (!pliantConfigured()) return jsonError("Pliant n’est pas branché.", 400);
   const body = (await request.json().catch(() => null)) as {
     action?: string;
@@ -46,6 +51,9 @@ export async function POST(request: Request) {
       const cents = eurosToCents(body?.limit);
       if (!cardId) return jsonError("Carte introuvable.", 400);
       if (cents == null) return jsonError("Indiquez un plafond en euros.", 400);
+      const settings = await loadAgencySettings();
+      const ceiling = pliantCeilingAllows(auth.staff.role as StaffRole, cents, settings.pliantAgentCeilingCents);
+      if (!ceiling.ok) return jsonError(ceiling.message, 403);
       const card = await cardCurrency(admin, cardId);
       await changePliantCardLimit(admin, cardId, cents, card);
       return NextResponse.json({ ok: true, cardId, limitCents: cents });
@@ -55,6 +63,14 @@ export async function POST(request: Request) {
     }
     const bookingId = cleanId(body?.bookingId);
     if (!bookingId) return jsonError("Dossier introuvable.", 400);
+    const { data: hotelItems } = await admin.from("crm_booking_items").select("kind, amount").eq("booking_id", bookingId);
+    const settings = await loadAgencySettings();
+    const ceiling = pliantCeilingAllows(
+      auth.staff.role as StaffRole,
+      hotelCardEstimateCents((hotelItems || []) as { kind: string; amount: number | null }[]),
+      settings.pliantAgentCeilingCents
+    );
+    if (!ceiling.ok) return jsonError(ceiling.message, 403);
     const issued = await issueBookingCard(admin, bookingId);
     if ("error" in issued) return jsonError(issued.error, issued.status);
     return NextResponse.json({ ok: true, ...issued });

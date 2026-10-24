@@ -180,7 +180,7 @@ export function isStaffRole(user: {
   app_metadata?: Record<string, unknown> | null;
 }) {
   const role = user.app_metadata?.crm_role;
-  return role === "admin" || role === "agent";
+  return role === "admin" || role === "manager" || role === "agent" || role === "comptable" || role === "lecture";
 }
 
 /** Hors de la page Little Emperors, le partenaire y est renvoyé. Null = la page est la sienne. */

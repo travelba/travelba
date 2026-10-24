@@ -7,6 +7,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import {
   roleActionLabel,
+  STAFF_ROLE_OPTIONS,
   staffRoleLabel,
   type Colleague,
   type StaffRole,
@@ -118,9 +119,11 @@ export function TeamDesk({
             disabled={saving}
             className={fieldClass}
           >
-            <option value="agent">Agent</option>
-            <option value="admin">Administrateur</option>
-            <option value="partner">Partenaire MyLER</option>
+            {STAFF_ROLE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </label>
         <div className="flex items-end">
@@ -290,6 +293,28 @@ function ColleagueRow({
   }
 
   /** Confirmé dans la ligne : renvoie l’erreur pour l’afficher sous le bouton. */
+  async function toggleActive() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/equipe/${member.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: member.active === false }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Modification impossible.");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Connexion interrompue. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove() {
     const result = await adminAction(`/api/admin/equipe/${member.id}`, { method: "DELETE" });
     if (!result.ok) return result.error || "Retrait impossible.";
@@ -303,6 +328,7 @@ function ColleagueRow({
       <p className="font-semibold text-[var(--admin-navy)]">{member.fullName}</p>
       <p className="mt-1 text-xs text-muted">
         {staffRoleLabel(member.role)}
+        {member.active === false ? " · Désactivé" : ""}
         {current ? " · Vous" : ""}
       </p>
     </>
@@ -323,13 +349,11 @@ function ColleagueRow({
         className="admin-af-input w-full text-sm lg:w-auto"
         title={lastAdmin ? "L’agence garde au moins un administrateur." : undefined}
       >
-        <option value="agent" disabled={lastAdmin}>
-          Agent
-        </option>
-        <option value="partner" disabled={lastAdmin}>
-          Partenaire MyLER
-        </option>
-        <option value="admin">Administrateur</option>
+        {STAFF_ROLE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value} disabled={lastAdmin && option.value !== "admin"}>
+            {option.label}
+          </option>
+        ))}
       </select>
       {action ? (
         <button
@@ -367,7 +391,7 @@ function ColleagueRow({
       ) : (
         <p className="text-xs text-muted">{member.role === "admin" ? "Non retiré" : "Votre accès"}</p>
       )}
-      {member.role === "partner" && !current ? (
+      {!current ? (
         <button
           type="button"
           disabled={busy}
@@ -377,6 +401,19 @@ function ColleagueRow({
           Renvoyer le lien
         </button>
       ) : null}
+      {!current ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void toggleActive()}
+          className="mt-2 block rounded-full border border-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-60"
+        >
+          {member.active === false ? "Réactiver" : "Désactiver"}
+        </button>
+      ) : null}
+      <a href={`/admin/equipe/${member.id}`} className="mt-2 block text-xs font-semibold text-[var(--admin-navy)] underline">
+        Sessions et historique
+      </a>
       {accessNotice ? (
         <div className="mt-2 space-y-2 text-xs text-[var(--admin-navy)]">
           <p>{accessNotice}</p>

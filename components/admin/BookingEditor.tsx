@@ -64,6 +64,8 @@ import { BookingCards } from "@/components/admin/BookingCards";
 import { PliantAccountBalanceCard } from "@/components/admin/PliantCardDesk";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
+import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
+import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { TripCostsBlock } from "@/components/admin/TripCostsBlock";
 import { InvoiceBlock } from "@/components/admin/InvoiceBlock";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
@@ -305,6 +307,7 @@ export function BookingEditor({
   accounting = null,
   agencyFee,
   importTasks = [],
+  showMargins = true,
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -393,6 +396,8 @@ export function BookingEditor({
   accounting?: TripAccountingView | null;
   /** Enregistrement, visa et pré-enregistrement issus d’un mail. Pas des étapes. */
   importTasks?: { id: string; kind: string; title: string }[];
+  /** Faux : marges, coûts nets et commission restent cachés. */
+  showMargins?: boolean;
 }) {
   const items = useMemo(() => completeFlightRoutes(sourceItems), [sourceItems]);
   const router = useRouter();
@@ -1934,7 +1939,12 @@ export function BookingEditor({
             <ReglementSummary
               amount={stayAmount}
               currency={stayCurrency(booking.currency)}
-              commissionCaption={`Commission d’agence ${formatAgencyFeePercent(previewFeeRate)} · ${agencyFeeSourceLabel(previewFeeSource)}`}
+              showMargins={showMargins}
+              commissionCaption={
+                showMargins
+                  ? `Commission d’agence ${formatAgencyFeePercent(previewFeeRate)} · ${agencyFeeSourceLabel(previewFeeSource)}`
+                  : null
+              }
               ledgerCaption={staffLedgerCaption({
                 ...booking,
                 include_in_ledger: includeInLedger,
@@ -2050,6 +2060,7 @@ export function BookingEditor({
                 cards={pliantRecap}
                 revolutLinked={revolutExpenses}
                 busy={busy !== "idle"}
+                showMargins={showMargins}
               />
             ) : (
               <section className="admin-af-card space-y-2 rounded-3xl p-5">
@@ -2232,6 +2243,13 @@ export function BookingEditor({
             hasFlight={hasFlight}
           />
         </div>
+      ) : null}
+
+      {tab === "historique" ? (
+        <>
+          <ResponsableForm bookingId={booking.id} />
+          <AgencyHistoryPanel entity="dossier" entityId={booking.id} />
+        </>
       ) : null}
 
       {tab === "interface" ? (

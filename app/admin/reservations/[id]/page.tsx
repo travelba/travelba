@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { redactVaultDocument } from "@/lib/crm/agency-access";
+import { staffAllows } from "@/lib/crm/agency-guard";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
@@ -201,6 +203,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
+  const revealPassports = await staffAllows(staff, "passport_reveal");
+  const shownIdentity = allIdentity.map((doc) => redactVaultDocument(doc, revealPassports));
+  const showMargins = await staffAllows(staff, "view_margins");
   const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
   let bookingCards: CrmBookingCard[] = [];
   const { data: cardRows, error: cardError } = await supabase
@@ -439,7 +444,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           items={bookingItems}
           travelers={bookingTravelers}
           documents={(documents || []) as CrmBookingDocument[]}
-          identityDocs={allIdentity}
+          identityDocs={shownIdentity}
+          showMargins={showMargins}
           companions={(companions || []) as CrmCompanion[]}
           customer={customer}
           billingCustomer={billingCustomer}

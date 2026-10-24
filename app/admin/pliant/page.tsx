@@ -1,6 +1,6 @@
 import { PliantAccount, type PliantLine } from "@/components/admin/PliantAccount";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { requireStaffPage } from "@/lib/crm/auth";
+import { requirePermissionPage } from "@/lib/crm/agency-guard";
 import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
 import { loadPliantStayRefs } from "@/lib/crm/pliant-dossier-run";
 import { pliantStayForCard } from "@/lib/crm/pliant-tx";
@@ -24,7 +24,7 @@ export default async function AdminPliantPage({
 }: {
   searchParams: Promise<Record<string, SearchParamValue>>;
 }) {
-  await requireStaffPage();
+  await requirePermissionPage("view_finances");
   const limit = parseLoadMore((await searchParams).limite, PLIANT_PAGE, PLIANT_MAX);
   const configured = pliantConfigured();
   const account = configured ? await loadPliantAccountBalance() : null;

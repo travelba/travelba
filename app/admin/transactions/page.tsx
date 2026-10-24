@@ -1,7 +1,7 @@
 import { Ledger } from "@/components/admin/Ledger";
 import { TransactionsPanels } from "@/components/admin/TransactionsPanels";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { requireStaffPage } from "@/lib/crm/auth";
+import { requirePermissionPage } from "@/lib/crm/agency-guard";
 import { companyLabelForTransaction } from "@/lib/crm/billing-companies";
 import { wireAccountChoices } from "@/lib/crm/funding-wallet";
 import type { CrmBillingCompany } from "@/lib/crm/types";
@@ -13,7 +13,7 @@ import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-s
 export const metadata = { title: "Transactions" };
 
 export default async function AdminTransactionsPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requirePermissionPage("view_finances");
   const [{ data: transactions }, { data: expenses }, { data: billingCompanies }] =
     await Promise.all([
     supabase

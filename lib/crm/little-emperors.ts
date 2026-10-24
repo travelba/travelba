@@ -471,9 +471,9 @@ export async function cancelLittleEmperorsBooking(bookingId: number, fetchImpl?:
 }
 
 /** Actualiser : agence et partenaire. Rattacher et annuler : agence seulement. */
-export function littleEmperorsActionAllowed(role: "admin" | "agent" | "partner", action: string) {
+export function littleEmperorsActionAllowed(role: string, action: string) {
   if (action === "sync") return true;
-  if (role === "partner") return false;
+  if (role === "partner" || role === "lecture" || role === "comptable") return false;
   return action === "attach" || action === "cancel";
 }
 

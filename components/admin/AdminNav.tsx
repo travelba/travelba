@@ -22,6 +22,8 @@ import {
   toggleCollapsedGroup,
   type AdminNavCounts,
 } from "@/lib/crm/admin-nav";
+import type { Permission } from "@/lib/crm/agency-access";
+import type { StaffRole } from "@/lib/crm/staff-team";
 
 const COLLAPSED_KEY = "tba-admin-nav-collapsed";
 const collapsedListeners = new Set<() => void>();
@@ -64,6 +66,7 @@ export function AdminNav({
   whatsappPreview = false,
   staffName = "",
   staffRole = "",
+  allows = null,
   showExample = false,
   children,
 }: {
@@ -77,7 +80,8 @@ export function AdminNav({
   whatsappTemplates?: { key: string; label: string }[];
   whatsappPreview?: boolean;
   staffName?: string;
-  staffRole?: "admin" | "agent" | "partner" | "";
+  staffRole?: StaffRole | "";
+  allows?: Partial<Record<Permission, boolean>> | null;
   showExample?: boolean;
   children?: React.ReactNode;
 }) {
@@ -88,7 +92,10 @@ export function AdminNav({
     () => ({ revolut: unmatchedCount, stripe: stripeCount, emails: emailCount, le: leCount, pieces: pieceCount, whatsapp: whatsappCount }),
     [unmatchedCount, stripeCount, emailCount, leCount, pieceCount, whatsappCount]
   );
-  const groups = useMemo(() => adminNavGroups({ role: staffRole, showExample }), [staffRole, showExample]);
+  const groups = useMemo(
+    () => adminNavGroups({ role: staffRole, showExample, allows }),
+    [staffRole, showExample, allows]
+  );
   const partner = staffRole === "partner";
   const home = partner ? "/admin/little-emperors" : "/admin";
   const search = searchParams.toString();

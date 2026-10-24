@@ -29,6 +29,7 @@ export function ReglementSummary({
   invoiceNumber,
   checks,
   commissionCaption = null,
+  showMargins = true,
 }: {
   amount: number;
   currency: string;
@@ -39,6 +40,7 @@ export function ReglementSummary({
   invoiceNumber: string | null;
   checks: ReglementCheck[];
   commissionCaption?: string | null;
+  showMargins?: boolean;
 }) {
   const todo = checks.filter((check) => check.state === "todo").length;
   return (
@@ -54,7 +56,9 @@ export function ReglementSummary({
           <p className="mt-1 text-sm text-muted">
             {payerCaption} · {ledgerCaption}
           </p>
-          {commissionCaption ? <p className="mt-1 text-sm font-semibold text-[var(--admin-navy)]">{commissionCaption}</p> : null}
+          {showMargins && commissionCaption ? (
+            <p className="mt-1 text-sm font-semibold text-[var(--admin-navy)]">{commissionCaption}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {state ? <StatusChip tone={stateTone(state)}>{TRIP_ACCOUNTING_LABELS[state]}</StatusChip> : null}
@@ -63,25 +67,33 @@ export function ReglementSummary({
       </div>
 
       {totals ? (
-        <dl className="grid grid-cols-1 gap-3 rounded-2xl bg-[var(--admin-sky)]/60 px-4 py-3 text-sm min-[420px]:grid-cols-3">
+        <dl
+          className={`grid grid-cols-1 gap-3 rounded-2xl bg-[var(--admin-sky)]/60 px-4 py-3 text-sm ${
+            showMargins ? "min-[420px]:grid-cols-3" : ""
+          }`}
+        >
           <div>
             <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Vendu au livre</dt>
             <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{formatMoney(totals.sale, "EUR")}</dd>
           </div>
-          <div>
-            <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Coûts</dt>
-            <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{formatMoney(totals.cost, "EUR")}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Marge</dt>
-            <dd
-              className={`font-semibold tabular-nums ${
-                totals.margin < 0 ? "text-[var(--admin-red)]" : "text-[var(--admin-navy)]"
-              }`}
-            >
-              {formatMoney(totals.margin, "EUR")}
-            </dd>
-          </div>
+          {showMargins ? (
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Coûts</dt>
+              <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{formatMoney(totals.cost, "EUR")}</dd>
+            </div>
+          ) : null}
+          {showMargins ? (
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Marge</dt>
+              <dd
+                className={`font-semibold tabular-nums ${
+                  totals.margin < 0 ? "text-[var(--admin-red)]" : "text-[var(--admin-navy)]"
+                }`}
+              >
+                {formatMoney(totals.margin, "EUR")}
+              </dd>
+            </div>
+          ) : null}
         </dl>
       ) : null}
 

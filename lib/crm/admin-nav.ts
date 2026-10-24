@@ -1,3 +1,6 @@
+import type { Permission } from "@/lib/crm/agency-access";
+import type { StaffRole } from "@/lib/crm/staff-team";
+
 /** Menu de l’espace agence : groupes repliables, badges, entrée active, barre basse mobile. */
 
 export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp";
@@ -23,7 +26,15 @@ export type AdminNavGroup = {
   items: AdminNavItem[];
 };
 
-export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | ""; showExample?: boolean }): AdminNavGroup[] {
+export function adminNavGroups(input: {
+  role?: StaffRole | "";
+  showExample?: boolean;
+  /**
+   * Null : menu d’aujourd’hui (admin et agent gardent Argent, Boîtes, Outils).
+   * Renseigné après la matrice : on cache ce que le rôle n’ouvre pas.
+   */
+  allows?: Partial<Record<Permission, boolean>> | null;
+}): AdminNavGroup[] {
   if (input.role === "partner") {
     return [
       {
@@ -33,11 +44,18 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
       },
     ];
   }
+  const allows = input.allows ?? null;
+  const show = (permission: Permission) => !allows || allows[permission] === true;
   const groups: AdminNavGroup[] = [
     {
       id: "activite",
       label: "Activité",
-      items: [{ href: "/admin", label: "Tableau de bord", icon: "dashboard", exact: true }],
+      items: [
+        { href: "/admin", label: "Tableau de bord", icon: "dashboard", exact: true },
+        ...(allows?.view_journal && input.role !== "admin"
+          ? [{ href: "/admin/journal", label: "Journal", icon: "history_edu" } satisfies AdminNavItem]
+          : []),
+      ],
     },
     {
       id: "clients",
@@ -92,14 +110,23 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
       ],
     },
   ];
-  if (input.role === "admin") {
+  if (input.role === "admin" || (allows && show("manage_users"))) {
     groups.push({
       id: "equipe",
       label: "Équipe",
-      items: [{ href: "/admin/equipe", label: "Équipe", icon: "user_cog" }],
+      items: [
+        { href: "/admin/equipe", label: "Équipe", icon: "user_cog" },
+        { href: "/admin/journal", label: "Journal", icon: "history_edu" },
+      ],
     });
   }
-  return groups;
+  if (!allows) return groups;
+  return groups.filter((group) => {
+    if (group.id === "argent") return show("view_finances");
+    if (group.id === "boites") return show("view_inbox");
+    if (group.id === "outils") return show("edit_dossiers") || show("change_settings");
+    return true;
+  });
 }
 
 function splitHref(href: string) {
@@ -201,6 +228,8 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
       "/admin/hotels-demandes",
       "/admin/outils",
       "/admin/equipe",
+      "/admin/journal",
+      "/admin/securite",
     ],
     badges: ["emails", "le", "whatsapp"],
   },
@@ -218,6 +247,9 @@ export function mobileTabBadge(tab: AdminMobileTab, counts: AdminNavCounts) {
 /** Titre court de l’en-tête téléphone : l’entrée du menu, sinon la page connue, sinon « Espace agence ». */
 export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search = "") {
   if (pathname === "/admin/outils") return "Outils";
+  if (pathname === "/admin/journal") return "Journal";
+  if (pathname === "/admin/securite") return "Sécurité";
+  if (/^\/admin\/equipe\/[^/]+/.test(pathname)) return "Collègue";
   if (pathname === "/admin/reservations/nouveau") return "Nouveau dossier";
   if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
   if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";

@@ -1,4 +1,4 @@
-import { requireStaffPage } from "@/lib/crm/auth";
+import { requirePermissionPage } from "@/lib/crm/agency-guard";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox, type RevolutDebitRow } from "@/components/admin/RevolutInbox";
 import { itemLabelFor, loadOutgoingQueue } from "@/lib/crm/trip-costs-db";
@@ -24,7 +24,7 @@ export default async function AdminRevolutPage({
 }: {
   searchParams: Promise<{ connected?: string; error?: string }>;
 }) {
-  await requireStaffPage();
+  await requirePermissionPage("view_finances");
   const params = await searchParams;
   const initialMessage =
     params.error === "oauth"

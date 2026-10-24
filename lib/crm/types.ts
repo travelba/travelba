@@ -145,8 +145,11 @@ export { AGENCY_FEE_LABEL } from "./agency-fee-rate";
 export type CrmStaff = {
   id: string;
   auth_user_id: string;
-  role: "admin" | "agent" | "partner";
+  role: "admin" | "manager" | "agent" | "comptable" | "lecture" | "partner";
   full_name: string;
+  /** Faux : accès coupé, la ligne reste. Absent : accès ouvert (avant la migration). */
+  active?: boolean;
+  email?: string | null;
   created_at: string;
   updated_at: string;
 };

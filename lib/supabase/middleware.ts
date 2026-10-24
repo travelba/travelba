@@ -7,6 +7,7 @@ import {
   deskBypass,
   deskClearCookie,
 } from "@/lib/crm/desk-mode";
+import { isAgencyRole } from "@/lib/crm/agency-access";
 import {
   ONBOARDING_PATH,
   PASSWORD_SETUP_COOKIE,
@@ -67,7 +68,7 @@ export async function updateSession(request: NextRequest) {
   const setupCookie = request.cookies.get(PASSWORD_SETUP_COOKIE)?.value === "1";
   const deskAccess = user
     ? await userDeskAccess(supabase, user)
-    : { staff: false, partner: false };
+    : { staff: false, partner: false, inactive: false };
   const access = accessWhileDesk({
     desk,
     mustSetPassword: user ? mustSetPassword(user) : false,
@@ -123,9 +124,27 @@ export async function updateSession(request: NextRequest) {
     }
     if (user && !staff) {
       const url = request.nextUrl.clone();
+      if (deskAccess.inactive) {
+        url.pathname = "/admin/login";
+        url.searchParams.set("error", "desactive");
+        return seal(NextResponse.redirect(url));
+      }
       url.pathname = "/mon-compte";
       url.search = "";
       return seal(NextResponse.redirect(url));
+    }
+    if (user && staff && !partner && pathname !== "/admin/securite" && !isAdminLogin) {
+      try {
+        const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (assurance?.currentLevel === "aal1" && assurance.nextLevel === "aal2") {
+          const url = request.nextUrl.clone();
+          url.pathname = "/admin/securite";
+          url.search = "";
+          return seal(NextResponse.redirect(url));
+        }
+      } catch {
+        /* Un facteur illisible ne ferme pas l’agence. */
+      }
     }
     return seal(supabaseResponse);
   }
@@ -204,14 +223,22 @@ async function userDeskAccess(
   user: { id: string; app_metadata?: Record<string, unknown> | null }
 ) {
   const jwt = user.app_metadata?.crm_role;
-  if (jwt === "partner") return { staff: false, partner: true };
-  if (isStaffRole(user)) return { staff: true, partner: false };
-  const { data } = await supabase
-    .from("crm_staff")
-    .select("role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-  if (data?.role === "partner") return { staff: false, partner: true };
-  if (data?.role === "admin" || data?.role === "agent") return { staff: true, partner: false };
-  return { staff: false, partner: false };
+  const first = await supabase.from("crm_staff").select("role, active").eq("auth_user_id", user.id).maybeSingle();
+  let role = first.data?.role as string | undefined;
+  let active = (first.data as { active?: boolean } | null)?.active;
+  if (first.error) {
+    const second = await supabase.from("crm_staff").select("role").eq("auth_user_id", user.id).maybeSingle();
+    if (second.error) {
+      if (jwt === "partner") return { staff: false, partner: true, inactive: false };
+      if (isStaffRole(user)) return { staff: true, partner: false, inactive: false };
+      return { staff: false, partner: false, inactive: false };
+    }
+    role = second.data?.role as string | undefined;
+    active = true;
+  }
+  if (!role) return { staff: false, partner: false, inactive: false };
+  if (active === false) return { staff: false, partner: false, inactive: true };
+  if (role === "partner") return { staff: false, partner: true, inactive: false };
+  if (isAgencyRole(role)) return { staff: true, partner: false, inactive: false };
+  return { staff: false, partner: false, inactive: false };
 }

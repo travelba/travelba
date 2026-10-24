@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { redactVaultDocument } from "@/lib/crm/agency-access";
+import { staffAllows } from "@/lib/crm/agency-guard";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { HotelAccessCard } from "@/components/admin/HotelAccessCard";
@@ -16,6 +18,7 @@ import { wireAccountChoices } from "@/lib/crm/funding-wallet";
 import { ClientStripeSuggestions } from "@/components/admin/ClientStripeSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
+import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { getPortalAccess } from "@/lib/crm/invite";
@@ -240,7 +243,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
       travelerNames.set(traveler.id, ficheTravelerCaption(traveler));
     }
   }
+  const revealPassports = await staffAllows(staff, "passport_reveal");
+  const vaultDocuments = ((documents || []) as CrmTravelDocument[]).map((doc) =>
+    redactVaultDocument(doc, revealPassports)
+  );
   const identityPieces = reviewIdentityPieces((documents || []) as CrmTravelDocument[]);
+  const visiblePieces = reviewIdentityPieces(vaultDocuments);
   const piecesToCheck = identityPieces.filter((doc) => {
     const tone = documentExpiryStatus(doc.expires_on).tone;
     return tone === "red" || tone === "amber";
@@ -358,7 +366,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         key={c.updated_at}
         customer={c}
         companions={(companions || []) as CrmCompanion[]}
-        documents={(documents || []) as CrmTravelDocument[]}
+        documents={vaultDocuments}
         companyAdmins={(companyAdmins || []) as PickableCustomer[]}
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
@@ -477,7 +485,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </summary>
         {identityPieces.length ? (
           <ul className="divide-y divide-border border-t border-[var(--border)] px-5 text-sm">
-            {identityPieces.map((doc) => {
+            {visiblePieces.map((doc) => {
               const expiry = documentExpiryStatus(doc.expires_on);
               const preview = identityPreview(
                 doc,
@@ -512,6 +520,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </p>
         )}
       </details>
+      <AgencyHistoryPanel entity="client" entityId={c.id} />
       <details className="admin-af-card group rounded-3xl">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
           <span className="min-w-0">

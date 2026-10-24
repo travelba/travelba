@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/crm/ui";
@@ -22,6 +22,14 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "forgot" | "sent">("login");
 
+  useEffect(() => {
+    if (searchParams.get("error") !== "desactive") return;
+    const supabase = createClient();
+    void supabase.auth.signOut().then(() => {
+      setError("Cet accès est désactivé.");
+    });
+  }, [searchParams]);
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
@@ -34,12 +42,26 @@ function LoginForm() {
     });
 
     if (signError) {
+      const address = email.trim();
+      if (address) {
+        void fetch("/api/auth/staff-failure", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: address }),
+        });
+      }
       setLoading(false);
       setError(english ? "Email or password is incorrect." : "E-mail ou mot de passe incorrect.");
       return;
     }
 
-    await fetch("/api/auth/known-password", { method: "POST" });
+    const known = await fetch("/api/auth/known-password", { method: "POST" });
+    if (known.status === 403) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("Cet accès est désactivé.");
+      return;
+    }
 
     const {
       data: { user },

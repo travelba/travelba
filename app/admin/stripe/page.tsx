@@ -1,4 +1,4 @@
-import { requireStaffPage } from "@/lib/crm/auth";
+import { requirePermissionPage } from "@/lib/crm/agency-guard";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { StripeInbox } from "@/components/admin/StripeInbox";
 import { AccountBalanceCard } from "@/components/admin/AccountBalance";
@@ -16,7 +16,7 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 export const metadata = { title: "Stripe" };
 
 export default async function AdminStripePage() {
-  await requireStaffPage();
+  await requirePermissionPage("view_finances");
   const admin = createServiceClient();
   const { data: people } = await admin
     .from("crm_customers")
