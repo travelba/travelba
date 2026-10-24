@@ -65,7 +65,9 @@ export default async function proxy(request: NextRequest) {
     path === "/exemple" ||
     path.startsWith("/exemple/") ||
     path === "/apercu" ||
-    path.startsWith("/apercu/")
+    path.startsWith("/apercu/") ||
+    path === "/agence-exemple" ||
+    path.startsWith("/agence-exemple/")
   ) {
     if (process.env.VERCEL_ENV === "production") {
       const url = request.nextUrl.clone();

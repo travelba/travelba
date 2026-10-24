@@ -14,12 +14,15 @@ export function WhatsappHoldButton({
   customerId,
   held,
   className,
+  offline = false,
   onResult,
 }: {
   phone: string;
   customerId: string | null;
   held: boolean;
   className?: string;
+  /** Aperçu local : le geste change l’écran, aucun appel. */
+  offline?: boolean;
   onResult: (result: HandoffResult) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -27,6 +30,15 @@ export function WhatsappHoldButton({
   const action = held ? "resume" : "takeover";
 
   async function act() {
+    if (offline) {
+      const at = new Date().toISOString();
+      onResult({
+        status: held ? "robot" : "agency",
+        at,
+        line: held ? "Conversation rendue au concierge." : undefined,
+      });
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -61,7 +73,7 @@ export function WhatsappHoldButton({
     }
   }
 
-  const label = busy ? (held ? "Remise en cours…" : "Reprise en cours…") : held ? "Rendre au Concierge" : "Reprendre la main";
+  const label = busy ? (held ? "Remise en cours…" : "Prise en main…") : held ? "Rendre au concierge" : "Prendre la main";
 
   return (
     <div className="min-w-0">

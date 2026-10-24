@@ -1,5 +1,5 @@
 import type { InboxMessage, InboxThread, InboxThreadStatus } from "./whatsapp-inbox";
-import { threadKey } from "./whatsapp-inbox";
+import { compareThreads, threadKey } from "./whatsapp-inbox";
 
 /** Onglets visibles avant le menu de débordement. */
 export const DOCK_TAB_LIMIT = 4;
@@ -164,7 +164,7 @@ export function applyDockMessage(threads: InboxThread[], message: InboxMessage):
         unread: message.direction === "inbound" ? 1 : 0,
         status: "robot",
       };
-  return [next, ...threads.filter((thread) => thread.key !== key)].sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  return [next, ...threads.filter((thread) => thread.key !== key)].sort(compareThreads);
 }
 
 export function clearDockUnread(threads: InboxThread[], key: string) {

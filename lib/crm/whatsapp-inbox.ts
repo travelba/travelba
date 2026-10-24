@@ -24,6 +24,16 @@ export type InboxMessage = {
   conciergeMark?: "good" | "bad" | null;
 };
 
+export type InboxDossier = {
+  reference: string | null;
+  place: string | null;
+  dates: string | null;
+  visibility: string | null;
+  travelers: string[];
+  missingPassports: number;
+  request: string | null;
+};
+
 export type InboxThread = {
   key: string;
   phone: string | null;
@@ -143,14 +153,21 @@ export function foldThreads(
       prospect: !customerId,
       bookingId: booking?.bookingId || null,
       bookingReference: booking?.bookingReference || null,
-      lastBody: last?.body || "",
+      lastBody: (last?.body || "").replace(/\s+/g, " ").trim().slice(0, 140),
       lastAt: last?.createdAt || "",
       unread: seen ? unread : last?.direction === "inbound" ? Math.min(unread, 1) : 0,
       status,
       held,
     });
   }
-  return threads.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  return threads.sort(compareThreads);
+}
+
+/** Non-lus d’abord, puis le plus récent. */
+export function compareThreads(a: Pick<InboxThread, "unread" | "lastAt" | "key">, b: Pick<InboxThread, "unread" | "lastAt" | "key">) {
+  const unread = Number(b.unread > 0) - Number(a.unread > 0);
+  if (unread) return unread;
+  return b.lastAt.localeCompare(a.lastAt) || a.key.localeCompare(b.key);
 }
 
 export function filterThreads(threads: InboxThread[], input: { query?: string; filter?: InboxFilter }) {
@@ -211,4 +228,58 @@ export function approvedManualTemplates(env: Record<string, string | undefined> 
 
 export function draftTemplateRefused(key: string) {
   return key.startsWith("concierge_");
+}
+
+const INBOX_FILTERS: InboxFilter[] = ["tous", "non-lus", "robot", "agence", "escalade", "prospects"];
+
+/** `?filtre=` du tableau de bord. Une valeur inconnue revient à Tous. */
+export function parseInboxFilter(value: string | null | undefined): InboxFilter {
+  return INBOX_FILTERS.includes(value as InboxFilter) ? (value as InboxFilter) : "tous";
+}
+
+export const QUICK_REPLIES = [
+  { id: "bien-recu", label: "Bien reçu", text: "Bien reçu. Je regarde et je vous réponds." },
+  { id: "dossier", label: "Je vérifie le dossier", text: "Je vérifie le dossier et je reviens vers vous." },
+  { id: "relais", label: "Un conseiller prend le relais", text: "Un conseiller prend le relais de cette conversation." },
+] as const;
+
+const REQUEST_LABELS: Record<string, string> = {
+  change: "Modification",
+  cancel: "Annulation",
+  payment: "Règlement",
+  formality: "Formalité",
+  chauffeur: "Chauffeur",
+  complaint: "Plainte",
+  question: "Question",
+  quote: "Devis",
+  urgent: "Urgent",
+  lead: "Prospect",
+};
+
+export function requestKindLabel(kind: string | null | undefined) {
+  if (!kind) return null;
+  return REQUEST_LABELS[kind] || "Demande";
+}
+
+function maskTail(value: string) {
+  const clean = value.replace(/\s+/g, "");
+  if (clean.length <= 3) return "•••";
+  return `${"•".repeat(Math.min(6, clean.length - 3))}${clean.slice(-3)}`;
+}
+
+/**
+ * Masque une MRZ, un numéro de carte et un numéro de pièce nommé.
+ * Le téléphone et la référence de dossier restent lisibles.
+ */
+export function maskSensitiveCopy(text: string) {
+  return text
+    .replace(/[A-Z0-9<]{28,}/g, (token) => (token.includes("<") ? "••••" : token))
+    .replace(/((?:passeport|passport|mrz|cvc|cvv|pan)\s*[:.]?\s*)([A-Z0-9][A-Z0-9-]{4,14})/gi, (_all, label: string, value: string) => {
+      return `${label}${maskTail(value)}`;
+    })
+    .replace(/(?:\d[ -]?){13,19}/g, (token) => {
+      const digits = token.replace(/\D/g, "");
+      if (digits.length < 13 || digits.length > 19) return token;
+      return `•••• ${digits.slice(-3)}`;
+    });
 }

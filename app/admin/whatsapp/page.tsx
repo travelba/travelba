@@ -2,68 +2,46 @@ import Link from "next/link";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
+import { formatDateFr } from "@/lib/crm/money";
+import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayDestinationLine } from "@/lib/crm/stay-phrase";
+import { travelersMissingPassport } from "@/lib/crm/admin-now";
+import { loadThreadMessages, loadWhatsappIndex } from "@/lib/crm/whatsapp-desk";
 import {
   approvedManualTemplates,
-  foldThreads,
-  pauseStillActive,
+  parseInboxFilter,
   readStamp,
+  requestKindLabel,
   sessionWindowOpenNow,
-  threadKey,
+  type InboxDossier,
   type InboxMessage,
 } from "@/lib/crm/whatsapp-inbox";
 import { WhatsappInbox } from "@/components/admin/WhatsappInbox";
-import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
+import { WhatsappPendingQueue, type PendingDraft } from "@/components/admin/WhatsappPendingQueue";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
 export const metadata = { title: "WhatsApp" };
 
-type RawMessage = {
-  id: string;
-  customer_id: string | null;
-  booking_id: string | null;
-  direction: string;
-  body: string;
-  status: string | null;
-  template_key: string | null;
-  created_at: string;
-  phone?: string | null;
-  author_staff_id?: string | null;
-  media_path?: string | null;
-  tools?: string[] | null;
-  concierge_mark?: string | null;
+const DRAFT_LABEL: Record<string, string> = {
+  predeparture: "Veille du départ",
+  checkin: "Arrivée à l’hôtel",
+  feedback: "Retour",
 };
-
-const RICH =
-  "id, customer_id, booking_id, direction, body, status, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark";
-const BASE = "id, customer_id, booking_id, direction, body, status, template_key, created_at";
 
 export default async function WhatsappInboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fil?: string }>;
+  searchParams: Promise<{ fil?: string; filtre?: string; vue?: string }>;
 }) {
   await requireStaffPage();
-  const { fil } = await searchParams;
+  const params = await searchParams;
   const admin = createServiceClient();
-  const loaded = await admin.from("crm_whatsapp_messages").select(RICH).order("created_at", { ascending: false }).limit(500);
-  const rows = (
-    loaded.error ? ((await admin.from("crm_whatsapp_messages").select(BASE).order("created_at", { ascending: false }).limit(500)).data || []) : loaded.data || []
-  ) as RawMessage[];
-  const customerIds = [...new Set(rows.map((row) => row.customer_id).filter(Boolean))] as string[];
-  const bookingIds = [...new Set(rows.map((row) => row.booking_id).filter(Boolean))] as string[];
-  const staffIds = [...new Set(rows.map((row) => row.author_staff_id).filter(Boolean))] as string[];
-  const [customers, bookings, staff, threads, requests, proposals, followups] = await Promise.all([
-    customerIds.length
-      ? admin.from("crm_customers").select("id, first_name, last_name, phone").in("id", customerIds)
-      : Promise.resolve({ data: [] }),
-    bookingIds.length
-      ? admin.from("crm_bookings").select("id, reference, title, destination").in("id", bookingIds)
-      : Promise.resolve({ data: [] }),
-    staffIds.length ? admin.from("crm_staff").select("id, full_name").in("id", staffIds) : Promise.resolve({ data: [] }),
-    admin.from("crm_whatsapp_threads").select("phone, paused_until, staff_read_at, customer_id"),
-    admin.from("crm_whatsapp_requests").select("id, phone, message_id, kind, status").eq("status", "open"),
-    admin.from("crm_concierge_proposals").select("id, phone, draft_body, status").eq("status", "pending"),
+  const index = await loadWhatsappIndex();
+  const activeKey = params.fil || index.threads[0]?.key || null;
+  const active = index.threads.find((row) => row.key === activeKey) || null;
+  const [activeMessages, proposals, followups, requests, esta, uk] = await Promise.all([
+    activeKey ? loadThreadMessages(activeKey) : Promise.resolve([] as InboxMessage[]),
+    admin.from("crm_concierge_proposals").select("id, phone, draft_body, status").eq("status", "pending").limit(20),
     admin
       .from("crm_concierge_followups")
       .select("id, phone, kind, channel, draft_body, status")
@@ -71,59 +49,83 @@ export default async function WhatsappInboxPage({
       .in("kind", ["predeparture", "checkin", "feedback"])
       .order("due_at", { ascending: true })
       .limit(30),
+    admin.from("crm_whatsapp_requests").select("id, phone, kind, status").eq("status", "open"),
+    admin.from("crm_esta_notices").select("id, booking_id, kind").is("emailed_at", null).order("created_at", { ascending: false }).limit(8),
+    admin.from("crm_uk_eta_notices").select("id, booking_id, kind").is("emailed_at", null).order("created_at", { ascending: false }).limit(8),
   ]);
-  const names = new Map(
-    ((customers.data || []) as { id: string; first_name: string | null; last_name: string | null; phone: string | null }[]).map((row) => [
-      row.id,
-      { name: [row.first_name, row.last_name].filter(Boolean).join(" "), phone: row.phone },
-    ])
-  );
-  const stays = new Map(
-    ((bookings.data || []) as { id: string; reference: string; title: string | null; destination: string | null }[]).map((row) => [
-      row.id,
-      { reference: row.reference, place: stayDestinationLine(row) },
-    ])
-  );
-  const agents = new Map(((staff.data || []) as { id: string; full_name: string | null }[]).map((row) => [row.id, row.full_name || "L’agence"]));
-  const openRequests = ((requests.data || []) as { id: string; phone: string | null; message_id: string | null; kind: string }[]) || [];
-  const requestByMessage = new Map(openRequests.filter((row) => row.message_id).map((row) => [row.message_id as string, row.id]));
-  const messages: InboxMessage[] = rows.map((row) => {
-    const customer = row.customer_id ? names.get(row.customer_id) : null;
-    const stay = row.booking_id ? stays.get(row.booking_id) : null;
-    return {
-      id: row.id,
-      phone: row.phone || customer?.phone || null,
-      customerId: row.customer_id,
-      customerName: customer?.name || null,
-      bookingId: row.booking_id,
-      bookingReference: stay ? `${stay.reference}${stay.place ? ` · ${stay.place}` : ""}` : null,
-      direction: row.direction === "inbound" ? "inbound" : "outbound",
-      body: row.body,
-      createdAt: row.created_at,
-      status: row.status,
-      templateKey: row.template_key,
-      authorName: row.author_staff_id ? agents.get(row.author_staff_id) || "L’agence" : null,
-      mediaPath: row.media_path || null,
-      tools: Array.isArray(row.tools) ? row.tools : [],
-      requestId: requestByMessage.get(row.id) || null,
-      conciergeMark: row.concierge_mark === "good" || row.concierge_mark === "bad" ? row.concierge_mark : null,
-    };
-  });
-  const threadRows = threads.error
-    ? []
-    : ((threads.data || []) as { phone: string; paused_until: string | null; staff_read_at?: string | null; customer_id: string | null }[]);
-  const paused = threadRows.filter((row) => pauseStillActive(row.paused_until)).map((row) => row.phone);
-  const readAt: Record<string, string | null> = {};
-  for (const row of threadRows) {
-    if (row.staff_read_at) readAt[row.phone] = row.staff_read_at;
+  const names = new Map(index.threads.map((row) => [row.phone || "", row.customerName]));
+  const windowFor = (phone: string) => {
+    const inbound = [...index.messages, ...activeMessages]
+      .filter((row) => row.phone === phone && row.direction === "inbound")
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    return sessionWindowOpenNow(inbound?.createdAt || null);
+  };
+  const drafts: PendingDraft[] = [];
+  for (const row of (followups.error ? [] : followups.data || []) as {
+    id: string;
+    phone: string;
+    kind: string;
+    draft_body: string;
+  }[]) {
+    const open = windowFor(row.phone);
+    drafts.push({
+      id: `suivi-${row.id}`,
+      followupId: row.id,
+      title: DRAFT_LABEL[row.kind] || "Message",
+      who: names.get(row.phone) || row.phone,
+      body: row.draft_body,
+      href: `/admin/whatsapp?fil=${encodeURIComponent(row.phone)}&vue=valider`,
+      sendable: open,
+      reason: open ? "Fenêtre de 24 h ouverte." : "Hors fenêtre de 24 h. Le modèle n’est pas soumis.",
+    });
   }
-  const escalated = openRequests.map((row) => row.phone).filter(Boolean) as string[];
-  const folded = foldThreads(messages, { paused, escalated, readAt });
-  const activeKey = fil || folded[0]?.key || null;
-  const activeMessages = messages.filter((row) => threadKey(row) === activeKey);
-  const active = folded.find((row) => row.key === activeKey) || null;
+  for (const row of (proposals.error ? [] : proposals.data || []) as { id: string; phone: string; draft_body: string }[]) {
+    drafts.push({
+      id: `proposition-${row.id}`,
+      title: "Proposition",
+      who: names.get(row.phone) || row.phone,
+      body: row.draft_body,
+      href: `/admin/whatsapp?fil=${encodeURIComponent(row.phone)}`,
+      sendable: false,
+      reason: "À approuver dans le fil. Rien ne part depuis cette liste.",
+    });
+  }
+  const noticeBookings = [
+    ...((esta.error ? [] : esta.data || []) as { id: string; booking_id: string; kind: string }[]).map((row) => ({
+      ...row,
+      title: row.kind === "valable" ? "ESTA" : "ESTA à relire",
+    })),
+    ...((uk.error ? [] : uk.data || []) as { id: string; booking_id: string; kind: string }[]).map((row) => ({
+      ...row,
+      title: row.kind === "valable" ? "ETA Royaume-Uni" : "ETA à relire",
+    })),
+  ];
+  const bookingIds = [...new Set(noticeBookings.map((row) => row.booking_id))];
+  const bookingRows = bookingIds.length
+    ? await admin.from("crm_bookings").select("id, reference, title, destination").in("id", bookingIds)
+    : { data: [] };
+  const bookingLabel = new Map(
+    ((bookingRows.data || []) as { id: string; reference: string; title: string | null; destination: string | null }[]).map((row) => [
+      row.id,
+      `${row.reference}${stayDestinationLine(row) ? ` · ${stayDestinationLine(row)}` : ""}`,
+    ])
+  );
+  for (const row of noticeBookings) {
+    drafts.push({
+      id: `formalite-${row.id}`,
+      title: row.title,
+      who: bookingLabel.get(row.booking_id) || "Dossier",
+      body: "Le message au client se relit sur le dossier, puis Envoyer au client.",
+      href: `/admin/reservations/${row.booking_id}?onglet=client`,
+      sendable: false,
+      reason: "Le bouton du dossier respecte la fenêtre de 24 h.",
+    });
+  }
+  const pendingForThread = ((proposals.data || []) as { id: string; phone: string; draft_body: string }[]).filter(
+    (row) => row.phone === active?.phone
+  );
   const lastInbound = [...activeMessages].filter((row) => row.direction === "inbound").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  if (active?.phone && fil) {
+  if (active?.phone && params.fil) {
     const marked = await admin.from("crm_whatsapp_threads").upsert({
       phone: active.phone,
       customer_id: active.customerId,
@@ -134,59 +136,116 @@ export default async function WhatsappInboxPage({
       console.error("[whatsapp] lu", marked.error.code || "error");
     }
   }
-  const pending = ((proposals.data || []) as { id: string; phone: string; draft_body: string }[]).filter(
-    (row) => row.phone === active?.phone
+  const openRequest = ((requests.error ? [] : requests.data || []) as { phone: string | null; kind: string | null }[]).find(
+    (row) => row.phone && row.phone === active?.phone
   );
-  const drafts = (followups.error ? [] : followups.data || []) as {
-    id: string;
-    phone: string;
-    kind: string;
-    channel: string;
-    draft_body: string;
-  }[];
-  const ready = drafts.filter((row) => row.phone === active?.phone);
-  const draftLabel: Record<string, string> = {
-    predeparture: "Veille du départ",
-    checkin: "Arrivée à l’hôtel",
-    feedback: "Retour",
-  };
+  const dossier = await loadDossier(admin, active?.bookingId || null, active?.customerId || null, requestKindLabel(openRequest?.kind));
+  const focusQueue = params.vue === "valider";
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <PageEyebrow>Concierge</PageEyebrow>
-          <PageTitle title="WhatsApp" subtitle="Conversations, reprise et modèles." />
+          <PageTitle title="WhatsApp" subtitle="Non lus d’abord. Le dossier est à droite. Rien ne part sans votre clic." />
         </div>
-        <Link href="/admin/whatsapp/revue" className="text-sm text-[var(--color-ink-soft)] underline">
-          Revue
+        <Link href="/admin/whatsapp/revue" className="text-sm font-semibold text-[var(--color-ink-soft)] underline">
+          Revue de la semaine
         </Link>
       </div>
-      {ready.length ? (
-        <ul className="space-y-2">
-          {ready.map((row) => (
-            <li key={row.id} className="rounded-3xl border border-[var(--border)] px-4 py-3 text-sm">
-              <p className="font-semibold text-[#0B192C]">{draftLabel[row.kind] || row.kind}</p>
-              <p className="mt-1 whitespace-pre-wrap text-[var(--color-ink-soft)]">{row.draft_body}</p>
-              <p className="mt-1 text-xs text-[var(--color-ink-soft)]">
-                {row.channel === "template"
-                  ? "Hors fenêtre de 24 h. Le modèle n’est pas soumis."
-                  : "Fenêtre de 24 h ouverte."}
-              </p>
-              <ConciergeFollowupSend id={row.id} previewBlocked={isVercelPreview()} />
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {focusQueue || drafts.length ? <WhatsappPendingQueue drafts={drafts} previewBlocked={isVercelPreview()} /> : null}
       <WhatsappInbox
-        threads={folded}
+        threads={index.threads}
         messages={activeMessages}
         activeKey={activeKey}
-        proposals={pending.map((row) => ({ id: row.id, draft: row.draft_body }))}
+        proposals={pendingForThread.map((row) => ({ id: row.id, draft: row.draft_body }))}
         templates={approvedManualTemplates()}
         windowOpen={sessionWindowOpenNow(lastInbound?.createdAt || null)}
         previewBlocked={isVercelPreview()}
+        initialFilter={parseInboxFilter(params.filtre)}
+        dossier={dossier}
       />
     </div>
   );
+}
+
+async function loadDossier(
+  admin: ReturnType<typeof createServiceClient>,
+  bookingId: string | null,
+  customerId: string | null,
+  request: string | null
+): Promise<InboxDossier | null> {
+  if (!bookingId && !customerId) return { reference: null, place: null, dates: null, visibility: null, travelers: [], missingPassports: 0, request };
+  const booking = bookingId
+    ? await admin
+        .from("crm_bookings")
+        .select("id, customer_id, reference, title, destination, start_date, end_date, visible_to_client, archived_at")
+        .eq("id", bookingId)
+        .maybeSingle()
+    : { data: null, error: null };
+  const row = booking.data as {
+    id: string;
+    customer_id: string;
+    reference: string;
+    title: string | null;
+    destination: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    visible_to_client: boolean | null;
+    archived_at: string | null;
+  } | null;
+  if (!row) return { reference: null, place: null, dates: null, visibility: null, travelers: [], missingPassports: 0, request };
+  const travelers = await admin
+    .from("crm_booking_travelers")
+    .select("id, booking_id, companion_id, is_account_holder, first_name")
+    .eq("booking_id", row.id);
+  const people = (travelers.error ? [] : travelers.data || []) as {
+    id: string;
+    booking_id: string;
+    companion_id: string | null;
+    is_account_holder: boolean | null;
+    first_name: string | null;
+  }[];
+  const [onTrip, vault] = await Promise.all([
+    admin.from("crm_travel_documents").select("traveler_id, companion_id, booking_id, customer_id").eq("booking_id", row.id).eq("doc_type", "passport"),
+    admin
+      .from("crm_travel_documents")
+      .select("traveler_id, companion_id, booking_id, customer_id")
+      .eq("customer_id", row.customer_id)
+      .is("booking_id", null)
+      .eq("doc_type", "passport"),
+  ]);
+  const hits = [...(onTrip.error ? [] : onTrip.data || []), ...(vault.error ? [] : vault.data || [])] as {
+    traveler_id: string | null;
+    companion_id: string | null;
+    booking_id: string | null;
+    customer_id: string | null;
+  }[];
+  const party = people.map((person) => ({
+    id: person.id,
+    bookingId: person.booking_id,
+    companionId: person.companion_id,
+    holder: Boolean(person.is_account_holder),
+  }));
+  const missing = travelersMissingPassport(
+    party,
+    hits.map((hit) => ({
+      travelerId: hit.traveler_id,
+      companionId: hit.companion_id,
+      bookingId: hit.booking_id,
+      customerId: hit.customer_id,
+    })),
+    { [row.id]: row.customer_id }
+  );
+  const start = row.start_date ? formatDateFr(row.start_date) : "";
+  const end = row.end_date ? formatDateFr(row.end_date) : "";
+  return {
+    reference: row.reference,
+    place: stayDestinationLine(row) || null,
+    dates: start && end ? `${start} – ${end}` : start || end || null,
+    visibility: staffStayLabel(row),
+    travelers: people.map((person) => (person.first_name || "").trim().split(/\s+/)[0]).filter(Boolean),
+    missingPassports: missing.length,
+    request,
+  };
 }

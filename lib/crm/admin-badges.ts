@@ -3,7 +3,8 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { countInboxCards } from "@/lib/crm/email-thread";
 import { EMAIL_INBOX_QUEUE_STATUSES } from "@/lib/crm/types";
 import { isoDateInDays } from "@/lib/crm/money";
-import { foldThreads, unreadThreadCount, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
+import { loadWhatsappIndex } from "@/lib/crm/whatsapp-desk";
+import { unreadThreadCount } from "@/lib/crm/whatsapp-inbox";
 
 export type AdminBadges = {
   /** Virements Revolut reçus, pas encore rapprochés. */
@@ -48,11 +49,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
         .not("expires_on", "is", null)
         .gte("expires_on", isoDateInDays(0))
         .lte("expires_on", isoDateInDays(90)),
-      admin
-        .from("crm_whatsapp_messages")
-        .select("id, phone, customer_id, direction, body, created_at, status")
-        .order("created_at", { ascending: false })
-        .limit(400),
+      loadWhatsappIndex(),
     ]);
     return {
       revolut: revolut.error ? 0 : revolut.count ?? 0,
@@ -60,7 +57,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
       emails,
       le: le.error ? 0 : le.count ?? 0,
       pieces: pieces.error ? 0 : pieces.count ?? 0,
-      whatsapp: whatsapp.error ? 0 : unreadWhatsapp(whatsapp.data || []),
+      whatsapp: unreadThreadCount(whatsapp.threads),
     };
   } catch (err) {
     console.error("[admin/badges]", err instanceof Error ? err.message : err);
@@ -83,33 +80,3 @@ async function emailInboxCount(admin: ReturnType<typeof createServiceClient>) {
   return head.error ? 0 : head.count ?? 0;
 }
 
-function unreadWhatsapp(
-  rows: {
-    id: string;
-    phone: string | null;
-    customer_id: string | null;
-    direction: string;
-    body: string;
-    created_at: string;
-    status: string | null;
-  }[]
-) {
-  const messages: InboxMessage[] = rows.map((row) => ({
-    id: row.id,
-    phone: row.phone,
-    customerId: row.customer_id,
-    customerName: null,
-    bookingId: null,
-    bookingReference: null,
-    direction: row.direction === "inbound" ? "inbound" : "outbound",
-    body: row.body,
-    createdAt: row.created_at,
-    status: row.status,
-    templateKey: null,
-    authorName: null,
-    mediaPath: null,
-    tools: [],
-    requestId: null,
-  }));
-  return unreadThreadCount(foldThreads(messages, {}));
-}

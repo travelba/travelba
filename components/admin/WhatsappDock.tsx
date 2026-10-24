@@ -31,9 +31,11 @@ import {
   conversationBadge,
   deliveryLabel,
   filterThreads,
+  maskSensitiveCopy,
   messageSpeaker,
   messagesNewestFirst,
   parisStamp,
+  QUICK_REPLIES,
   sessionWindowOpenNow,
   speakerLabel,
   threadKey,
@@ -122,7 +124,7 @@ export function WhatsappDock({
     setTabs((current) => inboundDockTabs(current, key, dockIsMobile()));
     chime();
     if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
-      new Notification("WhatsApp", { body: message.body.slice(0, 120) });
+      new Notification("WhatsApp", { body: maskSensitiveCopy(message.body).slice(0, 120) });
     }
   }
 
@@ -385,7 +387,7 @@ export function WhatsappDock({
                   <span className="truncate text-sm font-medium text-[#0B192C]">{dockLabel(thread)}</span>
                   <span className="shrink-0 text-[10px] text-[#8a7350]">{parisStamp(thread.lastAt)}</span>
                 </span>
-                <span className="mt-0.5 block truncate text-xs text-[var(--color-ink-soft)]">{thread.lastBody}</span>
+                <span className="mt-0.5 block truncate text-xs text-[var(--color-ink-soft)]">{maskSensitiveCopy(thread.lastBody)}</span>
                 <span className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-[#8a7350]">
                   <span>{dockStatusLabel(thread.status)}</span>
                   {thread.unread > 0 ? (
@@ -684,7 +686,7 @@ function ChatPane({
           if (isHandoffNote(message)) {
             return (
               <p key={message.id} role="status" className="text-center text-[10px] font-medium text-[#8a7350]">
-                {message.body}
+                {maskSensitiveCopy(message.body)}
               </p>
             );
           }
@@ -693,8 +695,8 @@ function ChatPane({
           return (
             <article key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[90%] rounded-2xl px-2.5 py-1.5 text-xs ${speaker === "client" ? "bg-white" : speaker === "agency" ? "bg-[#0B192C] text-white" : "bg-[#f7f1e6]"}`}>
-                <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{speakerLabel(speaker, message.authorName)}{speaker === "robot" ? " · robot" : ""}</p>
-                <p className="whitespace-pre-wrap">{message.body}</p>
+                <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{speakerLabel(speaker, message.authorName)}</p>
+                <p className="whitespace-pre-wrap">{maskSensitiveCopy(message.body)}</p>
                 <p className="mt-1 text-[10px] opacity-70">{parisStamp(message.createdAt)}{deliveryLabel(message.status) ? ` · ${deliveryLabel(message.status)}` : ""}</p>
               </div>
             </article>
@@ -720,6 +722,15 @@ function ChatPane({
             ))}
           </select>
         )}
+        {windowOpen ? (
+          <div className="mb-1 flex flex-wrap gap-1">
+            {QUICK_REPLIES.map((reply) => (
+              <button key={reply.id} type="button" className="rounded-full bg-[#f4efe6] px-2 py-0.5 text-[10px] text-[#0B192C]" onClick={() => onDraft(reply.text)}>
+                {reply.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <textarea value={draft} onChange={(event) => onDraft(event.target.value)} rows={2} disabled={!windowOpen} placeholder={windowOpen ? "Écrire au client" : "Texte libre hors fenêtre"} className="w-full rounded-2xl border px-2 py-1 text-xs disabled:bg-[#f6f3ee]" />
         <div className="mt-1 flex justify-end">
           <button type="submit" disabled={busy || previewBlocked} className={sheet ? "inline-flex h-11 items-center rounded-full bg-[#0B192C] px-4 text-sm text-white disabled:opacity-50" : "rounded-full bg-[#0B192C] px-3 py-1 text-xs text-white disabled:opacity-50"}>

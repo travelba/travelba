@@ -93,7 +93,7 @@ test("le fil ouvert sur téléphone a Fermer et Réduire, le bureau garde sa cro
   assert.match(html, /safe-area-inset-top/);
   assert.match(html, /safe-area-inset-bottom/);
   assert.match(html, /lg:hidden/);
-  assert.match(html, /Rendre au Concierge/);
+  assert.match(html, /Rendre au concierge/);
   assert.match(html, /px-1 text-xs text-white\/70/);
   assert.doesNotMatch(html, /max-h-\[70vh\]/);
   assert.match(html, />Replier</);

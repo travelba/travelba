@@ -3,6 +3,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
+import { maskSensitiveCopy } from "@/lib/crm/whatsapp-inbox";
 import { weeklyReview, type QualityFlag, type QualityMark } from "@/lib/crm/concierge-quality";
 
 export const metadata = { title: "Revue WhatsApp" };
@@ -43,12 +44,13 @@ export default async function ConciergeReviewPage() {
   const report = weeklyReview(marks, new Date());
   const planned = await supabase
     .from("crm_concierge_followups")
-    .select("id, kind, channel, template_key, draft_body, due_at")
+    .select("id, phone, kind, channel, template_key, draft_body, due_at")
     .eq("status", "planned")
     .order("due_at", { ascending: true })
     .limit(30);
   const followups = (planned.error ? [] : planned.data || []) as {
     id: string;
+    phone: string | null;
     kind: string;
     channel: string;
     template_key: string | null;
@@ -77,8 +79,20 @@ export default async function ConciergeReviewPage() {
               <li key={row.id} className="admin-af-card rounded-3xl px-5 py-4 text-sm">
                 {FOLLOWUP_LABELS[row.kind] || row.kind}
                 {row.channel === "template" ? " · hors fenêtre" : " · fenêtre ouverte"}
-                <p className="mt-1 whitespace-pre-wrap text-muted">{row.draft_body}</p>
-                {SENDABLE.has(row.kind) ? <ConciergeFollowupSend id={row.id} previewBlocked={isVercelPreview()} /> : null}
+                {row.phone ? (
+                  <Link href={`/admin/whatsapp?fil=${encodeURIComponent(row.phone)}&vue=valider`} className="mt-1 block text-xs font-semibold underline">
+                    Ouvrir le fil
+                  </Link>
+                ) : null}
+                <p className="mt-1 whitespace-pre-wrap text-muted">{maskSensitiveCopy(row.draft_body)}</p>
+                {SENDABLE.has(row.kind) ? (
+                  <ConciergeFollowupSend
+                    id={row.id}
+                    previewBlocked={isVercelPreview()}
+                    sendable={row.channel !== "template"}
+                    blockedReason={row.channel === "template" ? "Hors fenêtre de 24 h. Le modèle n’est pas soumis." : undefined}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
