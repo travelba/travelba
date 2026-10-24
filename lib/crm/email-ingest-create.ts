@@ -4,6 +4,7 @@ import {
   STRONG_BOOKING_SCORE,
   blocksSecondDossier,
   decideEmailIngestAction,
+  proposesAddToDossier,
   usableCustomerEmail,
   type EmailIngestDecision,
 } from "@/lib/crm/email-match";
@@ -35,6 +36,7 @@ export const AUTO_CREATE_HOLDS = {
   quote: "Devis : le dossier n’est pas créé automatiquement.",
   thin: "Création automatique en attente : il manque une carte ou une date.",
   same_stay: "Même client, même destination : le dossier n’est pas créé. Remplacez la carte sur le séjour existant.",
+  overlap: "Ce client a déjà un dossier sur ces dates. Ajouter au dossier.",
 } as const;
 
 export const AUTO_STAY_NOTE = "Itinéraire mis à jour depuis le mail.";
@@ -178,6 +180,12 @@ export function autoCreatePlan(input: {
     blocksSecondDossier(input.candidates || [])
   ) {
     return { plan: null, hold: "same_stay", message: AUTO_CREATE_HOLDS.same_stay };
+  }
+  if (
+    proposesAddToDossier(input.candidates) &&
+    decision.kind !== "apply"
+  ) {
+    return { plan: null, hold: "overlap", message: AUTO_CREATE_HOLDS.overlap };
   }
   if (decision.kind === "apply") return { plan: null, hold: "apply", message: null };
   if (decision.kind === "review") return { plan: null, hold: "review", message: null };

@@ -12,7 +12,7 @@ import {
 } from "@/lib/crm/ingest-booking";
 import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
-import { loadEmailIngestFiles, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
+import { closeIngestSiblings, loadEmailIngestFiles, noteIngestDecision, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
@@ -56,6 +56,14 @@ export async function POST(request: Request, ctx: Ctx) {
         .from("crm_email_ingest")
         .update({ status: "refused" })
         .eq("id", id);
+      await closeIngestSiblings(admin, row, "refused", auth.user.id);
+      await noteIngestDecision(admin, {
+        actorKind: "human",
+        actorId: auth.user.id,
+        action: "refuse",
+        emailIngestId: id,
+        summary: "Mail refusé",
+      });
       return NextResponse.json({ ok: true, status: "refused" });
     }
 
@@ -144,6 +152,16 @@ export async function POST(request: Request, ctx: Ctx) {
         .from("crm_email_ingest")
         .update({ status: "attached", created_booking_id: bookingId, ...extractPatch })
         .eq("id", id);
+      await closeIngestSiblings(admin, row, "attached", auth.user.id);
+      await noteIngestDecision(admin, {
+        actorKind: "human",
+        actorId: auth.user.id,
+        action: "attach",
+        emailIngestId: id,
+        bookingId,
+        customerId: booking.customer_id,
+        summary: "Mail rattaché au dossier",
+      });
       return NextResponse.json({ ok: true, booking_id: bookingId });
     }
 
@@ -166,6 +184,16 @@ export async function POST(request: Request, ctx: Ctx) {
         .from("crm_email_ingest")
         .update({ status: "attached", created_booking_id: booking.id, ...extractPatch })
         .eq("id", id);
+      await closeIngestSiblings(admin, row, "attached", auth.user.id);
+      await noteIngestDecision(admin, {
+        actorKind: "human",
+        actorId: auth.user.id,
+        action: "new_booking",
+        emailIngestId: id,
+        bookingId: booking.id,
+        customerId,
+        summary: "Dossier créé depuis le mail",
+      });
       return NextResponse.json({ ok: true, booking_id: booking.id });
     }
 

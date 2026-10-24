@@ -13,7 +13,7 @@ import {
   type CrmBookingItem,
   type CrmTransaction,
 } from "@/lib/crm/types";
-import { itemTicketCount } from "@/lib/crm/item-match";
+import { statedTicketCount } from "@/lib/crm/item-match";
 import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
@@ -178,7 +178,11 @@ export function bookingDebitIntent(input: {
   return "update";
 }
 
-/** Prix vendu d’une carte : vol = unitaire × billets, sinon amount. */
+/**
+ * Prix vendu d’une carte.
+ * Vol avec un nombre de billets : unitaire × billets.
+ * Vol sans nombre : le montant saisi est déjà le total. On ne calcule pas de prix unitaire.
+ */
 export function itemSellingAmount(item: {
   kind?: string | null;
   amount?: number | null;
@@ -186,7 +190,9 @@ export function itemSellingAmount(item: {
 }): number | null {
   const unit = Number(item.amount);
   if (!Number.isFinite(unit) || unit <= 0) return null;
-  const total = unit * itemTicketCount(item);
+  if ((item.kind || "") !== "flight") return Math.round(unit * 100) / 100;
+  const count = statedTicketCount(item);
+  const total = count == null ? unit : unit * count;
   return Math.round(total * 100) / 100;
 }
 

@@ -113,6 +113,33 @@ test("les prénoms seuls du récap août 2027 remplissent le foyer de ce client"
   assert.equal(rows.every((row) => row.label === "Passeport à jour"), true);
 });
 
+test("un prénom seul relie le titulaire ou le compagnon, pas un homonyme", () => {
+  const camille = attachTravelerToHousehold(
+    { first_name: "Camille", last_name: null },
+    holder,
+    companions
+  );
+  assert.equal(camille.companion_id, "c1");
+  assert.equal(camille.is_account_holder, false);
+  assert.equal(camille.last_name, "Martin");
+
+  const jeremy = attachTravelerToHousehold(
+    { first_name: "Jeremy", last_name: "" },
+    holder,
+    companions
+  );
+  assert.equal(jeremy.is_account_holder, true);
+  assert.equal(jeremy.last_name, "Martin");
+
+  const both = attachTravelerToHousehold(
+    { first_name: "Camille", last_name: null },
+    { first_name: "Camille", last_name: "Martin" },
+    companions
+  );
+  assert.equal(both.companion_id ?? null, null);
+  assert.equal(both.is_account_holder ?? false, false);
+});
+
 test("un prénom ambigu ou celui d’un autre client reste libre", () => {
   const ambiguous = attachTravelerToHousehold(
     { first_name: "Daniel", last_name: null },

@@ -94,6 +94,11 @@ export function documentPriceIssues(_extract: {
   return [];
 }
 
+/** Le nombre de billets est facultatif. Un vol au prix global, sans compteur, n’est pas un avertissement. */
+export function ticketCountIssues(_extract?: { items?: unknown }): BookingIssue[] {
+  return [];
+}
+
 /** Montant positif lu ou saisi. 0 et l’absence restent vides — on n’invente pas un prix. */
 export function readDocumentAmount(details: { document_amount?: unknown } | null | undefined) {
   const raw = details?.document_amount;
@@ -120,6 +125,7 @@ export function collectExtractIssues(
       message: "Document d’identité : enregistrez-le dans le profil, pas en réservation.",
     });
   }
+  issues.push(...ticketCountIssues(extract));
   (extract.items || []).forEach((item, index) => {
     if (!String(item.title || "").trim()) {
       issues.push({

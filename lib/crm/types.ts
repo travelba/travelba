@@ -649,6 +649,8 @@ export const EMAIL_INGEST_STATUSES = [
   "attached",
   "refused",
   "error",
+  "ignored",
+  "grouped",
 ] as const;
 
 /** File /admin/emails : tout ce qui n’a pas encore été traité par l’agence. */
@@ -728,6 +730,14 @@ export type CrmEmailIngest = {
   suggested_booking_id: string | null;
   created_booking_id: string | null;
   error: string | null;
+  /** Raison d’un mail classé ignoré, sans passage par le modèle. */
+  ignore_reason?: string | null;
+  /** Message du même fil déjà ouvert. La ligne ne s’affiche plus seule. */
+  grouped_into?: string | null;
+  /** Références lues (confirmation, PNR, Little Emperors). */
+  confirmation_refs?: string[] | null;
+  /** reference, email_dates, traveler_hotel_dates ou human. */
+  match_tier?: string | null;
   created_at: string;
   updated_at: string;
 };

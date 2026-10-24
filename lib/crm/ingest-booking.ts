@@ -19,6 +19,8 @@ import {
 } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
 import { dossierTitle } from "@/lib/crm/ingest-title";
+import { routeMailExtract, type ImportTask } from "@/lib/crm/import-routing";
+import { importTitleGuard, TITLE_REVIEW_MARK } from "@/lib/crm/import-title";
 import { bookingCurrencyFromReview } from "@/lib/crm/stay-currency";
 import { parseMoney } from "@/lib/crm/money";
 import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
@@ -91,6 +93,51 @@ import {
 export { bookingExtractSchema, aiGatewayConfigured, type BookingExtract };
 export { extractBookingFromFiles };
 export { MAX_INGEST_BYTES, MAX_INGEST_FILES };
+
+/** Tâches À faire et garde du titre, seulement après un import mail. Les notes client ne bougent pas. */
+async function finishMailImport(
+  admin: SupabaseClient,
+  bookingId: string,
+  tasks: ImportTask[],
+  emailIngestId: string
+) {
+  if (tasks.length) {
+    const { error } = await admin.from("crm_booking_tasks").insert(
+      tasks.map((task) => ({
+        booking_id: bookingId,
+        kind: task.kind,
+        title: task.title.slice(0, 180),
+        email_ingest_id: emailIngestId,
+      }))
+    );
+    if (error) console.error("[import] tâche non enregistrée");
+  }
+  const { data: booking } = await admin
+    .from("crm_bookings")
+    .select("title, destination, notes_internal")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (!booking) return;
+  const { data: items } = await admin
+    .from("crm_booking_items")
+    .select("kind, title, start_at, end_at, details, lifecycle")
+    .eq("booking_id", bookingId);
+  const guarded = importTitleGuard({
+    title: typeof booking.title === "string" ? booking.title : "",
+    destination: typeof booking.destination === "string" ? booking.destination : "",
+    items: items || [],
+  });
+  const patch: Record<string, unknown> = {};
+  const currentTitle = (typeof booking.title === "string" ? booking.title : "").trim();
+  if (guarded.title && guarded.title !== currentTitle) patch.title = guarded.title;
+  const notes = typeof booking.notes_internal === "string" ? booking.notes_internal : "";
+  if (guarded.review && !notes.includes(TITLE_REVIEW_MARK)) {
+    patch.notes_internal = notes ? `${notes}\n${TITLE_REVIEW_MARK}.` : `${TITLE_REVIEW_MARK}.`;
+  }
+  if (Object.keys(patch).length) {
+    await admin.from("crm_bookings").update(patch).eq("id", bookingId);
+  }
+}
 
 export function collectIngestFiles(form: FormData) {
   const files: File[] = [];
@@ -568,7 +615,8 @@ export async function persistNewBookingFromExtract(opts: {
     .eq("customer_id", walletId)
     .order("sort_order");
   const payer = defaultPayer((companyRows || []) as { id: string; sort_order: number }[]);
-  const extract = opts.extract;
+  const routed = opts.emailIngestId ? routeMailExtract(opts.extract) : { extract: opts.extract, tasks: [] as ImportTask[] };
+  const extract = routed.extract;
   const stayDates = stayDatesFromExtract(extract);
   const title = dossierTitle(extract);
   const totalAmount = sellingTotalFromExtract(extract);
@@ -627,6 +675,7 @@ export async function persistNewBookingFromExtract(opts: {
     opts.emailIngestId
   );
   await syncBookingTitleFromSteps(admin, booking.id);
+  if (opts.emailIngestId) await finishMailImport(admin, booking.id, routed.tasks, opts.emailIngestId);
   await syncBookingTotalFromItems(admin, booking.id);
   const { data: withTotal } = await admin
     .from("crm_bookings")
@@ -651,6 +700,8 @@ export async function applyExtractToBooking(opts: {
   applyStayFields?: boolean;
   /** Mail source : tamponné sur les cartes créées, pour pouvoir les remettre dans la file. */
   emailIngestId?: string;
+  /** Déjà calculées par le remplacement : enregistrement, visa, pré-enregistrement. */
+  importTasks?: ImportTask[];
   /** Le montant du mail ne remplace pas le prix vendu. */
   keepSellingPrice?: boolean;
   replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
@@ -685,7 +736,13 @@ export async function applyExtractToBooking(opts: {
     booking.status = "confirmed";
     booking.visible_to_client = false;
   }
-  const persistIssues = collectExtractIssues(opts.extract);
+  const routed = opts.importTasks
+    ? { extract: opts.extract, tasks: opts.importTasks }
+    : opts.emailIngestId
+      ? routeMailExtract(opts.extract)
+      : { extract: opts.extract, tasks: [] as ImportTask[] };
+  const extract = routed.extract;
+  const persistIssues = collectExtractIssues(extract);
   if (persistIssues.length) throw new BookingIssuesError(issuesSummary(persistIssues), persistIssues);
   const docs = await attachBookingFiles(
     opts.bookingId,
@@ -701,7 +758,7 @@ export async function applyExtractToBooking(opts: {
   await upsertItemsAndTravelers(
     admin,
     opts.bookingId,
-    opts.extract,
+    extract,
     customer as CrmCustomer,
     (companions || []) as CrmCompanion[],
     (travelers || []) as { first_name: string | null; last_name: string | null }[],
@@ -711,13 +768,13 @@ export async function applyExtractToBooking(opts: {
     { keepSellingPrice: opts.keepSellingPrice, replacements: opts.replacements }
   );
   const patch: Record<string, unknown> = {};
-  const chosenTitle = emptyToNull(opts.extract.title);
+  const chosenTitle = emptyToNull(extract.title);
   if (opts.applyStayFields && chosenTitle) patch.title = chosenTitle;
   else if (!booking.title && chosenTitle) patch.title = chosenTitle;
   if (opts.applyStayFields) {
-    patch.currency = bookingCurrencyFromReview(opts.extract.currency, opts.extract.items);
+    patch.currency = bookingCurrencyFromReview(extract.currency, extract.items);
   }
-  if (!booking.destination && opts.extract.destination) patch.destination = opts.extract.destination;
+  if (!booking.destination && extract.destination) patch.destination = extract.destination;
   if (opts.keepSellingPrice) {
     const { data: dated } = await admin
       .from("crm_booking_items")
@@ -727,17 +784,18 @@ export async function applyExtractToBooking(opts: {
     if (range.start) patch.start_date = range.start;
     if (range.end) patch.end_date = range.end;
   } else {
-    const fromExtract = stayDatesFromExtract(opts.extract);
+    const fromExtract = stayDatesFromExtract(extract);
     if (!booking.start_date && fromExtract.start) patch.start_date = fromExtract.start;
     if (!booking.end_date && fromExtract.end) patch.end_date = fromExtract.end;
   }
-  if (booking.status === "draft" && opts.extract.document_status === "confirmed") {
+  if (booking.status === "draft" && extract.document_status === "confirmed") {
     patch.status = "confirmed";
   }
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
   }
   await syncBookingTitleFromSteps(admin, opts.bookingId);
+  if (opts.emailIngestId) await finishMailImport(admin, opts.bookingId, routed.tasks, opts.emailIngestId);
   await syncBookingTotalFromItems(admin, opts.bookingId);
   const { data: refreshed } = await admin
     .from("crm_bookings")
@@ -768,8 +826,9 @@ export async function applyReplacementToBooking(opts: {
     .from("crm_booking_items")
     .select("*")
     .eq("booking_id", opts.bookingId);
+  const routed = opts.emailIngestId ? routeMailExtract(opts.extract) : { extract: opts.extract, tasks: [] as ImportTask[] };
   const plan = replacementPlan(
-    opts.extract.items || [],
+    routed.extract.items || [],
     (items || []) as CrmBookingItem[],
     opts.replaceItemId
   );
@@ -784,6 +843,8 @@ export async function applyReplacementToBooking(opts: {
   }
   return applyExtractToBooking({
     ...opts,
+    extract: routed.extract,
+    importTasks: routed.tasks,
     keepSellingPrice: true,
     replacements: plan.replacements,
     reopenIfCancelled: true,

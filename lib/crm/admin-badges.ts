@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { countInboxCards } from "@/lib/crm/email-thread";
 import { EMAIL_INBOX_QUEUE_STATUSES } from "@/lib/crm/types";
 import { isoDateInDays } from "@/lib/crm/money";
 import { foldThreads, unreadThreadCount, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
@@ -39,10 +40,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
         .select("id", { count: "exact", head: true })
         .eq("status", "unmatched")
         .eq("direction", "credit"),
-      admin
-        .from("crm_email_ingest")
-        .select("id", { count: "exact", head: true })
-        .in("status", [...EMAIL_INBOX_QUEUE_STATUSES]),
+      emailInboxCount(admin),
       admin.from("crm_le_bookings").select("id", { count: "exact", head: true }).eq("status", "unmatched"),
       admin
         .from("crm_travel_documents")
@@ -59,7 +57,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
     return {
       revolut: revolut.error ? 0 : revolut.count ?? 0,
       stripe: stripe.error ? 0 : stripe.count ?? 0,
-      emails: emails.error ? 0 : emails.count ?? 0,
+      emails,
       le: le.error ? 0 : le.count ?? 0,
       pieces: pieces.error ? 0 : pieces.count ?? 0,
       whatsapp: whatsapp.error ? 0 : unreadWhatsapp(whatsapp.data || []),
@@ -69,6 +67,21 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
     return EMPTY_ADMIN_BADGES;
   }
 });
+
+/** Une carte par fil. Si les colonnes de regroupement manquent encore, le décompte brut. */
+async function emailInboxCount(admin: ReturnType<typeof createServiceClient>) {
+  const grouped = await admin
+    .from("crm_email_ingest")
+    .select("id, gmail_thread_id, confirmation_refs, grouped_into, extract, received_at")
+    .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
+    .limit(800);
+  if (!grouped.error) return countInboxCards(grouped.data || []);
+  const head = await admin
+    .from("crm_email_ingest")
+    .select("id", { count: "exact", head: true })
+    .in("status", [...EMAIL_INBOX_QUEUE_STATUSES]);
+  return head.error ? 0 : head.count ?? 0;
+}
 
 function unreadWhatsapp(
   rows: {

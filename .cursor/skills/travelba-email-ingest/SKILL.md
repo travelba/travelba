@@ -134,6 +134,22 @@ Prénom aligné (`Simon` = `Simon, Iony`). Destination : ville / pays, casse,
 accents, inclusion (`Dan Tel Aviv Hotel` ⊃ `Tel Aviv`). `cancelled` exclus.
 Document `identity` : pas de proposition de voyage. Prix document manquant : pas de blocage du rattachement manuel. On n’invente pas le montant.
 
+Nombre de billets **facultatif** (saisie manuelle et import). Vide : le montant est le total du billet. On ne calcule pas de prix unitaire, on ne l’affiche pas, l’import n’avertit pas. Le grand livre prend ce total (`itemSellingAmount`). Un nombre saisi reste unitaire × billets.
+
+## Avant le modèle
+
+Images de signature (moins d’environ 20 Ko, `image001`, App Store, logo) : pas d’appel. Publicité, code à 6 chiffres, guide API, newsletter : statut `ignored`, sans modèle. Un label de confirmation (Little Emperors, Expedia, billet, annulation, reservations-tba, cdsgroupe) n’est pas écarté pour un pied de page.
+
+Un fil Gmail, ou la même confirmation (y compris `64570` et `64570SH046795`), fait **une** carte dans la file. Les autres messages du fil se ferment au traitement ou au clic (rattacher, refuser, créer). Rien n’est effacé.
+
+Ordre de rapprochement : référence (confirmation, PNR, itinéraire Expedia, Little Emperors), puis e-mail client et dates qui se croisent (« Ajouter au dossier », sans création), puis nom + hôtel + dates, sinon un humain. Un client qui a déjà un dossier sur ces dates ne reçoit pas un second dossier automatique.
+
+Frais de billeterie : dans le prix et les pièces, pas une étape. Enregistrement, pré-enregistrement et visa : onglet À faire (`crm_booking_tasks`). Le mail remplit une carte puis vit avec les pièces.
+
+Après l’import, le titre ne garde que les villes de séjour (pas le départ, pas l’escale, pas le nom d’hôtel), trois au plus. Au-delà : « Titre à vérifier » dans les notes internes. `notes_client` reste vide. Un prénom seul relie le titulaire ou le compagnon de ce prénom ; deux homonymes restent libres.
+
+Chaque décision (auto ou humain) va dans `crm_audit_events` : qui, quand, quoi. MRZ, passeport (trois derniers caractères) et cartes sont masqués. Pas d’extract dans le journal.
+
 ## Pas de voyage
 
 Confirmation avec une carte (vol, hôtel, transfert…) et une date, sans candidat

@@ -651,6 +651,9 @@ export function suggestBookingByHotelStay(
 
 export const SAME_DESTINATION_REASON = "Même client, même destination";
 export const SAME_DESTINATION_CANCELLED_REASON = "Même client, même destination, séjour annulé";
+/** Même client, dates qui se croisent : on propose d’ajouter, on ne crée pas. */
+export const OVERLAP_ADD_REASON = "Ajouter au dossier";
+const EMAIL_DATES_SCORE = 83;
 
 /** Sous le seuil de rattachement automatique : la file propose, elle ne crée pas. */
 const SAME_DESTINATION_SCORE = 80;
@@ -693,6 +696,79 @@ export function suggestBookingByDestination(
 
   candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
   return { autoBookingId: null, candidates };
+}
+
+/**
+ * Deuxième palier : e-mail du client et dates qui se chevauchent.
+ * Pas de rattachement automatique : la file propose « Ajouter au dossier ».
+ */
+export function suggestBookingByClientEmail(
+  extract: BookingExtract,
+  bookings: TripBooking[],
+  customers: CustomerLite[]
+): BookingSuggestion {
+  if (isCancellationExtract(extract)) return { autoBookingId: null, candidates: [] };
+  const email = usableCustomerEmail(extract.customer_email);
+  if (!email) return { autoBookingId: null, candidates: [] };
+  const window = extractWindow(extract);
+  if (!window.start) return { autoBookingId: null, candidates: [] };
+  const customer = customers.find((row) => (row.email || "").trim().toLowerCase() === email);
+  if (!customer) return { autoBookingId: null, candidates: [] };
+  const candidates: BookingSuggestion["candidates"] = [];
+  for (const booking of bookings) {
+    if (booking.customer_id !== customer.id) continue;
+    if (booking.status === "cancelled") continue;
+    if (!dateRangesOverlap(window.start, window.end, booking.start_date, booking.end_date)) continue;
+    candidates.push({
+      booking_id: booking.id,
+      customer_id: customer.id,
+      label: bookingLabel(booking),
+      reason: OVERLAP_ADD_REASON,
+      score: EMAIL_DATES_SCORE,
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
+  return { autoBookingId: null, candidates };
+}
+
+export type MatchTier = "reference" | "email_dates" | "traveler_hotel_dates" | "human";
+
+function uniqueByBooking(rows: BookingSuggestionCandidate[]) {
+  const seen = new Map<string, BookingSuggestionCandidate>();
+  for (const row of rows) {
+    if (!seen.has(row.booking_id)) seen.set(row.booking_id, row);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Confirmation / PNR / réf. Expedia ou Little Emperors, puis e-mail + dates,
+ * puis voyageur + hôtel + dates. Plusieurs dossiers au même palier : un humain.
+ */
+export function deterministicBookingId(
+  candidates: BookingSuggestionCandidate[]
+): { tier: MatchTier; bookingId: string | null } {
+  const references = uniqueByBooking(
+    candidates.filter((row) => row.score >= 90 && /référence/i.test(row.reason))
+  );
+  if (references.length === 1) return { tier: "reference", bookingId: references[0].booking_id };
+  if (references.length > 1) return { tier: "reference", bookingId: null };
+  const byEmail = uniqueByBooking(candidates.filter((row) => row.reason === OVERLAP_ADD_REASON));
+  if (byEmail.length === 1) return { tier: "email_dates", bookingId: byEmail[0].booking_id };
+  if (byEmail.length > 1) return { tier: "email_dates", bookingId: null };
+  const byStay = uniqueByBooking(
+    candidates.filter(
+      (row) => row.reason === HOTEL_STAY_REASON || row.reason.startsWith("Nom, destination")
+    )
+  );
+  if (byStay.length === 1) return { tier: "traveler_hotel_dates", bookingId: byStay[0].booking_id };
+  return { tier: "human", bookingId: null };
+}
+
+export function proposesAddToDossier(
+  candidates: { reason?: string | null }[] | null | undefined
+) {
+  return (candidates || []).some((row) => row.reason === OVERLAP_ADD_REASON);
 }
 
 export function blocksSecondDossier(
