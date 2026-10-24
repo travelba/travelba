@@ -1,4 +1,4 @@
-import type { ConciergeDossier, ConciergeTurn, ReplyLang } from "@/lib/crm/whatsapp-concierge";
+import type { ConciergeDossier, ConciergePending, ConciergeTurn, ReplyLang } from "@/lib/crm/whatsapp-concierge";
 import { classifyHandoff, messageLanguage } from "@/lib/crm/whatsapp-concierge";
 import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "@/lib/crm/whatsapp-conversation";
 import { advanceJourney, inTripHelp, planFollowups, type PlannedFollowup, type ProposalDraft, type TripBrief } from "@/lib/crm/concierge-journey";
@@ -39,6 +39,7 @@ export async function planPhase2(input: {
   stayEnd?: string | null;
   now?: Date;
   lastInbound?: Date | null;
+  pending?: ConciergePending[];
 }): Promise<Phase2Result> {
   const now = input.now || new Date();
   const lang: ReplyLang = messageLanguage(input.message);
@@ -81,6 +82,7 @@ export async function planPhase2(input: {
       generate: input.generate,
       knowledge: facts,
       now,
+      pending: input.pending,
     });
     if (turn.handoff === "quote") {
       const step = await advanceJourney({

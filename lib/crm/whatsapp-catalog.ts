@@ -240,6 +240,7 @@ const SAMPLE_ITEM = {
   toCode: "",
   arrival: "",
   endDate: null,
+  timezone: "Europe/Paris",
 };
 
 function sampleStay(reference: string, destination: string): ConciergeStay {

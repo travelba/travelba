@@ -13,7 +13,6 @@ export type BubbleHistory = {
 };
 
 const GREETING = /^(?:bonjour|hello|שלום)\b[^,\n]*,\s*/i;
-const SIGNATURE = /(?:^|\n)[ \t]*le concierge\.?[ \t]*$/i;
 
 /** Premier message du jour à Paris : salutation et signature. Un fil déjà ouvert aujourd’hui n’en a plus. */
 export function conciergeOpening(history: BubbleHistory[] | undefined, now: Date) {
@@ -30,9 +29,12 @@ export function conciergeOpening(history: BubbleHistory[] | undefined, now: Date
 }
 
 function stripSignature(text: string) {
-  let body = text.replace(/\s+$/u, "");
-  while (SIGNATURE.test(body)) body = body.replace(SIGNATURE, "").replace(/\s+$/u, "");
-  return body.trim();
+  return text
+    .replace(/\s+$/u, "")
+    .split("\n")
+    .filter((line) => !/^le concierge\.?$/i.test(line.trim()))
+    .join("\n")
+    .trim();
 }
 
 function splitPieces(text: string) {

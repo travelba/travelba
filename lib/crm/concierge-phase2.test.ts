@@ -196,14 +196,14 @@ test("les modèles restent des brouillons, la revue compte la semaine", () => {
   assert.equal(late.some((row) => row.channel === "session" && row.body.includes("http")), false);
 });
 
-test("l’évaluation simulée couvre les sept cas", async () => {
+test("l’évaluation simulée couvre le carnet et les échecs réels", async () => {
   const results = await runConciergeEval();
   const failed = results.filter((result) => !result.ok);
   assert.deepEqual(
     failed.map((result) => `${result.id}: ${result.detail}`),
     []
   );
-  assert.equal(results.length, 7);
+  assert.equal(results.length, 14);
 });
 
 test("les faits du savoir arrivent au modèle, pas les exemples", async () => {

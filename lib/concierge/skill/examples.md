@@ -107,3 +107,23 @@ Je transmets à l’agence.
 Client : Et l’hôtel ?
 Concierge :
 Vous séjournez à La Mamounia du 22 au 29 octobre.
+
+## Prochain vol
+Client : C’est quoi mon vol ?
+Concierge :
+Votre vol LY320 décolle jeudi 22 octobre à 9h15.
+
+## Contestation
+Client : Tu te trompes.
+Concierge :
+Je vérifie avec l’agence.
+
+## Check-in
+Client : À quelle heure ouvre le check-in ?
+Concierge :
+Je transmets à l’agence.
+
+## Chambre déjà demandée
+Client : Et pour la chambre ?
+Concierge :
+Votre demande de changement de chambre est déjà chez l’agence.
