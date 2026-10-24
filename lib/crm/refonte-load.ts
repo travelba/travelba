@@ -355,6 +355,9 @@ async function loadRaw(supabase: SupabaseClient, today: string): Promise<Refonte
       fullNames.push(`${given} ${family}`);
       fullNames.push(`${family} ${given}`);
     }
+    if (given.includes(" ")) fullNames.push(given);
+    const embedded = given.split(/\s+/).slice(1).join(" ");
+    if (embedded.length >= 3) lastNames.push(embedded);
     if (family.length >= 3) lastNames.push(family);
   }
   for (const row of customers) remember(row.first_name, row.last_name);
@@ -470,11 +473,11 @@ export const loadRefonteSnapshot = cache(async (): Promise<RefonteSnapshot> => {
   const today = stayToday();
   const raw = await loadRaw(supabase, today);
   const model = buildRefonteModel(raw, today);
-  const staffName = staff.full_name || "";
+  const staffParts = (staff.full_name || "").trim().split(/\s+/).filter(Boolean);
   return {
     ...model,
-    staffFirst: staffName.split(" ")[0] || "l’agence",
-    staffName,
+    staffFirst: staffParts[0] || "l’agence",
+    staffName: maskPersonName(staffParts[0] || "", staffParts.slice(1).join(" ")),
     staffRole: staff.role,
   };
 });

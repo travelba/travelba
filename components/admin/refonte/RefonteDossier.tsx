@@ -64,7 +64,7 @@ export function RefonteDossier({ dossier, tab }: { dossier: DossierView; tab: Do
       </ol>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0">
+        <div className="order-2 min-w-0 lg:order-1">
           <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Dossier">
             {DOSSIER_TABS.map((item) => {
               const current = item.id === tab;
@@ -95,7 +95,7 @@ export function RefonteDossier({ dossier, tab }: { dossier: DossierView; tab: Do
             <TabBody dossier={dossier} tab={tab} />
           </div>
         </div>
-        <aside aria-label="Fiche rapide" className="admin-af-card space-y-5 rounded-2xl p-5 lg:sticky lg:top-24">
+        <aside aria-label="Fiche rapide" className="admin-af-card order-1 space-y-5 rounded-2xl p-5 lg:sticky lg:top-24 lg:order-2">
           <PanelBlock title="Client" body={dossier.customer} />
           <div>
             <h2 className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">Voyageurs</h2>

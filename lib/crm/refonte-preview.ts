@@ -36,8 +36,9 @@ export function refonteActiveHref(pathname: string): RefonteMenuHref | null {
 }
 
 export function maskPersonName(first: string | null | undefined, last: string | null | undefined) {
-  const given = tidyName(first);
-  const family = (last || "").trim();
+  const givenParts = (first || "").trim().split(/\s+/).filter(Boolean);
+  const given = tidyName(givenParts[0]);
+  const family = [...givenParts.slice(1), (last || "").trim()].filter(Boolean).join(" ");
   const initial = [...family].find((char) => /\p{L}/u.test(char));
   if (!given && !initial) return "Client";
   if (!initial) return given;

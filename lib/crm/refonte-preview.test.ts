@@ -72,6 +72,7 @@ test("le menu à six entrées allume le bon chemin", () => {
 
 test("le nom devient prénom et initiale", () => {
   assert.equal(maskPersonName("camille", "durand"), "Camille D.");
+  assert.equal(maskPersonName("Arnaud Pxxxxxx", "Vvvvvvv"), "Arnaud P.");
   assert.equal(maskPersonName("  andréa ", "müller"), "Andréa M.");
   assert.equal(maskPersonName("", ""), "Client");
   assert.equal(maskPersonName("", "martin"), "M.");
