@@ -67,6 +67,52 @@ export async function POST(request: Request, ctx: Ctx) {
       return NextResponse.json({ ok: true, status: "refused" });
     }
 
+    if (action === "ignore") {
+      await admin
+        .from("crm_email_ingest")
+        .update({ status: "ignored", ignore_reason: "Ignoré" })
+        .eq("id", id);
+      await noteIngestDecision(admin, {
+        actorKind: "human",
+        actorId: auth.user.id,
+        action: "ignore",
+        emailIngestId: id,
+        summary: "Mail ignoré",
+      });
+      return NextResponse.json({ ok: true, status: "ignored" });
+    }
+
+    if (action === "dismiss_duplicate") {
+      await admin
+        .from("crm_email_ingest")
+        .update({ status: "refused", ignore_reason: "Doublon écarté" })
+        .eq("id", id);
+      await closeIngestSiblings(admin, row, "refused", auth.user.id);
+      await noteIngestDecision(admin, {
+        actorKind: "human",
+        actorId: auth.user.id,
+        action: "duplicate",
+        emailIngestId: id,
+        summary: "Doublon écarté",
+      });
+      return NextResponse.json({ ok: true, status: "refused" });
+    }
+
+    if (action === "restore") {
+      await admin
+        .from("crm_email_ingest")
+        .update({ status: "parsed", ignore_reason: null })
+        .eq("id", id);
+      await noteIngestDecision(admin, {
+        actorKind: "human",
+        actorId: auth.user.id,
+        action: "restore",
+        emailIngestId: id,
+        summary: "Mail remis dans la file",
+      });
+      return NextResponse.json({ ok: true, status: "parsed" });
+    }
+
     if (action === "dismiss") {
       await admin
         .from("crm_email_ingest")
@@ -77,6 +123,18 @@ export async function POST(request: Request, ctx: Ctx) {
 
     if (action === "detach") {
       const result = await detachAttachedEmail(row);
+      await admin
+        .from("crm_import_proposals")
+        .update({ undone_at: new Date().toISOString() })
+        .eq("email_ingest_id", id)
+        .is("undone_at", null);
+      await noteIngestDecision(admin, {
+        actorKind: "human",
+        actorId: auth.user.id,
+        action: "undo",
+        emailIngestId: id,
+        summary: "Application annulée",
+      });
       return NextResponse.json({ ok: true, ...result });
     }
 

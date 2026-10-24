@@ -31,6 +31,8 @@ import { clipEmailBody } from "@/lib/crm/email-source";
 import { classifyInboundMail, dropInboundImage } from "@/lib/crm/email-prefilter";
 import { openThreadParent, sharesInboxGroup, type ThreadRow } from "@/lib/crm/email-thread";
 import { toAuditRow } from "@/lib/crm/audit-events";
+import { scoreExtractFields } from "@/lib/crm/extract-confidence";
+import { buildImportProposal } from "@/lib/crm/import-proposal";
 import { EMAIL_BODY_MISSING_MARK, bodyBackfillSince, hasBodyMissingMark, markBodyMissing } from "@/lib/crm/email-body-backfill";
 import { reopenFalseSupplierCancellation } from "@/lib/crm/ingest-parse";
 import {
@@ -659,7 +661,28 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     extract.document_status = "cancelled";
   }
   await admin.from("crm_email_ingest").update(basePatch).eq("id", row.id);
-  await matchAndStoreExtract(admin, row.id, extract, warnings, stored);
+  const suggestions = await matchAndStoreExtract(admin, row.id, extract, warnings, stored);
+  const scored = scoreExtractFields(extract, headed);
+  const { error: scoreError } = await admin
+    .from("crm_email_ingest")
+    .update({ field_confidence: scored.confidence, field_quotes: scored.fields })
+    .eq("id", row.id);
+  if (scoreError) console.error("[import] confiance non enregistrée");
+  if (suggestions.suggested_booking_id) {
+    const { data: stayItems } = await admin
+      .from("crm_booking_items")
+      .select("id, kind, title, confirmation_ref, start_at, end_at, details, lifecycle, amount, include_in_ledger")
+      .eq("booking_id", suggestions.suggested_booking_id);
+    const proposal = buildImportProposal(extract, stayItems || []);
+    const { error: proposalError } = await admin.from("crm_import_proposals").insert({
+      email_ingest_id: row.id,
+      booking_id: suggestions.suggested_booking_id,
+      confidence: scored.confidence,
+      conflict: proposal.conflict,
+      ops: proposal.ops,
+    });
+    if (proposalError) console.error("[import] proposition non enregistrée");
+  }
   const folded = await foldParsedConfirmation(admin, row.id);
   if (!folded) await autoCreateBookingFromIngestId(row.id);
 }

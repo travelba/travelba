@@ -30,6 +30,7 @@ import { formatDateFr, formatDateRangeShort, formatDateTimeFr, formatMoney } fro
 import { emailHtmlHasText, sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { collapseSharedTicketPrice } from "@/lib/crm/item-match";
 import { collapseInboxRows } from "@/lib/crm/email-thread";
+import { proposalLine, type ProposalOp } from "@/lib/crm/import-proposal";
 import { inboxStayAction, type LifecycleCard } from "@/lib/crm/item-lifecycle";
 
 type ExtractItem = {
@@ -150,9 +151,14 @@ function itemLabel(kind: string | undefined) {
 export function EmailIngestInbox({
   rows,
   customers,
+  mode = "file",
+  proposals = [],
 }: {
   rows: CrmEmailIngest[];
   customers: PickableCustomer[];
+  /** file : à traiter. appliques : 24 h, avec Annuler. ignores : à récupérer. */
+  mode?: "file" | "appliques" | "ignores";
+  proposals?: { emailIngestId: string; ops: ProposalOp[]; conflict: boolean }[];
 }) {
   const router = useRouter();
   const customerLabelById = useMemo(() => {
@@ -182,6 +188,37 @@ export function EmailIngestInbox({
   const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
 
   const cards = useMemo(() => collapseInboxRows(rows), [rows]);
+  const proposalById = useMemo(() => {
+    const map = new Map<string, { ops: ProposalOp[]; conflict: boolean }>();
+    for (const proposal of proposals) map.set(proposal.emailIngestId, proposal);
+    return map;
+  }, [proposals]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (mode !== "file") return;
+      const card = cards[0]?.primary;
+      if (!card) return;
+      const key = event.key.toLowerCase();
+      if (key === "a" && card.suggested_booking_id) {
+        event.preventDefault();
+        void act(card.id, { action: "attach_booking", booking_id: card.suggested_booking_id });
+      } else if (key === "i") {
+        event.preventDefault();
+        void act(card.id, { action: "ignore" });
+      } else if (key === "e") {
+        event.preventDefault();
+        void act(card.id, { action: "dismiss_duplicate" });
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // act est déclaré plus bas et change à chaque frappe : les trois raccourcis ne lisent que la carte.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, mode]);
 
   const chosenCustomer = useCallback(
     (row: CrmEmailIngest) => chosen[row.id] ?? row.suggested_customer_id ?? "",
@@ -496,6 +533,39 @@ export function EmailIngestInbox({
                 {row.subject ? (
                   <p className="mt-1 truncate text-xs text-muted">Sujet du mail : {row.subject}</p>
                 ) : null}
+                {row.candidates[0]?.reason ? (
+                  <p className="mt-1 text-xs text-[#0B192C]">
+                    Proposition : {row.candidates[0].label} — {row.candidates[0].reason}
+                  </p>
+                ) : null}
+                {proposalById.get(row.id)?.ops.length ? (
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold text-muted">Avant / après</p>
+                    <ul className="mt-1 space-y-0.5 text-sm text-[#0B192C]">
+                      {proposalById.get(row.id)!.ops.map((op, index) => (
+                        <li key={`${op.op}-${index}`}>{proposalLine(op)}</li>
+                      ))}
+                    </ul>
+                    {proposalById.get(row.id)?.conflict ? (
+                      <p className="mt-1 text-xs font-semibold text-[#8A5A12]">Conflit : choisir la carte.</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {(row.field_quotes || []).some((field) => field.confidence < 0.9) ? (
+                  <ul className="mt-2 space-y-1">
+                    {(row.field_quotes || [])
+                      .filter((field) => field.confidence < 0.9)
+                      .map((field) => (
+                        <li
+                          key={field.key}
+                          title={field.quote || "Aucune citation dans le mail"}
+                          className="text-sm font-semibold text-[#8A5A12]"
+                        >
+                          {field.value}
+                        </li>
+                      ))}
+                  </ul>
+                ) : null}
                 <p className="truncate text-xs text-muted">
                   {row.from_email || "—"}
                   {row.received_at ? ` · ${formatDateFr(row.received_at)}` : ""}
@@ -698,10 +768,12 @@ export function EmailIngestInbox({
 
               {customerId ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <label className="block text-xs font-semibold text-muted">
+                    Changer de dossier
                   <select
-                    className="admin-af-input text-sm"
+                    className={`${fieldControlClass} admin-tap mt-1 text-sm`}
                     value={selectedBooking[row.id] || ""}
-                    aria-label="Voyage du client"
+                    aria-label="Changer de dossier"
                     onFocus={() => {
                       if (!options) loadBookings(row.id, customerId, row.suggested_booking_id);
                     }}
@@ -728,6 +800,7 @@ export function EmailIngestInbox({
                       <option value="">Aucun voyage pour ce client</option>
                     )}
                   </select>
+                  </label>
                   {(() => {
                     const stay = options?.find((booking) => booking.id === selectedBooking[row.id]);
                     const gesture = stay
@@ -821,6 +894,60 @@ export function EmailIngestInbox({
               ) : null}
 
               <div className="mt-3 flex flex-wrap gap-2">
+                {mode === "appliques" ? (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="admin-tap rounded-lg bg-[#0B192C] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                    onClick={() => act(row.id, { action: "detach" })}
+                  >
+                    {isBusy && busy?.action === "detach" ? "Annulation…" : "Annuler"}
+                  </button>
+                ) : null}
+                {mode === "ignores" ? (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="admin-tap rounded-lg bg-[#0B192C] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                    onClick={() => act(row.id, { action: "restore" })}
+                  >
+                    {isBusy && busy?.action === "restore" ? "Retour…" : "Remettre dans la file"}
+                  </button>
+                ) : null}
+                {mode === "file" && row.suggested_booking_id ? (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="admin-tap rounded-lg bg-[#0B192C] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                    onClick={() =>
+                      act(row.id, { action: "attach_booking", booking_id: row.suggested_booking_id || "" })
+                    }
+                  >
+                    {isBusy && busy?.action === "attach_booking" ? "Acceptation…" : "Accepter"}
+                  </button>
+                ) : null}
+                {mode === "file" ? (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="admin-tap rounded-lg border border-[#C5A880] px-3 py-2 text-sm font-semibold text-[#0B192C] disabled:opacity-40"
+                    onClick={() => act(row.id, { action: "dismiss_duplicate" })}
+                  >
+                    {isBusy && busy?.action === "dismiss_duplicate" ? "Écart…" : "Écarter le doublon"}
+                  </button>
+                ) : null}
+                {mode === "file" ? (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="admin-tap rounded-lg px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
+                    onClick={() => act(row.id, { action: "ignore" })}
+                  >
+                    {isBusy && busy?.action === "ignore" ? "Ignoré…" : "Ignorer"}
+                  </button>
+                ) : null}
+                {mode === "file" ? (
+                <>
                 <button
                   type="button"
                   disabled={isBusy || !customerId}
@@ -862,6 +989,8 @@ export function EmailIngestInbox({
                   <Icon name="close" className="h-4 w-4" />
                   {isBusy && busy?.action === "refuse" ? "Refus…" : "Refuser"}
                 </button>
+                </>
+                ) : null}
               </div>
               {rowError[row.id] ? (
                 <p role="alert" className="mt-2 text-sm text-accent">

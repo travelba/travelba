@@ -738,6 +738,9 @@ export type CrmEmailIngest = {
   confirmation_refs?: string[] | null;
   /** reference, email_dates, traveler_hotel_dates ou human. */
   match_tier?: string | null;
+  /** Plus faible confiance des champs cités. 1 = certain. */
+  field_confidence?: number | null;
+  field_quotes?: { key: string; value: string; confidence: number; quote: string }[] | null;
   created_at: string;
   updated_at: string;
 };
