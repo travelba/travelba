@@ -1,14 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { pickHeroVideo, shouldPlayHeroVideo } from "@/lib/site-hero";
+import { useEffect, useRef } from "react";
+import { shouldPlayHeroVideo } from "@/lib/site-hero";
 
-/** La source n’est posée qu’après le premier affichage, pour ne pas concurrencer les liens. */
+/**
+ * Les sources sont dans le HTML (autoplay, muet, playsInline) : la lecture ne dépend pas
+ * de l’hydratation, et le fichier reste léger (une seule variante, ~150–320 Ko).
+ * Mouvement réduit ou économie de données : on retire la source, le poster reste.
+ */
 export function HeroVideo() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+
     const nav = navigator as Navigator & { connection?: { saveData?: boolean } };
     if (
       !shouldPlayHeroVideo({
@@ -16,56 +25,36 @@ export function HeroVideo() {
         saveData: Boolean(nav.connection?.saveData),
       })
     ) {
+      video.pause();
+      for (const source of video.querySelectorAll("source")) source.remove();
+      video.removeAttribute("src");
+      video.load();
       return;
     }
 
-    let cancelled = false;
-    const arm = () => {
-      if (cancelled) return;
-      const probe = document.createElement("video");
-      const webm = probe.canPlayType('video/webm; codecs="vp9"') !== "";
-      setSrc(pickHeroVideo({ wide: window.matchMedia("(min-width: 768px)").matches, webm }));
-    };
-
-    if (typeof window.requestIdleCallback === "function") {
-      const id = window.requestIdleCallback(arm, { timeout: 1500 });
-      return () => {
-        cancelled = true;
-        window.cancelIdleCallback(id);
-      };
-    }
-    const timer = window.setTimeout(arm, 700);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!src || !video) return;
-    video.muted = true;
-    video.defaultMuted = true;
-    video.playsInline = true;
     const play = () => {
       video.play().catch(() => {});
     };
     if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) play();
     else video.addEventListener("canplay", play, { once: true });
     return () => video.removeEventListener("canplay", play);
-  }, [src]);
+  }, []);
 
   return (
     <video
       ref={videoRef}
       className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+      autoPlay
       muted
       loop
       playsInline
-      preload="none"
-      autoPlay={Boolean(src)}
+      preload="auto"
       aria-hidden="true"
-      src={src ?? undefined}
-    />
+    >
+      <source media="(min-width: 768px)" src="/videos/hero-desktop.webm" type='video/webm; codecs="vp9"' />
+      <source media="(min-width: 768px)" src="/videos/hero-desktop.mp4" type="video/mp4" />
+      <source src="/videos/hero-mobile.webm" type='video/webm; codecs="vp9"' />
+      <source src="/videos/hero-mobile.mp4" type="video/mp4" />
+    </video>
   );
 }

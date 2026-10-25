@@ -23,7 +23,7 @@ export function Hero() {
         src={HERO_POSTER}
         alt=""
         fill
-        preload
+        loading="eager"
         sizes="100vw"
         className="pointer-events-none object-cover"
       />
