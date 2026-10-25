@@ -139,6 +139,8 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(visibilite?.cardSecrets, undefined);
   assert.match(visibilite?.description || "", /aucun message/i);
   assert.match(visibilite?.description || "", /WhatsApp/);
+  assert.match(visibilite?.description || "", /inclure_transactions/);
+  assert.match(visibilite?.description || "", /total exact/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /au centime/);
   for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
     const tool = MCP_TOOLS.find((item) => item.name === name);

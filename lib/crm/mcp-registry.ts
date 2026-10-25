@@ -777,12 +777,16 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "definir_visibilite_carte",
     write: true,
     description:
-      "Montre ou cache une seule carte du dossier (vol, hôtel, frais ou autre prestation). visible vrai la montre au client, faux la cache. Ne publie pas le carnet et n’envoie aucun message : ni e-mail, ni WhatsApp. Le grand livre est recalculé comme à l’enregistrement d’une carte dans l’agence, sur la même ligne, sans doublon. Le séjour caché ne débite pas. Une carte non incluse dans les transactions ne crée pas de ligne.",
+      "Montre ou cache une seule carte du dossier (vol, hôtel, frais ou autre prestation), et peut cocher ou décocher « Inclure dans les transactions ». visible vrai la montre au client, faux la cache ; omis, la visibilité ne change pas. inclure_transactions vrai crée ou rétablit le débit, faux l’annule, sur la même ligne. Le prix est le total exact si la carte porte un total de groupe. Ne publie pas le carnet et n’envoie aucun message : ni e-mail, ni WhatsApp. Le grand livre est recalculé comme à l’enregistrement d’une carte dans l’agence, sans doublon. Le séjour caché ne débite pas. Une carte non incluse dans les transactions ne crée pas de ligne.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
       carte_id: z.string().trim().describe("Identifiant de la carte"),
-      visible: z.boolean().describe("vrai : montrée au client. faux : cachée"),
+      visible: z.boolean().optional().describe("vrai : montrée au client. faux : cachée. Omis : la visibilité ne change pas"),
+      inclure_transactions: z
+        .boolean()
+        .optional()
+        .describe("Case « Inclure dans les transactions ». vrai coche, faux décoche. Omis : la case ne change pas"),
     },
     run: (args) => setCarteVisibilite(args),
   },

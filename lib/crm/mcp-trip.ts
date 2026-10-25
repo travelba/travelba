@@ -10,6 +10,7 @@ import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-it
 import { createStaffBooking, StaffWriteError, type StaffBookingInput } from "@/lib/crm/booking-create";
 import {
   bookingChargeExternalId,
+  isStayAmountKind,
   itemIncludedInLedger,
   ledgerWarning,
   refreshBookingLedger,
@@ -33,7 +34,7 @@ import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { cloneTravelDocument, insertTravelDocument } from "@/lib/crm/travel-document-write";
-import { isActiveItem, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
+import { isActiveItem, isLedgerExpenseKind, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 
@@ -1782,6 +1783,28 @@ function requiredFlag(value: unknown, label: string) {
   throw new McpWriteError(`${label} : vrai ou faux.`);
 }
 
+function optionalFlag(value: unknown, label: string) {
+  if (value == null || value === "") return null;
+  return requiredFlag(value, label);
+}
+
+/** Même case que « Inclure dans les transactions ». Une dépense reste cochée. Le client qui règle son séjour ne débite pas l’hôtel ni le vol. */
+function ledgerInclusion(
+  item: { kind: string },
+  requested: boolean,
+  clientSettlesStay: boolean
+) {
+  if (isLedgerExpenseKind(item.kind)) {
+    if (!requested) throw new McpWriteError("Une dépense reste dans les transactions.");
+    return true;
+  }
+  if (clientSettlesStay && isStayAmountKind(item.kind)) {
+    if (requested) throw new McpWriteError("Le client règle ce séjour. Cette carte ne va pas aux transactions.");
+    return false;
+  }
+  return requested;
+}
+
 /** Même geste que Cacher / Montrer dans l’agence : le masquage n’existe que si on le choisit. */
 export function cardVisibilityUpdate(
   item: { lifecycle?: string | null; details?: Record<string, unknown> | null },
@@ -1836,11 +1859,13 @@ function ledgerMove(before: LedgerRow | null, after: LedgerRow | null) {
 }
 
 /**
- * Montre ou cache une seule carte. Aucun message, aucun publier_carnet.
- * Le grand livre suit l’enregistrement d’une carte dans l’agence (même ligne, pas une deuxième).
+ * Montre ou cache une seule carte, et coche ou décoche « Inclure dans les transactions ».
+ * Aucun message, aucun publier_carnet. Le grand livre reprend la même ligne.
  */
 export async function setCarteVisibilite(input: Record<string, unknown>, admin?: Admin) {
-  const visible = requiredFlag(input.visible, "Visible");
+  const visible = optionalFlag(input.visible, "Visible");
+  const include = optionalFlag(input.inclure_transactions, "Inclure dans les transactions");
+  if (visible == null && include == null) throw new McpWriteError("Indiquez visible ou inclure_transactions.");
   const carteId = uuid(input.carte_id, "Carte");
   const db = client(admin);
   const booking = await loadBooking(db, dossierTarget(input));
@@ -1861,27 +1886,38 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
     visible_to_client: boolean | null;
     include_in_ledger: boolean | null;
   };
-  const next = cardVisibilityUpdate(item, visible);
-  if ("error" in next) throw new McpWriteError(next.error);
+  const next = visible == null ? null : cardVisibilityUpdate(item, visible);
+  if (next && "error" in next) throw new McpWriteError(next.error);
+  const includeNext =
+    include == null ? null : ledgerInclusion(item, include, booking.client_settles_stay === true);
   const { data: beforeRows } = await db
     .from("crm_transactions")
     .select("id, external_id, status, amount, direction")
     .eq("booking_id", booking.id)
     .eq("direction", "debit");
   const before = ledgerSnapshot(cardDebit((beforeRows || []) as LedgerRow[], booking.id, item));
-  const changed =
-    Boolean(item.visible_to_client) !== visible ||
-    (visible ? item.details?.client_hidden === true : item.details?.client_hidden !== true);
-  if (changed) {
+  const visibilityChanged =
+    next != null &&
+    visible != null &&
+    (Boolean(item.visible_to_client) !== visible ||
+      (visible ? item.details?.client_hidden === true : item.details?.client_hidden !== true));
+  const ledgerChanged = includeNext != null && Boolean(item.include_in_ledger) !== includeNext;
+  const patch: Record<string, unknown> = {};
+  if (visibilityChanged && next && !("error" in next)) {
+    patch.visible_to_client = next.visible_to_client;
+    patch.details = next.details;
+  }
+  if (ledgerChanged) patch.include_in_ledger = includeNext;
+  if (Object.keys(patch).length) {
     const { error: updateError } = await db
       .from("crm_booking_items")
-      .update({ visible_to_client: next.visible_to_client, details: next.details })
+      .update(patch)
       .eq("id", carteId)
       .eq("booking_id", booking.id);
     if (updateError) throw new McpWriteError("Carte non mise à jour.");
   }
-  let journal = false;
-  if (changed) {
+  const noted: boolean[] = [];
+  if (visibilityChanged && visible != null) {
     const { error: auditError } = await db.from("crm_audit_events").insert(
       toAuditRow({
         actorKind: "auto",
@@ -1892,17 +1928,37 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
         detail: { carte_id: carteId, kind: item.kind, visible },
       })
     );
-    journal = !auditError;
+    noted.push(!auditError);
     if (auditError) console.error("[mcp] journal visibilité", auditError.code ?? "?");
   }
-  const warning = await ledgerWarning("Visibilité enregistrée", () => refreshBookingLedger(db, booking.id));
+  if (ledgerChanged) {
+    const { error: auditError } = await db.from("crm_audit_events").insert(
+      toAuditRow({
+        actorKind: "auto",
+        action: "transactions_carte",
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        summary: includeNext ? "Carte incluse dans les transactions" : "Carte retirée des transactions",
+        detail: { carte_id: carteId, kind: item.kind, inclure_transactions: includeNext },
+      })
+    );
+    noted.push(!auditError);
+    if (auditError) console.error("[mcp] journal transactions", auditError.code ?? "?");
+  }
+  const journal = noted.length > 0 && noted.every(Boolean);
+  const warning = await ledgerWarning("Carte enregistrée", () => refreshBookingLedger(db, booking.id));
   const { data: saved } = await db
     .from("crm_booking_items")
     .select("id, kind, title, visible_to_client, include_in_ledger, details")
     .eq("id", carteId)
     .eq("booking_id", booking.id)
     .maybeSingle();
-  const row = (saved || { ...item, ...next }) as {
+  const row = (saved || {
+    ...item,
+    visible_to_client: visibilityChanged && next && !("error" in next) ? next.visible_to_client : item.visible_to_client,
+    details: visibilityChanged && next && !("error" in next) ? next.details : item.details,
+    include_in_ledger: ledgerChanged ? includeNext : item.include_in_ledger,
+  }) as {
     id: string;
     kind: string;
     title: string | null;

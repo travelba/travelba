@@ -1742,3 +1742,114 @@ test("un journal indisponible n’empêche pas de montrer la carte", async () =>
   assert.equal(db.tables.crm_bookings[0].visible_to_client, false);
   assert.equal(shown.grand_livre.effet, "hors_livre");
 });
+
+test("inclure_transactions coche la case, reprend la même ligne, et garde 492,99 €", async () => {
+  const flightId = "77777777-7777-4777-8777-777777777777";
+  const expenseId = "88888888-8888-4888-8888-888888888888";
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Rome", devise: "EUR" }, client);
+  db.tables.crm_bookings[0].visible_to_client = true;
+  db.tables.crm_booking_items.push(
+    {
+      id: flightId,
+      booking_id: dossier.id,
+      kind: "flight",
+      title: "Paris → Rome",
+      amount: 492.99,
+      lifecycle: "active",
+      visible_to_client: false,
+      include_in_ledger: false,
+      details: { client_hidden: true, ticket_count: 5, amount_is_total: true, from: "CDG", to: "FCO" },
+    },
+    {
+      id: expenseId,
+      booking_id: dossier.id,
+      kind: "expense",
+      title: "Dépense",
+      amount: 40,
+      lifecycle: "active",
+      visible_to_client: false,
+      include_in_ledger: true,
+      details: {},
+    }
+  );
+  const included = await setCarteVisibilite(
+    { dossier_id: dossier.id, carte_id: flightId, inclure_transactions: true },
+    client
+  );
+  assert.equal(included.visible, false);
+  assert.equal(included.notifie, false);
+  assert.equal(included.incluse_transactions, true);
+  assert.equal(included.journal, true);
+  assert.equal(included.grand_livre.compte, true);
+  assert.equal(included.grand_livre.montant, 492.99);
+  assert.equal(included.grand_livre.effet, "ajoute");
+  const externalId = `booking:${dossier.id}:item:${flightId}`;
+  const lines = () => db.tables.crm_transactions.filter((row) => row.external_id === externalId);
+  assert.equal(lines().length, 1);
+  assert.equal(lines()[0]?.status, "posted");
+  assert.equal(lines()[0]?.amount, 492.99);
+  const flight = db.tables.crm_booking_items.find((item) => item.id === flightId);
+  assert.equal(flight?.include_in_ledger, true);
+  assert.equal(flight?.visible_to_client, false);
+  assert.equal((flight?.details as Record<string, unknown>).client_hidden, true);
+  const audit = db.tables.crm_audit_events.find((row) => row.action === "transactions_carte");
+  assert.equal(audit?.summary, "Carte incluse dans les transactions");
+  assert.equal((audit?.detail as Record<string, unknown>)?.inclure_transactions, true);
+  assert.equal(db.tables.crm_audit_events.some((row) => row.action === "visibilite_carte"), false);
+  assert.equal(db.writes.some((write) => /invite|message|whatsapp|notification/i.test(write.table)), false);
+
+  const again = await setCarteVisibilite(
+    { reference: dossier.reference, carte_id: flightId, inclure_transactions: true },
+    client
+  );
+  assert.equal(again.journal, false);
+  assert.equal(again.grand_livre.effet, "inchange");
+  assert.equal(again.grand_livre.montant, 492.99);
+  assert.equal(lines().length, 1);
+
+  const removed = await setCarteVisibilite(
+    { dossier_id: dossier.id, carte_id: flightId, inclure_transactions: false },
+    client
+  );
+  assert.equal(removed.incluse_transactions, false);
+  assert.equal(removed.notifie, false);
+  assert.equal(removed.grand_livre.compte, false);
+  assert.equal(removed.grand_livre.effet, "annule");
+  assert.equal(lines().length, 1);
+  assert.equal(lines()[0]?.status, "void");
+  assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "transactions_carte").at(-1)?.summary, "Carte retirée des transactions");
+
+  const restored = await setCarteVisibilite(
+    { dossier_id: dossier.id, carte_id: flightId, visible: true, inclure_transactions: true },
+    client
+  );
+  assert.equal(restored.visible, true);
+  assert.equal(restored.notifie, false);
+  assert.equal(restored.grand_livre.effet, "retabli");
+  assert.equal(restored.grand_livre.montant, 492.99);
+  assert.equal(restored.grand_livre.mouvement_id, lines()[0]?.id);
+  assert.equal(lines().length, 1);
+  assert.equal(lines()[0]?.status, "posted");
+  assert.equal((db.tables.crm_booking_items.find((item) => item.id === flightId)?.details as Record<string, unknown>).client_hidden, undefined);
+  assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "visibilite_carte").length, 1);
+  assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "transactions_carte").length, 3);
+
+  await assert.rejects(
+    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: expenseId, inclure_transactions: false }, client),
+    /dépense reste/
+  );
+  assert.equal(db.tables.crm_booking_items.find((item) => item.id === expenseId)?.include_in_ledger, true);
+  db.tables.crm_bookings[0].client_settles_stay = true;
+  await assert.rejects(
+    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: flightId, inclure_transactions: true }, client),
+    /règle ce séjour/
+  );
+  await assert.rejects(
+    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: flightId }, client),
+    /Indiquez visible ou inclure_transactions/
+  );
+});
