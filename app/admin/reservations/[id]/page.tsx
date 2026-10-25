@@ -28,6 +28,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
+import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
@@ -99,6 +100,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const b = booking as CrmBooking;
   const syncedTitle = await syncBookingTitleFromSteps(supabase, id);
   if (syncedTitle) b.title = syncedTitle;
+  await repairCustomerDownloads([b.customer_id]);
   const relatedIds = Array.from(
     new Set([b.customer_id, b.billing_customer_id].filter((value): value is string => Boolean(value)))
   );
