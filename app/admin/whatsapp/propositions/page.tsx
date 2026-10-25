@@ -3,6 +3,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { formatDateTimeFr } from "@/lib/crm/money";
 import { ConciergeProposalDesk } from "@/components/admin/ConciergeProposalDesk";
+import { dockDiscussionsHref } from "@/lib/crm/whatsapp-inbox";
 
 export const metadata = { title: "Propositions WhatsApp" };
 
@@ -36,8 +37,8 @@ export default async function ConciergeProposalsPage() {
           subtitle="Le client ne reçoit ce texte qu’après votre accord, et seulement quand l’envoi est armé. Rien n’est réservé ni encaissé ici."
         />
       </div>
-      <Link href="/admin/whatsapp" className="text-sm font-semibold underline-offset-2 hover:underline">
-        Retour à la file
+      <Link href={dockDiscussionsHref("envoyer")} className="text-sm font-semibold underline-offset-2 hover:underline">
+        Retour aux discussions
       </Link>
       {pendingMigration ? <p className="text-sm text-muted">Les propositions s’affichent après la migration du Concierge.</p> : null}
       <ul className="space-y-3">

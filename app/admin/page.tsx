@@ -21,6 +21,9 @@ import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { agencyAttentionLines } from "@/lib/crm/admin-now";
+import { loadAgencyAttention } from "@/lib/crm/admin-attention";
+import { AgencyAttention } from "@/components/admin/AgencyAttention";
 import { loadAgencyServiceDesk } from "@/lib/crm/service-desk-load";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
 import { siteConfig } from "@/lib/site";
@@ -32,7 +35,6 @@ export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
 
   const today = stayToday();
-  const tomorrow = addIsoDays(today, 1);
   const horizon = addIsoDays(today, 7);
 
   const [
@@ -43,8 +45,8 @@ export default async function AdminHomePage() {
     { count: customerCount },
     { count: withPhoneCount },
     { data: balances },
-    { count: departTomorrowCount },
     { count: openFormalities },
+    attention,
     revolutIsConnected,
     badges,
     serviceLines,
@@ -54,7 +56,7 @@ export default async function AdminHomePage() {
   ] = await Promise.all([
     supabase
       .from("crm_bookings")
-      .select("*")
+      .select(DASHBOARD_BOOKING_COLUMNS)
       .lt("start_date", today)
       .neq("status", "cancelled")
       .is("archived_at", null)
@@ -63,7 +65,7 @@ export default async function AdminHomePage() {
       .limit(40),
     supabase
       .from("crm_bookings")
-      .select("*")
+      .select(DASHBOARD_BOOKING_COLUMNS)
       .gte("start_date", today)
       .lte("start_date", horizon)
       .neq("status", "cancelled")
@@ -83,13 +85,8 @@ export default async function AdminHomePage() {
       .not("phone", "is", null)
       .neq("phone", ""),
     supabase.from("crm_customer_balances").select("balance, currency"),
-    supabase
-      .from("crm_bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("start_date", tomorrow)
-      .neq("status", "cancelled")
-      .is("archived_at", null),
     supabase.from("crm_visa_tasks").select("id", { count: "exact", head: true }).is("done_at", null),
+    loadAgencyAttention(supabase, today),
     revolutConnected(),
     adminBadges(),
     loadAgencyServiceDesk(supabase),
@@ -127,18 +124,21 @@ export default async function AdminHomePage() {
     ),
   ]);
   const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
-  const whatsappOpen = await supabase
-    .from("crm_whatsapp_requests")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "open");
+  const attentionLines = agencyAttentionLines({
+    pendingMessages: attention.pendingMessages,
+    conciergeRequests: attention.conciergeRequests,
+    departures72h: attention.departures72h,
+    missingDocuments: attention.missingDocuments,
+    importToReview: badges.emails,
+  });
   const todo = adminTodoLines({
-    emails: badges.emails,
+    emails: 0,
     le: badges.le,
     formalities: openFormalities ?? 0,
     services: serviceLines.length,
-    departTomorrow: departTomorrowCount ?? 0,
+    departTomorrow: 0,
     expiring: badges.pieces,
-    whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
+    whatsapp: 0,
     unread: badges.whatsapp,
   });
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
@@ -150,13 +150,15 @@ export default async function AdminHomePage() {
         <PageTitle title={`Bonjour ${staffFirst}`} subtitle={formatDateFr(today)} />
       </div>
 
+      <AgencyAttention lines={attentionLines} documents={attention.documents} />
+
       <AgencyAccountBalances accounts={agencyAccounts} />
 
-      <section aria-labelledby="a-faire-titre">
-        <h2 id="a-faire-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
-          À faire aujourd’hui
-        </h2>
-        {todo.length ? (
+      {todo.length ? (
+        <section aria-labelledby="a-faire-titre">
+          <h2 id="a-faire-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
+            Aussi en cours
+          </h2>
           <ul className="mt-3 flex flex-col gap-2 lg:flex-row lg:flex-wrap">
             {todo.map((row) => (
               <li key={row.id} className="min-w-0 lg:shrink-0">
@@ -170,10 +172,8 @@ export default async function AdminHomePage() {
               </li>
             ))}
           </ul>
-        ) : (
-          <p className="mt-2 text-sm text-muted">Rien en attente. Bonne journée.</p>
-        )}
-      </section>
+        </section>
+      ) : null}
 
       <ClientActivity groups={clientActivity} today={today} />
 
@@ -203,3 +203,6 @@ export default async function AdminHomePage() {
 function todoCaption(label: string) {
   return label.replace(/^\d+\s+/, "");
 }
+
+const DASHBOARD_BOOKING_COLUMNS =
+  "id, customer_id, billing_customer_id, reference, title, destination, status, start_date, end_date, currency, total_amount, visible_to_client, archived_at, cover_image_path, cover_credit, updated_at, agency_commission, agency_fee_rate, fee_mode";

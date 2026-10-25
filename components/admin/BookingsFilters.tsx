@@ -28,6 +28,7 @@ export function BookingsFilters({
   etat,
   tri,
   vue = null,
+  sous = null,
   revision,
 }: {
   q: string;
@@ -35,6 +36,7 @@ export function BookingsFilters({
   tri: BookingSort;
   /** Garde la liste quand l’agence l’a ouverte elle-même. */
   vue?: "liste" | null;
+  sous?: "72h" | null;
   /** Change quand la liste serveur est remplacée, pour réappliquer le filtre local. */
   revision: string;
 }) {
@@ -90,6 +92,7 @@ export function BookingsFilters({
       etat: stateValue || null,
       tri: bookingSortParam((sortValue || DEFAULT_BOOKING_SORT) as BookingSort),
       vue: vue === "liste" ? "liste" : null,
+      sous: sous === "72h" ? "72h" : null,
     });
     router.replace(href, { scroll: false });
   }

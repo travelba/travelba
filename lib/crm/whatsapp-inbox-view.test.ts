@@ -74,7 +74,9 @@ test("la conversation admin montre le plus récent en haut et le bouton de remis
     })
   );
   assert.match(html, /Repris par l’agence/);
-  assert.match(html, /Rendre au Concierge/);
+  assert.match(html, /Rendre au concierge/);
+  assert.match(html, /Bien reçu/);
+  assert.match(html, /Dossier/);
   assert.match(html, /Conversation rendue au Concierge à 14h05/);
   assert.ok(html.indexOf("Message récent") < html.indexOf("Message ancien"));
   assert.ok(html.indexOf("Conversation rendue au Concierge à 14h05") < html.indexOf("Message récent"));

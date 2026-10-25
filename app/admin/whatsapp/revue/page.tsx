@@ -3,6 +3,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
+import { dockDiscussionsHref, maskSensitiveCopy } from "@/lib/crm/whatsapp-inbox";
 import { weeklyReview, type QualityFlag, type QualityMark } from "@/lib/crm/concierge-quality";
 
 export const metadata = { title: "Revue WhatsApp" };
@@ -43,12 +44,13 @@ export default async function ConciergeReviewPage() {
   const report = weeklyReview(marks, new Date());
   const planned = await supabase
     .from("crm_concierge_followups")
-    .select("id, kind, channel, template_key, draft_body, due_at")
+    .select("id, phone, kind, channel, template_key, draft_body, due_at")
     .eq("status", "planned")
     .order("due_at", { ascending: true })
     .limit(30);
   const followups = (planned.error ? [] : planned.data || []) as {
     id: string;
+    phone: string | null;
     kind: string;
     channel: string;
     template_key: string | null;
@@ -62,8 +64,8 @@ export default async function ConciergeReviewPage() {
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle title="Revue de la semaine" subtitle={`Du ${report.from} au ${report.to}. Les fils escaladés et les tentatives hors dossier.`} />
       </div>
-      <Link href="/admin/whatsapp" className="text-sm font-semibold underline-offset-2 hover:underline">
-        Retour à la file
+      <Link href={dockDiscussionsHref("tous")} className="text-sm font-semibold underline-offset-2 hover:underline">
+        Retour aux discussions
       </Link>
       {pendingMigration ? <p className="text-sm text-muted">La revue s’ouvre après la migration du Concierge.</p> : null}
       <section className="space-y-2">
@@ -77,8 +79,20 @@ export default async function ConciergeReviewPage() {
               <li key={row.id} className="admin-af-card rounded-3xl px-5 py-4 text-sm">
                 {FOLLOWUP_LABELS[row.kind] || row.kind}
                 {row.channel === "template" ? " · hors fenêtre" : " · fenêtre ouverte"}
-                <p className="mt-1 whitespace-pre-wrap text-muted">{row.draft_body}</p>
-                {SENDABLE.has(row.kind) ? <ConciergeFollowupSend id={row.id} previewBlocked={isVercelPreview()} /> : null}
+                {row.phone ? (
+                  <Link href={dockDiscussionsHref("tous", row.phone)} className="mt-1 block text-xs font-semibold underline">
+                    Ouvrir le fil
+                  </Link>
+                ) : null}
+                <p className="mt-1 whitespace-pre-wrap text-muted">{maskSensitiveCopy(row.draft_body)}</p>
+                {SENDABLE.has(row.kind) ? (
+                  <ConciergeFollowupSend
+                    id={row.id}
+                    previewBlocked={isVercelPreview()}
+                    sendable={row.channel !== "template"}
+                    blockedReason={row.channel === "template" ? "Hors fenêtre de 24 h. Le modèle n’est pas soumis." : undefined}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

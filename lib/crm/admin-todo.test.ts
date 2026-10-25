@@ -17,7 +17,7 @@ test("la liste À faire suit l’ordre du travail et cache les zéros", () => {
     ["whatsapp", "le", "formalities", "services", "depart-tomorrow", "expiring"]
   );
   assert.equal(lines[0].label, "2 demandes WhatsApp à traiter");
-  assert.equal(lines[0].href, "/admin/whatsapp");
+  assert.equal(lines[0].href, "/admin?discussions=escalade");
   assert.equal(lines[1].label, "1 séjour Little Emperors sans dossier");
   assert.equal(lines[2].label, "1 formalité ouverte");
   assert.equal(lines[2].href, "/admin/formalites");

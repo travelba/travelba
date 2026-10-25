@@ -93,10 +93,47 @@ test("le fil ouvert sur téléphone a Fermer et Réduire, le bureau garde sa cro
   assert.match(html, /safe-area-inset-top/);
   assert.match(html, /safe-area-inset-bottom/);
   assert.match(html, /lg:hidden/);
-  assert.match(html, /Rendre au Concierge/);
+  assert.match(html, /Rendre au concierge/);
   assert.match(html, /px-1 text-xs text-white\/70/);
   assert.doesNotMatch(html, /max-h-\[70vh\]/);
   assert.match(html, />Replier</);
+  assert.match(html, /aria-label="Dossier"/);
+  assert.match(html, /TB-EXEMPLE/);
+  assert.doesNotMatch(html, /Fil complet/);
+  assert.doesNotMatch(html, /\/admin\/whatsapp\?fil=/);
+});
+
+test("les non-lus passent devant et le filtre les isole", async () => {
+  const html = await render({ initialPanelOpen: true, focus: "non-lus" });
+  const unreadAt = html.indexOf("+33611111111");
+  const readAt = html.indexOf("Camille Martin");
+  assert.ok(unreadAt >= 0 && (readAt < 0 || unreadAt < readAt));
+  assert.match(html, /aria-pressed="true"/);
+  assert.match(html, />Non lus</);
+});
+
+test("à envoyer reste dans la barre", async () => {
+  const html = await render({
+    initialPanelOpen: true,
+    focus: "envoyer",
+    drafts: [
+      {
+        id: "veille",
+        followupId: "suivi",
+        title: "Veille du départ",
+        who: "Camille Martin",
+        body: "Passeport 12AB67890",
+        href: "/admin?discussions=tous&fil=%2B33601020304",
+        sendable: false,
+        reason: "Hors fenêtre de 24 h. Le modèle n’est pas soumis.",
+      },
+    ],
+  });
+  assert.match(html, /À envoyer/);
+  assert.match(html, /Veille du départ/);
+  assert.match(html, /Hors fenêtre de 24 h/);
+  assert.doesNotMatch(html, /12AB67890/);
+  assert.doesNotMatch(html, /\/admin\/whatsapp/);
 });
 
 test("la liste téléphone est une feuille plein écran avec Fermer", async () => {

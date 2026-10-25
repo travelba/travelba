@@ -30,6 +30,7 @@ import {
 } from "@/lib/crm/admin-list";
 import { reservationWeek } from "@/lib/crm/reservation-week";
 import { stayToday } from "@/lib/crm/stay-moment";
+import { departures72hEnd } from "@/lib/crm/admin-now";
 
 type Props = {
   searchParams: Promise<Record<string, SearchParamValue>>;
@@ -56,9 +57,10 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   const page = parsePage(params.page);
   const q = (firstParam(params.q) || "").trim();
   const state = parseBookingState(params.etat);
+  const sous72 = firstParam(params.sous) === "72h";
   const sort = parseBookingSort(params.tri);
   const vue = firstParam(params.vue) === "liste" ? "liste" : null;
-  const listView = Boolean(q || state || sort !== "proche" || page > 1 || vue);
+  const listView = Boolean(q || state || sous72 || sort !== "proche" || page > 1 || vue);
   const today = stayToday();
   const { supabase } = await requireStaffPage();
   const listeHref = listHref(
@@ -68,6 +70,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       etat: state,
       tri: bookingSortParam(sort),
       vue: "liste",
+      sous: sous72 ? "72h" : null,
     },
     page
   );
@@ -169,8 +172,9 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     else next = next.is("archived_at", null);
     if (!archivedOnly && state === "preparation") next = next.eq("visible_to_client", false);
     if (!archivedOnly && state === "montre") next = next.eq("visible_to_client", true);
-    if (!archivedOnly && state === "a-venir") {
+    if (!archivedOnly && (state === "a-venir" || sous72)) {
       next = next.gte("start_date", todayIsoDate()).neq("status", "cancelled");
+      if (sous72) next = next.lte("start_date", departures72hEnd(todayIsoDate()));
     }
     return next;
   }
@@ -327,7 +331,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   // `?page=999` : on renvoie sur la dernière page plutôt qu’un résumé « 301-312 » au-dessus d’une liste vide.
   const lastPage = pageOverflow(page, total);
   if (lastPage != null) {
-    redirect(listHref("/admin/reservations", { q, etat: state, tri: bookingSortParam(sort) }, lastPage));
+    redirect(listHref("/admin/reservations", { q, etat: state, tri: bookingSortParam(sort), sous: sous72 ? "72h" : null }, lastPage));
   }
   const rows = q || order.proximity ? matched.slice(from, to + 1) : matched;
   const hiddenArchiveHits =
@@ -349,7 +353,11 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Réservations"
-        subtitle="Enregistrez le dossier, puis montrez-le au client. Enregistrer ne le rend pas visible."
+        subtitle={
+          sous72
+            ? "Départs sous 72 h. Enregistrez le dossier, puis montrez-le au client."
+            : "Enregistrez le dossier, puis montrez-le au client. Enregistrer ne le rend pas visible."
+        }
         actions={
           <Link href="/admin/reservations/nouveau" className="admin-af-btn admin-tap inline-flex items-center rounded-xl px-4 py-2.5 text-sm">
             + Nouveau dossier
@@ -370,7 +378,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
           page={page}
           pageSize={ADMIN_PAGE_SIZE}
           total={total}
-          filters={{ q, etat: state, tri: sort, vue }}
+          filters={{ q, etat: state, tri: sort, vue, sous: sous72 ? "72h" : null }}
           hiddenArchiveHits={hiddenArchiveHits}
         />
       </div>

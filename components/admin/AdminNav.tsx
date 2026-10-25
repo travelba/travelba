@@ -239,7 +239,13 @@ export function AdminNav({
             </main>
           </div>
           {partner ? null : (
-            <WhatsappDock threads={whatsappThreads} templates={whatsappTemplates} previewBlocked={whatsappPreview} />
+            <WhatsappDock
+              threads={whatsappThreads}
+              templates={whatsappTemplates}
+              previewBlocked={whatsappPreview}
+              focus={searchParams.get("discussions")}
+              openFil={searchParams.get("fil")}
+            />
           )}
         </div>
       </div>
