@@ -43,6 +43,7 @@ const EXPECTED = [
   "ajouter_vol",
   "modifier_vol",
   "retirer_carte",
+  "definir_visibilite_carte",
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
@@ -71,6 +72,7 @@ const WRITE_TOOLS = [
   "ajouter_vol",
   "modifier_vol",
   "retirer_carte",
+  "definir_visibilite_carte",
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
@@ -129,7 +131,16 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
+  const visibilite = MCP_TOOLS.find((tool) => tool.name === "definir_visibilite_carte");
+  assert.equal(visibilite?.write, true);
+  assert.equal(visibilite?.openWorld, undefined);
+  assert.equal(visibilite?.pieceNumbers, undefined);
+  assert.equal(visibilite?.signedUrl, undefined);
+  assert.equal(visibilite?.cardSecrets, undefined);
+  assert.match(visibilite?.description || "", /aucun message/i);
+  assert.match(visibilite?.description || "", /WhatsApp/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /au centime/);
+  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
     const tool = MCP_TOOLS.find((item) => item.name === name);
     assert.equal(tool?.write, true);
     assert.equal(tool?.openWorld, undefined);

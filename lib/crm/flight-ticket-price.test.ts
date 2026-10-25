@@ -41,6 +41,26 @@ test("un nombre saisi multiplie le prix unitaire, un champ vide ne force pas 1",
   assert.equal(parseTicketCountInput("3"), 3);
 });
 
+test("un total de groupe reste au centime, même avec un nombre de billets", () => {
+  const flight = {
+    kind: "flight" as const,
+    amount: 492.99,
+    start_at: null,
+    end_at: null,
+    details: { ticket_count: 5, amount_is_total: true },
+  };
+  assert.equal(itemSellingAmount(flight), 492.99);
+  assert.equal(itemPriceLabel(flight, "EUR"), formatMoney(492.99, "EUR"));
+  assert.equal(itemPriceLabel(flight, "EUR")?.includes("×"), false);
+  assert.equal(
+    bookingTotalFromItems([
+      flight,
+      { kind: "flight", amount: 250, details: { ticket_count: 5 } },
+    ]),
+    1742.99
+  );
+});
+
 test("l’import n’avertit pas et ne bloque pas si le nombre de billets manque", () => {
   const extract = {
     document_status: "confirmed" as const,

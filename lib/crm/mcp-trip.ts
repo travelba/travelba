@@ -8,13 +8,21 @@ import { composeAccueilVip, parseAccueilVipService, readAccueilVipLegs, type Acc
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { createStaffBooking, StaffWriteError, type StaffBookingInput } from "@/lib/crm/booking-create";
-import { ledgerWarning, refreshBookingLedger, refreshTicketingFee } from "@/lib/crm/bookings";
+import {
+  bookingChargeExternalId,
+  itemIncludedInLedger,
+  ledgerWarning,
+  refreshBookingLedger,
+  refreshTicketingFee,
+} from "@/lib/crm/bookings";
+import { toAuditRow } from "@/lib/crm/audit-events";
+import { detailsForCardVisibility } from "@/lib/crm/carnet";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { addIsoDays } from "@/lib/crm/dates";
 import { resolveNationality } from "@/lib/crm/countries";
 import { companionKey, holderKey } from "@/lib/crm/household";
-import { itemTicketCount, joinConfirmationRefs } from "@/lib/crm/item-match";
+import { joinConfirmationRefs, statedTicketCount } from "@/lib/crm/item-match";
 import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
@@ -349,6 +357,8 @@ type PricePlan = {
   documentAmount: number | null;
   documentCurrency: string | null;
   devise: string;
+  /** Vrai : `amount` (ou le prix du document) est le total du groupe, au centime. */
+  amountIsTotal: boolean;
 };
 
 /** Prix vendu dans la devise du dossier. Une autre devise reste le prix du document, sans conversion. */
@@ -359,30 +369,54 @@ export function flightPrice(input: {
   devise: string | null;
   dossierDevise: string;
 }): PricePlan {
-  const count = Math.max(1, input.passengers);
   const devise = input.devise || input.dossierDevise;
-  let unit = input.prix;
-  if (unit == null && input.prixTotal != null) {
-    unit = Math.round((input.prixTotal / count) * 100) / 100;
-  }
-  if (unit != null && input.prixTotal != null) {
-    const expected = Math.round(unit * count * 100) / 100;
-    if (Math.abs(expected - input.prixTotal) > 0.05) {
-      throw new McpWriteError("Le prix du billet et le total ne correspondent pas.");
-    }
-  }
-  const total = input.prixTotal ?? (unit == null ? null : Math.round(unit * count * 100) / 100);
   const ticketCount = input.passengers > 0 ? input.passengers : null;
-  if (devise !== input.dossierDevise) {
-    return { amount: null, ticketCount, documentAmount: total, documentCurrency: devise, devise };
+  if (input.prixTotal != null) {
+    if (input.prix != null) {
+      const count = ticketCount ?? 1;
+      const expected = Math.round(input.prix * count * 100) / 100;
+      if (Math.abs(expected - input.prixTotal) > 0.05) {
+        throw new McpWriteError("Le prix du billet et le total ne correspondent pas.");
+      }
+    }
+    if (devise !== input.dossierDevise) {
+      return {
+        amount: null,
+        ticketCount,
+        documentAmount: input.prixTotal,
+        documentCurrency: devise,
+        devise,
+        amountIsTotal: true,
+      };
+    }
+    return {
+      amount: input.prixTotal,
+      ticketCount,
+      documentAmount: null,
+      documentCurrency: null,
+      devise,
+      amountIsTotal: true,
+    };
   }
-  return { amount: unit, ticketCount, documentAmount: null, documentCurrency: null, devise };
+  const unit = input.prix;
+  const documentAmount = unit == null || !ticketCount ? unit : Math.round(unit * ticketCount * 100) / 100;
+  if (devise !== input.dossierDevise) {
+    return {
+      amount: null,
+      ticketCount,
+      documentAmount,
+      documentCurrency: unit == null ? null : devise,
+      devise,
+      amountIsTotal: false,
+    };
+  }
+  return { amount: unit, ticketCount, documentAmount: null, documentCurrency: null, devise, amountIsTotal: false };
 }
 
 export function hotelPrice(input: { prix: number | null; devise: string | null; dossierDevise: string }): PricePlan {
   const devise = input.devise || input.dossierDevise;
   if (input.prix == null) {
-    return { amount: null, ticketCount: null, documentAmount: null, documentCurrency: null, devise };
+    return { amount: null, ticketCount: null, documentAmount: null, documentCurrency: null, devise, amountIsTotal: false };
   }
   if (devise !== input.dossierDevise) {
     return {
@@ -391,9 +425,10 @@ export function hotelPrice(input: { prix: number | null; devise: string | null; 
       documentAmount: input.prix,
       documentCurrency: devise,
       devise,
+      amountIsTotal: false,
     };
   }
-  return { amount: input.prix, ticketCount: null, documentAmount: null, documentCurrency: null, devise };
+  return { amount: input.prix, ticketCount: null, documentAmount: null, documentCurrency: null, devise, amountIsTotal: false };
 }
 
 function partyKey(person: FlightPassenger) {
@@ -444,6 +479,7 @@ export function buildFlightCard(
   if (departureZone) details.departure_timezone = departureZone;
   if (arrivalZone) details.arrival_timezone = arrivalZone;
   if (input.price.ticketCount) details.ticket_count = input.price.ticketCount;
+  if (input.price.amountIsTotal) details.amount_is_total = true;
   if (input.price.documentAmount != null) details.document_amount = input.price.documentAmount;
   if (input.price.documentCurrency) details.document_currency = input.price.documentCurrency;
   if (passengers.length) {
@@ -563,8 +599,8 @@ async function passengersOf(db: Admin, bookingId: string, ids: string[]) {
 
 function sellingAmount(price: PricePlan) {
   if (price.amount == null) return null;
-  const tickets = price.ticketCount && price.ticketCount > 0 ? price.ticketCount : 1;
-  return Math.round(price.amount * tickets * 100) / 100;
+  if (price.amountIsTotal || !(price.ticketCount && price.ticketCount > 0)) return price.amount;
+  return Math.round(price.amount * price.ticketCount * 100) / 100;
 }
 
 function detailText(details: Record<string, unknown>, key: string) {
@@ -586,13 +622,15 @@ function flightClocks(item: Record<string, unknown>) {
 
 function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: PricePlan, warning: string | null) {
   const tickets = price.ticketCount && price.ticketCount > 0 ? price.ticketCount : null;
+  const groupTotal = price.amountIsTotal === true;
   return {
     id: item.id,
     dossier_id: booking.id,
     reference: booking.reference,
     titre: item.title,
     prix_vendu: sellingAmount(price),
-    ...(tickets ? { prix_billet: price.amount, billets: tickets } : {}),
+    ...(tickets && !groupTotal ? { prix_billet: price.amount, billets: tickets } : {}),
+    ...(tickets && groupTotal ? { billets: tickets } : {}),
     prix_document: price.documentAmount,
     devise: price.devise,
     devise_dossier: booking.currency || "EUR",
@@ -989,6 +1027,8 @@ function stampFlightZones(details: Record<string, unknown>) {
 
 function applyFlightPrice(details: Record<string, unknown>, price: PricePlan) {
   if (price.ticketCount) details.ticket_count = price.ticketCount;
+  if (price.amountIsTotal) details.amount_is_total = true;
+  else delete details.amount_is_total;
   if (price.documentAmount != null) details.document_amount = price.documentAmount;
   else delete details.document_amount;
   if (price.documentCurrency) details.document_currency = price.documentCurrency;
@@ -1086,7 +1126,7 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
   const prix = optionalMoney(input.prix, "Prix");
   const prixTotal = optionalMoney(input.prix_total, "Prix total");
   const sansFrais = flag(input.sans_frais, "Sans frais");
-  const count = passengers ? passengers.length : itemTicketCount({ kind: "flight", details });
+  const count = passengers ? passengers.length : statedTicketCount({ kind: "flight", details }) ?? 0;
   let price = priceFromFlight(item, details, booking);
   if (prix != null || prixTotal != null) {
     const devise = input.devise == null || input.devise === "" ? price.devise : currencyOf(input.devise);
@@ -1123,7 +1163,7 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
 }
 
 function priceFromFlight(item: Record<string, unknown>, details: Record<string, unknown>, booking: CrmBooking): PricePlan {
-  const tickets = itemTicketCount({ kind: "flight", details });
+  const tickets = statedTicketCount({ kind: "flight", details });
   const dossierDevise = booking.currency || "EUR";
   const documentCurrency = detailText(details, "document_currency");
   const documentAmount = typeof details.document_amount === "number" ? details.document_amount : null;
@@ -1134,6 +1174,7 @@ function priceFromFlight(item: Record<string, unknown>, details: Record<string, 
       documentAmount,
       documentCurrency,
       devise: documentCurrency,
+      amountIsTotal: details.amount_is_total === true,
     };
   }
   const amount = typeof item.amount === "number" ? item.amount : item.amount == null ? null : Number(item.amount);
@@ -1143,6 +1184,7 @@ function priceFromFlight(item: Record<string, unknown>, details: Record<string, 
     documentAmount: null,
     documentCurrency: null,
     devise: dossierDevise,
+    amountIsTotal: details.amount_is_total === true,
   };
 }
 
@@ -1237,7 +1279,14 @@ function priceFromHotel(item: Record<string, unknown>, details: Record<string, u
   const documentCurrency = detailText(details, "document_currency");
   const documentAmount = typeof details.document_amount === "number" ? details.document_amount : null;
   if (documentCurrency && documentCurrency !== dossierDevise) {
-    return { amount: null, ticketCount: null, documentAmount, documentCurrency, devise: documentCurrency };
+    return {
+      amount: null,
+      ticketCount: null,
+      documentAmount,
+      documentCurrency,
+      devise: documentCurrency,
+      amountIsTotal: false,
+    };
   }
   const amount = typeof item.amount === "number" ? item.amount : item.amount == null ? null : Number(item.amount);
   return {
@@ -1246,6 +1295,7 @@ function priceFromHotel(item: Record<string, unknown>, details: Record<string, u
     documentAmount: null,
     documentCurrency: null,
     devise: dossierDevise,
+    amountIsTotal: false,
   };
 }
 
@@ -1725,6 +1775,171 @@ async function rewriteBookingParty(
     const { error: updateError } = await db.from("crm_booking_items").update({ details: next }).eq("id", row.id);
     if (updateError) throw new McpWriteError("Carte non mise à jour.");
   }
+}
+
+function requiredFlag(value: unknown, label: string) {
+  if (value === true || value === false) return value;
+  throw new McpWriteError(`${label} : vrai ou faux.`);
+}
+
+/** Même geste que Cacher / Montrer dans l’agence : le masquage n’existe que si on le choisit. */
+export function cardVisibilityUpdate(
+  item: { lifecycle?: string | null; details?: Record<string, unknown> | null },
+  visible: boolean
+): { error: string } | { visible_to_client: boolean; details: Record<string, unknown> } {
+  if (visible && !isActiveItem(item)) {
+    return { error: "Cette carte est archivée. Elle ne revient pas dans le carnet." as const };
+  }
+  const details = visible
+    ? detailsForCardVisibility(item.details, true)
+    : { ...(item.details || {}), client_hidden: true };
+  return { visible_to_client: visible, details };
+}
+
+type LedgerRow = {
+  id?: string;
+  external_id?: string | null;
+  status?: string | null;
+  amount?: number | string | null;
+  direction?: string | null;
+};
+
+function cardDebit(rows: LedgerRow[], bookingId: string, item: { id: string; kind?: string | null }) {
+  const externalId = bookingChargeExternalId(bookingId, item);
+  return rows.find((row) => row.external_id === externalId && row.direction === "debit") || null;
+}
+
+function debitPosted(row: LedgerRow | null) {
+  return Boolean(row) && row?.status !== "void";
+}
+
+function ledgerSnapshot(row: LedgerRow | null): LedgerRow | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    external_id: row.external_id,
+    status: row.status,
+    amount: row.amount,
+    direction: row.direction,
+  };
+}
+
+function ledgerMove(before: LedgerRow | null, after: LedgerRow | null) {
+  const was = debitPosted(before);
+  const now = debitPosted(after);
+  if (!before && !after) return "hors_livre" as const;
+  if (!was && now && !before) return "ajoute" as const;
+  if (!was && now) return "retabli" as const;
+  if (was && !now) return "annule" as const;
+  if (was && now && Number(before?.amount) !== Number(after?.amount)) return "mis_a_jour" as const;
+  return "inchange" as const;
+}
+
+/**
+ * Montre ou cache une seule carte. Aucun message, aucun publier_carnet.
+ * Le grand livre suit l’enregistrement d’une carte dans l’agence (même ligne, pas une deuxième).
+ */
+export async function setCarteVisibilite(input: Record<string, unknown>, admin?: Admin) {
+  const visible = requiredFlag(input.visible, "Visible");
+  const carteId = uuid(input.carte_id, "Carte");
+  const db = client(admin);
+  const booking = await loadBooking(db, dossierTarget(input));
+  const { data, error } = await db
+    .from("crm_booking_items")
+    .select("id, kind, title, amount, details, lifecycle, visible_to_client, include_in_ledger")
+    .eq("id", carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  if (error || !data) throw new McpWriteError("Carte introuvable sur ce dossier.");
+  const item = data as {
+    id: string;
+    kind: string;
+    title: string | null;
+    amount: number | null;
+    details: Record<string, unknown> | null;
+    lifecycle: string | null;
+    visible_to_client: boolean | null;
+    include_in_ledger: boolean | null;
+  };
+  const next = cardVisibilityUpdate(item, visible);
+  if ("error" in next) throw new McpWriteError(next.error);
+  const { data: beforeRows } = await db
+    .from("crm_transactions")
+    .select("id, external_id, status, amount, direction")
+    .eq("booking_id", booking.id)
+    .eq("direction", "debit");
+  const before = ledgerSnapshot(cardDebit((beforeRows || []) as LedgerRow[], booking.id, item));
+  const changed =
+    Boolean(item.visible_to_client) !== visible ||
+    (visible ? item.details?.client_hidden === true : item.details?.client_hidden !== true);
+  if (changed) {
+    const { error: updateError } = await db
+      .from("crm_booking_items")
+      .update({ visible_to_client: next.visible_to_client, details: next.details })
+      .eq("id", carteId)
+      .eq("booking_id", booking.id);
+    if (updateError) throw new McpWriteError("Carte non mise à jour.");
+  }
+  let journal = false;
+  if (changed) {
+    const { error: auditError } = await db.from("crm_audit_events").insert(
+      toAuditRow({
+        actorKind: "auto",
+        action: "visibilite_carte",
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        summary: visible ? "Carte montrée au client" : "Carte cachée au client",
+        detail: { carte_id: carteId, kind: item.kind, visible },
+      })
+    );
+    journal = !auditError;
+    if (auditError) console.error("[mcp] journal visibilité", auditError.code ?? "?");
+  }
+  const warning = await ledgerWarning("Visibilité enregistrée", () => refreshBookingLedger(db, booking.id));
+  const { data: saved } = await db
+    .from("crm_booking_items")
+    .select("id, kind, title, visible_to_client, include_in_ledger, details")
+    .eq("id", carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  const row = (saved || { ...item, ...next }) as {
+    id: string;
+    kind: string;
+    title: string | null;
+    visible_to_client: boolean | null;
+    include_in_ledger: boolean | null;
+    details: Record<string, unknown> | null;
+  };
+  const { data: afterRows } = await db
+    .from("crm_transactions")
+    .select("id, external_id, status, amount, direction")
+    .eq("booking_id", booking.id)
+    .eq("direction", "debit");
+  const after = ledgerSnapshot(cardDebit((afterRows || []) as LedgerRow[], booking.id, item));
+  const compte = debitPosted(after);
+  return {
+    carte_id: carteId,
+    dossier_id: booking.id,
+    reference: booking.reference,
+    kind: row.kind,
+    titre: row.title,
+    visible: row.visible_to_client === true,
+    notifie: false,
+    sejour_visible: booking.visible_to_client === true,
+    incluse_transactions: itemIncludedInLedger(
+      { kind: row.kind, include_in_ledger: row.include_in_ledger },
+      booking.client_settles_stay === true
+    ),
+    grand_livre: {
+      compte,
+      statut: !after ? "absent" : compte ? "compte" : "annule",
+      montant: compte ? Number(after?.amount) : null,
+      mouvement_id: after?.id || null,
+      effet: ledgerMove(before, after),
+    },
+    journal,
+    ...(warning ? { avertissement: warning } : {}),
+  };
 }
 
 /** Retire une carte. Les frais de billeterie ne reviennent pas, et leur débit est annulé. Aucun message. */
