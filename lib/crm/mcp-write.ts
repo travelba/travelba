@@ -15,7 +15,7 @@ import {
   syncBookingTotalFromItems,
   syncInheritedAgencyFees,
 } from "@/lib/crm/bookings";
-import { upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
+import { deleteEmptyBillingCompany, upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
@@ -173,8 +173,23 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     body.agency_fee_rate = parsed.rate;
   }
   const patch = bookingMetaPatch(body);
-  if (!Object.keys(patch).length) throw new McpWriteError("Rien à modifier.");
-  return { ...target, patch };
+  let particulier = false;
+  let societeId = "";
+  if ("particulier" in input && input.particulier != null && input.particulier !== "") {
+    if (input.particulier !== true && input.particulier !== false) {
+      throw new McpWriteError("Particulier : vrai ou faux.");
+    }
+    particulier = input.particulier === true;
+  }
+  if ("societe_id" in input && input.societe_id != null && String(input.societe_id).trim() !== "") {
+    societeId = uuid(input.societe_id, "Société");
+  }
+  if (particulier && societeId) {
+    throw new McpWriteError("Un séjour particulier ne se facture pas à une société.");
+  }
+  const billing = particulier || societeId ? { particulier, societeId } : null;
+  if (!Object.keys(patch).length && !billing) throw new McpWriteError("Rien à modifier.");
+  return { ...target, patch, billing };
 }
 
 export function prepareServiceConfirm(input: Record<string, unknown>) {
@@ -264,8 +279,12 @@ export function prepareClientUpdate(input: Record<string, unknown>) {
     if ("error" in parsed) throw new McpWriteError(parsed.error);
     patch.agency_fee_rate = agencyFeeRateColumn(parsed.rate);
   }
-  if (!Object.keys(patch).length && !company) throw new McpWriteError("Rien à modifier.");
-  return { id, patch, company };
+  const removeCompanyId =
+    input.supprimer_societe_id == null || input.supprimer_societe_id === ""
+      ? ""
+      : uuid(input.supprimer_societe_id, "Société");
+  if (!Object.keys(patch).length && !company && !removeCompanyId) throw new McpWriteError("Rien à modifier.");
+  return { id, patch, company, removeCompanyId };
 }
 
 async function loadBooking(admin: McpAdmin, target: { id: string; reference: string }) {
@@ -551,12 +570,27 @@ export async function publishCarnet(input: Record<string, unknown>, admin?: McpA
 }
 
 export async function updateBooking(input: Record<string, unknown>, admin?: McpAdmin) {
-  const { id, reference, patch } = prepareBookingUpdate(input);
+  const { id, reference, patch, billing } = prepareBookingUpdate(input);
   const db = client(admin);
   const prev = await loadBooking(db, { id, reference });
+  const nextPatch = { ...patch };
+  if (billing?.particulier) {
+    nextPatch.payer_kind = "personal";
+    nextPatch.billing_company_id = null;
+  } else if (billing?.societeId) {
+    const { data: companyRows, error: companyError } = await db
+      .from("crm_billing_companies")
+      .select("id")
+      .eq("id", billing.societeId)
+      .eq("customer_id", prev.customer_id);
+    if (companyError) failDb(companyError, "Société introuvable.");
+    if (!(companyRows || []).length) throw new McpWriteError("Cette société n’est pas sur la fiche du client.");
+    nextPatch.payer_kind = "company";
+    nextPatch.billing_company_id = billing.societeId;
+  }
   const { data, error } = await db
     .from("crm_bookings")
-    .update(patch)
+    .update(nextPatch)
     .eq("id", prev.id)
     .select("*")
     .single();
@@ -570,10 +604,33 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     console.error("[mcp] livre", err instanceof Error ? err.message : "error");
     throw new McpWriteError("Le dossier est enregistré, mais le grand livre n’a pas pu être mis à jour.");
   }
-  const saved = (await db.from("crm_bookings").select("id, reference, status, visible_to_client, archived_at, start_date, end_date, notes_client, notes_internal").eq("id", booking.id).maybeSingle()).data as
-    | Pick<CrmBooking, "id" | "reference" | "status" | "visible_to_client" | "archived_at" | "start_date" | "end_date" | "notes_client" | "notes_internal">
+  const saved = (await db.from("crm_bookings").select("id, reference, status, visible_to_client, archived_at, start_date, end_date, notes_client, notes_internal, payer_kind, billing_company_id").eq("id", booking.id).maybeSingle()).data as
+    | Pick<
+        CrmBooking,
+        | "id"
+        | "reference"
+        | "status"
+        | "visible_to_client"
+        | "archived_at"
+        | "start_date"
+        | "end_date"
+        | "notes_client"
+        | "notes_internal"
+        | "payer_kind"
+        | "billing_company_id"
+      >
     | null;
   const row = saved || booking;
+  let societe: string | null = null;
+  if (row.billing_company_id) {
+    const { data: company } = await db
+      .from("crm_billing_companies")
+      .select("company_name")
+      .eq("id", row.billing_company_id)
+      .maybeSingle();
+    societe = (company as { company_name?: string | null } | null)?.company_name || null;
+  }
+  const factureSociete = row.payer_kind === "company" || Boolean(row.billing_company_id);
   let commission_agence = "10 %";
   let commission_source: "dossier" | "compte" | "defaut" = "defaut";
   try {
@@ -593,6 +650,9 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     notes_internes: row.notes_internal,
     commission_agence,
     commission_source,
+    paye_par: factureSociete ? ("société" as const) : ("particulier" as const),
+    societe: factureSociete ? societe : null,
+    societe_id: factureSociete ? row.billing_company_id || null : null,
   };
 }
 
@@ -731,7 +791,7 @@ export async function createClient(input: Record<string, unknown>, admin?: McpAd
 }
 
 export async function updateClient(input: Record<string, unknown>, admin?: McpAdmin) {
-  const { id, patch, company } = prepareClientUpdate(input);
+  const { id, patch, company, removeCompanyId } = prepareClientUpdate(input);
   const db = client(admin);
   const { data: current, error: currentError } = await db
     .from("crm_customers")
@@ -783,6 +843,16 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     if ("error" in result) throw new McpWriteError(result.error);
     saved = result.company;
   }
+  let societeRetiree = false;
+  if (removeCompanyId) {
+    const removed = await deleteEmptyBillingCompany(db, id, removeCompanyId);
+    if ("error" in removed) throw new McpWriteError(removed.error);
+    societeRetiree = true;
+    const refreshed = await db.from("crm_customers").select("company_name").eq("id", id).maybeSingle();
+    if (!refreshed.error && refreshed.data) {
+      row = { ...row, company_name: (refreshed.data as { company_name?: string | null }).company_name ?? null };
+    }
+  }
   if ("agency_fee_rate" in patch) {
     try {
       await syncInheritedAgencyFees(db, id);
@@ -806,6 +876,7 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     societe_id: saved?.id ?? null,
     siret: saved?.siret ?? null,
     tva: saved?.vat_number ?? null,
+    societe_retiree: societeRetiree,
     commission_agence,
   };
 }

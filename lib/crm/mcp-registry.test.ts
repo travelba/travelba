@@ -116,6 +116,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /voyageur_ids/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_voyage")?.description || "", /carte_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /date de naissance/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /compagnon_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /societe_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_client")?.description || "", /supprimer_societe_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /prix de vente/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /MAD/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /déjà rattachée/);

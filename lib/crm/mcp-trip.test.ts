@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { flightCardTitle, flightIata, hotelDisplayName, itemClock } from "@/lib/crm/carnet";
 import { itemSellingAmount } from "@/lib/crm/bookings";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
-import { createClient, McpWriteError, updateClient } from "@/lib/crm/mcp-write";
+import { createClient, McpWriteError, updateBooking, updateClient } from "@/lib/crm/mcp-write";
 import {
   addAccueilVip,
   addHotel,
@@ -1062,6 +1062,174 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
   assert.equal(removed.retiree, true);
   assert.equal(removed.notifie, false);
   assert.equal(db.tables.crm_booking_items.some((row) => row.id === again.id), false);
+});
+
+test("deux frères homonymes ne prennent pas la fiche l’un de l’autre", async () => {
+  const elise = "77777777-7777-4777-8777-777777777777";
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Samuel", "Chocron")],
+    crm_billing_companies: [],
+    crm_travel_companions: [
+      {
+        id: elise,
+        customer_id: CLIENT,
+        first_name: "Élise Emmanuelle Alexandra",
+        last_name: "Saada",
+        usage_name: "Chocron",
+        birth_date: "1990-03-12",
+        sex: "F",
+      },
+    ],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Agadir" }, client);
+  await addVoyageur({ dossier_id: dossier.id, compagnon_id: elise }, client);
+  const onFiche = await addVoyageur(
+    {
+      client_id: CLIENT,
+      prenoms: "Joseph Elie Jacob",
+      nom: "CHOCRON",
+      date_naissance: "2022-05-21",
+      sexe: "M",
+    },
+    client
+  );
+  assert.equal(onFiche.titulaire, false);
+  assert.equal(onFiche.dossier_id, null);
+  assert.notEqual(onFiche.compagnon_id, elise);
+  const eliseRow = () => db.tables.crm_travel_companions.find((row) => row.id === elise);
+  assert.equal(eliseRow()?.first_name, "Élise Emmanuelle Alexandra");
+  assert.equal(eliseRow()?.birth_date, "1990-03-12");
+  assert.equal(eliseRow()?.sex, "F");
+  const added = await addVoyageur(
+    {
+      dossier_id: dossier.id,
+      prenoms: "Joseph Elie Jacob",
+      nom: "Chocron",
+      date_naissance: "2022-05-21",
+    },
+    client
+  );
+  assert.equal(added.compagnon_id, onFiche.compagnon_id);
+  assert.equal(
+    db.tables.crm_booking_travelers.find((row) => row.id === added.voyageur_id)?.companion_id,
+    onFiche.compagnon_id
+  );
+  assert.equal(eliseRow()?.birth_date, "1990-03-12");
+  await assert.rejects(
+    () =>
+      addVoyageur(
+        {
+          dossier_id: dossier.id,
+          prenoms: "Joseph Elie Jacob",
+          nom: "Chocron",
+          date_naissance: "2022-05-21",
+        },
+        client
+      ),
+    /déjà sur le séjour/
+  );
+  const brother = await addVoyageur(
+    {
+      client_id: CLIENT,
+      prenoms: "Joseph Elie Jacob",
+      nom: "Chocron",
+      date_naissance: "2018-02-02",
+    },
+    client
+  );
+  assert.notEqual(brother.compagnon_id, onFiche.compagnon_id);
+  assert.notEqual(brother.compagnon_id, elise);
+  assert.equal(db.tables.crm_travel_companions.find((row) => row.id === onFiche.compagnon_id)?.birth_date, "2022-05-21");
+  assert.equal(db.tables.crm_travel_companions.find((row) => row.id === brother.compagnon_id)?.birth_date, "2018-02-02");
+  assert.equal(eliseRow()?.first_name, "Élise Emmanuelle Alexandra");
+  await assert.rejects(
+    () =>
+      addVoyageur(
+        {
+          client_id: CLIENT,
+          compagnon_id: elise,
+          prenoms: "Joseph Elie Jacob",
+          nom: "Chocron",
+          date_naissance: "2022-05-21",
+        },
+        client
+      ),
+    /ne correspond pas/
+  );
+  assert.equal(eliseRow()?.birth_date, "1990-03-12");
+});
+
+test("la société d’un dossier se choisit, et une société vide se retire", async () => {
+  const filled = "88888888-8888-4888-8888-888888888888";
+  const empty = "99999999-9999-4999-8999-999999999999";
+  const shell = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const fund = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Samuel", "Chocron")],
+    crm_billing_companies: [
+      {
+        id: filled,
+        customer_id: CLIENT,
+        company_name: "Chocron SAS",
+        siret: "73282932000074",
+        sort_order: 0,
+      },
+      {
+        id: empty,
+        customer_id: CLIENT,
+        company_name: " ",
+        siret: null,
+        vat_number: null,
+        billing_email: null,
+        billing_address_line: null,
+        billing_postal_code: null,
+        billing_city: null,
+        sort_order: 1,
+      },
+      {
+        id: shell,
+        customer_id: CLIENT,
+        company_name: null,
+        siret: null,
+        sort_order: 2,
+      },
+      {
+        id: fund,
+        customer_id: CLIENT,
+        company_name: null,
+        siret: null,
+        funding: "pro",
+        sort_order: 3,
+      },
+    ],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Agadir", particulier: true }, client);
+  const billed = await updateBooking({ id: dossier.id, societe_id: filled }, client);
+  assert.equal(billed.paye_par, "société");
+  assert.equal(billed.societe, "Chocron SAS");
+  assert.equal(billed.societe_id, filled);
+  assert.equal(db.tables.crm_bookings[0].payer_kind, "company");
+  assert.equal(db.tables.crm_bookings[0].billing_company_id, filled);
+  await assert.rejects(
+    () => updateBooking({ id: dossier.id, societe_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }, client),
+    /n’est pas sur la fiche/
+  );
+  const removed = await updateClient({ id: CLIENT, supprimer_societe_id: empty }, client);
+  assert.equal(removed.societe_retiree, true);
+  assert.equal(db.tables.crm_billing_companies.some((row) => row.id === empty), false);
+  assert.equal(db.tables.crm_customers.find((row) => row.id === CLIENT)?.company_name, "Chocron SAS");
+  await assert.rejects(() => updateClient({ id: CLIENT, supprimer_societe_id: filled }, client), /pas vide/);
+  await assert.rejects(() => updateClient({ id: CLIENT, supprimer_societe_id: fund }, client), /compte société/);
+  await updateBooking({ id: dossier.id, societe_id: shell }, client);
+  await assert.rejects(() => updateClient({ id: CLIENT, supprimer_societe_id: shell }, client), /utilisée/);
+  const personal = await updateBooking({ id: dossier.id, particulier: true }, client);
+  assert.equal(personal.paye_par, "particulier");
+  assert.equal(personal.societe_id, null);
+  assert.equal(db.tables.crm_bookings[0].billing_company_id, null);
+  const gone = await updateClient({ id: CLIENT, supprimer_societe_id: shell }, client);
+  assert.equal(gone.societe_retiree, true);
+  assert.equal(db.tables.crm_billing_companies.some((row) => row.id === shell), false);
+  assert.equal(db.tables.crm_billing_companies.some((row) => row.id === filled), true);
 });
 
 test("le nom d’usage et le premier prénom rattachent le compagnon, et le doublon sans pièce se retire", async () => {

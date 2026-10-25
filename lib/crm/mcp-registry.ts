@@ -469,7 +469,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates ou la commission d’agence d’un dossier, puis le grand livre. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. L’état du dossier est En préparation, Visible ou Archivée.",
+      "Met à jour les notes, les dates, la commission d’agence ou la société de facturation d’un dossier, puis le grand livre. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -483,6 +483,16 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(20)
         .optional()
         .describe("Taux du dossier : 10, 7,5 ou 5. « compte » retire la dérogation."),
+      societe_id: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Société de facturation déjà sur la fiche du client"),
+      particulier: z
+        .boolean()
+        .optional()
+        .describe("Séjour particulier. Retire la société du dossier"),
     },
     run: (args) => updateBooking(args),
   },
@@ -528,7 +538,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_client",
     write: true,
     description:
-      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). Ne crée pas de fiche. Aucun message.",
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). supprimer_societe_id retire une société vide, sans raison sociale ni SIRET, qui n’est pas utilisée. Ne crée pas de fiche. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       prenom: z.string().max(80).optional().describe("Prénom"),
@@ -542,6 +552,12 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(20)
         .optional()
         .describe("Taux du compte : 10, 7,5 ou 5. « defaut » remet 10 %."),
+      supprimer_societe_id: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Retire cette société si elle est vide et n’est pas utilisée"),
       ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),
@@ -621,7 +637,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_voyageur",
     write: true,
     description:
-      "Ajoute un voyageur au dossier et à la liste du client. Le nom d’usage et le premier prénom rattachent un compagnon déjà en fiche (Victoria Boukris = Victoria Marie Tetard, nom d’usage Boukris). compagnon_id rattache ce compagnon. Plusieurs homonymes : celui qui a un passeport, sinon il faut compagnon_id. Civilité, prénoms, nom, naissance, nationalité, téléphone. Le passeport est enregistré comme sur la fiche. Le numéro n’est pas renvoyé. L’e-mail n’ouvre pas de compte et n’est pas enregistré. Aucun message.",
+      "Ajoute un voyageur au dossier et à la liste du client. La correspondance est le prénom (le début des prénoms), le nom de naissance ou d’usage, et la date de naissance. Jamais le seul nom de famille. Une autre date, ou aucun compagnon exact, crée un accompagnant : on ne met pas à jour un autre voyageur sans compagnon_id. Le nom d’usage et le premier prénom rattachent un compagnon déjà en fiche quand la date concorde (Victoria Boukris = Victoria Marie Tetard, nom d’usage Boukris). Plusieurs homonymes : celui qui a un passeport, sinon il faut compagnon_id. Civilité, prénoms, nom, naissance, nationalité, téléphone. Le passeport est enregistré comme sur la fiche. Le numéro n’est pas renvoyé. L’e-mail n’ouvre pas de compte et n’est pas enregistré. Aucun message.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),

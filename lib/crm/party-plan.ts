@@ -31,6 +31,10 @@ export function planPartyLinks(
     if (hasNamed && isPlaceholderTraveler(traveler.first_name, traveler.last_name)) {
       return { id: traveler.id, action: "delete" };
     }
+    // Un compagnon ou le titulaire déjà lié reste. On ne le reporte pas sur un homonyme.
+    if (traveler.companion_id || traveler.is_account_holder) {
+      return { id: traveler.id, action: "keep" };
+    }
     const match = matchTravelerToParty(traveler, holder, companions);
     if (!match) return { id: traveler.id, action: "keep" };
     const next =
