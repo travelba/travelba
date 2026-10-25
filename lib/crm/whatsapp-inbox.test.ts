@@ -11,6 +11,8 @@ import {
   maskSensitiveCopy,
   messageSpeaker,
   messagesNewestFirst,
+  dockDiscussionsHref,
+  parseDockDiscussions,
   parseInboxFilter,
   sessionWindowOpen,
   type InboxMessage,
@@ -88,6 +90,10 @@ test("le fil regroupe, marque le non-lu et distingue robot, agence et escalade",
   assert.equal(approvedManualTemplates({ TWILIO_CONTENT_SEJOUR_TEXTE: "HX1" })[0]?.key, "sejour_texte");
   assert.equal(parseInboxFilter("non-lus"), "non-lus");
   assert.equal(parseInboxFilter("autre"), "tous");
+  assert.equal(dockDiscussionsHref("non-lus"), "/admin?discussions=non-lus");
+  assert.equal(dockDiscussionsHref("envoyer", "+33601020304"), "/admin?discussions=envoyer&fil=%2B33601020304");
+  assert.equal(parseDockDiscussions("envoyer").queue, true);
+  assert.equal(parseDockDiscussions("escalade").filter, "escalade");
   const unread: InboxThread = { ...threads[1], key: "old", unread: 2, lastAt: "2026-10-19T08:00:00Z" };
   const fresh: InboxThread = { ...threads[1], key: "new", unread: 0, lastAt: "2026-10-21T08:00:00Z" };
   assert.deepEqual([fresh, unread].sort(compareThreads).map((row) => row.key), ["old", "new"]);

@@ -8,6 +8,7 @@ import { stayDestinationLine } from "@/lib/crm/stay-phrase";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { draftTemplateRefused, readStamp } from "@/lib/crm/whatsapp-inbox";
 import { loadDockSnapshot, loadDockThread } from "@/lib/crm/whatsapp-dock-load";
+import { loadPendingDrafts } from "@/lib/crm/whatsapp-pending";
 import { releaseThreadToConcierge } from "@/lib/crm/whatsapp-handoff";
 import { agencySignoff, nextParisMorning } from "@/lib/crm/whatsapp-takeover";
 import { sendContentTemplate } from "@/lib/crm/whatsapp";
@@ -20,8 +21,12 @@ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function GET(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  const fil = new URL(request.url).searchParams.get("fil")?.trim() || "";
+  const url = new URL(request.url);
+  const fil = url.searchParams.get("fil")?.trim() || "";
   try {
+    if (url.searchParams.get("vue") === "valider") {
+      return NextResponse.json({ drafts: await loadPendingDrafts() });
+    }
     if (!fil) {
       const snapshot = await loadDockSnapshot();
       return NextResponse.json(snapshot);

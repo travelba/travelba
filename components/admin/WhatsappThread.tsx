@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { WhatsappInbox, type InboxProposal, type InboxTemplate } from "@/components/admin/WhatsappInbox";
-import { foldThreads, sessionWindowOpen, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
+import { dockDiscussionsHref, foldThreads, sessionWindowOpen, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
 
 export type WhatsappThreadMessage = {
   id: string;
@@ -87,10 +87,10 @@ export function WhatsappThread({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-[var(--color-ink-soft)]">Même fil que la boîte WhatsApp.</p>
+        <p className="text-sm text-[var(--color-ink-soft)]">Même fil que la barre de discussions.</p>
         {phone ? (
-          <Link href={`/admin/whatsapp?fil=${encodeURIComponent(phone)}`} className="text-sm underline">
-            Ouvrir dans la boîte
+          <Link href={dockDiscussionsHref("tous", phone)} className="text-sm underline">
+            Ouvrir dans la barre
           </Link>
         ) : null}
       </div>

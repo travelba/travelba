@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { ConciergeKnowledgeDesk } from "@/components/admin/ConciergeKnowledgeDesk";
+import { dockDiscussionsHref } from "@/lib/crm/whatsapp-inbox";
 
 export const metadata = { title: "Concierge" };
 
@@ -28,8 +29,8 @@ export default async function ConciergeKnowledgePage() {
         />
       </div>
       <p className="text-sm">
-        <Link href="/admin/whatsapp" className="font-semibold underline-offset-2 hover:underline">
-          Retour à la file WhatsApp
+        <Link href={dockDiscussionsHref("tous")} className="font-semibold underline-offset-2 hover:underline">
+          Ouvrir les discussions
         </Link>
       </p>
       <ul className="space-y-3">

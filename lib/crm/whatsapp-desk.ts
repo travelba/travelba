@@ -1,10 +1,15 @@
 import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { formatDateFr } from "@/lib/crm/money";
+import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayDestinationLine } from "@/lib/crm/stay-phrase";
+import { travelersMissingPassport } from "@/lib/crm/admin-now";
 import {
   foldThreads,
   pauseStillActive,
+  requestKindLabel,
   threadKey,
+  type InboxDossier,
   type InboxMessage,
 } from "@/lib/crm/whatsapp-inbox";
 
@@ -52,6 +57,94 @@ async function loadIndex(admin: ReturnType<typeof createServiceClient>): Promise
   const rows = (loaded.data || []) as RawMessage[];
   const folded = await decorate(admin, rows, false);
   return folded;
+}
+
+/** Contexte du dossier pour le fil ouvert. Aucun numéro de pièce. */
+export async function loadThreadDossier(
+  bookingId: string | null,
+  customerId: string | null,
+  phone?: string | null
+): Promise<InboxDossier | null> {
+  if (!bookingId) return null;
+  try {
+    const admin = createServiceClient();
+    const booking = await admin
+      .from("crm_bookings")
+      .select("id, customer_id, reference, title, destination, start_date, end_date, visible_to_client, archived_at")
+      .eq("id", bookingId)
+      .maybeSingle();
+    const row = booking.data as {
+      id: string;
+      customer_id: string;
+      reference: string;
+      title: string | null;
+      destination: string | null;
+      start_date: string | null;
+      end_date: string | null;
+      visible_to_client: boolean | null;
+      archived_at: string | null;
+    } | null;
+    if (!row || booking.error) return null;
+    const travelers = await admin
+      .from("crm_booking_travelers")
+      .select("id, booking_id, companion_id, is_account_holder, first_name")
+      .eq("booking_id", row.id);
+    const people = (travelers.error ? [] : travelers.data || []) as {
+      id: string;
+      booking_id: string;
+      companion_id: string | null;
+      is_account_holder: boolean | null;
+      first_name: string | null;
+    }[];
+    const [onTrip, vault, requests] = await Promise.all([
+      admin.from("crm_travel_documents").select("traveler_id, companion_id, booking_id, customer_id").eq("booking_id", row.id).eq("doc_type", "passport"),
+      admin
+        .from("crm_travel_documents")
+        .select("traveler_id, companion_id, booking_id, customer_id")
+        .eq("customer_id", row.customer_id || customerId || "")
+        .is("booking_id", null)
+        .eq("doc_type", "passport"),
+      phone
+        ? admin.from("crm_whatsapp_requests").select("kind").eq("status", "open").eq("phone", phone).limit(1)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    const hits = [...(onTrip.error ? [] : onTrip.data || []), ...(vault.error ? [] : vault.data || [])] as {
+      traveler_id: string | null;
+      companion_id: string | null;
+      booking_id: string | null;
+      customer_id: string | null;
+    }[];
+    const missing = travelersMissingPassport(
+      people.map((person) => ({
+        id: person.id,
+        bookingId: person.booking_id,
+        companionId: person.companion_id,
+        holder: Boolean(person.is_account_holder),
+      })),
+      hits.map((hit) => ({
+        travelerId: hit.traveler_id,
+        companionId: hit.companion_id,
+        bookingId: hit.booking_id,
+        customerId: hit.customer_id,
+      })),
+      { [row.id]: row.customer_id }
+    );
+    const start = row.start_date ? formatDateFr(row.start_date) : "";
+    const end = row.end_date ? formatDateFr(row.end_date) : "";
+    const openKind = ((requests.error ? [] : requests.data || []) as { kind?: string | null }[])[0]?.kind;
+    return {
+      reference: row.reference,
+      place: stayDestinationLine(row) || null,
+      dates: start && end ? `${start} – ${end}` : start || end || null,
+      visibility: staffStayLabel(row),
+      travelers: people.map((person) => (person.first_name || "").trim().split(/\s+/)[0]).filter(Boolean),
+      missingPassports: missing.length,
+      request: requestKindLabel(openKind),
+    };
+  } catch (err) {
+    console.error("[whatsapp-dossier]", err instanceof Error ? err.message : "lecture");
+    return null;
+  }
 }
 
 /** Messages du fil ouvert seulement, avec auteur, pièce, outils et note. */

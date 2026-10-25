@@ -3,7 +3,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
-import { maskSensitiveCopy } from "@/lib/crm/whatsapp-inbox";
+import { dockDiscussionsHref, maskSensitiveCopy } from "@/lib/crm/whatsapp-inbox";
 import { weeklyReview, type QualityFlag, type QualityMark } from "@/lib/crm/concierge-quality";
 
 export const metadata = { title: "Revue WhatsApp" };
@@ -64,8 +64,8 @@ export default async function ConciergeReviewPage() {
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle title="Revue de la semaine" subtitle={`Du ${report.from} au ${report.to}. Les fils escaladés et les tentatives hors dossier.`} />
       </div>
-      <Link href="/admin/whatsapp" className="text-sm font-semibold underline-offset-2 hover:underline">
-        Retour à la file
+      <Link href={dockDiscussionsHref("tous")} className="text-sm font-semibold underline-offset-2 hover:underline">
+        Retour aux discussions
       </Link>
       {pendingMigration ? <p className="text-sm text-muted">La revue s’ouvre après la migration du Concierge.</p> : null}
       <section className="space-y-2">
@@ -80,7 +80,7 @@ export default async function ConciergeReviewPage() {
                 {FOLLOWUP_LABELS[row.kind] || row.kind}
                 {row.channel === "template" ? " · hors fenêtre" : " · fenêtre ouverte"}
                 {row.phone ? (
-                  <Link href={`/admin/whatsapp?fil=${encodeURIComponent(row.phone)}&vue=valider`} className="mt-1 block text-xs font-semibold underline">
+                  <Link href={dockDiscussionsHref("tous", row.phone)} className="mt-1 block text-xs font-semibold underline">
                     Ouvrir le fil
                   </Link>
                 ) : null}

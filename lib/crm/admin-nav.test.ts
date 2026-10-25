@@ -57,7 +57,7 @@ test("badges : seulement quand le compte est positif", () => {
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/emails")!, counts), null);
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/clients?pieces=echeance")!, counts), 4);
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/clients")!, counts), null);
-  assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/whatsapp")!, counts), 2);
+  assert.equal(adminNavBadge(items.find((i) => i.href === "/admin?discussions=tous")!, counts), 2);
 });
 
 test("groupes repliés : mémorisés, mais celui de la page reste ouvert", () => {

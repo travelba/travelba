@@ -1,33 +1,27 @@
 import Link from "next/link";
 import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
 import { maskSensitiveCopy } from "@/lib/crm/whatsapp-inbox";
+import type { PendingDraft } from "@/lib/crm/whatsapp-pending";
 
-export type PendingDraft = {
-  id: string;
-  title: string;
-  who: string;
-  body: string;
-  href: string;
-  sendable: boolean;
-  reason: string;
-  /** Relance Concierge. Absent : lien vers le dossier (ESTA, ETA, proposition). */
-  followupId?: string;
-};
+export type { PendingDraft };
 
 /** File unique : brouillons du Concierge, ESTA et ETA. Rien ne part sans le bouton. */
 export function WhatsappPendingQueue({
   drafts,
   previewBlocked,
   offline = false,
+  dense = false,
 }: {
   drafts: PendingDraft[];
   previewBlocked: boolean;
   offline?: boolean;
+  /** Dans la barre de discussions : même file, moins de marge. */
+  dense?: boolean;
 }) {
   return (
-    <section id="valider" aria-labelledby="valider-titre" className="rounded-3xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] p-4">
+    <section id="valider" aria-labelledby="valider-titre" className={dense ? "bg-[#f8f4ed] p-2" : "rounded-3xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] p-4"}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="valider-titre" className="font-display text-lg font-bold text-[#0B192C]">
+        <h2 id="valider-titre" className={dense ? "text-xs font-semibold text-[#0B192C]" : "font-display text-lg font-bold text-[#0B192C]"}>
           À envoyer
         </h2>
         <p className="text-xs text-[#5c6570]">

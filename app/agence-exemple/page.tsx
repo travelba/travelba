@@ -4,8 +4,13 @@ import { exampleSessionEnabled } from "@/lib/crm/example-session";
 
 export const metadata = { title: "Agence — exemple", robots: { index: false, follow: false } };
 
-/** Même écran que l’agence, hors de l’espace client. Fermé en production. Rien n’est écrit. */
-export default function AgenceExemplePage() {
+/** Barre de discussions, hors de l’espace client. Fermé en production. Rien n’est écrit. */
+export default async function AgenceExemplePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ discussions?: string; fil?: string }>;
+}) {
   if (!exampleSessionEnabled()) notFound();
-  return <AgencePreview />;
+  const params = await searchParams;
+  return <AgencePreview discussions={params.discussions || null} fil={params.fil || null} />;
 }

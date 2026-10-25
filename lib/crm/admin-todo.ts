@@ -1,3 +1,5 @@
+import { dockDiscussionsHref } from "./whatsapp-inbox";
+
 export type AdminTodoLine = { id: string; label: string; href: string; count: number };
 
 function plural(count: number, one: string, many: string) {
@@ -24,13 +26,13 @@ export function adminTodoLines(input: {
       id: "whatsapp-unread",
       count: input.unread || 0,
       label: `${plural(input.unread || 0, "fil WhatsApp non lu", "fils WhatsApp non lus")}`,
-      href: "/admin/whatsapp?filtre=non-lus",
+      href: dockDiscussionsHref("non-lus"),
     },
     {
       id: "whatsapp",
       count: input.whatsapp,
       label: `${plural(input.whatsapp, "demande WhatsApp", "demandes WhatsApp")} à traiter`,
-      href: "/admin/whatsapp",
+      href: dockDiscussionsHref("escalade"),
     },
     {
       id: "emails",

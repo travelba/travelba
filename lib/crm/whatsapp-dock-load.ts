@@ -1,5 +1,5 @@
-import { loadThreadMessages, loadWhatsappIndex } from "@/lib/crm/whatsapp-desk";
-import { approvedManualTemplates, sessionWindowOpenNow, type InboxMessage, type InboxThread } from "@/lib/crm/whatsapp-inbox";
+import { loadThreadDossier, loadThreadMessages, loadWhatsappIndex } from "@/lib/crm/whatsapp-desk";
+import { approvedManualTemplates, sessionWindowOpenNow, type InboxDossier, type InboxMessage, type InboxThread } from "@/lib/crm/whatsapp-inbox";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 
 export type DockSnapshot = {
@@ -22,8 +22,11 @@ export async function loadDockSnapshot(): Promise<DockSnapshot> {
   }
 }
 
-export async function loadDockThread(fil: string): Promise<{ messages: InboxMessage[]; windowOpen: boolean }> {
+export async function loadDockThread(fil: string): Promise<{ messages: InboxMessage[]; windowOpen: boolean; dossier: InboxDossier | null }> {
   const messages = await loadThreadMessages(fil);
   const lastInbound = messages.find((row) => row.direction === "inbound");
-  return { messages, windowOpen: sessionWindowOpenNow(lastInbound?.createdAt || null) };
+  const anchor = messages.find((row) => row.bookingId) || messages[0];
+  const phone = fil.startsWith("+") ? fil : anchor?.phone || null;
+  const dossier = anchor ? await loadThreadDossier(anchor.bookingId, anchor.customerId, phone) : null;
+  return { messages, windowOpen: sessionWindowOpenNow(lastInbound?.createdAt || null), dossier };
 }

@@ -20,8 +20,8 @@ test("le briefing suit l’ordre du travail et cache les zéros", () => {
     ["pending-messages", "concierge-requests", "departures-72h", "import-review"]
   );
   assert.equal(lines[0].label, "2 messages à envoyer");
-  assert.equal(lines[0].href, "/admin/whatsapp?vue=valider");
-  assert.equal(lines[1].href, "/admin/whatsapp?filtre=escalade");
+  assert.equal(lines[0].href, "/admin?discussions=envoyer");
+  assert.equal(lines[1].href, "/admin?discussions=escalade");
   assert.equal(lines[2].label, "3 départs sous 72 h");
   assert.equal(lines[2].href, "/admin/reservations?etat=a-venir&sous=72h");
   assert.equal(lines[3].label, "4 imports à valider");

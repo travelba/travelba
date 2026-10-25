@@ -232,9 +232,23 @@ export function draftTemplateRefused(key: string) {
 
 const INBOX_FILTERS: InboxFilter[] = ["tous", "non-lus", "robot", "agence", "escalade", "prospects"];
 
-/** `?filtre=` du tableau de bord. Une valeur inconnue revient à Tous. */
+/** `?discussions=` du tableau de bord. Une valeur inconnue revient à Tous. */
 export function parseInboxFilter(value: string | null | undefined): InboxFilter {
   return INBOX_FILTERS.includes(value as InboxFilter) ? (value as InboxFilter) : "tous";
+}
+
+/** Ouvre la barre de discussions, pas une autre page de fils. */
+export function dockDiscussionsHref(focus: InboxFilter | "envoyer", fil?: string | null) {
+  const params = new URLSearchParams();
+  params.set("discussions", focus);
+  if (fil) params.set("fil", fil);
+  return `/admin?${params.toString()}`;
+}
+
+/** `envoyer` montre la file des brouillons dans la même barre. */
+export function parseDockDiscussions(value: string | null | undefined): { filter: InboxFilter; queue: boolean } {
+  if (value === "envoyer") return { filter: "tous", queue: true };
+  return { filter: parseInboxFilter(value), queue: false };
 }
 
 export const QUICK_REPLIES = [

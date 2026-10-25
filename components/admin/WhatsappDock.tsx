@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { WhatsappHoldButton } from "@/components/admin/WhatsappHoldButton";
+import { WhatsappPendingQueue } from "@/components/admin/WhatsappPendingQueue";
 import { Icon } from "@/components/crm/icons";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -28,6 +29,7 @@ import {
   type DockTab,
 } from "@/lib/crm/whatsapp-dock";
 import {
+  compareThreads,
   conversationBadge,
   deliveryLabel,
   filterThreads,
@@ -35,13 +37,17 @@ import {
   messageSpeaker,
   messagesNewestFirst,
   parisStamp,
+  parseDockDiscussions,
   QUICK_REPLIES,
   sessionWindowOpenNow,
   speakerLabel,
   threadKey,
+  type InboxDossier,
+  type InboxFilter,
   type InboxMessage,
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
+import type { PendingDraft } from "@/lib/crm/whatsapp-pending";
 import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
 
 export function WhatsappDock({
@@ -49,6 +55,10 @@ export function WhatsappDock({
   templates,
   previewBlocked,
   messagesByKey = {},
+  dossiersByKey = {},
+  drafts = [],
+  focus = null,
+  openFil = null,
   initialPanelOpen = false,
   initialTabs = [],
   initialDrawer = false,
@@ -59,6 +69,11 @@ export function WhatsappDock({
   templates: { key: string; label: string }[];
   previewBlocked: boolean;
   messagesByKey?: Record<string, InboxMessage[]>;
+  dossiersByKey?: Record<string, InboxDossier>;
+  drafts?: PendingDraft[];
+  /** `?discussions=` : ouvre cette barre, filtrée. */
+  focus?: string | null;
+  openFil?: string | null;
   initialPanelOpen?: boolean;
   initialTabs?: DockTab[];
   initialDrawer?: boolean;
@@ -77,12 +92,14 @@ export function WhatsappDock({
   const [localPanel, setLocalPanel] = useState(initialPanelOpen);
   const [localTabs, setLocalTabs] = useState<DockTab[]>(initialTabs);
   const [drawer, setDrawer] = useState(initialDrawer);
-  const panelOpen = persist ? stored.panelOpen : localPanel;
+  const [forcedOpen, setForcedOpen] = useState(Boolean(focus));
+  const panelOpen = forcedOpen || (persist ? stored.panelOpen : localPanel);
   const tabs = persist ? stored.tabs : localTabs;
   const panelRef = useRef(panelOpen);
   const tabsRef = useRef(tabs);
   function setPanelOpen(open: boolean) {
     panelRef.current = open;
+    if (!open) setForcedOpen(false);
     if (!persist) {
       setLocalPanel(open);
       return;
@@ -98,8 +115,26 @@ export function WhatsappDock({
     }
     writeDock({ panelOpen: panelRef.current, tabs: resolved });
   }
+  const requested = parseDockDiscussions(focus);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<InboxFilter>(requested.filter);
+  const [queueOpen, setQueueOpen] = useState(requested.queue);
+  const [seenFocus, setSeenFocus] = useState(focus ?? null);
+  if ((focus ?? null) !== seenFocus) {
+    setSeenFocus(focus ?? null);
+    setFilter(requested.filter);
+    setQueueOpen(requested.queue);
+    setForcedOpen(Boolean(focus));
+  }
+  const openedFil = useRef<string | null>(null);
   const [cache, setCache] = useState(messagesByKey);
+  const [dossiers, setDossiers] = useState(dossiersByKey);
+  const [queue, setQueue] = useState(drafts);
+  const [queueSource, setQueueSource] = useState(drafts);
+  if (queueSource !== drafts) {
+    setQueueSource(drafts);
+    setQueue(drafts);
+  }
   const [draft, setDraft] = useState("");
   const [template, setTemplate] = useState("");
   const [note, setNote] = useState("");
@@ -211,7 +246,52 @@ export function WhatsappDock({
     };
   }, [live]);
 
-  const visibleThreads = useMemo(() => filterThreads(threads, { query }), [threads, query]);
+  useEffect(() => {
+    if (!queueOpen || !live || drafts.length) return;
+    let cancel = false;
+    void fetch("/api/admin/whatsapp?vue=valider")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { drafts?: PendingDraft[] } | null) => {
+        if (!cancel && body?.drafts) setQueue(body.drafts);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [queueOpen, live, drafts.length]);
+
+  useEffect(() => {
+    if (!openFil || openedFil.current === openFil) return;
+    openedFil.current = openFil;
+    setTabsRef.current((current) => openDockTab(current, openFil, true));
+    setThreads((current) => clearDockUnread(current, openFil));
+  }, [openFil]);
+
+  useEffect(() => {
+    if (!openFil || !live) return;
+    const key = openFil;
+    const thread = threadsRef.current.find((row) => row.key === key);
+    if (thread?.phone) {
+      void fetch("/api/admin/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "read", phone: thread.phone, customerId: thread.customerId }),
+      }).catch(() => undefined);
+    }
+    void fetch(`/api/admin/whatsapp?fil=${encodeURIComponent(key)}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { messages?: InboxMessage[]; dossier?: InboxDossier | null } | null) => {
+        if (!body) return;
+        if (body.messages) setCache((current) => ({ ...current, [key]: body.messages || [] }));
+        if (body.dossier) setDossiers((current) => ({ ...current, [key]: body.dossier as InboxDossier }));
+      })
+      .catch(() => undefined);
+  }, [openFil, live]);
+
+  const visibleThreads = useMemo(
+    () => filterThreads([...threads].sort(compareThreads), { query, filter }),
+    [threads, query, filter]
+  );
   const expanded = tabs.find((tab) => tab.expanded) || null;
   const expandedThread = threads.find((thread) => thread.key === expanded?.key) || null;
   const { visible, overflow } = splitDockTabs(tabs);
@@ -308,8 +388,9 @@ export function WhatsappDock({
   async function loadThread(key: string) {
     const response = await fetch(`/api/admin/whatsapp?fil=${encodeURIComponent(key)}`);
     if (!response.ok) return;
-    const body = (await response.json()) as { messages?: InboxMessage[] };
+    const body = (await response.json()) as { messages?: InboxMessage[]; dossier?: InboxDossier | null };
     if (body.messages) setCache((current) => ({ ...current, [key]: body.messages || [] }));
+    if (body.dossier) setDossiers((current) => ({ ...current, [key]: body.dossier as InboxDossier }));
   }
 
   async function post(payload: Record<string, unknown>, refresh: boolean) {
@@ -370,7 +451,42 @@ export function WhatsappDock({
           aria-label="Rechercher une discussion"
           className="w-full rounded-full border border-[var(--border)] px-3 py-2 text-sm"
         />
+        <div className="mt-2 flex flex-wrap gap-1">
+          {(
+            [
+              ["tous", "Tous"],
+              ["non-lus", "Non lus"],
+              ["escalade", "Demandes"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={filter === id && !queueOpen}
+              className={`rounded-full px-2 py-0.5 text-[10px] ${filter === id && !queueOpen ? "bg-[#0B192C] text-white" : "bg-[#f4efe6] text-[#0B192C]"}`}
+              onClick={() => {
+                setFilter(id);
+                setQueueOpen(false);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-pressed={queueOpen}
+            className={`rounded-full px-2 py-0.5 text-[10px] ${queueOpen ? "bg-[#0B192C] text-white" : "bg-[#f4efe6] text-[#0B192C]"}`}
+            onClick={() => setQueueOpen(true)}
+          >
+            À envoyer
+          </button>
+        </div>
       </div>
+      {queueOpen ? (
+        <div className="max-h-64 overflow-y-auto border-b border-[var(--border)]">
+          <WhatsappPendingQueue drafts={queue} previewBlocked={live ? previewBlocked : false} offline={!live} dense />
+        </div>
+      ) : null}
       <ul className="min-h-0 flex-1 overflow-y-auto">
         {visibleThreads.map((thread) => (
           <li key={thread.key}>
@@ -490,6 +606,8 @@ export function WhatsappDock({
               {tab.expanded && expandedThread ? (
                 <ChatPane
                   thread={expandedThread}
+                  dossier={dossiers[expandedThread.key] || null}
+                  offline={!live}
                   messages={messages}
                   templates={templates}
                   windowOpen={windowOpen}
@@ -530,6 +648,8 @@ export function WhatsappDock({
           <ChatPane
             sheet
             thread={expandedThread}
+            dossier={dossiers[expandedThread.key] || null}
+            offline={!live}
             messages={messages}
             templates={templates}
             windowOpen={windowOpen}
@@ -558,6 +678,8 @@ function ChatPane({
   onClose,
   onMinimise,
   thread,
+  dossier = null,
+  offline = false,
   messages,
   templates,
   windowOpen,
@@ -576,6 +698,8 @@ function ChatPane({
   onClose?: () => void;
   onMinimise?: () => void;
   thread: InboxThread;
+  dossier?: InboxDossier | null;
+  offline?: boolean;
   messages: InboxMessage[];
   templates: { key: string; label: string }[];
   windowOpen: boolean;
@@ -653,6 +777,7 @@ function ChatPane({
                 phone={thread.phone}
                 customerId={thread.customerId}
                 held={held}
+                offline={offline}
                 className="inline-flex min-h-11 items-center rounded-full bg-[#C5A880] px-3 text-xs font-medium text-[#0B192C] disabled:opacity-60"
                 onResult={onHandoff}
               />
@@ -670,17 +795,28 @@ function ChatPane({
               phone={thread.phone}
               customerId={thread.customerId}
               held={held}
+              offline={offline}
               className="shrink-0 rounded-full bg-[#C5A880] px-2 py-1 text-[10px] text-[#0B192C] disabled:opacity-60"
               onResult={onHandoff}
             />
           ) : null}
         </header>
       )}
-      <div className={sheet ? "flex shrink-0 gap-3 px-3 text-sm" : "flex gap-2 px-3 py-1 text-[10px]"}>
-        {thread.customerId ? <Link className={linkClass} href={`/admin/clients/${thread.customerId}`}>Fiche</Link> : null}
-        {thread.bookingId ? <Link className={linkClass} href={`/admin/reservations/${thread.bookingId}?onglet=whatsapp`}>Dossier</Link> : null}
-        {thread.phone ? <Link className={linkClass} href={`/admin/whatsapp?fil=${encodeURIComponent(thread.phone)}`}>Fil complet</Link> : null}
-      </div>
+      <aside aria-label="Dossier" className="shrink-0 border-b border-white/40 bg-white/70 px-3 py-2 text-[11px] text-[#0B192C]">
+        <p className="font-semibold">{label}</p>
+        <p>{dossier?.reference || thread.bookingReference || "Pas de dossier"}{dossier?.place ? ` · ${dossier.place}` : ""}</p>
+        {dossier?.dates ? <p>{dossier.dates}</p> : null}
+        {dossier?.visibility ? <p>{dossier.visibility}</p> : null}
+        {dossier?.travelers.length ? <p>{dossier.travelers.join(", ")}</p> : null}
+        {dossier && dossier.missingPassports > 0 ? (
+          <p>{dossier.missingPassports > 1 ? `${dossier.missingPassports} passeports manquants` : "1 passeport manquant"}</p>
+        ) : null}
+        {dossier?.request ? <p>Demande · {dossier.request}</p> : null}
+        <div className={sheet ? "mt-1 flex gap-3 text-sm" : "mt-1 flex gap-3"}>
+          {thread.customerId ? <Link className={linkClass} href={`/admin/clients/${thread.customerId}`}>Fiche</Link> : null}
+          {thread.bookingId ? <Link className={linkClass} href={`/admin/reservations/${thread.bookingId}?onglet=client`}>Dossier</Link> : null}
+        </div>
+      </aside>
       <div className={sheet ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-2 py-2" : "min-h-0 flex-1 space-y-2 overflow-y-auto px-2 py-2"}>
         {ordered.map((message) => {
           if (isHandoffNote(message)) {
@@ -704,7 +840,7 @@ function ChatPane({
         })}
       </div>
       <form
-        className={sheet ? "shrink-0 bg-white p-2" : "bg-white p-2"}
+        className="shrink-0 bg-white p-2"
         onSubmit={(event) => {
           event.preventDefault();
           onSend();

@@ -1,5 +1,6 @@
 import { addIsoDays } from "./dates";
 import type { AdminTodoLine } from "./admin-todo";
+import { dockDiscussionsHref } from "./whatsapp-inbox";
 
 function plural(count: number, one: string, many: string) {
   return `${count} ${count > 1 ? many : one}`;
@@ -33,13 +34,13 @@ export function agencyAttentionLines(input: AgencyAttentionInput): AdminTodoLine
       id: "pending-messages",
       count: input.pendingMessages,
       label: plural(input.pendingMessages, "message à envoyer", "messages à envoyer"),
-      href: "/admin/whatsapp?vue=valider",
+      href: dockDiscussionsHref("envoyer"),
     },
     {
       id: "concierge-requests",
       count: input.conciergeRequests,
       label: plural(input.conciergeRequests, "demande du Concierge", "demandes du Concierge"),
-      href: "/admin/whatsapp?filtre=escalade",
+      href: dockDiscussionsHref("escalade"),
     },
     {
       id: "departures-72h",

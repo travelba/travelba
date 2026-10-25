@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { AgencyAttention } from "@/components/admin/AgencyAttention";
-import { WhatsappInbox } from "@/components/admin/WhatsappInbox";
-import { WhatsappPendingQueue, type PendingDraft } from "@/components/admin/WhatsappPendingQueue";
+import { WhatsappDock } from "@/components/admin/WhatsappDock";
 import { agencyAttentionLines } from "@/lib/crm/admin-now";
-import { foldThreads, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
+import { foldThreads, type InboxDossier, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
+import type { PendingDraft } from "@/lib/crm/whatsapp-pending";
+
+const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+const readStamp = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
 const MESSAGES: InboxMessage[] = [
   {
@@ -14,10 +18,10 @@ const MESSAGES: InboxMessage[] = [
     customerId: "client-exemple",
     customerName: "Camille Martin",
     bookingId: "sejour-exemple",
-    bookingReference: "TB-EXEMPLE · Tel Aviv",
+    bookingReference: "TB-EXEMPLE",
     direction: "inbound",
     body: "Le transfert est confirmé ?",
-    createdAt: "2026-10-20T08:00:00Z",
+    createdAt: twoHoursAgo,
     status: "received",
     templateKey: null,
     authorName: null,
@@ -31,10 +35,10 @@ const MESSAGES: InboxMessage[] = [
     customerId: "client-exemple",
     customerName: "Camille Martin",
     bookingId: "sejour-exemple",
-    bookingReference: "TB-EXEMPLE · Tel Aviv",
+    bookingReference: "TB-EXEMPLE",
     direction: "outbound",
     body: "Le transfert de Tel Aviv est prévu. Passeport 12AB67890 reste au coffre.",
-    createdAt: "2026-10-20T08:05:00Z",
+    createdAt: hourAgo,
     status: "read",
     templateKey: "chat",
     authorName: null,
@@ -51,7 +55,7 @@ const MESSAGES: InboxMessage[] = [
     bookingReference: null,
     direction: "inbound",
     body: "Bonjour, je cherche un hôtel à Lisbonne.",
-    createdAt: "2026-10-19T09:00:00Z",
+    createdAt: threeHoursAgo,
     status: "received",
     templateKey: null,
     authorName: null,
@@ -68,7 +72,7 @@ const DRAFTS: PendingDraft[] = [
     title: "Veille du départ",
     who: "Camille Martin",
     body: "Camille, votre vol pour Tel Aviv est demain.",
-    href: "#fil",
+    href: "/agence-exemple?discussions=tous&fil=%2B33601020304",
     sendable: true,
     reason: "Fenêtre de 24 h ouverte.",
   },
@@ -78,85 +82,68 @@ const DRAFTS: PendingDraft[] = [
     title: "Retour",
     who: "Camille Martin",
     body: "Merci pour ce séjour à Tel Aviv.",
-    href: "#fil",
+    href: "/agence-exemple?discussions=tous&fil=%2B33601020304",
     sendable: false,
     reason: "Hors fenêtre de 24 h. Le modèle n’est pas soumis.",
   },
-  {
-    id: "esta",
-    title: "ESTA",
-    who: "TB-EXEMPLE · Tel Aviv",
-    body: "Le message au client se relit sur le dossier, puis Envoyer au client.",
-    href: "#fil",
-    sendable: false,
-    reason: "Le bouton du dossier respecte la fenêtre de 24 h.",
-  },
 ];
 
-/** Écran agence fictif. Aucun appel, aucun client réel. */
-export function AgencePreview() {
+const DOSSIER: InboxDossier = {
+  reference: "TB-EXEMPLE",
+  place: "Tel Aviv",
+  dates: "20 oct. 2026 – 26 oct. 2026",
+  visibility: "En préparation",
+  travelers: ["Camille", "Inès"],
+  missingPassports: 1,
+  request: null,
+};
+
+/** La barre de droite, avec un tableau de bord fictif. Aucun appel. */
+export function AgencePreview({ discussions, fil }: { discussions?: string | null; fil?: string | null }) {
   const threads = foldThreads(MESSAGES, {
     paused: [],
     escalated: ["+33611111111"],
-    readAt: { "+33601020304": "2026-10-20T08:10:00Z" },
+    readAt: { "+33601020304": readStamp },
   });
-  const [activeKey, setActiveKey] = useState(threads[0]?.key || null);
-  const activeMessages = MESSAGES.filter((row) => row.phone === activeKey);
   const lines = agencyAttentionLines({
-    pendingMessages: 3,
+    pendingMessages: 2,
     conciergeRequests: 1,
     departures72h: 2,
     missingDocuments: 1,
     importToReview: 4,
-  });
+  }).map((line) => ({
+    ...line,
+    href: line.href.startsWith("/admin?") ? line.href.replace("/admin?", "/agence-exemple?") : line.href,
+  }));
+  const openKey = fil || "+33601020304";
 
   return (
-    <div className="admin-af min-h-screen">
-      <header className="flex items-center justify-between bg-[#0B192C] px-4 py-3 text-white">
-        <p className="font-display text-sm font-semibold">Espace agence</p>
-        <p className="text-xs text-[#C5A880]">Aperçu · rien n’est envoyé</p>
-      </header>
-      <div className="mx-auto max-w-6xl space-y-8 px-4 py-6">
-      <AgencyAttention
-        lines={lines}
-        documents={[{ bookingId: "sejour-exemple", label: "Inès · TB-EXEMPLE · Tel Aviv", count: 1 }]}
-      />
-      <div id="fil" className="space-y-4">
-        <WhatsappPendingQueue drafts={DRAFTS} previewBlocked={false} offline />
-        <WhatsappInbox
-          threads={threads}
-          messages={activeMessages}
-          activeKey={activeKey}
-          proposals={[{ id: "prop-exemple", draft: "Souhaitez-vous que je confirme le transfert ?" }]}
-          templates={[{ key: "sejour_texte", label: "Le séjour est dans l’espace" }]}
-          windowOpen={activeKey === "+33601020304"}
-          previewBlocked
-          offline
-          dossier={
-            activeKey === "+33601020304"
-              ? {
-                  reference: "TB-EXEMPLE",
-                  place: "Tel Aviv",
-                  dates: "20 oct. 2026 - 26 oct. 2026",
-                  visibility: "En préparation",
-                  travelers: ["Camille", "Inès"],
-                  missingPassports: 1,
-                  request: null,
-                }
-              : {
-                  reference: null,
-                  place: null,
-                  dates: null,
-                  visibility: null,
-                  travelers: [],
-                  missingPassports: 0,
-                  request: "Question",
-                }
-          }
-          onSelect={setActiveKey}
-        />
+    <div className="admin-af flex min-h-screen bg-[#f7f4ef]">
+      <div className="min-w-0 flex-1 px-4 py-6">
+        <header className="mb-6 flex items-center justify-between">
+          <p className="font-display text-sm font-semibold text-[#0B192C]">Espace agence</p>
+          <p className="text-xs text-[#8a7350]">Aperçu · rien n’est envoyé</p>
+        </header>
+        <AgencyAttention lines={lines} documents={[{ bookingId: "sejour-exemple", label: "Inès · TB-EXEMPLE · Tel Aviv", count: 1 }]} />
       </div>
-    </div>
+      <WhatsappDock
+        threads={threads}
+        templates={[{ key: "sejour_texte", label: "Le séjour est dans l’espace" }]}
+        previewBlocked
+        messagesByKey={{
+          "+33601020304": MESSAGES.filter((row) => row.phone === "+33601020304"),
+          "+33611111111": MESSAGES.filter((row) => row.phone === "+33611111111"),
+        }}
+        dossiersByKey={{ "+33601020304": DOSSIER }}
+        drafts={DRAFTS}
+        focus={discussions || "tous"}
+        openFil={openKey}
+        initialPanelOpen
+        initialDrawer
+        initialTabs={[{ key: openKey, expanded: true }]}
+        persist={false}
+        live={false}
+      />
     </div>
   );
 }
