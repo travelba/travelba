@@ -27,6 +27,7 @@ import {
   removeCarte,
   removeVoyageur,
   setCarteVisibilite,
+  prepareCarnetMessage,
   retargetCompanionDetails,
   travelerSex,
 } from "@/lib/crm/mcp-trip";
@@ -1702,6 +1703,107 @@ test("definir_visibilite_carte suit l’agence, sans message et sans deuxième l
   await assert.rejects(
     () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: CLIENT, visible: true }, client),
     /Carte introuvable/
+  );
+  assert.equal(shown.message_pret, false);
+  assert.equal(db.tables.crm_concierge_followups?.length || 0, 0);
+});
+
+test("montrer une prestation sur un carnet déjà publié prépare un seul WhatsApp, sans l’envoyer", async () => {
+  const hotelId = "44444444-4444-4444-8444-444444444444";
+  const flightId = "77777777-7777-4777-8777-777777777777";
+  const transferId = "99999999-9999-4999-8999-999999999999";
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Rome", devise: "EUR" }, client);
+  const person = db.tables.crm_customers[0];
+  person.phone = "+33612345678";
+  person.whatsapp_opt_in_at = "2026-10-01T00:00:00.000Z";
+  db.tables.crm_bookings[0].visible_to_client = true;
+  db.tables.crm_booking_items.push(
+    {
+      id: hotelId,
+      booking_id: dossier.id,
+      kind: "hotel",
+      title: "Little Emperors — Hotel de Russie",
+      supplier: "Little Emperors",
+      amount: 420,
+      lifecycle: "active",
+      visible_to_client: false,
+      include_in_ledger: false,
+      details: { client_hidden: true, net: 300, commission: 40 },
+    },
+    {
+      id: flightId,
+      booking_id: dossier.id,
+      kind: "flight",
+      title: "Paris → Rome",
+      supplier: "Expedia",
+      amount: 492.99,
+      lifecycle: "active",
+      visible_to_client: false,
+      include_in_ledger: false,
+      details: { client_hidden: true, amount_is_total: true, ticket_count: 5 },
+    },
+    {
+      id: transferId,
+      booking_id: dossier.id,
+      kind: "transfer",
+      title: "Transfert",
+      amount: 80,
+      lifecycle: "active",
+      visible_to_client: false,
+      include_in_ledger: false,
+      details: { client_hidden: true },
+    }
+  );
+  const link = `https://travelba.fr/mon-compte/reservations/${dossier.reference}`;
+  const shown = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: true }, client);
+  assert.equal(shown.notifie, false);
+  assert.equal(shown.message_pret, true);
+  assert.equal(db.writes.some((write) => write.table === "crm_whatsapp_messages"), false);
+  const drafts = () => db.tables.crm_concierge_followups.filter((row) => row.status === "planned");
+  assert.equal(drafts().length, 1);
+  assert.equal(drafts()[0]?.kind, "carnet_ajout");
+  assert.equal(drafts()[0]?.draft_body, `Votre hôtel a été ajouté à votre carnet.\n${link}`);
+  assert.doesNotMatch(String(drafts()[0]?.draft_body), /little|expedia|commission|€|420|492|\bnet\b/i);
+
+  const grouped = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: flightId, visible: true }, client);
+  assert.equal(grouped.notifie, false);
+  assert.equal(grouped.message_pret, true);
+  assert.equal(drafts().length, 1);
+  assert.equal(
+    drafts()[0]?.draft_body,
+    `Votre vol et votre hôtel ont été ajoutés à votre carnet.\n${link}`
+  );
+  assert.equal(db.writes.some((write) => write.table === "crm_whatsapp_messages"), false);
+
+  const sentId = drafts()[0]?.id;
+  drafts()[0].status = "sent";
+  const later = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: transferId, visible: true }, client);
+  assert.equal(later.message_pret, true);
+  assert.equal(later.notifie, false);
+  const planned = db.tables.crm_concierge_followups.filter((row) => row.status === "planned");
+  assert.equal(planned.length, 1);
+  assert.equal(planned[0]?.draft_body, `Votre transfert a été ajouté à votre carnet.\n${link}`);
+  assert.notEqual(planned[0]?.id, sentId);
+
+  const manual = await prepareCarnetMessage({ reference: dossier.reference }, client);
+  assert.equal(manual.envoye, false);
+  assert.equal(manual.notifie, false);
+  assert.equal(manual.prestations, 3);
+  assert.match(String(manual.message), /Votre vol, votre hôtel et votre transfert ont été ajoutés/);
+  assert.equal(db.tables.crm_concierge_followups.filter((row) => row.status === "planned").length, 1);
+  assert.doesNotMatch(String(manual.message), /little|expedia|commission|€|420|\bnet\b/i);
+
+  person.whatsapp_opt_out_at = "2026-10-02T00:00:00.000Z";
+  await assert.rejects(() => prepareCarnetMessage({ dossier_id: dossier.id }, client), /WhatsApp/);
+  db.tables.crm_bookings[0].visible_to_client = false;
+  person.whatsapp_opt_out_at = null;
+  await assert.rejects(
+    () => prepareCarnetMessage({ dossier_id: dossier.id, carte_ids: [hotelId] }, client),
+    /pas encore montré/
   );
 });
 

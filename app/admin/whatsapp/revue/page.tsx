@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
+import { CARNET_ADDITION_KIND, CARNET_ADDITION_LABEL } from "@/lib/crm/carnet-addition";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { weeklyReview, type QualityFlag, type QualityMark } from "@/lib/crm/concierge-quality";
 
@@ -21,9 +22,10 @@ const FOLLOWUP_LABELS: Record<string, string> = {
   feedback: "Retour",
   silence_session: "Silence",
   silence_template: "Reprise",
+  [CARNET_ADDITION_KIND]: CARNET_ADDITION_LABEL,
 };
 
-const SENDABLE = new Set(["predeparture", "checkin", "feedback"]);
+const SENDABLE = new Set(["predeparture", "checkin", "feedback", CARNET_ADDITION_KIND]);
 
 export default async function ConciergeReviewPage() {
   const { supabase } = await requireStaffPage();

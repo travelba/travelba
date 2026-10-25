@@ -9,6 +9,8 @@ import {
   syncBookingLedger,
   syncBookingTotalFromItems,
 } from "@/lib/crm/bookings";
+import { noteCarnetAdditions } from "@/lib/crm/carnet-addition";
+import { publishRevealIds } from "@/lib/crm/carnet";
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { assignPayer, resolveFeesFollowStay, type PayerCompany } from "@/lib/crm/payer";
@@ -20,7 +22,7 @@ import {
   remindMissingPieces,
   safeConcierge,
 } from "@/lib/crm/concierge-send";
-import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
+import { countsAsCarnetCard, type BookingStatus, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -190,7 +192,28 @@ export async function PATCH(request: Request, ctx: Ctx) {
         const publishIssues = collectPublishIssues(publishItems || []);
         if (publishIssues.length) return jsonIssues(publishIssues);
       }
+      let beforeCards: {
+        id: string;
+        kind: string;
+        visible_to_client: boolean | null;
+        lifecycle?: string | null;
+        details?: Record<string, unknown> | null;
+      }[] = [];
+      if (body.visible_to_client && prev.visible_to_client) {
+        const before = await auth.supabase
+          .from("crm_booking_items")
+          .select("id, kind, visible_to_client, lifecycle, details")
+          .eq("booking_id", id);
+        if (!before.error) beforeCards = (before.data || []) as typeof beforeCards;
+      }
       await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client));
+      if (beforeCards.length) {
+        const reveal = new Set(publishRevealIds(beforeCards));
+        const additions = beforeCards
+          .filter((row) => reveal.has(row.id) && row.visible_to_client !== true && countsAsCarnetCard(row.kind))
+          .map((row) => ({ id: row.id, kind: row.kind }));
+        await noteCarnetAdditions(auth.supabase, id, additions);
+      }
     } catch (err) {
       return jsonError(err instanceof Error ? err.message : "Publication impossible", 400);
     }

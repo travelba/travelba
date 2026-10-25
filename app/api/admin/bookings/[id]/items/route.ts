@@ -10,7 +10,8 @@ import {
   parseSortOrder,
   refreshBookingLedger,
 } from "@/lib/crm/bookings";
-import { detailsForCardVisibility } from "@/lib/crm/carnet";
+import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-addition";
+import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { parseMoney } from "@/lib/crm/money";
 import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
@@ -18,7 +19,7 @@ import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
-import { BOOKING_ITEM_KINDS, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_KINDS, countsAsCarnetCard, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 
 function knownKind(value: unknown) {
   const kind = String(value || "");
@@ -169,7 +170,9 @@ async function insertBookingItem(
     .select("id")
     .single();
   if (error || !data) return { error: dbError(error, 400) };
-  return { id: String(data.id) };
+  const id = String(data.id);
+  const shown = body.visible_to_client === true && countsAsCarnetCard(kind) ? { id, kind } : null;
+  return { id, shown };
 }
 
 async function updateBookingItem(
@@ -181,7 +184,7 @@ async function updateBookingItem(
   if (!itemId) return { error: jsonError("id requis") };
   const { data: current, error: currentError } = await supabase
     .from("crm_booking_items")
-    .select("kind, amount, details, lifecycle, supplier, confirmation_ref, start_at, end_at")
+    .select("kind, amount, details, lifecycle, supplier, confirmation_ref, start_at, end_at, visible_to_client")
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .maybeSingle();
@@ -263,7 +266,16 @@ async function updateBookingItem(
     .select("*")
     .single();
   if (error) return { error: dbError(error, 400) };
-  return { item: data };
+  const wasHidden =
+    current.visible_to_client !== true ||
+    keptHiddenFromClient(
+      current.details && typeof current.details === "object" ? (current.details as Record<string, unknown>) : null
+    );
+  const shown =
+    "visible_to_client" in body && Boolean(body.visible_to_client) && wasHidden && countsAsCarnetCard(nextKind)
+      ? { id: itemId, kind: nextKind }
+      : null;
+  return { item: data, shown };
 }
 
 /** Modifications et suppressions d’étapes : une seule écriture, au moment d’enregistrer le séjour. */
@@ -272,6 +284,7 @@ async function commitStaySteps(
   bookingId: string,
   body: Record<string, unknown>
 ) {
+  const shown: CarnetAdditionCard[] = [];
   const deleted = Array.isArray(body.deleted)
     ? body.deleted.map((value) => String(value || "")).filter(Boolean)
     : [];
@@ -286,6 +299,7 @@ async function commitStaySteps(
     if (!item || typeof item !== "object") return jsonError("Étape invalide");
     const failed = await updateBookingItem(supabase, bookingId, item as Record<string, unknown>);
     if ("error" in failed) return failed.error;
+    if (failed.shown) shown.push(failed.shown);
   }
   if (deleted.length) {
     const { error } = await supabase
@@ -302,6 +316,7 @@ async function commitStaySteps(
     const inserted = await insertBookingItem(supabase, bookingId, row, order.length + index);
     if ("error" in inserted) return inserted.error;
     idMap.set(String(row.client_id || ""), inserted.id);
+    if (inserted.shown) shown.push(inserted.shown);
   }
   try {
     await persistBookingCardOrder(supabase, bookingId, {
@@ -317,6 +332,7 @@ async function commitStaySteps(
     return dbError(error as { message?: string; code?: string }, 400);
   }
   scheduleFormalitySync(bookingId);
+  await noteCarnetAdditions(supabase, bookingId, shown);
   return NextResponse.json({
     ok: true,
     ids: Object.fromEntries(idMap),
@@ -359,6 +375,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   const updated = await updateBookingItem(auth.supabase, bookingId, body || {});
   if ("error" in updated) return updated.error;
+  if (updated.shown) await noteCarnetAdditions(auth.supabase, bookingId, [updated.shown]);
   const moved =
     body?.start_at !== undefined || body?.kind !== undefined;
   if (moved) {
