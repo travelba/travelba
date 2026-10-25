@@ -4,7 +4,8 @@ import { toE164 } from "@/lib/crm/phone";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { embeddingLiteral, isKnowledgeKind, knowledgeSeed, parseExampleImport } from "@/lib/crm/concierge-knowledge";
 import { conciergeOutboundArmed, decideProposal } from "@/lib/crm/concierge-proposals";
-import { clientTouchpointBody, decideTouchpointDelivery } from "@/lib/crm/concierge-touchpoints";
+import { decideFollowupDelivery } from "@/lib/crm/carnet-addition";
+import { clientTouchpointBody } from "@/lib/crm/concierge-touchpoints";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { proactiveWhatsappAllowed } from "@/lib/crm/whatsapp-concierge";
 import { withConciergeSignature } from "@/lib/crm/whatsapp";
@@ -187,7 +188,7 @@ export async function POST(request: Request) {
       .maybeSingle();
     const now = new Date();
     const windowOpen = sessionWindowOpen((last.data as { created_at?: string } | null)?.created_at || null, now);
-    const decision = decideTouchpointDelivery({
+    const decision = decideFollowupDelivery({
       kind: row.kind,
       templateKey: row.template_key,
       windowOpen,

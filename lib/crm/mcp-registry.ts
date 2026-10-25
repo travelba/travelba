@@ -42,6 +42,7 @@ import {
   removeCarte,
   removeVoyageur,
   setCarteVisibilite,
+  prepareCarnetMessage,
   updateHotel,
   updateVol,
 } from "@/lib/crm/mcp-trip";
@@ -51,7 +52,7 @@ import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 44;
+export const MCP_TOOL_CAP = 45;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -777,7 +778,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "definir_visibilite_carte",
     write: true,
     description:
-      "Montre ou cache une seule carte du dossier (vol, hôtel, frais ou autre prestation), et peut cocher ou décocher « Inclure dans les transactions ». visible vrai la montre au client, faux la cache ; omis, la visibilité ne change pas. inclure_transactions vrai crée ou rétablit le débit, faux l’annule, sur la même ligne. Le prix est le total exact si la carte porte un total de groupe. Ne publie pas le carnet et n’envoie aucun message : ni e-mail, ni WhatsApp. Le grand livre est recalculé comme à l’enregistrement d’une carte dans l’agence, sans doublon. Le séjour caché ne débite pas. Une carte non incluse dans les transactions ne crée pas de ligne.",
+      "Montre ou cache une seule carte du dossier (vol, hôtel, frais ou autre prestation), et peut cocher ou décocher « Inclure dans les transactions ». visible vrai la montre au client, faux la cache ; omis, la visibilité ne change pas. inclure_transactions vrai crée ou rétablit le débit, faux l’annule, sur la même ligne. Le prix est le total exact si la carte porte un total de groupe. Ne publie pas le carnet et n’envoie rien : ni e-mail, ni WhatsApp. Sur un carnet déjà montré, un brouillon est préparé ; l’agence l’envoie en un clic. Le grand livre est recalculé comme à l’enregistrement d’une carte dans l’agence, sans doublon. Le séjour caché ne débite pas. Une carte non incluse dans les transactions ne crée pas de ligne.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -789,6 +790,21 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Case « Inclure dans les transactions ». vrai coche, faux décoche. Omis : la case ne change pas"),
     },
     run: (args) => setCarteVisibilite(args),
+  },
+  {
+    name: "preparer_message_carnet",
+    write: true,
+    description:
+      "Prépare le message WhatsApp d’un dossier déjà montré au client : les prestations ajoutées au carnet, en une phrase, avec le lien. Plusieurs prestations tiennent dans un seul brouillon. carte_ids limite la phrase à ces cartes, sinon toutes les prestations déjà montrées. Rien n’est envoyé : l’agence l’envoie en un clic. Pas de prix, pas de commission, pas de fournisseur.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_ids: z
+        .array(z.string())
+        .optional()
+        .describe("Cartes à citer. Omis : les prestations déjà montrées dans le carnet"),
+    },
+    run: (args) => prepareCarnetMessage(args),
   },
   {
     name: "ajouter_hotel",

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { CARNET_ADDITION_KIND, CARNET_ADDITION_LABEL } from "@/lib/crm/carnet-addition";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { stayDestinationLine } from "@/lib/crm/stay-phrase";
 import {
@@ -68,7 +69,7 @@ export default async function WhatsappInboxPage({
       .from("crm_concierge_followups")
       .select("id, phone, kind, channel, draft_body, status")
       .eq("status", "planned")
-      .in("kind", ["predeparture", "checkin", "feedback"])
+      .in("kind", ["predeparture", "checkin", "feedback", CARNET_ADDITION_KIND])
       .order("due_at", { ascending: true })
       .limit(30),
   ]);
@@ -149,6 +150,7 @@ export default async function WhatsappInboxPage({
     predeparture: "Veille du départ",
     checkin: "Arrivée à l’hôtel",
     feedback: "Retour",
+    [CARNET_ADDITION_KIND]: CARNET_ADDITION_LABEL,
   };
 
   return (
@@ -169,9 +171,11 @@ export default async function WhatsappInboxPage({
               <p className="font-semibold text-[#0B192C]">{draftLabel[row.kind] || row.kind}</p>
               <p className="mt-1 whitespace-pre-wrap text-[var(--color-ink-soft)]">{row.draft_body}</p>
               <p className="mt-1 text-xs text-[var(--color-ink-soft)]">
-                {row.channel === "template"
-                  ? "Hors fenêtre de 24 h. Le modèle n’est pas soumis."
-                  : "Fenêtre de 24 h ouverte."}
+                {row.kind === CARNET_ADDITION_KIND
+                  ? "Prêt à envoyer. Rien ne part sans ce clic."
+                  : row.channel === "template"
+                    ? "Hors fenêtre de 24 h. Le modèle n’est pas soumis."
+                    : "Fenêtre de 24 h ouverte."}
               </p>
               <ConciergeFollowupSend id={row.id} previewBlocked={isVercelPreview()} />
             </li>

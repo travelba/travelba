@@ -17,7 +17,8 @@ import {
   refreshTicketingFee,
 } from "@/lib/crm/bookings";
 import { toAuditRow } from "@/lib/crm/audit-events";
-import { detailsForCardVisibility } from "@/lib/crm/carnet";
+import { noteCarnetAdditions } from "@/lib/crm/carnet-addition";
+import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { addIsoDays } from "@/lib/crm/dates";
@@ -34,7 +35,7 @@ import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { cloneTravelDocument, insertTravelDocument } from "@/lib/crm/travel-document-write";
-import { isActiveItem, isLedgerExpenseKind, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
+import { countsAsCarnetCard, isActiveItem, isLedgerExpenseKind, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 
@@ -1860,7 +1861,8 @@ function ledgerMove(before: LedgerRow | null, after: LedgerRow | null) {
 
 /**
  * Montre ou cache une seule carte, et coche ou décoche « Inclure dans les transactions ».
- * Aucun message, aucun publier_carnet. Le grand livre reprend la même ligne.
+ * Aucun envoi, aucun publier_carnet. Sur un carnet déjà montré, un brouillon WhatsApp est préparé.
+ * Le grand livre reprend la même ligne.
  */
 export async function setCarteVisibilite(input: Record<string, unknown>, admin?: Admin) {
   const visible = optionalFlag(input.visible, "Visible");
@@ -1947,6 +1949,10 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
   }
   const journal = noted.length > 0 && noted.every(Boolean);
   const warning = await ledgerWarning("Carte enregistrée", () => refreshBookingLedger(db, booking.id));
+  const draft =
+    visibilityChanged && visible === true
+      ? await noteCarnetAdditions(db, booking.id, [{ id: carteId, kind: item.kind }])
+      : { prepared: false as const };
   const { data: saved } = await db
     .from("crm_booking_items")
     .select("id, kind, title, visible_to_client, include_in_ledger, details")
@@ -1981,6 +1987,7 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
     titre: row.title,
     visible: row.visible_to_client === true,
     notifie: false,
+    message_pret: draft.prepared,
     sejour_visible: booking.visible_to_client === true,
     incluse_transactions: itemIncludedInLedger(
       { kind: row.kind, include_in_ledger: row.include_in_ledger },
@@ -1995,6 +2002,58 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
     },
     journal,
     ...(warning ? { avertissement: warning } : {}),
+  };
+}
+
+/**
+ * Prépare à la main le WhatsApp « ajouté à votre carnet ».
+ * Un seul brouillon. Rien n’est envoyé.
+ */
+export async function prepareCarnetMessage(input: Record<string, unknown>, admin?: Admin) {
+  const db = client(admin);
+  const booking = await loadBooking(db, dossierTarget(input));
+  const asked = idList(input.carte_ids ?? input.cartes, "Carte");
+  const { data, error } = await db
+    .from("crm_booking_items")
+    .select("id, kind, lifecycle, visible_to_client, details")
+    .eq("booking_id", booking.id);
+  if (error) throw new McpWriteError("Cartes du dossier illisibles.");
+  const items = (data || []) as {
+    id: string;
+    kind: string;
+    lifecycle: string | null;
+    visible_to_client: boolean | null;
+    details: Record<string, unknown> | null;
+  }[];
+  const wanted = asked.length ? new Set(asked) : null;
+  if (wanted) {
+    for (const id of wanted) {
+      if (!items.some((item) => item.id === id)) throw new McpWriteError("Carte introuvable sur ce dossier.");
+    }
+  }
+  const cards = items.filter((item) => {
+    if (wanted && !wanted.has(item.id)) return false;
+    if (!isActiveItem(item) || item.visible_to_client !== true || keptHiddenFromClient(item.details)) return false;
+    return countsAsCarnetCard(item.kind);
+  });
+  if (wanted && cards.length !== wanted.size) {
+    throw new McpWriteError("Cette prestation n’est pas montrée dans le carnet.");
+  }
+  const draft = await noteCarnetAdditions(
+    db,
+    booking.id,
+    cards.map((item) => ({ id: item.id, kind: item.kind })),
+    { replace: true }
+  );
+  if (!draft.prepared) throw new McpWriteError(draft.raison);
+  return {
+    dossier_id: booking.id,
+    reference: booking.reference,
+    envoye: false,
+    notifie: false,
+    message: draft.message,
+    suivi_id: draft.suivi_id,
+    prestations: draft.prestations,
   };
 }
 
