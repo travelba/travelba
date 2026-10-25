@@ -374,8 +374,14 @@ export function itemPriceLabel(
   if (!pricesVisible) return HIDDEN_PRICE_LABEL;
   const money = formatMoney(Number(item.amount), currency);
   const count = statedTicketCount(item);
-  if (count != null && count > 1) return `${count} × ${money}`;
+  if (count != null && count > 1 && !flightAmountIsGroupTotal(item.details)) return `${count} × ${money}`;
   return money;
+}
+
+/** Le montant stocké est le total du groupe, au centime. Le nombre de billets ne le divise pas. */
+export function flightAmountIsGroupTotal(details: object | null | undefined) {
+  if (!details || !("amount_is_total" in details)) return false;
+  return (details as { amount_is_total?: unknown }).amount_is_total === true;
 }
 
 export function clientVisibleItems<T extends { visible_to_client?: boolean | null }>(items: T[]) {

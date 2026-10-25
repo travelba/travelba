@@ -134,7 +134,7 @@ Prénom aligné (`Simon` = `Simon, Iony`). Destination : ville / pays, casse,
 accents, inclusion (`Dan Tel Aviv Hotel` ⊃ `Tel Aviv`). `cancelled` exclus.
 Document `identity` : pas de proposition de voyage. Prix document manquant : pas de blocage du rattachement manuel. On n’invente pas le montant.
 
-Nombre de billets **facultatif** (saisie manuelle et import). Vide : le montant est le total du billet. On ne calcule pas de prix unitaire, on ne l’affiche pas, l’import n’avertit pas. Le grand livre prend ce total (`itemSellingAmount`). Un nombre saisi reste unitaire × billets.
+Nombre de billets **facultatif** (saisie manuelle et import). Vide : le montant est le total du billet. On ne calcule pas de prix unitaire, on ne l’affiche pas, l’import n’avertit pas. Le grand livre prend ce total (`itemSellingAmount`). Un nombre saisi reste unitaire × billets. Un total marqué `amount_is_total` (saisie `prix_total`) reste le total du groupe, au centime.
 
 ## Avant le modèle
 

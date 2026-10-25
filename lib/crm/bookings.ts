@@ -14,7 +14,7 @@ import {
   type CrmTransaction,
 } from "@/lib/crm/types";
 import { statedTicketCount } from "@/lib/crm/item-match";
-import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
+import { flightAmountIsGroupTotal, hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import {
@@ -180,8 +180,9 @@ export function bookingDebitIntent(input: {
 
 /**
  * Prix vendu d’une carte.
- * Vol avec un nombre de billets : unitaire × billets.
- * Vol sans nombre : le montant saisi est déjà le total. On ne calcule pas de prix unitaire.
+ * Vol avec un nombre de billets : unitaire × billets, tant que le montant n’est pas déjà le total du groupe.
+ * Un total saisi (`amount_is_total`) reste au centime : le nombre de billets ne le multiplie pas.
+ * Vol sans nombre : le montant saisi est déjà le total.
  */
 export function itemSellingAmount(item: {
   kind?: string | null;
@@ -191,6 +192,7 @@ export function itemSellingAmount(item: {
   const unit = Number(item.amount);
   if (!Number.isFinite(unit) || unit <= 0) return null;
   if ((item.kind || "") !== "flight") return Math.round(unit * 100) / 100;
+  if (flightAmountIsGroupTotal(item.details)) return Math.round(unit * 100) / 100;
   const count = statedTicketCount(item);
   const total = count == null ? unit : unit * count;
   return Math.round(total * 100) / 100;

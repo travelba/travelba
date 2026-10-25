@@ -41,6 +41,7 @@ import {
   mergeCompagnon,
   removeCarte,
   removeVoyageur,
+  setCarteVisibilite,
   updateHotel,
   updateVol,
 } from "@/lib/crm/mcp-trip";
@@ -50,7 +51,7 @@ import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 43;
+export const MCP_TOOL_CAP = 44;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -64,7 +65,7 @@ const COMPANY_FIELDS = {
 
 const PRIX_BILLET = "Prix d’un billet (unitaire). Zéro est accepté. Le séjour le multiplie par le nombre de billets.";
 const PRIX_GROUPE =
-  "Total du groupe pour cette carte. Zéro est accepté. Unitaire = total / billets. Un aller-retour au même prix n’est compté qu’une fois ; deux prix différents comptent tous les deux.";
+  "Total du groupe pour cette carte, gardé au centime. Il n’est pas divisé par le nombre de billets. Zéro est accepté. Le nombre de billets n’est pas obligatoire. Un aller-retour au même prix n’est compté qu’une fois ; deux prix différents comptent tous les deux.";
 
 const text = (value: unknown, keepPieceNumber = false, keepSignedUrl = false, keepCardSecrets = false) => ({
   content: [
@@ -724,7 +725,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_vol",
     write: true,
     description:
-      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier). Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
+      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier). Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet. prix_total est le total du groupe, gardé au centime, sans prix unitaire imposé. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -771,6 +772,23 @@ export const MCP_TOOLS: ToolDef[] = [
       carte_id: z.string().trim().describe("Identifiant de la carte"),
     },
     run: (args) => removeCarte(args),
+  },
+  {
+    name: "definir_visibilite_carte",
+    write: true,
+    description:
+      "Montre ou cache une seule carte du dossier (vol, hôtel, frais ou autre prestation), et peut cocher ou décocher « Inclure dans les transactions ». visible vrai la montre au client, faux la cache ; omis, la visibilité ne change pas. inclure_transactions vrai crée ou rétablit le débit, faux l’annule, sur la même ligne. Le prix est le total exact si la carte porte un total de groupe. Ne publie pas le carnet et n’envoie aucun message : ni e-mail, ni WhatsApp. Le grand livre est recalculé comme à l’enregistrement d’une carte dans l’agence, sans doublon. Le séjour caché ne débite pas. Une carte non incluse dans les transactions ne crée pas de ligne.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().describe("Identifiant de la carte"),
+      visible: z.boolean().optional().describe("vrai : montrée au client. faux : cachée. Omis : la visibilité ne change pas"),
+      inclure_transactions: z
+        .boolean()
+        .optional()
+        .describe("Case « Inclure dans les transactions ». vrai coche, faux décoche. Omis : la case ne change pas"),
+    },
+    run: (args) => setCarteVisibilite(args),
   },
   {
     name: "ajouter_hotel",
