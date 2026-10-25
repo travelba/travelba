@@ -762,6 +762,12 @@ export type CrmCustomerActivity = {
   detail: string | null;
   path: string | null;
   booking_id: string | null;
+  /** Pièce téléchargée, quand le geste est un téléchargement. */
+  document_id?: string | null;
+  document_table?: "crm_booking_documents" | "crm_travel_documents" | null;
+  document_kind?: string | null;
+  /** Libellé sûr. Un passeport : « Passeport de <prénom> ». */
+  document_name?: string | null;
   created_at: string;
 };
 

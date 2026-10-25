@@ -18,6 +18,7 @@ import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
+import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { getPortalAccess } from "@/lib/crm/invite";
 import {
   REVOLUT_MATCH_SELECT,
@@ -113,6 +114,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     .is("billing_company_id", null)
     .maybeSingle();
   const mb3mSent = Boolean(mb3mParty?.id);
+  await repairCustomerDownloads([id]);
 
   const [
     { data: companions },
