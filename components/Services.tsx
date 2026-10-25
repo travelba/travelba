@@ -1,6 +1,4 @@
-"use client";
-
-import { motion } from "framer-motion";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { SectionHeading } from "./SectionHeading";
 import { SERVICE_KEYS, SERVICE_IMAGES } from "@/lib/site";
@@ -21,32 +19,21 @@ export function Services() {
           {SERVICE_KEYS.map((key, i) => {
             const isLast = i === SERVICE_KEYS.length - 1;
             return (
-              <motion.article
+              <article
                 key={key}
-                initial={{ opacity: 0, y: 24 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-60px" }}
-                transition={{
-                  duration: 0.5,
-                  delay: (i % 3) * 0.08,
-                  ease: [0.21, 0.47, 0.32, 0.98],
-                }}
-                whileHover={{ y: -4 }}
-                className={`group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface/40 transition-colors hover:border-accent/40 hover:bg-surface ${
+                className={`group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface/40 transition-colors hover:-translate-y-1 hover:border-accent/40 hover:bg-surface ${
                   isLast ? "sm:col-span-2 lg:col-span-1" : ""
                 }`}
               >
                 <div className="relative aspect-[16/10] w-full overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- Unsplash : pas d’optimisation Next sur un hôte tiers */}
-                  <img
+                  <Image
                     src={SERVICE_IMAGES[key]}
                     alt={t(`${key}.title`)}
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    fill
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/20 to-transparent" />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface via-surface/20 to-transparent" />
                   <h3 className="absolute bottom-3 left-4 right-4 font-display text-lg font-semibold drop-shadow-sm">
                     {t(`${key}.title`)}
                   </h3>
@@ -54,7 +41,7 @@ export function Services() {
                 <p className="p-5 pt-4 text-sm leading-relaxed text-muted">
                   {t(`${key}.description`)}
                 </p>
-              </motion.article>
+              </article>
             );
           })}
         </div>

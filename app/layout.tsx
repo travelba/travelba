@@ -1,13 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
+import { Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import { siteConfig } from "@/lib/site";
 import "./globals.css";
 
+// La vitrine peint Space Grotesk (titres). Plus Jakarta reste dispo pour le CRM, sans preload :
+// la page d’accueil ne l’utilise pas, et un preload inutile retardait le hero.
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-space-grotesk",
   display: "swap",
-  preload: false,
+  preload: true,
 });
 
 const inter = Inter({
@@ -21,21 +23,13 @@ const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-plus-jakarta",
   display: "swap",
-  preload: true,
+  preload: false,
 });
 
 const nunito = Nunito_Sans({
   subsets: ["latin"],
   weight: ["400", "600", "700"],
   variable: "--font-nunito",
-  display: "swap",
-  preload: false,
-});
-
-const cormorant = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["500", "600"],
-  variable: "--font-cormorant",
   display: "swap",
   preload: false,
 });
@@ -72,7 +66,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${cormorant.variable} ${nunito.variable}`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${nunito.variable}`}
     >
       <body className="bg-background text-foreground antialiased">{children}</body>
     </html>
