@@ -282,24 +282,21 @@ async function loadPieces(admin: SupabaseClient, customerId: string) {
 }
 
 async function readRepairRows(admin: SupabaseClient, customerIds: string[]): Promise<DownloadRepairRow[]> {
-  const base = admin
-    .from("crm_customer_activity")
-    .select(
-      documentColumns === "no"
-        ? "id, customer_id, summary, path, booking_id"
-        : "id, customer_id, summary, path, booking_id, document_id"
-    )
-    .in("customer_id", customerIds)
-    .eq("action", "download")
-    .order("created_at", { ascending: false })
-    .limit(400);
-  const first = await base;
-  if (!first.error) {
-    if (documentColumns !== "no") documentColumns = "yes";
-    return (first.data || []) as DownloadRepairRow[];
+  if (documentColumns !== "no") {
+    const first = await admin
+      .from("crm_customer_activity")
+      .select("id, customer_id, summary, path, booking_id, document_id")
+      .in("customer_id", customerIds)
+      .eq("action", "download")
+      .order("created_at", { ascending: false })
+      .limit(400);
+    if (!first.error) {
+      documentColumns = "yes";
+      return (first.data || []) as DownloadRepairRow[];
+    }
+    if (!missingDocumentColumn(first.error)) return [];
+    documentColumns = "no";
   }
-  if (!missingDocumentColumn(first.error)) return [];
-  documentColumns = "no";
   const second = await admin
     .from("crm_customer_activity")
     .select("id, customer_id, summary, path, booking_id")
