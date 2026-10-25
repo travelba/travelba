@@ -19,7 +19,7 @@ import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
-import { sameRecordedTraveler, type PersonName } from "@/lib/crm/person-match";
+import { addedTravelerNames, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
@@ -670,17 +670,20 @@ type CompanionRow = {
   first_name: string | null;
   last_name: string | null;
   usage_name: string | null;
+  birth_date: string | null;
 };
 
 function personOf(row: {
   first_name?: string | null;
   last_name?: string | null;
   usage_name?: string | null;
-}): PersonName {
+  birth_date?: string | null;
+}): PersonIdentity {
   return {
     first_name: row.first_name ?? null,
     last_name: row.last_name ?? null,
     usage_name: row.usage_name ?? null,
+    birth_date: row.birth_date ?? null,
   };
 }
 
@@ -727,10 +730,14 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
     nationality?: string | null;
     phone?: string | null;
   };
-  const query = { first_name: prenoms || null, last_name: nom || null };
+  const query: PersonIdentity = {
+    first_name: prenoms || null,
+    last_name: nom || null,
+    birth_date: naissance,
+  };
   const { data: companionRows, error: companionError } = await db
     .from("crm_travel_companions")
-    .select("id, first_name, last_name, usage_name")
+    .select("id, first_name, last_name, usage_name, birth_date")
     .eq("customer_id", customerId);
   if (companionError) throw new McpWriteError("Voyageur non ajouté.");
   const companions = (companionRows || []) as CompanionRow[];
@@ -748,13 +755,13 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
   if (compagnonId) {
     known = companions.find((row) => row.id === compagnonId) || null;
     if (!known) throw new McpWriteError("Ce compagnon n’est pas sur la fiche du client.");
-    if ((prenoms || nom) && !sameRecordedTraveler(personOf(known), query)) {
+    if ((prenoms || nom) && !addedTravelerNames(personOf(known), query)) {
       throw new McpWriteError("Ce compagnon ne correspond pas au nom indiqué.");
     }
   }
-  const isHolder = !known && Boolean(prenoms && nom) && sameRecordedTraveler(personOf(holder), query);
+  const isHolder = !known && Boolean(prenoms && nom) && sameAddedTraveler(personOf(holder), query);
   if (!known && !isHolder) {
-    const matches = companions.filter((row) => sameRecordedTraveler(personOf(row), query));
+    const matches = companions.filter((row) => sameAddedTraveler(personOf(row), query));
     known = pickCompanion(matches, passportIds);
     if (!known && matches.length > 1) {
       throw new McpWriteError("Plusieurs voyageurs correspondent. Indiquez compagnon_id.");
@@ -781,7 +788,7 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
       if (isHolder && row.is_account_holder) return true;
       const linked = row.companion_id ? companions.find((item) => item.id === row.companion_id) : null;
       const person = row.is_account_holder ? personOf(holder) : linked ? personOf(linked) : personOf(row);
-      return sameRecordedTraveler(person, known ? personOf(known) : query);
+      return sameAddedTraveler(person, known ? personOf(known) : query);
     });
     if (present) throw new McpWriteError("Ce voyageur est déjà sur le séjour.");
   }
@@ -789,14 +796,17 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
   if (!isHolder) {
     if (known) {
       companionId = known.id;
-      const patch: Record<string, unknown> = {};
-      if (naissance) patch.birth_date = naissance;
-      if (sex) patch.sex = sex;
-      if (nationalite) patch.nationality = nationalite;
-      if (telephone) patch.phone = telephone;
-      if (Object.keys(patch).length) {
-        const { error } = await db.from("crm_travel_companions").update(patch).eq("id", known.id).eq("customer_id", customerId);
-        if (error) throw new McpWriteError("Voyageur non ajouté.");
+      // Sans compagnon_id, on rattache. On n’écrit pas sur la fiche d’un autre voyageur.
+      if (compagnonId) {
+        const patch: Record<string, unknown> = {};
+        if (naissance) patch.birth_date = naissance;
+        if (sex) patch.sex = sex;
+        if (nationalite) patch.nationality = nationalite;
+        if (telephone) patch.phone = telephone;
+        if (Object.keys(patch).length) {
+          const { error } = await db.from("crm_travel_companions").update(patch).eq("id", known.id).eq("customer_id", customerId);
+          if (error) throw new McpWriteError("Voyageur non ajouté.");
+        }
       }
     } else {
       const { data, error } = await db

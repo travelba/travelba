@@ -92,6 +92,13 @@ test("a booking update only accepts notes and dates", () => {
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, date_depart: "hier" }), /Date de départ/);
   assert.throws(() => prepareBookingUpdate({ reference: "TB-1" }), /Rien à modifier/);
   assert.equal(prepareBookingUpdate({ id: BOOKING, commission_agence: "7,5" }).patch.agency_fee_rate, "0.0750");
+  assert.deepEqual(prepareBookingUpdate({ id: BOOKING, societe_id: CLIENT }).billing, {
+    particulier: false,
+    societeId: CLIENT,
+  });
+  assert.equal(prepareBookingUpdate({ reference: "TB-2026-0107", particulier: true }).billing?.particulier, true);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, particulier: true, societe_id: CLIENT }), /particulier/);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, particulier: "oui" }), /Particulier/);
   assert.equal(prepareBookingUpdate({ id: BOOKING, commission_agence: "compte" }).patch.agency_fee_rate, null);
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, commission_agence: "12" }), /7,5/);
 });
@@ -123,6 +130,7 @@ test("a client is created with an email and a name, and updated by id", () => {
   assert.equal(prepareClientUpdate({ id: CLIENT, commission_agence: "5" }).patch.agency_fee_rate, "0.0500");
   assert.equal(prepareClientUpdate({ id: CLIENT, commission_agence: "defaut" }).patch.agency_fee_rate, null);
   assert.throws(() => prepareClientUpdate({ id: CLIENT, commission_agence: "8" }), /7,5/);
+  assert.equal(prepareClientUpdate({ id: CLIENT, supprimer_societe_id: BOOKING }).removeCompanyId, BOOKING);
   assert.throws(() => prepareClientUpdate({ id: CLIENT }), /Rien à modifier/);
   assert.throws(() => prepareClientUpdate({ id: "nom", prenom: "Ada" }), /Client invalide/);
 });

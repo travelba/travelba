@@ -7,6 +7,7 @@ import {
   lastNamesMatch,
   matchTravelerToParty,
   namesReferToSamePerson,
+  sameAddedTraveler,
   sameRecordedTraveler,
 } from "./person-match";
 
@@ -210,6 +211,49 @@ test("le nom d’épouse désigne la même personne que le nom de naissance", ()
       { first_name: "Claire", last_name: "Martin" }
     ),
     false
+  );
+});
+
+test("un enfant homonyme ne prend pas la fiche d’un autre Chocron", () => {
+  const elise = {
+    first_name: "Élise Emmanuelle Alexandra",
+    last_name: "Saada",
+    usage_name: "Chocron",
+    birth_date: "1990-03-12",
+  };
+  const joseph = {
+    first_name: "Joseph Elie Jacob",
+    last_name: "Chocron",
+    birth_date: "2022-05-21",
+  };
+  // Le rapprochement des pièces confond encore « Elie » et « Élise ». L’ajout ne s’en sert pas.
+  assert.equal(namesReferToSamePerson(joseph, elise), true);
+  assert.equal(sameAddedTraveler(elise, joseph), false);
+  assert.equal(
+    sameAddedTraveler(
+      { first_name: "Joseph", last_name: "Chocron", birth_date: "2018-01-04" },
+      joseph
+    ),
+    false
+  );
+  assert.equal(
+    sameAddedTraveler(
+      { first_name: "Joseph Elie Jacob", last_name: "Chocron", birth_date: "2022-05-21" },
+      joseph
+    ),
+    true
+  );
+  assert.equal(
+    sameAddedTraveler({ first_name: "Joseph Elie Jacob", last_name: "Chocron", birth_date: null }, joseph),
+    false
+  );
+  assert.equal(sameAddedTraveler({ first_name: "Naomi", last_name: "Chocron" }, { first_name: "", last_name: "Chocron" }), false);
+  assert.equal(
+    sameAddedTraveler(
+      { first_name: "Victoria Marie Rebecca", last_name: "Tetard", usage_name: "Martin" },
+      { first_name: "Victoria", last_name: "Martin" }
+    ),
+    true
   );
 });
 
