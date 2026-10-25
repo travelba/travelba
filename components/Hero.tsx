@@ -1,25 +1,9 @@
-"use client";
-
-import { motion } from "framer-motion";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { ArrowRight, MessageCircle } from "lucide-react";
 import { siteConfig } from "@/lib/site";
-
-const container = {
-  hidden: {},
-  show: {
-    transition: { staggerChildren: 0.12, delayChildren: 0.05 },
-  },
-};
-
-const item = {
-  hidden: { opacity: 0, y: 28 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.7, ease: [0.21, 0.47, 0.32, 0.98] as const },
-  },
-};
+import { HERO_POSTER } from "@/lib/site-hero";
+import { HeroVideo } from "./HeroVideo";
 
 export function Hero() {
   const t = useTranslations("Hero");
@@ -35,53 +19,45 @@ export function Hero() {
       id="top"
       className="relative flex min-h-[92vh] items-center overflow-hidden px-5 pb-20 pt-28 sm:px-8"
     >
-      <video
-        className="absolute inset-0 h-full w-full object-cover"
-        autoPlay
-        muted
-        loop
-        playsInline
-        poster="/videos/hero-jet.jpg"
-        aria-hidden="true"
-      >
-        <source src="/videos/hero-jet.mp4" type="video/mp4" />
-      </video>
+      <Image
+        src={HERO_POSTER}
+        alt=""
+        fill
+        preload
+        sizes="100vw"
+        className="pointer-events-none object-cover"
+      />
+      <HeroVideo />
 
-      <div className="absolute inset-0 bg-background/25" />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/35 via-transparent to-background" />
+      <div className="pointer-events-none absolute inset-0 bg-background/25" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/35 via-transparent to-background" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-background via-background/40 to-transparent" />
 
-      <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="relative z-10 mx-auto max-w-4xl text-center"
-      >
-        <motion.div variants={item} className="flex justify-center">
+      <div className="relative z-10 mx-auto max-w-4xl text-center">
+        <div className="hero-rise flex justify-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-[#C5A880]/40 bg-[#0B192C]/55 px-4 py-1.5 text-xs font-medium tracking-wide text-[#E8D7BC]">
             <span className="h-1.5 w-1.5 rounded-full bg-[#C5A880]" />
             {t("badge")}
           </span>
-        </motion.div>
+        </div>
 
-        <motion.h1
-          variants={item}
-          className="mt-6 font-display text-3xl font-semibold leading-[1.1] tracking-tight [text-shadow:_0_2px_24px_rgba(0,0,0,0.55)] sm:text-5xl"
+        <h1
+          className="hero-rise mt-6 font-display text-3xl font-semibold leading-[1.1] tracking-tight [text-shadow:_0_2px_24px_rgba(0,0,0,0.55)] sm:text-5xl"
+          style={{ animationDelay: "80ms" }}
         >
-          {t("title")}{" "}
-          <span className="text-gradient">{t("titleAccent")}</span>
-        </motion.h1>
+          {t("title")} <span className="text-gradient">{t("titleAccent")}</span>
+        </h1>
 
-        <motion.p
-          variants={item}
-          className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-foreground/80 [text-shadow:_0_1px_16px_rgba(0,0,0,0.6)] sm:text-base"
+        <p
+          className="hero-rise mx-auto mt-5 max-w-xl text-sm leading-relaxed text-foreground/80 [text-shadow:_0_1px_16px_rgba(0,0,0,0.6)] sm:text-base"
+          style={{ animationDelay: "160ms" }}
         >
           {t("subtitle")}
-        </motion.p>
+        </p>
 
-        <motion.div
-          variants={item}
-          className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
+        <div
+          className="hero-rise mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
+          style={{ animationDelay: "220ms" }}
         >
           <a
             href="#contact"
@@ -99,11 +75,11 @@ export function Hero() {
             <MessageCircle className="h-4 w-4" />
             {t("ctaSecondary")}
           </a>
-        </motion.div>
+        </div>
 
-        <motion.div
-          variants={item}
-          className="mx-auto mt-14 flex max-w-lg divide-x divide-[#C5A880]/35"
+        <div
+          className="hero-rise mx-auto mt-14 flex max-w-lg divide-x divide-[#C5A880]/35"
+          style={{ animationDelay: "280ms" }}
         >
           {stats.map((s) => (
             <div
@@ -118,8 +94,8 @@ export function Hero() {
               </div>
             </div>
           ))}
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     </section>
   );
 }

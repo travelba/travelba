@@ -55,7 +55,7 @@ export const SERVICE_KEYS = [
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
 
 const UNSPLASH = (id: string) =>
-  `https://images.unsplash.com/${id}?q=80&w=1100&auto=format&fit=crop`;
+  `https://images.unsplash.com/${id}?q=75&w=800&auto=format&fit=crop`;
 
 export const SERVICE_IMAGES: Record<ServiceKey, string> = {
   jet: UNSPLASH("photo-1540962351504-03099e0a754b"),
