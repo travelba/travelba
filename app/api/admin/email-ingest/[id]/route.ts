@@ -13,12 +13,30 @@ import {
 import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
 import { closeIngestSiblings, loadEmailIngestFiles, noteIngestDecision, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
+import { sanitizeEmailHtml } from "@/lib/crm/email-source";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
+
+/** Corps du mail, à l’ouverture d’une carte. La liste ne le charge pas. */
+export async function GET(_request: Request, ctx: Ctx) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const { id } = await ctx.params;
+  const { data, error } = await auth.supabase
+    .from("crm_email_ingest")
+    .select("body_html, body_text")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return jsonError("Message introuvable", 404);
+  return NextResponse.json({
+    body_html: sanitizeEmailHtml(data.body_html),
+    body_text: data.body_text || "",
+  });
+}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();

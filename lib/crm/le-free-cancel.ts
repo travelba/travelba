@@ -1,8 +1,18 @@
 import { hotelDisplayName, hotelStayLabel } from "@/lib/crm/carnet";
 import { confirmationRefsAlign } from "@/lib/crm/email-match";
 import { catalogNameAgrees } from "@/lib/crm/hotel-gallery";
+import type { ClientHotelCancelOffer } from "@/lib/crm/le-cancel-copy";
 import { isLeCancelled, type LeBooking } from "@/lib/crm/little-emperors";
 import { isActiveItem, type CrmBookingItem } from "@/lib/crm/types";
+
+export {
+  CLIENT_CANCEL_ADVISOR,
+  CLIENT_CANCEL_CARD_LAG,
+  CLIENT_CANCEL_NOT_SENT,
+  CLIENT_CANCEL_REFUSED,
+  clientCancelQuestion,
+  type ClientHotelCancelOffer,
+} from "@/lib/crm/le-cancel-copy";
 
 /**
  * UTC+14 est le fuseau le plus en avance. Une heure sans fuseau est lue ainsi :
@@ -60,12 +70,6 @@ const FEE_PHRASES = [
 
 const AFTER_MARKERS = ["after", "thereafter", "apres", "beyond", "later than"];
 
-export const CLIENT_CANCEL_ADVISOR = "Contactez votre conseiller.";
-export const CLIENT_CANCEL_REFUSED = "Cette annulation n’est plus gratuite. Contactez votre conseiller.";
-export const CLIENT_CANCEL_NOT_SENT = "Rien n’a été annulé. Contactez votre conseiller.";
-export const CLIENT_CANCEL_CARD_LAG =
-  "L’hôtel a annulé la réservation. Contactez votre conseiller si elle apparaît encore.";
-
 export type LeCancelRow = {
   id: string;
   le_booking_id: number;
@@ -80,16 +84,6 @@ export type LeCancelRow = {
   cancellation_policies: string[];
   status: string | null;
 };
-
-export type ClientHotelCancelOffer =
-  | {
-      itemId: string;
-      mode: "free";
-      hotelName: string;
-      stayLabel: string;
-      untilLabel: string;
-    }
-  | { itemId: string; mode: "advisor" };
 
 type StayStamp = {
   confirmation_number: string | null;
@@ -243,10 +237,6 @@ function rowsForCard(item: CrmBookingItem, rows: LeCancelRow[]) {
 
 function otherCardsForRow(item: CrmBookingItem, hotels: CrmBookingItem[], row: StayStamp) {
   return hotels.filter((hotel) => hotel.id !== item.id && hotel.kind === "hotel" && isActiveItem(hotel) && leStayMatchesCard(hotel, row));
-}
-
-export function clientCancelQuestion(offer: { hotelName: string; stayLabel: string; untilLabel: string }) {
-  return `Annuler ${offer.hotelName}, ${offer.stayLabel} ? Annulation gratuite jusqu’au ${offer.untilLabel}.`;
 }
 
 export function clientCancelTrace(hotelName: string, stayLabel: string, untilLabel: string) {

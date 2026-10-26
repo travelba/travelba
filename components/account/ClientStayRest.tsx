@@ -31,7 +31,7 @@ import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
-import { stripePublishableKey } from "@/lib/crm/stripe";
+import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import {
   isActiveItem,

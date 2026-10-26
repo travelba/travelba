@@ -47,7 +47,7 @@ import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-open";
 import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
 import { HotelFreeCancel } from "@/components/account/HotelFreeCancel";
-import type { ClientHotelCancelOffer } from "@/lib/crm/le-free-cancel";
+import type { ClientHotelCancelOffer } from "@/lib/crm/le-cancel-copy";
 import {
   bookingHasFlight,
   composeItineraryDay,
@@ -223,7 +223,14 @@ function CardBody({
         <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
       ) : null}
       {cancelOffer && reference && item.kind === "hotel" ? (
-        <HotelFreeCancel reference={reference} offer={cancelOffer} />
+        <HotelFreeCancel
+          reference={reference}
+          free={cancelOffer.mode === "free"}
+          itemId={cancelOffer.itemId}
+          hotelName={cancelOffer.mode === "free" ? cancelOffer.hotelName : ""}
+          stayLabel={cancelOffer.mode === "free" ? cancelOffer.stayLabel : ""}
+          untilLabel={cancelOffer.mode === "free" ? cancelOffer.untilLabel : ""}
+        />
       ) : null}
       <div className="flex flex-wrap items-end gap-3">
         {documentsForItem(item, docs).map((doc) => (

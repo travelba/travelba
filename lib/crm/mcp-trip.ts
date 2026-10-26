@@ -1949,6 +1949,9 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
   }
   const journal = noted.length > 0 && noted.every(Boolean);
   const warning = await ledgerWarning("Carte enregistrée", () => refreshBookingLedger(db, booking.id));
+  await import("@/lib/crm/dossier-refresh")
+    .then((mod) => mod.refreshBookingDerived(booking.id))
+    .catch(() => undefined);
   const draft =
     visibilityChanged && visible === true
       ? await noteCarnetAdditions(db, booking.id, [{ id: carteId, kind: item.kind }])
@@ -2077,6 +2080,9 @@ export async function removeCarte(input: Record<string, unknown>, admin?: Admin)
   if (deleteError) throw new McpWriteError("Carte non retirée.");
   await resyncAccueilVip(db, booking.id);
   const warning = await ledgerWarning("Carte retirée", () => refreshBookingLedger(db, booking.id));
+  await import("@/lib/crm/dossier-refresh")
+    .then((mod) => mod.refreshBookingDerived(booking.id))
+    .catch(() => undefined);
   return {
     carte_id: carteId,
     dossier_id: booking.id,

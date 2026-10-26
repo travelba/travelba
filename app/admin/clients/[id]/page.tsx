@@ -53,6 +53,7 @@ import {
 import { documentExpiryStatus } from "@/lib/crm/identity";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import { listStayTitle } from "@/lib/crm/carnet";
+import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { StatusChip } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
@@ -261,9 +262,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
     supabase,
     bookingRows.map((row) => row.id)
   );
-  const pauseRow = c.phone
-    ? await supabase.from("crm_whatsapp_threads").select("paused_until").eq("phone", c.phone).maybeSingle()
-    : { data: null };
+  const [pauseRow, covers] = await Promise.all([
+    c.phone
+      ? supabase.from("crm_whatsapp_threads").select("paused_until").eq("phone", c.phone).maybeSingle()
+      : Promise.resolve({ data: null }),
+    resolveListCovers(
+      activeBookings.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }))
+    ),
+  ]);
   const conciergePaused = !pauseRow.data ? false : threadIsPaused(pauseRow.data.paused_until, new Date());
   const threadMessages = whatsappMessages.error
     ? (
@@ -405,7 +411,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     href={`/admin/reservations/${b.id}`}
                     className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)]"
                   >
-                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-20 shrink-0 rounded-xl lg:w-24" />
+                    <BookingHero
+                      booking={b}
+                      places={places.arrival[b.id]}
+                      plain
+                      list
+                      resolvedSrc={covers[b.id] ?? null}
+                      className="h-14 w-20 shrink-0 rounded-xl lg:w-24"
+                    />
                     <span className="min-w-0">
                       <span className="block break-words font-medium lg:truncate">
                         {listStayTitle(b.title, b.destination, places.arrival[b.id], places.route[b.id], places.layovers[b.id], "Séjour", b.customer_id === c.id ? c.city : null)}

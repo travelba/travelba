@@ -335,12 +335,12 @@ async function enrichSpendBookings(
   });
 }
 
-export async function loadClientLedger(
+async function loadClientLedgerRows(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
     Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id">>,
-  audience: ClientLedgerAudience
-): Promise<ClientLedgerView> {
+  audiences: ClientLedgerAudience[]
+): Promise<ClientLedgerView[]> {
   const member = isCompanyMember(customer);
   const { data: myBookings } = await supabase
     .from("crm_bookings")
@@ -407,16 +407,13 @@ export async function loadClientLedger(
 
   const spend = await loadSpendAccounts(supabase, customer, bookings, contextIds);
   bookings = spend.bookings;
-  const mb3mByTransaction = await mb3mLinksForLedger(customer.id, rows, audience);
-
-  return shapeClientLedger({
+  const shared = {
     companyRole: customer.company_role,
     travelerBookingIds: bookingIds,
     rows,
     walletBalance,
     currency,
     bookings,
-    audience,
     billingCompanyCount: billingCompanies.length,
     companyNames,
     fundingCompanies: billingCompanies,
@@ -424,8 +421,37 @@ export async function loadClientLedger(
     viewerId: customer.id,
     spendAccounts: spend.accounts,
     openCarnetOwnerIds: spend.openCarnetOwnerIds,
-    mb3mByTransaction,
-  });
+  };
+  const unique = [...new Set(audiences)];
+  const links = await Promise.all(unique.map((audience) => mb3mLinksForLedger(customer.id, rows, audience)));
+  return unique.map((audience, index) =>
+    shapeClientLedger({
+      ...shared,
+      audience,
+      mb3mByTransaction: links[index],
+    })
+  );
+}
+
+export async function loadClientLedger(
+  supabase: SupabaseClient,
+  customer: Pick<CrmCustomer, "id" | "company_role"> &
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id">>,
+  audience: ClientLedgerAudience
+): Promise<ClientLedgerView> {
+  const [view] = await loadClientLedgerRows(supabase, customer, [audience]);
+  return view;
+}
+
+/** Une lecture des écritures, puis une vue par public (client, agence). */
+export async function loadClientLedgerViews(
+  supabase: SupabaseClient,
+  customer: Pick<CrmCustomer, "id" | "company_role"> &
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id">>,
+  audiences: ClientLedgerAudience[]
+) {
+  if (!audiences.length) return [] as ClientLedgerView[];
+  return loadClientLedgerRows(supabase, customer, audiences);
 }
 
 async function mb3mLinksForLedger(_viewerId: string, rows: CrmTransaction[], audience: ClientLedgerAudience) {

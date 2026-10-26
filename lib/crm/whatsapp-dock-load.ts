@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { stayDestinationLine } from "@/lib/crm/stay-phrase";
 import {
@@ -42,6 +43,21 @@ export function emptyDockSnapshot(): DockSnapshot {
   return { threads: [], templates: approvedManualTemplates(), previewBlocked: isVercelPreview() };
 }
 
+/**
+ * Les 400 derniers messages, une fois par requête.
+ * Le menu (compteur) et le dock lisent la même promesse.
+ */
+export const loadRecentWhatsappRows = cache(async (): Promise<RawMessage[] | null> => {
+  const admin = createServiceClient();
+  const loaded = await admin
+    .from("crm_whatsapp_messages")
+    .select(RICH)
+    .order("created_at", { ascending: false })
+    .limit(400);
+  if (loaded.error) return null;
+  return (loaded.data || []) as RawMessage[];
+});
+
 export async function loadDockSnapshot(): Promise<DockSnapshot> {
   try {
     const admin = createServiceClient();
@@ -63,11 +79,10 @@ export async function loadDockThread(fil: string): Promise<{ messages: InboxMess
 }
 
 async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: string | null) {
-  const loaded = await admin.from("crm_whatsapp_messages").select(RICH).order("created_at", { ascending: false }).limit(400);
+  const shared = await loadRecentWhatsappRows();
   const rows = (
-    loaded.error
-      ? ((await admin.from("crm_whatsapp_messages").select(BASE).order("created_at", { ascending: false }).limit(400)).data || [])
-      : loaded.data || []
+    shared ||
+    ((await admin.from("crm_whatsapp_messages").select(BASE).order("created_at", { ascending: false }).limit(400)).data || [])
   ) as RawMessage[];
   const customerIds = [...new Set(rows.map((row) => row.customer_id).filter(Boolean))] as string[];
   const bookingIds = [...new Set(rows.map((row) => row.booking_id).filter(Boolean))] as string[];

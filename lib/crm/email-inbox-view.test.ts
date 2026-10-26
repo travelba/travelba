@@ -68,6 +68,7 @@ test("le mail Emirates n’affiche ni le choix de carte, ni la date deux fois, n
   const html = renderToStaticMarkup(
     createElement(EmailIngestInbox, {
       rows: [row],
+      initialOpenId: "mail-1",
       customers: [
         {
           id: "client-1",

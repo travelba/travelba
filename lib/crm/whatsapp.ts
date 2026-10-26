@@ -1,4 +1,4 @@
-import { entryButtonSuffix, entryCodeFromLink } from "./entry-link";
+import { entryButtonSuffix, entryCodeFromLink } from "./entry-code";
 import { resolveContentSid } from "./twilio-content-sid";
 import { greetingGivenName } from "./identity";
 import { toE164 } from "./phone";

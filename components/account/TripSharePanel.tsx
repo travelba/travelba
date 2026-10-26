@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { FoldedRow } from "@/components/crm/FoldedRow";
-import type { ShareCompanion } from "@/lib/crm/trip-share";
+import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 
 export function TripSharePanel({
   bookingId,

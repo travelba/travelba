@@ -257,10 +257,13 @@ describe("soldes des comptes", () => {
   it("l’onglet Carte du dossier affiche toujours le solde Pliant", () => {
     const page = readFileSync(join(root, "app/admin/reservations/[id]/page.tsx"), "utf8");
     const editor = readFileSync(join(root, "components/admin/BookingEditor.tsx"), "utf8");
-    assert.match(page, /loadPliantAccountBalance/);
-    assert.match(page, /pliantAccount=\{pliantAccount\}/);
+    const balance = readFileSync(join(root, "components/admin/DossierPliantBalance.tsx"), "utf8");
+    assert.match(balance, /loadPliantAccountBalance/);
+    assert.match(balance, /PliantAccountBalanceCard/);
+    assert.match(page, /DossierPliantBalance/);
+    assert.match(page, /<Suspense/);
     const cartes = editor.slice(editor.indexOf('tab === "cartes"'));
-    assert.match(cartes, /PliantAccountBalanceCard/);
+    assert.match(cartes, /pliantBalance/);
   });
 
   it("l’accueil et les pages argent affichent ces soldes", () => {

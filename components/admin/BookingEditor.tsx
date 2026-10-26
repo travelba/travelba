@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { greetingGivenName, shownPersonName } from "@/lib/crm/identity";
@@ -28,8 +29,6 @@ import {
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
-import { EstaOnBooking } from "@/components/admin/EstaOnBooking";
-import { UkEtaOnBooking } from "@/components/admin/UkEtaOnBooking";
 import { Icon } from "@/components/crm/icons";
 import type { EstaTravelerLine } from "@/lib/crm/esta-status";
 import { settledAuthorizationCountries } from "@/lib/crm/visa-cover";
@@ -56,27 +55,19 @@ import {
   stayNameField,
 } from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
-import { BookingIngest } from "@/components/crm/BookingIngest";
 import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
-import { BookingCards } from "@/components/admin/BookingCards";
-import { PliantAccountBalanceCard } from "@/components/admin/PliantCardDesk";
-import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
-import { TripCostsBlock } from "@/components/admin/TripCostsBlock";
-import { InvoiceBlock } from "@/components/admin/InvoiceBlock";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
 import type { TripAccountingView } from "@/lib/crm/trip-costs";
 import { reglementChecklist, reglementCostsToPoint } from "@/lib/crm/reglement-checklist";
 import { hotelCardNeedsAlert, principalGuest } from "@/lib/crm/hotel-arrival";
 import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
-import { WhatsappThread, type WhatsappThreadMessage, type WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
-import { BookingExpensesPanel, type ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
-import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
+import type { WhatsappThreadMessage, WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
+import type { ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
-import { ClientInterfacePreview } from "@/components/account/ClientInterfacePreview";
 import { applyExpenseLedgerChange, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import {
   ArchiveBookingButton,
@@ -84,14 +75,13 @@ import {
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
+import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { hotelTripChecklist } from "@/lib/crm/hotel-desk";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
-import { VisaSection } from "@/components/crm/VisaSection";
-import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
@@ -107,8 +97,7 @@ import {
 import { type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
-import { TripSharePanel } from "@/components/account/TripSharePanel";
-import type { ShareCompanion } from "@/lib/crm/trip-share";
+import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import {
   customerBillingPickLabel,
@@ -133,6 +122,54 @@ import {
 import { useMirror } from "@/lib/crm/use-mirror";
 import { adminAction } from "@/lib/crm/admin-action";
 import { TITLE_REVIEW_MARK } from "@/lib/crm/import-title";
+
+function panelLoading(label: string) {
+  return <p className="rounded-3xl bg-[#faf9f6] px-5 py-4 text-sm text-muted">{label}</p>;
+}
+
+/** Panneaux absents du premier affichage (ou sous les cartes) : chunk séparé. */
+const BookingIngest = dynamic(() => import("@/components/crm/BookingIngest").then((m) => m.BookingIngest), {
+  loading: () => panelLoading("Chargement de l’import…"),
+});
+const CustomerEditor = dynamic(() => import("@/components/admin/CustomerEditor").then((m) => m.CustomerEditor), {
+  loading: () => panelLoading("Chargement de la fiche…"),
+});
+const WhatsappThread = dynamic(() => import("@/components/admin/WhatsappThread").then((m) => m.WhatsappThread), {
+  loading: () => panelLoading("Chargement de WhatsApp…"),
+});
+const BookingExpensesPanel = dynamic(
+  () => import("@/components/admin/BookingExpensesPanel").then((m) => m.BookingExpensesPanel),
+  { loading: () => panelLoading("Chargement des dépenses…") }
+);
+const ClientTransactionsPanel = dynamic(
+  () => import("@/components/account/ClientTransactionsPanel").then((m) => m.ClientTransactionsPanel),
+  { loading: () => panelLoading("Chargement du compte…") }
+);
+const TripCostsBlock = dynamic(() => import("@/components/admin/TripCostsBlock").then((m) => m.TripCostsBlock), {
+  loading: () => panelLoading("Chargement des coûts…"),
+});
+const InvoiceBlock = dynamic(() => import("@/components/admin/InvoiceBlock").then((m) => m.InvoiceBlock), {
+  loading: () => panelLoading("Chargement de la facture…"),
+});
+const BookingCards = dynamic(() => import("@/components/admin/BookingCards").then((m) => m.BookingCards), {
+  loading: () => panelLoading("Chargement des cartes…"),
+});
+const VisaSection = dynamic(() => import("@/components/crm/VisaSection").then((m) => m.VisaSection), {
+  loading: () => panelLoading("Chargement des formalités…"),
+});
+const ExtrasPanel = dynamic(() => import("@/components/crm/ExtrasPanel").then((m) => m.ExtrasPanel), {
+  loading: () => panelLoading("Chargement des prestations…"),
+});
+const EstaOnBooking = dynamic(() => import("@/components/admin/EstaOnBooking").then((m) => m.EstaOnBooking), {
+  loading: () => panelLoading("Chargement ESTA…"),
+});
+const UkEtaOnBooking = dynamic(() => import("@/components/admin/UkEtaOnBooking").then((m) => m.UkEtaOnBooking), {
+  loading: () => panelLoading("Chargement ETA…"),
+});
+const ClientInterfacePreview = dynamic(
+  () => import("@/components/account/ClientInterfacePreview").then((m) => m.ClientInterfacePreview),
+  { loading: () => panelLoading("Chargement de l’aperçu…") }
+);
 
 /** Assez pour recalculer le montant : prix, billets, aéroports, aller-retour. */
 function ledgerMoneyKey(view: ClientLedgerView | null) {
@@ -270,7 +307,7 @@ export function BookingEditor({
   refusals = [],
   visaRequests = [],
   pliantReady = false,
-  pliantAccount = null,
+  pliantBalance = null,
   shareUrl = null,
   shareCompanions = [],
   arrivals = [],
@@ -334,7 +371,7 @@ export function BookingEditor({
   }[];
   pliantReady?: boolean;
   /** Disponible du compte Pliant de l’agence. Null : lecture impossible, le solde reste affiché. */
-  pliantAccount?: { availableCents: number | null; currency: string } | null;
+  pliantBalance?: ReactNode;
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
@@ -440,6 +477,11 @@ export function BookingEditor({
   const titleEdit = stayNameField(routeTitle, titleDraft);
   const [coverOpen, setCoverOpen] = useState(false);
   const tab = bookingTabFromParam(searchParams.get("tab"));
+  const [clientEditorSeen, setClientEditorSeen] = useState(tab === "client");
+  if (tab === "client" && !clientEditorSeen) setClientEditorSeen(true);
+  useEffect(() => {
+    void adminAction(`/api/admin/bookings/${booking.id}/vu`, { method: "POST" });
+  }, [booking.id]);
   const [more, setMore] = useState(false);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
@@ -1792,7 +1834,7 @@ export function BookingEditor({
         </>
       ) : null}
 
-      {customer ? (
+      {customer && clientEditorSeen ? (
         <div className={tab === "client" ? "order-2" : "hidden"}>
           {clientPick && clientPick.id !== customer.id ? (
             <p className="mb-4 text-sm text-muted">
@@ -2122,7 +2164,7 @@ export function BookingEditor({
 
       {tab === "cartes" ? (
         <div className="space-y-6">
-          <PliantAccountBalanceCard account={pliantAccount} />
+          {pliantBalance}
           <BookingCards
             bookingId={booking.id}
             cards={bookingCards}

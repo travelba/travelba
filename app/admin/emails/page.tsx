@@ -1,12 +1,41 @@
 import Link from "next/link";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { EmailIngestInbox } from "@/components/admin/EmailIngestInbox";
+import { Pagination } from "@/components/admin/Pagination";
 import { requireStaffPage } from "@/lib/crm/auth";
-import { sanitizeEmailHtml } from "@/lib/crm/email-source";
+import { ADMIN_PAGE_SIZE, pageRange, parsePage, type SearchParamValue } from "@/lib/crm/admin-list";
 import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest } from "@/lib/crm/types";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { appliedSinceIso } from "@/lib/crm/import-metrics";
 import { readProposalOps, type ProposalOp } from "@/lib/crm/import-proposal";
+
+/** Colonnes de la file. Le corps HTML et le texte partent au GET d’une carte ouverte. */
+const EMAIL_LIST_COLUMNS = [
+  "id",
+  "gmail_message_id",
+  "gmail_thread_id",
+  "label",
+  "from_email",
+  "subject",
+  "received_at",
+  "status",
+  "extract",
+  "candidates",
+  "attachments",
+  "warnings",
+  "suggested_customer_id",
+  "suggested_booking_id",
+  "created_booking_id",
+  "error",
+  "ignore_reason",
+  "grouped_into",
+  "confirmation_refs",
+  "match_tier",
+  "field_confidence",
+  "field_quotes",
+  "created_at",
+  "updated_at",
+].join(", ");
 
 export const metadata = { title: "Boîte d'import" };
 
@@ -18,31 +47,38 @@ function vueOf(value: string | string[] | undefined): Vue {
   return "file";
 }
 
+function emailsHref(vue: Vue, page: number) {
+  const query = new URLSearchParams();
+  if (vue !== "file") query.set("vue", vue);
+  if (page > 1) query.set("page", String(page));
+  const qs = query.toString();
+  return qs ? `/admin/emails?${qs}` : "/admin/emails";
+}
+
 export default async function AdminEmailsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vue?: string | string[] }>;
+  searchParams: Promise<{ vue?: SearchParamValue; page?: SearchParamValue }>;
 }) {
-  const vue = vueOf((await searchParams).vue);
+  const params = await searchParams;
+  const vue = vueOf(params.vue);
+  const page = parsePage(params.page);
+  const { from, to } = pageRange(page);
   const since = appliedSinceIso();
   const { supabase } = await requireStaffPage();
-  let mailQuery = supabase.from("crm_email_ingest").select("*");
+  let mailQuery = supabase.from("crm_email_ingest").select(EMAIL_LIST_COLUMNS, { count: "exact" });
   if (vue === "ignores") mailQuery = mailQuery.eq("status", "ignored");
   else if (vue === "appliques") mailQuery = mailQuery.eq("status", "attached").gte("updated_at", since);
   else mailQuery = mailQuery.in("status", [...EMAIL_INBOX_QUEUE_STATUSES]);
-  const [{ data: rows }, { data: customers }] = await Promise.all([
-    mailQuery.order("received_at", { ascending: false, nullsFirst: false }),
+  const [{ data: rows, count }, { data: customers }] = await Promise.all([
+    mailQuery.order("received_at", { ascending: false, nullsFirst: false }).range(from, to),
     supabase
       .from("crm_customers")
       .select("id, first_name, last_name, company_name, email, phone")
       .order("last_name"),
   ]);
 
-  // Le corps manquant d’un mail se complète au cron gmail-ingest, pas pendant l’affichage (A-26).
-  const inbox = ((rows || []) as CrmEmailIngest[]).map((row) => ({
-    ...row,
-    body_html: sanitizeEmailHtml(row.body_html),
-  }));
+  const inbox = (rows || []) as unknown as CrmEmailIngest[];
   const ids = inbox.map((row) => row.id);
   const proposals: { emailIngestId: string; ops: ProposalOp[]; conflict: boolean }[] = [];
   if (ids.length) {
@@ -94,6 +130,9 @@ export default async function AdminEmailsPage({
       </nav>
       <p className="mt-2 text-xs text-muted">Raccourcis : A accepter, I ignorer, E écarter le doublon.</p>
       <div className="mt-4">
+        <Pagination page={page} total={count ?? inbox.length} hrefFor={(next) => emailsHref(vue, next)} label="mails" />
+      </div>
+      <div className="mt-4">
         <EmailIngestInbox
           rows={inbox}
           customers={(customers || []) as PickableCustomer[]}
@@ -101,6 +140,11 @@ export default async function AdminEmailsPage({
           proposals={proposals}
         />
       </div>
+      {count != null && count > ADMIN_PAGE_SIZE ? (
+        <div className="mt-4">
+          <Pagination page={page} total={count} hrefFor={(next) => emailsHref(vue, next)} label="mails" />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -82,7 +82,7 @@ export function hotelCitiesCompatible(left: string, right: string) {
   return small.every((token) => large.includes(token));
 }
 
-function directoryId(item: Pick<CrmBookingItem, "details">) {
+export function knownLeHotelId(item: Pick<CrmBookingItem, "details">) {
   for (const key of ["le_hotel_id", "little_emperors_hotel_id", "hotel_id"] as const) {
     const value = item.details?.[key];
     if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
@@ -98,7 +98,7 @@ function directoryId(item: Pick<CrmBookingItem, "details">) {
  */
 export function matchHotelDirectory(item: CrmBookingItem, directory: HotelDirectoryEntry[]) {
   if (item.kind !== "hotel" || !directory.length) return null;
-  const knownId = directoryId(item);
+  const knownId = knownLeHotelId(item);
   if (knownId != null) {
     const byId = directory.find((row) => row.hotel_id === knownId);
     if (byId) return byId;

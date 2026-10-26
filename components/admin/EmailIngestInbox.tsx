@@ -99,9 +99,31 @@ function printedTravelers(row: CrmEmailIngest) {
 }
 
 function OriginalMail({ row }: { row: CrmEmailIngest }) {
-  const html = sanitizeEmailHtml(row.body_html);
-  const text = (row.body_text || "").trim();
-  const htmlVisible = emailHtmlHasText(row.body_html);
+  const hasBody = Boolean(row.body_html || row.body_text);
+  const [body, setBody] = useState<{ html: string; text: string } | null>(
+    hasBody ? { html: row.body_html || "", text: row.body_text || "" } : null
+  );
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (body || failed) return;
+    let cancelled = false;
+    void adminAction<{ body_html?: string; body_text?: string }>(`/api/admin/email-ingest/${row.id}`, {
+      method: "GET",
+    }).then((result) => {
+      if (cancelled) return;
+      if (!result.ok || !result.data) {
+        setFailed(true);
+        return;
+      }
+      setBody({ html: result.data.body_html || "", text: result.data.body_text || "" });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [body, failed, row.id]);
+  const html = sanitizeEmailHtml(body?.html);
+  const text = (body?.text || "").trim();
+  const htmlVisible = emailHtmlHasText(body?.html);
   return (
     <aside className="rounded-2xl border border-[#C5A880] bg-[#FAF9F6] p-3">
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">
@@ -112,20 +134,22 @@ function OriginalMail({ row }: { row: CrmEmailIngest }) {
         {row.from_email || "Expéditeur inconnu"}
         {row.received_at ? ` · ${formatDateTimeFr(row.received_at)}` : ""}
       </p>
-      {htmlVisible ? (
+      {!body && !failed ? <p className="mt-3 text-sm text-muted">Chargement du message…</p> : null}
+      {failed ? <p className="mt-3 text-sm text-muted">Le message n’a pas pu être lu.</p> : null}
+      {body && htmlVisible ? (
         <div
           className="mt-3 max-h-[32rem] overflow-auto rounded-xl bg-white p-3 text-sm text-[#0B192C]"
           dangerouslySetInnerHTML={{ __html: html }}
         />
-      ) : text ? (
+      ) : body && text ? (
         <pre className="mt-3 max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 font-sans text-sm text-[#0B192C]">
           {text}
         </pre>
-      ) : (
+      ) : body ? (
         <p className="mt-3 text-sm text-muted">
           Ce mail n’a pas de texte. Le document est dans les pièces jointes.
         </p>
-      )}
+      ) : null}
     </aside>
   );
 }
@@ -153,12 +177,15 @@ export function EmailIngestInbox({
   customers,
   mode = "file",
   proposals = [],
+  initialOpenId = null,
 }: {
   rows: CrmEmailIngest[];
   customers: PickableCustomer[];
   /** file : à traiter. appliques : 24 h, avec Annuler. ignores : à récupérer. */
   mode?: "file" | "appliques" | "ignores";
   proposals?: { emailIngestId: string; ops: ProposalOp[]; conflict: boolean }[];
+  /** Carte déjà ouverte (test). La liste reste repliée. */
+  initialOpenId?: string | null;
 }) {
   const router = useRouter();
   const customerLabelById = useMemo(() => {
@@ -186,6 +213,7 @@ export function EmailIngestInbox({
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
   const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
+  const [openedId, setOpenedId] = useState<string | null>(initialOpenId);
 
   const cards = useMemo(() => collapseInboxRows(rows), [rows]);
   const proposalById = useMemo(() => {
@@ -461,6 +489,27 @@ export function EmailIngestInbox({
             destination: extract.destination,
             subject: row.subject,
           });
+
+        if (openedId !== row.id) {
+          return (
+            <article key={row.id} className="rounded-2xl border border-border bg-white px-4 py-3 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setOpenedId(row.id)}
+                className="admin-tap flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-left"
+              >
+                <span className="min-w-0 flex-1 truncate font-semibold text-[#0B192C]">
+                  {row.subject?.trim() || "Sans objet"}
+                </span>
+                <span className="max-w-[16rem] truncate text-sm text-muted">{row.from_email || "—"}</span>
+                <span className="text-sm text-muted">{row.received_at ? formatDateFr(row.received_at) : ""}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#0B192C]">
+                  {row.label || row.status}
+                </span>
+              </button>
+            </article>
+          );
+        }
 
         return (
           <article
