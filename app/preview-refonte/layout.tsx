@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond } from "next/font/google";
+import { Bodoni_Moda } from "next/font/google";
 import { Shell } from "@/components/vitrine/Shell";
 import { signatureMenu } from "@/lib/vitrine/destinations";
 import "@/components/vitrine/vitrine.css";
 
-const serif = Cormorant_Garamond({
+const serif = Bodoni_Moda({
   subsets: ["latin"],
-  weight: ["500", "600"],
+  weight: ["400", "500"],
   style: ["normal", "italic"],
   variable: "--font-vitrine-serif",
   display: "swap",

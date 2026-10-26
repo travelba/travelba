@@ -5,28 +5,29 @@ import { PREVIEW } from "@/lib/vitrine/paths";
 export function ApplicationView() {
   return (
     <article>
-      <header className="vz-section" style={{ paddingTop: "8rem" }}>
-        <p className="vz-kicker">L’application</p>
-        <h1>
-          Réserver chez Travel BA, <em>c’est ouvrir le carnet.</em>
-        </h1>
-        <p className="vz-lede">
-          L’espace client est une application : moderne, tenue, à votre nom. Les écrans ci-dessous montrent un séjour
-          d’exemple, le Japon signature. Claire Berger et Thomas Berger n’existent pas. Aucun dossier réel n’est ouvert.
-        </p>
-        <div className="vz-actions">
-          <Link className="vz-link" href="/connexion">
-            Ouvrir l’espace client
-          </Link>
-          <Link className="vz-link" href={`${PREVIEW}/voyages/japon`}>
-            Lire l’itinéraire Japon
-          </Link>
+      <header className="vz-hero">
+        <div className="vz-hero-copy">
+          <p className="vz-kicker">L’application</p>
+          <h1>
+            Réserver chez Travel BA, <em>c’est ouvrir le carnet.</em>
+          </h1>
+          <p className="vz-lede">
+            L’espace client est une application : moderne, tenue, à votre nom. Les écrans ci-dessous montrent un séjour
+            d’exemple, le Japon signature. Claire Berger et Thomas Berger n’existent pas. Aucun dossier réel n’est ouvert.
+          </p>
+          <div className="vz-actions">
+            <Link className="vz-btn" href="/connexion">
+              Ouvrir l’espace client
+            </Link>
+            <Link className="vz-btn is-ghost" href={`${PREVIEW}/voyages/japon`}>
+              Lire l’itinéraire Japon
+            </Link>
+          </div>
+        </div>
+        <div className="vz-hero-stage">
+          <Phone controls />
         </div>
       </header>
-
-      <section className="vz-section" style={{ paddingTop: 0 }}>
-        <Phone controls />
-      </section>
 
       <section className="vz-section vz-phones">
         <Phone screen="carnet" />
@@ -35,7 +36,9 @@ export function ApplicationView() {
       </section>
 
       <section className="vz-section">
-        <h2>Ce que le carnet tient</h2>
+        <header className="vz-rule-head">
+          <h2>Ce que le carnet tient</h2>
+        </header>
         <div className="vz-feature-grid">
           <article>
             <h3>Les jours</h3>
