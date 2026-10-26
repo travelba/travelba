@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DetailScene } from "@/components/vitrine/Blocks";
 import { Phone } from "@/components/vitrine/Phone";
 import { PREVIEW } from "@/lib/vitrine/paths";
 
@@ -28,6 +29,8 @@ export function ApplicationView() {
           <Phone controls />
         </div>
       </header>
+
+      <DetailScene slug="application" />
 
       <section className="vz-section vz-phones">
         <Phone screen="carnet" />

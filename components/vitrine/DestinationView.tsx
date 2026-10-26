@@ -66,6 +66,11 @@ function Houses({ trip }: { trip: Itinerary }) {
 function Close({ destination, trip }: { destination: Destination; trip: Itinerary }) {
   return (
     <div className="vz-section">
+      <p className="vz-pull">La chambre demandée, la table tenue, le vol repris si l’heure change.</p>
+      <p className="vz-club-note">
+        À {destination.name}, le conseiller connaît la maison de l’intérieur. Le détail confirmé entre dans le carnet. Il
+        reste joignable à toute heure.
+      </p>
       <h2>Ce que la maison tient</h2>
       <ul className="vz-steps">
         {trip.experiences.map((item) => (

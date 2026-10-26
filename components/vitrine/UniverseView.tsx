@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Universe } from "@/lib/vitrine/types";
 import { contactPath, PREVIEW } from "@/lib/vitrine/paths";
-import { AppRecall } from "./Blocks";
+import { AppRecall, DetailScene } from "./Blocks";
 import { Photo } from "./Photo";
 
 export function UniverseView({ universe }: { universe: Universe }) {
@@ -50,6 +50,8 @@ export function UniverseView({ universe }: { universe: Universe }) {
       ) : (
         opener
       )}
+
+      <DetailScene slug={universe.slug} />
 
       <section className={`vz-section ${universe.layout === "essay" ? "vz-split" : ""}`}>
         <div className="vz-narrow">

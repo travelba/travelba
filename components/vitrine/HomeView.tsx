@@ -1,155 +1,127 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Award,
-  BadgeCheck,
-  Bell,
-  Briefcase,
-  Building2,
-  Car,
-  Clock,
-  ConciergeBell,
-  MessageCircle,
-  Plane,
-  Play,
-  Shield,
-  SlidersHorizontal,
-  Sparkles,
-  Users,
-  Wallet,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { Phone } from "@/components/vitrine/Phone";
 import { Photo } from "@/components/vitrine/Photo";
+import { destinations } from "@/lib/vitrine/destinations";
 import { contactPath, PREVIEW, voyagePath } from "@/lib/vitrine/paths";
 
-const privileges = [
+const pillars = [
   {
-    n: "01",
-    title: "Petit-déjeuner offert quotidiennement",
-    text: "Buffet gastronomique ou servi à la carte en suite pour deux convives durant l'intégralité du séjour.",
-    foot: "SYSTÉMATIQUE · 5 ÉTOILES",
-    icon: ConciergeBell,
-  },
-  {
-    n: "02",
-    title: "Early Check-in & Late Check-out",
-    text: "Arrivée matinale et départ tardif jusqu'à 16h00 garantis selon disponibilité pour un confort sans contrainte horaire.",
-    foot: "SOUPLESSE HORAIRE VIP",
-    icon: Clock,
-  },
-  {
-    n: "03",
-    title: "Surclassement prioritaire",
-    text: "Passage à la catégorie supérieure de chambre ou suite dès la confirmation de réservation par votre concierge.",
-    foot: "PRIORITÉ HAUT DE RANG",
-    icon: Sparkles,
-  },
-  {
-    n: "04",
-    title: "Crédit de séjour exclusif (100 $ à 200 $)",
-    text: "À faire valoir sur les tables gastronomiques, les rituels de spa ou les activités privées de l'établissement.",
-    foot: "CRÉDIT SPA & DINING",
-    icon: Wallet,
-  },
-];
-
-const creations = [
-  {
-    roman: "I.",
-    title: "JAPON",
-    href: voyagePath("japon"),
+    href: `${PREVIEW}/application`,
     image: "photo-1493976040374-85c8e12f0c0e",
-    alt: "Sanctuaire et allée de torii, lumière du soir",
-    quote: "« Sérénité impériale, des ruelles de Gion aux cimes du Mont Fuji »",
-    body: "Ryokans centenaires réservés en exclusivité, dégustation kaiseki avec chefs triples étoilés et transferts en hélicoptère privé au-dessus de la baie de Sagami.",
-    badge: "IMMERSION PRIVATIVE · 12 JOURS",
-    cta: "Consulter le dossier d'itinéraire",
-    span: "is-7",
-    shot: "is-tall",
-    quoteSize: "is-quote-lg",
+    alt: "Allée de torii dans la forêt",
+    kicker: "L’application",
+    title: "Le carnet, ouvert.",
+    line: "Jours, vols, maisons, documents, et le conseiller dans le même fil.",
   },
   {
-    roman: "II.",
-    title: "NAMIBIE",
-    href: voyagePath("namibie"),
+    href: `${PREVIEW}/sur-mesure`,
+    image: "photo-1582719478250-c89cae4dc85b",
+    alt: "Suite et lumière douce",
+    kicker: "Le service",
+    title: "Tout est tenu.",
+    line: "Maisons, vols, voiture, accueil, tables, formalités. Un seul interlocuteur.",
+  },
+  {
+    href: `${PREVIEW}/voyages`,
     image: "photo-1484318571209-661cf29a69c3",
-    alt: "Dunes du Namib au crépuscule",
-    quote: "« Les dunes de Sossusvlei & safaris aériens en lodge privé »",
-    body: "Vols en Cessna privé entre les concessions sauvages du Namib et les réserves préservées de la côte des Squelettes.",
-    badge: "SAFARI AÉRIEN · 10 JOURS",
-    cta: "Consulter le dossier d'itinéraire",
-    span: "is-5",
-    shot: "is-mid",
-    quoteSize: "is-quote-md",
+    alt: "Dune rouge au crépuscule",
+    kicker: "Voyages signature",
+    title: "Quarante-trois voyages, déjà écrits.",
+    line: "La saison, les maisons, le déroulé. Le détail se confirme avec le conseiller.",
   },
   {
-    roman: "III.",
-    title: "HAWAÏ",
-    href: voyagePath("hawaii"),
-    image: "photo-1510414842594-a61c69b5ae57",
-    alt: "Côte volcanique et mer",
-    quote: "« Oahu, la Grande Île, Maui. »",
-    body: "",
-    badge: "",
-    cta: "Découvrir la création",
-    span: "is-4",
-    shot: "is-short",
-    quoteSize: "",
+    href: `${PREVIEW}/professionnels`,
+    image: "photo-1497366754035-f200968a6e72",
+    alt: "Bureau calme",
+    kicker: "L’entreprise",
+    title: "La politique, puis le voyage.",
+    line: "Collaborateurs et cadres, le même carnet, un agent joignable à toute heure.",
   },
   {
-    roman: "IV.",
-    title: "PATAGONIE ARGENTINE",
-    href: voyagePath("argentine"),
-    image: "photo-1531761535209-180857e963b9",
-    alt: "Glacier et aiguilles de Patagonie",
-    quote: "« Glaciers millénaires et estancias australes au bout du monde »",
-    body: "",
-    badge: "",
-    cta: "Découvrir la création",
-    span: "is-4",
-    shot: "is-short",
-    quoteSize: "",
-  },
-  {
-    roman: "V.",
-    title: "SEYCHELLES",
-    href: voyagePath("seychelles"),
-    image: "photo-1540202404-a2f29016b523",
-    alt: "Rochers de granit dans l'océan Indien",
-    quote: "« Sanctuaires granitiques et criques sauvages de l'Océan Indien »",
-    body: "",
-    badge: "",
-    cta: "Découvrir la création",
-    span: "is-4",
-    shot: "is-short",
-    quoteSize: "",
+    href: `${PREVIEW}/club`,
+    image: "photo-1571896349842-33c89424de2d",
+    alt: "Piscine et lumière du soir",
+    kicker: "Le Club",
+    title: "La maison, et ce qui s’y obtient.",
+    line: "Tarif, petit-déjeuner, horaires, surclassement, crédit selon l’hôtel.",
   },
 ];
 
-const universes = [
+const scenes = [
   {
-    title: "Voyages sur mesure",
-    href: `${PREVIEW}/sur-mesure`,
-    text: "Itinéraires entièrement façonnés selon vos aspirations. De la villa privée sur île déserte aux accès exclusifs dans les musées fermés au public.",
-    icon: SlidersHorizontal,
+    image: "photo-1566073771259-6a8506099945",
+    alt: "Chambre d’hôtel au matin",
+    kicker: "La chambre",
+    title: "Demandée par son nom.",
+    text: "Le conseiller connaît l’aile, l’étage, la vue. Il demande la chambre, pas seulement la catégorie. Elle n’est promise que lorsqu’elle est tenue.",
   },
   {
-    title: "Univers Kids",
-    href: `${PREVIEW}/kids`,
-    text: "L'excellence du voyage familial avec conciergerie parentale dédiée. Équipements de puériculture d'exception livrés sur place, nounous certifiées et aventures adaptées.",
-    icon: Users,
+    image: "photo-1517248135467-4c7edcad34c4",
+    alt: "Salle de restaurant",
+    kicker: "La table",
+    title: "Tenue, le soir où tout est complet.",
+    text: "La maison la demande tôt. Elle entre dans le carnet à l’heure confirmée. Autour, la voiture sait déjà où vous déposer.",
   },
   {
-    title: "Séminaires & événements",
-    href: `${PREVIEW}/seminaires`,
-    text: "Retraites d'exception et sommets d'entreprise inoubliables. Privatisation de domaines viticoles, de châteaux historiques ou d'îlots pour comités de direction.",
-    icon: Building2,
+    image: "photo-1507525428034-b723cf961d3e",
+    alt: "Plage et eau claire",
+    kicker: "La famille",
+    title: "Le siège est déjà dans la voiture.",
+    text: "Siège bébé ou sièges enfants, dès l’aéroport. Le club suit les âges. Une nounou, si vous la demandez, est confirmée avant le départ.",
   },
   {
-    title: "Déplacements professionnels",
-    href: `${PREVIEW}/professionnels`,
-    text: "Prise en charge IATA des exigences d'affaires les plus complexes. Billetterie aérienne corporate d'urgence, charters court préavis et conciergerie 24/7 sans interruption.",
-    icon: Briefcase,
+    image: "photo-1511795409834-ef04bbd61622",
+    alt: "Table de réception",
+    kicker: "L’attention",
+    title: "Préparée avant l’arrivée.",
+    text: "Un anniversaire peut déjà être dans la suite : la chambre, la table, une attention déposée par la maison. Personne ne le réorganise à la réception.",
   },
+  {
+    image: "photo-1436491865332-7a61a109cc05",
+    alt: "Aile au-dessus des nuages",
+    kicker: "L’imprévu",
+    title: "Le vol repris, avant que vous le sachiez.",
+    text: "Un horaire bouge. Le conseiller reprend la place, aligne la voiture et l’hôtel, et le carnet affiche la nouvelle heure.",
+  },
+];
+
+const perks = [
+  ["01", "Le tarif", "Les meilleurs tarifs sur les plus beaux hôtels choisis avec vous."],
+  ["02", "Le matin", "Le petit-déjeuner offert, lorsque l’adresse le prévoit."],
+  ["03", "Les heures", "Arrivée anticipée, départ tardif, si l’hôtel les confirme."],
+  ["04", "La chambre", "Surclassement prioritaire, lorsqu’une chambre est libre."],
+  ["05", "Le crédit", "Jusqu’à 200 dollars de dépenses par séjour, selon les hôtels."],
+];
+
+const reel = ["japon", "namibie", "argentine", "seychelles", "hawaii", "perou", "maroc", "kenya", "thailande", "saint-barth", "bali", "mexique"]
+  .map((slug) => destinations.find((item) => item.slug === slug))
+  .filter((item) => item != null);
+
+const index = [
+  ["Le voyage", `${PREVIEW}/sur-mesure`],
+  ["À deux", `${PREVIEW}/services/a-deux`],
+  ["En famille", `${PREVIEW}/kids`],
+  ["Ski", `${PREVIEW}/services/ski`],
+  ["Jet privé", `${PREVIEW}/services/jet-prive`],
+  ["Chauffeur", `${PREVIEW}/services/chauffeur`],
+  ["Accueil VIP", `${PREVIEW}/services/accueil-vip`],
+  ["Hôtels", `${PREVIEW}/services/hotels`],
+  ["Restaurants", `${PREVIEW}/services/restaurants`],
+  ["Clubs", `${PREVIEW}/services/clubs`],
+  ["Séminaires", `${PREVIEW}/seminaires`],
+  ["Anniversaire", `${PREVIEW}/services/anniversaire`],
+  ["EVG", `${PREVIEW}/services/evg`],
+  ["Célébrations", `${PREVIEW}/services/celebrations`],
+  ["Prestige", `${PREVIEW}/services/prestige`],
+  ["Événements", `${PREVIEW}/services/evenements`],
+] as const;
+
+const beats = [
+  ["01", "L’écoute", "Dates, personnes, motif, rythme. La maison entend avant de proposer."],
+  ["02", "La proposition", "Un voyage écrit. Généralement sous vingt-quatre heures. Le détail se confirme, sur demande."],
+  ["03", "Le séjour", "Le carnet s’ouvre. Quelqu’un reste joignable à toute heure si la journée change."],
+  ["04", "Le retour", "La maison tient encore le dernier transfert, et ce qui reste à régler."],
 ];
 
 export function HomeView() {
@@ -162,160 +134,89 @@ export function HomeView() {
           <div className="vz-hero-copy">
             <div className="vz-eyebrow">
               <span />
-              <p>Haute conciergerie privée & charter</p>
+              <p>Le service · L’expertise</p>
             </div>
             <h1>
-              L&apos;art du voyage, <br />
-              <em>orchestré pour vous.</em>
+              Tenir le voyage, <br />
+              <em>jusqu’au détail.</em>
             </h1>
             <p className="vz-hero-lede">
-              Agence IATA de voyages de luxe et d&apos;accompagnement VIP. Votre voyage, en temps réel, dans
-              l&apos;application Travel BA.
+              Les conseillers connaissent les maisons et les destinations de l’intérieur. Ils anticipent, ils tiennent le
+              séjour avant, pendant et après, et restent joignables à toute heure. L’application, les voyages signature,
+              le Club et les déplacements d’affaires en sont la suite.
             </p>
             <div className="vz-hero-cta">
               <Link className="vz-btn" href={contactPath("projet")}>
-                Concevoir mon voyage
+                Parler à un conseiller
               </Link>
               <Link className="vz-btn is-ghost" href={`${PREVIEW}/application`}>
-                Découvrir l&apos;application
+                Voir l’application
               </Link>
             </div>
-            <div className="vz-accredit">
-              <p>
-                <BadgeCheck size={18} strokeWidth={1.5} />
-                IATA 20291655
-              </p>
-              <i />
-              <p>
-                <Award size={18} strokeWidth={1.5} />
-                Atout France IM092260002
-              </p>
-              <i />
-              <p>
-                <Shield size={18} strokeWidth={1.5} />
-                APST n°43865
-              </p>
-            </div>
           </div>
-
-          <div className="vz-device-wrap" id="app">
-            <div className="vz-amoled">
-              <div className="vz-island" aria-hidden>
-                <i />
-                <i />
-              </div>
-              <div className="vz-amoled-screen">
-                <div className="vz-screen-glow" aria-hidden />
-                <div>
-                  <div className="vz-app-head">
-                    <p>
-                      <i className="is-live" />
-                      Travel BA App · Voyage en cours
-                    </p>
-                    <Bell size={18} strokeWidth={1.5} />
-                  </div>
-                  <p className="vz-app-k">Destination active</p>
-                  <h3>
-                    Japon — <em>Voyage signature</em>
-                  </h3>
-                  <p className="vz-app-sub">Itinéraire 12 jours · Kyoto & Tokyo Impérial</p>
-
-                  <div className="vz-app-card is-gold">
-                    <div>
-                      <span>Étape du moment</span>
-                      <span>10:00 JST</span>
-                    </div>
-                    <p>Jour 3 · Kyoto — Ryokan d&apos;exception, cérémonie du thé privée au temple Kodai-ji</p>
-                    <small>Maître de thé réservé en exclusivité pour vos convives.</small>
-                  </div>
-
-                  <div className="vz-app-row">
-                    <span>
-                      <Car size={18} strokeWidth={1.5} />
-                    </span>
-                    <div>
-                      <p>Transfert Privé VIP</p>
-                      <strong>Berline Classe S & chauffeur dédié (14h30)</strong>
-                    </div>
-                  </div>
-
-                  <div className="vz-app-row">
-                    <span>
-                      <Plane size={18} strokeWidth={1.5} />
-                    </span>
-                    <div>
-                      <p>
-                        Billet IATA Émis <b>Confirmé</b>
-                      </p>
-                      <strong>Vol AF272 · Paris CDG → Osaka KIX</strong>
-                      <small>Première Classe · Siège 1A & 1E</small>
-                    </div>
-                  </div>
-
-                  <div className="vz-app-concierge">
-                    <div>
-                      <i className="is-live" />
-                      <div>
-                        <p>Conseiller 24/7 en direct</p>
-                        <small>Temps de réponse moyen : 45 sec</small>
-                      </div>
-                    </div>
-                    <MessageCircle size={18} strokeWidth={1.5} />
-                  </div>
-                </div>
-                <div className="vz-stores">
-                  <div>
-                    <Play size={14} strokeWidth={1.5} />
-                    <p>
-                      <small>Disponible sur</small>
-                      App Store
-                    </p>
-                  </div>
-                  <div>
-                    <Play size={14} strokeWidth={1.5} />
-                    <p>
-                      <small>Disponible sur</small>
-                      Google Play
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="vz-device-wrap">
+            <Phone controls />
           </div>
         </div>
       </section>
 
-      <section className="vz-band" id="club">
-        <div className="vz-frame vz-center">
-          <div className="vz-diamond">
-            <span />
-            <b>♦</b>
-            <span />
-          </div>
-          <p className="vz-caps">Accès privé aux palaces & retraites du monde</p>
-          <h2>
-            LE CLUB TRAVEL BA — <em>Privilèges Exclusifs</em>
-          </h2>
-          <p className="vz-center-lede">
-            Grâce à notre affiliation IATA et nos accords bilatéraux avec les plus prestigieuses enseignes hôtelières de
-            la planète, nos membres bénéficient d&apos;égards incomparables à chaque escale.
-          </p>
-          <div className="vz-priv">
-            {privileges.map((item) => (
-              <article key={item.n}>
-                <div>
-                  <div className="vz-priv-top">
-                    <span>{item.n}</span>
-                    <i>
-                      <item.icon size={20} strokeWidth={1.5} />
-                    </i>
-                  </div>
-                  <h3>{item.title}</h3>
-                  <p>{item.text}</p>
-                </div>
-                <small>{item.foot}</small>
-              </article>
+      <section className="vz-canvas" aria-label="Les cinq métiers">
+        <div className="vz-frame">
+          <header className="vz-sig-head">
+            <div>
+              <p className="vz-caps">Cinq façons de tenir le même service</p>
+              <h2>La maison, entière.</h2>
+            </div>
+          </header>
+          <div className="vz-film">
+            {pillars.map((item) => (
+              <Link key={item.href} href={item.href}>
+                <Photo id={item.image} alt={item.alt} />
+                <span>
+                  <small>{item.kicker}</small>
+                  <strong>{item.title}</strong>
+                  <em>{item.line}</em>
+                </span>
+              </Link>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="vz-canvas" aria-label="Le détail du service">
+        {scenes.map((scene, index) => (
+          <article key={scene.title} className={`vz-chapter${index % 2 ? " is-flip" : ""}`}>
+            <figure>
+              <Photo id={scene.image} alt={scene.alt} />
+            </figure>
+            <div>
+              <p className="vz-kicker">{scene.kicker}</p>
+              <h2>{scene.title}</h2>
+              <p>{scene.text}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <section className="vz-band">
+        <div className="vz-frame">
+          <header className="vz-sig-head">
+            <div>
+              <p className="vz-caps">L’application</p>
+              <h2>Le séjour, dans la poche.</h2>
+            </div>
+            <Link className="vz-link" href={`${PREVIEW}/application`}>
+              Le détail
+            </Link>
+          </header>
+          <p className="vz-lede">
+            Un séjour d’exemple, le Japon : Claire et Thomas Berger, dix jours, trois maisons. Aucun client réel. Le
+            carnet suit les jours. La table est tenue. Le bureau répond.
+          </p>
+          <div className="vz-phones">
+            <Phone screen="accueil" />
+            <Phone screen="carnet" />
+            <Phone screen="fil" />
           </div>
         </div>
       </section>
@@ -324,77 +225,137 @@ export function HomeView() {
         <div className="vz-frame">
           <header className="vz-sig-head">
             <div>
-              <p className="vz-caps">Collection éditoriale haute couture</p>
-              <h2>VOYAGES SIGNATURE</h2>
+              <p className="vz-caps">Voyages signature</p>
+              <h2>Déjà écrits. À confirmer.</h2>
             </div>
             <p className="vz-sig-count">
               <em>43</em>
-              <span>créations exclusives à travers le monde</span>
+              <span>créations, de l’Argentine au Pacifique</span>
             </p>
           </header>
-          <div className="vz-creations">
-            {creations.map((item) => (
-              <Link key={item.roman} href={item.href} className={`vz-creation ${item.span}`}>
-                <div className={`vz-shot ${item.shot}`}>
-                  <Photo id={item.image} alt={item.alt} priority={item.span === "is-7"} />
-                  {item.badge ? <b>{item.badge}</b> : null}
-                </div>
-                <div className={item.body ? "vz-creation-copy" : "vz-creation-copy is-tight"}>
-                  <div className="vz-creation-title">
-                    <span>{item.roman}</span>
-                    <h3 className={item.body ? "is-lg" : ""}>{item.title}</h3>
+        </div>
+        <div className="vz-reel">
+          {reel.map((item) => (
+            <Link key={item.slug} href={voyagePath(item.slug)}>
+              <Photo id={item.image} alt={item.alt} />
+              <span>
+                <small>{item.itineraries[0]?.duration}</small>
+                <strong>{item.name}</strong>
+                <em>{item.line}</em>
+              </span>
+            </Link>
+          ))}
+          <Link href={`${PREVIEW}/voyages`}>
+            <span className="vz-reel-end">
+              <strong>Les quarante-trois</strong>
+              <em>
+                Le catalogue <ArrowRight size={16} />
+              </em>
+            </span>
+          </Link>
+        </div>
+      </section>
+
+      <section className="vz-band" id="club">
+        <div className="vz-frame vz-member">
+          <article className="vz-metal">
+            <header>
+              <p className="vz-caps">Club Travel BA</p>
+              <h2>La carte de la maison.</h2>
+              <p>Ce qui se confirme avec l’hôtel, avant l’arrivée. Pas une surprise à la réception.</p>
+            </header>
+            <ol>
+              {perks.map(([n, title, text]) => (
+                <li key={n}>
+                  <span>{n}</span>
+                  <div>
+                    <strong>{title}</strong>
+                    <p>{text}</p>
                   </div>
-                  <p className={`vz-creation-quote ${item.quoteSize}`}>{item.quote}</p>
-                  {item.body ? <p className="vz-creation-body">{item.body}</p> : null}
-                  <span className="vz-creation-cta">
-                    {item.cta} <ArrowRight size={16} strokeWidth={1.5} />
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
+                </li>
+              ))}
+            </ol>
+            <Link className="vz-link" href={`${PREVIEW}/club`}>
+              Le Club
+            </Link>
+          </article>
+          <figure>
+            <Photo id="photo-1582719478250-c89cae4dc85b" alt="Suite et lumière douce" />
+          </figure>
         </div>
       </section>
 
-      <section className="vz-band" id="univers">
-        <div className="vz-frame vz-center">
-          <p className="vz-caps">L&apos;éventail des expertises</p>
-          <h2>LES UNIVERS TRAVEL BA</h2>
-          <p className="vz-center-lede">
-            Quatre départements spécialisés conduits par des artisans de haute conciergerie et des gestionnaires
-            d&apos;aviation privée.
-          </p>
-          <div className="vz-uni">
-            {universes.map((item) => (
-              <article key={item.title}>
-                <div>
-                  <item.icon size={30} strokeWidth={1.25} />
-                  <h3>{item.title}</h3>
-                  <p>{item.text}</p>
-                </div>
-                <Link href={item.href}>
-                  <span>Découvrir l&apos;univers</span>
-                  <span>→</span>
+      <section className="vz-canvas">
+        <div className="vz-frame vz-desk-wrap">
+          <div>
+            <p className="vz-caps">Déplacements professionnels</p>
+            <h2>L’entreprise voyage avec une règle.</h2>
+            <p className="vz-lede">
+              La politique de prix se fixe avec vous : cabines, maisons, facture au nom de la société. Les voyageurs
+              ouvrent l’application. La réservation reste à l’agence. Un agent répond, de jour comme de nuit.
+            </p>
+            <Link className="vz-link" href={`${PREVIEW}/professionnels`}>
+              Les déplacements
+            </Link>
+          </div>
+          <aside className="vz-desk" aria-label="Lecture d’exemple">
+            <p className="vz-caps">Lecture d’exemple</p>
+            <ul>
+              <li>
+                <span>Un vol qui bouge</span>
+                <p>Le conseiller reprend la place. Le carnet montre la nouvelle heure.</p>
+              </li>
+              <li>
+                <span>Une réunion avancée</span>
+                <p>La voiture est déjà demandée plus tôt. L’hôtel le sait.</p>
+              </li>
+              <li>
+                <span>La facture</span>
+                <p>Établie pour la société, selon la politique écrite avec vous.</p>
+              </li>
+              <li>
+                <span>Le fil</span>
+                <p>Un agent Travel BA, à toute heure, pendant le déplacement.</p>
+              </li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <section className="vz-band">
+        <div className="vz-frame">
+          <p className="vz-caps">La manière</p>
+          <h2>Quatre temps.</h2>
+          <ol className="vz-timeline">
+            {beats.map(([n, title, text]) => (
+              <li key={n}>
+                <span>{n}</span>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section className="vz-canvas">
+        <div className="vz-frame">
+          <header className="vz-sig-head">
+            <div>
+              <p className="vz-caps">Tout le service</p>
+              <h2>Chaque métier a sa page.</h2>
+            </div>
+          </header>
+          <ul className="vz-index">
+            {index.map(([label, href]) => (
+              <li key={href}>
+                <Link href={href}>
+                  <strong>{label}</strong>
+                  <em>Voir</em>
                 </Link>
-              </article>
+              </li>
             ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="vz-witness">
-        <div className="vz-witness-mark" aria-hidden>
-          ♦
-        </div>
-        <div className="vz-frame vz-center">
-          <div className="vz-diamond is-wide">
-            <span />
-            <p className="vz-caps">La maison</p>
-            <span />
-          </div>
-          <blockquote>
-            « Le voyage se tient avant le départ. Maisons, vols, accueil : le carnet s’ouvre dans l’application. »
-          </blockquote>
+          </ul>
         </div>
       </section>
     </>

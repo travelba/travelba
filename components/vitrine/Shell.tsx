@@ -3,52 +3,66 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Award, Lock, Mail, Phone, Shield, BadgeCheck } from "lucide-react";
+import { Lock, Mail, Phone } from "lucide-react";
 import { PREVIEW } from "@/lib/vitrine/paths";
 import { siteConfig } from "@/lib/site";
 
 type LinkItem = { href: string; label: string };
 type Column = { title: string; links: LinkItem[] };
 
-const NAV = [
-  { href: `${PREVIEW}/club`, label: "Club Travel BA", match: "/club" },
-  { href: `${PREVIEW}/sur-mesure`, label: "Voyages sur mesure", match: "/sur-mesure" },
-  { href: `${PREVIEW}/voyages`, label: "Voyages signature", match: "/voyages", home: true },
-  { href: `${PREVIEW}/kids`, label: "Univers Kids", match: "/kids" },
-  { href: `${PREVIEW}/seminaires`, label: "Séminaires & événements", match: "/seminaires" },
-  { href: `${PREVIEW}/professionnels`, label: "Déplacements professionnels", match: "/professionnels" },
+const SERVICE: { title: string; links: LinkItem[] }[] = [
+  {
+    title: "Composer",
+    links: [
+      { href: `${PREVIEW}/sur-mesure`, label: "Sur mesure" },
+      { href: `${PREVIEW}/services/a-deux`, label: "À deux" },
+      { href: `${PREVIEW}/kids`, label: "En famille" },
+      { href: `${PREVIEW}/services/ski`, label: "Ski" },
+    ],
+  },
+  {
+    title: "Le sol et l’air",
+    links: [
+      { href: `${PREVIEW}/services/jet-prive`, label: "Jet privé" },
+      { href: `${PREVIEW}/services/chauffeur`, label: "Chauffeur" },
+      { href: `${PREVIEW}/services/accueil-vip`, label: "Accueil VIP" },
+    ],
+  },
+  {
+    title: "Les adresses",
+    links: [
+      { href: `${PREVIEW}/services/hotels`, label: "Hôtels" },
+      { href: `${PREVIEW}/services/restaurants`, label: "Restaurants" },
+      { href: `${PREVIEW}/services/clubs`, label: "Clubs" },
+    ],
+  },
+  {
+    title: "Les occasions",
+    links: [
+      { href: `${PREVIEW}/seminaires`, label: "Séminaires" },
+      { href: `${PREVIEW}/services/anniversaire`, label: "Anniversaire" },
+      { href: `${PREVIEW}/services/evg`, label: "EVG" },
+      { href: `${PREVIEW}/services/celebrations`, label: "Célébrations" },
+      { href: `${PREVIEW}/services/prestige`, label: "Prestige" },
+      { href: `${PREVIEW}/services/evenements`, label: "Événements" },
+    ],
+  },
 ];
 
-const MEASURE: LinkItem[] = [
-  { href: `${PREVIEW}/sur-mesure`, label: "Le voyage" },
-  { href: `${PREVIEW}/services/a-deux`, label: "À deux" },
-  { href: `${PREVIEW}/services/ski`, label: "Ski" },
-  { href: `${PREVIEW}/services/jet-prive`, label: "Jet privé" },
-  { href: `${PREVIEW}/services/chauffeur`, label: "Chauffeur" },
-  { href: `${PREVIEW}/services/accueil-vip`, label: "Accueil VIP" },
-  { href: `${PREVIEW}/services/restaurants`, label: "Restaurants" },
-  { href: `${PREVIEW}/services/hotels`, label: "Hôtels" },
-  { href: `${PREVIEW}/services/clubs`, label: "Clubs" },
-];
-
-const EVENTS: LinkItem[] = [
-  { href: `${PREVIEW}/seminaires`, label: "Séminaires" },
-  { href: `${PREVIEW}/services/anniversaire`, label: "Anniversaire" },
-  { href: `${PREVIEW}/services/evg`, label: "EVG" },
-  { href: `${PREVIEW}/services/celebrations`, label: "Célébrations" },
-  { href: `${PREVIEW}/services/prestige`, label: "Prestige" },
-  { href: `${PREVIEW}/services/evenements`, label: "Événements" },
+const TOP = [
+  { href: `${PREVIEW}/application`, label: "L’application", match: "/application" },
+  { href: `${PREVIEW}/professionnels`, label: "L’entreprise", match: "/professionnels" },
+  { href: `${PREVIEW}/club`, label: "Le Club", match: "/club" },
 ];
 
 const EXPLORE: LinkItem[] = [
-  { href: `${PREVIEW}/club`, label: "Club Travel BA" },
-  { href: `${PREVIEW}/sur-mesure`, label: "Voyages sur mesure" },
+  { href: `${PREVIEW}/sur-mesure`, label: "Le service" },
+  { href: `${PREVIEW}/application`, label: "L’application" },
   { href: `${PREVIEW}/voyages`, label: "Voyages signature" },
-  { href: `${PREVIEW}/kids`, label: "Univers Kids" },
-  { href: `${PREVIEW}/seminaires`, label: "Séminaires & événements" },
   { href: `${PREVIEW}/professionnels`, label: "Déplacements professionnels" },
+  { href: `${PREVIEW}/club`, label: "Club Travel BA" },
+  { href: `${PREVIEW}/contact`, label: "Écrire" },
   { href: "/fr/legal", label: "Mentions légales" },
-  { href: "/fr/legal", label: "Politique de confidentialité" },
 ];
 
 export function Shell({
@@ -60,7 +74,9 @@ export function Shell({
 }) {
   const path = usePathname();
   const [mobile, setMobile] = useState(false);
-  const home = path === PREVIEW;
+  const [open, setOpen] = useState<string | null>(null);
+  const serviceOn = path.includes("/sur-mesure") || path.includes("/services") || path.includes("/kids") || path.includes("/seminaires");
+  const signatureOn = path.includes("/voyages");
 
   return (
     <>
@@ -71,13 +87,19 @@ export function Shell({
         <div className="vz-frame vz-header-bar">
           <Link href={PREVIEW} className="vz-brand" onClick={() => setMobile(false)}>
             <strong>Travel BA</strong>
-            <span>Membre accrédité IATA</span>
+            <span>Le service · L’expertise</span>
           </Link>
           <nav className="vz-nav" aria-label="Menu principal">
-            {NAV.map((item) => {
-              const on = path.includes(item.match) || (home && item.home);
+            <button type="button" className={serviceOn || open === "service" ? "is-on" : undefined} aria-expanded={open === "service"} onClick={() => setOpen((value) => (value === "service" ? null : "service"))}>
+              Le service
+            </button>
+            <button type="button" className={signatureOn || open === "signatures" ? "is-on" : undefined} aria-expanded={open === "signatures"} onClick={() => setOpen((value) => (value === "signatures" ? null : "signatures"))}>
+              Signatures
+            </button>
+            {TOP.map((item) => {
+              const on = path.includes(item.match);
               return (
-                <Link key={item.href} href={item.href} className={on ? "is-on" : undefined} aria-current={on ? "page" : undefined}>
+                <Link key={item.href} href={item.href} className={on ? "is-on" : undefined} aria-current={on ? "page" : undefined} onClick={() => setOpen(null)}>
                   {item.label}
                 </Link>
               );
@@ -103,23 +125,53 @@ export function Shell({
         </div>
       </header>
 
+      {open === "service" ? (
+        <div className="vz-panel" role="navigation" aria-label="Le service">
+          {SERVICE.map((column) => (
+            <div key={column.title}>
+              <h2>{column.title}</h2>
+              {column.links.map((item) => (
+                <Link key={item.href} href={item.href} onClick={() => setOpen(null)}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {open === "signatures" ? (
+        <div className="vz-panel" role="navigation" aria-label="Voyages signature">
+          {signature.map((column) => (
+            <div key={column.title}>
+              <h2>{column.title}</h2>
+              {column.links.map((item) => (
+                <Link key={item.href} href={item.href} onClick={() => setOpen(null)}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          ))}
+          <div>
+            <h2>Tous</h2>
+            <Link href={`${PREVIEW}/voyages`} onClick={() => setOpen(null)}>
+              Le catalogue
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
       {mobile ? (
         <div className="vz-drawer" role="navigation" aria-label="Menu">
-          {NAV.map((item) => (
-            <Link key={item.href} href={item.href} onClick={() => setMobile(false)}>
-              {item.label}
-            </Link>
-          ))}
-          <Link href={`${PREVIEW}/application`} onClick={() => setMobile(false)}>
-            L&apos;application
-          </Link>
-          <details>
-            <summary>Sur mesure</summary>
-            {MEASURE.map((item) => (
-              <Link key={item.href} href={item.href} onClick={() => setMobile(false)}>
-                {item.label}
-              </Link>
-            ))}
+          <details open>
+            <summary>Le service</summary>
+            {SERVICE.flatMap((column) =>
+              column.links.map((item) => (
+                <Link key={item.href} href={item.href} onClick={() => setMobile(false)}>
+                  {item.label}
+                </Link>
+              )),
+            )}
           </details>
           <details>
             <summary>Voyages signature</summary>
@@ -134,14 +186,11 @@ export function Shell({
               Les 43 créations
             </Link>
           </details>
-          <details>
-            <summary>Séminaires et événements</summary>
-            {EVENTS.map((item) => (
-              <Link key={item.href} href={item.href} onClick={() => setMobile(false)}>
-                {item.label}
-              </Link>
-            ))}
-          </details>
+          {TOP.map((item) => (
+            <Link key={item.href} href={item.href} onClick={() => setMobile(false)}>
+              {item.label}
+            </Link>
+          ))}
           <Link href="/connexion" onClick={() => setMobile(false)}>
             Espace client
           </Link>
@@ -157,39 +206,16 @@ export function Shell({
               <strong>Travel BA</strong>
               <span>Haute orchestration du voyage</span>
               <p>
-                Maison d&apos;orfèvrerie du voyage d&apos;exception et conciergerie privée pour voyageurs avertis,
-                dirigeants et familles exigeantes. Accréditation officielle IATA.
+                Conciergerie de voyage, basée à {siteConfig.address.city}. Le service et l’expertise d’une équipe qui
+                tient le séjour avant, pendant et après.
               </p>
-              <div className="vz-stamps">
-                <div>
-                  <BadgeCheck size={22} strokeWidth={1.5} />
-                  <p>
-                    <b>Agence accréditée IATA</b>
-                    <small>20291655</small>
-                  </p>
-                </div>
-                <div>
-                  <Award size={22} strokeWidth={1.5} />
-                  <p>
-                    <b>Atout France</b>
-                    <small>IM092260002</small>
-                  </p>
-                </div>
-                <div>
-                  <Shield size={22} strokeWidth={1.5} />
-                  <p>
-                    <b>Membre de l&apos;APST</b>
-                    <small>n°43865</small>
-                  </p>
-                </div>
-              </div>
             </div>
             <div>
               <p className="vz-caps">Exploration & services</p>
               <ul>
                 {EXPLORE.map((item) => (
                   <li key={item.label}>
-                    <Link href={item.href} className={item.href.endsWith("/voyages") ? "is-on" : undefined}>
+                    <Link href={item.href}>
                       {item.label}
                     </Link>
                   </li>
@@ -198,7 +224,10 @@ export function Shell({
             </div>
             <div>
               <p className="vz-caps">Conciergerie VIP 24/7</p>
-              <p>Une ligne directe et sécurisée réservée exclusivement aux membres en déplacement.</p>
+              <p>Un conseiller, à toute heure, pendant le voyage.</p>
+              <p className="vz-footer-line">
+                <span>{siteConfig.address.full}</span>
+              </p>
               <p className="vz-footer-line">
                 <Phone size={18} strokeWidth={1.5} />
                 <a href="tel:+33772158257">07 72 15 82 57</a>
@@ -210,8 +239,8 @@ export function Shell({
             </div>
           </div>
           <div className="vz-footer-end">
-            <p>© TRAVEL BA. Tous droits réservés. Agence de voyages d&apos;exception accréditée IATA.</p>
-            <p>Conçu comme un livre d&apos;art · Toutes destinations privatives</p>
+            <p>© TRAVEL BA. Tous droits réservés.</p>
+            <p className="vz-trust">IATA 20291655 · Atout France IM092260002 · APST n°43865</p>
           </div>
         </div>
       </footer>

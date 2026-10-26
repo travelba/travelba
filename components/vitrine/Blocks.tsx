@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { contactPath, PREVIEW } from "@/lib/vitrine/paths";
 import { CLUB_NOTE } from "@/lib/vitrine/destinations";
+import { DETAILS } from "@/lib/vitrine/details";
 
 export function AppRecall({ children }: { children: string }) {
   return (
@@ -37,6 +38,18 @@ export function Ask({
 
 export function ClubNote() {
   return <p className="vz-club-note">{CLUB_NOTE}</p>;
+}
+
+export function DetailScene({ slug }: { slug: string }) {
+  const scene = DETAILS[slug];
+  if (!scene) return null;
+  return (
+    <aside className="vz-detail">
+      <p className="vz-kicker">{scene.kicker}</p>
+      <p className="vz-pull">{scene.title}</p>
+      <p>{scene.text}</p>
+    </aside>
+  );
 }
 
 export function CtaRow({ href, label, second }: { href: string; label: string; second?: { href: string; label: string } }) {

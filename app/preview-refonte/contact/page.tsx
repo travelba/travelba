@@ -30,6 +30,7 @@ export default async function ContactPage({ searchParams }: Props) {
           : "Quelques lignes suffisent. La demande part vers WhatsApp ou votre messagerie. Cette étude ne l’enregistre pas."}
       </p>
       <ContactForm intention={intention} voyage={voyage} titre={titre} />
+      <p className="vz-trust">IATA 20291655 · Atout France IM092260002 · APST n°43865</p>
     </article>
   );
 }
