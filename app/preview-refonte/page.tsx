@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AppStage } from "@/components/preview-refonte/AppStage";
+import { AppDevices } from "@/components/preview-refonte/AppDevices";
 import { DevisForm } from "@/components/preview-refonte/DevisForm";
 import { Frame } from "@/components/preview-refonte/Frame";
 import { featuredOffers } from "@/components/preview-refonte/offers";
@@ -23,25 +23,24 @@ const pillars = [
 export default function PreviewHomePage() {
   return (
     <Frame>
-      <section className="tba-open">
-        <p className="tba-kicker">Travel Business Agency · Levallois-Perret</p>
-        <h1>Travel BA</h1>
-        <p className="tba-manifest">
-          Ultra-personnalisé. Ultra-réactif.
-          <br />
-          <em>Partout, tout le temps.</em>
-        </p>
-        <p className="tba-open-lede">
-          L’agence orchestre le voyage privé et celui des entreprises, de la première idée au dernier kilomètre.
-        </p>
-        <div className="tba-actions">
-          <a className="tba-word" href="#devis">
-            Demander un devis
-          </a>
-          <Link className="tba-word is-quiet" href="/preview-refonte/espace-client">
-            Espace client
-          </Link>
+      <section className="tba-pocket">
+        <div className="tba-pocket-copy">
+          <p className="tba-kicker">Travel Business Agency · L’application</p>
+          <h1>Votre voyage, dans votre poche.</h1>
+          <p>
+            Le carnet, les documents, la carte d’embarquement et le fil WhatsApp avec la maison. Un dossier d’exemple,
+            sans horaire inventé.
+          </p>
+          <div className="tba-actions">
+            <Link className="tba-word" href="/preview-refonte/application">
+              Voir l’application
+            </Link>
+            <a className="tba-word is-quiet" href="#devis">
+              Demander un devis
+            </a>
+          </div>
         </div>
+        <AppDevices />
       </section>
 
       <section className="tba-why" id="pourquoi" aria-labelledby="pourquoi-titre">
@@ -94,27 +93,6 @@ export default function PreviewHomePage() {
         <Link className="tba-word" href="#devis">
           Commencer
         </Link>
-      </section>
-
-      <section className="tba-show" id="espace-voyage">
-        <div className="tba-show-copy">
-          <p className="tba-kicker">Espace voyageur</p>
-          <h2>Le voyage, dans la main.</h2>
-          <p>
-            Un dossier d’exemple. Étapes, vol, hôtel, transferts, documents, budget, fil avec la maison. Aucune donnée
-            de client. Aucun horaire inventé. Le montant reste dans le vrai espace.
-          </p>
-          <ul>
-            <li>Itinéraire du séjour</li>
-            <li>Documents réunis, 6 / 6 dans l’exemple</li>
-            <li>Fil avec la conciergerie</li>
-            <li>Budget tenu, sans chiffre sur cette étude</li>
-          </ul>
-          <Link className="tba-word" href="/preview-refonte/espace-client">
-            Accéder à l’espace
-          </Link>
-        </div>
-        <AppStage />
       </section>
 
       <section className="tba-corp">

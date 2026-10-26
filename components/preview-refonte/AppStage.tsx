@@ -1,18 +1,29 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 const PANELS = [
   { id: "etapes", label: "Étapes" },
   { id: "vol", label: "Vol" },
+  { id: "embarquement", label: "Embarquement" },
   { id: "hotel", label: "Hôtel" },
   { id: "transferts", label: "Transferts" },
   { id: "documents", label: "Documents" },
-  { id: "budget", label: "Budget" },
-  { id: "fil", label: "Fil" },
+  { id: "budget", label: "Paiements" },
+  { id: "fil", label: "WhatsApp" },
 ] as const;
 
 type PanelId = (typeof PANELS)[number]["id"];
+
+export function AppStage({
+  compact = false,
+  live = false,
+  panels,
+}: {
+  compact?: boolean;
+  live?: boolean;
+  panels?: readonly PanelId[];
+}) {
 
 const DOCUMENTS = ["Passeport", "Billet", "Hôtel", "Transfert", "Formalité", "Assurance"];
 
@@ -29,12 +40,28 @@ const seed = [
   ["house", "Oui. Le chauffeur prend le relais après l’accueil."],
 ] as const;
 
-export function AppStage() {
-  const [panel, setPanel] = useState<PanelId>("etapes");
+  const items = useMemo(
+    () => (panels ? PANELS.filter((item) => panels.includes(item.id)) : PANELS),
+    [panels],
+  );
+  const [panel, setPanel] = useState<PanelId>(items[0]?.id ?? "etapes");
+  const [paused, setPaused] = useState(false);
   const [thread, setThread] = useState<{ who: "house" | "you"; text: string }[]>(
     seed.map(([who, text]) => ({ who, text })),
   );
   const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    if (!live || paused) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => {
+      setPanel((current) => {
+        const index = items.findIndex((item) => item.id === current);
+        return items[(index + 1) % items.length]?.id ?? items[0].id;
+      });
+    }, 4200);
+    return () => window.clearInterval(timer);
+  }, [items, live, paused]);
 
   function send(event: FormEvent) {
     event.preventDefault();
@@ -49,7 +76,7 @@ export function AppStage() {
   }
 
   return (
-    <div className="tba-app">
+    <div className={compact ? "tba-app is-compact" : "tba-app"} onPointerDown={() => setPaused(true)}>
       <aside>
         <p className="tba-app-brand">Travel BA · espace</p>
         <p className="tba-app-where">Marrakech</p>
@@ -59,12 +86,15 @@ export function AppStage() {
         </p>
         <p className="tba-app-meta">12 – 16 mars · deux voyageurs</p>
         <nav aria-label="Le dossier d’exemple">
-          {PANELS.map((item) => (
+          {items.map((item) => (
             <button
               key={item.id}
               type="button"
               aria-pressed={panel === item.id}
-              onClick={() => setPanel(item.id)}
+              onClick={() => {
+                setPaused(true);
+                setPanel(item.id);
+              }}
             >
               {item.label}
             </button>
@@ -102,6 +132,39 @@ export function AppStage() {
                 <strong>Celui du billet</strong>
               </li>
             </ul>
+          </article>
+        ) : null}
+        {panel === "embarquement" ? (
+          <article className="tba-pass">
+            <p className="tba-kicker">Carte d’embarquement</p>
+            <div className="tba-pass-route">
+              <div>
+                <small>Départ</small>
+                <strong>Paris</strong>
+                <em>CDG</em>
+              </div>
+              <span aria-hidden="true">→</span>
+              <div>
+                <small>Arrivée</small>
+                <strong>Marrakech</strong>
+                <em>RAK</em>
+              </div>
+            </div>
+            <ul>
+              <li>
+                <span>Horaire</span>
+                <strong>Celui du billet</strong>
+              </li>
+              <li>
+                <span>Référence</span>
+                <strong>Dans le carnet</strong>
+              </li>
+              <li>
+                <span>Voyageurs</span>
+                <strong>Deux</strong>
+              </li>
+            </ul>
+            <p className="tba-app-note">Exemple. Aucun numéro de vol.</p>
           </article>
         ) : null}
         {panel === "hotel" ? (
@@ -159,7 +222,7 @@ export function AppStage() {
         ) : null}
         {panel === "budget" ? (
           <article>
-            <p className="tba-kicker">Budget</p>
+            <p className="tba-kicker">Paiements</p>
             <h3>Le séjour, tenu.</h3>
             <ul>
               <li>

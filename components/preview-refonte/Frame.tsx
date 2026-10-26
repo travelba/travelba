@@ -51,39 +51,46 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
         Aller au contenu
       </a>
       <header className={solid ? "tba-header is-solid" : "tba-header"}>
-        <Link href="/preview-refonte" className="tba-logo" onClick={close}>
-          <AgencyLogo className="h-9 w-9" />
-          <span>
-            <small>Travel Business Agency</small>
-            Travel BA
-          </span>
-        </Link>
-        <nav className="tba-nav" aria-label="La maison">
-          <Link href="/preview-refonte" aria-current={pathname === "/preview-refonte" ? "page" : undefined} onClick={close}>
-            Accueil
+        <div className="tba-header-bar">
+          <Link href="/preview-refonte" className="tba-logo" onClick={close}>
+            <AgencyLogo className="h-9 w-9" />
+            <span>
+              <small>Travel Business Agency</small>
+              Travel BA
+            </span>
           </Link>
-          <button type="button" className="tba-nav-services" aria-expanded={offres} onClick={() => setOffres((value) => !value)}>
-            Offres
+          <nav className="tba-nav" aria-label="La maison">
+            <Link href="/preview-refonte" aria-current={pathname === "/preview-refonte" ? "page" : undefined} onClick={close}>
+              Accueil
+            </Link>
+            <Link
+              href="/preview-refonte/application"
+              aria-current={pathname === "/preview-refonte/application" ? "page" : undefined}
+              onClick={close}
+            >
+              L’application
+            </Link>
+            <button type="button" className="tba-nav-services" aria-expanded={offres} onClick={() => setOffres((value) => !value)}>
+              Offres
+            </button>
+            <Link href="/preview-refonte#apropos" onClick={close}>
+              À propos
+            </Link>
+            <Link href="/preview-refonte#devis" onClick={close}>
+              Contact
+            </Link>
+            <Link className="tba-nav-cta" href="/preview-refonte#devis" onClick={close}>
+              Faire une demande
+            </Link>
+          </nav>
+          <button type="button" className="tba-menu-btn" aria-expanded={open} aria-controls="tba-menu" onClick={() => setOpen((value) => !value)}>
+            {open ? "Fermer" : "Menu"}
           </button>
-          <Link href="/preview-refonte/espace-client" aria-current={pathname === "/preview-refonte/espace-client" ? "page" : undefined} onClick={close}>
-            Espace
-          </Link>
-          <Link href="/preview-refonte#apropos" onClick={close}>
-            À propos
-          </Link>
-          <Link href="/preview-refonte#devis" onClick={close}>
-            Contact
-          </Link>
-          <a href={wa} target="_blank" rel="noopener noreferrer">
-            WhatsApp
-          </a>
-          <Link className="tba-nav-cta" href="/preview-refonte#devis" onClick={close}>
-            Faire une demande
-          </Link>
-        </nav>
-        <button type="button" className="tba-menu-btn" aria-expanded={open} aria-controls="tba-menu" onClick={() => setOpen((value) => !value)}>
-          {open ? "Fermer" : "Menu"}
-        </button>
+        </div>
+        <Link className="tba-app-strip" href="/preview-refonte/application" onClick={close}>
+          <strong>Application</strong>
+          <span>Votre voyage, dans votre poche</span>
+        </Link>
       </header>
       {offres ? (
         <nav className="tba-offer-menu" aria-label="Offres">
@@ -98,6 +105,9 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
         <nav id="tba-menu" className="tba-menu" aria-label="Menu">
           <Link href="/preview-refonte" onClick={close}>
             Accueil
+          </Link>
+          <Link href="/preview-refonte/application" onClick={close}>
+            L’application
           </Link>
           <Link href="/preview-refonte/espace-client" onClick={close}>
             Espace
@@ -120,6 +130,11 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
       ) : null}
       <main id="contenu">{children}</main>
       <footer className="tba-footer">
+        <Link className="tba-app-strip is-footer" href="/preview-refonte/application">
+          <strong>Application</strong>
+          <span>Carnet, documents, embarquement, concierge.</span>
+          <em>Voir</em>
+        </Link>
         <div className="tba-footer-grid">
           <div>
             <p className="tba-logo">
@@ -137,6 +152,9 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
             <ul>
               <li>
                 <Link href="/preview-refonte">Accueil</Link>
+              </li>
+              <li>
+                <Link href="/preview-refonte/application">L’application</Link>
               </li>
               {offers.map((offer) => (
                 <li key={offer.slug}>

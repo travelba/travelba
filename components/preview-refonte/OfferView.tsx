@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Frame } from "./Frame";
-import { offers, offerBySlug, type Offer } from "./offers";
+import { appBySlug, offers, offerBySlug, type Offer } from "./offers";
 import { Photo } from "./Photo";
+import { TripPhone } from "./TripPhone";
 
 export function OfferView({ slug }: { slug: string }) {
   const offer = offerBySlug(slug);
   if (!offer) notFound();
+  const app = appBySlug[offer.slug];
   const others = offers.filter((item) => item.slug !== offer.slug).slice(0, 2);
   return (
     <Frame>
@@ -29,6 +31,19 @@ export function OfferView({ slug }: { slug: string }) {
           ))}
         </ol>
         {offer.inspirations ? <Inspirations items={offer.inspirations} /> : null}
+        {app ? (
+          <section className="tba-with-app" aria-labelledby="avec-app">
+            <div>
+              <p className="tba-kicker">Dans l’application</p>
+              <h2 id="avec-app">{app.title}</h2>
+              <p>{app.text}</p>
+              <Link className="tba-word" href="/preview-refonte/application">
+                Voir l’application
+              </Link>
+            </div>
+            <TripPhone title={offer.menu} lines={app.lines} />
+          </section>
+        ) : null}
         <footer className="tba-inner-end">
           <h2>Parlons de votre projet.</h2>
           <div className="tba-actions">

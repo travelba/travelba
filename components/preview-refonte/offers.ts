@@ -299,3 +299,127 @@ export function offerBySlug(slug: string) {
 }
 
 export const featuredOffers = offers.filter((offer) => offer.featured);
+
+export const appBySlug: Record<string, { title: string; text: string; lines: readonly (readonly [string, string])[] }> = {
+  "sur-mesure": {
+    title: "L’itinéraire, dans la poche.",
+    text: "Villes, nuits, vols, tables et transferts confirmés. Le carnet se met à jour quand la maison confirme.",
+    lines: [
+      ["Itinéraire", "Les villes du séjour"],
+      ["Documents", "Au coffre"],
+      ["Fil", "La maison, à toute heure"],
+    ],
+  },
+  seminaires: {
+    title: "Le programme des participants.",
+    text: "Chaque voyageur ouvre le même séjour : arrivée, salle, dîner, retour. Les billets du groupe sont dans le carnet.",
+    lines: [
+      ["Programme", "Jour par jour"],
+      ["Billets", "Dans le carnet"],
+      ["Participants", "Le même fil"],
+      ["Chauffeurs", "Les trajets tenus"],
+    ],
+  },
+  kids: {
+    title: "Le planning des enfants.",
+    text: "Club, âges, lit bébé, chambres qui s’ouvrent, siège dans la voiture. Ce qui est demandé, puis ce qui est confirmé.",
+    lines: [
+      ["Club", "Âges confirmés"],
+      ["Lit bébé", "Avec la réservation"],
+      ["Siège", "Dans la voiture"],
+      ["Nounou", "Si l’hôtel confirme"],
+    ],
+  },
+  "entre-nous": {
+    title: "Les nuits, et la table.",
+    text: "Peu de lignes. L’hôtel, la table une fois confirmée, le fil si la journée change.",
+    lines: [
+      ["Nuits", "Dans le carnet"],
+      ["Table", "Quand elle est confirmée"],
+      ["Route", "Le chauffeur"],
+    ],
+  },
+  celebrer: {
+    title: "La soirée, dans le carnet.",
+    text: "Chauffeurs, table, club, retours. Le carnet porte ce qui est confirmé. Les accès ne sont pas annoncés avant.",
+    lines: [
+      ["Chauffeurs", "Placés"],
+      ["Table", "Confirmée"],
+      ["Club", "Accès demandé"],
+      ["Retours", "Dans le carnet"],
+    ],
+  },
+  montagne: {
+    title: "La semaine, du lundi au dimanche.",
+    text: "Transfert, forfaits et moniteurs une fois demandés, table de la station. Le carnet reste ouvert jusqu’au dimanche.",
+    lines: [
+      ["Semaine", "Lundi — dimanche"],
+      ["Forfaits", "Une fois confirmés"],
+      ["Pistes", "Le domaine"],
+      ["Départ", "Dimanche"],
+    ],
+  },
+  "jet-prive": {
+    title: "L’appareil, une fois confirmé.",
+    text: "Le carnet dit que l’appareil est tenu. L’horaire n’est pas inventé ici. Le chauffeur prend le relais à l’arrivée.",
+    lines: [
+      ["Appareil", "Confirmé"],
+      ["Itinéraire", "Dans le carnet"],
+      ["Sol", "Chauffeur"],
+    ],
+  },
+  evenements: {
+    title: "Le déroulé du jour.",
+    text: "Motif, lieu, tables, voitures. Le carnet du jour se met à jour quand une confirmation arrive.",
+    lines: [
+      ["Déroulé", "Écrit avant"],
+      ["Lieu", "Confirmé"],
+      ["Tables", "Demandées"],
+    ],
+  },
+  hotels: {
+    title: "La confirmation, au coffre.",
+    text: "La nuit, la chambre, les avantages seulement s’ils sont inclus et confirmés. La pièce rejoint les documents.",
+    lines: [
+      ["Nuit", "Confirmée"],
+      ["Chambre", "Dans le carnet"],
+      ["Avantages", "S’ils sont inclus"],
+    ],
+  },
+  restaurants: {
+    title: "La table, notée.",
+    text: "La demande, puis la réponse. Le carnet ne montre la table que lorsqu’elle est confirmée.",
+    lines: [
+      ["Demande", "Partie"],
+      ["Réponse", "Avant la promesse"],
+      ["Trajet", "Le chauffeur"],
+    ],
+  },
+  clubs: {
+    title: "L’accès, s’il est confirmé.",
+    text: "L’adresse confirme. Le carnet le dit alors. Les voitures de la fin de soirée y sont aussi.",
+    lines: [
+      ["Accès", "Confirmé par l’adresse"],
+      ["Table", "Si elle est tenue"],
+      ["Voitures", "Les retours"],
+    ],
+  },
+  chauffeur: {
+    title: "Les trajets du séjour.",
+    text: "Arrivée, journées, retour. L’horaire suit le billet. En famille, le siège est écrit sur le transfert.",
+    lines: [
+      ["Arrivée", "Aéroport ou gare"],
+      ["Journée", "Les adresses"],
+      ["Enfants", "Le siège"],
+    ],
+  },
+  "accueil-vip": {
+    title: "Le passage, noté avant l’avion.",
+    text: "Fast-track, salon, assistance, lorsque le terminal le permet. Puis le chauffeur. La confirmation est dans le carnet.",
+    lines: [
+      ["Passage", "Préparé"],
+      ["Terminal", "Ce qu’il tient"],
+      ["Après", "Le chauffeur"],
+    ],
+  },
+};
