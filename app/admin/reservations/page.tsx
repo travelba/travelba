@@ -28,6 +28,7 @@ import {
   type FilterableQuery,
   type SearchParamValue,
 } from "@/lib/crm/admin-list";
+import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { reservationWeek } from "@/lib/crm/reservation-week";
 import { stayToday } from "@/lib/crm/stay-moment";
 
@@ -135,6 +136,9 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     const names = new Map(
       [...customersById.entries()].map(([id, row]) => [id, customerFullName(row)])
     );
+    const covers = await resolveListCovers(
+      shown.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))
+    );
 
     return (
       <div>
@@ -157,6 +161,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
             places={maps}
             amounts={displayed}
             payerLabels={payerLabels}
+            covers={covers}
           />
         </div>
       </div>
@@ -330,6 +335,9 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     redirect(listHref("/admin/reservations", { q, etat: state, tri: bookingSortParam(sort) }, lastPage));
   }
   const rows = q || order.proximity ? matched.slice(from, to + 1) : matched;
+  const covers = await resolveListCovers(
+    rows.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))
+  );
   const hiddenArchiveHits =
     q && state !== "archive"
       ? listResult.archived.filter((row) => smartSearchMatch(q, searchText.get(row.id))).length
@@ -372,6 +380,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
           total={total}
           filters={{ q, etat: state, tri: sort, vue }}
           hiddenArchiveHits={hiddenArchiveHits}
+          covers={covers}
         />
       </div>
     </div>

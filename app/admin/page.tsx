@@ -16,6 +16,7 @@ import { buildLaunchItems } from "@/lib/crm/launch-status";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
 import { DashboardWeek } from "@/components/admin/DashboardWeek";
 import { dashboardWeek } from "@/lib/crm/dashboard-week";
+import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
@@ -127,6 +128,9 @@ export default async function AdminHomePage() {
     ),
   ]);
   const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
+  const covers = await resolveListCovers(
+    shown.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }))
+  );
   const whatsappOpen = await supabase
     .from("crm_whatsapp_requests")
     .select("id", { count: "exact", head: true })
@@ -193,7 +197,7 @@ export default async function AdminHomePage() {
         </Link>
       </section>
 
-      <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} />
+      <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} covers={covers} />
 
       <AdminLaunchStatus items={launchItems} />
     </div>

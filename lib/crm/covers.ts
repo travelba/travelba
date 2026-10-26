@@ -15,6 +15,38 @@ export function catalogCoverUrl(photoId: string) {
   return `/api/covers/${photoId}`;
 }
 
+const COVER_SRC_WIDTHS = [96, 192, 480, 960, 1600];
+
+/** Largeur demandée, bornée. Absent ou illisible : l’image catalogue entière. */
+export function coverWidthParam(raw: string | null) {
+  if (!raw) return null;
+  const width = Number.parseInt(raw, 10);
+  if (!Number.isFinite(width) || width < 32) return null;
+  return Math.min(1600, width);
+}
+
+/** Vignette catalogue. Le lien séjour et les fichiers importés gardent leur URL. */
+export function isSizedCatalogCover(src: string) {
+  return src.startsWith("/api/covers/") && !src.includes("/api/covers/sejour/");
+}
+
+export function coverDisplayUrl(src: string, width: number) {
+  const safe = coverWidthParam(String(width));
+  if (!safe || !isSizedCatalogCover(src)) return src;
+  const split = src.indexOf("?");
+  const path = split === -1 ? src : src.slice(0, split);
+  const params = new URLSearchParams(split === -1 ? "" : src.slice(split + 1));
+  params.set("w", String(safe));
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+/** `srcSet` des largeurs servies. Le navigateur choisit la vignette. */
+export function coverSrcSet(src: string) {
+  if (!isSizedCatalogCover(src)) return undefined;
+  return COVER_SRC_WIDTHS.map((width) => `${coverDisplayUrl(src, width)} ${width}w`).join(", ");
+}
+
 export type CoverBooking = Pick<CrmBooking, "destination" | "title" | "cover_image_path"> & {
   updated_at?: string | null;
   cover_credit?: string | null;
@@ -261,18 +293,18 @@ export function coverGeocodeQuery(
   return bits.filter(Boolean).join(" ").replace(/\s+/g, " ").trim().slice(0, 160);
 }
 
-export function placeCoverUrl(booking: Pick<CrmBooking, "destination" | "title">, _width = 960) {
+export function placeCoverUrl(booking: Pick<CrmBooking, "destination" | "title">, width = 960) {
   const match = unsplashKeywordMatch(booking);
-  return match ? catalogCoverUrl(match) : null;
+  return match ? coverDisplayUrl(catalogCoverUrl(match), width) : null;
 }
 
 /** Import agence, sinon photo de la ville, sinon celle du pays. Pays sans photo : null (fond marine). */
 export function bookingCoverUrl(
   booking: CoverBooking,
-  _width = 960,
+  width = 960,
   access?: { partage?: string | null; items?: CoverPlaceItem[]; places?: string[] }
 ) {
   const plan = bookingCoverPlan(booking, access);
   if (plan.mode === "none") return null;
-  return plan.src;
+  return coverDisplayUrl(plan.src, width);
 }

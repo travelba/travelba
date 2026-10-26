@@ -6,6 +6,7 @@ import { stayTransitionName } from "@/lib/crm/account-motion";
 import { Icon } from "@/components/crm/icons";
 import { EmptyState } from "@/components/crm/ui";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { readExample } from "@/lib/crm/example-store";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,13 @@ export default async function ExampleReservationsPage({
   const past = all.filter((b) => isClientPastStay(b));
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
+  const covers = await resolveListCovers(
+    list.map((row) => ({
+      id: row.id,
+      booking: row,
+      items: row.id === session.booking.id ? session.items : undefined,
+    }))
+  );
 
   return (
     <AccountPage>
@@ -114,6 +122,8 @@ export default async function ExampleReservationsPage({
                   booking={toPublicBooking(b)}
                   items={b.id === session.booking.id ? session.items : undefined}
                   width={800}
+                  list
+                  resolvedSrc={covers[b.id] ?? null}
                   transitionName={stayTransitionName(b.reference)}
                 >
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">

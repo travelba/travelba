@@ -44,6 +44,7 @@ export function BookingsTable({
   hiddenArchiveHits = 0,
   searchText = {},
   payerLabels = {},
+  covers = {},
 }: {
   bookings: CrmBooking[];
   customers: CustomerNameRow[];
@@ -60,6 +61,8 @@ export function BookingsTable({
   searchText?: Record<string, string>;
   /** Société qui règle, quand le client en a plusieurs. */
   payerLabels?: Record<string, string>;
+  /** Photo déjà résolue quand le catalogue local ne connaît pas le lieu. */
+  covers?: Record<string, string | null>;
 }) {
   const byId = new Map(customers.map((c) => [c.id, customerFullName(c)]));
   const urlFilters = {
@@ -103,6 +106,8 @@ export function BookingsTable({
                 booking={b}
                 places={places[b.id]}
                 plain
+                list
+                resolvedSrc={covers[b.id] ?? null}
                 className="h-14 w-20 shrink-0 rounded-xl sm:h-16 sm:w-28"
               />
                 <div className="min-w-0">

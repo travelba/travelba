@@ -16,6 +16,7 @@ import {
 } from "@/lib/crm/money";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/crm/ui";
+import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -62,6 +63,9 @@ export default async function ReservationsPage({
   const past = sortBookingsByStart(all.filter((b) => isClientPastStay(b)), "desc");
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
+  const covers = await resolveListCovers(
+    list.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }))
+  );
 
   return (
     <AccountPage>
@@ -145,6 +149,8 @@ export default async function ReservationsPage({
                   booking={toPublicBooking(b)}
                   places={places.arrival[b.id]}
                   width={800}
+                  list
+                  resolvedSrc={covers[b.id] ?? null}
                   transitionName={stayTransitionName(b.reference)}
                 >
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
