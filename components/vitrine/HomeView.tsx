@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Award,
   BadgeCheck,
   Bell,
   Briefcase,
@@ -82,11 +83,11 @@ const creations = [
   },
   {
     roman: "III.",
-    title: "POLYNÉSIE",
-    href: `${PREVIEW}/voyages`,
-    image: "photo-1507525428034-b723cf961d3e",
-    alt: "Lagon et pilotis au-dessus de l'eau",
-    quote: "« Atolls secrets & pilotis suspendus sur le lagon turquoise »",
+    title: "HAWAÏ",
+    href: voyagePath("hawaii"),
+    image: "photo-1510414842594-a61c69b5ae57",
+    alt: "Côte volcanique et mer",
+    quote: "« Oahu, la Grande Île, Maui. »",
     body: "",
     badge: "",
     cta: "Découvrir la création",
@@ -182,12 +183,17 @@ export function HomeView() {
             <div className="vz-accredit">
               <p>
                 <BadgeCheck size={18} strokeWidth={1.5} />
-                IATA Accrédité 20-2 4910
+                IATA 20291655
+              </p>
+              <i />
+              <p>
+                <Award size={18} strokeWidth={1.5} />
+                Atout France IM092260002
               </p>
               <i />
               <p>
                 <Shield size={18} strokeWidth={1.5} />
-                Garantie APST & RCP Pro
+                APST n°43865
               </p>
             </div>
           </div>
@@ -383,15 +389,12 @@ export function HomeView() {
         <div className="vz-frame vz-center">
           <div className="vz-diamond is-wide">
             <span />
-            <p className="vz-caps">Témoignage de confiance</p>
+            <p className="vz-caps">La maison</p>
             <span />
           </div>
           <blockquote>
-            « Plus qu’un voyage, Travel BA nous a offert une sérénité absolue. Chaque détail était anticipé avant même
-            que nous n&apos;ayons à le formuler. »
+            « Le voyage se tient avant le départ. Maisons, vols, accueil : le carnet s’ouvre dans l’application. »
           </blockquote>
-          <p className="vz-witness-name">Famille de R.</p>
-          <p className="vz-witness-meta">Voyage privé aux confins de Kyoto et Naoshima — Membres Club Travel BA</p>
         </div>
       </section>
     </>

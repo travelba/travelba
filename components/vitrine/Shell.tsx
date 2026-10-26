@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Lock, Mail, MapPin, Phone, Shield, BadgeCheck } from "lucide-react";
+import { Award, Lock, Mail, Phone, Shield, BadgeCheck } from "lucide-react";
 import { PREVIEW } from "@/lib/vitrine/paths";
+import { siteConfig } from "@/lib/site";
 
 type LinkItem = { href: string; label: string };
 type Column = { title: string; links: LinkItem[] };
@@ -164,14 +165,21 @@ export function Shell({
                   <BadgeCheck size={22} strokeWidth={1.5} />
                   <p>
                     <b>Agence accréditée IATA</b>
-                    <small>Licence Numéro 20-2 4910</small>
+                    <small>20291655</small>
+                  </p>
+                </div>
+                <div>
+                  <Award size={22} strokeWidth={1.5} />
+                  <p>
+                    <b>Atout France</b>
+                    <small>IM092260002</small>
                   </p>
                 </div>
                 <div>
                   <Shield size={22} strokeWidth={1.5} />
                   <p>
-                    <b>Garantie APST</b>
-                    <small>Fonds total de garantie</small>
+                    <b>Membre de l&apos;APST</b>
+                    <small>n°43865</small>
                   </p>
                 </div>
               </div>
@@ -193,15 +201,11 @@ export function Shell({
               <p>Une ligne directe et sécurisée réservée exclusivement aux membres en déplacement.</p>
               <p className="vz-footer-line">
                 <Phone size={18} strokeWidth={1.5} />
-                <a href="tel:+33756841315">Ligne Prioritaire Membres</a>
+                <a href="tel:+33772158257">07 72 15 82 57</a>
               </p>
               <p className="vz-footer-line">
                 <Mail size={18} strokeWidth={1.5} />
-                <a href="mailto:concierge@travelba.fr">concierge@travelba.fr</a>
-              </p>
-              <p className="vz-footer-line">
-                <MapPin size={18} strokeWidth={1.5} />
-                <span>Paris · Genève · Londres</span>
+                <a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
               </p>
             </div>
           </div>
