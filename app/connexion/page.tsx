@@ -14,7 +14,6 @@ const fieldClass =
 
 function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"login" | "forgot" | "magic" | "sent">("login");
@@ -22,9 +21,6 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const next = searchParams.get("next") || "/mon-compte";
-  const authError = searchParams.get("error") === "auth";
-  const noAccount = searchParams.get("error") === "no-account";
 
   async function goAfterClientSession() {
     const ack = await fetch("/api/auth/known-password", { method: "POST" });
@@ -51,7 +47,10 @@ function LoginForm() {
       pathAfterKnownPassword({
         staff: Boolean(staff),
         needsOnboarding: user ? needsClientOnboarding(user) : false,
-        next,
+        next:
+          typeof window === "undefined"
+            ? "/mon-compte"
+            : new URLSearchParams(window.location.search).get("next") || "/mon-compte",
       })
     );
     router.refresh();
@@ -250,18 +249,9 @@ function LoginForm() {
 
   return (
     <form onSubmit={loginWithPassword} className="mt-6 space-y-5">
-      {noAccount ? (
-        <p className="text-sm text-[var(--admin-red)]">
-          Aucun espace client n’est associé à ce compte. Contactez l’agence
-          pour recevoir une invitation.
-        </p>
-      ) : null}
-      {authError ? (
-        <p className="text-sm text-[var(--admin-red)]">
-          Lien invalide ou expiré. Demandez une nouvelle invitation ou
-          réinitialisez votre mot de passe.
-        </p>
-      ) : null}
+      <Suspense fallback={null}>
+        <ConnexionQueryNotice />
+      </Suspense>
       <label className="block space-y-1.5 text-sm">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
           Adresse e-mail
@@ -318,7 +308,30 @@ function LoginForm() {
       >
         Mot de passe oublié
       </button>
-      {noAccount ? (
+    </form>
+  );
+}
+
+/** Bandeau d’erreur d’URL. Le formulaire lui-même n’attend pas les paramètres : la carte ne grandit pas. */
+function ConnexionQueryNotice() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const error = searchParams.get("error");
+  if (error !== "auth" && error !== "no-account") return null;
+  return (
+    <>
+      {error === "no-account" ? (
+        <p className="text-sm text-[var(--admin-red)]">
+          Aucun espace client n’est associé à ce compte. Contactez l’agence
+          pour recevoir une invitation.
+        </p>
+      ) : (
+        <p className="text-sm text-[var(--admin-red)]">
+          Lien invalide ou expiré. Demandez une nouvelle invitation ou
+          réinitialisez votre mot de passe.
+        </p>
+      )}
+      {error === "no-account" ? (
         <button
           type="button"
           className="w-full text-center text-sm font-semibold text-[var(--admin-navy)]"
@@ -332,7 +345,7 @@ function LoginForm() {
           Se déconnecter
         </button>
       ) : null}
-    </form>
+    </>
   );
 }
 
@@ -358,9 +371,7 @@ export default function ConnexionPage() {
             passe, ou recevez un lien magique. Vous resterez connecté sur cet appareil.
           </p>
           <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-gold)]" />
-          <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
-            <LoginForm />
-          </Suspense>
+          <LoginForm />
         </div>
 
         <p className="mt-6 text-center text-xs text-muted">
