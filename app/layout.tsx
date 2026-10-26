@@ -3,19 +3,21 @@ import { Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/
 import { siteConfig } from "@/lib/site";
 import "./globals.css";
 
-// La vitrine peint Space Grotesk (titres). Plus Jakarta reste dispo pour le CRM, sans preload :
-// la page d’accueil ne l’utilise pas, et un preload inutile retardait le hero.
+// Connexion et CRM peignent Plus Jakarta. Space Grotesk ne sert que la vitrine : pas de preload,
+// sinon la carte de /connexion se décale quand la police utile arrive trop tard.
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-space-grotesk",
   display: "swap",
-  preload: true,
+  adjustFontFallback: true,
+  preload: false,
 });
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
   display: "swap",
+  adjustFontFallback: true,
   preload: true,
 });
 
@@ -23,7 +25,8 @@ const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-plus-jakarta",
   display: "swap",
-  preload: false,
+  adjustFontFallback: true,
+  preload: true,
 });
 
 const nunito = Nunito_Sans({
