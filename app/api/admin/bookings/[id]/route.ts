@@ -9,6 +9,8 @@ import {
   syncBookingLedger,
   syncBookingTotalFromItems,
 } from "@/lib/crm/bookings";
+import { refreshBookingDerived } from "@/lib/crm/dossier-refresh";
+import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
 import { noteCarnetAdditions } from "@/lib/crm/carnet-addition";
 import { publishRevealIds } from "@/lib/crm/carnet";
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
@@ -239,6 +241,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .maybeSingle();
     if (priced) booking = priced as CrmBooking;
     await syncBookingLedger(auth.supabase, booking, prev.status as BookingStatus);
+    await refreshBookingDerived(id, { signatory: hotelSignatoryName(auth.staff.full_name) });
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Écritures non retirées", 400);
   }

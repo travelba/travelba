@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -58,7 +58,6 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
-import { PliantAccountBalanceCard } from "@/components/admin/PliantCardDesk";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
 import type { TripAccountingView } from "@/lib/crm/trip-costs";
@@ -308,7 +307,7 @@ export function BookingEditor({
   refusals = [],
   visaRequests = [],
   pliantReady = false,
-  pliantAccount = null,
+  pliantBalance = null,
   shareUrl = null,
   shareCompanions = [],
   arrivals = [],
@@ -372,7 +371,7 @@ export function BookingEditor({
   }[];
   pliantReady?: boolean;
   /** Disponible du compte Pliant de l’agence. Null : lecture impossible, le solde reste affiché. */
-  pliantAccount?: { availableCents: number | null; currency: string } | null;
+  pliantBalance?: ReactNode;
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
@@ -482,6 +481,9 @@ export function BookingEditor({
   useEffect(() => {
     if (tab === "client") setClientEditorSeen(true);
   }, [tab]);
+  useEffect(() => {
+    void adminAction(`/api/admin/bookings/${booking.id}/vu`, { method: "POST" });
+  }, [booking.id]);
   const [more, setMore] = useState(false);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
@@ -2164,7 +2166,7 @@ export function BookingEditor({
 
       {tab === "cartes" ? (
         <div className="space-y-6">
-          <PliantAccountBalanceCard account={pliantAccount} />
+          {pliantBalance}
           <BookingCards
             bookingId={booking.id}
             cards={bookingCards}

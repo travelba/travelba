@@ -1,22 +1,22 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { DEFAULT_AGENCY_FEE_RATE, loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
-import { syncBookingTitleFromSteps } from "@/lib/crm/bookings";
 import { BookingEditor } from "@/components/admin/BookingEditor";
+import { DossierPliantBalance } from "@/components/admin/DossierPliantBalance";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
-import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
-import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
+import { pliantConfigured } from "@/lib/crm/pliant";
+import { pliantCardForBooking, pliantSpendsForCards, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
 import { pliantBookingCards, pliantCardRecaps } from "@/lib/crm/pliant-booking";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
-import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
-import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
-import { markEstaNoticesSeen, syncEstaForBookingId } from "@/lib/crm/esta-run";
-import { markUkEtaNoticesSeen, syncUkEtaForBookingId } from "@/lib/crm/uk-eta-run";
+import { companionsForShare, isTripShareCode, tripShareUrl } from "@/lib/crm/trip-share";
+import { loadEstaForBookingId } from "@/lib/crm/esta-run";
+import { readUkEtaLines } from "@/lib/crm/uk-eta-run";
 import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
 import {
   buildTripAccountingView,
@@ -32,11 +32,9 @@ import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
-import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
-import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
-import { companionNames, hotelSignatoryName } from "@/lib/crm/hotel-desk";
-import { ensureHotelRequests, loadHotelThread, syncHotelDeskThreads, syncHotelMessages } from "@/lib/crm/hotel-desk-run";
-import { principalGuest } from "@/lib/crm/hotel-arrival";
+import { loadClientLedger, loadClientLedgerViews, type ClientLedgerView } from "@/lib/crm/client-ledger";
+import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
+import { loadHotelThread } from "@/lib/crm/hotel-desk-run";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import type {
   CrmBooking,
@@ -82,24 +80,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const signatory = hotelSignatoryName(staff.full_name);
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
-  const pliantAccountPromise = pliantConfigured()
-    ? new Promise<Awaited<ReturnType<typeof loadPliantAccountBalance>>>((resolve) => {
-        const timer = setTimeout(() => resolve(null), 12_000);
-        loadPliantAccountBalance().then(
-          (value) => {
-            clearTimeout(timer);
-            resolve(value);
-          },
-          () => {
-            clearTimeout(timer);
-            resolve(null);
-          }
-        );
-      })
-    : Promise.resolve(null);
   const b = booking as CrmBooking;
-  const syncedTitle = await syncBookingTitleFromSteps(supabase, id);
-  if (syncedTitle) b.title = syncedTitle;
   await repairCustomerDownloads([b.customer_id]);
   const relatedIds = Array.from(
     new Set([b.customer_id, b.billing_customer_id].filter((value): value is string => Boolean(value)))
@@ -214,50 +195,23 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     .order("created_at", { ascending: true });
   if (!cardError && cardRows) bookingCards = cardRows as CrmBookingCard[];
 
+  const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
   let arrivals: CrmHotelArrival[] = [];
   let hotelRequests: CrmHotelRequest[] = [];
   let hotelMessages: CrmHotelMessage[] = [];
   let hotelThreadMessages: CrmHotelThreadMessage[] = [];
-  const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
-  const guest = principalGuest({
-    travelers: bookingTravelers,
-    holder: customer ? { first_name: customer.first_name || "", last_name: customer.last_name || "" } : null,
-  });
-  const guestName = `${guest.firstName} ${guest.lastName}`.trim();
   try {
     const arrivalAdmin = createServiceClient();
-    arrivals = await syncStayCards(arrivalAdmin, {
-      bookingId: id,
-      bookingStatus: b.status,
-      bookingEndDate: b.end_date || null,
-      currency: b.currency,
-      items: bookingItems,
-      travelers: bookingTravelers,
-      holder: customer ? { first_name: customer.first_name, last_name: customer.last_name } : null,
-    });
-    hotelRequests = await ensureHotelRequests(arrivalAdmin, {
-      bookingId: id,
-      reference: b.reference,
-      currency: b.currency,
-      guest: guestName,
-      companions: companionNames(bookingTravelers, guestName),
-      signatory,
-      items: bookingItems,
-    });
-    hotelMessages = await syncHotelMessages(arrivalAdmin, id);
-    try {
-      await syncHotelDeskThreads(arrivalAdmin, id);
-      const [{ data: freshRequests }, { data: freshMessages }, thread] = await Promise.all([
-        arrivalAdmin.from("crm_hotel_requests").select("*").eq("booking_id", id),
-        arrivalAdmin.from("crm_hotel_messages").select("*").eq("booking_id", id),
-        loadHotelThread(arrivalAdmin, id),
-      ]);
-      if (freshRequests) hotelRequests = freshRequests as CrmHotelRequest[];
-      if (freshMessages) hotelMessages = freshMessages as CrmHotelMessage[];
-      hotelThreadMessages = thread;
-    } catch {
-      hotelThreadMessages = [];
-    }
+    const [arrivalRows, requestRows, messageRows, thread] = await Promise.all([
+      arrivalAdmin.from("crm_hotel_arrivals").select("*").eq("booking_id", id),
+      arrivalAdmin.from("crm_hotel_requests").select("*").eq("booking_id", id),
+      arrivalAdmin.from("crm_hotel_messages").select("*").eq("booking_id", id),
+      loadHotelThread(arrivalAdmin, id).catch(() => [] as CrmHotelThreadMessage[]),
+    ]);
+    if (!arrivalRows.error && arrivalRows.data) arrivals = arrivalRows.data as CrmHotelArrival[];
+    if (!requestRows.error && requestRows.data) hotelRequests = requestRows.data as CrmHotelRequest[];
+    if (!messageRows.error && messageRows.data) hotelMessages = messageRows.data as CrmHotelMessage[];
+    hotelThreadMessages = thread;
   } catch {
     arrivals = [];
     hotelRequests = [];
@@ -281,11 +235,6 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     } catch {
       // Le lien vers la réservation manque ; les transactions restent lisibles.
     }
-    try {
-      await showPliantLast4(cardAdmin, { bookingCards, arrivals, registry: pliantCard });
-    } catch {
-      // Les quatre derniers chiffres manquent ; le récap des dépenses reste lisible.
-    }
   } catch {
     pliantCard = null;
     pliantTabSpends = [];
@@ -304,48 +253,56 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     pliantTabSpends
   );
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
-  let shareUrl: string | null = null;
-  if (b.visible_to_client) {
-    try {
-      const shareAdmin = createServiceClient();
-      const shareCode = await ensureTripShareCode(shareAdmin, b.id);
-      if (shareCode) shareUrl = tripShareUrl(siteConfig.url, shareCode);
-    } catch {
-      shareUrl = null;
-    }
-  }
+  const storedShare = (booking as { share_code?: string | null }).share_code;
+  const shareUrl =
+    b.visible_to_client && storedShare && isTripShareCode(storedShare)
+      ? tripShareUrl(siteConfig.url, storedShare)
+      : null;
 
-  let ledger: ClientLedgerView | null = null;
-  let accountLedger: ClientLedgerView | null = null;
   const accountHolder = billingCustomer || customer;
-  if (customer || accountHolder) {
+  const ledgerTask = (async () => {
+    let ledger: ClientLedgerView | null = null;
+    let accountLedger: ClientLedgerView | null = null;
+    if (customer && accountHolder && customer.id === accountHolder.id) {
+      const views = await loadClientLedgerViews(supabase, customer, ["client", "staff"]).catch(() => []);
+      ledger = views[0] || null;
+      accountLedger = views[1] || null;
+      return { ledger, accountLedger };
+    }
     const [clientView, staffView] = await Promise.all([
       customer ? loadClientLedger(supabase, customer, "client").catch(() => null) : Promise.resolve(null),
       accountHolder
         ? loadClientLedger(supabase, accountHolder, "staff").catch(() => null)
         : Promise.resolve(null),
     ]);
-    ledger = clientView;
-    accountLedger = staffView;
-  }
+    return { ledger: clientView, accountLedger: staffView };
+  })();
 
-  let estaLines: Awaited<ReturnType<typeof syncEstaForBookingId>> = [];
-  try {
-    const estaAdmin = createServiceClient();
-    estaLines = await syncEstaForBookingId(estaAdmin, id);
-    await markEstaNoticesSeen(estaAdmin, id);
-  } catch {
-    estaLines = [];
-  }
-
-  let ukEtaLines: Awaited<ReturnType<typeof syncUkEtaForBookingId>> = [];
-  try {
-    const ukEtaAdmin = createServiceClient();
-    ukEtaLines = await syncUkEtaForBookingId(ukEtaAdmin, id);
-    await markUkEtaNoticesSeen(ukEtaAdmin, id);
-  } catch {
-    ukEtaLines = [];
-  }
+  const accountingTask = (async () => {
+    const mb3mAdmin = createServiceClient();
+    let accountingInputs: DossierAccountingInputs = {
+      charges: [],
+      pieces: [],
+      costs: [],
+      coveredIds: [],
+      openNumber: null,
+    };
+    let accounting: TripAccountingView | null = null;
+    try {
+      accountingInputs = await loadDossierAccountingInputs(mb3mAdmin, id);
+      accounting = await buildTripAccountingView(mb3mAdmin, b, bookingItems, accountingInputs);
+    } catch (error) {
+      console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
+      accounting = null;
+    }
+    return { accountingInputs, accounting };
+  })();
+  const [{ ledger, accountLedger }, { accountingInputs, accounting }, estaLines, ukEtaLines] = await Promise.all([
+    ledgerTask,
+    accountingTask,
+    loadEstaForBookingId(createServiceClient(), id).catch(() => []),
+    readUkEtaLines(createServiceClient(), id).catch(() => []),
+  ]);
 
   const le = ((leRows || [])[0] || null) as {
     id: string;
@@ -390,18 +347,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     billing_city?: string | null;
     billing_country?: string | null;
   }[];
-  const mb3mAdmin = createServiceClient();
-  let accountingInputs: DossierAccountingInputs = { charges: [], pieces: [], costs: [], coveredIds: [], openNumber: null };
-  let accounting: TripAccountingView | null = null;
-  try {
-    accountingInputs = await loadDossierAccountingInputs(mb3mAdmin, id);
-    accounting = await buildTripAccountingView(mb3mAdmin, b, bookingItems, accountingInputs);
-  } catch (error) {
-    console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
-    accounting = null;
-  }
   const mb3mPiece = accountingInputs.openNumber ? { number: accountingInputs.openNumber } : null;
-  const pliantAccount = await pliantAccountPromise;
   const mb3mContext = buildMb3mInvoiceContext({
     booking: b,
     items: bookingItems,
@@ -462,7 +408,11 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
             })
           )}
           pliantReady={pliantConfigured()}
-          pliantAccount={pliantAccount}
+          pliantBalance={
+            <Suspense fallback={<p className="rounded-3xl bg-[#faf9f6] px-5 py-4 text-sm text-muted">Solde Pliant…</p>}>
+              <DossierPliantBalance />
+            </Suspense>
+          }
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
           arrivals={arrivals}

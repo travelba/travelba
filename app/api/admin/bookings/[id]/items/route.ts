@@ -1,7 +1,9 @@
 import { revalidatePath } from "next/cache";
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { refreshBookingDerived } from "@/lib/crm/dossier-refresh";
+import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import {
   ledgerWarning,
@@ -282,7 +284,8 @@ async function updateBookingItem(
 async function commitStaySteps(
   supabase: SupabaseClient,
   bookingId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  signatory?: string
 ) {
   const shown: CarnetAdditionCard[] = [];
   const deleted = Array.isArray(body.deleted)
@@ -331,7 +334,7 @@ async function commitStaySteps(
   } catch (error) {
     return dbError(error as { message?: string; code?: string }, 400);
   }
-  scheduleFormalitySync(bookingId);
+  await refreshBookingDerived(bookingId, { signatory });
   await noteCarnetAdditions(supabase, bookingId, shown);
   return NextResponse.json({
     ok: true,
@@ -345,10 +348,12 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
-  if (body?.commit === true) return commitStaySteps(auth.supabase, id, body);
+  if (body?.commit === true) {
+    return commitStaySteps(auth.supabase, id, body, hotelSignatoryName(auth.staff.full_name));
+  }
   const saved = await addStaffBookingCard(auth.supabase, id, (body || {}) as Record<string, unknown>);
   if ("error" in saved) return jsonError(saved.error, saved.status);
-  scheduleFormalitySync(id);
+  await refreshBookingDerived(id, { signatory: hotelSignatoryName(auth.staff.full_name) });
   revalidatePath(`/admin/reservations/${id}`);
   revalidatePath("/admin/transactions");
   revalidatePath("/mon-compte/transactions");
@@ -392,7 +397,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       return dbError(error as { message?: string; code?: string }, 400);
     }
   }
-  scheduleFormalitySync(bookingId);
+  await refreshBookingDerived(bookingId, { signatory: hotelSignatoryName(auth.staff.full_name) });
   return NextResponse.json({
     item: updated.item,
     ...(await ledgerAfterItemWrite(auth.supabase, bookingId, "Modification enregistrée")),
@@ -430,33 +435,9 @@ export async function DELETE(request: Request, ctx: Ctx) {
   } catch (syncError) {
     return dbError(syncError as { message?: string; code?: string }, 400);
   }
-  scheduleFormalitySync(bookingId);
+  await refreshBookingDerived(bookingId, { signatory: hotelSignatoryName(auth.staff.full_name) });
   return NextResponse.json({
     ok: true,
     ...(await ledgerAfterItemWrite(auth.supabase, bookingId, "Suppression enregistrée")),
   });
-}
-
-function scheduleFormalitySync(bookingId: string) {
-  after(() => Promise.all([touchEsta(bookingId), touchUkEta(bookingId)]));
-}
-
-async function touchEsta(bookingId: string) {
-  try {
-    const { createServiceClient } = await import("@/lib/supabase/admin");
-    const { syncEstaForBookingId } = await import("@/lib/crm/esta-run");
-    await syncEstaForBookingId(createServiceClient(), bookingId);
-  } catch {
-    console.info("[esta] synchro dossier ignorée");
-  }
-}
-
-async function touchUkEta(bookingId: string) {
-  try {
-    const { createServiceClient } = await import("@/lib/supabase/admin");
-    const { syncUkEtaForBookingId } = await import("@/lib/crm/uk-eta-run");
-    await syncUkEtaForBookingId(createServiceClient(), bookingId);
-  } catch {
-    console.info("[uk-eta] synchro dossier ignorée");
-  }
 }
