@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ContactBand } from "@/components/preview-refonte/ContactBand";
 import { Frame } from "@/components/preview-refonte/Frame";
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
     "Espace client Travel BA. Carnet, billets, documents, suivi, messages, fidélité. Étude non indexée.",
 };
 
-const sheets = [
+const sheets: { title: string; text: string; screen: ReactNode; flip?: boolean }[] = [
   {
     title: "Le carnet.",
     text: "Les villes du séjour, les nuits, les vols. L’exemple dit Marrakech, du 12 au 16 mars, deux voyageurs. Aucun horaire n’est inventé.",
@@ -53,7 +54,7 @@ const sheets = [
     screen: <FideliteScreen />,
     flip: true,
   },
-] as const;
+];
 
 export default function EspaceClientPage() {
   return (
