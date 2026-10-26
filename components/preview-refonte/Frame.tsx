@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Menu, X } from "lucide-react";
+import { AgencyLogo } from "@/components/AgencyLogo";
 import { siteConfig } from "@/lib/site";
 import { waCopy, whatsappHref } from "./photos";
 
@@ -11,12 +11,12 @@ const NAV = [
   { href: "/preview-refonte/sur-mesure", label: "Sur-mesure" },
   { href: "/preview-refonte/seminaires", label: "Séminaires" },
   { href: "/preview-refonte/ski", label: "Ski" },
-  { href: "/preview-refonte/espace-client", label: "Espace client" },
+  { href: "/preview-refonte/espace-client", label: "L’espace" },
+  { href: "/connexion", label: "Entrer" },
 ] as const;
 
 export function Frame({
   children,
-  tone = "overlay",
   whatsappText = waCopy.home,
 }: {
   children: React.ReactNode;
@@ -26,11 +26,11 @@ export function Frame({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const solid = tone === "solid" || scrolled || open;
+  const solid = scrolled || open;
   const wa = whatsappHref(whatsappText);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
+    const onScroll = () => setScrolled(window.scrollY > 40);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -57,64 +57,66 @@ export function Frame({
       </a>
       <header className={solid ? "tba-header is-solid" : "tba-header"}>
         <Link href="/preview-refonte" className="tba-logo">
-          <span className="tba-logo-name">Travel BA</span>
-          <span className="tba-logo-note">Aperçu</span>
+          <AgencyLogo className="h-9 w-9" />
+          <span>
+            <small>Travel Business Agency</small>
+            Travel BA
+          </span>
         </Link>
-        <nav className="tba-nav" aria-label="Univers">
+        <nav className="tba-nav" aria-label="La maison">
           {NAV.map((item) => (
             <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined}>
               {item.label}
             </Link>
           ))}
-          <a href={wa} target="_blank" rel="noopener noreferrer">
-            WhatsApp
-          </a>
-          <a className={solid ? "tba-btn tba-btn-small" : "tba-btn tba-btn-small tba-btn-light"} href="#rendez-vous">
-            Rendez-vous
+          <a className="tba-nav-cta" href={wa} target="_blank" rel="noopener noreferrer">
+            Écrire
           </a>
         </nav>
         <button
           type="button"
-          className="tba-burger"
+          className="tba-menu-btn"
           aria-expanded={open}
           aria-controls="tba-menu"
-          aria-label={open ? "Fermer le menu" : "Ouvrir le menu"}
           onClick={() => setOpen((value) => !value)}
         >
-          {open ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+          {open ? "Fermer" : "Menu"}
         </button>
       </header>
       {open ? (
         <nav id="tba-menu" className="tba-menu" aria-label="Menu">
+          <Link href="/preview-refonte" onClick={() => setOpen(false)}>
+            La maison
+          </Link>
           {NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="tba-menu-link"
               aria-current={pathname === item.href ? "page" : undefined}
               onClick={() => setOpen(false)}
             >
               {item.label}
             </Link>
           ))}
-          <div className="tba-menu-actions">
-            <a className="tba-btn" href={wa} target="_blank" rel="noopener noreferrer">
-              Écrire sur WhatsApp
-            </a>
-            <a className="tba-btn tba-btn-ghost" href="#brief" onClick={() => setOpen(false)}>
-              Déposer un brief
-            </a>
-            <a className="tba-btn tba-btn-ghost" href="#rendez-vous" onClick={() => setOpen(false)}>
-              Prendre rendez-vous
-            </a>
-          </div>
+          <a href={wa} target="_blank" rel="noopener noreferrer">
+            Écrire
+          </a>
+          <a href="#brief" onClick={() => setOpen(false)}>
+            Un brief
+          </a>
         </nav>
       ) : null}
       <main id="contenu">{children}</main>
       <footer className="tba-footer">
         <div className="tba-footer-grid">
           <div>
-            <p className="tba-logo-name tba-serif">Travel BA</p>
+            <p className="tba-logo">
+              <AgencyLogo className="h-10 w-10" />
+              <span>
+                <small>Travel Business Agency</small>
+                Travel BA
+              </span>
+            </p>
             <p>{siteConfig.address.full}</p>
             <p>
               <a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
@@ -123,10 +125,10 @@ export function Frame({
             </p>
           </div>
           <div>
-            <h2>Univers</h2>
+            <h2>Pages</h2>
             <ul>
               <li>
-                <Link href="/preview-refonte">Accueil</Link>
+                <Link href="/preview-refonte">La maison</Link>
               </li>
               {NAV.map((item) => (
                 <li key={item.href}>
@@ -136,17 +138,17 @@ export function Frame({
             </ul>
           </div>
           <div>
-            <h2>Accréditations</h2>
+            <h2>La maison</h2>
             <p>IATA 20291655</p>
-            <p>APST n° 43865</p>
             <p>Atout France IM092260002</p>
-            <p>Membre du réseau My Little Emperor</p>
+            <p>APST n° 43865</p>
           </div>
         </div>
         <p>
           {siteConfig.legal.legalName} — {siteConfig.legal.legalForm}, capital de {siteConfig.legal.capital}. {siteConfig.legal.rcs}.
         </p>
-        <p>Maquette d’aperçu. Cette page n’est pas indexée.</p>
+        <p>Les photographies donnent le ton. Elles ne montrent pas une adresse de la maison.</p>
+        <p>Étude de refonte. Cette page n’est pas indexée.</p>
       </footer>
     </>
   );

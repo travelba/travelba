@@ -1,37 +1,14 @@
-import type { ReactNode } from "react";
-
-export function Phone({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <figure className="tba-phone">
-      <figcaption>{label}</figcaption>
-      <div className="tba-device">
-        <div className="tba-device-screen">{children}</div>
-      </div>
-    </figure>
-  );
-}
-
-export function Laptop({ children }: { children: ReactNode }) {
-  return (
-    <div className="tba-laptop">
-      <div className="tba-laptop-bar">Aperçu · dossier d’exemple</div>
-      <div className="tba-laptop-screen">{children}</div>
-    </div>
-  );
-}
-
 export function CarnetScreen() {
   return (
-    <div>
-      <p className="tba-screen-brand">Travel BA</p>
-      <p className="tba-screen-kicker">Dossier d’exemple</p>
-      <h3 className="tba-screen-title">Marrakech</h3>
-      <p className="tba-screen-meta">12 – 16 mars · deux voyageurs</p>
-      <ol className="tba-steps">
+    <article className="tba-sheet">
+      <p className="tba-sheet-kicker">Carnet · dossier d’exemple</p>
+      <h3>Marrakech</h3>
+      <p className="tba-sheet-meta">12 – 16 mars · deux voyageurs</p>
+      <ol className="tba-lines">
         <li>
           <span>Arrivée</span>
           <strong>Vol</strong>
-          <em>Horaire dans le carnet</em>
+          <em>L’horaire reste celui du carnet</em>
         </li>
         <li>
           <span>Séjour</span>
@@ -46,76 +23,139 @@ export function CarnetScreen() {
         <li>
           <span>Retour</span>
           <strong>Vol</strong>
-          <em>Horaire dans le carnet</em>
+          <em>L’horaire reste celui du carnet</em>
         </li>
       </ol>
-      <p className="tba-screen-note">Dossier fictif. Aucune donnée de client, aucun horaire inventé.</p>
-    </div>
+      <p className="tba-note">Dossier fictif. Aucune donnée de client.</p>
+    </article>
   );
 }
 
-export function ConciergeScreen() {
+export function BilletScreen() {
   return (
-    <div>
-      <p className="tba-screen-brand">Concierge</p>
-      <p className="tba-screen-kicker">WhatsApp · à toute heure</p>
-      <h3 className="tba-screen-title">La maison</h3>
-      <div className="tba-chat">
-        <p className="tba-bubble">
-          <small>La maison</small>
-          Bonjour. Le carnet de Marrakech est ouvert.
-        </p>
-        <p className="tba-bubble is-you">
-          <small>Vous</small>
-          Pouvez-vous prévoir le transfert à l’arrivée ?
-        </p>
-        <p className="tba-bubble">
-          <small>La maison</small>
-          Nous revenons vers vous dans ce fil. Joignable à toute heure.
-        </p>
-      </div>
-      <p className="tba-screen-note">Échange d’exemple. Rien n’a été envoyé.</p>
-    </div>
+    <article className="tba-sheet">
+      <p className="tba-sheet-kicker">Billet · dossier d’exemple</p>
+      <h3>Paris → Marrakech</h3>
+      <p className="tba-sheet-meta">CDG → RAK</p>
+      <ol className="tba-lines">
+        <li>
+          <span>Classe</span>
+          <strong>Dans le carnet</strong>
+        </li>
+        <li>
+          <span>Référence</span>
+          <strong>Dans le carnet</strong>
+        </li>
+        <li>
+          <span>Voyageurs</span>
+          <strong>Deux billets</strong>
+          <em>Le train, lorsqu’il y en a un, suit la même carte</em>
+        </li>
+      </ol>
+      <p className="tba-note">Aucun numéro de billet sur cette étude.</p>
+    </article>
   );
 }
 
 export function DocumentsScreen() {
   return (
-    <div>
-      <p className="tba-screen-brand">Documents</p>
-      <p className="tba-screen-kicker">Dossier d’exemple</p>
-      <h3 className="tba-screen-title">Le coffre</h3>
-      <ul className="tba-docs">
+    <article className="tba-sheet">
+      <p className="tba-sheet-kicker">Documents</p>
+      <h3>Le coffre</h3>
+      <ol className="tba-lines">
         <li>
-          Pièce d’identité <span>Au coffre</span>
+          <span>Pièce d’identité</span>
+          <strong>Au coffre</strong>
         </li>
         <li>
-          Titre de transport <span>Dans le carnet</span>
+          <span>Billet</span>
+          <strong>Dans le carnet</strong>
         </li>
         <li>
-          Confirmation de séjour <span>Dans le carnet</span>
+          <span>Confirmation de séjour</span>
+          <strong>Dans le carnet</strong>
         </li>
-      </ul>
-      <p className="tba-screen-note">Les numéros de pièces ne figurent pas sur cet aperçu.</p>
-    </div>
+        <li>
+          <span>Formalité</span>
+          <strong>Lorsque la pièce est prête</strong>
+        </li>
+      </ol>
+      <p className="tba-note">Les numéros ne figurent pas ici.</p>
+    </article>
   );
 }
 
-export function PaiementScreen() {
+export function SuiviScreen() {
   return (
-    <div>
-      <p className="tba-screen-brand">Paiements</p>
-      <p className="tba-screen-kicker">Dossier d’exemple</p>
-      <h3 className="tba-screen-title">Marrakech</h3>
-      <div className="tba-pay">
-        <div>
-          Montant <em>à fournir</em>
-        </div>
-        <div>
-          Règlement <em>à fournir</em>
-        </div>
+    <article className="tba-sheet">
+      <p className="tba-sheet-kicker">Suivi</p>
+      <h3>Le séjour</h3>
+      <ol className="tba-lines">
+        <li>
+          <span>Carnet</span>
+          <strong>Ouvert</strong>
+          <em>Étapes, villes, pièces</em>
+        </li>
+        <li>
+          <span>ESTA</span>
+          <strong>Pièce au coffre</strong>
+          <em>Préparation, remplissage, validation, paiement, pièce</em>
+        </li>
+        <li>
+          <span>Concierge</span>
+          <strong>Joignable</strong>
+          <em>WhatsApp, à toute heure</em>
+        </li>
+      </ol>
+      <p className="tba-note">Exemple. Le vrai suivi est celui du dossier.</p>
+    </article>
+  );
+}
+
+export function MessagesScreen() {
+  return (
+    <article className="tba-sheet">
+      <p className="tba-sheet-kicker">Messages</p>
+      <h3>Le Concierge</h3>
+      <div className="tba-thread">
+        <p className="is-house">
+          <small>La maison</small>
+          Le carnet de Marrakech est ouvert.
+        </p>
+        <p className="is-you">
+          <small>Vous</small>
+          Pouvez-vous prévoir le transfert à l’arrivée ?
+        </p>
+        <p className="is-house">
+          <small>La maison</small>
+          Nous revenons vers vous dans ce fil.
+        </p>
       </div>
-      <p className="tba-screen-note">Aucun encaissement depuis cet aperçu. Le montant réel reste dans l’espace du client.</p>
-    </div>
+      <p className="tba-note">Échange d’exemple. Rien n’a été envoyé.</p>
+    </article>
+  );
+}
+
+export function FideliteScreen() {
+  return (
+    <article className="tba-sheet">
+      <p className="tba-sheet-kicker">Fidélité</p>
+      <h3>La fiche</h3>
+      <ol className="tba-lines">
+        <li>
+          <span>Aérien</span>
+          <strong>Numéro enregistré</strong>
+        </li>
+        <li>
+          <span>Hôtel</span>
+          <strong>Numéro enregistré</strong>
+        </li>
+        <li>
+          <span>Train</span>
+          <strong>Numéro enregistré</strong>
+        </li>
+      </ol>
+      <p className="tba-note">Les numéros restent sur la fiche. Ils ne sont pas montrés ici.</p>
+    </article>
   );
 }

@@ -1,121 +1,112 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ContactBand } from "@/components/preview-refonte/ContactBand";
 import { Frame } from "@/components/preview-refonte/Frame";
-import { Photo } from "@/components/preview-refonte/Photo";
-import { shot, waCopy, whatsappHref } from "@/components/preview-refonte/photos";
+import { shot, waCopy } from "@/components/preview-refonte/photos";
 import {
+  BilletScreen,
   CarnetScreen,
-  ConciergeScreen,
   DocumentsScreen,
-  Laptop,
-  PaiementScreen,
-  Phone,
+  FideliteScreen,
+  MessagesScreen,
+  SuiviScreen,
 } from "@/components/preview-refonte/Screens";
-import { Trust } from "@/components/preview-refonte/ui";
-
-export const viewport: Viewport = {
-  themeColor: "#f3eee6",
-};
+import { Credentials, PageHero } from "@/components/preview-refonte/ui";
 
 export const metadata: Metadata = {
-  title: "Espace client",
+  title: "L’espace",
   description:
-    "Vitrine de l’espace client Travel BA : carnet, concierge WhatsApp, documents et paiements. Dossier fictif. Aperçu non indexé.",
+    "Espace client Travel BA. Carnet, billets, documents, suivi, messages, fidélité. Étude non indexée.",
 };
 
+const sheets = [
+  {
+    title: "Le carnet.",
+    text: "Les villes du séjour, les nuits, les vols. L’exemple dit Marrakech, du 12 au 16 mars, deux voyageurs. Aucun horaire n’est inventé.",
+    screen: <CarnetScreen />,
+  },
+  {
+    title: "Le billet.",
+    text: "Villes en titre, codes d’aéroport dessous. La classe et la référence restent dans le vrai carnet. Le train, s’il y en a un, suit la même carte.",
+    screen: <BilletScreen />,
+    flip: true,
+  },
+  {
+    title: "Les documents.",
+    text: "Pièce d’identité, billet, confirmation, formalité lorsque la pièce est prête. Les numéros ne figurent pas sur cette étude.",
+    screen: <DocumentsScreen />,
+  },
+  {
+    title: "Le suivi.",
+    text: "Carnet ouvert, formalité en cours, concierge joignable. Les temps d’une formalité : préparation, remplissage, validation, paiement, pièce.",
+    screen: <SuiviScreen />,
+    flip: true,
+  },
+  {
+    title: "Les messages.",
+    text: "Le Concierge, sur WhatsApp, à toute heure. L’échange montré ici est un exemple. Rien n’a été envoyé.",
+    screen: <MessagesScreen />,
+  },
+  {
+    title: "La fidélité.",
+    text: "Flying Blue, Miles & More, Executive Club, Skywards, Marriott Bonvoy, ALL Accor, Grand Voyageur, Great Members. Le numéro est enregistré. Il n’est pas montré.",
+    screen: <FideliteScreen />,
+    flip: true,
+  },
+] as const;
+
 export default function EspaceClientPage() {
-  const wa = whatsappHref(waCopy.espace);
-
   return (
-    <Frame tone="solid" whatsappText={waCopy.espace}>
-      <header className="tba-typehero">
-        <p className="tba-kicker">Espace client</p>
-        <h1>Tout le séjour, déjà là.</h1>
-        <p className="tba-lede">
-          Le carnet de voyage, le concierge WhatsApp joignable à toute heure, les documents et les paiements. Les écrans
-          montrent un dossier fictif à Marrakech. Aucune donnée de client.
-        </p>
-        <div className="tba-hero-actions">
-          <a className="tba-btn" href={wa} target="_blank" rel="noopener noreferrer">
-            Demander l’accès
-          </a>
-          <Link className="tba-btn tba-btn-ghost" href="/connexion">
-            Déjà client — ouvrir l’espace
+    <Frame whatsappText={waCopy.espace}>
+      <PageHero
+        title={
+          <>
+            L’espace,
+            <br />
+            <em>déjà ouvert.</em>
+          </>
+        }
+        lede="Le séjour que la maison a composé vous suit : carnet, billets, documents, suivi, messages."
+        image={shot.maldives}
+        alt="Lagon et ponton, lumière claire"
+      >
+        <div className="tba-actions">
+          <Link className="tba-word" href="/connexion">
+            Entrer
           </Link>
+          <a className="tba-word" href="#carnet">
+            Les écrans
+          </a>
         </div>
-      </header>
+      </PageHero>
 
-      <article className="tba-chapter">
-        <div>
-          <p className="tba-kicker">01 — Carnet</p>
-          <h2>Le carnet de voyage.</h2>
-          <p className="tba-lede">
-            Les étapes, dans l’ordre. Villes où l’on séjourne, trajets, journées. Rien qui n’ait été composé pour ce dossier.
-            Les horaires restent ceux du carnet réel — ici, ils ne sont pas inventés.
-          </p>
-        </div>
-        <div className="tba-chapter-device">
-          <Laptop>
-            <CarnetScreen />
-          </Laptop>
-        </div>
-      </article>
-
-      <article className="tba-chapter is-flip">
-        <div>
-          <p className="tba-kicker">02 — Concierge</p>
-          <h2>WhatsApp, à toute heure.</h2>
-          <p className="tba-lede">
-            Un fil avec la maison. La demande part sur WhatsApp. La réponse vient de l’agence, pas d’un automate montré ici.
-          </p>
-        </div>
-        <div className="tba-chapter-device">
-          <Phone label="Concierge">
-            <ConciergeScreen />
-          </Phone>
-        </div>
-      </article>
-
-      <article className="tba-chapter">
-        <div>
-          <p className="tba-kicker">03 — Documents</p>
-          <h2>Les pièces, avec le séjour.</h2>
-          <p className="tba-lede">
-            Pièce d’identité, titre de transport, confirmation. Au même endroit que le voyage. Les numéros ne sont pas montrés
-            sur cette vitrine.
-          </p>
-        </div>
-        <div className="tba-chapter-device">
-          <Phone label="Documents">
-            <DocumentsScreen />
-          </Phone>
-        </div>
-      </article>
-
-      <article className="tba-chapter is-flip">
-        <div>
-          <p className="tba-kicker">04 — Paiements</p>
-          <h2>Le règlement, au clair.</h2>
-          <p className="tba-lede">
-            Le montant du séjour se lit dans l’espace du client. Sur cet exemple, le montant et le règlement sont à fournir.
-            Rien ne s’encaisse depuis la maquette.
-          </p>
-        </div>
-        <div className="tba-chapter-device">
-          <Phone label="Paiements">
-            <PaiementScreen />
-          </Phone>
-        </div>
-      </article>
-
-      <section className="tba-photo-break" aria-label="Lagon, image d’atmosphère">
-        <Photo id={shot.maldives} alt="Villas sur pilotis dans un lagon" sizes="100vw" width={2200} />
-        <div className="tba-hero-shade" aria-hidden="true" />
-        <p>Le séjour continue, même à distance.</p>
+      <section className="tba-manifesto">
+        <p>Ce que vous voyez est un dossier d’exemple. Aucune donnée de client, aucun prix, aucun horaire inventé.</p>
       </section>
 
-      <Trust />
+      <div id="carnet">
+        {sheets.map((sheet) => (
+          <section key={sheet.title} className={sheet.flip ? "tba-product is-flip" : "tba-product"}>
+            <div className="tba-product-copy">
+              <h2>{sheet.title}</h2>
+              <p className="tba-lead">{sheet.text}</p>
+            </div>
+            {sheet.screen}
+          </section>
+        ))}
+      </div>
+
+      <section className="tba-prose">
+        <h2>Entrer.</h2>
+        <p>L’espace réel est derrière la connexion. L’invitation vient de la maison. Cette étude n’en envoie pas.</p>
+        <p>
+          <Link className="tba-word" href="/connexion">
+            Entrer
+          </Link>
+        </p>
+      </section>
+
+      <Credentials />
       <ContactBand whatsappText={waCopy.espace} />
     </Frame>
   );

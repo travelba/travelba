@@ -1,33 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Outfit } from "next/font/google";
 import "@/components/preview-refonte/maison.css";
 
-const serif = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  style: ["normal", "italic"],
-  variable: "--font-tba-serif",
-  display: "swap",
-});
-
-const sans = Outfit({
-  subsets: ["latin"],
-  weight: ["300", "400", "500"],
-  variable: "--font-tba-sans",
-  display: "swap",
-});
-
 export const viewport: Viewport = {
-  themeColor: "#12110f",
+  themeColor: "#0B192C",
 };
 
 export const metadata: Metadata = {
   title: {
-    default: "Travel BA — Maison de voyage",
+    default: "Travel BA",
     template: "%s — Travel BA",
   },
   description:
-    "Aperçu de la refonte du site Travel BA. Voyages sur-mesure, séminaires et ski premium. Page non indexée.",
+    "Étude de la refonte Travel BA. Voyages, hôtels, vols, jets, séminaires, ski, accueil, formalités, carnet et conciergerie. Page non indexée.",
   robots: {
     index: false,
     follow: false,
@@ -37,5 +21,5 @@ export const metadata: Metadata = {
 };
 
 export default function PreviewRefonteLayout({ children }: { children: React.ReactNode }) {
-  return <div className={`tba-maison ${serif.variable} ${sans.variable}`}>{children}</div>;
+  return <div className="tba-maison admin-af">{children}</div>;
 }

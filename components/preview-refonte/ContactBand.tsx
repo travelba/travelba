@@ -12,17 +12,14 @@ export function ContactBand({
   whatsappText?: string;
   universe?: string;
 }) {
-  const wa = whatsappHref(whatsappText);
-
   return (
     <section className="tba-contact" aria-labelledby="contact-titre">
       <div>
-        <p className="tba-kicker">Écrire</p>
-        <h2 id="contact-titre">Trois façons de commencer.</h2>
-        <p>La maison répond en personne. Cet aperçu ne transmet ni le brief ni le rendez-vous.</p>
-        <p style={{ marginTop: "1.4rem" }}>
-          <a className="tba-btn" href={wa} target="_blank" rel="noopener noreferrer">
-            Demande sur WhatsApp
+        <h2 id="contact-titre">Écrire à la maison.</h2>
+        <p>WhatsApp, un brief, ou un moment pour se parler. L’étude prépare le geste. Elle ne l’expédie pas.</p>
+        <p style={{ marginTop: "1.6rem" }}>
+          <a className="tba-word" href={whatsappHref(whatsappText)} target="_blank" rel="noopener noreferrer">
+            WhatsApp
           </a>
         </p>
       </div>
@@ -42,7 +39,6 @@ function BriefForm({ universe }: { universe: string }) {
     const name = String(data.get("nom") || "").trim();
     const email = String(data.get("email") || "").trim();
     const message = String(data.get("message") || "").trim();
-    const phone = String(data.get("telephone") || "").trim();
     if (name.length < 2) {
       setError("Indiquez votre nom.");
       return;
@@ -51,12 +47,8 @@ function BriefForm({ universe }: { universe: string }) {
       setError("Indiquez un e-mail valide.");
       return;
     }
-    if (phone && phone.replace(/\D/g, "").length < 8) {
-      setError("Le téléphone semble incomplet.");
-      return;
-    }
     if (message.length < 8) {
-      setError("Écrivez quelques lignes sur le projet.");
+      setError("Quelques lignes suffisent.");
       return;
     }
     setError("");
@@ -65,13 +57,11 @@ function BriefForm({ universe }: { universe: string }) {
 
   return (
     <div id="brief">
-      <p className="tba-kicker">Brief</p>
-      <h3>Déposer un brief.</h3>
-      <p>Destination, dates, nombre de personnes, ton du séjour. Sans prix, sans engagement.</p>
+      <h2>Le brief.</h2>
       {done ? (
         <div className="tba-form-ok" role="status">
-          <strong>Brief préparé.</strong>
-          <p>Cet aperçu ne l’envoie pas. Écrivez sur WhatsApp pour qu’il parte vraiment.</p>
+          <strong>Il est prêt.</strong>
+          <p>Pour qu’il parte, écrivez sur WhatsApp.</p>
         </div>
       ) : (
         <form className="tba-form" onSubmit={onSubmit} noValidate>
@@ -84,16 +74,16 @@ function BriefForm({ universe }: { universe: string }) {
             <input name="email" type="email" autoComplete="email" inputMode="email" required />
           </label>
           <label>
-            Téléphone
-            <input name="telephone" type="tel" autoComplete="tel" inputMode="tel" />
-          </label>
-          <label>
             Univers
             <select name="univers" defaultValue={universe}>
               <option value="">Choisir</option>
               <option value="sur-mesure">Sur-mesure</option>
-              <option value="seminaire">Séminaire ou événement</option>
-              <option value="ski">Ski premium</option>
+              <option value="hotel">Hôtels</option>
+              <option value="vol">Vols ou jet</option>
+              <option value="seminaire">Séminaire ou incentive</option>
+              <option value="ski">Ski</option>
+              <option value="sol">Transfert, chauffeur, accueil</option>
+              <option value="formalite">Formalité</option>
             </select>
           </label>
           <label>
@@ -105,10 +95,7 @@ function BriefForm({ universe }: { universe: string }) {
               {error}
             </p>
           ) : null}
-          <button className="tba-btn" type="submit">
-            Préparer le brief
-          </button>
-          <p className="tba-screen-note">Aperçu : le formulaire ne transmet rien.</p>
+          <button type="submit">Préparer</button>
         </form>
       )}
     </div>
@@ -134,7 +121,7 @@ function RendezVous() {
       return;
     }
     if (day.length < 3) {
-      setError("Indiquez un jour souhaité.");
+      setError("Indiquez un jour.");
       return;
     }
     setError("");
@@ -143,13 +130,12 @@ function RendezVous() {
 
   return (
     <div id="rendez-vous">
-      <p className="tba-kicker">Rendez-vous</p>
-      <h3>Prendre rendez-vous.</h3>
-      <p>Dites le jour qui vous arrangerait. La maison confirme le moment. Aucun créneau n’est affiché comme libre.</p>
+      <h2>Un moment.</h2>
+      <p>Le jour qui vous arrangerait. La maison confirme.</p>
       {done ? (
         <div className="tba-form-ok" role="status">
-          <strong>Demande notée ici.</strong>
-          <p>Aucun rendez-vous n’est enregistré. Écrivez sur WhatsApp pour le confirmer.</p>
+          <strong>Noté ici.</strong>
+          <p>Le rendez-vous se confirme sur WhatsApp.</p>
         </div>
       ) : (
         <form className="tba-form" onSubmit={onSubmit} noValidate>
@@ -162,7 +148,7 @@ function RendezVous() {
             <input name="email" type="email" autoComplete="email" inputMode="email" required />
           </label>
           <label>
-            Jour souhaité
+            Jour
             <input name="jour" autoComplete="off" required />
           </label>
           <label>
@@ -179,10 +165,7 @@ function RendezVous() {
               {error}
             </p>
           ) : null}
-          <button className="tba-btn" type="submit">
-            Noter le rendez-vous
-          </button>
-          <p className="tba-screen-note">Aperçu : rien n’est inscrit à l’agenda.</p>
+          <button type="submit">Noter</button>
         </form>
       )}
     </div>

@@ -1,6 +1,5 @@
 import { siteConfig } from "@/lib/site";
 
-/** Photo Unsplash déjà recadrée. Le composant Image de Next la sert en plusieurs tailles. */
 export function unsplash(id: string, width = 2000) {
   return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=75`;
 }
@@ -23,6 +22,10 @@ export const shot = {
   chalet: "photo-1542718610-a1d656d1884c",
   matterhorn: "photo-1464822759023-fed622ff2c3b",
   lake: "photo-1506905925346-21bda4d32df4",
+  jet: "photo-1540962351504-03099e0a754b",
+  car: "photo-1503376780353-7e6692767b70",
+  wing: "photo-1436491865332-7a61a109cc05",
+  table: "photo-1414235077428-338989a2e8c0",
 } as const;
 
 export function whatsappHref(text: string) {
@@ -32,7 +35,7 @@ export function whatsappHref(text: string) {
 export const waCopy = {
   home: "Bonjour, je souhaite échanger avec Travel BA au sujet d’un voyage.",
   seminaires:
-    "Bonjour, je prépare un séminaire ou un événement et je souhaite en parler avec Travel BA.",
+    "Bonjour, je prépare un séminaire ou un incentive et je souhaite en parler avec Travel BA.",
   ski: "Bonjour, je cherche une semaine de ski, en chalet ou en palace, et je souhaite en parler avec Travel BA.",
   surMesure: "Bonjour, je souhaite composer un voyage sur-mesure avec Travel BA.",
   espace: "Bonjour, je souhaite accéder à l’espace client Travel BA.",
