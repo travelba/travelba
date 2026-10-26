@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ContactBand } from "@/components/preview-refonte/ContactBand";
 import { Frame } from "@/components/preview-refonte/Frame";
 import { shot, waCopy } from "@/components/preview-refonte/photos";
 import {
@@ -12,7 +11,7 @@ import {
   MessagesScreen,
   SuiviScreen,
 } from "@/components/preview-refonte/Screens";
-import { Credentials, PageHero } from "@/components/preview-refonte/ui";
+import { Credentials, PageHero, ProjetInvite } from "@/components/preview-refonte/ui";
 
 export const metadata: Metadata = {
   title: "L’espace",
@@ -108,7 +107,7 @@ export default function EspaceClientPage() {
       </section>
 
       <Credentials />
-      <ContactBand whatsappText={waCopy.espace} />
+      <ProjetInvite lede="L’espace s’ouvre sur invitation. Pour un nouveau séjour, racontez-le d’abord." />
     </Frame>
   );
 }

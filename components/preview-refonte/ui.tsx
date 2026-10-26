@@ -93,6 +93,17 @@ export function ServiceGrid() {
   );
 }
 
+export function ProjetInvite({ lede }: { lede: string }) {
+  return (
+    <section className="tba-invite">
+      <p>{lede}</p>
+      <Link className="tba-word" href="/preview-refonte/projet">
+        Racontez-nous votre projet
+      </Link>
+    </section>
+  );
+}
+
 export function Credentials() {
   return (
     <section className="tba-creds" aria-label="Accréditations">

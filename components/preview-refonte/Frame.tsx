@@ -5,29 +5,19 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AgencyLogo } from "@/components/AgencyLogo";
 import { siteConfig } from "@/lib/site";
-import { previewServices } from "./catalog";
 import { waCopy, whatsappHref } from "./photos";
+import { universes } from "./universes";
 
 const HOUSE = [
   { href: "/preview-refonte/espace-client", label: "L’espace" },
   { href: "/connexion", label: "Entrer" },
 ] as const;
 
-export function Frame({
-  children,
-  whatsappText = waCopy.home,
-}: {
-  children: React.ReactNode;
-  tone?: "overlay" | "solid";
-  whatsappText?: string;
-}) {
+export function Frame({ children }: { children: React.ReactNode; tone?: "overlay" | "solid"; whatsappText?: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const [mega, setMega] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const solid = scrolled || open || mega;
-  const serviceOpen = previewServices.some((service) => pathname === `/preview-refonte/${service.slug}`);
-  const wa = whatsappHref(whatsappText);
+  const solid = scrolled || open;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -37,21 +27,20 @@ export function Frame({
   }, []);
 
   useEffect(() => {
-    if (!open && !mega) return;
+    if (!open) return;
     const previous = document.body.style.overflow;
-    if (open) document.body.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        setMega(false);
-      }
+      if (event.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, mega]);
+  }, [open]);
+
+  const close = () => setOpen(false);
 
   return (
     <>
@@ -59,7 +48,7 @@ export function Frame({
         Aller au contenu
       </a>
       <header className={solid ? "tba-header is-solid" : "tba-header"}>
-        <Link href="/preview-refonte" className="tba-logo">
+        <Link href="/preview-refonte" className="tba-logo" onClick={close}>
           <AgencyLogo className="h-9 w-9" />
           <span>
             <small>Travel Business Agency</small>
@@ -67,95 +56,40 @@ export function Frame({
           </span>
         </Link>
         <nav className="tba-nav" aria-label="La maison">
-          <button
-            type="button"
-            className="tba-nav-services"
-            aria-expanded={mega}
-            aria-controls="tba-mega"
-            aria-current={serviceOpen ? "true" : undefined}
-            onClick={() => setMega((value) => !value)}
-          >
-            Services
-          </button>
-          {HOUSE.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={pathname === item.href ? "page" : undefined}
-              onClick={() => setMega(false)}
-            >
-              {item.label}
+          {universes.map((item) => (
+            <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined}>
+              {item.nav}
             </Link>
           ))}
-          <a className="tba-nav-cta" href={wa} target="_blank" rel="noopener noreferrer">
-            Écrire
-          </a>
+          <Link href="/preview-refonte/espace-client" aria-current={pathname === "/preview-refonte/espace-client" ? "page" : undefined}>
+            L’espace
+          </Link>
+          <Link className="tba-nav-cta" href="/preview-refonte/projet" aria-current={pathname === "/preview-refonte/projet" ? "page" : undefined}>
+            Racontez-nous votre projet
+          </Link>
         </nav>
-        <button
-          type="button"
-          className="tba-menu-btn"
-          aria-expanded={open}
-          aria-controls="tba-menu"
-          onClick={() => {
-            setMega(false);
-            setOpen((value) => !value);
-          }}
-        >
+        <button type="button" className="tba-menu-btn" aria-expanded={open} aria-controls="tba-menu" onClick={() => setOpen((value) => !value)}>
           {open ? "Fermer" : "Menu"}
         </button>
       </header>
-      {mega ? (
-        <nav id="tba-mega" className="tba-mega" aria-label="Services">
-          {previewServices.map((service) => {
-            const href = `/preview-refonte/${service.slug}`;
-            return (
-              <Link
-                key={service.slug}
-                href={href}
-                aria-current={pathname === href ? "page" : undefined}
-                onClick={() => setMega(false)}
-              >
-                <strong>{service.menu}</strong>
-                <span>{service.description}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      ) : null}
       {open ? (
         <nav id="tba-menu" className="tba-menu" aria-label="Menu">
-          <Link href="/preview-refonte" onClick={() => setOpen(false)}>
+          <Link href="/preview-refonte" onClick={close}>
             La maison
           </Link>
-          {previewServices.map((service) => {
-            const href = `/preview-refonte/${service.slug}`;
-            return (
-              <Link
-                key={service.slug}
-                href={href}
-                aria-current={pathname === href ? "page" : undefined}
-                onClick={() => setOpen(false)}
-              >
-                {service.menu}
-              </Link>
-            );
-          })}
+          {universes.map((item) => (
+            <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined} onClick={close}>
+              {item.title}
+            </Link>
+          ))}
           {HOUSE.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={pathname === item.href ? "page" : undefined}
-              onClick={() => setOpen(false)}
-            >
+            <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined} onClick={close}>
               {item.label}
             </Link>
           ))}
-          <a href={wa} target="_blank" rel="noopener noreferrer">
-            Écrire
-          </a>
-          <a href="#brief" onClick={() => setOpen(false)}>
-            Un brief
-          </a>
+          <Link href="/preview-refonte/projet" onClick={close}>
+            Racontez-nous votre projet
+          </Link>
         </nav>
       ) : null}
       <main id="contenu">{children}</main>
@@ -173,25 +107,28 @@ export function Frame({
             <p>
               <a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
               <br />
+              <a href={whatsappHref(waCopy.home)}>WhatsApp</a>
+              {" · "}
               <a href={`tel:+${siteConfig.whatsappNumber}`}>{siteConfig.phoneDisplay}</a>
             </p>
           </div>
           <div>
-            <h2>Pages</h2>
+            <h2>Univers</h2>
             <ul>
-              <li>
-                <Link href="/preview-refonte">La maison</Link>
-              </li>
-              {previewServices.map((service) => (
-                <li key={service.slug}>
-                  <Link href={`/preview-refonte/${service.slug}`}>{service.menu}</Link>
-                </li>
-              ))}
-              {HOUSE.map((item) => (
+              {universes.map((item) => (
                 <li key={item.href}>
-                  <Link href={item.href}>{item.label}</Link>
+                  <Link href={item.href}>{item.title}</Link>
                 </li>
               ))}
+              <li>
+                <Link href="/preview-refonte/espace-client">L’espace</Link>
+              </li>
+              <li>
+                <Link href="/connexion">Entrer</Link>
+              </li>
+              <li>
+                <Link href="/preview-refonte/projet">Racontez-nous votre projet</Link>
+              </li>
             </ul>
           </div>
           <div>
