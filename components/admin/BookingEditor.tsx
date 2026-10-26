@@ -68,6 +68,7 @@ import type { WhatsappThreadMessage, WhatsappThreadRequest } from "@/components/
 import type { ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
+import { BoardingPassSend } from "@/components/admin/BoardingPassSend";
 import { applyExpenseLedgerChange, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import {
   ArchiveBookingButton,
@@ -496,6 +497,11 @@ export function BookingEditor({
   const [partyError, setPartyError] = useState<string | null>(null);
   const [docBusy, setDocBusy] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+  const [passesOpen, setPassesOpen] = useState(false);
+  useEffect(() => {
+    if (!passesOpen) return;
+    document.getElementById("cartes-embarquement")?.scrollIntoView({ block: "start" });
+  }, [passesOpen]);
   const [compact, setCompact] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pendingStep = useRef<string | null>(null);
@@ -1060,6 +1066,18 @@ export function BookingEditor({
       {!booking.visible_to_client ? "Montrer au client" : "Mettre à jour"}
     </button>
   ) : null;
+  const passesButton = (compactBar: boolean) => (
+    <button
+      type="button"
+      onClick={() => {
+        setMore(false);
+        setPassesOpen((open) => !open);
+      }}
+      className={`admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white font-semibold text-[var(--admin-navy)] ${compactBar ? "px-3 py-2 text-xs" : "px-4 py-2 text-sm"}`}
+    >
+      Cartes d’embarquement
+    </button>
+  );
   const saveLabel = busy === "save" ? "Enregistrement…" : "Enregistrer";
   const saveButton = (
     <button
@@ -1202,6 +1220,7 @@ export function BookingEditor({
               ) : null}
               {saveIconButton}
               <span className="hidden lg:contents">{saveButton}</span>
+              {passesButton(true)}
               {primaryAction}
               {moreButton}
             </div>
@@ -1257,6 +1276,7 @@ export function BookingEditor({
               </button>
             ) : null}
             {saveButton}
+            {passesButton(false)}
             {primaryAction}
             {moreButton}
           </div>
@@ -1345,6 +1365,20 @@ export function BookingEditor({
         {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
         <IssuesList issues={issues} />
       </header>
+      {passesOpen ? (
+        <BoardingPassSend
+          bookingId={booking.id}
+          clientName={shownPersonName(customer) || shownPersonName(holderName)}
+          phone={customer?.phone || null}
+          optInAt={customer?.whatsapp_opt_in_at}
+          optOutAt={customer?.whatsapp_opt_out_at}
+          documents={documents}
+          items={items}
+          travelers={travelers}
+          open
+          onClose={() => setPassesOpen(false)}
+        />
+      ) : null}
       <CoverPickDialog
         open={coverOpen}
         bookingId={booking.id}
@@ -1759,6 +1793,10 @@ export function BookingEditor({
       </div>
       <form onSubmit={addDoc} className="admin-af-card order-6 flex flex-wrap items-center gap-3 rounded-3xl p-5">
         <p className="text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
+        <select name="kind" defaultValue="other" disabled={docBusy} aria-label="Type de pièce" className="rounded-full border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]">
+          <option value="other">Confirmation</option>
+          <option value="carte d'embarquement">Carte d’embarquement</option>
+        </select>
         <input name="file" type="file" required disabled={docBusy} aria-label="Confirmation PDF ou photo" className="text-sm" />
         <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
           {docBusy ? "Envoi…" : "Joindre"}

@@ -11,6 +11,7 @@ const FILTERS = [
   { id: "depart", label: "Départ" },
   { id: "esta-eta", label: "ESTA / ETA" },
   { id: "vols", label: "Vols" },
+  { id: "embarquement", label: "Embarquement" },
   { id: "partage", label: "Partage" },
   { id: "reponses", label: "Réponses" },
   { id: "attente", label: "Pas encore envoyés" },

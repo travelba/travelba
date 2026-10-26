@@ -364,6 +364,8 @@ const KIND_ORDER = Object.keys(NOUNS);
 export function normalizePieceKind(kind: string | null | undefined) {
   const value = (kind || "").trim().toLowerCase();
   if (!value || value === "fee" || value === "expense") return null;
+  // La carte d’embarquement part seulement par le bouton du dossier, jamais à la publication.
+  if (value === "carte d'embarquement" || value === "carte d’embarquement") return null;
   if (value === "pdf" || value === "image" || value === "other") return "other";
   return value in NOUNS ? value : "other";
 }

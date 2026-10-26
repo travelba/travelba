@@ -1021,6 +1021,10 @@ function ItemAttachments({
       {filesOnly ? null : (
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
+        <select name="kind" defaultValue="other" disabled={busy} aria-label="Type de pièce" className="rounded-full border border-[var(--border)] bg-white px-2 py-1 text-xs text-[var(--admin-navy)]">
+          <option value="other">Confirmation</option>
+          <option value="carte d'embarquement">Carte d’embarquement</option>
+        </select>
         <input name="file" type="file" required disabled={busy} aria-label="Confirmation PDF ou photo" className="text-xs" />
         <button type="submit" disabled={busy} className={flatBtn}>
           {busy ? "Envoi…" : "Joindre"}
