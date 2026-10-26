@@ -188,6 +188,10 @@ export type CrmCustomer = {
   /** Droit de dépense en euros sur le wallet société. Null = pas de plafond personnel. */
   spending_allowance?: number | null;
   language: string;
+  /** Le client a ouvert un lien WhatsApp. Sans cette date, aucun message proactif. */
+  whatsapp_opt_in_at?: string | null;
+  /** Le client a demandé l’arrêt. Les messages proactifs s’arrêtent. */
+  whatsapp_opt_out_at?: string | null;
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */
   on_hold?: boolean;

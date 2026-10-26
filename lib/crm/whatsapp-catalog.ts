@@ -1,3 +1,4 @@
+import { boardingPassContentDrafts, type BoardingPassTemplate } from "./boarding-pass-whatsapp";
 import { siteConfig } from "../site";
 import {
   conciergeContentDrafts,
@@ -404,6 +405,49 @@ function flightMessages(): WhatsappCatalogMessage[] {
   });
 }
 
+function boardingPassBubble(template: BoardingPassTemplate): WhatsappBubble {
+  const draft = boardingPassContentDrafts().find((row) => row.template === template);
+  if (!draft) throw new Error(`modèle absent: ${template}`);
+  const types = draft.create.types as {
+    "twilio/media"?: { body?: string };
+    "twilio/text"?: { body?: string };
+  };
+  const raw = types["twilio/media"]?.body || types["twilio/text"]?.body || "";
+  const body = applyVars(raw, draft.create.variables);
+  if (!body || /\{\{\d+\}\}/.test(body)) throw new Error(`variable vide: ${template}`);
+  return {
+    body,
+    button: null,
+    photo: false,
+    image: null,
+    imageAlt: null,
+    modelName: draft.friendlyName,
+  };
+}
+
+function boardingPassMessages(): WhatsappCatalogMessage[] {
+  return [
+    message({
+      id: "carte-une",
+      title: "Une carte d’embarquement",
+      when: "Un seul PDF de type carte d’embarquement. L’en-tête du modèle est le document : le fichier est joint. L’agence confirme avant l’envoi.",
+      bubble: boardingPassBubble("carte_embarquement"),
+    }),
+    message({
+      id: "cartes-plusieurs",
+      title: "Plusieurs cartes d’embarquement",
+      when: "WhatsApp n’accepte qu’un document par message : un PDF par envoi, avec le prénom, le vol, le trajet, l’horaire et le siège de cette carte.",
+      bubble: boardingPassBubble("cartes_embarquement"),
+    }),
+    message({
+      id: "enregistrement-aeroport",
+      title: "Enregistrement à terminer à l’aéroport",
+      when: "Aucun PDF. La phrase dit soit que l’enregistrement en ligne a échoué, soit qu’il reste à le terminer au comptoir. L’exemple est l’échec.",
+      bubble: boardingPassBubble("enregistrement_aeroport"),
+    }),
+  ];
+}
+
 function catalogGroups(): WhatsappCatalogGroup[] {
   const one = sampleDossier([sampleStay(REFERENCE, PLACE)]);
   const two = sampleDossier([
@@ -579,6 +623,13 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       title: "Vol en cours",
       intro: "Ces messages partent quand le statut du vol change, si le séjour est publié et si le client a accepté WhatsApp. Ils n’ont pas d’image : le bouton ouvre le séjour. L’exemple est le vol AF 1789, CDG → RAK.",
       messages: flightMessages(),
+    },
+    {
+      id: "embarquement",
+      title: "Cartes d’embarquement",
+      intro:
+        "Ces messages partent depuis le dossier, après une confirmation. Rien ne part seul. Le PDF est l’en-tête Document : un message par PDF. Comme les autres modèles, le texte est en français.",
+      messages: boardingPassMessages(),
     },
     {
       id: "partage",

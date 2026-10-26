@@ -234,6 +234,10 @@ export function dayHeading(isoDate: string) {
 }
 
 export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) {
+  if (doc.kind === "carte d'embarquement" || doc.kind === "carte d’embarquement") {
+    const name = doc.file_name || "";
+    return visibleServiceCopy(name ? `Carte d’embarquement · ${name}` : "Carte d’embarquement");
+  }
   const related = items.find((item) => item.source_document_id === doc.id);
   if (!related && doc.kind === "invoice") return visibleServiceCopy(doc.file_name || "Facture");
   const metier = related
