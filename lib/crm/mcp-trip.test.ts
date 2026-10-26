@@ -1356,7 +1356,7 @@ test("ces outils n’envoient ni message ni synchro de formalité", () => {
   const items = readFileSync(new URL("../../app/api/admin/bookings/[id]/items/route.ts", import.meta.url), "utf8");
   assert.match(bookings, /createStaffBooking/);
   assert.match(items, /addStaffBookingCard/);
-  assert.match(items, /scheduleFormalitySync/);
+  assert.match(items, /refreshBookingDerived/);
 });
 
 test("le coût net en dirhams garde l’euro indiqué, sans taux inventé", () => {
