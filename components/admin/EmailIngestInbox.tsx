@@ -158,14 +158,28 @@ function pendingLabel(action: string) {
   if (action === "new_booking") return "Création…";
   if (action === "refuse") return "Refus…";
   if (action === "rematch") return "Nouvelle proposition…";
-  if (action === "replace_booking") return "Remplacement…";
+  if (action === "attach_booking") return "Dépôt…";
+  if (action === "apply_cards" || action === "replace_booking") return "Mise à jour des cartes…";
   return "Rattachement…";
 }
 
 function doneLabel(action: string) {
   if (action === "new_booking") return "Le dossier est créé. Le mail quitte la file.";
   if (action === "refuse") return "Le mail est classé sans dossier.";
-  return "Le mail est rattaché au voyage.";
+  if (action === "attach_booking") return "Les pièces sont déposées. Les cartes n’ont pas changé.";
+  if (action === "apply_cards" || action === "replace_booking") {
+    return "Les cartes du séjour sont mises à jour.";
+  }
+  return "Le mail est classé sur le dossier.";
+}
+
+function cardsActionLabel(gesture: { action: string; label: string } | null) {
+  if (!gesture) return "Mettre à jour les cartes";
+  if (gesture.action === "cancel") return gesture.label;
+  if (gesture.label === "Rattacher au voyage" || gesture.label === "Classer l’annulation") {
+    return "Mettre à jour les cartes";
+  }
+  return gesture.label;
 }
 
 function itemLabel(kind: string | undefined) {
@@ -413,6 +427,7 @@ export function EmailIngestInbox({
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         issues?: BookingIssue[];
+        message?: string;
       };
       if (!res.ok) {
         const detail = (data.issues || []).map((issue) => issue.message).filter(Boolean).join(" ");
@@ -422,7 +437,7 @@ export function EmailIngestInbox({
         }));
         return;
       }
-      setNotice(doneLabel(payload.action));
+      setNotice(data.message || doneLabel(payload.action));
       if (opts?.refresh !== false) router.refresh();
     } catch {
       setRowError((prev) => ({ ...prev, [rowId]: "Réseau indisponible, réessayez." }));
@@ -764,7 +779,7 @@ export function EmailIngestInbox({
               </ul>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                Aucune carte extraite — à saisir après rattachement.
+                Aucune carte extraite. Déposer les pièces n’en crée pas.
               </p>
             )}
 
@@ -851,7 +866,9 @@ export function EmailIngestInbox({
                   </select>
                   </label>
                   {(() => {
-                    const stay = options?.find((booking) => booking.id === selectedBooking[row.id]);
+                    const picked = selectedBooking[row.id];
+                    const depositBookingId = picked != null ? picked : row.suggested_booking_id || "";
+                    const stay = options?.find((booking) => booking.id === (picked || depositBookingId));
                     const gesture = stay
                       ? inboxStayAction({
                           documentStatus: extract.document_status,
@@ -862,6 +879,7 @@ export function EmailIngestInbox({
                         })
                       : null;
                     const waitingForCard = Boolean(gesture?.choices.length && !gesture.itemId);
+                    const cardLabel = cardsActionLabel(gesture);
                     return (
                       <>
                         {gesture?.cancelCards?.length ? (
@@ -896,31 +914,52 @@ export function EmailIngestInbox({
                             ))}
                           </select>
                         ) : null}
-                        <button
-                          type="button"
-                          disabled={isBusy || !selectedBooking[row.id] || waitingForCard}
-                          aria-busy={isBusy || undefined}
-                          className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                          onClick={() =>
-                            act(row.id, {
-                              action: gesture?.action === "replace" ? "replace_booking" : "attach_booking",
-                              booking_id: selectedBooking[row.id],
-                              item_id: gesture?.itemId || undefined,
-                              title: cardTitle.trim(),
-                              ...(drafts[row.id]
-                                ? {
-                                    extract: drafts[row.id],
-                                    apply_stay_currency: Boolean(currencyChosen[row.id]),
-                                  }
-                                : {}),
-                            })
-                          }
-                        >
-                          {isBusy ? pendingLabel(busy?.action || "") : gesture?.label || "Rattacher au voyage"}
-                        </button>
-                        {gesture?.hint ? (
-                          <p className="text-xs text-muted sm:col-span-2">{gesture.hint}</p>
-                        ) : null}
+                        <div className="flex flex-wrap gap-2 sm:col-span-2">
+                          <button
+                            type="button"
+                            disabled={isBusy || !depositBookingId}
+                            aria-busy={isBusy || undefined}
+                            className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                            onClick={() =>
+                              act(row.id, {
+                                action: "attach_booking",
+                                booking_id: depositBookingId,
+                              })
+                            }
+                          >
+                            {isBusy && busy?.action === "attach_booking" ? pendingLabel("attach_booking") : "Déposer les pièces"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy || !picked || waitingForCard}
+                            aria-busy={isBusy || undefined}
+                            className="admin-tap rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+                            onClick={() =>
+                              act(row.id, {
+                                action: "apply_cards",
+                                booking_id: picked,
+                                item_id: gesture?.itemId || undefined,
+                                title: cardTitle.trim(),
+                                ...(drafts[row.id]
+                                  ? {
+                                      extract: drafts[row.id],
+                                      apply_stay_currency: Boolean(currencyChosen[row.id]),
+                                    }
+                                  : {}),
+                              })
+                            }
+                          >
+                            {isBusy && busy?.action === "apply_cards" ? pendingLabel("apply_cards") : cardLabel}
+                          </button>
+                        </div>
+                        <p className="text-xs text-muted sm:col-span-2">
+                          Déposer les pièces copie les fichiers sur le dossier. Les cartes ne changent pas.
+                        </p>
+                        <p className="text-xs text-muted sm:col-span-2">
+                          {gesture?.hint
+                            ? `${cardLabel}. ${gesture.hint}`
+                            : "Mettre à jour les cartes modifie ou crée les cartes du mail. Geste séparé."}
+                        </p>
                       </>
                     );
                   })()}
@@ -961,18 +1000,6 @@ export function EmailIngestInbox({
                     onClick={() => act(row.id, { action: "restore" })}
                   >
                     {isBusy && busy?.action === "restore" ? "Retour…" : "Remettre dans la file"}
-                  </button>
-                ) : null}
-                {mode === "file" && row.suggested_booking_id ? (
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="admin-tap rounded-lg bg-[#0B192C] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                    onClick={() =>
-                      act(row.id, { action: "attach_booking", booking_id: row.suggested_booking_id || "" })
-                    }
-                  >
-                    {isBusy && busy?.action === "attach_booking" ? "Acceptation…" : "Accepter"}
                   </button>
                 ) : null}
                 {mode === "file" ? (

@@ -110,7 +110,9 @@ test("an email leaves the queue only with an explicit action", () => {
     dossierId: "",
   });
   assert.equal(prepareEmailAction({ id: WIRE, action: "rattacher", dossier_id: BOOKING }).dossierId, BOOKING);
+  assert.equal(prepareEmailAction({ id: WIRE, action: "mettre_a_jour", dossier_id: BOOKING }).action, "mettre_a_jour");
   assert.throws(() => prepareEmailAction({ id: WIRE, action: "rattacher" }), /Dossier invalide/);
+  assert.throws(() => prepareEmailAction({ id: WIRE, action: "mettre_a_jour" }), /Dossier invalide/);
   assert.throws(() => prepareEmailAction({ id: WIRE, action: "ignorer" }), /Action inconnue/);
 });
 

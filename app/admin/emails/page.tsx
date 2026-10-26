@@ -344,7 +344,7 @@ export default async function AdminEmailsPage({
         ))}
       </nav>
       {vue === "sans-reponse" || vue === "reponses" ? null : (
-        <p className="mt-2 text-xs text-muted">Raccourcis : A accepter, I ignorer, E écarter le doublon.</p>
+        <p className="mt-2 text-xs text-muted">Raccourcis : A déposer les pièces, I ignorer, E écarter le doublon.</p>
       )}
       {unanswered ? (
         <UnansweredMails rows={unanswered} />
