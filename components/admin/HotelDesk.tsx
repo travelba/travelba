@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { HotelFollowUp } from "@/components/admin/HotelFollowUp";
@@ -13,6 +13,7 @@ import { applyHotelSalutation, bookingToken, ensureHotelMailIdentity, followUpSu
 import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { followUpBody } from "@/lib/crm/mail-followup";
+import { replyAddresses, replyDraftBody } from "@/lib/crm/mail-reply";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 
@@ -64,6 +65,7 @@ export function HotelDesk({
   signatory = "",
   focusReply = false,
   initialRelanceId = null,
+  initialReplyId = null,
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -83,13 +85,16 @@ export function HotelDesk({
   signatory?: string;
   focusReply?: boolean;
   initialRelanceId?: string | null;
+  initialReplyId?: string | null;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
   );
   const router = useRouter();
-  const [open, setOpen] = useState<HotelDeskKind | null>(focusReply && !initialRelanceId ? "other" : null);
+  const replyFormRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState<HotelDeskKind | null>(focusReply && !initialRelanceId && !initialReplyId ? "other" : null);
   const [relanceKey, setRelanceKey] = useState<string | null>(initialRelanceId);
+  const [replyKey, setReplyKey] = useState<string | null>(initialReplyId);
   const [marking, setMarking] = useState<string | null>(null);
   const [markError, setMarkError] = useState<string | null>(null);
   const turns = hotelThread({ item, requests, messages, thread, attached });
@@ -99,6 +104,23 @@ export function HotelDesk({
       : turns.find(
           (turn) => turn.relance && (turn.relance.requestId === relanceKey || turn.relance.messageId === relanceKey)
         ) || null;
+  const replyTurn =
+    replyKey == null
+      ? null
+      : turns.find((turn) => {
+          const reply = turn.reply;
+          if (!reply) return false;
+          if (reply.threadId && reply.threadId === replyKey) return true;
+          if (reply.pieceId && reply.pieceId === replyKey) return true;
+          if (!reply.threadId && !reply.pieceId && (reply.requestId === replyKey || reply.messageId === replyKey)) return true;
+          return false;
+        }) || null;
+  const replyParties = replyTurn?.reply ? replyPartiesFor(item, requests, messages, thread, attached, replyTurn) : null;
+  const replyFormId = replyTurn?.id || "";
+  useEffect(() => {
+    if (!replyFormId) return;
+    replyFormRef.current?.scrollIntoView({ block: "nearest" });
+  }, [replyFormId]);
   if (!rows.length) return null;
   const stay = hotelStayChecklist(item.id, rows);
   const guest = principalGuest({ travelers, holder });
@@ -207,7 +229,16 @@ export function HotelDesk({
           const key = turn.relance?.requestId || turn.relance?.messageId;
           if (!key) return;
           setOpen(null);
+          setReplyKey(null);
           setRelanceKey(key);
+        }}
+        onReply={(turn: HotelThreadTurn) => {
+          const reply = turn.reply;
+          const key = reply?.threadId || reply?.pieceId || reply?.requestId || reply?.messageId;
+          if (!key) return;
+          setOpen(null);
+          setRelanceKey(null);
+          setReplyKey(key);
         }}
       />
       {relanceTurn?.relance ? (
@@ -226,6 +257,32 @@ export function HotelDesk({
           )}
           onClose={() => setRelanceKey(null)}
         />
+      ) : null}
+      {replyTurn?.reply && replyParties ? (
+        <div ref={replyFormRef}>
+          <HotelFollowUp
+            key={replyTurn.id}
+            mode="reponse"
+            bookingId={bookingId}
+            itemId={item.id}
+            threadId={replyTurn.reply.threadId}
+            pieceId={replyTurn.reply.pieceId}
+            requestId={replyTurn.reply.requestId}
+            messageId={replyTurn.reply.messageId}
+            people={replyParties.people}
+            recipients={replyParties.to}
+            ccRecipients={replyParties.cc}
+            subject={followUpSubject(replyTurn.subject)}
+            body={signHotelLetter(
+              ensureHotelMailIdentity(
+                replyDraftBody({ body: replyTurn.body, at: replyTurn.at, speaker: replyTurn.speaker }),
+                relanceIdentity
+              ),
+              signatory
+            )}
+            onClose={() => setReplyKey(null)}
+          />
+        </div>
       ) : null}
     </div>
   );
@@ -391,6 +448,51 @@ function HotelDeskEditor({
       </div>
     </div>
   );
+}
+
+function replyPartiesFor(
+  item: CrmBookingItem,
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  thread: CrmHotelThreadMessage[],
+  attached: HotelMailPiece[],
+  turn: HotelThreadTurn
+) {
+  const reply = turn.reply;
+  const from = reply ? replySender(reply, thread, requests, messages, attached) : "";
+  const originals = replyOriginals(item, requests, messages, reply);
+  const addresses = replyAddresses({ from, originals });
+  const people = hotelSendPeople(item, requests, messages);
+  for (const email of [...addresses.to, ...addresses.cc]) {
+    if (!people.some((person) => person.email === email)) people.push({ email, firstName: "", lastName: "", role: "" });
+  }
+  return { ...addresses, people };
+}
+
+function replySender(
+  reply: NonNullable<HotelThreadTurn["reply"]>,
+  thread: CrmHotelThreadMessage[],
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  attached: HotelMailPiece[]
+) {
+  if (reply.threadId) return thread.find((row) => row.id === reply.threadId)?.from_email || "";
+  if (reply.requestId) return requests.find((row) => row.id === reply.requestId)?.reply_from || "";
+  if (reply.messageId) return messages.find((row) => row.id === reply.messageId)?.reply_from || "";
+  if (reply.pieceId) return attached.find((row) => row.id === reply.pieceId)?.from_email || "";
+  return "";
+}
+
+function replyOriginals(
+  item: CrmBookingItem,
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  reply: HotelThreadTurn["reply"]
+) {
+  const letter = reply?.requestId ? requests.find((row) => row.id === reply.requestId) : undefined;
+  const note = reply?.messageId ? messages.find((row) => row.id === reply.messageId) : undefined;
+  const listed = letter?.recipients?.length ? letter.recipients : note?.recipients || [];
+  return listed.length ? listed : hotelSendDefaults(item, requests, messages);
 }
 
 function relanceRecipients(

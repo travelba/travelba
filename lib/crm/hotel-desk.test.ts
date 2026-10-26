@@ -820,6 +820,41 @@ test("un envoi sans réponse se relance, une réponse retire le bouton", () => {
     nowMs: now,
   });
   assert.equal(answered.some((turn) => turn.relance), false);
+  const inbound = answered.find((turn) => turn.direction === "in");
+  assert.equal(inbound?.reply?.requestId, "req-1");
+  assert.equal(inbound?.reply?.threadId, null);
+  assert.equal(JSON.stringify(answered).includes("@"), false);
+
+  const htmlReply = renderToStaticMarkup(
+    createElement(HotelThread, {
+      item,
+      requests: [letter()],
+      messages: [],
+      attached: [],
+      thread: [threadMessage({ id: "thread-sof", gmail_message_id: "gmail-sof" })],
+      onReply() {},
+      onRelance() {},
+    })
+  );
+  assert.match(htmlReply, /Répondre/);
+  assert.match(htmlReply, /min-h-11/);
+  assert.equal(htmlReply.includes("Envoyer"), false);
+  assert.equal(htmlReply.includes("@"), false);
+});
+
+test("répondre réutilise l’envoi et relie ce message", () => {
+  const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
+  const start = src.indexOf("export async function sendHotelReply");
+  const end = src.indexOf("/** Garde le premier envoi");
+  const fn = src.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(fn, /deliverHotelMail/);
+  assert.match(fn, /threadingHeaders/);
+  assert.match(fn, /gmailHeaderValues/);
+  assert.doesNotMatch(fn, /follow_up_count/);
+  const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
+  assert.match(thread, /Répondre/);
+  assert.doesNotMatch(thread, /md:hidden|hidden md:|sm:hidden/);
 });
 
 test("écrire à l'hôtel n'ajoute pas d'étape et coche les destinataires à l'envoi", () => {

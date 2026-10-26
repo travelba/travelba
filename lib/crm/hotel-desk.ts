@@ -1074,6 +1074,14 @@ export type HotelThreadRelance = {
   unanswered: boolean;
 };
 
+/** Cible d’une réponse. Les adresses restent hors du fil affiché. */
+export type HotelThreadReply = {
+  threadId: string | null;
+  requestId: string | null;
+  messageId: string | null;
+  pieceId: string | null;
+};
+
 export type HotelThreadTurn = {
   id: string;
   at: string;
@@ -1085,6 +1093,8 @@ export type HotelThreadTurn = {
   link: string | null;
   /** Dernier envoi du fil encore sans réponse. Absent sur les autres tours. */
   relance: HotelThreadRelance | null;
+  /** Message reçu : on peut répondre à celui-ci. */
+  reply: HotelThreadReply | null;
 };
 
 export type HotelMailPiece = {
@@ -1179,19 +1189,32 @@ type DraftTurn = HotelThreadTurn & {
   requestId: string | null;
   messageId: string | null;
   recipients: string[];
+  threadRowId: string | null;
 };
 
 function draftTurn(
-  turn: Omit<DraftTurn, "relance" | "countsAsReply" | "requestId" | "messageId" | "recipients"> &
-    Partial<Pick<DraftTurn, "countsAsReply" | "requestId" | "messageId" | "recipients">>
+  turn: Omit<DraftTurn, "relance" | "reply" | "countsAsReply" | "requestId" | "messageId" | "recipients" | "threadRowId"> &
+    Partial<Pick<DraftTurn, "countsAsReply" | "requestId" | "messageId" | "recipients" | "threadRowId">>
 ): DraftTurn {
   return {
     relance: null,
+    reply: null,
     countsAsReply: false,
     requestId: null,
     messageId: null,
     recipients: [],
+    threadRowId: null,
     ...turn,
+  };
+}
+
+function publicReply(turn: DraftTurn): HotelThreadReply | null {
+  if (turn.direction !== "in") return null;
+  return {
+    threadId: turn.threadRowId,
+    requestId: turn.requestId,
+    messageId: turn.messageId,
+    pieceId: null,
   };
 }
 
@@ -1405,6 +1428,7 @@ export function hotelThread(input: {
         requestId: row.request_id,
         messageId: row.message_id,
         recipients: letter?.recipients || note?.recipients || [],
+        threadRowId: row.id,
       })
     );
   }
@@ -1430,6 +1454,7 @@ export function hotelThread(input: {
             unanswered: mark.unanswered,
           }
         : null,
+      reply: publicReply(turn),
     };
   });
 
@@ -1446,6 +1471,7 @@ export function hotelThread(input: {
       body,
       link: hotelReplyLink(body),
       relance: null,
+      reply: { threadId: null, requestId: null, messageId: null, pieceId: mail.id },
     });
   }
 

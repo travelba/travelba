@@ -16,11 +16,15 @@ export function HotelMailTo({
   selected,
   onChange,
   fieldClassName = fieldClass,
+  legend = "Destinataires",
+  hint = "Le message part seulement vers les adresses cochées.",
 }: {
   people: DeskRosterPerson[];
   selected: string[];
   onChange: (emails: string[]) => void;
   fieldClassName?: string;
+  legend?: string;
+  hint?: string;
 }) {
   const [draft, setDraft] = useState("");
   const [added, setAdded] = useState<DeskRosterPerson[]>([]);
@@ -52,7 +56,7 @@ export function HotelMailTo({
 
   return (
     <fieldset className="w-full min-w-0 space-y-2">
-      <legend className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">Destinataires</legend>
+      <legend className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">{legend}</legend>
       {shown.length ? (
         <ul className="w-full min-w-0 overflow-hidden rounded-xl border border-[#e5e0d4]">
           {shown.map((person) => {
@@ -109,7 +113,7 @@ export function HotelMailTo({
         </button>
       </div>
       {invalid ? <p className="text-sm text-red-700">Cette adresse n’est pas valide.</p> : null}
-      <p className="text-xs font-medium text-[#3d4654]">Le message part seulement vers les adresses cochées.</p>
+      <p className="text-xs font-medium text-[#3d4654]">{hint}</p>
     </fieldset>
   );
 }

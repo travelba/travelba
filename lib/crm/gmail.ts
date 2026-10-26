@@ -8,6 +8,7 @@ import {
   mergeGmailLabelNames,
   parseGmailMessage,
   type GmailHistoryRecord,
+  type GmailHeader,
   type ParsedGmailMessage,
 } from "@/lib/crm/gmail-parse";
 
@@ -247,6 +248,15 @@ export async function searchInbox(query: string, max = 8): Promise<ParsedGmailMe
 export async function getMessage(id: string): Promise<ParsedGmailMessage> {
   const res = await gmailApi(`/messages/${id}?format=full`);
   return parseGmailMessage(await res.json());
+}
+
+/** En-têtes de fil seulement. Sert à répondre à ce message précis. */
+export async function gmailHeaderValues(id: string): Promise<GmailHeader[]> {
+  const params = new URLSearchParams({ format: "metadata" });
+  for (const name of ["Message-ID", "References", "In-Reply-To"]) params.append("metadataHeaders", name);
+  const res = await gmailApi(`/messages/${encodeURIComponent(id)}?${params.toString()}`);
+  const json = (await res.json()) as { payload?: { headers?: GmailHeader[] } };
+  return json.payload?.headers || [];
 }
 
 /** Tous les messages d'un fil Gmail, pas seulement le premier résultat de recherche. */
