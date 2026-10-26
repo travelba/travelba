@@ -1,8 +1,16 @@
 import type { Metadata } from "next";
-import { OfferView } from "@/components/preview-refonte/OfferView";
+import { notFound } from "next/navigation";
+import { UniverseView } from "@/components/vitrine/UniverseView";
+import { universeBySlug } from "@/lib/vitrine/universes";
 
-export const metadata: Metadata = { title: "En famille", description: "Séjours en famille. Étude non indexée." };
+const universe = universeBySlug("kids");
+
+export const metadata: Metadata = {
+  title: "Kids",
+  description: universe?.lede ?? "L’univers Kids Travel BA.",
+};
 
 export default function KidsPage() {
-  return <OfferView slug="kids" />;
+  if (!universe) notFound();
+  return <UniverseView universe={universe} />;
 }

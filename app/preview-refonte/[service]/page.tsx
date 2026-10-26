@@ -1,34 +1,30 @@
-import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
-import { OfferView } from "@/components/preview-refonte/OfferView";
-import { offerBySlug, offers } from "@/components/preview-refonte/offers";
+import { redirect } from "next/navigation";
+import { PREVIEW } from "@/lib/vitrine/paths";
 
-const staticSlugs = new Set(["kids", "entre-nous", "celebrer", "montagne"]);
-
-const aliases: Record<string, string> = {
-  ski: "/preview-refonte/montagne",
-  prestige: "/preview-refonte/celebrer",
+const redirects: Record<string, string> = {
+  ski: `${PREVIEW}/services/ski`,
+  prestige: `${PREVIEW}/services/prestige`,
+  "jet-prive": `${PREVIEW}/services/jet-prive`,
+  evenements: `${PREVIEW}/services/evenements`,
+  hotels: `${PREVIEW}/services/hotels`,
+  restaurants: `${PREVIEW}/services/restaurants`,
+  clubs: `${PREVIEW}/services/clubs`,
+  chauffeur: `${PREVIEW}/services/chauffeur`,
+  "accueil-vip": `${PREVIEW}/services/accueil-vip`,
+  "a-deux": `${PREVIEW}/services/a-deux`,
+  celebrations: `${PREVIEW}/services/celebrations`,
+  anniversaire: `${PREVIEW}/services/anniversaire`,
+  evg: `${PREVIEW}/services/evg`,
+  famille: `${PREVIEW}/kids`,
 };
 
 type Props = { params: Promise<{ service: string }> };
 
 export function generateStaticParams() {
-  return [
-    ...offers.filter((offer) => !staticSlugs.has(offer.slug)).map((offer) => ({ service: offer.slug })),
-    ...Object.keys(aliases).map((service) => ({ service })),
-  ];
+  return Object.keys(redirects).map((service) => ({ service }));
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export default async function LegacyServiceRedirect({ params }: Props) {
   const { service } = await params;
-  const offer = offerBySlug(service);
-  if (!offer) return { title: "Travel BA" };
-  return { title: offer.menu, description: `${offer.lede} Étude non indexée.` };
-}
-
-export default async function PreviewServicePage({ params }: Props) {
-  const { service } = await params;
-  if (aliases[service]) redirect(aliases[service]);
-  if (!offerBySlug(service) || staticSlugs.has(service)) notFound();
-  return <OfferView slug={service} />;
+  redirect(redirects[service] ?? PREVIEW);
 }

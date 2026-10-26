@@ -1,8 +1,5 @@
-import type { Metadata } from "next";
-import { OfferView } from "@/components/preview-refonte/OfferView";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "À deux", description: "Escapades à deux. Étude non indexée." };
-
-export default function EntreNousPage() {
-  return <OfferView slug="entre-nous" />;
+export default function EntreNousRedirect() {
+  redirect("/preview-refonte/services/a-deux");
 }
