@@ -64,8 +64,8 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
           <Link href="/preview-refonte/espace-client" aria-current={pathname === "/preview-refonte/espace-client" ? "page" : undefined}>
             L’espace
           </Link>
-          <Link className="tba-nav-cta" href="/preview-refonte/projet" aria-current={pathname === "/preview-refonte/projet" ? "page" : undefined}>
-            Racontez-nous votre projet
+          <Link className="tba-nav-cta" href="/preview-refonte#devis">
+            Un devis
           </Link>
         </nav>
         <button type="button" className="tba-menu-btn" aria-expanded={open} aria-controls="tba-menu" onClick={() => setOpen((value) => !value)}>
@@ -87,6 +87,9 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
               {item.label}
             </Link>
           ))}
+          <Link href="/preview-refonte#devis" onClick={close}>
+            Demander un devis
+          </Link>
           <Link href="/preview-refonte/projet" onClick={close}>
             Racontez-nous votre projet
           </Link>
@@ -108,8 +111,8 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
               <a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
               <br />
               <a href={whatsappHref(waCopy.home)}>WhatsApp</a>
-              {" · "}
-              <a href={`tel:+${siteConfig.whatsappNumber}`}>{siteConfig.phoneDisplay}</a>
+              <br />
+              <a href="tel:+33772158257">07 72 15 82 57</a>
             </p>
           </div>
           <div>
@@ -133,9 +136,9 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
           </div>
           <div>
             <h2>La maison</h2>
-            <p>IATA 20291655</p>
             <p>Atout France IM092260002</p>
             <p>APST n° 43865</p>
+            <p>IATA 20291655</p>
           </div>
         </div>
         <p>
