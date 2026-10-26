@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Bodoni_Moda } from "next/font/google";
+import { Playfair_Display } from "next/font/google";
 import { Shell } from "@/components/vitrine/Shell";
 import { signatureMenu } from "@/lib/vitrine/destinations";
 import "@/components/vitrine/vitrine.css";
 
-const serif = Bodoni_Moda({
+const serif = Playfair_Display({
   subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: ["400", "500", "600"],
   style: ["normal", "italic"],
   variable: "--font-vitrine-serif",
   display: "swap",

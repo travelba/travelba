@@ -1,12 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { Lock, Mail, MapPin, Phone, Shield, BadgeCheck } from "lucide-react";
 import { PREVIEW } from "@/lib/vitrine/paths";
-import { siteConfig } from "@/lib/site";
 
 type LinkItem = { href: string; label: string };
 type Column = { title: string; links: LinkItem[] };
+
+const NAV = [
+  { href: `${PREVIEW}/club`, label: "Club Travel BA", match: "/club" },
+  { href: `${PREVIEW}/sur-mesure`, label: "Voyages sur mesure", match: "/sur-mesure" },
+  { href: `${PREVIEW}/voyages`, label: "Voyages signature", match: "/voyages", home: true },
+  { href: `${PREVIEW}/kids`, label: "Univers Kids", match: "/kids" },
+  { href: `${PREVIEW}/seminaires`, label: "Séminaires & événements", match: "/seminaires" },
+  { href: `${PREVIEW}/professionnels`, label: "Déplacements professionnels", match: "/professionnels" },
+];
 
 const MEASURE: LinkItem[] = [
   { href: `${PREVIEW}/sur-mesure`, label: "Le voyage" },
@@ -29,6 +39,17 @@ const EVENTS: LinkItem[] = [
   { href: `${PREVIEW}/services/evenements`, label: "Événements" },
 ];
 
+const EXPLORE: LinkItem[] = [
+  { href: `${PREVIEW}/club`, label: "Club Travel BA" },
+  { href: `${PREVIEW}/sur-mesure`, label: "Voyages sur mesure" },
+  { href: `${PREVIEW}/voyages`, label: "Voyages signature" },
+  { href: `${PREVIEW}/kids`, label: "Univers Kids" },
+  { href: `${PREVIEW}/seminaires`, label: "Séminaires & événements" },
+  { href: `${PREVIEW}/professionnels`, label: "Déplacements professionnels" },
+  { href: "/fr/legal", label: "Mentions légales" },
+  { href: "/fr/legal", label: "Politique de confidentialité" },
+];
+
 export function Shell({
   signature,
   children,
@@ -36,113 +57,61 @@ export function Shell({
   signature: Column[];
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState<string | null>(null);
+  const path = usePathname();
   const [mobile, setMobile] = useState(false);
-
-  function toggle(id: string) {
-    setMobile(false);
-    setOpen((current) => (current === id ? null : id));
-  }
+  const home = path === PREVIEW;
 
   return (
     <>
       <a className="vz-skip" href="#contenu">
         Aller au contenu
       </a>
-      <header className={`vz-header is-paper${open || mobile ? " is-open" : ""}`}>
-        <Link href={PREVIEW} className="vz-brand" onClick={() => { setOpen(null); setMobile(false); }}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- logo local */}
-          <img src="/brand/logo-tba-256.png" alt="" />
-          <div>
+      <header className={`vz-header${mobile ? " is-open" : ""}`}>
+        <div className="vz-frame vz-header-bar">
+          <Link href={PREVIEW} className="vz-brand" onClick={() => setMobile(false)}>
             <strong>Travel BA</strong>
-            <span>Agence IATA</span>
-          </div>
-        </Link>
-        <nav className="vz-nav" aria-label="Menu principal">
-          <Link href={`${PREVIEW}/application`}>L’application</Link>
-          <Link href={`${PREVIEW}/club`}>Club</Link>
-          <button type="button" aria-expanded={open === "mesure"} onClick={() => toggle("mesure")}>
-            Sur mesure
-          </button>
-          <button type="button" aria-expanded={open === "signatures"} onClick={() => toggle("signatures")}>
-            Signatures
-          </button>
-          <Link href={`${PREVIEW}/kids`}>Kids</Link>
-          <button type="button" aria-expanded={open === "events"} onClick={() => toggle("events")}>
-            Séminaires
-          </button>
-          <Link href={`${PREVIEW}/professionnels`}>Professionnels</Link>
-          <Link className="vz-account" href="/connexion">
-            Espace client
+            <span>Membre accrédité IATA</span>
           </Link>
-        </nav>
-        <button
-          type="button"
-          className="vz-menu-btn"
-          aria-label={mobile ? "Fermer le menu" : "Ouvrir le menu"}
-          aria-expanded={mobile}
-          onClick={() => {
-            setOpen(null);
-            setMobile((value) => !value);
-          }}
-        >
-          <i />
-          <i />
-          <i />
-        </button>
-      </header>
-
-      {open === "mesure" ? (
-        <div className="vz-panel" role="navigation" aria-label="Voyages sur mesure">
-          <div>
-            <h2>Composer</h2>
-            {MEASURE.map((item) => (
-              <Link key={item.href} href={item.href} onClick={() => setOpen(null)}>
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {open === "signatures" ? (
-        <div className="vz-panel" role="navigation" aria-label="Voyages signature">
-          {signature.map((column) => (
-            <div key={column.title}>
-              <h2>{column.title}</h2>
-              {column.links.map((item) => (
-                <Link key={item.href} href={item.href} onClick={() => setOpen(null)}>
+          <nav className="vz-nav" aria-label="Menu principal">
+            {NAV.map((item) => {
+              const on = path.includes(item.match) || (home && item.home);
+              return (
+                <Link key={item.href} href={item.href} className={on ? "is-on" : undefined} aria-current={on ? "page" : undefined}>
                   {item.label}
                 </Link>
-              ))}
-            </div>
-          ))}
-          <div>
-            <h2>Tous</h2>
-            <Link href={`${PREVIEW}/voyages`} onClick={() => setOpen(null)}>
-              Le catalogue
+              );
+            })}
+          </nav>
+          <div className="vz-header-end">
+            <Link className="vz-account" href="/connexion">
+              <Lock size={16} strokeWidth={1.5} />
+              <span>Espace client</span>
             </Link>
+            <button
+              type="button"
+              className="vz-menu-btn"
+              aria-label={mobile ? "Fermer le menu" : "Ouvrir le menu"}
+              aria-expanded={mobile}
+              onClick={() => setMobile((value) => !value)}
+            >
+              <i />
+              <i />
+              <i />
+            </button>
           </div>
         </div>
-      ) : null}
-
-      {open === "events" ? (
-        <div className="vz-panel" role="navigation" aria-label="Séminaires et événements">
-          <div>
-            <h2>Occasions</h2>
-            {EVENTS.map((item) => (
-              <Link key={item.href} href={item.href} onClick={() => setOpen(null)}>
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      </header>
 
       {mobile ? (
         <div className="vz-drawer" role="navigation" aria-label="Menu">
-          <Link href={`${PREVIEW}/application`} onClick={() => setMobile(false)}>L’application</Link>
-          <Link href={`${PREVIEW}/club`} onClick={() => setMobile(false)}>Club Travel BA</Link>
+          {NAV.map((item) => (
+            <Link key={item.href} href={item.href} onClick={() => setMobile(false)}>
+              {item.label}
+            </Link>
+          ))}
+          <Link href={`${PREVIEW}/application`} onClick={() => setMobile(false)}>
+            L&apos;application
+          </Link>
           <details>
             <summary>Sur mesure</summary>
             {MEASURE.map((item) => (
@@ -160,8 +129,10 @@ export function Shell({
                 </Link>
               )),
             )}
+            <Link href={`${PREVIEW}/voyages`} onClick={() => setMobile(false)}>
+              Les 43 créations
+            </Link>
           </details>
-          <Link href={`${PREVIEW}/kids`} onClick={() => setMobile(false)}>Kids</Link>
           <details>
             <summary>Séminaires et événements</summary>
             {EVENTS.map((item) => (
@@ -170,40 +141,75 @@ export function Shell({
               </Link>
             ))}
           </details>
-          <Link href={`${PREVIEW}/professionnels`} onClick={() => setMobile(false)}>Professionnels</Link>
-          <Link href="/connexion" onClick={() => setMobile(false)}>Espace client</Link>
+          <Link href="/connexion" onClick={() => setMobile(false)}>
+            Espace client
+          </Link>
         </div>
       ) : null}
 
       <main id="contenu">{children}</main>
 
       <footer className="vz-footer">
-        <div className="vz-footer-grid">
-          <div>
-            <h2>Travel BA</h2>
-            <p>
-              {siteConfig.address.full}
-              <br />
-              <a href={`tel:+${siteConfig.whatsappNumber}`}>{siteConfig.phoneDisplay}</a>
-              <br />
-              <a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
-            </p>
+        <div className="vz-frame">
+          <div className="vz-footer-grid">
+            <div className="vz-footer-brand">
+              <strong>Travel BA</strong>
+              <span>Haute orchestration du voyage</span>
+              <p>
+                Maison d&apos;orfèvrerie du voyage d&apos;exception et conciergerie privée pour voyageurs avertis,
+                dirigeants et familles exigeantes. Accréditation officielle IATA.
+              </p>
+              <div className="vz-stamps">
+                <div>
+                  <BadgeCheck size={22} strokeWidth={1.5} />
+                  <p>
+                    <b>Agence accréditée IATA</b>
+                    <small>Licence Numéro 20-2 4910</small>
+                  </p>
+                </div>
+                <div>
+                  <Shield size={22} strokeWidth={1.5} />
+                  <p>
+                    <b>Garantie APST</b>
+                    <small>Fonds total de garantie</small>
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p className="vz-caps">Exploration & services</p>
+              <ul>
+                {EXPLORE.map((item) => (
+                  <li key={item.label}>
+                    <Link href={item.href} className={item.href.endsWith("/voyages") ? "is-on" : undefined}>
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="vz-caps">Conciergerie VIP 24/7</p>
+              <p>Une ligne directe et sécurisée réservée exclusivement aux membres en déplacement.</p>
+              <p className="vz-footer-line">
+                <Phone size={18} strokeWidth={1.5} />
+                <a href="tel:+33756841315">Ligne Prioritaire Membres</a>
+              </p>
+              <p className="vz-footer-line">
+                <Mail size={18} strokeWidth={1.5} />
+                <a href="mailto:concierge@travelba.fr">concierge@travelba.fr</a>
+              </p>
+              <p className="vz-footer-line">
+                <MapPin size={18} strokeWidth={1.5} />
+                <span>Paris · Genève · Londres</span>
+              </p>
+            </div>
           </div>
-          <div>
-            <Link href={`${PREVIEW}/application`}>L’application</Link>
-            <Link href={`${PREVIEW}/club`}>Club Travel BA</Link>
-            <Link href={`${PREVIEW}/voyages`}>Voyages signature</Link>
-            <Link href={`${PREVIEW}/kids`}>Kids</Link>
-            <Link href={`${PREVIEW}/contact`}>Écrire à la maison</Link>
-            <Link href="/connexion">Espace client</Link>
-          </div>
-          <div>
-            <Link href="/fr/legal">Mentions légales</Link>
-            <p>Accréditée IATA · Membre APST. Garantie financière APST.</p>
-            <p>Le carnet s’ouvre dans l’application, après la réservation.</p>
+          <div className="vz-footer-end">
+            <p>© TRAVEL BA. Tous droits réservés. Agence de voyages d&apos;exception accréditée IATA.</p>
+            <p>Conçu comme un livre d&apos;art · Toutes destinations privatives</p>
           </div>
         </div>
-        <small>Étude non publiée · {siteConfig.legal.legalName} · {siteConfig.legal.rcs}</small>
       </footer>
     </>
   );
