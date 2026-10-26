@@ -1,3 +1,4 @@
+import "server-only";
 import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SET_PASSWORD_PATH, shouldForcePasswordSetup } from "./session";

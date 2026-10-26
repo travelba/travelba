@@ -32,11 +32,11 @@ import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-d
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
-import { stripePublishableKey } from "@/lib/crm/stripe";
+import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
-import type { ShareCompanion } from "@/lib/crm/trip-share";
+import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 import {
   isActiveItem,
   isLedgerExpenseKind,

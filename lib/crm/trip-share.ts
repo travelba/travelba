@@ -1,9 +1,13 @@
+import "server-only";
 import { randomInt } from "node:crypto";
 import { isWhatsappTypeMedia } from "./concierge-notices";
 import { whatsappAddress, type WhatsappSendResult } from "./whatsapp";
 import { sendWhatsappSession } from "./whatsapp-session";
 import { isSafeCrmPath } from "./files-access";
 import { toE164 } from "./phone";
+import type { ShareCompanion } from "./trip-share-types";
+
+export type { ShareCompanion } from "./trip-share-types";
 
 const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -64,14 +68,6 @@ export function tripShareAllowsPath(
   if (booking.cover_image_path && path === booking.cover_image_path) return true;
   return docs.some((doc) => doc.visible_to_client !== false && doc.storage_path === path);
 }
-
-export type ShareCompanion = {
-  travelerId: string;
-  companionId: string;
-  firstName: string;
-  lastName: string;
-  hasPhone: boolean;
-};
 
 export function companionsForShare(
   travelers: {
