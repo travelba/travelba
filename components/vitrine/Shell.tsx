@@ -87,7 +87,7 @@ export function Shell({
         <div className="vz-frame vz-header-bar">
           <Link href={PREVIEW} className="vz-brand" onClick={() => setMobile(false)}>
             <strong>Travel BA</strong>
-            <span>Le service · L’expertise</span>
+            <span>Voyage de luxe, de A à Z</span>
           </Link>
           <nav className="vz-nav" aria-label="Menu principal">
             <button type="button" className={serviceOn || open === "service" ? "is-on" : undefined} aria-expanded={open === "service"} onClick={() => setOpen((value) => (value === "service" ? null : "service"))}>
@@ -205,10 +205,7 @@ export function Shell({
             <div className="vz-footer-brand">
               <strong>Travel BA</strong>
               <span>Haute orchestration du voyage</span>
-              <p>
-                Conciergerie de voyage, basée à {siteConfig.address.city}. Le service et l’expertise d’une équipe qui
-                tient le séjour avant, pendant et après.
-              </p>
+              <p>Agence de voyage de luxe, {siteConfig.address.city}. Un conseiller, 24h/24.</p>
             </div>
             <div>
               <p className="vz-caps">Exploration & services</p>
@@ -224,7 +221,7 @@ export function Shell({
             </div>
             <div>
               <p className="vz-caps">Conciergerie VIP 24/7</p>
-              <p>Un conseiller, à toute heure, pendant le voyage.</p>
+              <p>Un conseiller, 24h/24.</p>
               <p className="vz-footer-line">
                 <span>{siteConfig.address.full}</span>
               </p>

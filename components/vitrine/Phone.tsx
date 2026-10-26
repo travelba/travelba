@@ -80,8 +80,8 @@ function Screen({ id }: { id: AppScreen }) {
               <p className="vz-app-kicker" style={{ color: "#c5a880" }}>
                 4–13 avril
               </p>
-              <strong style={{ fontSize: 18 }}>Le Japon au rythme des seuils</strong>
-              <p style={{ margin: 0, fontSize: 12 }}>Tokyo, Hakone, Kyoto</p>
+              <strong style={{ fontSize: 18 }}>Tokyo, Hakone, Kyoto</strong>
+              <p style={{ margin: 0, fontSize: 12 }}>Aman Tokyo · Gora Kadan · Aman Kyoto</p>
             </div>
           </article>
         </div>
@@ -169,7 +169,7 @@ function Screen({ id }: { id: AppScreen }) {
           <article className="vz-card">
             <small>Voyageurs d’exemple</small>
             <b>Claire Berger · Thomas Berger</b>
-            <span>Le détail se lit ici, pas dans une boîte mail</span>
+            <span>Tout est dans le carnet</span>
           </article>
         </div>
         <Tabs active="Réservations" />

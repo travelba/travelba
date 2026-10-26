@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { DetailScene } from "@/components/vitrine/Blocks";
 import { Phone } from "@/components/vitrine/Phone";
-import { PREVIEW } from "@/lib/vitrine/paths";
+import { contactPath, PREVIEW } from "@/lib/vitrine/paths";
 
 export function ApplicationView() {
   return (
@@ -10,18 +10,15 @@ export function ApplicationView() {
         <div className="vz-hero-copy">
           <p className="vz-kicker">L’application</p>
           <h1>
-            Réserver chez Travel BA, <em>c’est ouvrir le carnet.</em>
+            Votre séjour, <em>dans le téléphone.</em>
           </h1>
-          <p className="vz-lede">
-            L’espace client est une application : moderne, tenue, à votre nom. Les écrans ci-dessous montrent un séjour
-            d’exemple, le Japon signature. Claire Berger et Thomas Berger n’existent pas. Aucun dossier réel n’est ouvert.
-          </p>
-          <div className="vz-actions">
+          <p className="vz-lede">Jours, vols, hôtels, documents, messages. Exemple : Japon. Claire et Thomas Berger n’existent pas.</p>
+          <div className="vz-hero-cta">
             <Link className="vz-btn" href="/connexion">
-              Ouvrir l’espace client
+              Ouvrir l’application
             </Link>
-            <Link className="vz-btn is-ghost" href={`${PREVIEW}/voyages/japon`}>
-              Lire l’itinéraire Japon
+            <Link className="vz-btn is-ghost" href={contactPath("projet")}>
+              Demander un devis
             </Link>
           </div>
         </div>
@@ -40,56 +37,55 @@ export function ApplicationView() {
 
       <section className="vz-section">
         <header className="vz-rule-head">
-          <h2>Ce que le carnet tient</h2>
+          <h2>Dans le carnet</h2>
         </header>
         <div className="vz-feature-grid">
           <article>
             <h3>Les jours</h3>
-            <p>Tokyo, Hakone, Kyoto. Chaque étape a son heure locale, sa maison, son transfert.</p>
+            <p>Tokyo, Hakone, Kyoto. Heure, hôtel, transfert.</p>
           </article>
           <article>
             <h3>Les vols</h3>
-            <p>Paris → Tokyo, CDG → HND, départ 11 h 35, cabine affaires. Un vol d’exemple, sans numéro inventé.</p>
+            <p>Paris → Tokyo, CDG → HND, 11 h 35, cabine affaires. Exemple, sans numéro inventé.</p>
           </article>
           <article>
-            <h3>Les maisons</h3>
-            <p>Aman Tokyo, Gora Kadan, Aman Kyoto. Les nuits se suivent. Les avantages confirmés y figurent.</p>
+            <h3>Les hôtels</h3>
+            <p>Aman Tokyo, Gora Kadan, Aman Kyoto.</p>
           </article>
           <article>
             <h3>L’accueil</h3>
-            <p>À Haneda, à la sortie de l’avion. La voiture continue jusqu’à l’hôtel.</p>
+            <p>Haneda, à la sortie de l’avion. La voiture continue jusqu’à l’hôtel.</p>
           </article>
           <article>
             <h3>La table</h3>
-            <p>Kikunoi, le 10 avril, 19 h 30. Deux couverts. L’adresse est dans la journée.</p>
+            <p>Kikunoi, 10 avril, 19 h 30. Deux couverts.</p>
           </article>
           <article>
             <h3>Le conseiller</h3>
-            <p>Le bureau Travel BA répond dans le fil, à toute heure. Le message reste dans le séjour.</p>
+            <p>Le bureau répond dans le fil, 24h/24.</p>
           </article>
         </div>
       </section>
 
       <section className="vz-section vz-dark">
-        <p className="vz-kicker">Sur le téléphone</p>
-        <h2>Pas une boutique. Une icône.</h2>
-        <p className="vz-lede">
-          L’espace s’ouvre dans le navigateur, puis se pose sur l’écran d’accueil, avec l’icône Travel BA. Après la
-          réservation, le lien est le vôtre.
-        </p>
+        <p className="vz-kicker">Téléphone</p>
+        <h2>Ajoutez l’icône à l’écran d’accueil.</h2>
         <div className="vz-install">
           <article>
             <h3>iPhone</h3>
-            <p>Safari, puis Partager, puis Sur l’écran d’accueil. L’espace s’ouvre ensuite comme une application.</p>
+            <p>Safari, Partager, Sur l’écran d’accueil.</p>
           </article>
           <article>
             <h3>Android</h3>
-            <p>Chrome propose d’installer l’application. L’icône rejoint les autres. Le carnet reste le même.</p>
+            <p>Chrome propose d’installer l’application.</p>
           </article>
         </div>
         <div className="vz-actions">
           <Link className="vz-link" href="/connexion">
-            Accéder à l’espace
+            Ouvrir l’application
+          </Link>
+          <Link className="vz-link" href={`${PREVIEW}/voyages/japon`}>
+            Voir le Japon
           </Link>
         </div>
       </section>

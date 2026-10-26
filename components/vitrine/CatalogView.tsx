@@ -9,11 +9,8 @@ export function CatalogView() {
     <article>
       <header className="vz-section" style={{ paddingTop: "8rem" }}>
         <p className="vz-kicker">Voyages signature</p>
-        <h1>Quarante-trois voyages, déjà écrits.</h1>
-        <p className="vz-lede">
-          Argentine, Japon, Kenya, Saint-Barth, l’Inde du Nord et l’Inde du Sud. Chaque fiche a sa saison, ses maisons,
-          son déroulé. Le détail se confirme avec le conseiller. Sur demande.
-        </p>
+        <h1>43 voyages prêts à réserver.</h1>
+        <p className="vz-lede">Saison, hôtels, jour par jour. Le détail se confirme avec le conseiller.</p>
       </header>
       {REGIONS.map((region, index) => {
         const items = destinationsByRegion(region.id);

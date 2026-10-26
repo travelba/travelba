@@ -5,46 +5,49 @@ import { Photo } from "@/components/vitrine/Photo";
 import { destinations } from "@/lib/vitrine/destinations";
 import { contactPath, PREVIEW, voyagePath } from "@/lib/vitrine/paths";
 
+const devis = contactPath("projet");
+const phone = "tel:+33772158257";
+
 const pillars = [
   {
     href: `${PREVIEW}/application`,
     image: "photo-1493976040374-85c8e12f0c0e",
     alt: "Allée de torii dans la forêt",
     kicker: "L’application",
-    title: "Le carnet, ouvert.",
-    line: "Jours, vols, maisons, documents, et le conseiller dans le même fil.",
+    title: "Le séjour dans le téléphone.",
+    line: "Jours, vols, hôtels, documents, messages.",
   },
   {
     href: `${PREVIEW}/sur-mesure`,
     image: "photo-1582719478250-c89cae4dc85b",
     alt: "Suite et lumière douce",
-    kicker: "Le service",
-    title: "Tout est tenu.",
-    line: "Maisons, vols, voiture, accueil, tables, formalités. Un seul interlocuteur.",
+    kicker: "Sur mesure",
+    title: "Vols, hôtels, voiture, tables.",
+    line: "Un conseiller pour tout le voyage.",
   },
   {
     href: `${PREVIEW}/voyages`,
     image: "photo-1484318571209-661cf29a69c3",
     alt: "Dune rouge au crépuscule",
     kicker: "Voyages signature",
-    title: "Quarante-trois voyages, déjà écrits.",
-    line: "La saison, les maisons, le déroulé. Le détail se confirme avec le conseiller.",
+    title: "43 voyages déjà écrits.",
+    line: "Saison, hôtels, jour par jour.",
   },
   {
     href: `${PREVIEW}/professionnels`,
     image: "photo-1497366754035-f200968a6e72",
     alt: "Bureau calme",
-    kicker: "L’entreprise",
-    title: "La politique, puis le voyage.",
-    line: "Collaborateurs et cadres, le même carnet, un agent joignable à toute heure.",
+    kicker: "Entreprises",
+    title: "Voyages d’affaires.",
+    line: "Règle de prix, facture société, agent 24h/24.",
   },
   {
     href: `${PREVIEW}/club`,
     image: "photo-1571896349842-33c89424de2d",
     alt: "Piscine et lumière du soir",
     kicker: "Le Club",
-    title: "La maison, et ce qui s’y obtient.",
-    line: "Tarif, petit-déjeuner, horaires, surclassement, crédit selon l’hôtel.",
+    title: "Petit-déjeuner, surclassement, crédit.",
+    line: "Jusqu’à 200 $ de crédit par séjour, selon l’hôtel.",
   },
 ];
 
@@ -52,46 +55,46 @@ const scenes = [
   {
     image: "photo-1566073771259-6a8506099945",
     alt: "Chambre d’hôtel au matin",
-    kicker: "La chambre",
-    title: "Demandée par son nom.",
-    text: "Le conseiller connaît l’aile, l’étage, la vue. Il demande la chambre, pas seulement la catégorie. Elle n’est promise que lorsqu’elle est tenue.",
+    kicker: "Hôtel",
+    title: "La chambre est demandée par son nom.",
+    text: "Aile, étage, vue. Elle n’est confirmée que si l’hôtel la tient.",
   },
   {
     image: "photo-1517248135467-4c7edcad34c4",
     alt: "Salle de restaurant",
-    kicker: "La table",
-    title: "Tenue, le soir où tout est complet.",
-    text: "La maison la demande tôt. Elle entre dans le carnet à l’heure confirmée. Autour, la voiture sait déjà où vous déposer.",
+    kicker: "Restaurant",
+    title: "La table est tenue, même un soir complet.",
+    text: "Demandée à l’avance. Inscrite dans le carnet seulement une fois confirmée.",
   },
   {
     image: "photo-1507525428034-b723cf961d3e",
     alt: "Plage et eau claire",
-    kicker: "La famille",
-    title: "Le siège est déjà dans la voiture.",
-    text: "Siège bébé ou sièges enfants, dès l’aéroport. Le club suit les âges. Une nounou, si vous la demandez, est confirmée avant le départ.",
+    kicker: "Famille",
+    title: "Le siège enfant est déjà dans la voiture.",
+    text: "Dès l’aéroport. Nounou sur place, si vous la demandez.",
   },
   {
     image: "photo-1511795409834-ef04bbd61622",
     alt: "Table de réception",
-    kicker: "L’attention",
-    title: "Préparée avant l’arrivée.",
-    text: "Un anniversaire peut déjà être dans la suite : la chambre, la table, une attention déposée par la maison. Personne ne le réorganise à la réception.",
+    kicker: "Anniversaire",
+    title: "L’attention est prête avant l’arrivée.",
+    text: "Chambre, table, attention dans la suite. Rien à réorganiser à la réception.",
   },
   {
     image: "photo-1436491865332-7a61a109cc05",
     alt: "Aile au-dessus des nuages",
-    kicker: "L’imprévu",
-    title: "Le vol repris, avant que vous le sachiez.",
-    text: "Un horaire bouge. Le conseiller reprend la place, aligne la voiture et l’hôtel, et le carnet affiche la nouvelle heure.",
+    kicker: "Vol",
+    title: "Le vol est repris avant que vous le sachiez.",
+    text: "Nouvelle place, voiture et hôtel alignés. Le carnet affiche la nouvelle heure.",
   },
 ];
 
 const perks = [
-  ["01", "Le tarif", "Les meilleurs tarifs sur les plus beaux hôtels choisis avec vous."],
-  ["02", "Le matin", "Le petit-déjeuner offert, lorsque l’adresse le prévoit."],
-  ["03", "Les heures", "Arrivée anticipée, départ tardif, si l’hôtel les confirme."],
-  ["04", "La chambre", "Surclassement prioritaire, lorsqu’une chambre est libre."],
-  ["05", "Le crédit", "Jusqu’à 200 dollars de dépenses par séjour, selon les hôtels."],
+  ["01", "Tarif", "Meilleurs tarifs sur les hôtels choisis avec vous."],
+  ["02", "Petit-déjeuner", "Offert quand l’hôtel le prévoit."],
+  ["03", "Horaires", "Arrivée anticipée et départ tardif, si l’hôtel confirme."],
+  ["04", "Surclassement", "En priorité, si une chambre est libre."],
+  ["05", "Crédit", "Jusqu’à 200 $ de crédit par séjour, selon l’hôtel."],
 ];
 
 const reel = ["japon", "namibie", "argentine", "seychelles", "hawaii", "perou", "maroc", "kenya", "thailande", "saint-barth", "bali", "mexique"]
@@ -118,10 +121,10 @@ const index = [
 ] as const;
 
 const beats = [
-  ["01", "L’écoute", "Dates, personnes, motif, rythme. La maison entend avant de proposer."],
-  ["02", "La proposition", "Un voyage écrit. Généralement sous vingt-quatre heures. Le détail se confirme, sur demande."],
-  ["03", "Le séjour", "Le carnet s’ouvre. Quelqu’un reste joignable à toute heure si la journée change."],
-  ["04", "Le retour", "La maison tient encore le dernier transfert, et ce qui reste à régler."],
+  ["01", "Vous nous dites", "Dates, personnes, motif."],
+  ["02", "Nous écrivons", "Une proposition, généralement sous 24 h."],
+  ["03", "Vous partez", "Le carnet s’ouvre. Un conseiller répond, 24h/24."],
+  ["04", "Vous rentrez", "Dernier transfert et ce qui reste à régler."],
 ];
 
 export function HomeView() {
@@ -134,20 +137,16 @@ export function HomeView() {
           <div className="vz-hero-copy">
             <div className="vz-eyebrow">
               <span />
-              <p>Le service · L’expertise</p>
+              <p>Travel BA · agence de voyage de luxe</p>
             </div>
             <h1>
-              Tenir le voyage, <br />
-              <em>jusqu’au détail.</em>
+              Votre voyage de luxe, <br />
+              <em>organisé de A à Z.</em>
             </h1>
-            <p className="vz-hero-lede">
-              Les conseillers connaissent les maisons et les destinations de l’intérieur. Ils anticipent, ils tiennent le
-              séjour avant, pendant et après, et restent joignables à toute heure. L’application, les voyages signature,
-              le Club et les déplacements d’affaires en sont la suite.
-            </p>
+            <p className="vz-hero-lede">Vols, hôtels, transferts, tables, formalités. Un conseiller, 24h/24.</p>
             <div className="vz-hero-cta">
-              <Link className="vz-btn" href={contactPath("projet")}>
-                Parler à un conseiller
+              <Link className="vz-btn" href={devis}>
+                Demander un devis
               </Link>
               <Link className="vz-btn is-ghost" href={`${PREVIEW}/application`}>
                 Voir l’application
@@ -164,9 +163,12 @@ export function HomeView() {
         <div className="vz-frame">
           <header className="vz-sig-head">
             <div>
-              <p className="vz-caps">Cinq façons de tenir le même service</p>
-              <h2>La maison, entière.</h2>
+              <p className="vz-caps">Ce que nous organisons</p>
+              <h2>Cinq services.</h2>
             </div>
+            <Link className="vz-link" href={devis}>
+              Demander un devis
+            </Link>
           </header>
           <div className="vz-film">
             {pillars.map((item) => (
@@ -183,7 +185,7 @@ export function HomeView() {
         </div>
       </section>
 
-      <section className="vz-canvas" aria-label="Le détail du service">
+      <section className="vz-canvas" aria-label="Détails déjà prévus">
         {scenes.map((scene, index) => (
           <article key={scene.title} className={`vz-chapter${index % 2 ? " is-flip" : ""}`}>
             <figure>
@@ -193,6 +195,9 @@ export function HomeView() {
               <p className="vz-kicker">{scene.kicker}</p>
               <h2>{scene.title}</h2>
               <p>{scene.text}</p>
+              <Link className="vz-link" href={devis}>
+                Demander un devis
+              </Link>
             </div>
           </article>
         ))}
@@ -203,16 +208,13 @@ export function HomeView() {
           <header className="vz-sig-head">
             <div>
               <p className="vz-caps">L’application</p>
-              <h2>Le séjour, dans la poche.</h2>
+              <h2>Votre séjour, dans le téléphone.</h2>
             </div>
             <Link className="vz-link" href={`${PREVIEW}/application`}>
-              Le détail
+              Voir l’application
             </Link>
           </header>
-          <p className="vz-lede">
-            Un séjour d’exemple, le Japon : Claire et Thomas Berger, dix jours, trois maisons. Aucun client réel. Le
-            carnet suit les jours. La table est tenue. Le bureau répond.
-          </p>
+          <p className="vz-lede">Exemple : Japon, Claire et Thomas Berger. Aucun client réel.</p>
           <div className="vz-phones">
             <Phone screen="accueil" />
             <Phone screen="carnet" />
@@ -226,11 +228,11 @@ export function HomeView() {
           <header className="vz-sig-head">
             <div>
               <p className="vz-caps">Voyages signature</p>
-              <h2>Déjà écrits. À confirmer.</h2>
+              <h2>43 voyages prêts à réserver.</h2>
             </div>
             <p className="vz-sig-count">
               <em>43</em>
-              <span>créations, de l’Argentine au Pacifique</span>
+              <span>de l’Argentine au Pacifique</span>
             </p>
           </header>
         </div>
@@ -247,9 +249,9 @@ export function HomeView() {
           ))}
           <Link href={`${PREVIEW}/voyages`}>
             <span className="vz-reel-end">
-              <strong>Les quarante-trois</strong>
+              <strong>Les 43 voyages</strong>
               <em>
-                Le catalogue <ArrowRight size={16} />
+                Voir le catalogue <ArrowRight size={16} />
               </em>
             </span>
           </Link>
@@ -261,8 +263,8 @@ export function HomeView() {
           <article className="vz-metal">
             <header>
               <p className="vz-caps">Club Travel BA</p>
-              <h2>La carte de la maison.</h2>
-              <p>Ce qui se confirme avec l’hôtel, avant l’arrivée. Pas une surprise à la réception.</p>
+              <h2>Petit-déjeuner, surclassement et jusqu’à 200 $ de crédit par séjour.</h2>
+              <p>Selon l’hôtel. Confirmé avant l’arrivée.</p>
             </header>
             <ol>
               {perks.map(([n, title, text]) => (
@@ -276,7 +278,7 @@ export function HomeView() {
               ))}
             </ol>
             <Link className="vz-link" href={`${PREVIEW}/club`}>
-              Le Club
+              Rejoindre le Club
             </Link>
           </article>
           <figure>
@@ -289,33 +291,35 @@ export function HomeView() {
         <div className="vz-frame vz-desk-wrap">
           <div>
             <p className="vz-caps">Déplacements professionnels</p>
-            <h2>L’entreprise voyage avec une règle.</h2>
-            <p className="vz-lede">
-              La politique de prix se fixe avec vous : cabines, maisons, facture au nom de la société. Les voyageurs
-              ouvrent l’application. La réservation reste à l’agence. Un agent répond, de jour comme de nuit.
-            </p>
-            <Link className="vz-link" href={`${PREVIEW}/professionnels`}>
-              Les déplacements
-            </Link>
+            <h2>Vos voyages d’affaires, avec une règle.</h2>
+            <p className="vz-lede">Cabines, hôtels, facture au nom de la société. La réservation reste à l’agence.</p>
+            <div className="vz-actions">
+              <Link className="vz-link" href={devis}>
+                Demander un devis
+              </Link>
+              <a className="vz-link" href={phone}>
+                Appeler
+              </a>
+            </div>
           </div>
           <aside className="vz-desk" aria-label="Lecture d’exemple">
-            <p className="vz-caps">Lecture d’exemple</p>
+            <p className="vz-caps">Exemple</p>
             <ul>
               <li>
-                <span>Un vol qui bouge</span>
-                <p>Le conseiller reprend la place. Le carnet montre la nouvelle heure.</p>
+                <span>Vol modifié</span>
+                <p>Nouvelle place. Le carnet montre la nouvelle heure.</p>
               </li>
               <li>
-                <span>Une réunion avancée</span>
-                <p>La voiture est déjà demandée plus tôt. L’hôtel le sait.</p>
+                <span>Réunion avancée</span>
+                <p>La voiture est demandée plus tôt. L’hôtel est prévenu.</p>
               </li>
               <li>
-                <span>La facture</span>
-                <p>Établie pour la société, selon la politique écrite avec vous.</p>
+                <span>Facture</span>
+                <p>Au nom de la société, selon la règle écrite avec vous.</p>
               </li>
               <li>
-                <span>Le fil</span>
-                <p>Un agent Travel BA, à toute heure, pendant le déplacement.</p>
+                <span>24h/24</span>
+                <p>Un agent Travel BA pendant le déplacement.</p>
               </li>
             </ul>
           </aside>
@@ -324,8 +328,8 @@ export function HomeView() {
 
       <section className="vz-band">
         <div className="vz-frame">
-          <p className="vz-caps">La manière</p>
-          <h2>Quatre temps.</h2>
+          <p className="vz-caps">Déroulement</p>
+          <h2>Quatre étapes.</h2>
           <ol className="vz-timeline">
             {beats.map(([n, title, text]) => (
               <li key={n}>
@@ -335,6 +339,14 @@ export function HomeView() {
               </li>
             ))}
           </ol>
+          <div className="vz-actions">
+            <Link className="vz-link" href={devis}>
+              Demander un devis
+            </Link>
+            <a className="vz-link" href={phone}>
+              Appeler
+            </a>
+          </div>
         </div>
       </section>
 
@@ -342,8 +354,8 @@ export function HomeView() {
         <div className="vz-frame">
           <header className="vz-sig-head">
             <div>
-              <p className="vz-caps">Tout le service</p>
-              <h2>Chaque métier a sa page.</h2>
+              <p className="vz-caps">Services</p>
+              <h2>Tout ce que l’agence organise.</h2>
             </div>
           </header>
           <ul className="vz-index">

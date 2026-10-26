@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Universe } from "@/lib/vitrine/types";
-import { contactPath, PREVIEW } from "@/lib/vitrine/paths";
+import { contactPath } from "@/lib/vitrine/paths";
 import { AppRecall, DetailScene } from "./Blocks";
 import { Photo } from "./Photo";
 
@@ -60,11 +60,11 @@ export function UniverseView({ universe }: { universe: Universe }) {
           ))}
           <div className="vz-actions">
             <Link className="vz-link" href={contact}>
-              Parler à un conseiller
+              Demander un devis
             </Link>
-            <Link className="vz-link" href="/connexion">
-              Espace client
-            </Link>
+            <a className="vz-link" href="tel:+33772158257">
+              Appeler
+            </a>
           </div>
         </div>
         {universe.layout === "essay" ? (
@@ -110,7 +110,7 @@ export function UniverseView({ universe }: { universe: Universe }) {
         </div>
       ) : (
         <section className="vz-section" style={{ paddingTop: 0 }}>
-          <h2>{universe.layout === "route" ? "Le déroulé" : "En pratique"}</h2>
+          <h2>En pratique</h2>
           <ol className={universe.layout === "route" ? "vz-route" : "vz-steps"}>
             {universe.steps.map((step) => (
               <li key={step.n}>
@@ -127,7 +127,7 @@ export function UniverseView({ universe }: { universe: Universe }) {
 
       {universe.layout === "family" ? (
         <section className="vz-section">
-          <h2>Comment la maison s’y prend</h2>
+          <h2>En pratique</h2>
           <ol className="vz-steps">
             {universe.steps.map((step) => (
               <li key={step.n}>
@@ -175,11 +175,11 @@ export function UniverseView({ universe }: { universe: Universe }) {
       <AppRecall>{universe.app}</AppRecall>
       <section className="vz-section" style={{ paddingTop: 0 }}>
         <Link className="vz-link" href={contact}>
-          Écrire à Travel BA
+          Demander un devis
         </Link>
-        <Link className="vz-link" href={`${PREVIEW}/application`} style={{ marginLeft: "1.4rem" }}>
-          L’application
-        </Link>
+        <a className="vz-link" href="tel:+33772158257" style={{ marginLeft: "1.4rem" }}>
+          Appeler
+        </a>
       </section>
     </article>
   );

@@ -33,4 +33,4 @@ export function signatureMenu() {
 }
 
 export const CLUB_NOTE =
-  "Les transferts et l’accueil à l’arrivée, puis au départ, sont tenus par la maison. Les avantages du Club Travel BA s’appliquent aux hôtels du séjour lorsqu’ils existent pour l’adresse : petit-déjeuner, arrivée anticipée ou départ tardif, surclassement si une chambre est libre, et, selon l’hôtel, un crédit de dépenses pouvant aller jusqu’à 200 dollars. Le détail se confirme avec le conseiller. Sur demande.";
+  "Transferts et accueil inclus. Club selon l’hôtel : petit-déjeuner, horaires, surclassement, jusqu’à 200 $ de crédit.";
