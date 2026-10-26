@@ -18,6 +18,7 @@ type RequestRow = {
   last_follow_up_at: string | null;
   replied_at: string | null;
   reply_body: string | null;
+  follow_up_count: number | null;
 };
 
 type SpendRow = {
@@ -70,7 +71,7 @@ async function loadHotelPliantSpends(
 export async function loadDashboardMails(supabase: SupabaseClient): Promise<DashboardMail[]> {
   const { data, error } = await supabase
     .from("crm_hotel_requests")
-    .select("id, booking_id, booking_item_id, kind, status, sent_at, last_follow_up_at, replied_at, reply_body, updated_at")
+    .select("id, booking_id, booking_item_id, kind, status, sent_at, last_follow_up_at, replied_at, reply_body, follow_up_count, updated_at")
     .in("status", ["sent", "follow_up", "replied"])
     .order("updated_at", { ascending: false })
     .limit(40);
@@ -136,6 +137,7 @@ export async function loadDashboardMails(supabase: SupabaseClient): Promise<Dash
       itemTitle: item?.title || "",
       reference: references.get(row.booking_id) || "",
       replies: repliesByRequest.get(row.id) || [],
+      followUpCount: row.follow_up_count || 0,
     };
   });
 

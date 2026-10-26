@@ -8,6 +8,8 @@ const replyClass = {
     "inline-block max-w-full break-words rounded-full bg-[var(--admin-peach)] px-2.5 py-1 text-xs font-semibold leading-snug text-[var(--admin-navy)]",
   waiting:
     "inline-block max-w-full break-words rounded-full bg-[#f8f4ed] px-2.5 py-1 text-xs font-semibold leading-snug text-[#9e7e51] ring-1 ring-[var(--admin-gold)]/40",
+  silent:
+    "inline-block max-w-full break-words rounded-full bg-[#0B192C] px-2.5 py-1 text-xs font-semibold leading-snug text-[#C5A880]",
 } as const;
 
 const paymentClass = {
@@ -27,7 +29,10 @@ function MailRow({ mail }: { mail: DashboardCourrier }) {
         {mail.detail ? <p className="mt-1 break-words text-sm text-[var(--admin-navy)]">{mail.detail}</p> : null}
         <div className="mt-2 flex flex-col items-start gap-1.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-gold-dark)]">{mail.mark}</p>
-          <span className={replyClass[mail.replyState]}>{mail.replyLabel}</span>
+          <span className={mail.replyLabel === "Sans réponse" ? replyClass.silent : replyClass[mail.replyState]}>
+            {mail.replyLabel}
+          </span>
+          {mail.followUpLabel ? <span className="text-xs font-medium text-[#3d4654]">{mail.followUpLabel}</span> : null}
           {mail.paymentLabel && mail.paymentState !== "hidden" ? (
             <span className={paymentClass[mail.paymentState === "paid" ? "paid" : "unpaid"]}>{mail.paymentLabel}</span>
           ) : null}

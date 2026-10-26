@@ -753,6 +753,147 @@ export async function sendHotelMessage(
   });
 }
 
+/**
+ * Relance confirmée par l’agence. Même fil, sans pièce jointe et sans nouveau lien carte.
+ * Le courrier d’origine reste dans le fil. Rien ne part si l’hôtel a déjà répondu.
+ */
+export async function sendHotelFollowUp(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    itemId: string;
+    requestId?: string | null;
+    messageId?: string | null;
+    subject: string;
+    body: string;
+    recipients: string[];
+    staffId?: string | null;
+  }
+) {
+  if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
+    throw new Error("La relance ne peut pas contenir un numéro de carte.");
+  }
+  const recipients = cleanRecipients(input.recipients);
+  if (!recipients.length) throw new Error("Choisissez au moins un destinataire.");
+  const requestId = (input.requestId || "").trim();
+  const messageId = (input.messageId || "").trim();
+  const item = await loadItem(admin, input.bookingId, input.itemId);
+  const identity = await loadMailIdentity(admin, input.bookingId, item);
+  const subject = ensureHotelMailSubject(input.subject, identity).slice(0, 300);
+  const text = signHotelLetter(ensureHotelMailIdentity(input.body, identity), await staffFullName(admin, input.staffId)).slice(0, 8000);
+  if (!subject || !text.trim()) throw new Error("Écrivez l'objet et le message.");
+
+  if (requestId) {
+    const { data } = await admin
+      .from("crm_hotel_requests")
+      .select("*")
+      .eq("id", requestId)
+      .eq("booking_id", input.bookingId)
+      .eq("booking_item_id", input.itemId)
+      .maybeSingle();
+    const row = data as CrmHotelRequest | null;
+    if (!row?.sent_at) throw new Error("Ce courrier n’a pas encore été envoyé.");
+    if (row.status === "replied" || row.replied_at) throw new Error("L’hôtel a déjà répondu.");
+    if (row.status !== "sent" && row.status !== "follow_up") throw new Error("Ce courrier ne se relance pas.");
+    await rememberOriginalTurn(admin, {
+      bookingId: input.bookingId,
+      itemId: input.itemId,
+      scope: "request",
+      ownerId: row.id,
+      subject: row.subject,
+      body: row.body,
+      sentAt: row.sent_at,
+    });
+    await deliverHotelMail({ to: recipients, subject, text, attachments: [] });
+    const now = new Date().toISOString();
+    await admin
+      .from("crm_hotel_requests")
+      .update({
+        recipients,
+        sent_subjects: appendSentSubject(row.sent_subjects, subject),
+        status: "sent",
+        sent_at: now,
+        follow_up_count: (row.follow_up_count || 0) + 1,
+        last_follow_up_at: now,
+      })
+      .eq("id", row.id);
+    await recordCrmTurn(admin, {
+      bookingId: input.bookingId,
+      itemId: input.itemId,
+      scope: "request",
+      ownerId: row.id,
+      subject,
+      body: redactCardLinks(text),
+      sentAt: now,
+    });
+    return;
+  }
+
+  if (!messageId) throw new Error("Choisissez le message à relancer.");
+  const { data: messageRow } = await admin
+    .from("crm_hotel_messages")
+    .select("*")
+    .eq("id", messageId)
+    .eq("booking_id", input.bookingId)
+    .eq("booking_item_id", input.itemId)
+    .maybeSingle();
+  const message = messageRow as CrmHotelMessage | null;
+  if (!message?.sent_at) throw new Error("Ce message n’a pas encore été envoyé.");
+  if (message.replied_at) throw new Error("L’hôtel a déjà répondu.");
+  await rememberOriginalTurn(admin, {
+    bookingId: input.bookingId,
+    itemId: input.itemId,
+    scope: "message",
+    ownerId: message.id,
+    subject: message.subject,
+    body: message.body,
+    sentAt: message.sent_at,
+  });
+  await deliverHotelMail({ to: recipients, subject, text, attachments: [] });
+  const now = new Date().toISOString();
+  await admin
+    .from("crm_hotel_messages")
+    .update({
+      recipients,
+      sent_subjects: appendSentSubject(message.sent_subjects, subject),
+      sent_at: now,
+    })
+    .eq("id", message.id);
+  await recordCrmTurn(admin, {
+    bookingId: input.bookingId,
+    itemId: input.itemId,
+    scope: "message",
+    ownerId: message.id,
+    subject,
+    body: redactCardLinks(text),
+    sentAt: now,
+  });
+}
+
+/** Garde le premier envoi dans le fil avant qu’une relance n’en ajoute un second. */
+async function rememberOriginalTurn(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    itemId: string;
+    scope: "request" | "message";
+    ownerId: string;
+    subject: string;
+    body: string;
+    sentAt: string;
+  }
+) {
+  const column = input.scope === "request" ? "request_id" : "message_id";
+  const { data } = await admin
+    .from("crm_hotel_thread_messages")
+    .select("id")
+    .eq(column, input.ownerId)
+    .eq("direction", "out")
+    .limit(1);
+  if (data?.length || !input.body.trim()) return;
+  await recordCrmTurn(admin, input);
+}
+
 async function loadRequest(admin: Admin, bookingId: string, itemId: string, kind: HotelDeskKind) {
   const { data } = await admin
     .from("crm_hotel_requests")

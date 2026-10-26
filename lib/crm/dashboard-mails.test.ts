@@ -86,7 +86,8 @@ test("le tableau ne garde que les courriers partis, le plus récent d’abord", 
   assert.equal(lines[1]?.detail, "TB-1042 · L’upgrade est confirmé.");
   assert.equal(lines[1]?.href, "/admin/reservations/booking-1?hotel=item-1");
   assert.equal(lines[0]?.replyState, "waiting");
-  assert.equal(lines[0]?.replyLabel, "En attente de réponse");
+  assert.equal(lines[0]?.replyLabel, "Sans réponse");
+  assert.equal(lines[0]?.href, "/admin/reservations/booking-1?hotel=item-1&relance=attente");
   assert.equal(lines[0]?.detail, "TB-1042");
   assert.equal(lines[0]?.paymentState, "hidden");
   assert.equal(lines.some((line) => line.mark === "Expedia TAAP"), false);
@@ -235,6 +236,47 @@ test("trois courriers ou moins n’affichent pas Voir plus", () => {
 test("sans courrier, la liste le dit", () => {
   const html = renderToStaticMarkup(createElement(RecentMails, { mails: [] }));
   assert.match(html, /Aucun courrier d’hôtel envoyé pour le moment/);
+});
+
+test("une relance de moins de 48 h reste en attente, au-delà elle est sans réponse", () => {
+  const now = Date.parse("2026-10-08T10:00:00.000Z");
+  const [fresh] = dashboardCourriers(
+    [
+      courrier({
+        status: "sent",
+        sentAt: "2026-10-08T08:00:00.000Z",
+        repliedAt: null,
+        replyBody: "",
+        replies: [],
+        followUpCount: 0,
+      }),
+    ],
+    [],
+    true,
+    now
+  );
+  assert.equal(fresh?.replyLabel, "En attente de réponse");
+  assert.equal(fresh?.followUpLabel, null);
+
+  const [old] = dashboardCourriers(
+    [
+      courrier({
+        status: "follow_up",
+        sentAt: "2026-10-01T08:00:00.000Z",
+        lastFollowUpAt: "2026-10-08T08:00:00.000Z",
+        repliedAt: null,
+        replyBody: "",
+        replies: [],
+        followUpCount: 2,
+      }),
+    ],
+    [],
+    true,
+    Date.parse("2026-10-12T08:00:00.000Z")
+  );
+  assert.equal(old?.replyLabel, "Sans réponse");
+  assert.equal(old?.followUpLabel, "2 relances");
+  assert.match(old?.href || "", /relance=/);
 });
 
 test("le paiement s’affiche sous le titre, pas à côté", () => {

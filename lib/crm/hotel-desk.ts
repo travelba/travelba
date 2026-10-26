@@ -20,6 +20,7 @@ import {
 } from "./hotel-arrival";
 import { greetingGivenName } from "./identity";
 import { isPlaceholderTraveler } from "./person-match";
+import { followUpMarks } from "./mail-followup";
 import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, HotelDeskKind, HotelDeskStatus } from "./types";
 import { HOTEL_DESK_KINDS } from "./types";
 
@@ -173,7 +174,7 @@ export function hotelReplyLink(text: string) {
 }
 
 const SUBJECT_PREFIX = /^(?:(?:re|fw|fwd|tr|aw|wg|antw|r)\s*:\s*)+/i;
-const RELANCE_PREFIX = /^(?:relance|follow-up)\s*[—–-]\s*/i;
+const RELANCE_PREFIX = /^(?:relance|follow-up)\s*[—–:-]\s*/i;
 
 /** Objet sans Re:, R:, AW:, Relance ni Follow-up. Les tirets d’origine restent pour Gmail. */
 export function hotelMailSubjectCore(subject: string) {
@@ -184,6 +185,16 @@ export function hotelMailSubjectCore(subject: string) {
     value = value.replace(SUBJECT_PREFIX, "").replace(RELANCE_PREFIX, "").trim();
   }
   return value;
+}
+
+/**
+ * Objet d’une relance. `Re:` reste le même fil (Gmail et la clé du bureau).
+ * `Relance :` est accepté à l’édition : la clé l’ignore aussi.
+ */
+export function followUpSubject(subject: string) {
+  const core = hotelMailSubjectCore(subject);
+  if (!core) return "Relance";
+  return `Re: ${core}`.slice(0, 300);
 }
 
 /** Objet comparable : casse et tirets longs alignés. */
@@ -1046,6 +1057,15 @@ export function hotelStayContext(item: CrmBookingItem, extra?: { guest?: string;
   };
 }
 
+export type HotelThreadRelance = {
+  requestId: string | null;
+  messageId: string | null;
+  /** Envois après le premier, déjà partis. */
+  followUps: number;
+  /** Dernier envoi sans réponse depuis 48 h. */
+  unanswered: boolean;
+};
+
 export type HotelThreadTurn = {
   id: string;
   at: string;
@@ -1055,6 +1075,8 @@ export type HotelThreadTurn = {
   subject: string;
   body: string;
   link: string | null;
+  /** Dernier envoi du fil encore sans réponse. Absent sur les autres tours. */
+  relance: HotelThreadRelance | null;
 };
 
 export type HotelMailPiece = {
@@ -1145,7 +1167,25 @@ function turnAt(value: string | null) {
 type DraftTurn = HotelThreadTurn & {
   subjectKey: string;
   source: "crm" | "gmail" | "letter" | "note";
+  countsAsReply: boolean;
+  requestId: string | null;
+  messageId: string | null;
+  recipients: string[];
 };
+
+function draftTurn(
+  turn: Omit<DraftTurn, "relance" | "countsAsReply" | "requestId" | "messageId" | "recipients"> &
+    Partial<Pick<DraftTurn, "countsAsReply" | "requestId" | "messageId" | "recipients">>
+): DraftTurn {
+  return {
+    relance: null,
+    countsAsReply: false,
+    requestId: null,
+    messageId: null,
+    recipients: [],
+    ...turn,
+  };
+}
 
 const FOLD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -1175,6 +1215,9 @@ function foldGmailCopies(turns: DraftTurn[]) {
       }
     }
     if (!best) continue;
+    if (!best.recipients.length && turn.recipients.length) best.recipients = turn.recipients;
+    if (!best.requestId && turn.requestId) best.requestId = turn.requestId;
+    if (!best.messageId && turn.messageId) best.messageId = turn.messageId;
     used.add(best.id);
     hidden.add(turn.id);
   }
@@ -1207,6 +1250,7 @@ export function hotelThread(input: {
   messages: CrmHotelMessage[];
   attached: HotelMailPiece[];
   thread?: CrmHotelThreadMessage[];
+  nowMs?: number;
 }): HotelThreadTurn[] {
   const context = hotelStayContext(input.item);
   const drafts: DraftTurn[] = [];
@@ -1231,73 +1275,91 @@ export function hotelThread(input: {
     if (row.sent_at && !crmOutRequests.has(row.id)) {
       const label =
         row.follow_up_count > 0 ? `Relance · ${HOTEL_DESK_LABELS[row.kind]}` : HOTEL_DESK_LABELS[row.kind];
-      drafts.push({
-        id: `out:${row.id}`,
-        at: turnAt(row.sent_at),
-        direction: "out",
-        speaker: "L'agence",
-        label,
-        subject: row.subject,
-        body: row.body.trim(),
-        link: null,
-        subjectKey: hotelMailSubjectKey(row.subject),
-        source: "letter",
-      });
+      drafts.push(
+        draftTurn({
+          id: `out:${row.id}`,
+          at: turnAt(row.sent_at),
+          direction: "out",
+          speaker: "L'agence",
+          label,
+          subject: row.subject,
+          body: row.body.trim(),
+          link: null,
+          subjectKey: hotelMailSubjectKey(row.subject),
+          source: "letter",
+          requestId: row.id,
+          recipients: row.recipients || [],
+        })
+      );
     }
     if ((row.reply_body.trim() || row.replied_at) && !covered(row)) {
       const body = replyText(row.reply_body);
       replies.push(row);
-      drafts.push({
-        id: `in:${row.id}`,
-        at: turnAt(row.replied_at || row.sent_at),
-        direction: "in",
-        speaker: context.hotel,
-        label: "Réponse",
-        subject: row.reply_subject,
-        body,
-        link: hotelReplyLink(body),
-        subjectKey: hotelMailSubjectKey(row.reply_subject || row.subject),
-        source: "letter",
-      });
+      drafts.push(
+        draftTurn({
+          id: `in:${row.id}`,
+          at: turnAt(row.replied_at || row.sent_at),
+          direction: "in",
+          speaker: context.hotel,
+          label: "Réponse",
+          subject: row.reply_subject,
+          body,
+          link: hotelReplyLink(body),
+          subjectKey: hotelMailSubjectKey(row.reply_subject || row.subject),
+          source: "letter",
+          countsAsReply: true,
+          requestId: row.id,
+        })
+      );
     }
   }
 
   for (const row of notes) {
     if (row.sent_at && !crmOutMessages.has(row.id)) {
-      drafts.push({
-        id: `out:${row.id}`,
-        at: turnAt(row.sent_at),
-        direction: "out",
-        speaker: "L'agence",
-        label: "Message",
-        subject: row.subject,
-        body: row.body.trim(),
-        link: null,
-        subjectKey: hotelMailSubjectKey(row.subject),
-        source: "note",
-      });
+      drafts.push(
+        draftTurn({
+          id: `out:${row.id}`,
+          at: turnAt(row.sent_at),
+          direction: "out",
+          speaker: "L'agence",
+          label: "Message",
+          subject: row.subject,
+          body: row.body.trim(),
+          link: null,
+          subjectKey: hotelMailSubjectKey(row.subject),
+          source: "note",
+          messageId: row.id,
+          recipients: row.recipients || [],
+        })
+      );
     }
     if ((row.reply_body.trim() || row.replied_at) && !covered(row)) {
       const body = replyText(row.reply_body);
       replies.push(row);
-      drafts.push({
-        id: `in:${row.id}`,
-        at: turnAt(row.replied_at || row.sent_at),
-        direction: "in",
-        speaker: context.hotel,
-        label: "Réponse",
-        subject: row.reply_subject,
-        body,
-        link: hotelReplyLink(body),
-        subjectKey: hotelMailSubjectKey(row.reply_subject || row.subject),
-        source: "note",
-      });
+      drafts.push(
+        draftTurn({
+          id: `in:${row.id}`,
+          at: turnAt(row.replied_at || row.sent_at),
+          direction: "in",
+          speaker: context.hotel,
+          label: "Réponse",
+          subject: row.reply_subject,
+          body,
+          link: hotelReplyLink(body),
+          subjectKey: hotelMailSubjectKey(row.reply_subject || row.subject),
+          source: "note",
+          countsAsReply: true,
+          messageId: row.id,
+        })
+      );
     }
   }
 
   const letterById = new Map(letters.map((row) => [row.id, row]));
+  const noteById = new Map(notes.map((row) => [row.id, row]));
   for (const row of thread) {
     const letter = row.request_id ? letterById.get(row.request_id) : undefined;
+    const note = row.message_id ? noteById.get(row.message_id) : undefined;
     const outs = thread
       .filter((turn) => turn.direction === "out" && turn.request_id && turn.request_id === row.request_id)
       .sort((a, b) => a.received_at.localeCompare(b.received_at));
@@ -1319,21 +1381,49 @@ export function hotelThread(input: {
         reply_body: row.body,
       });
     }
-    drafts.push({
-      id: `thread:${row.id}`,
-      at: turnAt(row.received_at),
-      direction: row.direction,
-      speaker: row.direction === "out" ? "L'agence" : context.hotel,
-      label,
-      subject: row.subject,
-      body: row.body.trim() || (row.direction === "in" ? "L'hôtel a répondu." : ""),
-      link: row.link,
-      subjectKey: row.subject_key,
-      source: row.source,
-    });
+    drafts.push(
+      draftTurn({
+        id: `thread:${row.id}`,
+        at: turnAt(row.received_at),
+        direction: row.direction,
+        speaker: row.direction === "out" ? "L'agence" : context.hotel,
+        label,
+        subject: row.subject,
+        body: row.body.trim() || (row.direction === "in" ? "L'hôtel a répondu." : ""),
+        link: row.link,
+        subjectKey: row.subject_key,
+        source: row.source,
+        countsAsReply: row.direction === "in" && row.counts_as_reply,
+        requestId: row.request_id,
+        messageId: row.message_id,
+        recipients: letter?.recipients || note?.recipients || [],
+      })
+    );
   }
 
-  const folded = foldGmailCopies(drafts).map(({ subjectKey: _subjectKey, source: _source, ...turn }) => turn);
+  const visible = foldGmailCopies(drafts);
+  const marks = followUpMarks(visible, input.nowMs ?? Date.now());
+  const folded: HotelThreadTurn[] = visible.map((turn) => {
+    const mark = marks.get(turn.id);
+    return {
+      id: turn.id,
+      at: turn.at,
+      direction: turn.direction,
+      speaker: turn.speaker,
+      label: turn.label,
+      subject: turn.subject,
+      body: turn.body,
+      link: turn.link,
+      relance: mark
+        ? {
+            requestId: turn.requestId,
+            messageId: turn.messageId,
+            followUps: Math.max(mark.followUps, letterById.get(turn.requestId || "")?.follow_up_count || 0),
+            unanswered: mark.unanswered,
+          }
+        : null,
+    };
+  });
 
   for (const mail of input.attached) {
     if (!hotelMailPieceMatches(input.item, mail) || sameExchange(mail, replies)) continue;
@@ -1347,6 +1437,7 @@ export function hotelThread(input: {
       subject: (mail.subject || "").trim(),
       body,
       link: hotelReplyLink(body),
+      relance: null,
     });
   }
 
