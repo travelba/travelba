@@ -26,6 +26,7 @@ test("l’onglet se lit dans l’URL et retombe sur Le voyage", () => {
 test("changer d’onglet garde les autres paramètres de l’URL, sauf ?hotel= qui a déjà servi", () => {
   assert.equal(bookingTabQuery("hotel=abc", "todo"), "tab=a-faire");
   assert.equal(bookingTabQuery("page=2&hotel=abc", "todo"), "page=2&tab=a-faire");
+  assert.equal(bookingTabQuery("hotel=abc&relance=def", "voyage"), "tab=voyage");
   assert.equal(bookingTabQuery("tab=argent", "voyage"), "tab=voyage");
   assert.equal(bookingTabQuery("", "argent"), "tab=reglement");
   assert.equal(bookingTabQuery("", "interface"), "tab=interface");

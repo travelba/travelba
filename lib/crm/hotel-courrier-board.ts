@@ -1,5 +1,6 @@
 import { hotelReplyHref, noticeHotelName, replyExcerpt } from "./hotel-reply-notice";
 import { HOTEL_DESK_LABELS } from "./hotel-desk";
+import { followUpCountLabel, followUpHref, isUnanswered } from "./mail-followup";
 import { formatMoney } from "./money";
 import { pliantSpendCopy } from "./pliant-booking";
 import type { HotelDeskKind } from "./types";
@@ -31,6 +32,7 @@ export type HotelCourrierSource = {
   itemTitle: string;
   reference: string;
   replies: HotelCourrierReply[];
+  followUpCount?: number;
 };
 
 /** Dépense Pliant déjà rattachée à l’hôtel ou au courrier. Sans numéro de carte. */
@@ -60,6 +62,7 @@ export type DashboardCourrier = {
   mark: string;
   replyState: "received" | "waiting";
   replyLabel: string;
+  followUpLabel: string | null;
   paymentState: "paid" | "unpaid" | "hidden";
   paymentLabel: string | null;
 };
@@ -170,7 +173,8 @@ function latestReply(replies: HotelCourrierReply[]) {
 export function dashboardCourriers(
   rows: HotelCourrierSource[],
   spends: HotelPliantSpend[],
-  paymentsKnown: boolean
+  paymentsKnown: boolean,
+  nowMs = Date.now()
 ): DashboardCourrier[] {
   const lines: DashboardCourrier[] = [];
   for (const row of rows) {
@@ -188,15 +192,24 @@ export function dashboardCourriers(
     const payment =
       row.kind === "payment_link" && paymentsKnown ? latestHotelPliantPayment(spendsForCourrier(row, spends)) : null;
     const showPayment = row.kind === "payment_link" && paymentsKnown;
+    const silent = isUnanswered({
+      status: row.status,
+      sentAt: row.sentAt,
+      lastFollowUpAt: row.lastFollowUpAt,
+      hasReply: received,
+      nowMs,
+    });
+    const followUps = row.followUpCount || 0;
     lines.push({
       id: row.id,
       title: noticeHotelName({ hotelName: row.hotelName, title: row.itemTitle }),
       detail: [reference, excerpt].filter(Boolean).join(" · "),
       receivedAt: moment,
-      href: hotelReplyHref(row.bookingId, row.itemId),
+      href: received ? hotelReplyHref(row.bookingId, row.itemId) : followUpHref(row.bookingId, row.itemId, row.id),
       mark,
       replyState: received ? "received" : "waiting",
-      replyLabel: received ? "Réponse reçue" : "En attente de réponse",
+      replyLabel: received ? "Réponse reçue" : silent ? "Sans réponse" : "En attente de réponse",
+      followUpLabel: followUpCountLabel(followUps),
       paymentState: !showPayment ? "hidden" : payment ? "paid" : "unpaid",
       paymentLabel: showPayment ? pliantPaymentCaption(payment) : null,
     });

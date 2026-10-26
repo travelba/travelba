@@ -320,6 +320,7 @@ export function BookingEditor({
   hotelMessages = [],
   hotelThreadMessages = [],
   openHotelItemId = null,
+  openRelanceId = null,
   billingCompanies = [],
   ficheBillingCompanies = [],
   companyAdmins = [],
@@ -392,6 +393,7 @@ export function BookingEditor({
   hotelMessages?: CrmHotelMessage[];
   hotelThreadMessages?: CrmHotelThreadMessage[];
   openHotelItemId?: string | null;
+  openRelanceId?: string | null;
   billingCompanies?: {
     id: string;
     company_name: string | null;
@@ -1832,6 +1834,7 @@ export function BookingEditor({
         hotelMessages={hotelMessages}
         hotelThreadMessages={hotelThreadMessages}
         openHotelItemId={openHotelItemId}
+        openRelanceId={openRelanceId}
         reference={booking.reference}
         onLiveItems={onLiveItems}
         onBindDraftSave={(save) => {
