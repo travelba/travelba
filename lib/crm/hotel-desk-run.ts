@@ -4,7 +4,8 @@ import { Resend } from "resend";
 import { pliantCardCaption, pliantCardNomination } from "./eta-il-fee";
 import { downloadCrmFile, removeCrmFiles, uploadCrmFile } from "./files";
 import { agencyCardObjectPath, agencyCardSiblingPaths, clientCardMime, isAgencyCardPath, isSafeCrmPath } from "./files-access";
-import { getThread, gmailConfigured, searchInbox } from "./gmail";
+import { getThread, gmailConfigured, gmailHeaderValues, searchInbox } from "./gmail";
+import { headerValue } from "./gmail-parse";
 import { attachLittleEmperorsCatalog } from "./hotel-catalog-load";
 import { holidaysFor } from "./holidays";
 import { hotelContact } from "./hotel-contact";
@@ -48,6 +49,7 @@ import { HOTEL_REPLY_STAY_STATUSES, shouldSyncHotelReplies, stayNeedsHotelReplyW
 import { precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
 import { PLIANT_SINGLE_USE } from "./pliant-controls";
+import { threadingHeaders } from "./mail-reply";
 import { agencyCopyCc, tokenMailCc } from "./outbound-mail";
 import { cardLinkExpiresAt, cardLinkNote, redactCardLinks } from "./card-link";
 import { createCardLink, settleCardLinks } from "./card-link-run";
@@ -885,6 +887,214 @@ export async function sendHotelFollowUp(
   });
 }
 
+/**
+ * Réponse confirmée à un message reçu. Même envoi que la relance, relié à ce message.
+ * Rien ne part sans les destinataires choisis. Le statut du courrier d’origine ne change pas.
+ */
+export async function sendHotelReply(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    itemId: string;
+    threadId?: string | null;
+    requestId?: string | null;
+    messageId?: string | null;
+    pieceId?: string | null;
+    subject: string;
+    body: string;
+    recipients: string[];
+    cc?: string[];
+    staffId?: string | null;
+  }
+) {
+  if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
+    throw new Error("La réponse ne peut pas contenir un numéro de carte.");
+  }
+  const to = cleanRecipients(input.recipients).filter((email) => email !== HOTEL_DESK_FROM);
+  const cc = cleanRecipients(input.cc || []).filter((email) => email !== HOTEL_DESK_FROM && !to.includes(email));
+  if (!to.length) throw new Error("Choisissez au moins un destinataire.");
+  const item = await loadItem(admin, input.bookingId, input.itemId);
+  const identity = await loadMailIdentity(admin, input.bookingId, item);
+  const subject = ensureHotelMailSubject(input.subject, identity).slice(0, 300);
+  const text = signHotelLetter(ensureHotelMailIdentity(input.body, identity), await staffFullName(admin, input.staffId)).slice(0, 8000);
+  if (!subject || !text.trim()) throw new Error("Écrivez l'objet et le message.");
+
+  const target = await loadReplyTarget(admin, input);
+  const headers = await replyThreadingHeaders(target.gmailMessageId);
+  await deliverHotelMail({ to, cc, subject, text, attachments: [], headers: headers || undefined });
+
+  const sentAt = new Date().toISOString();
+  const body = redactCardLinks(text);
+  if (target.scope === "request" || target.scope === "message") {
+    const table = target.scope === "request" ? "crm_hotel_requests" : "crm_hotel_messages";
+    await admin
+      .from(table)
+      .update({ sent_subjects: appendSentSubject(target.sentSubjects, subject) })
+      .eq("id", target.ownerId);
+    await recordCrmTurn(admin, {
+      bookingId: input.bookingId,
+      itemId: input.itemId,
+      scope: target.scope,
+      ownerId: target.ownerId,
+      subject,
+      body,
+      sentAt,
+    });
+    return;
+  }
+
+  const { data, error } = await admin
+    .from("crm_hotel_messages")
+    .insert({
+      booking_id: input.bookingId,
+      booking_item_id: item.id,
+      subject,
+      body,
+      recipients: [...to, ...cc],
+      sent_subjects: appendSentSubject([], subject),
+      sent_at: sentAt,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error || !data?.id) throw new Error("La réponse est partie, mais le fil ne l'a pas enregistrée.");
+  await recordCrmTurn(admin, {
+    bookingId: input.bookingId,
+    itemId: input.itemId,
+    scope: "message",
+    ownerId: data.id,
+    subject,
+    body,
+    sentAt,
+  });
+}
+
+type ReplyTarget = {
+  gmailMessageId: string | null;
+  scope: "request" | "message" | null;
+  ownerId: string;
+  sentSubjects: string[];
+};
+
+async function loadReplyTarget(
+  admin: Admin,
+  input: { bookingId: string; itemId: string; threadId?: string | null; requestId?: string | null; messageId?: string | null; pieceId?: string | null }
+): Promise<ReplyTarget> {
+  const threadId = (input.threadId || "").trim();
+  if (threadId) {
+    const { data } = await admin
+      .from("crm_hotel_thread_messages")
+      .select("id, direction, gmail_message_id, request_id, message_id")
+      .eq("id", threadId)
+      .eq("booking_id", input.bookingId)
+      .eq("booking_item_id", input.itemId)
+      .maybeSingle();
+    const row = data as { direction: string; gmail_message_id: string | null; request_id: string | null; message_id: string | null } | null;
+    if (!row || row.direction !== "in") throw new Error("Ce message ne se répond pas.");
+    const linked = await linkedSubjects(admin, input.bookingId, input.itemId, row.request_id, row.message_id);
+    return {
+      gmailMessageId: row.gmail_message_id,
+      scope: linked.scope,
+      ownerId: linked.ownerId,
+      sentSubjects: linked.sentSubjects,
+    };
+  }
+
+  const requestId = (input.requestId || "").trim();
+  if (requestId) {
+    const { data } = await admin
+      .from("crm_hotel_requests")
+      .select("id, sent_subjects, reply_message_id, replied_at, reply_body")
+      .eq("id", requestId)
+      .eq("booking_id", input.bookingId)
+      .eq("booking_item_id", input.itemId)
+      .maybeSingle();
+    const row = data as { id: string; sent_subjects?: string[] | null; reply_message_id: string | null; replied_at: string | null; reply_body: string | null } | null;
+    if (!row || (!row.replied_at && !(row.reply_body || "").trim())) throw new Error("Ce courrier n’a pas de réponse à reprendre.");
+    return { gmailMessageId: row.reply_message_id, scope: "request", ownerId: row.id, sentSubjects: row.sent_subjects || [] };
+  }
+
+  const messageId = (input.messageId || "").trim();
+  if (messageId) {
+    const { data } = await admin
+      .from("crm_hotel_messages")
+      .select("id, sent_subjects, reply_message_id, replied_at, reply_body")
+      .eq("id", messageId)
+      .eq("booking_id", input.bookingId)
+      .eq("booking_item_id", input.itemId)
+      .maybeSingle();
+    const row = data as { id: string; sent_subjects?: string[] | null; reply_message_id: string | null; replied_at: string | null; reply_body: string | null } | null;
+    if (!row || (!row.replied_at && !(row.reply_body || "").trim())) throw new Error("Ce message n’a pas de réponse à reprendre.");
+    return { gmailMessageId: row.reply_message_id, scope: "message", ownerId: row.id, sentSubjects: row.sent_subjects || [] };
+  }
+
+  const pieceId = (input.pieceId || "").trim();
+  if (pieceId) {
+    const { data } = await admin
+      .from("crm_email_ingest")
+      .select("id, gmail_message_id, created_booking_id, status")
+      .eq("id", pieceId)
+      .maybeSingle();
+    const row = data as { gmail_message_id: string | null; created_booking_id: string | null; status: string | null } | null;
+    if (!row || row.status !== "attached" || row.created_booking_id !== input.bookingId) {
+      throw new Error("Ce message ne se répond pas.");
+    }
+    return { gmailMessageId: row.gmail_message_id, scope: null, ownerId: "", sentSubjects: [] };
+  }
+
+  throw new Error("Choisissez le message auquel répondre.");
+}
+
+async function linkedSubjects(
+  admin: Admin,
+  bookingId: string,
+  itemId: string,
+  requestId: string | null,
+  messageId: string | null
+): Promise<Pick<ReplyTarget, "scope" | "ownerId" | "sentSubjects">> {
+  if (requestId) {
+    const { data } = await admin
+      .from("crm_hotel_requests")
+      .select("id, sent_subjects")
+      .eq("id", requestId)
+      .eq("booking_id", bookingId)
+      .eq("booking_item_id", itemId)
+      .maybeSingle();
+    const row = data as { id: string; sent_subjects?: string[] | null } | null;
+    if (row) return { scope: "request", ownerId: row.id, sentSubjects: row.sent_subjects || [] };
+  }
+  if (messageId) {
+    const { data } = await admin
+      .from("crm_hotel_messages")
+      .select("id, sent_subjects")
+      .eq("id", messageId)
+      .eq("booking_id", bookingId)
+      .eq("booking_item_id", itemId)
+      .maybeSingle();
+    const row = data as { id: string; sent_subjects?: string[] | null } | null;
+    if (row) return { scope: "message", ownerId: row.id, sentSubjects: row.sent_subjects || [] };
+  }
+  return { scope: null, ownerId: "", sentSubjects: [] };
+}
+
+async function replyThreadingHeaders(gmailMessageId: string | null) {
+  const id = (gmailMessageId || "").trim();
+  if (!id || id.startsWith("crm:") || id.startsWith("sim-")) return null;
+  if (!gmailConfigured()) throw new Error("La boîte Gmail n’est pas reliée. Réessayez plus tard.");
+  let headers: { name?: string; value?: string }[];
+  try {
+    headers = await gmailHeaderValues(id);
+  } catch {
+    throw new Error("Le message d’origine n’a pas pu être relié. Réessayez.");
+  }
+  const threaded = threadingHeaders({
+    messageId: headerValue(headers, "Message-ID"),
+    references: headerValue(headers, "References"),
+    inReplyTo: headerValue(headers, "In-Reply-To"),
+  });
+  if (!threaded) throw new Error("Ce message n’a pas d’identifiant de fil. Réessayez.");
+  return threaded;
+}
+
 /** Garde le premier envoi dans le fil avant qu’une relance n’en ajoute un second. */
 async function rememberOriginalTurn(
   admin: Admin,
@@ -996,11 +1206,14 @@ async function recordCrmTurn(
 
 async function deliverHotelMail(mail: {
   to: string[];
+  cc?: string[];
   subject: string;
   text: string;
   attachments: { filename: string; content: Buffer }[];
   /** Le courrier porte un lien carte : jamais en copie de la boîte partagée de l’agence. */
   carriesCardLink?: boolean;
+  /** In-Reply-To et References, pour répondre à un message précis. */
+  headers?: Record<string, string>;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("L'envoi n'est pas configuré.");
@@ -1008,10 +1221,11 @@ async function deliverHotelMail(mail: {
   const { error } = await resend.emails.send({
     from: `${siteConfig.name} <${HOTEL_DESK_FROM}>`,
     to: mail.to,
-    cc: mail.carriesCardLink ? tokenMailCc() : agencyCopyCc(mail.to),
+    cc: mail.carriesCardLink ? tokenMailCc(mail.cc) : agencyCopyCc(mail.to, mail.cc),
     subject: mail.subject,
     text: mail.text,
     replyTo: HOTEL_DESK_FROM,
+    headers: mail.headers,
     attachments: mail.attachments.map((file) => ({ filename: file.filename, content: file.content })),
   });
   if (error) throw new Error("L'envoi du mail a échoué.");

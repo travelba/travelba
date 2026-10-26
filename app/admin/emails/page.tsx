@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { EmailIngestInbox } from "@/components/admin/EmailIngestInbox";
+import { InboundReplies, type InboundReplyRow } from "@/components/admin/InboundReplies";
 import { UnansweredMails, type UnansweredMailRow } from "@/components/admin/UnansweredMails";
 import { Pagination } from "@/components/admin/Pagination";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { ADMIN_PAGE_SIZE, pageRange, parsePage, type SearchParamValue } from "@/lib/crm/admin-list";
 import { HOTEL_DESK_LABELS } from "@/lib/crm/hotel-desk";
 import { followUpHref, outboundAnchor, UNANSWERED_AFTER_MS } from "@/lib/crm/mail-followup";
+import { replyHref } from "@/lib/crm/mail-reply";
 import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest, type HotelDeskKind } from "@/lib/crm/types";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { appliedSinceIso } from "@/lib/crm/import-metrics";
@@ -43,11 +45,11 @@ const EMAIL_LIST_COLUMNS = [
 
 export const metadata = { title: "Boîte d'import" };
 
-type Vue = "file" | "appliques" | "ignores" | "sans-reponse";
+type Vue = "file" | "appliques" | "ignores" | "sans-reponse" | "reponses";
 
 function vueOf(value: string | string[] | undefined): Vue {
   const raw = Array.isArray(value) ? value[0] : value;
-  if (raw === "appliques" || raw === "ignores" || raw === "sans-reponse") return raw;
+  if (raw === "appliques" || raw === "ignores" || raw === "sans-reponse" || raw === "reponses") return raw;
   return "file";
 }
 
@@ -202,6 +204,51 @@ async function loadUnansweredMails(supabase: SupabaseClient): Promise<Unanswered
   return lines.filter((row) => (seen.has(row.id) ? false : (seen.add(row.id), true))).slice(0, 40);
 }
 
+/** Réponses d’hôtel déjà dans un fil. Pas le corps : le brouillon s’ouvre sur le dossier. */
+async function loadInboundReplies(supabase: SupabaseClient): Promise<InboundReplyRow[]> {
+  const { data } = await supabase
+    .from("crm_hotel_thread_messages")
+    .select("id, booking_id, booking_item_id, subject, received_at, counts_as_reply")
+    .eq("direction", "in")
+    .order("received_at", { ascending: false })
+    .limit(40);
+  const rows = (data || []) as {
+    id: string;
+    booking_id: string;
+    booking_item_id: string;
+    subject: string | null;
+    received_at: string;
+    counts_as_reply: boolean;
+  }[];
+  if (!rows.length) return [];
+  const itemIds = [...new Set(rows.map((row) => row.booking_item_id))];
+  const bookingIds = [...new Set(rows.map((row) => row.booking_id))];
+  const [{ data: items }, { data: bookings }] = await Promise.all([
+    supabase.from("crm_booking_items").select("id, title, details").in("id", itemIds),
+    supabase.from("crm_bookings").select("id, reference").in("id", bookingIds),
+  ]);
+  const names = new Map(
+    ((items || []) as { id: string; title: string | null; details: { hotel_name?: unknown } | null }[]).map((item) => {
+      const hotel = item.details && typeof item.details.hotel_name === "string" ? item.details.hotel_name.trim() : "";
+      return [item.id, hotel || item.title || "Hôtel"] as const;
+    })
+  );
+  const references = new Map(
+    ((bookings || []) as { id: string; reference: string | null }[]).map((row) => [row.id, (row.reference || "").trim()])
+  );
+  return rows.map((row) => {
+    const reference = references.get(row.booking_id) || "";
+    return {
+      id: row.id,
+      href: replyHref(row.booking_id, row.booking_item_id, row.id),
+      title: [names.get(row.booking_item_id) || "Hôtel", reference].filter(Boolean).join(" · "),
+      subject: (row.subject || "").trim() || "Réponse",
+      kind: row.counts_as_reply ? "Réponse" : "Absence",
+      sentAt: row.received_at,
+    };
+  });
+}
+
 function emailsHref(vue: Vue, page: number) {
   const query = new URLSearchParams();
   if (vue !== "file") query.set("vue", vue);
@@ -222,11 +269,13 @@ export default async function AdminEmailsPage({
   const since = appliedSinceIso();
   const { supabase } = await requireStaffPage();
   const unanswered = vue === "sans-reponse" ? await loadUnansweredMails(supabase) : null;
+  const replies = vue === "reponses" ? await loadInboundReplies(supabase) : null;
+  const quiet = unanswered !== null || replies !== null;
   let mailQuery = supabase.from("crm_email_ingest").select(EMAIL_LIST_COLUMNS, { count: "exact" });
   if (vue === "ignores") mailQuery = mailQuery.eq("status", "ignored");
   else if (vue === "appliques") mailQuery = mailQuery.eq("status", "attached").gte("updated_at", since);
   else mailQuery = mailQuery.in("status", [...EMAIL_INBOX_QUEUE_STATUSES]);
-  const [{ data: rows, count }, { data: customers }] = unanswered
+  const [{ data: rows, count }, { data: customers }] = quiet
     ? [{ data: [], count: 0 }, { data: [] }]
     : await Promise.all([
         mailQuery.order("received_at", { ascending: false, nullsFirst: false }).range(from, to),
@@ -268,7 +317,9 @@ export default async function AdminEmailsPage({
         subtitle={
           vue === "sans-reponse"
             ? "Messages envoyés sans réponse depuis 48 heures. Relancer ouvre le brouillon : il part seulement après confirmation."
-            : "Un fil, une carte. La proposition dit le client, le dossier et ce qui change. Rien n’est publié seul."
+            : vue === "reponses"
+              ? "Messages reçus des hôtels. Répondre ouvre le brouillon dans le même fil : il part seulement après confirmation."
+              : "Un fil, une carte. La proposition dit le client, le dossier et ce qui change. Rien n’est publié seul."
         }
       />
       <nav className="mt-6 flex flex-wrap gap-2 text-sm font-semibold" aria-label="Vues de la boîte">
@@ -278,6 +329,7 @@ export default async function AdminEmailsPage({
             ["appliques", "Appliqués automatiquement (24 h)", "/admin/emails?vue=appliques"],
             ["ignores", "Ignorés", "/admin/emails?vue=ignores"],
             ["sans-reponse", "Sans réponse", "/admin/emails?vue=sans-reponse"],
+            ["reponses", "Réponses", "/admin/emails?vue=reponses"],
           ] as const
         ).map(([id, label, href]) => (
           <Link
@@ -291,11 +343,13 @@ export default async function AdminEmailsPage({
           </Link>
         ))}
       </nav>
-      {vue === "sans-reponse" ? null : (
+      {vue === "sans-reponse" || vue === "reponses" ? null : (
         <p className="mt-2 text-xs text-muted">Raccourcis : A accepter, I ignorer, E écarter le doublon.</p>
       )}
       {unanswered ? (
         <UnansweredMails rows={unanswered} />
+      ) : replies ? (
+        <InboundReplies rows={replies} />
       ) : (
         <>
       <div className="mt-4">
@@ -305,7 +359,7 @@ export default async function AdminEmailsPage({
         <EmailIngestInbox
           rows={inbox}
           customers={(customers || []) as PickableCustomer[]}
-          mode={vue === "sans-reponse" ? "file" : vue}
+          mode={vue === "appliques" || vue === "ignores" ? vue : "file"}
           proposals={proposals}
         />
       </div>

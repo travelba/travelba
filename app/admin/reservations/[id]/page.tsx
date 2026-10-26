@@ -56,7 +56,7 @@ import type {
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ hotel?: string | string[]; relance?: string | string[] }>;
+  searchParams: Promise<{ hotel?: string | string[]; relance?: string | string[]; repondre?: string | string[] }>;
 };
 
 export async function generateMetadata({ params }: Props) {
@@ -80,6 +80,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const relanceQuery = query.relance;
   const relance = Array.isArray(relanceQuery) ? relanceQuery[0] : relanceQuery;
   const openRelanceId = relance && /^[0-9a-f-]{36}$/i.test(relance) ? relance : null;
+  const replyQuery = query.repondre;
+  const reply = Array.isArray(replyQuery) ? replyQuery[0] : replyQuery;
+  const openReplyId = reply && /^[0-9a-f-]{36}$/i.test(reply) ? reply : null;
   const { supabase, staff } = await requireStaffPage();
   const signatory = hotelSignatoryName(staff.full_name);
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
@@ -426,6 +429,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           hotelThreadMessages={hotelThreadMessages}
           openHotelItemId={openHotelItemId}
           openRelanceId={openRelanceId}
+          openReplyId={openReplyId}
           billingCompanies={(billingCompanies || []) as {
             id: string;
             company_name: string | null;

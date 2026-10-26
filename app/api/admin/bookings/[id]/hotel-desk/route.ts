@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { appOrigin } from "@/lib/crm/invite";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelFollowUp, sendHotelMessage, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
+import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelFollowUp, sendHotelMessage, sendHotelReply, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
 import { HOTEL_DESK_KINDS } from "@/lib/crm/types";
 import type { HotelDeskKind } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -81,6 +81,9 @@ async function readPayload(request: Request) {
     kind: String(form.get("kind") || ""),
     requestId: String(form.get("requestId") || ""),
     messageId: String(form.get("messageId") || ""),
+    threadId: String(form.get("threadId") || ""),
+    pieceId: String(form.get("pieceId") || ""),
+    cc: textList(form.get("cc")),
     subject: String(form.get("subject") || ""),
     body: String(form.get("body") || ""),
     recipients: textList(form.get("recipients")),
@@ -116,6 +119,26 @@ export async function POST(request: Request, ctx: Ctx) {
         recipients: Array.isArray(body?.recipients)
           ? body.recipients.filter((value): value is string => typeof value === "string")
           : undefined,
+        staffId: auth.staff.id,
+      });
+      return NextResponse.json({ ok: true });
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
+    }
+  }
+  if (action === "repondre") {
+    try {
+      await sendHotelReply(admin, {
+        bookingId: id,
+        itemId,
+        threadId: typeof body.threadId === "string" ? body.threadId : null,
+        requestId: typeof body.requestId === "string" ? body.requestId : null,
+        messageId: typeof body.messageId === "string" ? body.messageId : null,
+        pieceId: typeof body.pieceId === "string" ? body.pieceId : null,
+        subject: typeof body.subject === "string" ? body.subject : "",
+        body: typeof body.body === "string" ? body.body : "",
+        recipients: Array.isArray(body.recipients) ? body.recipients.filter((value): value is string => typeof value === "string") : [],
+        cc: Array.isArray(body.cc) ? body.cc.filter((value): value is string => typeof value === "string") : [],
         staffId: auth.staff.id,
       });
       return NextResponse.json({ ok: true });

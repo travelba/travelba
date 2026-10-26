@@ -253,6 +253,7 @@ export function BookingItemsPanel({
   stayVisible = false,
   openHotelItemId = null,
   openRelanceId = null,
+  openReplyId = null,
   reference = null,
   onLiveItems,
   onStepsPending,
@@ -282,6 +283,7 @@ export function BookingItemsPanel({
   hotelThreadMessages?: CrmHotelThreadMessage[];
   openHotelItemId?: string | null;
   openRelanceId?: string | null;
+  openReplyId?: string | null;
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
@@ -817,6 +819,7 @@ export function BookingItemsPanel({
                         signatory={hotelSignatory}
                         focusReply={openHotelItemId === item.id}
                         initialRelanceId={openHotelItemId === item.id ? openRelanceId : null}
+                        initialReplyId={openHotelItemId === item.id ? openReplyId : null}
                       />
                     ) : null}
                     </div>

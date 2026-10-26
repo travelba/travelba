@@ -15,6 +15,7 @@ export function HotelThread({
   attached,
   turns: turnsProp,
   onRelance,
+  onReply,
 }: {
   item: CrmBookingItem;
   requests: CrmHotelRequest[];
@@ -23,6 +24,7 @@ export function HotelThread({
   attached: HotelMailPiece[];
   turns?: HotelThreadTurn[];
   onRelance?: (turn: HotelThreadTurn) => void;
+  onReply?: (turn: HotelThreadTurn) => void;
 }) {
   const logRef = useRef<HTMLOListElement>(null);
   const context = hotelStayContext(item);
@@ -97,6 +99,15 @@ export function HotelThread({
                     onClick={() => onRelance(turn)}
                   >
                     Relancer
+                  </button>
+                ) : null}
+                {!outbound && turn.reply && onReply ? (
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex min-h-11 items-center rounded-full bg-[#0B192C] px-3 text-sm font-semibold text-[#faf9f6]"
+                    onClick={() => onReply(turn)}
+                  >
+                    Répondre
                   </button>
                 ) : null}
               </li>

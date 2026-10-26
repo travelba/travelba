@@ -44,13 +44,14 @@ export function bookingTabFromParam(value: string | null | undefined): BookingTa
 }
 
 /**
- * Nouvelle query string avec l’onglet. Les autres paramètres restent, sauf `?hotel=` et `?relance=` :
- * ils ont servi à ouvrir le bureau (et le brouillon de relance) et ne doivent pas le rouvrir.
+ * Nouvelle query string avec l’onglet. Les autres paramètres restent, sauf `?hotel=`, `?relance=` et `?repondre=` :
+ * ils ont servi à ouvrir le bureau (et le brouillon) et ne doivent pas le rouvrir.
  */
 export function bookingTabQuery(current: string, tab: BookingTabId) {
   const params = new URLSearchParams(current);
   params.delete("hotel");
   params.delete("relance");
+  params.delete("repondre");
   params.set("tab", BOOKING_TAB_SLUGS[tab]);
   return params.toString();
 }
