@@ -5,12 +5,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AgencyLogo } from "@/components/AgencyLogo";
 import { siteConfig } from "@/lib/site";
+import { previewServices } from "./catalog";
 import { waCopy, whatsappHref } from "./photos";
 
-const NAV = [
-  { href: "/preview-refonte/sur-mesure", label: "Sur-mesure" },
-  { href: "/preview-refonte/seminaires", label: "Séminaires" },
-  { href: "/preview-refonte/ski", label: "Ski" },
+const HOUSE = [
   { href: "/preview-refonte/espace-client", label: "L’espace" },
   { href: "/connexion", label: "Entrer" },
 ] as const;
@@ -25,8 +23,10 @@ export function Frame({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [mega, setMega] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const solid = scrolled || open;
+  const solid = scrolled || open || mega;
+  const serviceOpen = previewServices.some((service) => pathname === `/preview-refonte/${service.slug}`);
   const wa = whatsappHref(whatsappText);
 
   useEffect(() => {
@@ -37,18 +37,21 @@ export function Frame({
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !mega) return;
     const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (open) document.body.style.overflow = "hidden";
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        setMega(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, mega]);
 
   return (
     <>
@@ -64,8 +67,23 @@ export function Frame({
           </span>
         </Link>
         <nav className="tba-nav" aria-label="La maison">
-          {NAV.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined}>
+          <button
+            type="button"
+            className="tba-nav-services"
+            aria-expanded={mega}
+            aria-controls="tba-mega"
+            aria-current={serviceOpen ? "true" : undefined}
+            onClick={() => setMega((value) => !value)}
+          >
+            Services
+          </button>
+          {HOUSE.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={pathname === item.href ? "page" : undefined}
+              onClick={() => setMega(false)}
+            >
               {item.label}
             </Link>
           ))}
@@ -78,17 +96,51 @@ export function Frame({
           className="tba-menu-btn"
           aria-expanded={open}
           aria-controls="tba-menu"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => {
+            setMega(false);
+            setOpen((value) => !value);
+          }}
         >
           {open ? "Fermer" : "Menu"}
         </button>
       </header>
+      {mega ? (
+        <nav id="tba-mega" className="tba-mega" aria-label="Services">
+          {previewServices.map((service) => {
+            const href = `/preview-refonte/${service.slug}`;
+            return (
+              <Link
+                key={service.slug}
+                href={href}
+                aria-current={pathname === href ? "page" : undefined}
+                onClick={() => setMega(false)}
+              >
+                <strong>{service.menu}</strong>
+                <span>{service.description}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      ) : null}
       {open ? (
         <nav id="tba-menu" className="tba-menu" aria-label="Menu">
           <Link href="/preview-refonte" onClick={() => setOpen(false)}>
             La maison
           </Link>
-          {NAV.map((item) => (
+          {previewServices.map((service) => {
+            const href = `/preview-refonte/${service.slug}`;
+            return (
+              <Link
+                key={service.slug}
+                href={href}
+                aria-current={pathname === href ? "page" : undefined}
+                onClick={() => setOpen(false)}
+              >
+                {service.menu}
+              </Link>
+            );
+          })}
+          {HOUSE.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -130,7 +182,12 @@ export function Frame({
               <li>
                 <Link href="/preview-refonte">La maison</Link>
               </li>
-              {NAV.map((item) => (
+              {previewServices.map((service) => (
+                <li key={service.slug}>
+                  <Link href={`/preview-refonte/${service.slug}`}>{service.menu}</Link>
+                </li>
+              ))}
+              {HOUSE.map((item) => (
                 <li key={item.href}>
                   <Link href={item.href}>{item.label}</Link>
                 </li>

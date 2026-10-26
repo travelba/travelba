@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { previewServices } from "./catalog";
 import { waCopy, whatsappHref } from "./photos";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -77,13 +78,11 @@ function BriefForm({ universe }: { universe: string }) {
             Univers
             <select name="univers" defaultValue={universe}>
               <option value="">Choisir</option>
-              <option value="sur-mesure">Sur-mesure</option>
-              <option value="hotel">Hôtels</option>
-              <option value="vol">Vols ou jet</option>
-              <option value="seminaire">Séminaire ou incentive</option>
-              <option value="ski">Ski</option>
-              <option value="sol">Transfert, chauffeur, accueil</option>
-              <option value="formalite">Formalité</option>
+              {previewServices.map((service) => (
+                <option key={service.universe} value={service.universe}>
+                  {service.menu}
+                </option>
+              ))}
             </select>
           </label>
           <label>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { previewServices } from "./catalog";
 import { Photo } from "./Photo";
 
 export function PageHero({
@@ -65,43 +66,29 @@ export function Split({
   );
 }
 
-export const services = [
-  { href: "/preview-refonte/sur-mesure", name: "Voyages sur mesure", line: "Luxe et VIP. Le séjour composé autour de vous." },
-  { href: "#hotels", name: "Hôtels", line: "Palaces et maisons. Les avantages du tarif, confirmés." },
-  { href: "#vols", name: "Vols et billetterie", line: "L’émission des billets, tenue dans le carnet." },
-  { href: "#vols", name: "Jets privés", line: "L’affrètement, lorsque le voyage l’appelle." },
-  { href: "#vols", name: "Trains", line: "Le rail suit la même carte que le vol." },
-  { href: "#vols", name: "Bateaux", line: "La traversée, lorsqu’elle fait partie du séjour." },
-  { href: "/preview-refonte/seminaires", name: "Séminaires et incentives", line: "Marrakech en tête. Événements privés et d’entreprise." },
-  { href: "#ville", name: "Événements de prestige", line: "Roland-Garros, Formule 1, Coupe du monde, festivals, galas." },
-  { href: "#ville", name: "Tables et clubs", line: "Restaurants, salons, soirées." },
-  { href: "#ville", name: "Activités", line: "La journée sur place, écrite dans le carnet." },
-  { href: "/preview-refonte/ski", name: "Ski premium", line: "Chalets et palaces." },
-  { href: "#sol", name: "Transferts", line: "De l’avion à la maison, et le retour." },
-  { href: "#sol", name: "Chauffeurs", line: "La voiture conduite, en discrétion." },
-  { href: "#sol", name: "Voitures", line: "Le véhicule, distinct du chauffeur." },
-  { href: "#sol", name: "Fast track et accueil VIP", line: "Le passage en aéroport, à l’arrivée comme au départ." },
-  { href: "#formalites", name: "Formalités", line: "ESTA, ETA Royaume-Uni, ETA Israël, visas." },
-  { href: "#formalites", name: "Assurance", line: "Lorsqu’elle est au dossier." },
-  { href: "/preview-refonte/espace-client", name: "Carnet de voyage", line: "Le séjour, ouvert dans l’espace." },
-  { href: "#espace", name: "Conciergerie", line: "WhatsApp, à toute heure." },
-  { href: "#fidelite", name: "Fidélité", line: "Les numéros de vos programmes, gardés sur la fiche." },
-] as const;
-
-export function ServiceIndex() {
+export function ServiceGrid() {
   return (
-    <section className="tba-index" id="services" aria-labelledby="services-titre">
-      <h2 id="services-titre">La maison tient tout le voyage.</h2>
-      <ol>
-        {services.map((item) => (
-          <li key={item.name}>
-            <Link href={item.href}>
-              <strong>{item.name}</strong>
-              <em>{item.line}</em>
-            </Link>
-          </li>
+    <section className="tba-equal" id="services" aria-labelledby="services-titre">
+      <h2 id="services-titre">Une seule équipe pour tout le voyage.</h2>
+      <p>De la première idée au dernier kilomètre. Chaque service ouvre sa page.</p>
+      <div>
+        {previewServices.map((service) => (
+          <Link key={service.slug} href={`/preview-refonte/${service.slug}`}>
+            <figure>
+              <Photo
+                id={service.image}
+                alt={service.alt}
+                sizes="(min-width: 1100px) 30vw, (min-width: 700px) 45vw, 100vw"
+                width={1200}
+              />
+            </figure>
+            <div>
+              <h3>{service.menu}</h3>
+              <p>{service.description}</p>
+            </div>
+          </Link>
         ))}
-      </ol>
+      </div>
     </section>
   );
 }
