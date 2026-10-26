@@ -1,9 +1,10 @@
 import { whatsappAddress } from "./whatsapp";
+import { twilioApiSecret, twilioApiUser } from "./twilio-auth";
 
 export function whatsappSessionConfigured() {
   return Boolean(
     process.env.TWILIO_ACCOUNT_SID?.trim() &&
-      process.env.TWILIO_AUTH_TOKEN?.trim() &&
+      twilioApiSecret()?.trim() &&
       process.env.TWILIO_WHATSAPP_FROM?.trim()
   );
 }
@@ -29,7 +30,7 @@ export async function sendWhatsappSession(input: {
 }): Promise<{ ok: true; sid: string } | { ok: false; detail?: string }> {
   if (!whatsappSessionConfigured()) return { ok: false, detail: "not_configured" };
   const accountSid = process.env.TWILIO_ACCOUNT_SID!.trim();
-  const token = process.env.TWILIO_AUTH_TOKEN!.trim();
+  const token = twilioApiSecret()!.trim();
   const fromRaw = process.env.TWILIO_WHATSAPP_FROM!.trim();
   const from = fromRaw.startsWith("whatsapp:") ? fromRaw : `whatsapp:${fromRaw}`;
   const params = new URLSearchParams({
@@ -47,7 +48,7 @@ export async function sendWhatsappSession(input: {
       {
         method: "POST",
         headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${token}`).toString("base64")}`,
+          Authorization: `Basic ${Buffer.from(`${twilioApiUser(accountSid)}:${token}`).toString("base64")}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body: params,

@@ -3,6 +3,7 @@ import { flightNoticeDrafts } from "./flight-watch";
 import { connexionContentCreateBody } from "./whatsapp";
 import { productionOnlySecret } from "./preview-secrets";
 import { contentSidV2Name } from "./twilio-content-sid";
+import { twilioApiSecret, twilioApiUser } from "./twilio-auth";
 
 const CONTENT_URL = "https://content.twilio.com/v1/Content";
 
@@ -48,7 +49,7 @@ type TwilioPage = {
 function account() {
   return {
     sid: productionOnlySecret(process.env.TWILIO_ACCOUNT_SID),
-    token: productionOnlySecret(process.env.TWILIO_AUTH_TOKEN),
+    token: productionOnlySecret(twilioApiSecret()),
   };
 }
 
@@ -59,7 +60,7 @@ export function twilioContentConfigured() {
 
 function authHeader() {
   const { sid, token } = account();
-  return `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`;
+  return `Basic ${Buffer.from(`${twilioApiUser(sid)}:${token}`).toString("base64")}`;
 }
 
 async function twilio(path: string, fetchImpl: typeof fetch, init?: RequestInit) {

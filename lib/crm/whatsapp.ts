@@ -2,6 +2,7 @@ import { entryButtonSuffix, entryCodeFromLink } from "./entry-code";
 import { resolveContentSid } from "./twilio-content-sid";
 import { greetingGivenName } from "./identity";
 import { toE164 } from "./phone";
+import { twilioApiSecret, twilioApiUser } from "./twilio-auth";
 
 export const CONCIERGE_SIGNATURE = "Le Concierge";
 
@@ -108,7 +109,7 @@ export function connexionContentSid() {
 export function whatsappConfigured() {
   return Boolean(
     process.env.TWILIO_ACCOUNT_SID?.trim() &&
-      process.env.TWILIO_AUTH_TOKEN?.trim() &&
+      twilioApiSecret()?.trim() &&
       process.env.TWILIO_WHATSAPP_FROM?.trim() &&
       connexionContentSid()
   );
@@ -161,7 +162,7 @@ export function twilioFromNumber() {
 export function twilioReady() {
   return Boolean(
     process.env.TWILIO_ACCOUNT_SID?.trim() &&
-      process.env.TWILIO_AUTH_TOKEN?.trim() &&
+      twilioApiSecret()?.trim() &&
       twilioFromNumber()
   );
 }
@@ -193,7 +194,7 @@ async function deliverTwilioContent(input: {
   fetchImpl?: typeof fetch;
 }): Promise<WhatsappSendResult> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID!.trim();
-  const token = process.env.TWILIO_AUTH_TOKEN!.trim();
+  const token = twilioApiSecret()!.trim();
   const from = twilioFromNumber();
   const body = new URLSearchParams({
     From: from,
@@ -210,7 +211,7 @@ async function deliverTwilioContent(input: {
       {
         method: "POST",
         headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${token}`).toString("base64")}`,
+          Authorization: `Basic ${Buffer.from(`${twilioApiUser(accountSid)}:${token}`).toString("base64")}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body,
