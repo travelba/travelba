@@ -299,7 +299,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "emails_en_attente",
     description:
-      "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, ou rattacher au dossier désigné.",
+      "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, rattacher (pièces seules), ou mettre_a_jour les cartes.",
     run: () => readEmailsEnAttente(),
   },
   {
@@ -514,11 +514,15 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "traiter_email",
     write: true,
     description:
-      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher exige dossier_id : le mail met le séjour à jour, sans montrer le carnet.",
+      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher exige dossier_id : dépose les pièces jointes sur le dossier, sans modifier ni créer de carte. Sans pièce, le mail est classé et rien n’est ajouté. mettre_a_jour est le geste séparé qui modifie ou crée les cartes, sans montrer le carnet.",
     input: {
       id: z.string().trim().describe("Identifiant de l’e-mail en attente"),
-      action: z.enum(["rattacher", "refuser"]).describe("rattacher ou refuser"),
-      dossier_id: z.string().trim().optional().describe("Dossier choisi, obligatoire pour rattacher"),
+      action: z.enum(["rattacher", "mettre_a_jour", "refuser"]).describe("rattacher, mettre_a_jour ou refuser"),
+      dossier_id: z
+        .string()
+        .trim()
+        .optional()
+        .describe("Dossier choisi, obligatoire pour rattacher et mettre_a_jour"),
     },
     run: (args) => settleEmail(args),
   },

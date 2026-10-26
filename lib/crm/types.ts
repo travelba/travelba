@@ -519,6 +519,10 @@ export type CrmBookingDocument = {
   mime_type: string | null;
   storage_path: string;
   visible_to_client: boolean;
+  /** Empreinte du fichier déposé depuis un mail. Vide pour les pièces plus anciennes. */
+  content_sha256?: string | null;
+  /** Mail dont cette pièce a été copiée. */
+  email_ingest_id?: string | null;
   created_at: string;
 };
 

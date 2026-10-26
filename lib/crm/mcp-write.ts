@@ -200,10 +200,14 @@ export function prepareServiceConfirm(input: Record<string, unknown>) {
 }
 
 export function prepareEmailAction(input: Record<string, unknown>) {
-  const action = input.action === "rattacher" || input.action === "refuser" ? input.action : "";
+  const action =
+    input.action === "rattacher" || input.action === "mettre_a_jour" || input.action === "refuser"
+      ? input.action
+      : "";
   if (!action) throw new McpWriteError("Action inconnue.");
   const id = uuid(input.id, "E-mail");
-  const dossierId = action === "rattacher" ? uuid(input.dossier_id, "Dossier") : "";
+  const dossierId =
+    action === "rattacher" || action === "mettre_a_jour" ? uuid(input.dossier_id, "Dossier") : "";
   return { action, id, dossierId };
 }
 
@@ -712,44 +716,68 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
     if (updateError) failDb(updateError, "E-mail non traité.");
     return { id: row.id, statut: "refused" as const };
   }
-  if (!row.extract) throw new McpWriteError("Extrait introuvable.");
   const booking = await loadBooking(db, { id: action.dossierId, reference: "" });
-  const { parseExtractPayloadSafe, isCancellationExtract } = await import("@/lib/crm/ingest-types");
-  const { loadEmailIngestFiles } = await import("@/lib/crm/email-ingest");
-  const { applyCancellationToBooking, applyReplacementToBooking } = await import("@/lib/crm/ingest-booking");
-  const extract = parseExtractPayloadSafe(row.extract);
-  const files = await loadEmailIngestFiles(row);
-  try {
-    if (isCancellationExtract(extract)) {
-      await applyCancellationToBooking({
-        bookingId: booking.id,
-        customerId: booking.customer_id,
-        extract,
-        files,
-        visibleToClient: false,
-        itemId: null,
-      });
-    } else {
-      await applyReplacementToBooking({
-        bookingId: booking.id,
-        customerId: booking.customer_id,
-        extract,
-        files,
-        visibleToClient: false,
-        applyStayFields: false,
-        emailIngestId: row.id,
-        replaceItemId: null,
-      });
+  const { depositEmailAttachments, applyIngestCards, markEmailAttached, attachFilesSummary } = await import(
+    "@/lib/crm/email-attach-run"
+  );
+  if (action.action === "rattacher") {
+    let deposited;
+    try {
+      deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments);
+    } catch (err) {
+      raise(err, "E-mail non traité.");
     }
+    const message = attachFilesSummary(deposited);
+    try {
+      await markEmailAttached(db, row, {
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        actorId: null,
+        summary: message,
+        cards: false,
+      });
+    } catch (err) {
+      raise(err, "E-mail non traité.");
+    }
+    return {
+      id: row.id,
+      statut: "attached" as const,
+      dossier_id: booking.id,
+      pieces: deposited.added,
+      sans_piece: deposited.empty,
+    };
+  }
+  if (action.action !== "mettre_a_jour") throw new McpWriteError("Action inconnue.");
+  if (!row.extract) throw new McpWriteError("Extrait introuvable.");
+  const { parseExtractPayloadSafe } = await import("@/lib/crm/ingest-types");
+  const extract = parseExtractPayloadSafe(row.extract);
+  try {
+    await applyIngestCards({
+      bookingId: booking.id,
+      customerId: booking.customer_id,
+      extract,
+      emailIngestId: row.id,
+      itemId: null,
+      applyStayFields: false,
+    });
+    const deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments);
+    await markEmailAttached(db, row, {
+      bookingId: booking.id,
+      customerId: booking.customer_id,
+      actorId: null,
+      summary: "Cartes mises à jour depuis le mail",
+      cards: true,
+    });
+    return {
+      id: row.id,
+      statut: "attached" as const,
+      dossier_id: booking.id,
+      pieces: deposited.added,
+      cartes: true as const,
+    };
   } catch (err) {
     raise(err, "E-mail non traité.");
   }
-  const { error: attachedError } = await db
-    .from("crm_email_ingest")
-    .update({ status: "attached", created_booking_id: booking.id })
-    .eq("id", row.id);
-  if (attachedError) failDb(attachedError, "E-mail non traité.");
-  return { id: row.id, statut: "attached" as const, dossier_id: booking.id };
 }
 
 export async function createClient(input: Record<string, unknown>, admin?: McpAdmin) {

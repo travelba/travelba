@@ -13,8 +13,9 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 /**
- * Après le parse d’un mail reçu : crée le premier dossier, ou met à jour
- * l’itinéraire quand un seul séjour est reconnu. N’invite pas, ne publie pas.
+ * Ancien geste automatique. Le parse ne l’appelle plus : un mail reçu ne crée
+ * pas de dossier et ne modifie pas les cartes. Déposer les pièces et
+ * Mettre à jour les cartes sont des clics. N’invite pas, ne publie pas.
  */
 export async function autoCreateBookingFromIngestId(id: string) {
   const admin = createServiceClient();
