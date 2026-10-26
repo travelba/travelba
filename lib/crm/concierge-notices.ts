@@ -1,5 +1,5 @@
-import { isTripShareCode } from "./trip-share";
-import { isEntryCode } from "./entry-link";
+import { isTripShareCode } from "./trip-share-check";
+import { isEntryCode } from "./entry-code";
 import { stayDestinationPhrase, stayPhrase } from "./stay-phrase";
 import type { TripStep } from "./layover";
 import { generatedCityCoverSpec } from "./cover-catalog";

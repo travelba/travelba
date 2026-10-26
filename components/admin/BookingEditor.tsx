@@ -478,9 +478,7 @@ export function BookingEditor({
   const [coverOpen, setCoverOpen] = useState(false);
   const tab = bookingTabFromParam(searchParams.get("tab"));
   const [clientEditorSeen, setClientEditorSeen] = useState(tab === "client");
-  useEffect(() => {
-    if (tab === "client") setClientEditorSeen(true);
-  }, [tab]);
+  if (tab === "client" && !clientEditorSeen) setClientEditorSeen(true);
   useEffect(() => {
     void adminAction(`/api/admin/bookings/${booking.id}/vu`, { method: "POST" });
   }, [booking.id]);

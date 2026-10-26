@@ -6,37 +6,15 @@ import { sendWhatsappSession } from "./whatsapp-session";
 import { isSafeCrmPath } from "./files-access";
 import { toE164 } from "./phone";
 import type { ShareCompanion } from "./trip-share-types";
+import { TRIP_SHARE_ALPHABET, TRIP_SHARE_CODE_LENGTH, isTripShareUrl } from "./trip-share-check";
 
 export type { ShareCompanion } from "./trip-share-types";
-
-const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-
-/** Huit signes : l’URL reste courte, le code n’est pas devinable. */
-export const TRIP_SHARE_CODE_LENGTH = 8;
-
-const CODE_RE = new RegExp(`^[${ALPHABET}]{${TRIP_SHARE_CODE_LENGTH}}$`);
+export { TRIP_SHARE_CODE_LENGTH, isTripShareCode, isTripShareUrl, tripShareUrl } from "./trip-share-check";
 
 export function tripShareCode(length = TRIP_SHARE_CODE_LENGTH) {
   let code = "";
-  for (let i = 0; i < length; i += 1) code += ALPHABET[randomInt(ALPHABET.length)];
+  for (let i = 0; i < length; i += 1) code += TRIP_SHARE_ALPHABET[randomInt(TRIP_SHARE_ALPHABET.length)];
   return code;
-}
-
-export function isTripShareCode(value: string | null | undefined) {
-  return CODE_RE.test(value || "");
-}
-
-export function tripShareUrl(origin: string, code: string) {
-  return `${origin.replace(/\/$/, "")}/v/${code}`;
-}
-
-export function isTripShareUrl(value: string) {
-  try {
-    const path = new URL(value).pathname.replace(/\/+$/, "");
-    return new RegExp(`^/v/${CODE_RE.source.slice(1, -1)}$`).test(path);
-  } catch {
-    return false;
-  }
 }
 
 /** Texte envoyé depuis le WhatsApp Business de l’agence. Pas d’accès au compte. */
