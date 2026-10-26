@@ -18,7 +18,14 @@ const paymentClass = {
     "inline-block max-w-full break-words rounded-full bg-white px-2.5 py-1 text-xs font-semibold leading-snug text-muted ring-1 ring-[#e5e0d4]",
 } as const;
 
+function replyQuote(detail: string) {
+  const cut = detail.indexOf(" · ");
+  if (cut < 0) return { reference: detail, reply: "" };
+  return { reference: detail.slice(0, cut), reply: detail.slice(cut + 3) };
+}
+
 function MailRow({ mail }: { mail: DashboardCourrier }) {
+  const quoted = mail.replyState === "received" ? replyQuote(mail.detail) : null;
   return (
     <li>
       <Link href={mail.href} className="block px-4 py-3 transition hover:bg-[#f8f4ed]">
@@ -26,7 +33,16 @@ function MailRow({ mail }: { mail: DashboardCourrier }) {
           <p className="min-w-0 font-display font-bold break-words text-[var(--admin-navy)] lg:flex-1">{mail.title}</p>
           <p className="shrink-0 text-xs tabular-nums text-muted">{formatDateTimeFr(mail.receivedAt)}</p>
         </div>
-        {mail.detail ? <p className="mt-1 break-words text-sm text-[var(--admin-navy)]">{mail.detail}</p> : null}
+        {quoted?.reply ? (
+          <>
+            {quoted.reference ? <p className="mt-1 break-words text-sm text-muted">{quoted.reference}</p> : null}
+            <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#e5e0d4] border-l-4 border-l-[#C5A880] bg-[#faf9f6] px-3 py-2 text-sm leading-relaxed text-[var(--admin-navy)]">
+              {quoted.reply}
+            </p>
+          </>
+        ) : mail.detail ? (
+          <p className="mt-1 break-words text-sm text-[var(--admin-navy)]">{mail.detail}</p>
+        ) : null}
         <div className="mt-2 flex flex-col items-start gap-1.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-gold-dark)]">{mail.mark}</p>
           <span className={mail.replyLabel === "Sans réponse" ? replyClass.silent : replyClass[mail.replyState]}>

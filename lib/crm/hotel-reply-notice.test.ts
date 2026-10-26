@@ -6,6 +6,7 @@ import {
   recentHotelReplies,
   replyExcerpt,
   shouldSyncHotelReplies,
+  stayNeedsHotelReplyWatch,
   type HotelReplyNoticeRow,
 } from "./hotel-reply-notice";
 import { replyMoment } from "./hotel-reply-when";
@@ -103,6 +104,13 @@ test("les derniers retours suivent les courriers envoyés, du plus récent au pl
   assert.equal(lines[0]?.excerpt.length, 140);
   assert.equal(lines[1]?.subject, "Lien de paiement — Casa Monti");
   assert.equal(lines[1]?.href, `/admin/reservations/${bookingId}?hotel=${itemId}`);
+});
+
+test("un séjour en préparation est relu, un séjour annulé non", () => {
+  assert.equal(stayNeedsHotelReplyWatch("draft"), true);
+  assert.equal(stayNeedsHotelReplyWatch("quoted"), true);
+  assert.equal(stayNeedsHotelReplyWatch("confirmed"), true);
+  assert.equal(stayNeedsHotelReplyWatch("cancelled"), false);
 });
 
 test("la synchro légère attend deux minutes", () => {

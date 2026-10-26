@@ -860,6 +860,28 @@ test("le titre parti ignore Re, R, AW et la relance", () => {
   assert.equal(appendSentSubject(["Payment link — Casa Monti — 36441"], "VIP welcome — Casa Monti — 36441").length, 2);
 });
 
+test("le tableau sonde aussi l’onglet en arrière-plan", () => {
+  const src = readFileSync(join(process.cwd(), "components/admin/HotelReplyToasts.tsx"), "utf8");
+  const start = src.indexOf("async function tick");
+  const end = src.indexOf("function onMessage");
+  const tick = src.slice(start, end);
+  assert.doesNotMatch(tick, /visibilityState === "hidden"\) return/);
+  assert.match(tick, /browserAlert/);
+  assert.match(tick, /replied > 0/);
+  assert.match(src, /askBrowserAlerts/);
+});
+
+test("la synchro des réponses relit aussi un séjour en préparation", () => {
+  const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
+  const start = src.indexOf("export async function syncRecentHotelReplies");
+  const end = src.indexOf("export async function syncOpenHotelThreads");
+  const fn = src.slice(start, end);
+  assert.match(fn, /HOTEL_REPLY_STAY_STATUSES/);
+  assert.match(fn, /stayNeedsHotelReplyWatch/);
+  assert.doesNotMatch(fn, /\.eq\("status", "confirmed"\)/);
+  assert.match(fn, /limit\(12\)|,\s*12\)/);
+});
+
 test("seul un courrier envoyé lance la recherche", () => {
   const sent = letter();
   assert.deepEqual(subjectsToFollow(sent), ["Lien de paiement — Le Bristol — HB-9"]);
@@ -901,6 +923,17 @@ test("une réponse d'une autre adresse reste, un objet voisin non", () => {
   });
   assert.equal(copy.direction, "out");
   assert.equal(copy.countsAsReply, false);
+  const rewritten = classifyHotelMail({
+    from: "Reservations <h5242@sofitel.com>",
+    subject: "Your transfer request",
+    body: "The arrival transfer is confirmed for 18:40.",
+    keys,
+    acceptThreadReply: true,
+  });
+  assert.equal(rewritten.keep, true);
+  assert.equal(rewritten.countsAsReply, true);
+  assert.equal(rewritten.subjectKey, hotelMailSubjectKey(keys[0] || ""));
+  assert.equal(rewritten.body.includes("18:40"), true);
 });
 
 test("une absence ou un bounce ne passe pas le courrier à Répondu", () => {
