@@ -314,16 +314,24 @@ export type HotelMailClass = {
   notice: "send" | "reply" | "auto";
 };
 
-/** Garde un message seulement si son titre est exactement celui d'un envoi CRM. */
+/**
+ * Garde un message dont le titre est celui d'un envoi CRM.
+ * Dans le fil Gmail de cet envoi, un objet réécrit compte aussi.
+ */
 export function classifyHotelMail(input: {
   from: string;
   subject: string;
   body: string;
   keys: string[];
   autoSubmitted?: boolean;
+  /** Message lu dans le fil Gmail du courrier parti, même si l’hôtel a changé l’objet. */
+  acceptThreadReply?: boolean;
 }): HotelMailClass {
   const subjectKey = hotelMailSubjectKey(input.subject);
-  const expected = new Set(input.keys.map((key) => hotelMailSubjectKey(key)).filter(Boolean));
+  const expected = input.keys.map((key) => hotelMailSubjectKey(key)).filter(Boolean);
+  const subjectMatch = Boolean(subjectKey && expected.includes(subjectKey));
+  /** Même fil Gmail : un objet réécrit par l’hôtel reste la réponse de ce courrier. */
+  const boundKey = subjectMatch ? subjectKey : input.acceptThreadReply ? expected[0] || "" : "";
   const empty = {
     keep: false,
     subjectKey,
@@ -333,7 +341,7 @@ export function classifyHotelMail(input: {
     link: null,
     notice: "reply" as const,
   };
-  if (!subjectKey || !expected.has(subjectKey)) return empty;
+  if (!boundKey) return empty;
   const agency = isAgencyMailbox(input.from);
   const automatic = !agency && isAutomaticHotelMail(input.from, input.body, Boolean(input.autoSubmitted));
   const direction = agency ? "out" : "in";
@@ -342,7 +350,7 @@ export function classifyHotelMail(input: {
   if (!body) return empty;
   return {
     keep: true,
-    subjectKey,
+    subjectKey: boundKey,
     direction,
     countsAsReply: direction === "in" && !automatic,
     body,

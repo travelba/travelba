@@ -44,7 +44,7 @@ import {
   replyWindowStartMs,
   subjectsToFollow,
 } from "./hotel-desk";
-import { shouldSyncHotelReplies } from "./hotel-reply-notice";
+import { HOTEL_REPLY_STAY_STATUSES, shouldSyncHotelReplies, stayNeedsHotelReplyWatch } from "./hotel-reply-notice";
 import { precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
 import { PLIANT_SINGLE_USE } from "./pliant-controls";
@@ -154,10 +154,12 @@ export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchIm
   const parisToday = parisIsoDate(now);
   const { data: bookings } = await admin
     .from("crm_bookings")
-    .select("id, reference, currency, customer_id")
-    .eq("status", "confirmed")
+    .select("id, reference, currency, customer_id, status")
+    .in("status", [...HOTEL_REPLY_STAY_STATUSES])
     .or(`end_date.is.null,end_date.gte.${parisToday}`);
-  const stays = (bookings || []) as { id: string; reference: string | null; currency: string | null; customer_id: string }[];
+  const stays = ((bookings || []) as { id: string; reference: string | null; currency: string | null; customer_id: string; status: string }[]).filter(
+    (row) => stayNeedsHotelReplyWatch(row.status)
+  );
   if (!stays.length) return { marked: 0, replied: 0 };
   const ids = stays.map((row) => row.id);
   const [{ data: items }, { data: travelers }] = await Promise.all([
@@ -235,13 +237,16 @@ type GmailHit = {
   body: string;
   receivedAt: string | null;
   autoSubmitted: boolean;
+  /** Vrai si le message vient du fil Gmail déjà lié au courrier. */
+  inThread: boolean;
 };
 
 const HOTEL_REPLY_SYNC_PROVIDER = "gmail-hotel-replies";
 
 /**
- * Une synchro Gmail légère des dossiers confirmés dont le retour n’est pas passé,
+ * Une synchro Gmail légère des séjours encore ouverts, préparation comprise,
  * au plus une fois toutes les deux minutes, quel que soit le nombre d’onglets.
+ * Douze fils les plus anciens : le tableau de bord reste court sur le téléphone.
  */
 export async function syncRecentHotelReplies(admin: Admin, nowMs = Date.now()) {
   const { data } = await admin
@@ -251,21 +256,23 @@ export async function syncRecentHotelReplies(admin: Admin, nowMs = Date.now()) {
     .maybeSingle();
   const stamp = (data as { updated_at?: string } | null)?.updated_at;
   const lastSyncMs = stamp ? Date.parse(stamp) : null;
-  if (!shouldSyncHotelReplies(lastSyncMs, nowMs)) return false;
+  if (!shouldSyncHotelReplies(lastSyncMs, nowMs)) return { ran: false, replied: 0 };
   const { error } = await admin.from("crm_email_sync").upsert(
     { provider: HOTEL_REPLY_SYNC_PROVIDER },
     { onConflict: "provider" }
   );
-  if (error) return false;
+  if (error) return { ran: false, replied: 0 };
   const parisToday = parisIsoDate(new Date(nowMs));
   const { data: bookings } = await admin
     .from("crm_bookings")
-    .select("id")
-    .eq("status", "confirmed")
+    .select("id, status")
+    .in("status", [...HOTEL_REPLY_STAY_STATUSES])
     .or(`end_date.is.null,end_date.gte.${parisToday}`);
-  const ids = ((bookings || []) as { id: string }[]).map((row) => row.id);
-  await syncOpenHotelThreads(admin, ids, 12);
-  return true;
+  const ids = ((bookings || []) as { id: string; status: string }[])
+    .filter((row) => stayNeedsHotelReplyWatch(row.status))
+    .map((row) => row.id);
+  const replied = await syncOpenHotelThreads(admin, ids, 12);
+  return { ran: true, replied };
 }
 
 /** Relit les titres partis des dossiers ouverts. Les plus anciens d'abord, par paquets. */
@@ -386,18 +393,24 @@ async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, 
   const after = gmailAfterDate(anchor.sinceMs);
   const query = hotelThreadSearchQuery(anchor.subject, after);
   const hits: GmailHit[] = [];
-  const seen = new Set<string>();
-  const push = (message: GmailHit) => {
-    if (!message.id || seen.has(message.id)) return;
-    seen.add(message.id);
-    hits.push(message);
+  const byId = new Map<string, GmailHit>();
+  const push = (message: Omit<GmailHit, "inThread">, inThread: boolean) => {
+    if (!message.id) return;
+    const prev = byId.get(message.id);
+    if (!prev) {
+      const hit = { ...message, inThread };
+      byId.set(message.id, hit);
+      hits.push(hit);
+      return;
+    }
+    if (inThread) prev.inThread = true;
   };
   const threadIds = new Set(knownThreads.filter(Boolean));
   let searchFailed = false;
   try {
     if (query) {
-      for (const message of await searchInbox(query, 20)) {
-        push(toGmailHit(message));
+      for (const message of await searchInbox(query, 8)) {
+        push(toGmailHit(message), false);
         if (message.threadId) threadIds.add(message.threadId);
       }
     }
@@ -406,7 +419,7 @@ async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, 
   }
   for (const threadId of [...threadIds].slice(0, 5)) {
     try {
-      for (const message of await getThread(threadId)) push(toGmailHit(message));
+      for (const message of await getThread(threadId)) push(toGmailHit(message), true);
     } catch {
       continue;
     }
@@ -432,6 +445,7 @@ function toGmailHit(message: {
     body: message.text || "",
     receivedAt: message.receivedAt,
     autoSubmitted: message.autoSubmitted,
+    inThread: false,
   };
 }
 
@@ -448,6 +462,7 @@ async function storeThreadHits(
       body: hit.body,
       keys: [anchor.subject],
       autoSubmitted: hit.autoSubmitted,
+      acceptThreadReply: hit.inThread,
     });
     if (!classified.keep || !hit.id) return [];
     const receivedAt = hit.receivedAt && Number.isFinite(Date.parse(hit.receivedAt)) ? hit.receivedAt : new Date().toISOString();

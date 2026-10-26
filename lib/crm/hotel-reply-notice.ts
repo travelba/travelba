@@ -9,6 +9,8 @@ export type HotelReplyNotice = {
   excerpt: string;
   receivedAt: string;
   href: string;
+  /** Bandeau. Absent : réponse d’hôtel. */
+  kicker?: string;
 };
 
 export type HotelReplyNoticeRow = {
@@ -25,6 +27,16 @@ export type HotelReplyNoticeRow = {
 
 const EMAIL = /[^\s<>]+@[^\s<>]+/g;
 const SYNC_GAP_MS = 120_000;
+
+/**
+ * Séjours dont les courriers partis sont relus.
+ * En préparation est `draft` : un courrier y part avant que le dossier soit confirmé.
+ */
+export const HOTEL_REPLY_STAY_STATUSES = ["draft", "quoted", "confirmed"] as const;
+
+export function stayNeedsHotelReplyWatch(status: string) {
+  return (HOTEL_REPLY_STAY_STATUSES as readonly string[]).includes(status);
+}
 
 export function hotelReplyHref(bookingId: string, itemId: string) {
   return `/admin/reservations/${bookingId}?hotel=${encodeURIComponent(itemId)}`;

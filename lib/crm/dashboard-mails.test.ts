@@ -216,6 +216,7 @@ test("la liste montre trois courriers et replie le reste", () => {
   assert.match(html, /Réponses d’hôtel/);
   assert.match(html, /Courriers envoyés aux hôtels, et leur réponse/);
   assert.match(html, /Réponse reçue/);
+  assert.match(html, /Bien reçu/);
   assert.match(html, /Voir plus/);
   assert.match(html, /Voir moins/);
   assert.match(html, /flex-col items-start/);

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSPro
 import { useRouter } from "next/navigation";
 import { WhatsappHoldButton } from "@/components/admin/WhatsappHoldButton";
 import { Icon } from "@/components/crm/icons";
+import { browserAlert } from "@/lib/crm/browser-alert";
 import { createClient } from "@/lib/supabase/client";
 import {
   applyDockMessage,
@@ -121,9 +122,7 @@ export function WhatsappDock({
     if (known || !booted.current || message.direction !== "inbound") return;
     setTabs((current) => inboundDockTabs(current, key, dockIsMobile()));
     chime();
-    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
-      new Notification("WhatsApp", { body: message.body.slice(0, 120) });
-    }
+    if (document.hidden) browserAlert("WhatsApp", message.body);
   }
 
   useEffect(() => {
@@ -199,6 +198,7 @@ export function WhatsappDock({
             if (!booted.current) continue;
             onTabs((current) => inboundDockTabs(current, thread.key, dockIsMobile()));
             chime();
+            if (document.hidden) browserAlert("WhatsApp", thread.lastBody);
           }
         })
         .catch(() => undefined);

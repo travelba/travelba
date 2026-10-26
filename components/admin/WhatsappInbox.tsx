@@ -17,6 +17,7 @@ import {
   type InboxMessage,
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
+import { askBrowserAlerts, browserAlert } from "@/lib/crm/browser-alert";
 import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
 
 export type InboxProposal = { id: string; draft: string };
@@ -81,9 +82,7 @@ export function WhatsappInbox({
     if (embedded || typeof Notification === "undefined") return;
     const unread = threads.reduce((sum, thread) => sum + thread.unread, 0);
     const previous = Number(sessionStorage.getItem("tba-wa-unread") || "0");
-    if (unread > previous && document.hidden && Notification.permission === "granted") {
-      new Notification("WhatsApp", { body: "Un nouveau message est arrivé." });
-    }
+    if (unread > previous && document.hidden) browserAlert("WhatsApp", "Un nouveau message est arrivé.");
     sessionStorage.setItem("tba-wa-unread", String(unread));
   }, [embedded, threads]);
 
@@ -440,7 +439,6 @@ function fileToBase64(file: File) {
   });
 }
 
-export async function askWhatsappNotifications() {
-  if (typeof Notification === "undefined" || Notification.permission !== "default") return;
-  await Notification.requestPermission();
+export function askWhatsappNotifications() {
+  askBrowserAlerts();
 }
