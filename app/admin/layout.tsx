@@ -21,8 +21,10 @@ export default async function AdminLayout({
   const { user } = await getSessionUser();
   const staff = user ? await getStaffForUser(user.id) : null;
   // Comptés une fois par requête : le tableau de bord réutilise le même résultat (A-23, D-41).
-  const badges = staff && staff.role !== "partner" ? await adminBadges() : EMPTY_ADMIN_BADGES;
-  const dock = staff && staff.role !== "partner" ? await loadDockSnapshot() : emptyDockSnapshot();
+  const [badges, dock] =
+    staff && staff.role !== "partner"
+      ? await Promise.all([adminBadges(), loadDockSnapshot()])
+      : [EMPTY_ADMIN_BADGES, emptyDockSnapshot()];
 
   return (
     <div className="admin-af min-h-screen">
