@@ -5,19 +5,16 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AgencyLogo } from "@/components/AgencyLogo";
 import { siteConfig } from "@/lib/site";
+import { offers } from "./offers";
 import { waCopy, whatsappHref } from "./photos";
-import { universes } from "./universes";
-
-const HOUSE = [
-  { href: "/preview-refonte/espace-client", label: "L’espace" },
-  { href: "/connexion", label: "Entrer" },
-] as const;
 
 export function Frame({ children }: { children: React.ReactNode; tone?: "overlay" | "solid"; whatsappText?: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [offres, setOffres] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const solid = scrolled || open;
+  const solid = scrolled || open || offres;
+  const wa = whatsappHref(waCopy.home);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -27,20 +24,26 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !offres) return;
     const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (open) document.body.style.overflow = "hidden";
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        setOffres(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, offres]);
 
-  const close = () => setOpen(false);
+  const close = () => {
+    setOpen(false);
+    setOffres(false);
+  };
 
   return (
     <>
@@ -56,42 +59,62 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
           </span>
         </Link>
         <nav className="tba-nav" aria-label="La maison">
-          {universes.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined}>
-              {item.nav}
-            </Link>
-          ))}
-          <Link href="/preview-refonte/espace-client" aria-current={pathname === "/preview-refonte/espace-client" ? "page" : undefined}>
-            L’espace
+          <Link href="/preview-refonte" aria-current={pathname === "/preview-refonte" ? "page" : undefined} onClick={close}>
+            Accueil
           </Link>
-          <Link className="tba-nav-cta" href="/preview-refonte#devis">
-            Un devis
+          <button type="button" className="tba-nav-services" aria-expanded={offres} onClick={() => setOffres((value) => !value)}>
+            Offres
+          </button>
+          <Link href="/preview-refonte/espace-client" aria-current={pathname === "/preview-refonte/espace-client" ? "page" : undefined} onClick={close}>
+            Espace
+          </Link>
+          <Link href="/preview-refonte#apropos" onClick={close}>
+            À propos
+          </Link>
+          <Link href="/preview-refonte#devis" onClick={close}>
+            Contact
+          </Link>
+          <a href={wa} target="_blank" rel="noopener noreferrer">
+            WhatsApp
+          </a>
+          <Link className="tba-nav-cta" href="/preview-refonte#devis" onClick={close}>
+            Faire une demande
           </Link>
         </nav>
         <button type="button" className="tba-menu-btn" aria-expanded={open} aria-controls="tba-menu" onClick={() => setOpen((value) => !value)}>
           {open ? "Fermer" : "Menu"}
         </button>
       </header>
+      {offres ? (
+        <nav className="tba-offer-menu" aria-label="Offres">
+          {offers.map((offer) => (
+            <Link key={offer.slug} href={offer.href} aria-current={pathname === offer.href ? "page" : undefined} onClick={close}>
+              {offer.menu}
+            </Link>
+          ))}
+        </nav>
+      ) : null}
       {open ? (
         <nav id="tba-menu" className="tba-menu" aria-label="Menu">
           <Link href="/preview-refonte" onClick={close}>
-            La maison
+            Accueil
           </Link>
-          {universes.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined} onClick={close}>
-              {item.title}
-            </Link>
-          ))}
-          {HOUSE.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined} onClick={close}>
-              {item.label}
-            </Link>
-          ))}
+          <Link href="/preview-refonte/espace-client" onClick={close}>
+            Espace
+          </Link>
+          <Link href="/preview-refonte#apropos" onClick={close}>
+            À propos
+          </Link>
           <Link href="/preview-refonte#devis" onClick={close}>
-            Demander un devis
+            Contact
           </Link>
-          <Link href="/preview-refonte/projet" onClick={close}>
-            Racontez-nous votre projet
+          {offers.map((offer) => (
+            <Link key={offer.slug} href={offer.href} onClick={close}>
+              {offer.menu}
+            </Link>
+          ))}
+          <Link href="/connexion" onClick={close}>
+            Entrer
           </Link>
         </nav>
       ) : null}
@@ -106,35 +129,39 @@ export function Frame({ children }: { children: React.ReactNode; tone?: "overlay
                 Travel BA
               </span>
             </p>
+            <p>Ultra-personnalisé. Ultra-réactif. Partout, tout le temps.</p>
             <p>{siteConfig.address.full}</p>
-            <p>
-              <a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
-              <br />
-              <a href={whatsappHref(waCopy.home)}>WhatsApp</a>
-              <br />
-              <a href="tel:+33772158257">07 72 15 82 57</a>
-            </p>
           </div>
           <div>
-            <h2>Univers</h2>
+            <h2>Navigation</h2>
             <ul>
-              {universes.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href}>{item.title}</Link>
+              <li>
+                <Link href="/preview-refonte">Accueil</Link>
+              </li>
+              {offers.map((offer) => (
+                <li key={offer.slug}>
+                  <Link href={offer.href}>{offer.menu}</Link>
                 </li>
               ))}
               <li>
-                <Link href="/preview-refonte/espace-client">L’espace</Link>
+                <Link href="/preview-refonte/espace-client">Espace</Link>
               </li>
               <li>
-                <Link href="/connexion">Entrer</Link>
-              </li>
-              <li>
-                <Link href="/preview-refonte/projet">Racontez-nous votre projet</Link>
+                <Link href="/preview-refonte#devis">Faire une demande</Link>
               </li>
             </ul>
           </div>
           <div>
+            <h2>Contact</h2>
+            <p>
+              <a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
+            </p>
+            <p>
+              <a href="tel:+33772158257">07 72 15 82 57</a>
+            </p>
+            <p>
+              <a href={wa}>WhatsApp</a>
+            </p>
             <h2>La maison</h2>
             <p>Atout France IM092260002</p>
             <p>APST n° 43865</p>

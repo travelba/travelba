@@ -2,7 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import { whatsappHref } from "./photos";
-import { universes } from "./universes";
+
+const TYPES = ["Personnel", "Professionnel"] as const;
 
 export function DevisForm() {
   const [ready, setReady] = useState(false);
@@ -13,7 +14,7 @@ export function DevisForm() {
     telephone: "",
     dates: "",
     enveloppe: "",
-    univers: universes[0].qui as (typeof universes)[number]["qui"],
+    univers: "Personnel" as (typeof TYPES)[number],
     message: "",
   });
 
@@ -33,8 +34,8 @@ export function DevisForm() {
     `E-mail : ${fields.email.trim()}`,
     `Téléphone : ${fields.telephone.trim() || "Non précisé"}`,
     `Dates : ${fields.dates.trim() || "À préciser"}`,
-    `Enveloppe : ${fields.enveloppe.trim() || "Non précisée"}`,
-    `Univers : ${fields.univers}`,
+    `Budget : ${fields.enveloppe.trim() || "Non précisé"}`,
+    `Type : ${fields.univers}`,
     fields.message.trim() ? `Message : ${fields.message.trim()}` : "",
   ]
     .filter(Boolean)
@@ -82,7 +83,7 @@ export function DevisForm() {
           <input value={fields.dates} onChange={(event) => set("dates", event.target.value)} />
         </label>
         <label>
-          Enveloppe, si vous en avez une
+          Budget approximatif
           <input
             value={fields.enveloppe}
             onChange={(event) => set("enveloppe", event.target.value)}
@@ -91,21 +92,21 @@ export function DevisForm() {
         </label>
       </div>
       <p id="devis-enveloppe" className="tba-devis-help">
-        Rien n’est chiffré ici. L’enveloppe cadre le projet. Vous pouvez la laisser vide.
+        Rien n’est chiffré sur cette page. Le champ cadre le projet. Vous pouvez le laisser vide.
       </p>
       <fieldset>
-        <legend>Le voyage</legend>
+        <legend>Type de voyage</legend>
         <div>
-          {universes.map((item) => (
-            <label key={item.qui} className={fields.univers === item.qui ? "is-on" : undefined}>
+          {TYPES.map((item) => (
+            <label key={item} className={fields.univers === item ? "is-on" : undefined}>
               <input
                 type="radio"
-                name="univers"
-                value={item.qui}
-                checked={fields.univers === item.qui}
-                onChange={() => set("univers", item.qui)}
+                name="type"
+                value={item}
+                checked={fields.univers === item}
+                onChange={() => set("univers", item)}
               />
-              {item.title}
+              {item}
             </label>
           ))}
         </div>

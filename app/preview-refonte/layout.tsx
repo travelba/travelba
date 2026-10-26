@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "@/components/preview-refonte/maison.css";
 import "@/components/preview-refonte/recits.css";
 import "@/components/preview-refonte/rhythm.css";
+import "@/components/preview-refonte/haven.css";
 
 export const viewport: Viewport = {
   themeColor: "#0B192C",
