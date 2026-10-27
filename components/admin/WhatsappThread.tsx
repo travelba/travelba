@@ -13,6 +13,7 @@ export type WhatsappThreadMessage = {
   template_key?: string | null;
   author_name?: string | null;
   media_path?: string | null;
+  transcript?: string | null;
   tools?: string[] | null;
   phone?: string | null;
   concierge_mark?: string | null;
@@ -71,6 +72,7 @@ export function WhatsappThread({
     templateKey: message.template_key || null,
     authorName: message.author_name || null,
     mediaPath: message.media_path || null,
+    transcript: message.transcript || null,
     tools: message.tools || [],
     requestId: requestByMessage.get(message.id) || null,
     conciergeMark: message.concierge_mark === "good" || message.concierge_mark === "bad" ? message.concierge_mark : null,

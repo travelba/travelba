@@ -32,6 +32,7 @@ import {
   conversationBadge,
   deliveryCaption,
   filterThreads,
+  isVoiceNotePath,
   messageSpeaker,
   messagesNewestFirst,
   parisStamp,
@@ -42,6 +43,7 @@ import {
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
 import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
+import { VoiceNote } from "@/components/admin/VoiceNote";
 
 export function WhatsappDock({
   threads: initialThreads,
@@ -163,6 +165,7 @@ export function WhatsappDock({
           created_at?: string;
           status?: string | null;
           template_key?: string | null;
+          media_path?: string | null;
         };
         if (!row?.id || !row.created_at) return;
         onArrive({
@@ -178,7 +181,7 @@ export function WhatsappDock({
           status: row.status || null,
           templateKey: row.template_key || null,
           authorName: null,
-          mediaPath: null,
+          mediaPath: row.media_path || null,
           tools: [],
           requestId: null,
         });
@@ -712,11 +715,12 @@ function ChatPane({
           }
           const speaker = messageSpeaker(message);
           const mine = speaker !== "client";
+          const voice = isVoiceNotePath(message.mediaPath);
           return (
             <article key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[90%] rounded-2xl px-2.5 py-1.5 text-xs ${speaker === "client" ? "bg-white" : speaker === "agency" ? "bg-[#0B192C] text-white" : "bg-[#f7f1e6]"}`}>
+              <div className={`max-w-[90%] rounded-2xl px-2.5 py-1.5 text-xs ${voice ? "w-[min(100%,20rem)]" : ""} ${speaker === "client" ? "bg-white" : speaker === "agency" ? "bg-[#0B192C] text-white" : "bg-[#f7f1e6]"}`}>
                 <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{speakerLabel(speaker, message.authorName)}{speaker === "robot" ? " · robot" : ""}</p>
-                <p className="whitespace-pre-wrap">{message.body}</p>
+                {voice && message.mediaPath ? <VoiceNote path={message.mediaPath} text={message.body} /> : <p className="whitespace-pre-wrap">{message.body}</p>}
                 <p className="mt-1 text-[10px] opacity-70">{parisStamp(message.createdAt)}{deliveryCaption(message.status, message.error) ? ` · ${deliveryCaption(message.status, message.error)}` : ""}</p>
               </div>
             </article>
