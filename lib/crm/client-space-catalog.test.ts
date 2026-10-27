@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import test from "node:test";
-import { CLIENT_SPACE_ACTIONS, classifyClientSpace } from "./client-space-catalog";
+import { CLIENT_SPACE_ACTIONS, classifyClientSpace, isTripShareAsk, shareAddressee, shareClientHint } from "./client-space-catalog";
 
 function walk(dir: string, out: string[] = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -47,6 +47,33 @@ function readdirPages(dir: string, out: string[] = []): string[] {
 
 test("un numéro à ajouter n’est pas un autre geste", () => {
   assert.equal(classifyClientSpace("Peux tu ajouter le numéro de téléphone de Victoria 06 12 34 56 78 ?"), null);
+});
+
+const VICTORIA_SENTENCE =
+  "Est-ce que tu peux envoyer la réservation partagée la réservation de Nice par WhatsApp à Victoria";
+
+test("la phrase de Victoria est un partage, et Nice n’est pas la destinataire", () => {
+  const found = classifyClientSpace(VICTORIA_SENTENCE);
+  assert.equal(found?.id, "partager_carnet");
+  assert.equal(found?.name, "Victoria");
+  assert.equal(found?.clientName, "Nice");
+  assert.equal(shareAddressee(VICTORIA_SENTENCE), "Victoria");
+  assert.equal(isTripShareAsk("Peux-tu partager le voyage ?"), true);
+});
+
+test("le partage reconnaît le verbe, l’objet et le prénom", () => {
+  const verbs = ["envoyer", "envoie", "envoyez", "partager", "partage", "partagé", "partagée", "partagés", "partagées"];
+  const objects = ["carnet", "lien", "séjour", "réservation", "voyage", "dossier"];
+  for (const verb of verbs) {
+    for (const object of objects) {
+      const message = `${verb} le ${object} à victoria`;
+      const found = classifyClientSpace(message);
+      assert.equal(found?.id, "partager_carnet", message);
+      assert.equal(found?.name, "victoria", message);
+    }
+  }
+  assert.equal(shareClientHint("Envoie la réservation de Camille Martin à Victoria", "Victoria"), "Camille Martin");
+  assert.equal(classifyClientSpace("Envoie le séjour TB-2026-0096 à Victoria")?.reference, "TB-2026-0096");
 });
 
 test("annuler le séjour reste à l’agence, annuler l’hôtel est le geste du client", () => {

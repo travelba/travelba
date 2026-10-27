@@ -11,12 +11,14 @@ import { whatsappCallbackFailure, withConciergeSignature } from "./whatsapp";
 import {
   accessLinkReply,
   buildConciergeDossier,
+  dropUnrecordedHandoff,
   isConciergeStop,
   leadReply,
   messageLanguage,
   panRefusedReply,
   pieceSavedLine,
   rateLimitedReply,
+  replyClaimsAgencyHandoff,
   sharedPhoneReply,
   type ConciergePending,
   type HandoffKind,
@@ -39,7 +41,7 @@ import {
   type PlannedClientWrite,
 } from "./concierge-client-write";
 import { classifyClientSpace } from "./client-space-catalog";
-import { performClientSpace } from "./concierge-space";
+import { customersMatchingShareHint, performClientSpace, shareNameList, sharePersonLabel } from "./concierge-space";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -122,6 +124,8 @@ export type WhatsappStore = {
   loadParty?(customerId: string, bookingIds?: string[] | null): Promise<ConciergeTraveler[]>;
   /** Séjour nommé, pour un membre de l’équipe qui n’est pas le client. */
   loadPartyByReference?(reference: string): Promise<ConciergeTraveler[]>;
+  /** Client nommé par l’équipe. `ask` si personne, ou plusieurs. */
+  loadPartyByClientName?(name: string): Promise<{ party: ConciergeTraveler[] } | { ask: string }>;
   /** Membre de l’équipe, téléphone E.164. Absent ou ambigu : null. */
   staffByPhone?(e164: string): Promise<{ id: string } | null>;
   /** Écriture espace client, déjà décidée. */
@@ -233,6 +237,15 @@ export function phoneFromWhatsapp(from: string | null | undefined) {
   const raw = (from || "").replace(/^whatsapp:/i, "").trim();
   if (!raw) return null;
   return toE164(raw, "FR");
+}
+
+/** Le téléphone d’équipe est reconnu en E.164, même s’il est saisi au format national. Deux fiches : personne. */
+export function matchStaffByPhone(rows: { id: string; phone: string | null }[], e164: string) {
+  const target = toE164(e164, "FR");
+  if (!target) return null;
+  const hits = rows.filter((row) => toE164(row.phone || "", "FR") === target);
+  if (hits.length !== 1) return null;
+  return { id: hits[0].id };
 }
 
 function inboundBody(params: Record<string, string>) {
@@ -596,13 +609,36 @@ export async function receiveWhatsappWebhook(input: {
 
   if (mediaUrl) mediaUrl = await liveConciergeImage(mediaUrl, input.fetchImpl);
   const planned = turnMessages;
-  const bubbles = (planned && reply === planned.join("\n\n") ? planned : [reply]).filter((line) => line.trim()).slice(0, 3);
+  let bubbles = (planned && reply === planned.join("\n\n") ? planned : [reply]).filter((line) => line.trim()).slice(0, 3);
+  if (bubbles.some((line) => replyClaimsAgencyHandoff(line)) && !handoff) handoff = "question";
+  if (handoff) {
+    const request: WhatsappRequestInsert = {
+      customer_id: customers.length === 1 || companion ? customer?.id || null : null,
+      phone: e164,
+      booking_id: bookingId,
+      message_id: inbound.id,
+      kind: handoff,
+      body: redactIngestText(clientText),
+      status: "open",
+    };
+    try {
+      await input.store.insertRequest(request);
+      try {
+        await input.alert?.(request);
+      } catch (err) {
+        console.error("[whatsapp-concierge] alerte", err instanceof Error ? err.name : "error");
+      }
+    } catch (err) {
+      console.error("[whatsapp-concierge] demande", err instanceof Error ? err.name : "error");
+      handoff = null;
+      bubbles = bubbles.map((line) => (replyClaimsAgencyHandoff(line) ? dropUnrecordedHandoff(line) : line));
+    }
+  }
   const delayMs = input.bubbleDelayMs ?? CONCIERGE_BUBBLE_DELAY_MS;
-  let outbound: { id: string } | { duplicate: true } = { duplicate: true };
   for (let index = 0; index < bubbles.length; index += 1) {
     if (index > 0 && delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     const sent = await input.send({ to, body: bubbles[index], mediaUrl: index === 0 ? mediaUrl : null });
-    const stored = await input.store.insertMessage({
+    await input.store.insertMessage({
       customer_id: customer?.id || null,
       booking_id: bookingId,
       direction: "outbound",
@@ -614,24 +650,6 @@ export async function receiveWhatsappWebhook(input: {
       phone: e164,
       tools: index === 0 ? tools : null,
     });
-    if (index === 0) outbound = stored;
-  }
-  if (handoff && !("duplicate" in outbound)) {
-    const request: WhatsappRequestInsert = {
-      customer_id: customers.length === 1 || companion ? customer?.id || null : null,
-      phone: e164,
-      booking_id: bookingId,
-      message_id: inbound.id,
-      kind: handoff,
-      body: redactIngestText(clientText),
-      status: "open",
-    };
-    await input.store.insertRequest(request);
-    try {
-      await input.alert?.(request);
-    } catch (err) {
-      console.error("[whatsapp-concierge] alerte", err instanceof Error ? err.name : "error");
-    }
   }
   return done(200);
 }
@@ -682,8 +700,33 @@ async function applyClientSpaceWrite(input: {
   const space = input.store.performSpace ? classifyClientSpace(input.message, { hasFile: input.hasFile }) : null;
   if (!space || !input.store.performSpace || !input.store.loadParty) return null;
   let party: ConciergeTraveler[] = [];
-  if (input.customer) {
+  if (space.id === "partager_carnet" && input.staffId && space.reference && input.store.loadPartyByReference) {
+    party = await input.store.loadPartyByReference(space.reference);
+    if (!party.length) {
+      return {
+        summary: "Je ne trouve pas ce séjour.",
+        bookingId: null,
+        tools: [space.tool],
+        handoff: null,
+        access: false,
+      };
+    }
+  } else if (input.customer) {
     party = await input.store.loadParty(input.customer.id, input.companion?.bookingIds ?? null);
+  } else if (input.staffId && space.id === "partager_carnet" && space.clientName && input.store.loadPartyByClientName) {
+    const found = await input.store.loadPartyByClientName(space.clientName);
+    if ("ask" in found) {
+      return { summary: found.ask, bookingId: null, tools: [space.tool], handoff: null, access: false };
+    }
+    party = found.party;
+  } else if (input.staffId && space.id === "partager_carnet") {
+    return {
+      summary: "Indiquez la référence du séjour ou le nom du client.",
+      bookingId: null,
+      tools: [space.tool],
+      handoff: null,
+      access: false,
+    };
   } else if (input.staffId && space.reference && input.store.loadPartyByReference) {
     party = await input.store.loadPartyByReference(space.reference);
   } else {
@@ -692,7 +735,7 @@ async function applyClientSpaceWrite(input: {
   const saved = await input.store.performSpace({
     actionId: space.id,
     message: input.message,
-    customerId: input.customer?.id || party[0]?.customerId || "",
+    customerId: party[0]?.customerId || input.customer?.id || "",
     holder: Boolean(input.customer) && !input.companion,
     staff: Boolean(input.staffId),
     staffId: input.staffId,
@@ -817,12 +860,12 @@ async function loadConciergeParty(
 ): Promise<ConciergeTraveler[]> {
   const { data: bookings, error } = await admin
     .from("crm_bookings")
-    .select("id, reference, customer_id")
+    .select("id, reference, customer_id, title, destination")
     .eq("customer_id", customerId)
     .is("archived_at", null);
   if (error || !bookings?.length) return [];
   const allowed = bookingIds ? new Set(bookingIds) : null;
-  const stays = (bookings as { id: string; reference: string; customer_id: string }[]).filter(
+  const stays = (bookings as { id: string; reference: string; customer_id: string; title?: string | null; destination?: string | null }[]).filter(
     (row) => !allowed || allowed.has(row.id)
   );
   if (!stays.length) return [];
@@ -873,6 +916,8 @@ async function loadConciergeParty(
         phone: person?.phone || null,
         email: row.is_account_holder || !person || !("email" in person) ? null : person.email || null,
         birthDate: person?.birth_date || null,
+        stayTitle: stay.title || null,
+        stayDestination: stay.destination || null,
       },
     ];
   });
@@ -1237,10 +1282,42 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       if (error || !data?.id || !data.customer_id) return [];
       return loadConciergeParty(admin, String(data.customer_id), [String(data.id)]);
     },
+    async loadPartyByClientName(name) {
+      const { data, error } = await admin
+        .from("crm_customers")
+        .select("id, first_name, last_name, usage_name")
+        .limit(1000);
+      if (error || !data) {
+        console.error("[whatsapp-concierge] clients", error?.code || "error");
+        return { ask: "Indiquez la référence du séjour ou le nom du client." };
+      }
+      const hits = customersMatchingShareHint(
+        data as { id: string; first_name: string | null; last_name: string | null; usage_name?: string | null }[],
+        name
+      );
+      if (hits.length > 1) {
+        const labels = hits.slice(0, 4).map((row) =>
+          sharePersonLabel({
+            firstName: row.first_name,
+            lastName: row.last_name,
+            usageName: row.usage_name ?? null,
+          })
+        );
+        return { ask: `Plusieurs clients correspondent : ${shareNameList(labels)}. Lequel ?` };
+      }
+      if (!hits.length) return { ask: "Indiquez la référence du séjour ou le nom du client." };
+      const party = await loadConciergeParty(admin, hits[0].id, null);
+      if (!party.length) return { ask: "Ce client n’a pas de séjour ouvert." };
+      return { party };
+    },
     async staffByPhone(e164) {
-      const { data, error } = await admin.from("crm_staff").select("id").eq("phone", e164);
-      if (error || !data || data.length !== 1) return null;
-      return { id: String(data[0].id) };
+      const { data, error } = await admin.from("crm_staff").select("id, phone").limit(200);
+      if (error) {
+        if (missingColumn(error)) return null;
+        console.error("[whatsapp-concierge] equipe", error.code || "error");
+        return null;
+      }
+      return matchStaffByPhone((data || []) as { id: string; phone: string | null }[], e164);
     },
     async commitClientWrite(row) {
       return commitClientChange(admin, row);

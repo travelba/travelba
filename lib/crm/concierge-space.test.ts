@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readFileSync } from "node:fs";
 import { classifyClientSpace } from "./client-space-catalog";
-import { performClientSpace, type SpacePerformInput } from "./concierge-space";
+import { performClientSpace, pickShareCompanions, sharePersonHit, type SpacePerformInput } from "./concierge-space";
 import type { ConciergeTraveler } from "./concierge-client-write";
 
 const CLIENT = "11111111-1111-4111-8111-111111111111";
@@ -213,4 +214,96 @@ test("un service du séjour appelle la même validation que le bouton", async ()
     input({ message: "Je veux un chauffeur", id: "demander_service" })
   );
   assert.match(missing.summary, /véhicule/);
+});
+
+const SENTENCE = "Est-ce que tu peux envoyer la réservation partagée la réservation de Nice par WhatsApp à Victoria";
+const ROME = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+function onStay(partial: Partial<ConciergeTraveler> & { bookingId: string }): ConciergeTraveler {
+  return { ...victoria, phone: "+33611111111", stayTitle: null, stayDestination: null, ...partial };
+}
+
+test("Victoria se reconnaît par un prénom, un nom d’usage ou le nom, sans tenir compte des accents", () => {
+  const person = { firstName: "Victoria Marie Rebecca", lastName: "Tétard", usageName: "Martin" };
+  assert.equal(sharePersonHit("Victoria", person), true);
+  assert.equal(sharePersonHit("rebecca", person), true);
+  assert.equal(sharePersonHit("Marie", person), true);
+  assert.equal(sharePersonHit("tetard", person), true);
+  assert.equal(sharePersonHit("Martin", person), true);
+  assert.equal(sharePersonHit("Élise", { firstName: "Elise", lastName: "Martin", usageName: null }), true);
+  assert.equal(sharePersonHit("Camille", person), false);
+});
+
+test("la phrase de Victoria envoie le séjour de Nice, et un homonyme demande laquelle", async () => {
+  const nice = onStay({
+    bookingId: BOOKING,
+    reference: "TB-2026-0096",
+    firstName: "Victoria Marie Rebecca",
+    lastName: "Tétard",
+    usageName: "Martin",
+    stayDestination: "Nice",
+    stayTitle: "Anantara Plaza Nice",
+  });
+  const rome = onStay({
+    bookingId: ROME,
+    reference: "TB-2026-0100",
+    voyageurId: "99999999-9999-4999-8999-999999999999",
+    companionId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    firstName: "Marc",
+    lastName: "Bernard",
+    stayDestination: "Rome",
+  });
+  let staySent = "";
+  const db = memoryAdmin({ crm_audit_events: [], crm_customer_activity: [] });
+  const sent = await performClientSpace(
+    db as unknown as SupabaseClient,
+    input({ message: SENTENCE, id: "partager_carnet", party: [nice, rome] }),
+    {
+      shareStay: async (_admin, _row, stayId) => {
+        staySent = stayId;
+        return { ok: true, summary: "Lien envoyé à Victoria par WhatsApp." };
+      },
+    }
+  );
+  assert.equal(staySent, BOOKING);
+  assert.equal(sent.ok, true);
+  assert.equal(sent.handoff, null);
+  assert.equal(sent.bookingId, BOOKING);
+  assert.match(sent.summary, /Lien envoyé à Victoria/);
+  assert.equal(/transmis|passé/i.test(sent.summary), false);
+
+  const failed = await performClientSpace(
+    memoryAdmin({}) as unknown as SupabaseClient,
+    input({ message: SENTENCE, id: "partager_carnet", party: [nice, rome] }),
+    {
+      shareStay: async () => ({
+        ok: false,
+        summary: "Hors des 24 heures, WhatsApp ne peut pas envoyer ce lien. Copiez-le.",
+      }),
+    }
+  );
+  assert.equal(failed.ok, false);
+  assert.equal(failed.handoff, null);
+  assert.match(failed.summary, /Hors des 24 heures/);
+  assert.equal(/transmis|agence/i.test(failed.summary), false);
+
+  const twin = onStay({
+    bookingId: BOOKING,
+    companionId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    voyageurId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    firstName: "Victoria",
+    lastName: "Dupont",
+    stayDestination: "Nice",
+  });
+  const ambiguous = pickShareCompanions("Victoria", [nice, twin], BOOKING);
+  assert.equal(ambiguous.ok, false);
+  if (ambiguous.ok) return;
+  assert.match(ambiguous.summary, /Laquelle/);
+  assert.match(ambiguous.summary, /Victoria/);
+});
+
+test("le concierge envoie par le même chemin que le bouton", () => {
+  const source = readFileSync(new URL("./concierge-space-live.ts", import.meta.url), "utf8");
+  assert.match(source, /deliverTripShareWhatsapp/);
+  assert.equal(source.includes("sendTripShareWhatsapp"), false);
 });

@@ -25,6 +25,8 @@ export type ConciergeTraveler = {
   phone: string | null;
   email: string | null;
   birthDate: string | null;
+  stayTitle?: string | null;
+  stayDestination?: string | null;
 };
 
 type ContactIntent = {

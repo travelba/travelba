@@ -1,10 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
-import type { SpaceDeps, SpacePerformInput } from "@/lib/crm/concierge-space";
+import { pickShareCompanions, type SpaceDeps, type SpacePerformInput } from "@/lib/crm/concierge-space";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
-import { planTripShareSend, sendTripShareWhatsapp, tripShareUrl } from "@/lib/crm/trip-share";
+import { planTripShareSend, tripShareUrl } from "@/lib/crm/trip-share";
+import { deliverTripShareWhatsapp } from "@/lib/crm/trip-share-send";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-code";
 import { customerFullName, type CrmBooking, type CrmBookingItem, type CrmBookingTraveler, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
@@ -186,17 +187,12 @@ async function runService(admin: SupabaseClient, input: SpacePerformInput, stayI
 async function shareStay(admin: SupabaseClient, input: SpacePerformInput, stayId: string) {
   const stay = await visibleStay(admin, input.customerId, stayId);
   if (!stay?.booking.visible_to_client) return { ok: false, summary: "Ce voyage n’est pas publié" };
-  const { data: customer } = await admin.from("crm_customers").select("phone, city").eq("id", input.customerId).maybeSingle();
-  if (!customer?.phone?.trim()) return { ok: false, summary: "Ajoutez un téléphone dans Vous pour envoyer ce lien." };
-  const named = input.party.filter((row) => !row.isHolder && row.companionId && row.bookingId === stayId && nameHits(input.action.name || "", row.firstName, row.lastName));
-  const ids = [...new Set(named.map((row) => row.companionId))];
-  if (ids.length !== 1) {
-    return { ok: false, summary: ids.length ? "Plusieurs voyageurs correspondent. Précisez le nom." : "Accompagnateur introuvable sur ce voyage" };
-  }
+  const who = pickShareCompanions(input.action.name, input.party, stayId);
+  if (!who.ok) return { ok: false, summary: who.summary };
   const code = await ensureTripShareCode(admin, stay.booking.id);
   if (!code) return { ok: false, summary: "Ce voyage n’est pas publié" };
   const plan = planTripShareSend({
-    companionId: ids[0]!,
+    companionId: who.companionId,
     travelers: input.party
       .filter((row) => row.bookingId === stayId)
       .map((row) => ({ companion_id: row.companionId, is_account_holder: row.isHolder })),
@@ -204,30 +200,31 @@ async function shareStay(admin: SupabaseClient, input: SpacePerformInput, stayId
       .filter((row) => row.companionId)
       .map((row) => ({ id: row.companionId!, first_name: row.firstName || "", phone: row.phone })),
   });
-  if (!plan.ok) {
-    if (plan.reason === "no_phone") return { ok: false, summary: "Cet accompagnateur n’a pas de téléphone. Le lien reste à copier." };
-    return { ok: false, summary: "Accompagnateur introuvable sur ce voyage" };
+  if (!plan.ok && plan.reason === "not_on_trip") {
+    return { ok: false, summary: "Je ne trouve pas cette personne sur ce séjour." };
   }
+  const { data: customer } = await admin.from("crm_customers").select("city").eq("id", input.customerId).maybeSingle();
   const { liveConciergeImage, whatsappTypeImageUrl } = await import("@/lib/crm/concierge-notices");
   const mediaUrl = await liveConciergeImage(whatsappTypeImageUrl("partage"));
-  const sent = await sendTripShareWhatsapp({
-    phone: plan.phone,
-    firstName: plan.firstName,
-    title: stayTitleFromItems(stay.booking.title, stay.booking.destination, clientVisibleItems(stay.items), "Séjour", customer.city),
+  const sent = await deliverTripShareWhatsapp({
+    customerId: input.customerId,
+    bookingId: stay.booking.id,
+    companionId: who.companionId,
+    phone: plan.ok ? plan.phone : null,
+    firstName: plan.ok ? plan.firstName : who.label,
+    title: stayTitleFromItems(
+      stay.booking.title,
+      stay.booking.destination,
+      clientVisibleItems(stay.items),
+      "Séjour",
+      typeof customer?.city === "string" ? customer.city : null
+    ),
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,
+    audience: input.staff ? "staff" : "client",
+    staffId: input.staffId,
   });
-  if (sent.ok) return { ok: true, summary: `J’ai envoyé le carnet à ${plan.firstName}.` };
-  if (sent.reason === "not_configured") return { ok: false, summary: "WhatsApp n’est pas disponible. Le lien reste à copier." };
-  return { ok: false, summary: "WhatsApp n’a pas pu envoyer le message. Le lien reste à copier." };
-}
-
-function nameHits(query: string, first: string | null, last: string | null) {
-  const folded = fold(query);
-  const given = fold(first || "");
-  const family = fold(last || "");
-  if (!folded) return false;
-  return folded.includes(given) && (!family || folded.includes(family) || given.includes(folded));
+  return { ok: sent.ok, summary: sent.message };
 }
 
 async function depositFormality(admin: SupabaseClient, input: SpacePerformInput, stayId: string) {
