@@ -11,6 +11,8 @@ export type IngestAuditDraft = {
   customerId?: string | null;
   summary: string;
   detail?: Record<string, unknown> | null;
+  /** `whatsapp_concierge` : le concierge a écrit à la place du client. */
+  source?: string | null;
 };
 
 const MRZ_LINE = /^[A-Z0-9<]{28,}$/;
@@ -53,6 +55,7 @@ function maskValue(value: unknown): unknown {
 }
 
 export function toAuditRow(draft: IngestAuditDraft) {
+  const source = (draft.source || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 40);
   return {
     actor_kind: draft.actorKind,
     actor_id: draft.actorId || null,
@@ -62,5 +65,6 @@ export function toAuditRow(draft: IngestAuditDraft) {
     customer_id: draft.customerId || null,
     summary: maskAuditText(draft.summary).slice(0, 400),
     detail: (maskValue(draft.detail || {}) || {}) as Record<string, unknown>,
+    ...(source ? { source } : {}),
   };
 }

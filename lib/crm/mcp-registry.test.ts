@@ -40,6 +40,7 @@ const EXPECTED = [
   "notifier_carte_embarquement",
   "creer_dossier",
   "ajouter_voyageur",
+  "modifier_voyageur",
   "retirer_voyageur",
   "fusionner_compagnon",
   "ajouter_vol",
@@ -72,6 +73,7 @@ const WRITE_TOOLS = [
   "notifier_carte_embarquement",
   "creer_dossier",
   "ajouter_voyageur",
+  "modifier_voyageur",
   "retirer_voyageur",
   "fusionner_compagnon",
   "ajouter_vol",
@@ -126,6 +128,8 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /date de naissance/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /compagnon_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /voyageur_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /passeport/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /societe_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_client")?.description || "", /supprimer_societe_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /prix de vente/);
@@ -177,7 +181,7 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(message?.description || "", /Rien n’est envoyé/);
   assert.match(message?.description || "", /un clic/);
   assert.match(message?.description || "", /fournisseur/);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
+  for (const name of ["creer_dossier", "ajouter_voyageur", "modifier_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
     const tool = MCP_TOOLS.find((item) => item.name === name);
     assert.equal(tool?.write, true);
     assert.equal(tool?.openWorld, undefined);

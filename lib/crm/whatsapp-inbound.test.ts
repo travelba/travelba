@@ -755,3 +755,156 @@ test("une réponse sur le séjour joint la photo du lieu", async () => {
   assert.equal(sent[0].body.includes("cover.webp"), false);
   assert.equal(sent[0].body.includes("/api/covers/"), false);
 });
+
+const victoriaOnFile = {
+  voyageurId: "81844f9d-cd14-44c4-8f1d-5f054407d2be",
+  bookingId: "stay-pub",
+  reference: "TB-2026-0096",
+  customerId: "cust-1",
+  firstName: "Victoria",
+  lastName: "Martin",
+  usageName: null,
+  companionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  isHolder: false,
+  phone: null,
+  email: null,
+  birthDate: null,
+};
+
+test("le concierge ajoute le numéro demandé sur le voyageur du fil", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  let wrote = false;
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Peux tu ajouter le numéro de téléphone de Victoria 06 12 34 56 78 ?",
+    MessageSid: "SMvictoria",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+  });
+  store.loadParty = async () => [victoriaOnFile];
+  store.commitClientWrite = async () => {
+    wrote = true;
+    return {
+      ok: true,
+      summary: "J’ai ajouté le numéro de Victoria : +33 6 12 34 56 78.",
+      bookingId: "stay-pub",
+      customerId: "cust-1",
+    };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMvictoriaout" };
+    },
+  });
+  assert.equal(wrote, true);
+  assert.match(sent[0].body, /J’ai ajouté le numéro de Victoria/);
+  assert.equal(sent[0].body.includes("0664349810"), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
+  const outbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "outbound");
+  assert.deepEqual(outbound?.row?.tools, ["modifier_voyageur"]);
+});
+
+test("un numéro inconnu n’écrit pas sur un dossier", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  let wrote = false;
+  const params = {
+    From: "whatsapp:+33699000000",
+    Body: "Peux tu ajouter le numéro de téléphone de Victoria 06 12 34 56 78 ?",
+    MessageSid: "SMunknown",
+  };
+  const store = storeFrom({ writes, customers: [] });
+  store.loadParty = async () => {
+    throw new Error("party");
+  };
+  store.commitClientWrite = async () => {
+    wrote = true;
+    return { ok: false, message: "non" };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    send: async () => ({ ok: true, sid: "SMunknownout" }),
+  });
+  assert.equal(wrote, false);
+});
+
+test("annuler le séjour passe à l’agence, payer n’encaisse rien", async () => {
+  const cancelWrites: { table: string; row?: Record<string, unknown> }[] = [];
+  let space = false;
+  const cancelParams = {
+    From: "whatsapp:+33601020304",
+    Body: "Annulez mon séjour s’il vous plaît",
+    MessageSid: "SMcancelstay",
+  };
+  const cancelStore = storeFrom({
+    writes: cancelWrites,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published] },
+  });
+  cancelStore.loadParty = async () => [victoriaOnFile];
+  cancelStore.performSpace = async () => {
+    space = true;
+    return { ok: false, summary: "no", bookingId: null, handoff: "cancel", access: false, tool: "annuler_hotel" };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(cancelParams),
+    params: cancelParams,
+    authToken: TOKEN,
+    store: cancelStore,
+    send: async () => ({ ok: true, sid: "SMcancelout" }),
+  });
+  assert.equal(space, false);
+  const request = cancelWrites.find((row) => row.table === "crm_whatsapp_requests");
+  assert.equal(request?.row?.kind, "cancel");
+
+  const payWrites: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const payParams = {
+    From: "whatsapp:+33601020304",
+    Body: "Je veux payer mon encours",
+    MessageSid: "SMpay",
+  };
+  const payStore = storeFrom({
+    writes: payWrites,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+  });
+  payStore.loadParty = async () => [victoriaOnFile];
+  payStore.performSpace = async (row) => {
+    assert.equal(row.actionId, "regler_encours");
+    assert.equal(row.holder, true);
+    return {
+      ok: false,
+      summary: "Le règlement se confirme dans Transactions. Choisissez un moyen de règlement.",
+      bookingId: null,
+      handoff: null,
+      access: true,
+      tool: "regler_encours",
+    };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(payParams),
+    params: payParams,
+    authToken: TOKEN,
+    store: payStore,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMpayout" };
+    },
+  });
+  assert.match(sent[0].body, /Transactions/);
+  assert.equal(payWrites.some((row) => row.table === "crm_whatsapp_requests"), false);
+});

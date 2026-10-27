@@ -31,6 +31,15 @@ import { sessionAddress } from "./whatsapp-session";
 import { nextParisMorning, threadIsPaused } from "./whatsapp-takeover";
 import { loadCollaboratorTripOwnerIds } from "./company-peers";
 import { filledLoyaltyLabels, loyaltyFromCustomer } from "./loyalty";
+import {
+  commitClientChange,
+  matchClientWrite,
+  parseClientSpaceWrite,
+  type ConciergeTraveler,
+  type PlannedClientWrite,
+} from "./concierge-client-write";
+import { classifyClientSpace } from "./client-space-catalog";
+import { performClientSpace } from "./concierge-space";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -109,6 +118,45 @@ export type WhatsappStore = {
   takePiecePath?(): string | null;
   /** Demandes encore ouvertes, pour ne pas les oublier au tour suivant. */
   openRequests?(customerId: string): Promise<ConciergePending[]>;
+  /** Voyageurs des séjours de ce client. `bookingIds` limite à l’accompagnateur. */
+  loadParty?(customerId: string, bookingIds?: string[] | null): Promise<ConciergeTraveler[]>;
+  /** Séjour nommé, pour un membre de l’équipe qui n’est pas le client. */
+  loadPartyByReference?(reference: string): Promise<ConciergeTraveler[]>;
+  /** Membre de l’équipe, téléphone E.164. Absent ou ambigu : null. */
+  staffByPhone?(e164: string): Promise<{ id: string } | null>;
+  /** Écriture espace client, déjà décidée. */
+  commitClientWrite?(input: {
+    plan: PlannedClientWrite;
+    staffId?: string | null;
+    piecePath?: string | null;
+  }): Promise<
+    { ok: true; summary: string; bookingId: string | null; customerId: string } | { ok: false; message: string }
+  >;
+  /** Autre geste de l’espace client, mêmes règles que la page. */
+  performSpace?(input: {
+    actionId: string;
+    message: string;
+    customerId: string;
+    holder: boolean;
+    staff: boolean;
+    staffId: string | null;
+    party: ConciergeTraveler[];
+    hasFile: boolean;
+    piecePath: string | null;
+    name: string | null;
+    reference: string | null;
+    access: boolean;
+    tool: string;
+  }): Promise<{
+    ok: boolean;
+    summary: string;
+    bookingId: string | null;
+    handoff: HandoffKind | null;
+    access: boolean;
+    tool: string;
+  }>;
+  /** Chemin de la dernière pièce, sans l’oublier. */
+  peekPiecePath?(): string | null;
 };
 
 const PIECE_TYPES = new Set([
@@ -360,6 +408,10 @@ export async function receiveWhatsappWebhook(input: {
   if (mediaOnly && piece === "saved") journal = PIECE_MARK;
   if (piece === "pan") journal = "Numéro de carte non conservé.";
 
+  const piecePath =
+    piece === "saved" ? input.store.peekPiecePath?.() ?? input.store.takePiecePath?.() ?? null : null;
+  if (piece === "saved" && input.store.peekPiecePath) input.store.takePiecePath?.();
+
   const inbound = await input.store.insertMessage({
     customer_id: customer?.id || null,
     booking_id: null,
@@ -370,7 +422,7 @@ export async function receiveWhatsappWebhook(input: {
     status: "received",
     error: null,
     phone: e164,
-    media_path: piece === "saved" ? input.store.takePiecePath?.() || null : null,
+    media_path: piece === "saved" ? piecePath : null,
   });
   if ("duplicate" in inbound) return done(200);
 
@@ -411,8 +463,35 @@ export async function receiveWhatsappWebhook(input: {
   let mediaUrl: string | null = null;
   const lang = messageLanguage(clientText);
   const allowed = input.allow ? await input.allow(e164) : true;
+  const canWrite = Boolean((input.store.loadParty && input.store.commitClientWrite) || input.store.performSpace);
+  const staffId =
+    canWrite && customers.length <= 1 && input.store.staffByPhone
+      ? (await input.store.staffByPhone(e164))?.id || null
+      : null;
+  const clientWrite =
+    canWrite && piece !== "pan"
+      ? await applyClientSpaceWrite({
+          store: input.store,
+          message: said,
+          hasFile: piece === "saved",
+          customer,
+          companion,
+          staffId,
+          piecePath,
+        })
+      : null;
 
-  if (!customer) {
+  if (clientWrite) {
+    let text = clientWrite.summary;
+    if (clientWrite.access && customer) {
+      const url = (await input.openAccess?.(customer)) || null;
+      if (url?.startsWith("https://")) text = `${text}\n${url}`;
+    }
+    reply = withConciergeSignature(text);
+    bookingId = clientWrite.bookingId;
+    tools = clientWrite.tools;
+    handoff = clientWrite.handoff;
+  } else if (!customer) {
     if (customers.length > 1) {
       reply = sharedPhoneReply(lang);
       handoff = "question";
@@ -556,6 +635,84 @@ export async function receiveWhatsappWebhook(input: {
   return done(200);
 }
 
+/** Téléphone, e-mail, naissance, préférence, demande ou pièce : le concierge écrit, il ne passe pas la main. */
+async function applyClientSpaceWrite(input: {
+  store: WhatsappStore;
+  message: string;
+  hasFile: boolean;
+  customer: WhatsappCustomer | null;
+  companion: WhatsappCompanion | null;
+  staffId: string | null;
+  piecePath: string | null;
+}): Promise<{
+  summary: string;
+  bookingId: string | null;
+  tools: string[];
+  handoff: HandoffKind | null;
+  access: boolean;
+} | null> {
+  const intent = input.store.loadParty && input.store.commitClientWrite
+    ? parseClientSpaceWrite(input.message, { hasFile: input.hasFile })
+    : null;
+  if (intent && input.store.loadParty && input.store.commitClientWrite) {
+    let party: ConciergeTraveler[] = [];
+    if (input.customer) {
+      party = await input.store.loadParty(input.customer.id, input.companion?.bookingIds ?? null);
+    } else if (input.staffId && intent.reference && input.store.loadPartyByReference) {
+      party = await input.store.loadPartyByReference(intent.reference);
+    } else {
+      return null;
+    }
+    const matched = matchClientWrite(intent, party);
+    const tools = ["modifier_voyageur"];
+    if (!matched.ok) {
+      return { summary: matched.message, bookingId: null, tools, handoff: null, access: false };
+    }
+    const saved = await input.store.commitClientWrite({
+      plan: matched.plan,
+      staffId: input.staffId,
+      piecePath: input.piecePath,
+    });
+    if (!saved.ok) {
+      return { summary: saved.message, bookingId: matched.plan.bookingId, tools, handoff: null, access: false };
+    }
+    return { summary: saved.summary, bookingId: saved.bookingId, tools, handoff: null, access: false };
+  }
+  const space = input.store.performSpace ? classifyClientSpace(input.message, { hasFile: input.hasFile }) : null;
+  if (!space || !input.store.performSpace || !input.store.loadParty) return null;
+  let party: ConciergeTraveler[] = [];
+  if (input.customer) {
+    party = await input.store.loadParty(input.customer.id, input.companion?.bookingIds ?? null);
+  } else if (input.staffId && space.reference && input.store.loadPartyByReference) {
+    party = await input.store.loadPartyByReference(space.reference);
+  } else {
+    return null;
+  }
+  const saved = await input.store.performSpace({
+    actionId: space.id,
+    message: input.message,
+    customerId: input.customer?.id || party[0]?.customerId || "",
+    holder: Boolean(input.customer) && !input.companion,
+    staff: Boolean(input.staffId),
+    staffId: input.staffId,
+    party,
+    hasFile: input.hasFile,
+    piecePath: input.piecePath,
+    name: space.name,
+    reference: space.reference,
+    access: space.access,
+    tool: space.tool,
+  });
+  if (!saved.summary) return null;
+  return {
+    summary: saved.summary,
+    bookingId: saved.bookingId,
+    tools: [saved.tool],
+    handoff: saved.handoff,
+    access: saved.access,
+  };
+}
+
 /** Le message est déjà dans le fil. L’agence est prévenue. Rien ne part sur WhatsApp. */
 async function holdInboundForAgency(input: {
   store: WhatsappStore;
@@ -613,6 +770,111 @@ async function storeInboundPieces(input: {
     if (saved === "saved") result = "saved";
   }
   return result;
+}
+
+type PartyCompanion = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  usage_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  birth_date?: string | null;
+};
+
+function missingColumn(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return error.code === "42703" || error.code === "PGRST204" || /schema cache|column/i.test(error.message || "");
+}
+
+async function loadPartyCompanions(admin: SupabaseClient, ids: string[]) {
+  const map = new Map<string, PartyCompanion>();
+  if (!ids.length) return map;
+  const withEmail = await admin
+    .from("crm_travel_companions")
+    .select("id, first_name, last_name, usage_name, phone, email, birth_date")
+    .in("id", ids);
+  let rows = (withEmail.data || []) as PartyCompanion[];
+  if (withEmail.error && missingColumn(withEmail.error)) {
+    const plain = await admin
+      .from("crm_travel_companions")
+      .select("id, first_name, last_name, usage_name, phone, birth_date")
+      .in("id", ids);
+    if (plain.error) return map;
+    rows = (plain.data || []) as PartyCompanion[];
+  } else if (withEmail.error) {
+    return map;
+  }
+  for (const row of rows) map.set(row.id, row);
+  return map;
+}
+
+async function loadConciergeParty(
+  admin: SupabaseClient,
+  customerId: string,
+  bookingIds: string[] | null
+): Promise<ConciergeTraveler[]> {
+  const { data: bookings, error } = await admin
+    .from("crm_bookings")
+    .select("id, reference, customer_id")
+    .eq("customer_id", customerId)
+    .is("archived_at", null);
+  if (error || !bookings?.length) return [];
+  const allowed = bookingIds ? new Set(bookingIds) : null;
+  const stays = (bookings as { id: string; reference: string; customer_id: string }[]).filter(
+    (row) => !allowed || allowed.has(row.id)
+  );
+  if (!stays.length) return [];
+  const { data: travelers, error: travelerError } = await admin
+    .from("crm_booking_travelers")
+    .select("id, booking_id, companion_id, is_account_holder, first_name, last_name")
+    .in(
+      "booking_id",
+      stays.map((row) => row.id)
+    );
+  if (travelerError || !travelers?.length) return [];
+  const companionIds = [
+    ...new Set(
+      (travelers as { companion_id: string | null }[])
+        .map((row) => row.companion_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  const companions = await loadPartyCompanions(admin, companionIds);
+  const { data: holder } = await admin
+    .from("crm_customers")
+    .select("first_name, last_name, usage_name, phone, birth_date")
+    .eq("id", customerId)
+    .maybeSingle();
+  const byStay = new Map(stays.map((row) => [row.id, row]));
+  return (travelers as {
+    id: string;
+    booking_id: string;
+    companion_id: string | null;
+    is_account_holder: boolean;
+    first_name: string | null;
+    last_name: string | null;
+  }[]).flatMap((row) => {
+    const stay = byStay.get(row.booking_id);
+    if (!stay) return [];
+    const person = row.is_account_holder ? holder : row.companion_id ? companions.get(row.companion_id) : null;
+    return [
+      {
+        voyageurId: row.id,
+        bookingId: stay.id,
+        reference: stay.reference,
+        customerId: stay.customer_id,
+        firstName: row.first_name || person?.first_name || null,
+        lastName: row.last_name || person?.last_name || null,
+        usageName: person?.usage_name || null,
+        companionId: row.companion_id,
+        isHolder: Boolean(row.is_account_holder),
+        phone: person?.phone || null,
+        email: row.is_account_holder || !person || !("email" in person) ? null : person.email || null,
+        birthDate: person?.birth_date || null,
+      },
+    ];
+  });
 }
 
 export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStore {
@@ -953,6 +1215,53 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         if (!row.body) return [];
         return [{ kind, bookingId: row.booking_id, body: String(row.body) }];
       });
+    },
+    peekPiecePath() {
+      return lastPiecePath;
+    },
+    async loadParty(customerId, bookingIds) {
+      return loadConciergeParty(admin, customerId, bookingIds ?? null);
+    },
+    async loadPartyByReference(reference) {
+      const { data, error } = await admin
+        .from("crm_bookings")
+        .select("id, customer_id")
+        .eq("reference", reference)
+        .maybeSingle();
+      if (error || !data?.id || !data.customer_id) return [];
+      return loadConciergeParty(admin, String(data.customer_id), [String(data.id)]);
+    },
+    async staffByPhone(e164) {
+      const { data, error } = await admin.from("crm_staff").select("id").eq("phone", e164);
+      if (error || !data || data.length !== 1) return null;
+      return { id: String(data[0].id) };
+    },
+    async commitClientWrite(row) {
+      return commitClientChange(admin, row);
+    },
+    async performSpace(row) {
+      const { liveSpaceDeps } = await import("./concierge-space-live");
+      return performClientSpace(
+        admin,
+        {
+          action: {
+            id: row.actionId,
+            tool: row.tool,
+            name: row.name,
+            reference: row.reference,
+            access: row.access,
+          },
+          message: row.message,
+          customerId: row.customerId,
+          holder: row.holder,
+          staff: row.staff,
+          staffId: row.staffId,
+          party: row.party,
+          hasFile: row.hasFile,
+          piecePath: row.piecePath,
+        },
+        await liveSpaceDeps()
+      );
     },
     async savePiece({ customerId, bytes, contentType }) {
       const type = pieceContentType(contentType);

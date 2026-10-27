@@ -47,13 +47,14 @@ import {
   updateHotel,
   updateVol,
 } from "@/lib/crm/mcp-trip";
+import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 47;
+export const MCP_TOOL_CAP = 48;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -200,7 +201,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). carte_id sert à modifier_vol et à modifier_hotel. voyageur_id sert à modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). carte_id sert à modifier_vol et à modifier_hotel. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -717,6 +718,30 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Passeport, enregistré comme sur la fiche"),
     },
     run: (args) => addVoyageur(args),
+  },
+  {
+    name: "modifier_voyageur",
+    write: true,
+    description:
+      "Modifie un voyageur déjà sur le dossier, par voyageur_id (crm_booking_travelers, celui de fiche_dossier). Téléphone, e-mail, date de naissance, sexe, nationalité, prénoms, nom, nom d’usage, lien, programme de fidélité. Ce n’est pas compagnon_id : ajouter_voyageur refuse un voyageur_id. L’e-mail d’un accompagnateur est un contact, il n’ouvre pas de compte. L’e-mail du titulaire ne change pas ici (mettre_a_jour_client). Aucun message, aucun numéro de passeport.",
+    input: {
+      voyageur_id: z.string().trim().describe("Identifiant du voyageur sur le séjour"),
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier, pour vérifier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier, pour vérifier"),
+      prenoms: z.string().trim().max(120).optional().describe("Prénoms"),
+      nom: z.string().trim().max(80).optional().describe("Nom"),
+      nom_usage: z.string().trim().max(80).optional().describe("Nom d’usage"),
+      lien: z.string().trim().max(40).optional().describe("Lien avec le titulaire"),
+      civilite: z.string().trim().max(40).optional().describe("Monsieur, Madame ou autre"),
+      sexe: z.string().trim().max(20).optional().describe("M, F ou X"),
+      date_naissance: z.string().trim().max(40).optional().describe("Naissance, AAAA-MM-JJ"),
+      nationalite: z.string().trim().max(80).optional().describe("Nationalité, code ou nom"),
+      telephone: z.string().trim().max(40).optional().describe("Téléphone"),
+      email: z.string().trim().max(200).optional().describe("E-mail de contact d’un accompagnateur. Pas celui du titulaire"),
+      programme: z.string().trim().max(40).optional().describe("Programme : Flying Blue, Marriott Bonvoy, ALL Accor…"),
+      numero_fidelite: z.string().trim().max(40).optional().describe("Numéro du programme. Il n’est pas un numéro de passeport"),
+    },
+    run: (args) => updateVoyageur(args),
   },
   {
     name: "retirer_voyageur",
