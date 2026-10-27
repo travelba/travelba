@@ -1,4 +1,5 @@
 import { productionOnlySecret } from "./preview-secrets";
+import { twilioApiSecret, twilioApiUser } from "./twilio-auth";
 
 const CONTENT_URL = "https://content.twilio.com/v1/Content";
 const CACHE_MS = 10 * 60 * 1000;
@@ -26,7 +27,7 @@ export function clearContentApprovalCache() {
 function twilioAccount() {
   return {
     sid: productionOnlySecret(process.env.TWILIO_ACCOUNT_SID),
-    token: productionOnlySecret(process.env.TWILIO_AUTH_TOKEN),
+    token: productionOnlySecret(twilioApiSecret()),
   };
 }
 
@@ -43,7 +44,7 @@ export async function whatsappContentApproved(contentSid: string, fetchImpl: typ
   if (!accountSid || !token) return false;
   try {
     const response = await fetchImpl(`${CONTENT_URL}/${sid}/ApprovalRequests`, {
-      headers: { Authorization: `Basic ${Buffer.from(`${accountSid}:${token}`).toString("base64")}` },
+      headers: { Authorization: `Basic ${Buffer.from(`${twilioApiUser(accountSid)}:${token}`).toString("base64")}` },
       signal: AbortSignal.timeout(12_000),
     });
     const payload = (await response.json().catch(() => null)) as {

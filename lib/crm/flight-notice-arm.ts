@@ -3,6 +3,7 @@ import { flightNoticeDrafts, flightNoticeVariables, type FlightNoticeKind } from
 import { isVercelPreview, productionOnlySecret } from "./preview-secrets";
 import { sendContentTemplate } from "./whatsapp";
 import { contentSidV2Name, whatsappContentApproved } from "./twilio-content-sid";
+import { twilioApiSecret, twilioApiUser } from "./twilio-auth";
 
 const CONTENT_URL = "https://content.twilio.com/v1/Content";
 
@@ -38,13 +39,13 @@ function quiet(error: unknown) {
 function twilioAccount() {
   return {
     sid: productionOnlySecret(process.env.TWILIO_ACCOUNT_SID),
-    token: productionOnlySecret(process.env.TWILIO_AUTH_TOKEN),
+    token: productionOnlySecret(twilioApiSecret()),
   };
 }
 
 function authHeader() {
   const { sid, token } = twilioAccount();
-  return `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`;
+  return `Basic ${Buffer.from(`${twilioApiUser(sid)}:${token}`).toString("base64")}`;
 }
 
 function twilioReady() {

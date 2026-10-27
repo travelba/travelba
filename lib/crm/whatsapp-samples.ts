@@ -7,6 +7,7 @@ import { connexionContentVariables, sendContentTemplate, whatsappAddress } from 
 import { resolveContentSid } from "./twilio-content-sid";
 import { sendWhatsappSession, whatsappSessionConfigured } from "./whatsapp-session";
 import { whatsappCatalog } from "./whatsapp-catalog";
+import { twilioApiSecret, twilioApiUser } from "./twilio-auth";
 
 /** Ligne de relecture des échantillons (WHATSAPP_SAMPLE_PHONE). Vide = aucun envoi d’échantillon. */
 function samplePhone() {
@@ -35,14 +36,14 @@ const EMPTY_RECEIPT: DeliveryReport = { total: 0, delivered: 0, errors: [], stat
 /** Statuts Twilio des derniers messages vers le téléphone, sans corps ni numéro. */
 export async function inspectSampleDelivery(to: string, fetchImpl: typeof fetch): Promise<DeliveryReport> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
-  const token = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const token = twilioApiSecret()?.trim();
   if (!accountSid || !token) return EMPTY_RECEIPT;
   try {
     const url = new URL(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`);
     url.searchParams.set("To", to);
     url.searchParams.set("PageSize", "50");
     const response = await fetchImpl(url, {
-      headers: { Authorization: `Basic ${Buffer.from(`${accountSid}:${token}`).toString("base64")}` },
+      headers: { Authorization: `Basic ${Buffer.from(`${twilioApiUser(accountSid)}:${token}`).toString("base64")}` },
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) return EMPTY_RECEIPT;
