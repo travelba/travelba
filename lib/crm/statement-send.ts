@@ -79,6 +79,8 @@ export async function deliverStatementWhatsapp(input: {
   audience: StatementAudience;
   optOutAt?: string | null;
   staffId?: string | null;
+  /** Jeton du bot. Vide pour un collaborateur ou le client. */
+  botId?: string | null;
 }) {
   const phone = toE164(input.phone || "", "FR");
   const to = whatsappAddress(input.phone);
@@ -130,6 +132,7 @@ export async function deliverStatementWhatsapp(input: {
       now,
       prior,
       staffId: input.staffId || null,
+      botId: input.botId || null,
     },
     {
       upload: async (path, pdf) => {

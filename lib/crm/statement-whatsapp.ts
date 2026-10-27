@@ -156,6 +156,8 @@ export type StatementJournalRow = {
   author_staff_id: string | null;
   media_path: string | null;
   twilio_sid: string | null;
+  /** Jeton du bot (`mcp`, ou le nom du jeton). Vide pour un collaborateur. */
+  payload: { actor: string } | null;
 };
 
 type Prior = { id: string; status: string } | null;
@@ -176,6 +178,8 @@ export async function runStatementDelivery(
     now: Date;
     prior: Prior;
     staffId: string | null;
+    /** Identifiant du bot. Reste vide quand l’auteur est un collaborateur. */
+    botId: string | null;
   },
   deps: {
     upload: (path: string, pdf: Uint8Array) => Promise<void>;
@@ -187,7 +191,7 @@ export async function runStatementDelivery(
     update: (id: string, patch: Partial<StatementJournalRow>) => Promise<boolean>;
     find: (dedupeKey: string) => Promise<Prior>;
   }
-): Promise<{ ok: true; message: string } | { ok: false; status: number; message: string; code: string }> {
+): Promise<StatementDeliveryResult> {
   const day = statementParisDay(input.now);
   const attempt = statementAttemptKey(input.customerId, day, input.prior, input.now);
   const refusal = refusalOf(input);
@@ -202,10 +206,10 @@ export async function runStatementDelivery(
       twilio_sid: null,
     });
     if (!recorded.ok) {
-      return { ok: false, status: 502, message: statementRefusalMessage("journal", input.audience), code: "journal" };
+      return deliveryFailure(502, statementRefusalMessage("journal", input.audience), "journal");
     }
     const status = refusal === "no_phone" || refusal === "opt_out" ? 400 : refusal === "preview" ? 403 : 502;
-    return { ok: false, status, message, code: refusal };
+    return deliveryFailure(status, message, refusal);
   }
 
   const storagePath = deps.objectPath(input.customerId);
@@ -221,7 +225,7 @@ export async function runStatementDelivery(
       media_path: storagePath,
       twilio_sid: null,
     });
-    return { ok: false, status: 502, message, code: "media" };
+    return deliveryFailure(502, message, "media");
   }
 
   try {
@@ -236,7 +240,7 @@ export async function runStatementDelivery(
       media_path: null,
       twilio_sid: null,
     });
-    return { ok: false, status: 502, message, code: "upload" };
+    return deliveryFailure(502, message, "upload");
   }
 
   const templatePreview = statementTemplatePreview(input.firstName, input.member);
@@ -252,7 +256,7 @@ export async function runStatementDelivery(
     twilio_sid: null,
   });
   if (!queued.ok) {
-    return { ok: false, status: 502, message: statementRefusalMessage("journal", input.audience), code: "journal" };
+    return deliveryFailure(502, statementRefusalMessage("journal", input.audience), "journal");
   }
 
   let sent: StatementSendOutcome = { ok: false, detail: "not_sent" };
@@ -277,7 +281,7 @@ export async function runStatementDelivery(
     const message = statementRefusalMessage("twilio", input.audience);
     const error = detail ? `${message} ${detail}`.slice(0, 300) : message;
     await deps.update(queued.id, { status: "failed", error, body: message, template_key: templateKey, twilio_sid: null });
-    return { ok: false, status: 502, message, code: "twilio" };
+    return deliveryFailure(502, message, "twilio");
   }
 
   await deps.update(queued.id, {
@@ -291,7 +295,17 @@ export async function runStatementDelivery(
   return {
     ok: true,
     message: input.audience === "staff" ? "Relevé envoyé sur le WhatsApp du client." : "Relevé envoyé sur votre WhatsApp.",
+    sid: sent.sid,
+    statut: "sent",
   };
+}
+
+export type StatementDeliveryResult =
+  | { ok: true; message: string; sid: string; statut: "sent" }
+  | { ok: false; status: number; message: string; code: string; sid: null; statut: "failed" };
+
+function deliveryFailure(status: number, message: string, code: string): StatementDeliveryResult {
+  return { ok: false, status, message, code, sid: null, statut: "failed" };
 }
 
 function refusalOf(input: {
@@ -315,7 +329,7 @@ async function remember(
     update: (id: string, patch: Partial<StatementJournalRow>) => Promise<boolean>;
     find: (dedupeKey: string) => Promise<Prior>;
   },
-  input: { customerId: string; phone: string | null; staffId: string | null },
+  input: { customerId: string; phone: string | null; staffId: string | null; botId: string | null },
   attempt: { key: string; reuse: boolean },
   prior: Prior,
   patch: Pick<StatementJournalRow, "template_key" | "body" | "status" | "error" | "media_path" | "twilio_sid">
@@ -325,6 +339,7 @@ async function remember(
     direction: "outbound",
     phone: input.phone,
     author_staff_id: input.staffId,
+    payload: input.botId ? { actor: input.botId } : null,
     dedupe_key: attempt.key,
     ...patch,
   };

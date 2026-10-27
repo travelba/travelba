@@ -51,10 +51,11 @@ import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
+import { envoyerReleve } from "@/lib/crm/mcp-statement";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 48;
+export const MCP_TOOL_CAP = 49;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1006,6 +1007,19 @@ export const MCP_TOOLS: ToolDef[] = [
       document_id: z.string().trim().max(80).optional().describe("Confirmation déjà déposée sur le dossier"),
     },
     run: (args) => addAccueilVip(args),
+  },
+  {
+    name: "envoyer_releve",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie le relevé de compte du client, comme le bouton admin. customer_id. canal whatsapp par défaut. L’e-mail n’est pas ouvert. Le PDF est le même, déposé au coffre, puis envoyé sur WhatsApp : hors des 24 heures, le modèle approuvé TWILIO_CONTENT_RELEVE (en-tête Document) ; dans la fenêtre, le message de session. Chaque essai est écrit dans le journal, y compris un échec. L’auteur est le jeton, pas un collaborateur. La réponse donne twilio_sid et statut. Un second envoi réussi pour le même client dans les cinq minutes est refusé, sauf force.",
+    input: {
+      customer_id: z.string().trim().max(80).describe("Identifiant du client"),
+      channel: z.enum(["whatsapp", "email"]).optional().describe("whatsapp par défaut. email est refusé : ce canal n’est pas ouvert"),
+      force: z.boolean().optional().describe("Renvoie même si un relevé réussi est parti dans les cinq dernières minutes"),
+    },
+    run: (args) => envoyerReleve(args),
   },
 ];
 
