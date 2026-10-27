@@ -225,6 +225,8 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "crediter_stripe")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "ajouter_piece")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "requalifier_piece")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "requalifier_piece")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
   assert.equal(seen.find((tool) => tool.name === "notifier_carte_embarquement")?.readOnly, false);
