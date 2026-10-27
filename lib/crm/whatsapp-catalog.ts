@@ -1,4 +1,5 @@
 import { boardingPassContentDrafts, type BoardingPassTemplate } from "./boarding-pass-whatsapp";
+import { statementContentDrafts } from "./statement-whatsapp";
 import { siteConfig } from "../site";
 import {
   conciergeContentDrafts,
@@ -425,6 +426,21 @@ function boardingPassBubble(template: BoardingPassTemplate): WhatsappBubble {
   };
 }
 
+function statementBubble(): WhatsappBubble {
+  const draft = statementContentDrafts()[0];
+  const types = draft.create.types as { "twilio/media"?: { body?: string } };
+  const body = applyVars(types["twilio/media"]?.body || "", draft.create.variables);
+  if (!body || /\{\{\d+\}\}/.test(body)) throw new Error("variable vide: releve");
+  return {
+    body,
+    button: null,
+    photo: false,
+    image: null,
+    imageAlt: null,
+    modelName: draft.friendlyName,
+  };
+}
+
 function boardingPassMessages(): WhatsappCatalogMessage[] {
   return [
     message({
@@ -630,6 +646,20 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       intro:
         "Ces messages partent depuis le dossier, après une confirmation. Rien ne part seul. Le PDF est l’en-tête Document : un message par PDF. Comme les autres modèles, le texte est en français.",
       messages: boardingPassMessages(),
+    },
+    {
+      id: "releve",
+      title: "Relevé de compte",
+      intro:
+        "Le bouton Demander un relevé envoie le PDF. Hors des 24 heures, le modèle releve (en-tête Document) est requis. Sans lui, l’envoi est refusé et noté en échec. Dans la fenêtre, le même PDF part en message de session.",
+      messages: [
+        message({
+          id: "releve-compte",
+          title: "Relevé joint",
+          when: "Depuis Transactions, vers le téléphone de la fiche ouverte. L’exemple est un relevé de compte.",
+          bubble: statementBubble(),
+        }),
+      ],
     },
     {
       id: "partage",

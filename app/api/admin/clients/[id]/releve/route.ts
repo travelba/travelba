@@ -35,7 +35,7 @@ async function loadProfile(ctx: Ctx) {
       issuedAt: new Date(),
     })
   );
-  return { customer, view, pdf };
+  return { customer, view, pdf, staffId: auth.staff.id };
 }
 
 export async function GET(_request: Request, ctx: Ctx) {
@@ -61,6 +61,8 @@ export async function POST(_request: Request, ctx: Ctx) {
       member: loaded.view.member,
       pdf: loaded.pdf,
       audience: "staff",
+      optOutAt: loaded.customer.whatsapp_opt_out_at,
+      staffId: loaded.staffId,
     })
   );
 }
