@@ -1,9 +1,9 @@
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
-import { isPlaceholderTraveler, type PersonName } from "./person-match";
+import { isPlaceholderTraveler, type PersonIdentity } from "./person-match";
 import {
-  reusableDocumentsForTraveler,
+  passportMatchesTraveler,
   travelerDisplayName,
-  tripDocumentsForTraveler,
+  type PassportCompanion,
 } from "./trip-documents";
 
 export type PassportVaultTone = "ok" | "soon" | "missing" | "alert";
@@ -64,12 +64,10 @@ function againstTrip(expires: string, returnOn: string): { tone: PassportVaultTo
 function passportFor(
   traveler: CrmBookingTraveler,
   docs: CrmTravelDocument[],
-  holder?: PersonName | null
+  holder?: PersonIdentity | null,
+  companions: PassportCompanion[] = []
 ) {
-  const pool = [
-    ...tripDocumentsForTraveler(docs, traveler),
-    ...reusableDocumentsForTraveler(docs, traveler, holder),
-  ].filter((doc) => doc.doc_type === "passport");
+  const pool = docs.filter((doc) => passportMatchesTraveler(doc, traveler, holder, companions));
   return (
     pool.sort((a, b) => (b.expires_on || "").localeCompare(a.expires_on || ""))[0] || null
   );
@@ -79,8 +77,9 @@ export function passportVaultRows(
   travelers: CrmBookingTraveler[],
   docs: CrmTravelDocument[],
   today: string,
-  holder?: PersonName | null,
-  trip?: PassportTripDates | null
+  holder?: PersonIdentity | null,
+  trip?: PassportTripDates | null,
+  companions: PassportCompanion[] = []
 ): PassportVaultRow[] {
   const soonOn = plusDays(today, SOON_DAYS);
   const returnOn = tripReturn(trip);
@@ -89,7 +88,7 @@ export function passportVaultRows(
     if (isPlaceholderTraveler(traveler.first_name, traveler.last_name)) continue;
     const name = travelerDisplayName(traveler);
     if (!name || name === "Voyageur") continue;
-    const passport = passportFor(traveler, docs, holder);
+    const passport = passportFor(traveler, docs, holder, companions);
     if (!passport) {
       rows.push({ travelerId: traveler.id, name, tone: "missing", label: "Passeport manquant" });
       continue;

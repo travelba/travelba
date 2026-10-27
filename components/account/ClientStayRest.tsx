@@ -14,7 +14,7 @@ import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
-import { tripDocCoverage } from "@/lib/crm/trip-documents";
+import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
@@ -123,9 +123,18 @@ export async function ClientStayRest({
   const hotelCancels =
     b.customer_id === customer.id && !desk ? clientHotelCancelOffers(visibleItems, leRows, new Date()) : [];
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
-  const coverage = tripDocCoverage(party, identity);
-  const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
-  const missingCount = coverage.total - coverage.ready;
+  const holder = {
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    usage_name: customer.usage_name,
+    birth_date: customer.birth_date,
+  };
+  const missingCount = missingPassportCount(party, identity, {
+    holder,
+    companions,
+    returnOn: b.end_date || b.start_date,
+  });
+  const missingPassports = missingCount > 0;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination, {
     title: b.title,
     homeCity: customer.city,
@@ -171,17 +180,7 @@ export async function ClientStayRest({
         />
       </section>
     );
-  const passportRows = passportVaultRows(
-    party,
-    identity,
-    todayIsoDate(),
-    {
-      first_name: customer.first_name,
-      last_name: customer.last_name,
-      usage_name: customer.usage_name,
-    },
-    b
-  );
+  const passportRows = passportVaultRows(party, identity, todayIsoDate(), holder, b, companions);
 
   return (
     <ClientTripBody

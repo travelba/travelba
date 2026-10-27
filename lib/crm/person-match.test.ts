@@ -7,6 +7,7 @@ import {
   lastNamesMatch,
   matchTravelerToParty,
   namesReferToSamePerson,
+  holderMatchesAddedTraveler,
   sameAddedTraveler,
   sameRecordedTraveler,
 } from "./person-match";
@@ -209,6 +210,43 @@ test("le nom d’épouse désigne la même personne que le nom de naissance", ()
     namesReferToSamePerson(
       { first_name: "Marie", last_name: "Dupont", usage_name: "Martin" },
       { first_name: "Claire", last_name: "Martin" }
+    ),
+    false
+  );
+});
+
+test("le titulaire ajouté au séjour n’est pas un second compagnon", () => {
+  const holder = { first_name: "Camille", last_name: "Martin", birth_date: null };
+  assert.equal(
+    holderMatchesAddedTraveler(holder, {
+      first_name: "Camille Louise",
+      last_name: "Martin",
+      birth_date: "1988-04-02",
+    }),
+    true
+  );
+  assert.equal(
+    holderMatchesAddedTraveler(
+      { first_name: "Camille Louise", last_name: "Martin", birth_date: "1988-04-02" },
+      { first_name: "Camille", last_name: "Martin" }
+    ),
+    true
+  );
+  assert.equal(
+    holderMatchesAddedTraveler(holder, { first_name: "Louise", last_name: "Martin", birth_date: "2021-03-26" }),
+    false
+  );
+  assert.equal(
+    holderMatchesAddedTraveler(
+      { first_name: "Camille Louise", last_name: "Martin", birth_date: "1988-04-02" },
+      { first_name: "Camille Louise", last_name: "Martin", birth_date: "2021-03-26" }
+    ),
+    false
+  );
+  assert.equal(
+    holderMatchesAddedTraveler(
+      { first_name: "Élise Emmanuelle Alexandra", last_name: "Saada", usage_name: "Chocron" },
+      { first_name: "Joseph Elie Jacob", last_name: "Chocron", birth_date: "2022-05-21" }
     ),
     false
   );

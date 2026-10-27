@@ -1,6 +1,14 @@
 import { shownPersonName } from "./identity";
-import { isPlaceholderTraveler, namesReferToSamePerson, type PersonName } from "./person-match";
+import {
+  holderMatchesAddedTraveler,
+  isPlaceholderTraveler,
+  namesReferToSamePerson,
+  type PersonIdentity,
+  type PersonName,
+} from "./person-match";
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
+
+export type PassportCompanion = PersonName & { id: string; birth_date?: string | null };
 
 export function travelerDisplayName(traveler: CrmBookingTraveler) {
   return shownPersonName(traveler) || "Voyageur";
@@ -166,4 +174,104 @@ export function tripDocCoverage(
     Boolean(primaryIdentityDoc(tripDocumentsForTraveler(docs, traveler)))
   ).length;
   return { ready, total: party.length };
+}
+
+function isoDay(value: string | null | undefined) {
+  const day = (value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "";
+}
+
+function personOf(row: { first_name?: string | null; last_name?: string | null; usage_name?: string | null; birth_date?: string | null }): PersonIdentity {
+  return {
+    first_name: row.first_name ?? null,
+    last_name: row.last_name ?? null,
+    usage_name: row.usage_name ?? null,
+    birth_date: row.birth_date ?? null,
+  };
+}
+
+/** Le voyageur est le titulaire, même s’il a été rangé sur un compagnon qui est lui-même le titulaire. */
+function actsAsHolder(
+  traveler: CrmBookingTraveler,
+  holder: PersonIdentity | null | undefined,
+  companions: PassportCompanion[]
+) {
+  if (traveler.is_account_holder) return true;
+  if (!holder || !holderMatchesAddedTraveler(holder, personOf(traveler))) return false;
+  if (!traveler.companion_id) return true;
+  const companion = companions.find((row) => row.id === traveler.companion_id);
+  if (!companion) return true;
+  return holderMatchesAddedTraveler(holder, personOf(companion));
+}
+
+/**
+ * Passeport du coffre ou du séjour : le nom du voyageur, celui du titulaire,
+ * ou celui d’un compagnon qui est cette personne. Un livret sans nom au coffre
+ * du titulaire est le sien.
+ */
+export function passportMatchesTraveler(
+  doc: CrmTravelDocument,
+  traveler: CrmBookingTraveler,
+  holder?: PersonIdentity | null,
+  companions: PassportCompanion[] = []
+) {
+  if (doc.doc_type !== "passport") return false;
+  if (documentMatchesTraveler(doc, traveler, holder)) return true;
+  if (doc.traveler_id && doc.traveler_id === traveler.id) return true;
+  if (doc.companion_id) {
+    if (traveler.companion_id === doc.companion_id) return true;
+    const companion = companions.find((row) => row.id === doc.companion_id);
+    if (companion && holderMatchesAddedTraveler(personOf(companion), personOf(traveler))) return true;
+  }
+  if (!actsAsHolder(traveler, holder, companions)) return false;
+  const probe: CrmBookingTraveler = { ...traveler, is_account_holder: true, companion_id: null };
+  return documentMatchesTraveler(doc, probe, holder);
+}
+
+/** Valide le jour du retour : la date d’expiration est après ce jour. Sans date, le livret déposé compte. */
+export function passportValidAtReturn(doc: CrmTravelDocument, returnOn: string | null | undefined) {
+  const expires = isoDay(doc.expires_on);
+  const back = isoDay(returnOn);
+  if (!expires || !back) return true;
+  return expires > back;
+}
+
+function partyOf(travelers: CrmBookingTraveler[]) {
+  const named = travelers.filter(
+    (traveler) => !isPlaceholderTraveler(traveler.first_name, traveler.last_name)
+  );
+  return named.length ? named : travelers;
+}
+
+/** Voyageurs dont aucun passeport du coffre, valide au retour, ne couvre la personne. Une pièce déjà sur le séjour compte encore. */
+export function travelersMissingPassport(
+  travelers: CrmBookingTraveler[],
+  docs: CrmTravelDocument[],
+  options?: {
+    holder?: PersonIdentity | null;
+    companions?: PassportCompanion[];
+    returnOn?: string | null;
+  }
+) {
+  const holder = options?.holder ?? null;
+  const companions = options?.companions ?? [];
+  const returnOn = options?.returnOn ?? null;
+  return partyOf(travelers).filter((traveler) => {
+    if (primaryIdentityDoc(tripDocumentsForTraveler(docs, traveler))) return false;
+    return !docs.some(
+      (doc) => passportMatchesTraveler(doc, traveler, holder, companions) && passportValidAtReturn(doc, returnOn)
+    );
+  });
+}
+
+export function missingPassportCount(
+  travelers: CrmBookingTraveler[],
+  docs: CrmTravelDocument[],
+  options?: {
+    holder?: PersonIdentity | null;
+    companions?: PassportCompanion[];
+    returnOn?: string | null;
+  }
+) {
+  return travelersMissingPassport(travelers, docs, options).length;
 }

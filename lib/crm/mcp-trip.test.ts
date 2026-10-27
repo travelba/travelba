@@ -1094,6 +1094,42 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
   assert.equal(db.tables.crm_booking_items.some((row) => row.id === again.id), false);
 });
 
+test("ajouter le titulaire avec sa date et ses prénoms ne crée pas de compagnon", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Rome" }, client);
+  const added = await addVoyageur(
+    {
+      dossier_id: dossier.id,
+      prenoms: "Camille Louise",
+      nom: "Martin",
+      date_naissance: "1988-04-02",
+      sexe: "M",
+    },
+    client
+  );
+  assert.equal(added.titulaire, true);
+  assert.equal(added.compagnon_id, null);
+  assert.equal(added.notifie, false);
+  assert.equal(db.tables.crm_travel_companions.length, 0);
+  assert.equal(db.tables.crm_customers.find((row) => row.id === CLIENT)?.birth_date, "1988-04-02");
+  assert.equal(db.tables.crm_booking_travelers[0]?.is_account_holder, true);
+  const child = await addVoyageur(
+    {
+      dossier_id: dossier.id,
+      prenoms: "Louise",
+      nom: "Martin",
+      date_naissance: "2021-03-26",
+    },
+    client
+  );
+  assert.equal(child.titulaire, false);
+  assert.equal(db.tables.crm_travel_companions.length, 1);
+  assert.notEqual(child.compagnon_id, null);
+});
+
 test("deux frères homonymes ne prennent pas la fiche l’un de l’autre", async () => {
   const elise = "77777777-7777-4777-8777-777777777777";
   const { db, client } = adminOf({
