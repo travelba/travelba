@@ -1,8 +1,8 @@
 ---
 name: travelba-email-ingest
 description: >-
-  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, booking-cancellation, cdsgroupe.com) → crm_email_ingest →
-  parse → suggestions. reservations-tba et crm : seulement une réponse à un envoi du CRM.
+  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, booking-cancellation, crm, reservations-tba, cdsgroupe.com) → crm_email_ingest →
+  parse → suggestions. La file garde tous ces mails. La notification ne part que pour une réponse à un envoi du CRM.
   Déposer les pièces copie les fichiers sur le dossier,
   sans carte. Mettre à jour les cartes est un second clic. Le parse ne crée
   plus de dossier et n’applique plus le séjour. Use when touching Gmail webhook, cron
@@ -14,10 +14,8 @@ description: >-
 # Travelba — e-mails fournisseur (Gmail)
 
 Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**, **booking-cancellation**,
-**cdsgroupe.com**) → ligne `crm_email_ingest` → parse extract → suggestions (client / voyage).
-**reservations-tba** et **crm** sont la boîte ouverte : la file et la notification ne gardent
-qu’une réponse à un e-mail parti du CRM (In-Reply-To, fil, ou `Re:` sur un objet envoyé).
-Le reste est `ignored`. Le mail reste dans Gmail.
+**crm**, **reservations-tba**, **cdsgroupe.com**) → ligne `crm_email_ingest` → parse extract → suggestions (client / voyage).
+La file « e-mails à relire » garde ces mails. La notification (« Un e-mail est arrivé dans la file », y compris l’alerte du navigateur) ne part que si le mail répond à un envoi du CRM (In-Reply-To, fil, ou `Re:` sur un objet envoyé). Un autre mail reste dans la file, sans alerte.
 **Déposer les pièces** (bouton, raccourci A, `traiter_email` `rattacher`) copie
 les pièces jointes dans les pièces du dossier. Il ne modifie pas les cartes et
 n’en crée pas. Sans pièce utile (ou seulement une image de signature), le mail
@@ -59,11 +57,10 @@ Identité / MRZ : skill `travelba-identity`.
 ## Pipeline (contrat)
 
 ```
-Gmail label (little-emperors | expedia-taap | billet-avion | booking-cancellation | cdsgroupe.com)
+Gmail label (little-emperors | expedia-taap | billet-avion | booking-cancellation | crm | reservations-tba | cdsgroupe.com)
   → webhook / cron capture → crm_email_ingest status=received
-reservations-tba | crm
-  → réponse à un envoi du CRM : received. Sinon ignored, sans notification
   → parse extract (pièces + corps ; mêmes parseurs / LLM que l’import)
+  → crm_reply : vrai seulement si réponse à un envoi du CRM (notification, pas la file)
   → suggestCustomerFromExtract
   → suggestBookingByReference ∪ suggestBookingByTripSignals
   → status matched|parsed + candidats
@@ -107,20 +104,18 @@ ne crée ni fiche ni dossier.
 Label Gmail **`crm`** (`label:crm`). « CRM » compte aussi. Il est toujours suivi,
 même si `GMAIL_LABELS` ne le cite pas. Le cron `gmail-ingest` appelle
 `backfillCrmMessages` (curseur `gmail-crm`). L’adresse `crm@travelba.fr` n’est
-jamais l’e-mail d’une fiche. Ce n’est pas un label de pièce : seuls les mails
-qui répondent à un envoi du CRM entrent dans la file. Une copie partie de
-`@travelba.fr` est notée (objet, fil, identifiant) puis ignorée.
+jamais l’e-mail d’une fiche. Il entre dans la file comme les autres labels.
+Une copie partie de `@travelba.fr` est notée (objet, fil, identifiant) et reste
+dans la file. Elle ne déclenche pas la notification.
 
 ## Label reservations-tba
 
 Label Gmail **`reservations-tba`** (`label:reservations-tba`). « Reservations TBA »
 compte aussi. Il est toujours suivi, même si `GMAIL_LABELS` ne le cite pas. Le
 cron `gmail-ingest` appelle `backfillReservationsTbaMessages` (curseur
-`gmail-reservations-tba`). Ce n’est pas un label de pièce. La file ne garde que
-les réponses à un e-mail envoyé depuis le CRM. Une newsletter, une promo ou une
-confirmation qui n’est pas cette réponse reste dans Gmail, statut `ignored`.
-Ne pas remettre ce label dans la liste qui saute le filtre. Ce n’est pas une
-annulation.
+`gmail-reservations-tba`). Il entre dans la file, y compris une newsletter.
+La notification ne part que si c’est une réponse à un envoi du CRM. Ce n’est pas
+une annulation. Ne pas sortir ces mails de la file.
 
 ## Label cdsgroupe.com
 
@@ -150,7 +145,7 @@ Nombre de billets **facultatif** (saisie manuelle et import). Vide : le montant 
 
 ## Avant le modèle
 
-Images de signature (moins d’environ 20 Ko, `image001`, App Store, logo) : pas d’appel. Publicité, code à 6 chiffres, guide API, newsletter : statut `ignored`, sans modèle. Un label de pièce (Little Emperors, Expedia, billet, annulation, cdsgroupe) n’est pas écarté pour un pied de page. `reservations-tba` et `crm` ne sont pas des labels de pièce : une newsletter y est ignorée, et le reste n’entre que s’il répond à un envoi du CRM.
+Images de signature (moins d’environ 20 Ko, `image001`, App Store, logo) : pas d’appel. Publicité, code à 6 chiffres, guide API, newsletter : statut `ignored`, sans modèle. Un label de confirmation (Little Emperors, Expedia, billet, annulation, reservations-tba, cdsgroupe) n’est pas écarté pour un pied de page. La notification ne suit pas cette règle : elle ne part que pour une réponse à un envoi du CRM.
 
 Un fil Gmail, ou la même confirmation (y compris `64570` et `64570SH046795`), fait **une** carte dans la file. Les autres messages du fil se ferment au traitement ou au clic (rattacher, refuser, créer). Rien n’est effacé.
 
@@ -253,6 +248,10 @@ est annulé) appelle `applyReplacementToBooking` :
 - le montant lu dans le mail n’est jamais écrit comme prix vendu.
 
 « Créer un dossier » reste un clic, pour un vrai second voyage.
+
+## Réponse et relance à l’hôtel
+
+Une réponse ou une relance reprend les personnes apparues dans le fil, pas seulement le destinataire d’origine. Celui qui a répondu est À (réponse) ou en copie (relance). Une copie du fil reste en copie. L’adresse nouvelle est enregistrée sur l’hôtel (`crm_hotel_contacts`, source `thread`), dédoublonnée par e-mail, y compris pour le prochain séjour. Le client, l’agence, Little Emperors et Expedia n’y entrent pas. Rien ne part sans le clic. `npx tsx scripts/list-thread-hotel-contacts.ts` liste les adresses qui seraient ajoutées. Il n’écrit pas.
 
 ## Relancer une ligne déjà parsée
 

@@ -9,11 +9,11 @@ import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownPersonName } from "@/lib/crm/identity";
-import { applyHotelSalutation, bookingToken, ensureHotelMailIdentity, followUpSubject, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelThread, hotelTripChecklist, signHotelLetter, type HotelMailPiece, type HotelThreadTurn } from "@/lib/crm/hotel-desk";
+import { applyHotelSalutation, bookingToken, ensureHotelMailIdentity, followUpSubject, hotelMailSubjectKey, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelThread, hotelTripChecklist, signHotelLetter, type DeskRosterPerson, type HotelMailPiece, type HotelThreadTurn } from "@/lib/crm/hotel-desk";
 import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { followUpBody } from "@/lib/crm/mail-followup";
-import { replyAddresses, replyDraftBody } from "@/lib/crm/mail-reply";
+import { partiesFromThreadRows, replyAddresses, replyDraftBody, threadPartyAddresses } from "@/lib/crm/mail-reply";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 
@@ -116,6 +116,7 @@ export function HotelDesk({
           return false;
         }) || null;
   const replyParties = replyTurn?.reply ? replyPartiesFor(item, requests, messages, thread, attached, replyTurn) : null;
+  const relanceParties = relanceTurn?.relance ? relancePartiesFor(item, requests, messages, thread, relanceTurn) : null;
   const replyFormId = replyTurn?.id || "";
   useEffect(() => {
     if (!replyFormId) return;
@@ -241,15 +242,16 @@ export function HotelDesk({
           setReplyKey(key);
         }}
       />
-      {relanceTurn?.relance ? (
+      {relanceTurn?.relance && relanceParties ? (
         <HotelFollowUp
           key={relanceTurn.id}
           bookingId={bookingId}
           itemId={item.id}
           requestId={relanceTurn.relance.requestId}
           messageId={relanceTurn.relance.messageId}
-          people={hotelSendPeople(item, requests, messages)}
-          recipients={relanceRecipients(item, requests, messages, relanceTurn.relance)}
+          people={relanceParties.people}
+          recipients={relanceParties.to}
+          ccRecipients={relanceParties.cc}
           subject={followUpSubject(relanceTurn.subject)}
           body={signHotelLetter(
             ensureHotelMailIdentity(followUpBody({ body: relanceTurn.body, sentAt: relanceTurn.at }), relanceIdentity),
@@ -450,6 +452,20 @@ function HotelDeskEditor({
   );
 }
 
+function partiesForSubject(itemId: string, subject: string, thread: CrmHotelThreadMessage[]) {
+  const key = hotelMailSubjectKey(subject);
+  if (!key) return [];
+  return partiesFromThreadRows(thread.filter((row) => row.booking_item_id === itemId && row.subject_key === key));
+}
+
+function withPartyPeople(people: DeskRosterPerson[], addresses: string[]) {
+  const next = [...people];
+  for (const email of addresses) {
+    if (!next.some((person) => person.email === email)) next.push({ email, firstName: "", lastName: "", role: "" });
+  }
+  return next;
+}
+
 function replyPartiesFor(
   item: CrmBookingItem,
   requests: CrmHotelRequest[],
@@ -461,12 +477,32 @@ function replyPartiesFor(
   const reply = turn.reply;
   const from = reply ? replySender(reply, thread, requests, messages, attached) : "";
   const originals = replyOriginals(item, requests, messages, reply);
-  const addresses = replyAddresses({ from, originals });
-  const people = hotelSendPeople(item, requests, messages);
-  for (const email of [...addresses.to, ...addresses.cc]) {
-    if (!people.some((person) => person.email === email)) people.push({ email, firstName: "", lastName: "", role: "" });
-  }
-  return { ...addresses, people };
+  const addresses = threadPartyAddresses({
+    mode: "reply",
+    from,
+    originals,
+    parties: partiesForSubject(item.id, turn.subject, thread),
+  });
+  const base = addresses.to.length ? addresses : replyAddresses({ from, originals });
+  return { ...base, people: withPartyPeople(hotelSendPeople(item, requests, messages), [...base.to, ...base.cc]) };
+}
+
+function relancePartiesFor(
+  item: CrmBookingItem,
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  thread: CrmHotelThreadMessage[],
+  turn: HotelThreadTurn
+) {
+  const relance = turn.relance;
+  const originals = relance ? relanceRecipients(item, requests, messages, relance) : [];
+  const addresses = threadPartyAddresses({
+    mode: "followup",
+    originals,
+    parties: partiesForSubject(item.id, turn.subject, thread),
+  });
+  const to = addresses.to.length ? addresses.to : originals;
+  return { to, cc: addresses.cc, people: withPartyPeople(hotelSendPeople(item, requests, messages), [...to, ...addresses.cc]) };
 }
 
 function replySender(

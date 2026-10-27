@@ -490,6 +490,10 @@ export type CrmHotelThreadMessage = {
   subject_key: string;
   direction: "out" | "in";
   from_email: string;
+  /** Destinataires du message. Vide tant que le fil n’a pas été relu. */
+  to_emails?: string[] | null;
+  /** Copies du message. */
+  cc_emails?: string[] | null;
   subject: string;
   body: string;
   link: string | null;
@@ -740,6 +744,8 @@ export type CrmEmailIngest = {
   error: string | null;
   /** Raison d’un mail classé ignoré, sans passage par le modèle. */
   ignore_reason?: string | null;
+  /** Vrai si le mail répond à un envoi du CRM. Sert à la notification, pas à la file. */
+  crm_reply?: boolean | null;
   /** Message du même fil déjà ouvert. La ligne ne s’affiche plus seule. */
   grouped_into?: string | null;
   /** Références lues (confirmation, PNR, Little Emperors). */
