@@ -20,6 +20,8 @@ export type InboxMessage = {
   templateKey: string | null;
   authorName: string | null;
   mediaPath: string | null;
+  /** Transcription brute. Le corps porte déjà « Note vocale : … » ou la phrase d’échec. */
+  transcript?: string | null;
   tools: string[];
   requestId: string | null;
   /** Note d’agence sur une réponse du Concierge. */
@@ -43,6 +45,18 @@ export type InboxThread = {
 };
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** Vrai si PostgREST ou Postgres dit que la colonne n’est pas encore là. */
+export function schemaMissesColumn(error: { message?: string } | null | undefined, column: string) {
+  if (!error?.message) return false;
+  return new RegExp(`\\b${column}\\b`, "i").test(error.message) && /column|schema cache/i.test(error.message);
+}
+
+/** Fichier audio d’une note vocale, lu par le lecteur du fil. */
+export function isVoiceNotePath(path: string | null | undefined) {
+  const file = (path || "").split("?")[0];
+  return /\.(ogg|opus|mp3|m4a|aac|wav|amr|webm)$/i.test(file);
+}
 
 export function threadKey(row: { phone?: string | null; customerId?: string | null }) {
   return (row.phone || "").trim() || row.customerId || "";
