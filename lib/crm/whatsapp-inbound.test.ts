@@ -422,6 +422,12 @@ test("la réponse de chat est du texte libre, pas un modèle", async () => {
     assert.equal(params.get("ContentSid"), null);
     assert.equal(params.get("ContentVariables"), null);
     assert.equal(params.get("MediaUrl"), "https://travelba.fr/api/covers/photo-avoriaz");
+    const refused = await sendWhatsappSession({
+      to: "whatsapp:+33601020304",
+      body: "Relevé",
+      fetchImpl: async () => new Response(JSON.stringify({ sid: "SMfail", error_code: 63016, status: "failed" }), { status: 201 }),
+    });
+    assert.equal(refused.ok, false);
   } finally {
     for (const [key, value] of Object.entries({
       TWILIO_ACCOUNT_SID: previous.sid,

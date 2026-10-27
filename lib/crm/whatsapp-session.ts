@@ -62,8 +62,16 @@ export async function sendWhatsappSession(input: {
     const detail = safeTwilioDetail(payload?.message || "");
     return { ok: false, detail: detail || undefined };
   }
-  const payload = (await response.json().catch(() => null)) as { sid?: string } | null;
+  const payload = (await response.json().catch(() => null)) as {
+    sid?: string;
+    error_code?: number | null;
+    status?: string;
+  } | null;
   if (!payload?.sid) return { ok: false };
+  const status = (payload.status || "").toLowerCase();
+  if (payload.error_code || status === "failed" || status === "undelivered") {
+    return { ok: false, detail: status || "failed" };
+  }
   return { ok: true, sid: payload.sid };
 }
 
