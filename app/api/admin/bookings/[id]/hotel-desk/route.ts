@@ -156,6 +156,7 @@ export async function POST(request: Request, ctx: Ctx) {
         subject: typeof body.subject === "string" ? body.subject : "",
         body: typeof body.body === "string" ? body.body : "",
         recipients: Array.isArray(body.recipients) ? body.recipients.filter((value): value is string => typeof value === "string") : [],
+        cc: Array.isArray(body.cc) ? body.cc.filter((value): value is string => typeof value === "string") : [],
         staffId: auth.staff.id,
       });
       return NextResponse.json({ ok: true });

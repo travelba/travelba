@@ -54,6 +54,11 @@ export type ParsedGmailMessage = {
   messageId: string;
   inReplyTo: string;
   references: string;
+  /** En-têtes bruts. Les adresses sont dans toEmails et ccEmails. */
+  to: string;
+  cc: string;
+  toEmails: string[];
+  ccEmails: string[];
 };
 
 export function decodeBase64Url(data: string | null | undefined): string {
@@ -78,6 +83,28 @@ export function extractEmailAddress(value: string): string {
   const candidate = (angle ? angle[1] : value).trim();
   const at = candidate.match(/[^\s<>]+@[^\s<>]+/);
   return (at ? at[0] : candidate).toLowerCase();
+}
+
+/** Toutes les adresses d’un en-tête To ou Cc. */
+export function headerAddresses(value: string): string[] {
+  const parts = value.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    const email = extractEmailAddress(part);
+    if (!email.includes("@") || seen.has(email)) continue;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
+}
+
+/** Nom affiché d’un en-tête, sans l’adresse. */
+export function headerDisplayName(value: string): string {
+  const name = value.replace(/<[^>]*>/g, "").replace(/"/g, "").trim();
+  if (!name || name.includes("@")) return "";
+  return name;
 }
 
 /** Convertit du HTML e-mail en texte lisible (suffisant pour l'extraction). */
@@ -165,6 +192,8 @@ export function collectAttachments(
 export function parseGmailMessage(raw: RawGmailMessage): ParsedGmailMessage {
   const payload = raw.payload;
   const from = headerValue(payload?.headers, "From");
+  const to = headerValue(payload?.headers, "To");
+  const cc = headerValue(payload?.headers, "Cc");
   const subject = headerValue(payload?.headers, "Subject");
   const internal = raw.internalDate ? Number(raw.internalDate) : NaN;
   const receivedAt = Number.isFinite(internal)
@@ -185,6 +214,10 @@ export function parseGmailMessage(raw: RawGmailMessage): ParsedGmailMessage {
     messageId: headerValue(payload?.headers, "Message-ID"),
     inReplyTo: headerValue(payload?.headers, "In-Reply-To"),
     references: headerValue(payload?.headers, "References"),
+    to,
+    cc,
+    toEmails: headerAddresses(to),
+    ccEmails: headerAddresses(cc),
   };
 }
 

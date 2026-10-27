@@ -490,6 +490,10 @@ export type CrmHotelThreadMessage = {
   subject_key: string;
   direction: "out" | "in";
   from_email: string;
+  /** Destinataires du message. Vide tant que le fil n’a pas été relu. */
+  to_emails?: string[] | null;
+  /** Copies du message. */
+  cc_emails?: string[] | null;
   subject: string;
   body: string;
   link: string | null;

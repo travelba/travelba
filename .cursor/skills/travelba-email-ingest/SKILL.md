@@ -249,6 +249,10 @@ est annulé) appelle `applyReplacementToBooking` :
 
 « Créer un dossier » reste un clic, pour un vrai second voyage.
 
+## Réponse et relance à l’hôtel
+
+Une réponse ou une relance reprend les personnes apparues dans le fil, pas seulement le destinataire d’origine. Celui qui a répondu est À (réponse) ou en copie (relance). Une copie du fil reste en copie. L’adresse nouvelle est enregistrée sur l’hôtel (`crm_hotel_contacts`, source `thread`), dédoublonnée par e-mail, y compris pour le prochain séjour. Le client, l’agence, Little Emperors et Expedia n’y entrent pas. Rien ne part sans le clic. `npx tsx scripts/list-thread-hotel-contacts.ts` liste les adresses qui seraient ajoutées. Il n’écrit pas.
+
 ## Relancer une ligne déjà parsée
 
 Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
