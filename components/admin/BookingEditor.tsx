@@ -54,7 +54,7 @@ import {
   keptHiddenFromClient,
   stayNameField,
 } from "@/lib/crm/carnet";
-import { unsplashKeywordMatch } from "@/lib/crm/covers";
+import { bookingCoverPlan, catalogPhotoId } from "@/lib/crm/covers";
 import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
@@ -491,6 +491,9 @@ export function BookingEditor({
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
+  const coverPlan = bookingCoverPlan(booking, { items });
+  const catalogCoverId =
+    !booking.cover_image_path && coverPlan.mode === "single" ? catalogPhotoId(coverPlan.src) : null;
   const [flash, setFlash] = useState<string | null>(null);
   const [invoicePiece, setInvoicePiece] = useState(mb3m.piece);
   const [invoiceNote, setInvoiceNote] = useState<string | null>(null);
@@ -884,7 +887,7 @@ export function BookingEditor({
     setBusy("cover");
     setFlash(null);
     setCoverNotice(null);
-    const catalog = !booking.cover_image_path && unsplashKeywordMatch(booking);
+    const catalog = Boolean(catalogCoverId);
     const res = await fetch(
       catalog
         ? `/api/admin/bookings/${booking.id}/cover/catalog`
@@ -1140,7 +1143,7 @@ export function BookingEditor({
         >
           Importer une photo
         </button>
-        {booking.cover_image_path || unsplashKeywordMatch(booking) ? (
+        {booking.cover_image_path || catalogCoverId ? (
           <button
             type="button"
             className="text-sm font-semibold text-[var(--admin-navy)]"

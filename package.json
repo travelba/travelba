@@ -16,7 +16,8 @@
     "test": "tsx --tsconfig tsconfig.test.json --test lib/crm/*.test.ts lib/site-hero.test.ts",
     "check": "npm run typecheck && npm run lint && npm run test && node scripts/check-migrations.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
-    "covers:generate": "tsx scripts/generate-city-covers.ts"
+    "covers:generate": "tsx scripts/generate-city-covers.ts",
+    "covers:fallback": "tsx scripts/regenerate-fallback-covers.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.112",

@@ -3,7 +3,7 @@ import { isEntryCode } from "./entry-code";
 import { stayDestinationPhrase, stayPhrase } from "./stay-phrase";
 import type { TripStep } from "./layover";
 import { generatedCityCoverSpec } from "./cover-catalog";
-import { unsplashKeywordMatch } from "./covers";
+import { bookingCoverPlan, catalogPhotoId } from "./covers";
 import { siteConfig } from "../site";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 import { resolveContentSid } from "./twilio-content-sid";
@@ -127,9 +127,7 @@ export function stayHasPublishedCover(booking: {
   cover_image_path: string | null;
 }) {
   if (booking.cover_image_path) return true;
-  return Boolean(
-    unsplashKeywordMatch({ destination: booking.destination, title: booking.title || "" })
-  );
+  return bookingCoverPlan({ ...booking, title: booking.title || "" }).mode !== "none";
 }
 
 /** Ville dont la photo se génère. Un import ou une photo de catalogue ne compte pas. */
@@ -139,7 +137,9 @@ export function generatedStayPhotoId(booking: {
   cover_image_path: string | null;
 }) {
   if (booking.cover_image_path) return null;
-  const photo = unsplashKeywordMatch({ destination: booking.destination, title: booking.title || "" });
+  const plan = bookingCoverPlan({ ...booking, title: booking.title || "" });
+  if (plan.mode !== "single") return null;
+  const photo = catalogPhotoId(plan.src);
   if (!photo || !generatedCityCoverSpec(photo)) return null;
   return photo;
 }
