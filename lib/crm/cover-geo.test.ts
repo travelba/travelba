@@ -21,7 +21,7 @@ describe("photoFromGeocodeHit", () => {
       lon: 4.9122,
       countryCode: "be",
     });
-    assert.equal(photo, "photo-1534351590666-13e3e96b5017");
+    assert.equal(photo, "photo-city-dinant");
   });
 
   it("ignore un libellé qui n’est pas un lieu", () => {
@@ -35,6 +35,37 @@ describe("photoFromGeocodeHit", () => {
       "Dinant"
     );
     assert.equal(coverGeocodeQuery({ destination: null, title: "40 ans" }), "40 ans");
+  });
+
+  it("ne donne pas la tour Eiffel à une ville française hors catalogue", () => {
+    const photo = photoFromGeocodeHit({
+      label: "Millau, Aveyron, France",
+      lat: 44.0986,
+      lon: 3.0778,
+      countryCode: "fr",
+    });
+    assert.notEqual(photo, "photo-1502602898657-3e91760cbb34");
+    assert.equal(photo, "photo-antibes-garoupe");
+  });
+
+  it("reconnaît Montpellier avant le pays", () => {
+    const photo = photoFromGeocodeHit({
+      label: "Montpellier, Hérault, France",
+      lat: 43.6109,
+      lon: 3.8767,
+      countryCode: "fr",
+    });
+    assert.equal(photo, "photo-city-montpellier");
+  });
+
+  it("garde la tour Eiffel quand le lieu est la France", () => {
+    const photo = photoFromGeocodeHit({
+      label: "France",
+      lat: 46.6034,
+      lon: 1.8883,
+      countryCode: "fr",
+    });
+    assert.equal(photo, "photo-1502602898657-3e91760cbb34");
   });
 
   it("garde Marrakech quand la région est écrite", () => {

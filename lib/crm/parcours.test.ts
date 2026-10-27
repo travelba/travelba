@@ -247,18 +247,13 @@ test("cover catalogue matches the arrival place only", () => {
   if (countryOnly.mode === "single") assert.match(countryOnly.src, /photo-1489749798305-4fea3ae63d43/);
   const portugal = unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" });
   assert.ok(portugal);
-  assert.equal(
-    unsplashKeywordMatch({ destination: "Inconnue · Portugal", title: "Séjour" }),
-    portugal
-  );
-  assert.equal(
-    unsplashKeywordMatch({ destination: "Inconnue, Portugal", title: "Séjour" }),
-    portugal
-  );
-  assert.equal(
-    unsplashKeywordMatch({ destination: "Paris · Inconnue · Portugal", title: "Séjour" }),
-    portugal
-  );
+  assert.match(portugal, /photo-1585208798174-6cedd86e019a/);
+  assert.equal(unsplashKeywordMatch({ destination: "Inconnue · Portugal", title: "Séjour" }), null);
+  assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Portugal", title: "Séjour" }), null);
+  assert.equal(unsplashKeywordMatch({ destination: "Paris · Inconnue · Portugal", title: "Séjour" }), null);
+  const france = unsplashKeywordMatch({ destination: "France", title: "Séjour" });
+  assert.match(france || "", /photo-1502602898657-3e91760cbb34/);
+  assert.equal(unsplashKeywordMatch({ destination: "Millau, France", title: "Séjour" }), null);
   const unknownHotel = bookingCoverPlan(
     {
       destination: "Inconnue · Portugal",
@@ -267,8 +262,35 @@ test("cover catalogue matches the arrival place only", () => {
     },
     { items: [{ kind: "hotel", details: { city: "Inconnue" } }] }
   );
-  assert.equal(unknownHotel.mode, "single");
-  if (unknownHotel.mode === "single") assert.match(unknownHotel.src, /photo-1585208798174-6cedd86e019a/);
+  assert.equal(unknownHotel.mode, "none");
+  const montpellier = bookingCoverPlan(
+    {
+      destination: "Montpellier",
+      title: "Hôtel Richer de Belleval",
+      cover_image_path: null,
+    },
+    {
+      items: [
+        {
+          kind: "hotel",
+          title: "Hôtel Richer de Belleval",
+          details: {
+            city: "Montpellier",
+            country: "France",
+            address: "Place de la Canourgue, 34000 Montpellier, France",
+          },
+        },
+      ],
+    }
+  );
+  assert.equal(montpellier.mode, "single");
+  if (montpellier.mode === "single") assert.match(montpellier.src, /photo-city-montpellier/);
+  const millau = bookingCoverPlan({
+    destination: "Millau",
+    title: "Séjour",
+    cover_image_path: null,
+  });
+  assert.equal(millau.mode, "none");
   assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Belgique", title: "Séjour" }), null);
   assert.equal(
     bookingCoverUrl({

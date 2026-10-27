@@ -474,7 +474,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates, la commission d’agence ou la société de facturation d’un dossier, puis le grand livre. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
+      "Met à jour les notes, les dates, le titre, la couverture, la commission d’agence ou la société de facturation d’un dossier, puis le grand livre. titre est le nom du séjour. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -498,6 +498,13 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("Séjour particulier. Retire la société du dossier"),
+      titre: z.string().trim().max(200).optional().describe("Titre du séjour"),
+      couverture: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("catalogue, un lieu, ou un identifiant photo-… Retire une photo importée"),
     },
     run: (args) => updateBooking(args),
   },
@@ -717,10 +724,15 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "creer_dossier",
     write: true,
     description:
-      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. La société de la fiche est facturée par défaut : l’unique société, ou la première s’il y en a plusieurs. societe_id en choisit une autre. particulier : true laisse le séjour particulier. Sans société sur la fiche, le séjour reste particulier. facturer_societe sans société est une erreur. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
+      "Crée un dossier pour un client déjà en fiche. Destination, dates, notes. titre est facultatif : sans titre, le nom du séjour est la destination (la ville, pas le nom de l’hôtel). Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. La société de la fiche est facturée par défaut : l’unique société, ou la première s’il y en a plusieurs. societe_id en choisit une autre. particulier : true laisse le séjour particulier. Sans société sur la fiche, le séjour reste particulier. facturer_societe sans société est une erreur. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
     input: {
       client_id: z.string().trim().describe("Identifiant du client"),
-      titre: z.string().trim().describe("Titre du séjour"),
+      titre: z
+        .string()
+        .trim()
+        .max(200)
+        .optional()
+        .describe("Titre du séjour. Sans titre, la destination devient le nom"),
       destination: z.string().trim().max(200).optional().describe("Destination"),
       date_depart: z.string().trim().max(40).optional().describe("Départ, AAAA-MM-JJ"),
       date_retour: z.string().trim().max(40).optional().describe("Retour, AAAA-MM-JJ"),
