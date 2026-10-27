@@ -15,6 +15,8 @@ export type InboxMessage = {
   body: string;
   createdAt: string;
   status: string | null;
+  /** Raison française d’un échec Twilio. Vide tant que le message n’a pas échoué. */
+  error?: string | null;
   templateKey: string | null;
   authorName: string | null;
   mediaPath: string | null;
@@ -50,6 +52,15 @@ export function messageSpeaker(row: Pick<InboxMessage, "direction" | "authorName
   if (row.direction === "inbound") return "client";
   if (row.authorName || row.templateKey === "staff" || row.templateKey === "agence") return "agency";
   return "robot";
+}
+
+export function deliveryCaption(status: string | null | undefined, error?: string | null) {
+  const failed = (status || "").toLowerCase() === "failed" || (status || "").toLowerCase() === "undelivered";
+  const label = deliveryLabel(failed ? "failed" : status);
+  if (!failed) return label;
+  const reason = (error || "").replace(/https?:\/\/\S+/g, "").replace(/\+?\d{8,}/g, "").replace(/\s+/g, " ").trim();
+  if (!reason) return label || "Échec";
+  return `${label || "Échec"} · ${reason}`;
 }
 
 export function deliveryLabel(status: string | null | undefined) {

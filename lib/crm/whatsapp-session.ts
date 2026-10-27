@@ -1,4 +1,4 @@
-import { whatsappAddress } from "./whatsapp";
+import { twilioAcceptedSend, whatsappAddress } from "./whatsapp";
 
 export function whatsappSessionConfigured() {
   return Boolean(
@@ -67,12 +67,7 @@ export async function sendWhatsappSession(input: {
     error_code?: number | null;
     status?: string;
   } | null;
-  if (!payload?.sid) return { ok: false };
-  const status = (payload.status || "").toLowerCase();
-  if (payload.error_code || status === "failed" || status === "undelivered") {
-    return { ok: false, detail: status || "failed" };
-  }
-  return { ok: true, sid: payload.sid };
+  return twilioAcceptedSend(payload);
 }
 
 export function sessionAddress(phone: string) {

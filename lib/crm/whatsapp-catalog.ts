@@ -664,12 +664,13 @@ function catalogGroups(): WhatsappCatalogGroup[] {
     {
       id: "partage",
       title: "Partage du voyage",
-      intro: "Le compagnon reçoit le lien du voyage. Ce lien n’ouvre pas le compte.",
+      intro:
+        "Le compagnon reçoit le lien du voyage. Ce lien n’ouvre pas le compte. Dans les 24 heures, le texte part en conversation. Hors de cette fenêtre, le modèle partage_voyage (bouton Voir le voyage) est requis. Sans lui, l’envoi est refusé et noté en échec.",
       messages: [
         session(
           "partage",
           "Lien envoyé à un accompagnant",
-          "Depuis la fiche du séjour, vers le téléphone de l’accompagnant. Le message part dans la conversation en cours.",
+          "Depuis la fiche du séjour, vers le téléphone de l’accompagnant. Dans la fenêtre de 24 h, le message est libre. Hors fenêtre, WhatsApp exige le modèle partage_voyage.",
           tripShareMessage({
             firstName: FIRST_NAME,
             title: PLACE,

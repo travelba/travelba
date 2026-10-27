@@ -7,7 +7,7 @@ import { ConciergeProposalDesk } from "@/components/admin/ConciergeProposalDesk"
 import { WhatsappHoldButton, type HandoffResult } from "@/components/admin/WhatsappHoldButton";
 import {
   conversationBadge,
-  deliveryLabel,
+  deliveryCaption,
   filterThreads,
   messageSpeaker,
   messagesNewestFirst,
@@ -266,7 +266,7 @@ export function WhatsappInbox({
                   ) : null}
                   <p className={`mt-1 text-[10px] ${mine && speaker === "agency" ? "text-white/70" : "text-[var(--color-ink-soft)]"}`}>
                     {parisStamp(message.createdAt)}
-                    {deliveryLabel(message.status) ? ` · ${deliveryLabel(message.status)}` : ""}
+                    {deliveryCaption(message.status, message.error) ? ` · ${deliveryCaption(message.status, message.error)}` : ""}
                     {message.requestId ? " · Demande ouverte" : ""}
                   </p>
                   {message.requestId ? (

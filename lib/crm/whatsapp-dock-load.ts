@@ -20,6 +20,7 @@ type RawMessage = {
   direction: string;
   body: string;
   status: string | null;
+  error?: string | null;
   template_key: string | null;
   created_at: string;
   phone?: string | null;
@@ -30,7 +31,7 @@ type RawMessage = {
 };
 
 const RICH =
-  "id, customer_id, booking_id, direction, body, status, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark";
+  "id, customer_id, booking_id, direction, body, status, error, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark";
 const BASE = "id, customer_id, booking_id, direction, body, status, template_key, created_at";
 
 export type DockSnapshot = {
@@ -126,6 +127,7 @@ async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: stri
       body: row.body,
       createdAt: row.created_at,
       status: row.status,
+      error: row.error || null,
       templateKey: row.template_key,
       authorName: row.author_staff_id ? agents.get(row.author_staff_id) || "L’agence" : null,
       mediaPath: row.media_path || null,
