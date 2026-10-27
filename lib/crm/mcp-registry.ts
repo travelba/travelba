@@ -47,14 +47,15 @@ import {
   updateHotel,
   updateVol,
 } from "@/lib/crm/mcp-trip";
+import { inviteClientAccess, setCompanyRole, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
-/** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 48;
+/** Chaque option admin nouvelle s’ajoute ici. */
+export const MCP_TOOL_CAP = 51;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -569,6 +570,57 @@ export const MCP_TOOLS: ToolDef[] = [
       ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),
+  },
+  {
+    name: "modifier_titulaire",
+    write: true,
+    description:
+      "Met à jour la fiche du titulaire et son passeport : prénoms, nom, nom de passeport, nom d’usage, date de naissance, lieu de naissance, sexe, nationalité, date de délivrance, adresse personnelle. Mêmes champs d’identité que l’accompagnateur. Le nom de passeport peut différer du nom de la fiche. L’adresse (adresse, code_postal, ville, pays) est le domicile, pas la facturation. pays_passeport choisit le livret (FR, IL) et n’est pas recopié dans la nationalité. Plusieurs livrets : la délivrance, le lieu ou le nom de passeport exigent pays_passeport. L’autre nationalité reste. Le numéro n’est ni lu ni renvoyé. Aucun message.",
+    input: {
+      id: z.string().trim().describe("Identifiant du client, le titulaire"),
+      prenoms: z.string().trim().max(120).optional().describe("Prénoms, dans l’ordre du passeport"),
+      nom: z.string().trim().max(80).optional().describe("Nom de la fiche"),
+      nom_passeport: z.string().trim().max(80).optional().describe("Nom imprimé sur le passeport, s’il diffère"),
+      nom_usage: z.string().trim().max(80).optional().describe("Nom d’usage ou nom d’épouse"),
+      date_naissance: z.string().trim().max(40).optional().describe("Naissance, AAAA-MM-JJ"),
+      lieu_naissance: z.string().trim().max(120).optional().describe("Lieu de naissance"),
+      sexe: z.string().trim().max(20).optional().describe("M, F ou X"),
+      nationalite: z.string().trim().max(80).optional().describe("Nationalité, code ou nom. Pas le pays du passeport"),
+      delivrance: z.string().trim().max(40).optional().describe("Délivrance du passeport, AAAA-MM-JJ"),
+      adresse: z.string().trim().max(300).optional().describe("Adresse personnelle, pas la facturation"),
+      code_postal: z.string().trim().max(20).optional().describe("Code postal du domicile"),
+      ville: z.string().trim().max(80).optional().describe("Ville du domicile"),
+      pays: z.string().trim().max(80).optional().describe("Pays du domicile"),
+      pays_passeport: z.string().trim().max(80).optional().describe("Pays émetteur du livret à modifier. Pas la nationalité"),
+    },
+    run: (args) => updateHolderProfile(args),
+  },
+  {
+    name: "definir_role_societe",
+    write: true,
+    description:
+      "Pose le rôle du client sur sa société, comme la fiche agence. admin : wallet société, voit les carnets publiés de ses collaborateurs. membre : collaborateur, payeur_id est l’admin société qui paie (pas lui-même, pas un autre collaborateur). particulier : ni payeur ni plafond. droit_depense est le plafond en euros, vide pour l’effacer. Aucun message.",
+    input: {
+      id: z.string().trim().describe("Identifiant du client"),
+      role: z.string().trim().describe("admin, membre ou particulier"),
+      payeur_id: z.string().trim().max(80).optional().describe("Admin société qui paie, obligatoire pour un membre"),
+      droit_depense: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe("Plafond personnel en euros. Vide : pas de plafond"),
+    },
+    run: (args) => setCompanyRole(args),
+  },
+  {
+    name: "inviter_client",
+    write: true,
+    openWorld: true,
+    description:
+      "Crée l’accès à l’espace du client et envoie l’invitation, le même flux que le bouton de la fiche. L’e-mail part, et WhatsApp avec le même lien si le message part : le canal du lien suit. Rien ne part sans cet appel. Un accès déjà invité ou déjà ouvert n’est pas renvoyé. Le lien n’est pas renvoyé. Un compte de l’agence est refusé.",
+    input: {
+      id: z.string().trim().describe("Identifiant du client"),
+    },
+    run: (args) => inviteClientAccess(args),
   },
   {
     name: "ajouter_piece",
