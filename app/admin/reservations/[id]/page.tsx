@@ -154,7 +154,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .limit(200),
     supabase
       .from("crm_whatsapp_messages")
-      .select("id, direction, body, status, created_at, booking_id, concierge_mark")
+      .select("id, direction, body, status, error, created_at, booking_id, concierge_mark")
       .eq("customer_id", b.customer_id)
       .order("created_at", { ascending: true }),
     supabase
@@ -178,7 +178,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     ? (
         await supabase
           .from("crm_whatsapp_messages")
-          .select("id, direction, body, status, created_at")
+          .select("id, direction, body, status, error, created_at")
           .eq("customer_id", b.customer_id)
           .order("created_at", { ascending: true })
       ).data || []

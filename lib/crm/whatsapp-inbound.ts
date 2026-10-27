@@ -7,7 +7,7 @@ import { formParams, verifyTwilioSignature } from "./twilio-signature";
 import { liveConciergeImage, stayHasPublishedCover } from "./concierge-notices";
 import { ensureTripShareCode } from "./trip-share-code";
 import { CONCIERGE_BUBBLE_DELAY_MS } from "../concierge/bubbles";
-import { withConciergeSignature } from "./whatsapp";
+import { whatsappCallbackFailure, withConciergeSignature } from "./whatsapp";
 import {
   accessLinkReply,
   buildConciergeDossier,
@@ -113,7 +113,7 @@ export type WhatsappStore = {
   /** Savoir publié. Tableau vide si la migration n’est pas là : l’appelant reprend le dépôt. */
   loadKnowledge?(): Promise<KnowledgeChunk[]>;
   saveFollowups?(phone: string, customerId: string | null, rows: PlannedFollowup[]): Promise<void>;
-  updateStatus?(sid: string, status: string): Promise<void>;
+  updateStatus?(sid: string, status: string, error?: string | null): Promise<void>;
   /** Chemin de la dernière pièce enregistrée, puis oublié. */
   takePiecePath?(): string | null;
   /** Demandes encore ouvertes, pour ne pas les oublier au tour suivant. */
@@ -336,7 +336,8 @@ export async function receiveWhatsappWebhook(input: {
   if (statusCallbackOnly(params)) {
     const sid = (params.MessageSid || "").trim();
     const state = (params.MessageStatus || "").trim();
-    if (sid && state) await input.store.updateStatus?.(sid, state);
+    const failure = whatsappCallbackFailure(state, params.ErrorCode, params.ErrorMessage);
+    if (sid && state) await input.store.updateStatus?.(sid, state, failure);
     return { status: 200 };
   }
 
@@ -1005,10 +1006,15 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       if (attempt.error || !attempt.data) throw attempt.error || new Error("journal WhatsApp");
       return { id: attempt.data.id as string };
     },
-    async updateStatus(sid, status) {
+    async updateStatus(sid, status, failure) {
       const mapped = status === "undelivered" ? "failed" : status;
       if (!["queued", "sent", "delivered", "read", "failed", "received"].includes(mapped)) return;
-      const { error } = await admin.from("crm_whatsapp_messages").update({ status: mapped }).eq("twilio_sid", sid);
+      const patch: { status: string; error?: string | null } = { status: mapped };
+      if (mapped === "failed") patch.error = (failure || "WhatsApp n’a pas remis le message.").slice(0, 300);
+      if (mapped === "delivered" || mapped === "read") patch.error = null;
+      let query = admin.from("crm_whatsapp_messages").update(patch).eq("twilio_sid", sid);
+      if (mapped === "queued" || mapped === "sent") query = query.neq("status", "failed");
+      const { error } = await query;
       if (error) console.error("[whatsapp-concierge] statut", error.code || "error");
     },
     takePiecePath() {

@@ -30,7 +30,7 @@ import {
 } from "@/lib/crm/whatsapp-dock";
 import {
   conversationBadge,
-  deliveryLabel,
+  deliveryCaption,
   filterThreads,
   messageSpeaker,
   messagesNewestFirst,
@@ -181,6 +181,28 @@ export function WhatsappDock({
           mediaPath: null,
           tools: [],
           requestId: null,
+        });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "crm_whatsapp_messages" }, (payload) => {
+        const row = payload.new as {
+          id?: string;
+          phone?: string | null;
+          customer_id?: string | null;
+          status?: string | null;
+          error?: string | null;
+        };
+        if (!row?.id) return;
+        const key = (row.phone || "").trim() || row.customer_id || "";
+        if (!key) return;
+        setCache((current) => {
+          const list = current[key];
+          if (!list?.some((message) => message.id === row.id)) return current;
+          return {
+            ...current,
+            [key]: list.map((message) =>
+              message.id === row.id ? { ...message, status: row.status ?? message.status, error: row.error ?? null } : message
+            ),
+          };
         });
       })
       .subscribe();
@@ -695,7 +717,7 @@ function ChatPane({
               <div className={`max-w-[90%] rounded-2xl px-2.5 py-1.5 text-xs ${speaker === "client" ? "bg-white" : speaker === "agency" ? "bg-[#0B192C] text-white" : "bg-[#f7f1e6]"}`}>
                 <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{speakerLabel(speaker, message.authorName)}{speaker === "robot" ? " · robot" : ""}</p>
                 <p className="whitespace-pre-wrap">{message.body}</p>
-                <p className="mt-1 text-[10px] opacity-70">{parisStamp(message.createdAt)}{deliveryLabel(message.status) ? ` · ${deliveryLabel(message.status)}` : ""}</p>
+                <p className="mt-1 text-[10px] opacity-70">{parisStamp(message.createdAt)}{deliveryCaption(message.status, message.error) ? ` · ${deliveryCaption(message.status, message.error)}` : ""}</p>
               </div>
             </article>
           );

@@ -3,7 +3,8 @@ import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { clientVisibleItems } from "@/lib/crm/carnet";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { liveConciergeImage, whatsappTypeImageUrl } from "@/lib/crm/concierge-notices";
-import { planTripShareSend, sendTripShareWhatsapp, tripShareUrl } from "@/lib/crm/trip-share";
+import { deliverTripShareWhatsapp } from "@/lib/crm/trip-share-send";
+import { planTripShareSend, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
@@ -56,10 +57,7 @@ export async function POST(request: Request, ctx: Ctx) {
     travelers: travelers || [],
     companions: companions || [],
   });
-  if (!plan.ok) {
-    if (plan.reason === "no_phone") {
-      return jsonError("Cet accompagnateur n’a pas de téléphone. Le lien reste à copier.", 400);
-    }
+  if (!plan.ok && plan.reason === "not_on_trip") {
     return jsonError("Accompagnateur introuvable sur ce voyage", 404);
   }
 
@@ -68,9 +66,12 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("kind, title, start_at, end_at, sort_order, details, visible_to_client")
     .eq("booking_id", booking.id);
   const mediaUrl = await liveConciergeImage(whatsappTypeImageUrl("partage"));
-  const result = await sendTripShareWhatsapp({
-    phone: plan.phone,
-    firstName: plan.firstName,
+  const result = await deliverTripShareWhatsapp({
+    customerId: booking.customer_id,
+    bookingId: booking.id,
+    companionId,
+    phone: plan.ok ? plan.phone : null,
+    firstName: plan.ok ? plan.firstName : "",
     title: stayTitleFromItems(
       booking.title,
       booking.destination,
@@ -80,10 +81,9 @@ export async function POST(request: Request, ctx: Ctx) {
     ),
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,
+    audience: "staff",
+    staffId: auth.staff.id,
   });
-  if (result.ok) return NextResponse.json({ ok: true });
-  if (result.reason === "not_configured") {
-    return jsonError("WhatsApp n’est pas disponible. Le lien reste à copier.", 503);
-  }
-  return jsonError("WhatsApp n’a pas pu envoyer le message. Le lien reste à copier.", 502);
+  if (!result.ok) return jsonError(result.message, result.status);
+  return NextResponse.json({ ok: true, message: result.message });
 }
