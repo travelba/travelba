@@ -602,12 +602,20 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
     ]);
   const party = (travelers || []) as CrmBookingTraveler[];
   const papers = (docs || []) as CrmTravelDocument[];
-  const holder = customer as {
+  const profile = customer as {
     first_name?: string | null;
     last_name?: string | null;
     usage_name?: string | null;
     birth_date?: string | null;
   } | null;
+  const holder = profile
+    ? {
+        first_name: profile.first_name ?? null,
+        last_name: profile.last_name ?? null,
+        usage_name: profile.usage_name ?? null,
+        birth_date: profile.birth_date ?? null,
+      }
+    : null;
   const trip = frenchPassportTrip((items || []) as CrmBookingItem[], party.length);
   const filedRequests = new Set(
     ((visas || []) as { country?: string; status?: string }[])
