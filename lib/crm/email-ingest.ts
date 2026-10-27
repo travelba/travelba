@@ -8,6 +8,7 @@ import {
   getAttachmentBytes,
   getMessage,
   GmailHistoryTooOldError,
+  gmailMessageMeta,
   listHistoryMessageIds,
   listMessagesByLabel,
   resolveLabelIds,
@@ -29,6 +30,8 @@ import {
 } from "@/lib/crm/ingest-file";
 import { clipEmailBody } from "@/lib/crm/email-source";
 import { classifyInboundMail, dropInboundImage } from "@/lib/crm/email-prefilter";
+import { decideInboundMail, isOpenMailboxLabel } from "@/lib/crm/email-reply-gate";
+import { loadSentMailIndex, rememberSentMail } from "@/lib/crm/sent-mail";
 import { openThreadParent, sharesInboxGroup, type ThreadRow } from "@/lib/crm/email-thread";
 import { toAuditRow } from "@/lib/crm/audit-events";
 import { scoreExtractFields } from "@/lib/crm/extract-confidence";
@@ -164,13 +167,9 @@ export async function captureGmailHistory(
   }
 
   let captured = 0;
+  const sent = await sentIndexForLabels(admin, [...perMessageLabel.values()]);
   for (const [messageId, label] of perMessageLabel) {
-    const { error } = await admin
-      .from("crm_email_ingest")
-      .upsert(
-        { gmail_message_id: messageId, label, status: "received" },
-        { onConflict: "gmail_message_id", ignoreDuplicates: true }
-      );
+    const { error } = await stageInboundMessage(admin, messageId, label, sent);
     if (!error) captured += 1;
   }
 
@@ -257,11 +256,9 @@ async function backfillLabeledMessages(
 
   let captured = 0;
   let failed = false;
+  const sent = await sentIndexForLabels(admin, [target]);
   for (const messageId of insertIds) {
-    const { error } = await admin.from("crm_email_ingest").upsert(
-      { gmail_message_id: messageId, label: target, status: "received" },
-      { onConflict: "gmail_message_id", ignoreDuplicates: true }
-    );
+    const { error } = await stageInboundMessage(admin, messageId, target, sent);
     if (error) {
       failed = true;
       break;
@@ -545,12 +542,123 @@ async function storeAttachment(
   return { name, path, mime_type: mime };
 }
 
+async function sentIndexForLabels(admin: Admin, labels: string[]) {
+  if (!labels.some((label) => isOpenMailboxLabel(label))) return null;
+  return loadSentMailIndex(admin);
+}
+
+/** Boîte ouverte : ignoré tout de suite si ce n’est pas une réponse. Sinon `received`. */
+async function stageInboundMessage(
+  admin: Admin,
+  messageId: string,
+  label: string,
+  sent: Awaited<ReturnType<typeof loadSentMailIndex>> | null
+) {
+  const base = { gmail_message_id: messageId, label, status: "received" };
+  if (!sent || !isOpenMailboxLabel(label)) {
+    return admin.from("crm_email_ingest").upsert(base, { onConflict: "gmail_message_id", ignoreDuplicates: true });
+  }
+  let row: Record<string, unknown> = base;
+  try {
+    const meta = await gmailMessageMeta(messageId);
+    const decision = decideInboundMail(
+      {
+        label,
+        from: meta.from,
+        subject: meta.subject,
+        messageId: meta.messageId,
+        inReplyTo: meta.inReplyTo,
+        references: meta.references,
+        threadId: meta.threadId,
+        autoSubmitted: meta.autoSubmitted,
+      },
+      sent
+    );
+    if (decision.action === "record-sent") {
+      await rememberSentMail(
+        {
+          subject: meta.subject,
+          rfcMessageId: meta.messageId,
+          gmailThreadId: meta.threadId,
+          source: "gmail-copy",
+        },
+        admin
+      );
+    }
+    if (decision.action !== "queue") {
+      row = {
+        ...base,
+        status: "ignored",
+        ignore_reason: decision.reason,
+        gmail_thread_id: meta.threadId || null,
+        from_email: meta.fromEmail || null,
+        subject: meta.subject.slice(0, 300) || null,
+        received_at: meta.receivedAt,
+      };
+    }
+  } catch {
+    // Le traitement relit le message complet et applique la même règle.
+  }
+  return admin.from("crm_email_ingest").upsert(row, { onConflict: "gmail_message_id", ignoreDuplicates: true });
+}
+
 /** Traite une ligne `received` : télécharge le mail, extrait, rapproche. Ne crée pas de dossier et ne touche pas aux cartes. */
 export async function processEmailIngestRow(row: CrmEmailIngest) {
   const admin = createServiceClient();
   const message = await getMessage(row.gmail_message_id);
   const bodyPreview = (message.text || "").trim();
+  const openMailbox = isOpenMailboxLabel(row.label);
+  if (openMailbox) {
+    const sent = await loadSentMailIndex(admin);
+    const decision = decideInboundMail(
+      {
+        label: row.label,
+        from: message.from,
+        subject: message.subject,
+        messageId: message.messageId,
+        inReplyTo: message.inReplyTo,
+        references: message.references,
+        threadId: message.threadId,
+        autoSubmitted: message.autoSubmitted,
+      },
+      sent
+    );
+    if (decision.action === "record-sent") {
+      await rememberSentMail(
+        {
+          subject: message.subject,
+          rfcMessageId: message.messageId,
+          gmailThreadId: message.threadId,
+          source: "gmail-copy",
+        },
+        admin
+      );
+    }
+    if (decision.action !== "queue") {
+      await admin
+        .from("crm_email_ingest")
+        .update({
+          gmail_thread_id: message.threadId || row.gmail_thread_id,
+          from_email: message.fromEmail || row.from_email,
+          subject: message.subject || row.subject,
+          received_at: message.receivedAt || row.received_at,
+          body_text: clipEmailBody(bodyPreview),
+          status: "ignored",
+          ignore_reason: decision.reason,
+          error: null,
+        })
+        .eq("id", row.id);
+      await recordIngestAudit(admin, {
+        actorKind: "auto",
+        action: "ignore",
+        emailIngestId: row.id,
+        summary: decision.reason,
+      });
+      return;
+    }
+  }
   const skip = classifyInboundMail({ subject: message.subject, text: bodyPreview, label: row.label });
+  const keepCrmReply = openMailbox && (skip?.reason === "Newsletter" || skip?.reason === "Publicité");
   const headerPatch = {
     gmail_thread_id: message.threadId || row.gmail_thread_id,
     from_email: message.fromEmail || row.from_email,
@@ -559,7 +667,7 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     body_text: clipEmailBody(bodyPreview),
     body_html: clipEmailBody(message.html),
   };
-  if (skip) {
+  if (skip && !keepCrmReply) {
     await admin
       .from("crm_email_ingest")
       .update({ ...headerPatch, status: "ignored", ignore_reason: skip.reason, error: null })

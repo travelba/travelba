@@ -5,8 +5,7 @@ export const SIGNATURE_IMAGE_BYTES = 20 * 1024;
 const SIGNATURE_NAME =
   /(?:^|[/\\])(?:image\d+|app\s*store|google\s*play|logo|signature|facebook|linkedin|twitter|instagram|spacer|pixel|icon)/i;
 
-const BOOKING_LABEL =
-  /little-emperors|expedia|billet|cancellation|reservations-tba|cdsgroupe/i;
+const BOOKING_LABEL = /little-emperors|expedia|billet|cancellation|cdsgroupe/i;
 
 export function dropInboundImage(file: {
   filename?: string | null;
@@ -24,7 +23,9 @@ export type MailSkip = { reason: string };
 
 /**
  * Publicité, code à 6 chiffres, guide API, newsletter.
- * Un label de confirmation (Little Emperors, Expedia, billet, CDS) n’est pas écarté ici.
+ * Un label de pièce (Little Emperors, Expedia, billet, annulation, CDS) n’est pas écarté ici.
+ * `reservations-tba` et `crm` ne sont pas des labels de pièce : la file ne les
+ * garde que s’ils répondent à un envoi du CRM (`email-reply-gate`).
  */
 export function classifyInboundMail(input: {
   subject?: string | null;
@@ -66,7 +67,7 @@ function isApiGuide(blob: string) {
 }
 
 function isNewsletter(blob: string) {
-  return /newsletter|se d[eé]sabonner|unsubscribe|view (?:this )?in (?:your )?browser|voir ce message dans le navigateur/i.test(
+  return /newsletter|se d[eé]sabonner|unsubscribe|view (?:this )?(?:e-?mail )?in (?:your )?browser|voir ce message dans le navigateur/i.test(
     blob
   );
 }

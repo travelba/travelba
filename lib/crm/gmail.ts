@@ -7,8 +7,10 @@ import {
   matchGmailLabelIds,
   mergeGmailLabelNames,
   parseGmailMessage,
+  parseGmailMetadata,
   type GmailHistoryRecord,
   type GmailHeader,
+  type GmailMessageMeta,
   type ParsedGmailMessage,
 } from "@/lib/crm/gmail-parse";
 
@@ -243,6 +245,16 @@ export async function searchInbox(query: string, max = 8): Promise<ParsedGmailMe
   const messages: ParsedGmailMessage[] = [];
   for (const id of ids) messages.push(await getMessage(id));
   return messages;
+}
+
+const META_HEADERS = ["Subject", "From", "Message-ID", "References", "In-Reply-To", "Auto-Submitted"];
+
+/** Sujet, expéditeur et identifiants, sans le corps. */
+export async function gmailMessageMeta(id: string): Promise<GmailMessageMeta> {
+  const params = new URLSearchParams({ format: "metadata" });
+  for (const name of META_HEADERS) params.append("metadataHeaders", name);
+  const res = await gmailApi(`/messages/${encodeURIComponent(id)}?${params.toString()}`);
+  return parseGmailMetadata(await res.json());
 }
 
 export async function getMessage(id: string): Promise<ParsedGmailMessage> {
