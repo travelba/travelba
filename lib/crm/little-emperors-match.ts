@@ -32,7 +32,7 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
   extract.end_date = booking.check_out || "";
   extract.currency = booking.currency || "EUR";
   extract.total_amount = null;
-  extract.title = booking.hotel_name || "";
+  extract.title = booking.city || "";
   const people = booking.guest_names
     .map(splitGuestName)
     .filter((person): person is { first_name: string; last_name: string } => Boolean(person));

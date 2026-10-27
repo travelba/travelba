@@ -1,4 +1,5 @@
-import { coverMatchInText } from "@/lib/crm/covers";
+import { countryLandmarkPhotoAllowed } from "@/lib/crm/cover-catalog";
+import { coverMatchInText, quotedPlaceKeys } from "@/lib/crm/covers";
 import { PHOTOGRAPHED_CITIES, type PhotographedCity } from "@/lib/crm/cover-coords";
 
 export type GeocodeHit = {
@@ -72,7 +73,9 @@ export function photoFromGeocodeHit(hit: GeocodeHit): string {
   if (mentioned && mentioned.rank >= 3) return mentioned.photo;
   const sameCountry = nearestPhotographedCity(hit.lat, hit.lon, hit.countryCode);
   if (sameCountry && sameCountry.km <= 180) return sameCountry.city.photo;
-  if (mentioned) return mentioned.photo;
+  if (mentioned && countryLandmarkPhotoAllowed(mentioned.photo, quotedPlaceKeys(hit.label))) {
+    return mentioned.photo;
+  }
   if (sameCountry && sameCountry.km <= 500) return sameCountry.city.photo;
   const abroad = nearestPhotographedCity(hit.lat, hit.lon);
   if (abroad && abroad.km <= 500) return abroad.city.photo;

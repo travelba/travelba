@@ -18,7 +18,7 @@ import {
   uploadCrmFile,
 } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
-import { dossierTitle } from "@/lib/crm/ingest-title";
+import { dossierTitleFromImport } from "@/lib/crm/ingest-title";
 import { routeMailExtract, type ImportTask } from "@/lib/crm/import-routing";
 import { importTitleGuard, TITLE_REVIEW_MARK } from "@/lib/crm/import-title";
 import { bookingCurrencyFromReview } from "@/lib/crm/stay-currency";
@@ -618,7 +618,7 @@ export async function persistNewBookingFromExtract(opts: {
   const routed = opts.emailIngestId ? routeMailExtract(opts.extract) : { extract: opts.extract, tasks: [] as ImportTask[] };
   const extract = routed.extract;
   const stayDates = stayDatesFromExtract(extract);
-  const title = dossierTitle(extract);
+  const title = dossierTitleFromImport(extract);
   const totalAmount = sellingTotalFromExtract(extract);
   const status = bookingStatusFromExtract(extract, opts.status);
   const notes = bookingNotesFromImport(
