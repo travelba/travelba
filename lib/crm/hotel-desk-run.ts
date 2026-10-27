@@ -49,7 +49,9 @@ import { HOTEL_REPLY_STAY_STATUSES, shouldSyncHotelReplies, stayNeedsHotelReplyW
 import { precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
 import { PLIANT_SINGLE_USE } from "./pliant-controls";
+import { followUpRefused, supplierAnsweredLatest, type FollowUpTurn } from "./mail-followup";
 import { threadingHeaders } from "./mail-reply";
+import { rememberSentMail } from "./sent-mail";
 import { agencyCopyCc, tokenMailCc } from "./outbound-mail";
 import { cardLinkExpiresAt, cardLinkNote, redactCardLinks } from "./card-link";
 import { createCardLink, settleCardLinks } from "./card-link-run";
@@ -501,17 +503,37 @@ async function storeThreadHits(
   await admin.from("crm_hotel_thread_messages").upsert(owned, { onConflict: "gmail_message_id" });
 }
 
+function deskTurns(turns: CrmHotelThreadMessage[], itemId: string, keys: Set<string>): FollowUpTurn[] {
+  return turns
+    .filter((turn) => turn.booking_item_id === itemId && keys.has(turn.subject_key))
+    .map((turn) => ({
+      id: turn.gmail_message_id,
+      at: turn.received_at,
+      direction: turn.direction,
+      subjectKey: turn.subject_key,
+      countsAsReply: turn.counts_as_reply,
+    }));
+}
+
 async function mirrorThreadReplies(admin: Admin, bookingId: string, letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
   const { data } = await admin.from("crm_hotel_thread_messages").select("*").eq("booking_id", bookingId);
   const turns = (data || []) as CrmHotelThreadMessage[];
   let replied = 0;
   for (const row of letters) {
     const keys = new Set(subjectsToFollow(row).map((subject) => hotelMailSubjectKey(subject)));
-    const matches = turns
+    const group = deskTurns(turns, row.booking_item_id, keys);
+    const incoming = turns
       .filter((turn) => turn.booking_item_id === row.booking_item_id && keys.has(turn.subject_key) && turn.counts_as_reply)
       .sort((a, b) => a.received_at.localeCompare(b.received_at));
-    if (!matches.length) continue;
-    const latest = matches[matches.length - 1];
+    const answered = supplierAnsweredLatest({ sentAt: row.sent_at, repliedAt: row.replied_at, turns: group });
+    if (!answered) {
+      if (row.status === "replied") {
+        await admin.from("crm_hotel_requests").update({ status: "sent" }).eq("id", row.id);
+      }
+      continue;
+    }
+    const latest = incoming[incoming.length - 1];
+    if (!latest) continue;
     const status = nextLetterStatus(row.status, true);
     if (status === "replied" && row.status !== "replied") replied += 1;
     await admin
@@ -528,11 +550,13 @@ async function mirrorThreadReplies(admin: Admin, bookingId: string, letters: Crm
   }
   for (const row of notes) {
     const keys = new Set(subjectsToFollow({ ...row, status: row.sent_at ? "sent" : "draft" }).map((subject) => hotelMailSubjectKey(subject)));
-    const matches = turns
+    const group = deskTurns(turns, row.booking_item_id, keys);
+    const incoming = turns
       .filter((turn) => turn.booking_item_id === row.booking_item_id && keys.has(turn.subject_key) && turn.counts_as_reply)
       .sort((a, b) => a.received_at.localeCompare(b.received_at));
-    const latest = matches[matches.length - 1];
-    if (!latest) continue;
+    const answered = supplierAnsweredLatest({ sentAt: row.sent_at, repliedAt: row.replied_at, turns: group });
+    const latest = incoming[incoming.length - 1];
+    if (!answered || !latest) continue;
     await admin
       .from("crm_hotel_messages")
       .update({
@@ -770,9 +794,29 @@ export async function sendHotelMessage(
   });
 }
 
+async function loadFollowUpTurns(admin: Admin, bookingId: string, itemId: string, subjects: string[]) {
+  const keys = subjects.map((subject) => hotelMailSubjectKey(subject)).filter(Boolean);
+  if (!keys.length) return [] as FollowUpTurn[];
+  const { data } = await admin
+    .from("crm_hotel_thread_messages")
+    .select("gmail_message_id, received_at, direction, subject_key, counts_as_reply")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .in("subject_key", keys);
+  return ((data || []) as Pick<CrmHotelThreadMessage, "gmail_message_id" | "received_at" | "direction" | "subject_key" | "counts_as_reply">[]).map(
+    (turn) => ({
+      id: turn.gmail_message_id,
+      at: turn.received_at,
+      direction: turn.direction,
+      subjectKey: turn.subject_key,
+      countsAsReply: turn.counts_as_reply,
+    })
+  );
+}
+
 /**
  * Relance confirmée par l’agence. Même fil, sans pièce jointe et sans nouveau lien carte.
- * Le courrier d’origine reste dans le fil. Rien ne part si l’hôtel a déjà répondu.
+ * Le dernier message du fil doit être le nôtre. Une réponse plus ancienne ne ferme pas la relance.
  */
 export async function sendHotelFollowUp(
   admin: Admin,
@@ -810,8 +854,13 @@ export async function sendHotelFollowUp(
       .maybeSingle();
     const row = data as CrmHotelRequest | null;
     if (!row?.sent_at) throw new Error("Ce courrier n’a pas encore été envoyé.");
-    if (row.status === "replied" || row.replied_at) throw new Error("L’hôtel a déjà répondu.");
-    if (row.status !== "sent" && row.status !== "follow_up") throw new Error("Ce courrier ne se relance pas.");
+    const refusal = followUpRefused({
+      sentAt: row.sent_at,
+      status: row.status,
+      repliedAt: row.replied_at,
+      turns: await loadFollowUpTurns(admin, input.bookingId, input.itemId, subjectsToFollow(row)),
+    });
+    if (refusal) throw new Error(refusal);
     await rememberOriginalTurn(admin, {
       bookingId: input.bookingId,
       itemId: input.itemId,
@@ -856,7 +905,17 @@ export async function sendHotelFollowUp(
     .maybeSingle();
   const message = messageRow as CrmHotelMessage | null;
   if (!message?.sent_at) throw new Error("Ce message n’a pas encore été envoyé.");
-  if (message.replied_at) throw new Error("L’hôtel a déjà répondu.");
+  const messageRefusal = followUpRefused({
+    sentAt: message.sent_at,
+    repliedAt: message.replied_at,
+    turns: await loadFollowUpTurns(
+      admin,
+      input.bookingId,
+      input.itemId,
+      subjectsToFollow({ ...message, status: "sent" })
+    ),
+  });
+  if (messageRefusal) throw new Error(messageRefusal);
   await rememberOriginalTurn(admin, {
     bookingId: input.bookingId,
     itemId: input.itemId,
@@ -1218,7 +1277,7 @@ async function deliverHotelMail(mail: {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("L'envoi n'est pas configuré.");
   const resend = new Resend(apiKey);
-  const { error } = await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: `${siteConfig.name} <${HOTEL_DESK_FROM}>`,
     to: mail.to,
     cc: mail.carriesCardLink ? tokenMailCc(mail.cc) : agencyCopyCc(mail.to, mail.cc),
@@ -1229,6 +1288,7 @@ async function deliverHotelMail(mail: {
     attachments: mail.attachments.map((file) => ({ filename: file.filename, content: file.content })),
   });
   if (error) throw new Error("L'envoi du mail a échoué.");
+  await rememberSentMail({ subject: mail.subject, resendId: data?.id, source: "hotel-desk" });
 }
 
 export async function saveUploadedClientCard(

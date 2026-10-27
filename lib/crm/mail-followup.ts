@@ -114,10 +114,7 @@ export function followUpMarks(turns: FollowUpTurn[], nowMs: number) {
     const outs = ordered.filter((turn) => turn.direction === "out");
     const last = outs[outs.length - 1];
     if (!last) continue;
-    const replied = ordered.some(
-      (turn) => turn.direction === "in" && turn.countsAsReply && turn.id !== last.id && turn.at >= last.at
-    );
-    if (replied) continue;
+    if (supplierRepliedAfterLatestSend(ordered)) continue;
     const at = Date.parse(last.at);
     marks.set(last.id, {
       followUps: Math.max(0, outs.length - 1),
@@ -125,4 +122,49 @@ export function followUpMarks(turns: FollowUpTurn[], nowMs: number) {
     });
   }
   return marks;
+}
+
+function latestOutbound(turns: FollowUpTurn[]) {
+  const outs = turns.filter((turn) => turn.direction === "out");
+  if (!outs.length) return null;
+  return [...outs].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id)).at(-1) || null;
+}
+
+/** Vrai seulement si une réponse d’hôtel arrive après le dernier envoi du fil. */
+export function supplierRepliedAfterLatestSend(turns: FollowUpTurn[]) {
+  const last = latestOutbound(turns);
+  if (!last) return false;
+  return turns.some((turn) => turn.direction === "in" && turn.countsAsReply && turn.at >= last.at);
+}
+
+/**
+ * Le courrier est répondu si l’hôtel a écrit après notre dernier message.
+ * Sans message sortant dans le fil, l’heure de réponse stockée est comparée à l’envoi.
+ */
+export function supplierAnsweredLatest(input: {
+  sentAt: string | null;
+  repliedAt?: string | null;
+  turns: FollowUpTurn[];
+}) {
+  const last = latestOutbound(input.turns);
+  const lastOut = last?.at || input.sentAt;
+  if (!lastOut) return false;
+  if (input.turns.some((turn) => turn.direction === "in" && turn.countsAsReply && turn.at >= lastOut)) return true;
+  if (!last && input.repliedAt && input.repliedAt >= lastOut) return true;
+  return false;
+}
+
+/** Null : le dernier message est le nôtre, la relance peut être préparée. */
+export function followUpRefused(input: {
+  sentAt: string | null;
+  status?: string | null;
+  repliedAt?: string | null;
+  turns: FollowUpTurn[];
+}) {
+  if (!input.sentAt) return "Ce courrier n’a pas encore été envoyé.";
+  if (supplierAnsweredLatest(input)) return "L’hôtel a déjà répondu.";
+  if (input.status && input.status !== "sent" && input.status !== "follow_up" && input.status !== "replied") {
+    return "Ce courrier ne se relance pas.";
+  }
+  return null;
 }

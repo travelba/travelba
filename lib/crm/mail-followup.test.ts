@@ -11,6 +11,7 @@ import {
   followUpExcerpt,
   followUpHref,
   followUpMarks,
+  followUpRefused,
   isUnanswered,
 } from "./mail-followup";
 
@@ -104,4 +105,37 @@ test("une absence ne ferme pas le fil, une réponse oui", () => {
     now
   );
   assert.equal(closed.size, 0);
+});
+
+test("une réponse ancienne ne ferme pas la relance du dernier message", () => {
+  const key = hotelMailSubjectKey("Samuel Chocron - Transfer - Sofitel Agadir Thalassa Sea & Spa - 28 October 2026 - QSXDDQSP");
+  const turns = [
+    { id: "out-1", at: "2026-10-25T19:52:35.000Z", direction: "out" as const, subjectKey: key, countsAsReply: false },
+    { id: "in-1", at: "2026-10-26T14:56:24.000Z", direction: "in" as const, subjectKey: key, countsAsReply: true },
+    { id: "out-2", at: "2026-10-26T16:48:41.000Z", direction: "out" as const, subjectKey: key, countsAsReply: false },
+  ];
+  const marks = followUpMarks(turns, Date.parse("2026-10-27T08:00:00.000Z"));
+  assert.equal(marks.get("out-1"), undefined);
+  assert.equal(marks.has("out-2"), true);
+  assert.equal(
+    followUpRefused({ status: "replied", sentAt: "2026-10-25T19:52:35.000Z", repliedAt: "2026-10-26T14:56:24.000Z", turns }),
+    null
+  );
+  const quoted = followUpBody({
+    body: "Bonjour,\n\nNous faisons suite à votre message.\nNous avons besoin de deux sièges bébé ; pouvez vous me confirmer le prix ?\n2 adultes, 1 enfants, 2 sièges bébé",
+    sentAt: "2026-10-26T16:48:41.000Z",
+  });
+  assert.match(quoted, /deux sièges bébé/);
+  assert.match(quoted, /confirmer le prix/);
+  assert.match(quoted, /2 adultes, 1 enfants, 2 sièges bébé/);
+
+  const answered = [
+    ...turns,
+    { id: "in-2", at: "2026-10-26T18:00:00.000Z", direction: "in" as const, subjectKey: key, countsAsReply: true },
+  ];
+  assert.equal(followUpMarks(answered, Date.parse("2026-10-27T08:00:00.000Z")).size, 0);
+  assert.equal(
+    followUpRefused({ status: "replied", sentAt: "2026-10-25T19:52:35.000Z", repliedAt: "2026-10-26T18:00:00.000Z", turns: answered }),
+    "L’hôtel a déjà répondu."
+  );
 });
