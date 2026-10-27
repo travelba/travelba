@@ -97,7 +97,7 @@ import {
 } from "@/lib/crm/staff-stay";
 import { type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
-import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
+import { travelersMissingPassport } from "@/lib/crm/trip-documents";
 import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import {
@@ -966,11 +966,11 @@ export function BookingEditor({
 
   const updatesPending = revealItems.length > 0 || revealDocs.length > 0;
   const showPrimaryPublish = !booking.visible_to_client || updatesPending;
-  const passportGap = travelers.filter(
-    (traveler) =>
-      tripDocumentsForTraveler(identityDocs, traveler).length === 0 &&
-      reusableDocumentsForTraveler(identityDocs, traveler, holderProfile).length === 0
-  );
+  const passportGap = travelersMissingPassport(travelers, identityDocs, {
+    holder: holderProfile,
+    companions,
+    returnOn: booking.end_date || booking.start_date,
+  });
   const hotelLetters = hotelTripChecklist(hotelRequests);
   const hasFlight = bookingHasFlight(items);
   const leOpen =
@@ -1921,16 +1921,12 @@ export function BookingEditor({
             documents={identityDocs}
             holder={holderProfile}
             companions={companions}
-            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile, booking)}
+            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile, booking, companions)}
             scans={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
             onRemove={(id) => removeTraveler(id)}
           />
         )}
-        {travelers.some(
-          (traveler) =>
-            tripDocumentsForTraveler(identityDocs, traveler).length === 0 &&
-            reusableDocumentsForTraveler(identityDocs, traveler, holderProfile).length === 0
-        ) ? (
+        {passportGap.length ? (
           <Link
             href={`/admin/clients/${booking.customer_id}`}
             className="inline-flex text-sm font-semibold text-[var(--admin-navy)] underline"

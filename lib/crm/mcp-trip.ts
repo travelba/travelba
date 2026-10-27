@@ -29,7 +29,7 @@ import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
-import { addedTravelerNames, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
+import { addedTravelerNames, holderMatchesAddedTraveler, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
@@ -799,7 +799,7 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
       throw new McpWriteError("Ce compagnon ne correspond pas au nom indiqué.");
     }
   }
-  const isHolder = !known && Boolean(prenoms && nom) && sameAddedTraveler(personOf(holder), query);
+  const isHolder = !known && Boolean(prenoms && nom) && holderMatchesAddedTraveler(personOf(holder), query);
   if (!known && !isHolder) {
     const matches = companions.filter((row) => sameAddedTraveler(personOf(row), query));
     known = pickCompanion(matches, passportIds);
