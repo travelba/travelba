@@ -35,6 +35,7 @@ const EXPECTED = [
   "creer_client",
   "mettre_a_jour_client",
   "ajouter_piece",
+  "requalifier_piece",
   "notifier_piece",
   "notifier_carte_embarquement",
   "creer_dossier",
@@ -66,6 +67,7 @@ const WRITE_TOOLS = [
   "creer_client",
   "mettre_a_jour_client",
   "ajouter_piece",
+  "requalifier_piece",
   "notifier_piece",
   "notifier_carte_embarquement",
   "creer_dossier",
@@ -133,6 +135,15 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);
+  const requalifier = MCP_TOOLS.find((tool) => tool.name === "requalifier_piece");
+  assert.equal(requalifier?.write, true);
+  assert.equal(requalifier?.openWorld, undefined);
+  assert.equal(requalifier?.pieceNumbers, undefined);
+  assert.equal(requalifier?.signedUrl, undefined);
+  assert.match(requalifier?.description || "", /document_id/);
+  assert.match(requalifier?.description || "", /carte d’embarquement/);
+  assert.match(requalifier?.description || "", /n’est pas recopié/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.description || "", /carte_embarquement/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
   const carte = MCP_TOOLS.find((tool) => tool.name === "notifier_carte_embarquement");

@@ -32,7 +32,7 @@ import {
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { notifyBoardingPass } from "@/lib/crm/mcp-boarding-pass";
-import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
+import { addTravelPiece, notifyTravelPiece, requalifyPiece } from "@/lib/crm/mcp-piece";
 import {
   addAccueilVip,
   addHotel,
@@ -53,7 +53,7 @@ import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 46;
+export const MCP_TOOL_CAP = 47;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -574,7 +574,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays) sont écrits ; délivrance, autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » au client et au voyageur concerné s’il a un autre numéro. Une fiche qui a activé WhatsApp reçoit le modèle avec bouton ; sinon le modèle sans lien, une fois approuvé. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. Le numéro n’est pas renvoyé.",
+      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays) sont écrits ; délivrance, autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » au client et au voyageur concerné s’il a un autre numéro. Une fiche qui a activé WhatsApp reçoit le modèle avec bouton ; sinon le modèle sans lien, une fois approuvé. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. carte_embarquement dépose un PDF sur le dossier, type carte d’embarquement, le même que le bouton Cartes d’embarquement : aucun WhatsApp. Le numéro n’est pas renvoyé.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
@@ -585,7 +585,7 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(80)
         .optional()
         .describe("Voyageur du dossier, ou accompagnateur déjà lié au client, sans dossier"),
-      type: z.string().trim().max(40).describe("visa, eta, passeport, carte_identite, assurance ou autre"),
+      type: z.string().trim().max(40).describe("visa, eta, passeport, carte_identite, assurance, autre ou carte_embarquement"),
       pays: z.string().trim().max(80).optional().describe("Pays émetteur, code ou nom. Pas la nationalité"),
       numero: z.string().trim().max(40).optional().describe("Numéro de la pièce. Il n’est pas renvoyé"),
       expiration: z.string().trim().max(40).optional().describe("Expiration, AAAA-MM-JJ"),
@@ -598,6 +598,21 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("WhatsApp « formalité prête ». Vrai si omis. false pour ne pas écrire au client"),
     },
     run: (args) => addTravelPiece(args),
+  },
+  {
+    name: "requalifier_piece",
+    write: true,
+    description:
+      "Change le type d’une pièce déjà liée à son dossier. document_id et type : visa, eta, passeport, carte_identite, assurance, autre ou carte_embarquement. carte_embarquement aligne la pièce sur le PDF du dossier (type carte d’embarquement) que le bouton Cartes d’embarquement et notifier_carte_embarquement attendent. Le même identifiant est conservé, le fichier n’est pas recopié, aucun message ne part. Une pièce déjà sur le dossier ne se requalifie qu’en carte d’embarquement ou autre. Une pièce sans séjour n’est pas touchée. Le numéro n’est pas renvoyé.",
+    input: {
+      document_id: z.string().trim().max(80).describe("Identifiant de la pièce déjà déposée"),
+      type: z
+        .string()
+        .trim()
+        .max(40)
+        .describe("visa, eta, passeport, carte_identite, assurance, autre ou carte_embarquement"),
+    },
+    run: (args) => requalifyPiece(args),
   },
   {
     name: "notifier_piece",
