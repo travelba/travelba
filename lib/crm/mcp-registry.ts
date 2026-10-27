@@ -634,9 +634,29 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Envoie au client du dossier la carte d’embarquement déjà déposée. document_id : PDF de type carte d’embarquement. Le fichier part en en-tête Document du modèle carte_embarquement. Un envoi déjà parti ne repart pas. Sans modèle approuvé par Meta, rien ne part et la réponse décrit le modèle à soumettre. Le numéro de pièce n’est pas renvoyé.",
+      "Envoie au client du dossier la carte d’embarquement déjà déposée. document_id : PDF de type carte d’embarquement. Le fichier part en en-tête Document du modèle carte_embarquement. Un PDF de plusieurs pages (une page par passager ; un bébé reste sur la page de l’adulte) part en un message par passager, avec le prénom, le vol, le trajet, l’horaire et le siège lus sur la page. Rien n’est inventé. Si la lecture échoue : prenom, vol, trajet, date_heure, siege, ou passagers (mêmes champs, nom facultatif). Un passager déjà prévenu ne repart pas. Sans modèle approuvé par Meta, rien ne part et la réponse décrit le modèle à soumettre. Le numéro de pièce n’est pas renvoyé.",
     input: {
       document_id: z.string().trim().max(80).describe("Identifiant de la carte d’embarquement déjà sur le dossier"),
+      prenom: z.string().trim().max(80).optional().describe("Prénom, si la lecture du PDF a échoué"),
+      nom: z.string().trim().max(80).optional().describe("Nom, facultatif, si la lecture du PDF a échoué"),
+      vol: z.string().trim().max(40).optional().describe("Vol, si la lecture du PDF a échoué"),
+      trajet: z.string().trim().max(80).optional().describe("Trajet, si la lecture du PDF a échoué"),
+      date_heure: z.string().trim().max(60).optional().describe("Date et heure de départ, si la lecture du PDF a échoué"),
+      siege: z.string().trim().max(12).optional().describe("Siège, si la lecture du PDF a échoué"),
+      passagers: z
+        .array(
+          z.object({
+            prenom: z.string().trim().max(80),
+            nom: z.string().trim().max(80).optional(),
+            vol: z.string().trim().max(40),
+            trajet: z.string().trim().max(80),
+            date_heure: z.string().trim().max(60),
+            siege: z.string().trim().max(12),
+          })
+        )
+        .max(9)
+        .optional()
+        .describe("Un passager par page, si la lecture du PDF a échoué. Rien n’est inventé."),
     },
     run: (args) => notifyBoardingPass(args),
   },

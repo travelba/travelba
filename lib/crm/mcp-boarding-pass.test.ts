@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { boardingPassSendKey } from "./boarding-pass-pdf";
 import { boardingPassDedupeKey, boardingPassUnapprovedMessage } from "./boarding-pass-whatsapp";
 import { notifyBoardingPass } from "./mcp-boarding-pass";
 import { McpWriteError } from "./mcp-write";
@@ -264,6 +265,142 @@ test("un siège absent ou une autre pièce n’envoie rien", async () => {
   await rejection(() => notifyBoardingPass({ document_id: DOC }, other.admin, other.deps()));
   assert.equal(other.sends.length, 0);
   await rejection(() => notifyBoardingPass({ document_id: "levy" }, other.admin, other.deps()));
+});
+
+function transaviaPage(input: { seq: string; name: string; infant?: string; seat: string }) {
+  return [
+    "Carte d’embarquement",
+    `Seq. nr. TO3004:${input.seq}`,
+    input.name,
+    input.infant ? `Avec bébé (${input.infant})` : "",
+    "Référence de réservation: AB1CDE",
+    "Ce bagage sera à placer à bord sous le siège devant vous.",
+    "La porte d'embarquement ferme 20 minutes avant l’heure de départ.",
+    `Seq. nr. TO3004:${input.seq}`,
+    "Date/Date",
+    "28-10-2026",
+    "Heure de départ",
+    "07:55",
+    "Flight number/Numéro de vol",
+    "TO 3004",
+    "Seat/Siège",
+    `${input.seat} (Zone 3)`,
+    "PARIS (ORLY) (ORY) AGADIR (AGA)",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+const TRANSAVIA = [
+  transaviaPage({ seq: "4", name: "Camille MARTIN", infant: "Noah MARTIN", seat: "2F" }),
+  transaviaPage({ seq: "5", name: "Léa MARTIN", seat: "3A" }),
+  transaviaPage({ seq: "6", name: "Adam MARTIN", seat: "2E" }),
+];
+
+test("un PDF Transavia part une fois par passager, puis plus", async () => {
+  const previous = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  try {
+    const crm = fakeCrm({ seat: "" });
+    const deps = { ...crm.deps(), readPages: async () => TRANSAVIA };
+    const first = await notifyBoardingPass({ document_id: DOC, siege: "9Z" }, crm.admin, deps);
+    assert.equal(first.statut, "envoye");
+    assert.equal(crm.sends.length, 3);
+    assert.deepEqual(
+      crm.sends.map((row) => row.variables?.["2"]),
+      ["Camille", "Léa", "Adam"]
+    );
+    assert.deepEqual(
+      crm.sends.map((row) => row.variables?.["6"]),
+      ["2F", "3A", "2E"]
+    );
+    assert.equal(crm.sends[0].variables?.["3"], "TO 3004");
+    assert.equal(crm.sends[0].variables?.["4"], "Paris (Orly) → Agadir");
+    assert.match(crm.sends[0].variables?.["5"] || "", /07h55/);
+    assert.equal(JSON.stringify(crm.sends).includes("Noah"), false);
+    assert.equal(JSON.stringify(crm.sends).includes("9Z"), false);
+    assert.deepEqual(
+      crm.tables.crm_whatsapp_messages.map((row) => row.dedupe_key),
+      [boardingPassSendKey(DOC, 1, 3), boardingPassSendKey(DOC, 2, 3), boardingPassSendKey(DOC, 3, 3)]
+    );
+    const second = await notifyBoardingPass({ document_id: DOC }, crm.admin, deps);
+    assert.equal(second.statut, "deja_envoye");
+    assert.equal(second.notifie, false);
+    assert.equal(crm.sends.length, 3);
+  } finally {
+    if (previous === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previous;
+  }
+});
+
+test("un passager déjà envoyé ne repart pas, les autres oui", async () => {
+  const previous = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  try {
+    const crm = fakeCrm({
+      seat: "",
+      messages: [
+        {
+          id: "page-1",
+          booking_id: BOOKING,
+          status: "sent",
+          twilio_sid: "SMpage",
+          template_key: "carte_embarquement",
+          dedupe_key: boardingPassSendKey(DOC, 1, 3),
+          payload: { document_id: DOC, page: 1 },
+        },
+      ],
+    });
+    const result = await notifyBoardingPass({ document_id: DOC }, crm.admin, {
+      ...crm.deps(),
+      readPages: async () => TRANSAVIA,
+    });
+    assert.equal(result.statut, "envoye");
+    assert.equal(crm.sends.length, 2);
+    assert.deepEqual(
+      crm.sends.map((row) => row.variables?.["6"]),
+      ["3A", "2E"]
+    );
+    assert.equal(result.passagers?.find((row) => row.siege === "2F")?.statut, "deja_envoye");
+  } finally {
+    if (previous === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previous;
+  }
+});
+
+test("sans lecture, les champs saisis partent une fois et un champ manquant n’envoie rien", async () => {
+  const previous = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  try {
+    const crm = fakeCrm({ seat: "" });
+    const input = {
+      document_id: DOC,
+      prenom: "Camille",
+      vol: "TO 3004",
+      trajet: "Paris → Agadir",
+      date_heure: "28 oct. 2026 à 07h55",
+      siege: "2F",
+    };
+    const first = await notifyBoardingPass(input, crm.admin, crm.deps());
+    assert.equal(first.statut, "envoye");
+    assert.equal(crm.sends.length, 1);
+    assert.equal(crm.sends[0].variables?.["2"], "Camille");
+    assert.equal(crm.sends[0].variables?.["6"], "2F");
+    assert.equal(crm.tables.crm_whatsapp_messages[0].dedupe_key, boardingPassDedupeKey(DOC));
+    const second = await notifyBoardingPass(input, crm.admin, crm.deps());
+    assert.equal(second.statut, "deja_envoye");
+    assert.equal(crm.sends.length, 1);
+
+    const gap = fakeCrm({ seat: "" });
+    await rejection(() =>
+      notifyBoardingPass({ document_id: DOC, prenom: "Camille", vol: "TO 3004" }, gap.admin, gap.deps())
+    );
+    assert.equal(gap.sends.length, 0);
+    assert.equal(gap.tables.crm_whatsapp_messages.length, 0);
+  } finally {
+    if (previous === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previous;
+  }
 });
 
 test("deux demandes simultanées ne partent qu’une fois", async () => {
