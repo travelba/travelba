@@ -52,6 +52,8 @@ export function staffBlockingChips(input: {
   marginStale?: boolean;
   /** Cartes hôtel dont Pliant a refusé l’émission, une fois pour toutes. */
   cardAlerts?: number;
+  /** Vols dont l’enregistrement en ligne est ouvert et pas encore fait. */
+  checkinAlerts?: number;
 }): StaffBlocker[] {
   const missing = new Set(input.missingPassportIds);
   const chips: StaffBlocker[] = [];
@@ -77,6 +79,13 @@ export function staffBlockingChips(input: {
     chips.push({
       id: "pliant-card",
       label: cardAlerts > 1 ? `${cardAlerts} cartes hôtel refusées` : "Carte hôtel refusée",
+    });
+  }
+  const checkinAlerts = input.checkinAlerts || 0;
+  if (checkinAlerts > 0) {
+    chips.push({
+      id: "checkin",
+      label: checkinAlerts > 1 ? `${checkinAlerts} enregistrements ouverts` : "Enregistrement ouvert",
     });
   }
   return chips;

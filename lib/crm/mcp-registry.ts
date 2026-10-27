@@ -49,11 +49,12 @@ import {
 } from "@/lib/crm/mcp-trip";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
+import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 47;
+export const MCP_TOOL_CAP = 48;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -200,7 +201,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). carte_id sert à modifier_vol et à modifier_hotel. voyageur_id sert à modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -981,6 +982,24 @@ export const MCP_TOOLS: ToolDef[] = [
       document_id: z.string().trim().max(80).optional().describe("Confirmation déjà déposée sur le dossier"),
     },
     run: (args) => addAccueilVip(args),
+  },
+  {
+    name: "enregistrement_en_ligne",
+    write: true,
+    description:
+      "Enregistrement en ligne d’un vol du dossier. Sans statut : lecture, pour vérifier avant de proposer un enregistrement (statut, heure d’ouverture, qui l’a fait, alerte si c’est ouvert et pas fait). Avec carte_id et statut : met à jour. Statuts : à faire, ouvert, en cours, fait, cartes reçues, envoyées au client. Une carte d’embarquement déjà au dossier passe à cartes reçues, un envoi déjà fait reste envoyées. L’auteur est le bot Enregistrement en ligne. Pas de passeport, pas de MRZ.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().max(80).optional().describe("Identifiant de la carte vol. Obligatoire pour changer le statut"),
+      statut: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("à faire, ouvert, en cours, fait, cartes reçues ou envoyées au client. Omis : lecture seule"),
+    },
+    run: (args) => enregistrementEnLigne(args),
   },
 ];
 

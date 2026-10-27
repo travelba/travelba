@@ -50,6 +50,7 @@ const EXPECTED = [
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
+  "enregistrement_en_ligne",
 ];
 
 const WRITE_TOOLS = [
@@ -82,6 +83,7 @@ const WRITE_TOOLS = [
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
+  "enregistrement_en_ligne",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {

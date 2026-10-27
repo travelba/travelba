@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { toAuditRow } from "./audit-events";
+import { syncCheckinSent } from "./online-checkin-db";
 import {
   BOARDING_PASS_MISSING,
   boardingPassPageTexts,
@@ -296,6 +297,11 @@ export async function notifyBoardingPass(
       ...(passengers.length > 1 ? { passagers: passengerStates(passengers, outcomes) } : {}),
     };
   }
+  const sentPassengers = passengers.filter((passenger) => outcomes.get(passenger.page) === "envoye");
+  await syncCheckinSent(db, bookingId, "bot", {
+    documentIds: [documentId],
+    flightLabels: sentPassengers.map((passenger) => passenger.flight),
+  });
   return {
     document_id: documentId,
     dossier_id: bookingId,

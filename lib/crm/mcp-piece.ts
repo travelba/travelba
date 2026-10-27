@@ -8,6 +8,7 @@ import { notifyFormalitiesReady, type FormalityAudience, type FormalityNotice, t
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { BOARDING_PASS_KIND, isBoardingPassFile } from "@/lib/crm/boarding-pass-whatsapp";
+import { syncCheckinWithPasses } from "@/lib/crm/online-checkin-db";
 import {
   assertBookingForCustomer,
   assertTravelerOnBooking,
@@ -614,6 +615,7 @@ async function storeBoardingPass(
     .select("id, file_name")
     .single();
   if (error) failDb(error, "Enregistrement impossible.");
+  await syncCheckinWithPasses(db, target.booking.id, "bot");
   const quiet = boardingPassQuiet(target.booking.reference);
   return {
     id: String(data?.id || ""),
@@ -711,6 +713,7 @@ async function requalifyBookingPiece(db: SupabaseClient, doc: BookingPieceRow, t
       .eq("booking_id", doc.booking_id);
     if (error) failDb(error, "Requalification impossible.");
   }
+  if (kind === BOARDING_PASS_KIND) await syncCheckinWithPasses(db, doc.booking_id, "bot");
   return pieceResult(doc.id, doc.booking_id, type, doc.file_name);
 }
 
@@ -736,6 +739,7 @@ async function moveTravelPieceToBoardingPass(db: SupabaseClient, doc: TravelPiec
     .eq("id", doc.id)
     .eq("booking_id", bookingId);
   if (deleteError) failDb(deleteError, "Requalification impossible.");
+  await syncCheckinWithPasses(db, bookingId, "bot");
   return pieceResult(doc.id, bookingId, "carte_embarquement", doc.file_name);
 }
 
