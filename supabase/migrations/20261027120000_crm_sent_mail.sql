@@ -1,6 +1,7 @@
 -- Journal des e-mails partis depuis le CRM.
 -- Objet, fil Gmail, identifiant RFC. Pas de corps.
--- Aucune ligne existante n’est modifiée. La file n’est pas classée.
+-- Aucune ligne existante n’est modifiée : la file déjà ouverte se classe
+-- avec scripts/archive-unrelated-inbox.ts, pas ici.
 
 create table if not exists public.crm_sent_mail (
   id uuid primary key default gen_random_uuid(),
