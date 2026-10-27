@@ -61,6 +61,7 @@ async function journal(input: {
   templateKey: string;
   body: string;
   twilioSid: string;
+  documentId?: string;
 }) {
   const admin = createServiceClient();
   const activity = await admin.from("crm_customer_activity").insert({
@@ -92,6 +93,7 @@ async function journal(input: {
     body: input.body,
     twilio_sid: input.twilioSid,
     status: "sent",
+    ...(input.documentId ? { payload: { document_id: input.documentId } } : {}),
   });
   if (message.error) console.error("[carte-embarquement] message", message.error.code ?? "?");
 }
@@ -183,6 +185,7 @@ export async function sendBoardingPassWhatsapp(
       templateKey: template,
       body: row.preview,
       twilioSid: result.sid,
+      documentId: row.documentId,
     });
     sent += 1;
   }

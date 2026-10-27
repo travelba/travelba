@@ -393,3 +393,26 @@ export function boardingPassDraftBody(template: BoardingPassTemplate) {
   const types = draft.create.types as { "twilio/media"?: { body?: string }; "twilio/text"?: { body?: string } };
   return types["twilio/media"]?.body || types["twilio/text"]?.body || null;
 }
+
+/** Une carte, un envoi. Le bouton du dossier et l’outil MCP partagent cette clé. */
+export function boardingPassDedupeKey(documentId: string) {
+  return `carte-embarquement:${documentId}`;
+}
+
+/**
+ * Modèle à déposer chez Meta quand `TWILIO_CONTENT_CARTE_EMBARQUEMENT` est absent
+ * ou pas encore approuvé. Le SID n’est pas dans ce texte.
+ */
+export function boardingPassUnapprovedMessage() {
+  const body = boardingPassDraftBody("carte_embarquement") || SINGLE_BODY;
+  return [
+    "Le modèle WhatsApp « carte_embarquement » n’est pas encore approuvé par Meta.",
+    "À soumettre : catégorie Utility, langue français, nom carte_embarquement.",
+    "En-tête : Document (PDF). Variable {{1}} : chemin du fichier, exemple exemple/carte-embarquement-exemple.pdf.",
+    `Adresse du document : ${siteConfig.url}/api/whatsapp/cartes/{{1}}.`,
+    "Variables : {{2}} prénom, {{3}} vol, {{4}} trajet, {{5}} date et heure, {{6}} siège.",
+    "Corps :",
+    body,
+    "Une fois approuvé, coller le SID dans TWILIO_CONTENT_CARTE_EMBARQUEMENT (Production), puis redéployer.",
+  ].join("\n");
+}

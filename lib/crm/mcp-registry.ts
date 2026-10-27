@@ -31,6 +31,7 @@ import {
   updateBooking,
   updateClient,
 } from "@/lib/crm/mcp-write";
+import { notifyBoardingPass } from "@/lib/crm/mcp-boarding-pass";
 import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
 import {
   addAccueilVip,
@@ -52,7 +53,7 @@ import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 45;
+export const MCP_TOOL_CAP = 46;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -612,6 +613,17 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("tous par défaut. voyageur : seulement le voyageur de la pièce, sans renvoyer le client"),
     },
     run: (args) => notifyTravelPiece(args),
+  },
+  {
+    name: "notifier_carte_embarquement",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie au client du dossier la carte d’embarquement déjà déposée. document_id : PDF de type carte d’embarquement. Le fichier part en en-tête Document du modèle carte_embarquement. Un envoi déjà parti ne repart pas. Sans modèle approuvé par Meta, rien ne part et la réponse décrit le modèle à soumettre. Le numéro de pièce n’est pas renvoyé.",
+    input: {
+      document_id: z.string().trim().max(80).describe("Identifiant de la carte d’embarquement déjà sur le dossier"),
+    },
+    run: (args) => notifyBoardingPass(args),
   },
   {
     name: "creer_dossier",

@@ -36,6 +36,7 @@ const EXPECTED = [
   "mettre_a_jour_client",
   "ajouter_piece",
   "notifier_piece",
+  "notifier_carte_embarquement",
   "creer_dossier",
   "ajouter_voyageur",
   "retirer_voyageur",
@@ -66,6 +67,7 @@ const WRITE_TOOLS = [
   "mettre_a_jour_client",
   "ajouter_piece",
   "notifier_piece",
+  "notifier_carte_embarquement",
   "creer_dossier",
   "ajouter_voyageur",
   "retirer_voyageur",
@@ -133,6 +135,14 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
+  const carte = MCP_TOOLS.find((tool) => tool.name === "notifier_carte_embarquement");
+  assert.equal(carte?.write, true);
+  assert.equal(carte?.openWorld, true);
+  assert.equal(carte?.pieceNumbers, undefined);
+  assert.equal(carte?.signedUrl, undefined);
+  assert.match(carte?.description || "", /document_id/);
+  assert.match(carte?.description || "", /ne repart pas/);
+  assert.match(carte?.description || "", /approuvé/);
   const visibilite = MCP_TOOLS.find((tool) => tool.name === "definir_visibilite_carte");
   assert.equal(visibilite?.write, true);
   assert.equal(visibilite?.openWorld, undefined);
