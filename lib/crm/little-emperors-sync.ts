@@ -2,6 +2,13 @@ import { deleteBookingById } from "@/lib/crm/delete-booking";
 import { cancellationApplyPlan, confirmationRefsAlign, referenceTokens } from "@/lib/crm/email-match";
 import { applyCancellationToBooking, persistNewBookingFromExtract } from "@/lib/crm/ingest-booking";
 import { hotelBookingStem } from "@/lib/crm/item-match";
+import {
+  automaticCardAudits,
+  confirmationForStamp,
+  hotelStampChanged,
+  planAutomaticHotelCancel,
+  type KnownLeRef,
+} from "@/lib/crm/le-card-guard";
 import { persistLittleEmperorsHotelContacts } from "@/lib/crm/le-hotel-contacts";
 import {
   decideLittleEmperorsAuto,
@@ -250,11 +257,66 @@ async function stampLeStay(admin: SupabaseClient, crmBookingId: string, booking:
   const active = (items || []).filter((item) => isActiveItem(item));
   const ids = leItemsForHotelStamp(active, booking);
   const matched = new Set(ids);
+  const incomingCancelled = isLeCancelled(booking.state);
   for (const item of active) {
     if (!matched.has(item.id)) continue;
-    const patch = leHotelStampPatch(item, booking, ids.length);
-    await admin.from("crm_booking_items").update(patch).eq("id", item.id);
+    const confirmation = confirmationForStamp(item.confirmation_ref, booking.confirmation_number, incomingCancelled);
+    const raw = leHotelStampPatch(item, { ...booking, confirmation_number: confirmation }, ids.length);
+    const patch = {
+      details: raw.details,
+      ...("confirmation_ref" in raw ? { confirmation_ref: raw.confirmation_ref } : {}),
+    };
+    if (!hotelStampChanged(item, patch)) continue;
+    await admin.from("crm_booking_items").update(patch).eq("id", item.id).eq("booking_id", crmBookingId);
   }
+}
+
+async function knownLeRefs(admin: SupabaseClient, crmBookingId: string, booking: LeBooking): Promise<KnownLeRef[]> {
+  const { data } = await admin
+    .from("crm_le_bookings")
+    .select("confirmation_number, state")
+    .eq("crm_booking_id", crmBookingId);
+  return [
+    ...((data || []) as { confirmation_number: string | null; state: string | null }[]).map((row) => ({
+      confirmation: row.confirmation_number,
+      state: row.state,
+    })),
+    { confirmation: booking.confirmation_number, state: booking.state },
+  ];
+}
+
+async function recordCardChanges(
+  admin: SupabaseClient,
+  input: {
+    bookingId: string;
+    customerId: string | null;
+    itemId: string;
+    source: string;
+    before: { lifecycle: string | null; visible_to_client: boolean };
+    patch: { lifecycle?: "cancelled"; visible_to_client?: false };
+  }
+) {
+  const rows = automaticCardAudits({
+    bookingId: input.bookingId,
+    customerId: input.customerId,
+    itemId: input.itemId,
+    source: input.source,
+    changes: [
+      {
+        field: "lifecycle",
+        oldValue: input.before.lifecycle,
+        newValue: input.patch.lifecycle || input.before.lifecycle,
+      },
+      {
+        field: "visible_to_client",
+        oldValue: input.before.visible_to_client,
+        newValue: input.patch.visible_to_client === false ? false : input.before.visible_to_client,
+      },
+    ],
+  });
+  if (!rows.length) return;
+  const { error } = await admin.from("crm_audit_events").insert(rows);
+  if (error) throw new Error(error.message);
 }
 
 async function ensureLeDossier(opts: {
@@ -281,7 +343,13 @@ async function ensureLeDossier(opts: {
   }
 }
 
-async function reflectCancellation(admin: SupabaseClient, crmBookingId: string, booking: LeBooking) {
+async function reflectCancellation(
+  admin: SupabaseClient,
+  crmBookingId: string,
+  booking: LeBooking,
+  source: string,
+  mode: "sync" | "agent"
+) {
   const { data: dossier } = await admin
     .from("crm_bookings")
     .select("id, customer_id, status, archived_at")
@@ -293,15 +361,62 @@ async function reflectCancellation(admin: SupabaseClient, crmBookingId: string, 
   const extract = leBookingExtract({ ...booking, state: "cancelled" });
   const plan = cancellationApplyPlan(extract, cards);
   const hasCards = cards.some((item) => countsAsCarnetCard(item.kind));
-  if (plan.itemIds.length === 0 && hasCards) {
+  const targets = cards.filter((item) => plan.itemIds.includes(item.id));
+  if (!targets.length) {
+    if (hasCards) return "unmatched_card";
+    await applyCancellationToBooking({
+      bookingId: crmBookingId,
+      customerId: dossier.customer_id,
+      extract,
+      visibleToClient: false,
+    });
+    return "cancelled";
+  }
+  const decision = planAutomaticHotelCancel({
+    items: targets.map((item) => ({
+      id: item.id,
+      confirmation_ref: item.confirmation_ref,
+      lifecycle: item.lifecycle,
+      visible_to_client: item.visible_to_client,
+    })),
+    matchedIds: targets.map((item) => item.id),
+    known: await knownLeRefs(admin, crmBookingId, booking),
+    mode,
+  });
+  if (!decision.updates.length) {
+    if (decision.keptBookedIds.length) return "kept";
+    if (targets.every((item) => item.lifecycle === "cancelled")) return "already";
     return "unmatched_card";
   }
-  await applyCancellationToBooking({
-    bookingId: crmBookingId,
-    customerId: dossier.customer_id,
-    extract,
-    visibleToClient: false,
-  });
+  if (decision.useLedgerCancellation) {
+    await applyCancellationToBooking({
+      bookingId: crmBookingId,
+      customerId: dossier.customer_id,
+      extract,
+      visibleToClient: false,
+    });
+  } else {
+    for (const update of decision.updates) {
+      const { error } = await admin
+        .from("crm_booking_items")
+        .update(update.patch)
+        .eq("id", update.id)
+        .eq("booking_id", crmBookingId);
+      if (error) throw new Error(error.message);
+    }
+  }
+  for (const update of decision.updates) {
+    const item = targets.find((row) => row.id === update.id);
+    if (!item) continue;
+    await recordCardChanges(admin, {
+      bookingId: crmBookingId,
+      customerId: dossier.customer_id,
+      itemId: item.id,
+      source,
+      before: { lifecycle: item.lifecycle || null, visible_to_client: Boolean(item.visible_to_client) },
+      patch: update.patch,
+    });
+  }
   return "cancelled";
 }
 
@@ -355,7 +470,7 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
     const cancelledRemote = isLeCancelled(booking.state);
     let lastError: string | null = null;
     if (cancelledRemote && crmBookingId) {
-      const result = await reflectCancellation(admin, crmBookingId, booking);
+      const result = await reflectCancellation(admin, crmBookingId, booking, "little_emperors_sync", "sync");
       if (result === "cancelled") cancelled += 1;
       if (result === "unmatched_card") {
         lastError = "Annulation Little Emperors reçue, sans carte hôtel correspondante sur le dossier.";
@@ -454,7 +569,7 @@ export async function upsertLittleEmperorsWebhook(event: string, booking: LeBook
   let lastError: string | null = null;
   let cancelled = 0;
   if (cancelledRemote && crmBookingId) {
-    const result = await reflectCancellation(admin, crmBookingId, merged);
+    const result = await reflectCancellation(admin, crmBookingId, merged, "little_emperors_webhook", "sync");
     if (result === "cancelled") cancelled = 1;
     if (result === "unmatched_card") {
       lastError = "Annulation Little Emperors reçue, sans carte hôtel correspondante sur le dossier.";
@@ -645,7 +760,7 @@ export async function cancelLittleEmperorsFromCrm(id: string) {
   };
   let lastError: string | null = null;
   if (row.crm_booking_id) {
-    const result = await reflectCancellation(admin, row.crm_booking_id, booking);
+    const result = await reflectCancellation(admin, row.crm_booking_id, booking, "little_emperors_crm", "agent");
     if (result === "unmatched_card") {
       lastError = "Annulation envoyée à Little Emperors, sans carte hôtel correspondante sur le dossier.";
     }
