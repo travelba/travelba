@@ -154,6 +154,8 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(carte?.description || "", /document_id/);
   assert.match(carte?.description || "", /ne repart pas/);
   assert.match(carte?.description || "", /approuvé/);
+  assert.match(carte?.description || "", /passagers/);
+  assert.match(carte?.description || "", /Rien n’est inventé/);
   const visibilite = MCP_TOOLS.find((tool) => tool.name === "definir_visibilite_carte");
   assert.equal(visibilite?.write, true);
   assert.equal(visibilite?.openWorld, undefined);
