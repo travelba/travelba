@@ -32,22 +32,14 @@ test("publicité, code, guide API et newsletter sont ignorés sans modèle", () 
   });
 });
 
-test("une newsletter sur la boîte ouverte n’est pas une confirmation", () => {
-  assert.deepEqual(
+test("un label suivi reste dans la file, même s’il ressemble à une newsletter", () => {
+  assert.equal(
     classifyInboundMail({
       subject: "What kind of skier is your client?",
       text: "View this email in your browser. Unsubscribe.",
       label: "reservations-tba",
     }),
-    { reason: "Newsletter" }
-  );
-  assert.equal(
-    classifyInboundMail({
-      subject: "What kind of skier is your client?",
-      text: "View this email in your browser.",
-      label: "crm",
-    })?.reason,
-    "Newsletter"
+    null
   );
 });
 

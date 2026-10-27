@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { agencyAlerts } from "@/lib/crm/agency-alerts";
+import { shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
+import { loadSentMailIndex } from "@/lib/crm/sent-mail";
 import { requireStaff } from "@/lib/crm/auth";
 import { hotelReplyNotices, type HotelReplyNoticeRow } from "@/lib/crm/hotel-reply-notice";
 import { syncRecentHotelReplies } from "@/lib/crm/hotel-desk-run";
@@ -68,16 +70,44 @@ export async function GET(request: Request) {
     return notice;
   });
 
-  const { data: emails } = await admin
+  const noticed = await admin
     .from("crm_email_ingest")
     .select("id, subject, received_at")
     .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
+    .eq("crm_reply", true)
     .gt("received_at", since)
     .order("received_at", { ascending: true })
     .limit(8);
 
+  let emailRows = (noticed.data || []) as { id: string; subject: string | null; received_at: string }[];
+  if (noticed.error) {
+    const all = await admin
+      .from("crm_email_ingest")
+      .select("id, subject, received_at, from_email, gmail_thread_id, label")
+      .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
+      .gt("received_at", since)
+      .order("received_at", { ascending: true })
+      .limit(8);
+    const sent = await loadSentMailIndex(admin);
+    emailRows = ((all.data || []) as {
+      id: string;
+      subject: string | null;
+      received_at: string;
+      from_email: string | null;
+      gmail_thread_id: string | null;
+      label: string | null;
+    }[])
+      .filter((row) =>
+        shouldNotifyInboundMail(
+          { label: row.label, from: row.from_email, subject: row.subject, threadId: row.gmail_thread_id },
+          sent
+        )
+      )
+      .map((row) => ({ id: row.id, subject: row.subject, received_at: row.received_at }));
+  }
+
   const alerts = agencyAlerts({
-    emails: ((emails || []) as { id: string; subject: string | null; received_at: string }[]).map((row) => ({
+    emails: emailRows.map((row) => ({
       id: row.id,
       subject: row.subject,
       receivedAt: row.received_at,

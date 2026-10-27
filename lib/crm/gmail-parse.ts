@@ -162,38 +162,6 @@ export function collectAttachments(
   return out;
 }
 
-export type GmailMessageMeta = {
-  id: string;
-  threadId: string;
-  from: string;
-  fromEmail: string;
-  subject: string;
-  messageId: string;
-  inReplyTo: string;
-  references: string;
-  autoSubmitted: boolean;
-  receivedAt: string | null;
-};
-
-/** En-têtes seuls, pour décider si un mail de la boîte ouverte entre dans la file. */
-export function parseGmailMetadata(raw: RawGmailMessage): GmailMessageMeta {
-  const headers = raw.payload?.headers;
-  const from = headerValue(headers, "From");
-  const internal = raw.internalDate ? Number(raw.internalDate) : NaN;
-  return {
-    id: String(raw.id || ""),
-    threadId: String(raw.threadId || ""),
-    from,
-    fromEmail: extractEmailAddress(from),
-    subject: headerValue(headers, "Subject"),
-    messageId: headerValue(headers, "Message-ID"),
-    inReplyTo: headerValue(headers, "In-Reply-To"),
-    references: headerValue(headers, "References"),
-    autoSubmitted: autoSubmittedHeader(headers),
-    receivedAt: Number.isFinite(internal) ? new Date(internal).toISOString() : null,
-  };
-}
-
 export function parseGmailMessage(raw: RawGmailMessage): ParsedGmailMessage {
   const payload = raw.payload;
   const from = headerValue(payload?.headers, "From");

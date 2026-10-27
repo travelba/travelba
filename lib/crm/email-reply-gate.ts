@@ -1,13 +1,7 @@
-/** File ouverte (`reservations-tba`, `crm`) : seulement une réponse à un envoi du CRM. */
+/** Notification : seulement une réponse à un e-mail parti du CRM. La file garde le mail. */
 
 import { hotelMailSubjectKey } from "./hotel-desk";
-import { gmailLabelMatchKey } from "./gmail-parse";
 
-export const NOT_A_CRM_REPLY = "Pas une réponse à un e-mail envoyé depuis le CRM";
-export const AGENCY_COPY = "Copie envoyée depuis le CRM";
-export const AUTOMATIC_MAIL = "Message automatique";
-
-const OPEN_MAILBOX = new Set(["reservations-tba", "crm"]);
 const FORWARD_PREFIX = /^(?:fw|fwd|tr|wg|rv)\s*:/i;
 const REPLY_PREFIX = /^(?:re|ré|r|aw|antw|sv|vs)\s*:/i;
 
@@ -28,17 +22,8 @@ export type InboundGateInput = {
   autoSubmitted?: boolean;
 };
 
-export type InboundGateDecision =
-  | { action: "queue" }
-  | { action: "ignore"; reason: string }
-  | { action: "record-sent"; reason: string };
-
 export function emptySentMailIndex(): SentMailIndex {
   return { rfcIds: new Set(), threadIds: new Set(), subjectKeys: new Set() };
-}
-
-export function isOpenMailboxLabel(label: string | null | undefined) {
-  return OPEN_MAILBOX.has(gmailLabelMatchKey(label || ""));
 }
 
 /** Identifiant RFC comparable : sans chevrons, en minuscules. */
@@ -100,13 +85,11 @@ export function matchesCrmReply(input: InboundGateInput, sent: SentMailIndex) {
 }
 
 /**
- * Les labels de pièces passent. La boîte ouverte ne passe que si le dernier
- * échange est une réponse à un envoi du CRM. La copie d’agence est notée, pas mise en file.
+ * Notification seulement. La file « e-mails à relire » garde le mail.
+ * Vrai si ce message répond à un envoi du CRM, quel que soit le label.
  */
-export function decideInboundMail(input: InboundGateInput, sent: SentMailIndex): InboundGateDecision {
-  if (!isOpenMailboxLabel(input.label)) return { action: "queue" };
-  if (input.autoSubmitted || isAutomaticSender(input.from)) return { action: "ignore", reason: AUTOMATIC_MAIL };
-  if (isAgencySender(input.from)) return { action: "record-sent", reason: AGENCY_COPY };
-  if (matchesCrmReply(input, sent)) return { action: "queue" };
-  return { action: "ignore", reason: NOT_A_CRM_REPLY };
+export function shouldNotifyInboundMail(input: InboundGateInput, sent: SentMailIndex) {
+  if (input.autoSubmitted || isAutomaticSender(input.from)) return false;
+  if (isAgencySender(input.from)) return false;
+  return matchesCrmReply(input, sent);
 }
