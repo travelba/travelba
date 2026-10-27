@@ -13,7 +13,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Always-on : `.cursor/rules/travelba-core.mdc`
 - Index CRM : `.cursor/skills/travelba-voyage-crm/SKILL.md` (charger **un** skill spécialisé ensuite)
 - Import PDF/photos (dropzone, relecture) : `.cursor/skills/travelba-document-ingest/SKILL.md`
-- Gmail / `crm_email_ingest` (Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, labels `crm`, `reservations-tba` et `cdsgroupe.com`, dépôt des pièces au clic, cartes seulement sur un second clic) : `.cursor/skills/travelba-email-ingest/SKILL.md`
+- Gmail / `crm_email_ingest` (Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, cdsgroupe.com ; `crm` et `reservations-tba` seulement si réponse à un envoi du CRM ; dépôt des pièces au clic, cartes seulement sur un second clic) : `.cursor/skills/travelba-email-ingest/SKILL.md`
 - Formalité ETA-IL / ESTA / Royaume-Uni : `.cursor/skills/travelba-visa/SKILL.md`
 - Création / clone local : `.cursor/skills/travelba-bootstrap/SKILL.md`
 - Prod `travelba.fr` : `.cursor/skills/travelba-go-live/SKILL.md`

@@ -32,6 +32,25 @@ test("publicité, code, guide API et newsletter sont ignorés sans modèle", () 
   });
 });
 
+test("une newsletter sur la boîte ouverte n’est pas une confirmation", () => {
+  assert.deepEqual(
+    classifyInboundMail({
+      subject: "What kind of skier is your client?",
+      text: "View this email in your browser. Unsubscribe.",
+      label: "reservations-tba",
+    }),
+    { reason: "Newsletter" }
+  );
+  assert.equal(
+    classifyInboundMail({
+      subject: "What kind of skier is your client?",
+      text: "View this email in your browser.",
+      label: "crm",
+    })?.reason,
+    "Newsletter"
+  );
+});
+
 test("une confirmation fournisseur n’est pas écartée par le pied de page", () => {
   const text = `${"Confirmation de réservation à Milan. ".repeat(20)}Unsubscribe`;
   assert.equal(classifyInboundMail({ subject: "Booking", text, label: "little-emperors" }), null);

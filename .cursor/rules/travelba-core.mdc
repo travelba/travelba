@@ -24,7 +24,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 | Invite, magique, sessions | `travelba-auth` |
 | Carnet / publier / timeline | `travelba-carnet` |
 | **Import PDF/photos** (dropzone, relecture humaine) | `travelba-document-ingest` |
-| **Gmail / `crm_email_ingest`** (Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, labels `crm`, `reservations-tba` et `cdsgroupe.com`, création auto, rattachement manuel) | `travelba-email-ingest` |
+| **Gmail / `crm_email_ingest`** (Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, cdsgroupe.com ; `crm` et `reservations-tba` seulement si réponse à un envoi du CRM) | `travelba-email-ingest` |
 | Ledger / Stripe / Revolut | `travelba-money` |
 | Cursor Design / fichiers | `travelba-ui` |
 | Fiche / passeports | `travelba-identity` |
@@ -70,3 +70,5 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - Cacher une étape en l’enregistrant. `client_hidden` vient seulement du geste Cacher. Confirmer de **Montrer au client** reste éteint, et le dit, s’il ne reste que des fichiers. Une lecture douteuse nomme l’étape et la raison (`review_reason`, sinon le fichier option ou le nom qui est la ville). Skill `travelba-carnet`
 - Remettre un statut commercial à l’écran (À l’étude, Devis, Confirmée, En voyage, Terminée) ou la pastille « Montré au client ». Les trois états sont **En préparation**, **Visible**, **Archivée**. Le débit suit la visibilité. Skill `travelba-carnet`
 - Lire un passeport tourné seulement dans les 16 % du bas. Photo de téléphone, livret ouvert, table sous le livret : la MRZ est les deux lignes d’encre au-dessus de l’ombre du bord. Le cadre entier reste envoyé ; le bas n’est qu’une vue en plus. Un numéro coupé qui commence le numéro complet est le même livret : une seule fiche, la lecture qui a les dates. Le bout de la date d’expiration dans la MRZ n’est pas un n° personnel. Skill `travelba-identity`
+- Laisser entrer dans la file un mail `reservations-tba` ou `crm` qui ne répond pas à un envoi du CRM. Les labels de pièces restent. Le mail reste dans Gmail. Skill `travelba-email-ingest`
+- Refuser Relancer parce qu’une réponse plus ancienne existe. Relancer regarde le dernier message du fil. L’hôtel a répondu seulement s’il a écrit après notre dernier envoi. Le brouillon reprend ce dernier message. Rien ne part sans le clic.

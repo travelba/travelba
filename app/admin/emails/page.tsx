@@ -7,7 +7,7 @@ import { Pagination } from "@/components/admin/Pagination";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { ADMIN_PAGE_SIZE, pageRange, parsePage, type SearchParamValue } from "@/lib/crm/admin-list";
 import { HOTEL_DESK_LABELS } from "@/lib/crm/hotel-desk";
-import { followUpHref, outboundAnchor, UNANSWERED_AFTER_MS } from "@/lib/crm/mail-followup";
+import { followUpHref, outboundAnchor, supplierAnsweredLatest, UNANSWERED_AFTER_MS, type FollowUpTurn } from "@/lib/crm/mail-followup";
 import { replyHref } from "@/lib/crm/mail-reply";
 import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest, type HotelDeskKind } from "@/lib/crm/types";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
@@ -65,6 +65,15 @@ type SilentRequest = {
   replied_at?: string | null;
 };
 
+type ThreadBeat = {
+  request_id: string | null;
+  message_id: string | null;
+  gmail_message_id: string;
+  received_at: string;
+  direction: string;
+  counts_as_reply: boolean;
+};
+
 type SilentMessage = {
   id: string;
   booking_id: string;
@@ -85,7 +94,6 @@ async function loadUnansweredMails(supabase: SupabaseClient): Promise<Unanswered
       .select(requestColumns)
       .in("status", ["sent", "follow_up"])
       .is("last_follow_up_at", null)
-      .is("replied_at", null)
       .lt("sent_at", cutoff)
       .order("sent_at", { ascending: true })
       .limit(40),
@@ -94,13 +102,11 @@ async function loadUnansweredMails(supabase: SupabaseClient): Promise<Unanswered
       .select(requestColumns)
       .in("status", ["sent", "follow_up"])
       .lt("last_follow_up_at", cutoff)
-      .is("replied_at", null)
       .order("last_follow_up_at", { ascending: true })
       .limit(40),
     supabase
       .from("crm_hotel_messages")
       .select("id, booking_id, booking_item_id, subject, sent_at, replied_at")
-      .is("replied_at", null)
       .lt("sent_at", cutoff)
       .order("sent_at", { ascending: true })
       .limit(40),
@@ -110,41 +116,61 @@ async function loadUnansweredMails(supabase: SupabaseClient): Promise<Unanswered
   const messages = (notes || []) as SilentMessage[];
   const requestIds = [...new Set(requests.map((row) => row.id))];
   const messageIds = messages.map((row) => row.id);
-  const [requestReplies, messageReplies, messageOuts] = await Promise.all([
+  const [requestBeats, messageBeats] = await Promise.all([
     requestIds.length
       ? supabase
           .from("crm_hotel_thread_messages")
-          .select("request_id")
-          .eq("direction", "in")
-          .eq("counts_as_reply", true)
+          .select("request_id, message_id, gmail_message_id, received_at, direction, counts_as_reply")
           .in("request_id", requestIds)
-      : Promise.resolve({ data: [] as { request_id: string | null }[] }),
+      : Promise.resolve({ data: [] as ThreadBeat[] }),
     messageIds.length
       ? supabase
           .from("crm_hotel_thread_messages")
-          .select("message_id")
-          .eq("direction", "in")
-          .eq("counts_as_reply", true)
+          .select("request_id, message_id, gmail_message_id, received_at, direction, counts_as_reply")
           .in("message_id", messageIds)
-      : Promise.resolve({ data: [] as { message_id: string | null }[] }),
-    messageIds.length
-      ? supabase.from("crm_hotel_thread_messages").select("message_id").eq("direction", "out").in("message_id", messageIds)
-      : Promise.resolve({ data: [] as { message_id: string | null }[] }),
+      : Promise.resolve({ data: [] as ThreadBeat[] }),
   ]);
-  const answeredRequests = new Set(
-    ((requestReplies.data || []) as { request_id: string | null }[]).map((row) => row.request_id).filter(Boolean)
-  );
-  const answeredMessages = new Set(
-    ((messageReplies.data || []) as { message_id: string | null }[]).map((row) => row.message_id).filter(Boolean)
-  );
+  const beats = [...((requestBeats.data || []) as ThreadBeat[]), ...((messageBeats.data || []) as ThreadBeat[])];
+  const requestTurns = new Map<string, FollowUpTurn[]>();
+  const messageTurns = new Map<string, FollowUpTurn[]>();
   const outsByMessage = new Map<string, number>();
-  for (const row of (messageOuts.data || []) as { message_id: string | null }[]) {
-    if (!row.message_id) continue;
-    outsByMessage.set(row.message_id, (outsByMessage.get(row.message_id) || 0) + 1);
+  for (const beat of beats) {
+    const turn: FollowUpTurn = {
+      id: beat.gmail_message_id,
+      at: beat.received_at,
+      direction: beat.direction === "out" ? "out" : "in",
+      subjectKey: beat.request_id || beat.message_id || "",
+      countsAsReply: beat.counts_as_reply,
+    };
+    if (beat.request_id) {
+      const list = requestTurns.get(beat.request_id) || [];
+      list.push(turn);
+      requestTurns.set(beat.request_id, list);
+    }
+    if (beat.message_id) {
+      const list = messageTurns.get(beat.message_id) || [];
+      list.push(turn);
+      messageTurns.set(beat.message_id, list);
+      if (turn.direction === "out") outsByMessage.set(beat.message_id, (outsByMessage.get(beat.message_id) || 0) + 1);
+    }
   }
 
-  const openRequests = requests.filter((row) => !answeredRequests.has(row.id) && !row.replied_at);
-  const openMessages = messages.filter((row) => !answeredMessages.has(row.id));
+  const openRequests = requests.filter(
+    (row) =>
+      !supplierAnsweredLatest({
+        sentAt: outboundAnchor(row.sent_at, row.last_follow_up_at),
+        repliedAt: row.replied_at,
+        turns: requestTurns.get(row.id) || [],
+      })
+  );
+  const openMessages = messages.filter(
+    (row) =>
+      !supplierAnsweredLatest({
+        sentAt: row.sent_at,
+        repliedAt: row.replied_at,
+        turns: messageTurns.get(row.id) || [],
+      })
+  );
   const itemIds = [...new Set([...openRequests, ...openMessages].map((row) => row.booking_item_id))];
   const bookingIds = [...new Set([...openRequests, ...openMessages].map((row) => row.booking_id))];
   if (!itemIds.length) return [];

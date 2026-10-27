@@ -842,6 +842,25 @@ test("un envoi sans réponse se relance, une réponse retire le bouton", () => {
   assert.equal(htmlReply.includes("@"), false);
 });
 
+test("la relance regarde le dernier message, pas une réponse plus ancienne", () => {
+  const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
+  const start = src.indexOf("export async function sendHotelFollowUp");
+  const end = src.indexOf("export async function sendHotelReply");
+  const fn = src.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(fn, /followUpRefused/);
+  assert.match(fn, /loadFollowUpTurns/);
+  assert.doesNotMatch(fn, /status === "replied" \|\| row\.replied_at/);
+  assert.doesNotMatch(fn, /if \(message\.replied_at\)/);
+  const mirrorStart = src.indexOf("async function mirrorThreadReplies");
+  const mirrorEnd = src.indexOf("export async function loadHotelThread");
+  const mirror = src.slice(mirrorStart, mirrorEnd);
+  assert.match(mirror, /supplierAnsweredLatest/);
+  assert.match(mirror, /status: "sent"/);
+  const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
+  assert.match(thread, /Relancer/);
+});
+
 test("répondre réutilise l’envoi et relie ce message", () => {
   const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
   const start = src.indexOf("export async function sendHotelReply");
