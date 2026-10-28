@@ -54,6 +54,7 @@ const EXPECTED = [
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
+  "envoyer_releve",
 ];
 
 const WRITE_TOOLS = [
@@ -90,6 +91,7 @@ const WRITE_TOOLS = [
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
+  "envoyer_releve",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
@@ -219,6 +221,17 @@ test("mcp tools stay unique, named, and under the cap", () => {
     assert.equal(tool?.signedUrl, undefined);
     assert.equal(tool?.cardSecrets, undefined);
   }
+  const releve = MCP_TOOLS.find((tool) => tool.name === "envoyer_releve");
+  assert.equal(releve?.write, true);
+  assert.equal(releve?.openWorld, true);
+  assert.equal(releve?.pieceNumbers, undefined);
+  assert.equal(releve?.signedUrl, undefined);
+  assert.equal(releve?.cardSecrets, undefined);
+  assert.match(releve?.description || "", /TWILIO_CONTENT_RELEVE/);
+  assert.match(releve?.description || "", /cinq minutes/);
+  assert.match(releve?.description || "", /force/);
+  assert.match(releve?.description || "", /twilio_sid/);
+  assert.match(releve?.description || "", /e-mail n’est pas ouvert/);
 });
 
 test("passport tools name the travelba-passeports namespace and stay off the general token", () => {

@@ -29,6 +29,8 @@ function harness(extra?: {
   insertFails?: boolean;
   templateResult?: StatementSendOutcome;
   sessionResult?: StatementSendOutcome;
+  botId?: string | null;
+  staffId?: string | null;
 }) {
   const calls = { upload: 0, session: 0, template: 0, sessionUrl: "" };
   const rows: StatementJournalRow[] = [];
@@ -81,7 +83,8 @@ function harness(extra?: {
     previewBlocked: extra?.previewBlocked ?? false,
     now: NOW,
     prior,
-    staffId: "staff-1",
+    staffId: extra && "staffId" in extra ? extra.staffId || null : "staff-1",
+    botId: extra?.botId ?? null,
   };
   return { calls, rows, updates, input, deps };
 }
@@ -119,6 +122,9 @@ test("le modèle approuvé part hors fenêtre, avec le PDF en variable", async (
   assert.equal(rows[0].status, "sent");
   assert.equal(rows[0].template_key, "releve");
   assert.equal(rows[0].twilio_sid, "SMtemplate");
+  assert.equal(rows[0].author_staff_id, "staff-1");
+  assert.equal(rows[0].payload, null);
+  if (result.ok) assert.equal(result.sid, "SMtemplate");
   assert.match(rows[0].body, /Bonjour Raphael/);
   assert.match(rows[0].body, /relevé de compte/);
   const variables = statementContentVariables("token/Releve-de-compte.pdf", "Raphael Haim", false);
@@ -247,4 +253,18 @@ test("le jeton du relevé expire et ne vaut que pour ce compte", () => {
     if (preview === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = preview;
   }
+});
+
+test("un envoi du bot est attribué au jeton, pas à un collaborateur", async () => {
+  const { rows, input, deps } = harness({
+    templateSid: "HXreleve",
+    staffId: null,
+    botId: "mcp",
+  });
+  const result = await runStatementDelivery(input, deps);
+  assert.equal(result.ok, true);
+  assert.equal(rows[0].author_staff_id, null);
+  assert.deepEqual(rows[0].payload, { actor: "mcp" });
+  assert.equal(rows[0].status, "sent");
+  assert.equal(rows[0].twilio_sid, "SMtemplate");
 });
