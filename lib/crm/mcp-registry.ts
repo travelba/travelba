@@ -303,7 +303,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "emails_en_attente",
     description:
-      "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, rattacher (pièces seules), ou mettre_a_jour les cartes.",
+      "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, rattacher ou mettre_a_jour (pièces sur la carte qui correspond, aucune carte créée).",
     run: () => readEmailsEnAttente(),
   },
   {
@@ -525,7 +525,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "traiter_email",
     write: true,
     description:
-      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher exige dossier_id : dépose les pièces jointes sur le dossier, sans modifier ni créer de carte. Sans pièce, le mail est classé et rien n’est ajouté. mettre_a_jour est le geste séparé qui modifie ou crée les cartes, sans montrer le carnet.",
+      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher et mettre_a_jour exigent dossier_id : ils déposent les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Sans pièce, le mail est classé et rien n’est ajouté. Seul créer un dossier crée des cartes.",
     input: {
       id: z.string().trim().describe("Identifiant de l’e-mail en attente"),
       action: z.enum(["rattacher", "mettre_a_jour", "refuser"]).describe("rattacher, mettre_a_jour ou refuser"),
@@ -867,7 +867,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_vol",
     write: true,
     description:
-      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier). Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet. prix_total est le total du groupe, gardé au centime, sans prix unitaire imposé. Le séjour caché ne débite pas. Aucun message.",
+      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier) et ne change pas le prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet. prix_total est le total du groupe, gardé au centime, sans prix unitaire imposé. devise omise garde la devise déjà sur la carte (euro par défaut), pas la devise du document fournisseur. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),

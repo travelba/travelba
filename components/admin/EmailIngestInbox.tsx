@@ -31,7 +31,6 @@ import { emailHtmlHasText, sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { collapseSharedTicketPrice } from "@/lib/crm/item-match";
 import { collapseInboxRows } from "@/lib/crm/email-thread";
 import { proposalLine, type ProposalOp } from "@/lib/crm/import-proposal";
-import { inboxStayAction, type LifecycleCard } from "@/lib/crm/item-lifecycle";
 
 type ExtractItem = {
   kind?: string;
@@ -159,7 +158,7 @@ function pendingLabel(action: string) {
   if (action === "refuse") return "Refus…";
   if (action === "rematch") return "Nouvelle proposition…";
   if (action === "attach_booking") return "Dépôt…";
-  if (action === "apply_cards" || action === "replace_booking") return "Mise à jour des cartes…";
+  if (action === "apply_cards" || action === "replace_booking") return "Dépôt…";
   return "Rattachement…";
 }
 
@@ -168,18 +167,9 @@ function doneLabel(action: string) {
   if (action === "refuse") return "Le mail est classé sans dossier.";
   if (action === "attach_booking") return "Les pièces sont déposées. Les cartes n’ont pas changé.";
   if (action === "apply_cards" || action === "replace_booking") {
-    return "Les cartes du séjour sont mises à jour.";
+    return "Les pièces sont déposées. Les cartes n’ont pas changé.";
   }
   return "Le mail est classé sur le dossier.";
-}
-
-function cardsActionLabel(gesture: { action: string; label: string } | null) {
-  if (!gesture) return "Mettre à jour les cartes";
-  if (gesture.action === "cancel") return gesture.label;
-  if (gesture.label === "Rattacher au voyage" || gesture.label === "Classer l’annulation") {
-    return "Mettre à jour les cartes";
-  }
-  return gesture.label;
 }
 
 function itemLabel(kind: string | undefined) {
@@ -223,7 +213,6 @@ export function EmailIngestInbox({
   // Dernier client demandé par ligne : une réponse tardive d’un autre client est ignorée.
   const latestLoad = useRef<Record<string, string>>({});
   const [selectedBooking, setSelectedBooking] = useState<Record<string, string>>({});
-  const [selectedItem, setSelectedItem] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
   const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
@@ -843,7 +832,6 @@ export function EmailIngestInbox({
                     }}
                     onChange={(e) => {
                       setSelectedBooking((prev) => ({ ...prev, [row.id]: e.target.value }));
-                      setSelectedItem((prev) => ({ ...prev, [row.id]: "" }));
                     }}
                   >
                     {!options || loadingBookings ? (
@@ -868,52 +856,9 @@ export function EmailIngestInbox({
                   {(() => {
                     const picked = selectedBooking[row.id];
                     const depositBookingId = picked != null ? picked : row.suggested_booking_id || "";
-                    const stay = options?.find((booking) => booking.id === (picked || depositBookingId));
-                    const gesture = stay
-                      ? inboxStayAction({
-                          documentStatus: extract.document_status,
-                          incoming: items,
-                          bookingStatus: stay.statusKey,
-                          items: (stay.items || []) as LifecycleCard[],
-                          chosenItemId: selectedItem[row.id] || null,
-                        })
-                      : null;
-                    const waitingForCard = Boolean(gesture?.choices.length && !gesture.itemId);
-                    const cardLabel = cardsActionLabel(gesture);
+                    const cardLabel = "Mettre à jour les cartes";
                     return (
                       <>
-                        {gesture?.cancelCards?.length ? (
-                          <ul className="space-y-1 sm:col-span-2">
-                            {gesture.cancelCards.map((card) => (
-                              <li
-                                key={card.id}
-                                className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[#F4F1EA] px-3 py-2 text-sm"
-                              >
-                                <span className="text-muted line-through">{card.title}</span>
-                                <span className="inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
-                                  Serait annulée
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                        {gesture?.choices.length ? (
-                          <select
-                            className="admin-af-input text-sm sm:col-span-2"
-                            value={selectedItem[row.id] || ""}
-                            aria-label="Carte du séjour"
-                            onChange={(event) =>
-                              setSelectedItem((prev) => ({ ...prev, [row.id]: event.target.value }))
-                            }
-                          >
-                            <option value="">Choisir la carte à remplacer</option>
-                            {gesture.choices.map((card) => (
-                              <option key={card.id} value={card.id}>
-                                {itemLabel(card.kind)} — {card.title}
-                              </option>
-                            ))}
-                          </select>
-                        ) : null}
                         <div className="flex flex-wrap gap-2 sm:col-span-2">
                           <button
                             type="button"
@@ -931,14 +876,14 @@ export function EmailIngestInbox({
                           </button>
                           <button
                             type="button"
-                            disabled={isBusy || !picked || waitingForCard}
+                            disabled={isBusy || !picked}
                             aria-busy={isBusy || undefined}
                             className="admin-tap rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
                             onClick={() =>
                               act(row.id, {
                                 action: "apply_cards",
                                 booking_id: picked,
-                                item_id: gesture?.itemId || undefined,
+                                item_id: undefined,
                                 title: cardTitle.trim(),
                                 ...(drafts[row.id]
                                   ? {
@@ -956,9 +901,7 @@ export function EmailIngestInbox({
                           Déposer les pièces copie les fichiers sur le dossier. Les cartes ne changent pas.
                         </p>
                         <p className="text-xs text-muted sm:col-span-2">
-                          {gesture?.hint
-                            ? `${cardLabel}. ${gesture.hint}`
-                            : "Mettre à jour les cartes modifie ou crée les cartes du mail. Geste séparé."}
+                          Mettre à jour les cartes dépose les pièces sur la réservation qui correspond. Aucune carte n’est créée ni modifiée.
                         </p>
                       </>
                     );

@@ -3,8 +3,10 @@ name: travelba-email-ingest
 description: >-
   Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, booking-cancellation, crm, reservations-tba, cdsgroupe.com) → crm_email_ingest →
   parse → suggestions. La file garde tous ces mails. La notification ne part que pour une réponse à un envoi du CRM.
-  Déposer les pièces copie les fichiers sur le dossier,
-  sans carte. Mettre à jour les cartes est un second clic. Le parse ne crée
+  Déposer les pièces et Mettre à jour, sur un dossier déjà ouvert, copient les
+  fichiers sur la carte qui correspond (PNR, puis compagnie et trajet, puis
+  fournisseur) ou sur le dossier. Aucune carte n’est créée ni modifiée. Seul
+  Créer un dossier crée des cartes. Le parse ne crée
   plus de dossier et n’applique plus le séjour. Use when touching Gmail webhook, cron
   gmail-ingest / gmail-watch-renew, email-match, cancellation mail, or a booking
   confirmation. Dropzone PDF/photos (relecture humaine) : travelba-document-ingest.
@@ -22,19 +24,20 @@ n’en crée pas. Sans pièce utile (ou seulement une image de signature), le ma
 est classé et rien n’est ajouté. La même empreinte n’est pas déposée deux fois.
 Le mail reste lié au dossier (`attached`).
 
-**Mettre à jour les cartes** (`apply_cards`, MCP `mettre_a_jour`) est un second
-clic. Il applique remplacement ou annulation, puis dépose les pièces. Il ne part
-jamais tout seul. **Créer un dossier** reste un clic (brouillon caché, sans
-invitation). Le parse ne crée plus de fiche ni de dossier, et n’applique plus
-le séjour.
+**Mettre à jour** (`apply_cards`, MCP `mettre_a_jour`) sur un dossier déjà ouvert
+est le même geste que **Déposer les pièces** : les fichiers vont sur la carte
+qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le
+dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Il ne part
+jamais tout seul. **Créer un dossier** reste le seul clic qui crée des cartes
+(brouillon caché, sans invitation). Le parse ne crée plus de fiche ni de
+dossier, et n’applique plus le séjour.
 
 Deux séjours vers la même ville, deux cartes du même type, une annulation sans
 référence, un devis ou une pièce d’identité restent dans `/admin/emails` tant
 que l’agence n’a pas cliqué.
 
-L’IA **ne publie jamais** le carnet. Une carte nouvelle, si le clic Mettre à
-jour les cartes en crée une, reste cachée. Une carte déjà montrée, mise à jour
-sur la même référence, le reste. Elle **n’invite pas**.
+L’IA **ne publie jamais** le carnet. Un mail lié à un dossier existant
+n’ajoute pas de carte et n’en modifie pas. Elle **n’invite pas**.
 
 Un mail **remplit** une carte vol ou hôtel, puis vit avec les **pièces**. Il n’est jamais une étape glissable du voyage (ni l’original, ni le `Fw:`). Les doublons évidents (même passager + date de billet, même confirmation d’hôtel, Milano = Milan) se regroupent. Sur chaque fiche, la liste est **repliée** : fermée, elle dit qu’il y en a et combien ; ouverte, chaque copie grisée a **Écarter**. Écarter marque la ligne, ne la supprime pas, et ne retire pas la carte. Le fichier reste dans le dossier. Ne pas lancer soi-même un nettoyage des lignes prod.
 
@@ -72,8 +75,9 @@ rien. Le parse ne crée pas le dossier et n’applique pas les cartes. Le rematc
 non plus. `received` et `error` restent dans la file, pas seulement `parsed` /
 `matched`.
 
-Le clic **Mettre à jour les cartes** sur une annulation appelle
-`applyCancellationToBooking`. **Déposer les pièces** ne l’annule pas. **Créer
+Le clic **Mettre à jour** sur une annulation, comme **Déposer les pièces**, ne
+fait qu’attacher les fichiers. Il n’appelle pas `applyCancellationToBooking`.
+**Créer
 un dossier** est refusé si le mail est une annulation.
 
 ## Billets d'avion
@@ -196,8 +200,9 @@ Signal extract : `document_status=cancelled` (LLM + parseur). Détecté aussi
 sur l’objet / le corps (« Cancellation confirmation », « has been cancelled »,
 « a été annulée ») — **pas** une politique « free cancellation ».
 
-Le parse ne l’applique pas. Le clic **Mettre à jour les cartes** appelle
-`applyCancellationToBooking` :
+Le parse ne l’applique pas. Le clic sur un dossier déjà ouvert non plus : il
+attache les fichiers, il n’annule pas la carte. L’annulation d’une carte reste
+un geste à part (`applyCancellationToBooking`, hors de ce clic) :
 - cartes reconnues par leur référence : `lifecycle=cancelled`, hors carnet, hors total. Sur la fiche agence la carte est barrée, pastille **Annulée**, sans prix. Dans la file, la carte du mail et celle du séjour portent **Serait annulée**.
 - une carte déjà remplacée ne fait pas annuler le dossier s’il reste une carte active ;
 - sans référence, et s’il reste des cartes actives : la file demande laquelle. Elle n’annule pas tout le séjour ;
@@ -212,9 +217,10 @@ séjour (ouvert ou annulé, non archivé) vers la même destination. Les dates
 peuvent avoir changé. Milano = Milan. Deux séjours vers la même ville restent
 tous les deux proposés.
 
-Le parse ne l’applique pas. Le clic **Mettre à jour les cartes** (libellé
-**Remplacer sur ce dossier**, ou **Rouvrir et remplacer** si le dossier
-est annulé) appelle `applyReplacementToBooking` :
+Le parse ne l’applique pas. Le clic sur un dossier déjà ouvert non plus : il
+attache les fichiers à la carte qui correspond et n’en crée pas. Le
+remplacement ci-dessous n’est plus ce clic (`applyReplacementToBooking` reste
+pour un autre geste) :
 - même référence : la carte est mise à jour, le prix vendu ne change pas, et
   une carte déjà montrée le reste ;
 - même hôtel, nuits qui se croisent, carte sans référence (ou un seul côté

@@ -263,13 +263,19 @@ export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingI
 }
 
 export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
+  return documentsForItems([item], docs);
+}
+
+export function documentsForItems(items: CrmBookingItem[], docs: CrmBookingDocument[]) {
   const seen = new Set<string>();
   const list: CrmBookingDocument[] = [];
-  for (const doc of docs) {
-    const hit = doc.booking_item_id === item.id || doc.id === item.source_document_id;
-    if (!hit || seen.has(doc.id)) continue;
-    seen.add(doc.id);
-    list.push(doc);
+  for (const item of items) {
+    for (const doc of docs) {
+      const hit = doc.booking_item_id === item.id || doc.id === item.source_document_id;
+      if (!hit || seen.has(doc.id)) continue;
+      seen.add(doc.id);
+      list.push(doc);
+    }
   }
   return list;
 }

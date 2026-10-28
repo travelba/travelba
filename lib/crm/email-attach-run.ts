@@ -10,11 +10,8 @@ import {
   type DepositOutcome,
 } from "@/lib/crm/email-attach-files";
 import { downloadCrmFile, safeFileName, uploadCrmFile } from "@/lib/crm/files";
-import {
-  applyCancellationToBooking,
-  applyReplacementToBooking,
-} from "@/lib/crm/ingest-booking";
-import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
+import { matchEmailToCard, type EmailCardRef, type EmailMention } from "@/lib/crm/email-card-match";
+import type { BookingExtract } from "@/lib/crm/ingest-types";
 import type { CrmEmailIngest, EmailIngestAttachment } from "@/lib/crm/types";
 
 type LoadedFile = {
@@ -33,11 +30,30 @@ function uploadExists(err: unknown) {
  * Copie les pièces du mail sur le dossier. Ne crée ni ne modifie aucune carte.
  * La même empreinte n’est pas déposée deux fois. Les images de signature sont laissées.
  */
+/**
+ * Carte qui reçoit les pièces. Null : elles restent sur le dossier.
+ * Ne crée ni ne modifie aucune carte.
+ */
+export async function resolveEmailCardId(
+  admin: SupabaseClient,
+  bookingId: string,
+  extract: BookingExtract | null | undefined
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("crm_booking_items")
+    .select("id, kind, title, supplier, confirmation_ref, start_at, lifecycle, details")
+    .eq("booking_id", bookingId);
+  if (error) throw new Error("Cartes du dossier illisibles.");
+  const mentions = (extract?.items || []) as EmailMention[];
+  return matchEmailToCard((data || []) as EmailCardRef[], mentions);
+}
+
 export async function depositEmailAttachments(
   admin: SupabaseClient,
   bookingId: string,
   emailId: string,
-  attachments: EmailIngestAttachment[] | null | undefined
+  attachments: EmailIngestAttachment[] | null | undefined,
+  bookingItemId?: string | null
 ): Promise<DepositOutcome> {
   const files: LoadedFile[] = [];
   let skipped = 0;
@@ -93,6 +109,7 @@ export async function depositEmailAttachments(
     }
     const { error: insertError } = await admin.from("crm_booking_documents").insert({
       booking_id: bookingId,
+      booking_item_id: bookingItemId || null,
       kind: bookingDocumentKind(file.name, file.mime),
       file_name: file.name,
       mime_type: file.mime || null,
@@ -109,41 +126,6 @@ export async function depositEmailAttachments(
     added += 1;
   }
   return { added, skipped, empty: false };
-}
-
-/** Met à jour ou annule les cartes. Ne dépose pas les fichiers : le dépôt est à part, avec dédoublonnage. */
-export async function applyIngestCards(opts: {
-  bookingId: string;
-  customerId: string;
-  extract: BookingExtract;
-  staffUserId?: string;
-  emailIngestId: string;
-  itemId?: string | null;
-  applyStayFields?: boolean;
-}) {
-  if (isCancellationExtract(opts.extract)) {
-    await applyCancellationToBooking({
-      bookingId: opts.bookingId,
-      customerId: opts.customerId,
-      extract: opts.extract,
-      files: [],
-      staffUserId: opts.staffUserId,
-      visibleToClient: false,
-      itemId: opts.itemId || null,
-    });
-    return;
-  }
-  await applyReplacementToBooking({
-    bookingId: opts.bookingId,
-    customerId: opts.customerId,
-    extract: opts.extract,
-    files: [],
-    staffUserId: opts.staffUserId,
-    visibleToClient: false,
-    applyStayFields: opts.applyStayFields === true,
-    emailIngestId: opts.emailIngestId,
-    replaceItemId: opts.itemId || null,
-  });
 }
 
 /** Lie le mail au dossier pour l’historique. Ne touche pas aux cartes. */
@@ -175,6 +157,6 @@ export async function markEmailAttached(
   });
 }
 
-export function attachFilesSummary(result: DepositOutcome) {
-  return emailDepositMessage(result);
+export function attachFilesSummary(result: DepositOutcome, linked = false) {
+  return emailDepositMessage(result, linked);
 }
