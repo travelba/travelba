@@ -13,6 +13,7 @@ import {
   pieceCardTemplate,
   PIECES_PATH,
   planFormalityReady,
+  passportExpirySentence,
   planMissingPieceNotices,
   planPiecesNotices,
   generatedStayPhotoId,
@@ -367,6 +368,72 @@ test("la formalité terminée nomme la pièce, sans pourcentage", () => {
   assert.equal(missing[1].path, `/mon-compte/reservations/${reference}`);
   assert.match(missing[1].body, /Votre ETA-IL manque avant le départ/);
   assert.equal(missing.some((row) => row.body.includes("%")), false);
+});
+
+test("un passeport qui expire avant le retour a son propre message", () => {
+  assert.equal(
+    passportExpirySentence("Jonas", "2027-02-07", "2027-03-28"),
+    "Le passeport de Jonas expire le 07/02/2027, avant votre retour du 28/03/2027. Pensez à le renouveler."
+  );
+  assert.equal(passportExpirySentence("Jonas", "pas-une-date", "2027-03-28"), null);
+  const plans = planMissingPieceNotices({
+    published: true,
+    reference,
+    bookingId: "booking",
+    startDate: "2027-03-01",
+    today: "2026-10-28",
+    missingPassports: 0,
+    expiringPassports: [
+      { travelerId: "jonas", givenName: "Jonas", expiresOn: "2027-02-07", returnOn: "2027-03-28" },
+    ],
+    formalities: [],
+    alreadySent: { passport: false, formalityNames: [] },
+  });
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].template, "passeport_expire");
+  assert.equal(plans[0].dedupe, "passeport-expire:booking:jonas");
+  assert.notEqual(plans[0].dedupe, "passeport:booking");
+  assert.match(plans[0].body, /Le passeport de Jonas expire le 07\/02\/2027, avant votre retour du 28\/03\/2027/);
+  assert.equal(plans[0].body.includes("manque"), false);
+  const variables = conciergeContentVariables({
+    template: "passeport_expire",
+    buttonSuffix: "c/K7MQ2PX4",
+    givenName: plans[0].givenName,
+    date: plans[0].date,
+    variable: plans[0].variable,
+  });
+  assert.deepEqual(variables, {
+    "1": "Jonas",
+    "2": "07/02/2027",
+    "3": "28/03/2027",
+    "4": "c/K7MQ2PX4",
+  });
+  const again = planMissingPieceNotices({
+    published: true,
+    reference,
+    bookingId: "booking",
+    startDate: "2027-03-01",
+    today: "2026-10-28",
+    missingPassports: 0,
+    expiringPassports: [
+      { travelerId: "jonas", givenName: "Jonas", expiresOn: "2027-02-07", returnOn: "2027-03-28" },
+    ],
+    formalities: [],
+    alreadySent: { passport: true, formalityNames: [], expiringTravelerIds: ["jonas"] },
+  });
+  assert.equal(again.length, 0);
+  const absent = planMissingPieceNotices({
+    published: true,
+    reference,
+    bookingId: "booking",
+    startDate: "2027-03-01",
+    today: "2026-10-28",
+    missingPassports: 1,
+    formalities: [],
+    alreadySent: { passport: false, formalityNames: [] },
+  });
+  assert.equal(absent[0].dedupe, "passeport:booking");
+  assert.match(absent[0].body, /Le passeport manque avant le départ/);
 });
 
 test("les modèles n’embarquent aucun SID", () => {

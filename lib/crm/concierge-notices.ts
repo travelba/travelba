@@ -36,6 +36,7 @@ export const CONCIERGE_TEMPLATE_ENV = {
   pieces_composees: "TWILIO_CONTENT_PIECES_COMPOSEES",
   passeport: "TWILIO_CONTENT_PASSEPORT",
   passeports: "TWILIO_CONTENT_PASSEPORTS",
+  passeport_expire: "TWILIO_CONTENT_PASSEPORT_EXPIRE",
   formalite_manquante: "TWILIO_CONTENT_FORMALITE_MANQUANTE",
   formalite_prete: "TWILIO_CONTENT_FORMALITE_PRETE",
   /** Voyageur sans fiche : pas de bouton, pas de lien de connexion. */
@@ -497,11 +498,40 @@ export function safeFormalityName(value: string | null | undefined) {
 
 export type MissingPiecePlan = {
   body: string;
-  template: "passeport" | "passeports" | "formalite_manquante";
+  template: "passeport" | "passeports" | "formalite_manquante" | "passeport_expire";
   variable: string | null;
   path: string;
   dedupe: string;
+  givenName?: string | null;
+  /** Date d’expiration `JJ/MM/AAAA`, pour le modèle qui nomme le voyageur. */
+  date?: string | null;
 };
+
+export type ExpiringPassportNotice = {
+  travelerId: string;
+  givenName: string;
+  /** AAAA-MM-JJ */
+  expiresOn: string;
+  /** AAAA-MM-JJ */
+  returnOn: string;
+};
+
+function slashDate(iso: string | null | undefined) {
+  const day = (iso || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const [year, month, date] = day.split("-");
+  return `${date}/${month}/${year}`;
+}
+
+/** Phrase du passeport déposé qui n’atteint pas le retour. Le prénom est celui du livret. */
+export function passportExpirySentence(givenName: string, expiresOn: string, returnOn: string) {
+  const name = givenName.replace(/[\r\n]+/g, " ").trim();
+  const expires = slashDate(expiresOn);
+  const back = slashDate(returnOn);
+  if (!name || name.length > 40 || !expires || !back) return null;
+  if (/[%]|https?:|mot de passe/i.test(name)) return null;
+  return `Le passeport de ${name} expire le ${expires}, avant votre retour du ${back}. Pensez à le renouveler.`;
+}
 
 export function planMissingPieceNotices(input: {
   published: boolean;
@@ -510,8 +540,9 @@ export function planMissingPieceNotices(input: {
   startDate: string | null;
   today: string;
   missingPassports: number;
+  expiringPassports?: ExpiringPassportNotice[];
   formalities: { name: string | null; filed: boolean }[];
-  alreadySent: { passport: boolean; formalityNames: string[] };
+  alreadySent: { passport: boolean; formalityNames: string[]; expiringTravelerIds?: string[] };
   /** Faux : le visa n’est pas proposé, aucun rappel de formalité. */
   visaOffered?: boolean;
 }): MissingPiecePlan[] {
@@ -533,6 +564,24 @@ export function planMissingPieceNotices(input: {
           : "Le passeport manque avant le départ. Déposez-le dans vos pièces."
       ),
     });
+  }
+  const sentExpiry = new Set(input.alreadySent.expiringTravelerIds || []);
+  for (const row of input.expiringPassports || []) {
+    if (!row.travelerId || sentExpiry.has(row.travelerId)) continue;
+    const sentence = passportExpirySentence(row.givenName, row.expiresOn, row.returnOn);
+    const expires = slashDate(row.expiresOn);
+    const back = slashDate(row.returnOn);
+    if (!sentence || !expires || !back) continue;
+    plans.push({
+      template: "passeport_expire",
+      variable: back,
+      givenName: row.givenName.trim(),
+      date: expires,
+      path: PIECES_PATH,
+      dedupe: `passeport-expire:${input.bookingId}:${row.travelerId}`,
+      body: withConciergeSignature(sentence),
+    });
+    sentExpiry.add(row.travelerId);
   }
   const sent = new Set(input.alreadySent.formalityNames);
   if (input.visaOffered) {
@@ -978,6 +1027,20 @@ export function conciergeContentDrafts() {
       }),
     },
     {
+      template: "passeport_expire" as const,
+      env: CONCIERGE_TEMPLATE_ENV.passeport_expire,
+      friendlyName: "passeport_expire_avant_retour",
+      create: contentDraft({
+        friendlyName: "passeport_expire_avant_retour",
+        variables: { "1": "Jonas", "2": "07/02/2027", "3": "28/03/2027", "4": code },
+        types: textTemplate(
+          `Le passeport de {{1}} expire le {{2}}, avant votre retour du {{3}}. Pensez à le renouveler.${signature}`,
+          "Déposer le passeport",
+          "4"
+        ),
+      }),
+    },
+    {
       template: "formalite_manquante" as const,
       env: CONCIERGE_TEMPLATE_ENV.formalite_manquante,
       friendlyName: "formalite_manquante",
@@ -1376,6 +1439,14 @@ export function conciergeContentVariables(input: {
   }
   if (input.template === "passeport" || input.template === "passeports") {
     return { "1": suffix };
+  }
+  if (input.template === "passeport_expire") {
+    const name = cleanToken(input.givenName || "");
+    const expires = cleanToken(input.date || "");
+    const back = cleanToken(input.variable || "");
+    if (!name || name.length > 40 || /[%]|https?:|mot de passe/i.test(name)) return null;
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(expires) || !/^\d{2}\/\d{2}\/\d{4}$/.test(back)) return null;
+    return { "1": name, "2": expires, "3": back, "4": suffix };
   }
   if (input.template === "pieces" || input.template === "piece" || input.template === "pieces_composees") {
     if (!text || !REFERENCE.test(reference)) return null;

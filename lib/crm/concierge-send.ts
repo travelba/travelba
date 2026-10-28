@@ -5,7 +5,7 @@ import { siteConfig } from "@/lib/site";
 import { cityCoverCached, ensureCityCover } from "@/lib/crm/cover-generate";
 import { cityCoverAuthFailed } from "@/lib/crm/cover-retouch";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
-import { missingPassportCount } from "./trip-documents";
+import { missingPassportCount, travelersPassportExpiresBeforeReturn } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportTrip } from "./visa-trip";
 import { toE164 } from "./phone";
@@ -200,6 +200,8 @@ async function deliverTemplate(admin: Admin, input: {
   reference?: string | null;
   mediaUrl?: string | null;
   variable?: string | null;
+  givenName?: string | null;
+  date?: string | null;
   sentDedupe?: string;
   card?: ConciergeTemplate | null;
   /** Message du séjour avec couverture : la photo est servie par le code du lien de ce message. */
@@ -245,6 +247,8 @@ async function deliverTemplate(admin: Admin, input: {
           reference: input.reference,
           mediaUrl: photoMedia,
           variable: input.variable,
+          givenName: input.givenName,
+          date: input.date,
         })
       : null;
   if (photoTemplate && photoVariables && photoSid) {
@@ -274,6 +278,8 @@ async function deliverTemplate(admin: Admin, input: {
           reference: input.reference,
           mediaUrl,
           variable: input.variable,
+          givenName: input.givenName,
+          date: input.date,
         })
       : null;
   if (input.card && cardVariables && cardSid) {
@@ -302,6 +308,8 @@ async function deliverTemplate(admin: Admin, input: {
     reference: input.reference,
     mediaUrl,
     variable: input.variable,
+    givenName: input.givenName,
+    date: input.date,
   });
   if (!variables) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
@@ -531,7 +539,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
     return;
   }
 
-  if (key.startsWith("passeport:") || key.startsWith("formalite-manquante:")) {
+  if (key.startsWith("passeport:") || key.startsWith("passeport-expire:") || key.startsWith("formalite-manquante:")) {
     const plans = await missingPlans(admin, booking, now);
     const plan = plans.find((item) => item.dedupe === key);
     if (!plan) {
@@ -545,6 +553,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       path: plan.path,
       body: plan.body,
       variable: plan.variable,
+      givenName: plan.givenName,
+      date: plan.date,
       place: stayPlace(booking, steps, homeCity),
       reference: booking.reference,
       card: noticeCardTemplate(plan.template),
@@ -633,23 +643,32 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
   const formalityNames = [...sentKeys]
     .filter((key) => key.startsWith(`formalite-manquante:${booking.id}:`))
     .map((key) => key.slice(`formalite-manquante:${booking.id}:`.length));
+  const passportOptions = {
+    holder,
+    companions: (companions || []) as {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      usage_name?: string | null;
+      birth_date?: string | null;
+    }[],
+    returnOn: booking.end_date || booking.start_date,
+  };
+  const expiring = travelersPassportExpiresBeforeReturn(party, papers, passportOptions);
+  const expiryPrefix = `passeport-expire:${booking.id}:`;
   return planMissingPieceNotices({
     published: booking.visible_to_client,
     reference: booking.reference,
     bookingId: booking.id,
     startDate: booking.start_date,
     today: now.toISOString().slice(0, 10),
-    missingPassports: missingPassportCount(party, papers, {
-      holder,
-      companions: (companions || []) as {
-        id: string;
-        first_name: string | null;
-        last_name: string | null;
-        usage_name?: string | null;
-        birth_date?: string | null;
-      }[],
-      returnOn: booking.end_date || booking.start_date,
-    }),
+    missingPassports: missingPassportCount(party, papers, passportOptions),
+    expiringPassports: expiring.map((row) => ({
+      travelerId: row.traveler.id,
+      givenName: row.givenName,
+      expiresOn: row.expiresOn,
+      returnOn: row.returnOn,
+    })),
     formalities: trip.entries.map((entry) => ({
       name: entry.formality,
       filed: filedRequests.has(entry.iso) || filedDocs.has(entry.iso),
@@ -657,6 +676,7 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
     visaOffered: booking.offer_visa === true,
     alreadySent: {
       passport: sentKeys.has(`passeport:${booking.id}`),
+      expiringTravelerIds: [...sentKeys].filter((key) => key.startsWith(expiryPrefix)).map((key) => key.slice(expiryPrefix.length)),
       formalityNames,
     },
   });

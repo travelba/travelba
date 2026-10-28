@@ -44,6 +44,8 @@ export type StaffBlocker = { id: string; label: string; tab?: "todo" | "argent" 
 export function staffBlockingChips(input: {
   travelers: { id: string; first_name?: string | null; last_name?: string | null }[];
   missingPassportIds: string[];
+  /** Passeport déposé, mais il expire avant le retour. */
+  expiringPassportIds?: string[];
   hotelLettersOpen: number;
   amountHidden: boolean;
   /** Sorties proposées et coûts sans vente qui attendent dans Coûts du voyage. */
@@ -56,11 +58,17 @@ export function staffBlockingChips(input: {
   checkinAlerts?: number;
 }): StaffBlocker[] {
   const missing = new Set(input.missingPassportIds);
+  const expiring = new Set(input.expiringPassportIds || []);
   const chips: StaffBlocker[] = [];
   for (const traveler of input.travelers) {
-    if (!missing.has(traveler.id)) continue;
     const name = greetingGivenName(traveler.first_name) || (traveler.last_name || "").trim() || "voyageur";
-    chips.push({ id: `passport-${traveler.id}`, label: `Passeport ${name}` });
+    if (missing.has(traveler.id)) {
+      chips.push({ id: `passport-${traveler.id}`, label: `Passeport ${name}` });
+      continue;
+    }
+    if (expiring.has(traveler.id)) {
+      chips.push({ id: `passport-expire-${traveler.id}`, label: `Expire avant le retour · ${name}` });
+    }
   }
   if (input.hotelLettersOpen > 0) {
     chips.push({
