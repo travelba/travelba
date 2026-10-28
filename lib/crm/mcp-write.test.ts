@@ -126,6 +126,8 @@ test("an email leaves the queue only with an explicit action", () => {
   assert.throws(() => prepareEmailAction({ id: WIRE, action: "rattacher" }), /Dossier invalide/);
   assert.throws(() => prepareEmailAction({ id: WIRE, action: "mettre_a_jour" }), /Dossier invalide/);
   assert.throws(() => prepareEmailAction({ id: WIRE, action: "ignorer" }), /Action inconnue/);
+  assert.equal(prepareEmailAction({ id: WIRE, action: "creer_dossier" }).action, "creer_dossier");
+  assert.equal(prepareEmailAction({ id: WIRE, action: "creer_dossier" }).dossierId, "");
 });
 
 test("a client is created with an email and a name, and updated by id", () => {
@@ -230,6 +232,8 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "crediter_virement")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "publier_carnet")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "tableau_de_bord")?.readOnly, true);
+  assert.equal(seen.find((tool) => tool.name === "lire_email")?.readOnly, true);
+  assert.equal(seen.find((tool) => tool.name === "lire_email")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
   assert.equal(seen.find((tool) => tool.name === "crediter_revolut")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "rapprocher_depense_revolut")?.readOnly, false);
