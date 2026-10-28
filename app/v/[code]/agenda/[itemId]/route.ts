@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import { calendarItemIdFromSegment } from "@/lib/crm/calendar-ics";
 import { loadPublishedTripShare } from "@/lib/crm/trip-share-load";
+import { publishedTripForCode } from "@/lib/crm/trip-share-example";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export async function GET(request: Request, ctx: Ctx) {
   const { code, itemId: segment } = await ctx.params;
   const itemId = calendarItemIdFromSegment(segment);
   if (!itemId) return new NextResponse("Introuvable", { status: 404 });
-  const trip = await loadPublishedTripShare(code);
+  const trip = await publishedTripForCode(code, loadPublishedTripShare);
   if (!trip) return new NextResponse("Introuvable", { status: 404 });
   if (!trip.items.some((row) => row.id === itemId)) {
     return new NextResponse("Introuvable", { status: 404 });

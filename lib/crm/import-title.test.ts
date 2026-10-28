@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { importTitleGuard, MAX_IMPORT_CITIES } from "./import-title";
+import { dossierTitleFromImport } from "./ingest-title";
 
 test("le titre d’import ne garde que les villes de séjour, trois au plus", () => {
   assert.equal(MAX_IMPORT_CITIES, 3);
@@ -107,4 +108,32 @@ test("un nom choisi reste, un nom d’hôtel devient la ville", () => {
   });
   assert.equal(hotel.title, "Milan");
   assert.equal(hotel.review, true);
+  assert.equal(
+    dossierTitleFromImport({
+      title: "Hôtel Richer de Belleval",
+      destination: "Montpellier",
+      items: [
+        {
+          kind: "hotel",
+          title: "Hôtel Richer de Belleval",
+          details: { hotel_name: "Hôtel Richer de Belleval", city: "Montpellier" },
+        },
+      ],
+    }),
+    "Montpellier"
+  );
+  assert.equal(
+    dossierTitleFromImport({
+      title: "40 ans",
+      destination: "Montpellier",
+      items: [
+        {
+          kind: "hotel",
+          title: "Hôtel Richer de Belleval",
+          details: { hotel_name: "Hôtel Richer de Belleval", city: "Montpellier" },
+        },
+      ],
+    }),
+    "40 ans"
+  );
 });

@@ -10,6 +10,7 @@ import { rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
 import { formParams, twilioWebhookUrl, verifyTwilioSignature } from "@/lib/crm/twilio-signature";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const raw = await request.text();

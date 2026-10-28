@@ -341,6 +341,15 @@ test("creer_dossier reste en préparation, sans invitation ni débit", async () 
   assert.equal(db.tables.crm_transactions?.length || 0, 0);
   assert.equal(db.writes.some((write) => /invite|message|whatsapp/i.test(write.table)), false);
   await assert.rejects(() => createDossier({ client_id: OTHER, titre: "Rome" }, client), /Client introuvable/);
+  const cityNamed = await createDossier({ client_id: CLIENT, destination: "Montpellier" }, client);
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === cityNamed.id)?.title, "Montpellier");
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === cityNamed.id)?.destination, "Montpellier");
+  const given = await createDossier(
+    { client_id: CLIENT, titre: "Hôtel Richer de Belleval", destination: "Montpellier" },
+    client
+  );
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === given.id)?.title, "Hôtel Richer de Belleval");
+  await assert.rejects(() => createDossier({ client_id: CLIENT }, client), /titre ou une destination/);
 });
 
 test("ajouter_voyageur enregistre le passeport comme la fiche, sans renvoyer le numéro", async () => {

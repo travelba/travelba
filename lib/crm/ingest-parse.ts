@@ -872,14 +872,12 @@ export function fillStayFromItems(extract: BookingExtract): BookingExtract {
     .sort();
   const hotel = items.find((item) => item.kind === "hotel");
   const city = typeof hotel?.details?.city === "string" ? hotel.details.city.trim() : "";
-  const hotelName =
-    typeof hotel?.details?.hotel_name === "string" ? hotel.details.hotel_name.trim() : "";
   return {
     ...extract,
     start_date: (extract.start_date || "").trim() || starts[0] || extract.start_date,
     end_date: (extract.end_date || "").trim() || ends[ends.length - 1] || extract.end_date,
     destination: (extract.destination || "").trim() || city || extract.destination,
-    title: (extract.title || "").trim() || hotelName || city || extract.title,
+    title: (extract.title || "").trim() || city || extract.title,
   };
 }
 

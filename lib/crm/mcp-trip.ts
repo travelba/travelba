@@ -644,7 +644,10 @@ function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: Pr
 }
 
 export async function createDossier(input: Record<string, unknown>, admin?: Admin) {
-  const draft = prepareDossier(input);
+  const givenTitle = typeof input.titre === "string" ? input.titre.trim() : "";
+  const destination = typeof input.destination === "string" ? input.destination.trim() : "";
+  if (!givenTitle && !destination) throw new McpWriteError("Indiquez un titre ou une destination.");
+  const draft = prepareDossier({ ...input, titre: givenTitle || destination });
   const societeId = optionalId(input.societe_id, "Société");
   const particulier = flag(input.particulier, "Particulier");
   const billCompany = facturerSociete(input.facturer_societe);

@@ -68,6 +68,7 @@ import { WhatsappThread } from "@/components/admin/WhatsappThread";
 import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { threadIsPaused } from "@/lib/crm/whatsapp-takeover";
+import { loadCustomerWhatsappMessages } from "@/lib/crm/whatsapp-dock-load";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -199,11 +200,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         return { rows: [] as CrmStripeTransaction[], people: [] as StripeMatchCustomer[] };
       }
     })(),
-    supabase
-      .from("crm_whatsapp_messages")
-      .select("id, direction, body, status, created_at, booking_id, concierge_mark")
-      .eq("customer_id", id)
-      .order("created_at", { ascending: true }),
+    loadCustomerWhatsappMessages(supabase, id),
     supabase
       .from("crm_whatsapp_requests")
       .select("id, kind, body, booking_id, created_at")
@@ -271,15 +268,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     ),
   ]);
   const conciergePaused = !pauseRow.data ? false : threadIsPaused(pauseRow.data.paused_until, new Date());
-  const threadMessages = whatsappMessages.error
-    ? (
-        await supabase
-          .from("crm_whatsapp_messages")
-          .select("id, direction, body, status, created_at")
-          .eq("customer_id", id)
-          .order("created_at", { ascending: true })
-      ).data || []
-    : whatsappMessages.data || [];
+  const threadMessages = whatsappMessages;
   const revolutSuggestions = suggestionsForCustomer(c, revolut.rows, revolut.people);
   const stripeSuggestions = suggestionsForStripeCustomer(c, stripe.rows, stripe.people).map((item) => ({
     ...item,

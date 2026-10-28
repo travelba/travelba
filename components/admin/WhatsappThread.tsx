@@ -7,11 +7,13 @@ export type WhatsappThreadMessage = {
   direction: string;
   body: string;
   status: string | null;
+  error?: string | null;
   created_at: string;
   booking_id?: string | null;
   template_key?: string | null;
   author_name?: string | null;
   media_path?: string | null;
+  transcript?: string | null;
   tools?: string[] | null;
   phone?: string | null;
   concierge_mark?: string | null;
@@ -66,9 +68,11 @@ export function WhatsappThread({
     body: message.body,
     createdAt: message.created_at,
     status: message.status,
+    error: message.error || null,
     templateKey: message.template_key || null,
     authorName: message.author_name || null,
     mediaPath: message.media_path || null,
+    transcript: message.transcript || null,
     tools: message.tools || [],
     requestId: requestByMessage.get(message.id) || null,
     conciergeMark: message.concierge_mark === "good" || message.concierge_mark === "bad" ? message.concierge_mark : null,

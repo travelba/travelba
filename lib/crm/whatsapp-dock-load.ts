@@ -1,4 +1,6 @@
 import { cache } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { WhatsappThreadMessage } from "@/components/admin/WhatsappThread";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { stayDestinationLine } from "@/lib/crm/stay-phrase";
 import {
@@ -6,6 +8,7 @@ import {
   foldThreads,
   messagesNewestFirst,
   pauseStillActive,
+  schemaMissesColumn,
   sessionWindowOpenNow,
   threadKey,
   type InboxMessage,
@@ -20,6 +23,7 @@ type RawMessage = {
   direction: string;
   body: string;
   status: string | null;
+  error?: string | null;
   template_key: string | null;
   created_at: string;
   phone?: string | null;
@@ -27,10 +31,13 @@ type RawMessage = {
   media_path?: string | null;
   tools?: string[] | null;
   concierge_mark?: string | null;
+  transcript?: string | null;
 };
 
 const RICH =
-  "id, customer_id, booking_id, direction, body, status, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark";
+  "id, customer_id, booking_id, direction, body, status, error, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark, transcript";
+const RICH_WITHOUT_TRANSCRIPT =
+  "id, customer_id, booking_id, direction, body, status, error, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark";
 const BASE = "id, customer_id, booking_id, direction, body, status, template_key, created_at";
 
 export type DockSnapshot = {
@@ -49,13 +56,20 @@ export function emptyDockSnapshot(): DockSnapshot {
  */
 export const loadRecentWhatsappRows = cache(async (): Promise<RawMessage[] | null> => {
   const admin = createServiceClient();
-  const loaded = await admin
+  const full = await admin
     .from("crm_whatsapp_messages")
     .select(RICH)
     .order("created_at", { ascending: false })
     .limit(400);
-  if (loaded.error) return null;
-  return (loaded.data || []) as RawMessage[];
+  if (!full.error) return (full.data || []) as RawMessage[];
+  if (!schemaMissesColumn(full.error, "transcript")) return null;
+  const mid = await admin
+    .from("crm_whatsapp_messages")
+    .select(RICH_WITHOUT_TRANSCRIPT)
+    .order("created_at", { ascending: false })
+    .limit(400);
+  if (mid.error) return null;
+  return (mid.data || []) as RawMessage[];
 });
 
 export async function loadDockSnapshot(): Promise<DockSnapshot> {
@@ -126,9 +140,11 @@ async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: stri
       body: row.body,
       createdAt: row.created_at,
       status: row.status,
+      error: row.error || null,
       templateKey: row.template_key,
       authorName: row.author_staff_id ? agents.get(row.author_staff_id) || "L’agence" : null,
       mediaPath: row.media_path || null,
+      transcript: row.transcript || null,
       tools: Array.isArray(row.tools) ? row.tools : [],
       requestId: requestByMessage.get(row.id) || null,
       conciergeMark: row.concierge_mark === "good" || row.concierge_mark === "bad" ? row.concierge_mark : null,
@@ -147,4 +163,25 @@ async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: stri
   if (!fil) return { threads: folded, messages: [] as InboxMessage[] };
   const mine = messagesNewestFirst(messages.filter((row) => threadKey(row) === fil));
   return { threads: folded.filter((row) => row.key === fil), messages: mine };
+}
+
+const THREAD_FULL =
+  "id, direction, body, status, error, created_at, booking_id, template_key, media_path, concierge_mark, transcript, phone";
+const THREAD_MID =
+  "id, direction, body, status, error, created_at, booking_id, template_key, media_path, concierge_mark, phone";
+const THREAD_BASE = "id, direction, body, status, error, created_at, booking_id";
+
+/** Fil d’un client. Sans la colonne transcript (migration pas encore jouée), le corps et l’audio restent. */
+export async function loadCustomerWhatsappMessages(
+  supabase: SupabaseClient,
+  customerId: string,
+): Promise<WhatsappThreadMessage[]> {
+  const run = (columns: string) =>
+    supabase.from("crm_whatsapp_messages").select(columns).eq("customer_id", customerId).order("created_at", { ascending: true });
+  const full = await run(THREAD_FULL);
+  if (!full.error) return (full.data || []) as unknown as WhatsappThreadMessage[];
+  const mid = schemaMissesColumn(full.error, "transcript") ? await run(THREAD_MID) : full;
+  if (!mid.error) return (mid.data || []) as unknown as WhatsappThreadMessage[];
+  const base = await run(THREAD_BASE);
+  return (base.data || []) as unknown as WhatsappThreadMessage[];
 }

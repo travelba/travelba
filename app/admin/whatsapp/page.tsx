@@ -9,6 +9,7 @@ import {
   foldThreads,
   pauseStillActive,
   readStamp,
+  schemaMissesColumn,
   sessionWindowOpenNow,
   threadKey,
   type InboxMessage,
@@ -26,6 +27,7 @@ type RawMessage = {
   direction: string;
   body: string;
   status: string | null;
+  error?: string | null;
   template_key: string | null;
   created_at: string;
   phone?: string | null;
@@ -33,10 +35,13 @@ type RawMessage = {
   media_path?: string | null;
   tools?: string[] | null;
   concierge_mark?: string | null;
+  transcript?: string | null;
 };
 
 const RICH =
-  "id, customer_id, booking_id, direction, body, status, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark";
+  "id, customer_id, booking_id, direction, body, status, error, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark, transcript";
+const RICH_WITHOUT_TRANSCRIPT =
+  "id, customer_id, booking_id, direction, body, status, error, template_key, created_at, phone, author_staff_id, media_path, tools, concierge_mark";
 const BASE = "id, customer_id, booking_id, direction, body, status, template_key, created_at";
 
 export default async function WhatsappInboxPage({
@@ -47,9 +52,13 @@ export default async function WhatsappInboxPage({
   await requireStaffPage();
   const { fil } = await searchParams;
   const admin = createServiceClient();
-  const loaded = await admin.from("crm_whatsapp_messages").select(RICH).order("created_at", { ascending: false }).limit(500);
+  const full = await admin.from("crm_whatsapp_messages").select(RICH).order("created_at", { ascending: false }).limit(500);
+  const mid = full.error && schemaMissesColumn(full.error, "transcript")
+    ? await admin.from("crm_whatsapp_messages").select(RICH_WITHOUT_TRANSCRIPT).order("created_at", { ascending: false }).limit(500)
+    : null;
+  const chosen = !full.error ? full : mid && !mid.error ? mid : null;
   const rows = (
-    loaded.error ? ((await admin.from("crm_whatsapp_messages").select(BASE).order("created_at", { ascending: false }).limit(500)).data || []) : loaded.data || []
+    chosen ? chosen.data || [] : (await admin.from("crm_whatsapp_messages").select(BASE).order("created_at", { ascending: false }).limit(500)).data || []
   ) as RawMessage[];
   const customerIds = [...new Set(rows.map((row) => row.customer_id).filter(Boolean))] as string[];
   const bookingIds = [...new Set(rows.map((row) => row.booking_id).filter(Boolean))] as string[];
@@ -102,9 +111,11 @@ export default async function WhatsappInboxPage({
       body: row.body,
       createdAt: row.created_at,
       status: row.status,
+      error: row.error || null,
       templateKey: row.template_key,
       authorName: row.author_staff_id ? agents.get(row.author_staff_id) || "L’agence" : null,
       mediaPath: row.media_path || null,
+      transcript: row.transcript || null,
       tools: Array.isArray(row.tools) ? row.tools : [],
       requestId: requestByMessage.get(row.id) || null,
       conciergeMark: row.concierge_mark === "good" || row.concierge_mark === "bad" ? row.concierge_mark : null,
