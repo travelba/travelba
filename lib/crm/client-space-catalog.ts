@@ -133,7 +133,7 @@ export const CLIENT_SPACE_ACTIONS: ClientSpaceAction[] = [
     method: "POST",
     client: "Envoie le lien du carnet publié à un accompagnateur.",
     concierge: "partager_carnet",
-    rule: "Séjour publié, accompagnateur du séjour, téléphone déjà sur la fiche. Rien ne part sans ce clic.",
+    rule: "Séjour publié, accompagnateur du séjour, téléphone déjà sur la fiche. Le message WhatsApp est ce geste : modèle partage_voyage, ou conversation dans les 24 heures.",
   },
   {
     id: "reglement_sejour",
@@ -413,6 +413,8 @@ export type ClassifiedSpace = {
   name: string | null;
   reference: string | null;
   access: boolean;
+  /** Nom du client, quand un membre de l’équipe n’est pas le titulaire. */
+  clientName?: string | null;
 };
 
 function fold(value: string) {
@@ -441,6 +443,109 @@ function personName(message: string) {
 
 function toolOf(id: string) {
   return CLIENT_SPACE_ACTIONS.find((row) => row.id === id)?.concierge || id;
+}
+
+const SHARE_STOP = new Set([
+  "whatsapp",
+  "agence",
+  "hotel",
+  "moi",
+  "nous",
+  "lui",
+  "elle",
+  "eux",
+  "tous",
+  "toutes",
+  "voyage",
+  "voyages",
+  "sejour",
+  "sejours",
+  "reservation",
+  "reservations",
+  "carnet",
+  "carnets",
+  "lien",
+  "liens",
+  "dossier",
+  "dossiers",
+  "client",
+  "cliente",
+]);
+
+/**
+ * envoyer, envoie, envoyez, partager, partage, partagé(e)(s). Le texte est déjà plié.
+ * « envoie » s’écrit avec un i, « envoyé » avec un y.
+ */
+const SHARE_VERB = /\b(?:envoy(?:er|ez|es|e)|envoi(?:es|e)|partag(?:ees|ee|es|er|ez|e))\b/;
+const SHARE_OBJECT = /\b(?:carnets?|liens?|sejours?|reservations?|voyages?|dossiers?)\b/;
+
+export function isTripShareAsk(message: string) {
+  return SHARE_VERB.test(fold(message)) && SHARE_OBJECT.test(fold(message));
+}
+
+/** « à Victoria », même en minuscules. « de Nice » n’est pas le destinataire. */
+export function shareAddressee(message: string) {
+  // « à » n’est pas un caractère de mot pour \b : la frontière se fait sur les lettres.
+  const matches = [...message.matchAll(/(?:^|[^\p{L}])(?:à|a)\s+([\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){0,3})/giu)];
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const name = (matches[index][1] || "").replace(/[.,!?;:]+$/g, "").trim();
+    const token = fold(name);
+    if (!name || token.length < 2 || SHARE_STOP.has(token)) continue;
+    return name;
+  }
+  return null;
+}
+
+const SHARE_PREP = new Set([
+  "par",
+  "pour",
+  "sur",
+  "vers",
+  "dans",
+  "avec",
+  "chez",
+  "du",
+  "des",
+  "au",
+  "aux",
+  "en",
+  "et",
+  "a",
+  "le",
+  "la",
+  "les",
+  "un",
+  "une",
+  "qui",
+  "que",
+]);
+
+function trimShareHint(raw: string) {
+  const words = raw.replace(/[.,!?;:]+$/g, "").trim().split(/\s+/).filter(Boolean);
+  while (words.length && (SHARE_PREP.has(fold(words[words.length - 1] || "")) || SHARE_STOP.has(fold(words[words.length - 1] || "")))) {
+    words.pop();
+  }
+  return words.join(" ");
+}
+
+/**
+ * Le client nommé par l’équipe : « client Camille » ou « de Camille Martin ».
+ * « de Nice par WhatsApp » ne garde que Nice : le titulaire s’en sert comme lieu.
+ */
+export function shareClientHint(message: string, addressee: string | null) {
+  const labeled = message.match(/\b(?:client|cliente)\s+([\p{L}][\p{L}'’-]+(?:\s+[\p{L}][\p{L}'’-]+){0,2})/iu);
+  if (labeled?.[1]) {
+    const name = trimShareHint(labeled[1]);
+    if (name && fold(name) !== fold(addressee || "") && !SHARE_STOP.has(fold(name))) return name;
+  }
+  const people = [...message.matchAll(/\bde\s+([\p{L}][\p{L}'’-]+(?:\s+[\p{L}][\p{L}'’-]+){0,2})/giu)];
+  for (const match of people) {
+    const name = trimShareHint(match[1] || "");
+    if (!name || fold(name) === fold(addressee || "")) continue;
+    if (SHARE_STOP.has(fold(name.split(/\s+/)[0] || ""))) continue;
+    return name;
+  }
+  return null;
 }
 
 /**
@@ -494,8 +599,15 @@ export function classifyClientSpace(message: string, opts?: { hasFile?: boolean 
   if (/\b(carte de l'h[oô]tel|carte hotel)\b/.test(text)) {
     return { ...base, id: "carte_hotel", tool: toolOf("carte_hotel") };
   }
-  if (/\b(envoie[rz]*|partage[rz]*)\b/.test(text) && /\b(carnet|lien|s[eé]jour)\b/.test(text)) {
-    return { ...base, id: "partager_carnet", tool: toolOf("partager_carnet") };
+  if (isTripShareAsk(raw)) {
+    const addressee = shareAddressee(raw);
+    return {
+      ...base,
+      name: addressee,
+      clientName: shareClientHint(raw, addressee),
+      id: "partager_carnet",
+      tool: toolOf("partager_carnet"),
+    };
   }
   if (/\b(facture[rz]*|soci[eé]t[eé])\b/.test(text) && /\b(s[eé]jour|dossier)\b/.test(text)) {
     return { ...base, id: "facturer_sejour", tool: toolOf("facturer_sejour") };

@@ -8,7 +8,8 @@ import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { normalizeIban } from "@/lib/crm/billing";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { CLIENT_CANCEL_ADVISOR } from "@/lib/crm/le-cancel-copy";
-import { firstNameOnlyMatches, firstNamesMatch, lastNamesMatch, nameTokens } from "@/lib/crm/person-match";
+import { greetingGivenName } from "@/lib/crm/identity";
+import { foldName, firstNameOnlyMatches, firstNamesMatch, lastNamesMatch, nameTokens } from "@/lib/crm/person-match";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 import type { CrmBookingItem, CrmCustomer } from "@/lib/crm/types";
 import type { HandoffKind } from "@/lib/crm/whatsapp-concierge";
@@ -111,6 +112,155 @@ function travelerMatches(query: string, row: ConciergeTraveler) {
   const givenOk = firstNameOnlyMatches(given, row.firstName) || firstNamesMatch(given, row.firstName);
   const lastOk = lastNamesMatch(last, row.lastName) || lastNamesMatch(last, row.usageName);
   return givenOk && lastOk;
+}
+
+const SHARE_PLACE_SKIP = new Set([
+  "hotel",
+  "sejour",
+  "voyage",
+  "reservation",
+  "reservations",
+  "carnet",
+  "lien",
+  "dossier",
+  "avec",
+  "pour",
+  "dans",
+  "votre",
+  "cette",
+  "plaza",
+  "palace",
+  "resort",
+  "suite",
+  "room",
+  "whatsapp",
+]);
+
+export function shareNameList(names: string[]) {
+  const clean = names.map((name) => name.trim()).filter(Boolean);
+  if (clean.length <= 1) return clean[0] || "";
+  if (clean.length === 2) return `${clean[0]} et ${clean[1]}`;
+  return `${clean.slice(0, -1).join(", ")} et ${clean[clean.length - 1]}`;
+}
+
+export function sharePersonLabel(person: { firstName: string | null; lastName: string | null; usageName: string | null }) {
+  const given = greetingGivenName(person.firstName) || (person.firstName || "").trim();
+  const family = (person.usageName || person.lastName || "").trim();
+  return [given, family].filter(Boolean).join(" ") || "cette personne";
+}
+
+/** Prénom (le premier ou un autre), nom d’usage, nom d’épouse ou nom de famille. Casse et accents ignorés. */
+export function sharePersonHit(
+  query: string | null | undefined,
+  person: { firstName: string | null; lastName: string | null; usageName: string | null }
+) {
+  const asked = nameTokens(query);
+  if (!asked.length) return false;
+  const known = new Set([
+    ...nameTokens(person.firstName),
+    ...nameTokens(person.lastName),
+    ...nameTokens(person.usageName),
+  ]);
+  return asked.every((token) => known.has(token));
+}
+
+export function customersMatchingShareHint<
+  T extends { first_name: string | null; last_name: string | null; usage_name?: string | null },
+>(rows: T[], hint: string) {
+  return rows.filter((row) =>
+    sharePersonHit(hint, {
+      firstName: row.first_name,
+      lastName: row.last_name,
+      usageName: row.usage_name ?? null,
+    })
+  );
+}
+
+function staysOf(party: ConciergeTraveler[]) {
+  const map = new Map<string, ConciergeTraveler>();
+  for (const row of party) if (!map.has(row.bookingId)) map.set(row.bookingId, row);
+  return [...map.values()];
+}
+
+function placeTokens(row: ConciergeTraveler) {
+  const found = new Set<string>();
+  for (const value of [row.stayDestination, row.stayTitle]) {
+    for (const word of foldName(value).split(" ")) {
+      if (word.length >= 3 && !SHARE_PLACE_SKIP.has(word)) found.add(word);
+    }
+  }
+  return [...found];
+}
+
+function hasPlaceWord(text: string, token: string) {
+  if (token.length < 3) return false;
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(text);
+}
+
+/** « de Nice » est un lieu. « de Camille Martin » est une personne. */
+function placeHintWord(message: string, addressee: string | null) {
+  const after = /^(?:par|a|à|pour|du|de|et|sur|vers|au|aux|en|le|la|les|un|une|qui|que|dans)$/i;
+  const re = /\bde\s+([\p{L}][\p{L}'’-]+)(?:\s+([\p{L}][\p{L}'’-]+))?/giu;
+  for (const match of message.matchAll(re)) {
+    const word = (match[1] || "").replace(/[.,!?;:]+$/g, "").trim();
+    const next = match[2] || "";
+    if (!word || fold(word) === fold(addressee || "") || SHARE_PLACE_SKIP.has(fold(word))) continue;
+    if (next && !after.test(next) && /^\p{Lu}/u.test(next)) continue;
+    return word;
+  }
+  return null;
+}
+
+function stayLabel(row: ConciergeTraveler) {
+  const place = (row.stayDestination || row.stayTitle || "").trim();
+  return place ? `${row.reference} (${place})` : row.reference;
+}
+
+export function pickShareStay(
+  message: string,
+  party: ConciergeTraveler[],
+  reference: string | null,
+  addressee?: string | null
+): { ok: true; bookingId: string } | { ok: false; summary: string } {
+  const stays = staysOf(party);
+  if (reference) {
+    const hit = stays.filter((row) => row.reference.toUpperCase() === reference.toUpperCase());
+    if (hit.length === 1) return { ok: true, bookingId: hit[0].bookingId };
+    return { ok: false, summary: "Je ne trouve pas ce séjour." };
+  }
+  if (!stays.length) return { ok: false, summary: "Sur quel séjour ?" };
+  const text = fold(message);
+  const named = stays.filter((row) => placeTokens(row).some((token) => hasPlaceWord(text, token)));
+  if (named.length === 1) return { ok: true, bookingId: named[0].bookingId };
+  if (named.length > 1) return { ok: false, summary: `Quel séjour : ${shareNameList(named.map(stayLabel))} ?` };
+  const hint = placeHintWord(message, addressee ?? null);
+  if (hint) return { ok: false, summary: `Je ne trouve pas le séjour de ${hint}.` };
+  if (stays.length === 1) return { ok: true, bookingId: stays[0].bookingId };
+  return { ok: false, summary: `Quel séjour : ${shareNameList(stays.map(stayLabel))} ?` };
+}
+
+export function pickShareCompanions(
+  query: string | null,
+  party: ConciergeTraveler[],
+  bookingId: string
+): { ok: true; companionId: string; label: string } | { ok: false; summary: string } {
+  if (!query?.trim()) return { ok: false, summary: "Dites à qui envoyer le carnet." };
+  const onStay = party.filter((row) => row.bookingId === bookingId);
+  const hits = onStay.filter((row) => !row.isHolder && sharePersonHit(query, row));
+  const ids = [...new Set(hits.map((row) => row.companionId).filter((id): id is string => Boolean(id)))];
+  if (ids.length === 1) {
+    const row = hits.find((item) => item.companionId === ids[0]) || hits[0];
+    return { ok: true, companionId: ids[0], label: sharePersonLabel(row) };
+  }
+  if (ids.length > 1) {
+    const labels = ids.map((id) => sharePersonLabel(hits.find((row) => row.companionId === id) || hits[0]));
+    return { ok: false, summary: `Plusieurs personnes correspondent : ${shareNameList(labels)}. Laquelle ?` };
+  }
+  if (hits.length) return { ok: false, summary: "Cet accompagnateur n’a pas de téléphone. Le lien reste à copier." };
+  const holder = onStay.find((row) => row.isHolder && sharePersonHit(query, row));
+  if (holder) return { ok: false, summary: `${sharePersonLabel(holder)} a déjà le carnet.` };
+  return { ok: false, summary: "Je ne trouve pas cette personne sur ce séjour." };
 }
 
 function holderOnly(input: SpacePerformInput) {
@@ -430,16 +580,24 @@ async function statement(admin: SupabaseClient, input: SpacePerformInput, deps: 
 
 async function serviceOrShare(admin: SupabaseClient, input: SpacePerformInput, deps: SpaceDeps): Promise<SpacePerformResult> {
   if (input.action.id === "partager_carnet") {
-    if (!input.holder) return result(input, { summary: "Seul le titulaire envoie le carnet.", access: false });
-    if (!input.action.name) return result(input, { summary: "Dites à qui envoyer le carnet.", access: false });
-    const bookingId = stayId(input);
-    if (!bookingId) return result(input, { summary: "Sur quel séjour ?", access: false });
-    if (!deps.shareStay) {
-      return result(input, { summary: `Le lien du carnet pour ${input.action.name} se confirme dans le séjour publié.`, access: true, bookingId });
+    if (!input.holder && !input.staff) {
+      return result(input, { summary: "Seul le titulaire envoie le carnet.", access: false, handoff: null });
     }
-    const done = await deps.shareStay(admin, input, bookingId);
-    if (done.ok) await note(admin, input, done.summary, ["partage"], bookingId);
-    return result(input, { ok: done.ok, summary: done.summary, access: !done.ok, bookingId });
+    const stay = pickShareStay(input.message, input.party, input.action.reference, input.action.name);
+    if (!stay.ok) return result(input, { summary: stay.summary, access: false, bookingId: null, handoff: null });
+    const who = pickShareCompanions(input.action.name, input.party, stay.bookingId);
+    if (!who.ok) return result(input, { summary: who.summary, access: false, bookingId: stay.bookingId, handoff: null });
+    if (!deps.shareStay) {
+      return result(input, {
+        summary: `Le lien du carnet pour ${who.label} se confirme dans le séjour publié.`,
+        access: true,
+        bookingId: stay.bookingId,
+        handoff: null,
+      });
+    }
+    const done = await deps.shareStay(admin, input, stay.bookingId);
+    if (done.ok) await note(admin, input, done.summary, ["partage"], stay.bookingId);
+    return result(input, { ok: done.ok, summary: done.summary, access: !done.ok, bookingId: stay.bookingId, handoff: null });
   }
   if (input.action.id === "deposer_formalite") {
     const bookingId = stayId(input);
