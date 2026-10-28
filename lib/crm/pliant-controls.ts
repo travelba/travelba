@@ -16,8 +16,16 @@ const PLIANT_CONTROL_KEYS = [
 export const PLIANT_SINGLE_USE = "PLIANT_SINGLE_USE";
 
 /**
+ * Carte virtuelle réutilisable. `maxTransactionCount` est honoré (1 à 999999999).
+ * Sans ce champ, Pliant laisse un nombre d’achats illimité jusqu’à l’expiration.
+ * Pas une config `TRAVEL` : son défaut est 3 ou 5, et Commercial Choice refuse des commerçants.
+ */
+export const PLIANT_VIRTUAL = "PLIANT_VIRTUAL";
+
+/**
  * Deux paiements sur une carte virtuelle de formalité : un contrôle de passerelle et le règlement.
- * Les cartes fournisseur et de dossier sont à usage unique et n’envoient pas ce nombre.
+ * Les cartes fournisseur et le formulaire du dossier restent à usage unique et n’envoient pas ce nombre.
+ * `creer_carte_pliant` envoie le nombre seulement quand il est supérieur à 1, sur `PLIANT_VIRTUAL`.
  */
 export const DEFAULT_PLIANT_TRANSACTIONS = 2;
 
@@ -64,6 +72,35 @@ function explicitTransactionCount(value: unknown) {
   const count = Number(text);
   if (!Number.isInteger(count) || count < 1 || count > PLIANT_TX_MAX) return null;
   return count;
+}
+
+/**
+ * Nombre d’achats demandé pour `creer_carte_pliant`.
+ * Absent ou vide : 1, qui reste une carte à usage unique.
+ * Un entier de 1 à 999999999 est accepté. Une décimale ou un texte ne l’est pas.
+ */
+export function parsePliantTransactionCount(value: unknown): { ok: true; count: number } | { ok: false } {
+  if (value == null || value === "") return { ok: true, count: 1 };
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 1 || value > PLIANT_TX_MAX) return { ok: false };
+    return { ok: true, count: value };
+  }
+  if (typeof value !== "string") return { ok: false };
+  const text = value.trim();
+  if (!text) return { ok: true, count: 1 };
+  if (!/^\d+$/.test(text)) return { ok: false };
+  const count = Number(text);
+  if (!Number.isInteger(count) || count < 1 || count > PLIANT_TX_MAX) return { ok: false };
+  return { ok: true, count };
+}
+
+/**
+ * 1 achat : `PLIANT_SINGLE_USE`, sans `maxTransactionCount` (la règle du produit).
+ * Davantage : `PLIANT_VIRTUAL`, qui honore le nombre. Jamais une config `TRAVEL`.
+ */
+export function pliantCardForTransactionCount(count: number) {
+  if (count <= 1) return { cardConfig: PLIANT_SINGLE_USE, maxTransactionCount: null as number | null };
+  return { cardConfig: PLIANT_VIRTUAL, maxTransactionCount: count };
 }
 
 /** `purpose` est obligatoire pour une config qui se termine par SINGLE_USE (200 caractères). */

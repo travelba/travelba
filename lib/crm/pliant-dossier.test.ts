@@ -88,6 +88,50 @@ test("refus, retrait et hors voyage ne recollent pas la dépense", () => {
   );
 });
 
+test("deux achats de la même carte deviennent deux coûts du dossier", () => {
+  const links = new Map([[CARD, DOSSIER]]);
+  const guarantee = coral({ id: "315cd2ce-ac3f-456e-8570-abc12f1ea520", status: "BOOKED", billingCents: -15000 });
+  const extras = coral({
+    id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    status: "BOOKED",
+    merchant: "EXTRAS",
+    billingCents: -4200,
+    transactionCents: -4200,
+    transactionCurrency: "EUR",
+  });
+  const both = planDossierPliantSpends({ spends: [guarantee, extras], cardBookingId: links, costs: [] });
+  assert.equal(both.length, 2);
+  assert.deepEqual(
+    both.map((row) => (row.op === "insert" ? row.spendId : row.op)),
+    [guarantee.id, extras.id]
+  );
+  assert.ok(both.every((row) => row.op === "insert" && row.bookingId === DOSSIER));
+
+  const secondOnly = planDossierPliantSpends({
+    spends: [guarantee, extras],
+    cardBookingId: links,
+    costs: [
+      {
+        id: "cost-1",
+        bookingId: DOSSIER,
+        sourceId: guarantee.id,
+        amountEur: 150,
+        originalAmount: 9000,
+        originalCurrency: "THB",
+        state: "posted",
+        supplier: "WWW.CORALTHAILAND.COM",
+        occurredOn: "2026-10-19",
+      },
+    ],
+  });
+  assert.equal(secondOnly.length, 1);
+  assert.equal(secondOnly[0]?.op, "insert");
+  if (secondOnly[0]?.op !== "insert") return;
+  assert.equal(secondOnly[0].spendId, extras.id);
+  assert.equal(secondOnly[0].bookingId, DOSSIER);
+  assert.equal(secondOnly[0].draft.amountEur, 42);
+});
+
 test("une carte ambiguë ou un coût déjà sur un autre dossier n’est pas pris", () => {
   assert.equal(singleCardBooking([
     { cardId: CARD, bookingId: DOSSIER },
