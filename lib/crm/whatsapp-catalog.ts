@@ -605,6 +605,16 @@ function catalogGroups(): WhatsappCatalogGroup[] {
           earlier: { template: "passeports" },
         }),
         message({
+          id: "passeport-expire",
+          title: "Un passeport expire avant le retour",
+          when: "Le livret est déposé, mais il expire avant la date de retour. Une fois par voyageur. Le prénom est celui du passeport.",
+          bubble: wiredBubble("passeport_expire", {
+            givenName: "Jonas",
+            date: "07/02/2027",
+            variable: "28/03/2027",
+          }),
+        }),
+        message({
           id: "formalite-manquante",
           title: "Une formalité manque",
           when: "Une fois par formalité, tant qu’elle n’est pas déposée. Ici, un visa. L’image est celle du visa.",

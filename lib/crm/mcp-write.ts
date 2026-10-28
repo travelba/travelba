@@ -11,6 +11,13 @@ import { BookingIssuesError, collectPublishIssues } from "@/lib/crm/booking-issu
 import { toAuditRow } from "@/lib/crm/audit-events";
 import { bookingCoverPlan, catalogCoverChoice, catalogPhotoFromPlan } from "@/lib/crm/covers";
 import {
+  classifyProvidedCover,
+  coverCreditText,
+  materializeProvidedCover,
+  providedCoverFailure,
+  type ProvidedCoverImage,
+} from "@/lib/crm/cover-provided";
+import {
   bookingMetaPatch,
   setCarnetPublished,
   syncBookingLedger,
@@ -180,14 +187,26 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     body.title = title;
   }
   const patch = bookingMetaPatch(body);
-  let cover: { clear: true } | { photo: string } | null = null;
+  let cover: { clear: true } | { photo: string } | { image: ProvidedCoverImage; credit: string } | null = null;
   if ("couverture" in input && input.couverture != null) {
     if (typeof input.couverture !== "string") throw new McpWriteError("Couverture invalide.");
-    const choice = catalogCoverChoice(input.couverture);
-    if ("error" in choice) throw new McpWriteError(choice.error);
-    cover = choice;
-    patch.cover_image_path = null;
-    patch.cover_credit = null;
+    const provided = classifyProvidedCover(input.couverture);
+    if ("error" in provided) throw new McpWriteError(provided.error);
+    if (provided.kind === "catalog") {
+      const choice = catalogCoverChoice(input.couverture);
+      if ("error" in choice) throw new McpWriteError(choice.error);
+      cover = choice;
+      patch.cover_image_path = null;
+      patch.cover_credit = null;
+    } else {
+      const credit = coverCreditText(input.credit);
+      if ("error" in credit) throw new McpWriteError(credit.error);
+      const image: ProvidedCoverImage =
+        provided.source === "url"
+          ? { source: "url", url: provided.url }
+          : { source: "file", bytes: provided.bytes, mime: provided.mime };
+      cover = { image, credit: credit.credit };
+    }
   }
   let particulier = false;
   let societeId = "";
@@ -204,7 +223,7 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     throw new McpWriteError("Un séjour particulier ne se facture pas à une société.");
   }
   const billing = particulier || societeId ? { particulier, societeId } : null;
-  if (!Object.keys(patch).length && !billing) throw new McpWriteError("Rien à modifier.");
+  if (!Object.keys(patch).length && !billing && !cover) throw new McpWriteError("Rien à modifier.");
   return { ...target, patch, billing, cover };
 }
 
@@ -626,6 +645,15 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     stayItems = (itemRows || []) as StayCoverItem[];
     return stayItems;
   }
+  if (cover && "image" in cover) {
+    try {
+      const stored = await materializeProvidedCover({ bookingId: prev.id, image: cover.image });
+      nextPatch.cover_image_path = stored.path;
+      nextPatch.cover_credit = cover.credit;
+    } catch (err) {
+      throw new McpWriteError(providedCoverFailure(err));
+    }
+  }
   if (cover && "photo" in cover) {
     const preview = {
       ...prev,
@@ -713,7 +741,9 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     console.error("[mcp] commission", err instanceof Error ? err.message : "error");
   }
   const titleChanged = (prev.title || "") !== (row.title || "");
-  const coverChanged = Boolean(cover) && (prev.cover_image_path || "") !== (row.cover_image_path || "");
+  const imageCover = Boolean(cover && "image" in cover);
+  const coverChanged =
+    imageCover || (Boolean(cover) && (prev.cover_image_path || "") !== (row.cover_image_path || ""));
   const coverItems = await readStayItems(false);
   if (titleChanged || coverChanged) {
     const photo = coverPhotoId(row as CrmBooking, coverItems);
@@ -727,7 +757,11 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
         detail: {
           reference: row.reference,
           ...(titleChanged ? { titre_avant: prev.title, titre_apres: row.title } : {}),
-          ...(coverChanged ? { couverture: photo, import_retire: true } : {}),
+          ...(coverChanged
+            ? imageCover
+              ? { couverture: "image", credit: cover && "image" in cover ? cover.credit : null }
+              : { couverture: photo, import_retire: true }
+            : {}),
         },
       })
     );
@@ -739,6 +773,7 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     reference: row.reference,
     titre: row.title,
     couverture: row.cover_image_path ? null : shownPhoto,
+    credit: row.cover_credit,
     statut: staffStayLabel(row),
     date_depart: row.start_date,
     date_retour: row.end_date,

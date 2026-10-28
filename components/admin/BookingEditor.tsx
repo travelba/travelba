@@ -99,7 +99,7 @@ import {
 } from "@/lib/crm/staff-stay";
 import { type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
-import { travelersMissingPassport } from "@/lib/crm/trip-documents";
+import { travelersMissingPassport, travelersPassportExpiresBeforeReturn } from "@/lib/crm/trip-documents";
 import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import {
@@ -974,11 +974,13 @@ export function BookingEditor({
 
   const updatesPending = revealItems.length > 0 || revealDocs.length > 0;
   const showPrimaryPublish = !booking.visible_to_client || updatesPending;
-  const passportGap = travelersMissingPassport(travelers, identityDocs, {
+  const passportParty = {
     holder: holderProfile,
     companions,
     returnOn: booking.end_date || booking.start_date,
-  });
+  };
+  const passportGap = travelersMissingPassport(travelers, identityDocs, passportParty);
+  const passportExpiry = travelersPassportExpiresBeforeReturn(travelers, identityDocs, passportParty);
   const hotelLetters = hotelTripChecklist(hotelRequests);
   const hasFlight = bookingHasFlight(items);
   const leOpen =
@@ -996,6 +998,7 @@ export function BookingEditor({
   const blockers = staffBlockingChips({
     travelers,
     missingPassportIds: passportGap.map((traveler) => traveler.id),
+    expiringPassportIds: passportExpiry.map((row) => row.traveler.id),
     hotelLettersOpen: hotelLetters.openCount,
     amountHidden: !booking.archived_at && (!booking.visible_to_client || booking.prices_visible === false),
     costsToPoint,
@@ -2265,6 +2268,21 @@ export function BookingEditor({
               <Link href={`/admin/clients/${booking.customer_id}`} className="inline-flex text-sm font-semibold underline">
                 Ouvrir la fiche client
               </Link>
+            </section>
+          ) : null}
+          {passportExpiry.length ? (
+            <section className="admin-af-card space-y-2 rounded-3xl p-5">
+              <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Expire avant le retour</h2>
+              <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+                {passportExpiry.map((row) => {
+                  const [year, month, day] = row.expiresOn.split("-");
+                  return (
+                    <li key={row.traveler.id}>
+                      {row.givenName} — {day}/{month}/{year}
+                    </li>
+                  );
+                })}
+              </ul>
             </section>
           ) : null}
           {hasFlight && account ? (

@@ -1,4 +1,4 @@
-import { shownPersonName } from "./identity";
+import { greetingGivenName, shownPersonName } from "./identity";
 import {
   holderMatchesAddedTraveler,
   isPlaceholderTraveler,
@@ -243,35 +243,83 @@ function partyOf(travelers: CrmBookingTraveler[]) {
   return named.length ? named : travelers;
 }
 
-/** Voyageurs dont aucun passeport du coffre, valide au retour, ne couvre la personne. Une pièce déjà sur le séjour compte encore. */
+type PassportPartyOptions = {
+  holder?: PersonIdentity | null;
+  companions?: PassportCompanion[];
+  returnOn?: string | null;
+};
+
+function partyOptions(options?: PassportPartyOptions) {
+  return {
+    holder: options?.holder ?? null,
+    companions: options?.companions ?? [],
+    returnOn: isoDay(options?.returnOn),
+  };
+}
+
+/** Voyageurs sans aucun passeport. Un livret déposé qui expire avant le retour n’est pas absent. */
 export function travelersMissingPassport(
   travelers: CrmBookingTraveler[],
   docs: CrmTravelDocument[],
-  options?: {
-    holder?: PersonIdentity | null;
-    companions?: PassportCompanion[];
-    returnOn?: string | null;
-  }
+  options?: PassportPartyOptions
 ) {
-  const holder = options?.holder ?? null;
-  const companions = options?.companions ?? [];
-  const returnOn = options?.returnOn ?? null;
+  const { holder, companions } = partyOptions(options);
   return partyOf(travelers).filter((traveler) => {
     if (primaryIdentityDoc(tripDocumentsForTraveler(docs, traveler))) return false;
-    return !docs.some(
-      (doc) => passportMatchesTraveler(doc, traveler, holder, companions) && passportValidAtReturn(doc, returnOn)
-    );
+    return !docs.some((doc) => passportMatchesTraveler(doc, traveler, holder, companions));
   });
+}
+
+export type PassportExpiry = {
+  traveler: CrmBookingTraveler;
+  document: CrmTravelDocument;
+  /** AAAA-MM-JJ */
+  expiresOn: string;
+  /** AAAA-MM-JJ */
+  returnOn: string;
+  /** Premier prénom imprimé sur le passeport. */
+  givenName: string;
+};
+
+/**
+ * Passeport déposé, mais aucun livret n’est valable le jour du retour.
+ * Le prénom est celui du passeport, pas le nom d’usage.
+ */
+export function travelersPassportExpiresBeforeReturn(
+  travelers: CrmBookingTraveler[],
+  docs: CrmTravelDocument[],
+  options?: PassportPartyOptions
+): PassportExpiry[] {
+  const { holder, companions, returnOn } = partyOptions(options);
+  if (!returnOn) return [];
+  const rows: PassportExpiry[] = [];
+  for (const traveler of partyOf(travelers)) {
+    const matches = docs.filter((doc) => passportMatchesTraveler(doc, traveler, holder, companions));
+    if (!matches.length) continue;
+    if (matches.some((doc) => passportValidAtReturn(doc, returnOn))) continue;
+    const dated = matches
+      .map((doc) => ({ doc, expires: isoDay(doc.expires_on) }))
+      .filter((row): row is { doc: CrmTravelDocument; expires: string } => Boolean(row.expires) && row.expires <= returnOn)
+      .sort((a, b) => b.expires.localeCompare(a.expires));
+    const best = dated[0];
+    if (!best) continue;
+    const givenName = greetingGivenName(best.doc.first_name) || greetingGivenName(traveler.first_name);
+    if (!givenName) continue;
+    rows.push({
+      traveler,
+      document: best.doc,
+      expiresOn: best.expires,
+      returnOn,
+      givenName,
+    });
+  }
+  return rows;
 }
 
 export function missingPassportCount(
   travelers: CrmBookingTraveler[],
   docs: CrmTravelDocument[],
-  options?: {
-    holder?: PersonIdentity | null;
-    companions?: PassportCompanion[];
-    returnOn?: string | null;
-  }
+  options?: PassportPartyOptions
 ) {
   return travelersMissingPassport(travelers, docs, options).length;
 }

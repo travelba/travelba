@@ -54,7 +54,7 @@ export function passportVaultToneClass(tone: PassportVaultTone) {
 }
 
 function againstTrip(expires: string, returnOn: string): { tone: PassportVaultTone; label: string } {
-  if (expires <= returnOn) return { tone: "alert", label: "Expire avant le voyage" };
+  if (expires <= returnOn) return { tone: "alert", label: "Expire avant le retour" };
   if (expires < addMonths(returnOn, 6)) {
     return { tone: "soon", label: "Moins de 6 mois après le retour" };
   }
