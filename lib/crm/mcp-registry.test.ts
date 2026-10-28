@@ -18,6 +18,7 @@ const EXPECTED = [
   "comptabilite_voyage",
   "stripe_en_attente",
   "emails_en_attente",
+  "lire_email",
   "reservation_little_emperors",
   "little_emperors_en_attente",
   "crediter_virement",
@@ -244,6 +245,19 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(releve?.description || "", /force/);
   assert.match(releve?.description || "", /twilio_sid/);
   assert.match(releve?.description || "", /e-mail n’est pas ouvert/);
+  const lecture = MCP_TOOLS.find((tool) => tool.name === "lire_email");
+  assert.equal(lecture?.write, undefined);
+  assert.equal(lecture?.pieceNumbers, undefined);
+  assert.equal(lecture?.signedUrl, undefined);
+  assert.equal(lecture?.cardSecrets, undefined);
+  assert.match(lecture?.description || "", /PDF/);
+  assert.match(lecture?.description || "", /passeport/);
+  assert.match(lecture?.description || "", /PNR/);
+  const mail = MCP_TOOLS.find((tool) => tool.name === "traiter_email");
+  assert.match(mail?.description || "", /creer_dossier/);
+  assert.match(mail?.description || "", /Aucune carte n’est créée ni modifiée/);
+  assert.match(mail?.description || "", /sans e-mail/);
+  assert.match(mail?.description || "", /Aucune invitation/);
 });
 
 test("passport tools name the travelba-passeports namespace and stay off the general token", () => {

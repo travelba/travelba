@@ -236,7 +236,10 @@ export function prepareServiceConfirm(input: Record<string, unknown>) {
 
 export function prepareEmailAction(input: Record<string, unknown>) {
   const action =
-    input.action === "rattacher" || input.action === "mettre_a_jour" || input.action === "refuser"
+    input.action === "rattacher" ||
+    input.action === "mettre_a_jour" ||
+    input.action === "refuser" ||
+    input.action === "creer_dossier"
       ? input.action
       : "";
   if (!action) throw new McpWriteError("Action inconnue.");
@@ -827,6 +830,10 @@ export async function confirmService(input: Record<string, unknown>, admin?: Mcp
 
 export async function settleEmail(input: Record<string, unknown>, admin?: McpAdmin) {
   const action = prepareEmailAction(input);
+  if (action.action === "creer_dossier") {
+    const { createDossierFromEmail } = await import("@/lib/crm/mcp-email");
+    return createDossierFromEmail(input, admin);
+  }
   const db = client(admin);
   const { data, error } = await db.from("crm_email_ingest").select("*").eq("id", action.id).maybeSingle();
   if (error) failDb(error, "E-mail introuvable.");
