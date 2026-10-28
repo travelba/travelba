@@ -113,6 +113,21 @@ test("a booking update only accepts notes and dates", () => {
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, titre: "   " }), /vide/);
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: "photo-inconnu-xyz" }), /inconnue/i);
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: "Millau" }), /Pas de photo/);
+  const png =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const image = prepareBookingUpdate({ id: BOOKING, couverture: png });
+  assert.equal("cover_image_path" in image.patch, false);
+  assert.equal(image.cover && "image" in image.cover && image.cover.image.source, "file");
+  assert.equal(image.cover && "image" in image.cover && image.cover.credit, "Image générée par IA");
+  const named = prepareBookingUpdate({
+    id: BOOKING,
+    couverture: `https://images.example.com/cover.png`,
+    credit: "Image générée par IA",
+  });
+  assert.equal(named.cover && "image" in named.cover && named.cover.image.source, "url");
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: "http://images.example.com/a.jpg" }), /HTTPS/);
+  const gif = Buffer.concat([Buffer.from("GIF89a"), Buffer.alloc(80)]).toString("base64");
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: gif }), /JPEG/);
 });
 
 test("an email leaves the queue only with an explicit action", () => {

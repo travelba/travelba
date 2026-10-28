@@ -476,7 +476,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates, le titre, la couverture, la commission d’agence ou la société de facturation d’un dossier, puis le grand livre. titre est le nom du séjour. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
+      "Met à jour les notes, les dates, le titre, la couverture, la commission d’agence ou la société de facturation d’un dossier, puis le grand livre. titre est le nom du séjour. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -504,9 +504,17 @@ export const MCP_TOOLS: ToolDef[] = [
       couverture: z
         .string()
         .trim()
-        .max(80)
+        .max(8_000_000)
         .optional()
-        .describe("catalogue, un lieu, ou un identifiant photo-… Retire une photo importée"),
+        .describe(
+          "catalogue, un lieu, un identifiant photo-…, une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo)"
+        ),
+      credit: z
+        .string()
+        .trim()
+        .max(120)
+        .optional()
+        .describe("Mention de la couverture importée. Défaut : Image générée par IA"),
     },
     run: (args) => updateBooking(args),
   },

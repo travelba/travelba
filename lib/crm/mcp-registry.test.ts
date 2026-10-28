@@ -147,6 +147,8 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /societe_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /titre/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /couverture/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /base64/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /Image générée par IA/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_dossier")?.description || "", /sans titre/i);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_client")?.description || "", /supprimer_societe_id/);
   const titulaire = MCP_TOOLS.find((tool) => tool.name === "modifier_titulaire");
