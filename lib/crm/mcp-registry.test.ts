@@ -55,6 +55,7 @@ const EXPECTED = [
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
+  "enregistrement_en_ligne",
   "envoyer_releve",
 ];
 
@@ -92,6 +93,7 @@ const WRITE_TOOLS = [
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
+  "enregistrement_en_ligne",
   "envoyer_releve",
 ];
 
@@ -125,6 +127,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   );
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.cardSecrets, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.write, true);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /transactions/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /plafond total/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /chaque débit/i);
+  assert.doesNotMatch(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /ignoré/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "lire_carte_pliant")?.write, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.openWorld, true);
@@ -214,7 +220,7 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(message?.description || "", /Rien n’est envoyé/);
   assert.match(message?.description || "", /un clic/);
   assert.match(message?.description || "", /fournisseur/);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "modifier_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
+  for (const name of ["creer_dossier", "ajouter_voyageur", "modifier_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip", "enregistrement_en_ligne"]) {
     const tool = MCP_TOOLS.find((item) => item.name === name);
     assert.equal(tool?.write, true);
     assert.equal(tool?.openWorld, undefined);
@@ -222,6 +228,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
     assert.equal(tool?.signedUrl, undefined);
     assert.equal(tool?.cardSecrets, undefined);
   }
+  const checkinTool = MCP_TOOLS.find((tool) => tool.name === "enregistrement_en_ligne");
+  assert.match(checkinTool?.description || "", /Pas de passeport, pas de MRZ/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /enregistrement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /modifier_voyageur/);
   const releve = MCP_TOOLS.find((tool) => tool.name === "envoyer_releve");
   assert.equal(releve?.write, true);
   assert.equal(releve?.openWorld, true);

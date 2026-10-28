@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { emptyPliantCardControls, PLIANT_SINGLE_USE, pliantControlsAreOpen, pliantIssuePayload } from "./pliant-controls";
+import {
+  emptyPliantCardControls,
+  parsePliantTransactionCount,
+  PLIANT_SINGLE_USE,
+  PLIANT_VIRTUAL,
+  pliantCardForTransactionCount,
+  pliantControlsAreOpen,
+  pliantIssuePayload,
+} from "./pliant-controls";
+import { manualStayCardBody } from "./manual-stay-card";
 
 test("une carte à usage unique part sans blocage et sans nombre de transactions", () => {
   const controls = emptyPliantCardControls();
@@ -88,6 +97,66 @@ test("un nombre saisi est ignoré sur une carte à usage unique, et l’objet re
   assert.equal(body.cardControls.categories, null);
   assert.equal(body.cardControls.acceptanceMethods, null);
   assert.equal(body.label, "Client – Hôtel – Dossier");
+});
+
+test("un nombre d’achats : 1 reste à usage unique, davantage part en carte virtuelle", () => {
+  assert.deepEqual(parsePliantTransactionCount(undefined), { ok: true, count: 1 });
+  assert.deepEqual(parsePliantTransactionCount(""), { ok: true, count: 1 });
+  assert.deepEqual(parsePliantTransactionCount("  "), { ok: true, count: 1 });
+  assert.deepEqual(parsePliantTransactionCount(1), { ok: true, count: 1 });
+  assert.deepEqual(parsePliantTransactionCount("5"), { ok: true, count: 5 });
+  assert.equal(parsePliantTransactionCount(0).ok, false);
+  assert.equal(parsePliantTransactionCount(1.5).ok, false);
+  assert.equal(parsePliantTransactionCount("5,0").ok, false);
+  assert.equal(parsePliantTransactionCount("beaucoup").ok, false);
+  assert.equal(parsePliantTransactionCount(1_000_000_000).ok, false);
+
+  assert.deepEqual(pliantCardForTransactionCount(1), {
+    cardConfig: PLIANT_SINGLE_USE,
+    maxTransactionCount: null,
+  });
+  assert.deepEqual(pliantCardForTransactionCount(5), {
+    cardConfig: PLIANT_VIRTUAL,
+    maxTransactionCount: 5,
+  });
+
+  const reusable = manualStayCardBody({
+    firstName: "Camille",
+    lastName: "Martin",
+    limitCents: 150_000,
+    transactionLimitCents: 40_000,
+    transactionCount: 5,
+    validFrom: "2026-10-04",
+    validTo: "2026-10-12",
+    organizationId: "org",
+    designation: "Hôtel",
+  });
+  const issued = pliantIssuePayload(reusable, { organizationId: "org", cardConfig: reusable.cardConfig });
+  assert.equal(issued.cardConfig, PLIANT_VIRTUAL);
+  assert.equal(issued.maxTransactionCount, 5);
+  assert.deepEqual(issued.limit, { value: 150_000, currency: "EUR" });
+  assert.deepEqual(issued.transactionLimit, { value: 40_000, currency: "EUR" });
+  assert.equal(issued.limitRenewFrequency, "TOTAL");
+  assert.deepEqual(issued.cardControls, emptyPliantCardControls());
+  assert.equal(issued.cardControls.merchants, null);
+  assert.equal(issued.cardControls.categories, null);
+  assert.equal(issued.cardControls.countries, null);
+  assert.equal(issued.cardControls.currencies, null);
+  assert.equal(issued.cardControls.acceptanceMethods, null);
+
+  const once = manualStayCardBody({
+    firstName: "Camille",
+    lastName: "Martin",
+    limitCents: 150_000,
+    transactionCount: 1,
+    validFrom: "2026-10-04",
+    validTo: "2026-10-12",
+    organizationId: "org",
+  });
+  const single = pliantIssuePayload(once, { organizationId: "org", cardConfig: once.cardConfig });
+  assert.equal(single.cardConfig, PLIANT_SINGLE_USE);
+  assert.equal(Object.hasOwn(single, "maxTransactionCount"), false);
+  assert.deepEqual(single.transactionLimit, { value: 150_000, currency: "EUR" });
 });
 
 test("une carte virtuelle de formalité garde le nombre d’autorisations saisi", () => {

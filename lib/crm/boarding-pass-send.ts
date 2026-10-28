@@ -18,6 +18,7 @@ import {
   type CheckinSituation,
 } from "./boarding-pass-whatsapp";
 import { boardingPassSignedPath } from "./boarding-pass-link";
+import { syncCheckinSent } from "./online-checkin-db";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { resolveContentSid } from "./twilio-content-sid";
 import { sendContentTemplate } from "./whatsapp";
@@ -135,6 +136,7 @@ export async function sendBoardingPassWhatsapp(
   if (!contentSid) return { ok: false, error: "Le modèle WhatsApp n’est pas encore approuvé.", sent: 0 };
 
   const prepared: { fields: BoardingPassFields; documentId: string; filename: string; preview: string }[] = [];
+  const sentCards: { documentId: string; flight: string }[] = [];
   for (const card of cards) {
     const documentId = String(card.documentId || "");
     const fields = boardingPassFields(card);
@@ -188,6 +190,13 @@ export async function sendBoardingPassWhatsapp(
       documentId: row.documentId,
     });
     sent += 1;
+    sentCards.push({ documentId: row.documentId, flight: row.fields.flight });
+  }
+  if (sentCards.length) {
+    await syncCheckinSent(supabase, input.bookingId, "agence", {
+      documentIds: sentCards.map((card) => card.documentId),
+      flightLabels: sentCards.map((card) => card.flight),
+    });
   }
   return { ok: true, sent };
 }

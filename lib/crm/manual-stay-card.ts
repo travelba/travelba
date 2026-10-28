@@ -1,6 +1,6 @@
 import { pliantCardNomination, pliantStayCaption } from "./eta-il-fee";
 import { addIsoDays, cardCloseDate, isoDate, parseEurosToCents } from "./hotel-arrival";
-import { PLIANT_SINGLE_USE } from "./pliant-controls";
+import { pliantCardForTransactionCount } from "./pliant-controls";
 
 /** Marque une carte dont le montant a été choisi sur le dossier. Le cron ne la réécrit pas. */
 export const MANUAL_CARD_NOTE = "Saisie agence";
@@ -67,6 +67,8 @@ export function manualStayCardBody(input: {
   hotels?: Array<string | null | undefined>;
   reference?: string | null;
   transactionLimitCents?: number;
+  /** 1 ou omis : usage unique. Au-delà : carte virtuelle avec ce nombre d’achats. */
+  transactionCount?: number;
   currency?: string;
 }) {
   const name = pliantCardNomination({
@@ -95,9 +97,10 @@ export function manualStayCardBody(input: {
   const currency = /^[A-Z]{3}$/.test(code) ? code : "EUR";
   const money = { value: input.limitCents, currency };
   const perTransaction = input.transactionLimitCents ?? input.limitCents;
+  const product = pliantCardForTransactionCount(input.transactionCount ?? 1);
   return {
     organizationId: input.organizationId,
-    cardConfig: PLIANT_SINGLE_USE,
+    cardConfig: product.cardConfig,
     label: caption?.label || name.label,
     purpose: caption?.purpose || name.label,
     customFirstName: name.customFirstName,
@@ -105,6 +108,7 @@ export function manualStayCardBody(input: {
     limit: money,
     transactionLimit: { value: perTransaction, currency },
     limitRenewFrequency: "TOTAL" as const,
+    ...(product.maxTransactionCount != null ? { maxTransactionCount: product.maxTransactionCount } : {}),
     validFrom: input.validFrom,
     validTo: input.validTo,
     validTimezone: "Europe/Paris" as const,

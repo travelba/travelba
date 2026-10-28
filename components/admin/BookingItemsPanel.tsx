@@ -31,6 +31,8 @@ import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { DRAFT_STEP_PREFIX, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
 import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
+import { flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
+import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
 import { reviewDoubts } from "@/lib/crm/review-doubt";
 import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
@@ -296,6 +298,7 @@ export function BookingItemsPanel({
   reference = null,
   onLiveItems,
   onStepsPending,
+  checkins = [],
 }: {
   bookingId: string;
   items: CrmBookingItem[];
@@ -334,6 +337,7 @@ export function BookingItemsPanel({
   onLiveItems?: (items: CrmBookingItem[]) => void;
   /** Une étape retirée ou modifiée attend l’enregistrement du séjour. */
   onStepsPending?: (pending: boolean) => void;
+  checkins?: StoredFlightCheckin[];
 }) {
   const router = useRouter();
   const pendingRef = useRef(false);
@@ -432,6 +436,9 @@ export function BookingItemsPanel({
     }
     return visible;
   })();
+  const checkinByItem = new Map(
+    flightCheckinViews({ items: stayCards(rows), documents, rows: checkins, now: new Date() }).map((line) => [line.itemId, line])
+  );
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -693,6 +700,8 @@ export function BookingItemsPanel({
           const subtitle = stepSubtitle(item);
           const ticketNames = item.kind === "flight" ? ticketTravelerNames(item.details) : [];
           const airport = item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
+          const checkin = checkinByItem.get(item.id);
+          const returnCheckin = returnLeg ? checkinByItem.get(returnLeg.id) : undefined;
           const when =
             item.kind === "hotel" ? shortStayRange(item.start_at, item.end_at) : shortStayDay(item.start_at);
           const retired =
@@ -828,8 +837,20 @@ export function BookingItemsPanel({
                       <span className="block break-words text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</span>
                     ) : null}
                     {airport ? <span className="block break-words text-xs text-muted lg:truncate">{airport}</span> : null}
+                    {checkin ? (
+                      <span className="mt-1 block">
+                        <OnlineCheckinBadge line={checkin} />
+                      </span>
+                    ) : null}
                     {returnLeg ? (
-                      <span className="block break-words text-xs text-muted">Retour · {flightLegLine(returnLeg)}</span>
+                      <span className="block break-words text-xs text-muted">
+                        <span className="block">Retour · {flightLegLine(returnLeg)}</span>
+                        {returnCheckin ? (
+                          <span className="mt-1 block">
+                            <OnlineCheckinBadge line={returnCheckin} />
+                          </span>
+                        ) : null}
+                      </span>
                     ) : null}
                     {quiet ? <span className="block break-words text-xs text-muted lg:truncate">{quiet}</span> : null}
                     {doubts.length ? (

@@ -78,6 +78,8 @@ import {
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { hotelTripChecklist } from "@/lib/crm/hotel-desk";
+import { dossierCheckinBadge, flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
+import { OnlineCheckinChecklist } from "@/components/admin/OnlineCheckinChecklist";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
@@ -345,6 +347,7 @@ export function BookingEditor({
   accounting = null,
   agencyFee,
   importTasks = [],
+  checkins = [],
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -435,6 +438,8 @@ export function BookingEditor({
   accounting?: TripAccountingView | null;
   /** Enregistrement, visa et pré-enregistrement issus d’un mail. Pas des étapes. */
   importTasks?: { id: string; kind: string; title: string }[];
+  /** Statut d’enregistrement en ligne déjà noté, une ligne par vol. */
+  checkins?: StoredFlightCheckin[];
 }) {
   const items = useMemo(() => completeFlightRoutes(sourceItems), [sourceItems]);
   const router = useRouter();
@@ -986,6 +991,8 @@ export function BookingEditor({
     endDate: booking.end_date,
   });
   const costsToPoint = reglementCostsToPoint(accounting);
+  const checkinLines = flightCheckinViews({ items, documents, rows: checkins, now: new Date() });
+  const checkinBadge = dossierCheckinBadge(checkinLines);
   const blockers = staffBlockingChips({
     travelers,
     missingPassportIds: passportGap.map((traveler) => traveler.id),
@@ -994,6 +1001,7 @@ export function BookingEditor({
     costsToPoint,
     marginStale: Boolean(accounting?.invoice.printed && accounting.invoice.marginStale),
     cardAlerts: arrivals.filter((row) => hotelCardNeedsAlert(row)).length,
+    checkinAlerts: checkinLines.filter((line) => line.alert).length,
   });
   const travelerLabel = travelers.length
     ? travelers.length <= 4
@@ -1293,7 +1301,20 @@ export function BookingEditor({
           {facts.placeLine ? <span>· {facts.placeLine}</span> : null}
           <span>· {travelerLabel}</span>
         </p>
-        {stateChip}
+        <div className="flex flex-wrap items-center gap-2">
+          {stateChip}
+          {checkinBadge && !checkinBadge.alert ? (
+            <button
+              type="button"
+              onClick={() => setTab("todo")}
+              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                checkinBadge.done ? "bg-white text-[#0B192C] ring-1 ring-[#d9d1c3]" : "bg-[#0B192C] text-white"
+              }`}
+            >
+              {checkinBadge.label}
+            </button>
+          ) : null}
+        </div>
         {blockers.length ? (
           <ul className="flex flex-wrap gap-2">
             {blockers.map((chip) => (
@@ -1842,6 +1863,7 @@ export function BookingEditor({
         openRelanceId={openRelanceId}
         openReplyId={openReplyId}
         reference={booking.reference}
+        checkins={checkins}
         onLiveItems={onLiveItems}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
@@ -2308,6 +2330,7 @@ export function BookingEditor({
               state={littleEmperors.state}
             />
           ) : null}
+          <OnlineCheckinChecklist bookingId={booking.id} lines={checkinLines} />
           <ServiceOfferToggles
             bookingId={booking.id}
             chauffeur={booking.offer_chauffeur === true}
