@@ -29,7 +29,7 @@ import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
-import { addedTravelerNames, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
+import { addedTravelerNames, holderMatchesAddedTraveler, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
@@ -644,7 +644,10 @@ function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: Pr
 }
 
 export async function createDossier(input: Record<string, unknown>, admin?: Admin) {
-  const draft = prepareDossier(input);
+  const givenTitle = typeof input.titre === "string" ? input.titre.trim() : "";
+  const destination = typeof input.destination === "string" ? input.destination.trim() : "";
+  if (!givenTitle && !destination) throw new McpWriteError("Indiquez un titre ou une destination.");
+  const draft = prepareDossier({ ...input, titre: givenTitle || destination });
   const societeId = optionalId(input.societe_id, "Société");
   const particulier = flag(input.particulier, "Particulier");
   const billCompany = facturerSociete(input.facturer_societe);
@@ -799,7 +802,7 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
       throw new McpWriteError("Ce compagnon ne correspond pas au nom indiqué.");
     }
   }
-  const isHolder = !known && Boolean(prenoms && nom) && sameAddedTraveler(personOf(holder), query);
+  const isHolder = !known && Boolean(prenoms && nom) && holderMatchesAddedTraveler(personOf(holder), query);
   if (!known && !isHolder) {
     const matches = companions.filter((row) => sameAddedTraveler(personOf(row), query));
     known = pickCompanion(matches, passportIds);

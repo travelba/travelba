@@ -341,6 +341,15 @@ test("creer_dossier reste en préparation, sans invitation ni débit", async () 
   assert.equal(db.tables.crm_transactions?.length || 0, 0);
   assert.equal(db.writes.some((write) => /invite|message|whatsapp/i.test(write.table)), false);
   await assert.rejects(() => createDossier({ client_id: OTHER, titre: "Rome" }, client), /Client introuvable/);
+  const cityNamed = await createDossier({ client_id: CLIENT, destination: "Montpellier" }, client);
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === cityNamed.id)?.title, "Montpellier");
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === cityNamed.id)?.destination, "Montpellier");
+  const given = await createDossier(
+    { client_id: CLIENT, titre: "Hôtel Richer de Belleval", destination: "Montpellier" },
+    client
+  );
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === given.id)?.title, "Hôtel Richer de Belleval");
+  await assert.rejects(() => createDossier({ client_id: CLIENT }, client), /titre ou une destination/);
 });
 
 test("ajouter_voyageur enregistre le passeport comme la fiche, sans renvoyer le numéro", async () => {
@@ -1092,6 +1101,42 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
   assert.equal(removed.retiree, true);
   assert.equal(removed.notifie, false);
   assert.equal(db.tables.crm_booking_items.some((row) => row.id === again.id), false);
+});
+
+test("ajouter le titulaire avec sa date et ses prénoms ne crée pas de compagnon", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Rome" }, client);
+  const added = await addVoyageur(
+    {
+      dossier_id: dossier.id,
+      prenoms: "Camille Louise",
+      nom: "Martin",
+      date_naissance: "1988-04-02",
+      sexe: "M",
+    },
+    client
+  );
+  assert.equal(added.titulaire, true);
+  assert.equal(added.compagnon_id, null);
+  assert.equal(added.notifie, false);
+  assert.equal(db.tables.crm_travel_companions.length, 0);
+  assert.equal(db.tables.crm_customers.find((row) => row.id === CLIENT)?.birth_date, "1988-04-02");
+  assert.equal(db.tables.crm_booking_travelers[0]?.is_account_holder, true);
+  const child = await addVoyageur(
+    {
+      dossier_id: dossier.id,
+      prenoms: "Louise",
+      nom: "Martin",
+      date_naissance: "2021-03-26",
+    },
+    client
+  );
+  assert.equal(child.titulaire, false);
+  assert.equal(db.tables.crm_travel_companions.length, 1);
+  assert.notEqual(child.compagnon_id, null);
 });
 
 test("deux frères homonymes ne prennent pas la fiche l’un de l’autre", async () => {

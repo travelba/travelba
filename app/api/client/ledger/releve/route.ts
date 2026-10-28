@@ -47,6 +47,7 @@ export async function POST() {
       member: view.member,
       pdf,
       audience: "client",
+      optOutAt: auth.customer.whatsapp_opt_out_at,
     })
   );
 }

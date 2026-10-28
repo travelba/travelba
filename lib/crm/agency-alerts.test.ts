@@ -18,6 +18,25 @@ test("un e-mail et un WhatsApp deviennent chacun une alerte, sans adresse", () =
   assert.equal(JSON.stringify(alerts).includes("@"), false);
 });
 
+test("une modification du concierge ouvre le dossier", () => {
+  const alerts = agencyAlerts({
+    emails: [],
+    chats: [],
+    changes: [
+      {
+        id: "a1",
+        summary: "J’ai ajouté le numéro de Victoria : +33 6 12 34 56 78.",
+        createdAt: "2026-10-27T10:00:00.000Z",
+        bookingId: "stay-1",
+      },
+    ],
+  });
+  assert.equal(alerts[0]?.kicker, "Concierge");
+  assert.equal(alerts[0]?.href, "/admin/reservations/stay-1");
+  assert.match(alerts[0]?.body || "", /Victoria/);
+  assert.equal(alerts[0]?.title, "Modification du concierge");
+});
+
 test("un objet vide et un message vide restent annoncés", () => {
   const alerts = agencyAlerts({
     emails: [{ id: "", subject: "x", receivedAt: "2026-10-26T12:00:00.000Z" }, { id: "m2", subject: "  ", receivedAt: "2026-10-26T12:01:00.000Z" }],

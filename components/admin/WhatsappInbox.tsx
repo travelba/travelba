@@ -7,8 +7,9 @@ import { ConciergeProposalDesk } from "@/components/admin/ConciergeProposalDesk"
 import { WhatsappHoldButton, type HandoffResult } from "@/components/admin/WhatsappHoldButton";
 import {
   conversationBadge,
-  deliveryLabel,
+  deliveryCaption,
   filterThreads,
+  isVoiceNotePath,
   messageSpeaker,
   messagesNewestFirst,
   parisStamp,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/crm/whatsapp-inbox";
 import { askBrowserAlerts, browserAlert } from "@/lib/crm/browser-alert";
 import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
+import { VoiceNote } from "@/components/admin/VoiceNote";
 
 export type InboxProposal = { id: string; draft: string };
 export type InboxTemplate = { key: string; label: string };
@@ -238,10 +240,11 @@ export function WhatsappInbox({
             }
             const speaker = messageSpeaker(message);
             const mine = speaker !== "client";
+            const voice = isVoiceNotePath(message.mediaPath);
             return (
               <article key={message.id} id={`m-${message.id}`} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${voice ? "w-[min(100%,20rem)]" : ""} ${
                     message.requestId
                       ? "border border-[#C5A880] bg-white"
                       : speaker === "client"
@@ -255,8 +258,12 @@ export function WhatsappInbox({
                     {speakerLabel(speaker, message.authorName)}
                     {speaker === "robot" ? " · robot" : ""}
                   </p>
-                  <p className="whitespace-pre-wrap">{message.body}</p>
-                  {message.mediaPath ? (
+                  {voice && message.mediaPath ? (
+                    <VoiceNote path={message.mediaPath} text={message.body} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{message.body}</p>
+                  )}
+                  {!voice && message.mediaPath ? (
                     <a className="mt-2 block text-xs underline" href={`/api/files?path=${encodeURIComponent(message.mediaPath)}`}>
                       Pièce jointe
                     </a>
@@ -266,7 +273,7 @@ export function WhatsappInbox({
                   ) : null}
                   <p className={`mt-1 text-[10px] ${mine && speaker === "agency" ? "text-white/70" : "text-[var(--color-ink-soft)]"}`}>
                     {parisStamp(message.createdAt)}
-                    {deliveryLabel(message.status) ? ` · ${deliveryLabel(message.status)}` : ""}
+                    {deliveryCaption(message.status, message.error) ? ` · ${deliveryCaption(message.status, message.error)}` : ""}
                     {message.requestId ? " · Demande ouverte" : ""}
                   </p>
                   {message.requestId ? (

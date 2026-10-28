@@ -21,14 +21,25 @@ export type InboundChatAlert = {
   createdAt: string;
 };
 
+export type ConciergeChangeAlert = {
+  id: string;
+  summary: string | null;
+  createdAt: string;
+  bookingId: string | null;
+};
+
 function clip(value: string, max = 140) {
   const flat = value.replace(/\s+/g, " ").trim();
   if (!flat) return "";
   return flat.length <= max ? flat : `${flat.slice(0, max).trimEnd()}…`;
 }
 
-/** Un e-mail de la file et un message client, du plus ancien au plus récent. */
-export function agencyAlerts(input: { emails: InboundMailAlert[]; chats: InboundChatAlert[] }): AgencyAlert[] {
+/** Un e-mail de la file, un message client, une modification du concierge, du plus ancien au plus récent. */
+export function agencyAlerts(input: {
+  emails: InboundMailAlert[];
+  chats: InboundChatAlert[];
+  changes?: ConciergeChangeAlert[];
+}): AgencyAlert[] {
   const emails = input.emails.flatMap((row) => {
     if (!row.id || !row.receivedAt) return [];
     const title = (row.subject || "").trim() || "Message reçu";
@@ -56,5 +67,18 @@ export function agencyAlerts(input: { emails: InboundMailAlert[]; chats: Inbound
       },
     ];
   });
-  return [...emails, ...chats].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+  const changes = (input.changes || []).flatMap((row) => {
+    if (!row.id || !row.createdAt) return [];
+    return [
+      {
+        id: `concierge:${row.id}`,
+        at: row.createdAt,
+        title: "Modification du concierge",
+        body: clip(row.summary || "") || "Le concierge a modifié un dossier.",
+        href: row.bookingId ? `/admin/reservations/${row.bookingId}` : "/admin/whatsapp",
+        kicker: "Concierge",
+      },
+    ];
+  });
+  return [...emails, ...chats, ...changes].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
 }

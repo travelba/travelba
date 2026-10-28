@@ -45,6 +45,24 @@ function doc(partial: Partial<CrmTravelDocument>): CrmTravelDocument {
   };
 }
 
+test("le passeport sans nom du titulaire, non relié au voyageur, est à jour", () => {
+  const rows = passportVaultRows(
+    [
+      traveler({
+        id: "ilan",
+        first_name: "Camille Louise",
+        last_name: "Martin",
+        is_account_holder: false,
+      }),
+    ],
+    [doc({ first_name: null, last_name: null, expires_on: "2031-06-14", number: null })],
+    "2026-10-27",
+    { first_name: "Camille Louise", last_name: "Martin", birth_date: null },
+    { start_date: "2027-03-21", end_date: "2027-03-28" }
+  );
+  assert.deepEqual(rows.map((row) => row.label), ["Passeport à jour"]);
+});
+
 test("coffre : à jour, bientôt, manquant, sans numéro", () => {
   const rows = passportVaultRows(
     [

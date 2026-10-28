@@ -236,6 +236,7 @@ export function companionActivityDetail(input: {
   birthDate?: string | null;
   nationality?: string | null;
   phone?: string | null;
+  email?: string | null;
   loyalty?: LoyaltyMap | null;
 }) {
   const programs = filledLoyaltyLabels(input.loyalty);
@@ -244,6 +245,7 @@ export function companionActivityDetail(input: {
     input.birthDate ? `né(e) le ${formatDateFr(input.birthDate)}` : "",
     input.nationality ? countryName(input.nationality) : "",
     tidyName(input.phone),
+    tidyName(input.email),
     programs.length ? programs.join(", ") : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" · ").slice(0, 400) : null;

@@ -1,4 +1,5 @@
-import { coverMatchInText, generatedCoverIdForPlace } from "@/lib/crm/covers";
+import { countryLandmarkPhotoAllowed } from "@/lib/crm/cover-catalog";
+import { coverMatchInText, quotedPlaceKeys } from "@/lib/crm/covers";
 import { PHOTOGRAPHED_CITIES, type PhotographedCity } from "@/lib/crm/cover-coords";
 
 export type GeocodeHit = {
@@ -67,16 +68,22 @@ export function nearestPhotographedCity(
 }
 
 /**
- * Lieu géocodé : la ville citée, sinon une image à générer pour ce nom.
- * Ni la ville photographiée la plus proche, ni la carte postale du pays.
+ * Lieu géocodé, quand le dossier n’a pas déjà une image.
+ * Ville du catalogue citée, ville photographiée proche, photo du pays
+ * seulement si elle ne montre pas une autre ville.
  */
 export function photoFromGeocodeHit(hit: GeocodeHit): string | null {
   const mentioned = coverMatchInText(hit.label);
   if (mentioned && mentioned.rank >= 3) return mentioned.photo;
-  const locality = (hit.label.split(",")[0] || "").trim();
-  const generated = generatedCoverIdForPlace(locality);
-  if (generated) return generated;
-  return mentioned?.photo ?? null;
+  const sameCountry = nearestPhotographedCity(hit.lat, hit.lon, hit.countryCode);
+  if (sameCountry && sameCountry.km <= 180) return sameCountry.city.photo;
+  if (mentioned && countryLandmarkPhotoAllowed(mentioned.photo, quotedPlaceKeys(hit.label))) {
+    return mentioned.photo;
+  }
+  if (sameCountry && sameCountry.km <= 500) return sameCountry.city.photo;
+  const abroad = nearestPhotographedCity(hit.lat, hit.lon);
+  if (abroad && abroad.km <= 500) return abroad.city.photo;
+  return (sameCountry || abroad)?.city.photo ?? null;
 }
 
 /**
@@ -88,7 +95,9 @@ export function legacyNearestCover(hit: GeocodeHit): string | null {
   if (mentioned && mentioned.rank >= 3) return null;
   const sameCountry = nearestPhotographedCity(hit.lat, hit.lon, hit.countryCode);
   if (sameCountry && sameCountry.km <= 180) return sameCountry.city.photo;
-  if (mentioned) return mentioned.photo;
+  if (mentioned && countryLandmarkPhotoAllowed(mentioned.photo, quotedPlaceKeys(hit.label))) {
+    return mentioned.photo;
+  }
   if (sameCountry && sameCountry.km <= 500) return sameCountry.city.photo;
   const abroad = nearestPhotographedCity(hit.lat, hit.lon);
   if (abroad && abroad.km <= 500) return abroad.city.photo;

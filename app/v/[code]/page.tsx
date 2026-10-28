@@ -1,60 +1,34 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PublicTripView } from "@/components/crm/PublicTripView";
-import { clientVisibleItems } from "@/lib/crm/carnet";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
-import { bookingCoverUrl } from "@/lib/crm/covers";
-import { formatDateFr } from "@/lib/crm/money";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
-import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
-import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { loadPublishedTripShare } from "@/lib/crm/trip-share-load";
-import { toPublicBooking } from "@/lib/crm/public-booking";
-import { siteConfig } from "@/lib/site";
+import { publicTripMetadata, publicTripPageModel, publishedTripForCode } from "@/lib/crm/trip-share-example";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ code: string }> };
 
-function tripDescription(start: string | null, end: string | null) {
-  const lead = "Itinéraire et documents, préparés par Travel Business Agency.";
-  if (!start && !end) return lead;
-  return `${formatDateFr(start)} — ${formatDateFr(end)}. ${lead}`;
-}
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { code } = await params;
-  const trip = await loadPublishedTripShare(code);
-  const hidden = { index: false, follow: false };
-  if (!trip) return { title: "Voyage", robots: hidden };
-  const title = stayTitleFromItems(
-    trip.booking.title,
-    trip.booking.destination,
-    clientVisibleItems(trip.items)
-  );
-  const description = tripDescription(trip.booking.start_date, trip.booking.end_date);
-  const cover = bookingCoverUrl(trip.booking, 1200, { partage: code, items: trip.items });
-  return {
-    title,
-    description,
-    robots: hidden,
-    openGraph: {
-      title,
-      description,
-      url: `${siteConfig.url}/v/${code}`,
-      siteName: siteConfig.name,
-      images: cover ? [{ url: cover, alt: title }] : undefined,
-    },
-  };
+  const trip = await publishedTripForCode(code, loadPublishedTripShare);
+  return publicTripMetadata(code, trip);
 }
 
 export default async function PublicTripPage({ params }: Props) {
   const { code } = await params;
-  const trip = await loadPublishedTripShare(code);
-  if (!trip) notFound();
-  const items = withoutHotelRosterItems(await loadHotelContacts(trip.booking.id, trip.items));
-  const phones = googlePhoneMap(trip.booking, items);
+  const model = await publicTripPageModel(code, {
+    loadTrip: loadPublishedTripShare,
+    loadContacts: loadHotelContacts,
+  });
+  if (!model) notFound();
   return (
-    <PublicTripView booking={toPublicBooking(trip.booking)} items={items} docs={trip.docs} partage={code} phones={phones} />
+    <PublicTripView
+      booking={model.booking}
+      items={model.items}
+      docs={model.docs}
+      partage={code}
+      phones={model.phones}
+    />
   );
 }

@@ -5,7 +5,7 @@ import { siteConfig } from "@/lib/site";
 import { cityCoverCached, ensureCityCover } from "@/lib/crm/cover-generate";
 import { cityCoverAuthFailed } from "@/lib/crm/cover-retouch";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
-import { tripDocCoverage } from "./trip-documents";
+import { missingPassportCount } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportTrip } from "./visa-trip";
 import { toE164 } from "./phone";
@@ -579,20 +579,43 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
 }
 
 async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: visas }, { data: sent }] = await Promise.all([
-    admin.from("crm_booking_items").select("kind, details").eq("booking_id", booking.id),
-    admin.from("crm_booking_travelers").select("*").eq("booking_id", booking.id),
-    admin.from("crm_travel_documents").select("*").eq("customer_id", booking.customer_id),
-    admin.from("crm_visa_requests").select("country, status").eq("booking_id", booking.id),
-    admin
-      .from("crm_whatsapp_messages")
-      .select("dedupe_key, status")
-      .eq("booking_id", booking.id)
-      .in("status", ["sent", "failed"]),
-  ]);
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: visas }, { data: sent }, { data: customer }, { data: companions }] =
+    await Promise.all([
+      admin.from("crm_booking_items").select("kind, details").eq("booking_id", booking.id),
+      admin.from("crm_booking_travelers").select("*").eq("booking_id", booking.id),
+      admin.from("crm_travel_documents").select("*").eq("customer_id", booking.customer_id),
+      admin.from("crm_visa_requests").select("country, status").eq("booking_id", booking.id),
+      admin
+        .from("crm_whatsapp_messages")
+        .select("dedupe_key, status")
+        .eq("booking_id", booking.id)
+        .in("status", ["sent", "failed"]),
+      admin
+        .from("crm_customers")
+        .select("first_name, last_name, usage_name, birth_date")
+        .eq("id", booking.customer_id)
+        .maybeSingle(),
+      admin
+        .from("crm_travel_companions")
+        .select("id, first_name, last_name, usage_name, birth_date")
+        .eq("customer_id", booking.customer_id),
+    ]);
   const party = (travelers || []) as CrmBookingTraveler[];
   const papers = (docs || []) as CrmTravelDocument[];
-  const coverage = tripDocCoverage(party, papers);
+  const profile = customer as {
+    first_name?: string | null;
+    last_name?: string | null;
+    usage_name?: string | null;
+    birth_date?: string | null;
+  } | null;
+  const holder = profile
+    ? {
+        first_name: profile.first_name ?? null,
+        last_name: profile.last_name ?? null,
+        usage_name: profile.usage_name ?? null,
+        birth_date: profile.birth_date ?? null,
+      }
+    : null;
   const trip = frenchPassportTrip((items || []) as CrmBookingItem[], party.length);
   const filedRequests = new Set(
     ((visas || []) as { country?: string; status?: string }[])
@@ -616,7 +639,17 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
     bookingId: booking.id,
     startDate: booking.start_date,
     today: now.toISOString().slice(0, 10),
-    missingPassports: Math.max(0, coverage.total - coverage.ready),
+    missingPassports: missingPassportCount(party, papers, {
+      holder,
+      companions: (companions || []) as {
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        usage_name?: string | null;
+        birth_date?: string | null;
+      }[],
+      returnOn: booking.end_date || booking.start_date,
+    }),
     formalities: trip.entries.map((entry) => ({
       name: entry.formality,
       filed: filedRequests.has(entry.iso) || filedDocs.has(entry.iso),

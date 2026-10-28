@@ -1,4 +1,5 @@
 import { boardingPassContentDrafts, type BoardingPassTemplate } from "./boarding-pass-whatsapp";
+import { statementContentDrafts } from "./statement-whatsapp";
 import { siteConfig } from "../site";
 import {
   conciergeContentDrafts,
@@ -425,6 +426,21 @@ function boardingPassBubble(template: BoardingPassTemplate): WhatsappBubble {
   };
 }
 
+function statementBubble(): WhatsappBubble {
+  const draft = statementContentDrafts()[0];
+  const types = draft.create.types as { "twilio/media"?: { body?: string } };
+  const body = applyVars(types["twilio/media"]?.body || "", draft.create.variables);
+  if (!body || /\{\{\d+\}\}/.test(body)) throw new Error("variable vide: releve");
+  return {
+    body,
+    button: null,
+    photo: false,
+    image: null,
+    imageAlt: null,
+    modelName: draft.friendlyName,
+  };
+}
+
 function boardingPassMessages(): WhatsappCatalogMessage[] {
   return [
     message({
@@ -632,14 +648,29 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       messages: boardingPassMessages(),
     },
     {
+      id: "releve",
+      title: "Relevé de compte",
+      intro:
+        "Le bouton Demander un relevé envoie le PDF. Hors des 24 heures, le modèle releve (en-tête Document) est requis. Sans lui, l’envoi est refusé et noté en échec. Dans la fenêtre, le même PDF part en message de session.",
+      messages: [
+        message({
+          id: "releve-compte",
+          title: "Relevé joint",
+          when: "Depuis Transactions, vers le téléphone de la fiche ouverte. L’exemple est un relevé de compte.",
+          bubble: statementBubble(),
+        }),
+      ],
+    },
+    {
       id: "partage",
       title: "Partage du voyage",
-      intro: "Le compagnon reçoit le lien du voyage. Ce lien n’ouvre pas le compte.",
+      intro:
+        "Le compagnon reçoit le lien du voyage. Ce lien n’ouvre pas le compte. Dans les 24 heures, le texte part en conversation. Hors de cette fenêtre, le modèle partage_voyage (bouton Voir le voyage) est requis. Sans lui, l’envoi est refusé et noté en échec.",
       messages: [
         session(
           "partage",
           "Lien envoyé à un accompagnant",
-          "Depuis la fiche du séjour, vers le téléphone de l’accompagnant. Le message part dans la conversation en cours.",
+          "Depuis la fiche du séjour, vers le téléphone de l’accompagnant. Dans la fenêtre de 24 h, le message est libre. Hors fenêtre, WhatsApp exige le modèle partage_voyage.",
           tripShareMessage({
             firstName: FIRST_NAME,
             title: PLACE,

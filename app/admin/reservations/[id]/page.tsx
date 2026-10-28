@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
+import { loadCustomerWhatsappMessages } from "@/lib/crm/whatsapp-dock-load";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { DEFAULT_AGENCY_FEE_RATE, loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
 import { BookingEditor } from "@/components/admin/BookingEditor";
@@ -152,11 +153,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .eq("customer_id", b.customer_id)
       .order("created_at", { ascending: false })
       .limit(200),
-    supabase
-      .from("crm_whatsapp_messages")
-      .select("id, direction, body, status, created_at, booking_id, concierge_mark")
-      .eq("customer_id", b.customer_id)
-      .order("created_at", { ascending: true }),
+    loadCustomerWhatsappMessages(supabase, b.customer_id),
     supabase
       .from("crm_whatsapp_requests")
       .select("id, kind, body, booking_id, created_at")
@@ -174,15 +171,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   );
   const customerLogins = (loginRows || []) as CrmCustomerLogin[];
   const customerActivity = (activityRows || []) as CrmCustomerActivity[];
-  const threadMessages = whatsappMessages.error
-    ? (
-        await supabase
-          .from("crm_whatsapp_messages")
-          .select("id, direction, body, status, created_at")
-          .eq("customer_id", b.customer_id)
-          .order("created_at", { ascending: true })
-      ).data || []
-    : whatsappMessages.data || [];
+  const threadMessages = whatsappMessages;
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
   const billingCustomer =

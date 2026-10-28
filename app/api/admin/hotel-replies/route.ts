@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { agencyAlerts } from "@/lib/crm/agency-alerts";
+import { agencyAlerts, type ConciergeChangeAlert } from "@/lib/crm/agency-alerts";
+import { CONCIERGE_WRITE_SOURCE } from "@/lib/crm/concierge-client-write";
 import { shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
 import { loadSentMailIndex } from "@/lib/crm/sent-mail";
 import { requireStaff } from "@/lib/crm/auth";
@@ -113,7 +114,55 @@ export async function GET(request: Request) {
       receivedAt: row.received_at,
     })),
     chats: [],
+    changes: await conciergeChanges(admin, since),
   });
 
   return NextResponse.json({ notices: hotelReplyNotices(rows, since), alerts, replied });
+}
+
+async function conciergeChanges(admin: ReturnType<typeof createServiceClient>, since: string): Promise<ConciergeChangeAlert[]> {
+  const selected = await admin
+    .from("crm_audit_events")
+    .select("id, summary, created_at, booking_id")
+    .eq("source", CONCIERGE_WRITE_SOURCE)
+    .gt("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(8);
+  if (!selected.error) {
+    return ((selected.data || []) as { id: string; summary: string | null; created_at: string; booking_id: string | null }[]).map(
+      (row) => ({
+        id: String(row.id),
+        summary: row.summary,
+        createdAt: row.created_at,
+        bookingId: row.booking_id,
+      })
+    );
+  }
+  const missing =
+    selected.error.code === "42703" ||
+    selected.error.code === "PGRST204" ||
+    /schema cache|column/i.test(selected.error.message || "");
+  if (!missing) return [];
+  const fallback = await admin
+    .from("crm_audit_events")
+    .select("id, summary, created_at, booking_id, detail")
+    .eq("action", "concierge_client")
+    .gt("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(8);
+  if (fallback.error) return [];
+  return ((fallback.data || []) as {
+    id: string;
+    summary: string | null;
+    created_at: string;
+    booking_id: string | null;
+    detail: { source?: unknown } | null;
+  }[])
+    .filter((row) => row.detail?.source === CONCIERGE_WRITE_SOURCE)
+    .map((row) => ({
+      id: String(row.id),
+      summary: row.summary,
+      createdAt: row.created_at,
+      bookingId: row.booking_id,
+    }));
 }

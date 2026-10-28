@@ -101,6 +101,18 @@ test("a booking update only accepts notes and dates", () => {
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, particulier: "oui" }), /Particulier/);
   assert.equal(prepareBookingUpdate({ id: BOOKING, commission_agence: "compte" }).patch.agency_fee_rate, null);
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, commission_agence: "12" }), /7,5/);
+  const titled = prepareBookingUpdate({ id: BOOKING, titre: "Montpellier" });
+  assert.equal(titled.patch.title, "Montpellier");
+  assert.equal(titled.cover, null);
+  const cleared = prepareBookingUpdate({ id: BOOKING, couverture: "catalogue" });
+  assert.equal(cleared.patch.cover_image_path, null);
+  assert.equal(cleared.patch.cover_credit, null);
+  assert.deepEqual(cleared.cover, { clear: true });
+  const place = prepareBookingUpdate({ id: BOOKING, couverture: "Montpellier" });
+  assert.deepEqual(place.cover, { photo: "photo-city-montpellier" });
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, titre: "   " }), /vide/);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: "photo-inconnu-xyz" }), /inconnue/i);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: "Millau" }), /Pas de photo/);
 });
 
 test("an email leaves the queue only with an explicit action", () => {
@@ -231,7 +243,13 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
   assert.equal(seen.find((tool) => tool.name === "notifier_carte_embarquement")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "notifier_carte_embarquement")?.openWorld, true);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
+  assert.equal(seen.find((tool) => tool.name === "modifier_titulaire")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "modifier_titulaire")?.openWorld, false);
+  assert.equal(seen.find((tool) => tool.name === "definir_role_societe")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "definir_role_societe")?.openWorld, false);
+  assert.equal(seen.find((tool) => tool.name === "inviter_client")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "inviter_client")?.openWorld, true);
+  for (const name of ["creer_dossier", "ajouter_voyageur", "modifier_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
     assert.equal(seen.find((tool) => tool.name === name)?.readOnly, false);
     assert.equal(seen.find((tool) => tool.name === name)?.openWorld, false);
   }
