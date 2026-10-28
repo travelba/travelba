@@ -24,6 +24,14 @@ test("marge d’hébergement : 12 % du net, commission + 2 %", () => {
   assert.ok((short?.marginOfNet || 0) >= 0.12 - 0.001);
   const rich = priceAccommodation({ net: 1000, commissionable: true, hotelCommission: 0.15 });
   assert.equal(rich?.sell, 1000);
+  const printed = priceAccommodation({ net: 1000, commissionable: false, expectedCommission: 100 });
+  assert.equal(printed?.sell, 1020);
+  assert.ok((printed?.marginOfNet || 0) >= 0.12 - 0.001);
+  const printedCovered = priceAccommodation({ net: 1000, commissionable: true, expectedCommission: 100 });
+  assert.equal(printedCovered?.sell, 1000);
+  assert.equal(printedCovered?.addedRate, 0);
+  const printedRich = priceAccommodation({ net: 1000, commissionable: false, expectedCommission: 150 });
+  assert.equal(printedRich?.sell, 1000);
   assert.equal(priceAccommodation({ net: 0, commissionable: false }), null);
 });
 

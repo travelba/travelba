@@ -29,6 +29,7 @@ import { joinConfirmationRefs, statedTicketCount } from "@/lib/crm/item-match";
 import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
+import { commissionMcpFields } from "@/lib/crm/supplier-commission";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
 import { addedTravelerNames, holderMatchesAddedTraveler, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
@@ -623,6 +624,14 @@ function flightClocks(item: Record<string, unknown>) {
   };
 }
 
+function commissionArgs(input: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const key of ["commission_attendue", "commission_taux", "commission_date_prevue", "commission_recue", "commission_recue_le"] as const) {
+    if (key in input) out[key] = input[key];
+  }
+  return out;
+}
+
 function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: PricePlan, warning: string | null) {
   const tickets = price.ticketCount && price.ticketCount > 0 ? price.ticketCount : null;
   const groupTotal = price.amountIsTotal === true;
@@ -640,6 +649,7 @@ function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: Pr
     ...(item.kind === "flight" ? flightClocks(item) : {}),
     visible: item.visible_to_client === true,
     notifie: false,
+    ...commissionMcpFields(item),
     ...(warning ? { avertissement: warning } : {}),
   };
 }
@@ -1019,7 +1029,7 @@ export async function addVol(input: Record<string, unknown>, admin?: Admin) {
   if (sansFrais || (await freeFlights(db, booking.id, prix, prixTotal))) {
     await dismissTicketing(db, booking.id);
   }
-  const saved = await addStaffBookingCard(db, booking.id, body);
+  const saved = await addStaffBookingCard(db, booking.id, { ...body, ...commissionArgs(input) });
   if ("error" in saved) throw new McpWriteError(saved.error);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
 }
@@ -1204,6 +1214,7 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
     delete details.needs_review;
     delete details.review_reason;
   }
+  Object.assign(patch, commissionArgs(input));
   if (sansFrais || (await freeFlights(db, booking.id, prix, prixTotal, carteId))) {
     await dismissTicketing(db, booking.id);
   }
@@ -1284,7 +1295,7 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
     price,
     guests,
   });
-  const saved = await addStaffBookingCard(db, booking.id, body);
+  const saved = await addStaffBookingCard(db, booking.id, { ...body, ...commissionArgs(input) });
   if ("error" in saved) throw new McpWriteError(saved.error);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
 }
@@ -1613,9 +1624,17 @@ export async function updateHotel(input: Record<string, unknown>, admin?: Admin)
     "prix_net_eur",
     "prix",
     "devise",
-  ].some((key) => input[key] != null && input[key] !== "");
+    "commission_attendue",
+    "commission_taux",
+    "commission_date_prevue",
+    "commission_recue",
+    "commission_recue_le",
+  ].some((key) =>
+    key.startsWith("commission_") ? key in input : input[key] != null && input[key] !== ""
+  );
   if (!asked) throw new McpWriteError("Rien à modifier.");
 
+  Object.assign(patch, commissionArgs(input));
   const saved = await patchStaffBookingCard(db, booking.id, carteId, patch);
   if ("error" in saved) throw new McpWriteError(saved.error);
   const savedDetails =
@@ -1677,6 +1696,7 @@ export async function addAccueilVip(input: Record<string, unknown>, admin?: Admi
     ...composed.card,
     title: composed.card.title,
     include_in_ledger: false,
+    ...commissionArgs(input),
   });
   if ("error" in saved) throw new McpWriteError(saved.error);
   if (documentId) {

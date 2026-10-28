@@ -135,7 +135,20 @@ describe("coûts du voyage", () => {
     assert.equal(flight?.margin, -50);
     assert.equal(unsold.length, 0);
     const totals = tripTotals(accounted, unsold);
-    assert.deepEqual(totals, { sale: 1760, cost: 1300, margin: 460, unsoldCost: 0 });
+    assert.deepEqual(totals, { sale: 1760, cost: 1300, direct: 460, commission: 0, margin: 460, unsoldCost: 0 });
+    const withCommission = accountLines(lines, [
+      cost({ id: "a", bookingItemId: HOTEL, amountEur: 900, supplier: "RIAD" }),
+    ], [{ itemId: HOTEL, attendue: 120, recue: null }]);
+    const hotelCommission = withCommission.lines.find((line) => line.transactionId === "t-hotel");
+    assert.equal(hotelCommission?.direct, 300);
+    assert.equal(hotelCommission?.commission, 120);
+    assert.equal(hotelCommission?.commissionKind, "attendue");
+    assert.equal(hotelCommission?.margin, 420);
+    const received = accountLines(lines, [
+      cost({ id: "a", bookingItemId: HOTEL, amountEur: 900, supplier: "RIAD" }),
+    ], [{ itemId: HOTEL, attendue: 120, recue: 80 }]);
+    assert.equal(received.lines.find((line) => line.transactionId === "t-hotel")?.margin, 380);
+    assert.equal(received.lines.find((line) => line.transactionId === "t-hotel")?.commissionKind, "recue");
     const margins = marginByTransaction(accounted);
     // Le mode de règlement reste au CRM : rien de plus que la marge et les fournisseurs ne part à MB3M.
     assert.deepEqual(margins.get("t-flight"), { margin: -50, suppliers: ["AIR FRANCE"] });

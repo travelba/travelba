@@ -269,7 +269,7 @@ export function TripCostsBlock({
             return (
               <li key={line.transactionId} className="rounded-2xl border border-border px-3 py-3 text-sm">
                 <p className="break-words font-medium text-[var(--admin-navy)]">{line.label}</p>
-                <dl className="mt-2 grid grid-cols-3 gap-2">
+                <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <div>
                     <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Vendu</dt>
                     <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.sale)}</dd>
@@ -277,6 +277,16 @@ export function TripCostsBlock({
                   <div>
                     <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
                     <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge directe</dt>
+                    <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.direct)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">
+                      {line.commissionKind === "recue" ? "Commission reçue" : "Commission estimée"}
+                    </dt>
+                    <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.commission)}</dd>
                   </div>
                   <div>
                     <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
@@ -313,7 +323,7 @@ export function TripCostsBlock({
           })}
           <li className="rounded-2xl bg-[var(--admin-sky)]/60 px-3 py-3 text-sm font-semibold text-[var(--admin-navy)]">
             <p>Total</p>
-            <dl className="mt-2 grid grid-cols-3 gap-2 font-semibold">
+            <dl className="mt-2 grid grid-cols-2 gap-2 font-semibold sm:grid-cols-3">
               <div>
                 <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Vendu</dt>
                 <dd className="tabular-nums">{eur(view.totals.sale)}</dd>
@@ -321,6 +331,14 @@ export function TripCostsBlock({
               <div>
                 <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
                 <dd className="tabular-nums">{eur(view.totals.cost)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge directe</dt>
+                <dd className="tabular-nums">{eur(view.totals.direct)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Commission</dt>
+                <dd className="tabular-nums">{eur(view.totals.commission)}</dd>
               </div>
               <div>
                 <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
@@ -336,6 +354,8 @@ export function TripCostsBlock({
                 <th className="py-2 pr-3">Vente</th>
                 <th className="py-2 pr-3 text-right">Vendu</th>
                 <th className="py-2 pr-3 text-right">Coût</th>
+                <th className="py-2 pr-3 text-right">Marge directe</th>
+                <th className="py-2 pr-3 text-right">Commission</th>
                 <th className="py-2 pr-3 text-right">Marge</th>
                 <th className="py-2">Facture</th>
               </tr>
@@ -372,6 +392,11 @@ export function TripCostsBlock({
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">{eur(line.sale)}</td>
                     <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">{eur(line.direct)}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">
+                      {eur(line.commission)}
+                      {line.commissionKind === "recue" ? " reçue" : line.commissionKind === "attendue" ? " estimée" : ""}
+                    </td>
                     <td className={`py-2 pr-3 text-right font-semibold tabular-nums ${marginTone(line.margin)}`}>{eur(line.margin)}</td>
                     <td className="py-2 text-xs text-muted">
                       {piece ? `n° ${piece.number} · ${piece.printed ? "imprimée" : "pro forma"}` : "—"}
@@ -385,6 +410,8 @@ export function TripCostsBlock({
                 <td className="py-2 pr-3">Total</td>
                 <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.sale)}</td>
                 <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.cost)}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.direct)}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.commission)}</td>
                 <td className={`py-2 pr-3 text-right tabular-nums ${marginTone(view.totals.margin)}`}>{eur(view.totals.margin)}</td>
                 <td />
               </tr>

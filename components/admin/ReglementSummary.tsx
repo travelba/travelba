@@ -73,6 +73,14 @@ export function ReglementSummary({
             <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{formatMoney(totals.cost, "EUR")}</dd>
           </div>
           <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Marge directe</dt>
+            <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{formatMoney(totals.direct, "EUR")}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Commission fournisseur</dt>
+            <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{formatMoney(totals.commission, "EUR")}</dd>
+          </div>
+          <div>
             <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Marge</dt>
             <dd
               className={`font-semibold tabular-nums ${

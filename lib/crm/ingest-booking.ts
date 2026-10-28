@@ -23,6 +23,8 @@ import { routeMailExtract, type ImportTask } from "@/lib/crm/import-routing";
 import { importTitleGuard, TITLE_REVIEW_MARK } from "@/lib/crm/import-title";
 import { bookingCurrencyFromReview } from "@/lib/crm/stay-currency";
 import { parseMoney } from "@/lib/crm/money";
+import { liftCommissionFromDetails, stripCommissionDetails } from "@/lib/crm/supplier-commission";
+import { saveItemCommission } from "@/lib/crm/supplier-commission-db";
 import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
 import {
   bookingExtractSchema,
@@ -431,6 +433,11 @@ async function upsertItemsAndTravelers(
       end_at: emptyToNull(item.end_at),
       details,
     }) : null;
+    const lifted = liftCommissionFromDetails(
+      details,
+      emptyToNull(item.end_at),
+      emptyToNull(extract.end_date)
+    );
     const payload = {
       kind,
       title: kept?.title || title,
@@ -439,7 +446,7 @@ async function upsertItemsAndTravelers(
       start_at: kept ? kept.start_at : emptyToNull(item.start_at),
       end_at: kept ? kept.end_at : emptyToNull(item.end_at),
       amount,
-      details: kept?.details || details,
+      details: stripCommissionDetails((kept?.details || lifted.details) as Record<string, unknown>),
       visible_to_client: cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
       source_document_id: sourceDocId(details, docs),
       ...(replacing
@@ -455,6 +462,7 @@ async function upsertItemsAndTravelers(
           .update(payload)
           .eq("id", match.id);
         if (error) throw dbFailure(error, "Carte non mise à jour.");
+        if (lifted.present) await saveItemCommission(supabase, match.id, lifted.columns);
         Object.assign(match, payload);
         if (payload.source_document_id) {
           await supabase
@@ -478,6 +486,7 @@ async function upsertItemsAndTravelers(
           .select("id")
           .single();
         if (error) throw dbFailure(error, "Carte non enregistrée.");
+        if (inserted?.id && lifted.present) await saveItemCommission(supabase, inserted.id, lifted.columns);
         if (inserted?.id) {
           createdIds.push(inserted.id);
           if (replacing) {
@@ -519,7 +528,9 @@ async function upsertItemsAndTravelers(
       }
       saved += 1;
     } catch (err) {
-      lastError = err instanceof Error ? err.message : "Carte ignorée";
+      const message = err instanceof Error ? err.message : "Carte ignorée";
+      if (/commission/i.test(message)) throw err instanceof Error ? err : new Error(message);
+      lastError = message;
     }
   }
 

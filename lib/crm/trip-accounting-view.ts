@@ -16,6 +16,7 @@ import {
 } from "./trip-costs";
 import { loadDossierPendingCosts } from "./pliant-dossier-run";
 import { loadOutgoingQueue, loadTripCosts } from "./trip-costs-db";
+import { readCommission } from "./supplier-commission";
 
 export type PieceRow = {
   id: string;
@@ -70,7 +71,14 @@ export async function loadDossierAccountingInputs(admin: SupabaseClient, booking
 export async function buildTripAccountingView(
   admin: SupabaseClient,
   booking: { id: string; client_settles_stay?: boolean | null },
-  items: { id?: string | null; kind?: string | null; details?: Record<string, unknown> | null }[],
+  items: {
+    id?: string | null;
+    kind?: string | null;
+    details?: Record<string, unknown> | null;
+    commission_attendue?: unknown;
+    commission_recue?: unknown;
+    commission_taux?: unknown;
+  }[],
   inputs: DossierAccountingInputs
 ): Promise<TripAccountingView> {
   const proposed = await loadOutgoingQueue({ bookingId: booking.id }, admin).catch(() => []);
@@ -80,7 +88,13 @@ export async function buildTripAccountingView(
     inputs.costs.map((cost) => cost.sourceId)
   ).catch(() => []);
   const sales = saleLines(inputs.charges, booking.id);
-  const { lines, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
+  const commissions = items.flatMap((item) => {
+    if (!item.id) return [];
+    const commission = readCommission(item);
+    if (commission.attendue == null && commission.recue == null) return [];
+    return [{ itemId: item.id, attendue: commission.attendue, recue: commission.recue }];
+  });
+  const { lines, unsold, looseCommission } = accountLines(sales, [...inputs.costs, ...pending], commissions);
   const mbLines = mb3mDossierLines(inputs.charges, items, marginByTransaction(lines));
   const valid = inputs.pieces.filter((row) => row.printed_at && !row.credited_at);
   const stale = valid.filter((row) =>
@@ -103,7 +117,7 @@ export async function buildTripAccountingView(
   return {
     lines,
     unsold,
-    totals: tripTotals(lines, unsold),
+    totals: tripTotals(lines, unsold, looseCommission),
     proposed,
     state: tripAccountingState({
       proposedCount: proposed.length,

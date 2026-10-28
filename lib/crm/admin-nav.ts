@@ -65,6 +65,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
         { href: "/admin/stripe", label: "Stripe", icon: "credit_card" },
         { href: "/admin/pliant", label: "Pliant", icon: "credit_card" },
         { href: "/admin/comptabilite", label: "Comptabilité", icon: "calculate" },
+        { href: "/admin/commissions", label: "Commissions", icon: "payments" },
       ],
     },
     {
@@ -186,7 +187,7 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     label: "Argent",
     icon: "landmark",
     href: "/admin/transactions",
-    paths: ["/admin/transactions", "/admin/revolut", "/admin/stripe", "/admin/pliant", "/admin/comptabilite"],
+    paths: ["/admin/transactions", "/admin/revolut", "/admin/stripe", "/admin/pliant", "/admin/comptabilite", "/admin/commissions"],
     badges: [],
   },
   {
