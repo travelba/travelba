@@ -1196,3 +1196,203 @@ test("dire que la demande est passée crée la ligne, sinon la phrase est retir�
   assert.equal(/passé votre demande/i.test(body), false);
   assert.equal(missed.some((row) => row.table === "crm_whatsapp_requests"), false);
 });
+
+test("note vocale : le texte entendu est marqué, le fichier est gardé, le concierge ne devine pas", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const heard: string[] = [];
+  const saved: { contentType: string }[] = [];
+  const sent: { body: string }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Media/ME1",
+    MediaContentType0: "audio/ogg; codecs=opus",
+    MessageSid: "SMvoix",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: mixedDossier(),
+    savePiece: async () => {
+      assert.fail("une note vocale n’entre pas au coffre");
+    },
+  });
+  store.saveVoiceNote = async (file) => {
+    saved.push({ contentType: file.contentType });
+    return { path: "customers/cust-1/whatsapp/note.ogg" };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    accountSid: "ACtest",
+    transcribeAudio: async (file) => {
+      assert.equal(file.contentType, "audio/ogg");
+      return "J'ai adoré la vue ce matin";
+    },
+    prepareAudio: async (file) => file,
+    fetchImpl: async (url, init) => {
+      assert.equal(String(url).startsWith("https://api.twilio.com/"), true);
+      assert.match(new Headers(init?.headers).get("authorization") || "", /^Basic /);
+      return new Response(new Uint8Array([79, 103, 103, 83]), {
+        status: 200,
+        headers: { "content-type": "audio/ogg; codecs=opus" },
+      });
+    },
+    store,
+    converse: async (input) => {
+      heard.push(input.message);
+      return { text: "Je note votre message.", bookingReference: null, handoff: null };
+    },
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMvoixout" };
+    },
+  });
+  const inbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound");
+  assert.equal(inbound?.row?.body, "Note vocale : J'ai adoré la vue ce matin");
+  assert.equal(inbound?.row?.transcript, "J'ai adoré la vue ce matin");
+  assert.equal(inbound?.row?.media_path, "customers/cust-1/whatsapp/note.ogg");
+  assert.equal(saved[0]?.contentType, "audio/ogg");
+  assert.equal(heard[0], "Note vocale : J'ai adoré la vue ce matin");
+  assert.match(sent[0]?.body || "", /je note votre message/i);
+  assert.equal((sent[0]?.body || "").includes("Document reçu"), false);
+});
+
+test("transcription en échec : phrase fixe, rien n’est inventé", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map((item) => String(item)).join(" "));
+  };
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Media/ME2",
+    MediaContentType0: "audio/ogg",
+    MessageSid: "SMmuet",
+  };
+  try {
+    const store = storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: mixedDossier(),
+    });
+    store.saveVoiceNote = async () => ({ path: "customers/cust-1/whatsapp/muet.ogg" });
+    let calls = 0;
+    await receiveWhatsappWebhook({
+      url: URL_HOOK,
+      signature: signed(params),
+      params,
+      authToken: TOKEN,
+      accountSid: "ACtest",
+      transcribeAudio: async () => {
+        throw new Error("TOKYO SECRET");
+      },
+      prepareAudio: async (file) => file,
+      fetchImpl: async () =>
+        new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "audio/ogg" } }),
+      store,
+      converse: async () => {
+        calls += 1;
+        return { text: "Vous partez à Tokyo.", bookingReference: null, handoff: null };
+      },
+      send: async (message) => {
+        sent.push(message);
+        return { ok: true, sid: "SMmuetout" };
+      },
+    });
+    assert.equal(calls, 0);
+  } finally {
+    console.error = original;
+  }
+  const inbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound");
+  assert.equal(inbound?.row?.body, "Note vocale (transcription indisponible)");
+  assert.equal(inbound?.row?.transcript ?? null, null);
+  assert.equal(inbound?.row?.media_path, "customers/cust-1/whatsapp/muet.ogg");
+  assert.match(sent[0]?.body || "", /Je n’ai pas pu entendre cette note vocale/);
+  assert.equal(JSON.stringify(writes).includes("TOKYO"), false);
+  assert.equal((sent[0]?.body || "").includes("Tokyo"), false);
+  assert.equal(logs.some((line) => line.includes("[whatsapp-voice] transcription")), true);
+  assert.equal(logs.some((line) => line.includes("TOKYO")), false);
+});
+
+
+test("une note vocale qui demande le partage de Nice part vers Victoria", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  let action = "";
+  let name: string | null = null;
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Media/ME3",
+    MediaContentType0: "audio/ogg",
+    MessageSid: "SMvoixpartage",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [{ ...published, destination: "Nice", title: "Nice" }] },
+    savePiece: async () => {
+      assert.fail("une note vocale n’entre pas au coffre");
+    },
+  });
+  store.saveVoiceNote = async () => ({ path: "customers/cust-1/whatsapp/partage.ogg" });
+  store.loadParty = async () => [
+    {
+      ...victoriaOnFile,
+      firstName: "Victoria Marie Rebecca",
+      lastName: "Tétard",
+      usageName: "Martin",
+      phone: "+33611111111",
+      stayDestination: "Nice",
+      stayTitle: "Anantara Plaza Nice",
+    },
+  ];
+  store.performSpace = async (row) => {
+    action = row.actionId;
+    name = row.name;
+    return {
+      ok: true,
+      summary: "Lien envoyé à Victoria par WhatsApp.",
+      bookingId: "stay-pub",
+      handoff: null,
+      access: false,
+      tool: "partager_carnet",
+    };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    accountSid: "ACtest",
+    transcribeAudio: async () => SHARE_SENTENCE,
+    prepareAudio: async (file) => file,
+    fetchImpl: async () =>
+      new Response(new Uint8Array([79, 103, 103, 83]), {
+        status: 200,
+        headers: { "content-type": "audio/ogg" },
+      }),
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMvoixpartageout" };
+    },
+  });
+  assert.equal(action, "partager_carnet");
+  assert.equal(name, "Victoria");
+  assert.match(sent[0].body, /Lien envoyé à Victoria/);
+  assert.equal(replyClaimsAgencyHandoff(sent[0].body), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
+  const inbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound");
+  assert.equal(inbound?.row?.body, `Note vocale : ${SHARE_SENTENCE}`);
+  assert.equal(inbound?.row?.transcript, SHARE_SENTENCE);
+});

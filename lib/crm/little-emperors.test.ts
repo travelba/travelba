@@ -411,6 +411,8 @@ describe("little emperors staging client", () => {
       "wait"
     );
     assert.equal(leBookingExtract(booking).customer_email, "");
+    assert.equal(leBookingExtract(booking).title, "London");
+    assert.equal(leBookingExtract(booking).items[0]?.title, "Nobu Hotel London Portman Square");
   });
 
   it("relie la confirmation du mail et celle de l’API, puis pose l’hôtel", () => {

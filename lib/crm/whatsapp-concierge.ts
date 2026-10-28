@@ -1746,6 +1746,17 @@ export function pieceSavedLine(lang: ReplyLang) {
   });
 }
 
+/** La transcription a échoué. Aucun mot de la note n’est inventé. */
+export function voiceNoteUnheardReply(lang: ReplyLang = "fr") {
+  return withConciergeSignature(
+    say(lang, {
+      fr: "Je n’ai pas pu entendre cette note vocale. Écrivez votre message, l’agence pourra l’écouter.",
+      en: "I couldn’t hear that voice note. Please write your message. The agency can listen to it.",
+      he: "לא הצלחתי לשמוע את ההודעה הקולית. כתבו את ההודעה, והסוכנות תוכל להאזין.",
+    })
+  );
+}
+
 export function panRefusedReply(lang: ReplyLang) {
   return sign(
     say(lang, {

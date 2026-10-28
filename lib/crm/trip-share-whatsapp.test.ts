@@ -295,6 +295,9 @@ test("le brouillon partage_voyage est un bouton vers le lien public", () => {
   assert.equal(action.url, "https://travelba.fr/v/{{3}}");
   assert.match(draft.create.types["twilio/call-to-action"].body, /Voici le voyage \{\{2\}\}\./);
   assert.equal(draft.create.types["twilio/call-to-action"].body.includes("http"), false);
+  assert.equal(draft.create.variables["1"], "Camille");
+  assert.equal(draft.create.variables["2"], "Marrakech");
+  assert.equal(draft.create.variables["3"], "exemple");
   const variables = tripShareContentVariables(FIRST, TITLE, SHARE_URL);
   assert.equal(variables?.["1"], "Victoria");
   assert.equal(variables?.["3"], "23456789");

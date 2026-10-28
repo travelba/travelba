@@ -8,6 +8,8 @@ import {
   formatAgencyFeePercent,
 } from "@/lib/crm/agency-fee-rate";
 import { BookingIssuesError, collectPublishIssues } from "@/lib/crm/booking-issues";
+import { toAuditRow } from "@/lib/crm/audit-events";
+import { bookingCoverPlan, catalogCoverChoice, catalogPhotoFromPlan } from "@/lib/crm/covers";
 import {
   bookingMetaPatch,
   setCarnetPublished,
@@ -172,7 +174,21 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     if ("error" in parsed) throw new McpWriteError(parsed.error);
     body.agency_fee_rate = parsed.rate;
   }
+  if ("titre" in input) {
+    const title = text(input.titre, "Titre", 200);
+    if (!title) throw new McpWriteError("Le titre est vide.");
+    body.title = title;
+  }
   const patch = bookingMetaPatch(body);
+  let cover: { clear: true } | { photo: string } | null = null;
+  if ("couverture" in input && input.couverture != null) {
+    if (typeof input.couverture !== "string") throw new McpWriteError("Couverture invalide.");
+    const choice = catalogCoverChoice(input.couverture);
+    if ("error" in choice) throw new McpWriteError(choice.error);
+    cover = choice;
+    patch.cover_image_path = null;
+    patch.cover_credit = null;
+  }
   let particulier = false;
   let societeId = "";
   if ("particulier" in input && input.particulier != null && input.particulier !== "") {
@@ -189,7 +205,7 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
   }
   const billing = particulier || societeId ? { particulier, societeId } : null;
   if (!Object.keys(patch).length && !billing) throw new McpWriteError("Rien à modifier.");
-  return { ...target, patch, billing };
+  return { ...target, patch, billing, cover };
 }
 
 export function prepareServiceConfirm(input: Record<string, unknown>) {
@@ -573,11 +589,56 @@ export async function publishCarnet(input: Record<string, unknown>, admin?: McpA
   return { montre: true, id: booking.id, reference: booking.reference };
 }
 
+function coverPhotoId(booking: CrmBooking, items: { kind?: string | null; title?: string | null; start_at?: string | null; end_at?: string | null; sort_order?: number | null; details?: Record<string, unknown> | null }[]) {
+  const plan = bookingCoverPlan(booking, { items });
+  return catalogPhotoFromPlan(plan);
+}
+
 export async function updateBooking(input: Record<string, unknown>, admin?: McpAdmin) {
-  const { id, reference, patch, billing } = prepareBookingUpdate(input);
+  const { id, reference, patch, billing, cover } = prepareBookingUpdate(input);
   const db = client(admin);
   const prev = await loadBooking(db, { id, reference });
   const nextPatch = { ...patch };
+  type StayCoverItem = {
+    kind?: string | null;
+    title?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    sort_order?: number | null;
+    details?: Record<string, unknown> | null;
+  };
+  let stayItems: StayCoverItem[] | null = null;
+  async function readStayItems(strict: boolean) {
+    if (stayItems) return stayItems;
+    const { data: itemRows, error: itemsError } = await db
+      .from("crm_booking_items")
+      .select("kind, title, start_at, end_at, sort_order, details, lifecycle")
+      .eq("booking_id", prev.id);
+    if (itemsError) {
+      if (strict) failDb(itemsError, "Couverture non enregistrée.");
+      console.error("[mcp] cartes couverture", itemsError.code ?? "?");
+      stayItems = [];
+      return stayItems;
+    }
+    stayItems = (itemRows || []) as StayCoverItem[];
+    return stayItems;
+  }
+  if (cover && "photo" in cover) {
+    const preview = {
+      ...prev,
+      ...(typeof nextPatch.title === "string" ? { title: nextPatch.title } : {}),
+      cover_image_path: null,
+      cover_credit: null,
+    } as CrmBooking;
+    const photo = coverPhotoId(preview, await readStayItems(true));
+    if (photo !== cover.photo) {
+      throw new McpWriteError(
+        photo
+          ? `La couverture de ce séjour est ${photo}. « catalogue » l’affiche.`
+          : "Ce séjour n’a pas encore de photo de catalogue."
+      );
+    }
+  }
   if (billing?.particulier) {
     nextPatch.payer_kind = "personal";
     nextPatch.billing_company_id = null;
@@ -608,11 +669,13 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     console.error("[mcp] livre", err instanceof Error ? err.message : "error");
     throw new McpWriteError("Le dossier est enregistré, mais le grand livre n’a pas pu être mis à jour.");
   }
-  const saved = (await db.from("crm_bookings").select("id, reference, status, visible_to_client, archived_at, start_date, end_date, notes_client, notes_internal, payer_kind, billing_company_id").eq("id", booking.id).maybeSingle()).data as
+  const saved = (await db.from("crm_bookings").select("id, reference, title, destination, status, visible_to_client, archived_at, start_date, end_date, notes_client, notes_internal, payer_kind, billing_company_id, cover_image_path, cover_credit").eq("id", booking.id).maybeSingle()).data as
     | Pick<
         CrmBooking,
         | "id"
         | "reference"
+        | "title"
+        | "destination"
         | "status"
         | "visible_to_client"
         | "archived_at"
@@ -622,6 +685,8 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
         | "notes_internal"
         | "payer_kind"
         | "billing_company_id"
+        | "cover_image_path"
+        | "cover_credit"
       >
     | null;
   const row = saved || booking;
@@ -644,9 +709,33 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
   } catch (err) {
     console.error("[mcp] commission", err instanceof Error ? err.message : "error");
   }
+  const titleChanged = (prev.title || "") !== (row.title || "");
+  const coverChanged = Boolean(cover) && (prev.cover_image_path || "") !== (row.cover_image_path || "");
+  const coverItems = await readStayItems(false);
+  if (titleChanged || coverChanged) {
+    const photo = coverPhotoId(row as CrmBooking, coverItems);
+    const { error: auditError } = await db.from("crm_audit_events").insert(
+      toAuditRow({
+        actorKind: "auto",
+        action: "titre_couverture",
+        bookingId: row.id,
+        customerId: booking.customer_id,
+        summary: "Titre ou couverture du dossier",
+        detail: {
+          reference: row.reference,
+          ...(titleChanged ? { titre_avant: prev.title, titre_apres: row.title } : {}),
+          ...(coverChanged ? { couverture: photo, import_retire: true } : {}),
+        },
+      })
+    );
+    if (auditError) console.error("[mcp] journal titre", auditError.code ?? "?");
+  }
+  const shownPhoto = coverPhotoId(row as CrmBooking, coverItems);
   return {
     id: row.id,
     reference: row.reference,
+    titre: row.title,
+    couverture: row.cover_image_path ? null : shownPhoto,
     statut: staffStayLabel(row),
     date_depart: row.start_date,
     date_retour: row.end_date,

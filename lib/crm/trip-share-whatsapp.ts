@@ -1,6 +1,7 @@
 import { greetingGivenName } from "./identity";
 import { tripShareMessage } from "./trip-share";
 import { isTripShareCode, isTripShareUrl } from "./trip-share-check";
+import { EXAMPLE_TRIP_CODE } from "./trip-share-example";
 import { whatsappFailureSentence } from "./whatsapp";
 
 export const TRIP_SHARE_TEMPLATE_KEY = "partage_voyage";
@@ -92,7 +93,7 @@ export function tripShareContentDrafts() {
       create: {
         friendly_name: TRIP_SHARE_TEMPLATE_KEY,
         language: "fr" as const,
-        variables: { "1": "Camille", "2": "Marrakech", "3": "23456789" },
+        variables: { "1": "Camille", "2": "Marrakech", "3": EXAMPLE_TRIP_CODE },
         types: {
           "twilio/call-to-action": {
             body: TEMPLATE_BODY,

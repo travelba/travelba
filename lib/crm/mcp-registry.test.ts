@@ -34,6 +34,9 @@ const EXPECTED = [
   "traiter_email",
   "creer_client",
   "mettre_a_jour_client",
+  "modifier_titulaire",
+  "definir_role_societe",
+  "inviter_client",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
@@ -67,6 +70,9 @@ const WRITE_TOOLS = [
   "traiter_email",
   "creer_client",
   "mettre_a_jour_client",
+  "modifier_titulaire",
+  "definir_role_societe",
+  "inviter_client",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
@@ -131,7 +137,31 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /voyageur_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /passeport/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /societe_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /titre/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /couverture/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_dossier")?.description || "", /sans titre/i);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_client")?.description || "", /supprimer_societe_id/);
+  const titulaire = MCP_TOOLS.find((tool) => tool.name === "modifier_titulaire");
+  assert.equal(titulaire?.write, true);
+  assert.equal(titulaire?.openWorld, undefined);
+  assert.equal(titulaire?.pieceNumbers, undefined);
+  assert.match(titulaire?.description || "", /nom de passeport/);
+  assert.match(titulaire?.description || "", /adresse personnelle/);
+  assert.match(titulaire?.description || "", /n’est ni lu ni renvoyé/);
+  assert.match(titulaire?.description || "", /pays_passeport/);
+  const role = MCP_TOOLS.find((tool) => tool.name === "definir_role_societe");
+  assert.equal(role?.write, true);
+  assert.equal(role?.openWorld, undefined);
+  assert.match(role?.description || "", /admin/);
+  assert.match(role?.description || "", /membre/);
+  assert.match(role?.description || "", /particulier/);
+  const invite = MCP_TOOLS.find((tool) => tool.name === "inviter_client");
+  assert.equal(invite?.write, true);
+  assert.equal(invite?.openWorld, true);
+  assert.equal(invite?.pieceNumbers, undefined);
+  assert.equal(invite?.signedUrl, undefined);
+  assert.match(invite?.description || "", /même flux/);
+  assert.match(invite?.description || "", /n’est pas renvoyé/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /prix de vente/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /MAD/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /déjà rattachée/);

@@ -23,7 +23,7 @@ Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ens
 ## Créer ≠ Inviter
 
 - `POST /api/admin/clients` **sans** `invite` → insert `crm_customers` uniquement (`NewCustomerForm` bouton **Créer**).
-- Invitation : `InviteCustomerPanel` → `POST /api/admin/clients/[id]/invite` → `inviteCustomer()`.
+- Invitation : `InviteCustomerPanel` → `POST /api/admin/clients/[id]/invite` → `inviteCustomer()`. Le MCP `inviter_client` appelle ce même flux et son canal. Rien ne part sans cet appel. Un accès déjà invité ou prêt n’est pas renvoyé.
 - Copier le lien toujours disponible après génération (Resend down / local).
 
 `generateLink({ type: "invite" })` ; si déjà inscrit → `type: "recovery"`. URL courte `/e/CODE` (jeton en `crm_entry_links`), puis mot de passe.
