@@ -788,9 +788,40 @@ export function isKnownCatalogPhoto(photoId: string) {
   return knownCatalogPhotos.has(photoId);
 }
 
-/** Lieu d’une image générée. Absent si l’identifiant n’est pas une ville du catalogue. */
+const BLOCKED_PLACE = /\b(inconnue?s?|unknown|xyzzy|zzz|sejour|voyage|week end|weekend)\b/;
+
+/**
+ * Un nom peut recevoir une image générée.
+ * Un pays qui a déjà une carte postale, un nombre (« 40 ans ») ou un mot vide non.
+ * Un pays sans photo (Seychelles) peut en recevoir une.
+ */
+export function generatedPlaceAllowed(key: string) {
+  if (!key || key.length < 3 || /\d/.test(key)) return false;
+  if (BLOCKED_PLACE.test(key)) return false;
+  if (isCountryName(key)) {
+    const code = countryCodeForPlace(key);
+    return Boolean(code && !countryCoverPhoto(code));
+  }
+  return true;
+}
+
+/**
+ * Lieu d’une image générée.
+ * Ville du catalogue sans photo, ou lieu hors catalogue (`photo-city-valmorel`).
+ */
 export function generatedCityCoverSpec(photoId: string) {
-  return generatedSpec.get(photoId) ?? null;
+  const known = generatedSpec.get(photoId);
+  if (known) return known;
+  if (!photoId.startsWith("photo-city-")) return null;
+  if (!/^photo-[A-Za-z0-9_-]{6,80}$/.test(photoId)) return null;
+  const key = photoId.slice("photo-city-".length).replace(/-/g, " ").trim();
+  if (!generatedPlaceAllowed(key)) return null;
+  const city = cities.get(key);
+  if (city?.photo) return null;
+  return {
+    place: titlePlace(key),
+    country: city ? countryLabel.get(city.country) || "" : "",
+  };
 }
 
 /** Villes du catalogue sans photo propre : une image à générer par identifiant. */

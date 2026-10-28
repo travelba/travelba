@@ -5,6 +5,7 @@ import {
   catalogCachePath,
   cityCoverAuthFailed,
   coverGeneratePrompt,
+  coverScene,
   coverRetouchPrompt,
   generateCityCoverBytes,
   isCatalogPhotoId,
@@ -56,6 +57,20 @@ describe("cover retouch", () => {
     assert.match(prompt, /Bordeaux, France/);
     assert.match(prompt, /Eiffel Tower/);
     assert.match(prompt, /unless the place is Paris/);
+    assert.equal(coverScene("Bordeaux"), "place");
+    assert.doesNotMatch(prompt, /alpine ski resort/);
+  });
+
+  it("photographié Valmorel en station de ski l’hiver", () => {
+    assert.equal(coverScene("Valmorel"), "ski");
+    assert.equal(coverScene("Les Sybelles", { state: "Savoie", type: "village" }), "ski");
+    assert.equal(coverScene("Lyon", { state: "Auvergne-Rhône-Alpes", type: "city" }), "place");
+    const prompt = coverGeneratePrompt("Valmorel", "France");
+    assert.match(prompt, /Valmorel, France/);
+    assert.match(prompt, /alpine ski resort/);
+    assert.match(prompt, /snow-covered mountains/);
+    assert.match(prompt, /wooden chalets/);
+    assert.match(prompt, /Eiffel Tower/);
   });
 
   it("réessaie la génération une fois puis abandonne", async () => {

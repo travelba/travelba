@@ -3,7 +3,7 @@ import test from "node:test";
 import { identityOverwriteWarning } from "./identity";
 import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
 import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
-import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl } from "./covers";
+import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl, fallbackCoverTargets } from "./covers";
 import { stayArrivalPlaces } from "./carnet";
 import {
   catalogCitiesWithoutPhoto,
@@ -154,6 +154,33 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "Maroc", title: "Séjour" })
   );
   assert.equal(unsplashKeywordMatch({ destination: "Alpes", title: "Ski" }), null);
+  const valmorel = bookingCoverPlan(
+    { destination: "Valmorel", title: "Valmorel", cover_image_path: null },
+    {
+      items: [
+        {
+          kind: "hotel",
+          details: { city: "Valmorel", country: "France", hotel_name: "Club Med Valmorel" },
+        },
+      ],
+    }
+  );
+  assert.equal(valmorel.mode, "single");
+  if (valmorel.mode === "single") {
+    assert.match(valmorel.src, /photo-city-valmorel/);
+    assert.doesNotMatch(valmorel.src, /photo-1502602898657/);
+    assert.match(valmorel.fallback || "", /photo-1502602898657/);
+  }
+  const valmorelFrance = bookingCoverPlan({
+    destination: "Valmorel, France",
+    title: "Valmorel",
+    cover_image_path: null,
+  });
+  assert.equal(valmorelFrance.mode, "single");
+  if (valmorelFrance.mode === "single") {
+    assert.match(valmorelFrance.src, /photo-city-valmorel/);
+    assert.doesNotMatch(valmorelFrance.src, /photo-1502602898657/);
+  }
   assert.equal(
     unsplashKeywordMatch({ destination: "Lago di Como", title: "Lac" }),
     "photo-city-lago-di-como"
@@ -210,6 +237,17 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "France", title: "Séjour" })
   );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
+  assert.deepEqual(
+    fallbackCoverTargets(
+      { destination: "Valmorel", title: "Valmorel" },
+      { items: [{ kind: "hotel", details: { city: "Valmorel", country: "France" } }] }
+    ),
+    [{ place: "Valmorel", generatedId: "photo-city-valmorel", fallbackPhoto: "photo-1502602898657-3e91760cbb34" }]
+  );
+  assert.deepEqual(
+    fallbackCoverTargets({ destination: "Bordeaux", title: "Séjour" }),
+    []
+  );
   const marrakechPhoto = unsplashKeywordMatch({ destination: "Marrakech", title: "Séjour" });
   const moroccoPhoto = unsplashKeywordMatch({ destination: "Maroc", title: "Séjour" });
   assert.equal(
@@ -244,7 +282,10 @@ test("cover catalogue matches the arrival place only", () => {
     { items: [{ kind: "hotel", details: { city: "Douar", country: "Maroc" } }] }
   );
   assert.equal(countryOnly.mode, "single");
-  if (countryOnly.mode === "single") assert.match(countryOnly.src, /photo-1489749798305-4fea3ae63d43/);
+  if (countryOnly.mode === "single") {
+    assert.match(countryOnly.src, /photo-city-douar/);
+    assert.match(countryOnly.fallback || "", /photo-1489749798305-4fea3ae63d43/);
+  }
   const portugal = unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" });
   assert.ok(portugal);
   assert.match(portugal, /photo-1585208798174-6cedd86e019a/);
@@ -290,7 +331,11 @@ test("cover catalogue matches the arrival place only", () => {
     title: "Séjour",
     cover_image_path: null,
   });
-  assert.equal(millau.mode, "none");
+  assert.equal(millau.mode, "single");
+  if (millau.mode === "single") {
+    assert.match(millau.src, /photo-city-millau/);
+    assert.doesNotMatch(millau.src, /photo-1502602898657/);
+  }
   assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Belgique", title: "Séjour" }), null);
   assert.equal(
     bookingCoverUrl({

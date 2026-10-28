@@ -208,6 +208,7 @@ test("la couverture publiée est une URL HTTPS portée par le code du lien, pas 
 
 test("une nouvelle réservation attend la photo et le modèle illustré", () => {
   assert.equal(generatedStayPhotoId({ destination: "Bordeaux", title: "Séjour", cover_image_path: null }), "photo-city-bordeaux");
+  assert.equal(generatedStayPhotoId({ destination: "Valmorel", title: "Valmorel", cover_image_path: null }), "photo-city-valmorel");
   assert.equal(generatedStayPhotoId({ destination: "Avoriaz", title: "Neige", cover_image_path: null }), null);
   assert.equal(
     generatedStayPhotoId({ destination: "Bordeaux", title: "Séjour", cover_image_path: "bookings/x/cover.webp" }),

@@ -7,6 +7,9 @@ export type GeocodeHit = {
   lat: number;
   lon: number;
   countryCode: string;
+  country?: string;
+  state?: string;
+  type?: string;
 };
 
 const memory = new Map<string, string | null>();
@@ -65,10 +68,11 @@ export function nearestPhotographedCity(
 }
 
 /**
- * Un point géocodé a toujours une photo :
- * ville citée, ville proche du même pays, pays, puis la ville photographiée la plus proche.
+ * Lieu géocodé, quand le dossier n’a pas déjà une image.
+ * Ville du catalogue citée, ville photographiée proche, photo du pays
+ * seulement si elle ne montre pas une autre ville.
  */
-export function photoFromGeocodeHit(hit: GeocodeHit): string {
+export function photoFromGeocodeHit(hit: GeocodeHit): string | null {
   const mentioned = coverMatchInText(hit.label);
   if (mentioned && mentioned.rank >= 3) return mentioned.photo;
   const sameCountry = nearestPhotographedCity(hit.lat, hit.lon, hit.countryCode);
@@ -79,15 +83,36 @@ export function photoFromGeocodeHit(hit: GeocodeHit): string {
   if (sameCountry && sameCountry.km <= 500) return sameCountry.city.photo;
   const abroad = nearestPhotographedCity(hit.lat, hit.lon);
   if (abroad && abroad.km <= 500) return abroad.city.photo;
-  return (sameCountry || abroad)!.city.photo;
+  return (sameCountry || abroad)?.city.photo ?? null;
+}
+
+/**
+ * Ancien repli : ville photographiée proche, sinon le pays.
+ * Sert à retrouver les dossiers qui affichent encore cette image. L'écran ne l'utilise plus.
+ */
+export function legacyNearestCover(hit: GeocodeHit): string | null {
+  const mentioned = coverMatchInText(hit.label);
+  if (mentioned && mentioned.rank >= 3) return null;
+  const sameCountry = nearestPhotographedCity(hit.lat, hit.lon, hit.countryCode);
+  if (sameCountry && sameCountry.km <= 180) return sameCountry.city.photo;
+  if (mentioned && countryLandmarkPhotoAllowed(mentioned.photo, quotedPlaceKeys(hit.label))) {
+    return mentioned.photo;
+  }
+  if (sameCountry && sameCountry.km <= 500) return sameCountry.city.photo;
+  const abroad = nearestPhotographedCity(hit.lat, hit.lon);
+  if (abroad && abroad.km <= 500) return abroad.city.photo;
+  return (sameCountry || abroad)?.city.photo ?? null;
 }
 
 type NominatimRow = {
   lat?: string;
   lon?: string;
   display_name?: string;
+  type?: string;
+  class?: string;
   address?: {
     country_code?: string;
+    country?: string;
     state?: string;
     city?: string;
     town?: string;
@@ -96,11 +121,15 @@ type NominatimRow = {
   };
 };
 
-/** Lieu quelconque → photo du catalogue. Null seulement si ce n’est pas un lieu. */
-export async function photoForUnknownPlace(query: string): Promise<string | null> {
+const geoMemory = new Map<string, GeocodeHit | null>();
+
+export type PlaceDescription = { country: string; state: string; type: string };
+
+/** Point Nominatim. Null si ce n'est pas un lieu. Une erreur réseau n'est pas mémorisée. */
+export async function geocodePlace(query: string): Promise<{ hit: GeocodeHit | null; remember: boolean }> {
   const key = foldPlace(query);
-  if (key.length < 2) return null;
-  if (memory.has(key)) return memory.get(key) ?? null;
+  if (key.length < 2) return { hit: null, remember: false };
+  if (geoMemory.has(key)) return { hit: geoMemory.get(key) ?? null, remember: true };
 
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", query.trim().slice(0, 160));
@@ -108,40 +137,59 @@ export async function photoForUnknownPlace(query: string): Promise<string | null
   url.searchParams.set("limit", "1");
   url.searchParams.set("addressdetails", "1");
 
-  let photo: string | null = null;
-  let remember = false;
   try {
     await waitNominatimSlot();
     const res = await fetch(url, {
       headers: {
         "User-Agent": "Travelba/1.0 (contact@travelba.fr)",
         Accept: "application/json",
+        "Accept-Language": "fr",
       },
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 60 * 60 * 24 * 7 },
     });
-    if (res.ok) {
-      remember = true;
-      const rows = (await res.json()) as NominatimRow[];
-      const hit = rows[0];
-      const lat = Number(hit?.lat);
-      const lon = Number(hit?.lon);
-      const address = hit?.address || {};
-      const label = [hit?.display_name, address.state, address.county, address.city, address.town, address.village]
-        .filter(Boolean)
-        .join(" ");
-      if (hit && Number.isFinite(lat) && Number.isFinite(lon) && geocodeAgrees(query, label)) {
-        photo = photoFromGeocodeHit({
-          label,
-          lat,
-          lon,
-          countryCode: (address.country_code || "").toLowerCase(),
-        });
-      }
-    }
+    if (!res.ok) return { hit: null, remember: false };
+    const rows = (await res.json()) as NominatimRow[];
+    const row = rows[0];
+    const lat = Number(row?.lat);
+    const lon = Number(row?.lon);
+    const address = row?.address || {};
+    const label = [row?.display_name, address.state, address.county, address.city, address.town, address.village]
+      .filter(Boolean)
+      .join(" ");
+    const hit =
+      row && Number.isFinite(lat) && Number.isFinite(lon) && geocodeAgrees(query, label)
+        ? {
+            label,
+            lat,
+            lon,
+            countryCode: (address.country_code || "").toLowerCase(),
+            country: address.country || "",
+            state: [address.state, address.county].filter(Boolean).join(" "),
+            type: row.type || row.class || "",
+          }
+        : null;
+    geoMemory.set(key, hit);
+    return { hit, remember: true };
   } catch {
-    return null;
+    return { hit: null, remember: false };
   }
+}
+
+/** Pays et caractère du lieu, pour le prompt. N'influence pas l'image affichée. */
+export async function describePlace(query: string): Promise<PlaceDescription | null> {
+  const { hit } = await geocodePlace(query);
+  if (!hit) return null;
+  return { country: hit.country || "", state: hit.state || "", type: hit.type || "" };
+}
+
+/** Lieu quelconque → image du lieu, ou la ville déjà photographiée citée dans le libellé. */
+export async function photoForUnknownPlace(query: string): Promise<string | null> {
+  const key = foldPlace(query);
+  if (key.length < 2) return null;
+  if (memory.has(key)) return memory.get(key) ?? null;
+  const { hit, remember } = await geocodePlace(query);
+  const photo = hit ? photoFromGeocodeHit(hit) : null;
   if (remember) memory.set(key, photo);
   return photo;
 }
