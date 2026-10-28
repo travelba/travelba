@@ -35,6 +35,7 @@ import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
 import { loadClientLedger, loadClientLedgerViews, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
+import type { StoredFlightCheckin } from "@/lib/crm/online-checkin";
 import { loadHotelThread } from "@/lib/crm/hotel-desk-run";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import type {
@@ -363,6 +364,12 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const importTasks = importTasksQuery.error
     ? []
     : ((importTasksQuery.data || []) as { id: string; kind: string; title: string }[]);
+  let checkins: StoredFlightCheckin[] = [];
+  const checkinRows = await supabase
+    .from("crm_flight_checkins")
+    .select("booking_item_id, status, actor")
+    .eq("booking_id", id);
+  if (!checkinRows.error && checkinRows.data) checkins = checkinRows.data as StoredFlightCheckin[];
 
   const [appliedFees, inheritedFees] = await Promise.all([
     loadResolvedAgencyFees(supabase, [b]),
@@ -460,6 +467,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece }}
           accounting={accounting}
           importTasks={importTasks}
+          checkins={checkins}
         />
   );
 }

@@ -21,6 +21,21 @@ test("l’état visible est préparation, visible ou archivée", () => {
   );
 });
 
+test("un enregistrement ouvert compte dans À faire", () => {
+  const chips = staffBlockingChips({
+    travelers: [],
+    missingPassportIds: [],
+    hotelLettersOpen: 0,
+    amountHidden: false,
+    checkinAlerts: 2,
+  });
+  assert.deepEqual(
+    chips.map((chip) => chip.label),
+    ["2 enregistrements ouverts"]
+  );
+  assert.equal(chips[0].tab, undefined);
+});
+
 test("les manques comptent passeport, courriers hôtel et montant caché", () => {
   const chips = staffBlockingChips({
     travelers: [

@@ -15,6 +15,8 @@ import {
 import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
+import { checkinMcpLine, type FlightCheckinView } from "@/lib/crm/online-checkin";
+import { loadCheckinContext, viewsFromContext } from "@/lib/crm/online-checkin-db";
 import { loadLedgerCountedStayAmounts } from "@/lib/crm/displayed-stay";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
@@ -543,12 +545,16 @@ export async function readChercherDossiers(
   };
 }
 
-function cardLine(item: Pick<CrmBookingItem, "id" | "kind" | "title" | "supplier" | "confirmation_ref" | "start_at" | "end_at" | "details" | "visible_to_client">) {
+function cardLine(
+  item: Pick<CrmBookingItem, "id" | "kind" | "title" | "supplier" | "confirmation_ref" | "start_at" | "end_at" | "details" | "visible_to_client">,
+  checkin?: FlightCheckinView | null
+) {
   const full = item as CrmBookingItem;
   const city = typeof item.details?.city === "string" ? item.details.city : null;
   if (item.kind === "flight") {
     const from = typeof item.details?.from === "string" ? item.details.from : null;
     const to = typeof item.details?.to === "string" ? item.details.to : null;
+    const line = checkin ? checkinMcpLine(checkin) : null;
     return {
       carte_id: item.id,
       kind: "vol",
@@ -558,6 +564,18 @@ function cardLine(item: Pick<CrmBookingItem, "id" | "kind" | "title" | "supplier
       fin: dossierFlightStamp(item.end_at, to, item.details?.arrival_timezone),
       reference: item.confirmation_ref,
       montre: item.visible_to_client,
+      enregistrement: line
+        ? {
+            statut: line.statut,
+            libelle: line.libelle,
+            ouverture: line.ouverture,
+            ouverture_libelle: line.ouverture_libelle,
+            heures_avant: line.heures_avant,
+            par: line.par,
+            alerte: line.alerte,
+            fait: line.fait,
+          }
+        : null,
     };
   }
   if (item.kind === "accueil_vip") {
@@ -632,7 +650,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     return { choix: rows.map((row) => bookingLine(row, names, new Map(), companies)) };
   }
   const booking = rows[0];
-  const [cards, pliantCards, travelers, visas, tasks, names, amounts, companies] = await Promise.all([
+  const [cards, pliantCards, travelers, visas, tasks, names, amounts, companies, checkin] = await Promise.all([
     bookingCards(admin, booking.id),
     bookingPliantCards(admin, booking.id),
     bookingTravelers(admin, booking.id),
@@ -641,7 +659,9 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     customerNames(admin, [booking.customer_id]),
     dossierAmounts(admin, [booking]),
     companyNames(admin, [booking.billing_company_id]),
+    loadCheckinContext(admin, booking.id),
   ]);
+  const checkinByItem = new Map(viewsFromContext(checkin).map((line) => [line.itemId, line]));
   if (visas.error) logRead("visas", visas.error);
   if (tasks.error) logRead("taches", tasks.error);
   let commission: ResolvedAgencyFee = { rate: 0.1, source: "defaut" };
@@ -660,7 +680,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
       voyageur_id: row.id,
       nom: [row.first_name, row.last_name].filter(Boolean).join(" ").trim(),
     })),
-    cartes: cards.map(cardLine),
+    cartes: cards.map((item) => cardLine(item, checkinByItem.get(item.id) || null)),
     cartes_pliant: pliantCards,
     formalites: [
       ...((visas.data || []) as { country: string; status: string | null; step: string | null }[])

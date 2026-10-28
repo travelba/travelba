@@ -134,6 +134,13 @@ test("l’enregistrement Air France s’ouvre 30 h avant, pas pour une compagnie
   assert.equal(flightWatchBadge(open, new Date("2026-10-01T06:00:00Z")), "Enregistrement ouvert");
 });
 
+test("Lufthansa ouvre l’enregistrement 23 h avant", () => {
+  const start = "2026-10-02T12:00:00Z";
+  const lh = card({ start_at: start, details: { airline_iata: "LH", flight_number: "LH 400", from: "FRA", to: "CDG" } });
+  assert.equal(checkinOpen(lh, new Date("2026-10-01T13:00:00Z")), true);
+  assert.equal(checkinOpen(lh, new Date("2026-10-01T12:59:00Z")), false);
+});
+
 test("le plafond du jour s’arrête à 200 appels et repart le lendemain", () => {
   const blocked = reserveAeroBudget({ day: "2026-09-29", calls: AEROAPI_DAILY_CALL_CAP }, NOW);
   assert.equal(blocked.ok, false);

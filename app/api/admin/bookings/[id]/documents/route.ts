@@ -4,6 +4,7 @@ import { queuePublishedPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { normalizePieceKind } from "@/lib/crm/concierge-notices";
 import { removeCrmFiles, safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { uploadIssue } from "@/lib/crm/upload-policy";
+import { syncCheckinWithPasses } from "@/lib/crm/online-checkin-db";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -51,6 +52,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  if (kind === "carte d'embarquement") await syncCheckinWithPasses(auth.supabase, id, "agence");
   return NextResponse.json({ document: data });
 }
 
@@ -80,6 +82,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .single();
   if (error) return dbError(error, 400);
   const doc = data as { id: string; kind: string; booking_item_id?: string | null; visible_to_client?: boolean };
+  if (doc.kind === "carte d'embarquement") await syncCheckinWithPasses(auth.supabase, id, "agence");
   if (doc.visible_to_client) {
     const { data: booking } = await auth.supabase
       .from("crm_bookings")
