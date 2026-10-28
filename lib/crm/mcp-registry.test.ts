@@ -126,6 +126,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   );
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.cardSecrets, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.write, true);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /transactions/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /plafond total/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /chaque débit/i);
+  assert.doesNotMatch(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /ignoré/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "lire_carte_pliant")?.write, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.openWorld, true);

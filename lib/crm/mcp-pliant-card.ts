@@ -4,6 +4,7 @@ import WebSocket from "ws";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { parseMoneyToCents, principalGuest } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardBody, sameCardNameCount } from "./manual-stay-card";
+import { parsePliantTransactionCount } from "./pliant-controls";
 import { currentMcpAccess } from "./mcp-auth";
 import { McpReadError, journalReference } from "./mcp-passport";
 import { McpWriteError } from "./mcp-write";
@@ -285,6 +286,11 @@ export async function createPliantCard(
       message: perTx == null ? "Indiquez le montant par transaction." : "Le montant par transaction ne peut pas dépasser le plafond.",
     };
   }
+  const counted = parsePliantTransactionCount(input.transactions);
+  if (!counted.ok) {
+    await writeCardAudit(admin, { ...auditBase, outcome: "invalide" });
+    return { message: "Indiquez un nombre entier de transactions, de 1 à 999999999." };
+  }
 
   const loaded = await loadBooking(admin, query);
   if (loaded.error) {
@@ -343,6 +349,7 @@ export async function createPliantCard(
     hotels: context.hotels,
     reference: context.reference,
     transactionLimitCents: perTx,
+    transactionCount: counted.count,
     currency,
   });
 
@@ -393,7 +400,7 @@ export async function createPliantCard(
     last_name: named.lastName,
     limit_cents: body.limit.value,
     transaction_limit_cents: body.transactionLimit.value,
-    max_transaction_count: null,
+    max_transaction_count: body.maxTransactionCount ?? null,
     currency: body.limit.currency,
     valid_from: body.validFrom,
     valid_to: body.validTo,
@@ -426,7 +433,7 @@ export async function createPliantCard(
     status: "active",
     limit_manual: true,
     transaction_limit_cents: body.transactionLimit.value,
-    max_transaction_count: null,
+    max_transaction_count: body.maxTransactionCount ?? null,
   });
 
   await writeCardAudit(admin, {
@@ -451,6 +458,7 @@ export async function createPliantCard(
     titulaire: holder(named.firstName, named.lastName),
     plafond: majorFromCents(body.limit.value),
     devise: body.limit.currency,
+    ...(body.maxTransactionCount != null ? { transactions: body.maxTransactionCount } : {}),
     montant_transaction: majorFromCents(body.transactionLimit.value),
     valable_du: body.validFrom,
     valable_au: body.validTo,
