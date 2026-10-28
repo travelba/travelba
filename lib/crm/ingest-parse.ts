@@ -6,6 +6,7 @@ import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
 import { tripCityPlan } from "./layover";
 import { TENTATIVE_REVIEW_REASON } from "./review-doubt";
+import { stampPrintedCommission } from "./supplier-commission";
 
 export type ParsedAirport = { iata: string; city: string };
 
@@ -1856,7 +1857,14 @@ export function parsedItemsFromText(text: string): {
       item.details = { ...(item.details || {}), passengers };
     }
   }
-  return { items: mergeExtractItems(items), status, notes, travelers, title, destination };
+  return {
+    items: stampPrintedCommission(mergeExtractItems(items), clean),
+    status,
+    notes,
+    travelers,
+    title,
+    destination,
+  };
 }
 
 export function tagSourceFileName(items: ExtractItem[], name: string): ExtractItem[] {

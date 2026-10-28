@@ -319,6 +319,15 @@ export type CrmBookingItem = {
   start_at: string | null;
   end_at: string | null;
   amount: number | null;
+  /** Commission IATA, table `crm_booking_item_commissions`. Absente du select client. */
+  commission_attendue?: number | string | null;
+  /** Taux facultatif, fraction (0,10 = 10 %). */
+  commission_taux?: number | string | null;
+  /** Défaut : fin de la carte, ou du séjour, plus un mois. */
+  commission_date_prevue?: string | null;
+  /** Commission reçue. Dès qu’elle est saisie, la marge l’utilise. */
+  commission_recue?: number | string | null;
+  commission_recue_le?: string | null;
   /** Si true : ce prix vendu apparaît dans Transactions et l’encours. */
   include_in_ledger: boolean;
   /** Société de facturation de la dépense, si elle diffère du séjour. */

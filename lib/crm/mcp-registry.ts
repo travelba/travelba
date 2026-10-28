@@ -157,6 +157,28 @@ function flag(args: ToolArgs, key: string) {
   return args[key] === true;
 }
 
+const commissionFields = {
+  commission_attendue: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe("Commission IATA attendue, en euros. Vide pour l’effacer. Aucun taux par défaut"),
+  commission_taux: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe("Taux facultatif. 0,10 ou 10 pour 10 %. Vide pour l’effacer"),
+  commission_date_prevue: z
+    .string()
+    .trim()
+    .max(10)
+    .optional()
+    .describe("Date prévue AAAA-MM-JJ. Omis : fin de la carte plus un mois"),
+  commission_recue: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe("Commission reçue, en euros. Vide pour l’effacer. La marge l’utilise dès qu’elle est saisie"),
+  commission_recue_le: z.string().trim().max(10).optional().describe("Jour de réception AAAA-MM-JJ"),
+};
+
 /**
  * Liste unique des outils Grok. Une option admin nouvelle s’ajoute ici,
  * dans le même changement, en réutilisant `lib/crm`.
@@ -165,8 +187,14 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "tableau_de_bord",
     description:
-      "À faire aujourd’hui : mails, Little Emperors, formalités, services, départs, pièces, soldes Revolut, Stripe et Pliant. Lecture seule.",
-    run: () => readTableauDeBord(),
+      "À faire aujourd’hui : mails, Little Emperors, formalités, services, départs, pièces, soldes Revolut, Stripe et Pliant. Commissions fournisseur à recevoir (attendues, en retard, reçues). filtre commissions-attendues, commissions-retard ou commissions-recues donne la liste. Lecture seule. Jamais montré au client.",
+    input: {
+      filtre: z
+        .enum(["commissions-attendues", "commissions-retard", "commissions-recues"])
+        .optional()
+        .describe("Liste des commissions à recevoir"),
+    },
+    run: (args: ToolArgs) => readTableauDeBord({ filtre: str(args, "filtre") }),
   },
   {
     name: "chercher_clients",
@@ -205,7 +233,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport, commission IATA attendue ou reçue, marge directe et marge), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ. La commission fournisseur et la marge ne sont pas pour le client.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -289,7 +317,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "comptabilite_voyage",
     description:
-      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). Chaque ligne a carte_id quand la vente est rattachée à une carte. id ou reference. Lecture seule, jamais montré au client.",
+      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge directe, commission fournisseur (attendue ou reçue) et marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). Chaque ligne a carte_id quand la vente est rattachée à une carte. id ou reference. Lecture seule, jamais montré au client.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -894,6 +922,7 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Pas de frais de billeterie sur ce dossier. La ligne ne revient pas"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
       fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
+      ...commissionFields,
     },
     run: (args) => addVol(args),
   },
@@ -934,6 +963,7 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("Retire la lecture douteuse de cette carte, y compris l’avertissement sur les codes IATA"),
+      ...commissionFields,
     },
     run: (args) => updateVol(args),
   },
@@ -1019,6 +1049,7 @@ export const MCP_TOOLS: ToolDef[] = [
         .optional()
         .describe("Jusqu’à huit photos https de la chambre ou de l’hôtel"),
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
+      ...commissionFields,
     },
     run: (args) => addHotel(args),
   },
@@ -1079,6 +1110,7 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(80)
         .optional()
         .describe("Référence Little Emperors. Remplit la carte depuis cette réservation, sans changer le prix de vente"),
+      ...commissionFields,
     },
     run: (args) => updateHotel(args),
   },
@@ -1103,6 +1135,7 @@ export const MCP_TOOLS: ToolDef[] = [
       prix: z.union([z.number(), z.string()]).optional().describe("Prix vendu, facultatif"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
       document_id: z.string().trim().max(80).optional().describe("Confirmation déjà déposée sur le dossier"),
+      ...commissionFields,
     },
     run: (args) => addAccueilVip(args),
   },

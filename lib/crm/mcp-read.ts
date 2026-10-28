@@ -29,6 +29,8 @@ import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { buildTripAccountingView, loadDossierAccountingInputs } from "@/lib/crm/trip-accounting-view";
 import { TRIP_ACCOUNTING_LABELS, type TripCost } from "@/lib/crm/trip-costs";
+import { commissionMcpFields, type CommissionQueueStatus, type SupplierCommission } from "@/lib/crm/supplier-commission";
+import { loadBookingCommissions, loadCommissionQueue } from "@/lib/crm/supplier-commission-db";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
   DOC_TYPE_LABELS,
@@ -163,7 +165,7 @@ async function dossierAmounts(admin: SupabaseClient, rows: BookingRow[]) {
 async function bookingCards(admin: SupabaseClient, bookingId: string) {
   const { data, error } = await admin
     .from("crm_booking_items")
-    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details, lifecycle, visible_to_client, sort_order")
+    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, amount, details, lifecycle, visible_to_client, sort_order")
     .eq("booking_id", bookingId)
     .order("sort_order");
   if (error) {
@@ -293,7 +295,13 @@ function pieceLine(doc: CrmTravelDocument, names?: Map<string, string>) {
   };
 }
 
-export async function readTableauDeBord() {
+const COMMISSION_FILTERS: Record<string, CommissionQueueStatus> = {
+  "commissions-attendues": "attendue",
+  "commissions-retard": "en_retard",
+  "commissions-recues": "recue",
+};
+
+export async function readTableauDeBord(input: { filtre?: string | null } = {}) {
   const admin = db();
   const today = todayIsoDate();
   const weekAgo = isoDateInDays(-7);
@@ -307,6 +315,7 @@ export async function readTableauDeBord() {
     tasks,
     activeBookings,
     whatsappOpen,
+    commissions,
   ] = await Promise.all([
     adminBadges(),
     admin.from("crm_customer_balances").select("balance, currency"),
@@ -343,6 +352,7 @@ export async function readTableauDeBord() {
       .from("crm_whatsapp_requests")
       .select("id", { count: "exact", head: true })
       .eq("status", "open"),
+    loadCommissionQueue(admin, COMMISSION_FILTERS[(input.filtre || "").trim()] || null),
   ]);
   const desk = deskView(visaTasks((tasks.data || []) as VisaTaskRow[]), today);
   const services = await openServiceLines(admin, (activeBookings.data || []) as ServiceBookingRow[]);
@@ -373,6 +383,30 @@ export async function readTableauDeBord() {
     })),
     departs_sous_7_jours: departSoon.count ?? 0,
     dossiers_actifs: bookingCount.count ?? 0,
+    commissions_a_recevoir: {
+      attendues: commissions.attendues,
+      en_retard: commissions.en_retard,
+      recues: commissions.recues,
+      lien: "/admin/commissions",
+      ...(input.filtre
+        ? {
+            filtre: input.filtre,
+            lignes: commissions.lignes.map((row) => ({
+              carte_id: row.booking_item_id,
+              dossier_id: row.booking_id,
+              reference: row.reference,
+              titre: row.title,
+              fournisseur: row.supplier,
+              attendue: row.commission_attendue == null ? null : Number(row.commission_attendue),
+              taux: row.commission_taux == null ? null : Number(row.commission_taux),
+              prevue_le: row.commission_date_prevue,
+              recue: row.commission_recue == null ? null : Number(row.commission_recue),
+              recue_le: row.commission_recue_le,
+              statut: row.statut,
+            })),
+          }
+        : {}),
+    },
   };
 }
 
@@ -545,6 +579,19 @@ export async function readChercherDossiers(
   };
 }
 
+function applyStoredCommission<T extends { id: string }>(item: T, commissions: Map<string, SupplierCommission>) {
+  const stored = commissions.get(item.id);
+  if (!stored) return item;
+  return {
+    ...item,
+    commission_attendue: stored.attendue,
+    commission_taux: stored.taux,
+    commission_date_prevue: stored.datePrevue,
+    commission_recue: stored.recue,
+    commission_recue_le: stored.recueLe,
+  };
+}
+
 function cardLine(
   item: Pick<CrmBookingItem, "id" | "kind" | "title" | "supplier" | "confirmation_ref" | "start_at" | "end_at" | "details" | "visible_to_client">,
   checkin?: FlightCheckinView | null
@@ -564,6 +611,7 @@ function cardLine(
       fin: dossierFlightStamp(item.end_at, to, item.details?.arrival_timezone),
       reference: item.confirmation_ref,
       montre: item.visible_to_client,
+      ...commissionMcpFields(full),
       enregistrement: line
         ? {
             statut: line.statut,
@@ -588,6 +636,7 @@ function cardLine(
       fin: item.end_at,
       reference: item.confirmation_ref,
       montre: item.visible_to_client,
+      ...commissionMcpFields(full),
     };
   }
   if (item.kind === "hotel") {
@@ -600,6 +649,7 @@ function cardLine(
       fin: item.end_at,
       reference: item.confirmation_ref,
       montre: item.visible_to_client,
+      ...commissionMcpFields(full),
     };
   }
   return {
@@ -611,6 +661,7 @@ function cardLine(
     fin: item.end_at,
     reference: item.confirmation_ref,
     montre: item.visible_to_client,
+    ...commissionMcpFields(full),
   };
 }
 
@@ -650,7 +701,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     return { choix: rows.map((row) => bookingLine(row, names, new Map(), companies)) };
   }
   const booking = rows[0];
-  const [cards, pliantCards, travelers, visas, tasks, names, amounts, companies, checkin] = await Promise.all([
+  const [cards, pliantCards, travelers, visas, tasks, names, amounts, companies, checkin, commissions] = await Promise.all([
     bookingCards(admin, booking.id),
     bookingPliantCards(admin, booking.id),
     bookingTravelers(admin, booking.id),
@@ -660,6 +711,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     dossierAmounts(admin, [booking]),
     companyNames(admin, [booking.billing_company_id]),
     loadCheckinContext(admin, booking.id),
+    loadBookingCommissions(admin, booking.id),
   ]);
   const checkinByItem = new Map(viewsFromContext(checkin).map((line) => [line.itemId, line]));
   if (visas.error) logRead("visas", visas.error);
@@ -680,7 +732,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
       voyageur_id: row.id,
       nom: [row.first_name, row.last_name].filter(Boolean).join(" ").trim(),
     })),
-    cartes: cards.map((item) => cardLine(item, checkinByItem.get(item.id) || null)),
+    cartes: cards.map((item) => cardLine(applyStoredCommission(item, commissions), checkinByItem.get(item.id) || null)),
     cartes_pliant: pliantCards,
     formalites: [
       ...((visas.data || []) as { country: string; status: string | null; step: string | null }[])
@@ -937,16 +989,17 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
   if (!rows.length) return { introuvable: true };
   if (rows.length > 1) return { choix: rows.map((row) => ({ id: row.id, reference: row.reference, titre: row.title || row.destination })) };
   const booking = rows[0];
-  const [{ data: items }, inputs] = await Promise.all([
-    admin.from("crm_booking_items").select("id, kind, details, lifecycle").eq("booking_id", booking.id),
+  const [{ data: items }, inputs, commissions] = await Promise.all([
+    admin.from("crm_booking_items").select("id, kind, details, lifecycle, amount").eq("booking_id", booking.id),
     loadDossierAccountingInputs(admin, booking.id),
+    loadBookingCommissions(admin, booking.id),
   ]);
   const view = await buildTripAccountingView(
     admin,
     booking,
-    ((items || []) as { id: string; kind: string | null; details: Record<string, unknown> | null; lifecycle: string | null }[]).filter(
-      (item) => item.lifecycle !== "superseded" && item.lifecycle !== "cancelled"
-    ),
+    ((items || []) as { id: string; kind: string | null; details: Record<string, unknown> | null; lifecycle: string | null; amount?: unknown }[])
+      .filter((item) => item.lifecycle !== "superseded" && item.lifecycle !== "cancelled")
+      .map((item) => applyStoredCommission(item, commissions)),
     inputs
   );
   let commission: ResolvedAgencyFee = { rate: 0.1, source: "defaut" };
@@ -977,6 +1030,9 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
       vente: line.label,
       vendu: eur(line.sale),
       cout: eur(line.cost),
+      marge_directe: eur(line.direct),
+      commission: line.commissionKind === "aucune" ? null : eur(line.commission),
+      commission_source: line.commissionKind,
       marge: eur(line.margin),
       couts: line.costs.map(costLine),
     })),
@@ -984,6 +1040,8 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     totaux: {
       vendu: eur(view.totals.sale),
       cout: eur(view.totals.cost),
+      marge_directe: eur(view.totals.direct),
+      commission: eur(view.totals.commission),
       marge: eur(view.totals.margin),
     },
     sorties_proposees: view.proposed.map((line) => ({

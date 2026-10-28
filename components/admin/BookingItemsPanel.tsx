@@ -29,7 +29,14 @@ import { flightLegLine, roundTripMate, roundTripPairs, roundTripPriceLabel, roun
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { DRAFT_STEP_PREFIX, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
-import { formatMoney } from "@/lib/crm/money";
+import { formatMoney, parseMoney } from "@/lib/crm/money";
+import {
+  COMMISSION_MARGIN_HELP,
+  cardMargin,
+  defaultCommissionDue,
+  formatCommissionRate,
+  readCommission,
+} from "@/lib/crm/supplier-commission";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
 import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
@@ -57,6 +64,11 @@ import type { HouseholdMember } from "@/lib/crm/household";
 
 type ItemDraft = Omit<BookingExtract["items"][number], "kind"> & {
   kind: BookingExtract["items"][number]["kind"] | "accueil_vip";
+  commission_attendue?: number | null;
+  commission_taux?: number | null;
+  commission_date_prevue?: string | null;
+  commission_recue?: number | null;
+  commission_recue_le?: string | null;
 };
 
 function emptyDraft(): ItemDraft {
@@ -70,6 +82,11 @@ function emptyDraft(): ItemDraft {
     amount: null,
     include_in_ledger: false,
     details: {},
+    commission_attendue: null,
+    commission_taux: null,
+    commission_date_prevue: null,
+    commission_recue: null,
+    commission_recue_le: null,
   };
 }
 
@@ -122,6 +139,16 @@ function toDraft(item: CrmBookingItem): ItemDraft {
     amount: item.amount,
     include_in_ledger: Boolean(item.include_in_ledger),
     details: item.details || {},
+    ...(() => {
+      const commission = readCommission(item);
+      return {
+        commission_attendue: commission.attendue,
+        commission_taux: commission.taux,
+        commission_date_prevue: commission.datePrevue,
+        commission_recue: commission.recue,
+        commission_recue_le: commission.recueLe,
+      };
+    })(),
   };
 }
 
@@ -180,7 +207,132 @@ function toSnapshot(item: CrmBookingItem): StepSnapshot {
     include_in_ledger: Boolean(item.include_in_ledger),
     visible_to_client: Boolean(item.visible_to_client),
     details: item.details || {},
+    commission_attendue: readCommission(item).attendue,
+    commission_taux: readCommission(item).taux,
+    commission_date_prevue: readCommission(item).datePrevue,
+    commission_recue: readCommission(item).recue,
+    commission_recue_le: readCommission(item).recueLe,
   };
+}
+
+function purchaseEur(item: { details?: Record<string, unknown> | null }) {
+  const details = item.details || {};
+  const netEur = Number(details.supplier_net_eur);
+  if (Number.isFinite(netEur)) return netEur;
+  const currency = typeof details.supplier_currency === "string" ? details.supplier_currency.toUpperCase() : "EUR";
+  const net = Number(details.supplier_net);
+  if ((!currency || currency === "EUR") && Number.isFinite(net)) return net;
+  return null;
+}
+
+function stepMargin(item: CrmBookingItem, currency: string) {
+  const commission = readCommission(item);
+  const sale = (currency || "EUR").toUpperCase() === "EUR" && item.amount != null ? Number(item.amount) : null;
+  return { commission, margin: cardMargin({ sale, purchase: purchaseEur(item), commission }) };
+}
+
+function commissionQuiet(item: CrmBookingItem) {
+  const { commission, margin } = stepMargin(item, "EUR");
+  if (commission.recue != null) return `Commission reçue ${formatMoney(commission.recue)}`;
+  if (commission.attendue != null) return `Commission attendue ${formatMoney(commission.attendue)}`;
+  if (commission.taux != null) return `Commission ${formatCommissionRate(commission.taux)}`;
+  if (margin.margin != null && margin.direct != null && margin.commission > 0) return null;
+  return "";
+}
+
+function CommissionFields({
+  draft,
+  onChange,
+}: {
+  draft: ItemDraft;
+  onChange: (next: ItemDraft) => void;
+}) {
+  const dueHint = defaultCommissionDue(draft.end_at);
+  return (
+    <div className="space-y-2 rounded-2xl border border-[var(--border)] bg-[var(--admin-sky)]/40 p-3">
+      <p className="text-xs font-semibold text-[var(--admin-navy)]">Commission fournisseur</p>
+      <p className="text-xs text-muted">{COMMISSION_MARGIN_HELP}</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block text-xs text-muted">
+          Attendue (€)
+          <input
+            inputMode="decimal"
+            value={draft.commission_attendue ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, commission_attendue: event.target.value === "" ? null : parseMoney(event.target.value) })
+            }
+            className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]"
+          />
+        </label>
+        <label className="block text-xs text-muted">
+          Taux (facultatif)
+          <input
+            inputMode="decimal"
+            placeholder="10 % ou 0,10"
+            value={draft.commission_taux == null ? "" : String(Math.round(draft.commission_taux * 10000) / 100)}
+            onChange={(event) => {
+              const raw = event.target.value.trim().replace("%", "").replace(",", ".");
+              if (!raw) {
+                onChange({ ...draft, commission_taux: null });
+                return;
+              }
+              const number = Number(raw);
+              if (!Number.isFinite(number) || number <= 0 || number > 100) return;
+              onChange({ ...draft, commission_taux: Math.round((number / 100) * 10000) / 10000 });
+            }}
+            className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]"
+          />
+        </label>
+        <label className="block text-xs text-muted">
+          Prévue le
+          <input
+            type="date"
+            value={draft.commission_date_prevue || ""}
+            placeholder={dueHint || ""}
+            onChange={(event) => onChange({ ...draft, commission_date_prevue: event.target.value || null })}
+            className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]"
+          />
+        </label>
+        <label className="block text-xs text-muted">
+          Reçue (€)
+          <input
+            inputMode="decimal"
+            value={draft.commission_recue ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, commission_recue: event.target.value === "" ? null : parseMoney(event.target.value) })
+            }
+            className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]"
+          />
+        </label>
+        <label className="block text-xs text-muted sm:col-span-2">
+          Reçue le
+          <input
+            type="date"
+            value={draft.commission_recue_le || ""}
+            onChange={(event) => onChange({ ...draft, commission_recue_le: event.target.value || null })}
+            className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]"
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function StaffMarginLine({ item, currency }: { item: CrmBookingItem; currency: string }) {
+  const { commission, margin } = stepMargin(item, currency);
+  if (commission.attendue == null && commission.taux == null && commission.recue == null && margin.direct == null) {
+    return null;
+  }
+  const source = margin.kind === "recue" ? "commission reçue" : margin.kind === "attendue" ? "commission estimée" : null;
+  return (
+    <p className="text-xs text-[var(--admin-navy)]">
+      {margin.direct != null ? `Marge directe ${formatMoney(margin.direct)}` : "Marge directe —"}
+      {source ? ` · ${source} ${formatMoney(margin.commission)}` : ""}
+      {margin.margin != null ? ` · marge ${formatMoney(margin.margin)}` : ""}
+      {commission.datePrevue && commission.recue == null ? ` · prévue le ${commission.datePrevue.split("-").reverse().join("/")}` : ""}
+      {margin.belowMinimum ? " · sous les 12 % du net" : ""}
+    </p>
+  );
 }
 
 function printedPrice(amount: number, currency: string) {
@@ -488,6 +640,15 @@ export function BookingItemsPanel({
       include_in_ledger:
         clientSettlesStay && !isExtraItemKind(source.kind) ? false : Boolean(source.include_in_ledger),
       details: source.details || {},
+      commission_attendue: source.commission_attendue ?? null,
+      commission_taux: source.commission_taux ?? null,
+      commission_date_prevue:
+        source.commission_date_prevue ||
+        ((source.commission_attendue != null || source.commission_taux != null)
+          ? defaultCommissionDue(source.end_at)
+          : null),
+      commission_recue: source.commission_recue ?? null,
+      commission_recue_le: source.commission_recue_le ?? null,
     };
     if (editing === "new") {
       const created: CrmBookingItem = {
@@ -503,6 +664,11 @@ export function BookingItemsPanel({
         include_in_ledger: payload.include_in_ledger,
         sort_order: current.length,
         details: payload.details,
+        commission_attendue: payload.commission_attendue,
+        commission_taux: payload.commission_taux,
+        commission_date_prevue: payload.commission_date_prevue,
+        commission_recue: payload.commission_recue,
+        commission_recue_le: payload.commission_recue_le,
         visible_to_client: false,
         source_document_id: null,
         lifecycle: "active",
@@ -732,6 +898,7 @@ export function BookingItemsPanel({
             subtitle,
             docs.length ? `${docs.length} pièce${docs.length > 1 ? "s" : ""}` : "",
             counted ? "Compté" : "",
+            commissionQuiet(item),
             priceDiffers && printed != null
               ? `Prix du document : ${printedPrice(printed, typeof item.details?.document_currency === "string" ? item.details.document_currency : "")}`
               : "",
@@ -773,6 +940,7 @@ export function BookingItemsPanel({
                   onRemove={() => setEditingId(null)}
                 />
                 )}
+                <CommissionFields draft={draft} onChange={setDraft} />
                 {item.id.startsWith(DRAFT_STEP_PREFIX) ? null : (
                 <ItemAttachments
                   bookingId={bookingId}
@@ -980,6 +1148,7 @@ export function BookingItemsPanel({
               </div>
               {openStep === item.id ? (
                 <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
+                  <StaffMarginLine item={item} currency={currency} />
                   {item.kind === "hotel" && hotelPhotos(item).length ? (
                     <div className="overflow-hidden rounded-2xl">
                       <HotelGallery photos={hotelPhotos(item)} title={stepTitle(item)} />
@@ -1028,6 +1197,7 @@ export function BookingItemsPanel({
             onRemove={() => setEditingId(null)}
           />
           )}
+          <CommissionFields draft={draft} onChange={setDraft} />
           <button
             type="button"
             disabled={busy}

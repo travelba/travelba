@@ -10,6 +10,8 @@ import {
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
+import { commissionForCardWrite } from "@/lib/crm/supplier-commission";
+import { loadItemCommission, saveItemCommission } from "@/lib/crm/supplier-commission-db";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
@@ -122,6 +124,9 @@ export async function addStaffBookingCard(
   }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: company.error, status: 400 };
+  const commission = commissionForCardWrite(body, nextDetails, String(nextBody.end_at || ""));
+  if ("error" in commission) return { error: commission.error, status: 400 };
+  nextDetails = commission.details;
   const { data, error } = await supabase
     .from("crm_booking_items")
     .insert({
@@ -145,6 +150,17 @@ export async function addStaffBookingCard(
     .select("*")
     .single();
   if (error || !data) return { error: dbErrorMessage(error as DbErrorLike, "Carte non créée."), status: 400 };
+  if (Object.keys(commission.columns).length) {
+    try {
+      await saveItemCommission(supabase, String(data.id), commission.columns);
+      Object.assign(data, commission.columns);
+    } catch (commissionError) {
+      return {
+        error: commissionError instanceof Error ? commissionError.message : "Commission non enregistrée.",
+        status: 400,
+      };
+    }
+  }
   if (!isLedgerExpenseKind(kind)) {
     try {
       await persistBookingCardOrder(supabase, bookingId, { createdIds: [String(data.id)] });
@@ -168,7 +184,7 @@ export async function patchStaffBookingCard(
 ): Promise<{ item: Record<string, unknown>; ledgerWarning: string | null } | { error: string; status: number }> {
   const { data: current, error: currentError } = await supabase
     .from("crm_booking_items")
-    .select("id")
+    .select("*")
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .maybeSingle();
@@ -186,15 +202,45 @@ export async function patchStaffBookingCard(
     if ("error" in details) return { error: details.error, status: 400 };
     patch.details = details.details;
   }
-  if (!Object.keys(patch).length) return { error: "Rien à mettre à jour", status: 400 };
-  const { data, error } = await supabase
-    .from("crm_booking_items")
-    .update(patch)
-    .eq("id", itemId)
-    .eq("booking_id", bookingId)
-    .select("*")
-    .single();
-  if (error || !data) return { error: dbErrorMessage(error as DbErrorLike, "Carte non modifiée."), status: 400 };
+  const endAt = "end_at" in patch ? patch.end_at : current.end_at;
+  const commission = commissionForCardWrite(
+    body,
+    (patch.details as Record<string, unknown> | undefined) ||
+      (current.details && typeof current.details === "object" ? (current.details as Record<string, unknown>) : {}),
+    typeof endAt === "string" ? endAt : null,
+    await loadItemCommission(supabase, itemId)
+  );
+  if ("error" in commission) return { error: commission.error, status: 400 };
+  if ("details" in body) patch.details = commission.details;
+  const commissionColumns = commission.columns;
+  if (!Object.keys(patch).length && !Object.keys(commissionColumns).length) {
+    return { error: "Rien à mettre à jour", status: 400 };
+  }
+  let data: Record<string, unknown> = current as Record<string, unknown>;
+  if (Object.keys(patch).length) {
+    const updated = await supabase
+      .from("crm_booking_items")
+      .update(patch)
+      .eq("id", itemId)
+      .eq("booking_id", bookingId)
+      .select("*")
+      .single();
+    if (updated.error || !updated.data) {
+      return { error: dbErrorMessage(updated.error as DbErrorLike, "Carte non modifiée."), status: 400 };
+    }
+    data = updated.data as Record<string, unknown>;
+  }
+  if (Object.keys(commissionColumns).length) {
+    try {
+      await saveItemCommission(supabase, itemId, commissionColumns);
+      Object.assign(data, commissionColumns);
+    } catch (commissionError) {
+      return {
+        error: commissionError instanceof Error ? commissionError.message : "Commission non enregistrée.",
+        status: 400,
+      };
+    }
+  }
   if ("start_at" in body || "end_at" in body) {
     try {
       await persistBookingCardOrder(supabase, bookingId);
@@ -203,5 +249,5 @@ export async function patchStaffBookingCard(
     }
   }
   const warning = await ledgerWarning("Modification enregistrée", () => refreshBookingLedger(supabase, bookingId));
-  return { item: data as Record<string, unknown>, ledgerWarning: warning };
+  return { item: data, ledgerWarning: warning };
 }

@@ -2,11 +2,13 @@
  * Comptabilité du voyage.
  * Un coût = une sortie Pliant ou Revolut rattachée à une ligne vendue du dossier.
  * Une vente = un débit posté du grand livre (carte, dépense, frais, ou le montant global du séjour).
- * Marge = vente − somme des coûts. Le client ne voit que la vente.
+ * Marge directe = vente − coûts. Marge = marge directe + commission fournisseur
+ * (attendue, ou reçue dès qu’elle est saisie). Le client ne voit ni le coût, ni la commission, ni la marge.
  */
 
 import { isStayRollupDebit } from "./ledger-display";
 import { matchTokens, normalizeMatchText } from "./revolut-match";
+import { countedCommission, type CommissionKind } from "./supplier-commission";
 
 export type TripCostSource = "pliant" | "revolut";
 
@@ -265,15 +267,39 @@ export function saleLines(rows: SaleLedgerRow[], bookingId: string): SaleLine[] 
 
 export type AccountedLine = SaleLine & {
   cost: number;
+  /** Vente − coûts, sans la commission fournisseur. */
+  direct: number;
+  /** Commission attendue, ou reçue dès qu’elle est saisie. */
+  commission: number;
+  commissionKind: CommissionKind;
   margin: number;
   costs: TripCost[];
 };
 
+export type LineCommission = {
+  itemId: string;
+  attendue: number | null;
+  recue: number | null;
+};
+
+function sumCommission(rows: LineCommission[]) {
+  let amount = 0;
+  let kind: CommissionKind = "aucune";
+  for (const row of rows) {
+    const counted = countedCommission(row);
+    amount += counted.amount;
+    if (counted.kind === "attendue") kind = "attendue";
+    else if (counted.kind === "recue" && kind === "aucune") kind = "recue";
+  }
+  return { amount: round(amount), kind };
+}
+
 /**
  * Chaque coût rejoint sa ligne : la carte ou la dépense, sinon le montant global du séjour.
  * Un coût dont la ligne n’est pas au grand livre reste « hors vente ».
+ * La commission de la carte s’ajoute à sa ligne. Sans ligne, elle rejoint le montant du séjour.
  */
-export function accountLines(lines: SaleLine[], costs: TripCost[]) {
+export function accountLines(lines: SaleLine[], costs: TripCost[], commissions: LineCommission[] = []) {
   const byItem = new Map<string, TripCost[]>();
   const loose: TripCost[] = [];
   for (const cost of costs) {
@@ -283,33 +309,62 @@ export function accountLines(lines: SaleLine[], costs: TripCost[]) {
       byItem.set(cost.bookingItemId, list);
     } else loose.push(cost);
   }
+  const byCommission = new Map<string, LineCommission[]>();
+  for (const row of commissions) {
+    if (!row.itemId) continue;
+    const list = byCommission.get(row.itemId) || [];
+    list.push(row);
+    byCommission.set(row.itemId, list);
+  }
   const stay = lines.find((line) => line.nature === "stay") || null;
+  const looseCommission = commissions.filter((row) => !lines.some((line) => line.itemId === row.itemId));
   const accounted: AccountedLine[] = lines.map((line) => {
     const own = line.itemId ? byItem.get(line.itemId) || [] : [];
     const attached = line === stay ? [...own, ...loose] : own;
     const cost = round(attached.filter((item) => !tripCostIsPending(item)).reduce((sum, item) => sum + item.amountEur, 0));
-    return { ...line, costs: attached, cost, margin: round(line.sale - cost) };
+    const ownCommission = line.itemId ? byCommission.get(line.itemId) || [] : [];
+    const commission = sumCommission(line === stay ? [...ownCommission, ...looseCommission] : ownCommission);
+    const direct = round(line.sale - cost);
+    return {
+      ...line,
+      costs: attached,
+      cost,
+      direct,
+      commission: commission.amount,
+      commissionKind: commission.kind,
+      margin: round(direct + commission.amount),
+    };
   });
   const unsold: TripCost[] = [];
   for (const [itemId, list] of byItem) {
     if (!lines.some((line) => line.itemId === itemId)) unsold.push(...list);
   }
   if (!stay) unsold.push(...loose);
-  return { lines: accounted, unsold };
+  const unattached = stay ? 0 : sumCommission(looseCommission).amount;
+  return { lines: accounted, unsold, looseCommission: unattached };
 }
 
 export type TripAccountingTotals = {
   sale: number;
   cost: number;
+  /** Vente − coûts, sans la commission fournisseur. */
+  direct: number;
+  commission: number;
   margin: number;
   unsoldCost: number;
 };
 
-export function tripTotals(lines: AccountedLine[], unsold: TripCost[]): TripAccountingTotals {
+export function tripTotals(
+  lines: AccountedLine[],
+  unsold: TripCost[],
+  looseCommission = 0
+): TripAccountingTotals {
   const sale = round(lines.reduce((sum, line) => sum + line.sale, 0));
   const unsoldCost = round(unsold.filter((cost) => !tripCostIsPending(cost)).reduce((sum, cost) => sum + cost.amountEur, 0));
   const cost = round(lines.reduce((sum, line) => sum + line.cost, 0) + unsoldCost);
-  return { sale, cost, margin: round(sale - cost), unsoldCost };
+  const direct = round(sale - cost);
+  const commission = round(lines.reduce((sum, line) => sum + line.commission, 0) + looseCommission);
+  return { sale, cost, direct, commission, margin: round(direct + commission), unsoldCost };
 }
 
 export type TripAccountingState = "a_pointer" | "pointe" | "comptabilise";
@@ -346,7 +401,9 @@ export function marginByTransaction(lines: AccountedLine[]) {
   for (const line of lines) {
     if (!line.costs.length) continue;
     const suppliers = [...new Set(line.costs.map((cost) => (cost.supplier || "").trim()).filter(Boolean))];
-    map.set(line.transactionId, { margin: line.margin, suppliers });
+    // La facture client reste la vente. Une commission plus grande que l’achat ne gonfle pas la pièce.
+    const margin = Math.min(line.sale, line.margin);
+    map.set(line.transactionId, { margin, suppliers });
   }
   return map;
 }

@@ -74,6 +74,24 @@ async function copyChildren(
     itemIdMap.set(item.id, data.id as string);
   }
 
+  const sourceIds = [...itemIdMap.keys()];
+  if (sourceIds.length) {
+    const { data: commissions, error: commissionError } = await admin
+      .from("crm_booking_item_commissions")
+      .select("booking_item_id, commission_attendue, commission_taux, commission_date_prevue, commission_recue, commission_recue_le")
+      .in("booking_item_id", sourceIds);
+    if (commissionError && commissionError.code !== "42P01") throw new Error(commissionError.message);
+    for (const row of (commissions || []) as { booking_item_id: string }[]) {
+      const nextId = itemIdMap.get(row.booking_item_id);
+      if (!nextId) continue;
+      const { booking_item_id: _previous, ...fields } = row;
+      const { error } = await admin
+        .from("crm_booking_item_commissions")
+        .insert({ ...fields, booking_item_id: nextId });
+      if (error) throw new Error(error.message);
+    }
+  }
+
   for (const item of (items || []) as Record<string, unknown>[]) {
     if (item.kind !== "accueil_vip" || typeof item.id !== "string") continue;
     const remapped = remapAccueilVipLinks(item.details, itemIdMap);

@@ -25,6 +25,7 @@ import {
   type DossierAccountingInputs,
 } from "@/lib/crm/trip-accounting-view";
 import type { TripAccountingView } from "@/lib/crm/trip-costs";
+import { loadBookingCommissions } from "@/lib/crm/supplier-commission-db";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
@@ -181,7 +182,19 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
-  const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
+  const storedCommissions = await loadBookingCommissions(supabase, id);
+  const bookingItems = (await loadHotelContacts(id, (items || []) as CrmBookingItem[])).map((item) => {
+    const stored = storedCommissions.get(item.id);
+    if (!stored) return item;
+    return {
+      ...item,
+      commission_attendue: stored.attendue,
+      commission_taux: stored.taux,
+      commission_date_prevue: stored.datePrevue,
+      commission_recue: stored.recue,
+      commission_recue_le: stored.recueLe,
+    };
+  });
   let bookingCards: CrmBookingCard[] = [];
   const { data: cardRows, error: cardError } = await supabase
     .from("crm_booking_cards")

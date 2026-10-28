@@ -8,6 +8,7 @@ import { destinationWeather } from "@/lib/crm/destination-weather";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { getSessionUser } from "@/lib/crm/auth";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
+import { toClientBookingItem } from "@/lib/crm/supplier-commission";
 
 const homeTripItems = cache(async (bookingId: string) => {
   const { supabase } = await getSessionUser();
@@ -16,7 +17,7 @@ const homeTripItems = cache(async (bookingId: string) => {
     .select("*")
     .eq("booking_id", bookingId)
     .order("sort_order");
-  return clientVisibleItems((data || []) as CrmBookingItem[]);
+  return clientVisibleItems(((data || []) as CrmBookingItem[]).map((item) => toClientBookingItem(item)));
 });
 
 export function WeatherChipSkeleton() {

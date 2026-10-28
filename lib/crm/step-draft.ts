@@ -10,6 +10,11 @@ export type StepSnapshot = {
   start_at: string | null;
   end_at: string | null;
   amount: number | null;
+  commission_attendue?: number | null;
+  commission_taux?: number | null;
+  commission_date_prevue?: string | null;
+  commission_recue?: number | null;
+  commission_recue_le?: string | null;
   include_in_ledger: boolean;
   visible_to_client: boolean;
   details: Record<string, unknown> | null;
@@ -49,6 +54,11 @@ function sameStep(left: StepSnapshot, right: StepSnapshot) {
     text(left.start_at) === text(right.start_at) &&
     text(left.end_at) === text(right.end_at) &&
     money(left.amount) === money(right.amount) &&
+    money(left.commission_attendue) === money(right.commission_attendue) &&
+    money(left.commission_recue) === money(right.commission_recue) &&
+    (left.commission_taux ?? null) === (right.commission_taux ?? null) &&
+    (left.commission_date_prevue || null) === (right.commission_date_prevue || null) &&
+    (left.commission_recue_le || null) === (right.commission_recue_le || null) &&
     Boolean(left.include_in_ledger) === Boolean(right.include_in_ledger) &&
     Boolean(left.visible_to_client) === Boolean(right.visible_to_client) &&
     JSON.stringify(left.details || {}) === JSON.stringify(right.details || {})

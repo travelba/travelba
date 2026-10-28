@@ -4,6 +4,7 @@ import { isWhatsappTypeMedia } from "./concierge-notices";
 import { whatsappAddress, type WhatsappSendResult } from "./whatsapp";
 import { sendWhatsappSession } from "./whatsapp-session";
 import { isSafeCrmPath } from "./files-access";
+import { toClientBookingItem } from "./supplier-commission";
 import { toE164 } from "./phone";
 import type { ShareCompanion } from "./trip-share-types";
 import { TRIP_SHARE_ALPHABET, TRIP_SHARE_CODE_LENGTH, isTripShareUrl } from "./trip-share-check";
@@ -28,8 +29,10 @@ export function tripShareMessage(input: { firstName: string; title: string; url:
 const HIDDEN_ON_PUBLIC_PAGE = new Set(["fee", "expense", "insurance", "visa", "checkin"]);
 
 /** Itinéraire public : pas les frais, la facturation, ni les formalités. */
-export function publicTripItems<T extends { kind: string; visible_to_client?: boolean | null }>(items: T[]) {
-  return items.filter((item) => item.visible_to_client !== false && !HIDDEN_ON_PUBLIC_PAGE.has(item.kind));
+export function publicTripItems<T extends { kind: string; visible_to_client?: boolean | null; details?: Record<string, unknown> | null }>(items: T[]) {
+  return items
+    .filter((item) => item.visible_to_client !== false && !HIDDEN_ON_PUBLIC_PAGE.has(item.kind))
+    .map((item) => toClientBookingItem(item));
 }
 
 /**

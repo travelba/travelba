@@ -63,6 +63,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261020170000_mcp_pliant_card_block.sql` | `crm_mcp_card_events.kind` : `blocage` et `deblocage`. Pas de PAN |
 | `20261023110000_trip_cost_events.sql` | journal `crm_trip_cost_events` : rattachement Pliant / Revolut. Qui, quand, dossiers. Sans numéro de carte |
 | `20261028103000_flight_online_checkin.sql` | `crm_flight_checkins` : enregistrement en ligne d’un vol. Statut et auteur (agence ou bot). Sans passeport ni MRZ. Additive. Après `20261027210000` |
+| `20261028194500_supplier_commission.sql` | `crm_booking_item_commissions` : commission IATA (attendue, taux, date prévue, reçue), RLS personnel seulement. Vue `crm_commissions_a_recevoir`. Pas sur la carte : le client fait `select *`. |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

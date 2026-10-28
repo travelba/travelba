@@ -24,6 +24,7 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { toPublicBooking } from "@/lib/crm/public-booking";
+import { toClientBookingItem } from "@/lib/crm/supplier-commission";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -80,7 +81,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       supabase.from("crm_visa_requests").select("country, step, status, accepted_at").eq("booking_id", b.id),
     ]);
 
-  const allItems = (items || []) as CrmBookingItem[];
+  const allItems = ((items || []) as CrmBookingItem[]).map((item) => toClientBookingItem(item));
   const rawItems = clientVisibleItems(allItems);
   if (!carnetVisible(b, rawItems)) return <HiddenStayNotice reference={b.reference} />;
 

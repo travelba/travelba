@@ -16,6 +16,8 @@ import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-a
 import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { parseMoney } from "@/lib/crm/money";
+import { commissionForCardWrite } from "@/lib/crm/supplier-commission";
+import { loadItemCommission, saveItemCommission } from "@/lib/crm/supplier-commission-db";
 import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
@@ -152,6 +154,9 @@ async function insertBookingItem(
   }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: jsonError(company.error) };
+  const commission = commissionForCardWrite(body, detailsForInsert, typeof endAt === "string" ? endAt : null);
+  if ("error" in commission) return { error: jsonError(commission.error) };
+  detailsForInsert = commission.details;
   const { data, error } = await supabase
     .from("crm_booking_items")
     .insert({
@@ -173,6 +178,13 @@ async function insertBookingItem(
     .single();
   if (error || !data) return { error: dbError(error, 400) };
   const id = String(data.id);
+  if (Object.keys(commission.columns).length) {
+    try {
+      await saveItemCommission(supabase, id, commission.columns);
+    } catch (commissionError) {
+      return { error: jsonError(commissionError instanceof Error ? commissionError.message : "Commission non enregistrée.") };
+    }
+  }
   const shown = body.visible_to_client === true && countsAsCarnetCard(kind) ? { id, kind } : null;
   return { id, shown };
 }
@@ -259,15 +271,41 @@ async function updateBookingItem(
     patch.details = frozen.card.details;
     if (frozen.card.amount == null) patch.include_in_ledger = false;
   }
-  if (!Object.keys(patch).length) return { error: jsonError("Rien à mettre à jour") };
-  const { data, error } = await supabase
-    .from("crm_booking_items")
-    .update(patch)
-    .eq("id", itemId)
-    .eq("booking_id", bookingId)
-    .select("*")
-    .single();
-  if (error) return { error: dbError(error, 400) };
+  const commissionEnd = "end_at" in patch ? patch.end_at : current.end_at;
+  const commission = commissionForCardWrite(
+    body,
+    patch.details && typeof patch.details === "object"
+      ? (patch.details as Record<string, unknown>)
+      : current.details && typeof current.details === "object"
+        ? (current.details as Record<string, unknown>)
+        : {},
+    typeof commissionEnd === "string" ? commissionEnd : null,
+    await loadItemCommission(supabase, itemId)
+  );
+  if ("error" in commission) return { error: jsonError(commission.error) };
+  if ("details" in body) patch.details = commission.details;
+  if (!Object.keys(patch).length && !Object.keys(commission.columns).length) {
+    return { error: jsonError("Rien à mettre à jour") };
+  }
+  let data: Record<string, unknown> | null = null;
+  if (Object.keys(patch).length) {
+    const updated = await supabase
+      .from("crm_booking_items")
+      .update(patch)
+      .eq("id", itemId)
+      .eq("booking_id", bookingId)
+      .select("*")
+      .single();
+    if (updated.error) return { error: dbError(updated.error, 400) };
+    data = updated.data as Record<string, unknown>;
+  }
+  if (Object.keys(commission.columns).length) {
+    try {
+      await saveItemCommission(supabase, itemId, commission.columns);
+    } catch (commissionError) {
+      return { error: jsonError(commissionError instanceof Error ? commissionError.message : "Commission non enregistrée.") };
+    }
+  }
   const wasHidden =
     current.visible_to_client !== true ||
     keptHiddenFromClient(

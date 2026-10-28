@@ -6,6 +6,7 @@ import { pliantAgencyCardLabel } from "./pliant-match";
 import { pliantExpenseTitle } from "./pliant-booking";
 import { withoutRefusedSuggestions, type TripCostActor } from "./pliant-link";
 import { revolutDebitLine } from "./revolut-inbox";
+import { loadBookingCommissions } from "./supplier-commission-db";
 import {
   accountLines,
   isFixedCostParty,
@@ -891,13 +892,19 @@ export async function loadTripAccounting(bookingId: string, admin: SupabaseClien
       .order("sort_order"),
   ]);
   const lines = saleLines((debits || []) as SaleLedgerRow[], bookingId);
-  const accounted = accountLines(lines, costs);
+  const itemRows = (items || []) as ItemRow[];
+  const stored = await loadBookingCommissions(admin, bookingId);
+  const commissions = [...stored.entries()].flatMap(([itemId, commission]) => {
+    if (commission.attendue == null && commission.recue == null) return [];
+    return [{ itemId, attendue: commission.attendue, recue: commission.recue }];
+  });
+  const accounted = accountLines(lines, costs, commissions);
   const soldItemIds = new Set(lines.map((line) => line.itemId).filter(Boolean));
   return {
     ...accounted,
     costs,
-    totals: tripTotals(accounted.lines, accounted.unsold),
-    items: ((items || []) as ItemRow[])
+    totals: tripTotals(accounted.lines, accounted.unsold, accounted.looseCommission),
+    items: itemRows
       .filter((item) => item.lifecycle !== "superseded" && item.lifecycle !== "cancelled")
       .map((item) => ({
         id: item.id,

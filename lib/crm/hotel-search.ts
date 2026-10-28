@@ -10,7 +10,8 @@ import { amountToCents } from "./money";
  * Un seul prix par hôtel : le moins cher, puis le plus d’avantages.
  * Little Emperors : le montant qu’ils demandent pour réserver (`total_to_book`),
  * jamais un net majoré. Les autres comptes : marge d’au moins 12 % du net
- * (`priceAccommodation`). Le client ne reçoit ni net, ni compte, ni commission.
+ * (`priceAccommodation`). La commission attendue compte dans ce minimum.
+ * Le client ne reçoit ni net, ni compte, ni commission.
  */
 
 export const HOTEL_SEARCH_BENJAMIN_USER_ID = "c4d75f7e-c79f-438c-b797-7b234e37b6d0";
