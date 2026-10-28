@@ -46,7 +46,7 @@ export function HotelFollowUp({
   const [selected, setSelected] = useState(recipients);
   const [copied, setCopied] = useState(ccRecipients);
   const [error, setError] = useState<string | null>(null);
-  const showCopy = reply && (ccRecipients.length > 0 || people.length > 1);
+  const showCopy = ccRecipients.length > 0 || (reply && people.length > 1);
 
   async function send() {
     setError(null);
@@ -75,6 +75,7 @@ export function HotelFollowUp({
               subject,
               body,
               recipients: selected,
+              cc: copied,
             }
       ),
     });
@@ -97,8 +98,8 @@ export function HotelFollowUp({
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">{reply ? "Réponse" : "Relance"}</p>
       <p className="text-sm text-[#3d4654]">
         {reply
-          ? "Même fil, à l’expéditeur de ce message. Rien ne part avant la confirmation."
-          : "Même fil. Rien ne part avant la confirmation."}
+          ? "Même fil, à l’expéditeur. Les autres personnes du fil sont en copie. Rien ne part avant la confirmation."
+          : "Même fil. Les personnes apparues dans le fil sont en copie. Rien ne part avant la confirmation."}
       </p>
       <HotelMailTo
         people={people}
@@ -115,7 +116,7 @@ export function HotelFollowUp({
           onChange={setCopied}
           fieldClassName={fieldClass}
           legend="Copie"
-          hint="Ces adresses reçoivent la copie."
+          hint="Ces adresses reçoivent la copie. Une personne du fil reste dans le message."
         />
       ) : null}
       <label className="block text-xs font-semibold text-[#0B192C]">
@@ -135,7 +136,15 @@ export function HotelFollowUp({
         <ConfirmAction
           label={reply ? "Envoyer la réponse" : "Envoyer la relance"}
           confirmLabel="Envoyer"
-          question={reply ? "Envoyer cette réponse aux adresses cochées ?" : "Envoyer cette relance aux adresses cochées ?"}
+          question={
+            ccRecipients.length
+              ? reply
+                ? "Envoyer cette réponse, y compris les personnes du fil ?"
+                : "Envoyer cette relance, y compris les personnes du fil ?"
+              : reply
+                ? "Envoyer cette réponse aux adresses cochées ?"
+                : "Envoyer cette relance aux adresses cochées ?"
+          }
           busyLabel={reply ? "Envoi de la réponse…" : "Envoi de la relance…"}
           disabled={selected.length === 0 || !subject.trim() || !body.trim()}
           onConfirm={send}

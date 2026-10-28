@@ -12,6 +12,7 @@ import {
   bookingChargeExternalId,
   isStayAmountKind,
   itemIncludedInLedger,
+  itemSellingAmount,
   ledgerWarning,
   refreshBookingLedger,
   refreshTicketingFee,
@@ -29,7 +30,7 @@ import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
-import { addedTravelerNames, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
+import { addedTravelerNames, holderMatchesAddedTraveler, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
@@ -644,7 +645,10 @@ function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: Pr
 }
 
 export async function createDossier(input: Record<string, unknown>, admin?: Admin) {
-  const draft = prepareDossier(input);
+  const givenTitle = typeof input.titre === "string" ? input.titre.trim() : "";
+  const destination = typeof input.destination === "string" ? input.destination.trim() : "";
+  if (!givenTitle && !destination) throw new McpWriteError("Indiquez un titre ou une destination.");
+  const draft = prepareDossier({ ...input, titre: givenTitle || destination });
   const societeId = optionalId(input.societe_id, "Société");
   const particulier = flag(input.particulier, "Particulier");
   const billCompany = facturerSociete(input.facturer_societe);
@@ -799,7 +803,7 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
       throw new McpWriteError("Ce compagnon ne correspond pas au nom indiqué.");
     }
   }
-  const isHolder = !known && Boolean(prenoms && nom) && sameAddedTraveler(personOf(holder), query);
+  const isHolder = !known && Boolean(prenoms && nom) && holderMatchesAddedTraveler(personOf(holder), query);
   if (!known && !isHolder) {
     const matches = companions.filter((row) => sameAddedTraveler(personOf(row), query));
     known = pickCompanion(matches, passportIds);
@@ -1027,6 +1031,24 @@ function stampFlightZones(details: Record<string, unknown>) {
   if (arrival) details.arrival_timezone = arrival;
 }
 
+/**
+ * Devise du prix vendu déjà sur la carte.
+ * Un montant en devise du dossier (euro par défaut) gagne sur la devise du document fournisseur.
+ * Sans prix vendu, la devise du document reste. Sinon l’euro.
+ */
+export function sellingCurrency(
+  item: { amount?: unknown },
+  details: Record<string, unknown>,
+  dossierCurrency: string | null | undefined
+) {
+  const dossier = dossierCurrency || "EUR";
+  const amount = typeof item.amount === "number" ? item.amount : item.amount == null || item.amount === "" ? null : Number(item.amount);
+  if (amount != null && Number.isFinite(amount)) return dossier;
+  const documentCurrency = detailText(details, "document_currency");
+  if (documentCurrency && /^[A-Z]{3}$/.test(documentCurrency)) return documentCurrency;
+  return dossier;
+}
+
 function applyFlightPrice(details: Record<string, unknown>, price: PricePlan) {
   if (price.ticketCount) details.ticket_count = price.ticketCount;
   if (price.amountIsTotal) details.amount_is_total = true;
@@ -1108,6 +1130,15 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
     else delete details.notes;
   }
 
+  const originalDetails: Record<string, unknown> = { ...details };
+  const originalAmount =
+    typeof item.amount === "number" ? item.amount : item.amount == null || item.amount === "" ? null : Number(item.amount);
+  const saleBefore = itemSellingAmount({
+    kind: "flight",
+    amount: originalAmount != null && Number.isFinite(originalAmount) ? originalAmount : null,
+    details: originalDetails,
+  });
+
   const passengerInput =
     input.voyageur_ids != null && input.voyageur_ids !== "" ? input.voyageur_ids : input.voyageurs;
   const hasVoyageurs = passengerInput != null && passengerInput !== "";
@@ -1122,16 +1153,18 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
     const keys = passengers.map(partyKey).filter(Boolean);
     if (keys.length) details.party_keys = keys;
     else delete details.party_keys;
-    details.ticket_count = passengers.length;
   }
 
   const prix = optionalMoney(input.prix, "Prix");
   const prixTotal = optionalMoney(input.prix_total, "Prix total");
   const sansFrais = flag(input.sans_frais, "Sans frais");
   const count = passengers ? passengers.length : statedTicketCount({ kind: "flight", details }) ?? 0;
-  let price = priceFromFlight(item, details, booking);
+  let price = priceFromFlight(item, originalDetails, booking);
   if (prix != null || prixTotal != null) {
-    const devise = input.devise == null || input.devise === "" ? price.devise : currencyOf(input.devise);
+    const explicitDevise = input.devise == null || input.devise === "" ? null : currencyOf(input.devise);
+    const devise = explicitDevise || sellingCurrency(item, originalDetails, booking.currency);
+    const keptDocumentAmount = originalDetails.document_amount;
+    const keptDocumentCurrency = originalDetails.document_currency;
     price = flightPrice({
       prix,
       prixTotal,
@@ -1140,9 +1173,25 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
       dossierDevise: booking.currency || "EUR",
     });
     applyFlightPrice(details, price);
+    if (passengers) details.ticket_count = passengers.length;
+    if (!explicitDevise && price.documentCurrency == null) {
+      if (keptDocumentCurrency) details.document_currency = keptDocumentCurrency;
+      if (keptDocumentAmount != null) details.document_amount = keptDocumentAmount;
+    }
     patch.amount = price.amount;
   } else if (passengers) {
-    price = { ...price, ticketCount: passengers.length };
+    details.ticket_count = passengers.length;
+    if (saleBefore != null) {
+      details.amount_is_total = true;
+      patch.amount = saleBefore;
+    }
+    price = {
+      ...price,
+      ticketCount: passengers.length,
+      amount: saleBefore ?? price.amount,
+      amountIsTotal: saleBefore != null ? true : originalDetails.amount_is_total === true,
+      devise: sellingCurrency(item, originalDetails, booking.currency),
+    };
   }
 
   stampFlightZones(details);

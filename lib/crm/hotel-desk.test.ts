@@ -850,6 +850,9 @@ test("la relance regarde le dernier message, pas une réponse plus ancienne", ()
   assert.ok(start >= 0 && end > start);
   assert.match(fn, /followUpRefused/);
   assert.match(fn, /loadFollowUpTurns/);
+  assert.match(fn, /addressWithAppearedContacts/);
+  assert.match(src, /includeAppearedContacts/);
+  assert.match(src, /source: "thread"/);
   assert.doesNotMatch(fn, /status === "replied" \|\| row\.replied_at/);
   assert.doesNotMatch(fn, /if \(message\.replied_at\)/);
   const mirrorStart = src.indexOf("async function mirrorThreadReplies");
@@ -870,7 +873,13 @@ test("répondre réutilise l’envoi et relie ce message", () => {
   assert.match(fn, /deliverHotelMail/);
   assert.match(fn, /threadingHeaders/);
   assert.match(fn, /gmailHeaderValues/);
+  assert.match(fn, /addressWithAppearedContacts/);
   assert.doesNotMatch(fn, /follow_up_count/);
+  const form = readFileSync(join(process.cwd(), "components/admin/HotelFollowUp.tsx"), "utf8");
+  assert.match(form, /action: "relance"[\s\S]*cc: copied/);
+  const desk = readFileSync(join(process.cwd(), "components/admin/HotelDesk.tsx"), "utf8");
+  assert.match(desk, /threadPartyAddresses/);
+  assert.match(desk, /ccRecipients=\{relanceParties\.cc\}/);
   const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
   assert.match(thread, /Répondre/);
   assert.doesNotMatch(thread, /md:hidden|hidden md:|sm:hidden/);
@@ -1197,6 +1206,43 @@ test("Autre demande suit Concierge et coche le destinataire prévu", async () =>
     assert.equal(boxes.filter((box) => box.includes("checked")).length, 1);
     assert.equal((html.match(/shadow-\[inset_3px_0_0_#C5A880\]/g) || []).length, 1);
     assert.doesNotMatch(html, /RecipientRoster/);
+  } finally {
+    Module._load = load;
+  }
+});
+
+test("la relance montre en copie une personne apparue dans le fil", async () => {
+  const nodeRequire = createRequire(import.meta.url);
+  const Module = nodeRequire("module") as { _load: (...args: unknown[]) => unknown };
+  const load = Module._load;
+  Module._load = function (request: unknown, parent: unknown, isMain: unknown) {
+    if (request === "next/navigation") return { useRouter: () => ({ refresh() {} }) };
+    return load.call(this, request, parent, isMain);
+  };
+  try {
+    const { HotelFollowUp } = await import("../../components/admin/HotelFollowUp");
+    const html = renderToStaticMarkup(
+      createElement(HotelFollowUp, {
+        bookingId: "b1",
+        itemId: "item-hotel",
+        requestId: "req-1",
+        messageId: null,
+        people: [
+          { email: "reservations@sofitel.test", firstName: "Reservations", lastName: "", role: "" },
+          { email: "achraf@sofitel.test", firstName: "Achraf", lastName: "Chouichi", role: "" },
+        ],
+        recipients: ["reservations@sofitel.test"],
+        ccRecipients: ["achraf@sofitel.test"],
+        subject: "Re: Lien de paiement — Sofitel — QSX",
+        body: "Nous faisons suite à votre message.",
+        onClose() {},
+      })
+    );
+    assert.match(html, /Les personnes apparues dans le fil sont en copie/);
+    assert.match(html, /Copie/);
+    assert.match(html, /achraf@sofitel\.test/);
+    assert.match(html, /checked/);
+    assert.equal(html.includes("Envoyer la relance"), true);
   } finally {
     Module._load = load;
   }

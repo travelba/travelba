@@ -186,6 +186,61 @@ export async function sendContentTemplate(input: {
   });
 }
 
+function twilioErrorCode(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string" && /^\d{3,6}$/.test(value.trim())) return value.trim();
+  return "";
+}
+
+/**
+ * Twilio a accepté le message. `failed`, `undelivered` ou un `error_code`
+ * (souvent 63016, hors fenêtre) ne comptent pas comme un envoi.
+ */
+export function twilioAcceptedSend(payload: {
+  sid?: string | null;
+  error_code?: number | string | null;
+  status?: string | null;
+} | null): { ok: true; sid: string } | { ok: false; detail?: string } {
+  const sid = payload?.sid?.trim() || "";
+  if (!sid) return { ok: false };
+  const status = (payload?.status || "").trim().toLowerCase();
+  const code = twilioErrorCode(payload?.error_code);
+  if (code || status === "failed" || status === "undelivered") {
+    return { ok: false, detail: [status || "failed", code].filter(Boolean).join(" ") };
+  }
+  return { ok: true, sid };
+}
+
+export function redactTwilioDetail(value: string | null | undefined) {
+  return (value || "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\+?\d{8,}/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+}
+
+/** Phrase française pour un accusé Twilio. Le numéro de téléphone n’y entre pas. */
+export function whatsappFailureSentence(code: string | null | undefined, detail?: string | null) {
+  const normalized = twilioErrorCode(code) || (detail || "").match(/\b(63016|470)\b/)?.[1] || "";
+  const text = redactTwilioDetail(detail);
+  if (normalized === "63016" || normalized === "470" || /outside the allowed window|24 hour|fenêtre de 24/i.test(text)) {
+    return "Hors des 24 heures. WhatsApp refuse un message libre si la personne n’a pas écrit aujourd’hui.";
+  }
+  if (normalized) return `WhatsApp n’a pas remis le message (erreur ${normalized}).`;
+  return "WhatsApp n’a pas remis le message.";
+}
+
+/** Erreur à écrire sur un accusé `failed` ou `undelivered`. Null pour les autres statuts. */
+export function whatsappCallbackFailure(status: string, code?: string | null, message?: string | null) {
+  const normalized = status.trim().toLowerCase();
+  if (normalized !== "failed" && normalized !== "undelivered") return null;
+  const sentence = whatsappFailureSentence(code, message);
+  const known = twilioErrorCode(code);
+  if (known && !sentence.includes(known)) return `${sentence} (${known})`.slice(0, 300);
+  return sentence;
+}
+
 async function deliverTwilioContent(input: {
   to: string;
   contentSid: string;
@@ -232,7 +287,12 @@ async function deliverTwilioContent(input: {
       .slice(0, 160);
     return { ok: false, reason: "rejected", detail: detail || undefined };
   }
-  const payload = (await response.json().catch(() => null)) as { sid?: string } | null;
-  if (!payload?.sid) return { ok: false, reason: "rejected" };
-  return { ok: true, sid: payload.sid };
+  const payload = (await response.json().catch(() => null)) as {
+    sid?: string;
+    error_code?: number | null;
+    status?: string;
+  } | null;
+  const accepted = twilioAcceptedSend(payload);
+  if (!accepted.ok) return { ok: false, reason: "rejected", detail: accepted.detail };
+  return { ok: true, sid: accepted.sid };
 }

@@ -202,7 +202,7 @@ test("la lecture MCP ne porte ni passeport ni MRZ", () => {
   assert.equal(checkinInputHasIdentity({ statut: "fait", carte_id: "flight-1" }), false);
   assert.equal(parseOnlineCheckinStatus("cartes reçues"), "cartes_recues");
   assert.equal(parseOnlineCheckinStatus("envoyé au client"), null);
-  const sql = readFileSync(new URL("../../supabase/migrations/20261027183000_flight_online_checkin.sql", import.meta.url), "utf8");
+  const sql = readFileSync(new URL("../../supabase/migrations/20261028103000_flight_online_checkin.sql", import.meta.url), "utf8");
   assert.match(sql, /crm_flight_checkins/);
   assert.doesNotMatch(sql, /passport_number|mrz_line|personal_number|drop table|delete from/i);
   assert.match(sql, /Sans numéro de passeport ni MRZ/);

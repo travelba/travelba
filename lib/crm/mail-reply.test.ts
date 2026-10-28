@@ -3,7 +3,16 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { InboundReplies } from "../../components/admin/InboundReplies";
-import { replyAddresses, replyDraftBody, replyHref, replyQuote, threadingHeaders } from "./mail-reply";
+import {
+  hotelContactsToAdd,
+  includeAppearedContacts,
+  replyAddresses,
+  replyDraftBody,
+  replyHref,
+  replyQuote,
+  threadPartyAddresses,
+  threadingHeaders,
+} from "./mail-reply";
 
 test("la réponse part à l’expéditeur et copie les autres destinataires", () => {
   assert.deepEqual(
@@ -17,6 +26,65 @@ test("la réponse part à l’expéditeur et copie les autres destinataires", ()
     to: ["desk@hotel.test"],
     cc: [],
   });
+});
+
+test("une personne du fil reste dans la relance et dans la réponse", () => {
+  const parties = [
+    {
+      inbound: true,
+      from: "Achraf Chouichi <achraf@sofitel.com>",
+      fromName: "Achraf Chouichi",
+      to: ["contact@travelba.fr"],
+      cc: ["spa@sofitel.com", "bookings@littleemperors.com", "guest@client.test"],
+    },
+  ];
+  assert.deepEqual(
+    threadPartyAddresses({
+      mode: "followup",
+      originals: ["reservations@sofitel.com", "contact@travelba.fr"],
+      parties,
+      exclude: ["guest@client.test"],
+    }),
+    { to: ["reservations@sofitel.com"], cc: ["achraf@sofitel.com", "spa@sofitel.com"] }
+  );
+  assert.deepEqual(
+    threadPartyAddresses({
+      mode: "reply",
+      from: "achraf@sofitel.com",
+      originals: ["reservations@sofitel.com"],
+      parties,
+      exclude: ["guest@client.test"],
+    }),
+    { to: ["achraf@sofitel.com"], cc: ["reservations@sofitel.com", "spa@sofitel.com"] }
+  );
+  assert.deepEqual(
+    includeAppearedContacts({
+      mode: "followup",
+      originals: ["reservations@sofitel.com"],
+      parties,
+      postedTo: ["reservations@sofitel.com"],
+      postedCc: [],
+      exclude: ["guest@client.test"],
+    }),
+    { to: ["reservations@sofitel.com"], cc: ["achraf@sofitel.com", "spa@sofitel.com"] }
+  );
+});
+
+test("un contact déjà sur l’hôtel n’est pas recréé", () => {
+  assert.deepEqual(
+    hotelContactsToAdd({
+      existing: ["Achraf@Sofitel.com"],
+      candidates: [
+        { email: "achraf@sofitel.com", name: "Achraf Chouichi" },
+        { email: "spa@sofitel.com", name: "Spa Desk" },
+        { email: "guest@client.test", name: "Camille Martin" },
+        { email: "bookings@littleemperors.com" },
+        { email: "contact@travelba.fr" },
+      ],
+      exclude: ["guest@client.test"],
+    }),
+    [{ email: "spa@sofitel.com", firstName: "Spa", lastName: "Desk" }]
+  );
 });
 
 test("la citation reprend le message, sans carte", () => {

@@ -65,29 +65,29 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     assert.equal(/applyIngestCards|applyReplacementToBooking|applyCancellationToBooking|upsertItems/.test(block), false);
   });
 
-  it("mettre à jour les cartes est un geste à part, et ne recopie pas les fichiers sans dédoublonnage", () => {
+  it("mettre à jour les cartes dépose les pièces et n’en crée pas", () => {
     const start = route.indexOf('if (action === "apply_cards"');
     const end = route.indexOf('if (action === "new_booking")');
     const block = route.slice(start, end);
-    assert.match(block, /applyIngestCards/);
+    assert.match(block, /resolveEmailCardId/);
     assert.match(block, /depositEmailAttachments/);
-    const run = readFileSync(new URL("./email-attach-run.ts", import.meta.url), "utf8");
-    const apply = run.slice(
-      run.indexOf("export async function applyIngestCards"),
-      run.indexOf("export async function markEmailAttached")
+    assert.equal(
+      /applyIngestCards|applyReplacementToBooking|applyCancellationToBooking|upsertItems|persistNewBookingFromExtract/.test(block),
+      false
     );
-    assert.match(apply, /files: \[\]/);
-    assert.equal(/upsertItems|attachBookingFiles/.test(apply), false);
+    const run = readFileSync(new URL("./email-attach-run.ts", import.meta.url), "utf8");
+    assert.equal(run.includes("applyReplacementToBooking"), false);
+    assert.equal(run.includes("applyCancellationToBooking"), false);
+    assert.match(run, /matchEmailToCard/);
   });
 
-  it("rattacher dépose les pièces, mettre_a_jour est après", () => {
+  it("rattacher et mettre_a_jour déposent les pièces, sans créer de carte", () => {
     const start = mcp.indexOf("export async function settleEmail");
     const end = mcp.indexOf("export async function createClient");
     const fn = mcp.slice(start, end);
-    const rattacher = fn.slice(fn.indexOf('=== "rattacher"'), fn.indexOf('!== "mettre_a_jour"'));
-    assert.match(rattacher, /depositEmailAttachments/);
-    assert.equal(/applyIngestCards|applyReplacementToBooking|applyCancellationToBooking/.test(rattacher), false);
-    const cards = fn.slice(fn.indexOf('!== "mettre_a_jour"'));
-    assert.match(cards, /applyIngestCards/);
+    assert.match(fn, /resolveEmailCardId/);
+    assert.match(fn, /depositEmailAttachments/);
+    assert.equal(/applyIngestCards|applyReplacementToBooking|applyCancellationToBooking/.test(fn), false);
+    assert.match(fn, /cartes: false/);
   });
 });

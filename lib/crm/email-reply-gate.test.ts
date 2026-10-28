@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  AGENCY_COPY,
-  AUTOMATIC_MAIL,
-  NOT_A_CRM_REPLY,
-  decideInboundMail,
   emptySentMailIndex,
   isReplySubject,
   matchesCrmReply,
   normalizeRfcMessageId,
   rfcIdsInHeader,
+  shouldNotifyInboundMail,
 } from "./email-reply-gate";
 import { hotelMailSubjectKey } from "./hotel-desk";
 
@@ -23,34 +21,43 @@ function sentWithSubject() {
   return sent;
 }
 
-test("la boîte ouverte ne garde qu’une réponse à un envoi du CRM", () => {
+test("la notification ne part que pour une réponse à un envoi du CRM", () => {
   const sent = sentWithSubject();
-  assert.equal(decideInboundMail({ label: "little-emperors", subject: "Newsletter", from: "news@example.com" }, sent).action, "queue");
-  assert.deepEqual(
-    decideInboundMail(
-      { label: "reservations-tba", subject: "What kind of skier is your client?", from: "news@example.com" },
-      sent
-    ),
-    { action: "ignore", reason: NOT_A_CRM_REPLY }
+  const newsletter = {
+    label: "reservations-tba",
+    subject: "What kind of skier is your client?",
+    from: "news@example.com",
+  };
+  assert.equal(shouldNotifyInboundMail(newsletter, sent), false);
+  assert.equal(
+    shouldNotifyInboundMail({ label: "little-emperors", subject: "Confirmation", from: "res@little-emperors.com" }, sent),
+    false
   );
   assert.equal(
-    decideInboundMail({ label: "crm", subject: `Re: ${SUBJECT}`, from: "hotel@sofitel.com" }, sent).action,
-    "queue"
+    shouldNotifyInboundMail({ label: "crm", subject: `Re: ${SUBJECT}`, from: "hotel@sofitel.com" }, sent),
+    true
   );
   assert.equal(
-    decideInboundMail({ label: "Reservations TBA", subject: `Fw: ${SUBJECT}`, from: "hotel@sofitel.com" }, sent).action,
-    "ignore"
+    shouldNotifyInboundMail({ label: "reservations-tba", subject: `Fw: ${SUBJECT}`, from: "hotel@sofitel.com" }, sent),
+    false
   );
-  assert.deepEqual(
-    decideInboundMail({ label: "crm", subject: `Re: ${SUBJECT}`, from: "Travelba <contact@travelba.fr>" }, sent),
-    { action: "record-sent", reason: AGENCY_COPY }
+  assert.equal(
+    shouldNotifyInboundMail({ label: "crm", subject: `Re: ${SUBJECT}`, from: "Travelba <contact@travelba.fr>" }, sent),
+    false
   );
-  assert.deepEqual(
-    decideInboundMail(
+  assert.equal(
+    shouldNotifyInboundMail(
       { label: "reservations-tba", subject: "Re: autre", from: "mailer-daemon@google.com", autoSubmitted: true },
       sent
     ),
-    { action: "ignore", reason: AUTOMATIC_MAIL }
+    false
+  );
+  assert.equal(
+    shouldNotifyInboundMail(
+      { label: "little-emperors", subject: "Confirmation", from: "hotel@sofitel.com", threadId: "thread-1" },
+      sent
+    ),
+    true
   );
 });
 
@@ -66,4 +73,17 @@ test("un identifiant ou un fil connu compte comme une réponse", () => {
   assert.equal(isReplySubject("Fw: Bonjour"), false);
   assert.equal(isReplySubject("Tr: Bonjour"), false);
   assert.equal(matchesCrmReply({ subject: SUBJECT }, sent), false);
+});
+
+test("la file garde le mail, seule la notification filtre", () => {
+  const ingest = readFileSync(new URL("./email-ingest.ts", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../../app/api/admin/hotel-replies/route.ts", import.meta.url), "utf8");
+  assert.match(ingest, /shouldNotifyInboundMail/);
+  assert.match(ingest, /crm_reply: crmReply/);
+  assert.equal(ingest.includes("decideInboundMail"), false);
+  assert.equal(ingest.includes("status: \"ignored\""), true);
+  const capture = ingest.slice(ingest.indexOf("export async function captureGmailHistory"), ingest.indexOf("export async function catchUpGmailHistory"));
+  assert.equal(capture.includes("ignored"), false);
+  assert.match(route, /crm_reply/);
+  assert.match(route, /shouldNotifyInboundMail/);
 });

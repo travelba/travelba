@@ -7,7 +7,7 @@ export const STATEMENT_FILENAME = "Releve-de-compte.pdf";
 
 /** Colonnes lues pour le relevé. Pas d’IBAN, pas de pièce d’identité. */
 export const STATEMENT_CUSTOMER_COLUMNS =
-  "id, first_name, last_name, email, phone, company_name, company_role, billing_parent_id, spending_allowance, address_line, postal_code, city, country, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country";
+  "id, first_name, last_name, email, phone, company_name, company_role, billing_parent_id, spending_allowance, address_line, postal_code, city, country, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country, whatsapp_opt_out_at";
 
 export type StatementHolder = {
   company_name?: string | null;

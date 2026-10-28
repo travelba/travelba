@@ -42,8 +42,8 @@ function harness(customers: WhatsappCustomer[] = []) {
     async insertRequest(row) {
       writes.push({ table: "crm_whatsapp_requests", row: row as unknown as Record<string, unknown> });
     },
-    async updateStatus(sid, status) {
-      calls.push(`status:${sid}:${status}`);
+    async updateStatus(sid, status, error) {
+      calls.push(`status:${sid}:${status}${error ? `:${error}` : ""}`);
     },
     async savePiece() {
       calls.push("piece");
@@ -251,6 +251,21 @@ test("drapeau coupé : une pièce est rangée, un statut est noté, rien n’est
   const onStatus = await deliver({ flag: "1", params: { ...status, MessageSid: "SMstatutOn" } });
   assert.equal(onStatus.sent.length, 0);
   assert.deepEqual(onStatus.calls, ["status:SMstatutOn:delivered"]);
+
+  const refused = {
+    MessageSid: "SMechec",
+    MessageStatus: "undelivered",
+    ErrorCode: "63016",
+    ErrorMessage: "Failed to send freeform message because you are outside the allowed window",
+  };
+  const failedStatus = await deliver({ flag: "", params: refused });
+  assert.equal(failedStatus.result.status, 200);
+  assert.equal(failedStatus.sent.length, 0);
+  assert.equal(failedStatus.calls.length, 1);
+  assert.match(failedStatus.calls[0], /^status:SMechec:undelivered:/);
+  assert.match(failedStatus.calls[0], /24 heures/);
+  assert.equal(failedStatus.calls[0].includes("63016") || failedStatus.calls[0].includes("24 heures"), true);
+  assert.equal(failedStatus.calls[0].includes("+"), false);
 });
 
 test("signature refusée : rien, drapeau ouvert ou fermé", async () => {

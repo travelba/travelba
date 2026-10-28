@@ -9,10 +9,10 @@ import {
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
 import {
-  applyIngestCards,
   attachFilesSummary,
   depositEmailAttachments,
   markEmailAttached,
+  resolveEmailCardId,
 } from "@/lib/crm/email-attach-run";
 import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
@@ -204,8 +204,9 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("id", bookingId)
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
-      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments);
-      const message = attachFilesSummary(deposited);
+      const cardId = await resolveEmailCardId(admin, bookingId, extract);
+      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId);
+      const message = attachFilesSummary(deposited, Boolean(cardId));
       await markEmailAttached(admin, row, {
         bookingId,
         customerId: booking.customer_id,
@@ -217,6 +218,7 @@ export async function POST(request: Request, ctx: Ctx) {
         ok: true,
         booking_id: bookingId,
         pieces: deposited.added,
+        carte_id: cardId,
         message,
       });
     }
@@ -230,31 +232,25 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("id", bookingId)
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
-      await applyIngestCards({
-        bookingId,
-        customerId: booking.customer_id,
-        extract,
-        staffUserId: auth.user.id,
-        emailIngestId: id,
-        itemId: body.item_id || null,
-        applyStayFields: body.apply_stay_currency === true,
-      });
-      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments);
+      const cardId = await resolveEmailCardId(admin, bookingId, extract);
+      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId);
       if (extractPatch.extract) {
         await admin.from("crm_email_ingest").update(extractPatch).eq("id", id);
       }
+      const message = attachFilesSummary(deposited, Boolean(cardId));
       await markEmailAttached(admin, row, {
         bookingId,
         customerId: booking.customer_id,
         actorId: auth.user.id,
-        summary: "Cartes mises à jour depuis le mail",
-        cards: true,
+        summary: message,
+        cards: false,
       });
       return NextResponse.json({
         ok: true,
         booking_id: bookingId,
         pieces: deposited.added,
-        message: "Les cartes du séjour sont mises à jour. Les pièces utiles sont déposées.",
+        carte_id: cardId,
+        message,
       });
     }
 

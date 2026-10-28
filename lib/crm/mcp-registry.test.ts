@@ -34,12 +34,16 @@ const EXPECTED = [
   "traiter_email",
   "creer_client",
   "mettre_a_jour_client",
+  "modifier_titulaire",
+  "definir_role_societe",
+  "inviter_client",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
   "notifier_carte_embarquement",
   "creer_dossier",
   "ajouter_voyageur",
+  "modifier_voyageur",
   "retirer_voyageur",
   "fusionner_compagnon",
   "ajouter_vol",
@@ -51,6 +55,7 @@ const EXPECTED = [
   "modifier_hotel",
   "ajouter_accueil_vip",
   "enregistrement_en_ligne",
+  "envoyer_releve",
 ];
 
 const WRITE_TOOLS = [
@@ -67,12 +72,16 @@ const WRITE_TOOLS = [
   "traiter_email",
   "creer_client",
   "mettre_a_jour_client",
+  "modifier_titulaire",
+  "definir_role_societe",
+  "inviter_client",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
   "notifier_carte_embarquement",
   "creer_dossier",
   "ajouter_voyageur",
+  "modifier_voyageur",
   "retirer_voyageur",
   "fusionner_compagnon",
   "ajouter_vol",
@@ -84,6 +93,7 @@ const WRITE_TOOLS = [
   "modifier_hotel",
   "ajouter_accueil_vip",
   "enregistrement_en_ligne",
+  "envoyer_releve",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
@@ -128,8 +138,34 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /date de naissance/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /compagnon_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /voyageur_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /passeport/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /societe_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /titre/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /couverture/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_dossier")?.description || "", /sans titre/i);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_client")?.description || "", /supprimer_societe_id/);
+  const titulaire = MCP_TOOLS.find((tool) => tool.name === "modifier_titulaire");
+  assert.equal(titulaire?.write, true);
+  assert.equal(titulaire?.openWorld, undefined);
+  assert.equal(titulaire?.pieceNumbers, undefined);
+  assert.match(titulaire?.description || "", /nom de passeport/);
+  assert.match(titulaire?.description || "", /adresse personnelle/);
+  assert.match(titulaire?.description || "", /n’est ni lu ni renvoyé/);
+  assert.match(titulaire?.description || "", /pays_passeport/);
+  const role = MCP_TOOLS.find((tool) => tool.name === "definir_role_societe");
+  assert.equal(role?.write, true);
+  assert.equal(role?.openWorld, undefined);
+  assert.match(role?.description || "", /admin/);
+  assert.match(role?.description || "", /membre/);
+  assert.match(role?.description || "", /particulier/);
+  const invite = MCP_TOOLS.find((tool) => tool.name === "inviter_client");
+  assert.equal(invite?.write, true);
+  assert.equal(invite?.openWorld, true);
+  assert.equal(invite?.pieceNumbers, undefined);
+  assert.equal(invite?.signedUrl, undefined);
+  assert.match(invite?.description || "", /même flux/);
+  assert.match(invite?.description || "", /n’est pas renvoyé/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /prix de vente/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /MAD/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /déjà rattachée/);
@@ -179,7 +215,7 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(message?.description || "", /Rien n’est envoyé/);
   assert.match(message?.description || "", /un clic/);
   assert.match(message?.description || "", /fournisseur/);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
+  for (const name of ["creer_dossier", "ajouter_voyageur", "modifier_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip", "enregistrement_en_ligne"]) {
     const tool = MCP_TOOLS.find((item) => item.name === name);
     assert.equal(tool?.write, true);
     assert.equal(tool?.openWorld, undefined);
@@ -187,6 +223,21 @@ test("mcp tools stay unique, named, and under the cap", () => {
     assert.equal(tool?.signedUrl, undefined);
     assert.equal(tool?.cardSecrets, undefined);
   }
+  const checkinTool = MCP_TOOLS.find((tool) => tool.name === "enregistrement_en_ligne");
+  assert.match(checkinTool?.description || "", /Pas de passeport, pas de MRZ/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /enregistrement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /modifier_voyageur/);
+  const releve = MCP_TOOLS.find((tool) => tool.name === "envoyer_releve");
+  assert.equal(releve?.write, true);
+  assert.equal(releve?.openWorld, true);
+  assert.equal(releve?.pieceNumbers, undefined);
+  assert.equal(releve?.signedUrl, undefined);
+  assert.equal(releve?.cardSecrets, undefined);
+  assert.match(releve?.description || "", /TWILIO_CONTENT_RELEVE/);
+  assert.match(releve?.description || "", /cinq minutes/);
+  assert.match(releve?.description || "", /force/);
+  assert.match(releve?.description || "", /twilio_sid/);
+  assert.match(releve?.description || "", /e-mail n’est pas ouvert/);
 });
 
 test("passport tools name the travelba-passeports namespace and stay off the general token", () => {

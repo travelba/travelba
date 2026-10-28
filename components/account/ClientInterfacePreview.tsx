@@ -34,7 +34,7 @@ import { shownClientNote } from "@/lib/crm/public-booking";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
-import { tripDocCoverage } from "@/lib/crm/trip-documents";
+import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 import {
@@ -268,9 +268,18 @@ function ClientScreen({
   agencyFeeRate?: number;
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
-  const coverage = tripDocCoverage(travelers, identityDocs);
-  const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
-  const missingCount = coverage.total - coverage.ready;
+  const holder = {
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    usage_name: customer.usage_name,
+    birth_date: customer.birth_date,
+  };
+  const missingCount = missingPassportCount(travelers, identityDocs, {
+    holder,
+    companions,
+    returnOn: booking.end_date || booking.start_date,
+  });
+  const missingPassports = missingCount > 0;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination, {
     title: booking.title,
     homeCity: customer.city,
@@ -314,17 +323,7 @@ function ClientScreen({
     ticketingFee,
     ticketCount,
   });
-  const passportRows = passportVaultRows(
-    travelers,
-    identityDocs,
-    todayIsoDate(),
-    {
-      first_name: customer.first_name,
-      last_name: customer.last_name,
-      usage_name: customer.usage_name,
-    },
-    booking
-  );
+  const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), holder, booking, companions);
   const encoursPay =
     ledger && !ledger.member && ledger.owed.total > 0 ? (
       <EncoursPayment

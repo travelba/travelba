@@ -16,7 +16,8 @@
     "test": "tsx --tsconfig tsconfig.test.json --test lib/crm/*.test.ts lib/site-hero.test.ts",
     "check": "npm run typecheck && npm run lint && npm run test && node scripts/check-migrations.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
-    "covers:generate": "tsx scripts/generate-city-covers.ts"
+    "covers:generate": "tsx scripts/generate-city-covers.ts",
+    "covers:fallback": "tsx scripts/regenerate-fallback-covers.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.112",
@@ -33,6 +34,7 @@
     "mrz": "^5.0.2",
     "next": "16.3.8",
     "next-intl": "^4.13.0",
+    "ogg-opus-decoder": "^1.7.5",
     "pdf-lib": "^1.17.1",
     "puppeteer-core": "^25.12.0",
     "react": "19.2.4",

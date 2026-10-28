@@ -10,6 +10,7 @@ import {
   greetingForWhatsapp,
   inviteWhatsappNotice,
   sendConnexionWhatsapp,
+  twilioAcceptedSend,
   whatsappAddress,
   withConciergeSignature,
 } from "./whatsapp";
@@ -202,4 +203,13 @@ describe("envoi Twilio", { concurrency: false }, () => {
       restore(previous);
     }
   });
+});
+
+test("un accusé Twilio failed ou 63016 n’est pas un envoi accepté", () => {
+  assert.deepEqual(twilioAcceptedSend({ sid: "SMok", status: "queued" }), { ok: true, sid: "SMok" });
+  const refused = twilioAcceptedSend({ sid: "SMfail", error_code: 63016, status: "undelivered" });
+  assert.equal(refused.ok, false);
+  if (!refused.ok) assert.match(refused.detail || "", /63016/);
+  assert.equal(twilioAcceptedSend({ sid: "SMvide" }).ok, true);
+  assert.equal(twilioAcceptedSend(null).ok, false);
 });

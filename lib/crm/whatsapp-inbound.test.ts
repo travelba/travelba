@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { twilioRequestSignature } from "./twilio-signature";
-import { receiveWhatsappWebhook, type WhatsappStore } from "./whatsapp-inbound";
+import {
+  bytesContainPan,
+  burstReply,
+  createWhatsappSupabaseStore,
+  downloadTwilioMedia,
+  matchStaffByPhone,
+  receiveWhatsappWebhook,
+  type WhatsappStore,
+} from "./whatsapp-inbound";
 import {
   FOLLOW_UP_TONE,
+  HANDOFF_NOT_RECORDED,
   MISSING_CLOCK,
   MISSING_FORMALITY,
   MISSING_PRICE,
@@ -12,9 +21,9 @@ import {
   conciergeContextText,
   planConciergeTurn,
   proactiveWhatsappAllowed,
+  replyClaimsAgencyHandoff,
   transactionsClientUrl,
 } from "./whatsapp-concierge";
-import { bytesContainPan, burstReply, downloadTwilioMedia } from "./whatsapp-inbound";
 import { sendWhatsappSession } from "./whatsapp-session";
 import { issueConciergeMagicLink } from "./whatsapp-access";
 
@@ -216,7 +225,7 @@ test("numéro inconnu : une phrase, pas de dossier", async () => {
   assert.equal(sent[0].mediaUrl ?? null, null);
   assert.deepEqual(
     writes.map((write) => write.table),
-    ["crm_whatsapp_messages", "crm_whatsapp_messages", "crm_whatsapp_requests"]
+    ["crm_whatsapp_messages", "crm_whatsapp_requests", "crm_whatsapp_messages"]
   );
   assert.equal(writes.every((write) => write.row.customer_id == null), true);
   const lead = writes.find((write) => write.table === "crm_whatsapp_requests");
@@ -422,6 +431,12 @@ test("la réponse de chat est du texte libre, pas un modèle", async () => {
     assert.equal(params.get("ContentSid"), null);
     assert.equal(params.get("ContentVariables"), null);
     assert.equal(params.get("MediaUrl"), "https://travelba.fr/api/covers/photo-avoriaz");
+    const refused = await sendWhatsappSession({
+      to: "whatsapp:+33601020304",
+      body: "Relevé",
+      fetchImpl: async () => new Response(JSON.stringify({ sid: "SMfail", error_code: 63016, status: "failed" }), { status: 201 }),
+    });
+    assert.equal(refused.ok, false);
   } finally {
     for (const [key, value] of Object.entries({
       TWILIO_ACCOUNT_SID: previous.sid,
@@ -748,4 +763,636 @@ test("une réponse sur le séjour joint la photo du lieu", async () => {
   assert.equal(sent[0].mediaUrl, "https://travelba.fr/api/covers/sejour/PUB-1?partage=ABCDEFGH");
   assert.equal(sent[0].body.includes("cover.webp"), false);
   assert.equal(sent[0].body.includes("/api/covers/"), false);
+});
+
+const victoriaOnFile = {
+  voyageurId: "81844f9d-cd14-44c4-8f1d-5f054407d2be",
+  bookingId: "stay-pub",
+  reference: "TB-2026-0096",
+  customerId: "cust-1",
+  firstName: "Victoria",
+  lastName: "Martin",
+  usageName: null,
+  companionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  isHolder: false,
+  phone: null,
+  email: null,
+  birthDate: null,
+};
+
+test("le concierge ajoute le numéro demandé sur le voyageur du fil", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  let wrote = false;
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Peux tu ajouter le numéro de téléphone de Victoria 06 12 34 56 78 ?",
+    MessageSid: "SMvictoria",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+  });
+  store.loadParty = async () => [victoriaOnFile];
+  store.commitClientWrite = async () => {
+    wrote = true;
+    return {
+      ok: true,
+      summary: "J’ai ajouté le numéro de Victoria : +33 6 12 34 56 78.",
+      bookingId: "stay-pub",
+      customerId: "cust-1",
+    };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMvictoriaout" };
+    },
+  });
+  assert.equal(wrote, true);
+  assert.match(sent[0].body, /J’ai ajouté le numéro de Victoria/);
+  assert.equal(sent[0].body.includes("0664349810"), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
+  const outbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "outbound");
+  assert.deepEqual(outbound?.row?.tools, ["modifier_voyageur"]);
+});
+
+test("un numéro inconnu n’écrit pas sur un dossier", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  let wrote = false;
+  const params = {
+    From: "whatsapp:+33699000000",
+    Body: "Peux tu ajouter le numéro de téléphone de Victoria 06 12 34 56 78 ?",
+    MessageSid: "SMunknown",
+  };
+  const store = storeFrom({ writes, customers: [] });
+  store.loadParty = async () => {
+    throw new Error("party");
+  };
+  store.commitClientWrite = async () => {
+    wrote = true;
+    return { ok: false, message: "non" };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    send: async () => ({ ok: true, sid: "SMunknownout" }),
+  });
+  assert.equal(wrote, false);
+});
+
+test("annuler le séjour passe à l’agence, payer n’encaisse rien", async () => {
+  const cancelWrites: { table: string; row?: Record<string, unknown> }[] = [];
+  let space = false;
+  const cancelParams = {
+    From: "whatsapp:+33601020304",
+    Body: "Annulez mon séjour s’il vous plaît",
+    MessageSid: "SMcancelstay",
+  };
+  const cancelStore = storeFrom({
+    writes: cancelWrites,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published] },
+  });
+  cancelStore.loadParty = async () => [victoriaOnFile];
+  cancelStore.performSpace = async () => {
+    space = true;
+    return { ok: false, summary: "no", bookingId: null, handoff: "cancel", access: false, tool: "annuler_hotel" };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(cancelParams),
+    params: cancelParams,
+    authToken: TOKEN,
+    store: cancelStore,
+    send: async () => ({ ok: true, sid: "SMcancelout" }),
+  });
+  assert.equal(space, false);
+  const request = cancelWrites.find((row) => row.table === "crm_whatsapp_requests");
+  assert.equal(request?.row?.kind, "cancel");
+
+  const payWrites: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const payParams = {
+    From: "whatsapp:+33601020304",
+    Body: "Je veux payer mon encours",
+    MessageSid: "SMpay",
+  };
+  const payStore = storeFrom({
+    writes: payWrites,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+  });
+  payStore.loadParty = async () => [victoriaOnFile];
+  payStore.performSpace = async (row) => {
+    assert.equal(row.actionId, "regler_encours");
+    assert.equal(row.holder, true);
+    return {
+      ok: false,
+      summary: "Le règlement se confirme dans Transactions. Choisissez un moyen de règlement.",
+      bookingId: null,
+      handoff: null,
+      access: true,
+      tool: "regler_encours",
+    };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(payParams),
+    params: payParams,
+    authToken: TOKEN,
+    store: payStore,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMpayout" };
+    },
+  });
+  assert.match(sent[0].body, /Transactions/);
+  assert.equal(payWrites.some((row) => row.table === "crm_whatsapp_requests"), false);
+});
+
+const SHARE_SENTENCE =
+  "Est-ce que tu peux envoyer la réservation partagée la réservation de Nice par WhatsApp à Victoria";
+
+test("la phrase de Victoria part vers elle, sans dire que l’agence a la demande", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  let action = "";
+  let name: string | null = null;
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: SHARE_SENTENCE,
+    MessageSid: "SMpartagevictoria",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [{ ...published, destination: "Nice", title: "Nice" }] },
+  });
+  store.loadParty = async () => [
+    {
+      ...victoriaOnFile,
+      firstName: "Victoria Marie Rebecca",
+      lastName: "Tétard",
+      usageName: "Martin",
+      phone: "+33611111111",
+      stayDestination: "Nice",
+      stayTitle: "Anantara Plaza Nice",
+    },
+  ];
+  store.performSpace = async (row) => {
+    action = row.actionId;
+    name = row.name;
+    return {
+      ok: true,
+      summary: "Lien envoyé à Victoria par WhatsApp.",
+      bookingId: "stay-pub",
+      handoff: null,
+      access: false,
+      tool: "partager_carnet",
+    };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMshareout" };
+    },
+  });
+  assert.equal(action, "partager_carnet");
+  assert.equal(name, "Victoria");
+  assert.match(sent[0].body, /Lien envoyé à Victoria/);
+  assert.equal(replyClaimsAgencyHandoff(sent[0].body), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
+  const outbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "outbound");
+  assert.deepEqual(outbound?.row?.tools, ["partager_carnet"]);
+});
+
+test("un échec d’envoi est dit tel quel", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: SHARE_SENTENCE,
+    MessageSid: "SMpartageechec",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+  });
+  store.loadParty = async () => [{ ...victoriaOnFile, stayDestination: "Nice", phone: "+33611111111" }];
+  store.performSpace = async () => ({
+    ok: false,
+    summary: "Hors des 24 heures, WhatsApp ne peut pas envoyer ce lien. Copiez-le.",
+    bookingId: "stay-pub",
+    handoff: null,
+    access: false,
+    tool: "partager_carnet",
+  });
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMsharefail" };
+    },
+  });
+  assert.match(sent[0].body, /Hors des 24 heures/);
+  assert.equal(replyClaimsAgencyHandoff(sent[0].body), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
+});
+
+test("l’équipe demande le partage par la référence ou par le client", async () => {
+  const byRef: { table: string; row?: Record<string, unknown> }[] = [];
+  let reference = "";
+  const refParams = {
+    From: "whatsapp:+33664349810",
+    Body: "Envoie le séjour TB-2026-0096 à Victoria",
+    MessageSid: "SMstaffref",
+  };
+  const refStore = storeFrom({ writes: byRef, customers: [] });
+  refStore.staffByPhone = async () => ({ id: "staff-1" });
+  refStore.loadParty = async () => [];
+  refStore.loadPartyByReference = async (value) => {
+    reference = value;
+    return [{ ...victoriaOnFile, phone: "+33611111111", stayDestination: "Nice" }];
+  };
+  refStore.performSpace = async (row) => ({
+    ok: true,
+    summary: "Lien envoyé à Victoria par WhatsApp.",
+    bookingId: row.party[0]?.bookingId || null,
+    handoff: null,
+    access: false,
+    tool: row.tool,
+  });
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(refParams),
+    params: refParams,
+    authToken: TOKEN,
+    store: refStore,
+    send: async () => ({ ok: true, sid: "SMstaffrefout" }),
+  });
+  assert.equal(reference, "TB-2026-0096");
+  assert.equal(byRef.some((row) => row.table === "crm_whatsapp_requests"), false);
+
+  const byName: { table: string; row?: Record<string, unknown> }[] = [];
+  let client = "";
+  const nameParams = {
+    From: "whatsapp:+33664349810",
+    Body: "Partage la réservation de Camille Martin à Victoria",
+    MessageSid: "SMstaffnom",
+  };
+  const nameStore = storeFrom({ writes: byName, customers: [] });
+  nameStore.staffByPhone = async () => ({ id: "staff-1" });
+  nameStore.loadParty = async () => [];
+  nameStore.loadPartyByClientName = async (value) => {
+    client = value;
+    return { party: [{ ...victoriaOnFile, customerId: "cust-camille", phone: "+33611111111" }] };
+  };
+  nameStore.performSpace = async () => ({
+    ok: true,
+    summary: "Lien envoyé à Victoria par WhatsApp.",
+    bookingId: "stay-pub",
+    handoff: null,
+    access: false,
+    tool: "partager_carnet",
+  });
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(nameParams),
+    params: nameParams,
+    authToken: TOKEN,
+    store: nameStore,
+    send: async () => ({ ok: true, sid: "SMstaffnomout" }),
+  });
+  assert.equal(client, "Camille Martin");
+  assert.equal(byName.some((row) => row.table === "crm_whatsapp_requests"), false);
+});
+
+test("un téléphone d’équipe au format national est le même numéro", () => {
+  assert.equal(matchStaffByPhone([{ id: "staff-1", phone: "06 64 34 98 10" }], "+33664349810")?.id, "staff-1");
+  assert.equal(
+    matchStaffByPhone(
+      [
+        { id: "a", phone: "06 12 34 56 78" },
+        { id: "b", phone: "+33612345678" },
+      ],
+      "+33612345678"
+    ),
+    null
+  );
+  const admin = {
+    from(table: string) {
+      const api = {
+        select() {
+          return api;
+        },
+        limit() {
+          return api;
+        },
+        eq() {
+          return api;
+        },
+        then(resolve: (value: { data: { id: string; phone: string }[]; error: null }) => void) {
+          resolve(
+            table === "crm_staff"
+              ? { data: [{ id: "staff-1", phone: "06 64 34 98 10" }], error: null }
+              : { data: [], error: null }
+          );
+        },
+      };
+      return api;
+    },
+  };
+  return createWhatsappSupabaseStore(admin as never).staffByPhone?.("+33664349810").then((found) => {
+    assert.equal(found?.id, "staff-1");
+  });
+});
+
+test("dire que la demande est passée crée la ligne, sinon la phrase est retirée", async () => {
+  assert.equal(replyClaimsAgencyHandoff("J’ai passé votre demande à l’agence."), true);
+  assert.equal(replyClaimsAgencyHandoff("Je transmets à l’agence."), true);
+  assert.equal(replyClaimsAgencyHandoff(HANDOFF_NOT_RECORDED), false);
+  assert.equal(replyClaimsAgencyHandoff("Souhaitez-vous que j’en parle à Benjamin ?"), false);
+
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Comment vont les baleines cette année ?",
+    MessageSid: "SMbaleine",
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store: storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: { bookings: [published] },
+    }),
+    converse: async () => ({
+      text: "J’ai passé votre demande à l’agence.",
+      bookingReference: null,
+      handoff: null,
+    }),
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMbaleineout" };
+    },
+  });
+  assert.match(sent.map((row) => row.body).join("\n"), /passé votre demande à l’agence/);
+  assert.equal(writes.find((row) => row.table === "crm_whatsapp_requests")?.row?.kind, "question");
+
+  const missed: { table: string; row?: Record<string, unknown> }[] = [];
+  const honest: { body: string }[] = [];
+  const again = {
+    From: "whatsapp:+33601020304",
+    Body: "Comment vont les baleines cette année ?",
+    MessageSid: "SMbaleine2",
+  };
+  const store = storeFrom({
+    writes: missed,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published] },
+  });
+  store.insertRequest = async () => {
+    throw new Error("db");
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(again),
+    params: again,
+    authToken: TOKEN,
+    store,
+    converse: async () => ({
+      text: "J’ai passé votre demande à l’agence.",
+      bookingReference: null,
+      handoff: null,
+    }),
+    send: async (message) => {
+      honest.push(message);
+      return { ok: true, sid: "SMbaleine2out" };
+    },
+  });
+  const body = honest.map((row) => row.body).join("\n");
+  assert.match(body, /Je n’ai pas transmis cela à l’agence/);
+  assert.equal(/passé votre demande/i.test(body), false);
+  assert.equal(missed.some((row) => row.table === "crm_whatsapp_requests"), false);
+});
+
+test("note vocale : le texte entendu est marqué, le fichier est gardé, le concierge ne devine pas", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const heard: string[] = [];
+  const saved: { contentType: string }[] = [];
+  const sent: { body: string }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Media/ME1",
+    MediaContentType0: "audio/ogg; codecs=opus",
+    MessageSid: "SMvoix",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: mixedDossier(),
+    savePiece: async () => {
+      assert.fail("une note vocale n’entre pas au coffre");
+    },
+  });
+  store.saveVoiceNote = async (file) => {
+    saved.push({ contentType: file.contentType });
+    return { path: "customers/cust-1/whatsapp/note.ogg" };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    accountSid: "ACtest",
+    transcribeAudio: async (file) => {
+      assert.equal(file.contentType, "audio/ogg");
+      return "J'ai adoré la vue ce matin";
+    },
+    prepareAudio: async (file) => file,
+    fetchImpl: async (url, init) => {
+      assert.equal(String(url).startsWith("https://api.twilio.com/"), true);
+      assert.match(new Headers(init?.headers).get("authorization") || "", /^Basic /);
+      return new Response(new Uint8Array([79, 103, 103, 83]), {
+        status: 200,
+        headers: { "content-type": "audio/ogg; codecs=opus" },
+      });
+    },
+    store,
+    converse: async (input) => {
+      heard.push(input.message);
+      return { text: "Je note votre message.", bookingReference: null, handoff: null };
+    },
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMvoixout" };
+    },
+  });
+  const inbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound");
+  assert.equal(inbound?.row?.body, "Note vocale : J'ai adoré la vue ce matin");
+  assert.equal(inbound?.row?.transcript, "J'ai adoré la vue ce matin");
+  assert.equal(inbound?.row?.media_path, "customers/cust-1/whatsapp/note.ogg");
+  assert.equal(saved[0]?.contentType, "audio/ogg");
+  assert.equal(heard[0], "Note vocale : J'ai adoré la vue ce matin");
+  assert.match(sent[0]?.body || "", /je note votre message/i);
+  assert.equal((sent[0]?.body || "").includes("Document reçu"), false);
+});
+
+test("transcription en échec : phrase fixe, rien n’est inventé", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map((item) => String(item)).join(" "));
+  };
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Media/ME2",
+    MediaContentType0: "audio/ogg",
+    MessageSid: "SMmuet",
+  };
+  try {
+    const store = storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: mixedDossier(),
+    });
+    store.saveVoiceNote = async () => ({ path: "customers/cust-1/whatsapp/muet.ogg" });
+    let calls = 0;
+    await receiveWhatsappWebhook({
+      url: URL_HOOK,
+      signature: signed(params),
+      params,
+      authToken: TOKEN,
+      accountSid: "ACtest",
+      transcribeAudio: async () => {
+        throw new Error("TOKYO SECRET");
+      },
+      prepareAudio: async (file) => file,
+      fetchImpl: async () =>
+        new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "audio/ogg" } }),
+      store,
+      converse: async () => {
+        calls += 1;
+        return { text: "Vous partez à Tokyo.", bookingReference: null, handoff: null };
+      },
+      send: async (message) => {
+        sent.push(message);
+        return { ok: true, sid: "SMmuetout" };
+      },
+    });
+    assert.equal(calls, 0);
+  } finally {
+    console.error = original;
+  }
+  const inbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound");
+  assert.equal(inbound?.row?.body, "Note vocale (transcription indisponible)");
+  assert.equal(inbound?.row?.transcript ?? null, null);
+  assert.equal(inbound?.row?.media_path, "customers/cust-1/whatsapp/muet.ogg");
+  assert.match(sent[0]?.body || "", /Je n’ai pas pu entendre cette note vocale/);
+  assert.equal(JSON.stringify(writes).includes("TOKYO"), false);
+  assert.equal((sent[0]?.body || "").includes("Tokyo"), false);
+  assert.equal(logs.some((line) => line.includes("[whatsapp-voice] transcription")), true);
+  assert.equal(logs.some((line) => line.includes("TOKYO")), false);
+});
+
+
+test("une note vocale qui demande le partage de Nice part vers Victoria", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  let action = "";
+  let name: string | null = null;
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Media/ME3",
+    MediaContentType0: "audio/ogg",
+    MessageSid: "SMvoixpartage",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [{ ...published, destination: "Nice", title: "Nice" }] },
+    savePiece: async () => {
+      assert.fail("une note vocale n’entre pas au coffre");
+    },
+  });
+  store.saveVoiceNote = async () => ({ path: "customers/cust-1/whatsapp/partage.ogg" });
+  store.loadParty = async () => [
+    {
+      ...victoriaOnFile,
+      firstName: "Victoria Marie Rebecca",
+      lastName: "Tétard",
+      usageName: "Martin",
+      phone: "+33611111111",
+      stayDestination: "Nice",
+      stayTitle: "Anantara Plaza Nice",
+    },
+  ];
+  store.performSpace = async (row) => {
+    action = row.actionId;
+    name = row.name;
+    return {
+      ok: true,
+      summary: "Lien envoyé à Victoria par WhatsApp.",
+      bookingId: "stay-pub",
+      handoff: null,
+      access: false,
+      tool: "partager_carnet",
+    };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    accountSid: "ACtest",
+    transcribeAudio: async () => SHARE_SENTENCE,
+    prepareAudio: async (file) => file,
+    fetchImpl: async () =>
+      new Response(new Uint8Array([79, 103, 103, 83]), {
+        status: 200,
+        headers: { "content-type": "audio/ogg" },
+      }),
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMvoixpartageout" };
+    },
+  });
+  assert.equal(action, "partager_carnet");
+  assert.equal(name, "Victoria");
+  assert.match(sent[0].body, /Lien envoyé à Victoria/);
+  assert.equal(replyClaimsAgencyHandoff(sent[0].body), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
+  const inbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound");
+  assert.equal(inbound?.row?.body, `Note vocale : ${SHARE_SENTENCE}`);
+  assert.equal(inbound?.row?.transcript, SHARE_SENTENCE);
 });

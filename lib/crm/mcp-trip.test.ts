@@ -341,6 +341,15 @@ test("creer_dossier reste en préparation, sans invitation ni débit", async () 
   assert.equal(db.tables.crm_transactions?.length || 0, 0);
   assert.equal(db.writes.some((write) => /invite|message|whatsapp/i.test(write.table)), false);
   await assert.rejects(() => createDossier({ client_id: OTHER, titre: "Rome" }, client), /Client introuvable/);
+  const cityNamed = await createDossier({ client_id: CLIENT, destination: "Montpellier" }, client);
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === cityNamed.id)?.title, "Montpellier");
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === cityNamed.id)?.destination, "Montpellier");
+  const given = await createDossier(
+    { client_id: CLIENT, titre: "Hôtel Richer de Belleval", destination: "Montpellier" },
+    client
+  );
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === given.id)?.title, "Hôtel Richer de Belleval");
+  await assert.rejects(() => createDossier({ client_id: CLIENT }, client), /titre ou une destination/);
 });
 
 test("ajouter_voyageur enregistre le passeport comme la fiche, sans renvoyer le numéro", async () => {
@@ -1094,6 +1103,42 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
   assert.equal(db.tables.crm_booking_items.some((row) => row.id === again.id), false);
 });
 
+test("ajouter le titulaire avec sa date et ses prénoms ne crée pas de compagnon", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Rome" }, client);
+  const added = await addVoyageur(
+    {
+      dossier_id: dossier.id,
+      prenoms: "Camille Louise",
+      nom: "Martin",
+      date_naissance: "1988-04-02",
+      sexe: "M",
+    },
+    client
+  );
+  assert.equal(added.titulaire, true);
+  assert.equal(added.compagnon_id, null);
+  assert.equal(added.notifie, false);
+  assert.equal(db.tables.crm_travel_companions.length, 0);
+  assert.equal(db.tables.crm_customers.find((row) => row.id === CLIENT)?.birth_date, "1988-04-02");
+  assert.equal(db.tables.crm_booking_travelers[0]?.is_account_holder, true);
+  const child = await addVoyageur(
+    {
+      dossier_id: dossier.id,
+      prenoms: "Louise",
+      nom: "Martin",
+      date_naissance: "2021-03-26",
+    },
+    client
+  );
+  assert.equal(child.titulaire, false);
+  assert.equal(db.tables.crm_travel_companions.length, 1);
+  assert.notEqual(child.compagnon_id, null);
+});
+
 test("deux frères homonymes ne prennent pas la fiche l’un de l’autre", async () => {
   const elise = "77777777-7777-4777-8777-777777777777";
   const { db, client } = adminOf({
@@ -1587,6 +1632,85 @@ test("492,99 € pour 5 billets reste le total, et le nombre de billets n’est 
   assert.equal((unitRow?.details as Record<string, unknown>).amount_is_total, undefined);
   assert.equal(itemSellingAmount({ kind: "flight", amount: 100, details: unitRow?.details as Record<string, unknown> }), 500);
   assert.equal(db.tables.crm_bookings[0].total_amount, 992.99);
+});
+
+test("changer les voyageurs ne multiplie pas un total de groupe, et prix_total sans devise garde l’euro", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Tel Aviv", devise: "EUR" }, client);
+  const ids: string[] = [];
+  for (const prenom of ["Léa", "Noa", "Inès", "Adam", "Jules", "Emma"]) {
+    const traveler = await addVoyageur({ dossier_id: dossier.id, prenoms: prenom, nom: "Martin" }, client);
+    ids.push(traveler.voyageur_id);
+  }
+  const flight = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Arkia",
+      numero: "IZ611",
+      depart_iata: "TLV",
+      arrivee_iata: "CDG",
+      depart: "2026-11-02T08:00",
+      arrivee: "2026-11-02T12:00",
+      pnr: "14028540",
+      prix_total: 5357.57,
+    },
+    client
+  );
+  assert.equal(flight.prix_vendu, 5357.57);
+  assert.equal(flight.devise, "EUR");
+  const row = db.tables.crm_booking_items.find((item) => item.id === flight.id);
+  assert.ok(row);
+  row.details = {
+    ...(row.details as Record<string, unknown>),
+    document_amount: 5800,
+    document_currency: "USD",
+  };
+  const moved = await updateVol({ dossier_id: dossier.id, carte_id: flight.id, voyageur_ids: ids }, client);
+  assert.equal(moved.billets, 6);
+  assert.equal(moved.prix_vendu, 5357.57);
+  assert.equal(moved.devise, "EUR");
+  const after = db.tables.crm_booking_items.find((item) => item.id === flight.id);
+  assert.equal(after?.amount, 5357.57);
+  assert.equal((after?.details as Record<string, unknown>).amount_is_total, true);
+  assert.equal((after?.details as Record<string, unknown>).ticket_count, 6);
+  assert.equal(itemSellingAmount({ kind: "flight", amount: Number(after?.amount), details: after?.details as Record<string, unknown> }), 5357.57);
+  assert.equal(db.tables.crm_bookings[0].total_amount, 5357.57);
+  assert.notEqual(db.tables.crm_bookings[0].total_amount, 32145.42);
+
+  const repriced = await updateVol({ dossier_id: dossier.id, carte_id: flight.id, prix_total: 5357.57 }, client);
+  assert.equal(repriced.devise, "EUR");
+  assert.equal(repriced.prix_vendu, 5357.57);
+  const kept = db.tables.crm_booking_items.find((item) => item.id === flight.id);
+  assert.equal(kept?.amount, 5357.57);
+  assert.equal((kept?.details as Record<string, unknown>).document_currency, "USD");
+  assert.equal(db.tables.crm_bookings[0].currency, "EUR");
+
+  const foreign = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Arkia",
+      numero: "IZ612",
+      depart_iata: "CDG",
+      arrivee_iata: "TLV",
+      depart: "2026-11-09T14:00",
+      arrivee: "2026-11-09T18:00",
+      pnr: "14028540",
+      prix_total: 100,
+      devise: "USD",
+    },
+    client
+  );
+  assert.equal(foreign.devise, "USD");
+  assert.equal(foreign.prix_vendu, null);
+  const usd = await updateVol({ dossier_id: dossier.id, carte_id: foreign.id, prix_total: 80 }, client);
+  assert.equal(usd.devise, "USD");
+  const usdRow = db.tables.crm_booking_items.find((item) => item.id === foreign.id);
+  assert.equal(usdRow?.amount, null);
+  assert.equal((usdRow?.details as Record<string, unknown>).document_currency, "USD");
+  assert.equal((usdRow?.details as Record<string, unknown>).document_amount, 80);
 });
 
 test("definir_visibilite_carte suit l’agence, sans message et sans deuxième ligne", async () => {

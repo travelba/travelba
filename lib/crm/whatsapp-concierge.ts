@@ -1684,6 +1684,28 @@ export function agencyHandoffSentence(lang: ReplyLang = "fr") {
   });
 }
 
+export const HANDOFF_NOT_RECORDED = "Je n’ai pas transmis cela à l’agence.";
+
+/** Vrai si le texte dit que la demande est déjà chez l’agence. Une question (« souhaitez-vous ») ne compte pas. */
+export function replyClaimsAgencyHandoff(text: string) {
+  const folded = fold(text).replace(/[’']/g, "'");
+  if (!/\b(agence|agency|benjamin)\b/.test(folded)) return false;
+  if (/\bje transmets\b/.test(folded)) return true;
+  if (/\bj'ai transmis\b/.test(folded)) return true;
+  if (/\bj'ai passe\b/.test(folded)) return true;
+  if (/\bdemande\b/.test(folded) && /\b(passe|transmise|transmis)\b/.test(folded)) return true;
+  if (/\bi(?:'m| am) passing\b/.test(folded)) return true;
+  if (/\bi (?:have )?passed\b/.test(folded)) return true;
+  return false;
+}
+
+/** Le texte ne dit plus qu’une demande est partie, quand la ligne n’a pas été créée. */
+export function dropUnrecordedHandoff(text: string) {
+  if (!replyClaimsAgencyHandoff(text)) return text;
+  const signed = /^le concierge\.?$/im.test(text);
+  return signed ? `${HANDOFF_NOT_RECORDED}\n\nLe Concierge` : HANDOFF_NOT_RECORDED;
+}
+
 function handoffSentence(lang: ReplyLang) {
   return agencyHandoffSentence(lang);
 }
@@ -1722,6 +1744,17 @@ export function pieceSavedLine(lang: ReplyLang) {
     en: "Your document is saved with your papers.",
     he: "המסמך נשמר בכספת שלכם.",
   });
+}
+
+/** La transcription a échoué. Aucun mot de la note n’est inventé. */
+export function voiceNoteUnheardReply(lang: ReplyLang = "fr") {
+  return withConciergeSignature(
+    say(lang, {
+      fr: "Je n’ai pas pu entendre cette note vocale. Écrivez votre message, l’agence pourra l’écouter.",
+      en: "I couldn’t hear that voice note. Please write your message. The agency can listen to it.",
+      he: "לא הצלחתי לשמוע את ההודעה הקולית. כתבו את ההודעה, והסוכנות תוכל להאזין.",
+    })
+  );
 }
 
 export function panRefusedReply(lang: ReplyLang) {
