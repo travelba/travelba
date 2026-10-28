@@ -61,13 +61,14 @@ export function planEmailAttachmentCopies(
   return { copy, skipped };
 }
 
-export function emailDepositMessage(result: DepositOutcome) {
+export function emailDepositMessage(result: DepositOutcome, linked = false) {
+  const place = linked ? "sur la carte de la réservation" : "sur le dossier";
   if (result.added === 0 && result.skipped === 0) {
     return "Aucune pièce jointe à déposer. Le mail est classé sur le dossier, rien n’a été ajouté.";
   }
   if (result.added === 0) {
-    return "Ces pièces sont déjà sur le dossier, ou ce ne sont que des images de signature. Le mail est classé. Les cartes n’ont pas changé.";
+    return `Ces pièces sont déjà ${place}, ou ce ne sont que des images de signature. Le mail est classé. Les cartes n’ont pas changé.`;
   }
   const pieces = result.added === 1 ? "Une pièce est déposée" : `${result.added} pièces sont déposées`;
-  return `${pieces} sur le dossier. Les cartes n’ont pas changé.`;
+  return `${pieces} ${place}. Les cartes n’ont pas changé.`;
 }

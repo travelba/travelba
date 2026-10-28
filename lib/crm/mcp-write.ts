@@ -806,17 +806,25 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
     return { id: row.id, statut: "refused" as const };
   }
   const booking = await loadBooking(db, { id: action.dossierId, reference: "" });
-  const { depositEmailAttachments, applyIngestCards, markEmailAttached, attachFilesSummary } = await import(
+  const { depositEmailAttachments, markEmailAttached, attachFilesSummary, resolveEmailCardId } = await import(
     "@/lib/crm/email-attach-run"
   );
-  if (action.action === "rattacher") {
+  const { parseExtractPayloadSafe } = await import("@/lib/crm/ingest-types");
+  const extract = row.extract ? parseExtractPayloadSafe(row.extract) : null;
+  let cardId: string | null = null;
+  try {
+    cardId = await resolveEmailCardId(db, booking.id, extract);
+  } catch (err) {
+    raise(err, "E-mail non traité.");
+  }
+  if (action.action === "rattacher" || action.action === "mettre_a_jour") {
     let deposited;
     try {
-      deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments);
+      deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments, cardId);
     } catch (err) {
       raise(err, "E-mail non traité.");
     }
-    const message = attachFilesSummary(deposited);
+    const message = attachFilesSummary(deposited, Boolean(cardId));
     try {
       await markEmailAttached(db, row, {
         bookingId: booking.id,
@@ -834,39 +842,11 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
       dossier_id: booking.id,
       pieces: deposited.added,
       sans_piece: deposited.empty,
+      carte_id: cardId,
+      cartes: false as const,
     };
   }
-  if (action.action !== "mettre_a_jour") throw new McpWriteError("Action inconnue.");
-  if (!row.extract) throw new McpWriteError("Extrait introuvable.");
-  const { parseExtractPayloadSafe } = await import("@/lib/crm/ingest-types");
-  const extract = parseExtractPayloadSafe(row.extract);
-  try {
-    await applyIngestCards({
-      bookingId: booking.id,
-      customerId: booking.customer_id,
-      extract,
-      emailIngestId: row.id,
-      itemId: null,
-      applyStayFields: false,
-    });
-    const deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments);
-    await markEmailAttached(db, row, {
-      bookingId: booking.id,
-      customerId: booking.customer_id,
-      actorId: null,
-      summary: "Cartes mises à jour depuis le mail",
-      cards: true,
-    });
-    return {
-      id: row.id,
-      statut: "attached" as const,
-      dossier_id: booking.id,
-      pieces: deposited.added,
-      cartes: true as const,
-    };
-  } catch (err) {
-    raise(err, "E-mail non traité.");
-  }
+  throw new McpWriteError("Action inconnue.");
 }
 
 export async function createClient(input: Record<string, unknown>, admin?: McpAdmin) {
