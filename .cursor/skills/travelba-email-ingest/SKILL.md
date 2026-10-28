@@ -29,7 +29,14 @@ est le même geste que **Déposer les pièces** : les fichiers vont sur la carte
 qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le
 dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Il ne part
 jamais tout seul. **Créer un dossier** reste le seul clic qui crée des cartes
-(brouillon caché, sans invitation). Le parse ne crée plus de fiche ni de
+(brouillon caché, sans invitation). Le connecteur fait ce clic avec
+`traiter_email` `creer_dossier` : la fiche est trouvée ou créée (sans e-mail
+si le billet n’en a pas ; sinon `client_id` ou `email`), le dossier reste caché,
+les cartes viennent du billet (aller-retour au même PNR : une carte à l’écran,
+une ligne par trajet) et les fichiers sont déposés. `rattacher` et
+`mettre_a_jour` ne créent toujours pas de carte. `lire_email` donne le corps,
+le texte des PDF et le billet déjà lu, sans numéro de passeport ni de carte.
+Le parse ne crée plus de fiche ni de
 dossier, et n’applique plus le séjour.
 
 Deux séjours vers la même ville, deux cartes du même type, une annulation sans
@@ -283,6 +290,7 @@ Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
 | Renouvellement watch | `app/api/cron/gmail-watch-renew/route.ts` |
 | Tests règles | `lib/crm/email-match.test.ts` |
 | Inbox relecture | `components/admin/EmailIngestInbox.tsx` |
+| Lecture et création MCP | `lib/crm/mcp-email.ts` (`lire_email`, `traiter_email` `creer_dossier`) |
 
 ## Vérifier
 

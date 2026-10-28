@@ -54,10 +54,11 @@ import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/cr
 import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { envoyerReleve } from "@/lib/crm/mcp-statement";
+import { readLireEmail } from "@/lib/crm/mcp-email";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Chaque option admin nouvelle s’ajoute ici. */
-export const MCP_TOOL_CAP = 53;
+export const MCP_TOOL_CAP = 54;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -304,8 +305,17 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "emails_en_attente",
     description:
-      "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, rattacher ou mettre_a_jour (pièces sur la carte qui correspond, aucune carte créée).",
+      "Mails fournisseurs en attente. L’identifiant sert à lire_email, puis à traiter_email : refuser, rattacher, mettre_a_jour (pièces sur la carte qui correspond, aucune carte créée) ou creer_dossier.",
     run: () => readEmailsEnAttente(),
+  },
+  {
+    name: "lire_email",
+    description:
+      "Lit un e-mail (id de emails_en_attente). Renvoie le corps, les pièces (nom, type, texte extrait des PDF) et le billet déjà lu (cartes, voyageurs, références). Un aller-retour au même PNR est signalé : une carte à l’écran, une ligne par trajet. Les numéros de passeport et de carte sont masqués. Pas de chemin de fichier, pas d’URL. Lecture seule.",
+    input: {
+      id: z.string().trim().describe("Identifiant de l’e-mail"),
+    },
+    run: (args) => readLireEmail({ id: str(args, "id") }),
   },
   {
     name: "reservation_little_emperors",
@@ -526,15 +536,30 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "traiter_email",
     write: true,
     description:
-      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher et mettre_a_jour exigent dossier_id : ils déposent les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Sans pièce, le mail est classé et rien n’est ajouté. Seul créer un dossier crée des cartes.",
+      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher et mettre_a_jour exigent dossier_id : ils déposent les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Sans pièce, le mail est classé et rien n’est ajouté. creer_dossier est le bouton Créer un dossier : il trouve ou crée la fiche (client_id, ou email, ou le nom du billet ; sans e-mail si le billet n’en a pas), crée le dossier caché, les cartes du billet (aller-retour au même PNR : une carte à l’écran, une ligne par trajet) et dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation.",
     input: {
       id: z.string().trim().describe("Identifiant de l’e-mail en attente"),
-      action: z.enum(["rattacher", "mettre_a_jour", "refuser"]).describe("rattacher, mettre_a_jour ou refuser"),
+      action: z
+        .enum(["rattacher", "mettre_a_jour", "refuser", "creer_dossier"])
+        .describe("rattacher, mettre_a_jour, refuser ou creer_dossier"),
       dossier_id: z
         .string()
         .trim()
         .optional()
         .describe("Dossier choisi, obligatoire pour rattacher et mettre_a_jour"),
+      client_id: z
+        .string()
+        .trim()
+        .optional()
+        .describe("Fiche déjà choisie, pour creer_dossier. Sinon le billet sert à trouver ou créer la fiche"),
+      email: z
+        .string()
+        .trim()
+        .max(254)
+        .optional()
+        .describe("E-mail du voyageur pour trouver ou créer la fiche. Pas une adresse fournisseur ni agence"),
+      prenom: z.string().trim().max(80).optional().describe("Prénom, si la fiche est créée depuis le billet"),
+      nom: z.string().trim().max(80).optional().describe("Nom, si la fiche est créée depuis le billet"),
     },
     run: (args) => settleEmail(args),
   },

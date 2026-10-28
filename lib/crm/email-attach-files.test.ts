@@ -89,5 +89,8 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     assert.match(fn, /depositEmailAttachments/);
     assert.equal(/applyIngestCards|applyReplacementToBooking|applyCancellationToBooking/.test(fn), false);
     assert.match(fn, /cartes: false/);
+    assert.equal(fn.includes("persistNewBookingFromExtract"), false);
+    assert.equal(fn.includes("applyExtractToBooking"), false);
+    assert.match(fn, /creer_dossier/);
   });
 });
