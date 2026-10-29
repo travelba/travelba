@@ -5,8 +5,10 @@ import { AccountBalanceCard } from "@/components/admin/AccountBalance";
 import { loadStripeAccountBalance, stripeConfigured } from "@/lib/crm/stripe";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import {
+  loadStripeMatchExtras,
   scoreStripeMatches,
   STRIPE_MATCH_SELECT,
+  type StripeDossierProposal,
   type StripeMatchCandidate,
   type StripeMatchCustomer,
 } from "@/lib/crm/stripe-match";
@@ -47,10 +49,17 @@ export default async function AdminStripePage() {
     rows = [];
   }
 
+  const extras = await loadStripeMatchExtras(
+    admin,
+    rows.filter((row) => row.status === "unmatched")
+  );
   const suggestions: Record<string, StripeMatchCandidate[]> = {};
+  const dossiers: Record<string, StripeDossierProposal> = {};
   for (const row of rows) {
     if (row.status !== "unmatched") continue;
-    suggestions[row.id] = scoreStripeMatches(row, index).candidates;
+    const scored = scoreStripeMatches(row, index, extras);
+    suggestions[row.id] = scored.candidates;
+    if (scored.dossier) dossiers[row.id] = scored.dossier;
   }
 
   const balance = stripeConfigured() ? await loadStripeAccountBalance() : null;
@@ -68,6 +77,7 @@ export default async function AdminStripePage() {
           rows={rows.map((row) => ({ ...row, payer_email: null, raw: {} }))}
           customers={customers}
           suggestions={suggestions}
+          dossiers={dossiers}
           configured={stripeConfigured()}
         />
       </div>

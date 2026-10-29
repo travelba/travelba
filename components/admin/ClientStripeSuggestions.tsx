@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation";
 import type { CrmStripeTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { stripeInboxCopy } from "@/lib/crm/stripe-inbox";
-import { matchStripeReasonLabel, stripeInboxMethodCaption } from "@/lib/crm/stripe-labels";
+import { matchStripeReasonLabel, stripeDossierCaption, stripeInboxMethodCaption } from "@/lib/crm/stripe-labels";
+import type { StripeDossierProposal } from "@/lib/crm/stripe-match";
 
 export type ClientStripeSuggestion = {
   row: CrmStripeTransaction;
   candidate: { customer_id: string; reason: string; label: string };
   certain: boolean;
+  dossier?: StripeDossierProposal | null;
 };
 
 export function ClientStripeSuggestions({ suggestions }: { suggestions: ClientStripeSuggestion[] }) {
@@ -52,7 +54,7 @@ export function ClientStripeSuggestions({ suggestions }: { suggestions: ClientSt
       </p>
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
       <ul className="mt-3 divide-y divide-border text-sm">
-        {suggestions.map(({ row, candidate, certain }) => {
+        {suggestions.map(({ row, candidate, certain, dossier }) => {
           const signed = `+${formatMoney(Number(row.amount), row.currency)}`;
           const { sender, designation } = stripeInboxCopy(row);
           return (
@@ -65,6 +67,7 @@ export function ClientStripeSuggestions({ suggestions }: { suggestions: ClientSt
                   {formatDateFr(row.booked_at)} · {stripeInboxMethodCaption(row.method, row.last4)} ·{" "}
                   {matchStripeReasonLabel(candidate.reason)}
                   {designation ? ` · ${designation}` : ""}
+                  {dossier ? ` · ${stripeDossierCaption(dossier)}` : ""}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -74,7 +77,13 @@ export function ClientStripeSuggestions({ suggestions }: { suggestions: ClientSt
                     disabled={busyId === row.id}
                     className="admin-af-btn rounded-full px-3 py-1 text-sm"
                     onClick={() =>
-                      void act(row.id, { customer_id: candidate.customer_id }, "Rapprochement impossible. Réessayez.")
+                      void act(
+                        row.id,
+                        dossier?.booking_id
+                          ? { customer_id: candidate.customer_id, booking_id: dossier.booking_id }
+                          : { customer_id: candidate.customer_id },
+                        "Rapprochement impossible. Réessayez."
+                      )
                     }
                   >
                     {busyId === row.id ? "En cours…" : "Valider"}
