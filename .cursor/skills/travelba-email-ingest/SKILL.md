@@ -274,6 +274,8 @@ pour un autre geste) :
 
 Une réponse ou une relance reprend les personnes apparues dans le fil, pas seulement le destinataire d’origine. Celui qui a répondu est À (réponse) ou en copie (relance). Une copie du fil reste en copie. L’adresse nouvelle est enregistrée sur l’hôtel (`crm_hotel_contacts`, source `thread`), dédoublonnée par e-mail, y compris pour le prochain séjour. Le client, l’agence, Little Emperors et Expedia n’y entrent pas. Rien ne part sans le clic. `npx tsx scripts/list-thread-hotel-contacts.ts` liste les adresses qui seraient ajoutées. Il n’écrit pas.
 
+Le tableau de bord relit le fil Gmail du courrier (`refreshStaleHotelThreads`, boîte déjà impersonnée) à l’ouverture, dans un budget court, et le cron `gmail-ingest` reprend les fils les plus anciens. Le dernier message décide : l’agence (`@travelba.fr`, y compris une réponse partie de Gmail) a écrit en dernier, le courrier sort de la liste ; l’hôtel a écrit en dernier, la pastille est « Réponse à traiter ». Un paiement Pliant, un lien payé, une confirmation, un dossier annulé, ou un fil muet sur un séjour passé sortent aussi. `tableau_de_bord` expose `courriers_hotel` avec ce statut.
+
 ## Relancer une ligne déjà parsée
 
 Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
