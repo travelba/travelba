@@ -1,0 +1,417 @@
+import type { Destination } from "../types";
+
+export const africa: Destination[] = [
+  {
+    slug: "namibie",
+    name: "Namibie",
+    region: "afrique",
+    image: "photo-1484318571209-661cf29a69c3",
+    alt: "Dune rouge",
+    line: "Windhoek, Sossusvlei, le Damaraland, la Skeleton Coast.",
+    essay:
+      "Windhoek, Sossusvlei, le Damaraland, la Skeleton Coast.",
+    rhythm: "atlas",
+    itineraries: [
+      {
+        anchor: "voyage",
+        name: "Namibie",
+        title: "Quatre déserts, un seul fil",
+        duration: "10 jours / 9 nuits",
+        season: "Mai à octobre, saison sèche.",
+        lede: "On atterrit, on ne traverse pas.",
+        steps: [
+          {
+            when: "Jour 1",
+            title: "Windhoek",
+            text: "Accueil à l’aéroport, nuit de seuil.",
+            stay: "Olive Exclusive",
+          },
+          {
+            when: "Jours 2 à 4",
+            title: "Sossusvlei",
+            text: "Vol léger.",
+            stay: "Little Kulala",
+          },
+          {
+            when: "Jours 5 et 6",
+            title: "Damaraland",
+            text: "Les éléphants du désert.",
+            stay: "Damaraland Camp",
+          },
+          {
+            when: "Jours 7 à 9",
+            title: "Skeleton Coast",
+            text: "Vol vers Hoanib.",
+            stay: "Hoanib Skeleton Coast Camp",
+          },
+          {
+            when: "Jour 10",
+            title: "Le retour",
+            text: "Vol léger vers Windhoek.",
+            stay: "Les avions du désert",
+          },
+        ],
+        houses: [
+          { name: "Olive Exclusive", where: "Windhoek", note: "Quelques suites." },
+          { name: "Little Kulala", where: "Sossusvlei", note: "La réserve privée." },
+          { name: "Damaraland Camp", where: "Damaraland", note: "Le désert habité." },
+          { name: "Hoanib Skeleton Coast Camp", where: "Skeleton Coast", note: "La côte des brumes." },
+        ],
+        experiences: [
+          "Avions légers entre les camps",
+          "Dunes aux premières heures",
+          "Sorties avec le guide du lodge",
+          "Accueil à Windhoek",
+        ],
+      },
+    ],
+  },
+  {
+    slug: "kenya",
+    name: "Kenya",
+    region: "afrique",
+    image: "photo-1547471080-7cc2caa01a7e",
+    alt: "Savane dorée et acacias",
+    line: "Le Masai Mara, Laikipia, l’océan Indien.",
+    essay:
+      "Le Masai Mara, Laikipia, l’océan Indien — 10 jours / 9 nuits.",
+    rhythm: "salon",
+    itineraries: [
+      {
+        anchor: "voyage",
+        name: "Kenya",
+        title: "L’escarpe, la réserve, la mer",
+        duration: "10 jours / 9 nuits",
+        season: "Juillet à octobre pour la grande migration dans le Mara.",
+        lede: "On arrive par Wilson, à Nairobi.",
+        steps: [
+          {
+            when: "Jours 1 à 4",
+            title: "Masai Mara",
+            text: "Vol vers l’escarpement.",
+            stay: "Angama Mara",
+          },
+          {
+            when: "Jours 5 à 7",
+            title: "Laikipia",
+            text: "Un autre vol.",
+            stay: "Segera Retreat",
+          },
+          {
+            when: "Jours 8 et 9",
+            title: "Diani",
+            text: "La côte, deux nuits.",
+            stay: "Alfajiri Villas",
+          },
+          {
+            when: "Jour 10",
+            title: "Le retour",
+            text: "Vol vers Nairobi, accueil, correspondance.",
+            stay: "Les vols de brousse sont dans le carnet",
+          },
+        ],
+        houses: [
+          { name: "Angama Mara", where: "Masai Mara", note: "Au-dessus de la plaine." },
+          { name: "Segera Retreat", where: "Laikipia", note: "La réserve privée." },
+          { name: "Alfajiri Villas", where: "Diani", note: "Trois villas face à l’océan." },
+        ],
+        experiences: [
+          "Véhicule et guide privés",
+          "Vols de brousse entre les lieux",
+          "Accueil à Nairobi",
+          "Deux nuits de mer après le bush",
+        ],
+      },
+    ],
+  },
+  {
+    slug: "botswana",
+    name: "Botswana",
+    region: "afrique",
+    image: "photo-1516426122078-c23e76319801",
+    alt: "Éléphant dans l’herbe haute",
+    line: "L’Okavango, puis les pans du Makgadikgadi.",
+    essay:
+      "L’Okavango, puis les pans du Makgadikgadi.",
+    rhythm: "film",
+    itineraries: [
+      {
+        anchor: "voyage",
+        name: "Botswana",
+        title: "L’eau, puis le sel",
+        duration: "9 jours / 8 nuits",
+        season: "Mai à octobre pour les pistes et l’eau basse.",
+        lede: "Trois camps.",
+        steps: [
+          {
+            when: "Jours 1 à 3",
+            title: "Chief’s Island",
+            text: "Arrivée à Maun, vol léger.",
+            stay: "Mombo",
+          },
+          {
+            when: "Jours 4 à 6",
+            title: "Les eaux",
+            text: "Un camp dans l’eau.",
+            stay: "andBeyond Xaranna",
+          },
+          {
+            when: "Jours 7 et 8",
+            title: "Makgadikgadi",
+            text: "Le sel, les zèbres en saison.",
+            stay: "Jack’s Camp",
+          },
+          {
+            when: "Jour 9",
+            title: "Le retour",
+            text: "Vol vers Maun, puis la correspondance.",
+            stay: "Avions légers",
+          },
+        ],
+        houses: [
+          { name: "Mombo", where: "Okavango", note: "Chief’s Island." },
+          { name: "andBeyond Xaranna", where: "Okavango", note: "Le delta, dans l’eau." },
+          { name: "Jack’s Camp", where: "Makgadikgadi", note: "Les pans de sel." },
+        ],
+        experiences: [
+          "Vols légers entre les camps",
+          "Véhicule privé à chaque étape",
+          "Mokoro lorsque l’eau le permet",
+          "Accueil à Maun",
+        ],
+      },
+    ],
+  },
+  {
+    slug: "afrique-du-sud",
+    name: "Afrique du Sud",
+    region: "afrique",
+    image: "photo-1516026672322-bc52d61a55d5",
+    alt: "Acacia seul",
+    line: "Le Cap, Franschhoek, Sabi Sand.",
+    essay:
+      "Le Cap, Franschhoek, Sabi Sand — 11 jours / 10 nuits.",
+    rhythm: "journal",
+    itineraries: [
+      {
+        anchor: "voyage",
+        name: "Afrique du Sud",
+        title: "La péninsule, la vigne, le bush",
+        duration: "11 jours / 10 nuits",
+        season: "Le Cap de novembre à avril.",
+        lede: "On commence par la mer.",
+        steps: [
+          {
+            when: "Jours 1 à 4",
+            title: "Le Cap",
+            text: "Accueil à l’aéroport.",
+            stay: "Ellerman House",
+          },
+          {
+            when: "Jours 5 et 6",
+            title: "Franschhoek",
+            text: "Route privée vers la vallée.",
+            stay: "La Residence",
+          },
+          {
+            when: "Jours 7 à 10",
+            title: "Sabi Sand",
+            text: "Vol vers le bush.",
+            stay: "Singita Ebony Lodge",
+          },
+          {
+            when: "Jour 11",
+            title: "Le retour",
+            text: "Vol vers Johannesburg ou Le Cap.",
+            stay: "Le dernier vol est écrit",
+          },
+        ],
+        houses: [
+          { name: "Ellerman House", where: "Bantry Bay", note: "Une maison face à l’Atlantique." },
+          { name: "La Residence", where: "Franschhoek", note: "La vallée." },
+          { name: "Singita Ebony Lodge", where: "Sabi Sand", note: "Le bush." },
+        ],
+        experiences: [
+          "Péninsule avec un guide privé",
+          "Table demandée à La Colombe",
+          "Véhicule privé à Sabi Sand",
+          "Vol intérieur vers le lodge",
+        ],
+      },
+    ],
+  },
+  {
+    slug: "zambie",
+    name: "Zambie",
+    region: "afrique",
+    image: "photo-1547970810-dc1eac37d174",
+    alt: "Piste de terre",
+    line: "South Luangwa, le Zambèze, les chutes.",
+    essay:
+      "South Luangwa, le Zambèze, les chutes — 9 jours / 8 nuits.",
+    rhythm: "atlas",
+    itineraries: [
+      {
+        anchor: "voyage",
+        name: "Zambie",
+        title: "Marcher, descendre le fleuve, voir l’eau tomber",
+        duration: "9 jours / 8 nuits",
+        season: "Juin à octobre, pistes ouvertes.",
+        lede: "Trois camps, trois manières d’être dehors.",
+        steps: [
+          {
+            when: "Jours 1 à 3",
+            title: "South Luangwa",
+            text: "Vol vers Mfuwe.",
+            stay: "Chinzombo",
+          },
+          {
+            when: "Jours 4 à 6",
+            title: "Bas-Zambèze",
+            text: "Un autre vol.",
+            stay: "Chiawa Camp",
+          },
+          {
+            when: "Jours 7 et 8",
+            title: "Livingstone",
+            text: "Les chutes à l’ouverture.",
+            stay: "Thorntree River Lodge",
+          },
+          {
+            when: "Jour 9",
+            title: "Le départ",
+            text: "Vol vers la correspondance.",
+            stay: "Accueil au dernier aéroport",
+          },
+        ],
+        houses: [
+          { name: "Chinzombo", where: "South Luangwa", note: "Le parc que l’on marche." },
+          { name: "Chiawa Camp", where: "Bas-Zambèze", note: "Le fleuve." },
+          { name: "Thorntree River Lodge", where: "Livingstone", note: "Le Zambèze." },
+        ],
+        experiences: [
+          "Marche avec un guide à Luangwa",
+          "Canoë sur le Zambèze",
+          "Les chutes à l’ouverture",
+          "Vols légers entre les camps",
+        ],
+      },
+    ],
+  },
+  {
+    slug: "maroc",
+    name: "Maroc",
+    region: "afrique",
+    image: "photo-1489749798305-4fea3ae63d43",
+    alt: "Minaret et ciel",
+    line: "Marrakech, l’Atlas, la palmeraie de Skoura.",
+    essay:
+      "Marrakech, l’Atlas, la palmeraie de Skoura.",
+    rhythm: "salon",
+    itineraries: [
+      {
+        anchor: "voyage",
+        name: "Maroc",
+        title: "La ville, la montagne, la palmeraie",
+        duration: "8 jours / 7 nuits",
+        season: "Mars à mai, et septembre à novembre.",
+        lede: "Un seul pays, trois maisons.",
+        steps: [
+          {
+            when: "Jours 1 à 3",
+            title: "Marrakech",
+            text: "Accueil à l’aéroport.",
+            stay: "Royal Mansour",
+          },
+          {
+            when: "Jours 4 et 5",
+            title: "Atlas",
+            text: "Route vers Asni.",
+            stay: "Kasbah Tamadot",
+          },
+          {
+            when: "Jours 6 et 7",
+            title: "Skoura",
+            text: "Route vers la palmeraie.",
+            stay: "Dar Ahlam",
+          },
+          {
+            when: "Jour 8",
+            title: "Le retour",
+            text: "Route vers Marrakech, accueil au vol.",
+            stay: "Le même chauffeur",
+          },
+        ],
+        houses: [
+          { name: "Royal Mansour", where: "Marrakech", note: "Les riads privés." },
+          { name: "Kasbah Tamadot", where: "Asni", note: "L’Atlas, au-dessus de la plaine." },
+          { name: "Dar Ahlam", where: "Skoura", note: "La palmeraie." },
+        ],
+        experiences: [
+          "Médina à l’ouverture",
+          "Chauffeur du premier au dernier jour",
+          "Atlas sans programme chargé",
+          "Dîners de Skoura, tenus par la maison du lieu",
+        ],
+      },
+    ],
+  },
+  {
+    slug: "egypte",
+    name: "Égypte",
+    region: "afrique",
+    image: "photo-1539768942893-daf53e448371",
+    alt: "Architecture de terre",
+    line: "Le Caire, le Nil, Assouan.",
+    essay:
+      "Le Caire, le Nil, Assouan — 10 jours / 9 nuits.",
+    rhythm: "film",
+    itineraries: [
+      {
+        anchor: "voyage",
+        name: "Égypte",
+        title: "La pierre, le fleuve, le cataracte",
+        duration: "10 jours / 9 nuits",
+        season: "Octobre à avril.",
+        lede: "Un guide pour tout le voyage.",
+        steps: [
+          {
+            when: "Jours 1 à 3",
+            title: "Le Caire",
+            text: "Accueil à l’aéroport.",
+            stay: "Four Seasons Hotel Cairo at Nile Plaza",
+          },
+          {
+            when: "Jours 4 à 7",
+            title: "Le Nil",
+            text: "Vol vers Louxor, embarquement.",
+            stay: "Oberoi Zahra",
+          },
+          {
+            when: "Jours 8 et 9",
+            title: "Assouan",
+            text: "La terrasse, Philæ tôt.",
+            stay: "Sofitel Legend Old Cataract",
+          },
+          {
+            when: "Jour 10",
+            title: "Le retour",
+            text: "Vol vers Le Caire.",
+            stay: "Les vols intérieurs sont tenus",
+          },
+        ],
+        houses: [
+          { name: "Four Seasons Hotel Cairo at Nile Plaza", where: "Le Caire", note: "Le fleuve." },
+          { name: "Oberoi Zahra", where: "Le Nil", note: "La cabine." },
+          { name: "Sofitel Legend Old Cataract", where: "Assouan", note: "La terrasse au-dessus du Nil." },
+        ],
+        experiences: [
+          "Égyptologue privé sur tout le voyage",
+          "Pyramides et temples à l’ouverture",
+          "Navigation sur le Nil",
+          "Felouque à Assouan",
+        ],
+      },
+    ],
+  },
+];

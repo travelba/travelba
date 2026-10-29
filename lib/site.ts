@@ -31,11 +31,10 @@ export const siteConfig = {
     rcs: "991 614 694 R.C.S. Nanterre",
     ape: "79.12Z — Activités des voyagistes",
     president: "RZ INVEST",
-    accreditation: "IATA (International Air Transport Association)",
+    accreditation: "IATA 20291655 · Atout France IM092260002",
     garantieFinanciere:
-      "APST — Association Professionnelle de Solidarité du Tourisme, 15 avenue Carnot, 75017 Paris",
-    // À compléter : immatriculation Atout France (IM0xxxxxxxx).
-    atoutFrance: "",
+      "APST n°43865 — Association Professionnelle de Solidarité du Tourisme, 15 avenue Carnot, 75017 Paris",
+    atoutFrance: "IM092260002",
   },
 } as const;
 
