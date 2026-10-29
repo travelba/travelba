@@ -21,14 +21,14 @@ function courrier(patch: Partial<HotelCourrierSource> = {}): HotelCourrierSource
     sentAt: "2026-10-05T08:00:00.000Z",
     lastFollowUpAt: null,
     repliedAt: "2026-10-06T12:00:00.000Z",
-    replyBody: "L’upgrade est confirmé.",
+    replyBody: "Bien reçu, nous préparons la chambre.",
     hotelName: "Casa Monti",
     itemTitle: "Suite",
     reference: "TB-1042",
     replies: [
       {
         id: "reply-1",
-        body: "L’upgrade est confirmé.",
+        body: "Bien reçu, nous préparons la chambre.",
         receivedAt: "2026-10-06T12:00:00.000Z",
       },
     ],
@@ -50,7 +50,7 @@ function spend(patch: Partial<HotelPliantSpend> = {}): HotelPliantSpend {
   };
 }
 
-test("le tableau ne garde que les courriers partis, le plus récent d’abord", () => {
+test("le tableau garde les courriers à traiter, l’hôtel d’abord", () => {
   const lines = dashboardCourriers(
     [
       courrier({ id: "upgrade", status: "replied", kind: "upgrade" }),
@@ -75,20 +75,24 @@ test("le tableau ne garde que les courriers partis, le plus récent d’abord", 
       }),
     ],
     [],
-    true
+    true,
+    Date.parse("2026-10-29T12:00:00.000Z")
   );
   assert.deepEqual(
     lines.map((line) => line.id),
-    ["attente", "upgrade", "lien"]
+    ["upgrade", "lien", "attente"]
   );
-  assert.equal(lines[1]?.mark, "Upgrade et accueil");
-  assert.equal(lines[1]?.replyLabel, "Réponse reçue");
-  assert.equal(lines[1]?.detail, "TB-1042 · L’upgrade est confirmé.");
+  assert.equal(lines[0]?.mark, "Upgrade et accueil");
+  assert.equal(lines[0]?.replyLabel, "Réponse à traiter");
+  assert.equal(lines[0]?.lastWriter, "L'hôtel");
+  assert.equal(lines[0]?.detail, "TB-1042 · Bien reçu, nous préparons la chambre.");
   assert.equal(lines[1]?.href, "/admin/reservations/booking-1?hotel=item-1");
-  assert.equal(lines[0]?.replyState, "waiting");
-  assert.equal(lines[0]?.replyLabel, "Sans réponse");
-  assert.equal(lines[0]?.href, "/admin/reservations/booking-1?hotel=item-1&relance=attente");
-  assert.equal(lines[0]?.detail, "TB-1042");
+  const waiting = lines.find((line) => line.id === "attente");
+  assert.equal(waiting?.replyState, "silent");
+  assert.equal(waiting?.replyLabel, "Sans réponse");
+  assert.equal(waiting?.lastWriter, "L'agence");
+  assert.equal(waiting?.href, "/admin/reservations/booking-1?hotel=item-1&relance=attente");
+  assert.equal(waiting?.detail, "TB-1042");
   assert.equal(lines[0]?.paymentState, "hidden");
   assert.equal(lines.some((line) => line.mark === "Expedia TAAP"), false);
 });
@@ -124,9 +128,11 @@ test("une relance sans réponse reste en attente, à la date de relance", () => 
       }),
     ],
     [],
-    true
+    true,
+    Date.parse("2026-10-08T10:00:00.000Z")
   );
   assert.equal(line?.replyState, "waiting");
+  assert.equal(line?.lastWriter, "L'agence");
   assert.equal(line?.receivedAt, "2026-10-08T08:00:00.000Z");
 });
 
@@ -143,20 +149,18 @@ test("un message qui compte vaut une réponse même si le statut n’a pas suivi
     [],
     true
   );
-  assert.equal(line?.replyLabel, "Réponse reçue");
+  assert.equal(line?.replyLabel, "Réponse à traiter");
+  assert.equal(line?.lastWriter, "L'hôtel");
   assert.equal(line?.detail, "TB-1042 · Bien reçu.");
 });
 
-test("le lien de paiement dit si la carte de l’hôtel a été débitée", () => {
+test("le lien de paiement sort s’il est payé, et le dit s’il ne l’est pas", () => {
   const paid = dashboardCourriers(
     [courrier({ id: "lien", kind: "payment_link", itemId: "stay-1" })],
     [spend({ bookingItemId: "stay-1", billingCents: "18650" })],
     true
   );
-  assert.equal(paid[0]?.paymentState, "paid");
-  assert.match(paid[0]?.paymentLabel || "", /Paiement Pliant effectué/);
-  assert.match(paid[0]?.paymentLabel || "", /186,50/);
-  assert.match(paid[0]?.paymentLabel || "", /14 oct\. 2026/);
+  assert.deepEqual(paid, []);
 
   const otherHotel = dashboardCourriers(
     [courrier({ id: "lien", kind: "payment_link", itemId: "stay-1" })],
@@ -171,8 +175,23 @@ test("le lien de paiement dit si la carte de l’hôtel a été débitée", () =
     [spend({ bookingItemId: null, hotelRequestId: "lien", billingCents: 5000, bookedAt: "2026-10-02" })],
     true
   );
-  assert.equal(byRequest[0]?.paymentState, "paid");
-  assert.match(byRequest[0]?.paymentLabel || "", /50,00/);
+  assert.deepEqual(byRequest, []);
+
+  const asked = dashboardCourriers(
+    [
+      courrier({
+        id: "lien",
+        kind: "payment_link",
+        itemId: "stay-1",
+        replies: [{ id: "ask", body: "Le règlement est passé. Pouvez-vous confirmer l’heure d’arrivée ?", receivedAt: "2026-10-15T09:00:00.000Z" }],
+      }),
+    ],
+    [spend({ bookingItemId: "stay-1" })],
+    true
+  );
+  assert.equal(asked[0]?.replyLabel, "Réponse à traiter");
+  assert.match(asked[0]?.paymentLabel || "", /Paiement Pliant effectué/);
+  assert.match(asked[0]?.paymentLabel || "", /186,50/);
 });
 
 test("refus, attente, remboursement et un autre hôtel ne comptent pas comme un paiement", () => {
@@ -215,7 +234,8 @@ test("la liste montre trois courriers et replie le reste", () => {
   const html = renderToStaticMarkup(createElement(RecentMails, { mails }));
   assert.match(html, /Réponses d’hôtel/);
   assert.match(html, /Courriers envoyés aux hôtels, et leur réponse/);
-  assert.match(html, /Réponse reçue/);
+  assert.match(html, /Réponse à traiter/);
+  assert.match(html, /L(?:'|&#x27;)hôtel/);
   assert.match(html, /Bien reçu/);
   assert.match(html, /Voir plus/);
   assert.match(html, /Voir moins/);
@@ -236,7 +256,7 @@ test("trois courriers ou moins n’affichent pas Voir plus", () => {
 
 test("sans courrier, la liste le dit", () => {
   const html = renderToStaticMarkup(createElement(RecentMails, { mails: [] }));
-  assert.match(html, /Aucun courrier d’hôtel envoyé pour le moment/);
+  assert.match(html, /Rien à traiter pour le moment/);
 });
 
 test("une relance de moins de 48 h reste en attente, au-delà elle est sans réponse", () => {
@@ -281,7 +301,16 @@ test("une relance de moins de 48 h reste en attente, au-delà elle est sans rép
 });
 
 test("le paiement s’affiche sous le titre, pas à côté", () => {
-  const [mail] = dashboardCourriers([courrier({ kind: "payment_link" })], [spend()], true);
+  const [mail] = dashboardCourriers(
+    [
+      courrier({
+        kind: "payment_link",
+        replies: [{ id: "ask", body: "Le règlement est passé. Pouvez-vous confirmer l’heure ?", receivedAt: "2026-10-15T09:00:00.000Z" }],
+      }),
+    ],
+    [spend()],
+    true
+  );
   const html = renderToStaticMarkup(createElement(RecentMails, { mails: [mail!] }));
   assert.match(html, /Paiement Pliant effectué/);
   assert.match(html, /max-w-full break-words/);
@@ -289,4 +318,134 @@ test("le paiement s’affiche sous le titre, pas à côté", () => {
   const unpaid = dashboardCourriers([courrier({ kind: "payment_link" })], [], true);
   const unpaidHtml = renderToStaticMarkup(createElement(RecentMails, { mails: unpaid }));
   assert.match(unpaidHtml, /Pas de paiement Pliant/);
+});
+
+test("une réponse de l’agence dans Gmail retire le courrier", () => {
+  const lines = dashboardCourriers(
+    [
+      courrier({
+        turns: [
+          { id: "out", at: "2026-10-05T08:00:00.000Z", direction: "out", body: "Pourriez-vous envoyer le lien ?", countsAsReply: false },
+          { id: "in", at: "2026-10-06T12:00:00.000Z", direction: "in", body: "Voici le lien de paiement pour le séjour.", countsAsReply: true },
+          { id: "gmail", at: "2026-10-06T15:00:00.000Z", direction: "out", body: "Merci, nous réglons aujourd’hui.", countsAsReply: false },
+        ],
+      }),
+    ],
+    [],
+    true
+  );
+  assert.deepEqual(lines, []);
+});
+
+test("l’extrait ne montre ni une image cid ni un Hello vide", () => {
+  const [line] = dashboardCourriers(
+    [
+      courrier({
+        replies: [
+          {
+            id: "cid",
+            body: "Hello,\n\n[cid:f04a9214-82c1-45e2-bcd8-e1323435a689]\n\nLe transfert est prévu à 18:40.\n\nBest regards,\nDesk",
+            receivedAt: "2026-10-06T12:00:00.000Z",
+          },
+        ],
+      }),
+    ],
+    [],
+    true
+  );
+  assert.equal(line?.excerpt, "Le transfert est prévu à 18:40.");
+  assert.equal(line?.excerpt.includes("cid:"), false);
+  assert.equal(line?.excerpt.includes("Hello"), false);
+  const html = renderToStaticMarkup(createElement(RecentMails, { mails: [line!] }));
+  assert.equal(html.includes("[cid:"), false);
+  assert.equal(html.includes(">Hello"), false);
+
+  const [empty] = dashboardCourriers(
+    [
+      courrier({
+        replies: [{ id: "hi", body: "Hello,\n[cid:f04a9214-82c1-45e2-bcd8-e1323435a689]", receivedAt: "2026-10-06T12:00:00.000Z" }],
+      }),
+    ],
+    [],
+    true
+  );
+  assert.equal(empty?.replyLabel, "Réponse à traiter");
+  assert.equal(empty?.excerpt, "");
+  const bare = renderToStaticMarkup(createElement(RecentMails, { mails: [empty!] }));
+  assert.equal(bare.includes("Hello"), false);
+  assert.equal(bare.includes("cid:"), false);
+});
+
+test("confirmation, annulation, paiement dit et séjour passé sortent le courrier", () => {
+  const now = Date.parse("2026-10-29T12:00:00.000Z");
+  assert.deepEqual(
+    dashboardCourriers(
+      [courrier({ replies: [{ id: "ok", body: "L’upgrade est confirmé.", receivedAt: "2026-10-06T12:00:00.000Z" }] })],
+      [],
+      true,
+      now
+    ),
+    []
+  );
+  assert.deepEqual(
+    dashboardCourriers([courrier({ bookingStatus: "cancelled" })], [], true, now),
+    []
+  );
+  assert.deepEqual(
+    dashboardCourriers(
+      [
+        courrier({
+          kind: "payment_link",
+          replies: [{ id: "paid", body: "The payment has been received. Thank you.", receivedAt: "2026-10-06T12:00:00.000Z" }],
+        }),
+      ],
+      [],
+      true,
+      now
+    ),
+    []
+  );
+  assert.deepEqual(
+    dashboardCourriers(
+      [
+        courrier({
+          bookingEnd: "2026-09-01",
+          sentAt: "2026-08-20T08:00:00.000Z",
+          repliedAt: null,
+          replyBody: "",
+          replies: [],
+          status: "sent",
+        }),
+      ],
+      [],
+      true,
+      now
+    ),
+    []
+  );
+  const linkStillOpen = dashboardCourriers(
+    [
+      courrier({
+        kind: "payment_link",
+        replies: [{ id: "link", body: "The booking is confirmed. Here is the payment link.", receivedAt: "2026-10-06T12:00:00.000Z" }],
+      }),
+    ],
+    [],
+    true,
+    now
+  );
+  assert.equal(linkStillOpen[0]?.replyLabel, "Réponse à traiter");
+  const fresh = dashboardCourriers(
+    [
+      courrier({
+        bookingEnd: "2026-10-20",
+        replies: [{ id: "late", body: "Nous avons une question sur l’arrivée.", receivedAt: "2026-10-28T12:00:00.000Z" }],
+      }),
+    ],
+    [],
+    true,
+    now
+  );
+  assert.equal(fresh[0]?.replyLabel, "Réponse à traiter");
+  assert.equal(fresh[0]?.lastWriter, "L'hôtel");
 });

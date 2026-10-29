@@ -306,6 +306,40 @@ export async function syncOpenHotelThreads(admin: Admin, bookingIds: string[], l
   return replied;
 }
 
+const HOTEL_THREAD_STALE_MS = 2 * 60 * 1000;
+
+/**
+ * Relit les fils Gmail les plus anciens (contact@ et les réponses @travelba.fr du même fil).
+ * Le budget borne l’attente : au-delà, la lecture du tableau continue sur ce qui est déjà en base.
+ */
+export async function refreshStaleHotelThreads(
+  admin: Admin,
+  options?: { limit?: number; budgetMs?: number; nowMs?: number }
+) {
+  if (!gmailConfigured()) return 0;
+  const limit = Math.max(1, options?.limit ?? 6);
+  const budgetMs = Math.max(200, options?.budgetMs ?? 4000);
+  const nowMs = options?.nowMs ?? Date.now();
+  const cutoff = new Date(nowMs - HOTEL_THREAD_STALE_MS).toISOString();
+  const { data, error } = await admin
+    .from("crm_hotel_requests")
+    .select("booking_id")
+    .in("status", ["sent", "follow_up", "replied"])
+    .or(`thread_synced_at.is.null,thread_synced_at.lt.${cutoff}`)
+    .order("thread_synced_at", { ascending: true, nullsFirst: true })
+    .limit(limit * 4);
+  if (error || !data?.length) return 0;
+  const ids: string[] = [];
+  for (const row of data as { booking_id: string }[]) {
+    if (!row.booking_id || ids.includes(row.booking_id)) continue;
+    ids.push(row.booking_id);
+    if (ids.length >= limit) break;
+  }
+  const pending = ids.map((bookingId) => syncHotelDeskThreads(admin, bookingId).catch(() => 0));
+  await Promise.race([Promise.all(pending), new Promise((resolve) => setTimeout(resolve, budgetMs))]);
+  return ids.length;
+}
+
 /** Tous les messages Gmail qui ont le titre d'un envoi de ce dossier. */
 export async function syncHotelDeskThreads(admin: Admin, bookingId: string) {
   const named: { itemId: string; email: string; name?: string }[] = [];

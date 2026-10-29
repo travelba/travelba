@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   hotelReplyHref,
   hotelReplyNotices,
+  meaningfulMailExcerpt,
   recentHotelReplies,
   replyExcerpt,
   shouldSyncHotelReplies,
@@ -70,6 +71,27 @@ test("l’extrait garde la première ligne, sans e-mail ni numéro de carte", ()
   assert.equal(card, "Le règlement est ouvert.");
   assert.equal(replyExcerpt("   "), "L'hôtel a répondu.");
   assert.equal(replyExcerpt("a".repeat(200)).length, 140);
+  assert.match(replyExcerpt("a".repeat(200)), /…$/);
+});
+
+test("l’extrait ignore l’image, la salutation vide et la signature", () => {
+  const body = [
+    "Hello,",
+    "",
+    "[cid:f04a9214-82c1-45e2-bcd8-e1323435a689]",
+    "",
+    "Le lien de paiement est prêt pour le séjour.",
+    "",
+    "Cordialement,",
+    "Front desk",
+    "",
+    "On Tue, 28 Oct 2026, Travel Business Agency <contact@travelba.fr> wrote:",
+    "> Could you send the link",
+  ].join("\n");
+  assert.equal(meaningfulMailExcerpt(body), "Le lien de paiement est prêt pour le séjour.");
+  assert.equal(meaningfulMailExcerpt("Hello,"), "");
+  assert.equal(meaningfulMailExcerpt("[cid:f04a9214-82c1-45e2-bcd8-e1323435a689]"), "");
+  assert.equal(replyExcerpt("Hello,"), "L'hôtel a répondu.");
 });
 
 test("le nom vient de l’hôtel, puis du titre", () => {
