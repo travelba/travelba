@@ -1,6 +1,7 @@
+/** Mêmes mots que Stripe : un crédit est à encaisser, encaissé ou refusé. */
 export const REVOLUT_STATUS_LABELS: Record<string, string> = {
-  unmatched: "À rapprocher",
-  matched: "Rapproché",
+  unmatched: "À encaisser",
+  matched: "Encaissé",
   ignored: "Refusé",
 };
 
@@ -14,20 +15,11 @@ export function revolutStatusTone(status: string): "amber" | "gold" | "navy" {
   return "navy";
 }
 
-export function revolutSyncSummary(
-  fetched: number,
-  inserted: number,
-  autoMatched = 0
-) {
+/** Aucun crédit ne part tout seul : le résumé ne compte que les mouvements lus et les nouveaux. */
+export function revolutSyncSummary(fetched: number, inserted: number) {
   const lus = fetched > 1 ? `${fetched} mouvements lus` : `${fetched} mouvement lu`;
   const nouveaux = inserted > 1 ? `${inserted} nouveaux` : `${inserted} nouveau`;
-  const base = `Synchronisation terminée : ${lus}, ${nouveaux}`;
-  if (autoMatched <= 0) return `${base}.`;
-  const auto =
-    autoMatched > 1
-      ? `${autoMatched} crédits automatiques`
-      : `${autoMatched} crédit automatique`;
-  return `${base}, ${auto}.`;
+  return `Synchronisation terminée : ${lus}, ${nouveaux}.`;
 }
 
 /** « 3 clients possibles — choisir » : des candidats, aucun assez sûr pour être présélectionné. */

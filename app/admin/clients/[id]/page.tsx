@@ -11,9 +11,7 @@ import {
   DuplicateBookingButton,
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
-import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
-import { wireAccountChoices } from "@/lib/crm/funding-wallet";
-import { ClientStripeSuggestions } from "@/components/admin/ClientStripeSuggestions";
+import { ClientPaymentsToCredit } from "@/components/admin/argent/ClientPaymentsToCredit";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
@@ -269,11 +267,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
   ]);
   const conciergePaused = !pauseRow.data ? false : threadIsPaused(pauseRow.data.paused_until, new Date());
   const threadMessages = whatsappMessages;
-  const revolutSuggestions = suggestionsForCustomer(c, revolut.rows, revolut.people);
-  const stripeSuggestions = suggestionsForStripeCustomer(c, stripe.rows, stripe.people).map((item) => ({
-    ...item,
-    row: { ...item.row, payer_email: null, raw: {} },
-  }));
+  const paymentsToCredit =
+    suggestionsForCustomer(c, revolut.rows, revolut.people).length +
+    suggestionsForStripeCustomer(c, stripe.rows, stripe.people).length;
   return (
     <div className="space-y-5">
       <header className="admin-af-hero-band overflow-hidden rounded-3xl">
@@ -360,18 +356,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
       <Mb3mFicheAction customerId={c.id} blocker={mb3mFicheBlocker(c)} sent={mb3mSent} />
-      <ClientRevolutSuggestions
-        suggestions={revolutSuggestions}
-        accounts={
-          wireAccountChoices(
-            ((billingCompanies || []) as CrmBillingCompany[]).map((company) => ({
-              ...company,
-              customer_id: c.id,
-            }))
-          )[c.id] || []
-        }
-      />
-      <ClientStripeSuggestions suggestions={stripeSuggestions} />
+      <ClientPaymentsToCredit customerId={c.id} count={paymentsToCredit} />
       <section className="admin-af-card rounded-3xl px-5 py-4">
         <div className="flex items-end justify-between gap-3">
           <div>

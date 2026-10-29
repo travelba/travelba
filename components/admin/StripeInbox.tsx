@@ -76,7 +76,7 @@ export function StripeInbox({
         return;
       }
       setMessage(
-        stripeSyncSummary(Number(json.fetched || 0), Number(json.inserted || 0), Number(json.auto_matched || 0))
+        stripeSyncSummary(Number(json.fetched || 0), Number(json.inserted || 0))
       );
       router.refresh();
     } catch {

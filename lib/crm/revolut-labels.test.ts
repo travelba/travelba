@@ -3,8 +3,8 @@ import test from "node:test";
 import { possibleClientsLabel, revolutStatusLabel, revolutStatusTone, revolutSyncSummary } from "./revolut-labels";
 
 test("revolut statuses are shown in French", () => {
-  assert.equal(revolutStatusLabel("unmatched"), "À rapprocher");
-  assert.equal(revolutStatusLabel("matched"), "Rapproché");
+  assert.equal(revolutStatusLabel("unmatched"), "À encaisser");
+  assert.equal(revolutStatusLabel("matched"), "Encaissé");
   assert.equal(revolutStatusLabel("ignored"), "Refusé");
   assert.equal(revolutStatusLabel("weird"), "weird");
   assert.equal(revolutStatusTone("unmatched"), "amber");
@@ -14,10 +14,6 @@ test("sync summary handles singular and plural", () => {
   assert.equal(revolutSyncSummary(1, 1), "Synchronisation terminée : 1 mouvement lu, 1 nouveau.");
   assert.equal(revolutSyncSummary(3, 0), "Synchronisation terminée : 3 mouvements lus, 0 nouveau.");
   assert.equal(revolutSyncSummary(4, 2), "Synchronisation terminée : 4 mouvements lus, 2 nouveaux.");
-  assert.equal(
-    revolutSyncSummary(4, 2, 1),
-    "Synchronisation terminée : 4 mouvements lus, 2 nouveaux, 1 crédit automatique."
-  );
 });
 
 test("libellé des candidats sans présélection", () => {

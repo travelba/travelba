@@ -858,7 +858,7 @@ export async function readRevolutEnAttente() {
     "id" | "amount" | "currency" | "counterparty_name" | "reference" | "booked_at"
   >[];
   return {
-    lien: "/admin/revolut",
+    lien: "/admin/argent?onglet=a-encaisser",
     virements: rows.map((row) => ({
       id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
@@ -915,7 +915,7 @@ export async function readRevolutDebits() {
     ((stays.data || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference])
   );
   return {
-    lien: "/admin/revolut",
+    lien: "/admin/argent?onglet=a-pointer&vue=revolut",
     debits: rows.map((row) => {
       const line = revolutDebitLine(row);
       return {
@@ -1056,7 +1056,7 @@ export async function readStripeEnAttente() {
     "id" | "amount" | "currency" | "payer_name" | "reference" | "method" | "booked_at"
   >[];
   return {
-    lien: "/admin/stripe",
+    lien: "/admin/argent?onglet=a-encaisser",
     paiements: rows.map((row) => ({
       id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
