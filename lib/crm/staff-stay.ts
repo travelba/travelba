@@ -37,7 +37,7 @@ export function staffStayLabel(booking: {
   return LABELS[staffStayVisibility(booking)];
 }
 
-/** Onglet que la pastille ouvre : À faire par défaut, Règlement pour l’argent. */
+/** Onglet que la pastille ouvre : À faire par défaut, Argent pour l’argent. */
 export type StaffBlocker = { id: string; label: string; tab?: "todo" | "argent" };
 
 /** Ce qui empêche de considérer le dossier comme prêt. */

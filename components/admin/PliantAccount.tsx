@@ -69,7 +69,7 @@ function LineMeta({ row }: { row: PliantLine }) {
         type={row.type}
         category={row.category}
         comment={row.comment}
-        href={row.bookingId ? `/admin/reservations/${row.bookingId}?tab=reglement` : null}
+        href={row.bookingId ? `/admin/reservations/${row.bookingId}?tab=argent` : null}
       />
       <StatusChip tone={pliantStatusTone(row.status)}>{pliantStatusLabel(row.status)}</StatusChip>
     </div>

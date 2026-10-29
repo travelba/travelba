@@ -28,7 +28,6 @@ import type { TripAccountingView } from "@/lib/crm/trip-costs";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
-import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
@@ -112,7 +111,6 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     whatsappRequests,
     { data: stayRefs },
     { data: ficheCompanyRows },
-    { data: companyAdminRows },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -162,14 +160,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .order("created_at", { ascending: false }),
     supabase.from("crm_bookings").select("id, reference").eq("customer_id", b.customer_id),
     supabase.from("crm_billing_companies").select("*").eq("customer_id", b.customer_id).order("sort_order"),
-    supabase.from("crm_customers").select(CUSTOMER_PICK_SELECT).eq("company_role", "admin"),
   ]);
   const ficheBillingCompanies = (ficheCompanyRows || []) as CrmBillingCompany[];
-  const companyAdmins = ((companyAdminRows || []) as PickableCustomer[]).sort(
-    (a, b) =>
-      (a.last_name || "").localeCompare(b.last_name || "", "fr") ||
-      (a.first_name || "").localeCompare(b.first_name || "", "fr")
-  );
   const customerLogins = (loginRows || []) as CrmCustomerLogin[];
   const customerActivity = (activityRows || []) as CrmCustomerActivity[];
   const threadMessages = whatsappMessages;
@@ -463,7 +455,6 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           customerLogins={customerLogins}
           customerActivity={customerActivity}
           ficheBillingCompanies={ficheBillingCompanies}
-          companyAdmins={companyAdmins}
           mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece }}
           accounting={accounting}
           importTasks={importTasks}

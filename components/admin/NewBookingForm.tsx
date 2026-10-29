@@ -294,10 +294,10 @@ function ManualNewBookingForm({
         <LedgerWarningNotice message={created?.warning ?? null}>
           {created ? (
             <Link
-              href={`/admin/reservations/${created.id}?tab=reglement`}
+              href={`/admin/reservations/${created.id}?tab=argent`}
               className="admin-af-btn admin-tap inline-flex items-center rounded-xl px-4 py-2 text-sm"
             >
-              Ouvrir l’onglet Règlement du dossier
+              Ouvrir l’onglet Argent du dossier
             </Link>
           ) : null}
         </LedgerWarningNotice>

@@ -994,7 +994,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     etat: cost.state === "pending" ? "en attente" : "confirmé",
   });
   return {
-    lien: `/admin/reservations/${booking.id}?tab=reglement`,
+    lien: `/admin/reservations/${booking.id}?tab=argent`,
     reference: booking.reference,
     titre: booking.title || booking.destination,
     commission_agence: formatAgencyFeePercent(commission.rate),

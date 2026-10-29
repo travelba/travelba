@@ -252,7 +252,7 @@ describe("soldes des comptes", () => {
     assert.match(unread, /Alimentez-le si ce solde ne couvre pas la carte/);
   });
 
-  it("l’onglet Carte du dossier affiche toujours le solde Pliant", () => {
+  it("le bloc Carte Pliant de l’onglet Argent affiche toujours le solde Pliant", () => {
     const page = readFileSync(join(root, "app/admin/reservations/[id]/page.tsx"), "utf8");
     const editor = readFileSync(join(root, "components/admin/BookingEditor.tsx"), "utf8");
     const balance = readFileSync(join(root, "components/admin/DossierPliantBalance.tsx"), "utf8");
@@ -260,8 +260,12 @@ describe("soldes des comptes", () => {
     assert.match(balance, /PliantAccountBalanceCard/);
     assert.match(page, /DossierPliantBalance/);
     assert.match(page, /<Suspense/);
-    const cartes = editor.slice(editor.indexOf('tab === "cartes"'));
-    assert.match(cartes, /pliantBalance/);
+    const argent = editor.slice(editor.indexOf('{tab === "argent" ? ('));
+    const pliant = argent.slice(argent.indexOf('className="order-7'));
+    assert.match(pliant, /Carte Pliant/);
+    assert.match(pliant, /pliantBalance/);
+    assert.match(pliant, /<BookingCards/);
+    assert.equal(editor.includes('tab === "cartes"'), false);
   });
 
   it("l’accueil et l’onglet Comptes d’Argent affichent ces soldes", () => {

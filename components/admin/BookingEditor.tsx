@@ -112,6 +112,7 @@ import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
 import { fundingCompanyOptionLabel, payingCompanyCaption } from "@/lib/crm/funding-wallet";
 import { defaultBillingCompany } from "@/lib/crm/payer";
 import {
+  BOOKING_TAB_HELP,
   BOOKING_TAB_IDS,
   BOOKING_TAB_LABELS,
   BOOKING_TAB_SLUGS,
@@ -132,9 +133,6 @@ function panelLoading(label: string) {
 /** Panneaux absents du premier affichage (ou sous les cartes) : chunk séparé. */
 const BookingIngest = dynamic(() => import("@/components/crm/BookingIngest").then((m) => m.BookingIngest), {
   loading: () => panelLoading("Chargement de l’import…"),
-});
-const CustomerEditor = dynamic(() => import("@/components/admin/CustomerEditor").then((m) => m.CustomerEditor), {
-  loading: () => panelLoading("Chargement de la fiche…"),
 });
 const WhatsappThread = dynamic(() => import("@/components/admin/WhatsappThread").then((m) => m.WhatsappThread), {
   loading: () => panelLoading("Chargement de WhatsApp…"),
@@ -323,7 +321,6 @@ export function BookingEditor({
   openReplyId = null,
   billingCompanies = [],
   ficheBillingCompanies = [],
-  companyAdmins = [],
   littleEmperors = null,
   expenseBilling = [],
   revolutExpenses = [],
@@ -402,7 +399,6 @@ export function BookingEditor({
   }[];
   /** Sociétés de la fiche du client du dossier, colonnes complètes. */
   ficheBillingCompanies?: CrmBillingCompany[];
-  companyAdmins?: PickableCustomer[];
   littleEmperors?: {
     id: string;
     hotel_name: string | null;
@@ -482,8 +478,7 @@ export function BookingEditor({
   const titleEdit = stayNameField(routeTitle, titleDraft);
   const [coverOpen, setCoverOpen] = useState(false);
   const tab = bookingTabFromParam(searchParams.get("tab"));
-  const [clientEditorSeen, setClientEditorSeen] = useState(tab === "client");
-  if (tab === "client" && !clientEditorSeen) setClientEditorSeen(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
   useEffect(() => {
     void adminAction(`/api/admin/bookings/${booking.id}/vu`, { method: "POST" });
   }, [booking.id]);
@@ -1067,6 +1062,8 @@ export function BookingEditor({
     tabRefs.current[next]?.focus();
   }
 
+  // Le geste principal ne disparaît jamais : Montrer au client, puis Mettre à jour le carnet quand
+  // quelque chose est caché, sinon Cacher au client. Chacun passe par la confirmation.
   const primaryAction = booking.archived_at ? (
     <RestoreBookingButton bookingId={booking.id} />
   ) : !booking.visible_to_client || updatesPending ? (
@@ -1076,9 +1073,18 @@ export function BookingEditor({
       onClick={() => setConfirm(showPrimaryPublish ? "publish" : "unpublish")}
       className="admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50"
     >
-      {!booking.visible_to_client ? "Montrer au client" : "Mettre à jour"}
+      {!booking.visible_to_client ? "Montrer au client" : "Mettre à jour le carnet"}
     </button>
-  ) : null;
+  ) : (
+    <button
+      type="button"
+      disabled={busy !== "idle"}
+      onClick={() => setConfirm("unpublish")}
+      className="admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+    >
+      Cacher au client
+    </button>
+  );
   const passesButton = (compactBar: boolean) => (
     <button
       type="button"
@@ -1134,55 +1140,45 @@ export function BookingEditor({
       {staffStayLabel(booking)}
     </p>
   );
+  const menuItem = "admin-tap text-sm font-semibold text-[var(--admin-navy)]";
   const moreMenu = (
     <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl bg-[var(--admin-sky)] px-4 py-3">
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <DuplicateBookingButton bookingId={booking.id} label={`${booking.reference} — ${titleEdit.value.trim() || booking.title}`} />
         <button
           type="button"
-          className="text-sm font-semibold text-[var(--admin-navy)]"
+          className={menuItem}
           disabled={busy !== "idle"}
           onClick={() => {
             setCoverNotice(null);
             setCoverOpen(true);
           }}
         >
-          Importer une photo
+          Couverture
         </button>
         {booking.cover_image_path || catalogCoverId ? (
-          <button
-            type="button"
-            className="text-sm font-semibold text-[var(--admin-navy)]"
-            disabled={busy !== "idle"}
-            onClick={() => void regenerateCover()}
-          >
+          <button type="button" className={menuItem} disabled={busy !== "idle"} onClick={() => void regenerateCover()}>
             Autre version
           </button>
         ) : null}
         {booking.cover_image_path ? (
-          <button
-            type="button"
-            className="text-sm font-semibold text-[var(--admin-navy)]"
-            disabled={busy !== "idle"}
-            onClick={clearCover}
-          >
+          <button type="button" className={menuItem} disabled={busy !== "idle"} onClick={clearCover}>
             Photo du lieu
           </button>
         ) : null}
-        {booking.visible_to_client ? (
-          <button
-            type="button"
-            className="text-sm font-semibold text-[var(--admin-navy)]"
-            onClick={() => {
-              setMore(false);
-              setConfirm("unpublish");
-            }}
-          >
-            Cacher au client
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={menuItem}
+          aria-pressed={previewOpen}
+          onClick={() => {
+            setMore(false);
+            setPreviewOpen((open) => !open);
+          }}
+        >
+          {previewOpen ? "Fermer l’aperçu client" : "Aperçu de l’espace client"}
+        </button>
         {shareUrl ? (
-          <a href={shareUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[var(--admin-navy)] underline">
+          <a href={shareUrl} target="_blank" rel="noreferrer" className={`${menuItem} underline`}>
             Voir comme le client
           </a>
         ) : null}
@@ -1233,7 +1229,7 @@ export function BookingEditor({
               ) : null}
               {saveIconButton}
               <span className="hidden lg:contents">{saveButton}</span>
-              {passesButton(true)}
+              {hasFlight ? passesButton(true) : null}
               {primaryAction}
               {moreButton}
             </div>
@@ -1246,7 +1242,7 @@ export function BookingEditor({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-start lg:gap-3">
             <Link href="/admin/reservations" className="admin-tap inline-flex shrink-0 items-center text-sm font-semibold text-[var(--admin-navy)] lg:pt-5">
-              ← Réservations
+              ← Dossiers
             </Link>
             <div className="min-w-0 flex-1">
               <label className="block min-w-0">
@@ -1289,7 +1285,7 @@ export function BookingEditor({
               </button>
             ) : null}
             {saveButton}
-            {passesButton(false)}
+            {hasFlight ? passesButton(false) : null}
             {primaryAction}
             {moreButton}
           </div>
@@ -1345,19 +1341,12 @@ export function BookingEditor({
                 tabIndex={selected ? 0 : -1}
                 onClick={() => setTab(id)}
                 onKeyDown={onTabKey}
-                className={
-                  id === "interface"
-                    ? `mb-2 inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-3 py-1.5 font-display text-sm font-semibold lg:ml-auto lg:min-h-0 ${
-                        selected
-                          ? "bg-[var(--admin-peach)] text-[var(--admin-navy)]"
-                          : "text-[#9e7e51] hover:text-[var(--admin-navy)]"
-                      }`
-                    : `-mb-px inline-flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold lg:min-h-0 ${
-                        selected
-                          ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
-                          : "border-transparent text-muted hover:text-[var(--admin-navy)]"
-                      }`
-                }
+                className={`-mb-px inline-flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold lg:min-h-0 ${
+                  selected
+                    ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
+                    : "border-transparent text-muted hover:text-[var(--admin-navy)]"
+                }`}
+                title={BOOKING_TAB_HELP[id]}
               >
                 {BOOKING_TAB_LABELS[id]}
                 {id === "todo" && blockers.length > 0 ? (
@@ -1473,6 +1462,42 @@ export function BookingEditor({
         </section>
       ) : null}
 
+      {previewOpen ? (
+        <section className="admin-af-card space-y-4 rounded-3xl border border-[var(--admin-gold)]/50 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CoverMark>Aperçu de l’espace client</CoverMark>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(false)}
+              className="admin-tap rounded-full border border-[var(--border)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--admin-navy)]"
+            >
+              Fermer l’aperçu
+            </button>
+          </div>
+        <ClientInterfacePreview
+          booking={booking}
+          agencyFeeRate={previewFeeRate}
+          items={items}
+          documents={documents}
+          travelers={travelers}
+          identityDocs={identityDocs}
+          companions={companions}
+          customer={customer}
+          visaRequests={visaRequests}
+          refusals={refusals}
+          pliantReady={pliantReady}
+          shareUrl={shareUrl}
+          shareCompanions={shareCompanions}
+          ledger={ledger}
+          settled={settledAuthorizationCountries({
+            travelerIds: travelers.map((traveler) => traveler.id),
+            estaTones: estaLines,
+            ukEtaTones: ukEtaLines,
+          })}
+        />
+        </section>
+      ) : null}
+
       <div role="tabpanel" id="booking-panel" aria-labelledby={tabButtonId(tab)} className="flex flex-col gap-6">
       <form id="booking-meta" onSubmit={save} className="contents">
         <div className="contents">
@@ -1506,10 +1531,48 @@ export function BookingEditor({
                   onClick={() => setTab("argent")}
                   className="font-semibold text-[var(--admin-navy)] underline underline-offset-2"
                 >
-                  Règlement
+                  Argent
                 </button>
               </p>
             </div>
+            {customer ? (
+              <dl className="grid gap-x-6 gap-y-2 rounded-2xl bg-[#faf9f6] px-4 py-3 text-sm text-[var(--admin-navy)] sm:grid-cols-2">
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">E-mail</dt>
+                  <dd className="truncate">{customer.email || "—"}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">Téléphone</dt>
+                  <dd className="truncate">
+                    {customer.phone || "—"}
+                    {customer.whatsapp_opt_out_at
+                      ? " · WhatsApp refusé"
+                      : customer.whatsapp_opt_in_at
+                        ? " · WhatsApp activé"
+                        : ""}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">Foyer</dt>
+                  <dd className="truncate">
+                    {companions.length
+                      ? `${companions.length} compagnon${companions.length > 1 ? "s" : ""}`
+                      : "Aucun compagnon"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">Sociétés</dt>
+                  <dd className="truncate">
+                    {ficheBillingCompanies.length
+                      ? ficheBillingCompanies.map((company) => company.company_name).filter(Boolean).join(", ")
+                      : "Particulier"}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
+            {customer ? (
+              <p className="text-xs text-muted">Identité, coordonnées, passeports et sociétés se modifient sur la fiche client.</p>
+            ) : null}
             <details className="group rounded-2xl bg-[#faf9f6]">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
                 <span className="min-w-0">
@@ -1655,7 +1718,7 @@ export function BookingEditor({
                   value: "company",
                   title: "Société",
                   hint: payerCompanies.length
-                    ? "Ce voyage entre dans la part société de l’encours. Le client règle cette part dans Transactions."
+                    ? "Ce voyage entre dans la part société de l’encours. Le client règle cette part depuis son compte."
                     : "Aucune société sur la fiche.",
                   disabled: !payerCompanies.length,
                 },
@@ -1805,7 +1868,7 @@ export function BookingEditor({
       </form>
       {tab === "voyage" ? (
         <>
-      <div className="order-5">
+      <div className="order-5 space-y-3">
       <BookingIngest
         role="admin"
         mode="append"
@@ -1816,26 +1879,32 @@ export function BookingEditor({
         aiConfigured={aiConfigured}
         preserveTitle={booking.title}
       />
+      <details className="group rounded-2xl border border-dashed border-[var(--border)] bg-white/70">
+        <summary className="admin-tap flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[var(--admin-navy)] [&::-webkit-details-marker]:hidden">
+          <span>Joindre une pièce sans la lire</span>
+          <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+        </summary>
+        <form onSubmit={addDoc} className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] px-4 py-3">
+          <p className="basis-full text-xs text-muted">Le fichier arrive dans Pièces, sans créer d’étape.</p>
+          <select name="kind" defaultValue="other" disabled={docBusy} aria-label="Type de pièce" className="rounded-full border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]">
+            <option value="other">Confirmation</option>
+            <option value="carte d'embarquement">Carte d’embarquement</option>
+          </select>
+          <input name="file" type="file" required disabled={docBusy} aria-label="Confirmation PDF ou photo" className="text-sm" />
+          <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
+            {docBusy ? "Envoi…" : "Joindre"}
+          </button>
+          <div className="basis-full">
+            <BusyBar active={docBusy} label="Envoi de la pièce…" />
+            {docError ? (
+              <p role="alert" className="text-sm text-[var(--admin-red)]">
+                {docError}
+              </p>
+            ) : null}
+          </div>
+        </form>
+      </details>
       </div>
-      <form onSubmit={addDoc} className="admin-af-card order-6 flex flex-wrap items-center gap-3 rounded-3xl p-5">
-        <p className="text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
-        <select name="kind" defaultValue="other" disabled={docBusy} aria-label="Type de pièce" className="rounded-full border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]">
-          <option value="other">Confirmation</option>
-          <option value="carte d'embarquement">Carte d’embarquement</option>
-        </select>
-        <input name="file" type="file" required disabled={docBusy} aria-label="Confirmation PDF ou photo" className="text-sm" />
-        <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
-          {docBusy ? "Envoi…" : "Joindre"}
-        </button>
-        <div className="basis-full">
-          <BusyBar active={docBusy} label="Envoi de la pièce…" />
-          {docError ? (
-            <p role="alert" className="text-sm text-[var(--admin-red)]">
-              {docError}
-            </p>
-          ) : null}
-        </div>
-      </form>
       <div className="order-2">
       <BookingItemsPanel
         bookingId={booking.id}
@@ -1872,7 +1941,7 @@ export function BookingEditor({
         onClick={() => setTab("argent")}
         className="order-3 admin-af-card flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-3xl px-5 py-4 text-left"
       >
-        <span className="font-display text-lg font-bold text-[var(--admin-navy)]">Règlement</span>
+        <span className="font-display text-lg font-bold text-[var(--admin-navy)]">Argent</span>
         <span className="text-sm text-muted">{payerCaption}</span>
         <span className="text-sm font-semibold text-[var(--admin-navy)]">
           {formatMoney(stayAmount, stayCurrency(booking.currency))}
@@ -1897,25 +1966,6 @@ export function BookingEditor({
       ) : null}
       </div>
         </>
-      ) : null}
-
-      {customer && clientEditorSeen ? (
-        <div className={tab === "client" ? "order-2" : "hidden"}>
-          {clientPick && clientPick.id !== customer.id ? (
-            <p className="mb-4 text-sm text-muted">
-              Enregistrez le dossier pour ouvrir la fiche de{" "}
-              {[clientPick.first_name, clientPick.last_name].filter(Boolean).join(" ") || "ce client"}.
-            </p>
-          ) : null}
-          <CustomerEditor
-            key={customer.updated_at}
-            customer={customer}
-            companions={companions}
-            documents={identityDocs}
-            companyAdmins={companyAdmins}
-            billingCompanies={ficheBillingCompanies}
-          />
-        </div>
       ) : null}
 
       {tab === "client" ? (
@@ -2001,23 +2051,7 @@ export function BookingEditor({
         </div>
       </section>
 
-      {shareUrl ? (
-        <div className="order-4">
-        <TripSharePanel
-          bookingId={booking.id}
-          shareUrl={shareUrl}
-          companions={shareCompanions}
-          sendUrl={`/api/admin/bookings/${booking.id}/partage`}
-        />
-        </div>
-      ) : null}
-      <div className="order-5">
-        <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
-      </div>
-        </>
-      ) : null}
-
-      {tab === "whatsapp" ? (
+      <div className="order-4">
         <WhatsappThread
           messages={whatsappMessages}
           requests={whatsappRequests}
@@ -2029,6 +2063,21 @@ export function BookingEditor({
           templates={whatsappTemplates}
           previewBlocked={whatsappPreviewBlocked}
         />
+      </div>
+      {shareUrl ? (
+        <div className="order-5">
+        <TripSharePanel
+          bookingId={booking.id}
+          shareUrl={shareUrl}
+          companions={shareCompanions}
+          sendUrl={`/api/admin/bookings/${booking.id}/partage`}
+        />
+        </div>
+      ) : null}
+      <div className="order-6">
+        <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
+      </div>
+        </>
       ) : null}
 
       {tab === "argent" ? (
@@ -2220,20 +2269,19 @@ export function BookingEditor({
               )}
             </div>
           </details>
-        </>
-      ) : null}
 
-      {tab === "cartes" ? (
-        <div className="space-y-6">
-          {pliantBalance}
-          <BookingCards
-            bookingId={booking.id}
-            cards={bookingCards}
-            recap={pliantRecap}
-            firstName={stayGuest.firstName}
-            lastName={stayGuest.lastName}
-          />
-        </div>
+          <div className="order-7 space-y-4">
+            <CoverMark>Carte Pliant</CoverMark>
+            {pliantBalance}
+            <BookingCards
+              bookingId={booking.id}
+              cards={bookingCards}
+              recap={pliantRecap}
+              firstName={stayGuest.firstName}
+              lastName={stayGuest.lastName}
+            />
+          </div>
+        </>
       ) : null}
 
       {tab === "todo" ? (
@@ -2353,29 +2401,6 @@ export function BookingEditor({
         </div>
       ) : null}
 
-      {tab === "interface" ? (
-        <ClientInterfacePreview
-          booking={booking}
-          agencyFeeRate={previewFeeRate}
-          items={items}
-          documents={documents}
-          travelers={travelers}
-          identityDocs={identityDocs}
-          companions={companions}
-          customer={customer}
-          visaRequests={visaRequests}
-          refusals={refusals}
-          pliantReady={pliantReady}
-          shareUrl={shareUrl}
-          shareCompanions={shareCompanions}
-          ledger={ledger}
-          settled={settledAuthorizationCountries({
-            travelerIds: travelers.map((traveler) => traveler.id),
-            estaTones: estaLines,
-            ukEtaTones: ukEtaLines,
-          })}
-        />
-      ) : null}
       </div>
     </div>
   );

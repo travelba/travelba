@@ -66,7 +66,7 @@ export async function loadDossierAccountingInputs(admin: SupabaseClient, booking
   };
 }
 
-/** Le bloc « Comptabilité du voyage » de l’onglet Règlement. */
+/** Le bloc « Comptabilité du voyage » de l’onglet Argent. */
 export async function buildTripAccountingView(
   admin: SupabaseClient,
   booking: { id: string; client_settles_stay?: boolean | null },

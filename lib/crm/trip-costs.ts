@@ -651,7 +651,7 @@ export function round(value: number) {
   return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
 }
 
-/** Le bloc « Coûts du voyage » de l’onglet Règlement, et la lecture MCP. */
+/** Le bloc « Coûts du voyage » de l’onglet Argent, et la lecture MCP. */
 export type TripAccountingView = {
   lines: AccountedLine[];
   unsold: TripCost[];

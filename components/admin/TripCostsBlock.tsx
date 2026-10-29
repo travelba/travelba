@@ -218,7 +218,7 @@ export function TripCostsBlock({
                               {state === "elsewhere" && row.matchedBookingId ? (
                                 <span className="font-semibold text-[var(--admin-navy)]">
                                   Rattachée ·{" "}
-                                  <Link href={`/admin/reservations/${row.matchedBookingId}?tab=reglement`} className="text-[#9e7e51] underline">
+                                  <Link href={`/admin/reservations/${row.matchedBookingId}?tab=argent`} className="text-[#9e7e51] underline">
                                     {row.matchedReference || "autre réservation"}
                                   </Link>
                                 </span>

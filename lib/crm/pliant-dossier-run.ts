@@ -215,7 +215,7 @@ async function linksForBooking(admin: SupabaseClient, bookingId: string) {
   return rows;
 }
 
-/** Autorisations encore absentes du grand livre des coûts, pour l’onglet Règlement et le MCP. */
+/** Autorisations encore absentes du grand livre des coûts, pour l’onglet Argent et le MCP. */
 export async function loadDossierPendingCosts(admin: SupabaseClient, bookingId: string, existingSourceIds: string[]) {
   const cardIds = [...singleCardBooking(await linksForBooking(admin, bookingId)).keys()];
   if (!cardIds.length) return [] as TripCost[];
