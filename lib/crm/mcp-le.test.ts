@@ -264,6 +264,62 @@ test("sans lien Little Emperors, la carte hôtel du dossier suffit", async () =>
   assert.equal(view.prix_public, null);
 });
 
+test("l’ancien numéro NoMad de Laura est remplacé, pas annulé", async () => {
+  const admin = memoryAdmin({
+    crm_le_bookings: [
+      {
+        le_booking_id: 126438,
+        confirmation_number: "3103269814",
+        state: "cancelled",
+        hotel_id: 9882,
+        hotel_name: "The NoMad Hotel, London",
+        check_in: "2026-10-30",
+        check_out: "2026-11-03",
+        guest_names: ["Cohen Laura"],
+        crm_booking_id: null,
+        status: "unmatched",
+        raw: { id: 126438 },
+      },
+      {
+        le_booking_id: 126679,
+        confirmation_number: "3103360446",
+        state: "booked",
+        hotel_id: 9882,
+        hotel_name: "The NoMad Hotel, London",
+        check_in: "2026-10-29",
+        check_out: "2026-11-03",
+        guest_names: ["Cohen Laura"],
+        crm_booking_id: DOSSIER,
+        status: "linked",
+        raw: { id: 126679 },
+      },
+    ],
+    crm_bookings: [{ id: DOSSIER, reference: "TB-2026-0043", title: "Londres", customer_id: "c-laura" }],
+    crm_customers: [{ id: "c-laura", first_name: "Norman Steven", last_name: "Cohen" }],
+    crm_booking_travelers: [{ booking_id: DOSSIER, first_name: "Laura Emilie", last_name: "Cohen" }],
+    crm_booking_items: [
+      {
+        booking_id: DOSSIER,
+        kind: "hotel",
+        title: "NoMad London",
+        confirmation_ref: "3103360446",
+        start_at: "2026-10-29",
+        end_at: "2026-11-03",
+        lifecycle: "active",
+        created_at: "2026-09-28T14:35:52.000Z",
+        details: { hotel_name: "NoMad London", le_hotel_id: 9882 },
+      },
+    ],
+  });
+  const view = await readReservationLittleEmperors({ confirmation: "3103269814" }, admin, {
+    listBookings: async () => [],
+  });
+  assert.equal(view.statut, "Remplacée");
+  assert.equal(view.suivi, "remplacée");
+  assert.equal(view.alerte, false);
+  assert.equal(view.remplacee_par, "3103360446");
+});
+
 test("deux réservations ne sont pas choisies", async () => {
   const row = {
     le_booking_id: 90,

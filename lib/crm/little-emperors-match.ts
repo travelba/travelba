@@ -94,10 +94,9 @@ export function decideLittleEmperorsAuto(input: {
   ignored?: boolean;
 }): LeAutoDecision {
   if (input.linkedBookingId) return { kind: "link", bookingId: input.linkedBookingId };
+  if (input.ignored || isLeCancelled(input.booking.state)) return { kind: "wait" };
   if (input.suggestion.autoBookingId) return { kind: "link", bookingId: input.suggestion.autoBookingId };
-  if (input.ignored || isLeCancelled(input.booking.state) || input.suggestion.candidates.length) {
-    return { kind: "wait" };
-  }
+  if (input.suggestion.candidates.length) return { kind: "wait" };
   const customer = suggestCustomerFromExtract(input.customers, leBookingExtract(input.booking));
   const chosen = customer.candidates.find((row) => row.customer_id === customer.autoCustomerId);
   if (!customer.autoCustomerId || !chosen || chosen.score < 85) return { kind: "wait" };

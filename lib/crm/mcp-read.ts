@@ -18,6 +18,13 @@ import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
 import { checkinMcpLine, type FlightCheckinView } from "@/lib/crm/online-checkin";
 import { loadCheckinContext, viewsFromContext } from "@/lib/crm/online-checkin-db";
 import { loadLedgerCountedStayAmounts } from "@/lib/crm/displayed-stay";
+import {
+  cancellationStatut,
+  extractCancellationVerdict,
+  leCancellationVerdict,
+  loadStayAnchors,
+  parseStoredExtract,
+} from "@/lib/crm/cancellation-standing";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
@@ -1063,7 +1070,7 @@ export async function readEmailsEnAttente() {
   const admin = db();
   const { data, error } = await admin
     .from("crm_email_ingest")
-    .select("id, label, from_email, subject, received_at, status, candidates, error")
+    .select("id, label, from_email, subject, received_at, status, candidates, error, extract")
     .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
     .order("received_at", { ascending: false, nullsFirst: false })
     .limit(INBOX_LIMIT);
@@ -1073,24 +1080,34 @@ export async function readEmailsEnAttente() {
   }
   const rows = (data || []) as Pick<
     CrmEmailIngest,
-    "id" | "label" | "from_email" | "subject" | "received_at" | "status" | "candidates" | "error"
+    "id" | "label" | "from_email" | "subject" | "received_at" | "status" | "candidates" | "error" | "extract"
   >[];
+  const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
     lien: "/admin/emails",
-    mails: rows.map((row) => ({
-      id: row.id,
-      expediteur: row.from_email,
-      sujet: row.subject,
-      recu_le: row.received_at ? formatDateFr(row.received_at) : null,
-      label: row.label,
-      statut: EMAIL_STATUS[row.status] || row.status,
-      propositions: (row.candidates || []).slice(0, 5).map((candidate) => ({
-        libelle: candidate.label,
-        client_id: candidate.customer_id,
-        dossier_id: candidate.booking_id || null,
-      })),
-      erreur: row.error,
-    })),
+    mails: rows.map((row) => {
+      const verdict = extractCancellationVerdict(
+        { label: row.label, receivedAt: row.received_at, extract: parseStoredExtract(row.extract) },
+        known
+      );
+      return {
+        id: row.id,
+        expediteur: row.from_email,
+        sujet: row.subject,
+        recu_le: row.received_at ? formatDateFr(row.received_at) : null,
+        label: row.label,
+        statut: EMAIL_STATUS[row.status] || row.status,
+        suivi: verdict.suivi,
+        alerte: verdict.alerte,
+        remplacee_par: verdict.remplacee_par,
+        propositions: (row.candidates || []).slice(0, 5).map((candidate) => ({
+          libelle: candidate.label,
+          client_id: candidate.customer_id,
+          dossier_id: candidate.booking_id || null,
+        })),
+        erreur: row.error,
+      };
+    }),
   };
 }
 
@@ -1099,7 +1116,7 @@ export async function readLittleEmperorsEnAttente() {
   const { data, error } = await admin
     .from("crm_le_bookings")
     .select(
-      "id, confirmation_number, state, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost"
+      "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost"
     )
     .eq("status", "unmatched")
     .order("check_in", { ascending: false, nullsFirst: false })
@@ -1113,6 +1130,7 @@ export async function readLittleEmperorsEnAttente() {
     | "confirmation_number"
     | "state"
     | "hotel_name"
+    | "hotel_id"
     | "city"
     | "country"
     | "check_in"
@@ -1121,20 +1139,29 @@ export async function readLittleEmperorsEnAttente() {
     | "candidates"
     | "currency"
     | "total_cost"
+    | "le_booking_id"
   >[];
+  const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
     lien: "/admin/little-emperors",
-    sejours: rows.map((row) => ({
-      hotel: row.hotel_name,
-      ville: row.city,
-      pays: row.country,
-      arrivee: row.check_in,
-      depart: row.check_out,
-      voyageurs: row.guest_names,
-      confirmation: row.confirmation_number,
-      etat_le: row.state,
-      montant_lu: row.total_cost ? `${row.total_cost} ${row.currency || ""}`.trim() : null,
-      propositions: (row.candidates || []).slice(0, 5).map((candidate) => candidate.label),
-    })),
+    sejours: rows.map((row) => {
+      const verdict = leCancellationVerdict(row, known);
+      return {
+        hotel: row.hotel_name,
+        ville: row.city,
+        pays: row.country,
+        arrivee: row.check_in,
+        depart: row.check_out,
+        voyageurs: row.guest_names,
+        confirmation: row.confirmation_number,
+        etat_le: row.state,
+        statut: cancellationStatut(row.state, verdict),
+        suivi: verdict.suivi,
+        alerte: verdict.alerte,
+        remplacee_par: verdict.remplacee_par,
+        montant_lu: row.total_cost ? `${row.total_cost} ${row.currency || ""}`.trim() : null,
+        propositions: (row.candidates || []).slice(0, 5).map((candidate) => candidate.label),
+      };
+    }),
   };
 }

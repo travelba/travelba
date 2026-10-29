@@ -5,7 +5,14 @@ import { confirmationRefsAlign, firstNamesAlign, lastNamesClose, referenceTokens
 import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
 import { hotelBookingStem, joinConfirmationRefs } from "@/lib/crm/item-match";
 import {
+  cancellationStatut,
+  leCancellationVerdict,
+  loadStayAnchors,
+  type CancellationVerdict,
+} from "@/lib/crm/cancellation-standing";
+import {
   benefitsFromLeRaw,
+  isLeCancelled,
   leDateOnly,
   listLittleEmperorsBookings,
   littleEmperorsConfigured,
@@ -570,6 +577,26 @@ export async function loadLeReservation(
   return { booking: chosen.booking, source: chosen.source, ...link };
 }
 
+const QUIET_CANCELLATION: CancellationVerdict = { suivi: null, alerte: false, remplacee_par: null };
+
+async function verdictForBooking(admin: Admin, booking: LeBooking): Promise<CancellationVerdict> {
+  if (!isLeCancelled(booking.state)) return QUIET_CANCELLATION;
+  const known = await loadStayAnchors(admin);
+  return leCancellationVerdict(
+    {
+      confirmation_number: booking.confirmation_number,
+      state: booking.state,
+      hotel_name: booking.hotel_name,
+      hotel_id: booking.hotel_id,
+      check_in: booking.check_in,
+      check_out: booking.check_out,
+      guest_names: booking.guest_names,
+      le_booking_id: Number.isFinite(booking.id) ? booking.id : null,
+    },
+    known
+  );
+}
+
 /** Lecture d’une réservation, y compris déjà rattachée à un dossier. */
 export async function readReservationLittleEmperors(
   input: Record<string, unknown>,
@@ -577,8 +604,17 @@ export async function readReservationLittleEmperors(
   deps?: { listBookings?: () => Promise<LeBooking[]> }
 ) {
   const loaded = await loadLeReservation(input, admin, deps);
-  return presentLeReservation(loaded.booking, loaded.dossier, {
+  const client = db(admin);
+  const verdict = await verdictForBooking(client, loaded.booking);
+  const view = presentLeReservation(loaded.booking, loaded.dossier, {
     dossiers: loaded.dossiers,
     source: loaded.source,
   });
+  return {
+    ...view,
+    statut: cancellationStatut(view.statut, verdict),
+    suivi: verdict.suivi,
+    alerte: verdict.alerte,
+    remplacee_par: verdict.remplacee_par,
+  };
 }
