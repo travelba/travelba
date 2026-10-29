@@ -4,6 +4,7 @@ import { getSessionUser, getStaffForUser } from "@/lib/crm/auth";
 import { adminBadges, EMPTY_ADMIN_BADGES } from "@/lib/crm/admin-badges";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { emptyDockSnapshot, loadDockSnapshot } from "@/lib/crm/whatsapp-dock-load";
+import { refontePreviewEnabled } from "@/lib/crm/refonte-preview";
 
 export const metadata = {
   title: {
@@ -36,6 +37,7 @@ export default async function AdminLayout({
         staffName={staff?.full_name || ""}
         staffRole={staff?.role}
         showExample={exampleSessionEnabled()}
+        refonteShell={refontePreviewEnabled()}
       >
         {children}
       </AdminNav>
