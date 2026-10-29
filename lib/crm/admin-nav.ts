@@ -52,6 +52,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
       label: "Dossiers",
       items: [
         { href: "/admin/reservations", label: "Réservations", icon: "luggage" },
+        { href: "/admin/restaurants", label: "Restaurants", icon: "restaurant" },
         { href: "/admin/formalites", label: "Formalités", icon: "shield_check" },
         { href: "/admin/services", label: "Services à confirmer", icon: "headset" },
       ],
@@ -178,7 +179,7 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     label: "Dossiers",
     icon: "luggage",
     href: "/admin/reservations",
-    paths: ["/admin/reservations", "/admin/formalites", "/admin/services"],
+    paths: ["/admin/reservations", "/admin/restaurants", "/admin/formalites", "/admin/services"],
     badges: [],
   },
   {
@@ -222,6 +223,7 @@ export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search
   if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
   if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";
   if (pathname.startsWith("/admin/transactions/client/")) return "Transactions du client";
+  if (pathname === "/admin/restaurants/aujourdhui") return "Ce soir";
   if (pathname === "/admin/recherche") return "Recherche";
   const active = activeAdminNavHref(groups, pathname, search);
   const item = groups.flatMap((group) => group.items).find((entry) => entry.href === active);

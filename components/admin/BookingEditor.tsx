@@ -169,6 +169,9 @@ const EstaOnBooking = dynamic(() => import("@/components/admin/EstaOnBooking").t
 const UkEtaOnBooking = dynamic(() => import("@/components/admin/UkEtaOnBooking").then((m) => m.UkEtaOnBooking), {
   loading: () => panelLoading("Chargement ETA…"),
 });
+const BookingRestaurants = dynamic(() => import("@/components/admin/BookingRestaurants").then((m) => m.BookingRestaurants), {
+  loading: () => panelLoading("Chargement des restaurants…"),
+});
 const ClientInterfacePreview = dynamic(
   () => import("@/components/account/ClientInterfacePreview").then((m) => m.ClientInterfacePreview),
   { loading: () => panelLoading("Chargement de l’aperçu…") }
@@ -2023,6 +2026,8 @@ export function BookingEditor({
       </div>
         </>
       ) : null}
+
+      {tab === "restaurants" ? <BookingRestaurants bookingId={booking.id} /> : null}
 
       {tab === "whatsapp" ? (
         <WhatsappThread

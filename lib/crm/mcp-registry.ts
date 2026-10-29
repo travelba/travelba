@@ -55,10 +55,11 @@ import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { envoyerReleve } from "@/lib/crm/mcp-statement";
 import { readLireEmail } from "@/lib/crm/mcp-email";
+import { catalogueRestaurants, choixRestaurant, sejoursRestaurants, tablesRestaurant } from "@/lib/crm/mcp-restaurants";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
-/** Chaque option admin nouvelle s’ajoute ici. */
-export const MCP_TOOL_CAP = 54;
+/** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
+export const MCP_TOOL_CAP = 58;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1136,6 +1137,76 @@ export const MCP_TOOLS: ToolDef[] = [
       force: z.boolean().optional().describe("Renvoie même si un relevé réussi est parti dans les cinq dernières minutes"),
     },
     run: (args) => envoyerReleve(args),
+  },
+  {
+    name: "sejours_restaurants",
+    description:
+      "Dossiers en séjour ce soir, heure locale : hôtel, ville, dates, voyageurs, WhatsApp du client (téléphone et s’il peut recevoir un message). Lecture seule. Pas de passeport.",
+    run: (args) => sejoursRestaurants(args),
+  },
+  {
+    name: "catalogue_restaurants",
+    write: true,
+    description:
+      "Catalogue restaurants. Sans champ d’écriture : liste, filtrée par ville, ou une fiche si restaurant_id. Avec nom (création) ou restaurant_id et un champ : enregistre. Catégories : japonais, italien, francais, festif, enfants, terrasse, ou une autre. Plateforme : resy, opentable, sevenrooms, thefork, zenchef, telephone, whatsapp, formulaire. Étoilé, gastronomique et prépaiement obligatoire sont exclus et ne peuvent pas être choisis. Pas de numéro de carte.",
+    input: {
+      restaurant_id: z.string().trim().max(80).optional().describe("Identifiant. Présent : met à jour, ou lit la fiche si aucun autre champ"),
+      nom: z.string().trim().max(200).optional().describe("Nom. Présent sans identifiant : crée"),
+      ville: z.string().trim().max(80).optional().describe("Ville. Seule : filtre la liste"),
+      adresse: z.string().trim().max(300).optional(),
+      lat: z.union([z.number(), z.string()]).optional(),
+      lng: z.union([z.number(), z.string()]).optional(),
+      telephone: z.string().trim().max(40).optional(),
+      site: z.string().trim().max(300).optional(),
+      categories: z.string().trim().max(200).optional().describe("Séparées par des virgules"),
+      plateforme: z.string().trim().max(40).optional(),
+      lien: z.string().trim().max(400).optional().describe("Lien de réservation"),
+      bot: z.string().trim().max(20).optional().describe("oui, partiel ou non"),
+      garantie: z.union([z.boolean(), z.string()]).optional().describe("Carte de garantie demandée. Pas un numéro"),
+      annulation_heures: z.union([z.number(), z.string()]).optional(),
+      annulation_frais: z.union([z.number(), z.string()]).optional().describe("Frais en euros"),
+      fermeture_jours: z.string().trim().max(80).optional().describe("lundi, mardi…"),
+      fermetures: z.string().trim().max(400).optional().describe("Périodes mois-jour/mois-jour, une par ligne"),
+      statut: z.string().trim().max(20).optional().describe("actif ou exclu"),
+      motif: z.string().trim().max(40).optional().describe("ferme, gastronomique ou prepaiement"),
+      etoile: z.union([z.boolean(), z.string()]).optional().describe("Étoilé : exclu"),
+      prepaiement: z.union([z.boolean(), z.string()]).optional().describe("Prépaiement obligatoire : exclu"),
+      note: z.string().trim().max(2000).optional().describe("Note interne"),
+    },
+    run: (args) => catalogueRestaurants(args),
+  },
+  {
+    name: "tables_restaurant",
+    write: true,
+    description:
+      "Crée ou met à jour une table du soir (A ou B) : restaurant, heure, couverts, confirmation, compte (défaut concierge@travelba.fr), statut. Garantie : quatre derniers chiffres seulement, jamais le numéro complet. statut annulee ou annuler true passe la table en annulée, avec l’heure et les frais. Un gastronomique, un étoilé ou un prépaiement est refusé.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      date: z.string().trim().max(20).describe("Soir, aaaa-mm-jj"),
+      table: z.string().trim().max(2).describe("A ou B"),
+      restaurant_id: z.string().trim().max(80).optional(),
+      heure: z.string().trim().max(8).optional(),
+      couverts: z.union([z.number(), z.string()]).optional().describe("Défaut : nombre de voyageurs"),
+      confirmation: z.string().trim().max(80).optional(),
+      compte: z.string().trim().max(200).optional().describe("Défaut concierge@travelba.fr"),
+      garantie: z.string().trim().max(8).optional().describe("Quatre derniers chiffres. Jamais le numéro complet"),
+      statut: z.string().trim().max(40).optional().describe("a_reserver, reservee, proposee, choisie, a_annuler, annulee, echec"),
+      annuler: z.union([z.boolean(), z.string()]).optional().describe("Passe la table en annulée"),
+      frais: z.union([z.number(), z.string()]).optional().describe("Frais d’annulation en euros"),
+    },
+    run: (args) => tablesRestaurant(args),
+  },
+  {
+    name: "choix_restaurant",
+    description:
+      "Réponse du client (A, B ou Aucune) et statut d’envoi du message de 16 h pour un dossier. Lecture seule. date limite à un soir.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      date: z.string().trim().max(20).optional().describe("Soir aaaa-mm-jj. Omis : tous les soirs du dossier"),
+    },
+    run: (args) => choixRestaurant(args),
   },
 ];
 

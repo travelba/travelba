@@ -36,7 +36,9 @@ test("changer d’onglet garde les autres paramètres de l’URL, sauf ?hotel= q
 test("les flèches bouclent sur les onglets", () => {
   assert.equal(BOOKING_TAB_IDS[0], "client");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "client", "ArrowRight"), "whatsapp");
-  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "voyage", "ArrowRight"), "todo");
+  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "voyage", "ArrowRight"), "restaurants");
+  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "restaurants", "ArrowRight"), "todo");
+  assert.equal(bookingTabFromParam("restaurants"), "restaurants");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "cartes", "ArrowRight"), "argent");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "client", "ArrowLeft"), "interface");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "interface", "ArrowRight"), "client");
