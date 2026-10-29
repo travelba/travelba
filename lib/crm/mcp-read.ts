@@ -32,6 +32,8 @@ import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type 
 import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
 import { formatDateTimeFr } from "@/lib/crm/dates";
+import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation-mail";
+import { compareLeMadeAt, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
@@ -1111,22 +1113,21 @@ export async function readEmailsEnAttente() {
   };
 }
 
-export async function readLittleEmperorsEnAttente() {
-  const admin = db();
+export async function readLittleEmperorsEnAttente(admin = db()) {
   const { data, error } = await admin
     .from("crm_le_bookings")
     .select(
-      "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost"
+      "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost, raw, created_at"
     )
-    .eq("status", "unmatched")
-    .order("check_in", { ascending: false, nullsFirst: false })
-    .limit(INBOX_LIMIT);
+    .eq("status", "unmatched");
   if (error) {
     logRead("little-emperors", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = (data || []) as Pick<
+  const mails = await loadLeConfirmationMails(admin);
+  const rows = ((data || []) as (Pick<
     CrmLeBooking,
+    | "id"
     | "confirmation_number"
     | "state"
     | "hotel_name"
@@ -1140,7 +1141,11 @@ export async function readLittleEmperorsEnAttente() {
     | "currency"
     | "total_cost"
     | "le_booking_id"
-  >[];
+    | "created_at"
+  > & { raw?: unknown; booked_at?: string | null })[])
+    .map((row) => ({ ...row, booked_on: leListMadeAt(row, mails) }))
+    .sort((left, right) => compareLeMadeAt(left.booked_on, right.booked_on) || left.id.localeCompare(right.id))
+    .slice(0, INBOX_LIMIT);
   const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
     lien: "/admin/little-emperors",
@@ -1152,6 +1157,7 @@ export async function readLittleEmperorsEnAttente() {
         pays: row.country,
         arrivee: row.check_in,
         depart: row.check_out,
+        reservee_le: leMadeDayLabel(row.booked_on),
         voyageurs: row.guest_names,
         confirmation: row.confirmation_number,
         etat_le: row.state,
