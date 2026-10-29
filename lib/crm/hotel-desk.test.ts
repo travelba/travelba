@@ -934,6 +934,18 @@ test("le tableau sonde aussi l’onglet en arrière-plan", () => {
   assert.match(src, /askBrowserAlerts/);
 });
 
+test("la Boîte › Hôtels et le cron relisent le fil Gmail, et le connecteur expose le statut", () => {
+  const page = readFileSync(join(process.cwd(), "components/admin/boite/HotelsPanel.tsx"), "utf8");
+  const cron = readFileSync(join(process.cwd(), "app/api/cron/gmail-ingest/route.ts"), "utf8");
+  const mcp = readFileSync(join(process.cwd(), "lib/crm/mcp-read.ts"), "utf8");
+  const registry = readFileSync(join(process.cwd(), "lib/crm/mcp-registry.ts"), "utf8");
+  assert.match(page, /refreshStaleHotelThreads/);
+  assert.match(page, /budgetMs: 1500/);
+  assert.match(cron, /refreshStaleHotelThreads/);
+  assert.match(mcp, /courriers_hotel/);
+  assert.match(registry, /courriers_hotel/);
+});
+
 test("la synchro des réponses relit aussi un séjour en préparation", () => {
   const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
   const start = src.indexOf("export async function syncRecentHotelReplies");
@@ -1022,6 +1034,23 @@ test("une absence ou un bounce ne passe pas le courrier à Répondu", () => {
   assert.equal(nextLetterStatus("follow_up", true), "replied");
   assert.equal(nextLetterStatus("skipped", true), "skipped");
   assert.equal(nextLetterStatus("sent", away.countsAsReply), "sent");
+});
+
+test("une réponse Gmail de l’agence compte même sans texte utile, et le cid disparaît", () => {
+  const keys = ["Payment link — Le Bristol — HB-9"];
+  const fromGmail = classifyHotelMail({
+    from: "Benjamin <benjamin@travelba.fr>",
+    subject: "Re: Payment link — Le Bristol — HB-9",
+    body: "On Tue, 30 Sep 2026, Hotel <desk@hotel.test> wrote:\n> The link is ready",
+    keys,
+  });
+  assert.equal(fromGmail.keep, true);
+  assert.equal(fromGmail.direction, "out");
+  assert.equal(fromGmail.countsAsReply, false);
+  assert.equal(fromGmail.body, "Message de l'agence.");
+  const cid = hotelReplyForDesk("Hello,\n[cid:f04a9214-82c1-45e2-bcd8-e1323435a689]\nThe link is ready.");
+  assert.equal(cid.includes("cid:"), false);
+  assert.match(cid, /link is ready/);
 });
 
 function threadMessage(patch: Partial<CrmHotelThreadMessage> = {}): CrmHotelThreadMessage {

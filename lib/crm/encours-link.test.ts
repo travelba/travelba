@@ -20,11 +20,11 @@ test("accueil client : le bloc Encours ouvre les transactions", () => {
   assert.equal(src.includes("crm_customer_balances"), true);
 });
 
-test("accueil agence : les encours négatifs ouvrent les transactions", () => {
+test("accueil agence : les encours négatifs ouvrent le grand livre", () => {
   const src = source("app/admin/page.tsx");
   assert.match(src, /Somme des comptes débiteurs/);
   assert.match(src, /Reste à encaisser/);
-  assert.match(src, /href="\/admin\/transactions"/);
+  assert.match(src, /\$\{ADMIN_ROUTES\.argent\}\?onglet=grand-livre/);
   assert.match(src, /Math\.max\(0, -Number\(row\.balance\)/);
 });
 

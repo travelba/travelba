@@ -41,7 +41,7 @@ const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
 async function ledgerAfterItemWrite(supabase: SupabaseClient, bookingId: string, saved: string) {
   const warning = await ledgerWarning(saved, () => refreshBookingLedger(supabase, bookingId));
   revalidatePath(`/admin/reservations/${bookingId}`);
-  revalidatePath("/admin/transactions");
+  revalidatePath("/admin/argent");
   revalidatePath("/mon-compte/transactions");
   return warning ? { ledger_warning: warning } : {};
 }
@@ -355,7 +355,7 @@ export async function POST(request: Request, ctx: Ctx) {
   if ("error" in saved) return jsonError(saved.error, saved.status);
   await refreshBookingDerived(id, { signatory: hotelSignatoryName(auth.staff.full_name) });
   revalidatePath(`/admin/reservations/${id}`);
-  revalidatePath("/admin/transactions");
+  revalidatePath("/admin/argent");
   revalidatePath("/mon-compte/transactions");
   return NextResponse.json({
     item: saved.item,

@@ -38,7 +38,7 @@ import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
 import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
-import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, CrmTravelDocument } from "@/lib/crm/types";
+import type { CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
@@ -286,8 +286,6 @@ export function BookingItemsPanel({
   identityDocs = [],
   holder = null,
   arrivals = [],
-  hasCardCode = false,
-  cardViews = [],
   attachedEmails = [],
   hotelMessages = [],
   hotelThreadMessages = [],
@@ -310,8 +308,6 @@ export function BookingItemsPanel({
   identityDocs?: CrmTravelDocument[];
   holder?: { first_name: string; last_name: string } | null;
   arrivals?: CrmHotelArrival[];
-  hasCardCode?: boolean;
-  cardViews?: CardViewLine[];
   attachedEmails?: {
     id: string;
     subject: string | null;
@@ -343,6 +339,8 @@ export function BookingItemsPanel({
   const pendingRef = useRef(false);
   const baselineRef = useRef(stayCards(items));
   const [pending, setPending] = useState(false);
+  /** Étapes ajoutées ou modifiées depuis le dernier Enregistrer : pastille « Pas encore enregistré ». */
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [rows, setRows] = useState(items);
   const [syncedItems, setSyncedItems] = useState(items);
   if (syncedItems !== items) {
@@ -424,6 +422,7 @@ export function BookingItemsPanel({
     const plan = stepCommitPlan(baselineRef.current.map(toSnapshot), cards.map(toSnapshot));
     pendingRef.current = plan.pending;
     setPending(plan.pending);
+    setPendingIds(new Set([...plan.created, ...plan.updated].map((step) => step.id)));
     setRows(next);
   }
 
@@ -599,6 +598,7 @@ export function BookingItemsPanel({
     baselineRef.current = cardRowsRef.current;
     pendingRef.current = false;
     setPending(false);
+    setPendingIds(new Set());
     setRows(remapped);
     return true;
   }
@@ -678,8 +678,8 @@ export function BookingItemsPanel({
       </div>
       <p className="mt-1 text-xs text-muted">Déplacez une étape par sa poignée, ou Monter / Descendre dans son menu. Par défaut, l’ordre suit les dates.</p>
       {pending ? (
-        <p className="mt-2 text-sm font-semibold text-[var(--admin-navy)]">
-          Modifications en attente. Elles ne s’appliquent qu’à l’enregistrement du séjour.
+        <p className="mt-2 text-sm font-semibold text-[var(--admin-gold-dark)]">
+          Pas encore enregistré : Enregistrer, en haut, écrit ces étapes.
         </p>
       ) : null}
       <div className="mt-3">
@@ -789,7 +789,7 @@ export function BookingItemsPanel({
                     onClick={keepDraft}
                     className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm"
                   >
-                    Valider
+                    Appliquer
                   </button>
                   <button type="button" className={flatBtn} onClick={() => setEditingId(null)}>
                     Annuler
@@ -856,6 +856,11 @@ export function BookingItemsPanel({
                     {doubts.length ? (
                       <span className="mt-1 block text-xs font-semibold text-accent">{doubts.join(" ")}</span>
                     ) : null}
+                    {pendingIds.has(item.id) ? (
+                      <span className="mt-1 inline-flex rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
+                        Pas encore enregistré
+                      </span>
+                    ) : null}
                     {unshown ? (
                       <span className="block text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</span>
                     ) : null}
@@ -889,9 +894,6 @@ export function BookingItemsPanel({
                         identityDocs={identityDocs}
                         holder={holder}
                         cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
-                        clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
-                        hasCardCode={hasCardCode}
-                        cardViews={cardViews.filter((line) => line.itemId === item.id)}
                         messages={hotelMessages}
                         thread={hotelThreadMessages}
                         attached={attachedEmails}
@@ -1034,7 +1036,7 @@ export function BookingItemsPanel({
             onClick={keepDraft}
             className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm"
           >
-            Valider
+            Appliquer
           </button>
         </div>
       ) : null}

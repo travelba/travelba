@@ -16,7 +16,7 @@ test("la liste Pliant montre le dossier et le client avant Benjamin, et revient 
       holderName: "Benjamin Boukris",
       type: "PURCHASE",
       category: "FOOD_AND_DRINKS",
-      href: "/admin/reservations/6ca304b2-ed11-4a68-882f-e6833b07359d?tab=reglement",
+      href: "/admin/reservations/6ca304b2-ed11-4a68-882f-e6833b07359d?tab=argent",
     })
   );
   const dossier = html.indexOf("TB-2026-0088");

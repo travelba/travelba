@@ -56,7 +56,6 @@ describe("page-load-perf", () => {
   it("plus de <select> natif de toute la clientèle : CustomerPickField", () => {
     for (const file of [
       "components/crm/BookingIngest.tsx",
-      "components/admin/NewBookingForm.tsx",
       "components/admin/Ledger.tsx",
     ]) {
       const src = readFileSync(join(root, file), "utf8");

@@ -1,4 +1,11 @@
-import { findHotelBookingCard, findHotelExactStay, findMatchingItem, hotelSameStay } from "@/lib/crm/item-match";
+import {
+  confirmationSupersededByActiveStay,
+  findHotelBookingCard,
+  findHotelExactStay,
+  findMatchingItem,
+  hotelRefTokens,
+  hotelSameStay,
+} from "@/lib/crm/item-match";
 import { countsAsCarnetCard, isActiveItem } from "@/lib/crm/types";
 
 export type LifecycleCard = {
@@ -35,6 +42,25 @@ function carnetCards(items: LifecycleCard[]) {
 }
 
 /**
+ * Le mail nomme un numéro qui n’est sur aucune carte active, et une carte active
+ * du même hôtel a déjà une autre confirmation sur des nuits qui se croisent.
+ */
+function namedCancellationSuperseded(
+  extract: { items?: IncomingCard[] | null },
+  active: LifecycleCard[]
+) {
+  const named = (extract.items || []).filter(
+    (item) => (item.kind || "") === "hotel" && hotelRefTokens(item.confirmation_ref).length > 0
+  );
+  if (!named.length) return false;
+  return named.every((item) =>
+    active.some((card) =>
+      confirmationSupersededByActiveStay(card, { ...item, kind: item.kind || "hotel" })
+    )
+  );
+}
+
+/**
  * Cartes actives à retirer. Le dossier n’est annulé que s’il ne reste plus de carte.
  * Sans référence, et s’il reste des cartes, l’agence choisit. Une carte déjà
  * remplacée ne fait pas annuler le séjour.
@@ -62,6 +88,9 @@ export function cancellationApplyPlan(
   const leftover = carnetCards(remaining);
   if (unique.length) {
     return { cancelBooking: leftover.length === 0, itemIds: unique, needsCardChoice: false };
+  }
+  if (namedCancellationSuperseded(extract, active)) {
+    return { cancelBooking: false, itemIds: [], needsCardChoice: false };
   }
   if (matchedRetired) {
     return { cancelBooking: false, itemIds: [], needsCardChoice: false };

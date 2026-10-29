@@ -166,7 +166,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "tableau_de_bord",
     description:
-      "À faire aujourd’hui : mails, Little Emperors, formalités, services, départs, pièces, soldes Revolut, Stripe et Pliant. Lecture seule.",
+      "À faire aujourd’hui : mails, Little Emperors, formalités, services, départs, pièces, soldes Revolut, Stripe et Pliant. courriers_hotel : fils d’hôtel encore à traiter, statut synchronisé avec Gmail (Réponse à traiter, En attente de réponse, Sans réponse), qui a écrit en dernier. Un fil où l’agence a répondu en dernier, un paiement fait, une confirmation, un dossier annulé ou un séjour passé sans nouveau message n’y figurent pas. Lecture seule.",
     run: () => readTableauDeBord(),
   },
   {
@@ -306,13 +306,13 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "emails_en_attente",
     description:
-      "Mails fournisseurs en attente. L’identifiant sert à lire_email, puis à traiter_email : refuser, rattacher, mettre_a_jour (pièces sur la carte qui correspond, aucune carte créée) ou creer_dossier.",
+      "Mails fournisseurs en attente. L’identifiant sert à lire_email, puis à traiter_email : refuser, rattacher, mettre_a_jour (pièces sur la carte qui correspond, aucune carte créée) ou creer_dossier. Une annulation a alerte true seulement si son numéro est celui d’une carte active. suivi « remplacée » ou « historique » : pas d’alerte.",
     run: () => readEmailsEnAttente(),
   },
   {
     name: "lire_email",
     description:
-      "Lit un e-mail (id de emails_en_attente). Renvoie le corps, les pièces (nom, type, texte extrait des PDF) et le billet déjà lu (cartes, voyageurs, références). Un aller-retour au même PNR est signalé : une carte à l’écran, une ligne par trajet. Les numéros de passeport et de carte sont masqués. Pas de chemin de fichier, pas d’URL. Lecture seule.",
+      "Lit un e-mail (id de emails_en_attente). Renvoie le corps, les pièces (nom, type, texte extrait des PDF) et le billet déjà lu (cartes, voyageurs, références). Un aller-retour au même PNR est signalé : une carte à l’écran, une ligne par trajet. Une annulation porte suivi et alerte : alerte n’est true que si le numéro correspond à une carte active ; « remplacée » et « historique » se filtrent. Les numéros de passeport et de carte sont masqués. Pas de chemin de fichier, pas d’URL. Lecture seule.",
     input: {
       id: z.string().trim().describe("Identifiant de l’e-mail"),
     },
@@ -321,7 +321,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "reservation_little_emperors",
     description:
-      "Lit une réservation Little Emperors, y compris déjà rattachée à un dossier. Par référence, ou par nom du client et hôtel (dates facultatives). Renvoie référence, statut, hôtel, dates, chambres, régime, voyageurs, prix net, prix public, avantages, conditions d’annulation, confirmations hôtel et le dossier lié. Lecture seule. N’invente aucun prix.",
+      "Lit une réservation Little Emperors, y compris déjà rattachée à un dossier. Par référence, ou par nom du client et hôtel (dates facultatives). Renvoie référence, statut, hôtel, dates, reservee_le (date de réservation : création Little Emperors, sinon e-mail de confirmation, sinon l’enregistrement), chambres, régime, voyageurs, prix net, prix public, avantages, conditions d’annulation, confirmations hôtel et le dossier lié. Plusieurs résultats sont cités du plus récent au plus ancien. Une annulation n’est Annulée, avec alerte true, que si le numéro est celui d’une carte active. Sinon statut Remplacée ou Historique, alerte false. Lecture seule. N’invente aucun prix.",
     input: {
       confirmation: z.string().trim().max(80).optional().describe("Référence Little Emperors ou confirmation hôtel"),
       nom: z.string().trim().max(120).optional().describe("Nom du client, avec l’hôtel"),
@@ -333,7 +333,8 @@ export const MCP_TOOLS: ToolDef[] = [
   },
   {
     name: "little_emperors_en_attente",
-    description: "Séjours Little Emperors sans dossier. Ne crée rien.",
+    description:
+      "Séjours Little Emperors sans dossier, date de réservation la plus récente d’abord (création Little Emperors, sinon e-mail de confirmation, sinon l’enregistrement). Chaque ligne porte reservee_le. Une annulation n’a alerte true que si son numéro est celui d’une carte active. suivi « remplacée » ou « historique », alerte false : la routine ne la signale pas. Ne crée rien.",
     run: () => readLittleEmperorsEnAttente(),
   },
   {

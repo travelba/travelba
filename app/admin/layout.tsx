@@ -7,7 +7,7 @@ import { emptyDockSnapshot, loadDockSnapshot } from "@/lib/crm/whatsapp-dock-loa
 
 export const metadata = {
   title: {
-    default: `Tableau de bord — ${siteConfig.shortName}`,
+    default: `Accueil — ${siteConfig.shortName}`,
     template: `%s — ${siteConfig.shortName}`,
   },
   robots: { index: false, follow: false },
@@ -29,12 +29,7 @@ export default async function AdminLayout({
   return (
     <div className="admin-af min-h-screen">
       <AdminNav
-        unmatchedCount={badges.revolut}
-        stripeCount={badges.stripe}
-        emailCount={badges.emails}
-        leCount={badges.le}
-        pieceCount={badges.pieces}
-        whatsappCount={badges.whatsapp}
+        counts={badges}
         whatsappThreads={dock.threads}
         whatsappTemplates={dock.templates}
         whatsappPreview={dock.previewBlocked}

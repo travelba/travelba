@@ -103,8 +103,13 @@ function addDays(iso: string, days: number) {
   return next.toISOString().slice(0, 10);
 }
 
+type StayDates = {
+  start_at?: string | null;
+  end_at?: string | null;
+};
+
 /** Dernier jour exclu. Sans date de départ, la nuit d’arrivée compte. */
-function checkoutDay(item: MatchableItem) {
+function checkoutDay(item: StayDates) {
   const start = day(item.start_at);
   if (!start) return "";
   const end = day(item.end_at);
@@ -113,11 +118,56 @@ function checkoutDay(item: MatchableItem) {
 }
 
 /** Une nuit en commun. Le jour de départ est libre : arrivée le 19 après un départ le 19. */
-function hotelNightsShare(a: MatchableItem, b: MatchableItem) {
+function hotelNightsShare(a: StayDates, b: StayDates) {
   const aStart = day(a.start_at);
   const bStart = day(b.start_at);
   if (!aStart || !bStart) return false;
   return aStart < checkoutDay(b) && bStart < checkoutDay(a);
+}
+
+export function hotelStaysOverlapNights(a: StayDates, b: StayDates) {
+  return hotelNightsShare(a, b);
+}
+
+const HOTEL_NOISE = new Set(["hotel", "the", "and", "resort", "spa", "collection", "by", "ihg", "les", "des"]);
+
+function hotelBrandWords(value: string | null | undefined) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((token) => token.length > 3 && !HOTEL_NOISE.has(token));
+}
+
+/** « NoMad London » et « The NoMad Hotel, London » : les mots du plus court sont dans l’autre. */
+export function hotelBrandsAlign(a: string | null | undefined, b: string | null | undefined) {
+  const left = hotelBrandWords(a);
+  const right = hotelBrandWords(b);
+  if (!left.length || !right.length) return false;
+  const [shorter, longer] = left.length <= right.length ? [left, right] : [right, left];
+  return shorter.every((token) => longer.some((other) => other === token || other.includes(token) || token.includes(other)));
+}
+
+/**
+ * L’annulation porte un autre numéro que la carte active, au même hôtel, sur des nuits qui se croisent.
+ * Ce n’est pas cette carte.
+ */
+export function confirmationSupersededByActiveStay(active: MatchableItem, incoming: MatchableItem) {
+  if ((active.kind || "") !== "hotel" || (incoming.kind || "") !== "hotel") return false;
+  if (!hotelRefTokens(incoming.confirmation_ref).length) return false;
+  if (!hotelRefsConflict(active.confirmation_ref, incoming.confirmation_ref)) return false;
+  const leftId = leHotelId(active);
+  const rightId = leHotelId(incoming);
+  if (leftId != null && rightId != null && leftId !== rightId) return false;
+  const sameId = leftId != null && rightId != null;
+  const sameName =
+    hotelsShareName(active, incoming) ||
+    hotelBrandsAlign(detail(active, "hotel_name") || active.title, detail(incoming, "hotel_name") || incoming.title);
+  if (!sameId && !sameName) return false;
+  return hotelNightsShare(active, incoming);
 }
 
 /**

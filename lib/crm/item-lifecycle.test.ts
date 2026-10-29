@@ -496,4 +496,33 @@ describe("annulation partielle", () => {
     assert.deepEqual(gesture.cancelCards, [{ id: "h1", title: "Hotel Eden" }]);
     assert.match(gesture.hint, /Hotel Eden/);
   });
+
+  it("ignore l’annulation d’un ancien numéro NoMad quand la carte active en a un autre", () => {
+    const oldStay = {
+      kind: "hotel" as const,
+      title: "The NoMad Hotel, London",
+      confirmation_ref: "3103269814",
+      start_at: "2026-10-30",
+      end_at: "2026-11-03",
+      details: { hotel_name: "The NoMad Hotel, London", le_hotel_id: 9882 },
+    };
+    const active = hotel({
+      id: "laura",
+      title: "NoMad London",
+      confirmation_ref: "3103360446",
+      start_at: "2026-10-29",
+      end_at: "2026-11-03",
+      details: { hotel_name: "NoMad London", le_hotel_id: 9882 },
+    });
+    const plan = cancellationApplyPlan({ items: [oldStay] }, [active]);
+    assert.equal(plan.cancelBooking, false);
+    assert.equal(plan.needsCardChoice, false);
+    assert.deepEqual(plan.itemIds, []);
+    const gesture = inboxStayAction({
+      documentStatus: "cancelled",
+      incoming: [oldStay],
+      items: [active],
+    });
+    assert.equal(gesture.action, "attach");
+  });
 });

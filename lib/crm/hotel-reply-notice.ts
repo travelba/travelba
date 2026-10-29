@@ -27,6 +27,40 @@ export type HotelReplyNoticeRow = {
 
 const EMAIL = /[^\s<>]+@[^\s<>]+/g;
 const SYNC_GAP_MS = 120_000;
+const GREETING_ONLY =
+  /^(?:bonjour|bonsoir|hello|hi|hey|dear|good morning|good afternoon|good evening|cher|chère|madame|monsieur)(?:\s+[\p{L}'’.-]+){0,4}[,!]?$/iu;
+const SIGN_OFF_LINE = /^(?:--|—|–|_{5,}|_{2,})$/;
+const SIGN_OFF_WORDS =
+  /^(?:bien à vous|bien cordialement|cordialement|cdt|cdlt|best regards|kind regards|warm regards|regards|sincerely|sent from(?: my)?\b.*|envoy[eé] depuis\b.*|get outlook\b.*|travel business agency)[,.]?$/i;
+const BARE_THANKS = /^(?:merci|thank you|thanks)[,.!]?$/i;
+
+/**
+ * Extrait du dernier message : sans image cid, sans citation, sans formule ni « Hello, » seul.
+ * Vide s’il ne reste rien à lire.
+ */
+export function meaningfulMailExcerpt(body: string, max = 180) {
+  const cleaned = hotelReplyForDesk(body);
+  const kept: string[] = [];
+  for (const raw of cleaned.split(/\r?\n/)) {
+    let line = raw.replace(EMAIL, " ").replace(/\s+/g, " ").trim();
+    if (!line) continue;
+    if (SIGN_OFF_LINE.test(line) || SIGN_OFF_WORDS.test(line) || BARE_THANKS.test(line)) break;
+    if (GREETING_ONLY.test(line)) continue;
+    if (/^\+?\d[\d\s().-]{6,}$/.test(line)) continue;
+    line = line.replace(/^(?:bonjour|bonsoir|hello|hi|hey)[,!]?\s+/i, "").trim();
+    if (!line || GREETING_ONLY.test(line)) continue;
+    kept.push(line);
+    if (kept.join(" ").length >= max) break;
+  }
+  const flat = kept.join(" ").replace(/\s+/g, " ").trim();
+  if (!flat) return "";
+  if (flat.length <= max) return flat;
+  const room = Math.max(1, max - 1);
+  const cut = flat.slice(0, room);
+  const space = cut.lastIndexOf(" ");
+  const base = space > room * 0.6 ? cut.slice(0, space) : cut;
+  return `${base.trimEnd()}…`;
+}
 
 /**
  * Séjours dont les courriers partis sont relus.
@@ -50,15 +84,9 @@ export function noticeHotelName(input: { hotelName?: string | null; title?: stri
   return "Hôtel";
 }
 
-/** Première ligne utile, sans adresse et sans numéro de carte. */
+/** Première phrase utile, sans adresse, sans image et sans numéro de carte. */
 export function replyExcerpt(body: string) {
-  const cleaned = hotelReplyForDesk(body);
-  for (const raw of cleaned.split(/\r?\n/)) {
-    const line = raw.replace(EMAIL, " ").replace(/\s+/g, " ").trim();
-    if (!line) continue;
-    return line.slice(0, 140);
-  }
-  return "L'hôtel a répondu.";
+  return meaningfulMailExcerpt(body, 140) || "L'hôtel a répondu.";
 }
 
 /** Réponses reçues après le curseur. Une absence ou un message déjà vu n’en fait pas partie. */

@@ -7,6 +7,7 @@ import { extractPrimaryPerson } from "@/lib/crm/email-match";
 import { roundTripPairs } from "@/lib/crm/flight-roundtrip";
 import { redactIngestText } from "@/lib/crm/ingest-redact";
 import { isCancellationExtract, parseExtractPayloadSafe, type BookingExtract } from "@/lib/crm/ingest-types";
+import { extractCancellationVerdict, loadStayAnchors, parseStoredExtract } from "@/lib/crm/cancellation-standing";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
@@ -248,6 +249,10 @@ export async function readLireEmail(input: { id?: string }, admin?: Admin, deps?
   if (!row) throw new McpReadError("E-mail introuvable.");
   const plain = (row.body_text || "").trim() || htmlToText(row.body_html || "");
   const body = clip(redactEmailReadText(plain), BODY_CAP);
+  const verdict = extractCancellationVerdict(
+    { label: row.label, receivedAt: row.received_at, extract: parseStoredExtract(row.extract) },
+    await loadStayAnchors(client)
+  );
   const pieces = [];
   for (const attachment of row.attachments || []) {
     const texte = await pdfTextOf(attachment, deps);
@@ -265,6 +270,9 @@ export async function readLireEmail(input: { id?: string }, admin?: Admin, deps?
     sujet: row.subject,
     recu_le: row.received_at ? formatDateFr(row.received_at) : null,
     statut: EMAIL_STATUS[row.status] || row.status,
+    suivi: verdict.suivi,
+    alerte: verdict.alerte,
+    remplacee_par: verdict.remplacee_par,
     corps: body.texte,
     corps_tronque: body.tronque,
     pieces,

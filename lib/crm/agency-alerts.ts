@@ -49,7 +49,7 @@ export function agencyAlerts(input: {
         at: row.receivedAt,
         title: clip(title, 80),
         body: "Un e-mail est arrivé dans la file.",
-        href: "/admin/emails",
+        href: "/admin/boite?onglet=fournisseurs",
         kicker: "E-mail",
       },
     ];
@@ -62,7 +62,7 @@ export function agencyAlerts(input: {
         at: row.createdAt,
         title: "Message client",
         body: clip(row.body || "") || "Un message WhatsApp est arrivé.",
-        href: "/admin/whatsapp",
+        href: "/admin/boite?onglet=whatsapp&filtre=non-lus",
         kicker: "WhatsApp",
       },
     ];
@@ -75,7 +75,7 @@ export function agencyAlerts(input: {
         at: row.createdAt,
         title: "Modification du concierge",
         body: clip(row.summary || "") || "Le concierge a modifié un dossier.",
-        href: row.bookingId ? `/admin/reservations/${row.bookingId}` : "/admin/whatsapp",
+        href: row.bookingId ? `/admin/reservations/${row.bookingId}` : "/admin/boite?onglet=whatsapp",
         kicker: "Concierge",
       },
     ];

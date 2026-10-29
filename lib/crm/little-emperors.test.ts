@@ -154,6 +154,9 @@ describe("little emperors staging client", () => {
     assert.equal(JSON.stringify(booking).includes("guest@example.com"), false);
     assert.deepEqual(booking.guest_names, ["Nico Santos"]);
     assert.equal(booking.check_in, "2026-11-02");
+    assert.equal(booking.booked_at, null);
+    const dated = parseLeBooking({ ...sample, created_at: "2026-10-04T16:05:00Z", booking_date: "2026-01-01" });
+    assert.equal(dated?.booked_at, "2026-10-04T16:05:00.000Z");
     assert.equal(leDateOnly("2026-11-02T00:00:00"), "2026-11-02");
     const hotel = hotelPublicFields({
       name: "Nobu Hotel London Portman Square",
@@ -366,6 +369,14 @@ describe("little emperors staging client", () => {
       decideLittleEmperorsAuto({
         booking: cancelled,
         suggestion: { autoBookingId: null, candidates: [] },
+        customers: [nico],
+      }).kind,
+      "wait"
+    );
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking: cancelled,
+        suggestion: { autoBookingId: "b-hotel", candidates: [] },
         customers: [nico],
       }).kind,
       "wait"

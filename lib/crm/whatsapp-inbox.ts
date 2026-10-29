@@ -2,7 +2,15 @@
 
 export type InboxSpeaker = "client" | "robot" | "agency";
 export type InboxThreadStatus = "robot" | "agency" | "escalated";
-export type InboxFilter = "tous" | "non-lus" | "robot" | "agence" | "escalade" | "prospects";
+export type InboxFilter = "tous" | "non-lus" | "a-approuver" | "robot" | "agence" | "escalade" | "prospects";
+
+export const INBOX_FILTERS: readonly InboxFilter[] = ["tous", "non-lus", "a-approuver", "robot", "agence", "escalade", "prospects"];
+
+/** `?filtre=` de la Boîte : un filtre connu, sinon Tous. */
+export function inboxFilterFromParam(raw: string | string[] | undefined): InboxFilter {
+  const value = (Array.isArray(raw) ? raw[0] : raw) || "";
+  return (INBOX_FILTERS as readonly string[]).includes(value) ? (value as InboxFilter) : "tous";
+}
 
 export type InboxMessage = {
   id: string;
@@ -42,6 +50,8 @@ export type InboxThread = {
   status: InboxThreadStatus;
   /** Vrai tant qu’un humain tient le fil (pause encore active). */
   held?: boolean;
+  /** Brouillons du Concierge en attente du clic de l’agence sur ce fil. */
+  pending?: number;
 };
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -183,6 +193,7 @@ export function filterThreads(threads: InboxThread[], input: { query?: string; f
   const filter = input.filter || "tous";
   return threads.filter((thread) => {
     if (filter === "non-lus" && thread.unread < 1) return false;
+    if (filter === "a-approuver" && !(thread.pending && thread.pending > 0)) return false;
     if (filter === "robot" && thread.status !== "robot") return false;
     if (filter === "agence" && thread.status !== "agency") return false;
     if (filter === "escalade" && thread.status !== "escalated") return false;

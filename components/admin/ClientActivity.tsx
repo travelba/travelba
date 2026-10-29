@@ -11,15 +11,19 @@ export function ClientActivity({
   groups,
   today,
   initialOpen = [],
+  collapsed = false,
 }: {
   groups: ClientActivityGroup[];
   /** Jour civil à Paris (`yyyy-mm-dd`). Seuls aujourd’hui et hier sont ouverts. */
   today: string;
   initialOpen?: string[];
+  /** Replié au premier rendu : le titre et le compteur du jour restent, le détail s’ouvre au clic. */
+  collapsed?: boolean;
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(initialOpen.map((id) => [id, true]))
   );
+  const [expanded, setExpanded] = useState(!collapsed);
   const yesterday = addIsoDays(today, -1);
   const recent = groups.filter((group) => group.day === today || group.day === yesterday);
   const older = groups.filter((group) => group.day !== today && group.day !== yesterday);
@@ -36,23 +40,37 @@ export function ClientActivity({
             {todayCount === 1 ? "1 aujourd’hui" : `${todayCount} aujourd’hui`}
           </p>
         ) : null}
+        {collapsed ? (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls="activite-clients-detail"
+            onClick={() => setExpanded((value) => !value)}
+            className="admin-tap ml-auto inline-flex items-center gap-1 text-sm font-semibold text-[var(--admin-navy)] underline"
+          >
+            {expanded ? "Replier" : "Voir"}
+            <Icon name="expand_more" className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </button>
+        ) : null}
       </div>
       <p className="mt-1 text-sm text-muted">Connexions et visites de l’espace client, aujourd’hui et hier.</p>
 
-      {recent.length ? (
-        <div className="mt-3 overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
-          <ActivityDays groups={recent} open={open} setOpen={setOpen} />
-          {older.length ? <OlderActivity groups={older} open={open} setOpen={setOpen} /> : null}
-        </div>
-      ) : (
-        <>
-          <div className="mt-3 rounded-2xl border border-[var(--admin-gold)]/30 bg-[#f8f4ed] px-5 py-8">
-            <p className="font-display text-base font-bold text-[var(--admin-navy)]">Aucune connexion</p>
-            <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">Aucune connexion aujourd’hui ni hier.</p>
+      <div id="activite-clients-detail" hidden={!expanded}>
+        {recent.length ? (
+          <div className="mt-3 overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
+            <ActivityDays groups={recent} open={open} setOpen={setOpen} />
+            {older.length ? <OlderActivity groups={older} open={open} setOpen={setOpen} /> : null}
           </div>
-          <OlderActivity groups={older} open={open} setOpen={setOpen} bare />
-        </>
-      )}
+        ) : (
+          <>
+            <div className="mt-3 rounded-2xl border border-[var(--admin-gold)]/30 bg-[#f8f4ed] px-5 py-8">
+              <p className="font-display text-base font-bold text-[var(--admin-navy)]">Aucune connexion</p>
+              <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">Aucune connexion aujourd’hui ni hier.</p>
+            </div>
+            <OlderActivity groups={older} open={open} setOpen={setOpen} bare />
+          </>
+        )}
+      </div>
     </section>
   );
 }

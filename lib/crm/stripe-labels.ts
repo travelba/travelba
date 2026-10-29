@@ -1,9 +1,10 @@
 import type { StripeInboxMethod } from "./stripe-inbox";
 import { stripeMethodLabel } from "./stripe-inbox";
 
+/** Mêmes mots que Revolut : un paiement est à encaisser, encaissé ou refusé. */
 export const STRIPE_STATUS_LABELS: Record<string, string> = {
-  unmatched: "À rapprocher",
-  matched: "Rapproché",
+  unmatched: "À encaisser",
+  matched: "Encaissé",
   ignored: "Refusé",
 };
 
@@ -17,14 +18,10 @@ export function stripeStatusTone(status: string): "amber" | "gold" | "navy" {
   return "navy";
 }
 
-export function stripeSyncSummary(fetched: number, inserted: number, autoMatched = 0) {
+export function stripeSyncSummary(fetched: number, inserted: number) {
   const lus = fetched > 1 ? `${fetched} paiements lus` : `${fetched} paiement lu`;
   const nouveaux = inserted > 1 ? `${inserted} nouveaux` : `${inserted} nouveau`;
-  const base = `Synchronisation terminée : ${lus}, ${nouveaux}`;
-  if (autoMatched <= 0) return `${base}.`;
-  const auto =
-    autoMatched > 1 ? `${autoMatched} crédits automatiques` : `${autoMatched} crédit automatique`;
-  return `${base}, ${auto}.`;
+  return `Synchronisation terminée : ${lus}, ${nouveaux}.`;
 }
 
 export function stripePossibleClientsLabel(count: number) {

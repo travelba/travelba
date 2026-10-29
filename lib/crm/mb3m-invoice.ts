@@ -212,7 +212,7 @@ export type Mb3mInvoiceDeps = {
   }) => Promise<string>;
 };
 
-/** Même chiffre que l’onglet Règlement, à partir des cartes déjà enregistrées. */
+/** Même chiffre que l’onglet Argent, à partir des cartes déjà enregistrées. */
 export function dossierStayAmount(input: {
   items: StayItem[];
   agencyCommission: boolean;
