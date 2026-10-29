@@ -1,0 +1,579 @@
+{
+  "title": "Configurateur Argentine juil–août",
+  "currency": "USD",
+  "pax": 2,
+  "season": "juillet-août 2026",
+  "itineraire": [
+    {
+      "id": "ba1",
+      "label": "Buenos Aires arrivée",
+      "days": [
+        "J1"
+      ],
+      "nights": 1,
+      "defaultHotel": "algodon"
+    },
+    {
+      "id": "valdes",
+      "label": "Península Valdés",
+      "days": [
+        "J2",
+        "J3"
+      ],
+      "nights": 2,
+      "defaultHotel": "rincon"
+    },
+    {
+      "id": "salinas",
+      "label": "Salinas Grandes",
+      "days": [
+        "J4",
+        "J5"
+      ],
+      "nights": 2,
+      "defaultHotel": "pristine-salinas"
+    },
+    {
+      "id": "mendoza",
+      "label": "Valle de Uco",
+      "days": [
+        "J6",
+        "J7"
+      ],
+      "nights": 2,
+      "defaultHotel": "awasi-mza"
+    },
+    {
+      "id": "bariloche",
+      "label": "Bariloche / Angostura",
+      "days": [
+        "J8",
+        "J9",
+        "J10",
+        "J11"
+      ],
+      "nights": 4,
+      "defaultHotel": "balsas"
+    },
+    {
+      "id": "calafate",
+      "label": "El Calafate",
+      "days": [
+        "J12",
+        "J13"
+      ],
+      "nights": 2,
+      "defaultHotel": "xelena-suite"
+    },
+    {
+      "id": "ushuaia",
+      "label": "Ushuaia",
+      "days": [
+        "J14",
+        "J15",
+        "J16"
+      ],
+      "nights": 3,
+      "defaultHotel": "arakur"
+    },
+    {
+      "id": "iguazu",
+      "label": "Puerto Iguazú",
+      "days": [
+        "J17",
+        "J18"
+      ],
+      "nights": 2,
+      "defaultHotel": "awasi-iguazu"
+    },
+    {
+      "id": "ba19",
+      "label": "Buenos Aires départ",
+      "days": [
+        "J19"
+      ],
+      "nights": 1,
+      "defaultHotel": "faena"
+    }
+  ],
+  "hotels": [
+    {
+      "id": "algodon",
+      "name": "Algodon Mansion",
+      "dest": "Buenos Aires",
+      "url": "https://www.algodonhotels.com/mansion/",
+      "tier": "luxe",
+      "usdNightMid": 420,
+      "nightsAt": [
+        "ba1"
+      ],
+      "note": "Recoleta, 10 suites, spa, rooftop"
+    },
+    {
+      "id": "faena",
+      "name": "Faena Hotel Buenos Aires",
+      "dest": "Buenos Aires",
+      "url": "https://www.faena.com/buenos-aires",
+      "tier": "luxe",
+      "usdNightMid": 390,
+      "nightsAt": [
+        "ba1",
+        "ba19"
+      ],
+      "note": "Puerto Madero, Starck, tango"
+    },
+    {
+      "id": "fourseasons",
+      "name": "Four Seasons Buenos Aires",
+      "dest": "Buenos Aires",
+      "url": "https://www.fourseasons.com/buenosaires/",
+      "tier": "luxe",
+      "usdNightMid": 600,
+      "nightsAt": [
+        "ba1"
+      ],
+      "note": "Recoleta palace"
+    },
+    {
+      "id": "alvear",
+      "name": "Alvear Palace",
+      "dest": "Buenos Aires",
+      "url": "https://alvearpalace.com/en/",
+      "tier": "hdg",
+      "usdNightMid": 420,
+      "nightsAt": [
+        "ba1"
+      ],
+      "note": "Palace historique"
+    },
+    {
+      "id": "sofitel",
+      "name": "Sofitel Recoleta",
+      "dest": "Buenos Aires",
+      "url": "https://sofitel.accor.com/en/hotels/8932.html",
+      "tier": "eco",
+      "usdNightMid": 280,
+      "nightsAt": [
+        "ba1",
+        "ba19"
+      ],
+      "note": "Palace Accor"
+    },
+    {
+      "id": "rincon",
+      "name": "Rincón Chico",
+      "dest": "Valdés",
+      "url": "https://rinconchico.com.ar/",
+      "tier": "luxe",
+      "usdNightMid": 800,
+      "nightsAt": [
+        "valdes"
+      ],
+      "note": "Estancia wildlife sur devis"
+    },
+    {
+      "id": "territorio",
+      "name": "Hotel Territorio",
+      "dest": "Valdés",
+      "url": "https://www.smyhotels.com/hotel-territorio.html",
+      "tier": "eco",
+      "usdNightMid": 250,
+      "nightsAt": [
+        "valdes"
+      ],
+      "note": "Puerto Madryn"
+    },
+    {
+      "id": "pristine-salinas",
+      "name": "Pristine Camp Salinas Grandes",
+      "dest": "Salinas",
+      "url": "https://salinas-grandes.pristinecamps.com/en/",
+      "tier": "luxe",
+      "usdNightMid": 1300,
+      "nightsAt": [
+        "salinas"
+      ],
+      "note": "Dômes AI 3450m"
+    },
+    {
+      "id": "jasmines",
+      "name": "House of Jasmines",
+      "dest": "Salinas",
+      "url": "https://www.houseofjasmines.com/en/",
+      "tier": "hdg",
+      "usdNightMid": 300,
+      "nightsAt": [
+        "salinas"
+      ],
+      "note": "R&C près Salta"
+    },
+    {
+      "id": "alma",
+      "name": "Alma de Purmamarca",
+      "dest": "Salinas",
+      "url": "https://www.almadepurmamarca.com/",
+      "tier": "eco",
+      "usdNightMid": 180,
+      "nightsAt": [
+        "salinas"
+      ],
+      "note": "Boutique Siete Colores"
+    },
+    {
+      "id": "awasi-mza",
+      "name": "Awasi Mendoza",
+      "dest": "Mendoza",
+      "url": "https://awasi.com/mendoza/",
+      "tier": "luxe",
+      "usdNightMid": 1000,
+      "nightsAt": [
+        "mendoza"
+      ],
+      "note": "Villas + guide"
+    },
+    {
+      "id": "casadeuco",
+      "name": "Casa de Uco",
+      "dest": "Mendoza",
+      "url": "https://www.casadeuco.com/en/home-en/",
+      "tier": "hdg",
+      "usdNightMid": 575,
+      "nightsAt": [
+        "mendoza"
+      ],
+      "note": "Wine resort"
+    },
+    {
+      "id": "entrecielos",
+      "name": "Entre Cielos",
+      "dest": "Mendoza",
+      "url": "https://www.entrecielos.com/",
+      "tier": "eco",
+      "usdNightMid": 700,
+      "nightsAt": [
+        "mendoza"
+      ],
+      "note": "Hammam"
+    },
+    {
+      "id": "balsas",
+      "name": "Las Balsas",
+      "dest": "Bariloche",
+      "url": "https://www.lasbalsas.com/",
+      "tier": "luxe",
+      "usdNightMid": 520,
+      "nightsAt": [
+        "bariloche"
+      ],
+      "note": "R&C Angostura"
+    },
+    {
+      "id": "llaollao",
+      "name": "Llao Llao",
+      "dest": "Bariloche",
+      "url": "https://www.llaollao.com/en/",
+      "tier": "hdg",
+      "usdNightMid": 525,
+      "nightsAt": [
+        "bariloche"
+      ],
+      "note": "Resort lacustre"
+    },
+    {
+      "id": "correntoso",
+      "name": "Correntoso",
+      "dest": "Bariloche",
+      "url": "https://www.correntoso.com/en/",
+      "tier": "eco",
+      "usdNightMid": 370,
+      "nightsAt": [
+        "bariloche"
+      ],
+      "note": "Lake & river"
+    },
+    {
+      "id": "xelena-suite",
+      "name": "Xelena suite",
+      "dest": "Calafate",
+      "url": "https://www.hotelxelena.com/",
+      "tier": "luxe",
+      "usdNightMid": 225,
+      "nightsAt": [
+        "calafate"
+      ],
+      "note": "EOLO fermé juil-août"
+    },
+    {
+      "id": "xelena",
+      "name": "Xelena std",
+      "dest": "Calafate",
+      "url": "https://www.hotelxelena.com/",
+      "tier": "eco",
+      "usdNightMid": 175,
+      "nightsAt": [
+        "calafate"
+      ],
+      "note": "Lac Argentino"
+    },
+    {
+      "id": "arakur",
+      "name": "Arakur",
+      "dest": "Ushuaia",
+      "url": "https://arakur.com/en/",
+      "tier": "luxe",
+      "usdNightMid": 550,
+      "nightsAt": [
+        "ushuaia"
+      ],
+      "note": "Resort réserve"
+    },
+    {
+      "id": "cauquenes",
+      "name": "Los Cauquenes",
+      "dest": "Ushuaia",
+      "url": "https://www.loscauquenes.com/en/",
+      "tier": "hdg",
+      "usdNightMid": 375,
+      "nightsAt": [
+        "ushuaia"
+      ],
+      "note": "Plage Beagle"
+    },
+    {
+      "id": "awasi-iguazu",
+      "name": "Awasi Iguazú",
+      "dest": "Iguazu",
+      "url": "https://awasi.com/iguazu/",
+      "tier": "luxe",
+      "usdNightMid": 1800,
+      "nightsAt": [
+        "iguazu"
+      ],
+      "note": "AI villa + guide"
+    },
+    {
+      "id": "melia",
+      "name": "Gran Meliá Iguazú",
+      "dest": "Iguazu",
+      "url": "https://www.melia.com/en/hotels/argentina/iguazu-national-park/gran-melia-iguazu",
+      "tier": "hdg",
+      "usdNightMid": 575,
+      "nightsAt": [
+        "iguazu"
+      ],
+      "note": "Dans le parc"
+    },
+    {
+      "id": "loi",
+      "name": "Loi Suites Iguazú",
+      "dest": "Iguazu",
+      "url": "https://loisuites.com.ar/en/iguazu.html",
+      "tier": "eco",
+      "usdNightMid": 300,
+      "nightsAt": [
+        "iguazu"
+      ],
+      "note": "Jungle Iryapú"
+    },
+    {
+      "id": "alvear-icon",
+      "name": "Alvear Icon",
+      "dest": "Buenos Aires",
+      "url": "https://alvearicon.com/en/",
+      "tier": "hdg",
+      "usdNightMid": 310,
+      "nightsAt": [
+        "ba19"
+      ],
+      "note": "Puerto Madero"
+    }
+  ],
+  "activities": [
+    {
+      "id": "ba-city",
+      "dest": "ba1",
+      "name": "City tour privé",
+      "duration": "4h",
+      "level": "facile",
+      "usdCouple": 250,
+      "sourceUrl": "https://www.faena.com/buenos-aires"
+    },
+    {
+      "id": "ba-tango",
+      "dest": "ba1",
+      "name": "Rojo Tango / Querandí",
+      "duration": "3h",
+      "level": "facile",
+      "usdCouple": 340,
+      "sourceUrl": "https://www.faena.com/buenos-aires"
+    },
+    {
+      "id": "val-whale",
+      "dest": "valdes",
+      "name": "Baleines bateau + réserve",
+      "duration": "½j",
+      "level": "facile",
+      "usdCouple": 266,
+      "sourceUrl": "https://rinconchico.com.ar/"
+    },
+    {
+      "id": "val-pen",
+      "dest": "valdes",
+      "name": "Tour péninsule wildlife",
+      "duration": "journée",
+      "level": "facile",
+      "usdCouple": 150,
+      "sourceUrl": "https://rinconchico.com.ar/"
+    },
+    {
+      "id": "sal-salinas",
+      "dest": "salinas",
+      "name": "Salinas Grandes (inclus camp / vélo)",
+      "duration": "journée",
+      "level": "moyen",
+      "usdCouple": 0,
+      "sourceUrl": "https://salinas-grandes.pristinecamps.com/en/"
+    },
+    {
+      "id": "sal-quebrada",
+      "dest": "salinas",
+      "name": "Quebrada + Hornocal",
+      "duration": "journée",
+      "level": "facile",
+      "usdCouple": 130,
+      "sourceUrl": "https://www.houseofjasmines.com/en/"
+    },
+    {
+      "id": "mza-cheval",
+      "dest": "mendoza",
+      "name": "Cheval Andes + asado",
+      "duration": "½j",
+      "level": "facile-moyen",
+      "usdCouple": 300,
+      "sourceUrl": "https://awasi.com/mendoza/"
+    },
+    {
+      "id": "mza-vin",
+      "dest": "mendoza",
+      "name": "Dégustation privée / vélo vignobles",
+      "duration": "½–1j",
+      "level": "facile",
+      "usdCouple": 400,
+      "sourceUrl": "https://awasi.com/mendoza/"
+    },
+    {
+      "id": "brc-ski",
+      "dest": "bariloche",
+      "name": "Ski Cerro Catedral",
+      "duration": "journée",
+      "level": "moyen-sportif",
+      "usdCouple": 325,
+      "sourceUrl": "https://www.llaollao.com/en/"
+    },
+    {
+      "id": "brc-snow",
+      "dest": "bariloche",
+      "name": "Raquettes / trek neige",
+      "duration": "½–1j",
+      "level": "moyen",
+      "usdCouple": 200,
+      "sourceUrl": "https://www.lasbalsas.com/"
+    },
+    {
+      "id": "brc-chico",
+      "dest": "bariloche",
+      "name": "Circuito Chico + Campanario",
+      "duration": "½j",
+      "level": "facile",
+      "usdCouple": 100,
+      "sourceUrl": "https://www.llaollao.com/en/"
+    },
+    {
+      "id": "brc-beer",
+      "dest": "bariloche",
+      "name": "Beer Experience",
+      "duration": "6h",
+      "level": "facile",
+      "usdCouple": 334,
+      "sourceUrl": "https://www.lasbalsas.com/"
+    },
+    {
+      "id": "cal-moreno",
+      "dest": "calafate",
+      "name": "Perito Moreno + Safari Náutico",
+      "duration": "journée",
+      "level": "facile",
+      "usdCouple": 172,
+      "sourceUrl": "https://www.hotelxelena.com/"
+    },
+    {
+      "id": "cal-ice",
+      "dest": "calafate",
+      "name": "Minitrekking glace",
+      "duration": "journée",
+      "level": "moyen",
+      "usdCouple": 400,
+      "sourceUrl": "https://www.hotelxelena.com/"
+    },
+    {
+      "id": "ush-ski",
+      "dest": "ushuaia",
+      "name": "Ski Cerro Castor",
+      "duration": "journée",
+      "level": "moyen-sportif",
+      "usdCouple": 300,
+      "sourceUrl": "https://arakur.com/en/"
+    },
+    {
+      "id": "ush-beagle",
+      "dest": "ushuaia",
+      "name": "Navigation Canal Beagle",
+      "duration": "3h",
+      "level": "facile",
+      "usdCouple": 154,
+      "sourceUrl": "https://www.loscauquenes.com/en/"
+    },
+    {
+      "id": "ush-tdf",
+      "dest": "ushuaia",
+      "name": "PN Tierra del Fuego trek hiver",
+      "duration": "½–1j",
+      "level": "moyen",
+      "usdCouple": 300,
+      "sourceUrl": "https://arakur.com/en/"
+    },
+    {
+      "id": "igu-ar",
+      "dest": "iguazu",
+      "name": "Chutes AR + BR",
+      "duration": "journée",
+      "level": "facile",
+      "usdCouple": 130,
+      "sourceUrl": "https://awasi.com/iguazu/"
+    },
+    {
+      "id": "igu-boat",
+      "dest": "iguazu",
+      "name": "Gran Aventura bateau",
+      "duration": "2h",
+      "level": "facile",
+      "usdCouple": 160,
+      "sourceUrl": "https://awasi.com/iguazu/"
+    },
+    {
+      "id": "ba-spa",
+      "dest": "ba19",
+      "name": "Spa + dîner signature",
+      "duration": "soirée",
+      "level": "facile",
+      "usdCouple": 400,
+      "sourceUrl": "https://www.faena.com/buenos-aires"
+    }
+  ],
+  "notes": [
+    "EOLO Calafate fermé juil-août — ne pas proposer",
+    "Photos: récupérer uniquement depuis les pages officielles listées (url), avec attribution site",
+    "Prix hébergement = usdNightMid × nights (1 chambre couple)",
+    "Prix activité = usdCouple pour 2 adultes"
+  ]
+}
