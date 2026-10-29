@@ -80,6 +80,7 @@ import {
   UserPlus,
   UserStar,
   Users,
+  UtensilsCrossed,
   Wallet,
   Wrench,
   X,
@@ -88,6 +89,7 @@ import {
 const ICONS: Record<string, LucideIcon> = {
   explore: Compass,
   luggage: Luggage,
+  restaurant: UtensilsCrossed,
   receipt_long: Receipt,
   badge: IdCard,
   bed: BedDouble,

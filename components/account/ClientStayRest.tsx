@@ -49,6 +49,8 @@ import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import { clientHotelCancelOffers, type LeCancelRow } from "@/lib/crm/le-free-cancel";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
+import { loadClientRestaurantEvenings } from "@/lib/crm/client-tables";
+import { VosTables } from "@/components/account/VosTables";
 
 type VisaRow = { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null };
 
@@ -107,7 +109,7 @@ export async function ClientStayRest({
   const visibleDocs = docs;
   const identity = identityDocs;
 
-  const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl, leRows] = await Promise.all([
+  const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl, leRows, tableEvenings] = await Promise.all([
     loadHotelContacts(b.id, rawItems),
     loadClientLedger(supabase, customer, "client"),
     settledCountries(b, party, identity, customer),
@@ -115,6 +117,7 @@ export async function ClientStayRest({
     loadPayerCompanies(supabase, b),
     loadShareUrl(b.id),
     b.customer_id === customer.id ? loadLeCancelRows(b.id) : Promise.resolve([] as LeCancelRow[]),
+    b.customer_id === customer.id ? loadClientRestaurantEvenings(b.id) : Promise.resolve([]),
   ]);
 
   const visibleItems = withoutHotelRosterItems(catalogItems);
@@ -184,7 +187,12 @@ export async function ClientStayRest({
 
   return (
     <ClientTripBody
-      intro={encoursPay}
+      intro={
+        <>
+          {tableEvenings.length ? <VosTables reference={b.reference} evenings={tableEvenings} /> : null}
+          {encoursPay}
+        </>
+      }
       itinerary={
         <CarnetItinerary
           booking={pub}

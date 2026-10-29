@@ -53,6 +53,10 @@
     {
       "path": "/api/cron/uk-eta",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/restaurants",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

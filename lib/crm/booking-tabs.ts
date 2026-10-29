@@ -28,11 +28,12 @@ export const BOOKING_TAB_HELP: Record<BookingTabId, string> = {
 
 /**
  * Anciens slugs : WhatsApp et Interface client ont rejoint Client et Voyage ; Carte, Pliant,
- * Règlement et Transactions sont l’onglet Argent.
+ * Règlement et Transactions sont l’onglet Argent. Restaurants vit dans Voyage (le lien vers l’écran du soir).
  */
 const BOOKING_TAB_ALIASES: Record<string, BookingTabId> = {
   whatsapp: "client",
   interface: "voyage",
+  restaurants: "voyage",
   carte: "argent",
   cartes: "argent",
   pliant: "argent",

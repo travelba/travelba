@@ -68,6 +68,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
       title: "Dossiers",
       items: [
         { href: ADMIN_ROUTES.dossiers, label: "Dossiers", icon: "luggage" },
+        { href: "/admin/restaurants", label: "Restaurants", icon: "restaurant" },
         { href: `${ADMIN_ROUTES.dossiers}?vue=formalites`, label: "Formalités", icon: "shield_check" },
         { href: `${ADMIN_ROUTES.dossiers}?vue=services`, label: "Services à confirmer", icon: "headset" },
       ],
@@ -209,7 +210,7 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     label: "Dossiers",
     icon: "luggage",
     href: ADMIN_ROUTES.dossiers,
-    paths: ["/admin/reservations", "/admin/formalites", "/admin/services"],
+    paths: ["/admin/reservations", "/admin/restaurants", "/admin/formalites", "/admin/services"],
     badges: [],
   },
   { id: "clients", label: "Clients", icon: "group", href: ADMIN_ROUTES.clients, paths: ["/admin/clients"], badges: [] },
@@ -246,6 +247,8 @@ export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search
   if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
   if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";
   if (pathname.startsWith("/admin/transactions/client/")) return "Transactions du client";
+  if (pathname === "/admin/restaurants/catalogue") return "Catalogue";
+  if (pathname === "/admin/restaurants/aujourdhui" || pathname === "/admin/restaurants") return "Restaurants";
   if (pathname === "/admin/recherche") return "Recherche";
   if (pathname === "/admin/reglages" || pathname.startsWith("/admin/reglages/")) return "Réglages";
   const active = activeAdminNavHref(groups, pathname, search);

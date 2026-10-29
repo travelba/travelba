@@ -57,6 +57,10 @@ const EXPECTED = [
   "ajouter_accueil_vip",
   "enregistrement_en_ligne",
   "envoyer_releve",
+  "sejours_restaurants",
+  "catalogue_restaurants",
+  "tables_restaurant",
+  "choix_restaurant",
 ];
 
 const WRITE_TOOLS = [
@@ -95,13 +99,15 @@ const WRITE_TOOLS = [
   "ajouter_accueil_vip",
   "enregistrement_en_ligne",
   "envoyer_releve",
+  "catalogue_restaurants",
+  "tables_restaurant",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
   const names = MCP_TOOLS.map((tool) => tool.name);
   assert.deepEqual(names, EXPECTED);
   assert.equal(new Set(names).size, names.length);
-  assert.ok(names.length <= MCP_TOOL_CAP);
+  assert.equal(names.length, MCP_TOOL_CAP);
   for (const tool of MCP_TOOLS) {
     assert.ok(tool.description.length > 20);
   }
@@ -336,4 +342,19 @@ test("only lire_carte_pliant keeps the card number", () => {
   assert.equal("pan" in fiche, false);
   assert.equal(fiche.note, "•••");
   assert.equal(fiche.titulaire, "Camille Martin");
+});
+
+test("une table de restaurant ne renvoie pas un numéro de carte", () => {
+  const row = JSON.parse(
+    previewMcpTool("tables_restaurant", {
+      garantie: "4242",
+      pan: "4242424242424242",
+      note: "4242424242424242",
+    }).content[0].text
+  ) as Record<string, unknown>;
+  assert.equal(row.garantie, "4242");
+  assert.equal("pan" in row, false);
+  assert.equal(row.note, "•••");
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "tables_restaurant")?.description || "", /quatre derniers chiffres/i);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "choix_restaurant")?.description || "", /16 h/);
 });

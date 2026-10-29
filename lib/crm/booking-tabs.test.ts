@@ -36,6 +36,7 @@ test("les anciens onglets restent des alias", () => {
   assert.equal(bookingTabFromParam("pliant"), "argent");
   assert.equal(bookingTabFromParam("reglement"), "argent");
   assert.equal(bookingTabFromParam("transactions"), "argent");
+  assert.equal(bookingTabFromParam("restaurants"), "voyage");
 });
 
 test("changer d’onglet garde les autres paramètres de l’URL, sauf ?hotel= qui a déjà servi", () => {
