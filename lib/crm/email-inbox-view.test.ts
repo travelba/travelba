@@ -89,8 +89,11 @@ test("le mail Emirates n’affiche ni le choix de carte, ni la date deux fois, n
   assert.match(html, /n’est pas répété/);
   assert.match(html, /Total du billet, une fois pour ces vols/);
   assert.match(html, /Déposer les pièces/);
-  assert.match(html, /Mettre à jour les cartes/);
+  assert.equal(html.includes("Mettre à jour les cartes"), false);
   assert.equal(html.includes("Rattacher au voyage"), false);
-  assert.match(html, /Les cartes ne changent pas/);
+  assert.equal(html.includes("Ignorer"), false);
+  assert.equal(html.includes("Refuser"), false);
+  assert.match(html, /Classer/);
+  assert.match(html, /Aucune étape n’est créée ni modifiée/);
   assert.equal(html.split("Prix imprimé sur le document").length - 1, 1);
 });

@@ -11,12 +11,12 @@ import { HotelReplyToasts } from "@/components/admin/HotelReplyToasts";
 import { WhatsappDock } from "@/components/admin/WhatsappDock";
 import type { InboxThread } from "@/lib/crm/whatsapp-inbox";
 import { Icon } from "@/components/crm/icons";
-import { MobileTabBar, MoreSheet, SearchOverlay, SidebarGroups, UserMenu } from "@/components/admin/AdminNavParts";
+import { MobileTabBar, SearchOverlay, SidebarGroups, UserMenu } from "@/components/admin/AdminNavParts";
 import {
   activeAdminNavHref,
   adminNavGroups,
   adminPageTitle,
-  moreSheetGroups,
+  EMPTY_NAV_COUNTS,
   openAdminNavGroups,
   parseCollapsedGroups,
   toggleCollapsedGroup,
@@ -53,12 +53,7 @@ function writeCollapsed(next: string[]) {
 }
 
 export function AdminNav({
-  unmatchedCount = 0,
-  stripeCount = 0,
-  emailCount = 0,
-  leCount = 0,
-  pieceCount = 0,
-  whatsappCount = 0,
+  counts: countsInput = EMPTY_NAV_COUNTS,
   whatsappThreads = [],
   whatsappTemplates = [],
   whatsappPreview = false,
@@ -67,12 +62,8 @@ export function AdminNav({
   showExample = false,
   children,
 }: {
-  unmatchedCount?: number;
-  stripeCount?: number;
-  emailCount?: number;
-  leCount?: number;
-  pieceCount?: number;
-  whatsappCount?: number;
+  /** Les compteurs du menu (`adminBadges`). */
+  counts?: AdminNavCounts;
   whatsappThreads?: InboxThread[];
   whatsappTemplates?: { key: string; label: string }[];
   whatsappPreview?: boolean;
@@ -84,10 +75,7 @@ export function AdminNav({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const counts: AdminNavCounts = useMemo(
-    () => ({ revolut: unmatchedCount, stripe: stripeCount, emails: emailCount, le: leCount, pieces: pieceCount, whatsapp: whatsappCount }),
-    [unmatchedCount, stripeCount, emailCount, leCount, pieceCount, whatsappCount]
-  );
+  const counts = countsInput;
   const groups = useMemo(() => adminNavGroups({ role: staffRole, showExample }), [staffRole, showExample]);
   const partner = staffRole === "partner";
   const home = partner ? "/admin/little-emperors" : "/admin";
@@ -97,7 +85,6 @@ export function AdminNav({
   const currentQuery = searching ? searchParams.get("q") || "" : "";
   // Le layout persiste d’une page à l’autre : le champ suit l’URL (`?q=`) tant qu’on n’y tape pas.
   const [query, setQuery] = useMirror(currentQuery);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const collapsedRaw = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => "[]");
   const collapsed = useMemo(() => parseCollapsedGroups(collapsedRaw), [collapsedRaw]);
@@ -117,13 +104,11 @@ export function AdminNav({
 
   function goSearch(q: string) {
     setSearchOpen(false);
-    setMoreOpen(false);
     router.push(q ? `/admin/recherche?q=${encodeURIComponent(q)}` : "/admin/recherche");
   }
 
   function goHit(href: string) {
     setSearchOpen(false);
-    setMoreOpen(false);
     router.push(href);
   }
 
@@ -147,7 +132,7 @@ export function AdminNav({
       <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden">
         <div className="flex h-14 items-center justify-between gap-2 px-3">
           <div className="flex min-w-0 items-center gap-2">
-            <Link href={home} aria-label={partner ? "Little Emperors" : "Tableau de bord"} className="shrink-0">
+            <Link href={home} aria-label={partner ? "Little Emperors" : "Accueil"} className="shrink-0">
               <AgencyLogo className="h-9 w-9" />
             </Link>
             <p className="truncate font-display text-sm font-semibold" aria-live="polite">
@@ -156,15 +141,25 @@ export function AdminNav({
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {partner ? null : (
-            <button
-              type="button"
-              aria-label="Rechercher"
-              aria-expanded={searchOpen}
-              onClick={() => setSearchOpen(true)}
-              className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-lg text-white"
-            >
-              <Icon name="search" className="h-5 w-5" />
-            </button>
+              <>
+                <Link
+                  href="/admin/reservations/nouveau"
+                  aria-label="Nouveau dossier"
+                  aria-current={pathname === "/admin/reservations/nouveau" ? "page" : undefined}
+                  className="admin-af-btn-accent admin-tap inline-flex h-11 w-11 items-center justify-center rounded-lg"
+                >
+                  <Icon name="add" className="h-5 w-5" />
+                </Link>
+                <button
+                  type="button"
+                  aria-label="Rechercher"
+                  aria-expanded={searchOpen}
+                  onClick={() => setSearchOpen(true)}
+                  className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-lg text-white"
+                >
+                  <Icon name="search" className="h-5 w-5" />
+                </button>
+              </>
             )}
             <UserMenu name={staffName} role={staffRole} onSignOut={signOut} variant="dark" />
           </div>
@@ -179,17 +174,6 @@ export function AdminNav({
           onNavigate={goHit}
         />
       ) : null}
-      <MoreSheet
-        open={moreOpen}
-        groups={moreSheetGroups(groups)}
-        activeHref={activeHref}
-        counts={counts}
-        name={staffName}
-        role={staffRole}
-        onClose={() => setMoreOpen(false)}
-        onSignOut={signOut}
-      />
-
       <aside
         aria-label={partner ? "Little Emperors" : "Barre latérale agence"}
         className="z-50 hidden w-72 flex-col bg-[var(--admin-navy)] px-5 py-6 text-white lg:fixed lg:left-0 lg:top-0 lg:flex lg:h-full lg:shrink-0"
@@ -244,7 +228,7 @@ export function AdminNav({
         </div>
       </div>
       {partner ? null : (
-        <MobileTabBar pathname={pathname} counts={counts} moreOpen={moreOpen} onMore={() => setMoreOpen((open) => !open)} />
+        <MobileTabBar pathname={pathname} counts={counts} />
       )}
       {partner ? null : <HotelReplyToasts />}
     </>

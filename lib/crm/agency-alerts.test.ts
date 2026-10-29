@@ -11,10 +11,10 @@ test("un e-mail et un WhatsApp deviennent chacun une alerte, sans adresse", () =
     alerts.map((row) => row.kicker),
     ["E-mail", "WhatsApp"]
   );
-  assert.equal(alerts[0]?.href, "/admin/emails");
+  assert.equal(alerts[0]?.href, "/admin/boite?onglet=fournisseurs");
   assert.equal(alerts[0]?.title, "Confirmation Sofitel");
   assert.equal(alerts[1]?.body, "Bonjour, le vol est décalé.");
-  assert.equal(alerts[1]?.href, "/admin/whatsapp");
+  assert.equal(alerts[1]?.href, "/admin/boite?onglet=whatsapp&filtre=non-lus");
   assert.equal(JSON.stringify(alerts).includes("@"), false);
 });
 

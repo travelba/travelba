@@ -11,11 +11,10 @@ import {
   DuplicateBookingButton,
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
-import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
-import { wireAccountChoices } from "@/lib/crm/funding-wallet";
-import { ClientStripeSuggestions } from "@/components/admin/ClientStripeSuggestions";
+import { ClientPaymentsToCredit } from "@/components/admin/argent/ClientPaymentsToCredit";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
+import { StatementRequest } from "@/components/account/StatementRequest";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
@@ -269,11 +268,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
   ]);
   const conciergePaused = !pauseRow.data ? false : threadIsPaused(pauseRow.data.paused_until, new Date());
   const threadMessages = whatsappMessages;
-  const revolutSuggestions = suggestionsForCustomer(c, revolut.rows, revolut.people);
-  const stripeSuggestions = suggestionsForStripeCustomer(c, stripe.rows, stripe.people).map((item) => ({
-    ...item,
-    row: { ...item.row, payer_email: null, raw: {} },
-  }));
+  const paymentsToCredit =
+    suggestionsForCustomer(c, revolut.rows, revolut.people).length +
+    suggestionsForStripeCustomer(c, stripe.rows, stripe.people).length;
   return (
     <div className="space-y-5">
       <header className="admin-af-hero-band overflow-hidden rounded-3xl">
@@ -292,12 +289,17 @@ export default async function AdminClientDetailPage({ params }: Props) {
               {[contactLine, `Dernière visite · ${lastVisit}`].filter(Boolean).join("  ·  ")}
             </p>
           </div>
-          <Link
-            href={clientLedgerAdminHref(c.id)}
-            className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
-          >
-            Transactions
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="w-56 [&>div]:mt-0">
+              <StatementRequest endpoint={`/api/admin/clients/${c.id}/releve`} audience="staff" />
+            </div>
+            <Link
+              href={clientLedgerAdminHref(c.id)}
+              className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
+            >
+              Transactions
+            </Link>
+          </div>
         </div>
         <div className="grid grid-cols-2 border-t border-white/10 sm:grid-cols-4 sm:divide-x sm:divide-white/10">
           <Link href={clientLedgerAdminHref(c.id)} className="block px-6 py-4 transition hover:bg-white/5 sm:px-8">
@@ -360,18 +362,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
       <Mb3mFicheAction customerId={c.id} blocker={mb3mFicheBlocker(c)} sent={mb3mSent} />
-      <ClientRevolutSuggestions
-        suggestions={revolutSuggestions}
-        accounts={
-          wireAccountChoices(
-            ((billingCompanies || []) as CrmBillingCompany[]).map((company) => ({
-              ...company,
-              customer_id: c.id,
-            }))
-          )[c.id] || []
-        }
-      />
-      <ClientStripeSuggestions suggestions={stripeSuggestions} />
+      <ClientPaymentsToCredit customerId={c.id} count={paymentsToCredit} />
       <section className="admin-af-card rounded-3xl px-5 py-4">
         <div className="flex items-end justify-between gap-3">
           <div>

@@ -208,7 +208,7 @@ export function InviteCustomerPanel({
               disabled={loading || sendingAccess}
               className="admin-af-btn admin-tap shrink-0 rounded-full px-4 py-2.5 text-sm disabled:opacity-60"
             >
-              {loading ? "Envoi…" : status === "none" ? "Envoyer l’invitation" : "Renvoyer l’invitation"}
+              {loading ? "Envoi…" : status === "none" ? "Inviter" : "Renvoyer l’invitation"}
             </button>
           )}
         </div>

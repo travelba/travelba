@@ -833,11 +833,13 @@ export function BookingIngest({
         <div className="space-y-4">
           <p className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
             <CheckCircle2 className="h-4 w-4" />
-            Relisez chaque carte. Enregistrer crée un brouillon invisible au client.
+            {mode === "append"
+              ? "Relisez chaque étape. Ajouter au dossier les enregistre ; le client ne les voit qu’après Mettre à jour le carnet."
+              : "Relisez chaque étape. Créer le dossier le laisse En préparation : le client ne voit rien."}
           </p>
           {noCards ? (
             <p className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
-              Aucune carte extraite. Les fichiers restent joints.
+              Aucune étape lue. Les fichiers restent joints.
             </p>
           ) : null}
           {reviewRows.length ? (
@@ -847,7 +849,7 @@ export function BookingIngest({
           ) : null}
           {extract.document_status === "quote" ? (
             <p className="rounded-2xl bg-[#efebe0] px-3 py-2 text-sm text-[var(--admin-navy)]">
-              Devis : le client ne verra ce dossier qu’après publication. Saisissez le prix vendu, pas le net PDF.
+              Devis : le client ne verra ce dossier qu’après Montrer au client. Saisissez le prix vendu, pas le net PDF.
             </p>
           ) : null}
           {extract.document_status === "identity" ? (
@@ -1125,8 +1127,8 @@ export function BookingIngest({
             {busy === "save"
               ? "Enregistrement…"
               : mode === "append"
-                ? "Enregistrer le brouillon"
-                : "Créer le dossier (brouillon)"}
+                ? "Ajouter au dossier"
+                : "Créer le dossier"}
           </button>
         </div>
       ) : null}

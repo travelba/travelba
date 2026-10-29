@@ -934,8 +934,8 @@ test("le tableau sonde aussi l’onglet en arrière-plan", () => {
   assert.match(src, /askBrowserAlerts/);
 });
 
-test("le tableau et le cron relisent le fil Gmail, et le connecteur expose le statut", () => {
-  const page = readFileSync(join(process.cwd(), "app/admin/page.tsx"), "utf8");
+test("la Boîte › Hôtels et le cron relisent le fil Gmail, et le connecteur expose le statut", () => {
+  const page = readFileSync(join(process.cwd(), "components/admin/boite/HotelsPanel.tsx"), "utf8");
   const cron = readFileSync(join(process.cwd(), "app/api/cron/gmail-ingest/route.ts"), "utf8");
   const mcp = readFileSync(join(process.cwd(), "lib/crm/mcp-read.ts"), "utf8");
   const registry = readFileSync(join(process.cwd(), "lib/crm/mcp-registry.ts"), "utf8");

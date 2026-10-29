@@ -57,6 +57,7 @@ export function LittleEmperorsInbox({
   webhookConfigured,
   agency,
   probe,
+  compact = false,
 }: {
   rows: (CrmLeBooking & { booked_on?: string | null })[];
   customers: PickableCustomer[];
@@ -66,6 +67,8 @@ export function LittleEmperorsInbox({
   webhookConfigured: boolean;
   agency: boolean;
   probe: { last_status: number | null; last_error: string | null; last_ok_at: string | null };
+  /** Dans la Boîte de réception : l’état et Actualiser seulement, sans la notice. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const copy = mylerSheet(!agency);
@@ -127,13 +130,15 @@ export function LittleEmperorsInbox({
     <div className="space-y-4">
       {busy ? <BusyBar label="Little Emperors" /> : null}
       <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{copy.title}</p>
-        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{copy.host}</h2>
-        <p className="mt-3 text-sm font-semibold text-[var(--admin-navy)]">
-          {keyLine}
-        </p>
-        <p className="mt-2 text-sm text-[var(--admin-navy)]">{copy.keyNote}</p>
-        <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{copy.sso}</p>
+        {compact ? null : (
+          <>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{copy.title}</p>
+            <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{copy.host}</h2>
+            <p className="mt-3 text-sm font-semibold text-[var(--admin-navy)]">{keyLine}</p>
+            <p className="mt-2 text-sm text-[var(--admin-navy)]">{copy.keyNote}</p>
+            <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{copy.sso}</p>
+          </>
+        )}
         {agency ? null : (
         <dl className="mt-4 space-y-3 text-sm">
           <div>
@@ -313,7 +318,7 @@ export function LittleEmperorsInbox({
                     onClick={() => setAttachId(row.id)}
                     className="rounded-md border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold"
                   >
-                    Créer un dossier brouillon
+                    Créer un dossier
                   </button>
                 ) : null}
                 {!cancelled && row.is_cancellable === true ? (

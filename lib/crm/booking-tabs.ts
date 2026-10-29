@@ -1,34 +1,43 @@
 /** Onglets de la fiche dossier : l’onglet courant vit dans l’URL (`?tab=`). */
-export const BOOKING_TAB_IDS = ["client", "whatsapp", "voyage", "todo", "cartes", "argent", "interface"] as const;
+export const BOOKING_TAB_IDS = ["voyage", "client", "todo", "argent"] as const;
 
 export type BookingTabId = (typeof BOOKING_TAB_IDS)[number];
 
 /** Valeur lisible dans l’URL pour chaque onglet. */
 export const BOOKING_TAB_SLUGS: Record<BookingTabId, string> = {
-  client: "client",
-  whatsapp: "whatsapp",
   voyage: "voyage",
+  client: "client",
   todo: "a-faire",
-  cartes: "carte",
-  argent: "reglement",
-  interface: "interface",
+  argent: "argent",
 };
 
 export const BOOKING_TAB_LABELS: Record<BookingTabId, string> = {
+  voyage: "Voyage",
   client: "Client",
-  whatsapp: "WhatsApp",
-  voyage: "Le voyage",
   todo: "À faire",
-  cartes: "Carte",
-  argent: "Règlement",
-  interface: "Interface client",
+  argent: "Argent",
 };
 
-/** Anciens slugs : Pliant est la carte, Transactions et Argent sont le règlement. */
+/** Ce que chaque onglet contient, en une ligne. */
+export const BOOKING_TAB_HELP: Record<BookingTabId, string> = {
+  voyage: "Lieu, dates, étapes, pièces et courriers hôtel.",
+  client: "Le client, les voyageurs, le fil WhatsApp et le partage du carnet.",
+  todo: "Formalités, enregistrement, services et pièces manquantes.",
+  argent: "Qui règle, prix, coûts, facture, compte du client et carte Pliant.",
+};
+
+/**
+ * Anciens slugs : WhatsApp et Interface client ont rejoint Client et Voyage ; Carte, Pliant,
+ * Règlement et Transactions sont l’onglet Argent.
+ */
 const BOOKING_TAB_ALIASES: Record<string, BookingTabId> = {
-  pliant: "cartes",
+  whatsapp: "client",
+  interface: "voyage",
+  carte: "argent",
+  cartes: "argent",
+  pliant: "argent",
+  reglement: "argent",
   transactions: "argent",
-  argent: "argent",
 };
 
 /** `?tab=a-faire` → `todo`. Inconnu ou absent → `voyage`. L’ancien id interne est accepté. */
@@ -54,6 +63,11 @@ export function bookingTabQuery(current: string, tab: BookingTabId) {
   params.delete("repondre");
   params.set("tab", BOOKING_TAB_SLUGS[tab]);
   return params.toString();
+}
+
+/** Lien vers un onglet d’un dossier. */
+export function bookingTabHref(bookingId: string, tab: BookingTabId) {
+  return `/admin/reservations/${bookingId}?tab=${BOOKING_TAB_SLUGS[tab]}`;
 }
 
 /** Onglet suivant au clavier (flèches, Début, Fin), en bouclant. */

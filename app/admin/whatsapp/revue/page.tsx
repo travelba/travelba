@@ -64,7 +64,7 @@ export default async function ConciergeReviewPage() {
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle title="Revue de la semaine" subtitle={`Du ${report.from} au ${report.to}. Les fils escaladés et les tentatives hors dossier.`} />
       </div>
-      <Link href="/admin/whatsapp" className="text-sm font-semibold underline-offset-2 hover:underline">
+      <Link href="/admin/boite?onglet=whatsapp" className="text-sm font-semibold underline-offset-2 hover:underline">
         Retour à la file
       </Link>
       {pendingMigration ? <p className="text-sm text-muted">La revue s’ouvre après la migration du Concierge.</p> : null}

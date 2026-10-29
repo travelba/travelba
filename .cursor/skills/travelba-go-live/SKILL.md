@@ -100,7 +100,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 ## Revolut
 
 - **Pas** `REVOLUT_SANDBOX=1` en prod.
-- Relier l’app via `/admin/revolut` (OAuth, tokens dans `crm_integrations`, service_role only).
+- Relier l’app via Argent › Comptes (`/admin/argent?onglet=comptes`, OAuth, tokens dans `crm_integrations`, service_role only).
 - Cron Vercel : `vercel.json` → `GET /api/cron/revolut-sync` toutes les 15 min. Header `Authorization: Bearer $CRON_SECRET`.
 - Pliant : `GET /api/cron/pliant-sync` toutes les 15 min ne redemande pas de jeton. Auth0 est limité à une poignée par jour. Le jeton vit dans `crm_integrations` (provider `pliant`) et le verrou `crm_claim_integration_refresh`. Skill `travelba-visa`.
 - Inbox `crm_revolut_transactions` status `unmatched` → auto-crédit si match unique certain (`revolut-match`) ; sinon l’agent rapproche ou ignore (inbox + fiche client).
@@ -130,7 +130,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 2. `/admin/clients` liste les vrais clients (pas un seed).
 3. `/connexion` mot de passe + magique (Regarder Resend, pas les logs pour le lien).
 4. Un carnet **déjà publié** s’affiche ; un brouillon reste invisible. **S’il n’y a aucun séjour publié, ne pas en inventer** — skip ce check. L’agent importe un vrai dossier, Enregistrer, puis Publier. `/admin` affiche alors « Mise en service ».
-5. `/admin/revolut` : **Connecter Revolut** (SCA Business) si `crm_integrations` est vide. Ensuite le cron remplit l’inbox et auto-crédite les matches uniques certains. Inbox vide tant que l’OAuth n’est pas fait = normal.
+5. Argent › Comptes : **Connecter Revolut** (SCA Business) si `crm_integrations` est vide. Ensuite le cron remplit À encaisser toutes les 15 min ; aucun crédit ne part sans le clic Créditer. À encaisser vide tant que l’OAuth n’est pas fait = normal.
 6. Contact vitrine → e-mail `CONTACT_TO_EMAIL`.
 7. WhatsApp header client → `wa.me/33756841315`.
 

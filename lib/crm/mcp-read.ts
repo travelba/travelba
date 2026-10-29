@@ -858,7 +858,7 @@ export async function readRevolutEnAttente() {
     "id" | "amount" | "currency" | "counterparty_name" | "reference" | "booked_at"
   >[];
   return {
-    lien: "/admin/revolut",
+    lien: "/admin/argent?onglet=a-encaisser",
     virements: rows.map((row) => ({
       id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
@@ -915,7 +915,7 @@ export async function readRevolutDebits() {
     ((stays.data || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference])
   );
   return {
-    lien: "/admin/revolut",
+    lien: "/admin/argent?onglet=a-pointer&vue=revolut",
     debits: rows.map((row) => {
       const line = revolutDebitLine(row);
       return {
@@ -994,7 +994,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     etat: cost.state === "pending" ? "en attente" : "confirmé",
   });
   return {
-    lien: `/admin/reservations/${booking.id}?tab=reglement`,
+    lien: `/admin/reservations/${booking.id}?tab=argent`,
     reference: booking.reference,
     titre: booking.title || booking.destination,
     commission_agence: formatAgencyFeePercent(commission.rate),
@@ -1056,7 +1056,7 @@ export async function readStripeEnAttente() {
     "id" | "amount" | "currency" | "payer_name" | "reference" | "method" | "booked_at"
   >[];
   return {
-    lien: "/admin/stripe",
+    lien: "/admin/argent?onglet=a-encaisser",
     paiements: rows.map((row) => ({
       id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
@@ -1086,7 +1086,7 @@ export async function readEmailsEnAttente() {
   >[];
   const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
-    lien: "/admin/emails",
+    lien: "/admin/boite?onglet=fournisseurs",
     mails: rows.map((row) => {
       const verdict = extractCancellationVerdict(
         { label: row.label, receivedAt: row.received_at, extract: parseStoredExtract(row.extract) },
@@ -1148,7 +1148,7 @@ export async function readLittleEmperorsEnAttente(admin = db()) {
     .slice(0, INBOX_LIMIT);
   const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
-    lien: "/admin/little-emperors",
+    lien: "/admin/boite?onglet=fournisseurs&source=little-emperors",
     sejours: rows.map((row) => {
       const verdict = leCancellationVerdict(row, known);
       return {

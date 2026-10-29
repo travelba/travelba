@@ -181,7 +181,7 @@ export function PliantMatchActions({
       {phase === "a_proposer" ? <StatusChip tone="gold">{pliantLinkPhaseLabel(phase)}</StatusChip> : null}
       {linked ? (
         <p className="text-sm font-semibold text-[var(--admin-navy)]">
-          <Link href={`/admin/reservations/${linked.bookingId}?tab=reglement`} className="underline">
+          <Link href={`/admin/reservations/${linked.bookingId}?tab=argent`} className="underline">
             {linked.reference}
           </Link>
           {linked.itemLabel ? <span className="block text-xs font-normal text-muted">{linked.itemLabel}</span> : null}

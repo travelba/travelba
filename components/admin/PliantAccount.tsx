@@ -69,7 +69,7 @@ function LineMeta({ row }: { row: PliantLine }) {
         type={row.type}
         category={row.category}
         comment={row.comment}
-        href={row.bookingId ? `/admin/reservations/${row.bookingId}?tab=reglement` : null}
+        href={row.bookingId ? `/admin/reservations/${row.bookingId}?tab=argent` : null}
       />
       <StatusChip tone={pliantStatusTone(row.status)}>{pliantStatusLabel(row.status)}</StatusChip>
     </div>
@@ -110,7 +110,7 @@ export function PliantAccount({
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [scope, setScope] = useState<"all" | "unmatched">("all");
+  const [scope, setScope] = useState<"all" | "unmatched">("unmatched");
   const shown = scope === "unmatched" ? lines.filter(needsMatch) : lines;
 
   async function sync() {
@@ -183,7 +183,7 @@ export function PliantAccount({
 
   return (
     <div className="space-y-4">
-      <BusyBar active={busy} label="Synchronisation⬦" />
+      <BusyBar active={busy} label="Synchronisation…" />
       {configured ? (
         <div className="admin-af-card max-w-xs rounded-3xl px-5 py-4">
           <PliantAccountBalance account={account || { availableCents: null, currency: "EUR" }} />
@@ -191,17 +191,17 @@ export function PliantAccount({
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => void sync()} disabled={busy || !configured} className="admin-af-btn rounded-full px-4 py-2 text-sm">
-          {busy ? "Synchronisation⬦" : "Synchroniser Pliant"}
+          {busy ? "Synchronisation…" : "Synchroniser Pliant"}
         </button>
         {configured ? (
-          <p className="text-sm text-muted">Chaque dépense se rattache à une ligne d’un voyage. Rien ne part au client.</p>
+          <p className="text-sm text-muted">Chaque dépense se pointe sur une étape d’un dossier. Rien ne part au client.</p>
         ) : null}
         <button
           type="button"
           onClick={() => setScope((current) => (current === "unmatched" ? "all" : "unmatched"))}
           className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
         >
-          {scope === "unmatched" ? "Toutes les dépenses" : "Seulement à rattacher"}
+          {scope === "unmatched" ? "Toutes les dépenses" : "Seulement à pointer"}
         </button>
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}

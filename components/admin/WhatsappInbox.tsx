@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { whatsappThreadHref } from "@/lib/crm/boite-tabs";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConciergeProposalDesk } from "@/components/admin/ConciergeProposalDesk";
@@ -28,6 +29,7 @@ export type InboxTemplate = { key: string; label: string };
 const FILTERS: { id: InboxFilter; label: string }[] = [
   { id: "tous", label: "Tous" },
   { id: "non-lus", label: "Non lus" },
+  { id: "a-approuver", label: "À approuver" },
   { id: "escalade", label: "Escaladés" },
   { id: "robot", label: "Le Concierge" },
   { id: "agence", label: "Agence" },
@@ -43,6 +45,7 @@ export function WhatsappInbox({
   windowOpen,
   previewBlocked,
   embedded = false,
+  initialFilter = "tous",
 }: {
   threads: InboxThread[];
   messages: InboxMessage[];
@@ -52,10 +55,12 @@ export function WhatsappInbox({
   windowOpen: boolean;
   previewBlocked: boolean;
   embedded?: boolean;
+  /** `?filtre=` de la Boîte : le filtre à l’ouverture. */
+  initialFilter?: InboxFilter;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<InboxFilter>("tous");
+  const [filter, setFilter] = useState<InboxFilter>(initialFilter);
   const [body, setBody] = useState("");
   const [template, setTemplate] = useState("");
   const [note, setNote] = useState("");
@@ -165,7 +170,7 @@ export function WhatsappInbox({
             {visible.map((thread) => (
               <li key={thread.key}>
                 <Link
-                  href={`/admin/whatsapp?fil=${encodeURIComponent(thread.key)}`}
+                  href={whatsappThreadHref(thread.key)}
                   className={`block border-b border-[var(--border)] px-3 py-3 ${thread.key === activeKey ? "bg-[#f7f1e6]" : ""}`}
                 >
                   <span className="flex items-center justify-between gap-2">

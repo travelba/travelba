@@ -19,9 +19,22 @@ export type AdminBadges = {
   pieces: number;
   /** Fils WhatsApp avec un message client non lu. */
   whatsapp: number;
+  /** Courriers hôtel où l’hôtel a écrit en dernier : une réponse à traiter. */
+  hotels: number;
+  /** Sorties Pliant et débits Revolut pas encore pointés sur un dossier. */
+  costs: number;
 };
 
-export const EMPTY_ADMIN_BADGES: AdminBadges = { revolut: 0, stripe: 0, emails: 0, le: 0, pieces: 0, whatsapp: 0 };
+export const EMPTY_ADMIN_BADGES: AdminBadges = {
+  revolut: 0,
+  stripe: 0,
+  emails: 0,
+  le: 0,
+  pieces: 0,
+  whatsapp: 0,
+  hotels: 0,
+  costs: 0,
+};
 
 /**
  * Les compteurs du menu et du tableau de bord, comptés une fois par requête
@@ -30,7 +43,7 @@ export const EMPTY_ADMIN_BADGES: AdminBadges = { revolut: 0, stripe: 0, emails: 
 export const adminBadges = cache(async (): Promise<AdminBadges> => {
   try {
     const admin = createServiceClient();
-    const [revolut, stripe, emails, le, pieces, whatsappRows] = await Promise.all([
+    const [revolut, stripe, emails, le, pieces, whatsappRows, hotels, pliantCosts, revolutCosts] = await Promise.all([
       admin
         .from("crm_revolut_transactions")
         .select("id", { count: "exact", head: true })
@@ -50,6 +63,18 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
         .gte("expires_on", isoDateInDays(0))
         .lte("expires_on", isoDateInDays(90)),
       loadRecentWhatsappRows(),
+      admin.from("crm_hotel_requests").select("id", { count: "exact", head: true }).eq("status", "replied"),
+      admin
+        .from("crm_pliant_transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("match_status", "unmatched")
+        .in("status", ["BOOKED", "CONFIRMED"])
+        .in("type", ["PURCHASE", "CASH_WITHDRAWAL", "REFUND", "CHARGEBACK"]),
+      admin
+        .from("crm_revolut_transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "unmatched")
+        .eq("direction", "debit"),
     ]);
     const whatsapp = whatsappRows || (await fallbackWhatsappRows(admin));
     return {
@@ -59,6 +84,8 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
       le: le.error ? 0 : le.count ?? 0,
       pieces: pieces.error ? 0 : pieces.count ?? 0,
       whatsapp: unreadWhatsapp(whatsapp),
+      hotels: hotels.error ? 0 : hotels.count ?? 0,
+      costs: (pliantCosts.error ? 0 : pliantCosts.count ?? 0) + (revolutCosts.error ? 0 : revolutCosts.count ?? 0),
     };
   } catch (err) {
     console.error("[admin/badges]", err instanceof Error ? err.message : err);
