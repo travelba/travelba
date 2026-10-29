@@ -667,7 +667,7 @@ export const EMAIL_INGEST_STATUSES = [
   "grouped",
 ] as const;
 
-/** File /admin/emails : tout ce qui n’a pas encore été traité par l’agence. */
+/** File Boîte de réception › Fournisseurs : tout ce qui n’a pas encore été traité par l’agence. */
 export const EMAIL_INBOX_QUEUE_STATUSES = [
   "received",
   "parsed",

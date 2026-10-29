@@ -156,7 +156,6 @@ function OriginalMail({ row }: { row: CrmEmailIngest }) {
 function pendingLabel(action: string) {
   if (action === "new_booking") return "Création…";
   if (action === "refuse" || action === "ignore") return "Classement…";
-  if (action === "rematch") return "Nouvelle proposition…";
   if (action === "attach_booking") return "Dépôt…";
   if (action === "apply_cards" || action === "replace_booking") return "Dépôt…";
   return "Rattachement…";
@@ -327,31 +326,6 @@ export function EmailIngestInbox({
     });
     setSavingTitle(null);
     if (!result.ok) setError(result.error || "Titre non enregistré.");
-  }
-
-  /** Reproposer : relance client / voyage sur l’extract stocké, sans rattacher. */
-  async function rematch(rowId: string) {
-    setBusy({ id: rowId, action: "rematch" });
-    setError(null);
-    setNotice(null);
-    const result = await adminAction(`/api/admin/email-ingest/${rowId}`, { method: "POST", body: { action: "rematch" } });
-    setBusy(null);
-    if (!result.ok) {
-      setError(result.error || "Nouvelle proposition impossible.");
-      return;
-    }
-    setChosen((prev) => {
-      const next = { ...prev };
-      delete next[rowId];
-      return next;
-    });
-    setBookings((prev) => {
-      const next = { ...prev };
-      delete next[rowId];
-      return next;
-    });
-    preloaded.current.delete(rowId);
-    router.refresh();
   }
 
   function viewOf(row: CrmEmailIngest): ExtractView {
@@ -969,17 +943,6 @@ export function EmailIngestInbox({
                   <Icon name="add" className="h-4 w-4" />
                   {isBusy && busy?.action === "new_booking" ? "Création…" : "Créer un dossier"}
                 </button>
-                {row.extract ? (
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="admin-tap inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-[var(--admin-navy)] disabled:opacity-40"
-                    onClick={() => void rematch(row.id)}
-                  >
-                    <Icon name="sync_alt" className="h-4 w-4" />
-                    {isBusy && busy?.action === "rematch" ? "Nouvelle proposition…" : "Reproposer"}
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   disabled={isBusy}

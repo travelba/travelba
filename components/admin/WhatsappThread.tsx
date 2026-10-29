@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { whatsappThreadHref } from "@/lib/crm/boite-tabs";
 import { WhatsappInbox, type InboxProposal, type InboxTemplate } from "@/components/admin/WhatsappInbox";
 import { foldThreads, sessionWindowOpen, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
 
@@ -93,7 +94,7 @@ export function WhatsappThread({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-[var(--color-ink-soft)]">Même fil que la boîte WhatsApp.</p>
         {phone ? (
-          <Link href={`/admin/whatsapp?fil=${encodeURIComponent(phone)}`} className="text-sm underline">
+          <Link href={whatsappThreadHref(phone)} className="text-sm underline">
             Ouvrir dans la boîte
           </Link>
         ) : null}

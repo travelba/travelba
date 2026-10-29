@@ -5,12 +5,8 @@ import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { addIsoDays } from "@/lib/crm/dates";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
-import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
-import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
-import { createServiceClient } from "@/lib/supabase/admin";
 import { AgencyAccountBalances } from "@/components/admin/AccountBalance";
 import { ClientActivity } from "@/components/admin/ClientActivity";
-import { RecentMails } from "@/components/admin/RecentMails";
 import { loadClientActivityFeed } from "@/lib/crm/client-activity-feed";
 import { DashboardWeek } from "@/components/admin/DashboardWeek";
 import { dashboardWeek } from "@/lib/crm/dashboard-week";
@@ -44,7 +40,6 @@ export default async function AdminHomePage() {
     badges,
     serviceLines,
     agencyAccounts,
-    recentMails,
     clientActivity,
   ] = await Promise.all([
     supabase
@@ -76,7 +71,6 @@ export default async function AdminHomePage() {
     adminBadges(),
     loadAgencyServiceDesk(supabase),
     loadAgencyAccounts(),
-    loadFreshDashboardMails(supabase),
     loadClientActivityFeed(supabase, today),
   ]);
   const remainingDue = ((balances || []) as Pick<CrmBalance, "balance" | "currency">[]).reduce(
@@ -150,8 +144,6 @@ export default async function AdminHomePage() {
         )}
       </section>
 
-      <RecentMails mails={recentMails} />
-
       <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} covers={covers} />
 
       <section aria-labelledby="argent-titre" className="space-y-3">
@@ -183,14 +175,4 @@ export default async function AdminHomePage() {
 
 function todoCaption(label: string) {
   return label.replace(/^\d+\s+/, "");
-}
-
-/** Quatre fils au plus, 1,5 s : le téléphone n’attend pas Gmail. Le cron reprend le reste. */
-async function loadFreshDashboardMails(supabase: Parameters<typeof loadDashboardMails>[0]) {
-  try {
-    await refreshStaleHotelThreads(createServiceClient(), { limit: 4, budgetMs: 1500 });
-  } catch {
-    // La liste s’affiche avec le dernier fil déjà enregistré.
-  }
-  return loadDashboardMails(supabase);
 }

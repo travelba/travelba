@@ -1086,7 +1086,7 @@ export async function readEmailsEnAttente() {
   >[];
   const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
-    lien: "/admin/emails",
+    lien: "/admin/boite?onglet=fournisseurs",
     mails: rows.map((row) => {
       const verdict = extractCancellationVerdict(
         { label: row.label, receivedAt: row.received_at, extract: parseStoredExtract(row.extract) },
@@ -1148,7 +1148,7 @@ export async function readLittleEmperorsEnAttente(admin = db()) {
     .slice(0, INBOX_LIMIT);
   const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
-    lien: "/admin/little-emperors",
+    lien: "/admin/boite?onglet=fournisseurs&source=little-emperors",
     sejours: rows.map((row) => {
       const verdict = leCancellationVerdict(row, known);
       return {

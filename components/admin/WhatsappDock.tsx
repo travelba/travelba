@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { whatsappThreadHref } from "@/lib/crm/boite-tabs";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { WhatsappHoldButton } from "@/components/admin/WhatsappHoldButton";
@@ -702,7 +703,7 @@ function ChatPane({
       <div className={sheet ? "flex shrink-0 gap-3 px-3 text-sm" : "flex gap-2 px-3 py-1 text-[10px]"}>
         {thread.customerId ? <Link className={linkClass} href={`/admin/clients/${thread.customerId}`}>Fiche</Link> : null}
         {thread.bookingId ? <Link className={linkClass} href={`/admin/reservations/${thread.bookingId}?onglet=whatsapp`}>Dossier</Link> : null}
-        {thread.phone ? <Link className={linkClass} href={`/admin/whatsapp?fil=${encodeURIComponent(thread.phone)}`}>Fil complet</Link> : null}
+        {thread.phone ? <Link className={linkClass} href={whatsappThreadHref(thread.phone)}>Fil complet</Link> : null}
       </div>
       <div className={sheet ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-2 py-2" : "min-h-0 flex-1 space-y-2 overflow-y-auto px-2 py-2"}>
         {ordered.map((message) => {

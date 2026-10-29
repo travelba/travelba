@@ -40,7 +40,8 @@ Le parse ne crée plus de fiche ni de
 dossier, et n’applique plus le séjour.
 
 Deux séjours vers la même ville, deux cartes du même type, une annulation sans
-référence, un devis ou une pièce d’identité restent dans `/admin/emails` tant
+référence, un devis ou une pièce d’identité restent dans la Boîte de réception
+(`/admin/boite?onglet=fournisseurs`, `components/admin/boite/FournisseursPanel.tsx`) tant
 que l’agence n’a pas cliqué.
 
 L’IA **ne publie jamais** le carnet. Un mail lié à un dossier existant
@@ -74,7 +75,7 @@ Gmail label (little-emperors | expedia-taap | billet-avion | booking-cancellatio
   → suggestCustomerFromExtract
   → suggestBookingByReference ∪ suggestBookingByTripSignals
   → status matched|parsed + candidats
-  → /admin/emails jusqu’au clic agence
+  → Boîte de réception › Fournisseurs jusqu’au clic agence
 ```
 
 `matchAndStoreExtract` enregistre l’extract et les suggestions. Il n’applique
@@ -170,7 +171,7 @@ Chaque décision (auto ou humain) va dans `crm_audit_events` : qui, quand, quoi.
 
 ## Confiance et proposition
 
-Chaque champ lu porte une confiance et, quand la ligne est dans le mail, la citation. `crm_import_proposals` garde l’avant / après (ajouter, remplacer, annuler, joindre le mail). On n’applique seul que si la référence de confirmation est unique, la confiance est au moins 0,9 et il n’y a pas de conflit. Sans confiance notée, le rapprochement unique d’avant reste. `/admin/emails` a trois vues : à traiter, appliqués (24 h, Annuler), ignorés (remettre). Raccourcis A, I, E sur la première carte. Les champs peu sûrs sont en orange, citation au survol.
+Chaque champ lu porte une confiance et, quand la ligne est dans le mail, la citation. `crm_import_proposals` garde l’avant / après (ajouter, remplacer, annuler, joindre le mail). On n’applique seul que si la référence de confirmation est unique, la confiance est au moins 0,9 et il n’y a pas de conflit. Sans confiance notée, le rapprochement unique d’avant reste. Boîte de réception › **Fournisseurs** (`lib/crm/boite-tabs.ts`) a trois vues : **À traiter**, **Déposés (24 h)** (`?vue=rattaches`, Annuler), **Classés** (`?vue=classes`, Remettre à traiter), plus la pilule **Little Emperors** (`?source=little-emperors`, toutes les réservations). Dans À traiter, les réservations Little Emperors sans dossier sont des cartes de la même file, sous les e-mails (`LittleEmperorsInbox compact`). Une carte mail a quatre gestes : **Déposer les pièces**, **Créer un dossier**, **Choisir / Changer** le client, **Classer** ; **Écarter le doublon** reste pour un doublon. Reproposer a disparu de l’écran (l’API `rematch` reste). Raccourcis A, I, E sur la première carte. Les anciennes pages `/admin/emails`, `/admin/whatsapp`, `/admin/hotels-demandes` redirigent (`LEGACY_BOITE_ROUTES`) ; `/admin/little-emperors` reste la page des partenaires MyLER et redirige l’agence. L’onglet **Hôtels** (`HotelsPanel`) porte les courriers hôtel et leurs réponses (`RecentMails`, qui a quitté l’accueil), **Sans réponse** (Relancer) et **Demandes hôtels** ; l’onglet **WhatsApp** (`WhatsappPanel`) est l’ancienne page, avec `?filtre=non-lus|a-approuver` (brouillons du Concierge en attente) et `?fil=`. Les champs peu sûrs sont en orange, citation au survol.
 
 ## Pas de voyage
 
@@ -331,7 +332,7 @@ L’API (cron toutes les 30 minutes et webhook) crée le dossier quand aucun sé
 - Écrire le montant du mail comme prix vendu sur une carte déjà tarifée
 - Inviter le client, ou publier le carnet, dans la création automatique
 - Publier le carnet / `visible_to_client=true`
-- Retirer `received` ou `error` de la file `/admin/emails`
+- Retirer `received` ou `error` de la file Boîte de réception › Fournisseurs
 - Inventer horaires, inclus, nets, e-mail client agence
 - Réduire un bloc Benefits au seul petit-déjeuner
 - Traiter ce flux comme le dropzone (pas de « Enregistrer » obligatoire)
