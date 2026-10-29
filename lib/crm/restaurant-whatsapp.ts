@@ -222,24 +222,36 @@ export function restaurantIntroText(input: { greeting: string; eveningDate: stri
   return restaurantIntroBody().replace("{{1}}", variables["1"]).replace("{{2}}", variables["2"]);
 }
 
-/** Texte de la réponse après « J’accepte ». Le CRM enregistre le choix ; ce message ne part pas tout seul. */
+/** Lien « Découvrir l’adresse » d’un restaurant : la même redirection que la carte salle. */
+export function restaurantPlaceLink(restaurantId: string) {
+  return /^[0-9a-f-]{36}$/i.test(restaurantId) ? `${RESTAURANT_PLACE_PREFIX}${restaurantId}` : "";
+}
+
+/**
+ * Texte de la confirmation après « J’accepte » (bouton WhatsApp ou Accepter de l’espace client).
+ * Le même texte sert à l’aperçu et à l’envoi réel : restaurant, date, heure, deux personnes, lien de l’adresse.
+ * Sans `other`, la phrase d’annulation n’apparaît pas.
+ */
 export function restaurantAcceptAck(input: {
   greeting: string;
   restaurant: string;
   eveningDate: string;
   timeLabel: string;
   other: string;
+  placeUrl?: string | null;
 }) {
   const greeting = plain(input.greeting, 80) || "cher client";
   const restaurant = plain(input.restaurant, 80) || "la maison";
-  const other = plain(input.other, 80) || "l’autre maison";
+  const other = plain(input.other, 80);
   const when = plain(formatEveningFr(input.eveningDate), 40) || "ce soir";
   const time = plain(input.timeLabel, 20) || restaurantDefaultClock();
-  return [
-    `${greeting}, votre table pour deux est retenue chez ${restaurant}, ${when}, à ${time}. Nous annulons la table chez ${other}.`,
-    "",
-    RESTAURANT_SIGNATURE,
-  ].join("\n");
+  const link = (input.placeUrl || "").trim();
+  const lines = [
+    `${greeting}, votre table pour 2 personnes est retenue chez ${restaurant}, ${when}, à ${time}.${other ? ` Nous annulons la table chez ${other}.` : ""}`,
+  ];
+  if (link.startsWith("https://")) lines.push(`Adresse : ${link}`);
+  lines.push("", RESTAURANT_SIGNATURE);
+  return lines.join("\n");
 }
 
 export type CarouselDraft = {

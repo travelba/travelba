@@ -7,6 +7,7 @@ import {
   restaurantCarouselDraft,
   restaurantGreeting,
   restaurantIntroText,
+  restaurantPlaceLink,
 } from "./restaurant-whatsapp";
 import { restaurantDefaultClock, type TableSeat, type TableStatus } from "./restaurants";
 
@@ -194,6 +195,7 @@ export function deauvillePhones(): DeauvillePhone[] {
     eveningDate: "2026-10-30",
     timeLabel: restaurantDefaultClock(),
     other: "Le Deauville",
+    placeUrl: restaurantPlaceLink(DRAKKAR),
   });
   const accept: DeauvillePhoneBlock[] = [];
   if (!("error" in friday)) {

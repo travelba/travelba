@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cityPlaceKey } from "./city-names";
 import { phoneFromWhatsapp } from "./whatsapp-inbound";
 import { sendContentTemplate } from "./whatsapp";
-import { sendWhatsappSession } from "./whatsapp-session";
+import { sendWhatsappSession, sessionAddress } from "./whatsapp-session";
 import { resolveContentSid, whatsappContentApproved } from "./twilio-content-sid";
 import {
   clockLabel,
@@ -33,14 +33,17 @@ import {
   RESTAURANT_CAROUSEL_ENV,
   RESTAURANT_CAROUSEL_MENU_ENV,
   RESTAURANT_INTRO_ENV,
+  restaurantAcceptAck,
   restaurantCarouselDraft,
   restaurantGreeting,
   restaurantIntroText,
   restaurantIntroVariables,
+  restaurantPlaceLink,
 } from "./restaurant-whatsapp";
 import { mapRestaurant, refuseRestaurantSeat, restaurantsReady, saveBookingChoice, type DeskTable } from "./restaurants-db";
 import { ficheGaps } from "./restaurant-desk";
 import { outboundRestaurantPhone, restaurantTestPhone } from "./restaurant-test";
+import { RESTAURANT_ALLOWLIST_BLOCK, restaurantAllowlist, restaurantBookingAllowed, restaurantSendGate } from "./restaurant-allowlist";
 
 type DbError = { code?: string | null } | null;
 
@@ -66,6 +69,11 @@ type BookingRow = {
   status: string;
   is_test?: boolean;
 };
+
+/** Un dossier entre dans le module s’il est dans la liste d’essai, ou s’il est une donnée de test (numéro de test seulement). */
+function bundleBookingAllowed(row: Pick<BookingRow, "reference" | "is_test">, allowlist: Set<string>) {
+  return Boolean(row.is_test) || restaurantBookingAllowed(row.reference, allowlist);
+}
 
 type CustomerRow = {
   id: string;
@@ -154,7 +162,8 @@ async function loadBundle(db: SupabaseClient, now: Date): Promise<Bundle | { mis
     if (!restaurantsReady(bookings.error)) return { missing: true };
     return { error: true };
   }
-  const rows = (bookings.data || []) as BookingRow[];
+  const allowlist = restaurantAllowlist();
+  const rows = ((bookings.data || []) as BookingRow[]).filter((row) => bundleBookingAllowed(row, allowlist));
   const ids = rows.map((row) => row.id);
   if (!ids.length) {
     return {
@@ -232,6 +241,21 @@ async function loadBundle(db: SupabaseClient, now: Date): Promise<Bundle | { mis
     messages: (messages.data || []) as OutboundRow[],
     restaurants,
   };
+}
+
+type BookingHead = { id: string; reference: string; customer_id: string; is_test: boolean };
+
+/** Référence, client et drapeau test d’un dossier, avant la colonne `is_test` si la migration manque. */
+async function bookingHead(db: SupabaseClient, bookingId: string): Promise<BookingHead | null> {
+  const full = await db.from("crm_bookings").select("id, reference, customer_id, is_test").eq("id", bookingId).maybeSingle();
+  if (!full.error) {
+    const row = full.data as { id: string; reference: string; customer_id: string; is_test?: boolean } | null;
+    return row ? { id: row.id, reference: row.reference, customer_id: row.customer_id, is_test: Boolean(row.is_test) } : null;
+  }
+  if (!columnMissing(full.error.code)) return null;
+  const plain = await db.from("crm_bookings").select("id, reference, customer_id").eq("id", bookingId).maybeSingle();
+  const row = plain.data as { id: string; reference: string; customer_id: string } | null;
+  return row ? { ...row, is_test: false } : null;
 }
 
 function zoneFor(booking: BookingRow, hotels: ReturnType<typeof hotelsFromItems>, date: string) {
@@ -548,8 +572,10 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
   const menuSid = await approvedSid(RESTAURANT_CAROUSEL_MENU_ENV);
   const desks: DeskEvening[] = [];
   const detail = new Map<string, { booking: BookingRow; customer: CustomerRow | undefined; tables: TableRow[] }>();
+  const allowlist = restaurantAllowlist();
   for (const booking of bundle.bookings) {
     if (booking.is_test || bundle.tables.some((table) => table.booking_id === booking.id && table.is_test)) continue;
+    const allowed = restaurantBookingAllowed(booking.reference, allowlist);
     const hotels = bundle.hotels.get(booking.id) || [];
     const earliest = isoShift(now, -2);
     const latest = isoShift(now, 1);
@@ -575,6 +601,7 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
         closed: Boolean(state?.closed_at),
         canWhatsapp: Boolean(customer?.phone) && !customer?.whatsapp_opt_out_at,
         partsSent: sentParts,
+        allowed,
         tables: tables.map((table) => ({
           seat: table.seat,
           status: table.status,
@@ -598,12 +625,14 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
     if (action.part !== "intro" && introHeld.has(eveningKey)) continue;
     const row = detail.get(eveningKey);
     const test = Boolean(row?.booking.is_test) || Boolean(row?.tables.some((table) => table.is_test));
+    const testPhone = restaurantTestPhone();
     const phone = outboundRestaurantPhone({
       test,
       clientPhone: row?.customer?.phone || null,
-      testPhone: restaurantTestPhone(),
+      testPhone,
     });
     if (!row?.customer || !phone) continue;
+    if (!restaurantSendGate({ reference: row.booking.reference, test, phone, testPhone }, allowlist).ok) continue;
     const prior = bundle.messages.find(
       (message) => message.dedupe_key === restaurantDedupeKey(action.bookingId, action.eveningDate, action.part)
     );
@@ -833,8 +862,7 @@ async function captureSeatReply(
   const table = await db.from("crm_restaurant_tables").select("id, booking_id, evening_date, seat").eq("id", tableId).maybeSingle();
   const row = table.data as { id: string; booking_id: string; evening_date: string; seat: TableSeat } | null;
   if (!row || (row.seat !== "A" && row.seat !== "B")) return { handled: false as const };
-  const booking = await db.from("crm_bookings").select("id, customer_id, is_test").eq("id", row.booking_id).maybeSingle();
-  const owner = booking.data as { customer_id?: string; is_test?: boolean } | null;
+  const owner = await bookingHead(db, row.booking_id);
   const testRow = Boolean((table.data as { is_test?: boolean } | null)?.is_test) || Boolean(owner?.is_test);
   if (testRow) {
     const allowed = restaurantTestPhone();
@@ -851,8 +879,8 @@ async function captureSeatReply(
     .eq("evening_date", date)
     .maybeSingle();
   const label = button.reply === "accepte" ? "J'accepte" : "Je refuse";
-  if ((evening.data as { closed_at?: string | null } | null)?.closed_at) {
-    await noteRestaurantReply(db, {
+  const note = () =>
+    noteRestaurantReply(db, {
       customerId,
       bookingId,
       date,
@@ -861,6 +889,13 @@ async function captureSeatReply(
       button: button.reply,
       sid: params.get("MessageSid"),
     });
+  if ((evening.data as { closed_at?: string | null } | null)?.closed_at) {
+    await note();
+    return { handled: true as const, bookingId, date, choice: null };
+  }
+  // Hors liste d’essai (et hors test), le clic est journalisé mais ne change rien et rien ne part.
+  if (!testRow && !restaurantBookingAllowed(owner?.reference)) {
+    await note();
     return { handled: true as const, bookingId, date, choice: null };
   }
   if (button.reply === "accepte") {
@@ -870,16 +905,125 @@ async function captureSeatReply(
     const saved = await refuseRestaurantSeat(db, bookingId, { date, seat });
     if ("error" in saved) return { handled: false as const };
   }
-  await noteRestaurantReply(db, {
-    customerId,
-    bookingId,
-    date,
-    phone,
-    label,
-    button: button.reply,
-    sid: params.get("MessageSid"),
-  });
+  await note();
+  if (button.reply === "accepte") {
+    await sendRestaurantAcceptConfirmation(db, { bookingId, date, seat, tableId: row.id });
+  }
   return { handled: true as const, bookingId, date, choice: button.reply === "accepte" ? seat : null };
+}
+
+type ConfirmationResult =
+  | { ok: true; sid: string | null; skipped?: "deja_envoye" | "en_cours" }
+  | { ok: false; reason: string };
+
+/** Clé d’idempotence de la confirmation d’une table : une seule par table, quel que soit le canal du clic. */
+export function restaurantConfirmationKey(bookingId: string, eveningDate: string, tableId: string) {
+  return `restaurant:${bookingId}:${eveningDate}:confirmation:${tableId}`;
+}
+
+/**
+ * Confirmation WhatsApp après « J’accepte » : le même texte que l’aperçu (restaurant, date, heure, 2 personnes,
+ * lien de l’adresse), en message libre dans la fenêtre de 24 h ouverte par la réponse du client.
+ * Liste d’essai obligatoire (le mode test écrit au numéro de test). Une table n’est confirmée qu’une fois :
+ * la ligne `crm_restaurant_messages` est réservée avant l’envoi, puis mise à jour. Journal dans le dossier.
+ */
+export async function sendRestaurantAcceptConfirmation(
+  db: SupabaseClient,
+  input: { bookingId: string; date: string; seat: TableSeat; tableId: string; sender?: typeof sendWhatsappSession }
+): Promise<ConfirmationResult> {
+  const date = input.date.slice(0, 10);
+  const head = await bookingHead(db, input.bookingId);
+  if (!head) return { ok: false, reason: "Dossier introuvable." };
+  const [customer, tables] = await Promise.all([
+    db.from("crm_customers").select("id, first_name, last_name, sex, phone, whatsapp_opt_out_at").eq("id", head.customer_id).maybeSingle(),
+    db.from("crm_restaurant_tables").select("id, seat, restaurant_id, time_local, status, is_test").eq("booking_id", input.bookingId).eq("evening_date", date),
+  ]);
+  const person = customer.data as CustomerRow | null;
+  if (!person) return { ok: false, reason: "Client introuvable." };
+  const seats = ((tables.data || []) as Pick<TableRow, "id" | "seat" | "restaurant_id" | "time_local" | "status" | "is_test">[]).filter(
+    (row) => row.seat === "A" || row.seat === "B"
+  );
+  const mine = seats.find((row) => row.id === input.tableId && row.seat === input.seat);
+  if (!mine) return { ok: false, reason: "Table introuvable." };
+  const other = seats.find((row) => row.seat !== input.seat);
+  const test = head.is_test || seats.some((row) => row.is_test);
+  const testPhone = restaurantTestPhone();
+  const phone = outboundRestaurantPhone({ test, clientPhone: test ? null : person.phone, testPhone });
+  if (!phone) return { ok: false, reason: test ? "Numéro de test absent." : "Ce client n’a pas de numéro WhatsApp." };
+  if (!test && person.whatsapp_opt_out_at) return { ok: false, reason: "Le client a coupé WhatsApp." };
+  const gate = restaurantSendGate({ reference: head.reference, test, phone, testPhone });
+  if (!gate.ok) return gate;
+  const ids = [mine.restaurant_id, other?.restaurant_id].filter((id): id is string => Boolean(id));
+  const places = ids.length ? await db.from("crm_restaurants").select("id, name").in("id", ids) : { data: [] as { id: string; name: string }[] };
+  const nameOf = (id: string | null) => ((places.data || []) as { id: string; name: string }[]).find((row) => row.id === id)?.name || "";
+  const restaurantName = nameOf(mine.restaurant_id);
+  if (!restaurantName) return { ok: false, reason: "Restaurant introuvable." };
+  const body = restaurantAcceptAck({
+    greeting: restaurantGreeting({ sex: person.sex, lastName: person.last_name, firstName: person.first_name }),
+    restaurant: restaurantName,
+    eveningDate: date,
+    timeLabel: clockLabel(mine.time_local) || restaurantDefaultClock(),
+    other: other && other.status !== "annulee" ? nameOf(other.restaurant_id) : "",
+    placeUrl: mine.restaurant_id ? restaurantPlaceLink(mine.restaurant_id) : "",
+  });
+  const key = restaurantConfirmationKey(input.bookingId, date, input.tableId);
+  const existing = await db.from("crm_restaurant_messages").select("id, status").eq("dedupe_key", key).maybeSingle();
+  const prior = existing.data as { id: string; status: string } | null;
+  if (prior?.status === "envoye") return { ok: true, sid: null, skipped: "deja_envoye" };
+  if (prior?.status === "en_file") return { ok: true, sid: null, skipped: "en_cours" };
+  const claim = {
+    booking_id: input.bookingId,
+    evening_date: date,
+    direction: "outbound",
+    body,
+    status: "en_file",
+    dedupe_key: key,
+    table_id: input.tableId,
+    is_test: test,
+  };
+  const claimed = prior
+    ? await db.from("crm_restaurant_messages").update(claim).eq("dedupe_key", key).eq("status", prior.status).select("id")
+    : await db.from("crm_restaurant_messages").insert(claim).select("id");
+  if (claimed.error && columnMissing(claimed.error.code)) {
+    const { table_id, is_test, ...slim } = claim;
+    void table_id;
+    void is_test;
+    const again = prior
+      ? await db.from("crm_restaurant_messages").update(slim).eq("dedupe_key", key).eq("status", prior.status).select("id")
+      : await db.from("crm_restaurant_messages").insert(slim).select("id");
+    if (again.error || !(again.data || []).length) return { ok: true, sid: null, skipped: "en_cours" };
+  } else if (claimed.error || !(claimed.data || []).length) {
+    // 23505 ou ligne déjà prise par un autre passage : quelqu’un d’autre envoie.
+    return { ok: true, sid: null, skipped: "en_cours" };
+  }
+  const to = sessionAddress(phone);
+  if (!to) {
+    await db.from("crm_restaurant_messages").update({ status: "echec" }).eq("dedupe_key", key);
+    return { ok: false, reason: "Numéro WhatsApp invalide." };
+  }
+  const send = input.sender || sendWhatsappSession;
+  const result = await send({ to, body });
+  const status = result.ok ? "envoye" : "echec";
+  await db
+    .from("crm_restaurant_messages")
+    .update({ status, twilio_sid: result.ok ? result.sid : null })
+    .eq("dedupe_key", key);
+  const mirror = {
+    customer_id: person.id,
+    booking_id: input.bookingId,
+    direction: "outbound",
+    template_key: "restaurant_confirmation",
+    body,
+    status: result.ok ? "sent" : "failed",
+    twilio_sid: result.ok ? result.sid : null,
+    dedupe_key: key,
+    phone,
+    error: result.ok ? null : "WhatsApp n’a pas accepté le message (fenêtre de 24 h fermée ?).",
+  };
+  const logged = await db.from("crm_whatsapp_messages").upsert(mirror, { onConflict: "dedupe_key" });
+  if (logged.error && logged.error.code !== "23505") logDb("confirmation", logged.error);
+  if (!result.ok) return { ok: false, reason: "WhatsApp n’a pas accepté le message." };
+  return { ok: true, sid: result.sid };
 }
 
 async function captureLegacyChoice(
@@ -897,7 +1041,10 @@ async function captureLegacyChoice(
     .is("archived_at", null)
     .limit(20);
   if (bookings.error || !(bookings.data || []).length) return { handled: false as const };
-  const ids = (bookings.data as BookingRow[]).map((row) => row.id);
+  const allowlist = restaurantAllowlist();
+  const allowedBookings = (bookings.data as BookingRow[]).filter((row) => restaurantBookingAllowed(row.reference, allowlist));
+  if (!allowedBookings.length) return { handled: false as const };
+  const ids = allowedBookings.map((row) => row.id);
   const [evenings, items] = await Promise.all([
     db.from("crm_restaurant_evenings").select("*").in("booking_id", ids).eq("message_status", "envoye").is("choice", null),
     db.from("crm_booking_items").select("booking_id, kind, title, start_at, end_at, lifecycle, details").in("booking_id", ids).eq("kind", "hotel"),
@@ -917,7 +1064,7 @@ async function captureLegacyChoice(
   }[]) {
     hotels.set(row.booking_id, [...(hotels.get(row.booking_id) || []), ...hotelsFromItems([row])]);
   }
-  const bookingById = new Map((bookings.data as BookingRow[]).map((row) => [row.id, row]));
+  const bookingById = new Map(allowedBookings.map((row) => [row.id, row]));
   const ranked = open
     .map((row) => {
       const booking = bookingById.get(row.booking_id);
@@ -946,8 +1093,14 @@ async function captureLegacyChoice(
   return { handled: true as const, bookingId: target.row.booking_id, date, choice };
 }
 
-/** Envoi demandé par l’agence. Le cron de 16 h ne passe pas par ici. Le mode test n’écrit qu’au numéro de test. */
+/**
+ * Envoi demandé par l’agence. Le cron de 16 h ne passe pas par ici. Le mode test n’écrit qu’au numéro de test.
+ * Un dossier hors de `RESTAURANT_ALLOWED_BOOKINGS` est refusé avant toute lecture du reste.
+ */
 export async function sendRestaurantEvening(db: SupabaseClient, bookingId: string, date: string) {
+  const head = await bookingHead(db, bookingId);
+  if (!head) return { error: "Dossier introuvable." };
+  if (!head.is_test && !restaurantBookingAllowed(head.reference)) return { error: RESTAURANT_ALLOWLIST_BLOCK };
   const bundle = await loadBundle(db, new Date());
   if ("missing" in bundle) return { error: "Le module restaurants n’est pas encore en place." };
   if ("error" in bundle) return { error: "Lecture impossible." };
@@ -956,12 +1109,15 @@ export async function sendRestaurantEvening(db: SupabaseClient, bookingId: strin
   if (!booking || !customer) return { error: "Dossier introuvable." };
   const tables = bundle.tables.filter((row) => row.booking_id === bookingId && row.evening_date.slice(0, 10) === date);
   const test = Boolean(booking.is_test) || tables.some((row) => row.is_test);
+  const testPhone = restaurantTestPhone();
   const phone = outboundRestaurantPhone({
     test,
     clientPhone: test ? null : customer.phone,
-    testPhone: restaurantTestPhone(),
+    testPhone,
   });
   if (!phone) return { error: test ? "Numéro de test absent. Renseignez RESTAURANT_TEST_PHONE." : "Ce client n’a pas de numéro WhatsApp." };
+  const gate = restaurantSendGate({ reference: booking.reference, test, phone, testPhone });
+  if (!gate.ok) return { error: gate.reason };
   const sent = { intro: false, A: false, B: false };
   for (const message of bundle.messages) {
     if (message.booking_id !== bookingId || message.evening_date.slice(0, 10) !== date || message.status !== "envoye") continue;
@@ -993,7 +1149,7 @@ export async function sendRestaurantEvening(db: SupabaseClient, bookingId: strin
   if (!introSid || !(carouselSid || menuSid)) {
     if (!test) return { error: "Le modèle WhatsApp n’est pas encore approuvé par Meta." };
     const text = restaurantIntroText({ greeting, eveningDate: date });
-    const libre = await sendWhatsappSession({ to: phone, body: text });
+    const libre = await sendWhatsappSession({ to: sessionAddress(phone) || phone, body: text });
     if (!libre.ok) return { error: "Aperçu seul. Le modèle n’est pas approuvé et la fenêtre de 24 h n’est pas ouverte." };
     await rememberMessage(db, {
       bookingId,

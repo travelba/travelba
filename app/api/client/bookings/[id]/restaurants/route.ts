@@ -4,8 +4,10 @@ import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { carnetVisible } from "@/lib/crm/carnet";
 import { recordCustomerActivity } from "@/lib/crm/customer-activity";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
+import { restaurantBookingAllowed } from "@/lib/crm/restaurant-allowlist";
 import { formatEveningFr, type TableSeat, type TableStatus } from "@/lib/crm/restaurants";
 import { refuseRestaurantSeat, restaurantsReady, saveBookingChoice } from "@/lib/crm/restaurants-db";
+import { sendRestaurantAcceptConfirmation } from "@/lib/crm/restaurants-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { type CrmBooking, type CrmBookingItem } from "@/lib/crm/types";
 
@@ -41,6 +43,10 @@ export async function POST(request: Request, ctx: Ctx) {
   const stay = booking as CrmBooking;
   const { data: items } = await auth.supabase.from("crm_booking_items").select("*").eq("booking_id", stay.id);
   if (!carnetVisible(stay, (items || []) as CrmBookingItem[])) return jsonError("Séjour introuvable", 404);
+  // Liste d’essai fermée par défaut : hors liste, le geste n’enregistre rien et aucun message ne part.
+  if (!(stay as { is_test?: boolean }).is_test && !restaurantBookingAllowed(stay.reference)) {
+    return jsonError("Ce service n’est pas encore ouvert pour ce séjour. Contactez votre conseiller.", 409);
+  }
 
   const admin = createServiceClient();
   const evening = await admin
@@ -66,7 +72,7 @@ export async function POST(request: Request, ctx: Ctx) {
     if (!restaurantsReady(table.error)) return jsonError("Le module restaurants n’est pas encore en place.", 409);
     return jsonError("Table introuvable.", 404);
   }
-  const row = table.data as { status?: TableStatus; restaurant_id?: string | null } | null;
+  const row = table.data as { id?: string; status?: TableStatus; restaurant_id?: string | null } | null;
   if (!row || row.status !== "proposee") return jsonError("Cette table n’est plus proposée.", 409);
 
   const saved =
@@ -74,6 +80,11 @@ export async function POST(request: Request, ctx: Ctx) {
       ? await saveBookingChoice(admin, stay.id, { date, choice: seat as TableSeat, source: "espace" })
       : await refuseRestaurantSeat(admin, stay.id, { date, seat: seat as TableSeat, source: "espace" });
   if ("error" in saved && saved.error) return jsonError(saved.error, 409);
+  let confirmation: "envoyee" | "non_envoyee" | null = null;
+  if (reply === "accepte" && row.id) {
+    const sent = await sendRestaurantAcceptConfirmation(admin, { bookingId: stay.id, date, seat: seat as TableSeat, tableId: row.id });
+    confirmation = sent.ok ? "envoyee" : "non_envoyee";
+  }
 
   let name = "";
   if (row.restaurant_id) {
@@ -89,5 +100,5 @@ export async function POST(request: Request, ctx: Ctx) {
     summary: `A ${verb} une table pour le ${formatEveningFr(date)}`.slice(0, 180),
     detail: name || null,
   });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, confirmation });
 }
