@@ -1,10 +1,19 @@
-/** Menu de l’espace agence : groupes repliables, badges, entrée active, barre basse mobile. */
+/** Menu de l’espace agence : cinq entrées et Réglages, badges, entrée active, barre basse téléphone. */
 
-export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp";
+export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp" | "hotels" | "costs";
 
 export type AdminNavCounts = Record<AdminBadgeKey, number>;
 
-export const EMPTY_NAV_COUNTS: AdminNavCounts = { revolut: 0, stripe: 0, emails: 0, le: 0, pieces: 0, whatsapp: 0 };
+export const EMPTY_NAV_COUNTS: AdminNavCounts = {
+  revolut: 0,
+  stripe: 0,
+  emails: 0,
+  le: 0,
+  pieces: 0,
+  whatsapp: 0,
+  hotels: 0,
+  costs: 0,
+};
 
 export type AdminNavItem = {
   href: string;
@@ -12,7 +21,8 @@ export type AdminNavItem = {
   /** Nom d’icône de `components/crm/icons.tsx`. */
   icon: string;
   exact?: boolean;
-  badge?: AdminBadgeKey;
+  /** Un compteur, ou la somme de plusieurs (À encaisser = Revolut + Stripe). */
+  badge?: AdminBadgeKey | AdminBadgeKey[];
   /** Ouvre dans un autre onglet (aperçu client). */
   newTab?: boolean;
 };
@@ -20,86 +30,98 @@ export type AdminNavItem = {
 export type AdminNavGroup = {
   id: string;
   label: string;
+  /** Titre de la page quand les entrées du groupe sont ses onglets (`?onglet=`). Sinon l’entrée active. */
+  title?: string;
   items: AdminNavItem[];
 };
 
+export const ADMIN_ROUTES = {
+  accueil: "/admin",
+  dossiers: "/admin/reservations",
+  clients: "/admin/clients",
+  boite: "/admin/boite",
+  argent: "/admin/argent",
+  reglages: "/admin/reglages",
+} as const;
+
+/** Les cinq entrées du menu, puis Réglages. Le libellé de l’entrée est le H1 de la page. */
 export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | ""; showExample?: boolean }): AdminNavGroup[] {
   if (input.role === "partner") {
     return [
       {
-        id: "boites",
+        id: "boite",
         label: "Little Emperors",
         items: [{ href: "/admin/little-emperors", label: "Little Emperors", icon: "hotel", exact: true }],
       },
     ];
   }
-  const groups: AdminNavGroup[] = [
+  const admin = input.role === "admin";
+  return [
     {
-      id: "activite",
-      label: "Activité",
-      items: [{ href: "/admin", label: "Tableau de bord", icon: "dashboard", exact: true }],
-    },
-    {
-      id: "clients",
-      label: "Clients",
-      items: [
-        { href: "/admin/clients", label: "Clients", icon: "group" },
-        { href: "/admin/clients?pieces=echeance", label: "Pièces à échéance", icon: "id_card", badge: "pieces" },
-      ],
+      id: "accueil",
+      label: "Accueil",
+      items: [{ href: ADMIN_ROUTES.accueil, label: "Accueil", icon: "home", exact: true }],
     },
     {
       id: "dossiers",
       label: "Dossiers",
       items: [
-        { href: "/admin/reservations", label: "Réservations", icon: "luggage" },
+        { href: ADMIN_ROUTES.dossiers, label: "Dossiers", icon: "luggage" },
         { href: "/admin/formalites", label: "Formalités", icon: "shield_check" },
         { href: "/admin/services", label: "Services à confirmer", icon: "headset" },
       ],
     },
     {
+      id: "clients",
+      label: "Clients",
+      items: [
+        { href: ADMIN_ROUTES.clients, label: "Clients", icon: "group" },
+        { href: "/admin/clients?pieces=echeance", label: "Pièces à échéance", icon: "id_card", badge: "pieces" },
+      ],
+    },
+    {
+      id: "boite",
+      label: "Boîte de réception",
+      title: "Boîte de réception",
+      items: [
+        { href: `${ADMIN_ROUTES.boite}?onglet=fournisseurs`, label: "Fournisseurs", icon: "inbox", badge: ["emails", "le"] },
+        { href: `${ADMIN_ROUTES.boite}?onglet=hotels`, label: "Hôtels", icon: "hotel", badge: "hotels" },
+        { href: `${ADMIN_ROUTES.boite}?onglet=whatsapp`, label: "WhatsApp", icon: "forum", badge: "whatsapp" },
+      ],
+    },
+    {
       id: "argent",
       label: "Argent",
+      title: "Argent",
       items: [
-        { href: "/admin/transactions", label: "Transactions", icon: "landmark" },
-        { href: "/admin/revolut", label: "Revolut", icon: "sync_alt" },
-        { href: "/admin/stripe", label: "Stripe", icon: "credit_card" },
-        { href: "/admin/pliant", label: "Pliant", icon: "credit_card" },
-        { href: "/admin/comptabilite", label: "Comptabilité", icon: "calculate" },
+        { href: `${ADMIN_ROUTES.argent}?onglet=a-encaisser`, label: "À encaisser", icon: "payments", badge: ["revolut", "stripe"] },
+        { href: `${ADMIN_ROUTES.argent}?onglet=a-pointer`, label: "À pointer", icon: "receipt_long", badge: "costs" },
+        { href: `${ADMIN_ROUTES.argent}?onglet=grand-livre`, label: "Grand livre", icon: "landmark" },
+        { href: `${ADMIN_ROUTES.argent}?onglet=comptes`, label: "Comptes", icon: "account_balance" },
       ],
     },
     {
-      id: "boites",
-      label: "Boîtes de réception",
-      items: [
-        { href: "/admin/emails", label: "Boîte d'import", icon: "mail", badge: "emails" },
-        { href: "/admin/whatsapp", label: "WhatsApp", icon: "forum", badge: "whatsapp" },
-        { href: "/admin/little-emperors", label: "Little Emperors", icon: "hotel", badge: "le" },
-      ],
-    },
-    {
-      id: "outils",
-      label: "Outils",
-      items: [
-        { href: "/admin/outils/whatsapp", label: "Messages types WhatsApp", icon: "forum" },
-        { href: "/admin/outils/mails", label: "E-mails au client", icon: "mail" },
-        { href: "/admin/outils/gmail", label: "Diagnostic Gmail", icon: "activity" },
-        { href: "/admin/concierge", label: "Savoir du Concierge", icon: "menu_book" },
-        { href: "/admin/hotels-demandes", label: "Demandes hôtels", icon: "hotel" },
-        { href: "/admin/outils/hotels", label: "Accès Hôtels", icon: "hotel" },
-        ...(input.showExample
-          ? [{ href: "/exemple", label: "Aperçu espace client", icon: "eye", newTab: true } satisfies AdminNavItem]
-          : []),
-      ],
+      id: "reglages",
+      label: "Réglages",
+      items: admin
+        ? [
+            { href: ADMIN_ROUTES.reglages, label: "Réglages", icon: "build", exact: true },
+            { href: "/admin/equipe", label: "Équipe", icon: "user_cog" },
+            { href: `${ADMIN_ROUTES.reglages}/whatsapp`, label: "Modèles WhatsApp", icon: "chat" },
+            { href: `${ADMIN_ROUTES.reglages}/mails`, label: "E-mails au client", icon: "mail" },
+            { href: "/admin/concierge", label: "Savoir du Concierge", icon: "menu_book" },
+            { href: `${ADMIN_ROUTES.reglages}/hotels`, label: "Accès Hôtels", icon: "lock" },
+            { href: `${ADMIN_ROUTES.reglages}/gmail`, label: "Diagnostic Gmail", icon: "activity" },
+            ...(input.showExample
+              ? [{ href: "/exemple", label: "Aperçu espace client", icon: "eye", newTab: true } satisfies AdminNavItem]
+              : []),
+          ]
+        : [
+            { href: `${ADMIN_ROUTES.reglages}/whatsapp`, label: "Modèles WhatsApp", icon: "chat" },
+            { href: `${ADMIN_ROUTES.reglages}/mails`, label: "E-mails au client", icon: "mail" },
+          ],
     },
   ];
-  if (input.role === "admin") {
-    groups.push({
-      id: "equipe",
-      label: "Équipe",
-      items: [{ href: "/admin/equipe", label: "Équipe", icon: "user_cog" }],
-    });
-  }
-  return groups;
 }
 
 function splitHref(href: string) {
@@ -109,33 +131,41 @@ function splitHref(href: string) {
 }
 
 /**
- * L’entrée active : le chemin le plus long qui préfixe la page, la requête (`?pieces=echeance`) l’emportant
- * sur l’entrée sans requête. Une ancre ne s’allume jamais. Null hors menu.
+ * L’entrée active : le chemin le plus long qui préfixe la page, la requête (`?onglet=`, `?pieces=echeance`)
+ * l’emportant sur l’entrée sans requête. Une page à onglets sans `?onglet=` allume son premier onglet.
+ * Une ancre ne s’allume jamais. Null hors menu.
  */
 export function activeAdminNavHref(groups: AdminNavGroup[], pathname: string, search = ""): string | null {
   const current = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  let best: { href: string; score: number } | null = null;
+  let best = null as { href: string; score: number } | null;
   for (const group of groups) {
-    for (const item of group.items) {
+    group.items.forEach((item, index) => {
       const { path, query, hash } = splitHref(item.href);
-      if (hash) continue;
+      if (hash) return;
       const matchesPath = item.exact ? pathname === path : pathname === path || pathname.startsWith(`${path}/`);
-      if (!matchesPath) continue;
+      if (!matchesPath) return;
       let queryMatch = true;
+      let defaultTab = false;
       for (const [key, value] of query.entries()) {
-        if (current.get(key) !== value) queryMatch = false;
+        if (current.get(key) === value) continue;
+        if (key === "onglet" && index === 0 && !current.has("onglet")) {
+          defaultTab = true;
+          continue;
+        }
+        queryMatch = false;
       }
-      if (!queryMatch) continue;
-      const score = path.length * 10 + [...query.keys()].length;
+      if (!queryMatch) return;
+      const score = path.length * 10 + (defaultTab ? 0 : [...query.keys()].length);
       if (!best || score > best.score) best = { href: item.href, score };
-    }
+    });
   }
   return best?.href ?? null;
 }
 
 export function adminNavBadge(item: Pick<AdminNavItem, "badge">, counts: AdminNavCounts) {
   if (!item.badge) return null;
-  const value = counts[item.badge] || 0;
+  const keys = Array.isArray(item.badge) ? item.badge : [item.badge];
+  const value = keys.reduce((sum, key) => sum + (counts[key] || 0), 0);
   return value > 0 ? value : null;
 }
 
@@ -159,50 +189,43 @@ export function toggleCollapsedGroup(collapsed: string[], groupId: string) {
   return collapsed.includes(groupId) ? collapsed.filter((id) => id !== groupId) : [...collapsed, groupId];
 }
 
-/** Barre basse téléphone : cinq entrées, « Plus » ouvre la feuille. */
+/** Barre basse téléphone : les cinq entrées du menu. Réglages est dans le menu utilisateur. */
 export type AdminMobileTab = {
-  id: "accueil" | "clients" | "dossiers" | "argent" | "plus";
+  id: "accueil" | "dossiers" | "clients" | "boite" | "argent";
   label: string;
   icon: string;
-  href?: string;
+  href: string;
   /** Chemins qui allument l’onglet. */
   paths: string[];
   badges: AdminBadgeKey[];
 };
 
 export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
-  { id: "accueil", label: "Accueil", icon: "home", href: "/admin", paths: ["/admin"], badges: [] },
-  { id: "clients", label: "Clients", icon: "group", href: "/admin/clients", paths: ["/admin/clients"], badges: [] },
+  { id: "accueil", label: "Accueil", icon: "home", href: ADMIN_ROUTES.accueil, paths: ["/admin"], badges: [] },
   {
     id: "dossiers",
     label: "Dossiers",
     icon: "luggage",
-    href: "/admin/reservations",
+    href: ADMIN_ROUTES.dossiers,
     paths: ["/admin/reservations", "/admin/formalites", "/admin/services"],
     badges: [],
+  },
+  { id: "clients", label: "Clients", icon: "group", href: ADMIN_ROUTES.clients, paths: ["/admin/clients"], badges: [] },
+  {
+    id: "boite",
+    label: "Boîte",
+    icon: "inbox",
+    href: ADMIN_ROUTES.boite,
+    paths: ["/admin/boite", "/admin/emails", "/admin/whatsapp", "/admin/little-emperors", "/admin/hotels-demandes"],
+    badges: ["emails", "le", "whatsapp", "hotels"],
   },
   {
     id: "argent",
     label: "Argent",
-    icon: "landmark",
-    href: "/admin/transactions",
-    paths: ["/admin/transactions", "/admin/revolut", "/admin/stripe", "/admin/pliant", "/admin/comptabilite"],
-    badges: [],
-  },
-  {
-    id: "plus",
-    label: "Plus",
-    icon: "more_horiz",
-    paths: [
-      "/admin/emails",
-      "/admin/whatsapp",
-      "/admin/little-emperors",
-      "/admin/concierge",
-      "/admin/hotels-demandes",
-      "/admin/outils",
-      "/admin/equipe",
-    ],
-    badges: ["emails", "le", "whatsapp"],
+    icon: "payments",
+    href: ADMIN_ROUTES.argent,
+    paths: ["/admin/argent", "/admin/transactions", "/admin/revolut", "/admin/stripe", "/admin/pliant", "/admin/comptabilite"],
+    badges: ["revolut", "stripe", "costs"],
   },
 ];
 
@@ -215,24 +238,20 @@ export function mobileTabBadge(tab: AdminMobileTab, counts: AdminNavCounts) {
   return total > 0 ? total : null;
 }
 
-/** Titre court de l’en-tête téléphone : l’entrée du menu, sinon la page connue, sinon « Espace agence ». */
+/** Titre court de l’en-tête téléphone : l’entrée du menu (ou le titre de sa page à onglets), sinon la page connue. */
 export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search = "") {
-  if (pathname === "/admin/outils") return "Outils";
   if (pathname === "/admin/reservations/nouveau") return "Nouveau dossier";
   if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
   if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";
   if (pathname.startsWith("/admin/transactions/client/")) return "Transactions du client";
   if (pathname === "/admin/recherche") return "Recherche";
+  if (pathname === "/admin/reglages" || pathname.startsWith("/admin/reglages/")) return "Réglages";
   const active = activeAdminNavHref(groups, pathname, search);
-  const item = groups.flatMap((group) => group.items).find((entry) => entry.href === active);
-  return item?.label || "Espace agence";
-}
-
-/** Groupes de la feuille « Plus » du téléphone : ce que la barre basse ne porte pas. */
-export const MORE_SHEET_GROUP_IDS = ["boites", "outils", "equipe"] as const;
-
-export function moreSheetGroups(groups: AdminNavGroup[]) {
-  return groups.filter((group) => (MORE_SHEET_GROUP_IDS as readonly string[]).includes(group.id));
+  for (const group of groups) {
+    const item = group.items.find((entry) => entry.href === active);
+    if (item) return group.title || item.label;
+  }
+  return "Espace agence";
 }
 
 /** Initiales de l’agent pour l’avatar : « VB », sinon « TB ». */

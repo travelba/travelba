@@ -28,7 +28,7 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
     carnetDescription = "Au moins un carnet est visible côté client.";
   } else if (snapshot.bookingCount > 0) {
     carnetDescription =
-      "Des dossiers existent en brouillon. L’interrupteur « Visible dans l’espace » rend le carnet visible. Enregistrer ne publie pas.";
+      "Des dossiers existent En préparation. Montrer au client rend le carnet visible. Enregistrer ne le montre pas.";
   } else {
     carnetDescription =
       "Ouvrez un client, importez les PDF, Enregistrer, puis Montrer au client. Tant que le dossier n’est pas montré, le client n’a rien à ouvrir. Pas de séjour fictif.";
@@ -37,10 +37,10 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
   let revolutDescription: string;
   if (snapshot.revolutConnected) {
     revolutDescription =
-      "Compte connecté. Les crédits reçus arrivent toutes les 15 min. Les sorties se rattachent à un client et une réservation dans l’onglet Débits, sans crédit. Rapprochement automatique d’un crédit seulement s’il n’y a aucun doute ; sinon proposition dans l’inbox ou sur la fiche client.";
+      "Compte connecté. Les crédits reçus arrivent toutes les 15 min dans À encaisser ; aucun crédit ne part sans le clic Créditer. Les sorties se pointent sur un dossier dans À pointer.";
   } else if (snapshot.revolutConfigured) {
     revolutDescription =
-      "Clés app présentes. Cliquez sur Connecter Revolut (authentification Business). Le cron toutes les 15 min remplira ensuite l’inbox.";
+      "Clés app présentes. Cliquez sur Connecter Revolut (authentification Business). Le cron toutes les 15 min remplira ensuite À encaisser.";
   } else {
     revolutDescription =
       "Clés Revolut à finaliser (Client ID après upload du certificat), puis Connecter Revolut.";
@@ -66,7 +66,7 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
       id: "carnet",
       done: carnetDone,
       optional: false,
-      title: "Premier carnet publié",
+      title: "Premier carnet montré au client",
       description: carnetDescription,
       href: "/admin/reservations",
       cta: "Importer un dossier",
@@ -89,8 +89,8 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
       optional: false,
       title: "Connecter Revolut",
       description: revolutDescription,
-      href: "/admin/revolut",
-      cta: "Ouvrir Revolut",
+      href: "/admin/argent?onglet=comptes",
+      cta: "Ouvrir les comptes",
     },
     {
       id: "stripe",
@@ -100,7 +100,7 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
       description: stripeReady
         ? "Clés live et secret webhook présents. L’UI cartes reste fermée."
         : "Cartes fermées : le grand livre manuel fonctionne. Les clés Stripe live se posent côté serveur (Vercel), jamais depuis cet écran.",
-      href: "/admin/transactions",
+      href: "/admin/argent?onglet=grand-livre",
       cta: "Grand livre",
     },
   ];

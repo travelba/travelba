@@ -3,34 +3,36 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MobileTabBar, SidebarGroups, UserMenu } from "../../components/admin/AdminNavParts";
-import { adminNavGroups, openAdminNavGroups } from "./admin-nav";
+import { adminNavGroups, EMPTY_NAV_COUNTS, openAdminNavGroups } from "./admin-nav";
 
-const counts = { revolut: 3, stripe: 0, emails: 2, le: 0, pieces: 1, whatsapp: 0 };
+const counts = { ...EMPTY_NAV_COUNTS, revolut: 3, emails: 2, pieces: 1 };
 
-test("la sidebar rend les groupes, l’entrée active et les badges", () => {
+test("la sidebar rend les cinq entrées, Réglages, l’entrée active et les badges", () => {
   const groups = adminNavGroups({ role: "admin", showExample: true });
+  const active = "/admin/argent?onglet=a-encaisser";
   const html = renderToStaticMarkup(
     createElement(SidebarGroups, {
       groups,
-      activeHref: "/admin/revolut",
+      activeHref: active,
       counts,
-      openIds: openAdminNavGroups(groups, ["outils"], "/admin/revolut"),
+      openIds: openAdminNavGroups(groups, ["reglages"], active),
       onToggle: () => {},
     })
   );
-  for (const label of ["Activité", "Clients", "Dossiers", "Argent", "Boîtes de réception", "Outils", "Équipe"]) {
+  for (const label of ["Accueil", "Dossiers", "Clients", "Boîte de réception", "Argent", "Réglages"]) {
     assert.match(html, new RegExp(label), label);
   }
   assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
-  assert.match(html, /href="\/admin\/revolut"[^>]*aria-current="page"|aria-current="page"[^>]*href="\/admin\/revolut"/);
-  assert.match(html, /href="\/admin\/reservations\b/);
+  assert.match(html, /aria-current="page"[^>]*href="\/admin\/argent\?onglet=a-encaisser"/);
+  assert.match(html, /href="\/admin\/reservations"/);
   assert.match(html, /href="\/admin\/clients\?pieces=echeance"/);
   assert.match(html, /<a(?=[^>]*target="_blank")[^>]*href="\/exemple"/);
-  assert.match(html, /aria-expanded="false"[^>]*aria-controls="admin-nav-outils"/);
-  assert.match(html, /id="admin-nav-outils" hidden/);
+  assert.match(html, /aria-expanded="false"[^>]*aria-controls="admin-nav-reglages"/);
+  assert.match(html, /id="admin-nav-reglages" hidden/);
   assert.doesNotMatch(html, /Sortir/);
-  assert.doesNotMatch(html, />3</);
-  assert.match(html, />2</);
+  assert.match(html, />3</, "À encaisser porte Revolut + Stripe");
+  assert.match(html, />2</, "Fournisseurs porte les e-mails");
+  assert.match(html, />1</, "Pièces à échéance");
 });
 
 test("le menu utilisateur reste fermé au rendu, avec l’avatar en initiales", () => {
@@ -44,14 +46,14 @@ test("le menu utilisateur reste fermé au rendu, avec l’avatar en initiales", 
   assert.doesNotMatch(html, /Déconnexion/);
 });
 
-test("la barre basse a cinq entrées, aria-current et le badge Plus", () => {
-  const html = renderToStaticMarkup(
-    createElement(MobileTabBar, { pathname: "/admin/revolut", counts, moreOpen: false, onMore: () => {} })
-  );
-  for (const label of ["Accueil", "Clients", "Dossiers", "Argent", "Plus"]) assert.match(html, new RegExp(label));
+test("la barre basse a cinq liens, aria-current et les badges Boîte et Argent", () => {
+  const html = renderToStaticMarkup(createElement(MobileTabBar, { pathname: "/admin/revolut", counts }));
+  for (const label of ["Accueil", "Dossiers", "Clients", "Boîte", "Argent"]) assert.match(html, new RegExp(label));
   assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
+  assert.match(html, /aria-current="page"[^>]*href="\/admin\/argent"/);
   assert.match(html, /safe-area-inset-bottom/);
-  assert.match(html, /aria-controls="admin-more-sheet"/);
-  assert.doesNotMatch(html, />3</);
+  assert.doesNotMatch(html, /Plus/);
+  assert.doesNotMatch(html, /<button/);
+  assert.match(html, />3</);
   assert.match(html, />2</);
 });

@@ -37,11 +37,12 @@ test("prod vide : carnet + Revolut bloquent, téléphone et Stripe en option", (
   assert.match(visible.find((item) => item.id === "stripe")!.description, /Cartes fermées/);
 });
 
-test("brouillon sans publication : encore le geste Publier", () => {
+test("dossier En préparation jamais montré : encore le geste Montrer au client", () => {
   const items = buildLaunchItems({ ...prodGap, bookingCount: 1, publishedCount: 0 });
   const carnet = items.find((item) => item.id === "carnet")!;
   assert.equal(carnet.done, false);
-  assert.match(carnet.description, /brouillon/);
+  assert.match(carnet.description, /Montrer au client/);
+  assert.doesNotMatch(carnet.description, /publi|brouillon|interrupteur/i);
 });
 
 test("carnet publié et Revolut connecté : la carte se masque", () => {
@@ -79,9 +80,11 @@ test("Revolut connecté : uniquement les crédits reçus", () => {
   const items = buildLaunchItems({ ...prodGap, revolutConnected: true });
   const revolut = items.find((item) => item.id === "revolut")!;
   assert.match(revolut.description, /crédits reçus/);
+  assert.match(revolut.description, /aucun crédit ne part sans le clic Créditer/);
+  assert.doesNotMatch(revolut.description, /automatique/);
 });
 
-test("inbox Revolut : connecter d’abord, auto si sans ambiguïté", () => {
+test("À encaisser vide : connecter d’abord, puis rien ne part sans le clic", () => {
   assert.match(revolutInboxEmptyMessage({ configured: false, connected: false }), /non installée côté serveur/);
   assert.match(
     revolutInboxEmptyMessage({ configured: true, connected: false }),

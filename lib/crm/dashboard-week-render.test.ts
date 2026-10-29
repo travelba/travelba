@@ -92,7 +92,9 @@ test("la mise en service ne s’affiche que s’il reste un geste obligatoire", 
     stripeWebhookConfigured: false,
   });
   assert.equal(visibleLaunchItems(done).length, 0);
-  assert.equal(renderToStaticMarkup(createElement(AdminLaunchStatus, { items: done })), "");
+  const doneHtml = renderToStaticMarkup(createElement(AdminLaunchStatus, { items: done }));
+  assert.match(doneHtml, /Tout est en place/);
+  assert.doesNotMatch(doneHtml, /Ouvrir les clients/);
 
   const open = buildLaunchItems({
     customerCount: 0,
@@ -107,5 +109,6 @@ test("la mise en service ne s’affiche que s’il reste un geste obligatoire", 
   const html = renderToStaticMarkup(createElement(AdminLaunchStatus, { items: open }));
   assert.match(html, /Mise en service/);
   assert.match(html, /Fiche client titulaire/);
-  assert.doesNotMatch(html, /admin-af-card/);
+  assert.match(html, /Ouvrir les clients/);
+  assert.match(html, /3 gestes encore/);
 });

@@ -1,6 +1,5 @@
 import { HotelButtonSetting } from "@/components/admin/HotelButtonSetting";
 import { HotelPlatinum } from "@/components/account/HotelPlatinum";
-import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireAdminPage } from "@/lib/crm/auth";
 import { HOTEL_BUTTON_AUTHORIZED, HOTEL_BUTTON_EVERYONE } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
@@ -12,19 +11,18 @@ export default async function HotelAccessSettingsPage() {
   if (staff.role !== "admin") {
     return (
       <div>
-        <PageEyebrow>Espace agence</PageEyebrow>
-        <PageTitle title="Accès Hôtels" subtitle="Réservé aux administrateurs." />
+        <h2 className="mt-6 font-display text-lg font-bold text-[var(--admin-navy)]">Accès Hôtels</h2>
+        <p className="mt-1 text-sm text-muted">Réservé aux administrateurs.</p>
       </div>
     );
   }
   const visibility = await readHotelButtonVisibility();
   return (
     <div>
-      <PageEyebrow>Espace agence</PageEyebrow>
-      <PageTitle
-        title="Accès Hôtels"
-        subtitle="Le bouton doré. Au déploiement, seuls les clients dont l’accès est activé le voient."
-      />
+      <h2 className="mt-6 font-display text-lg font-bold text-[var(--admin-navy)]">Accès Hôtels</h2>
+      <p className="mt-1 text-sm text-muted">
+        Le bouton doré. Au déploiement, seuls les clients dont l’accès est activé le voient.
+      </p>
       <HotelButtonSetting value={visibility} />
       <p className="mt-8 text-sm text-muted">
         Aperçu local de l’écran {visibility === HOTEL_BUTTON_EVERYONE ? "ouvert à tous" : "réservé"}. Ce réglage en
