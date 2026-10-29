@@ -134,7 +134,16 @@ function lineLooksLikeCard(line: string) {
 }
 
 const QUOTE_CUT =
-  /^(?:>+\s*)?(?:on\s+.+wrote:|le\s+.+a\s+[eé]crit\s*:|-{2,}\s*original message\s*-{2,}|-{2,}\s*message d['’]origine\s*-{2,})\s*$/i;
+  /^(?:>+\s*)?(?:on\s+.+wrote:|le\s+.+a\s+[eé]crit\s*:|-{2,}\s*original message\s*-{2,}|-{2,}\s*message d['’]origine\s*-{2,}|-{5,}\s*forwarded message\s*-{5,}|begin forwarded message:?)\s*$/i;
+
+/** Images inline (`[cid:…]`) : pas un texte à montrer. */
+export function stripInlineCid(text: string) {
+  return text
+    .replace(/\[cid:[^\]]+\]/gi, " ")
+    .replace(/<cid:[^>]+>/gi, " ")
+    .replace(/\bcid:[A-Za-z0-9._@-]{8,}\b/gi, " ")
+    .replace(/\[image:[^\]]*\]/gi, " ");
+}
 
 /** Retire la citation du courrier d’origine. Le texte de l’hôtel reste. */
 export function withoutQuotedOriginal(text: string) {
@@ -153,7 +162,7 @@ export function withoutQuotedOriginal(text: string) {
 
 /** Texte de réponse à montrer dans le dossier. Les lignes de carte et les liens carte sont retirés. */
 export function hotelReplyForDesk(text: string) {
-  const cleaned = redactCardLinks(withoutQuotedOriginal(text))
+  const cleaned = redactCardLinks(withoutQuotedOriginal(stripInlineCid(text)))
     .split(/\r?\n/)
     .filter((line) => !lineLooksLikeCard(line))
     .join("\n")
@@ -346,8 +355,20 @@ export function classifyHotelMail(input: {
   const automatic = !agency && isAutomaticHotelMail(input.from, input.body, Boolean(input.autoSubmitted));
   const direction = agency ? "out" : "in";
   const cleaned = hotelReplyForDesk(input.body);
-  const body = cleaned || (direction === "in" ? "L'hôtel a répondu." : "");
-  if (!body) return empty;
+  const body = cleaned || (direction === "in" && !automatic ? "L'hôtel a répondu." : "");
+  if (!body) {
+    // Une réponse partie de Gmail (contact@, benjamin@) compte même si le texte utile est vide.
+    if (!agency || !input.body.trim()) return empty;
+    return {
+      keep: true,
+      subjectKey: boundKey,
+      direction: "out",
+      countsAsReply: false,
+      body: "Message de l'agence.",
+      link: null,
+      notice: "send",
+    };
+  }
   return {
     keep: true,
     subjectKey: boundKey,

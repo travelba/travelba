@@ -22,6 +22,9 @@ import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
+import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
+import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
+import { formatDateTimeFr } from "@/lib/crm/dates";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
@@ -350,6 +353,13 @@ export async function readTableauDeBord() {
     (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
     0
   );
+  let courriers: Awaited<ReturnType<typeof loadDashboardMails>> = [];
+  try {
+    await refreshStaleHotelThreads(admin, { limit: 4, budgetMs: 1500 });
+    courriers = await loadDashboardMails(admin);
+  } catch {
+    courriers = [];
+  }
   return {
     a_faire: adminTodoLines({
       emails: badges.emails,
@@ -373,6 +383,16 @@ export async function readTableauDeBord() {
     })),
     departs_sous_7_jours: departSoon.count ?? 0,
     dossiers_actifs: bookingCount.count ?? 0,
+    courriers_hotel: courriers.map((mail) => ({
+      hotel: mail.title,
+      reference: mail.reference,
+      demande: mail.mark,
+      statut: mail.replyLabel,
+      activite: formatDateTimeFr(mail.receivedAt),
+      par: mail.lastWriter,
+      extrait: mail.excerpt || null,
+      lien: mail.href,
+    })),
   };
 }
 
