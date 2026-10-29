@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
@@ -8,6 +8,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
+import { sortByLeMadeAt } from "@/lib/crm/le-made-at";
 import { formatDateFr } from "@/lib/crm/money";
 import { mylerRefreshNotice, mylerSheet, partnerVisibleProbeError } from "@/lib/crm/myler-sheet";
 import type { CrmLeBooking } from "@/lib/crm/types";
@@ -30,6 +31,18 @@ function formatWhen(value: string | null | undefined, partner: boolean) {
   });
 }
 
+function formatBookedOn(value: string | null | undefined, partner: boolean) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatWhen(value, partner);
+  return date.toLocaleDateString(partner ? "en-GB" : "fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Europe/Paris",
+  });
+}
+
 function websiteHref(value: string | null) {
   if (!value) return null;
   return /^https?:\/\//i.test(value) ? value : null;
@@ -45,7 +58,7 @@ export function LittleEmperorsInbox({
   agency,
   probe,
 }: {
-  rows: CrmLeBooking[];
+  rows: (CrmLeBooking & { booked_on?: string | null })[];
   customers: PickableCustomer[];
   storageReady: boolean;
   configured: boolean;
@@ -62,6 +75,11 @@ export function LittleEmperorsInbox({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [attachId, setAttachId] = useState<string | null>(null);
+  const [newestFirst, setNewestFirst] = useState(true);
+  const ordered = useMemo(
+    () => sortByLeMadeAt(rows, newestFirst),
+    [rows, newestFirst]
+  );
 
   async function post(body: Record<string, string>) {
     setError(null);
@@ -181,8 +199,19 @@ export function LittleEmperorsInbox({
         </p>
       ) : null}
 
+      {rows.length > 1 ? (
+        <button
+          type="button"
+          onClick={() => setNewestFirst((value) => !value)}
+          aria-pressed={newestFirst}
+          className="min-h-11 rounded-md border border-[#e5e3dc] bg-white px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+        >
+          {newestFirst ? copy.sortNewest : copy.sortOldest}
+        </button>
+      ) : null}
+
       <ul className="space-y-3">
-        {rows.map((row) => {
+        {ordered.map((row) => {
           const href = websiteHref(row.website);
           const cancelled = isCancelledState(row.state);
           return (
@@ -196,6 +225,9 @@ export function LittleEmperorsInbox({
                       : isCancelledState(row.state)
                         ? copy.stateCancelled
                         : row.state || copy.stateMissing}
+                  </p>
+                  <p className="text-sm text-[var(--admin-navy)]">
+                    {copy.bookedOn} · {formatBookedOn(row.booked_on, !agency)}
                   </p>
                 </div>
                 {row.confirmation_number ? (

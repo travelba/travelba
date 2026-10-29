@@ -320,7 +320,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "reservation_little_emperors",
     description:
-      "Lit une réservation Little Emperors, y compris déjà rattachée à un dossier. Par référence, ou par nom du client et hôtel (dates facultatives). Renvoie référence, statut, hôtel, dates, chambres, régime, voyageurs, prix net, prix public, avantages, conditions d’annulation, confirmations hôtel et le dossier lié. Une annulation n’est Annulée, avec alerte true, que si le numéro est celui d’une carte active. Sinon statut Remplacée ou Historique, alerte false. Lecture seule. N’invente aucun prix.",
+      "Lit une réservation Little Emperors, y compris déjà rattachée à un dossier. Par référence, ou par nom du client et hôtel (dates facultatives). Renvoie référence, statut, hôtel, dates, reservee_le (date de réservation : création Little Emperors, sinon e-mail de confirmation, sinon l’enregistrement), chambres, régime, voyageurs, prix net, prix public, avantages, conditions d’annulation, confirmations hôtel et le dossier lié. Plusieurs résultats sont cités du plus récent au plus ancien. Une annulation n’est Annulée, avec alerte true, que si le numéro est celui d’une carte active. Sinon statut Remplacée ou Historique, alerte false. Lecture seule. N’invente aucun prix.",
     input: {
       confirmation: z.string().trim().max(80).optional().describe("Référence Little Emperors ou confirmation hôtel"),
       nom: z.string().trim().max(120).optional().describe("Nom du client, avec l’hôtel"),
@@ -333,7 +333,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "little_emperors_en_attente",
     description:
-      "Séjours Little Emperors sans dossier. Une annulation n’a alerte true que si son numéro est celui d’une carte active. suivi « remplacée » ou « historique », alerte false : la routine ne la signale pas. Ne crée rien.",
+      "Séjours Little Emperors sans dossier, date de réservation la plus récente d’abord (création Little Emperors, sinon e-mail de confirmation, sinon l’enregistrement). Chaque ligne porte reservee_le. Une annulation n’a alerte true que si son numéro est celui d’une carte active. suivi « remplacée » ou « historique », alerte false : la routine ne la signale pas. Ne crée rien.",
     run: () => readLittleEmperorsEnAttente(),
   },
   {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readLittleEmperorsEnAttente } from "./mcp-read";
 import { guestNameMatches, leLookup, presentLeReservation, readReservationLittleEmperors, selectLeReservations, type LeCandidate } from "./mcp-le";
 import { parseLeBooking, type LeBooking } from "./little-emperors";
 import { McpReadError } from "./mcp-passport";
@@ -127,6 +128,11 @@ function memoryAdmin(seed: Record<string, Row[]>) {
       },
       contains(column: string, value: unknown) {
         filters.push((row) => jsonContains(row[column], value));
+        return api;
+      },
+      ilike(column: string, pattern: string) {
+        const needle = pattern.replace(/%/g, "").toLowerCase();
+        filters.push((row) => String(row[column] ?? "").toLowerCase().includes(needle));
         return api;
       },
       limit() {
@@ -336,14 +342,76 @@ test("deux réservations ne sont pas choisies", async () => {
   };
   const admin = memoryAdmin({
     crm_le_bookings: [
-      row,
-      { ...row, le_booking_id: 91, confirmation_number: "64571", check_in: "2026-12-10", check_out: "2026-12-12" },
+      { ...row, created_at: "2026-10-28T09:00:00Z" },
+      {
+        ...row,
+        le_booking_id: 91,
+        confirmation_number: "64571",
+        check_in: "2026-12-10",
+        check_out: "2026-12-12",
+        created_at: "2026-09-01T09:00:00Z",
+      },
     ],
     crm_bookings: [],
     crm_booking_items: [],
   });
   await assert.rejects(
     () => readReservationLittleEmperors({ nom: "Martin", hotel: "Mamounia" }, admin, { listBookings: async () => [] }),
-    /Plusieurs réservations/
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.match(err.message, /Plusieurs réservations/);
+      const recent = err.message.indexOf("64570");
+      const older = err.message.indexOf("64571");
+      assert.ok(recent >= 0 && older > recent);
+      return true;
+    }
   );
+});
+
+test("les séjours sans dossier suivent la date de réservation", async () => {
+  const admin = memoryAdmin({
+    crm_le_bookings: [
+      {
+        id: "stay-later",
+        le_booking_id: 91,
+        confirmation_number: "64571",
+        state: "booked",
+        hotel_name: "Nobu",
+        check_in: "2026-12-20",
+        check_out: "2026-12-22",
+        guest_names: ["Nico Santos"],
+        status: "unmatched",
+        created_at: "2026-09-01T09:00:00Z",
+        raw: { id: 91 },
+      },
+      {
+        id: "booked-later",
+        le_booking_id: 90,
+        confirmation_number: "64570",
+        state: "booked",
+        hotel_name: "La Mamounia",
+        check_in: "2026-11-02",
+        check_out: "2026-11-05",
+        guest_names: ["Camille Martin"],
+        status: "unmatched",
+        created_at: "2026-10-02T09:00:00Z",
+        raw: { id: 90, check_in: "2026-11-02" },
+      },
+    ],
+    crm_email_ingest: [
+      {
+        label: "Little Emperors",
+        subject: "Confirmation 64570",
+        received_at: "2026-10-18T08:00:00Z",
+        extract: { items: [{ confirmation_ref: "64570" }] },
+      },
+    ],
+  });
+  const list = await readLittleEmperorsEnAttente(admin);
+  assert.deepEqual(
+    list.sejours.map((row) => row.confirmation),
+    ["64570", "64571"]
+  );
+  assert.equal(list.sejours[0].reservee_le, "18 oct. 2026");
+  assert.equal(list.sejours[0].arrivee, "2026-11-02");
 });
