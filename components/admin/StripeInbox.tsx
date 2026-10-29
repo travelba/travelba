@@ -8,6 +8,7 @@ import { stripeInboxEmptyMessage } from "@/lib/crm/launch-status";
 import { stripeInboxCopy, stripeSuggestedCustomerId } from "@/lib/crm/stripe-inbox";
 import { StatusChip } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { Icon } from "@/components/crm/icons";
 import { customerPickLabel, type PickableCustomer } from "@/lib/crm/customer-search";
@@ -108,15 +109,17 @@ export function StripeInbox({
     }
   }
 
+  /** Crédite le client : seulement au clic de confirmation. Renvoie l’erreur à afficher, sinon null. */
   async function match(id: string, customerId: string, gross: number, currency: string) {
     if (!customerId) {
-      setError("Choisissez le client à rapprocher.");
+      setError("Choisissez le client à créditer.");
       setPickerRow(id);
-      return;
+      return "Choisissez le client à créditer.";
     }
-    const ok = await post(id, { customer_id: customerId }, "Rapprochement impossible. Réessayez.");
-    if (!ok) return;
+    const ok = await post(id, { customer_id: customerId }, "Crédit impossible. Réessayez.");
+    if (!ok) return "Crédit impossible. Réessayez.";
     setMessage(`Crédit enregistré : ${formatMoney(gross, currency)}.`);
+    return null;
   }
 
   return (
@@ -132,7 +135,7 @@ export function StripeInbox({
           {busy ? "Synchronisation…" : "Synchroniser Stripe"}
         </button>
         {configured ? (
-          <p className="text-sm text-muted">Crédits reçus — Valider ou Refuser. Auto si aucun doute.</p>
+          <p className="text-sm text-muted">Paiements reçus : Créditer ou Refuser. Un paiement dont le payeur est certain est crédité tout seul.</p>
         ) : null}
         <button
           type="button"
@@ -177,7 +180,7 @@ export function StripeInbox({
                 {row.status === "unmatched" ? (
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                     <div className="w-full">
-                      <BusyBar active={rowBusy === row.id} label="Rapprochement…" />
+                      <BusyBar active={rowBusy === row.id} label="Crédit…" />
                     </div>
                     <button
                       type="button"
@@ -185,7 +188,7 @@ export function StripeInbox({
                       onClick={() => setPickerRow(row.id)}
                       aria-haspopup="dialog"
                       aria-expanded={pickerRow === row.id}
-                      aria-label="Choisir le client à rapprocher"
+                      aria-label="Choisir le client à créditer"
                       className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)] sm:min-w-[12rem] sm:max-w-xs sm:w-auto"
                     >
                       <span className="min-w-0 truncate">
@@ -197,24 +200,40 @@ export function StripeInbox({
                       </span>
                       <Icon name="search" className="h-4 w-4 shrink-0 text-muted" />
                     </button>
-                    <button
-                      type="button"
-                      disabled={rowBusy === row.id}
-                      className="admin-af-btn rounded-full px-3 py-1 text-sm"
-                      onClick={() => void match(row.id, chosenId, Number(row.amount), row.currency)}
-                    >
-                      {rowBusy === row.id ? "En cours…" : "Valider"}
-                    </button>
-                    <button
-                      type="button"
+                    {chosen ? (
+                      <ConfirmAction
+                        size="sm"
+                        label={`Créditer ${customerPickLabel(chosen)}`}
+                        confirmLabel="Créditer"
+                        question={`Créditer ${signed} au compte de ${customerPickLabel(chosen)} ?`}
+                        hint="Le crédit entre au grand livre et dans l’espace du client. Un paiement crédité ne se rapproche plus."
+                        busyLabel="Crédit…"
+                        disabled={rowBusy === row.id}
+                        className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                        onConfirm={() => match(row.id, chosenId, Number(row.amount), row.currency)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={rowBusy === row.id}
+                        className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                        onClick={() => void match(row.id, chosenId, Number(row.amount), row.currency)}
+                      >
+                        Créditer…
+                      </button>
+                    )}
+                    <ConfirmAction
+                      size="sm"
+                      tone="danger"
+                      label="Refuser"
+                      confirmLabel="Refuser le paiement"
+                      question="Refuser ce paiement ? Il sort des crédits à encaisser, sans créditer personne."
                       disabled={rowBusy === row.id}
                       className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
-                      onClick={() =>
-                        void post(row.id, { action: "refuse" }, "Impossible de refuser ce paiement.")
+                      onConfirm={async () =>
+                        (await post(row.id, { action: "refuse" }, "Impossible de refuser ce paiement.")) ? null : "Impossible de refuser ce paiement."
                       }
-                    >
-                      Refuser
-                    </button>
+                    />
                   </div>
                 ) : null}
               </div>
@@ -234,7 +253,7 @@ export function StripeInbox({
         customers={customers}
         suggestedIds={pickerRow ? (suggestions.get(pickerRow) || []).map((candidate) => candidate.customer_id) : []}
         selectedId={pickerRow ? chosenFor(pickerRow) : ""}
-        title="Rapprocher vers un client"
+        title="Créditer un client"
         onSelect={(customer) => {
           if (!pickerRow) return;
           setPicked((current) => ({ ...current, [pickerRow]: customer.id }));

@@ -15,7 +15,6 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
-  type CardViewLine,
   type CrmHotelArrival,
   type CrmHotelMessage,
   type CrmHotelThreadMessage,
@@ -316,8 +315,6 @@ export function BookingEditor({
   arrivals = [],
   hotelRequests = [],
   hotelSignatory = "",
-  hasCardCode = false,
-  cardViews = [],
   attachedEmails = [],
   hotelMessages = [],
   hotelThreadMessages = [],
@@ -383,8 +380,6 @@ export function BookingEditor({
   arrivals?: CrmHotelArrival[];
   hotelRequests?: CrmHotelRequest[];
   hotelSignatory?: string;
-  hasCardCode?: boolean;
-  cardViews?: CardViewLine[];
   attachedEmails?: {
     id: string;
     subject: string | null;
@@ -1379,7 +1374,7 @@ export function BookingEditor({
         </div>
         <BusyBar
           active={busy !== "idle"}
-          label={busy === "publish" ? "Envoi au client…" : busy === "invoice" ? "Facturation…" : "Enregistrement…"}
+          label={busy === "publish" ? "Mise à jour du carnet…" : busy === "invoice" ? "Facturation…" : "Enregistrement…"}
         />
         {unsaved && busy === "idle" ? (
           <p role="status" className="text-sm font-semibold text-[var(--admin-gold-dark)]">
@@ -1855,8 +1850,6 @@ export function BookingEditor({
         identityDocs={identityDocs}
         holder={holderProfile}
         arrivals={arrivals}
-        hasCardCode={hasCardCode}
-        cardViews={cardViews}
         clientSettlesStay={clientSettles}
         stayVisible={booking.visible_to_client}
         attachedEmails={attachedEmails}

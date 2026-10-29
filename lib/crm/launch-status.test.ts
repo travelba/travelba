@@ -89,7 +89,7 @@ test("inbox Revolut : connecter d’abord, auto si sans ambiguïté", () => {
   );
   assert.match(
     revolutInboxEmptyMessage({ configured: true, connected: true }),
-    /rapprochés automatiquement/
+    /Aucun crédit ne part sans le clic Créditer/
   );
 });
 

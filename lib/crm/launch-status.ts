@@ -31,7 +31,7 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
       "Des dossiers existent en brouillon. L’interrupteur « Visible dans l’espace » rend le carnet visible. Enregistrer ne publie pas.";
   } else {
     carnetDescription =
-      "Ouvrez un client, importez les PDF, Enregistrer, puis Visible dans l’espace. Sans publication, le client n’a rien à ouvrir. Pas de séjour fictif.";
+      "Ouvrez un client, importez les PDF, Enregistrer, puis Montrer au client. Tant que le dossier n’est pas montré, le client n’a rien à ouvrir. Pas de séjour fictif.";
   }
 
   let revolutDescription: string;
@@ -123,7 +123,7 @@ export function revolutInboxEmptyMessage(opts: {
   if (!opts.connected) {
     return "Aucun virement tant que Revolut n’est pas connecté. Cliquez sur Connecter Revolut (authentification Business). Les virements reçus arriveront ensuite ici, toutes les 15 min.";
   }
-  return "Aucun virement importé. Synchronisez ou attendez le cron (toutes les 15 min). Les crédits sans ambiguïté sont rapprochés automatiquement.";
+  return "Aucun virement importé. Synchronisez ou attendez le cron (toutes les 15 min). Aucun crédit ne part sans le clic Créditer.";
 }
 
 export function revolutDebitEmptyMessage(opts: {

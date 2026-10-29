@@ -47,7 +47,7 @@ export function ReservationWeek({
   if (!total) {
     return (
       <EmptyState
-        title="Aucun séjour à venir"
+        title="Aucun dossier à venir"
         description="Importez les PDF d’un vrai dossier, Enregistrer, puis Montrer au client. Le carnet n’apparaît côté client qu’après ce geste."
         action={
           <Link href="/admin/reservations/nouveau" className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm">
@@ -86,7 +86,7 @@ function FoldedDay({ column }: { column: ReservationWeekColumn<CrmBooking> }) {
       <h3 className="font-display text-[11px] font-bold tracking-wide text-[var(--admin-navy)] [writing-mode:vertical-rl]">
         {column.title}
       </h3>
-      <p className="sr-only">{column.subtitle}. Aucun séjour</p>
+      <p className="sr-only">{column.subtitle}. Aucun dossier</p>
     </section>
   );
 }

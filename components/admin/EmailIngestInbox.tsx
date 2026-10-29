@@ -155,7 +155,7 @@ function OriginalMail({ row }: { row: CrmEmailIngest }) {
 
 function pendingLabel(action: string) {
   if (action === "new_booking") return "Création…";
-  if (action === "refuse") return "Refus…";
+  if (action === "refuse" || action === "ignore") return "Classement…";
   if (action === "rematch") return "Nouvelle proposition…";
   if (action === "attach_booking") return "Dépôt…";
   if (action === "apply_cards" || action === "replace_booking") return "Dépôt…";
@@ -163,11 +163,11 @@ function pendingLabel(action: string) {
 }
 
 function doneLabel(action: string) {
-  if (action === "new_booking") return "Le dossier est créé. Le mail quitte la file.";
-  if (action === "refuse") return "Le mail est classé sans dossier.";
-  if (action === "attach_booking") return "Les pièces sont déposées. Les cartes n’ont pas changé.";
+  if (action === "new_booking") return "Le dossier est créé. Le mail quitte la boîte.";
+  if (action === "refuse" || action === "ignore") return "Le mail est classé sans dossier. Il reste dans Classés.";
+  if (action === "attach_booking") return "Les pièces sont déposées. Les étapes n’ont pas changé.";
   if (action === "apply_cards" || action === "replace_booking") {
-    return "Les pièces sont déposées. Les cartes n’ont pas changé.";
+    return "Les pièces sont déposées. Les étapes n’ont pas changé.";
   }
   return "Le mail est classé sur le dossier.";
 }
@@ -438,8 +438,8 @@ export function EmailIngestInbox({
   if (!rows.length) {
     return (
       <EmptyState
-        title="Aucun e-mail à rattacher"
-        description="Les mails fournisseurs (Little Emperors, Expedia TAAP, billets d’avion) restent ici tant que l’agence ne les a pas rattachés ou refusés."
+        title="Aucun e-mail à traiter"
+        description="Les e-mails fournisseurs (Little Emperors, Expedia TAAP, billets d’avion) restent ici tant que l’agence ne les a pas déposés sur un dossier ou classés."
       />
     );
   }
@@ -600,7 +600,7 @@ export function EmailIngestInbox({
                       ))}
                     </ul>
                     {proposalById.get(row.id)?.conflict ? (
-                      <p className="mt-1 text-xs font-semibold text-[#8A5A12]">Conflit : choisir la carte.</p>
+                      <p className="mt-1 text-xs font-semibold text-[#8A5A12]">Conflit : choisir l’étape.</p>
                     ) : null}
                   </div>
                 ) : null}
@@ -768,7 +768,7 @@ export function EmailIngestInbox({
               </ul>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                Aucune carte extraite. Déposer les pièces n’en crée pas.
+                Aucune étape lue. Déposer les pièces n’en crée pas.
               </p>
             )}
 
@@ -856,7 +856,8 @@ export function EmailIngestInbox({
                   {(() => {
                     const picked = selectedBooking[row.id];
                     const depositBookingId = picked != null ? picked : row.suggested_booking_id || "";
-                    const cardLabel = "Mettre à jour les cartes";
+                    // Un seul geste de dépôt : la relecture (titre, extract) part avec, les étapes ne changent pas.
+                    const edited = Boolean(drafts[row.id]);
                     return (
                       <>
                         <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -866,42 +867,32 @@ export function EmailIngestInbox({
                             aria-busy={isBusy || undefined}
                             className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                             onClick={() =>
-                              act(row.id, {
-                                action: "attach_booking",
-                                booking_id: depositBookingId,
-                              })
-                            }
-                          >
-                            {isBusy && busy?.action === "attach_booking" ? pendingLabel("attach_booking") : "Déposer les pièces"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isBusy || !picked}
-                            aria-busy={isBusy || undefined}
-                            className="admin-tap rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-                            onClick={() =>
-                              act(row.id, {
-                                action: "apply_cards",
-                                booking_id: picked,
-                                item_id: undefined,
-                                title: cardTitle.trim(),
-                                ...(drafts[row.id]
+                              act(
+                                row.id,
+                                edited
                                   ? {
-                                      extract: drafts[row.id],
-                                      apply_stay_currency: Boolean(currencyChosen[row.id]),
+                                      action: "apply_cards",
+                                      booking_id: depositBookingId,
+                                      item_id: undefined,
+                                      title: cardTitle.trim(),
+                                      ...(drafts[row.id]
+                                        ? {
+                                            extract: drafts[row.id],
+                                            apply_stay_currency: Boolean(currencyChosen[row.id]),
+                                          }
+                                        : {}),
                                     }
-                                  : {}),
-                              })
+                                  : { action: "attach_booking", booking_id: depositBookingId }
+                              )
                             }
                           >
-                            {isBusy && busy?.action === "apply_cards" ? pendingLabel("apply_cards") : cardLabel}
+                            {isBusy && (busy?.action === "attach_booking" || busy?.action === "apply_cards")
+                              ? pendingLabel("attach_booking")
+                              : "Déposer les pièces"}
                           </button>
                         </div>
                         <p className="text-xs text-muted sm:col-span-2">
-                          Déposer les pièces copie les fichiers sur le dossier. Les cartes ne changent pas.
-                        </p>
-                        <p className="text-xs text-muted sm:col-span-2">
-                          Mettre à jour les cartes dépose les pièces sur la réservation qui correspond. Aucune carte n’est créée ni modifiée.
+                          Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée.
                         </p>
                       </>
                     );
@@ -942,7 +933,7 @@ export function EmailIngestInbox({
                     className="admin-tap rounded-lg bg-[#0B192C] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
                     onClick={() => act(row.id, { action: "restore" })}
                   >
-                    {isBusy && busy?.action === "restore" ? "Retour…" : "Remettre dans la file"}
+                    {isBusy && busy?.action === "restore" ? "Retour…" : "Remettre à traiter"}
                   </button>
                 ) : null}
                 {mode === "file" ? (
@@ -953,16 +944,6 @@ export function EmailIngestInbox({
                     onClick={() => act(row.id, { action: "dismiss_duplicate" })}
                   >
                     {isBusy && busy?.action === "dismiss_duplicate" ? "Écart…" : "Écarter le doublon"}
-                  </button>
-                ) : null}
-                {mode === "file" ? (
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="admin-tap rounded-lg px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
-                    onClick={() => act(row.id, { action: "ignore" })}
-                  >
-                    {isBusy && busy?.action === "ignore" ? "Ignoré…" : "Ignorer"}
                   </button>
                 ) : null}
                 {mode === "file" ? (
@@ -1003,10 +984,11 @@ export function EmailIngestInbox({
                   type="button"
                   disabled={isBusy}
                   className="admin-tap inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:text-accent disabled:opacity-40"
-                  onClick={() => act(row.id, { action: "refuse" })}
+                  onClick={() => act(row.id, { action: "ignore" })}
+                  title="Sort des mails à traiter, sans dossier. Le mail reste dans Classés."
                 >
                   <Icon name="close" className="h-4 w-4" />
-                  {isBusy && busy?.action === "refuse" ? "Refus…" : "Refuser"}
+                  {isBusy && busy?.action === "ignore" ? "Classement…" : "Classer"}
                 </button>
                 </>
                 ) : null}

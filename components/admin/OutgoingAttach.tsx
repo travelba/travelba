@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { useRouter } from "next/navigation";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { costSuggestionReasonLabel, isSureSuggestion, type OutgoingLine } from "@/lib/crm/trip-costs";
@@ -245,14 +246,17 @@ export function OutgoingAttach({
             Rattacher
           </button>
           {!fixedBooking || allowOutside ? (
-            <button
-              type="button"
+            <ConfirmAction
+              size="sm"
+              label="Hors voyage"
+              confirmLabel="Classer hors voyage"
+              question="Classer cette sortie hors voyage ? Elle n’entre dans aucun coût ni aucune marge. Remettre dans la file reste possible."
               disabled={busy}
-              onClick={() => void post({ action: "outside" }, "Impossible de classer cette sortie.")}
               className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
-            >
-              Hors voyage
-            </button>
+              onConfirm={async () =>
+                (await post({ action: "outside" }, "Impossible de classer cette sortie.")) ? null : "Impossible de classer cette sortie."
+              }
+            />
           ) : null}
         </div>
       )}

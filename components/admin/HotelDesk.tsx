@@ -3,37 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { HotelFollowUp } from "@/components/admin/HotelFollowUp";
 import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownPersonName } from "@/lib/crm/identity";
-import { applyHotelSalutation, bookingToken, ensureHotelMailIdentity, followUpSubject, hotelMailSubjectKey, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelThread, hotelTripChecklist, signHotelLetter, type DeskRosterPerson, type HotelMailPiece, type HotelThreadTurn } from "@/lib/crm/hotel-desk";
+import { applyHotelSalutation, bookingToken, ensureHotelMailIdentity, followUpSubject, hotelMailSubjectKey, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelThread, signHotelLetter, type DeskRosterPerson, type HotelMailPiece, type HotelThreadTurn } from "@/lib/crm/hotel-desk";
 import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { followUpBody } from "@/lib/crm/mail-followup";
 import { partiesFromThreadRows, replyAddresses, replyDraftBody, threadPartyAddresses } from "@/lib/crm/mail-reply";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
-import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
+import { HOTEL_DESK_KINDS, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 
 const letterFieldClass =
   "w-full rounded-xl border border-[#d9d1c3] bg-[#faf9f6] px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C] focus:bg-white";
-
-export function HotelDeskSummary({
-  requests,
-}: {
-  requests: CrmHotelRequest[];
-  today: string;
-}) {
-  const trip = hotelTripChecklist(requests);
-  if (!trip.openCount) return null;
-  return (
-    <p className="text-sm font-semibold text-[#0B192C]">
-      {trip.openCount > 1 ? `${trip.openCount} courriers hôtel` : "Courrier hôtel"}
-    </p>
-  );
-}
 
 export function HotelChecklistGlance({ itemId, requests }: { itemId: string; requests: CrmHotelRequest[] }) {
   const stay = hotelStayChecklist(itemId, requests);
@@ -56,9 +42,6 @@ export function HotelDesk({
   identityDocs = [],
   holder = null,
   cardLast4 = null,
-  clientCardName: _clientCardName = null,
-  hasCardCode: _hasCardCode = false,
-  cardViews: _cardViews = [],
   messages = [],
   thread = [],
   attached = [],
@@ -75,9 +58,6 @@ export function HotelDesk({
   identityDocs?: CrmTravelDocument[];
   holder?: { first_name: string; last_name: string } | null;
   cardLast4?: string | null;
-  clientCardName?: string | null;
-  hasCardCode?: boolean;
-  cardViews?: CardViewLine[];
   messages?: CrmHotelMessage[];
   thread?: CrmHotelThreadMessage[];
   attached?: HotelMailPiece[];
@@ -345,8 +325,9 @@ function HotelDeskEditor({
     });
     setBusy(null);
     if (!result.ok) {
-      setError(result.error || "Action impossible");
-      return false;
+      const message = result.error || "Action impossible";
+      setError(message);
+      return message;
     }
     if (action !== "save") {
       onClose();
@@ -428,21 +409,31 @@ function HotelDeskEditor({
         <textarea className={`${letterFieldClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
       </label>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]" disabled={Boolean(busy) || recipients.length === 0} onClick={() => void run("send")}>
-          {busy === "send" ? "Envoi…" : "Envoyer"}
-        </button>
+      <div className="flex flex-wrap items-start gap-2">
+        <ConfirmAction
+          label="Envoyer"
+          confirmLabel="Envoyer le courrier"
+          question={`Envoyer ce courrier à ${recipients.length > 1 ? `${recipients.length} destinataires` : recipients[0] || "l’hôtel"} ?`}
+          hint="Le courrier part tout de suite par Gmail. Rien d’autre ne change sur le dossier."
+          busyLabel="Envoi…"
+          disabled={Boolean(busy) || recipients.length === 0}
+          className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6] disabled:opacity-50"
+          onConfirm={async () => {
+            const sent = await run("send");
+            return sent === true ? null : sent;
+          }}
+        />
         <button
           type="button"
           className="rounded-full border border-[#d9d1c3] bg-white px-3 py-2 text-sm font-semibold text-[#0B192C]"
           disabled={Boolean(busy)}
           onClick={() =>
             void run("save").then((saved) => {
-              if (saved) router.refresh();
+              if (saved === true) router.refresh();
             })
           }
         >
-          {busy === "save" ? "…" : "Enregistrer"}
+          {busy === "save" ? "…" : "Enregistrer le brouillon"}
         </button>
         <button type="button" className="px-3 py-2 text-sm font-medium text-[#3d4654]" disabled={Boolean(busy)} onClick={() => void run("skip")}>
           Pas besoin

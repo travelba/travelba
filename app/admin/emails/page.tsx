@@ -43,7 +43,7 @@ const EMAIL_LIST_COLUMNS = [
   "updated_at",
 ].join(", ");
 
-export const metadata = { title: "Boîte d'import" };
+export const metadata = { title: "Boîte de réception" };
 
 type Vue = "file" | "appliques" | "ignores" | "sans-reponse" | "reponses";
 
@@ -339,21 +339,21 @@ export default async function AdminEmailsPage({
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
-        title="Boîte d'import"
+        title="Boîte de réception"
         subtitle={
           vue === "sans-reponse"
             ? "Messages envoyés sans réponse depuis 48 heures. Relancer ouvre le brouillon : il part seulement après confirmation."
             : vue === "reponses"
               ? "Messages reçus des hôtels. Répondre ouvre le brouillon dans le même fil : il part seulement après confirmation."
-              : "Un fil, une carte. La proposition dit le client, le dossier et ce qui change. Rien n’est publié seul."
+              : "Un fil, une carte. La proposition dit le client, le dossier et ce qui change. Rien n’est déposé ni montré au client sans votre clic."
         }
       />
       <nav className="mt-6 flex flex-wrap gap-2 text-sm font-semibold" aria-label="Vues de la boîte">
         {(
           [
             ["file", "À traiter", "/admin/emails"],
-            ["appliques", "Appliqués automatiquement (24 h)", "/admin/emails?vue=appliques"],
-            ["ignores", "Ignorés", "/admin/emails?vue=ignores"],
+            ["appliques", "Déposés (24 h)", "/admin/emails?vue=appliques"],
+            ["ignores", "Classés", "/admin/emails?vue=ignores"],
             ["sans-reponse", "Sans réponse", "/admin/emails?vue=sans-reponse"],
             ["reponses", "Réponses", "/admin/emails?vue=reponses"],
           ] as const
@@ -370,7 +370,7 @@ export default async function AdminEmailsPage({
         ))}
       </nav>
       {vue === "sans-reponse" || vue === "reponses" ? null : (
-        <p className="mt-2 text-xs text-muted">Raccourcis : A déposer les pièces, I ignorer, E écarter le doublon.</p>
+        <p className="mt-2 text-xs text-muted">Raccourcis : A déposer les pièces, I classer, E écarter le doublon.</p>
       )}
       {unanswered ? (
         <UnansweredMails rows={unanswered} />
@@ -379,7 +379,7 @@ export default async function AdminEmailsPage({
       ) : (
         <>
       <div className="mt-4">
-        <Pagination page={page} total={count ?? inbox.length} hrefFor={(next) => emailsHref(vue, next)} label="mails" />
+        <Pagination page={page} total={count ?? inbox.length} hrefFor={(next) => emailsHref(vue, next)} label="e-mails" />
       </div>
       <div className="mt-4">
         <EmailIngestInbox
@@ -391,7 +391,7 @@ export default async function AdminEmailsPage({
       </div>
       {count != null && count > ADMIN_PAGE_SIZE ? (
         <div className="mt-4">
-          <Pagination page={page} total={count} hrefFor={(next) => emailsHref(vue, next)} label="mails" />
+          <Pagination page={page} total={count} hrefFor={(next) => emailsHref(vue, next)} label="e-mails" />
         </div>
       ) : null}
         </>

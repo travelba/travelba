@@ -310,7 +310,7 @@ function ManualNewBookingForm({
         disabled={saving || Boolean(created)}
         className="admin-af-btn admin-tap rounded-xl px-4 py-2.5 text-sm disabled:opacity-50 sm:col-span-3"
       >
-        {saving ? "Création…" : created ? "Dossier créé" : "Créer la réservation"}
+        {saving ? "Création…" : created ? "Dossier créé" : "Créer le dossier"}
       </button>
     </form>
   );

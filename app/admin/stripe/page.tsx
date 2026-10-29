@@ -59,7 +59,7 @@ export default async function AdminStripePage() {
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
-        title="Rapprochement Stripe"
+        title="Stripe"
         subtitle="Paiements reçus : payeur et référence. Proposition pré-sélectionnée seulement si elle est certaine : Valider, choisir ou Refuser."
       />
       <div className="mt-6 space-y-4">

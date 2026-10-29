@@ -11,6 +11,7 @@ import { OutgoingAttach } from "@/components/admin/OutgoingAttach";
 import Link from "next/link";
 import { StatusChip } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { Icon } from "@/components/crm/icons";
 import {
@@ -171,25 +172,27 @@ export function RevolutInbox({
     }
   }
 
+  /** Crédite le client : seulement au clic de confirmation. Renvoie l’erreur à afficher, sinon null. */
   async function match(id: string, customerId: string, gross: number, currency: string) {
     if (!customerId) {
-      setError("Choisissez le client à rapprocher.");
+      setError("Choisissez le client à créditer.");
       setPickerRow(id);
-      return;
+      return "Choisissez le client à créditer.";
     }
     const choices = accounts[customerId] || [];
     const billingCompanyId = accountFor[id] || "";
     if (choices.length > 1 && !choices.some((choice) => choice.id === billingCompanyId)) {
       setError("Choisissez le compte : crédit ou Pro.");
-      return;
+      return "Choisissez le compte : crédit ou Pro.";
     }
     const ok = await post(
       id,
       { customer_id: customerId, billing_company_id: billingCompanyId || null },
-      "Rapprochement impossible. Réessayez."
+      "Crédit impossible. Réessayez."
     );
-    if (!ok) return;
+    if (!ok) return "Crédit impossible. Réessayez.";
     setMessage(`Crédit enregistré : ${formatMoney(gross, currency)}.`);
+    return null;
   }
 
   return (
@@ -378,7 +381,7 @@ export function RevolutInbox({
                 {r.status === "unmatched" ? (
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                     <div className="w-full">
-                      <BusyBar active={rowBusy === r.id} label="Rapprochement…" />
+                      <BusyBar active={rowBusy === r.id} label="Crédit…" />
                     </div>
                     <button
                       type="button"
@@ -386,7 +389,7 @@ export function RevolutInbox({
                       onClick={() => setPickerRow(r.id)}
                       aria-haspopup="dialog"
                       aria-expanded={pickerRow === r.id}
-                      aria-label="Choisir le client à rapprocher"
+                      aria-label="Choisir le client à créditer"
                       className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)] sm:min-w-[12rem] sm:max-w-xs sm:w-auto"
                     >
                       <span className="min-w-0 truncate">
@@ -419,24 +422,40 @@ export function RevolutInbox({
                         </select>
                       </label>
                     ) : null}
-                    <button
-                      type="button"
-                      disabled={rowBusy === r.id}
-                      className="admin-af-btn rounded-full px-3 py-1 text-sm"
-                      onClick={() => void match(r.id, chosenId, Number(r.amount), r.currency)}
-                    >
-                      {rowBusy === r.id ? "En cours…" : "Valider"}
-                    </button>
-                    <button
-                      type="button"
+                    {chosen ? (
+                      <ConfirmAction
+                        size="sm"
+                        label={`Créditer ${customerPickLabel(chosen)}`}
+                        confirmLabel="Créditer"
+                        question={`Créditer ${signed} au compte de ${customerPickLabel(chosen)} ?`}
+                        hint="Le crédit entre au grand livre et dans l’espace du client. Un virement crédité ne se rapproche plus."
+                        busyLabel="Crédit…"
+                        disabled={rowBusy === r.id}
+                        className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                        onConfirm={() => match(r.id, chosenId, Number(r.amount), r.currency)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={rowBusy === r.id}
+                        className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                        onClick={() => void match(r.id, chosenId, Number(r.amount), r.currency)}
+                      >
+                        Créditer…
+                      </button>
+                    )}
+                    <ConfirmAction
+                      size="sm"
+                      tone="danger"
+                      label="Refuser"
+                      confirmLabel="Refuser le virement"
+                      question="Refuser ce virement ? Il sort des crédits à encaisser, sans créditer personne."
                       disabled={rowBusy === r.id}
                       className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
-                      onClick={() =>
-                        void post(r.id, { action: "refuse" }, "Impossible de refuser ce mouvement.")
+                      onConfirm={async () =>
+                        (await post(r.id, { action: "refuse" }, "Impossible de refuser ce mouvement.")) ? null : "Impossible de refuser ce mouvement."
                       }
-                    >
-                      Refuser
-                    </button>
+                    />
                   </div>
                 ) : null}
               </div>
@@ -467,7 +486,7 @@ export function RevolutInbox({
         customers={customers}
         suggestedIds={pickerRow ? (suggestions.get(pickerRow) || []).map((c) => c.customer_id) : []}
         selectedId={pickerRow ? chosenFor(pickerRow) : ""}
-        title="Rapprocher vers un client"
+        title="Créditer un client"
         onSelect={(customer) => {
           if (!pickerRow) return;
           setPicked((current) => ({ ...current, [pickerRow]: customer.id }));

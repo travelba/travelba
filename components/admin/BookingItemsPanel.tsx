@@ -38,7 +38,7 @@ import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
 import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
-import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, CrmTravelDocument } from "@/lib/crm/types";
+import type { CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
@@ -286,8 +286,6 @@ export function BookingItemsPanel({
   identityDocs = [],
   holder = null,
   arrivals = [],
-  hasCardCode = false,
-  cardViews = [],
   attachedEmails = [],
   hotelMessages = [],
   hotelThreadMessages = [],
@@ -310,8 +308,6 @@ export function BookingItemsPanel({
   identityDocs?: CrmTravelDocument[];
   holder?: { first_name: string; last_name: string } | null;
   arrivals?: CrmHotelArrival[];
-  hasCardCode?: boolean;
-  cardViews?: CardViewLine[];
   attachedEmails?: {
     id: string;
     subject: string | null;
@@ -889,9 +885,6 @@ export function BookingItemsPanel({
                         identityDocs={identityDocs}
                         holder={holder}
                         cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
-                        clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
-                        hasCardCode={hasCardCode}
-                        cardViews={cardViews.filter((line) => line.itemId === item.id)}
                         messages={hotelMessages}
                         thread={hotelThreadMessages}
                         attached={attachedEmails}
