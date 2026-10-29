@@ -63,10 +63,13 @@ export function mapRestaurant(row: Record<string, unknown>): RestaurantRecord {
     phone: text(row.phone),
     website: text(row.website),
     categories: Array.isArray(row.categories) ? row.categories.map((item) => text(item)).filter(Boolean) : [],
+    cuisine: text(row.cuisine),
+    style: text(row.style),
     platform: (text(row.booking_platform) || null) as RestaurantRecord["platform"],
     bookingUrl: text(row.booking_url),
     bot: (text(row.bot_reservable) || "non") as RestaurantRecord["bot"],
     guaranteeCard: row.guarantee_card === true,
+    onlineCancellation: typeof row.online_cancellation === "boolean" ? row.online_cancellation : null,
     cancelHours: typeof row.cancel_hours === "number" ? row.cancel_hours : null,
     cancelFeeCents: typeof row.cancel_fee_cents === "number" ? row.cancel_fee_cents : null,
     closedWeekdays: Array.isArray(row.closed_weekdays) ? row.closed_weekdays.map((item) => Number(item)).filter((item) => item >= 1 && item <= 7) : [],
@@ -76,7 +79,8 @@ export function mapRestaurant(row: Record<string, unknown>): RestaurantRecord {
         return { from: text(span.from), to: text(span.to) };
       })
       .filter((span) => span.from && span.to),
-    status: row.status === "exclu" ? "exclu" : "actif",
+    openingHours: text(row.opening_hours),
+    status: row.status === "exclu" ? "exclu" : row.status === "a_valider" ? "a_valider" : "actif",
     exclusionReason: (text(row.exclusion_reason) || null) as RestaurantRecord["exclusionReason"],
     starred: row.starred === true,
     prepaidRequired: row.prepaid_required === true,
@@ -86,7 +90,9 @@ export function mapRestaurant(row: Record<string, unknown>): RestaurantRecord {
     signaturePhotoUrl: text(row.signature_photo_url),
     pitch: text(row.concierge_pitch),
     priceBand: text(row.price_band),
+    priceEstimated: row.price_estimated === true,
     placeUrl: text(row.place_url),
+    availabilityNotes: text(row.availability_notes),
   };
 }
 
@@ -120,8 +126,49 @@ function toRow(draft: CatalogDraft) {
     concierge_pitch: draft.pitch || null,
     price_band: draft.priceBand || null,
     place_url: draft.placeUrl || null,
+    cuisine: draft.cuisine || null,
+    style: draft.style || null,
+    price_estimated: draft.priceEstimated,
+    opening_hours: draft.openingHours || null,
+    online_cancellation: draft.onlineCancellation,
+    availability_notes: draft.availabilityNotes || null,
     updated_at: new Date().toISOString(),
   };
+}
+
+/** Colonnes de la fiche enrichie (migration 20261029330000). Absentes : on écrit sans elles. */
+const FICHE_KEYS = [
+  "cuisine",
+  "style",
+  "estimation",
+  "price_estimated",
+  "priceEstimated",
+  "horaires",
+  "opening_hours",
+  "openingHours",
+  "annulation_en_ligne",
+  "online_cancellation",
+  "onlineCancellation",
+  "disponibilites",
+  "availability_notes",
+  "availabilityNotes",
+];
+
+export const RESTAURANT_FICHE_MIGRATION = "20261029330000_crm_restaurant_fiche.sql";
+
+function ficheTouched(input: Record<string, unknown>) {
+  return FICHE_KEYS.some((key) => input[key] != null && input[key] !== "");
+}
+
+function rowWithoutFiche(row: ReturnType<typeof toRow>) {
+  const { cuisine, style, price_estimated, opening_hours, online_cancellation, availability_notes, ...rest } = row;
+  void cuisine;
+  void style;
+  void price_estimated;
+  void opening_hours;
+  void online_cancellation;
+  void availability_notes;
+  return rest;
 }
 
 const VISUAL_KEYS = [
@@ -153,7 +200,7 @@ function visualTouched(input: Record<string, unknown>) {
   return VISUAL_KEYS.some((key) => input[key] != null && input[key] !== "");
 }
 
-function rowWithoutVisual(row: ReturnType<typeof toRow>) {
+function rowWithoutVisual(row: ReturnType<typeof rowWithoutFiche>) {
   const { photo_urls, menu_photo_url, signature_photo_url, concierge_pitch, price_band, place_url, ...rest } = row;
   void photo_urls;
   void menu_photo_url;
@@ -193,15 +240,24 @@ export async function saveRestaurant(db: SupabaseClient, input: Record<string, u
   const draft = normalizeCatalog(input, existing);
   if (isFormError(draft)) return draft;
   const row = toRow(draft);
-  let write = id
-    ? await db.from("crm_restaurants").update(row).eq("id", id).select("id").single()
-    : await db.from("crm_restaurants").insert(row).select("id").single();
-  if (write.error && (write.error.code === "42703" || write.error.code === "PGRST204")) {
+  const persist = (payload: Record<string, unknown>) =>
+    id
+      ? db.from("crm_restaurants").update(payload).eq("id", id).select("id").single()
+      : db.from("crm_restaurants").insert(payload).select("id").single();
+  const columnMissing = (code: string | null | undefined) => code === "42703" || code === "PGRST204";
+  let write = await persist(row);
+  if (write.error && columnMissing(write.error.code)) {
+    if (ficheTouched(input) || draft.status === "a_valider") {
+      return { error: `La fiche enrichie n’est pas encore en place. Migration ${RESTAURANT_FICHE_MIGRATION} à jouer.` };
+    }
+    write = await persist(rowWithoutFiche(row));
+  }
+  if (write.error && columnMissing(write.error.code)) {
     if (visualTouched(input)) return { error: "Le catalogue visuel n’est pas encore en place." };
-    const slim = rowWithoutVisual(row);
-    write = id
-      ? await db.from("crm_restaurants").update(slim).eq("id", id).select("id").single()
-      : await db.from("crm_restaurants").insert(slim).select("id").single();
+    write = await persist(rowWithoutVisual(rowWithoutFiche(row)));
+  }
+  if (write.error && write.error.code === "23514" && draft.status === "a_valider") {
+    return { error: `Le statut à valider n’est pas encore en place. Migration ${RESTAURANT_FICHE_MIGRATION} à jouer.` };
   }
   if (write.error || !write.data) {
     logDb("écrire", write.error);

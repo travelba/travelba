@@ -58,9 +58,13 @@ const EXPECTED = [
   "enregistrement_en_ligne",
   "envoyer_releve",
   "sejours_restaurants",
-  "catalogue_restaurants",
+  "list_restaurants",
+  "create_restaurant",
+  "update_restaurant",
   "tables_restaurant",
   "choix_restaurant",
+  "create_restaurant_whatsapp_templates",
+  "get_restaurant_whatsapp_templates_status",
 ];
 
 const WRITE_TOOLS = [
@@ -99,8 +103,10 @@ const WRITE_TOOLS = [
   "ajouter_accueil_vip",
   "enregistrement_en_ligne",
   "envoyer_releve",
-  "catalogue_restaurants",
+  "create_restaurant",
+  "update_restaurant",
   "tables_restaurant",
+  "create_restaurant_whatsapp_templates",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
