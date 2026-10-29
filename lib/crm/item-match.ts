@@ -103,8 +103,13 @@ function addDays(iso: string, days: number) {
   return next.toISOString().slice(0, 10);
 }
 
+type StayDates = {
+  start_at?: string | null;
+  end_at?: string | null;
+};
+
 /** Dernier jour exclu. Sans date de départ, la nuit d’arrivée compte. */
-function checkoutDay(item: MatchableItem) {
+function checkoutDay(item: StayDates) {
   const start = day(item.start_at);
   if (!start) return "";
   const end = day(item.end_at);
@@ -113,17 +118,14 @@ function checkoutDay(item: MatchableItem) {
 }
 
 /** Une nuit en commun. Le jour de départ est libre : arrivée le 19 après un départ le 19. */
-function hotelNightsShare(a: MatchableItem, b: MatchableItem) {
+function hotelNightsShare(a: StayDates, b: StayDates) {
   const aStart = day(a.start_at);
   const bStart = day(b.start_at);
   if (!aStart || !bStart) return false;
   return aStart < checkoutDay(b) && bStart < checkoutDay(a);
 }
 
-export function hotelStaysOverlapNights(
-  a: { start_at?: string | null; end_at?: string | null },
-  b: { start_at?: string | null; end_at?: string | null }
-) {
+export function hotelStaysOverlapNights(a: StayDates, b: StayDates) {
   return hotelNightsShare(a, b);
 }
 
