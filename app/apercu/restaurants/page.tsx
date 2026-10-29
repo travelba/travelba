@@ -98,13 +98,17 @@ const EXAMPLE: RestaurantRecord = {
   phone: "",
   website: "https://exemple.invalid/ostuni",
   categories: ["italien"],
+  cuisine: "italienne",
+  style: "trattoria",
   platform: "thefork",
   bookingUrl: "",
   bot: "partiel",
   guaranteeCard: false,
+  onlineCancellation: null,
   cancelHours: null,
   cancelFeeCents: null,
   closedWeekdays: [],
+  openingHours: "",
   annualClosures: [],
   status: "actif",
   exclusionReason: null,
@@ -116,7 +120,9 @@ const EXAMPLE: RestaurantRecord = {
   signaturePhotoUrl: PLAT,
   pitch: "Une salle calme, lumière basse.",
   priceBand: "90 à 140 €",
+  priceEstimated: false,
   placeUrl: "https://exemple.invalid/ostuni",
+  availabilityNotes: "",
 };
 
 export default function RestaurantPreviewPage() {

@@ -10,7 +10,8 @@ import {
 } from "./restaurant-desk";
 import { restaurantGreeting, restaurantIntroText, SALLE_CARD_BODY, PLAT_CARD_BODY, CARTE_CARD_BODY, restaurantCarouselBody } from "./restaurant-whatsapp";
 import { cityPlaceKey } from "./city-names";
-import { clockLabel, formatEveningFr, hotelForEvening, hotelsFromItems, localClock, restaurantDefaultClock, timezoneForStay, type RestaurantRecord, type TableSeat, type TableStatus } from "./restaurants";
+import { clockLabel, formatEveningFr, hotelForEvening, hotelsFromItems, localClock, restaurantDefaultClock, type RestaurantRecord, type TableSeat, type TableStatus } from "./restaurants";
+import { timezoneForStay } from "./stay-timezone";
 import { mapRestaurant } from "./restaurants-db";
 import { restaurantAllowlist, restaurantBookingAllowed } from "./restaurant-allowlist";
 
@@ -132,11 +133,21 @@ export async function loadRestaurantBoard(
     const hotels = hotelsFromItems((items.data || []).filter((row) => (row as { booking_id: string }).booking_id === stay.id) as Parameters<typeof hotelsFromItems>[0]);
     const customer = customers.get(stay.customer_id);
     const greeting = restaurantGreeting({ sex: customer?.sex, lastName: customer?.last_name, firstName: customer?.first_name });
-    const dates = [now.toISOString().slice(0, 10)];
+    const zoneOn = (date: string) => {
+      const hotel = hotelForEvening(hotels, date);
+      return timezoneForStay({ stored: stay.timezone, hotelZone: hotel?.zone, city: hotel?.city, country: hotel?.country, destination: stay.destination });
+    };
+    // « Ce soir » est le soir de la ville où l’on dort : la veille ou le lendemain en UTC quand le fuseau est loin de Greenwich.
+    const utcToday = now.toISOString().slice(0, 10);
+    const tonight = [-1, 0, 1]
+      .map((days) => new Date(now.getTime() + days * 86_400_000).toISOString().slice(0, 10))
+      .find((date) => {
+        const zone = zoneOn(date).zone;
+        return zone ? localClock(now, zone)?.isoDate === date : date === utcToday;
+      });
+    const dates = tonight ? [tonight] : input.test ? [utcToday] : [];
     for (const date of dates) {
-      const placed = timezoneForStay({ stored: stay.timezone, hotelZone: hotelForEvening(hotels, date)?.zone, city: hotelForEvening(hotels, date)?.city || stay.destination, country: hotelForEvening(hotels, date)?.country });
-      const local = placed.zone ? localClock(now, placed.zone)?.isoDate : date;
-      if (placed.zone && local !== date && !input.test) continue;
+      const placed = zoneOn(date);
       const mine = ((tables.data || []) as { booking_id: string; evening_date: string; seat: TableSeat; restaurant_id: string | null; time_local: string | null; status: TableStatus }[]).filter(
         (row) => row.booking_id === stay.id && String(row.evening_date).slice(0, 10) === date
       );

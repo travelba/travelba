@@ -55,11 +55,19 @@ import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { envoyerReleve } from "@/lib/crm/mcp-statement";
 import { readLireEmail } from "@/lib/crm/mcp-email";
-import { catalogueRestaurants, choixRestaurant, sejoursRestaurants, tablesRestaurant } from "@/lib/crm/mcp-restaurants";
+import {
+  choixRestaurant,
+  createRestaurantTool,
+  listRestaurantsTool,
+  sejoursRestaurants,
+  tablesRestaurant,
+  updateRestaurantTool,
+} from "@/lib/crm/mcp-restaurants";
+import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus } from "@/lib/crm/mcp-restaurant-templates";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 58;
+export const MCP_TOOL_CAP = 62;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -69,6 +77,46 @@ const COMPANY_FIELDS = {
   code_postal: z.string().trim().max(20).optional().describe("Code postal de facturation"),
   ville: z.string().trim().max(80).optional().describe("Ville de facturation"),
   pays: z.string().trim().max(80).optional().describe("Pays de facturation"),
+};
+
+/** Champs d’une fiche restaurant, partagés par create_restaurant et update_restaurant. */
+const RESTAURANT_FIELDS = {
+  adresse: z.string().trim().max(300).optional().describe("Adresse"),
+  lat: z.union([z.number(), z.string()]).optional(),
+  lng: z.union([z.number(), z.string()]).optional(),
+  telephone: z.string().trim().max(40).optional(),
+  site: z.string().trim().max(300).optional().describe("Site officiel, https"),
+  page: z.string().trim().max(500).optional().describe("Page Google ou site, https : lien « Découvrir l’adresse »"),
+  categories: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .describe("Séparées par des virgules, la première est la principale : pizzeria, japonais, francais, incontournable, italien, festif, enfants, terrasse…"),
+  cuisine: z.string().trim().max(80).optional().describe("Cuisine, texte libre : italienne du sud, omakase"),
+  style: z.string().trim().max(80).optional().describe("Style : bistrot, terrasse les pieds dans l’eau"),
+  description: z.string().trim().max(400).optional().describe("Description courte, ton concierge (concierge_pitch)"),
+  fourchette: z.string().trim().max(80).optional().describe("Prix par personne, par exemple 90 à 140 € (price_band)"),
+  estimation: z.union([z.boolean(), z.string()]).optional().describe("La fourchette est une estimation, pas la carte"),
+  horaires: z.string().trim().max(400).optional().describe("Horaires d’ouverture, texte libre"),
+  fermeture_jours: z.string().trim().max(80).optional().describe("Jours fermés : lundi, mardi…"),
+  fermetures: z.string().trim().max(400).optional().describe("Fermetures annuelles mois-jour/mois-jour, une par ligne"),
+  plateforme: z.string().trim().max(40).optional().describe("resy, opentable, sevenrooms, thefork, zenchef, telephone, whatsapp, formulaire"),
+  lien: z.string().trim().max(400).optional().describe("Lien de réservation (booking_url)"),
+  bot: z.string().trim().max(20).optional().describe("Réservable par le bot : oui, partiel ou non"),
+  empreinte_carte: z.union([z.boolean(), z.string()]).optional().describe("Empreinte de carte demandée à la réservation. Oui ou non, jamais un numéro"),
+  annulation_en_ligne: z.union([z.boolean(), z.string()]).optional().describe("Annulation possible en ligne : oui ou non"),
+  annulation_heures: z.union([z.number(), z.string()]).optional().describe("Délai d’annulation en heures"),
+  annulation_frais: z.union([z.number(), z.string()]).optional().describe("Frais d’annulation en euros"),
+  photos: z.string().trim().max(4000).optional().describe("Photos https, une par ligne. La première est la salle (photo_urls)"),
+  photo_plat: z.string().trim().max(500).optional().describe("Photo https du plat signature (signature_photo_url)"),
+  photo_carte: z.string().trim().max(500).optional().describe("Photo https de la carte, facultative (menu_photo_url)"),
+  disponibilites: z.string().trim().max(1000).optional().describe("Disponibilités et conseils de réservation (availability_notes)"),
+  statut: z.string().trim().max(20).optional().describe("actif, a_valider ou exclu"),
+  motif: z.string().trim().max(40).optional().describe("ferme, gastronomique ou prepaiement"),
+  etoile: z.union([z.boolean(), z.string()]).optional().describe("Étoilé : exclu"),
+  prepaiement: z.union([z.boolean(), z.string()]).optional().describe("Prépaiement obligatoire : exclu"),
+  note: z.string().trim().max(2000).optional().describe("Note interne"),
 };
 
 const PRIX_BILLET = "Prix d’un billet (unitaire). Zéro est accepté. Le séjour le multiplie par le nombre de billets.";
@@ -1146,41 +1194,42 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => sejoursRestaurants(args),
   },
   {
-    name: "catalogue_restaurants",
+    name: "list_restaurants",
+    description:
+      "Catalogue restaurants. ville : les fiches de cette ville (pour vérifier qu’une maison n’existe pas déjà avant create_restaurant). restaurant_id : une fiche. q : recherche sur le nom ou la ville. statut : actif, a_valider ou exclu. Chaque fiche porte fiche_complete et champs_manquants (photo de la salle, photo du plat, description, fourchette, lien), selection (pourquoi elle est hors sélection, sinon null) et tous les champs de create_restaurant. Lecture seule. Pas de numéro de carte.",
+    input: {
+      ville: z.string().trim().max(80).optional().describe("Ville. Seule : filtre la liste"),
+      restaurant_id: z.string().trim().max(80).optional().describe("Identifiant : lit une fiche"),
+      q: z.string().trim().max(80).optional().describe("Recherche sur le nom ou la ville"),
+      statut: z.string().trim().max(20).optional().describe("actif, a_valider ou exclu"),
+    },
+    run: (args) => listRestaurantsTool(args),
+  },
+  {
+    name: "create_restaurant",
     write: true,
     description:
-      "Catalogue restaurants. Sans champ d’écriture : liste, filtrée par ville, ou une fiche si restaurant_id. Avec nom (création) ou restaurant_id et un champ : enregistre. Catégories : japonais, italien, francais, festif, enfants, terrasse, ou une autre. Plateforme : resy, opentable, sevenrooms, thefork, zenchef, telephone, whatsapp, formulaire. photos : adresses https, une par ligne, la première est la salle. photo_plat, photo_carte (facultative), description (ton concierge), fourchette (prix par personne), page (site ou page Google, https). Étoilé, gastronomique et prépaiement obligatoire sont exclus et ne peuvent pas être choisis. Pas de numéro de carte.",
+      "Crée une fiche restaurant. nom et ville obligatoires. Une maison du même nom dans la même ville est refusée (la fiche existante est citée) sauf forcer true. Statut a_valider par défaut : la fiche reste hors sélection tant que l’agence ne l’active pas. categories : la première est la catégorie principale (pizzeria, japonais, francais, incontournable, italien, festif, enfants, terrasse…). Étoilé, gastronomique et prépaiement obligatoire sont exclus et ne peuvent pas être choisis. La réponse porte fiche_complete et champs_manquants. Pas de numéro de carte : empreinte_carte est seulement oui ou non.",
     input: {
-      restaurant_id: z.string().trim().max(80).optional().describe("Identifiant. Présent : met à jour, ou lit la fiche si aucun autre champ"),
-      nom: z.string().trim().max(200).optional().describe("Nom. Présent sans identifiant : crée"),
-      ville: z.string().trim().max(80).optional().describe("Ville. Seule : filtre la liste"),
-      adresse: z.string().trim().max(300).optional(),
-      lat: z.union([z.number(), z.string()]).optional(),
-      lng: z.union([z.number(), z.string()]).optional(),
-      telephone: z.string().trim().max(40).optional(),
-      site: z.string().trim().max(300).optional(),
-      categories: z.string().trim().max(200).optional().describe("Séparées par des virgules"),
-      plateforme: z.string().trim().max(40).optional(),
-      lien: z.string().trim().max(400).optional().describe("Lien de réservation"),
-      bot: z.string().trim().max(20).optional().describe("oui, partiel ou non"),
-      garantie: z.union([z.boolean(), z.string()]).optional().describe("Carte de garantie demandée. Pas un numéro"),
-      annulation_heures: z.union([z.number(), z.string()]).optional(),
-      annulation_frais: z.union([z.number(), z.string()]).optional().describe("Frais en euros"),
-      fermeture_jours: z.string().trim().max(80).optional().describe("lundi, mardi…"),
-      fermetures: z.string().trim().max(400).optional().describe("Périodes mois-jour/mois-jour, une par ligne"),
-      statut: z.string().trim().max(20).optional().describe("actif ou exclu"),
-      motif: z.string().trim().max(40).optional().describe("ferme, gastronomique ou prepaiement"),
-      etoile: z.union([z.boolean(), z.string()]).optional().describe("Étoilé : exclu"),
-      prepaiement: z.union([z.boolean(), z.string()]).optional().describe("Prépaiement obligatoire : exclu"),
-      note: z.string().trim().max(2000).optional().describe("Note interne"),
-      photos: z.string().trim().max(4000).optional().describe("Photos https, une par ligne. La première est la salle"),
-      photo_plat: z.string().trim().max(500).optional().describe("Photo https du plat signature"),
-      photo_carte: z.string().trim().max(500).optional().describe("Photo https de la carte, facultative"),
-      description: z.string().trim().max(400).optional().describe("Description courte, ton concierge"),
-      fourchette: z.string().trim().max(80).optional().describe("Prix par personne, par exemple 90 à 140 €"),
-      page: z.string().trim().max(500).optional().describe("Site ou page Google, https"),
+      nom: z.string().trim().max(200).describe("Nom"),
+      ville: z.string().trim().max(80).describe("Ville"),
+      forcer: z.boolean().optional().describe("Crée malgré une fiche du même nom dans la ville"),
+      ...RESTAURANT_FIELDS,
     },
-    run: (args) => catalogueRestaurants(args),
+    run: (args) => createRestaurantTool(args),
+  },
+  {
+    name: "update_restaurant",
+    write: true,
+    description:
+      "Met à jour une fiche restaurant (restaurant_id). Seuls les champs indiqués changent. statut actif active la fiche (elle entre dans la sélection), a_valider la remet en relecture, exclu la sort avec un motif. Mêmes champs que create_restaurant. La réponse porte fiche_complete et champs_manquants. Pas de numéro de carte.",
+    input: {
+      restaurant_id: z.string().trim().max(80).describe("Identifiant de la fiche"),
+      nom: z.string().trim().max(200).optional().describe("Nom"),
+      ville: z.string().trim().max(80).optional().describe("Ville"),
+      ...RESTAURANT_FIELDS,
+    },
+    run: (args) => updateRestaurantTool(args),
   },
   {
     name: "tables_restaurant",
@@ -1214,6 +1263,21 @@ export const MCP_TOOLS: ToolDef[] = [
       date: z.string().trim().max(20).optional().describe("Soir aaaa-mm-jj. Omis : tous les soirs du dossier"),
     },
     run: (args) => choixRestaurant(args),
+  },
+  {
+    name: "create_restaurant_whatsapp_templates",
+    write: true,
+    openWorld: true,
+    description:
+      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les trois modèles WhatsApp restaurants : restaurant_selection (pré-message), restaurant_proposition (carrousel salle et plat) et restaurant_proposition_carte (avec la carte). Mêmes textes que scripts/create-restaurant-whatsapp-templates.ts. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent : un modèle qui porte déjà ce nom est repris, pas dupliqué. Renvoie pour chacun le nom, le content_sid (HX…) et le statut d’approbation. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Le cron utilise un modèle approuvé dès la variable TWILIO_CONTENT_RESTAURANT_* posée, ou le retrouve par son nom si elle ne l’est pas.",
+    run: (args) => createRestaurantWhatsappTemplates(args),
+  },
+  {
+    name: "get_restaurant_whatsapp_templates_status",
+    openWorld: true,
+    description:
+      "Statut d’approbation Meta des trois modèles WhatsApp restaurants (restaurant_selection, restaurant_proposition, restaurant_proposition_carte) : nom, content_sid, statut (approved, pending, rejected, unsubmitted, absent), source (variable ou retrouvé par son nom chez Twilio), motif de refus. pret vrai quand les trois sont approuvés. Lecture seule, n’envoie aucun message, ne crée rien.",
+    run: (args) => getRestaurantWhatsappTemplatesStatus(args),
   },
 ];
 

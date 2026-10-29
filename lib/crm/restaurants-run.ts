@@ -3,7 +3,7 @@ import { cityPlaceKey } from "./city-names";
 import { phoneFromWhatsapp } from "./whatsapp-inbound";
 import { sendContentTemplate } from "./whatsapp";
 import { sendWhatsappSession, sessionAddress } from "./whatsapp-session";
-import { resolveContentSid, whatsappContentApproved } from "./twilio-content-sid";
+import { approvedRestaurantContentSid } from "./restaurant-templates-arm";
 import {
   clockLabel,
   closedOn,
@@ -19,7 +19,6 @@ import {
   restaurantDedupeKey,
   restaurantPartFromKey,
   TABLE_STATUS_LABELS,
-  timezoneForStay,
   type DeskEvening,
   type EveningAlert,
   type RestaurantPart,
@@ -27,6 +26,7 @@ import {
   type TableSeat,
   type TableStatus,
 } from "./restaurants";
+import { timezoneForStay } from "./stay-timezone";
 import {
   deliveryDecision,
   parseRestaurantButton,
@@ -265,8 +265,9 @@ function zoneFor(booking: BookingRow, hotels: ReturnType<typeof hotelsFromItems>
     ...timezoneForStay({
       stored: booking.timezone,
       hotelZone: hotel?.zone,
-      city: hotel?.city || booking.destination,
+      city: hotel?.city,
       country: hotel?.country,
+      destination: booking.destination,
     }),
   };
 }
@@ -369,10 +370,9 @@ export async function loadTonight(db: SupabaseClient, now = new Date()) {
   return { ready: true as const, rows: cards, message: "" };
 }
 
-async function approvedSid(envName: string) {
-  const sid = await resolveContentSid(envName);
-  if (!sid) return "";
-  return (await whatsappContentApproved(sid)) ? sid : "";
+/** SID approuvé : la variable, sinon le modèle retrouvé chez Twilio par son nom. Vide : en file. */
+function approvedSid(envName: string) {
+  return approvedRestaurantContentSid(envName);
 }
 
 function columnMissing(code: string | null | undefined) {

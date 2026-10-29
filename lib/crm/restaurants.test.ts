@@ -26,7 +26,6 @@ import {
   restaurantDedupeKey,
   selectionBlock,
   stayNights,
-  timezoneForStay,
   untreatedAfter1830,
   type DeskEvening,
   type RestaurantRecord,
@@ -88,13 +87,17 @@ function place(partial: Partial<RestaurantRecord> & Pick<RestaurantRecord, "id" 
     phone: "",
     website: "",
     categories: ["italien"],
+    cuisine: "",
+    style: "",
     platform: null,
     bookingUrl: "",
     bot: "non",
     guaranteeCard: false,
+    onlineCancellation: null,
     cancelHours: null,
     cancelFeeCents: null,
     closedWeekdays: [],
+    openingHours: "",
     annualClosures: [],
     status: "actif",
     exclusionReason: null,
@@ -106,7 +109,9 @@ function place(partial: Partial<RestaurantRecord> & Pick<RestaurantRecord, "id" 
     signaturePhotoUrl: "",
     pitch: "",
     priceBand: "",
+    priceEstimated: false,
     placeUrl: "",
+    availabilityNotes: "",
     ...partial,
   };
 }
@@ -138,17 +143,6 @@ test("16 h et 18 h suivent le fuseau, hiver comme été", () => {
   assert.equal(inChoiceWindow(new Date("2026-01-15T09:00:00.000Z"), "2026-01-15", BANGKOK), true);
   assert.equal(inChoiceWindow(new Date("2026-01-15T21:00:00.000Z"), "2026-01-15", NEW_YORK), true);
   assert.equal(inChoiceWindow(sameInstant, "2026-01-15", "PasUnFuseau"), false);
-});
-
-test("le fuseau vient du dossier, sinon de l’hôtel, sinon de la ville", () => {
-  assert.deepEqual(timezoneForStay({ stored: "Asia/Bangkok", city: "Paris" }), { zone: "Asia/Bangkok", source: "dossier" });
-  assert.deepEqual(timezoneForStay({ hotelZone: "Asia/Tokyo", city: "Paris" }), { zone: "Asia/Tokyo", source: "hotel" });
-  assert.deepEqual(timezoneForStay({ city: "Milano" }), { zone: "Europe/Rome", source: "ville" });
-  assert.deepEqual(timezoneForStay({ city: "Tel Aviv" }), { zone: "Asia/Jerusalem", source: "ville" });
-  assert.deepEqual(timezoneForStay({ city: "Phuket" }), { zone: "Asia/Bangkok", source: "ville" });
-  assert.deepEqual(timezoneForStay({ country: "Thaïlande" }), { zone: "Asia/Bangkok", source: "ville" });
-  assert.deepEqual(timezoneForStay({ city: "Ville inconnue" }), { zone: null, source: null });
-  assert.deepEqual(timezoneForStay({ stored: "nimp" }), { zone: null, source: null });
 });
 
 test("la clôture de 18 h annule la table non choisie, ou les deux sans réponse", () => {

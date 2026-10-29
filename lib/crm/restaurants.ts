@@ -37,6 +37,9 @@ export const TABLE_STATUSES = [
 
 export const EXCLUSION_REASONS = ["ferme", "gastronomique", "prepaiement"] as const;
 
+export const RESTAURANT_STATUSES = ["actif", "a_valider", "exclu"] as const;
+
+export type RestaurantStatus = (typeof RESTAURANT_STATUSES)[number];
 export type RestaurantPlatform = (typeof RESTAURANT_PLATFORMS)[number];
 export type TableStatus = (typeof TABLE_STATUSES)[number];
 export type ExclusionReason = (typeof EXCLUSION_REASONS)[number];
@@ -56,16 +59,27 @@ export type RestaurantRecord = {
   lng: number | null;
   phone: string;
   website: string;
+  /** Catégories (la première est la catégorie principale) : pizzeria, japonais, francais, incontournable… */
   categories: string[];
+  /** Cuisine, texte libre : « italienne du sud », « omakase ». */
+  cuisine: string;
+  /** Style de la maison : « bistrot », « terrasse les pieds dans l’eau ». */
+  style: string;
   platform: RestaurantPlatform | null;
   bookingUrl: string;
   bot: BotReservable;
+  /** Empreinte de carte demandée à la réservation. */
   guaranteeCard: boolean;
+  /** Annulation possible en ligne. Null : pas renseigné. */
+  onlineCancellation: boolean | null;
   cancelHours: number | null;
   cancelFeeCents: number | null;
   closedWeekdays: number[];
+  /** Horaires d’ouverture, texte libre : « 12 h–14 h 30, 19 h 30–23 h, fermé le lundi ». */
+  openingHours: string;
   annualClosures: AnnualClosure[];
-  status: "actif" | "exclu";
+  /** actif : sélectionnable. a_valider : fiche saisie, pas encore relue. exclu : hors sélection. */
+  status: RestaurantStatus;
   exclusionReason: ExclusionReason | null;
   starred: boolean;
   prepaidRequired: boolean;
@@ -75,7 +89,17 @@ export type RestaurantRecord = {
   signaturePhotoUrl: string;
   pitch: string;
   priceBand: string;
+  /** La fourchette est une estimation, pas la carte. */
+  priceEstimated: boolean;
   placeUrl: string;
+  /** Disponibilités et conseils de réservation : « réserver 3 jours avant », « terrasse l’été ». */
+  availabilityNotes: string;
+};
+
+export const RESTAURANT_STATUS_LABELS: Record<RestaurantStatus, string> = {
+  actif: "Actif",
+  a_valider: "À valider",
+  exclu: "Exclu",
 };
 
 export type CatalogDraft = Omit<RestaurantRecord, "id">;
@@ -111,105 +135,6 @@ export const TABLE_STATUS_LABELS: Record<TableStatus, string> = {
 };
 
 const BLOCKED_CATEGORIES = new Set(["gastronomique", "etoile", "etoile-michelin", "michelin"]);
-
-/** Villes ramenées à un fuseau IANA. La clé est `cityPlaceKey`. */
-const CITY_ZONES: Record<string, string> = {
-  paris: "Europe/Paris",
-  nice: "Europe/Paris",
-  cannes: "Europe/Paris",
-  antibes: "Europe/Paris",
-  monaco: "Europe/Monaco",
-  lyon: "Europe/Paris",
-  marseille: "Europe/Paris",
-  bordeaux: "Europe/Paris",
-  avoriaz: "Europe/Paris",
-  london: "Europe/London",
-  amsterdam: "Europe/Amsterdam",
-  brussels: "Europe/Brussels",
-  geneva: "Europe/Zurich",
-  zurich: "Europe/Zurich",
-  zermatt: "Europe/Zurich",
-  lugano: "Europe/Zurich",
-  vienne: "Europe/Vienna",
-  vienna: "Europe/Vienna",
-  rome: "Europe/Rome",
-  milan: "Europe/Rome",
-  venice: "Europe/Rome",
-  florence: "Europe/Rome",
-  barcelona: "Europe/Madrid",
-  madrid: "Europe/Madrid",
-  lisbon: "Europe/Lisbon",
-  lamego: "Europe/Lisbon",
-  santorin: "Europe/Athens",
-  athens: "Europe/Athens",
-  istanbul: "Europe/Istanbul",
-  prague: "Europe/Prague",
-  budapest: "Europe/Budapest",
-  dubrovnik: "Europe/Zagreb",
-  moscow: "Europe/Moscow",
-  marrakech: "Africa/Casablanca",
-  casablanca: "Africa/Casablanca",
-  "le caire": "Africa/Cairo",
-  cairo: "Africa/Cairo",
-  "tel aviv": "Asia/Jerusalem",
-  jerusalem: "Asia/Jerusalem",
-  dubai: "Asia/Dubai",
-  petra: "Asia/Amman",
-  tokyo: "Asia/Tokyo",
-  kyoto: "Asia/Tokyo",
-  "hong kong": "Asia/Hong_Kong",
-  singapore: "Asia/Singapore",
-  "kuala lumpur": "Asia/Kuala_Lumpur",
-  bali: "Asia/Makassar",
-  bangkok: "Asia/Bangkok",
-  phuket: "Asia/Bangkok",
-  agra: "Asia/Kolkata",
-  male: "Indian/Maldives",
-  maldives: "Indian/Maldives",
-  seychelles: "Indian/Mahe",
-  mahe: "Indian/Mahe",
-  sydney: "Australia/Sydney",
-  "new york": "America/New_York",
-  miami: "America/New_York",
-  banff: "America/Edmonton",
-  havane: "America/Havana",
-  "panama city": "America/Panama",
-  "machu picchu": "America/Lima",
-  rio: "America/Sao_Paulo",
-  "buenos aires": "America/Argentina/Buenos_Aires",
-};
-
-const COUNTRY_ZONES: Record<string, string> = {
-  fr: "Europe/Paris",
-  france: "Europe/Paris",
-  it: "Europe/Rome",
-  italie: "Europe/Rome",
-  italy: "Europe/Rome",
-  es: "Europe/Madrid",
-  espagne: "Europe/Madrid",
-  pt: "Europe/Lisbon",
-  portugal: "Europe/Lisbon",
-  gb: "Europe/London",
-  uk: "Europe/London",
-  "royaume uni": "Europe/London",
-  th: "Asia/Bangkok",
-  thailande: "Asia/Bangkok",
-  thailand: "Asia/Bangkok",
-  jp: "Asia/Tokyo",
-  japon: "Asia/Tokyo",
-  il: "Asia/Jerusalem",
-  israel: "Asia/Jerusalem",
-  ae: "Asia/Dubai",
-  "emirats arabes unis": "Asia/Dubai",
-  mv: "Indian/Maldives",
-  sc: "Indian/Mahe",
-  ma: "Africa/Casablanca",
-  maroc: "Africa/Casablanca",
-  us: "America/New_York",
-  "etats unis": "America/New_York",
-  gr: "Europe/Athens",
-  grece: "Europe/Athens",
-};
 
 export function isFormError<T>(value: T | { error: string }): value is { error: string } {
   return Boolean(value && typeof value === "object" && "error" in value);
@@ -266,7 +191,7 @@ export function formatDistanceKm(km: number | null) {
 
 /** Gastronomique, étoilé ou prépaiement : la sélection est bloquée. */
 export function selectionBlock(row: {
-  status: "actif" | "exclu";
+  status: RestaurantStatus;
   exclusionReason: ExclusionReason | null;
   starred: boolean;
   prepaidRequired: boolean;
@@ -281,6 +206,7 @@ export function selectionBlock(row: {
   if (row.status === "exclu" || row.exclusionReason === "ferme") {
     return row.exclusionReason === "ferme" ? "Fermé, hors sélection." : "Exclu du catalogue.";
   }
+  if (row.status === "a_valider") return "Fiche à valider, hors sélection.";
   return null;
 }
 
@@ -487,24 +413,6 @@ export function hotelForEvening(hotels: StayHotel[], isoDate: string): StayHotel
   const covering = hotels.filter((hotel) => isoDate >= hotel.start && isoDate < (hotel.end > hotel.start ? hotel.end : addUtcDay(hotel.start)));
   if (!covering.length) return hotels[0] || null;
   return covering.find((hotel) => hotel.lat != null && hotel.lng != null) || covering[0];
-}
-
-export function timezoneForStay(input: {
-  stored?: string | null;
-  hotelZone?: string | null;
-  city?: string | null;
-  country?: string | null;
-}): { zone: string | null; source: "dossier" | "hotel" | "ville" | null } {
-  const stored = validTimeZone(input.stored);
-  if (stored) return { zone: stored, source: "dossier" };
-  const hotel = validTimeZone(input.hotelZone);
-  if (hotel) return { zone: hotel, source: "hotel" };
-  const city = input.city ? CITY_ZONES[cityPlaceKey(input.city)] : null;
-  if (city && validTimeZone(city)) return { zone: city, source: "ville" };
-  const countryKey = fold(input.country || "").replace(/[^a-z]+/g, " ").trim();
-  const country = COUNTRY_ZONES[countryKey] || COUNTRY_ZONES[countryKey.replace(/ /g, "")];
-  if (country && validTimeZone(country)) return { zone: country, source: "ville" };
-  return { zone: null, source: null };
 }
 
 /** Instant UTC de une heure civile dans le fuseau. */
@@ -983,6 +891,22 @@ function flag(raw: unknown) {
   return raw === true || raw === "true" || raw === "oui" || raw === "1" || raw === 1;
 }
 
+/** Vrai, faux, ou null quand ce n’est pas renseigné. */
+function triState(raw: unknown): boolean | null {
+  if (raw == null || raw === "") return null;
+  if (flag(raw)) return true;
+  if (raw === false || raw === "false" || raw === "non" || raw === "0" || raw === 0) return false;
+  return null;
+}
+
+export function parseRestaurantStatus(raw: unknown): RestaurantStatus | { error: string } {
+  const key = fold(String(raw ?? "")).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!key || key === "actif" || key === "active" || key === "valide") return "actif";
+  if (key === "exclu" || key === "exclue" || key === "excluded") return "exclu";
+  if (key === "a valider" || key === "avalider" || key === "to validate" || key === "pending" || key === "brouillon") return "a_valider";
+  return { error: "Statut : actif, a_valider ou exclu." };
+}
+
 /** Étoilé, gastronomique et prépaiement forcent l’exclusion. La sélection reste bloquée. */
 export function applyCatalogRules(draft: CatalogDraft): CatalogDraft {
   if (draft.starred || draft.categories.some((item) => BLOCKED_CATEGORIES.has(item))) {
@@ -1048,8 +972,8 @@ export function normalizeCatalog(input: Record<string, unknown>, existing?: Cata
       ? parseAnnualClosures(input.annualClosures ?? input.fermetures)
       : base?.annualClosures || [];
   if (isFormError(closures)) return closures;
-  const statusRaw = fold(String(input.status ?? input.statut ?? base?.status ?? "actif"));
-  const status = statusRaw === "exclu" ? "exclu" : "actif";
+  const status = input.status != null || input.statut != null ? parseRestaurantStatus(input.status ?? input.statut) : base?.status || "actif";
+  if (isFormError(status)) return status;
   const reasonRaw = fold(String(input.exclusionReason ?? input.motif ?? "")).replace(/[^a-z]/g, "");
   let exclusionReason: ExclusionReason | null = base?.exclusionReason ?? null;
   if (input.exclusionReason != null || input.motif != null) {
@@ -1083,6 +1007,18 @@ export function normalizeCatalog(input: Record<string, unknown>, existing?: Cata
   const placeRaw = input.page ?? input.lien_lieu ?? input.placeUrl ?? input.place_url;
   const placeUrl = placeRaw !== undefined ? parseHttps(placeRaw, "Page") : base?.placeUrl || "";
   if (isFormError(placeUrl)) return placeUrl;
+  const cuisine = input.cuisine !== undefined ? clipText(input.cuisine, 80) : base?.cuisine || "";
+  const style = input.style !== undefined ? clipText(input.style, 80) : base?.style || "";
+  const estimateRaw = input.estimation ?? input.price_estimated ?? input.priceEstimated;
+  const priceEstimated = estimateRaw !== undefined ? flag(estimateRaw) : base?.priceEstimated || false;
+  const hoursRaw = input.horaires ?? input.opening_hours ?? input.openingHours;
+  const openingHours = hoursRaw !== undefined ? clipText(hoursRaw, 400) : base?.openingHours || "";
+  const onlineRaw = input.annulation_en_ligne ?? input.online_cancellation ?? input.onlineCancellation;
+  const onlineCancellation = onlineRaw !== undefined ? triState(onlineRaw) : base?.onlineCancellation ?? null;
+  const availabilityRaw = input.disponibilites ?? input.availability_notes ?? input.availabilityNotes;
+  const availabilityNotes = redactPans(
+    availabilityRaw !== undefined ? clipText(availabilityRaw, 1000) : base?.availabilityNotes || ""
+  );
   return applyCatalogRules({
     name,
     city,
@@ -1093,13 +1029,20 @@ export function normalizeCatalog(input: Record<string, unknown>, existing?: Cata
     phone: phoneRaw,
     website,
     categories,
+    cuisine,
+    style,
     platform,
     bookingUrl,
     bot,
-    guaranteeCard: input.guaranteeCard != null || input.garantie != null ? flag(input.guaranteeCard ?? input.garantie) : base?.guaranteeCard || false,
+    guaranteeCard:
+      input.guaranteeCard != null || input.garantie != null || input.empreinte_carte != null
+        ? flag(input.guaranteeCard ?? input.garantie ?? input.empreinte_carte)
+        : base?.guaranteeCard || false,
+    onlineCancellation,
     cancelHours,
     cancelFeeCents,
     closedWeekdays: weekdays,
+    openingHours,
     annualClosures: closures,
     status,
     exclusionReason,
@@ -1111,7 +1054,9 @@ export function normalizeCatalog(input: Record<string, unknown>, existing?: Cata
     signaturePhotoUrl,
     pitch,
     priceBand,
+    priceEstimated,
     placeUrl,
+    availabilityNotes,
   });
 }
 

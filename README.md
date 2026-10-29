@@ -34,10 +34,13 @@ Migrations à jouer à la main, dans l’ordre :
 
 1. `supabase/migrations/20261029120000_crm_restaurants.sql`
 2. `supabase/migrations/20261029203000_crm_restaurant_catalogue.sql`
+3. `supabase/migrations/20261029330000_crm_restaurant_fiche.sql` (cuisine, style, horaires, estimation, annulation en ligne, disponibilités, statut `a_valider`)
+
+Fuseau du séjour : toujours celui de la ville où l’on dort (Nice → `Europe/Paris`, Mahé → `Indian/Mahe`), résolu hors ligne par `lib/crm/stay-timezone.ts` (ville de la carte hôtel, puis la carte, puis la destination, puis le pays). Le champ `crm_bookings.timezone` ne sert que si la ville ne se résout pas.
 
 À 16 h, heure locale : un pré-message, puis un carrousel par restaurant. Les couverts sont fixés à 2. À 18 h, la table non choisie passe à annuler. Accepter l’une passe l’autre à annuler tout de suite.
 
-Variables, vides tant que Meta n’a pas approuvé :
+Variables, facultatives : sans elles, le cron retrouve chez Twilio le modèle approuvé qui porte le nom (`restaurant_selection`, `restaurant_proposition`, `restaurant_proposition_carte`).
 
 - `TWILIO_CONTENT_RESTAURANT_INTRO` — texte `restaurant_selection`
 - `TWILIO_CONTENT_RESTAURANT_PROPOSITION` — carrousel salle + plat
@@ -47,7 +50,9 @@ Liste d’essai : `RESTAURANT_ALLOWED_BOOKINGS` (références séparées par des
 
 Après « J’accepte » (bouton WhatsApp ou Accepter dans l’espace client), le CRM envoie la confirmation en message libre dans la fenêtre de 24 h : restaurant, date, heure, deux personnes, lien de l’adresse. Une seule confirmation par table (`dedupe_key`), journalisée dans le dossier (`crm_whatsapp_messages`, `restaurant_confirmation`).
 
-`npx tsx scripts/create-restaurant-whatsapp-templates.ts` affiche les modèles. `--create` les dépose chez Twilio et demande l’approbation Utility, sans envoyer de message. Soumettre après le déploiement : l’exemple photo est `https://travelba.fr/api/restaurants/media/exemple.salle`.
+Dépôt des modèles depuis le serveur, avec les identifiants Twilio de production : outil MCP `create_restaurant_whatsapp_templates` (crée les trois contenus, soumet chacun en Utility, idempotent par nom, n’envoie aucun message, ne renvoie aucun secret) puis `get_restaurant_whatsapp_templates_status` (statut d’approbation par modèle). `npx tsx scripts/create-restaurant-whatsapp-templates.ts` affiche les modèles ; `--create` fait la même chose depuis un poste. Soumettre après le déploiement : l’exemple photo est `https://travelba.fr/api/restaurants/media/exemple.salle`.
+
+Connecteur, catalogue : `list_restaurants` (par ville, pour éviter un doublon), `create_restaurant` (nom et ville ; statut `a_valider` par défaut, hors sélection tant que l’agence ne l’active pas), `update_restaurant` (`restaurant_id`). Chaque réponse porte `fiche_complete` et `champs_manquants`. Les soirs d’un dossier : `sejours_restaurants`, `tables_restaurant` (table A ou B), `choix_restaurant`.
 
 Meta n’autorise que deux boutons par carte, de mêmes types. « J’accepte » et « Je refuse » occupent ces deux places. « Découvrir l’adresse » est le lien `https://travelba.fr/api/r/{id}` dans la carte salle, pas un troisième bouton. L’heure de 18 h est dans le pré-message seulement.
 

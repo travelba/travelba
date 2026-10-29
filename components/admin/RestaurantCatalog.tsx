@@ -26,7 +26,7 @@ type Draft = {
   cancelFeeEuros: string;
   closedWeekdays: number[];
   annualClosures: string;
-  status: "actif" | "exclu";
+  status: RestaurantRecord["status"];
   exclusionReason: string;
   starred: boolean;
   prepaidRequired: boolean;
@@ -513,6 +513,7 @@ function Editor({
           Statut
           <select className={`${inputClass} mt-1`} value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as Draft["status"] })}>
             <option value="actif">Actif</option>
+            <option value="a_valider">À valider</option>
             <option value="exclu">Exclu</option>
           </select>
         </label>
