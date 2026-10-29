@@ -6,6 +6,9 @@ import { fold } from "./text";
 /** Compte de réservation par défaut. */
 export const RESTAURANT_ACCOUNT = "concierge@travelba.fr";
 
+/** Toutes les tables sont pour deux. Le nombre de voyageurs ne s’en mêle pas. */
+export const RESTAURANT_COVERS = 2;
+
 export const RESTAURANT_CATEGORIES = ["japonais", "italien", "francais", "festif", "enfants", "terrasse"] as const;
 
 export const RESTAURANT_PLATFORMS = [
@@ -64,6 +67,12 @@ export type RestaurantRecord = {
   starred: boolean;
   prepaidRequired: boolean;
   note: string;
+  photoUrls: string[];
+  menuPhotoUrl: string;
+  signaturePhotoUrl: string;
+  pitch: string;
+  priceBand: string;
+  placeUrl: string;
 };
 
 export type CatalogDraft = Omit<RestaurantRecord, "id">;
@@ -222,8 +231,17 @@ export function platformLabel(platform: RestaurantPlatform | null) {
   return platform ? PLATFORM_LABELS[platform] : "";
 }
 
-export function restaurantDedupeKey(bookingId: string, eveningDate: string) {
-  return `restaurant:${bookingId}:${eveningDate}`;
+export type RestaurantPart = "intro" | "A" | "B";
+
+/** Un pré-message, puis un carrousel par table. L’ancien message unique n’est plus la clé. */
+export function restaurantDedupeKey(bookingId: string, eveningDate: string, part: RestaurantPart) {
+  return `restaurant:${bookingId}:${eveningDate}:${part}`;
+}
+
+export function restaurantPartFromKey(key: string | null | undefined): RestaurantPart | null {
+  const part = (key || "").split(":").pop();
+  if (part === "intro" || part === "A" || part === "B") return part;
+  return null;
 }
 
 /** Distance en kilomètres. Les restaurants proches passent devant. */
@@ -571,36 +589,73 @@ export type DeskEvening = {
   closed: boolean;
   canWhatsapp: boolean;
   tables: { seat: TableSeat; status: TableStatus; restaurantName: string | null }[];
+  /** Déjà parti. Sans ce détail, un soir « envoyé » compte pour les trois messages. */
+  partsSent?: { intro: boolean; A: boolean; B: boolean };
 };
 
-export type CronSend = { bookingId: string; eveningDate: string; mode: "send" | "queue" };
+export type CronSend = {
+  bookingId: string;
+  eveningDate: string;
+  part: RestaurantPart;
+  mode: "send" | "queue";
+};
 export type CronClose = { bookingId: string; eveningDate: string; tables: { seat: TableSeat; status: TableStatus }[] };
 
-function bothReserved(row: DeskEvening) {
-  const seats = new Map(row.tables.map((table) => [table.seat, table]));
-  const left = seats.get("A");
-  const right = seats.get("B");
-  return Boolean(
-    left &&
-      right &&
-      left.status === "reservee" &&
-      right.status === "reservee" &&
-      left.restaurantName &&
-      right.restaurantName
-  );
+const SENDABLE = new Set<TableStatus>(["reservee", "proposee"]);
+
+function seatSend(row: DeskEvening, seat: TableSeat) {
+  const table = row.tables.find((item) => item.seat === seat);
+  return Boolean(table && SENDABLE.has(table.status) && table.restaurantName);
 }
 
-export function planRestaurantCron(rows: DeskEvening[], now: Date, templateReady: boolean) {
+function bothSendable(row: DeskEvening) {
+  return seatSend(row, "A") && seatSend(row, "B");
+}
+
+function sentParts(row: DeskEvening) {
+  if (row.partsSent) return row.partsSent;
+  const done = row.messageStatus === "envoye";
+  return { intro: done, A: done, B: done };
+}
+
+/**
+ * Pré-message d’abord, puis la fiche A, puis la fiche B.
+ * Les carrousels n’entrent dans le plan que si le pré-message est déjà parti
+ * ou part dans ce passage. À 18 h, la clôture ne change pas.
+ */
+export function planRestaurantCron(
+  rows: DeskEvening[],
+  now: Date,
+  templateReady: boolean | { intro: boolean; carousel: boolean }
+) {
+  const flags = typeof templateReady === "boolean" ? { intro: templateReady, carousel: templateReady } : templateReady;
   const sends: CronSend[] = [];
   const closes: CronClose[] = [];
   for (const row of rows) {
     if (!row.timezone) continue;
-    if (inChoiceWindow(now, row.eveningDate, row.timezone) && row.messageStatus !== "envoye" && row.canWhatsapp && bothReserved(row)) {
-      sends.push({
-        bookingId: row.bookingId,
-        eveningDate: row.eveningDate,
-        mode: templateReady ? "send" : "queue",
-      });
+    const sent = sentParts(row);
+    const open = inChoiceWindow(now, row.eveningDate, row.timezone) && row.canWhatsapp && bothSendable(row);
+    if (open) {
+      const introThisRun = !sent.intro && flags.intro;
+      if (!sent.intro) {
+        sends.push({
+          bookingId: row.bookingId,
+          eveningDate: row.eveningDate,
+          part: "intro",
+          mode: flags.intro ? "send" : "queue",
+        });
+      }
+      if (sent.intro || introThisRun) {
+        for (const part of ["A", "B"] as const) {
+          if (sent[part] || !seatSend(row, part)) continue;
+          sends.push({
+            bookingId: row.bookingId,
+            eveningDate: row.eveningDate,
+            part,
+            mode: flags.carousel ? "send" : "queue",
+          });
+        }
+      }
     }
     if (inCloseWindow(now, row.eveningDate, row.timezone) && !row.closed) {
       closes.push({
@@ -611,6 +666,34 @@ export function planRestaurantCron(rows: DeskEvening[], now: Date, templateReady
     }
   }
   return { sends, closes };
+}
+
+const REPLY_OPEN = new Set<TableStatus>(["reservee", "proposee", "choisie"]);
+const REPLY_MOVABLE = new Set<TableStatus>(["reservee", "proposee", "choisie", "a_annuler"]);
+
+/**
+ * « J’accepte » choisit cette table et passe l’autre en à annuler.
+ * « Je refuse » ne touche que la table cliquée. La clôture de 18 h reste à part.
+ */
+export function applySeatReply(
+  tables: { seat: TableSeat; status: TableStatus }[],
+  seat: TableSeat,
+  reply: "accepte" | "refuse"
+): { tables: { seat: TableSeat; status: TableStatus }[]; choice: RestaurantChoice | null } {
+  const next = tables.map((table) => ({ ...table }));
+  const target = next.find((table) => table.seat === seat);
+  if (!target || !REPLY_MOVABLE.has(target.status)) return { tables: next, choice: null };
+  if (reply === "accepte") {
+    target.status = "choisie";
+    for (const other of next) {
+      if (other.seat !== seat && REPLY_OPEN.has(other.status)) other.status = "a_annuler";
+    }
+    return { tables: next, choice: seat };
+  }
+  if (!REPLY_OPEN.has(target.status)) return { tables: next, choice: null };
+  target.status = "a_annuler";
+  const leftover = next.some((table) => REPLY_OPEN.has(table.status));
+  return { tables: next, choice: leftover ? null : "aucune" };
 }
 
 export type EveningAlert = "echec" | "ferme" | "sans_whatsapp" | "a_annuler" | "fuseau";
@@ -715,11 +798,11 @@ export function parseLocalTime(raw: unknown): string | null | { error: string } 
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-export function parseCovers(raw: unknown, fallback: number): number | { error: string } {
-  const source = raw == null || raw === "" ? fallback : raw;
-  const number = typeof source === "number" ? source : Number(String(source).trim());
-  if (!Number.isInteger(number) || number < 1 || number > 40) return { error: "Couverts invalides." };
-  return number;
+export function parseCovers(raw: unknown): number | { error: string } {
+  if (raw == null || raw === "") return RESTAURANT_COVERS;
+  const number = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (number === RESTAURANT_COVERS) return RESTAURANT_COVERS;
+  return { error: "Les couverts sont fixés à 2." };
 }
 
 export function parseFeeCents(raw: unknown): number | null | { error: string } {
@@ -974,6 +1057,22 @@ export function normalizeCatalog(input: Record<string, unknown>, existing?: Cata
   const note = redactPans(
     input.note != null || input.interne != null ? clipText(input.note ?? input.interne, 2000) : base?.note || ""
   );
+  const photosRaw = input.photos ?? input.photo_urls ?? input.photoUrls;
+  const photoUrls = photosRaw !== undefined ? parseHttpsList(photosRaw, "Photo", 8) : base?.photoUrls || [];
+  if (isFormError(photoUrls)) return photoUrls;
+  const menuRaw = input.photo_carte ?? input.menuPhoto ?? input.menu_photo_url ?? input.menuPhotoUrl;
+  const menuPhotoUrl = menuRaw !== undefined ? parseHttps(menuRaw, "Photo de la carte") : base?.menuPhotoUrl || "";
+  if (isFormError(menuPhotoUrl)) return menuPhotoUrl;
+  const dishRaw = input.photo_plat ?? input.signaturePhoto ?? input.signature_photo_url ?? input.signaturePhotoUrl;
+  const signaturePhotoUrl = dishRaw !== undefined ? parseHttps(dishRaw, "Photo du plat") : base?.signaturePhotoUrl || "";
+  if (isFormError(signaturePhotoUrl)) return signaturePhotoUrl;
+  const pitchRaw = input.description ?? input.pitch ?? input.concierge_pitch;
+  const pitch = pitchRaw !== undefined ? clipText(pitchRaw, 400) : base?.pitch || "";
+  const priceRaw = input.fourchette ?? input.prix ?? input.priceBand ?? input.price_band;
+  const priceBand = priceRaw !== undefined ? clipText(priceRaw, 80) : base?.priceBand || "";
+  const placeRaw = input.page ?? input.lien_lieu ?? input.placeUrl ?? input.place_url;
+  const placeUrl = placeRaw !== undefined ? parseHttps(placeRaw, "Page") : base?.placeUrl || "";
+  if (isFormError(placeUrl)) return placeUrl;
   return applyCatalogRules({
     name,
     city,
@@ -997,5 +1096,32 @@ export function normalizeCatalog(input: Record<string, unknown>, existing?: Cata
     starred,
     prepaidRequired,
     note,
+    photoUrls,
+    menuPhotoUrl,
+    signaturePhotoUrl,
+    pitch,
+    priceBand,
+    placeUrl,
   });
+}
+
+function parseHttps(raw: unknown, label: string): string | { error: string } {
+  const url = parseUrl(raw, label);
+  if (isFormError(url)) return url;
+  if (url && !url.startsWith("https://")) return { error: `${label} doit être en https.` };
+  return url;
+}
+
+export function parseHttpsList(raw: unknown, label: string, max: number): string[] | { error: string } {
+  if (raw == null || raw === "") return [];
+  const source = Array.isArray(raw) ? raw : String(raw).split(/\n+/);
+  const out: string[] = [];
+  for (const item of source) {
+    const url = parseHttps(item, label);
+    if (isFormError(url)) return url;
+    if (!url || out.includes(url)) continue;
+    out.push(url);
+    if (out.length > max) return { error: `${max} photos au plus.` };
+  }
+  return out;
 }

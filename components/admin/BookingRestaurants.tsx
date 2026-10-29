@@ -67,8 +67,8 @@ const ALERTS: Record<string, string> = {
 
 const MESSAGE: Record<string, string> = {
   aucun: "Message pas encore envoyé",
-  en_file: "En file — le modèle WhatsApp n’est pas encore approuvé",
-  envoye: "Message envoyé",
+  en_file: "En file — le pré-message ou une fiche attend encore",
+  envoye: "Sélection envoyée",
   echec: "Échec d’envoi",
 };
 
@@ -153,8 +153,8 @@ export function BookingRestaurants({ bookingId }: { bookingId: string }) {
             : "Aucun hôtel sur le dossier."}
         </p>
         <p className="text-sm text-muted">
-          Le message part à 16 h, heure locale. À 18 h, la table non choisie passe à annuler. Les couverts valent{" "}
-          {desk.coversDefault} par défaut.
+          À 16 h, heure locale, un mot part d’abord, puis une fiche par restaurant. Les couverts sont fixés à 2. À 18 h,
+          la table non choisie passe à annuler. Accepter l’une passe l’autre à annuler tout de suite.
           {desk.hasPhone ? "" : " Ce client n’a pas de numéro WhatsApp."}
         </p>
         <form
@@ -284,7 +284,6 @@ function draftFrom(table: TableView) {
   return {
     restaurantId: table.restaurantId || "",
     time: table.time || "20:00",
-    covers: String(table.covers),
     confirmation: table.confirmation || "",
     account: table.account || "concierge@travelba.fr",
     cardLast4: table.cardLast4 || "",
@@ -317,7 +316,7 @@ function TableForm({
           seat: table.seat,
           restaurantId: draft.restaurantId,
           time: draft.time,
-          covers: Number(draft.covers),
+          covers: 2,
           confirmation: draft.confirmation,
           account: draft.account,
           cardLast4: draft.cardLast4,
@@ -348,10 +347,10 @@ function TableForm({
           Heure
           <input className={`${inputClass} mt-1`} type="time" value={draft.time} onChange={(event) => setDraft({ ...draft, time: event.target.value })} />
         </label>
-        <label className="text-sm text-[#0B192C]">
+        <p className="text-sm text-[#0B192C]">
           Couverts
-          <input className={`${inputClass} mt-1`} inputMode="numeric" value={draft.covers} onChange={(event) => setDraft({ ...draft, covers: event.target.value })} />
-        </label>
+          <span className={`${inputClass} mt-1 flex items-center`}>2</span>
+        </p>
       </div>
       <label className="block text-sm text-[#0B192C]">
         Confirmation

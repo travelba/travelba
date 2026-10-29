@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cityPlaceKey } from "./city-names";
 import {
+  applySeatReply,
   closedOn,
   eveningsOfStay,
   formatEveningFr,
@@ -18,6 +19,7 @@ import {
   parseTableStatus,
   rankRestaurants,
   RESTAURANT_ACCOUNT,
+  RESTAURANT_COVERS,
   selectionBlock,
   suggestionWindow,
   TABLE_STATUS_LABELS,
@@ -79,6 +81,12 @@ export function mapRestaurant(row: Record<string, unknown>): RestaurantRecord {
     starred: row.starred === true,
     prepaidRequired: row.prepaid_required === true,
     note: text(row.internal_note),
+    photoUrls: Array.isArray(row.photo_urls) ? row.photo_urls.map((item) => text(item)).filter(Boolean) : [],
+    menuPhotoUrl: text(row.menu_photo_url),
+    signaturePhotoUrl: text(row.signature_photo_url),
+    pitch: text(row.concierge_pitch),
+    priceBand: text(row.price_band),
+    placeUrl: text(row.place_url),
   };
 }
 
@@ -106,8 +114,54 @@ function toRow(draft: CatalogDraft) {
     starred: draft.starred,
     prepaid_required: draft.prepaidRequired,
     internal_note: draft.note || null,
+    photo_urls: draft.photoUrls,
+    menu_photo_url: draft.menuPhotoUrl || null,
+    signature_photo_url: draft.signaturePhotoUrl || null,
+    concierge_pitch: draft.pitch || null,
+    price_band: draft.priceBand || null,
+    place_url: draft.placeUrl || null,
     updated_at: new Date().toISOString(),
   };
+}
+
+const VISUAL_KEYS = [
+  "photos",
+  "photo_urls",
+  "photoUrls",
+  "photo_carte",
+  "menuPhoto",
+  "menu_photo_url",
+  "menuPhotoUrl",
+  "photo_plat",
+  "signaturePhoto",
+  "signature_photo_url",
+  "signaturePhotoUrl",
+  "description",
+  "pitch",
+  "concierge_pitch",
+  "fourchette",
+  "prix",
+  "priceBand",
+  "price_band",
+  "page",
+  "lien_lieu",
+  "placeUrl",
+  "place_url",
+];
+
+function visualTouched(input: Record<string, unknown>) {
+  return VISUAL_KEYS.some((key) => input[key] != null && input[key] !== "");
+}
+
+function rowWithoutVisual(row: ReturnType<typeof toRow>) {
+  const { photo_urls, menu_photo_url, signature_photo_url, concierge_pitch, price_band, place_url, ...rest } = row;
+  void photo_urls;
+  void menu_photo_url;
+  void signature_photo_url;
+  void concierge_pitch;
+  void price_band;
+  void place_url;
+  return rest;
 }
 
 export async function listRestaurants(db: SupabaseClient, query = "") {
@@ -139,9 +193,16 @@ export async function saveRestaurant(db: SupabaseClient, input: Record<string, u
   const draft = normalizeCatalog(input, existing);
   if (isFormError(draft)) return draft;
   const row = toRow(draft);
-  const write = id
+  let write = id
     ? await db.from("crm_restaurants").update(row).eq("id", id).select("id").single()
     : await db.from("crm_restaurants").insert(row).select("id").single();
+  if (write.error && (write.error.code === "42703" || write.error.code === "PGRST204")) {
+    if (visualTouched(input)) return { error: "Le catalogue visuel n’est pas encore en place." };
+    const slim = rowWithoutVisual(row);
+    write = id
+      ? await db.from("crm_restaurants").update(slim).eq("id", id).select("id").single()
+      : await db.from("crm_restaurants").insert(slim).select("id").single();
+  }
   if (write.error || !write.data) {
     logDb("écrire", write.error);
     if (!restaurantsReady(write.error)) return { error: "Le module restaurants n’est pas encore en place." };
@@ -285,9 +346,8 @@ export async function loadBookingRestaurants(db: SupabaseClient, bookingId: stri
   if ("missing" in opened) return { ready: false, message: "Le module restaurants n’est pas encore en place." };
   if ("error" in opened) return { ready: false, message: opened.error || "Dossier introuvable." };
   const booking = opened.booking;
-  const [items, travelers, customer, tables, evenings, messages] = await Promise.all([
+  const [items, customer, tables, evenings, messages] = await Promise.all([
     db.from("crm_booking_items").select("kind, title, start_at, end_at, lifecycle, details").eq("booking_id", bookingId),
-    db.from("crm_booking_travelers").select("id").eq("booking_id", bookingId),
     db.from("crm_customers").select("id, phone, whatsapp_opt_out_at").eq("id", booking.customer_id).maybeSingle(),
     db.from("crm_restaurant_tables").select("*").eq("booking_id", bookingId),
     db.from("crm_restaurant_evenings").select("*").eq("booking_id", bookingId),
@@ -312,7 +372,7 @@ export async function loadBookingRestaurants(db: SupabaseClient, bookingId: stri
   const byId = new Map(restaurants.map((row) => [row.id, row]));
   const tableRows = (tables.data || []) as TableRow[];
   const eveningRows = new Map(((evenings.data || []) as EveningRow[]).map((row) => [row.evening_date, row]));
-  const coversDefault = Math.max(1, (travelers.data || []).length);
+  const coversDefault = RESTAURANT_COVERS;
   const hasPhone = Boolean(text((customer.data as { phone?: string } | null)?.phone));
   const views: DeskEveningView[] = dates.map((date) => {
     const hotel = hotelForEvening(hotels, date);
@@ -339,7 +399,7 @@ export async function loadBookingRestaurants(db: SupabaseClient, bookingId: stri
         seat,
         restaurantId: row?.restaurant_id || null,
         time: row?.time_local ? row.time_local.slice(0, 5) : null,
-        covers: row?.covers || coversDefault,
+        covers: RESTAURANT_COVERS,
         confirmation: row?.confirmation_ref || null,
         account: row?.account_email || RESTAURANT_ACCOUNT,
         cardLast4: row?.card_last4 || null,
@@ -415,8 +475,7 @@ export async function saveBookingTable(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Date invalide." };
   const seat = text(input.seat).toUpperCase();
   if (seat !== "A" && seat !== "B") return { error: "Table A ou B." };
-  const travelers = await db.from("crm_booking_travelers").select("id").eq("booking_id", bookingId);
-  const covers = parseCovers(input.covers, Math.max(1, (travelers.data || []).length));
+  const covers = parseCovers(input.covers);
   if (isFormError(covers)) return covers;
   const time = parseLocalTime(input.time);
   if (isFormError(time)) return time;
@@ -497,15 +556,85 @@ export async function saveBookingChoice(
   }
   const closed = Boolean((existing.data as { closed_at?: string | null } | null)?.closed_at);
   if (!closed && (input.choice === "A" || input.choice === "B")) {
-    await db
+    const tables = await db
       .from("crm_restaurant_tables")
-      .update({ status: "choisie", updated_at: now })
+      .select("seat, status")
       .eq("booking_id", bookingId)
-      .eq("evening_date", date)
-      .eq("seat", input.choice)
-      .in("status", ["reservee", "proposee", "choisie"]);
+      .eq("evening_date", date);
+    if (!tables.error) {
+      const current = ((tables.data || []) as { seat: TableSeat; status: TableStatus }[]).filter(
+        (row) => row.seat === "A" || row.seat === "B"
+      );
+      const next = applySeatReply(current, input.choice, "accepte");
+      for (const table of next.tables) {
+        const before = current.find((row) => row.seat === table.seat);
+        if (!before || before.status === table.status) continue;
+        await db
+          .from("crm_restaurant_tables")
+          .update({ status: table.status, updated_at: now })
+          .eq("booking_id", bookingId)
+          .eq("evening_date", date)
+          .eq("seat", table.seat);
+      }
+    }
   }
   return { ok: true as const, closed };
+}
+
+/** « Je refuse » ne choisit pas l’autre table. Les deux refus deviennent « aucune ». */
+export async function refuseRestaurantSeat(
+  db: SupabaseClient,
+  bookingId: string,
+  input: { date: string; seat: TableSeat }
+) {
+  const date = input.date.slice(0, 10);
+  const evening = await db
+    .from("crm_restaurant_evenings")
+    .select("closed_at")
+    .eq("booking_id", bookingId)
+    .eq("evening_date", date)
+    .maybeSingle();
+  if (evening.error && !restaurantsReady(evening.error)) {
+    return { error: "Le module restaurants n’est pas encore en place." };
+  }
+  if ((evening.data as { closed_at?: string | null } | null)?.closed_at) return { ok: true as const, closed: true };
+  const tables = await db
+    .from("crm_restaurant_tables")
+    .select("seat, status")
+    .eq("booking_id", bookingId)
+    .eq("evening_date", date);
+  if (tables.error) {
+    logDb("refus", tables.error);
+    return { error: "Table introuvable." };
+  }
+  const current = ((tables.data || []) as { seat: TableSeat; status: TableStatus }[]).filter(
+    (row) => row.seat === "A" || row.seat === "B"
+  );
+  const next = applySeatReply(current, input.seat, "refuse");
+  const now = new Date().toISOString();
+  for (const table of next.tables) {
+    const before = current.find((row) => row.seat === table.seat);
+    if (!before || before.status === table.status) continue;
+    await db
+      .from("crm_restaurant_tables")
+      .update({ status: table.status, updated_at: now })
+      .eq("booking_id", bookingId)
+      .eq("evening_date", date)
+      .eq("seat", table.seat);
+  }
+  if (next.choice === "aucune") {
+    await db.from("crm_restaurant_evenings").upsert(
+      {
+        booking_id: bookingId,
+        evening_date: date,
+        choice: "aucune",
+        chosen_at: now,
+        choice_source: "whatsapp",
+      },
+      { onConflict: "booking_id,evening_date" }
+    );
+  }
+  return { ok: true as const, closed: false, choice: next.choice };
 }
 
 export async function cancelBookingTable(

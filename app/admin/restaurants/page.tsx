@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { RestaurantCatalog } from "@/components/admin/RestaurantCatalog";
+import { RestaurantWhatsappPreview } from "@/components/admin/RestaurantWhatsappPreview";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { listRestaurants } from "@/lib/crm/restaurants-db";
@@ -20,7 +21,7 @@ export default async function AdminRestaurantsPage({ searchParams }: { searchPar
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle
           title="Restaurants"
-          subtitle="Catalogue des tables. Les étoilés, le gastronomique et le prépaiement obligatoire restent hors sélection."
+          subtitle="Catalogue des tables, puis l’aperçu des messages. Les étoilés, le gastronomique et le prépaiement obligatoire restent hors sélection."
           actions={
             <Link href="/admin/restaurants/aujourdhui" className="admin-tap inline-flex min-h-11 items-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C]">
               Ce soir
@@ -33,6 +34,7 @@ export default async function AdminRestaurantsPage({ searchParams }: { searchPar
           {"error" in catalog && catalog.error ? catalog.error : "Le module restaurants n’est pas encore en place."}
         </p>
       )}
+      <RestaurantWhatsappPreview />
       <RestaurantCatalog rows={catalog.rows} query={query} />
     </div>
   );

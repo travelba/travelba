@@ -1141,14 +1141,14 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "sejours_restaurants",
     description:
-      "Dossiers en séjour ce soir, heure locale : hôtel, ville, dates, voyageurs, WhatsApp du client (téléphone et s’il peut recevoir un message). Lecture seule. Pas de passeport.",
+      "Dossiers en séjour ce soir, heure locale : hôtel, ville, dates, voyageurs, WhatsApp du client (téléphone et s’il peut recevoir un message). couverts vaut toujours 2. Lecture seule. Pas de passeport.",
     run: (args) => sejoursRestaurants(args),
   },
   {
     name: "catalogue_restaurants",
     write: true,
     description:
-      "Catalogue restaurants. Sans champ d’écriture : liste, filtrée par ville, ou une fiche si restaurant_id. Avec nom (création) ou restaurant_id et un champ : enregistre. Catégories : japonais, italien, francais, festif, enfants, terrasse, ou une autre. Plateforme : resy, opentable, sevenrooms, thefork, zenchef, telephone, whatsapp, formulaire. Étoilé, gastronomique et prépaiement obligatoire sont exclus et ne peuvent pas être choisis. Pas de numéro de carte.",
+      "Catalogue restaurants. Sans champ d’écriture : liste, filtrée par ville, ou une fiche si restaurant_id. Avec nom (création) ou restaurant_id et un champ : enregistre. Catégories : japonais, italien, francais, festif, enfants, terrasse, ou une autre. Plateforme : resy, opentable, sevenrooms, thefork, zenchef, telephone, whatsapp, formulaire. photos : adresses https, une par ligne, la première est la salle. photo_plat, photo_carte (facultative), description (ton concierge), fourchette (prix par personne), page (site ou page Google, https). Étoilé, gastronomique et prépaiement obligatoire sont exclus et ne peuvent pas être choisis. Pas de numéro de carte.",
     input: {
       restaurant_id: z.string().trim().max(80).optional().describe("Identifiant. Présent : met à jour, ou lit la fiche si aucun autre champ"),
       nom: z.string().trim().max(200).optional().describe("Nom. Présent sans identifiant : crée"),
@@ -1172,6 +1172,12 @@ export const MCP_TOOLS: ToolDef[] = [
       etoile: z.union([z.boolean(), z.string()]).optional().describe("Étoilé : exclu"),
       prepaiement: z.union([z.boolean(), z.string()]).optional().describe("Prépaiement obligatoire : exclu"),
       note: z.string().trim().max(2000).optional().describe("Note interne"),
+      photos: z.string().trim().max(4000).optional().describe("Photos https, une par ligne. La première est la salle"),
+      photo_plat: z.string().trim().max(500).optional().describe("Photo https du plat signature"),
+      photo_carte: z.string().trim().max(500).optional().describe("Photo https de la carte, facultative"),
+      description: z.string().trim().max(400).optional().describe("Description courte, ton concierge"),
+      fourchette: z.string().trim().max(80).optional().describe("Prix par personne, par exemple 90 à 140 €"),
+      page: z.string().trim().max(500).optional().describe("Site ou page Google, https"),
     },
     run: (args) => catalogueRestaurants(args),
   },
@@ -1179,7 +1185,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "tables_restaurant",
     write: true,
     description:
-      "Crée ou met à jour une table du soir (A ou B) : restaurant, heure, couverts, confirmation, compte (défaut concierge@travelba.fr), statut. Garantie : quatre derniers chiffres seulement, jamais le numéro complet. statut annulee ou annuler true passe la table en annulée, avec l’heure et les frais. Un gastronomique, un étoilé ou un prépaiement est refusé.",
+      "Crée ou met à jour une table du soir (A ou B) : restaurant, heure, confirmation, compte (défaut concierge@travelba.fr), statut. Les couverts sont fixés à 2. Garantie : quatre derniers chiffres seulement, jamais le numéro complet. statut annulee ou annuler true passe la table en annulée, avec l’heure et les frais. Un gastronomique, un étoilé ou un prépaiement est refusé.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
@@ -1187,7 +1193,7 @@ export const MCP_TOOLS: ToolDef[] = [
       table: z.string().trim().max(2).describe("A ou B"),
       restaurant_id: z.string().trim().max(80).optional(),
       heure: z.string().trim().max(8).optional(),
-      couverts: z.union([z.number(), z.string()]).optional().describe("Défaut : nombre de voyageurs"),
+      couverts: z.union([z.number(), z.string()]).optional().describe("Toujours 2. Un autre nombre est refusé"),
       confirmation: z.string().trim().max(80).optional(),
       compte: z.string().trim().max(200).optional().describe("Défaut concierge@travelba.fr"),
       garantie: z.string().trim().max(8).optional().describe("Quatre derniers chiffres. Jamais le numéro complet"),
@@ -1200,7 +1206,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "choix_restaurant",
     description:
-      "Réponse du client (A, B ou Aucune) et statut d’envoi du message de 16 h pour un dossier. Lecture seule. date limite à un soir.",
+      "Choix du client et envoi de 16 h : pré-message, puis une fiche par restaurant. J’accepte sur l’une passe l’autre à annuler. Lecture seule. date limite à un soir.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),

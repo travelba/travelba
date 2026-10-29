@@ -59,6 +59,12 @@ function presentRestaurant(row: ReturnType<typeof mapRestaurant>) {
     etoile: row.starred,
     prepaiement: row.prepaidRequired,
     note: row.note,
+    photos: row.photoUrls,
+    photo_carte: row.menuPhotoUrl || null,
+    photo_plat: row.signaturePhotoUrl || null,
+    description: row.pitch,
+    fourchette: row.priceBand,
+    page: row.placeUrl || null,
   };
 }
 
@@ -83,6 +89,12 @@ const CATALOG_WRITE = [
   "etoile",
   "prepaiement",
   "note",
+  "photos",
+  "photo_carte",
+  "photo_plat",
+  "description",
+  "fourchette",
+  "page",
 ];
 
 export async function catalogueRestaurants(input: Record<string, unknown>, admin?: SupabaseClient) {

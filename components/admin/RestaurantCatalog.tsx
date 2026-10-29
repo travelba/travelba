@@ -30,6 +30,12 @@ type Draft = {
   starred: boolean;
   prepaidRequired: boolean;
   note: string;
+  photos: string;
+  signaturePhoto: string;
+  menuPhoto: string;
+  pitch: string;
+  priceBand: string;
+  placeUrl: string;
 };
 
 const EMPTY: Draft = {
@@ -55,6 +61,12 @@ const EMPTY: Draft = {
   starred: false,
   prepaidRequired: false,
   note: "",
+  photos: "",
+  signaturePhoto: "",
+  menuPhoto: "",
+  pitch: "",
+  priceBand: "",
+  placeUrl: "",
 };
 
 function fromRow(row: RestaurantRecord): Draft {
@@ -83,14 +95,43 @@ function fromRow(row: RestaurantRecord): Draft {
     starred: row.starred,
     prepaidRequired: row.prepaidRequired,
     note: row.note,
+    photos: row.photoUrls.join("\n"),
+    signaturePhoto: row.signaturePhotoUrl,
+    menuPhoto: row.menuPhotoUrl,
+    pitch: row.pitch,
+    priceBand: row.priceBand,
+    placeUrl: row.placeUrl,
   };
 }
 
-export function RestaurantCatalog({ rows, query }: { rows: RestaurantRecord[]; query: string }) {
+const EXAMPLE_DRAFT: Draft = {
+  ...EMPTY,
+  name: "Ostuni",
+  city: "Milan",
+  address: "Via Solferino 12",
+  placeUrl: "https://exemple.invalid/ostuni",
+  photos: "https://exemple.invalid/ostuni-salle.jpg\nhttps://exemple.invalid/ostuni-bar.jpg",
+  signaturePhoto: "https://exemple.invalid/ostuni-plat.jpg",
+  menuPhoto: "https://exemple.invalid/ostuni-carte.jpg",
+  priceBand: "90 à 140 €",
+  pitch: "Une salle calme, lumière basse.",
+  categories: ["italien"],
+};
+
+export function RestaurantCatalog({
+  rows,
+  query,
+  exampleForm = false,
+}: {
+  rows: RestaurantRecord[];
+  query: string;
+  /** Ouvre la fiche avec un restaurant fictif. L’enregistrement ne part pas. */
+  exampleForm?: boolean;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(exampleForm);
   const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [draft, setDraft] = useState<Draft>(exampleForm ? EXAMPLE_DRAFT : EMPTY);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -122,10 +163,20 @@ export function RestaurantCatalog({ rows, query }: { rows: RestaurantRecord[]; q
       etoile: draft.starred,
       prepaiement: draft.prepaidRequired,
       note: draft.note,
+      photos: draft.photos,
+      photo_plat: draft.signaturePhoto,
+      photo_carte: draft.menuPhoto,
+      description: draft.pitch,
+      fourchette: draft.priceBand,
+      page: draft.placeUrl,
     };
   }
 
   async function save(id?: string) {
+    if (exampleForm) {
+      setError("Aperçu fictif : rien n’est enregistré.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -187,7 +238,15 @@ export function RestaurantCatalog({ rows, query }: { rows: RestaurantRecord[]; q
         </button>
       </form>
       {error ? <p className="text-sm font-semibold text-[#0B192C]">{error}</p> : null}
-      {open ? <Editor draft={draft} setDraft={setDraft} busy={busy} onSave={() => void save(editing || undefined)} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <Editor
+          draft={draft}
+          setDraft={setDraft}
+          busy={busy}
+          onSave={() => void save(editing || undefined)}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
       <ul className="space-y-3">
         {rows.map((row) => (
           <li key={row.id} className="admin-af-card rounded-3xl p-4">
@@ -198,6 +257,13 @@ export function RestaurantCatalog({ rows, query }: { rows: RestaurantRecord[]; q
                   {row.city}
                   {row.categories.length ? ` · ${row.categories.map(categoryLabel).join(", ")}` : ""}
                 </p>
+                {row.pitch || row.priceBand || row.photoUrls.length ? (
+                  <p className="text-sm text-muted">
+                    {[row.pitch, row.priceBand, row.photoUrls.length ? `${row.photoUrls.length} photo${row.photoUrls.length > 1 ? "s" : ""}` : ""]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
                 <p className="text-sm text-[#0B192C]">
                   {row.status === "exclu" ? "Exclu" : "Actif"}
                   {row.exclusionReason ? ` · ${row.exclusionReason}` : ""}
@@ -250,6 +316,7 @@ function Editor({
   const days = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
   return (
     <form
+      id="fiche-restaurant"
       className="admin-af-card space-y-3 rounded-3xl p-4"
       onSubmit={(event) => {
         event.preventDefault();
@@ -265,6 +332,37 @@ function Editor({
           Ville
           <input className={`${inputClass} mt-1`} value={draft.city} onChange={(event) => setDraft({ ...draft, city: event.target.value })} required />
         </label>
+      </div>
+      <fieldset className="space-y-3 rounded-2xl border border-[#d9d1c3] p-3">
+        <legend className="px-1 text-sm font-semibold text-[#0B192C]">Fiche envoyée au client</legend>
+        <label className="block text-sm text-[#0B192C]">
+          Page, site ou Google
+          <input className={`${inputClass} mt-1`} value={draft.placeUrl} onChange={(event) => setDraft({ ...draft, placeUrl: event.target.value })} autoCapitalize="off" placeholder="https://" />
+        </label>
+        <label className="block text-sm text-[#0B192C]">
+          Photos, une adresse https par ligne. La première est la salle.
+          <textarea className={`${inputClass} mt-1 min-h-24 py-2`} value={draft.photos} onChange={(event) => setDraft({ ...draft, photos: event.target.value })} />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm text-[#0B192C]">
+            Photo du plat signature
+            <input className={`${inputClass} mt-1`} value={draft.signaturePhoto} onChange={(event) => setDraft({ ...draft, signaturePhoto: event.target.value })} autoCapitalize="off" placeholder="https://" />
+          </label>
+          <label className="text-sm text-[#0B192C]">
+            Photo de la carte
+            <input className={`${inputClass} mt-1`} value={draft.menuPhoto} onChange={(event) => setDraft({ ...draft, menuPhoto: event.target.value })} autoCapitalize="off" placeholder="Facultative" />
+          </label>
+          <label className="text-sm text-[#0B192C]">
+            Fourchette par personne
+            <input className={`${inputClass} mt-1`} value={draft.priceBand} onChange={(event) => setDraft({ ...draft, priceBand: event.target.value })} placeholder="90 à 140 €" />
+          </label>
+          <label className="text-sm text-[#0B192C] sm:col-span-2">
+            Description
+            <textarea className={`${inputClass} mt-1 min-h-20 py-2`} value={draft.pitch} onChange={(event) => setDraft({ ...draft, pitch: event.target.value })} />
+          </label>
+        </div>
+      </fieldset>
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm text-[#0B192C] sm:col-span-2">
           Adresse
           <input className={`${inputClass} mt-1`} value={draft.address} onChange={(event) => setDraft({ ...draft, address: event.target.value })} />

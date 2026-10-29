@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   applyCatalogRules,
+  applySeatReply,
   closeEveningTables,
   closedOn,
   eveningAlerts,
@@ -16,7 +17,9 @@ import {
   localClock,
   normalizeCatalog,
   parseCardLast4,
+  parseCovers,
   planRestaurantCron,
+  RESTAURANT_COVERS,
   rankRestaurants,
   restaurantDedupeKey,
   selectionBlock,
@@ -26,12 +29,26 @@ import {
   type DeskEvening,
   type RestaurantRecord,
 } from "./restaurants";
+import { isPrivateAddress, parseMediaToken, publicHttpsUrl } from "./restaurant-media";
 import {
   deliveryDecision,
-  parseRestaurantReply,
-  RESTAURANT_TEMPLATE_ENV,
-  restaurantChoiceBody,
-  restaurantChoiceSubmission,
+  parseRestaurantButton,
+  PLAT_CARD_BODY,
+  RESTAURANT_CAROUSEL_ENV,
+  RESTAURANT_CAROUSEL_MENU_ENV,
+  RESTAURANT_INTRO_ENV,
+  RESTAURANT_SIGNATURE,
+  restaurantCarouselBody,
+  restaurantCarouselContentCreateBody,
+  restaurantCarouselDraft,
+  restaurantDeskPreview,
+  restaurantGreeting,
+  restaurantIntroBody,
+  restaurantIntroContentCreateBody,
+  restaurantTemplateFlags,
+  restaurantTemplateSubmission,
+  SALLE_CARD_BODY,
+  SALLE_PITCH_MAX,
 } from "./restaurant-whatsapp";
 
 const PARIS = "Europe/Paris";
@@ -77,6 +94,12 @@ function place(partial: Partial<RestaurantRecord> & Pick<RestaurantRecord, "id" 
     starred: false,
     prepaidRequired: false,
     note: "",
+    photoUrls: [],
+    menuPhotoUrl: "",
+    signaturePhotoUrl: "",
+    pitch: "",
+    priceBand: "",
+    placeUrl: "",
     ...partial,
   };
 }
@@ -157,12 +180,27 @@ test("la clôture de 18 h annule la table non choisie, ou les deux sans réponse
 test("le cron envoie dans la fenêtre et clôture à 18 h, y compris le lendemain si le passage a été manqué", () => {
   const at16 = new Date("2026-01-15T15:00:00.000Z");
   const ready = planRestaurantCron([desk(), desk({ bookingId: "booking-2", timezone: BANGKOK })], at16, true);
-  assert.deepEqual(ready.sends, [{ bookingId: "booking-1", eveningDate: "2026-01-15", mode: "send" }]);
+  assert.deepEqual(ready.sends, [
+    { bookingId: "booking-1", eveningDate: "2026-01-15", part: "intro", mode: "send" },
+    { bookingId: "booking-1", eveningDate: "2026-01-15", part: "A", mode: "send" },
+    { bookingId: "booking-1", eveningDate: "2026-01-15", part: "B", mode: "send" },
+  ]);
   assert.equal(ready.closes.length, 1);
   assert.equal(ready.closes[0]?.bookingId, "booking-2");
 
   const queued = planRestaurantCron([desk()], at16, false);
-  assert.equal(queued.sends[0]?.mode, "queue");
+  assert.deepEqual(queued.sends, [{ bookingId: "booking-1", eveningDate: "2026-01-15", part: "intro", mode: "queue" }]);
+  const introOnly = planRestaurantCron([desk()], at16, { intro: true, carousel: false });
+  assert.deepEqual(
+    introOnly.sends.map((row) => `${row.part}:${row.mode}`),
+    ["intro:send", "A:queue", "B:queue"]
+  );
+  const afterIntro = planRestaurantCron(
+    [desk({ partsSent: { intro: true, A: false, B: true }, messageStatus: "en_file" })],
+    at16,
+    true
+  );
+  assert.deepEqual(afterIntro.sends, [{ bookingId: "booking-1", eveningDate: "2026-01-15", part: "A", mode: "send" }]);
 
   const sent = planRestaurantCron([desk({ messageStatus: "envoye" })], at16, true);
   assert.deepEqual(sent.sends, []);
@@ -287,7 +325,8 @@ test("la garantie ne garde que quatre chiffres", () => {
   assert.deepEqual(parseCardLast4(""), { ok: true, last4: null });
   assert.equal(parseCardLast4("4242 4242 4242 4242").ok, false);
   assert.equal(parseCardLast4("4242424242424242").ok, false);
-  assert.equal(restaurantDedupeKey("b1", "2026-06-02"), "restaurant:b1:2026-06-02");
+  assert.equal(restaurantDedupeKey("b1", "2026-06-02", "intro"), "restaurant:b1:2026-06-02:intro");
+  assert.equal(restaurantDedupeKey("b1", "2026-06-02", "A"), "restaurant:b1:2026-06-02:A");
 });
 
 test("gastronomique, étoilé et prépaiement sortent du catalogue actif", () => {
@@ -314,22 +353,133 @@ test("gastronomique, étoilé et prépaiement sortent du catalogue actif", () =>
     assert.equal(draft.note.includes("4242"), false);
     assert.equal(draft.cityKey, "paris");
   }
+  const visual = normalizeCatalog({
+    nom: "Table",
+    ville: "Paris",
+    photos: "https://cdn.example/salle.jpg\nhttps://cdn.example/bar.jpg",
+    photo_plat: "https://cdn.example/plat.jpg",
+    photo_carte: "https://cdn.example/carte.jpg",
+    description: "Une salle calme.",
+    fourchette: "90 à 140 €",
+    page: "https://maps.example/table",
+  });
+  assert.equal("error" in visual, false);
+  if (!("error" in visual)) {
+    assert.deepEqual(visual.photoUrls, ["https://cdn.example/salle.jpg", "https://cdn.example/bar.jpg"]);
+    assert.equal(visual.signaturePhotoUrl, "https://cdn.example/plat.jpg");
+    assert.equal(visual.menuPhotoUrl, "https://cdn.example/carte.jpg");
+    assert.equal(visual.pitch, "Une salle calme.");
+    assert.equal(visual.priceBand, "90 à 140 €");
+    assert.equal(visual.placeUrl, "https://maps.example/table");
+  }
+  assert.equal("error" in normalizeCatalog({ nom: "Table", ville: "Paris", photo_plat: "http://cdn.example/plat.jpg" }), true);
 });
 
-test("le modèle WhatsApp reste en file tant qu’il n’est pas approuvé", () => {
-  assert.equal(RESTAURANT_TEMPLATE_ENV, "TWILIO_CONTENT_RESTAURANT_CHOIX");
-  const body = restaurantChoiceBody();
-  assert.match(body, /\{\{1\}\}/);
-  assert.match(body, /\{\{4\}\}/);
-  assert.match(body, /18 h/);
-  assert.match(restaurantChoiceSubmission(), /boutons de réponse rapide : A \(id A\), B \(id B\), Aucune \(id aucune\)/i);
-  assert.equal(parseRestaurantReply({ buttonPayload: "A" }), "A");
-  assert.equal(parseRestaurantReply({ body: "Aucune" }), "aucune");
-  assert.equal(parseRestaurantReply({ body: "Je garde la table A" }), null);
+test("le pré-message part avant les carrousels, et 18 h n’est pas répété", () => {
+  assert.equal(RESTAURANT_INTRO_ENV, "TWILIO_CONTENT_RESTAURANT_INTRO");
+  assert.equal(RESTAURANT_CAROUSEL_ENV, "TWILIO_CONTENT_RESTAURANT_PROPOSITION");
+  assert.equal(RESTAURANT_CAROUSEL_MENU_ENV, "TWILIO_CONTENT_RESTAURANT_PROPOSITION_CARTE");
+  const intro = restaurantIntroBody();
+  const carousel = restaurantCarouselBody();
+  assert.match(intro, /18 h/);
+  assert.match(intro, /La Conciergerie Travel BA/);
+  assert.match(intro, /accepter celle de votre choix/);
+  assert.equal(carousel.includes("18"), false);
+  assert.match(carousel, /table pour deux/);
+  assert.match(carousel, new RegExp(RESTAURANT_SIGNATURE));
+  assert.equal(/\p{Extended_Pictographic}/u.test(intro + carousel), false);
+  assert.deepEqual(restaurantTemplateFlags(false), { intro: false, carousel: false });
+  const two = restaurantCarouselContentCreateBody(false);
+  const three = restaurantCarouselContentCreateBody(true);
+  assert.equal(two.types["twilio/carousel"].cards.length, 2);
+  assert.equal(three.types["twilio/carousel"].cards.length, 3);
+  const actions = two.types["twilio/carousel"].cards.map((card) => card.actions.map((action) => action.type).join("+"));
+  assert.deepEqual(actions, ["QUICK_REPLY+QUICK_REPLY", "QUICK_REPLY+QUICK_REPLY"]);
+  assert.equal(two.types["twilio/carousel"].cards[0]?.actions[0]?.title, "J'accepte");
+  assert.equal(two.types["twilio/carousel"].cards[1]?.actions[1]?.title, "Je refuse");
+  assert.match(SALLE_CARD_BODY, /travelba\.fr\/api\/r\//);
+  assert.match(PLAT_CARD_BODY, /par personne/);
+  assert.match(restaurantTemplateSubmission(), /Découvrir l’adresse/);
+  assert.equal(restaurantGreeting({ sex: "M", lastName: "Dupont", firstName: "Camille" }), "Monsieur Dupont");
+  assert.equal(restaurantGreeting({ sex: "F", lastName: "Martin", firstName: "Camille" }), "Madame Martin");
+  assert.equal(restaurantGreeting({ sex: "X", lastName: "Martin", firstName: "Camille" }), "Camille");
+  const pitch = "S".repeat(SALLE_PITCH_MAX);
+  const draft = restaurantCarouselDraft({
+    greeting: "Monsieur Dupont",
+    restaurantName: "Ostuni",
+    timeLabel: "20h30",
+    pitch,
+    priceBand: "90 à 140 €",
+    restaurantId: "11111111-1111-4111-8111-111111111111",
+    tableId: "22222222-2222-4222-8222-222222222222",
+    menuPhoto: true,
+  });
+  assert.equal("error" in draft, false);
+  if (!("error" in draft)) {
+    const salle = `En salle, ${pitch}. Lien https://travelba.fr/api/r/11111111-1111-4111-8111-111111111111 ici.`;
+    assert.ok("La salle".length + salle.length <= 160);
+    assert.equal(draft.variables["10"], "11111111-1111-4111-8111-111111111111.carte");
+    assert.equal(draft.withMenu, true);
+  }
+  const coded = parseRestaurantButton({ buttonPayload: "accepte:22222222-2222-4222-8222-222222222222" });
+  assert.deepEqual(coded, { reply: "accepte", tableId: "22222222-2222-4222-8222-222222222222" });
+  assert.deepEqual(parseRestaurantButton({ body: "Je refuse" }), { reply: "refuse", tableId: null });
+  assert.deepEqual(parseRestaurantButton({ buttonPayload: "A" }), { legacy: "A" });
+  assert.equal(parseRestaurantButton({ body: "Je garde la table A" }), null);
+  const introJson = restaurantIntroContentCreateBody();
+  assert.equal(introJson.types["twilio/text"].body.startsWith("Bonsoir "), true);
+  assert.deepEqual(JSON.parse(readFileSync(new URL("../../scripts/whatsapp/restaurant-selection.json", import.meta.url), "utf8")), introJson);
+  assert.deepEqual(
+    JSON.parse(readFileSync(new URL("../../scripts/whatsapp/restaurant-proposition.json", import.meta.url), "utf8")),
+    restaurantCarouselContentCreateBody(false)
+  );
+  assert.deepEqual(
+    JSON.parse(readFileSync(new URL("../../scripts/whatsapp/restaurant-proposition-carte.json", import.meta.url), "utf8")),
+    restaurantCarouselContentCreateBody(true)
+  );
   assert.equal(deliveryDecision({ templateSid: "", hasPhone: true, alreadySent: false }), "queue");
   assert.equal(deliveryDecision({ templateSid: "HXok", hasPhone: true, alreadySent: false }), "send");
   assert.equal(deliveryDecision({ templateSid: "HXok", hasPhone: false, alreadySent: false }), "no_phone");
   assert.equal(deliveryDecision({ templateSid: "HXok", hasPhone: true, alreadySent: true }), "skip");
+  const preview = restaurantDeskPreview();
+  assert.match(preview.caption, /Madame Morel/);
+  assert.match(preview.intro, /18 h/);
+  assert.match(preview.intro, /La Conciergerie Travel BA/);
+  assert.equal(preview.restaurants.length, 2);
+  assert.equal(preview.restaurants[0]?.cards.length, 3);
+  assert.equal(preview.restaurants[1]?.cards.length, 2);
+  assert.equal(preview.restaurants[0]?.intro.includes("18"), false);
+  assert.match(preview.restaurants[0]?.cards[0]?.body || "", /travelba\.fr\/api\/r\//);
+  assert.doesNotMatch(preview.restaurants[0]?.cards[0]?.body || "", /\.\./);
+  assert.equal(preview.restaurants[1]?.cards.some((card) => card.kind === "carte"), false);
+});
+
+test("accepter une table passe l’autre à annuler, sans changer la clôture de 18 h", () => {
+  const both = [
+    { seat: "A" as const, status: "proposee" as const },
+    { seat: "B" as const, status: "proposee" as const },
+  ];
+  const accepted = applySeatReply(both, "A", "accepte");
+  assert.equal(accepted.choice, "A");
+  assert.deepEqual(
+    accepted.tables.map((table) => table.status),
+    ["choisie", "a_annuler"]
+  );
+  assert.deepEqual(
+    closeEveningTables(accepted.tables, accepted.choice).map((table) => table.status),
+    ["choisie", "a_annuler"]
+  );
+  const refused = applySeatReply(both, "B", "refuse");
+  assert.equal(refused.choice, null);
+  assert.deepEqual(
+    refused.tables.map((table) => table.status),
+    ["proposee", "a_annuler"]
+  );
+  const bothRefused = applySeatReply(refused.tables, "A", "refuse");
+  assert.equal(bothRefused.choice, "aucune");
+  assert.equal(parseCovers(undefined), RESTAURANT_COVERS);
+  assert.equal(parseCovers(""), 2);
+  assert.equal("error" in (parseCovers(4) as { error?: string }), true);
 });
 
 test("la migration restaurants ne stocke pas de PAN", () => {
@@ -344,4 +494,21 @@ test("la migration restaurants ne stocke pas de PAN", () => {
   assert.match(sql, /a_annuler/);
   assert.match(sql, /concierge@travelba.fr/);
   assert.match(sql, /timezone/);
+  const catalogue = readFileSync(new URL("../../supabase/migrations/20261029203000_crm_restaurant_catalogue.sql", import.meta.url), "utf8");
+  assert.match(catalogue, /photo_urls/);
+  assert.match(catalogue, /menu_photo_url/);
+  assert.match(catalogue, /signature_photo_url/);
+  assert.match(catalogue, /concierge_pitch/);
+  assert.match(catalogue, /price_band/);
+  assert.match(catalogue, /place_url/);
+  assert.match(catalogue, /covers set default 2/);
+  assert.match(catalogue, /part in \('intro', 'A', 'B'\)/);
+  assert.equal(parseMediaToken("exemple.salle")?.kind, "sample");
+  assert.equal(parseMediaToken("11111111-1111-4111-8111-111111111111.plat")?.kind, "restaurant");
+  assert.equal(parseMediaToken("pas-une-photo"), null);
+  assert.equal(isPrivateAddress("127.0.0.1"), true);
+  assert.equal(isPrivateAddress("10.1.1.1"), true);
+  assert.equal(isPrivateAddress("169.254.169.254"), true);
+  assert.equal(publicHttpsUrl("http://cdn.example/a.jpg"), null);
+  assert.equal(publicHttpsUrl("https://cdn.example/a.jpg"), "https://cdn.example/a.jpg");
 });
