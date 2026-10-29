@@ -27,6 +27,7 @@ import {
 } from "@/lib/crm/revolut-match";
 import {
   STRIPE_MATCH_SELECT,
+  loadStripeMatchExtras,
   suggestionsForStripeCustomer,
   type StripeMatchCustomer,
 } from "@/lib/crm/stripe-match";
@@ -192,12 +193,18 @@ export default async function AdminClientDetailPage({ params }: Props) {
             .limit(100),
           admin.from("crm_customers").select(STRIPE_MATCH_SELECT),
         ]);
+        const stripeRows = (data || []) as CrmStripeTransaction[];
         return {
-          rows: (data || []) as CrmStripeTransaction[],
+          rows: stripeRows,
           people: (people || []) as StripeMatchCustomer[],
+          extras: await loadStripeMatchExtras(admin, stripeRows),
         };
       } catch {
-        return { rows: [] as CrmStripeTransaction[], people: [] as StripeMatchCustomer[] };
+        return {
+          rows: [] as CrmStripeTransaction[],
+          people: [] as StripeMatchCustomer[],
+          extras: { companies: [], dossiers: [] },
+        };
       }
     })(),
     loadCustomerWhatsappMessages(supabase, id),
@@ -270,7 +277,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
   const conciergePaused = !pauseRow.data ? false : threadIsPaused(pauseRow.data.paused_until, new Date());
   const threadMessages = whatsappMessages;
   const revolutSuggestions = suggestionsForCustomer(c, revolut.rows, revolut.people);
-  const stripeSuggestions = suggestionsForStripeCustomer(c, stripe.rows, stripe.people).map((item) => ({
+  const stripeSuggestions = suggestionsForStripeCustomer(c, stripe.rows, stripe.people, stripe.extras).map((item) => ({
     ...item,
     row: { ...item.row, payer_email: null, raw: {} },
   }));

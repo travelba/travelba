@@ -3,8 +3,13 @@ import test from "node:test";
 import type { CrmStripeTransaction } from "./types";
 import {
   applyStripeToCustomer,
+  bookingReferenceNumber,
+  invoicePieceNumber,
   refuseStripeInbox,
   scoreStripeMatches,
+  stripeDescriptionNumber,
+  stripePendingHints,
+  type StripeIndexedDossier,
   type StripeMatchCustomer,
 } from "./stripe-match";
 
@@ -83,6 +88,104 @@ test("le nom et la société restent des propositions", () => {
   const company = scoreStripeMatches(row({ payer_name: "Martin SA" }), [ADA, LEO]);
   assert.equal(company.autoCustomerId, null);
   assert.equal(company.candidates.find((c) => c.customer_id === LEO.id)?.reason, "company_name");
+});
+
+const CAM: StripeMatchCustomer = {
+  id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  first_name: "Camille",
+  last_name: "Negoce",
+  company_name: null,
+  email: "cam@exemple.fr",
+  stripe_customer_id: null,
+};
+
+const DOSSIER: StripeIndexedDossier = {
+  booking_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+  customer_id: CAM.id,
+  reference: "TB-2026-2108",
+  label: "TB-2026-2108 — Maroc",
+  reason: "dossier",
+  number: "2108",
+};
+
+test("la raison sociale et le numéro de dossier restent des propositions", () => {
+  assert.equal(stripeDescriptionNumber("2108"), "2108");
+  assert.equal(stripeDescriptionNumber("02108"), "2108");
+  assert.equal(stripeDescriptionNumber("sejour Maroc"), null);
+  assert.equal(stripeDescriptionNumber("tHOMAS"), null);
+  assert.equal(bookingReferenceNumber("TB-2026-2108"), "2108");
+  assert.equal(bookingReferenceNumber("TB-2026-0001"), "1");
+  assert.equal(bookingReferenceNumber("TB-2026-0001") === "2026", false);
+  assert.equal(invoicePieceNumber("2108"), "2108");
+  assert.equal(invoicePieceNumber("F-2108"), "2108");
+  assert.equal(invoicePieceNumber("2026-2108"), null);
+
+  const company = scoreStripeMatches(row({ payer_name: "CAM NEGOCE", reference: "2108", payer_email: null }), [CAM, ADA], {
+    companies: [{ customer_id: CAM.id, company_name: "CAM NEGOCE" }],
+  });
+  assert.equal(company.autoCustomerId, null);
+  assert.equal(company.candidates.find((candidate) => candidate.customer_id === CAM.id)?.reason, "company_name");
+  assert.ok((company.candidates.find((candidate) => candidate.customer_id === CAM.id)?.score || 0) < 90);
+
+  const dossier = scoreStripeMatches(row({ payer_name: null, reference: "2108", payer_email: null }), [CAM, ADA], {
+    dossiers: [DOSSIER],
+  });
+  assert.equal(dossier.autoCustomerId, null);
+  assert.equal(dossier.dossier?.booking_id, DOSSIER.booking_id);
+  assert.equal(dossier.dossier?.reference, "TB-2026-2108");
+  assert.equal(dossier.candidates.find((candidate) => candidate.customer_id === CAM.id)?.reason, "dossier");
+  const hints = stripePendingHints({ payer_name: null, reference: "2108" }, dossier);
+  assert.equal(hints.payeur, "Payeur inconnu");
+  assert.equal(hints.libelle, "2108");
+  assert.equal(hints.dossier?.id, DOSSIER.booking_id);
+
+  const invoice = scoreStripeMatches(row({ payer_name: "CAM NEGOCE", reference: "2105" }), [CAM], {
+    companies: [{ customer_id: CAM.id, company_name: "CAM NEGOCE" }],
+    dossiers: [
+      {
+        booking_id: DOSSIER.booking_id,
+        customer_id: CAM.id,
+        reference: "TB-2026-2105",
+        label: "Facture 2105 · TB-2026-2105",
+        reason: "facture",
+        number: "2105",
+      },
+    ],
+  });
+  assert.equal(invoice.autoCustomerId, null);
+  assert.equal(invoice.dossier?.reason, "facture");
+  assert.equal(invoice.candidates[0]?.reason, "facture");
+  assert.match(invoice.candidates[0]?.label || "", /CAM NEGOCE/);
+
+  const prose = scoreStripeMatches(row({ payer_name: null, reference: "sejour Maroc" }), [CAM, ADA], {
+    dossiers: [DOSSIER],
+  });
+  assert.equal(prose.dossier, null);
+  assert.equal(prose.autoCustomerId, null);
+
+  const year = scoreStripeMatches(row({ payer_name: null, reference: "2026" }), [ADA], {
+    dossiers: [
+      {
+        booking_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        customer_id: ADA.id,
+        reference: "TB-2026-0001",
+        label: "TB-2026-0001",
+        reason: "dossier",
+        number: "1",
+      },
+    ],
+  });
+  assert.equal(year.dossier, null);
+
+  const twins = scoreStripeMatches(row({ payer_name: null, reference: "2108" }), [CAM, ADA], {
+    dossiers: [
+      DOSSIER,
+      { ...DOSSIER, booking_id: "11111111-1111-4111-8111-111111111111", customer_id: ADA.id, reference: "TB-2025-2108" },
+    ],
+  });
+  assert.equal(twins.dossier, null);
+  assert.equal(twins.autoCustomerId, null);
+  assert.equal(twins.candidates.length, 2);
 });
 
 test("deux hits certains ne choisissent pas à la place de l’agence", () => {
@@ -193,4 +296,18 @@ test("le crédit carte est idempotent et le refus n’écrit pas au grand livre"
   const denied = await applyStripeToCustomer(matched.admin, row({ status: "matched" }), ADA.id);
   assert.equal(denied.ok, false);
   assert.equal(matched.writes.length, 0);
+});
+
+test("valider un dossier proposé le rattache, un autre client non", async () => {
+  const bookingId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const owned = fakeAdmin({ existing: { id: bookingId, customer_id: ADA.id, billing_customer_id: null } });
+  const credited = await applyStripeToCustomer(owned.admin, row({ payer_name: "CAM NEGOCE", reference: "2108" }), ADA.id, bookingId);
+  assert.equal(credited.ok, true);
+  assert.equal(owned.writes[0].payload.booking_id, bookingId);
+  assert.equal(owned.writes[1].payload.status, "matched");
+
+  const other = fakeAdmin({ existing: { id: bookingId, customer_id: LEO.id, billing_customer_id: null } });
+  const skipped = await applyStripeToCustomer(other.admin, row(), ADA.id, bookingId);
+  assert.equal(skipped.ok, true);
+  assert.equal(other.writes[0].payload.booking_id, null);
 });

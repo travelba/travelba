@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmStripeTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { stripeInboxEmptyMessage } from "@/lib/crm/launch-status";
-import { stripeInboxCopy, stripeSuggestedCustomerId } from "@/lib/crm/stripe-inbox";
+import { stripeInboxCopy, stripeProposedCustomerId } from "@/lib/crm/stripe-inbox";
 import { StatusChip } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
@@ -15,10 +15,12 @@ import {
   matchStripeReasonLabel,
   stripeInboxMethodCaption,
   stripePossibleClientsLabel,
+  stripeDossierCaption,
   stripeStatusLabel,
   stripeStatusTone,
   stripeSyncSummary,
 } from "@/lib/crm/stripe-labels";
+import type { StripeDossierProposal } from "@/lib/crm/stripe-match";
 
 type StripeSuggestion = {
   customer_id: string;
@@ -31,11 +33,13 @@ export function StripeInbox({
   rows,
   customers,
   suggestions: suggestionsById,
+  dossiers: dossiersById = {},
   configured,
 }: {
   rows: CrmStripeTransaction[];
   customers: PickableCustomer[];
   suggestions: Record<string, StripeSuggestion[]>;
+  dossiers?: Record<string, StripeDossierProposal>;
   configured: boolean;
 }) {
   const router = useRouter();
@@ -53,10 +57,14 @@ export function StripeInbox({
     () => new Map<string, StripeSuggestion[]>(Object.entries(suggestionsById)),
     [suggestionsById]
   );
+  const dossiers = useMemo(
+    () => new Map<string, StripeDossierProposal>(Object.entries(dossiersById)),
+    [dossiersById]
+  );
 
   function chosenFor(rowId: string) {
     if (picked[rowId]) return picked[rowId];
-    return stripeSuggestedCustomerId(suggestions.get(rowId) || []);
+    return stripeProposedCustomerId(suggestions.get(rowId) || []);
   }
 
   async function sync() {
@@ -75,7 +83,12 @@ export function StripeInbox({
         return;
       }
       setMessage(
-        stripeSyncSummary(Number(json.fetched || 0), Number(json.inserted || 0), Number(json.auto_matched || 0))
+        stripeSyncSummary(
+          Number(json.fetched || 0),
+          Number(json.inserted || 0),
+          Number(json.auto_matched || 0),
+          Number(json.refreshed || 0)
+        )
       );
       router.refresh();
     } catch {
@@ -114,7 +127,14 @@ export function StripeInbox({
       setPickerRow(id);
       return;
     }
-    const ok = await post(id, { customer_id: customerId }, "Rapprochement impossible. Réessayez.");
+    const dossier = dossiers.get(id);
+    const bookingId =
+      dossier?.booking_id && dossier.customer_id === customerId ? dossier.booking_id : undefined;
+    const ok = await post(
+      id,
+      bookingId ? { customer_id: customerId, booking_id: bookingId } : { customer_id: customerId },
+      "Rapprochement impossible. Réessayez."
+    );
     if (!ok) return;
     setMessage(`Crédit enregistré : ${formatMoney(gross, currency)}.`);
   }
@@ -147,8 +167,9 @@ export function StripeInbox({
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
         {shown.map((row) => {
           const candidates = suggestions.get(row.id) || [];
-          const suggestedId = stripeSuggestedCustomerId(candidates);
+          const suggestedId = stripeProposedCustomerId(candidates);
           const top = suggestedId ? candidates.find((candidate) => candidate.customer_id === suggestedId) : undefined;
+          const dossier = dossiers.get(row.id);
           const chosenId = chosenFor(row.id);
           const chosen = chosenId ? byId.get(chosenId) : undefined;
           const signed = `+${formatMoney(Number(row.amount), row.currency)}`;
@@ -171,6 +192,9 @@ export function StripeInbox({
                       <span className="text-xs font-semibold text-[#9e7e51]">
                         Proposition : {top.label} ({matchStripeReasonLabel(top.reason)})
                       </span>
+                    ) : null}
+                    {row.status === "unmatched" && dossier ? (
+                      <span className="text-xs font-semibold text-[#9e7e51]">{stripeDossierCaption(dossier)}</span>
                     ) : null}
                   </div>
                 </div>

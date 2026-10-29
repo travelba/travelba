@@ -299,7 +299,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "stripe_en_attente",
     description:
-      "Paiements Stripe reçus, pas encore rapprochés. L’identifiant sert à crediter_stripe, avec le client désigné.",
+      "Paiements Stripe reçus, pas encore rapprochés. Le payeur vient du nom Stripe (metadata CRM, facturation, customer, session Checkout, puis e-mail). Sinon « Payeur inconnu » et la description. propositions : client ou société (e-mail, raison sociale), dossier si la description est un numéro de dossier ou de facture. Rien n’est crédité ici. L’identifiant sert à crediter_stripe, avec le client désigné.",
     run: () => readStripeEnAttente(),
   },
   {

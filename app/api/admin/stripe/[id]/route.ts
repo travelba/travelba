@@ -27,7 +27,8 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const customerId = String(body?.customer_id || "");
   if (!customerId) return jsonError("Client requis");
-  const result = await applyStripeToCustomer(admin, movement, customerId);
+  const bookingId = typeof body?.booking_id === "string" ? body.booking_id : null;
+  const result = await applyStripeToCustomer(admin, movement, customerId, bookingId);
   if (!result.ok) {
     if (result.error === "already_matched") return jsonError("Déjà rapproché");
     if (result.error === "not_a_credit") {

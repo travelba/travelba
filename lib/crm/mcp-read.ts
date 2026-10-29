@@ -36,6 +36,14 @@ import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation
 import { compareLeMadeAt, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
+import { matchStripeReasonLabel } from "@/lib/crm/stripe-labels";
+import {
+  loadStripeMatchExtras,
+  scoreStripeMatches,
+  STRIPE_MATCH_SELECT,
+  stripePendingHints,
+  type StripeMatchCustomer,
+} from "@/lib/crm/stripe-match";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
 import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
@@ -1042,7 +1050,7 @@ export async function readStripeEnAttente() {
   const admin = db();
   const { data, error } = await admin
     .from("crm_stripe_transactions")
-    .select("id, amount, currency, payer_name, reference, method, booked_at, status, direction")
+    .select("id, amount, currency, payer_name, payer_email, reference, method, booked_at, status, direction, raw")
     .eq("status", "unmatched")
     .eq("direction", "credit")
     .order("booked_at", { ascending: false, nullsFirst: false })
@@ -1053,18 +1061,46 @@ export async function readStripeEnAttente() {
   }
   const rows = (data || []) as Pick<
     CrmStripeTransaction,
-    "id" | "amount" | "currency" | "payer_name" | "reference" | "method" | "booked_at"
+    | "id"
+    | "amount"
+    | "currency"
+    | "payer_name"
+    | "payer_email"
+    | "reference"
+    | "method"
+    | "booked_at"
+    | "raw"
   >[];
+  const [{ data: people }, extras] = await Promise.all([
+    admin.from("crm_customers").select(STRIPE_MATCH_SELECT),
+    loadStripeMatchExtras(admin, rows),
+  ]);
+  const customers = (people || []) as StripeMatchCustomer[];
   return {
     lien: "/admin/stripe",
-    paiements: rows.map((row) => ({
-      id: row.id,
-      montant: formatMoney(Number(row.amount), row.currency || "EUR"),
-      payeur: row.payer_name,
-      libelle: row.reference,
-      moyen: row.method,
-      date: row.booked_at ? formatDateFr(row.booked_at) : null,
-    })),
+    paiements: rows.map((row) => {
+      const hints = stripePendingHints(row, scoreStripeMatches(row, customers, extras));
+      return {
+        id: row.id,
+        montant: formatMoney(Number(row.amount), row.currency || "EUR"),
+        payeur: hints.payeur,
+        libelle: hints.libelle,
+        moyen: row.method,
+        date: row.booked_at ? formatDateFr(row.booked_at) : null,
+        propositions: hints.propositions.map((item) => ({
+          client_id: item.client_id,
+          libelle: item.libelle,
+          motif: matchStripeReasonLabel(item.motif),
+        })),
+        dossier: hints.dossier
+          ? {
+              id: hints.dossier.id,
+              reference: hints.dossier.reference,
+              motif: hints.dossier.motif === "facture" ? "Facture" : "Dossier",
+            }
+          : null,
+      };
+    }),
   };
 }
 

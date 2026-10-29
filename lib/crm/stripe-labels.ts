@@ -17,14 +17,17 @@ export function stripeStatusTone(status: string): "amber" | "gold" | "navy" {
   return "navy";
 }
 
-export function stripeSyncSummary(fetched: number, inserted: number, autoMatched = 0) {
+export function stripeSyncSummary(fetched: number, inserted: number, autoMatched = 0, refreshed = 0) {
   const lus = fetched > 1 ? `${fetched} paiements lus` : `${fetched} paiement lu`;
   const nouveaux = inserted > 1 ? `${inserted} nouveaux` : `${inserted} nouveau`;
-  const base = `Synchronisation terminée : ${lus}, ${nouveaux}`;
-  if (autoMatched <= 0) return `${base}.`;
-  const auto =
-    autoMatched > 1 ? `${autoMatched} crédits automatiques` : `${autoMatched} crédit automatique`;
-  return `${base}, ${auto}.`;
+  const parts = [`Synchronisation terminée : ${lus}, ${nouveaux}`];
+  if (refreshed > 0) {
+    parts.push(refreshed > 1 ? `${refreshed} payeurs recalculés` : `${refreshed} payeur recalculé`);
+  }
+  if (autoMatched > 0) {
+    parts.push(autoMatched > 1 ? `${autoMatched} crédits automatiques` : `${autoMatched} crédit automatique`);
+  }
+  return `${parts.join(", ")}.`;
 }
 
 export function stripePossibleClientsLabel(count: number) {
@@ -44,9 +47,17 @@ export function matchStripeReasonLabel(reason: string) {
       return "Nom complet";
     case "company_name":
       return "Société";
+    case "dossier":
+      return "Dossier";
+    case "facture":
+      return "Facture";
     default:
       return "Correspondance partielle";
   }
+}
+
+export function stripeDossierCaption(dossier: { reason: string; label: string }) {
+  return dossier.reason === "facture" ? `Facture proposée : ${dossier.label}` : `Dossier proposé : ${dossier.label}`;
 }
 
 export function stripeInboxMethodCaption(method: StripeInboxMethod | null | undefined, last4?: string | null) {
