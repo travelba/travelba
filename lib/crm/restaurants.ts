@@ -112,105 +112,6 @@ export const TABLE_STATUS_LABELS: Record<TableStatus, string> = {
 
 const BLOCKED_CATEGORIES = new Set(["gastronomique", "etoile", "etoile-michelin", "michelin"]);
 
-/** Villes ramenées à un fuseau IANA. La clé est `cityPlaceKey`. */
-const CITY_ZONES: Record<string, string> = {
-  paris: "Europe/Paris",
-  nice: "Europe/Paris",
-  cannes: "Europe/Paris",
-  antibes: "Europe/Paris",
-  monaco: "Europe/Monaco",
-  lyon: "Europe/Paris",
-  marseille: "Europe/Paris",
-  bordeaux: "Europe/Paris",
-  avoriaz: "Europe/Paris",
-  london: "Europe/London",
-  amsterdam: "Europe/Amsterdam",
-  brussels: "Europe/Brussels",
-  geneva: "Europe/Zurich",
-  zurich: "Europe/Zurich",
-  zermatt: "Europe/Zurich",
-  lugano: "Europe/Zurich",
-  vienne: "Europe/Vienna",
-  vienna: "Europe/Vienna",
-  rome: "Europe/Rome",
-  milan: "Europe/Rome",
-  venice: "Europe/Rome",
-  florence: "Europe/Rome",
-  barcelona: "Europe/Madrid",
-  madrid: "Europe/Madrid",
-  lisbon: "Europe/Lisbon",
-  lamego: "Europe/Lisbon",
-  santorin: "Europe/Athens",
-  athens: "Europe/Athens",
-  istanbul: "Europe/Istanbul",
-  prague: "Europe/Prague",
-  budapest: "Europe/Budapest",
-  dubrovnik: "Europe/Zagreb",
-  moscow: "Europe/Moscow",
-  marrakech: "Africa/Casablanca",
-  casablanca: "Africa/Casablanca",
-  "le caire": "Africa/Cairo",
-  cairo: "Africa/Cairo",
-  "tel aviv": "Asia/Jerusalem",
-  jerusalem: "Asia/Jerusalem",
-  dubai: "Asia/Dubai",
-  petra: "Asia/Amman",
-  tokyo: "Asia/Tokyo",
-  kyoto: "Asia/Tokyo",
-  "hong kong": "Asia/Hong_Kong",
-  singapore: "Asia/Singapore",
-  "kuala lumpur": "Asia/Kuala_Lumpur",
-  bali: "Asia/Makassar",
-  bangkok: "Asia/Bangkok",
-  phuket: "Asia/Bangkok",
-  agra: "Asia/Kolkata",
-  male: "Indian/Maldives",
-  maldives: "Indian/Maldives",
-  seychelles: "Indian/Mahe",
-  mahe: "Indian/Mahe",
-  sydney: "Australia/Sydney",
-  "new york": "America/New_York",
-  miami: "America/New_York",
-  banff: "America/Edmonton",
-  havane: "America/Havana",
-  "panama city": "America/Panama",
-  "machu picchu": "America/Lima",
-  rio: "America/Sao_Paulo",
-  "buenos aires": "America/Argentina/Buenos_Aires",
-};
-
-const COUNTRY_ZONES: Record<string, string> = {
-  fr: "Europe/Paris",
-  france: "Europe/Paris",
-  it: "Europe/Rome",
-  italie: "Europe/Rome",
-  italy: "Europe/Rome",
-  es: "Europe/Madrid",
-  espagne: "Europe/Madrid",
-  pt: "Europe/Lisbon",
-  portugal: "Europe/Lisbon",
-  gb: "Europe/London",
-  uk: "Europe/London",
-  "royaume uni": "Europe/London",
-  th: "Asia/Bangkok",
-  thailande: "Asia/Bangkok",
-  thailand: "Asia/Bangkok",
-  jp: "Asia/Tokyo",
-  japon: "Asia/Tokyo",
-  il: "Asia/Jerusalem",
-  israel: "Asia/Jerusalem",
-  ae: "Asia/Dubai",
-  "emirats arabes unis": "Asia/Dubai",
-  mv: "Indian/Maldives",
-  sc: "Indian/Mahe",
-  ma: "Africa/Casablanca",
-  maroc: "Africa/Casablanca",
-  us: "America/New_York",
-  "etats unis": "America/New_York",
-  gr: "Europe/Athens",
-  grece: "Europe/Athens",
-};
-
 export function isFormError<T>(value: T | { error: string }): value is { error: string } {
   return Boolean(value && typeof value === "object" && "error" in value);
 }
@@ -487,24 +388,6 @@ export function hotelForEvening(hotels: StayHotel[], isoDate: string): StayHotel
   const covering = hotels.filter((hotel) => isoDate >= hotel.start && isoDate < (hotel.end > hotel.start ? hotel.end : addUtcDay(hotel.start)));
   if (!covering.length) return hotels[0] || null;
   return covering.find((hotel) => hotel.lat != null && hotel.lng != null) || covering[0];
-}
-
-export function timezoneForStay(input: {
-  stored?: string | null;
-  hotelZone?: string | null;
-  city?: string | null;
-  country?: string | null;
-}): { zone: string | null; source: "dossier" | "hotel" | "ville" | null } {
-  const stored = validTimeZone(input.stored);
-  if (stored) return { zone: stored, source: "dossier" };
-  const hotel = validTimeZone(input.hotelZone);
-  if (hotel) return { zone: hotel, source: "hotel" };
-  const city = input.city ? CITY_ZONES[cityPlaceKey(input.city)] : null;
-  if (city && validTimeZone(city)) return { zone: city, source: "ville" };
-  const countryKey = fold(input.country || "").replace(/[^a-z]+/g, " ").trim();
-  const country = COUNTRY_ZONES[countryKey] || COUNTRY_ZONES[countryKey.replace(/ /g, "")];
-  if (country && validTimeZone(country)) return { zone: country, source: "ville" };
-  return { zone: null, source: null };
 }
 
 /** Instant UTC de une heure civile dans le fuseau. */

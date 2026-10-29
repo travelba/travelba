@@ -10,7 +10,8 @@ import {
 } from "./restaurant-desk";
 import { restaurantGreeting, restaurantIntroText, SALLE_CARD_BODY, PLAT_CARD_BODY, CARTE_CARD_BODY, restaurantCarouselBody } from "./restaurant-whatsapp";
 import { cityPlaceKey } from "./city-names";
-import { clockLabel, formatEveningFr, hotelForEvening, hotelsFromItems, localClock, restaurantDefaultClock, timezoneForStay, type RestaurantRecord, type TableSeat, type TableStatus } from "./restaurants";
+import { clockLabel, formatEveningFr, hotelForEvening, hotelsFromItems, localClock, restaurantDefaultClock, type RestaurantRecord, type TableSeat, type TableStatus } from "./restaurants";
+import { timezoneForStay } from "./stay-timezone";
 import { mapRestaurant } from "./restaurants-db";
 import { restaurantAllowlist, restaurantBookingAllowed } from "./restaurant-allowlist";
 
@@ -134,7 +135,8 @@ export async function loadRestaurantBoard(
     const greeting = restaurantGreeting({ sex: customer?.sex, lastName: customer?.last_name, firstName: customer?.first_name });
     const dates = [now.toISOString().slice(0, 10)];
     for (const date of dates) {
-      const placed = timezoneForStay({ stored: stay.timezone, hotelZone: hotelForEvening(hotels, date)?.zone, city: hotelForEvening(hotels, date)?.city || stay.destination, country: hotelForEvening(hotels, date)?.country });
+      const hotel = hotelForEvening(hotels, date);
+      const placed = timezoneForStay({ stored: stay.timezone, hotelZone: hotel?.zone, city: hotel?.city, country: hotel?.country, destination: stay.destination });
       const local = placed.zone ? localClock(now, placed.zone)?.isoDate : date;
       if (placed.zone && local !== date && !input.test) continue;
       const mine = ((tables.data || []) as { booking_id: string; evening_date: string; seat: TableSeat; restaurant_id: string | null; time_local: string | null; status: TableStatus }[]).filter(

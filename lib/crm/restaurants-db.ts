@@ -23,7 +23,6 @@ import {
   selectionBlock,
   suggestionWindow,
   TABLE_STATUS_LABELS,
-  timezoneForStay,
   validTimeZone,
   type CatalogDraft,
   type EveningAlert,
@@ -32,6 +31,7 @@ import {
   type TableSeat,
   type TableStatus,
 } from "./restaurants";
+import { timezoneForStay, type StayTimezoneSource } from "./stay-timezone";
 
 const NOT_READY = new Set(["42P01", "42703", "PGRST204", "PGRST205"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -306,8 +306,11 @@ export type DeskEveningView = {
 export type BookingRestaurantView = {
   ready: true;
   reference: string;
+  /** Fuseau du séjour, celui de la ville où l’on dort. */
   timezone: string | null;
-  timezoneSource: "dossier" | "hotel" | "ville" | null;
+  timezoneSource: StayTimezoneSource | null;
+  /** Champ `timezone` du dossier, tel qu’il est enregistré. Il ne sert que si la ville ne se résout pas. */
+  storedTimezone: string | null;
   coversDefault: number;
   hasPhone: boolean;
   hotels: { name: string; city: string }[];
@@ -379,8 +382,9 @@ export async function loadBookingRestaurants(db: SupabaseClient, bookingId: stri
     const zone = timezoneForStay({
       stored: booking.timezone,
       hotelZone: hotel?.zone,
-      city: hotel?.city || booking.destination,
+      city: hotel?.city,
       country: hotel?.country,
+      destination: booking.destination,
     });
     const ranked = rankRestaurants(restaurants, {
       city: hotel?.city || booking.destination || "",
@@ -437,16 +441,19 @@ export async function loadBookingRestaurants(db: SupabaseClient, bookingId: stri
       }),
     };
   });
+  const stayZone = timezoneForStay({
+    stored: booking.timezone,
+    hotelZone: hotels[0]?.zone,
+    city: hotels[0]?.city,
+    country: hotels[0]?.country,
+    destination: booking.destination,
+  });
   return {
     ready: true,
     reference: booking.reference,
-    timezone: booking.timezone,
-    timezoneSource: timezoneForStay({
-      stored: booking.timezone,
-      hotelZone: hotels[0]?.zone,
-      city: hotels[0]?.city || booking.destination,
-      country: hotels[0]?.country,
-    }).source,
+    timezone: stayZone.zone,
+    timezoneSource: stayZone.source,
+    storedTimezone: validTimeZone(booking.timezone),
     coversDefault,
     hasPhone,
     hotels: hotels.map((hotel) => ({ name: hotel.name, city: hotel.city })),

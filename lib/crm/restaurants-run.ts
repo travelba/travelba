@@ -19,7 +19,6 @@ import {
   restaurantDedupeKey,
   restaurantPartFromKey,
   TABLE_STATUS_LABELS,
-  timezoneForStay,
   type DeskEvening,
   type EveningAlert,
   type RestaurantPart,
@@ -27,6 +26,7 @@ import {
   type TableSeat,
   type TableStatus,
 } from "./restaurants";
+import { timezoneForStay } from "./stay-timezone";
 import {
   deliveryDecision,
   parseRestaurantButton,
@@ -265,8 +265,9 @@ function zoneFor(booking: BookingRow, hotels: ReturnType<typeof hotelsFromItems>
     ...timezoneForStay({
       stored: booking.timezone,
       hotelZone: hotel?.zone,
-      city: hotel?.city || booking.destination,
+      city: hotel?.city,
       country: hotel?.country,
+      destination: booking.destination,
     }),
   };
 }
