@@ -157,17 +157,21 @@ test("list_restaurants filtre par ville et compte les fiches complètes et à va
   await createRestaurantTool({ nom: "Da Vittorio", ville: "Milano", statut: "actif" }, client);
   await createRestaurantTool({ nom: "Septime", ville: "Paris" }, client);
   const milan = await listRestaurantsTool({ ville: "Milan" }, client);
+  assert.ok("restaurants" in milan);
+  if (!("restaurants" in milan)) return;
   assert.equal(milan.ville, "Milan");
   assert.equal(milan.total, 2);
   assert.equal(milan.a_valider, 1);
   assert.equal(milan.completes, 0);
   assert.deepEqual(milan.restaurants.map((row) => row.nom).sort(), ["Da Vittorio", "Ostuni"]);
   const pending = await listRestaurantsTool({ ville: "Milan", statut: "à valider" }, client);
+  assert.ok("restaurants" in pending);
+  if (!("restaurants" in pending)) return;
   assert.deepEqual(pending.restaurants.map((row) => row.nom), ["Ostuni"]);
   const all = await listRestaurantsTool({}, client);
-  assert.equal(all.total, 3);
+  assert.ok("total" in all && all.total === 3);
   const one = await listRestaurantsTool({ restaurant_id: milan.restaurants[0].restaurant_id }, client);
-  assert.equal(one.restaurant_id, milan.restaurants[0].restaurant_id);
+  assert.ok("restaurant_id" in one && one.restaurant_id === milan.restaurants[0].restaurant_id);
   await assert.rejects(() => listRestaurantsTool({ restaurant_id: "nimp" }, client), /Restaurant invalide/);
   await assert.rejects(() => listRestaurantsTool({ ville: "Milan", statut: "ouvert" }, client), /Statut/);
 });
@@ -188,7 +192,7 @@ test("update_restaurant ne change que les champs donnés et rend la fiche compl�
     client
   );
   assert.equal(completed.modifie, true);
-  assert.deepEqual(completed.champs, ["photos", "photo_plat", "description", "page"]);
+  assert.deepEqual("champs" in completed ? completed.champs : [], ["photos", "photo_plat", "description", "page"]);
   assert.equal(completed.fiche_complete, true);
   assert.deepEqual(completed.champs_manquants, []);
   assert.equal(completed.cuisine, "italienne du sud", "les champs non cités ne bougent pas");
