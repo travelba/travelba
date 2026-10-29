@@ -8,7 +8,7 @@ import { eveningBanner } from "@/lib/crm/restaurant-desk";
 import { loadRestaurantBoard } from "@/lib/crm/restaurant-board";
 import { RESTAURANT_ALLOWED_BOOKINGS_ENV, restaurantAllowlist } from "@/lib/crm/restaurant-allowlist";
 import { RESTAURANT_TEST_COOKIE, restaurantTestOperator, restaurantTestPhone } from "@/lib/crm/restaurant-test";
-import { resolveContentSid, whatsappContentApproved } from "@/lib/crm/twilio-content-sid";
+import { approvedRestaurantContentSid } from "@/lib/crm/restaurant-templates-arm";
 import { RESTAURANT_CAROUSEL_ENV, RESTAURANT_INTRO_ENV } from "@/lib/crm/restaurant-whatsapp";
 
 export const metadata = { title: "Restaurants du soir" };
@@ -19,9 +19,9 @@ export default async function AdminRestaurantsPage() {
   const allowed = restaurantTestOperator(user.email);
   const jar = await cookies();
   const testOn = allowed && jar.get(RESTAURANT_TEST_COOKIE)?.value === "1";
-  const intro = await resolveContentSid(RESTAURANT_INTRO_ENV);
-  const carousel = await resolveContentSid(RESTAURANT_CAROUSEL_ENV);
-  const templatesReady = Boolean(intro && (await whatsappContentApproved(intro)) && carousel && (await whatsappContentApproved(carousel)));
+  const intro = await approvedRestaurantContentSid(RESTAURANT_INTRO_ENV);
+  const carousel = await approvedRestaurantContentSid(RESTAURANT_CAROUSEL_ENV);
+  const templatesReady = Boolean(intro && carousel);
   const board = await loadRestaurantBoard(supabase, {
     test: testOn,
     templatesReady,
