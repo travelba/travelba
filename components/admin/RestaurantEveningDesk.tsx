@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RESTAURANT_ALLOWLIST_BADGE, RESTAURANT_ALLOWLIST_BLOCK } from "@/lib/crm/restaurant-allowlist";
 import type { DeskFaceStatus, DeskPhase, DeskTone } from "@/lib/crm/restaurant-desk";
 import { RESTAURANT_DEFAULT_TIME } from "@/lib/crm/restaurants";
 
@@ -43,6 +44,8 @@ export type DeskRowView = {
   phase: DeskPhase;
   sendBlock: string | null;
   delivery: "modele" | "libre" | "apercu";
+  /** Faux : dossier hors de la liste d’essai, rien ne part. */
+  allowed: boolean;
   faces: DeskFaceView[];
   clicks: { at: string; label: string }[];
   suggestions: DeskSuggestionView[];
@@ -221,11 +224,22 @@ export function RestaurantEveningDesk({
               <li key={key} id={row.bookingId} className="space-y-4 rounded-[28px] bg-[#faf9f6] p-3 sm:p-4">
                 <div className="flex flex-wrap items-end justify-between gap-2 px-1">
                   <div>
-                    <p className="font-display text-2xl font-semibold text-[#0B192C]">{row.client}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-display text-2xl font-semibold text-[#0B192C]">{row.client}</p>
+                      {row.allowed ? null : (
+                        <span
+                          title={RESTAURANT_ALLOWLIST_BLOCK}
+                          className="rounded-full bg-[#c46a2d] px-3 py-1 text-xs font-semibold text-white"
+                        >
+                          {RESTAURANT_ALLOWLIST_BADGE}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-muted">
-                      {row.city || "Ville à confirmer"}
+                      {row.reference} · {row.city || "Ville à confirmer"}
                       {row.hotel ? ` · ${row.hotel}` : ""} · {row.dateLabel}
                     </p>
+                    {row.allowed ? null : <p className="text-xs text-[#c46a2d]">{RESTAURANT_ALLOWLIST_BLOCK} Aucun WhatsApp ne part pour ce dossier.</p>}
                   </div>
                   <p className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#0B192C]">
                     {(() => {
@@ -345,16 +359,23 @@ export function RestaurantEveningDesk({
                     {row.sendBlock ? <p className="text-sm font-semibold text-[#0B192C]">{row.sendBlock}</p> : null}
                     <button
                       type="button"
-                      disabled={busy || Boolean(row.sendBlock) || row.delivery === "apercu"}
-                      onClick={() =>
+                      disabled={busy || !row.allowed || Boolean(row.sendBlock) || row.delivery === "apercu"}
+                      onClick={() => {
+                        if (!row.allowed) return;
                         void post(`/api/admin/bookings/${row.bookingId}/restaurants`, {
                           action: "envoyer",
                           date: row.date,
-                        })
-                      }
+                        });
+                      }}
                       className="min-h-12 w-full rounded-full bg-[#C5A880] text-sm font-semibold text-[#0B192C] disabled:opacity-40"
                     >
-                      {row.delivery === "libre" ? "Envoyer en message libre" : row.delivery === "apercu" ? "Aperçu seul" : "Envoyer au client"}
+                      {!row.allowed
+                        ? RESTAURANT_ALLOWLIST_BADGE
+                        : row.delivery === "libre"
+                          ? "Envoyer en message libre"
+                          : row.delivery === "apercu"
+                            ? "Aperçu seul"
+                            : "Envoyer au client"}
                     </button>
                   </div>
                 ) : null}

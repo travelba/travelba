@@ -519,9 +519,9 @@ test("le mode test n’écrit qu’à Benjamin et le bureau reste lisible", () =
   assert.equal(eveningPhase(["proposee", "proposee"]), "envoyer");
   assert.equal(eveningPhase(["acceptee", "a_annuler"]), "annuler");
   assert.deepEqual(ficheGaps({ photoUrls: [], signaturePhotoUrl: "", pitch: "", priceBand: "", placeUrl: "", website: "" }).length, 5);
-  assert.equal(sendBlockReason({ gaps: ["photo de la salle"], templatesReady: true, test: false, testPhone: false, alreadySent: false, hasClientPhone: true }), "Fiche incomplète : photo de la salle.");
-  assert.equal(sendBlockReason({ gaps: [], templatesReady: false, test: false, testPhone: false, alreadySent: false, hasClientPhone: true }), "Le modèle WhatsApp n’est pas encore approuvé par Meta.");
-  assert.equal(sendBlockReason({ gaps: [], templatesReady: false, test: true, testPhone: true, alreadySent: false, hasClientPhone: false }), null);
+  assert.equal(sendBlockReason({ gaps: ["photo de la salle"], templatesReady: true, test: false, testPhone: false, alreadySent: false, hasClientPhone: true, allowed: true }), "Fiche incomplète : photo de la salle.");
+  assert.equal(sendBlockReason({ gaps: [], templatesReady: false, test: false, testPhone: false, alreadySent: false, hasClientPhone: true, allowed: true }), "Le modèle WhatsApp n’est pas encore approuvé par Meta.");
+  assert.equal(sendBlockReason({ gaps: [], templatesReady: false, test: true, testPhone: true, alreadySent: false, hasClientPhone: false, allowed: false }), null);
   assert.equal(eveningBanner([{ phase: "envoyer", clicks: 0, faces: ["proposee", "proposee"] }, { phase: "annuler", clicks: 1, faces: ["acceptee", "a_annuler"] }]).envoyer, 1);
   const sql = readFileSync(new URL("../../supabase/migrations/20261029223000_crm_restaurant_test.sql", import.meta.url), "utf8");
   assert.match(sql, /is_test/);

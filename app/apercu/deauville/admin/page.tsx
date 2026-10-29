@@ -23,6 +23,7 @@ export default function DeauvilleAdminPage() {
     closesAt: Date.parse(`${evening.date}T17:00:00.000Z`),
     phase: "envoyer",
     sendBlock: null,
+    allowed: true,
     delivery: "apercu",
     clicks: [],
     suggestions: [],

@@ -1,3 +1,4 @@
+import { RESTAURANT_ALLOWLIST_BLOCK } from "./restaurant-allowlist";
 import { zonedInstant, type TableSeat, type TableStatus } from "./restaurants";
 
 export type DeskTone = "gris" | "encre" | "vert" | "orange" | "mute";
@@ -78,6 +79,7 @@ export function ficheComplete(input: Parameters<typeof ficheGaps>[0]) {
   return ficheGaps(input).length === 0;
 }
 
+/** Pourquoi Envoyer au client est éteint. La liste d’essai passe avant tout, sauf en mode test (numéro de test seul). */
 export function sendBlockReason(input: {
   gaps: string[];
   templatesReady: boolean;
@@ -85,7 +87,10 @@ export function sendBlockReason(input: {
   testPhone: boolean;
   alreadySent: boolean;
   hasClientPhone: boolean;
+  /** Dossier dans `RESTAURANT_ALLOWED_BOOKINGS`. */
+  allowed: boolean;
 }) {
+  if (!input.test && !input.allowed) return RESTAURANT_ALLOWLIST_BLOCK;
   if (input.alreadySent) return "Déjà envoyé.";
   if (input.gaps.length) return `Fiche incomplète : ${input.gaps.join(", ")}.`;
   if (input.test) {

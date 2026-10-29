@@ -594,6 +594,8 @@ export type DeskEvening = {
   tables: { seat: TableSeat; status: TableStatus; restaurantName: string | null }[];
   /** Déjà parti. Sans ce détail, un soir « envoyé » compte pour les trois messages. */
   partsSent?: { intro: boolean; A: boolean; B: boolean };
+  /** Dossier de la liste d’essai (`RESTAURANT_ALLOWED_BOOKINGS`). `false` : rien ne part, rien ne se clôt. */
+  allowed?: boolean;
 };
 
 export type CronSend = {
@@ -625,6 +627,7 @@ function sentParts(row: DeskEvening) {
  * Pré-message d’abord, puis la fiche A, puis la fiche B.
  * Les carrousels n’entrent dans le plan que si le pré-message est déjà parti
  * ou part dans ce passage. À 18 h, la clôture ne change pas.
+ * Un soir marqué `allowed: false` (hors liste d’essai) n’entre ni dans les envois ni dans les clôtures.
  */
 export function planRestaurantCron(
   rows: DeskEvening[],
@@ -635,7 +638,7 @@ export function planRestaurantCron(
   const sends: CronSend[] = [];
   const closes: CronClose[] = [];
   for (const row of rows) {
-    if (!row.timezone) continue;
+    if (!row.timezone || row.allowed === false) continue;
     const sent = sentParts(row);
     const open = inChoiceWindow(now, row.eveningDate, row.timezone) && row.canWhatsapp && bothSendable(row);
     if (open) {

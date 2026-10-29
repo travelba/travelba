@@ -28,6 +28,7 @@ function row(partial: Partial<DeskRowView> & Pick<DeskRowView, "bookingId" | "cl
     countdown: "2 h 00",
     closesAt: soon,
     sendBlock: null,
+    allowed: true,
     delivery: "modele",
     clicks: [],
     suggestions: [

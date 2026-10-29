@@ -12,6 +12,7 @@ import { restaurantGreeting, restaurantIntroText, SALLE_CARD_BODY, PLAT_CARD_BOD
 import { cityPlaceKey } from "./city-names";
 import { clockLabel, formatEveningFr, hotelForEvening, hotelsFromItems, localClock, restaurantDefaultClock, timezoneForStay, type RestaurantRecord, type TableSeat, type TableStatus } from "./restaurants";
 import { mapRestaurant } from "./restaurants-db";
+import { restaurantAllowlist, restaurantBookingAllowed } from "./restaurant-allowlist";
 
 const MISSING = new Set(["42P01", "42703", "PGRST204", "PGRST205"]);
 
@@ -39,6 +40,8 @@ export type BoardRow = {
   phase: DeskPhase;
   sendBlock: string | null;
   delivery: "modele" | "libre" | "apercu";
+  /** Dossier de la liste d’essai `RESTAURANT_ALLOWED_BOOKINGS` (toujours vrai en mode test : numéro de test seul). */
+  allowed: boolean;
   faces: BoardFace[];
   clicks: { at: string; label: string }[];
   suggestions: { id: string; name: string; photo: string | null; city: string; complete: boolean }[];
@@ -123,7 +126,9 @@ export async function loadRestaurantBoard(
     )
   );
   const rows: BoardRow[] = [];
+  const allowlist = restaurantAllowlist();
   for (const stay of stays) {
+    const allowed = input.test || restaurantBookingAllowed(stay.reference, allowlist);
     const hotels = hotelsFromItems((items.data || []).filter((row) => (row as { booking_id: string }).booking_id === stay.id) as Parameters<typeof hotelsFromItems>[0]);
     const customer = customers.get(stay.customer_id);
     const greeting = restaurantGreeting({ sex: customer?.sex, lastName: customer?.last_name, firstName: customer?.first_name });
@@ -219,6 +224,7 @@ export async function loadRestaurantBoard(
         testPhone: input.testPhone,
         alreadySent: sent.has("intro") && sent.has("A") && sent.has("B"),
         hasClientPhone: Boolean(customer?.phone),
+        allowed,
       });
       rows.push({
         bookingId: stay.id,
@@ -233,6 +239,7 @@ export async function loadRestaurantBoard(
         phase,
         sendBlock: phase === "envoyer" ? block : null,
         delivery: input.templatesReady ? "modele" : input.test && input.testPhone ? "libre" : "apercu",
+        allowed,
         faces,
         clicks,
         suggestions,
