@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cityPlaceKey } from "./city-names";
 import { phoneFromWhatsapp } from "./whatsapp-inbound";
 import { sendContentTemplate } from "./whatsapp";
+import { sendWhatsappSession } from "./whatsapp-session";
 import { resolveContentSid, whatsappContentApproved } from "./twilio-content-sid";
 import {
   clockLabel,
@@ -37,6 +38,8 @@ import {
   restaurantIntroVariables,
 } from "./restaurant-whatsapp";
 import { mapRestaurant, refuseRestaurantSeat, restaurantsReady, saveBookingChoice, type DeskTable } from "./restaurants-db";
+import { ficheGaps } from "./restaurant-desk";
+import { outboundRestaurantPhone, restaurantTestPhone } from "./restaurant-test";
 
 type DbError = { code?: string | null } | null;
 
@@ -60,6 +63,7 @@ type BookingRow = {
   end_date: string | null;
   timezone: string | null;
   status: string;
+  is_test?: boolean;
 };
 
 type CustomerRow = {
@@ -85,6 +89,7 @@ type TableRow = {
   account_email: string | null;
   covers: number;
   card_last4: string | null;
+  is_test?: boolean;
 };
 
 type EveningRow = {
@@ -119,14 +124,30 @@ type Bundle = {
 async function loadBundle(db: SupabaseClient, now: Date): Promise<Bundle | { missing: true } | { error: true }> {
   const from = isoShift(now, -3);
   const to = isoShift(now, 3);
-  const bookings = await db
+  const columns = "id, reference, customer_id, title, destination, start_date, end_date, timezone, status, archived_at, is_test";
+  let bookings = await db
     .from("crm_bookings")
-    .select("id, reference, customer_id, title, destination, start_date, end_date, timezone, status, archived_at")
+    .select(columns)
     .is("archived_at", null)
     .neq("status", "cancelled")
     .or(`start_date.is.null,start_date.lte.${to}`)
     .or(`end_date.is.null,end_date.gte.${from}`)
     .limit(200);
+  if (bookings.error && (bookings.error.code === "42703" || bookings.error.code === "PGRST204")) {
+    const plain = await db
+      .from("crm_bookings")
+      .select("id, reference, customer_id, title, destination, start_date, end_date, timezone, status, archived_at")
+      .is("archived_at", null)
+      .neq("status", "cancelled")
+      .or(`start_date.is.null,start_date.lte.${to}`)
+      .or(`end_date.is.null,end_date.gte.${from}`)
+      .limit(200);
+    if (plain.error) {
+      logDb("séjours", plain.error);
+      return { error: true };
+    }
+    bookings = { ...plain, data: (plain.data || []).map((row) => ({ ...row, is_test: false })) } as unknown as typeof bookings;
+  }
   if (bookings.error) {
     logDb("séjours", bookings.error);
     if (!restaurantsReady(bookings.error)) return { missing: true };
@@ -348,6 +369,7 @@ async function rememberMessage(
     error?: string | null;
     tableId?: string | null;
     templateKey: string;
+    isTest?: boolean;
   }
 ) {
   const key = restaurantDedupeKey(input.bookingId, input.eveningDate, input.part);
@@ -362,14 +384,16 @@ async function rememberMessage(
     dedupe_key: key,
     part: input.part,
     table_id: input.tableId || null,
+    is_test: Boolean(input.isTest),
   };
   const write = existing.data
     ? await db.from("crm_restaurant_messages").update(row).eq("dedupe_key", key)
     : await db.from("crm_restaurant_messages").insert(row);
   if (write.error && columnMissing(write.error.code)) {
-    const { part, table_id, ...slim } = row;
+    const { part, table_id, is_test, ...slim } = row;
     void part;
     void table_id;
+    void is_test;
     const again = existing.data
       ? await db.from("crm_restaurant_messages").update(slim).eq("dedupe_key", key)
       : await db.from("crm_restaurant_messages").insert(slim);
@@ -524,6 +548,7 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
   const desks: DeskEvening[] = [];
   const detail = new Map<string, { booking: BookingRow; customer: CustomerRow | undefined; tables: TableRow[] }>();
   for (const booking of bundle.bookings) {
+    if (booking.is_test || bundle.tables.some((table) => table.booking_id === booking.id && table.is_test)) continue;
     const hotels = bundle.hotels.get(booking.id) || [];
     const earliest = isoShift(now, -2);
     const latest = isoShift(now, 1);
@@ -571,7 +596,13 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
     const eveningKey = `${action.bookingId}:${action.eveningDate}`;
     if (action.part !== "intro" && introHeld.has(eveningKey)) continue;
     const row = detail.get(eveningKey);
-    if (!row?.customer?.phone) continue;
+    const test = Boolean(row?.booking.is_test) || Boolean(row?.tables.some((table) => table.is_test));
+    const phone = outboundRestaurantPhone({
+      test,
+      clientPhone: row?.customer?.phone || null,
+      testPhone: restaurantTestPhone(),
+    });
+    if (!row?.customer || !phone) continue;
     const prior = bundle.messages.find(
       (message) => message.dedupe_key === restaurantDedupeKey(action.bookingId, action.eveningDate, action.part)
     );
@@ -597,7 +628,7 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
       await rememberMessage(db, {
         bookingId: action.bookingId,
         customerId: row.customer.id,
-        phone: row.customer.phone,
+        phone,
         eveningDate: action.eveningDate,
         part: action.part,
         body: prepared.error,
@@ -620,7 +651,7 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
       await rememberMessage(db, {
         bookingId: action.bookingId,
         customerId: row.customer.id,
-        phone: row.customer.phone,
+        phone,
         eveningDate: action.eveningDate,
         part: action.part,
         body: prepared.text,
@@ -635,7 +666,7 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
       continue;
     }
     const result = await sendContentTemplate({
-      phone: row.customer.phone,
+      phone,
       contentSid: prepared.contentSid,
       variables: prepared.variables,
     });
@@ -644,7 +675,7 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
       await rememberMessage(db, {
         bookingId: action.bookingId,
         customerId: row.customer.id,
-        phone: row.customer.phone,
+        phone,
         eveningDate: action.eveningDate,
         part: action.part,
         body: prepared.text,
@@ -661,7 +692,7 @@ export async function runRestaurantCronJob(db: SupabaseClient, now = new Date())
     await rememberMessage(db, {
       bookingId: action.bookingId,
       customerId: row.customer.id,
-      phone: row.customer.phone,
+      phone,
       eveningDate: action.eveningDate,
       part: action.part,
       body: prepared.text,
@@ -741,6 +772,14 @@ export async function captureRestaurantChoice(db: SupabaseClient, params: URLSea
   if (!button) return { handled: false as const };
   const phone = phoneFromWhatsapp(params.get("From"));
   if (!phone) return { handled: false as const };
+  if (!("legacy" in button) && button.tableId) {
+    const probe = await db.from("crm_restaurant_tables").select("id, is_test").eq("id", button.tableId).maybeSingle();
+    if ((probe.data as { is_test?: boolean } | null)?.is_test) {
+      const allowed = restaurantTestPhone();
+      if (!allowed || phone.replace(/\D/g, "") !== allowed.replace(/\D/g, "")) return { handled: false as const };
+      return captureSeatReply(db, { id: "" }, button, params, phone);
+    }
+  }
   const [primary, secondary] = await Promise.all([
     db.from("crm_customers").select("id, first_name").eq("phone", phone),
     db.from("crm_customers").select("id, first_name").eq("phone_secondary", phone),
@@ -793,8 +832,14 @@ async function captureSeatReply(
   const table = await db.from("crm_restaurant_tables").select("id, booking_id, evening_date, seat").eq("id", tableId).maybeSingle();
   const row = table.data as { id: string; booking_id: string; evening_date: string; seat: TableSeat } | null;
   if (!row || (row.seat !== "A" && row.seat !== "B")) return { handled: false as const };
-  const booking = await db.from("crm_bookings").select("id, customer_id").eq("id", row.booking_id).maybeSingle();
-  if ((booking.data as { customer_id?: string } | null)?.customer_id !== customer.id) return { handled: false as const };
+  const booking = await db.from("crm_bookings").select("id, customer_id, is_test").eq("id", row.booking_id).maybeSingle();
+  const owner = booking.data as { customer_id?: string; is_test?: boolean } | null;
+  const testRow = Boolean((table.data as { is_test?: boolean } | null)?.is_test) || Boolean(owner?.is_test);
+  if (testRow) {
+    const allowed = restaurantTestPhone();
+    if (!allowed || phone.replace(/\D/g, "") !== allowed.replace(/\D/g, "")) return { handled: false as const };
+  } else if (owner?.customer_id !== customer.id) return { handled: false as const };
+  const customerId = owner?.customer_id || customer.id;
   bookingId = row.booking_id;
   date = String(row.evening_date).slice(0, 10);
   seat = row.seat;
@@ -807,7 +852,7 @@ async function captureSeatReply(
   const label = button.reply === "accepte" ? "J'accepte" : "Je refuse";
   if ((evening.data as { closed_at?: string | null } | null)?.closed_at) {
     await noteRestaurantReply(db, {
-      customerId: customer.id,
+      customerId,
       bookingId,
       date,
       phone,
@@ -825,7 +870,7 @@ async function captureSeatReply(
     if ("error" in saved) return { handled: false as const };
   }
   await noteRestaurantReply(db, {
-    customerId: customer.id,
+    customerId,
     bookingId,
     date,
     phone,
@@ -898,4 +943,112 @@ async function captureLegacyChoice(
     sid: params.get("MessageSid"),
   });
   return { handled: true as const, bookingId: target.row.booking_id, date, choice };
+}
+
+/** Envoi demandé par l’agence. Le cron de 16 h ne passe pas par ici. Le mode test n’écrit qu’au numéro de test. */
+export async function sendRestaurantEvening(db: SupabaseClient, bookingId: string, date: string) {
+  const bundle = await loadBundle(db, new Date());
+  if ("missing" in bundle) return { error: "Le module restaurants n’est pas encore en place." };
+  if ("error" in bundle) return { error: "Lecture impossible." };
+  const booking = bundle.bookings.find((row) => row.id === bookingId);
+  const customer = booking ? bundle.customers.get(booking.customer_id) : undefined;
+  if (!booking || !customer) return { error: "Dossier introuvable." };
+  const tables = bundle.tables.filter((row) => row.booking_id === bookingId && row.evening_date.slice(0, 10) === date);
+  const test = Boolean(booking.is_test) || tables.some((row) => row.is_test);
+  const phone = outboundRestaurantPhone({
+    test,
+    clientPhone: test ? null : customer.phone,
+    testPhone: restaurantTestPhone(),
+  });
+  if (!phone) return { error: test ? "Numéro de test absent. Renseignez RESTAURANT_TEST_PHONE." : "Ce client n’a pas de numéro WhatsApp." };
+  const sent = { intro: false, A: false, B: false };
+  for (const message of bundle.messages) {
+    if (message.booking_id !== bookingId || message.evening_date.slice(0, 10) !== date || message.status !== "envoye") continue;
+    const part = restaurantPartFromKey(message.dedupe_key);
+    if (part) sent[part] = true;
+  }
+  if (sent.intro && sent.A && sent.B) return { error: "Déjà envoyé." };
+  const houses = (["A", "B"] as const).map((seat) => {
+    const table = tables.find((row) => row.seat === seat);
+    const restaurant = table?.restaurant_id ? bundle.restaurants.get(table.restaurant_id) : undefined;
+    return { seat, table, restaurant };
+  });
+  if (houses.some((house) => !house.restaurant || !house.table?.id)) return { error: "Choisissez les deux restaurants." };
+  const gaps = houses.flatMap((house) =>
+    ficheGaps({
+      photoUrls: house.restaurant?.photoUrls || [],
+      signaturePhotoUrl: house.restaurant?.signaturePhotoUrl || "",
+      pitch: house.restaurant?.pitch || "",
+      priceBand: house.restaurant?.priceBand || "",
+      placeUrl: house.restaurant?.placeUrl || "",
+      website: house.restaurant?.website || "",
+    }).map((gap) => `${house.restaurant?.name || "Restaurant"} : ${gap}`)
+  );
+  if (gaps.length) return { error: `Fiche incomplète : ${gaps.join(", ")}.` };
+  const introSid = await approvedSid(RESTAURANT_INTRO_ENV);
+  const carouselSid = await approvedSid(RESTAURANT_CAROUSEL_ENV);
+  const menuSid = await approvedSid(RESTAURANT_CAROUSEL_MENU_ENV);
+  const greeting = restaurantGreeting({ sex: customer.sex, lastName: customer.last_name, firstName: customer.first_name });
+  if (!introSid || !(carouselSid || menuSid)) {
+    if (!test) return { error: "Le modèle WhatsApp n’est pas encore approuvé par Meta." };
+    const text = restaurantIntroText({ greeting, eveningDate: date });
+    const libre = await sendWhatsappSession({ to: phone, body: text });
+    if (!libre.ok) return { error: "Aperçu seul. Le modèle n’est pas approuvé et la fenêtre de 24 h n’est pas ouverte." };
+    await rememberMessage(db, {
+      bookingId,
+      customerId: customer.id,
+      phone,
+      eveningDate: date,
+      part: "intro",
+      body: text,
+      status: "envoye",
+      whatsappStatus: "sent",
+      sid: libre.sid,
+      templateKey: "restaurant_selection",
+      isTest: true,
+    });
+    return { ok: true as const, libre: true };
+  }
+  const detail = { booking, customer, tables };
+  let sentCount = 0;
+  for (const part of ["intro", "A", "B"] as const) {
+    if (sent[part]) continue;
+    const prepared = prepareRestaurantSend({
+      action: { part, eveningDate: date },
+      row: detail,
+      restaurants: bundle.restaurants,
+      greeting,
+      introSid,
+      carouselSid,
+      menuSid,
+    });
+    if ("error" in prepared) return { error: prepared.error };
+    const result = await sendContentTemplate({ phone, contentSid: prepared.contentSid, variables: prepared.variables });
+    if (!result.ok) return { error: "WhatsApp n’a pas accepté le message." };
+    await rememberMessage(db, {
+      bookingId,
+      customerId: customer.id,
+      phone,
+      eveningDate: date,
+      part,
+      body: prepared.text,
+      status: "envoye",
+      whatsappStatus: "sent",
+      sid: result.sid,
+      tableId: prepared.tableId,
+      templateKey: prepared.templateKey,
+      isTest: test,
+    });
+    if (part === "A" || part === "B") {
+      await db
+        .from("crm_restaurant_tables")
+        .update({ status: "proposee", updated_at: new Date().toISOString() })
+        .eq("booking_id", bookingId)
+        .eq("evening_date", date)
+        .eq("seat", part)
+        .eq("status", "reservee");
+    }
+    sentCount += 1;
+  }
+  return { ok: true as const, sent: sentCount };
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ficheGaps } from "@/lib/crm/restaurant-desk";
 import type { RestaurantRecord } from "@/lib/crm/restaurants";
 import { categoryLabel, platformLabel, RESTAURANT_CATEGORIES, RESTAURANT_PLATFORMS } from "@/lib/crm/restaurants";
 
@@ -220,7 +221,7 @@ export function RestaurantCatalog({
 
   return (
     <div className="space-y-4">
-      <form className="flex flex-col gap-2 sm:flex-row" action="/admin/restaurants">
+        <form className="flex flex-col gap-2 sm:flex-row" action="/admin/restaurants/catalogue">
         <input className={inputClass} name="q" defaultValue={query} placeholder="Nom ou ville" aria-label="Chercher un restaurant" />
         <button className="admin-tap min-h-11 rounded-full bg-[#0B192C] px-4 text-sm font-semibold text-white" type="submit">
           Chercher
@@ -247,33 +248,31 @@ export function RestaurantCatalog({
           onClose={() => setOpen(false)}
         />
       ) : null}
-      <ul className="space-y-3">
-        {rows.map((row) => (
-          <li key={row.id} className="admin-af-card rounded-3xl p-4">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="font-display text-lg font-semibold text-[#0B192C]">{row.name}</p>
-                <p className="text-sm text-muted">
-                  {row.city}
-                  {row.categories.length ? ` · ${row.categories.map(categoryLabel).join(", ")}` : ""}
-                </p>
-                {row.pitch || row.priceBand || row.photoUrls.length ? (
-                  <p className="text-sm text-muted">
-                    {[row.pitch, row.priceBand, row.photoUrls.length ? `${row.photoUrls.length} photo${row.photoUrls.length > 1 ? "s" : ""}` : ""]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                ) : null}
-                <p className="text-sm text-[#0B192C]">
-                  {row.status === "exclu" ? "Exclu" : "Actif"}
-                  {row.exclusionReason ? ` · ${row.exclusionReason}` : ""}
-                  {platformLabel(row.platform) ? ` · ${platformLabel(row.platform)}` : ""}
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {rows.map((row) => {
+          const gaps = ficheGaps(row);
+          return (
+          <li key={row.id} className="admin-af-card overflow-hidden rounded-3xl">
+            <div className={`aspect-[16/10] ${row.photoUrls[0] ? "" : "bg-gradient-to-br from-[#1a3348] to-[#0B192C]"}`}>
+              {row.photoUrls[0] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={row.photoUrls[0]} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+              ) : null}
+            </div>
+            <div className="space-y-2 p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-display text-xl font-semibold text-[#0B192C]">{row.name}</p>
+                  <p className="text-sm text-muted">{row.city}</p>
+                </div>
+                <p className={`rounded-full px-3 py-1 text-xs font-semibold ${gaps.length ? "bg-[#e7e2d8] text-[#5c564c]" : "bg-[#1f6b45] text-white"}`}>
+                  {gaps.length ? "À compléter" : "Fiche complète"}
                 </p>
               </div>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  className="admin-tap min-h-11 rounded-full border border-[#d9d1c3] px-3 text-sm font-semibold text-[#0B192C]"
+                  className="admin-tap min-h-11 rounded-full bg-[#0B192C] px-3 text-sm font-semibold text-white"
                   onClick={() => {
                     setDraft(fromRow(row));
                     setEditing(row.id);
@@ -293,7 +292,8 @@ export function RestaurantCatalog({
               </div>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
       {rows.length ? null : <p className="text-sm text-muted">Aucun restaurant dans le catalogue.</p>}
     </div>
@@ -362,6 +362,26 @@ function Editor({
           </label>
         </div>
       </fieldset>
+      <aside className="rounded-3xl bg-[#0B192C] p-3 text-white">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#C5A880]">Aperçu de la carte</p>
+          <p className={`rounded-full px-3 py-1 text-xs font-semibold ${ficheGaps({ photoUrls: draft.photos.split("\n"), signaturePhotoUrl: draft.signaturePhoto, pitch: draft.pitch, priceBand: draft.priceBand, placeUrl: draft.placeUrl, website: draft.website }).length ? "bg-white/15" : "bg-[#1f6b45]"}`}>
+            {ficheGaps({ photoUrls: draft.photos.split("\n"), signaturePhotoUrl: draft.signaturePhoto, pitch: draft.pitch, priceBand: draft.priceBand, placeUrl: draft.placeUrl, website: draft.website }).length ? "À compléter" : "Fiche complète"}
+          </p>
+        </div>
+        <article className="max-w-xs overflow-hidden rounded-2xl bg-white text-[#0B192C]">
+          <div className="aspect-[16/10] bg-gradient-to-br from-[#1a3348] to-[#0B192C]" />
+          <div className="space-y-2 p-3">
+            <p className="font-display text-lg font-semibold">{draft.name || "Restaurant"}</p>
+            <p className="text-sm">{draft.pitch || "La description apparaît ici."}</p>
+            <p className="text-sm text-muted">{draft.priceBand || "Fourchette"} · {draft.placeUrl || "Lien"}</p>
+            <div className="grid grid-cols-2 gap-1">
+              <p className="rounded-full bg-[#f4efe4] py-1 text-center text-xs font-semibold">J&apos;accepte</p>
+              <p className="rounded-full bg-[#f4efe4] py-1 text-center text-xs font-semibold">Je refuse</p>
+            </div>
+          </div>
+        </article>
+      </aside>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm text-[#0B192C] sm:col-span-2">
           Adresse

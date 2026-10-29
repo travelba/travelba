@@ -30,6 +30,8 @@ import {
   type RestaurantRecord,
 } from "./restaurants";
 import { isPrivateAddress, parseMediaToken, publicHttpsUrl } from "./restaurant-media";
+import { eveningBanner, eveningPhase, faceStatus, ficheGaps, sendBlockReason } from "./restaurant-desk";
+import { outboundRestaurantPhone, restaurantTestOperator } from "./restaurant-test";
 import {
   deliveryDecision,
   parseRestaurantButton,
@@ -480,6 +482,29 @@ test("accepter une table passe l’autre à annuler, sans changer la clôture de
   assert.equal(parseCovers(undefined), RESTAURANT_COVERS);
   assert.equal(parseCovers(""), 2);
   assert.equal("error" in (parseCovers(4) as { error?: string }), true);
+});
+
+test("le mode test n’écrit qu’à Benjamin et le bureau reste lisible", () => {
+  assert.equal(restaurantTestOperator("Benjamin@travelba.fr"), true);
+  assert.equal(restaurantTestOperator("camille@travelba.fr"), false);
+  assert.equal(outboundRestaurantPhone({ test: true, clientPhone: "+33611111111", testPhone: "+33600000000" }), "+33600000000");
+  assert.equal(outboundRestaurantPhone({ test: true, clientPhone: "+33611111111", testPhone: null }), null);
+  assert.equal(outboundRestaurantPhone({ test: false, clientPhone: "+33611111111", testPhone: "+33600000000" }), "+33611111111");
+  assert.equal(faceStatus({ hasRestaurant: true, status: "reservee", sent: false, otherAccepted: false }), "proposee");
+  assert.equal(faceStatus({ hasRestaurant: true, status: "proposee", sent: true, otherAccepted: false }), "envoyee");
+  assert.equal(faceStatus({ hasRestaurant: true, status: "choisie", sent: true, otherAccepted: false }), "acceptee");
+  assert.equal(faceStatus({ hasRestaurant: true, status: "a_annuler", sent: true, otherAccepted: true }), "a_annuler");
+  assert.equal(faceStatus({ hasRestaurant: true, status: "a_annuler", sent: true, otherAccepted: false }), "refusee");
+  assert.equal(eveningPhase(["a_choisir", "a_choisir"]), "choisir");
+  assert.equal(eveningPhase(["proposee", "proposee"]), "envoyer");
+  assert.equal(eveningPhase(["acceptee", "a_annuler"]), "annuler");
+  assert.deepEqual(ficheGaps({ photoUrls: [], signaturePhotoUrl: "", pitch: "", priceBand: "", placeUrl: "", website: "" }).length, 5);
+  assert.equal(sendBlockReason({ gaps: ["photo de la salle"], templatesReady: true, test: false, testPhone: false, alreadySent: false, hasClientPhone: true }), "Fiche incomplète : photo de la salle.");
+  assert.equal(sendBlockReason({ gaps: [], templatesReady: false, test: false, testPhone: false, alreadySent: false, hasClientPhone: true }), "Le modèle WhatsApp n’est pas encore approuvé par Meta.");
+  assert.equal(sendBlockReason({ gaps: [], templatesReady: false, test: true, testPhone: true, alreadySent: false, hasClientPhone: false }), null);
+  assert.equal(eveningBanner([{ phase: "envoyer", clicks: 0, faces: ["proposee", "proposee"] }, { phase: "annuler", clicks: 1, faces: ["acceptee", "a_annuler"] }]).envoyer, 1);
+  const sql = readFileSync(new URL("../../supabase/migrations/20261029223000_crm_restaurant_test.sql", import.meta.url), "utf8");
+  assert.match(sql, /is_test/);
 });
 
 test("la migration restaurants ne stocke pas de PAN", () => {

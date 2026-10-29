@@ -223,7 +223,8 @@ export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search
   if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
   if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";
   if (pathname.startsWith("/admin/transactions/client/")) return "Transactions du client";
-  if (pathname === "/admin/restaurants/aujourdhui") return "Ce soir";
+  if (pathname === "/admin/restaurants/catalogue") return "Catalogue";
+  if (pathname === "/admin/restaurants/aujourdhui" || pathname === "/admin/restaurants") return "Restaurants";
   if (pathname === "/admin/recherche") return "Recherche";
   const active = activeAdminNavHref(groups, pathname, search);
   const item = groups.flatMap((group) => group.items).find((entry) => entry.href === active);
