@@ -120,6 +120,54 @@ function hotelNightsShare(a: MatchableItem, b: MatchableItem) {
   return aStart < checkoutDay(b) && bStart < checkoutDay(a);
 }
 
+export function hotelStaysOverlapNights(
+  a: { start_at?: string | null; end_at?: string | null },
+  b: { start_at?: string | null; end_at?: string | null }
+) {
+  return hotelNightsShare(a, b);
+}
+
+const HOTEL_NOISE = new Set(["hotel", "the", "and", "resort", "spa", "collection", "by", "ihg", "les", "des"]);
+
+function hotelBrandWords(value: string | null | undefined) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((token) => token.length > 3 && !HOTEL_NOISE.has(token));
+}
+
+/** « NoMad London » et « The NoMad Hotel, London » : les mots du plus court sont dans l’autre. */
+export function hotelBrandsAlign(a: string | null | undefined, b: string | null | undefined) {
+  const left = hotelBrandWords(a);
+  const right = hotelBrandWords(b);
+  if (!left.length || !right.length) return false;
+  const [shorter, longer] = left.length <= right.length ? [left, right] : [right, left];
+  return shorter.every((token) => longer.some((other) => other === token || other.includes(token) || token.includes(other)));
+}
+
+/**
+ * L’annulation porte un autre numéro que la carte active, au même hôtel, sur des nuits qui se croisent.
+ * Ce n’est pas cette carte.
+ */
+export function confirmationSupersededByActiveStay(active: MatchableItem, incoming: MatchableItem) {
+  if ((active.kind || "") !== "hotel" || (incoming.kind || "") !== "hotel") return false;
+  if (!hotelRefTokens(incoming.confirmation_ref).length) return false;
+  if (!hotelRefsConflict(active.confirmation_ref, incoming.confirmation_ref)) return false;
+  const leftId = leHotelId(active);
+  const rightId = leHotelId(incoming);
+  if (leftId != null && rightId != null && leftId !== rightId) return false;
+  const sameId = leftId != null && rightId != null;
+  const sameName =
+    hotelsShareName(active, incoming) ||
+    hotelBrandsAlign(detail(active, "hotel_name") || active.title, detail(incoming, "hotel_name") || incoming.title);
+  if (!sameId && !sameName) return false;
+  return hotelNightsShare(active, incoming);
+}
+
 /**
  * Même séjour : même réservation, même hôtel, ou une nuit en commun.
  * Deux hôtels à la suite ne se remplacent pas.

@@ -207,6 +207,14 @@ Signal extract : `document_status=cancelled` (LLM + parseur). Détecté aussi
 sur l’objet / le corps (« Cancellation confirmation », « has been cancelled »,
 « a été annulée ») — **pas** une politique « free cancellation ».
 
+Une annulation ne lève une alerte, ni un statut annulé, que si son numéro de
+confirmation est celui d’une carte active. Une confirmation plus récente pour
+le même hôtel, le même client ou voyageur et des dates qui se croisent est
+`suivi` « remplacée » (`alerte` false). Une annulation antérieure à la
+confirmation active est « historique » et s’ignore. `emails_en_attente`,
+`lire_email`, `little_emperors_en_attente` et `reservation_little_emperors`
+exposent `suivi`, `alerte` et `remplacee_par` pour que la routine filtre.
+
 Le parse ne l’applique pas. Le clic sur un dossier déjà ouvert non plus : il
 attache les fichiers, il n’annule pas la carte. L’annulation d’une carte reste
 un geste à part (`applyCancellationToBooking`, hors de ce clic) :

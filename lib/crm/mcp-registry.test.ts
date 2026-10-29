@@ -176,6 +176,9 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /prix de vente/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /MAD/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /déjà rattachée/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /alerte/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "little_emperors_en_attente")?.description || "", /historique/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "emails_en_attente")?.description || "", /remplacée/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.write, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);

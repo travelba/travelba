@@ -370,6 +370,14 @@ describe("little emperors staging client", () => {
       }).kind,
       "wait"
     );
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking: cancelled,
+        suggestion: { autoBookingId: "b-hotel", candidates: [] },
+        customers: [nico],
+      }).kind,
+      "wait"
+    );
     assert.deepEqual(
       decideLittleEmperorsAuto({
         booking: cancelled,
