@@ -33,6 +33,8 @@ import {
 } from "./restaurants";
 import { isPrivateAddress, parseMediaToken, publicHttpsUrl } from "./restaurant-media";
 import { eveningBanner, eveningPhase, faceStatus, ficheGaps, sendBlockReason } from "./restaurant-desk";
+import { clientTableCanReply, clientTableFace, presentClientTables } from "./client-tables";
+import { deauvilleCarouselErrors, deauvilleClientEvenings } from "./deauville-preview";
 import { outboundRestaurantPhone, restaurantTestOperator } from "./restaurant-test";
 import {
   deliveryDecision,
@@ -42,6 +44,7 @@ import {
   RESTAURANT_CAROUSEL_MENU_ENV,
   RESTAURANT_INTRO_ENV,
   RESTAURANT_SIGNATURE,
+  restaurantAcceptAck,
   restaurantCarouselBody,
   restaurantCarouselContentCreateBody,
   restaurantCarouselDraft,
@@ -553,4 +556,73 @@ test("la migration restaurants ne stocke pas de PAN", () => {
   assert.equal(isPrivateAddress("169.254.169.254"), true);
   assert.equal(publicHttpsUrl("http://cdn.example/a.jpg"), null);
   assert.equal(publicHttpsUrl("https://cdn.example/a.jpg"), "https://cdn.example/a.jpg");
+});
+
+test("l’espace client montre les tables envoyées et le clic suit le même choix", () => {
+  assert.equal(clientTableFace({ status: "reservee", otherAccepted: false }), null);
+  assert.equal(clientTableFace({ status: "a_reserver", otherAccepted: false }), null);
+  assert.equal(clientTableFace({ status: "proposee", otherAccepted: false }), "proposee");
+  assert.equal(clientTableFace({ status: "choisie", otherAccepted: false }), "acceptee");
+  assert.equal(clientTableFace({ status: "a_annuler", otherAccepted: true }), "a_annuler");
+  assert.equal(clientTableFace({ status: "a_annuler", otherAccepted: false }), "refusee");
+  assert.equal(clientTableFace({ status: "annulee", otherAccepted: true }), "annulee");
+  assert.equal(clientTableCanReply("proposee", false), true);
+  assert.equal(clientTableCanReply("proposee", true), false);
+  assert.equal(clientTableCanReply("acceptee", false), false);
+  const shown = presentClientTables([
+    {
+      id: "t1",
+      date: "2026-10-30",
+      seat: "A",
+      time: "20:30",
+      status: "proposee",
+      name: "Le Drakkar",
+      address: "77 rue Eugène Colas",
+      href: "https://www.ledrakkar-deauville.fr/",
+      photo: "/apercu/deauville/drakkar-salle.jpg",
+      pitch: "Une salle.",
+      price: "50–90 €",
+      closed: false,
+    },
+    {
+      id: "t0",
+      date: "2026-10-30",
+      seat: "B",
+      time: "20:30",
+      status: "reservee",
+      name: "Pas encore",
+      address: "",
+      href: "http://pas-https",
+      photo: null,
+      pitch: "",
+      price: "",
+      closed: false,
+    },
+  ]);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0]?.tables.length, 1);
+  assert.equal(shown[0]?.tables[0]?.time, "20h30");
+  assert.equal(shown[0]?.tables[0]?.canReply, true);
+  assert.equal(shown[0]?.tables[0]?.href.startsWith("https://"), true);
+  const choix = deauvilleClientEvenings("choix");
+  const friday = choix.find((evening) => evening.date === "2026-10-30");
+  assert.equal(friday?.tables[0]?.status, "acceptee");
+  assert.equal(friday?.tables[1]?.status, "annulee");
+  assert.equal(friday?.tables[0]?.canReply, false);
+  assert.deepEqual(deauvilleCarouselErrors(), []);
+  const ack = restaurantAcceptAck({
+    greeting: "Monsieur Boukris",
+    restaurant: "Le Drakkar",
+    eveningDate: "2026-10-30",
+    timeLabel: "20h30",
+    other: "Le Deauville",
+  });
+  assert.match(ack, /Monsieur Boukris/);
+  assert.match(ack, /Le Drakkar/);
+  assert.match(ack, /Le Deauville/);
+  assert.match(ack, /20h30/);
+  assert.match(ack, /La Conciergerie Travel BA/);
+  assert.doesNotMatch(ack, /18 h/);
+  const sql = readFileSync(new URL("../../supabase/migrations/20261029310000_crm_restaurant_choice_espace.sql", import.meta.url), "utf8");
+  assert.match(sql, /'espace'/);
 });

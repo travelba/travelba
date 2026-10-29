@@ -256,7 +256,7 @@ type EveningRow = {
   evening_date: string;
   choice: RestaurantChoice | null;
   chosen_at: string | null;
-  choice_source: "whatsapp" | "manuel" | null;
+  choice_source: "whatsapp" | "manuel" | "espace" | null;
   message_status: "aucun" | "en_file" | "envoye" | "echec";
   message_sent_at: string | null;
   closed_at: string | null;
@@ -294,7 +294,7 @@ export type DeskEveningView = {
   city: string;
   timezone: string | null;
   choice: RestaurantChoice | null;
-  choiceSource: "whatsapp" | "manuel" | null;
+  choiceSource: "whatsapp" | "manuel" | "espace" | null;
   messageStatus: EveningRow["message_status"];
   messageSentAt: string | null;
   closed: boolean;
@@ -527,7 +527,7 @@ export async function saveBookingTable(
 export async function saveBookingChoice(
   db: SupabaseClient,
   bookingId: string,
-  input: { date: string; choice: RestaurantChoice; source: "manuel" | "whatsapp" }
+  input: { date: string; choice: RestaurantChoice; source: "manuel" | "whatsapp" | "espace" }
 ) {
   const date = input.date.slice(0, 10);
   const now = new Date().toISOString();
@@ -585,7 +585,7 @@ export async function saveBookingChoice(
 export async function refuseRestaurantSeat(
   db: SupabaseClient,
   bookingId: string,
-  input: { date: string; seat: TableSeat }
+  input: { date: string; seat: TableSeat; source?: "manuel" | "whatsapp" | "espace" }
 ) {
   const date = input.date.slice(0, 10);
   const evening = await db
@@ -629,7 +629,7 @@ export async function refuseRestaurantSeat(
         evening_date: date,
         choice: "aucune",
         chosen_at: now,
-        choice_source: "whatsapp",
+        choice_source: input.source || "whatsapp",
       },
       { onConflict: "booking_id,evening_date" }
     );

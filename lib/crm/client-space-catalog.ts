@@ -118,6 +118,15 @@ export const CLIENT_SPACE_ACTIONS: ClientSpaceAction[] = [
     rule: "Titulaire seulement. Relu chez Little Emperors juste avant. Sinon « Contactez votre conseiller. » Un compagnon ou l’équipe ne l’annule pas.",
   },
   {
+    id: "choisir_table",
+    page: "/mon-compte/reservations/[reference]",
+    route: "/api/client/bookings/[id]/restaurants",
+    method: "POST",
+    client: "Accepte ou refuse une table déjà proposée, dans le séjour.",
+    concierge: "choisir_table",
+    rule: "Titulaire, séjour visible, table encore proposée, avant 18 h. Même enregistrement que WhatsApp : l’autre table passe à annuler. Rien n’est renvoyé au restaurant.",
+  },
+  {
     id: "carte_hotel",
     page: "/mon-compte/reservations/[reference]",
     route: "/api/client/bookings/[id]/hotel-card",

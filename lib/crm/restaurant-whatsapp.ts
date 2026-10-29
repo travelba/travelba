@@ -222,6 +222,26 @@ export function restaurantIntroText(input: { greeting: string; eveningDate: stri
   return restaurantIntroBody().replace("{{1}}", variables["1"]).replace("{{2}}", variables["2"]);
 }
 
+/** Texte de la réponse après « J’accepte ». Le CRM enregistre le choix ; ce message ne part pas tout seul. */
+export function restaurantAcceptAck(input: {
+  greeting: string;
+  restaurant: string;
+  eveningDate: string;
+  timeLabel: string;
+  other: string;
+}) {
+  const greeting = plain(input.greeting, 80) || "cher client";
+  const restaurant = plain(input.restaurant, 80) || "la maison";
+  const other = plain(input.other, 80) || "l’autre maison";
+  const when = plain(formatEveningFr(input.eveningDate), 40) || "ce soir";
+  const time = plain(input.timeLabel, 20) || restaurantDefaultClock();
+  return [
+    `${greeting}, votre table pour deux est retenue chez ${restaurant}, ${when}, à ${time}. Nous annulons la table chez ${other}.`,
+    "",
+    RESTAURANT_SIGNATURE,
+  ].join("\n");
+}
+
 export type CarouselDraft = {
   content: ReturnType<typeof restaurantCarouselContentCreateBody>;
   variables: Record<string, string>;
@@ -243,7 +263,9 @@ export function restaurantCarouselDraft(input: {
   if (!/^[0-9a-f-]{36}$/i.test(input.restaurantId) || !/^[0-9a-f-]{36}$/i.test(input.tableId)) {
     return { error: "Table introuvable." };
   }
-  const pitch = (plain(input.pitch, SALLE_PITCH_MAX) || "une table tenue pour vous").replace(/[.!?]+$/u, "");
+  const sliced = (plain(input.pitch, SALLE_PITCH_MAX) || "une table tenue pour vous").replace(/[.!?]+$/u, "");
+  const space = sliced.lastIndexOf(" ");
+  const pitch = sliced.length >= SALLE_PITCH_MAX && space > 24 ? sliced.slice(0, space).replace(/[,;:]+$/u, "") : sliced;
   const price = plain(input.priceBand, PLAT_PRICE_MAX) || "selon la carte";
   const renderedSalle =
     SALLE_TITLE.length +
