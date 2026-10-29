@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { sendRestaurantEvening } from "@/lib/crm/restaurants-run";
+import { isFormError, parseLocalTime, RESTAURANT_DEFAULT_TIME } from "@/lib/crm/restaurants";
 import {
   cancelBookingTable,
   choiceFromBody,
@@ -12,6 +13,14 @@ import {
 import { createServiceClient } from "@/lib/supabase/admin";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+function chosenTime(raw: unknown) {
+  if (raw == null || raw === "") return RESTAURANT_DEFAULT_TIME;
+  const parsed = parseLocalTime(raw);
+  if (isFormError(parsed)) return parsed;
+  if (!parsed) return { error: "Heure invalide." };
+  return parsed;
+}
 
 export async function GET(_request: Request, ctx: Ctx) {
   const auth = await requireStaff();
@@ -57,9 +66,13 @@ export async function POST(request: Request, ctx: Ctx) {
     const left = typeof body.restaurantA === "string" ? body.restaurantA : "";
     const right = typeof body.restaurantB === "string" ? body.restaurantB : "";
     if (!left || !right || left === right) return jsonError("Choisissez deux restaurants différents.");
-    const first = await saveBookingTable(auth.supabase, id, { date, seat: "A", restaurantId: left, time: "20:00", status: "reservee", covers: 2 });
+    const timeA = chosenTime(body.heureA);
+    const timeB = chosenTime(body.heureB);
+    if (isFormError(timeA)) return jsonError(timeA.error);
+    if (isFormError(timeB)) return jsonError(timeB.error);
+    const first = await saveBookingTable(auth.supabase, id, { date, seat: "A", restaurantId: left, time: timeA, status: "reservee", covers: 2 });
     if ("error" in first) return jsonError(first.error || "Enregistrement impossible.");
-    const second = await saveBookingTable(auth.supabase, id, { date, seat: "B", restaurantId: right, time: "20:30", status: "reservee", covers: 2 });
+    const second = await saveBookingTable(auth.supabase, id, { date, seat: "B", restaurantId: right, time: timeB, status: "reservee", covers: 2 });
     if ("error" in second) return jsonError(second.error || "Enregistrement impossible.");
     const booking = await auth.supabase.from("crm_bookings").select("is_test").eq("id", id).maybeSingle();
     if ((booking.data as { is_test?: boolean } | null)?.is_test) {

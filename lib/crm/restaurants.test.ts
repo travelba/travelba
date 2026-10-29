@@ -20,6 +20,8 @@ import {
   parseCovers,
   planRestaurantCron,
   RESTAURANT_COVERS,
+  RESTAURANT_DEFAULT_TIME,
+  restaurantDefaultClock,
   rankRestaurants,
   restaurantDedupeKey,
   selectionBlock,
@@ -481,6 +483,21 @@ test("accepter une table passe l’autre à annuler, sans changer la clôture de
   assert.equal(bothRefused.choice, "aucune");
   assert.equal(parseCovers(undefined), RESTAURANT_COVERS);
   assert.equal(parseCovers(""), 2);
+  assert.equal(RESTAURANT_DEFAULT_TIME, "20:30");
+  assert.equal(restaurantDefaultClock(), "20h30");
+  assert.equal(restaurantCarouselContentCreateBody(false).variables["3"], restaurantDefaultClock());
+  const timed = restaurantCarouselDraft({
+    greeting: "Monsieur Dupont",
+    restaurantName: "Ostuni",
+    timeLabel: "",
+    pitch: "Salle",
+    priceBand: "90 €",
+    restaurantId: "11111111-1111-4111-8111-111111111111",
+    tableId: "22222222-2222-4222-8222-222222222222",
+    menuPhoto: false,
+  });
+  assert.equal("error" in timed, false);
+  if (!("error" in timed)) assert.equal(timed.variables["3"], "20h30");
   assert.equal("error" in (parseCovers(4) as { error?: string }), true);
 });
 

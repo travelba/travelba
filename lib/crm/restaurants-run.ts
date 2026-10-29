@@ -15,6 +15,7 @@ import {
   localClock,
   planRestaurantCron,
   RESTAURANT_COVERS,
+  restaurantDefaultClock,
   restaurantDedupeKey,
   restaurantPartFromKey,
   TABLE_STATUS_LABELS,
@@ -521,7 +522,7 @@ function prepareRestaurantSend(input: {
   const draft = restaurantCarouselDraft({
     greeting: input.greeting,
     restaurantName: restaurant.name,
-    timeLabel: clockLabel(table.time_local) || "20h00",
+    timeLabel: clockLabel(table.time_local) || restaurantDefaultClock(),
     pitch: restaurant.pitch,
     priceBand: restaurant.priceBand,
     restaurantId: restaurant.id,

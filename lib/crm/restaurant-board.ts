@@ -10,7 +10,7 @@ import {
 } from "./restaurant-desk";
 import { restaurantGreeting, restaurantIntroText, SALLE_CARD_BODY, PLAT_CARD_BODY, CARTE_CARD_BODY, restaurantCarouselBody } from "./restaurant-whatsapp";
 import { cityPlaceKey } from "./city-names";
-import { clockLabel, formatEveningFr, hotelForEvening, hotelsFromItems, localClock, timezoneForStay, type RestaurantRecord, type TableSeat, type TableStatus } from "./restaurants";
+import { clockLabel, formatEveningFr, hotelForEvening, hotelsFromItems, localClock, restaurantDefaultClock, timezoneForStay, type RestaurantRecord, type TableSeat, type TableStatus } from "./restaurants";
 import { mapRestaurant } from "./restaurants-db";
 
 const MISSING = new Set(["42P01", "42703", "PGRST204", "PGRST205"]);
@@ -192,7 +192,7 @@ export async function loadRestaurantBoard(
           const intro = restaurantCarouselBody()
             .replace("{{1}}", greeting)
             .replace("{{2}}", face.name)
-            .replace("{{3}}", face.time || "20h00");
+            .replace("{{3}}", face.time || restaurantDefaultClock());
           const cards: { kind: "salle" | "plat" | "carte"; title: string; body: string; photo: string | null }[] = [
             {
               kind: "salle" as const,

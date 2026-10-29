@@ -1,5 +1,5 @@
 import { fold } from "./text";
-import { formatEveningFr, parseChoice, type RestaurantChoice } from "./restaurants";
+import { formatEveningFr, parseChoice, restaurantDefaultClock, type RestaurantChoice } from "./restaurants";
 
 /** Pré-message, puis un carrousel par restaurant. Vides tant que Meta n’a pas approuvé. */
 export const RESTAURANT_INTRO_ENV = "TWILIO_CONTENT_RESTAURANT_INTRO";
@@ -120,7 +120,7 @@ function carouselVariables(withMenu: boolean) {
   const variables: Record<string, string> = {
     "1": "Monsieur Dupont",
     "2": "Ostuni",
-    "3": "20h30",
+    "3": restaurantDefaultClock(),
     "4": "Une salle calme, lumière basse.",
     "5": "exemple.salle",
     "6": RESTAURANT_SAMPLE_PLACE,
@@ -253,7 +253,7 @@ export function restaurantCarouselDraft(input: {
   const variables: Record<string, string> = {
     "1": plain(input.greeting, 80) || "cher client",
     "2": plain(input.restaurantName, 80) || "la maison",
-    "3": plain(input.timeLabel, 20) || "20h00",
+    "3": plain(input.timeLabel, 20) || restaurantDefaultClock(),
     "4": pitch,
     "5": `${input.restaurantId}.salle`,
     "6": input.restaurantId,
@@ -326,7 +326,7 @@ export function restaurantDeskPreview(): {
     {
       seat: "A" as const,
       name: "Ostuni",
-      time: "20h30",
+      time: restaurantDefaultClock(),
       pitch: "Une salle calme, lumière basse.",
       price: "90 à 140 €",
       id: "11111111-1111-4111-8111-111111111111",

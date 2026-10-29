@@ -9,6 +9,9 @@ export const RESTAURANT_ACCOUNT = "concierge@travelba.fr";
 /** Toutes les tables sont pour deux. Le nombre de voyageurs ne s’en mêle pas. */
 export const RESTAURANT_COVERS = 2;
 
+/** Heure locale pré-remplie. On la change table par table si besoin. */
+export const RESTAURANT_DEFAULT_TIME = "20:30";
+
 export const RESTAURANT_CATEGORIES = ["japonais", "italien", "francais", "festif", "enfants", "terrasse"] as const;
 
 export const RESTAURANT_PLATFORMS = [
@@ -745,6 +748,10 @@ export function clockLabel(time: string | null | undefined) {
   const match = (time || "").match(/^(\d{2}):(\d{2})/);
   if (!match) return "";
   return `${match[1]}h${match[2]}`;
+}
+
+export function restaurantDefaultClock() {
+  return clockLabel(RESTAURANT_DEFAULT_TIME);
 }
 
 export function tableChoiceLine(name: string, time: string | null | undefined) {

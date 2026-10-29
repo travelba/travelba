@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { DeskFaceStatus, DeskPhase, DeskTone } from "@/lib/crm/restaurant-desk";
+import { RESTAURANT_DEFAULT_TIME } from "@/lib/crm/restaurants";
 
 export type DeskFaceView = {
   seat: "A" | "B";
@@ -116,6 +117,7 @@ export function RestaurantEveningDesk({
 }) {
   const [picking, setPicking] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Record<string, { A: string; B: string }>>({});
+  const [times, setTimes] = useState<Record<string, { A: string; B: string }>>({});
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
@@ -214,6 +216,7 @@ export function RestaurantEveningDesk({
           {rows.map((row) => {
             const key = `${row.bookingId}:${row.date}`;
             const pick = chosen[key] || { A: "", B: "" };
+            const hours = times[key] || { A: RESTAURANT_DEFAULT_TIME, B: RESTAURANT_DEFAULT_TIME };
             return (
               <li key={key} id={row.bookingId} className="space-y-4 rounded-[28px] bg-[#faf9f6] p-3 sm:p-4">
                 <div className="flex flex-wrap items-end justify-between gap-2 px-1">
@@ -280,6 +283,23 @@ export function RestaurantEveningDesk({
                         })}
                       </div>
                     ) : null}
+                    {picking === key && pick.A && pick.B ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {(["A", "B"] as const).map((seat) => (
+                          <label key={seat} className="text-sm text-[#0B192C]">
+                            Heure {seat}
+                            <input
+                              className="mt-1 min-h-11 w-full rounded-xl border border-[#d9d1c3] bg-white px-3"
+                              type="time"
+                              value={hours[seat]}
+                              onChange={(event) =>
+                                setTimes({ ...times, [key]: { ...hours, [seat]: event.target.value || RESTAURANT_DEFAULT_TIME } })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       disabled={busy || (picking === key && (!pick.A || !pick.B))}
@@ -293,6 +313,8 @@ export function RestaurantEveningDesk({
                           date: row.date,
                           restaurantA: pick.A,
                           restaurantB: pick.B,
+                          heureA: hours.A,
+                          heureB: hours.B,
                           test: Boolean(test?.on),
                         });
                       }}
