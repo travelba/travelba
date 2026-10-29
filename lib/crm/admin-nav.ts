@@ -65,18 +65,20 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
     {
       id: "dossiers",
       label: "Dossiers",
+      title: "Dossiers",
       items: [
         { href: ADMIN_ROUTES.dossiers, label: "Dossiers", icon: "luggage" },
-        { href: "/admin/formalites", label: "Formalités", icon: "shield_check" },
-        { href: "/admin/services", label: "Services à confirmer", icon: "headset" },
+        { href: `${ADMIN_ROUTES.dossiers}?vue=formalites`, label: "Formalités", icon: "shield_check" },
+        { href: `${ADMIN_ROUTES.dossiers}?vue=services`, label: "Services à confirmer", icon: "headset" },
       ],
     },
     {
       id: "clients",
       label: "Clients",
+      title: "Clients",
       items: [
         { href: ADMIN_ROUTES.clients, label: "Clients", icon: "group" },
-        { href: "/admin/clients?pieces=echeance", label: "Pièces à échéance", icon: "id_card", badge: "pieces" },
+        { href: `${ADMIN_ROUTES.clients}?filtre=echeance`, label: "Pièces à échéance", icon: "id_card", badge: "pieces" },
       ],
     },
     {
@@ -131,7 +133,7 @@ function splitHref(href: string) {
 }
 
 /**
- * L’entrée active : le chemin le plus long qui préfixe la page, la requête (`?onglet=`, `?pieces=echeance`)
+ * L’entrée active : le chemin le plus long qui préfixe la page, la requête (`?onglet=`, `?vue=`, `?filtre=echeance`)
  * l’emportant sur l’entrée sans requête. Une page à onglets sans `?onglet=` allume son premier onglet.
  * Une ancre ne s’allume jamais. Null hors menu.
  */

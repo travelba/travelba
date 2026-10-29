@@ -52,7 +52,8 @@ test("l’entrée active suit le chemin, l’onglet l’emporte, le premier ongl
   assert.equal(activeAdminNavHref(groups, "/admin"), "/admin");
   assert.equal(activeAdminNavHref(groups, "/admin/clients"), "/admin/clients");
   assert.equal(activeAdminNavHref(groups, "/admin/clients/abc"), "/admin/clients");
-  assert.equal(activeAdminNavHref(groups, "/admin/clients", "?pieces=echeance&page=2"), "/admin/clients?pieces=echeance");
+  assert.equal(activeAdminNavHref(groups, "/admin/clients", "?filtre=echeance&page=2"), "/admin/clients?filtre=echeance");
+  assert.equal(activeAdminNavHref(groups, "/admin/clients", "?filtre=veille"), "/admin/clients");
   assert.equal(activeAdminNavHref(groups, "/admin/boite"), "/admin/boite?onglet=fournisseurs");
   assert.equal(activeAdminNavHref(groups, "/admin/boite", "?onglet=hotels"), "/admin/boite?onglet=hotels");
   assert.equal(activeAdminNavHref(groups, "/admin/argent", "?onglet=a-pointer&source=pliant"), "/admin/argent?onglet=a-pointer");
@@ -61,7 +62,9 @@ test("l’entrée active suit le chemin, l’onglet l’emporte, le premier ongl
   assert.equal(activeAdminNavHref(groups, "/admin/reglages"), "/admin/reglages");
   assert.equal(activeAdminNavHref(groups, "/admin/recherche", "?q=rome"), null);
   assert.equal(activeAdminNavHref(groups, "/admin/reservations/nouveau"), "/admin/reservations");
-  assert.equal(activeAdminNavHref(groups, "/admin/formalites"), "/admin/formalites");
+  assert.equal(activeAdminNavHref(groups, "/admin/reservations", "?vue=formalites"), "/admin/reservations?vue=formalites");
+  assert.equal(activeAdminNavHref(groups, "/admin/reservations", "?vue=services"), "/admin/reservations?vue=services");
+  assert.equal(activeAdminNavHref(groups, "/admin/reservations", "?vue=liste&q=rome"), "/admin/reservations");
 });
 
 test("badges : seulement quand le compte est positif ; À encaisser et Fournisseurs additionnent", () => {
@@ -73,7 +76,7 @@ test("badges : seulement quand le compte est positif ; À encaisser et Fournisse
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/boite?onglet=fournisseurs")!, counts), 1);
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/boite?onglet=hotels")!, counts), null);
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/boite?onglet=whatsapp")!, counts), 2);
-  assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/clients?pieces=echeance")!, counts), 4);
+  assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/clients?filtre=echeance")!, counts), 4);
   assert.equal(adminNavBadge(items.find((i) => i.href === "/admin/clients")!, counts), null);
 });
 
@@ -116,7 +119,7 @@ test("le titre court est le libellé du menu, ou le titre de la page à onglets"
   const groups = adminNavGroups({ role: "admin", showExample: false });
   assert.equal(adminPageTitle(groups, "/admin"), "Accueil");
   assert.equal(adminPageTitle(groups, "/admin/reservations"), "Dossiers");
-  assert.equal(adminPageTitle(groups, "/admin/formalites"), "Formalités");
+  assert.equal(adminPageTitle(groups, "/admin/reservations", "?vue=formalites"), "Dossiers");
   assert.equal(adminPageTitle(groups, "/admin/boite", "?onglet=hotels"), "Boîte de réception");
   assert.equal(adminPageTitle(groups, "/admin/argent"), "Argent");
   assert.equal(adminPageTitle(groups, "/admin/reglages/whatsapp"), "Réglages");
@@ -124,7 +127,7 @@ test("le titre court est le libellé du menu, ou le titre de la page à onglets"
   assert.equal(adminPageTitle(groups, "/admin/reservations/nouveau"), "Nouveau dossier");
   assert.equal(adminPageTitle(groups, "/admin/reservations/abc-123"), "Dossier");
   assert.equal(adminPageTitle(groups, "/admin/clients/abc"), "Fiche client");
-  assert.equal(adminPageTitle(groups, "/admin/clients", "?pieces=echeance"), "Pièces à échéance");
+  assert.equal(adminPageTitle(groups, "/admin/clients", "?filtre=echeance"), "Clients");
   assert.equal(adminPageTitle(groups, "/admin/recherche", "?q=x"), "Recherche");
   assert.equal(adminPageTitle(groups, "/admin/inconnu"), "Espace agence");
 });

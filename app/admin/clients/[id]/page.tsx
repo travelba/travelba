@@ -14,6 +14,7 @@ import {
 import { ClientPaymentsToCredit } from "@/components/admin/argent/ClientPaymentsToCredit";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
+import { StatementRequest } from "@/components/account/StatementRequest";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
@@ -288,12 +289,17 @@ export default async function AdminClientDetailPage({ params }: Props) {
               {[contactLine, `Dernière visite · ${lastVisit}`].filter(Boolean).join("  ·  ")}
             </p>
           </div>
-          <Link
-            href={clientLedgerAdminHref(c.id)}
-            className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
-          >
-            Transactions
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="w-56 [&>div]:mt-0">
+              <StatementRequest endpoint={`/api/admin/clients/${c.id}/releve`} audience="staff" />
+            </div>
+            <Link
+              href={clientLedgerAdminHref(c.id)}
+              className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
+            >
+              Transactions
+            </Link>
+          </div>
         </div>
         <div className="grid grid-cols-2 border-t border-white/10 sm:grid-cols-4 sm:divide-x sm:divide-white/10">
           <Link href={clientLedgerAdminHref(c.id)} className="block px-6 py-4 transition hover:bg-white/5 sm:px-8">

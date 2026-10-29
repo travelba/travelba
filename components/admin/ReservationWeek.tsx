@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DOSSIERS_VIEW_LABELS, DOSSIERS_VIEWS, dossiersHref, type DossiersView } from "@/lib/crm/dossiers-views";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { EmptyState } from "@/components/crm/ui";
 import { listStayTitle } from "@/lib/crm/carnet";
@@ -11,21 +12,26 @@ import {
 import { staffStayLabel } from "@/lib/crm/staff-stay";
 import type { CrmBooking } from "@/lib/crm/types";
 
-export function ReservationsViewToggle({ liste, listeHref }: { liste: boolean; listeHref: string }) {
+export function ReservationsViewToggle({ active, listeHref }: { active: DossiersView; listeHref: string }) {
   return (
-    <div className="flex w-fit rounded-xl border border-[var(--border)] bg-white p-1" role="tablist" aria-label="Affichage des réservations">
-      <Link href="/admin/reservations" role="tab" aria-selected={!liste} className={toggleClass(!liste)}>
-        La semaine
-      </Link>
-      <Link href={listeHref} role="tab" aria-selected={liste} className={toggleClass(liste)}>
-        Liste
-      </Link>
+    <div className="flex w-fit max-w-full overflow-x-auto rounded-xl border border-[var(--border)] bg-white p-1" role="tablist" aria-label="Vues des dossiers">
+      {DOSSIERS_VIEWS.map((view) => (
+        <Link
+          key={view}
+          href={view === "liste" ? listeHref : dossiersHref(view)}
+          role="tab"
+          aria-selected={active === view}
+          className={toggleClass(active === view)}
+        >
+          {DOSSIERS_VIEW_LABELS[view]}
+        </Link>
+      ))}
     </div>
   );
 }
 
 function toggleClass(on: boolean) {
-  return `rounded-lg px-3 py-1.5 text-sm font-semibold ${on ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)]"}`;
+  return `shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold ${on ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)]"}`;
 }
 
 export function ReservationWeek({

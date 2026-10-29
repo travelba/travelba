@@ -30,10 +30,11 @@ test("la liste À faire suit l’ordre du travail et cache les zéros", () => {
   assert.equal(lines[4].label, "4 coûts à pointer");
   assert.equal(lines[4].href, "/admin/argent?onglet=a-pointer");
   assert.equal(lines[5].label, "1 formalité ouverte");
-  assert.equal(lines[5].href, "/admin/formalites");
+  assert.equal(lines[5].href, "/admin/reservations?vue=formalites");
   assert.equal(lines[6].label, "1 service à confirmer");
+  assert.equal(lines[6].href, "/admin/reservations?vue=services");
   assert.equal(lines[7].href, "/admin/reservations?etat=a-venir");
-  assert.equal(lines[8].href, "/admin/clients?pieces=echeance");
+  assert.equal(lines[8].href, "/admin/clients?filtre=echeance");
   assert.equal(adminTodoTotal(lines), 16);
 });
 

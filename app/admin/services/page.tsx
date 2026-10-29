@@ -1,25 +1,7 @@
-import { ServiceDesk } from "@/components/admin/ServiceDesk";
-import { EmptyState, PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { requireStaffPage } from "@/lib/crm/auth";
-import { loadAgencyServiceDesk } from "@/lib/crm/service-desk-load";
+import { redirect } from "next/navigation";
+import { dossiersHref, LEGACY_DOSSIERS_ROUTES } from "@/lib/crm/dossiers-views";
 
-export const metadata = { title: "Services à confirmer" };
-
-export default async function AdminServicesPage() {
-  const { supabase } = await requireStaffPage();
-  const lines = await loadAgencyServiceDesk(supabase);
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <PageEyebrow>Espace agence</PageEyebrow>
-        <PageTitle title="Services à confirmer" subtitle="Chauffeur, accueil et enregistrement encore ouverts." />
-      </div>
-      {lines.length ? (
-        <ServiceDesk lines={lines} />
-      ) : (
-        <EmptyState title="Aucun service à confirmer" description="Les demandes encore ouvertes apparaîtront ici." />
-      )}
-    </div>
-  );
+/** Ancienne page : Services à confirmer est une vue de Dossiers. */
+export default function LegacyServicesPage() {
+  redirect(dossiersHref(LEGACY_DOSSIERS_ROUTES["/admin/services"]));
 }

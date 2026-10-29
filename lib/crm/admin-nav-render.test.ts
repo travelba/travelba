@@ -25,7 +25,9 @@ test("la sidebar rend les cinq entrées, Réglages, l’entrée active et les ba
   assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
   assert.match(html, /aria-current="page"[^>]*href="\/admin\/argent\?onglet=a-encaisser"/);
   assert.match(html, /href="\/admin\/reservations"/);
-  assert.match(html, /href="\/admin\/clients\?pieces=echeance"/);
+  assert.match(html, /href="\/admin\/reservations\?vue=formalites"/);
+  assert.match(html, /href="\/admin\/reservations\?vue=services"/);
+  assert.match(html, /href="\/admin\/clients\?filtre=echeance"/);
   assert.match(html, /<a(?=[^>]*target="_blank")[^>]*href="\/exemple"/);
   assert.match(html, /aria-expanded="false"[^>]*aria-controls="admin-nav-reglages"/);
   assert.match(html, /id="admin-nav-reglages" hidden/);

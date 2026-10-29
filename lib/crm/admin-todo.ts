@@ -77,13 +77,13 @@ export function adminTodoLines(input: AdminTodoInput): AdminTodoLine[] {
       id: "formalities",
       count: input.formalities,
       label: `${plural(input.formalities, "formalité ouverte", "formalités ouvertes")}`,
-      href: "/admin/formalites",
+      href: `${ADMIN_ROUTES.dossiers}?vue=formalites`,
     },
     {
       id: "services",
       count: input.services,
       label: `${plural(input.services, "service", "services")} à confirmer`,
-      href: "/admin/services",
+      href: `${ADMIN_ROUTES.dossiers}?vue=services`,
     },
     {
       id: "depart-tomorrow",
@@ -95,7 +95,7 @@ export function adminTodoLines(input: AdminTodoInput): AdminTodoLine[] {
       id: "expiring",
       count: input.expiring,
       label: `${plural(input.expiring, "pièce", "pièces")} à échéance`,
-      href: `${ADMIN_ROUTES.clients}?pieces=echeance`,
+      href: `${ADMIN_ROUTES.clients}?filtre=echeance`,
     },
   ];
   return lines.filter((line) => line.count > 0);
