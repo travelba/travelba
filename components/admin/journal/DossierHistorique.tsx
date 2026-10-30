@@ -25,9 +25,6 @@ const chip = (active: boolean) =>
 export function DossierHistorique({ bookingId }: { bookingId: string }) {
   const [rows, setRows] = useState<JournalFeedItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [family, setFamily] = useState<JournalFamily | "tous">("tous");
-  const [agent, setAgent] = useState<string>("");
-  const [sensitiveOnly, setSensitiveOnly] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +42,15 @@ export function DossierHistorique({ bookingId }: { bookingId: string }) {
       cancelled = true;
     };
   }, [bookingId]);
+
+  return <DossierHistoriqueView rows={rows} error={error} />;
+}
+
+/** La frise et ses filtres, à partir des lignes déjà lues (`null` : chargement). */
+export function DossierHistoriqueView({ rows, error = null }: { rows: JournalFeedItem[] | null; error?: string | null }) {
+  const [family, setFamily] = useState<JournalFamily | "tous">("tous");
+  const [agent, setAgent] = useState<string>("");
+  const [sensitiveOnly, setSensitiveOnly] = useState(false);
 
   const families = useMemo(() => familiesPresent(rows || []), [rows]);
   const agents = useMemo(() => {
