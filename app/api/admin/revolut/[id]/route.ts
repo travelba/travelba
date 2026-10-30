@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eurosToAlertCents } from "@/lib/crm/agency-access";
 import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import { formatJournalAmount } from "@/lib/crm/agency-journal-kinds";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { isUuid } from "@/lib/crm/ids";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
@@ -28,6 +29,9 @@ export async function POST(request: Request, ctx: Ctx) {
   const debit = movement.direction === "debit";
   const denied = await assertStaffPermission(auth.staff, debit ? "pay_supplier" : "edit_finances");
   if (denied) return denied;
+  const amountCents = eurosToAlertCents(Number(movement.amount));
+  const amountWords = formatJournalAmount(amountCents, movement.currency);
+  const counterparty = (movement.counterparty_name || "").trim();
 
   if (body?.action === "ignore" || body?.action === "refuse") {
     if (movement.status === "matched") return jsonError("Déjà rapprochée");
@@ -37,6 +41,17 @@ export async function POST(request: Request, ctx: Ctx) {
         : { status: "ignored" };
     const { error } = await admin.from("crm_revolut_transactions").update(patch).eq("id", id);
     if (error) return jsonError("Impossible de refuser ce mouvement.", 400);
+    await recordAgencyJournal({
+      staffId: auth.staff.id,
+      action: "update",
+      entityType: "finance",
+      entityId: id,
+      summary: `${debit ? "Sortie" : "Virement"} Revolut écarté${debit ? "e" : ""}${counterparty ? ` (${counterparty})` : ""}${amountWords ? `, ${amountWords}` : ""}.`,
+      kind: debit ? "depense_hors_voyage" : "paiement_refuse",
+      amountCents,
+      currency: movement.currency,
+      path: `/api/admin/revolut/${id}`,
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -55,9 +70,12 @@ export async function POST(request: Request, ctx: Ctx) {
         action: "update",
         entityType: "finance",
         entityId: id,
-        summary: "Rapprochement d’une sortie.",
+        summary: `Fournisseur payé par virement Revolut${counterparty ? ` : ${counterparty}` : ""}${amountWords ? `, ${amountWords}` : ""}, rattaché au dossier.`,
+        kind: "fournisseur_paye",
+        bookingId,
         sensitive: "payment",
-        amountCents: eurosToAlertCents(Number(movement.amount)),
+        amountCents,
+        currency: movement.currency,
         path: `/api/admin/revolut/${id}`,
       });
       return NextResponse.json({ ok: true, cost });
@@ -80,5 +98,19 @@ export async function POST(request: Request, ctx: Ctx) {
     return jsonError(result.error || "Rapprochement impossible", 400);
   }
 
+  const posted = result.transaction as { booking_id?: string | null } | null;
+  await recordAgencyJournal({
+    staffId: auth.staff.id,
+    action: "update",
+    entityType: "finance",
+    entityId: id,
+    summary: `Virement Revolut rapproché et crédité au client${counterparty ? ` (${counterparty})` : ""}${amountWords ? `, ${amountWords}` : ""}.`,
+    kind: "paiement_rapproche",
+    bookingId: posted?.booking_id ?? null,
+    amountCents,
+    currency: movement.currency,
+    sensitive: "payment",
+    path: `/api/admin/revolut/${id}`,
+  });
   return NextResponse.json({ transaction: result.transaction });
 }

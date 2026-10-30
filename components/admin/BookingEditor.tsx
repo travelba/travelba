@@ -58,7 +58,7 @@ import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
-import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
+import { DossierHistorique } from "@/components/admin/journal/DossierHistorique";
 import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
 import type { TripAccountingView } from "@/lib/crm/trip-costs";
@@ -2436,7 +2436,7 @@ export function BookingEditor({
       {tab === "historique" ? (
         <>
           <ResponsableForm bookingId={booking.id} />
-          <AgencyHistoryPanel entity="dossier" entityId={booking.id} />
+          <DossierHistorique bookingId={booking.id} />
         </>
       ) : null}
       </div>

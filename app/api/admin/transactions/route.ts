@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createTransactionSchema, parseBody } from "@/lib/crm/admin-schemas";
+import { eurosToAlertCents } from "@/lib/crm/agency-access";
 import { assertStaffPermission } from "@/lib/crm/agency-guard";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import { formatJournalAmount } from "@/lib/crm/agency-journal-kinds";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveWireAccount } from "@/lib/crm/funding-wallet";
 
@@ -71,5 +74,20 @@ export async function POST(request: Request) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  const amountCents = eurosToAlertCents(Number(body.amount));
+  const amountWords = formatJournalAmount(amountCents, body.currency);
+  await recordAgencyJournal({
+    staffId: auth.staff.id,
+    action: "create",
+    entityType: "finance",
+    entityId: (data as { id?: string } | null)?.id ?? null,
+    summary: `Virement reçu enregistré au grand livre${amountWords ? `, ${amountWords}` : ""}${body.label ? ` (${String(body.label).slice(0, 80)})` : ""}.`,
+    kind: "paiement_recu",
+    bookingId: body.booking_id || null,
+    amountCents,
+    currency: body.currency,
+    sensitive: "payment",
+    path: "/api/admin/transactions",
+  });
   return NextResponse.json({ transaction: data });
 }

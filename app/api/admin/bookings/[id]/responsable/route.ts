@@ -98,6 +98,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     entityId: id,
     summary: responsableChangeSummary({ previousName, nextName, selfTake }),
     diff: { en_charge: { avant: previousName || "À prendre", apres: nextName || "À prendre" } },
+    kind: selfTake ? "dossier_pris" : nextOwnerId ? "responsable_attribue" : "dossier_a_prendre",
+    bookingId: id,
     path: `/api/admin/bookings/${id}/responsable`,
   });
   return NextResponse.json({

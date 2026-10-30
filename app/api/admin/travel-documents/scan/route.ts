@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     entityType: "document",
     summary: "Lecture d’une pièce. Le contenu n’est pas journalisé.",
     sensitive: "passport_reveal",
+    kind: "passeport_ouvert",
     path: "/api/admin/travel-documents/scan",
   });
   const form = await request.formData();

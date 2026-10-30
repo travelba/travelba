@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
+import { AgentDigestCard } from "@/components/admin/journal/AgentDigestCard";
 import { StaffDeparture } from "@/components/admin/StaffDeparture";
 import { StaffSessions } from "@/components/admin/StaffSessions";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
+import { loadAgentDigest } from "@/lib/crm/agency-activity";
+import { staffAllows } from "@/lib/crm/agency-guard";
 import { requireAdminPage } from "@/lib/crm/auth";
 import { isUuid } from "@/lib/crm/ids";
 import { staffRoleLabel, type StaffRole } from "@/lib/crm/staff-team";
@@ -30,6 +33,9 @@ export default async function ColleaguePage({ params }: { params: Promise<{ id: 
   };
   const name = colleague.full_name || "Collègue";
   const self = colleague.id === staff.id;
+  // Le résumé (dossiers en charge, cartes et paiements du jour) suit le droit « Voir l’activité de l’agence ».
+  const showDigest = colleague.role !== "partner" && (await staffAllows(staff, "view_activity"));
+  const digest = showDigest ? await loadAgentDigest(admin, colleague.id) : null;
   return (
     <div>
       <PageEyebrow>Équipe</PageEyebrow>
@@ -43,9 +49,15 @@ export default async function ColleaguePage({ params }: { params: Promise<{ id: 
           Retour à l’équipe
         </Link>
       </p>
-      <div className="mt-6">
-        <AgencyHistoryPanel entity="acteur" entityId={colleague.id} title={`Ce que ${name} a fait`} />
-      </div>
+      {digest ? (
+        <div className="mt-6">
+          <AgentDigestCard staffId={colleague.id} name={name} digest={digest} />
+        </div>
+      ) : (
+        <div className="mt-6">
+          <AgencyHistoryPanel entity="acteur" entityId={colleague.id} title={`Ce que ${name} a fait`} />
+        </div>
+      )}
       <StaffSessions staffId={colleague.id} />
       {colleague.role !== "partner" && !self ? (
         <StaffDeparture staffId={colleague.id} name={name} active={colleague.active !== false} />

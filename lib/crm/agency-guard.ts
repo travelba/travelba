@@ -43,6 +43,7 @@ export async function navAllows(staff: Pick<CrmStaff, "role">) {
     "change_settings",
     "manage_users",
     "view_journal",
+    "view_activity",
   ] as const) {
     flags[permission] = roleAllows(staff.role as StaffRole, permission, matrix);
   }
