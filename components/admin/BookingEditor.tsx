@@ -348,6 +348,7 @@ export function BookingEditor({
   importTasks = [],
   showMargins = true,
   checkins = [],
+  ownership = null,
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -439,6 +440,8 @@ export function BookingEditor({
   showMargins?: boolean;
   /** Statut d’enregistrement en ligne déjà noté, une ligne par vol. */
   checkins?: StoredFlightCheckin[];
+  /** Qui est en charge (null : à prendre) et qui a créé le dossier (null : inconnu). */
+  ownership?: { owner: string | null; createdBy: string | null } | null;
 }) {
   const items = useMemo(() => completeFlightRoutes(sourceItems), [sourceItems]);
   const router = useRouter();
@@ -1305,6 +1308,20 @@ export function BookingEditor({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {stateChip}
+          {ownership ? (
+            <button
+              type="button"
+              onClick={() => setTab("historique")}
+              title={ownership.createdBy ? `Créé par ${ownership.createdBy}` : "Créé par : inconnu"}
+              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                ownership.owner
+                  ? "bg-[#0B192C] text-[#C5A880]"
+                  : "border border-dashed border-[#9e7e51] bg-white text-[#9e7e51]"
+              }`}
+            >
+              {ownership.owner ? `En charge : ${ownership.owner}` : "À prendre"}
+            </button>
+          ) : null}
           {checkinBadge && !checkinBadge.alert ? (
             <button
               type="button"

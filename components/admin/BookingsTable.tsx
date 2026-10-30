@@ -13,6 +13,7 @@ import {
 } from "@/components/admin/ArchiveBookingButton";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { Pagination } from "@/components/admin/Pagination";
+import { OwnerBadge } from "@/components/admin/OwnerBadge";
 import {
   ADMIN_PAGE_SIZE,
   bookingSortParam,
@@ -27,6 +28,8 @@ export type BookingsListFilters = {
   etat: BookingStateFilter | null;
   tri: BookingSort;
   vue?: "liste" | null;
+  /** « moi » : seulement les dossiers dont le collègue connecté est en charge. */
+  qui?: "moi" | null;
 };
 
 /** Liste paginée côté serveur : la recherche met l’URL à jour pendant la saisie. */
@@ -44,6 +47,7 @@ export function BookingsTable({
   hiddenArchiveHits = 0,
   searchText = {},
   payerLabels = {},
+  owners = {},
   covers = {},
 }: {
   bookings: CrmBooking[];
@@ -61,6 +65,8 @@ export function BookingsTable({
   searchText?: Record<string, string>;
   /** Société qui règle, quand le client en a plusieurs. */
   payerLabels?: Record<string, string>;
+  /** Prénom du collègue en charge. Absent : le dossier est à prendre. */
+  owners?: Record<string, string>;
   /** Photo déjà résolue quand le catalogue local ne connaît pas le lieu. */
   covers?: Record<string, string | null>;
 }) {
@@ -70,6 +76,7 @@ export function BookingsTable({
     etat: filters.etat,
     tri: bookingSortParam(filters.tri),
     vue: filters.vue === "liste" ? "liste" : null,
+    qui: filters.qui === "moi" ? "moi" : null,
   };
   const filtering = Boolean(filters.q || filters.etat);
   const archivedOnly = filters.etat === "archive";
@@ -81,6 +88,7 @@ export function BookingsTable({
         etat={filters.etat}
         tri={filters.tri}
         vue={filters.vue}
+        qui={filters.qui}
         revision={bookings.map((b) => b.id).join(",")}
       />
       <Pagination
@@ -124,6 +132,7 @@ export function BookingsTable({
                 </div>
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <OwnerBadge name={owners[b.id]} />
                 <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
                   {staffStayLabel(b)}
                 </span>

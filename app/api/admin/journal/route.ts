@@ -47,13 +47,18 @@ export async function GET(request: Request) {
   const entity = url.searchParams.get("entity");
   const id = url.searchParams.get("id");
   const scoped = Boolean(entity && id && format !== "csv");
+  const agentParam = url.searchParams.get("agent");
 
   if (format === "csv") {
     const denied = await assertStaffPermission(auth.staff, "export_data");
     if (denied) return denied;
   } else if (!scoped) {
-    const denied = await assertStaffPermission(auth.staff, "view_journal");
-    if (denied) return denied;
+    // Sa propre activité reste lisible ; celle d’un collègue demande le droit sur le journal.
+    const ownActivity = agentParam && isUuid(agentParam) && agentParam === auth.staff.id;
+    if (!ownActivity) {
+      const denied = await assertStaffPermission(auth.staff, "view_journal");
+      if (denied) return denied;
+    }
   } else {
     const allowed = await scopedRead(auth, entity, id);
     if (allowed instanceof NextResponse) return allowed;
@@ -66,7 +71,7 @@ export async function GET(request: Request) {
     .order("seq", { ascending: false })
     .limit(200);
 
-  const agent = url.searchParams.get("agent");
+  const agent = agentParam;
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
   const action = url.searchParams.get("action");
@@ -92,7 +97,8 @@ export async function GET(request: Request) {
     entity_type: row.entity_type,
     entity_id: row.entity_id,
     summary: row.summary,
-    diff: scoped || format === "csv" ? undefined : row.diff,
+    // Le diff est masqué à l’écriture (numéros, secrets) : l’avant/après se lit partout.
+    diff: format === "csv" ? undefined : row.diff,
   }));
 
   if (format === "csv") {

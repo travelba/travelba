@@ -1,8 +1,10 @@
 /**
- * Droits de l’agence. Pur : la matrice, le périmètre d’un dossier, le plafond Pliant.
+ * Droits de l’agence. Pur : la matrice, les alertes, le masque.
+ * Tous les rôles de l’agence voient tous les dossiers, marges et commissions comprises :
+ * il n’y a pas de périmètre « ses dossiers seulement ». La marge reste invisible côté client.
+ * Aucune action ne demande de validation ; aucun plafond. Les alertes préviennent, elles ne bloquent pas.
  * Le partenaire MyLER n’entre pas dans la matrice : il n’ouvre que Little Emperors.
- * L’administrateur reste tout ouvert, même si la matrice est modifiée, pour ne pas
- * fermer l’agence sur elle-même.
+ * L’administrateur reste tout ouvert, même si la matrice est modifiée.
  */
 
 import { AGENCY_ROLES, type AgencyRole, type StaffRole } from "./staff-team";
@@ -10,8 +12,6 @@ import { AGENCY_ROLES, type AgencyRole, type StaffRole } from "./staff-team";
 export type { AgencyRole, StaffRole };
 
 export const PERMISSIONS = [
-  "view_all_dossiers",
-  "view_assigned_dossiers",
   "edit_dossiers",
   "create_dossiers",
   "reassign_dossier",
@@ -33,23 +33,21 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const PERMISSION_LABELS: Record<Permission, string> = {
-  view_all_dossiers: "Voir tous les dossiers",
-  view_assigned_dossiers: "Voir ses dossiers et le pool commun",
   edit_dossiers: "Modifier les dossiers",
   create_dossiers: "Créer un dossier",
-  reassign_dossier: "Changer l’agent responsable",
+  reassign_dossier: "Attribuer un dossier à un collègue",
   view_finances: "Voir les finances",
   edit_finances: "Écrire au grand livre",
   view_margins: "Voir marges, prix nets et commission",
   create_pliant_card: "Créer une carte Pliant",
   pay_supplier: "Payer un fournisseur",
   message_client: "Écrire au client",
-  passport_reveal: "Révéler le coffre passeport",
+  passport_reveal: "Ouvrir le coffre passeport",
   export_data: "Exporter des données",
   delete_archive: "Archiver ou supprimer",
   change_settings: "Changer les réglages",
-  manage_users: "Gérer les utilisateurs",
-  view_journal: "Voir le journal",
+  manage_users: "Gérer l’équipe",
+  view_journal: "Voir le journal de toute l’agence",
   view_inbox: "Voir les boîtes de réception",
 };
 
@@ -59,15 +57,14 @@ export type ConfigurableRole = (typeof CONFIGURABLE_ROLES)[number];
 
 export type PermissionMatrix = Partial<Record<AgencyRole, Partial<Record<Permission, boolean>>>>;
 
-/** 2 000 € : un agent ne crée pas une carte au-dessus. Décision à confirmer. */
-export const DEFAULT_PLIANT_AGENT_CEILING_CENTS = 200_000;
-/** 5 000 € : une sortie au-dessus prévient les administrateurs. Décision à confirmer. */
+/** 5 000 € : une sortie au-dessus prévient les administrateurs. Information seulement. */
 export const DEFAULT_PAYMENT_ALERT_CENTS = 500_000;
 /** Cinq échecs en quinze minutes préviennent les administrateurs. */
 export const DEFAULT_FAILED_LOGIN_ALERTS = 5;
 export const FAILED_LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
-const OWNER_EMAIL = "benjamin@travelba.fr";
+/** Domaine des comptes Google de l’agence. */
+export const AGENCY_GOOGLE_DOMAIN = "travelba.fr";
 
 function allow(keys: readonly Permission[]): Record<Permission, boolean> {
   const row = Object.fromEntries(PERMISSIONS.map((key) => [key, false])) as Record<Permission, boolean>;
@@ -78,8 +75,6 @@ function allow(keys: readonly Permission[]): Record<Permission, boolean> {
 export const DEFAULT_MATRIX: Record<AgencyRole, Record<Permission, boolean>> = {
   admin: allow(PERMISSIONS),
   manager: allow([
-    "view_all_dossiers",
-    "view_assigned_dossiers",
     "edit_dossiers",
     "create_dossiers",
     "reassign_dossier",
@@ -93,17 +88,18 @@ export const DEFAULT_MATRIX: Record<AgencyRole, Record<Permission, boolean>> = {
     "view_inbox",
   ]),
   agent: allow([
-    "view_assigned_dossiers",
     "edit_dossiers",
     "create_dossiers",
+    "view_finances",
+    "edit_finances",
+    "view_margins",
     "create_pliant_card",
+    "pay_supplier",
     "message_client",
     "passport_reveal",
     "view_inbox",
   ]),
   comptable: allow([
-    "view_all_dossiers",
-    "view_assigned_dossiers",
     "view_finances",
     "edit_finances",
     "view_margins",
@@ -111,7 +107,7 @@ export const DEFAULT_MATRIX: Record<AgencyRole, Record<Permission, boolean>> = {
     "export_data",
     "view_journal",
   ]),
-  lecture: allow(["view_all_dossiers", "view_assigned_dossiers"]),
+  lecture: allow([]),
 };
 
 export function isAgencyRole(value: unknown): value is AgencyRole {
@@ -196,49 +192,27 @@ export function sanitizeMatrixUpdate(
   return updates;
 }
 
-export function bookingVisibleTo(input: {
-  role: StaffRole;
-  staffId: string;
-  ownerStaffId: string | null;
-  assigneeIds: readonly string[];
-  matrix?: PermissionMatrix | null;
-}) {
-  if (input.role === "partner") return false;
-  if (roleAllows(input.role, "view_all_dossiers", input.matrix)) return true;
-  if (!roleAllows(input.role, "view_assigned_dossiers", input.matrix)) return false;
-  if (!input.ownerStaffId) return true;
-  if (input.ownerStaffId === input.staffId) return true;
-  return input.assigneeIds.includes(input.staffId);
-}
+/** Alertes informatives : elles préviennent les administrateurs et ne bloquent jamais le geste. */
+export const ALERT_KINDS = [
+  "passport_reveal",
+  "card_reveal",
+  "export",
+  "payment",
+  "refund",
+  "failed_login",
+  "role_change",
+] as const;
+export type AlertKind = (typeof ALERT_KINDS)[number];
 
-export function pliantCeilingAllows(
-  role: StaffRole,
-  limitCents: number | null,
-  ceilingCents = DEFAULT_PLIANT_AGENT_CEILING_CENTS
-): { ok: true } | { ok: false; message: string } {
-  if (role === "admin" || role === "manager") return { ok: true };
-  if (role !== "agent") return { ok: false, message: "La création de carte est réservée." };
-  if (limitCents == null || !Number.isFinite(limitCents) || limitCents <= 0) {
-    return { ok: false, message: "Le plafond de cette carte n’est pas lisible. Un administrateur peut l’émettre." };
-  }
-  if (limitCents > ceilingCents) {
-    const euros = Math.round(ceilingCents / 100).toLocaleString("fr-FR");
-    return {
-      ok: false,
-      message: `Ce plafond dépasse ${euros} €. Un administrateur peut l’émettre.`,
-    };
-  }
-  return { ok: true };
-}
-
-/** Le plus haut prix d’hôtel saisi, en centimes. Sert de plafond avant l’émission. */
-export function hotelCardEstimateCents(items: readonly { kind: string; amount: number | null }[]) {
-  const amounts = items
-    .filter((item) => item.kind === "hotel" && typeof item.amount === "number" && item.amount > 0)
-    .map((item) => Math.round(item.amount! * 100));
-  if (!amounts.length) return null;
-  return Math.max(...amounts);
-}
+export const ALERT_LABELS: Record<AlertKind, string> = {
+  passport_reveal: "Passeport ouvert",
+  card_reveal: "Carte ouverte",
+  export: "Export",
+  payment: "Paiement",
+  refund: "Remboursement",
+  failed_login: "Connexions refusées",
+  role_change: "Rôle modifié",
+};
 
 export function paymentAlert(amountCents: number | null | undefined, threshold = DEFAULT_PAYMENT_ALERT_CENTS) {
   if (amountCents == null || !Number.isFinite(amountCents)) return null;
@@ -247,12 +221,37 @@ export function paymentAlert(amountCents: number | null | undefined, threshold =
   return { kind: "payment" as const, summary: `Paiement de ${euros} €, au-dessus du seuil.` };
 }
 
+export function refundAlert(amountCents: number | null | undefined) {
+  if (amountCents == null || !Number.isFinite(amountCents) || amountCents === 0) {
+    return { kind: "refund" as const, summary: "Remboursement enregistré." };
+  }
+  const euros = (Math.abs(amountCents) / 100).toLocaleString("fr-FR", { minimumFractionDigits: 2 });
+  return { kind: "refund" as const, summary: `Remboursement de ${euros} €.` };
+}
+
 export function failedLoginAlert(count: number, limit = DEFAULT_FAILED_LOGIN_ALERTS) {
   if (count < limit) return null;
   return {
     kind: "failed_login" as const,
     summary: `${count} connexions refusées en quinze minutes.`,
   };
+}
+
+/**
+ * Connexion Google : l’adresse doit être du domaine de l’agence et correspondre à un collègue invité.
+ * `staffEmails` : les adresses des lignes `crm_staff` actives. Pur, sans réseau.
+ */
+export function googleStaffEmailAllowed(
+  email: string | null | undefined,
+  staffEmails: Iterable<string>,
+  domain = AGENCY_GOOGLE_DOMAIN
+): { ok: true; email: string } | { ok: false; reason: "domaine" | "inconnu" } {
+  const address = (email || "").trim().toLowerCase();
+  if (!address || !address.endsWith(`@${domain}`)) return { ok: false, reason: "domaine" };
+  for (const known of staffEmails) {
+    if ((known || "").trim().toLowerCase() === address) return { ok: true, email: address };
+  }
+  return { ok: false, reason: "inconnu" };
 }
 
 const DOC_SECRET_KEYS = ["number", "document_number", "mrz", "personal_number", "mrz_line_1", "mrz_line_2"] as const;
@@ -295,8 +294,6 @@ export const AGENCY_SEED_USERS = [
   { email: "lecture.agence@exemple.invalid", role: "lecture" as const, fullName: "Robin Lecture" },
 ] as const;
 
-export const AGENCY_OWNER_EMAIL = OWNER_EMAIL;
-
 export function agencySeedAllowed(projectRef: string | null | undefined) {
   return (projectRef || "").trim() !== "fsmfozxgujskluxakeoq";
 }
@@ -324,4 +321,66 @@ export function sessionIdFromAccessToken(token: string | null | undefined) {
 export function eurosToAlertCents(amount: number) {
   if (!Number.isFinite(amount) || amount === 0) return null;
   return Math.round(Math.abs(amount) * 100);
+}
+
+/* ---------- Responsables d’un dossier ---------- */
+
+export type DossierPerson = { id: string; name: string };
+
+/**
+ * Les intervenants d’un dossier : les collègues qui ont agi dessus, d’après le journal, du plus récent
+ * au plus ancien, sans doublon. Le créateur et le responsable y figurent même sans ligne de journal.
+ */
+export function dossierIntervenants(input: {
+  journalStaffIds: readonly (string | null | undefined)[];
+  createdById: string | null;
+  ownerId: string | null;
+  names: ReadonlyMap<string, string>;
+}): DossierPerson[] {
+  const seen = new Set<string>();
+  const people: DossierPerson[] = [];
+  const push = (id: string | null | undefined) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    people.push({ id, name: input.names.get(id) || "Collègue" });
+  };
+  for (const id of input.journalStaffIds) push(id);
+  push(input.ownerId);
+  push(input.createdById);
+  return people;
+}
+
+/** Qui peut poser qui comme responsable. Pur : la route et l’écran suivent la même règle. */
+export function responsableChangeAllowed(input: {
+  actorId: string;
+  canReassign: boolean;
+  canEdit: boolean;
+  nextOwnerId: string | null;
+}): { ok: true } | { ok: false; message: string } {
+  if (input.canReassign) return { ok: true };
+  if (!input.canEdit) return { ok: false, message: "Cette action n’est pas ouverte pour votre rôle." };
+  if (input.nextOwnerId === input.actorId) return { ok: true };
+  return { ok: false, message: "Vous pouvez vous mettre en charge ; attribuer à un collègue est réservé aux administrateurs." };
+}
+
+export function responsableChangeSummary(input: {
+  previousName: string | null;
+  nextName: string | null;
+  selfTake: boolean;
+}) {
+  if (input.selfTake) return `Prend le dossier en charge (avant : ${input.previousName || "à prendre"}).`;
+  if (!input.nextName) return `Dossier remis à prendre (avant : ${input.previousName || "à prendre"}).`;
+  return `En charge : ${input.previousName || "à prendre"} → ${input.nextName}.`;
+}
+
+/** Départ d’un collègue : ce qui est fait, en une phrase par geste, sans secret. */
+export function departurePlan(input: { ownedCount: number; reassignToName: string | null; cutAccess: boolean }) {
+  const steps: string[] = [];
+  if (input.cutAccess) steps.push("Accès coupé et sessions fermées.");
+  if (input.ownedCount > 0 && input.reassignToName) {
+    steps.push(`${input.ownedCount} dossier${input.ownedCount > 1 ? "s" : ""} réattribué${input.ownedCount > 1 ? "s" : ""} à ${input.reassignToName}.`);
+  } else if (input.ownedCount > 0) {
+    steps.push(`${input.ownedCount} dossier${input.ownedCount > 1 ? "s" : ""} en charge rest${input.ownedCount > 1 ? "ent" : "e"} à prendre.`);
+  }
+  return steps;
 }

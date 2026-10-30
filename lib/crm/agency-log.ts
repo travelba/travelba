@@ -1,5 +1,6 @@
 /**
  * Écriture du journal et des alertes. Service role uniquement.
+ * Les alertes sont informatives : elles n’arrêtent jamais le geste.
  * Si la table n’est pas encore là, l’action métier continue.
  */
 
@@ -7,10 +8,11 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import {
   DEFAULT_FAILED_LOGIN_ALERTS,
   DEFAULT_PAYMENT_ALERT_CENTS,
-  DEFAULT_PLIANT_AGENT_CEILING_CENTS,
   FAILED_LOGIN_WINDOW_MS,
   failedLoginAlert,
   paymentAlert,
+  refundAlert,
+  type AlertKind,
 } from "@/lib/crm/agency-access";
 import {
   journalCanonical,
@@ -29,7 +31,7 @@ export type AgencyJournalInput = {
   ip?: string | null;
   userAgent?: string | null;
   path?: string | null;
-  sensitive?: "passport_reveal" | "card_reveal" | "export" | "payment" | "failed_login" | null;
+  sensitive?: AlertKind | null;
   amountCents?: number | null;
 };
 
@@ -84,13 +86,17 @@ export async function recordAgencyJournal(entry: AgencyJournalInput) {
     if (error) return;
 
     const settings = await readSettings(admin);
-    let alert: { kind: string; summary: string } | null = null;
+    let alert: { kind: AlertKind; summary: string } | null = null;
     if (entry.sensitive === "passport_reveal") {
-      alert = { kind: "passport_reveal", summary: "Révélation du coffre passeport." };
+      alert = { kind: "passport_reveal", summary: "Passeport ouvert." };
     } else if (entry.sensitive === "export") {
       alert = { kind: "export", summary: "Export du journal." };
     } else if (entry.sensitive === "card_reveal") {
-      alert = { kind: "card_reveal", summary: "Révélation d’une carte." };
+      alert = { kind: "card_reveal", summary: "Carte ouverte (numéro complet)." };
+    } else if (entry.sensitive === "role_change") {
+      alert = { kind: "role_change", summary: entry.summary || "Rôle modifié." };
+    } else if (entry.sensitive === "refund") {
+      alert = refundAlert(entry.amountCents);
     } else if (entry.sensitive === "payment") {
       alert = paymentAlert(entry.amountCents, settings.paymentAlertCents);
     } else if (entry.sensitive === "failed_login" && entry.staffId) {
@@ -116,26 +122,14 @@ export async function recordAgencyJournal(entry: AgencyJournalInput) {
   }
 }
 
-export async function loadAgencySettings(): Promise<Settings & { pliantAgentCeilingCents: number }> {
+export async function loadAgencySettings(): Promise<Settings> {
   const fallback = {
     paymentAlertCents: DEFAULT_PAYMENT_ALERT_CENTS,
     failedLoginAlerts: DEFAULT_FAILED_LOGIN_ALERTS,
-    pliantAgentCeilingCents: DEFAULT_PLIANT_AGENT_CEILING_CENTS,
   };
   try {
     const admin = createServiceClient({ allowPreview: true });
-    const { data, error } = await admin.from("crm_agency_settings").select("*").eq("id", 1).maybeSingle();
-    if (error || !data) return fallback;
-    const row = data as {
-      payment_alert_cents?: number;
-      failed_login_alert_count?: number;
-      pliant_agent_ceiling_cents?: number;
-    };
-    return {
-      paymentAlertCents: row.payment_alert_cents || fallback.paymentAlertCents,
-      failedLoginAlerts: row.failed_login_alert_count || fallback.failedLoginAlerts,
-      pliantAgentCeilingCents: row.pliant_agent_ceiling_cents || fallback.pliantAgentCeilingCents,
-    };
+    return await readSettings(admin);
   } catch {
     return fallback;
   }

@@ -1,5 +1,6 @@
 /**
- * Garde des routes `/api/admin` : droit, périmètre du dossier, journal.
+ * Garde des routes `/api/admin` : droit du rôle, accès coupé, journal.
+ * Tous les rôles de l’agence voient tous les dossiers : aucun périmètre par dossier.
  * Avant la migration, un administrateur ou un agent garde l’accès d’aujourd’hui.
  */
 
@@ -17,8 +18,6 @@ import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { agencyGateDecision, classifyAgencyRoute, entityIdFromPath } from "@/lib/crm/agency-routes";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
-
-const BOOKING_UUID = /\/bookings\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
 function clientIp(request: NextRequest) {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -58,11 +57,6 @@ export async function gateAgencyApi(request: NextRequest) {
   const matrix = await readMatrix(supabase);
   const permission = classified.permission;
   const allows = role && permission ? roleAllows(role, permission, matrix.rows) : false;
-  const bookingId = request.nextUrl.pathname.match(BOOKING_UUID)?.[1] ?? null;
-  const needsScope = Boolean(
-    bookingId && role && role !== "partner" && !roleAllows(role, "view_all_dossiers", matrix.rows)
-  );
-  const bookingVisible = needsScope && bookingId ? await bookingIsVisible(supabase, bookingId) : null;
 
   const decision = agencyGateDecision({
     role,
@@ -71,8 +65,6 @@ export async function gateAgencyApi(request: NextRequest) {
     audience: classified.audience,
     permission,
     allows,
-    bookingScoped: needsScope,
-    bookingVisible,
   });
   if (!decision.allow) {
     return NextResponse.json({ error: decision.reason }, { status: decision.status });
@@ -128,12 +120,6 @@ async function readMatrix(
     ready: true,
     rows: matrixFromRows(data as { role: string; permission: string; allowed: boolean }[]),
   };
-}
-
-async function bookingIsVisible(supabase: ReturnType<typeof createServerClient>, bookingId: string) {
-  const { data, error } = await supabase.from("crm_bookings").select("id").eq("id", bookingId).maybeSingle();
-  if (error) return null;
-  return Boolean(data);
 }
 
 async function sessionRevoked(

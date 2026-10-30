@@ -44,26 +44,22 @@ export async function PATCH(request: Request) {
     }
   }
 
-  const ceiling = body?.ceiling_euros == null ? null : wholeEuros(body.ceiling_euros);
   const payment = body?.payment_euros == null ? null : wholeEuros(body.payment_euros);
   const failed = body?.failed_logins == null ? null : wholeCount(body.failed_logins);
-  if (body?.ceiling_euros != null && ceiling == null) return jsonError("Plafond illisible.");
   if (body?.payment_euros != null && payment == null) return jsonError("Seuil illisible.");
   if (body?.failed_logins != null && failed == null) return jsonError("Seuil de connexions illisible.");
-  if (ceiling != null || payment != null || failed != null) {
+  if (payment != null || failed != null) {
     const patch: Record<string, number> = { id: 1 };
-    if (ceiling != null) patch.pliant_agent_ceiling_cents = ceiling * 100;
     if (payment != null) patch.payment_alert_cents = payment * 100;
     if (failed != null) patch.failed_login_alert_count = failed;
     const { error } = await admin.from("crm_agency_settings").upsert(patch);
-    if (error) return jsonError("Les plafonds n’ont pas pu être enregistrés.", 502);
+    if (error) return jsonError("Les seuils d’alerte n’ont pas pu être enregistrés.", 502);
     await recordAgencyJournal({
       staffId: auth.staff.id,
       action: "update",
       entityType: "setting",
-      summary: "Plafonds de l’agence enregistrés.",
+      summary: "Seuils d’alerte enregistrés.",
       diff: {
-        plafond_carte_euros: ceiling,
         seuil_paiement_euros: payment,
         connexions_refusees: failed,
       },

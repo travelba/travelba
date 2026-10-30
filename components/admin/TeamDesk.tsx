@@ -328,7 +328,7 @@ function ColleagueRow({
       <p className="font-semibold text-[var(--admin-navy)]">{member.fullName}</p>
       <p className="mt-1 text-xs text-muted">
         {staffRoleLabel(member.role)}
-        {member.active === false ? " · Désactivé" : ""}
+        {member.active === false ? " · Accès coupé" : ""}
         {current ? " · Vous" : ""}
       </p>
     </>
@@ -408,11 +408,11 @@ function ColleagueRow({
           onClick={() => void toggleActive()}
           className="mt-2 block rounded-full border border-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-60"
         >
-          {member.active === false ? "Réactiver" : "Désactiver"}
+          {member.active === false ? "Rouvrir l’accès" : "Couper l’accès"}
         </button>
       ) : null}
       <a href={`/admin/equipe/${member.id}`} className="mt-2 block text-xs font-semibold text-[var(--admin-navy)] underline">
-        Sessions et historique
+        {current || member.role === "partner" ? "Activité et sessions" : "Activité, sessions, départ"}
       </a>
       {accessNotice ? (
         <div className="mt-2 space-y-2 text-xs text-[var(--admin-navy)]">

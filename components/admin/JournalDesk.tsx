@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatDateTimeFr } from "@/lib/crm/money";
+import { ALERT_LABELS, type AlertKind } from "@/lib/crm/agency-access";
 import {
   JOURNAL_ACTION_LABELS,
   JOURNAL_ACTIONS,
@@ -52,10 +53,12 @@ export function JournalDesk({
       {alerts.length ? (
         <section className="rounded-2xl bg-[var(--admin-peach)] px-4 py-3 text-sm text-[var(--admin-navy)]">
           <p className="font-semibold">Alertes</p>
+          <p className="text-xs text-muted">Pour information : rien n’a été bloqué.</p>
           <ul className="mt-2 space-y-1">
             {alerts.map((alert) => (
               <li key={alert.id}>
-                {formatDateTimeFr(alert.created_at)} — {alert.summary}
+                {formatDateTimeFr(alert.created_at)} —{" "}
+                <span className="font-semibold">{ALERT_LABELS[alert.kind as AlertKind] || alert.kind}</span> · {alert.summary}
               </li>
             ))}
           </ul>

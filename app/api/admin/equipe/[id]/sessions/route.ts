@@ -4,6 +4,8 @@ import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { isUuid } from "@/lib/crm/ids";
 import { STAFF_COPY } from "@/lib/crm/staff-team";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { revokeStaffSessions } from "@/lib/crm/staff-departure";
+import { StaffTeamError } from "@/lib/crm/staff-directory";
 
 export const runtime = "nodejs";
 
@@ -43,12 +45,12 @@ export async function DELETE(_request: Request, ctx: Ctx) {
     .maybeSingle();
   if (error || !staff) return jsonError(STAFF_COPY.notFound, 404);
   const row = staff as { id: string; auth_user_id: string; full_name: string | null };
-  const now = new Date().toISOString();
-  await admin.from("crm_staff_sessions").update({ revoked_at: now }).eq("staff_id", id).is("revoked_at", null);
-  const { data: userData } = await admin.auth.admin.getUserById(row.auth_user_id);
-  const meta = { ...(userData.user?.app_metadata || {}), sessions_revoked_at: now };
-  const { error: metaError } = await admin.auth.admin.updateUserById(row.auth_user_id, { app_metadata: meta });
-  if (metaError) return jsonError("Les sessions n’ont pas pu être fermées.", 502);
+  try {
+    await revokeStaffSessions(admin, row);
+  } catch (err) {
+    if (err instanceof StaffTeamError) return jsonError(err.message, err.status);
+    return jsonError("Les sessions n’ont pas pu être fermées.", 502);
+  }
   await recordAgencyJournal({
     staffId: auth.staff.id,
     action: "logout",

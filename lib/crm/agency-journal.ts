@@ -160,3 +160,45 @@ export function journalCsv(
 export function auditSummary(action: JournalAction, entity: JournalEntity) {
   return `${JOURNAL_ACTION_LABELS[action]} · ${JOURNAL_ENTITY_LABELS[entity]}`;
 }
+
+export type JournalDiffLine = { key: string; label: string; before: string | null; after: string };
+
+function diffScalar(value: unknown): string {
+  if (value == null || value === "") return "—";
+  if (typeof value === "boolean") return value ? "oui" : "non";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map((item) => diffScalar(item)).join(", ");
+  return JSON.stringify(value);
+}
+
+function diffLabel(key: string) {
+  return key.replace(/_/g, " ").replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+/**
+ * Le diff d’une ligne, lisible : `{ champ: { avant, apres } }` devient « Champ : avant → après » ;
+ * une valeur simple devient « Champ : valeur ». Le diff a déjà été masqué à l’écriture.
+ */
+export function journalDiffLines(diff: unknown): JournalDiffLine[] {
+  if (!diff || typeof diff !== "object" || Array.isArray(diff)) return [];
+  const lines: JournalDiffLine[] = [];
+  for (const [key, value] of Object.entries(diff as Record<string, unknown>)) {
+    if (key === "masked") continue;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const pair = value as Record<string, unknown>;
+      const hasBefore = "avant" in pair || "before" in pair || "from" in pair;
+      const hasAfter = "apres" in pair || "after" in pair || "to" in pair;
+      if (hasBefore || hasAfter) {
+        lines.push({
+          key,
+          label: diffLabel(key),
+          before: hasBefore ? diffScalar(pair.avant ?? pair.before ?? pair.from) : null,
+          after: diffScalar(pair.apres ?? pair.after ?? pair.to),
+        });
+        continue;
+      }
+    }
+    lines.push({ key, label: diffLabel(key), before: null, after: diffScalar(value) });
+  }
+  return lines.slice(0, 12);
+}

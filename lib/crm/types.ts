@@ -270,6 +270,10 @@ export type CrmBooking = {
   fees_follow_stay?: boolean;
   /** True : l’agence a rangé les cartes autrement que par les dates. */
   items_order_custom?: boolean;
+  /** Collègue en charge. Null : le dossier reste « À prendre ». Absent avant la migration. */
+  owner_staff_id?: string | null;
+  /** Collègue qui a créé le dossier depuis l’espace agence. Null : inconnu (dossier antérieur, connecteur). */
+  created_by_staff_id?: string | null;
   reference: string;
   title: string;
   destination: string | null;

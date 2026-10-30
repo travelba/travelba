@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { assertStaffPermission } from "@/lib/crm/agency-guard";
+import { responsableChangeAllowed, responsableChangeSummary } from "@/lib/crm/agency-access";
+import { staffAllows } from "@/lib/crm/agency-guard";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import { loadAssignableColleagues, loadDossierPeople, loadStaffNames } from "@/lib/crm/dossier-responsables";
 import { isUuid } from "@/lib/crm/ids";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -9,75 +11,97 @@ export const runtime = "nodejs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+type BookingRow = { id: string; reference: string; owner_staff_id?: string | null; created_by_staff_id?: string | null };
+
+async function readBooking(admin: ReturnType<typeof createServiceClient>, id: string): Promise<BookingRow | null> {
+  const first = await admin
+    .from("crm_bookings")
+    .select("id, reference, owner_staff_id, created_by_staff_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!first.error) return (first.data as BookingRow | null) ?? null;
+  // Colonnes absentes avant la migration : le dossier reste lisible, sans responsable.
+  const second = await admin.from("crm_bookings").select("id, reference").eq("id", id).maybeSingle();
+  return (second.data as BookingRow | null) ?? null;
+}
+
+/** Créé par, En charge, Intervenants, et ce que le collègue connecté peut faire. Ouvert à toute l’agence. */
 export async function GET(_request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  const denied = await assertStaffPermission(auth.staff, "reassign_dossier");
-  if (denied) return denied;
   const { id } = await ctx.params;
   if (!isUuid(id)) return jsonError("Dossier introuvable.", 404);
-  const { data: booking } = await auth.supabase
-    .from("crm_bookings")
-    .select("id, owner_staff_id")
-    .eq("id", id)
-    .maybeSingle();
-  if (!booking) return jsonError("Dossier introuvable.", 404);
   const admin = createServiceClient({ allowPreview: true });
-  const { data: people } = await admin
-    .from("crm_staff")
-    .select("id, full_name, role, active")
-    .in("role", ["admin", "manager", "agent"])
-    .order("full_name");
-  const { data: links } = await admin.from("crm_booking_assignees").select("staff_id").eq("booking_id", id);
+  const booking = await readBooking(admin, id);
+  if (!booking) return jsonError("Dossier introuvable.", 404);
+  const [people, colleagues, canAssign, canTake] = await Promise.all([
+    loadDossierPeople(admin, booking),
+    loadAssignableColleagues(admin),
+    staffAllows(auth.staff, "reassign_dossier"),
+    staffAllows(auth.staff, "edit_dossiers"),
+  ]);
   return NextResponse.json({
-    owner_staff_id: (booking as { owner_staff_id?: string | null }).owner_staff_id ?? null,
-    assignee_ids: ((links || []) as { staff_id: string }[]).map((row) => row.staff_id),
-    colleagues: ((people || []) as { id: string; full_name: string | null; active?: boolean }[])
-      .filter((row) => row.active !== false)
-      .map((row) => ({ id: row.id, name: row.full_name || "Collègue" })),
+    me: auth.staff.id,
+    created_by: people.createdBy,
+    owner: people.owner,
+    intervenants: people.intervenants,
+    colleagues: colleagues.map((row) => ({ id: row.id, name: row.name })),
+    can_assign: canAssign,
+    can_take: canTake,
   });
 }
 
+/**
+ * `{ action: "prendre" }` : le collègue se met en charge. `{ owner_staff_id }` : un administrateur attribue
+ * (null remet le dossier à prendre). Chaque changement est une ligne d’Historique, avant → après.
+ */
 export async function PATCH(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  const denied = await assertStaffPermission(auth.staff, "reassign_dossier");
-  if (denied) return denied;
   const { id } = await ctx.params;
   if (!isUuid(id)) return jsonError("Dossier introuvable.", 404);
-  const body = await request.json().catch(() => null);
-  const owner = body?.owner_staff_id;
-  const assignees = body?.assignee_ids;
-  if (owner != null && owner !== "" && !isUuid(owner)) return jsonError("Agent introuvable.");
-  if (assignees != null && (!Array.isArray(assignees) || assignees.some((value) => !isUuid(value)))) {
-    return jsonError("Agents illisibles.");
+  const body = (await request.json().catch(() => null)) as { action?: unknown; owner_staff_id?: unknown } | null;
+  const selfTake = body?.action === "prendre";
+  const requested = body?.owner_staff_id;
+  if (!selfTake && requested !== null && requested !== "" && !(typeof requested === "string" && isUuid(requested))) {
+    return jsonError("Collègue introuvable.");
   }
-  const { data: booking } = await auth.supabase.from("crm_bookings").select("id, owner_staff_id").eq("id", id).maybeSingle();
-  if (!booking) return jsonError("Dossier introuvable.", 404);
+  const nextOwnerId = selfTake ? auth.staff.id : typeof requested === "string" && requested ? requested : null;
+
+  const [canAssign, canEdit] = await Promise.all([
+    staffAllows(auth.staff, "reassign_dossier"),
+    staffAllows(auth.staff, "edit_dossiers"),
+  ]);
+  const allowed = responsableChangeAllowed({ actorId: auth.staff.id, canReassign: canAssign, canEdit, nextOwnerId });
+  if (!allowed.ok) return jsonError(allowed.message, 403);
+
   const admin = createServiceClient({ allowPreview: true });
-  const previous = (booking as { owner_staff_id?: string | null }).owner_staff_id ?? null;
-  if (owner !== undefined) {
-    const next = owner || null;
-    const { error } = await admin.from("crm_bookings").update({ owner_staff_id: next }).eq("id", id);
-    if (error) return jsonError("Le responsable n’a pas pu être enregistré.", 502);
+  const booking = await readBooking(admin, id);
+  if (!booking) return jsonError("Dossier introuvable.", 404);
+  const previousId = booking.owner_staff_id ?? null;
+
+  if (nextOwnerId) {
+    const colleagues = await loadAssignableColleagues(admin);
+    if (!colleagues.some((row) => row.id === nextOwnerId)) return jsonError("Ce collègue ne peut pas être en charge.");
   }
-  if (Array.isArray(assignees)) {
-    await admin.from("crm_booking_assignees").delete().eq("booking_id", id);
-    if (assignees.length) {
-      const { error } = await admin
-        .from("crm_booking_assignees")
-        .insert(assignees.map((staffId: string) => ({ booking_id: id, staff_id: staffId })));
-      if (error) return jsonError("Les agents n’ont pas pu être enregistrés.", 502);
-    }
-  }
+
+  const { error } = await admin.from("crm_bookings").update({ owner_staff_id: nextOwnerId }).eq("id", id);
+  if (error) return jsonError("Le responsable n’a pas pu être enregistré.", 502);
+
+  const names = await loadStaffNames(admin, [previousId, nextOwnerId]);
+  const previousName = previousId ? names.get(previousId) || "Collègue" : null;
+  const nextName = nextOwnerId ? names.get(nextOwnerId) || "Collègue" : null;
   await recordAgencyJournal({
     staffId: auth.staff.id,
     action: "update",
     entityType: "dossier",
     entityId: id,
-    summary: "Agent responsable modifié.",
-    diff: { responsable: { avant: previous, apres: owner === undefined ? previous : owner || null } },
+    summary: responsableChangeSummary({ previousName, nextName, selfTake }),
+    diff: { en_charge: { avant: previousName || "À prendre", apres: nextName || "À prendre" } },
     path: `/api/admin/bookings/${id}/responsable`,
   });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    owner: nextOwnerId ? { id: nextOwnerId, name: nextName } : null,
+  });
 }

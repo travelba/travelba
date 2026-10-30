@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { refreshBookingDerived } from "@/lib/crm/dossier-refresh";
+import { stampBookingCreator } from "@/lib/crm/dossier-responsables";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
 import {
   collectIngestFiles,
@@ -34,7 +36,15 @@ export async function POST(request: Request) {
       status: "draft",
       visibleToClient: false,
     });
-    if (booking?.id) await refreshBookingDerived(booking.id, { signatory: hotelSignatoryName(auth.staff.full_name) });
+    if (booking?.id) {
+      await refreshBookingDerived(booking.id, { signatory: hotelSignatoryName(auth.staff.full_name) });
+      await stampBookingCreator(createServiceClient(), {
+        bookingId: booking.id,
+        staffId: auth.staff.id,
+        path: "/api/admin/bookings/from-ingest",
+        summary: "Dossier créé depuis un import.",
+      });
+    }
     return NextResponse.json({ booking });
   } catch (err) {
     if (err instanceof BookingIssuesError) return jsonIssues(err.issues);

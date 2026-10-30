@@ -7,13 +7,13 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import { firstParam, type SearchParamValue } from "@/lib/crm/admin-list";
 import { ARGENT_TAB_HELP, ARGENT_TAB_LABELS, argentTabFromParam } from "@/lib/crm/argent-tabs";
-import { requireStaffPage } from "@/lib/crm/auth";
+import { requirePermissionPage } from "@/lib/crm/agency-guard";
 
 export const metadata = { title: "Argent" };
 
 /** Argent : À encaisser, À pointer, Grand livre, Comptes. Un onglet par geste ; les anciennes pages redirigent ici. */
 export default async function ArgentPage({ searchParams }: { searchParams: Promise<Record<string, SearchParamValue>> }) {
-  const [{ supabase }, params, badges] = await Promise.all([requireStaffPage(), searchParams, adminBadges()]);
+  const [{ supabase }, params, badges] = await Promise.all([requirePermissionPage("view_finances"), searchParams, adminBadges()]);
   const tab = argentTabFromParam(params.onglet);
 
   return (

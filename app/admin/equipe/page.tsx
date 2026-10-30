@@ -44,7 +44,6 @@ export default async function AdminTeamPage() {
       )}
       <RightsMatrix grid={rightsGrid(matrix)} />
       <AgencyLimitsForm
-        ceilingEuros={Math.round(settings.pliantAgentCeilingCents / 100)}
         paymentEuros={Math.round(settings.paymentAlertCents / 100)}
         failedLogins={settings.failedLoginAlerts}
       />

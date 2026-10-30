@@ -30,6 +30,7 @@ import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
 import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
+import { loadDossierPeople, type DossierPeople } from "@/lib/crm/dossier-responsables";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
 import { formatDateTimeFr } from "@/lib/crm/dates";
 import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation-mail";
@@ -700,8 +701,17 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
   } catch (err) {
     logRead("commission", err as { code?: string; message?: string });
   }
+  let people: DossierPeople = { createdBy: null, owner: null, intervenants: [] };
+  try {
+    people = await loadDossierPeople(admin, booking);
+  } catch (err) {
+    logRead("responsables", err as { code?: string; message?: string });
+  }
   return {
     ...bookingLine(booking, names, amounts, companies),
+    en_charge: people.owner?.name ?? null,
+    cree_par: people.createdBy?.name ?? null,
+    intervenants: people.intervenants.map((person) => person.name),
     commission_agence: formatAgencyFeePercent(commission.rate),
     commission_source: commission.source,
     commission_appliquee: booking.agency_commission === true,

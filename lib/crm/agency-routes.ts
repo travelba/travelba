@@ -52,6 +52,8 @@ function classify(input: {
   entity: JournalEntity;
   journal: boolean;
   sensitive?: AgencyRouteClass["sensitive"];
+  /** Phrase lisible dans l’Historique. Sinon « Action · Entité ». */
+  summary?: string;
 }): AgencyRouteClass {
   return {
     audience: input.audience ?? "staff",
@@ -60,8 +62,41 @@ function classify(input: {
     entity: input.entity,
     journal: input.journal,
     sensitive: input.sensitive ?? null,
-    summary: auditSummary(input.action, input.entity),
+    summary: input.summary || auditSummary(input.action, input.entity),
   };
+}
+
+/** Phrase du journal pour une route de dossier connue. Null : résumé générique. */
+export function dossierRouteSummary(method: string, path: string): string | null {
+  const upper = method.toUpperCase();
+  const tail = path.replace(new RegExp(`^/api/admin/bookings/${UUID}`, "i"), "");
+  if (tail === "" && upper === "PATCH") return "Dossier modifié (en-tête, visibilité ou réglages).";
+  if (tail === "" && upper === "DELETE") return "Dossier archivé.";
+  if (tail === "/items" || tail.startsWith("/items/")) {
+    if (upper === "DELETE") return "Étape retirée du carnet.";
+    if (upper === "POST") return "Étape ajoutée au carnet.";
+    return "Étape du carnet modifiée.";
+  }
+  if (tail.startsWith("/travelers")) return upper === "DELETE" ? "Voyageur retiré." : "Voyageurs du dossier modifiés.";
+  if (tail.startsWith("/documents")) return upper === "DELETE" ? "Pièce retirée du dossier." : "Pièce déposée sur le dossier.";
+  if (tail.startsWith("/cartes-embarquement")) return "Cartes d’embarquement.";
+  if (tail.startsWith("/pliant")) return "Carte Pliant du dossier.";
+  if (tail.startsWith("/cards")) return "Carte Pliant du dossier : émission, blocage ou ouverture.";
+  if (tail.startsWith("/extras")) return "Options du séjour modifiées (chauffeur, accueil, enregistrement, visa).";
+  if (tail.startsWith("/enregistrement")) return "Enregistrement en ligne mis à jour.";
+  if (tail.startsWith("/hotel-arrival") || tail.startsWith("/hotel-desk")) return "Courrier ou arrivée hôtel.";
+  if (tail.startsWith("/partage")) return "Carnet partagé.";
+  if (tail.startsWith("/mb3m")) return "Facture MB3M.";
+  if (tail.startsWith("/billing-company")) return "Société facturée modifiée.";
+  if (tail.startsWith("/cover")) return "Couverture du séjour modifiée.";
+  if (tail.startsWith("/duplicate")) return "Dossier dupliqué.";
+  if (tail.startsWith("/restore")) return "Dossier restauré.";
+  if (tail.startsWith("/calendrier")) return "Calendrier envoyé.";
+  if (/^\/(visa|visas|esta|eta-il|uk-eta)/.test(tail)) return "Formalité du dossier.";
+  if (tail.startsWith("/restaurants")) return "Restaurants du séjour.";
+  if (tail.startsWith("/chauffeur-quote")) return "Devis chauffeur.";
+  if (tail.startsWith("/vu")) return "Dossier marqué vu.";
+  return null;
 }
 
 /** Null hors de l’agence. Toute route `/api/admin` reçoit une classe. */
@@ -107,11 +142,18 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
   }
 
   if (path.startsWith("/api/admin/equipe")) {
+    // PATCH d’un collègue, fermeture de sessions, départ et grille : la route écrit sa propre ligne, plus précise.
+    const selfJournaled =
+      (new RegExp(`^/api/admin/equipe/${UUID}$`, "i").test(path) && upper === "PATCH") ||
+      path.endsWith("/sessions") ||
+      path.endsWith("/depart") ||
+      path.endsWith("/droits");
     return classify({
       permission: path.endsWith("/droits") ? "change_settings" : "manage_users",
       action: path.endsWith("/sessions") && upper === "DELETE" ? "logout" : action,
       entity: path.endsWith("/droits") ? "setting" : "user",
-      journal: mutation,
+      journal: mutation && !selfJournaled,
+      summary: upper === "POST" && new RegExp(`^/api/admin/equipe/${UUID}$`, "i").test(path) ? "Lien d’accès renvoyé." : upper === "POST" ? "Collègue ajouté." : upper === "DELETE" ? "Collègue retiré." : undefined,
     });
   }
 
@@ -136,11 +178,12 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
   }
 
   if (/\/travel-documents\/scan$/.test(path)) {
+    // La route écrit elle-même la ligne « Lecture d’une pièce » et l’alerte.
     return classify({
       permission: "passport_reveal",
       action: "reveal",
       entity: "document",
-      journal: true,
+      journal: false,
       sensitive: "passport_reveal",
     });
   }
@@ -151,6 +194,7 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       action: "create",
       entity: "card",
       journal: true,
+      summary: "Carte Pliant émise ou plafond modifié.",
     });
   }
 
@@ -165,11 +209,12 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
   }
 
   if (/\/revolut\/[^/]+$/.test(path) && mutation) {
+    // La route journalise le rapprochement avec le montant : pas de seconde ligne.
     return classify({
-      permission: "pay_supplier",
+      permission: "edit_finances",
       action: "update",
       entity: "finance",
-      journal: true,
+      journal: false,
       sensitive: "payment",
     });
   }
@@ -188,15 +233,16 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
   }
 
   if (new RegExp(`^/api/admin/bookings/${UUID}/responsable$`, "i").test(path) && mutation) {
-    return classify({ permission: "reassign_dossier", action: "update", entity: "dossier", journal: true });
+    // « Je prends ce dossier » est ouvert à qui modifie les dossiers ; la route tranche et écrit la ligne.
+    return classify({ permission: "edit_dossiers", action: "update", entity: "dossier", journal: false });
   }
 
   if (new RegExp(`^/api/admin/bookings/${UUID}$`, "i").test(path) && upper === "DELETE") {
-    return classify({ permission: "delete_archive", action: "delete", entity: "dossier", journal: true });
+    return classify({ permission: "delete_archive", action: "delete", entity: "dossier", journal: true, summary: "Dossier archivé." });
   }
 
   if (/^\/api\/admin\/bookings(\/from-ingest)?$/.test(path) && upper === "POST") {
-    return classify({ permission: "create_dossiers", action: "create", entity: "dossier", journal: true });
+    return classify({ permission: "create_dossiers", action: "create", entity: "dossier", journal: true, summary: "Dossier créé." });
   }
 
   if (/\/(concierge|outils)/.test(path) && mutation) {
@@ -209,10 +255,11 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
 
   if (mutation) {
     return classify({
-      permission: entity === "client" ? "edit_dossiers" : "edit_dossiers",
+      permission: "edit_dossiers",
       action,
       entity,
       journal: true,
+      summary: dossierRouteSummary(upper, path) || undefined,
     });
   }
 
@@ -229,7 +276,7 @@ export function entityIdFromPath(path: string) {
   return null;
 }
 
-/** Chemin d’un fichier de route, pour le test de couverture. */
+/** Décision de la garde. Tous les rôles de l’agence voient tous les dossiers : pas de périmètre. */
 export function agencyGateDecision(input: {
   role: StaffRole | null;
   active: boolean;
@@ -237,9 +284,6 @@ export function agencyGateDecision(input: {
   audience: AgencyRouteClass["audience"];
   permission: Permission | null;
   allows: boolean;
-  bookingScoped: boolean;
-  /** null : la lecture du dossier a échoué, on ne ferme pas l’agence. */
-  bookingVisible: boolean | null;
 }): { allow: boolean; status: number; reason: string } {
   if (input.audience === "public") return { allow: true, status: 200, reason: "" };
   if (!input.role) return { allow: false, status: 401, reason: "Non authentifié" };
@@ -252,12 +296,10 @@ export function agencyGateDecision(input: {
   if (!legacy && input.permission && !input.allows) {
     return { allow: false, status: 403, reason: "Cette action n’est pas ouverte pour votre rôle." };
   }
-  if (input.bookingScoped && input.bookingVisible === false) {
-    return { allow: false, status: 404, reason: "Dossier introuvable." };
-  }
   return { allow: true, status: 200, reason: "" };
 }
 
+/** Chemin d’un fichier de route, pour le test de couverture. */
 export function samplePathForRouteFile(file: string) {
   const sample = "11111111-1111-4111-8111-111111111111";
   return (

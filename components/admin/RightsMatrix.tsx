@@ -63,8 +63,8 @@ export function RightsMatrix({ grid, preview = false }: { grid: RightsGrid; prev
         <div>
           <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Droits</p>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            L’administrateur garde tous les droits. Les autres rôles se règlent ici. Le partenaire MyLER n’ouvre que
-            Little Emperors.
+            Tous les rôles voient tous les dossiers de l’agence. L’administrateur garde tous les droits. Les autres
+            rôles se règlent ici. Le partenaire MyLER n’ouvre que Little Emperors.
           </p>
         </div>
         <button

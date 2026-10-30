@@ -4,19 +4,17 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
 
+/** Seuils d’alerte. Information seulement : rien n’est bloqué, aucun plafond. */
 export function AgencyLimitsForm({
-  ceilingEuros,
   paymentEuros,
   failedLogins,
   preview = false,
 }: {
-  ceilingEuros: number;
   paymentEuros: number;
   failedLogins: number;
   preview?: boolean;
 }) {
   const router = useRouter();
-  const [ceiling, setCeiling] = useState(String(ceilingEuros));
   const [payment, setPayment] = useState(String(paymentEuros));
   const [failed, setFailed] = useState(String(failedLogins));
   const [saving, setSaving] = useState(false);
@@ -33,7 +31,6 @@ export function AgencyLimitsForm({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ceiling_euros: Number(ceiling),
           payment_euros: Number(payment),
           failed_logins: Number(failed),
         }),
@@ -54,30 +51,27 @@ export function AgencyLimitsForm({
 
   return (
     <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-2xl p-5">
-      <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Plafonds</p>
+      <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Alertes</p>
       <p className="text-sm text-muted">
-        Un agent ne crée pas de carte Pliant au-dessus du plafond. Une sortie plus haute prévient les administrateurs.
+        Les administrateurs sont prévenus d’un passeport ou d’une carte ouverts, d’un paiement au-dessus du seuil, d’un
+        remboursement, d’un changement de rôle et de connexions refusées. Rien n’est bloqué, aucun plafond.
       </p>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Plafond carte agent (€)
-          <input value={ceiling} onChange={(event) => setCeiling(event.target.value)} inputMode="numeric" className="admin-af-input text-sm" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Alerte paiement (€)
+          Alerte paiement à partir de (€)
           <input value={payment} onChange={(event) => setPayment(event.target.value)} inputMode="numeric" className="admin-af-input text-sm" />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Connexions refusées
+          Connexions refusées en quinze minutes
           <input value={failed} onChange={(event) => setFailed(event.target.value)} inputMode="numeric" className="admin-af-input text-sm" />
         </label>
       </div>
       <button type="submit" disabled={saving || preview} className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-60">
-        {saving ? "Enregistrement…" : "Enregistrer les plafonds"}
+        {saving ? "Enregistrement…" : "Enregistrer les seuils"}
       </button>
-      <BusyBar active={saving} label="Enregistrement des plafonds…" />
+      <BusyBar active={saving} label="Enregistrement des seuils…" />
       {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
-      {saved ? <p className="text-sm font-semibold text-[var(--admin-navy)]">Plafonds enregistrés.</p> : null}
+      {saved ? <p className="text-sm font-semibold text-[var(--admin-navy)]">Seuils enregistrés.</p> : null}
     </form>
   );
 }

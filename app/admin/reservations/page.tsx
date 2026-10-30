@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BookingsFilters } from "@/components/admin/BookingsFilters";
 import { BookingsTable } from "@/components/admin/BookingsTable";
-import { ReservationWeek, ReservationsViewToggle } from "@/components/admin/ReservationWeek";
+import { MineToggle, ReservationWeek, ReservationsViewToggle } from "@/components/admin/ReservationWeek";
 import { FormalitesPanel } from "@/components/admin/dossiers/FormalitesPanel";
 import { ServicesPanel } from "@/components/admin/dossiers/ServicesPanel";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
@@ -34,6 +34,8 @@ import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { DOSSIERS_VIEW_HELP, dossiersViewFromParam } from "@/lib/crm/dossiers-views";
 import { reservationWeek } from "@/lib/crm/reservation-week";
 import { stayToday } from "@/lib/crm/stay-moment";
+import { ownerLabelsFor } from "@/lib/crm/dossier-responsables";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 type Props = {
   searchParams: Promise<Record<string, SearchParamValue>>;
@@ -69,9 +71,18 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   const sort = parseBookingSort(params.tri);
   const view = dossiersViewFromParam(firstParam(params.vue));
   const vue = view === "liste" ? "liste" : null;
+  const mine = firstParam(params.qui) === "moi";
+  const qui = mine ? ("moi" as const) : null;
   const listView = view === "liste" || Boolean(q || state || sort !== "proche" || page > 1);
   const today = stayToday();
-  const { supabase } = await requireStaffPage();
+  const { supabase, staff } = await requireStaffPage();
+  const whoToggle = (
+    <MineToggle
+      mine={mine}
+      allHref={listHref("/admin/reservations", { q: q || null, etat: state, tri: bookingSortParam(sort), vue })}
+      mineHref={listHref("/admin/reservations", { q: q || null, etat: state, tri: bookingSortParam(sort), vue, qui: "moi" })}
+    />
+  );
 
   if (view === "formalites" || view === "services") {
     return (
@@ -93,6 +104,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       etat: state,
       tri: bookingSortParam(sort),
       vue: "liste",
+      qui,
     },
     page
   );
@@ -122,7 +134,8 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       console.error("[admin/reservations]", boardError.code ?? "?", boardError.message ?? "");
       throw new Error("Dossiers indisponibles");
     }
-    const pool = [...((travellingRows || []) as CrmBooking[]), ...((upcomingRows || []) as CrmBooking[])];
+    const all = [...((travellingRows || []) as CrmBooking[]), ...((upcomingRows || []) as CrmBooking[])];
+    const pool = mine ? all.filter((row) => row.owner_staff_id === staff.id) : all;
     const columns = reservationWeek(pool, today);
     const shown = columns.flatMap((column) => column.entries.map((entry) => entry.booking));
     const customerIds = [...new Set(shown.map((row) => row.customer_id).filter(Boolean))];
@@ -160,23 +173,28 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     const names = new Map(
       [...customersById.entries()].map(([id, row]) => [id, customerFullName(row)])
     );
-    const covers = await resolveListCovers(
-      shown.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))
-    );
+    const [covers, owners] = await Promise.all([
+      resolveListCovers(shown.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))),
+      ownerLabelsFor(createServiceClient(), shown),
+    ]);
 
     return (
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle title="Dossiers" subtitle={DOSSIERS_VIEW_HELP.semaine} actions={NEW_BOOKING_ACTION} />
         <div className="mt-6 space-y-3">
-          <ReservationsViewToggle active="semaine" listeHref={listeHref} />
-          <BookingsFilters q="" etat={null} tri={sort} revision="semaine" />
+          <div className="flex flex-wrap items-center gap-2">
+            <ReservationsViewToggle active="semaine" listeHref={listeHref} />
+            {whoToggle}
+          </div>
+          <BookingsFilters q="" etat={null} tri={sort} qui={qui} revision="semaine" />
           <ReservationWeek
             columns={columns}
             names={names}
             places={maps}
             amounts={displayed}
             payerLabels={payerLabels}
+            owners={owners}
             covers={covers}
           />
         </div>
@@ -188,6 +206,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     let next = query;
     if (archivedOnly) next = next.not("archived_at", "is", null);
     else next = next.is("archived_at", null);
+    if (mine) next = next.eq("owner_staff_id", staff.id);
     if (!archivedOnly && state === "preparation") next = next.eq("visible_to_client", false);
     if (!archivedOnly && state === "montre") next = next.eq("visible_to_client", true);
     if (!archivedOnly && state === "a-venir") {
@@ -348,12 +367,13 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   // `?page=999` : on renvoie sur la dernière page plutôt qu’un résumé « 301-312 » au-dessus d’une liste vide.
   const lastPage = pageOverflow(page, total);
   if (lastPage != null) {
-    redirect(listHref("/admin/reservations", { q, etat: state, tri: bookingSortParam(sort) }, lastPage));
+    redirect(listHref("/admin/reservations", { q, etat: state, tri: bookingSortParam(sort), qui }, lastPage));
   }
   const rows = q || order.proximity ? matched.slice(from, to + 1) : matched;
-  const covers = await resolveListCovers(
-    rows.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))
-  );
+  const [covers, owners] = await Promise.all([
+    resolveListCovers(rows.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))),
+    ownerLabelsFor(createServiceClient(), rows),
+  ]);
   const hiddenArchiveHits =
     q && state !== "archive"
       ? listResult.archived.filter((row) => smartSearchMatch(q, searchText.get(row.id))).length
@@ -373,7 +393,10 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle title="Dossiers" subtitle={DOSSIERS_VIEW_HELP.liste} actions={NEW_BOOKING_ACTION} />
       <div className="mt-6 space-y-3">
-        <ReservationsViewToggle active="liste" listeHref={listeHref} />
+        <div className="flex flex-wrap items-center gap-2">
+          <ReservationsViewToggle active="liste" listeHref={listeHref} />
+          {whoToggle}
+        </div>
         <BookingsTable
           bookings={rows}
           customers={customers.map((row) => ({ id: row.id, first_name: row.first_name, last_name: row.last_name }))}
@@ -383,10 +406,11 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
           displayAmounts={displayAmounts}
           searchText={visibleSearch}
           payerLabels={payerLabels}
+          owners={owners}
           page={page}
           pageSize={ADMIN_PAGE_SIZE}
           total={total}
-          filters={{ q, etat: state, tri: sort, vue }}
+          filters={{ q, etat: state, tri: sort, vue, qui }}
           hiddenArchiveHits={hiddenArchiveHits}
           covers={covers}
         />

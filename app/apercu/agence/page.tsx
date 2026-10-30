@@ -44,9 +44,9 @@ export default async function AgencyPreviewPage({
       {droits ? (
         <>
       <PageEyebrow>Espace agence</PageEyebrow>
-      <PageTitle title="Équipe" subtitle="Droits et plafonds. L’administrateur garde tout, hors de la grille." />
+      <PageTitle title="Équipe" subtitle="Droits et alertes. L’administrateur garde tout, hors de la grille." />
       <RightsMatrix grid={rightsGrid(null)} preview />
-      <AgencyLimitsForm ceilingEuros={2000} paymentEuros={5000} failedLogins={5} preview />
+      <AgencyLimitsForm paymentEuros={5000} failedLogins={5} preview />
         </>
       ) : null}
       {journal ? (
