@@ -13,10 +13,11 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
-    "test": "tsx --tsconfig tsconfig.test.json --test lib/crm/*.test.ts",
+    "test": "tsx --tsconfig tsconfig.test.json --test lib/crm/*.test.ts lib/site-hero.test.ts",
     "check": "npm run typecheck && npm run lint && npm run test && node scripts/check-migrations.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
-    "covers:generate": "tsx scripts/generate-city-covers.ts"
+    "covers:generate": "tsx scripts/generate-city-covers.ts",
+    "covers:fallback": "tsx scripts/regenerate-fallback-covers.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.112",
@@ -27,12 +28,14 @@
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.109.0",
     "ai": "^6.0.283",
+    "city-timezones": "^1.3.4",
     "framer-motion": "^12.41.0",
     "libphonenumber-js": "^1.13.13",
     "lucide-react": "^1.21.0",
     "mrz": "^5.0.2",
     "next": "16.3.8",
     "next-intl": "^4.13.0",
+    "ogg-opus-decoder": "^1.7.5",
     "pdf-lib": "^1.17.1",
     "puppeteer-core": "^25.12.0",
     "react": "19.2.4",

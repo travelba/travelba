@@ -1,3 +1,5 @@
+import { boardingPassContentDrafts, type BoardingPassTemplate } from "./boarding-pass-whatsapp";
+import { statementContentDrafts } from "./statement-whatsapp";
 import { siteConfig } from "../site";
 import {
   conciergeContentDrafts,
@@ -404,6 +406,64 @@ function flightMessages(): WhatsappCatalogMessage[] {
   });
 }
 
+function boardingPassBubble(template: BoardingPassTemplate): WhatsappBubble {
+  const draft = boardingPassContentDrafts().find((row) => row.template === template);
+  if (!draft) throw new Error(`modèle absent: ${template}`);
+  const types = draft.create.types as {
+    "twilio/media"?: { body?: string };
+    "twilio/text"?: { body?: string };
+  };
+  const raw = types["twilio/media"]?.body || types["twilio/text"]?.body || "";
+  const body = applyVars(raw, draft.create.variables);
+  if (!body || /\{\{\d+\}\}/.test(body)) throw new Error(`variable vide: ${template}`);
+  return {
+    body,
+    button: null,
+    photo: false,
+    image: null,
+    imageAlt: null,
+    modelName: draft.friendlyName,
+  };
+}
+
+function statementBubble(): WhatsappBubble {
+  const draft = statementContentDrafts()[0];
+  const types = draft.create.types as { "twilio/media"?: { body?: string } };
+  const body = applyVars(types["twilio/media"]?.body || "", draft.create.variables);
+  if (!body || /\{\{\d+\}\}/.test(body)) throw new Error("variable vide: releve");
+  return {
+    body,
+    button: null,
+    photo: false,
+    image: null,
+    imageAlt: null,
+    modelName: draft.friendlyName,
+  };
+}
+
+function boardingPassMessages(): WhatsappCatalogMessage[] {
+  return [
+    message({
+      id: "carte-une",
+      title: "Une carte d’embarquement",
+      when: "Un seul PDF de type carte d’embarquement. L’en-tête du modèle est le document : le fichier est joint. L’agence confirme avant l’envoi.",
+      bubble: boardingPassBubble("carte_embarquement"),
+    }),
+    message({
+      id: "cartes-plusieurs",
+      title: "Plusieurs cartes d’embarquement",
+      when: "WhatsApp n’accepte qu’un document par message : un PDF par envoi, avec le prénom, le vol, le trajet, l’horaire et le siège de cette carte.",
+      bubble: boardingPassBubble("cartes_embarquement"),
+    }),
+    message({
+      id: "enregistrement-aeroport",
+      title: "Enregistrement à terminer à l’aéroport",
+      when: "Aucun PDF. La phrase dit soit que l’enregistrement en ligne a échoué, soit qu’il reste à le terminer au comptoir. L’exemple est l’échec.",
+      bubble: boardingPassBubble("enregistrement_aeroport"),
+    }),
+  ];
+}
+
 function catalogGroups(): WhatsappCatalogGroup[] {
   const one = sampleDossier([sampleStay(REFERENCE, PLACE)]);
   const two = sampleDossier([
@@ -545,6 +605,16 @@ function catalogGroups(): WhatsappCatalogGroup[] {
           earlier: { template: "passeports" },
         }),
         message({
+          id: "passeport-expire",
+          title: "Un passeport expire avant le retour",
+          when: "Le livret est déposé, mais il expire avant la date de retour. Une fois par voyageur. Le prénom est celui du passeport.",
+          bubble: wiredBubble("passeport_expire", {
+            givenName: "Jonas",
+            date: "07/02/2027",
+            variable: "28/03/2027",
+          }),
+        }),
+        message({
           id: "formalite-manquante",
           title: "Une formalité manque",
           when: "Une fois par formalité, tant qu’elle n’est pas déposée. Ici, un visa. L’image est celle du visa.",
@@ -581,14 +651,36 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       messages: flightMessages(),
     },
     {
+      id: "embarquement",
+      title: "Cartes d’embarquement",
+      intro:
+        "Ces messages partent depuis le dossier, après une confirmation. Rien ne part seul. Le PDF est l’en-tête Document : un message par PDF. Comme les autres modèles, le texte est en français.",
+      messages: boardingPassMessages(),
+    },
+    {
+      id: "releve",
+      title: "Relevé de compte",
+      intro:
+        "Le bouton Demander un relevé envoie le PDF. Hors des 24 heures, le modèle releve (en-tête Document) est requis. Sans lui, l’envoi est refusé et noté en échec. Dans la fenêtre, le même PDF part en message de session.",
+      messages: [
+        message({
+          id: "releve-compte",
+          title: "Relevé joint",
+          when: "Depuis Transactions, vers le téléphone de la fiche ouverte. L’exemple est un relevé de compte.",
+          bubble: statementBubble(),
+        }),
+      ],
+    },
+    {
       id: "partage",
       title: "Partage du voyage",
-      intro: "Le compagnon reçoit le lien du voyage. Ce lien n’ouvre pas le compte.",
+      intro:
+        "Le compagnon reçoit le lien du voyage. Ce lien n’ouvre pas le compte. Dans les 24 heures, le texte part en conversation. Hors de cette fenêtre, le modèle partage_voyage (bouton Voir le voyage) est requis. Sans lui, l’envoi est refusé et noté en échec.",
       messages: [
         session(
           "partage",
           "Lien envoyé à un accompagnant",
-          "Depuis la fiche du séjour, vers le téléphone de l’accompagnant. Le message part dans la conversation en cours.",
+          "Depuis la fiche du séjour, vers le téléphone de l’accompagnant. Dans la fenêtre de 24 h, le message est libre. Hors fenêtre, WhatsApp exige le modèle partage_voyage.",
           tripShareMessage({
             firstName: FIRST_NAME,
             title: PLACE,

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { OutgoingRow, type TargetOption } from "@/components/admin/OutgoingAttach";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { StatusChip } from "@/components/crm/ui";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -116,13 +117,16 @@ export function TripCostsBlock({
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
-        setError(json?.error || failure);
-        return;
+        const message = json?.error || failure;
+        setError(message);
+        return message;
       }
       setMoving(null);
       router.refresh();
+      return null;
     } catch {
       setError("Connexion interrompue. Réessayez.");
+      return "Connexion interrompue. Réessayez.";
     } finally {
       setWorking(null);
     }
@@ -217,7 +221,7 @@ export function TripCostsBlock({
                               {state === "elsewhere" && row.matchedBookingId ? (
                                 <span className="font-semibold text-[var(--admin-navy)]">
                                   Rattachée ·{" "}
-                                  <Link href={`/admin/reservations/${row.matchedBookingId}?tab=reglement`} className="text-[#9e7e51] underline">
+                                  <Link href={`/admin/reservations/${row.matchedBookingId}?tab=argent`} className="text-[#9e7e51] underline">
                                     {row.matchedReference || "autre réservation"}
                                   </Link>
                                 </span>
@@ -228,14 +232,16 @@ export function TripCostsBlock({
                           <div className="flex flex-col items-end gap-1">
                             <p className="font-semibold tabular-nums text-[var(--admin-navy)]">{spendAmount(row)}</p>
                             {state === "here" && placement ? (
-                              <button
-                                type="button"
-                                disabled={locked}
-                                onClick={() => void detach(placement.cost.id)}
-                                className="text-xs text-[#9e7e51] underline disabled:opacity-50"
-                              >
-                                Retirer
-                              </button>
+                              <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className="text-xs text-[#9e7e51] underline disabled:opacity-50"
+                onConfirm={() => detach(placement.cost.id)}
+              />
                             ) : null}
                             {state === "ignored" ? (
                               <button
@@ -297,14 +303,16 @@ export function TripCostsBlock({
                         <span className="min-w-0 break-words">{costCaption(cost)}</span>
                         <span className="tabular-nums">{eur(cost.amountEur)}</span>
                         {costPersisted(cost) ? (
-                          <button
-                            type="button"
-                            disabled={locked}
-                            onClick={() => void detach(cost.id)}
-                            className="admin-tap text-[#9e7e51] underline disabled:opacity-50"
-                          >
-                            Retirer
-                          </button>
+                          <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className="admin-tap text-[#9e7e51] underline disabled:opacity-50"
+                onConfirm={() => detach(cost.id)}
+              />
                         ) : null}
                       </li>
                     ))}
@@ -365,14 +373,16 @@ export function TripCostsBlock({
                               <span>{costCaption(cost)}</span>
                               <span className="tabular-nums">{eur(cost.amountEur)}</span>
                               {costPersisted(cost) ? (
-                                <button
-                                  type="button"
-                                  disabled={locked}
-                                  onClick={() => void detach(cost.id)}
-                                  className="text-[#9e7e51] underline disabled:opacity-50"
-                                >
-                                  Retirer
-                                </button>
+                                <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className="text-[#9e7e51] underline disabled:opacity-50"
+                onConfirm={() => detach(cost.id)}
+              />
                               ) : null}
                             </li>
                           ))}
@@ -447,14 +457,16 @@ export function TripCostsBlock({
                     </button>
                   ) : null}
                   {costPersisted(cost) ? (
-                    <button
-                      type="button"
-                      disabled={locked}
-                      onClick={() => void detach(cost.id)}
-                      className="text-[#9e7e51] underline disabled:opacity-50"
-                    >
-                      Retirer
-                    </button>
+                    <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className="text-[#9e7e51] underline disabled:opacity-50"
+                onConfirm={() => detach(cost.id)}
+              />
                   ) : null}
                 </div>
                 {moving === cost.id ? (

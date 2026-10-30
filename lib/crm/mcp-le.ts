@@ -5,7 +5,14 @@ import { confirmationRefsAlign, firstNamesAlign, lastNamesClose, referenceTokens
 import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
 import { hotelBookingStem, joinConfirmationRefs } from "@/lib/crm/item-match";
 import {
+  cancellationStatut,
+  leCancellationVerdict,
+  loadStayAnchors,
+  type CancellationVerdict,
+} from "@/lib/crm/cancellation-standing";
+import {
   benefitsFromLeRaw,
+  isLeCancelled,
   leDateOnly,
   listLittleEmperorsBookings,
   littleEmperorsConfigured,
@@ -15,6 +22,8 @@ import {
   type LeBooking,
   type LeRoom,
 } from "@/lib/crm/little-emperors";
+import { earliestLeConfirmationAt, leBookingNeedles, loadLeConfirmationMails, type LeMailStamp } from "@/lib/crm/le-confirmation-mail";
+import { compareLeMadeAt, firstLeMadeAt, leBookedAtFromPayload, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { foldName } from "@/lib/crm/person-match";
@@ -49,12 +58,16 @@ type StoredLe = {
   cancellation_deadline?: string | null;
   raw?: unknown;
   crm_booking_id?: string | null;
+  created_at?: string | null;
+  booked_at?: string | null;
 };
 
 export type LeCandidate = {
   booking: LeBooking;
   crmBookingId: string | null;
   source: "api" | "enregistree";
+  /** Date de réservation, pour lister du plus récent au plus ancien. */
+  madeAt?: string | null;
 };
 
 export type LeDossierRef = {
@@ -172,16 +185,21 @@ function confirmationMatch(booking: LeBooking, confirmation: string) {
 }
 
 export function selectLeReservations(rows: LeCandidate[], query: LeLookup) {
-  return rows.filter((row) => {
-    const booking = row.booking;
-    if (query.confirmation && !confirmationMatch(booking, query.confirmation)) return false;
-    if (query.nom) {
-      const guests = booking.guest_names || [];
-      if (!guests.some((guest) => guestNameMatches(guest, query.nom || ""))) return false;
-    }
-    if (query.hotel && !hotelMatches(booking.hotel_name, query.hotel)) return false;
-    return datesMatch(booking, query);
-  });
+  return rows
+    .filter((row) => {
+      const booking = row.booking;
+      if (query.confirmation && !confirmationMatch(booking, query.confirmation)) return false;
+      if (query.nom) {
+        const guests = booking.guest_names || [];
+        if (!guests.some((guest) => guestNameMatches(guest, query.nom || ""))) return false;
+      }
+      if (query.hotel && !hotelMatches(booking.hotel_name, query.hotel)) return false;
+      return datesMatch(booking, query);
+    })
+    .sort(
+      (left, right) =>
+        compareLeMadeAt(left.madeAt, right.madeAt) || left.booking.id - right.booking.id
+    );
 }
 
 function unique(values: (string | null | undefined)[]) {
@@ -242,7 +260,7 @@ function moneyOf(value: string | null | undefined) {
 export function presentLeReservation(
   booking: LeBooking,
   dossier: LeDossierRef | null,
-  extra?: { dossiers?: LeDossierRef[]; source?: "api" | "enregistree" }
+  extra?: { dossiers?: LeDossierRef[]; source?: "api" | "enregistree"; madeAt?: string | null }
 ) {
   const rooms = viewRooms(booking);
   const regimes = unique([...rooms.map((room) => room.board), booking.board]);
@@ -262,6 +280,7 @@ export function presentLeReservation(
     adresse: booking.address,
     arrivee: booking.check_in,
     depart: booking.check_out,
+    reservee_le: leMadeDayLabel(extra?.madeAt || booking.booked_at),
     chambres: rooms
       .map((room) => ({
         type: room.room_type,
@@ -357,35 +376,61 @@ function bookingFromStored(row: StoredLe): LeBooking {
     room_types: roomTypes.length ? roomTypes : parsed?.room_types || [],
     benefits: rawBenefits.length ? rawBenefits : benefitsFromLeRaw(raw).length ? benefitsFromLeRaw(raw) : parsed?.benefits || [],
     rooms: parsed?.rooms?.length ? parsed.rooms : undefined,
+    booked_at: parsed?.booked_at || leBookedAtFromPayload(raw),
   };
 }
 
-function mergeReservations(stored: StoredLe[], live: LeBooking[] | null): LeCandidate[] {
+function madeAtOf(booking: LeBooking, stored: StoredLe | undefined, mails: LeMailStamp[]) {
+  const emailAt = earliestLeConfirmationAt(
+    leBookingNeedles({
+      confirmation_number: booking.confirmation_number || stored?.confirmation_number,
+      raw: stored?.raw || booking,
+    }),
+    mails
+  );
+  return firstLeMadeAt(booking, stored?.raw, emailAt, stored?.booked_at, stored?.created_at);
+}
+
+function mergeReservations(stored: StoredLe[], live: LeBooking[] | null, mails: LeMailStamp[]): LeCandidate[] {
+  const storedById = new Map<number, StoredLe>();
   const byId = new Map<number, LeCandidate>();
   for (const row of stored) {
     const booking = bookingFromStored(row);
     if (!Number.isFinite(booking.id)) continue;
+    storedById.set(booking.id, row);
     byId.set(booking.id, {
       booking,
       crmBookingId: row.crm_booking_id || null,
       source: "enregistree",
+      madeAt: madeAtOf(booking, row, mails),
     });
   }
   for (const booking of live || []) {
     const current = byId.get(booking.id);
+    const previous = storedById.get(booking.id);
     byId.set(booking.id, {
       booking,
       crmBookingId: current?.crmBookingId || null,
       source: "api",
+      madeAt: madeAtOf(booking, previous, mails),
     });
   }
   return [...byId.values()];
 }
 
 function ambiguity(rows: LeCandidate[]) {
-  const lines = rows.slice(0, 5).map((row) => {
+  const ordered = rows
+    .slice()
+    .sort((left, right) => compareLeMadeAt(left.madeAt, right.madeAt) || left.booking.id - right.booking.id);
+  const lines = ordered.slice(0, 5).map((row) => {
     const booking = row.booking;
-    return [booking.confirmation_number, booking.hotel_name, booking.guest_names?.[0], booking.check_in]
+    return [
+      booking.confirmation_number,
+      booking.hotel_name,
+      booking.guest_names?.[0],
+      leMadeDayLabel(row.madeAt),
+      booking.check_in,
+    ]
       .filter(Boolean)
       .join(" · ");
   });
@@ -554,8 +599,12 @@ export async function loadLeReservation(
 ) {
   const query = leLookup(input);
   const client = db(admin);
-  const [stored, live] = await Promise.all([loadStored(client), loadLive(deps)]);
-  const rows = mergeReservations(stored, live.bookings);
+  const [stored, live, mails] = await Promise.all([
+    loadStored(client),
+    loadLive(deps),
+    loadLeConfirmationMails(client),
+  ]);
+  const rows = mergeReservations(stored, live.bookings, mails);
   if (!rows.length) {
     throw new McpReadError(live.configured ? "Lecture Little Emperors impossible." : "Little Emperors n’est pas configuré.");
   }
@@ -567,7 +616,27 @@ export async function loadLeReservation(
   if (matches.length > 1) ambiguity(matches);
   const chosen = matches[0];
   const link = await linkedDossier(client, chosen);
-  return { booking: chosen.booking, source: chosen.source, ...link };
+  return { booking: chosen.booking, source: chosen.source, madeAt: chosen.madeAt ?? null, ...link };
+}
+
+const QUIET_CANCELLATION: CancellationVerdict = { suivi: null, alerte: false, remplacee_par: null };
+
+async function verdictForBooking(admin: Admin, booking: LeBooking): Promise<CancellationVerdict> {
+  if (!isLeCancelled(booking.state)) return QUIET_CANCELLATION;
+  const known = await loadStayAnchors(admin);
+  return leCancellationVerdict(
+    {
+      confirmation_number: booking.confirmation_number,
+      state: booking.state,
+      hotel_name: booking.hotel_name,
+      hotel_id: booking.hotel_id,
+      check_in: booking.check_in,
+      check_out: booking.check_out,
+      guest_names: booking.guest_names,
+      le_booking_id: Number.isFinite(booking.id) ? booking.id : null,
+    },
+    known
+  );
 }
 
 /** Lecture d’une réservation, y compris déjà rattachée à un dossier. */
@@ -577,8 +646,18 @@ export async function readReservationLittleEmperors(
   deps?: { listBookings?: () => Promise<LeBooking[]> }
 ) {
   const loaded = await loadLeReservation(input, admin, deps);
-  return presentLeReservation(loaded.booking, loaded.dossier, {
+  const client = db(admin);
+  const verdict = await verdictForBooking(client, loaded.booking);
+  const view = presentLeReservation(loaded.booking, loaded.dossier, {
     dossiers: loaded.dossiers,
     source: loaded.source,
+    madeAt: loaded.madeAt,
   });
+  return {
+    ...view,
+    statut: cancellationStatut(view.statut, verdict),
+    suivi: verdict.suivi,
+    alerte: verdict.alerte,
+    remplacee_par: verdict.remplacee_par,
+  };
 }

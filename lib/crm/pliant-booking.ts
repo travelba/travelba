@@ -176,7 +176,7 @@ export type BookingCardMosaicSlot =
   | { source: "linked"; pliantCardId: string };
 
 /**
- * Mosaïque de l’onglet Carte : les cartes émises, puis les cartes liées
+ * Mosaïque du bloc Carte Pliant (onglet Argent) : les cartes émises, puis les cartes liées
  * (hôtel, registre) qui ne sont pas déjà une carte du dossier.
  * Une carte supprimée ne revient pas par le récap.
  */

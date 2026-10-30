@@ -1,5 +1,3 @@
-"use client";
-
 import { useTranslations } from "next-intl";
 import { Quote } from "lucide-react";
 import { SectionHeading } from "./SectionHeading";

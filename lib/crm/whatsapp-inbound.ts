@@ -7,16 +7,19 @@ import { formParams, verifyTwilioSignature } from "./twilio-signature";
 import { liveConciergeImage, stayHasPublishedCover } from "./concierge-notices";
 import { ensureTripShareCode } from "./trip-share-code";
 import { CONCIERGE_BUBBLE_DELAY_MS } from "../concierge/bubbles";
-import { withConciergeSignature } from "./whatsapp";
+import { whatsappCallbackFailure, withConciergeSignature } from "./whatsapp";
 import {
   accessLinkReply,
   buildConciergeDossier,
+  dropUnrecordedHandoff,
   isConciergeStop,
   leadReply,
   messageLanguage,
   panRefusedReply,
   pieceSavedLine,
+  voiceNoteUnheardReply,
   rateLimitedReply,
+  replyClaimsAgencyHandoff,
   sharedPhoneReply,
   type ConciergePending,
   type HandoffKind,
@@ -29,8 +32,28 @@ import type { PlannedFollowup, ProposalDraft, TripBrief } from "./concierge-jour
 import type { QualityMark } from "./concierge-quality";
 import { sessionAddress } from "./whatsapp-session";
 import { nextParisMorning, threadIsPaused } from "./whatsapp-takeover";
+import {
+  inboundAudio,
+  normalizeAudioType,
+  toPlayableVoice,
+  transcribeWhatsappAudio,
+  voiceNoteStoragePath,
+  voiceNoteText,
+  VOICE_NOTE_UNAVAILABLE,
+  withoutUnheardVoice,
+} from "./whatsapp-voice";
+import { schemaMissesColumn } from "./whatsapp-inbox";
 import { loadCollaboratorTripOwnerIds } from "./company-peers";
 import { filledLoyaltyLabels, loyaltyFromCustomer } from "./loyalty";
+import {
+  commitClientChange,
+  matchClientWrite,
+  parseClientSpaceWrite,
+  type ConciergeTraveler,
+  type PlannedClientWrite,
+} from "./concierge-client-write";
+import { classifyClientSpace } from "./client-space-catalog";
+import { customersMatchingShareHint, performClientSpace, shareNameList, sharePersonLabel } from "./concierge-space";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -45,6 +68,8 @@ export type WhatsappMessageInsert = {
   tools?: string[] | null;
   author_staff_id?: string | null;
   media_path?: string | null;
+  /** Texte entendu. Null si la transcription a échoué. */
+  transcript?: string | null;
 };
 
 export type WhatsappRequestInsert = {
@@ -104,11 +129,58 @@ export type WhatsappStore = {
   /** Savoir publié. Tableau vide si la migration n’est pas là : l’appelant reprend le dépôt. */
   loadKnowledge?(): Promise<KnowledgeChunk[]>;
   saveFollowups?(phone: string, customerId: string | null, rows: PlannedFollowup[]): Promise<void>;
-  updateStatus?(sid: string, status: string): Promise<void>;
+  updateStatus?(sid: string, status: string, error?: string | null): Promise<void>;
   /** Chemin de la dernière pièce enregistrée, puis oublié. */
   takePiecePath?(): string | null;
   /** Demandes encore ouvertes, pour ne pas les oublier au tour suivant. */
   openRequests?(customerId: string): Promise<ConciergePending[]>;
+  /** Voyageurs des séjours de ce client. `bookingIds` limite à l’accompagnateur. */
+  loadParty?(customerId: string, bookingIds?: string[] | null): Promise<ConciergeTraveler[]>;
+  /** Séjour nommé, pour un membre de l’équipe qui n’est pas le client. */
+  loadPartyByReference?(reference: string): Promise<ConciergeTraveler[]>;
+  /** Client nommé par l’équipe. `ask` si personne, ou plusieurs. */
+  loadPartyByClientName?(name: string): Promise<{ party: ConciergeTraveler[] } | { ask: string }>;
+  /** Membre de l’équipe, téléphone E.164. Absent ou ambigu : null. */
+  staffByPhone?(e164: string): Promise<{ id: string } | null>;
+  /** Écriture espace client, déjà décidée. */
+  commitClientWrite?(input: {
+    plan: PlannedClientWrite;
+    staffId?: string | null;
+    piecePath?: string | null;
+  }): Promise<
+    { ok: true; summary: string; bookingId: string | null; customerId: string } | { ok: false; message: string }
+  >;
+  /** Autre geste de l’espace client, mêmes règles que la page. */
+  performSpace?(input: {
+    actionId: string;
+    message: string;
+    customerId: string;
+    holder: boolean;
+    staff: boolean;
+    staffId: string | null;
+    party: ConciergeTraveler[];
+    hasFile: boolean;
+    piecePath: string | null;
+    name: string | null;
+    reference: string | null;
+    access: boolean;
+    tool: string;
+  }): Promise<{
+    ok: boolean;
+    summary: string;
+    bookingId: string | null;
+    handoff: HandoffKind | null;
+    access: boolean;
+    tool: string;
+  }>;
+  /** Chemin de la dernière pièce, sans l’oublier. */
+  peekPiecePath?(): string | null;
+  /** Note vocale, même coffre que les pièces, sans l’ajouter au coffre identité. */
+  saveVoiceNote?(input: {
+    customerId: string | null;
+    bytes: Uint8Array;
+    contentType: string;
+  }): Promise<{ path: string } | null>;
 };
 
 const PIECE_TYPES = new Set([
@@ -185,6 +257,15 @@ export function phoneFromWhatsapp(from: string | null | undefined) {
   const raw = (from || "").replace(/^whatsapp:/i, "").trim();
   if (!raw) return null;
   return toE164(raw, "FR");
+}
+
+/** Le téléphone d’équipe est reconnu en E.164, même s’il est saisi au format national. Deux fiches : personne. */
+export function matchStaffByPhone(rows: { id: string; phone: string | null }[], e164: string) {
+  const target = toE164(e164, "FR");
+  if (!target) return null;
+  const hits = rows.filter((row) => toE164(row.phone || "", "FR") === target);
+  if (hits.length !== 1) return null;
+  return { id: hits[0].id };
 }
 
 function inboundBody(params: Record<string, string>) {
@@ -266,6 +347,10 @@ export async function receiveWhatsappWebhook(input: {
   /** Instant du message. Les tests figent le jeudi. */
   now?: Date;
   env?: Record<string, string | undefined>;
+  /** Transcription. Défaut : OpenAI, langue automatique. */
+  transcribeAudio?: (input: { bytes: Uint8Array; contentType: string }) => Promise<string | null>;
+  /** Fichier à stocker. Défaut : Ogg Opus converti en WAV pour le mobile. */
+  prepareAudio?: (input: { bytes: Uint8Array; contentType: string }) => Promise<{ bytes: Uint8Array; contentType: string }>;
   store: WhatsappStore;
   /**
    * Avant de répondre. `stop` : la remise au Concierge a déjà traité ce message
@@ -288,7 +373,8 @@ export async function receiveWhatsappWebhook(input: {
   if (statusCallbackOnly(params)) {
     const sid = (params.MessageSid || "").trim();
     const state = (params.MessageStatus || "").trim();
-    if (sid && state) await input.store.updateStatus?.(sid, state);
+    const failure = whatsappCallbackFailure(state, params.ErrorCode, params.ErrorMessage);
+    if (sid && state) await input.store.updateStatus?.(sid, state, failure);
     return { status: 200 };
   }
 
@@ -312,7 +398,7 @@ export async function receiveWhatsappWebhook(input: {
 
   const e164 = phoneFromWhatsapp(params.From);
   const to = e164 ? sessionAddress(e164) : null;
-  const clientText = redactIngestText(inboundBody(params) || "Message vide.");
+  const caption = (params.Body || "").trim();
   if (!to || !e164) return done(200);
 
   const agency = phoneFromWhatsapp(input.agencyFrom);
@@ -320,16 +406,31 @@ export async function receiveWhatsappWebhook(input: {
     const clientPhone = phoneFromWhatsapp(params.To);
     const holders = clientPhone ? await input.store.customersByPhone(clientPhone) : [];
     const holder = holders.length === 1 ? holders[0] : null;
+    const voice = await captureInboundVoice({
+      params,
+      customerId: holder?.id || null,
+      accountSid: input.accountSid || "",
+      authToken: token,
+      fetchImpl: input.fetchImpl,
+      transcribeAudio: input.transcribeAudio,
+      prepareAudio: input.prepareAudio,
+      saveVoiceNote: input.store.saveVoiceNote?.bind(input.store),
+    });
+    const body = voice
+      ? inboundJournal({ caption, voice, mediaOnly: !caption && Boolean(inboundAudio(params)), piece: null })
+      : redactIngestText(caption || inboundBody(params) || "Message vide.");
     await input.store.insertMessage({
       customer_id: holder?.id || null,
       booking_id: null,
       direction: "outbound",
       template_key: "staff",
-      body: clientText,
+      body,
       twilio_sid: sid,
       status: "received",
       error: null,
       phone: clientPhone,
+      media_path: voice?.path || null,
+      transcript: voice?.transcript || null,
     });
     if (clientPhone) await input.store.pauseThread?.(clientPhone, holder?.id || null);
     return done(200);
@@ -355,10 +456,23 @@ export async function receiveWhatsappWebhook(input: {
       savePiece: input.store.savePiece.bind(input.store),
     });
   }
+  const voice = await captureInboundVoice({
+    params,
+    customerId: customer?.id || null,
+    accountSid: input.accountSid || "",
+    authToken: token,
+    fetchImpl: input.fetchImpl,
+    transcribeAudio: input.transcribeAudio,
+    prepareAudio: input.prepareAudio,
+    saveVoiceNote: input.store.saveVoiceNote?.bind(input.store),
+  });
 
-  let journal = clientText;
-  if (mediaOnly && piece === "saved") journal = PIECE_MARK;
-  if (piece === "pan") journal = "Numéro de carte non conservé.";
+  const journal = inboundJournal({ caption, voice, mediaOnly, piece });
+  const clientText = journal;
+
+  const piecePath =
+    piece === "saved" ? input.store.peekPiecePath?.() ?? input.store.takePiecePath?.() ?? null : null;
+  if (piece === "saved" && input.store.peekPiecePath) input.store.takePiecePath?.();
 
   const inbound = await input.store.insertMessage({
     customer_id: customer?.id || null,
@@ -370,7 +484,8 @@ export async function receiveWhatsappWebhook(input: {
     status: "received",
     error: null,
     phone: e164,
-    media_path: piece === "saved" ? input.store.takePiecePath?.() || null : null,
+    media_path: voice?.path || (piece === "saved" ? piecePath : null),
+    transcript: piece === "pan" ? null : voice?.transcript || null,
   });
   if ("duplicate" in inbound) return done(200);
 
@@ -402,6 +517,8 @@ export async function receiveWhatsappWebhook(input: {
     if (!decision.send) return done(200);
     if (decision.text) said = decision.text;
   }
+  if (voice?.failed) said = withoutUnheardVoice(said);
+  const voiceUnheard = Boolean(voice?.failed) && !said.trim();
 
   let bookingId: string | null = null;
   let handoff: HandoffKind | null = null;
@@ -411,8 +528,35 @@ export async function receiveWhatsappWebhook(input: {
   let mediaUrl: string | null = null;
   const lang = messageLanguage(clientText);
   const allowed = input.allow ? await input.allow(e164) : true;
+  const canWrite = Boolean((input.store.loadParty && input.store.commitClientWrite) || input.store.performSpace);
+  const staffId =
+    canWrite && customers.length <= 1 && input.store.staffByPhone
+      ? (await input.store.staffByPhone(e164))?.id || null
+      : null;
+  const clientWrite =
+    canWrite && piece !== "pan" && !voiceUnheard
+      ? await applyClientSpaceWrite({
+          store: input.store,
+          message: said,
+          hasFile: piece === "saved",
+          customer,
+          companion,
+          staffId,
+          piecePath,
+        })
+      : null;
 
-  if (!customer) {
+  if (clientWrite) {
+    let text = clientWrite.summary;
+    if (clientWrite.access && customer) {
+      const url = (await input.openAccess?.(customer)) || null;
+      if (url?.startsWith("https://")) text = `${text}\n${url}`;
+    }
+    reply = withConciergeSignature(text);
+    bookingId = clientWrite.bookingId;
+    tools = clientWrite.tools;
+    handoff = clientWrite.handoff;
+  } else if (!customer) {
     if (customers.length > 1) {
       reply = sharedPhoneReply(lang);
       handoff = "question";
@@ -421,6 +565,8 @@ export async function receiveWhatsappWebhook(input: {
     }
   } else if (piece === "pan") {
     reply = panRefusedReply(lang);
+  } else if (voiceUnheard) {
+    reply = voiceNoteUnheardReply(messageLanguage(caption));
   } else {
     const parts = said
       .split("\n")
@@ -499,7 +645,7 @@ export async function receiveWhatsappWebhook(input: {
         }
       }
     }
-    if (mediaOnly && piece === "skipped") {
+    if (mediaOnly && piece === "skipped" && !voice) {
       reply = withConciergeSignature(
         lang === "en"
           ? "I couldn’t save that document. You can send it again, or I can ask the agency."
@@ -516,13 +662,36 @@ export async function receiveWhatsappWebhook(input: {
 
   if (mediaUrl) mediaUrl = await liveConciergeImage(mediaUrl, input.fetchImpl);
   const planned = turnMessages;
-  const bubbles = (planned && reply === planned.join("\n\n") ? planned : [reply]).filter((line) => line.trim()).slice(0, 3);
+  let bubbles = (planned && reply === planned.join("\n\n") ? planned : [reply]).filter((line) => line.trim()).slice(0, 3);
+  if (bubbles.some((line) => replyClaimsAgencyHandoff(line)) && !handoff) handoff = "question";
+  if (handoff) {
+    const request: WhatsappRequestInsert = {
+      customer_id: customers.length === 1 || companion ? customer?.id || null : null,
+      phone: e164,
+      booking_id: bookingId,
+      message_id: inbound.id,
+      kind: handoff,
+      body: redactIngestText(clientText),
+      status: "open",
+    };
+    try {
+      await input.store.insertRequest(request);
+      try {
+        await input.alert?.(request);
+      } catch (err) {
+        console.error("[whatsapp-concierge] alerte", err instanceof Error ? err.name : "error");
+      }
+    } catch (err) {
+      console.error("[whatsapp-concierge] demande", err instanceof Error ? err.name : "error");
+      handoff = null;
+      bubbles = bubbles.map((line) => (replyClaimsAgencyHandoff(line) ? dropUnrecordedHandoff(line) : line));
+    }
+  }
   const delayMs = input.bubbleDelayMs ?? CONCIERGE_BUBBLE_DELAY_MS;
-  let outbound: { id: string } | { duplicate: true } = { duplicate: true };
   for (let index = 0; index < bubbles.length; index += 1) {
     if (index > 0 && delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     const sent = await input.send({ to, body: bubbles[index], mediaUrl: index === 0 ? mediaUrl : null });
-    const stored = await input.store.insertMessage({
+    await input.store.insertMessage({
       customer_id: customer?.id || null,
       booking_id: bookingId,
       direction: "outbound",
@@ -534,26 +703,111 @@ export async function receiveWhatsappWebhook(input: {
       phone: e164,
       tools: index === 0 ? tools : null,
     });
-    if (index === 0) outbound = stored;
-  }
-  if (handoff && !("duplicate" in outbound)) {
-    const request: WhatsappRequestInsert = {
-      customer_id: customers.length === 1 || companion ? customer?.id || null : null,
-      phone: e164,
-      booking_id: bookingId,
-      message_id: inbound.id,
-      kind: handoff,
-      body: redactIngestText(clientText),
-      status: "open",
-    };
-    await input.store.insertRequest(request);
-    try {
-      await input.alert?.(request);
-    } catch (err) {
-      console.error("[whatsapp-concierge] alerte", err instanceof Error ? err.name : "error");
-    }
   }
   return done(200);
+}
+
+/** Téléphone, e-mail, naissance, préférence, demande ou pièce : le concierge écrit, il ne passe pas la main. */
+async function applyClientSpaceWrite(input: {
+  store: WhatsappStore;
+  message: string;
+  hasFile: boolean;
+  customer: WhatsappCustomer | null;
+  companion: WhatsappCompanion | null;
+  staffId: string | null;
+  piecePath: string | null;
+}): Promise<{
+  summary: string;
+  bookingId: string | null;
+  tools: string[];
+  handoff: HandoffKind | null;
+  access: boolean;
+} | null> {
+  const intent = input.store.loadParty && input.store.commitClientWrite
+    ? parseClientSpaceWrite(input.message, { hasFile: input.hasFile })
+    : null;
+  if (intent && input.store.loadParty && input.store.commitClientWrite) {
+    let party: ConciergeTraveler[] = [];
+    if (input.customer) {
+      party = await input.store.loadParty(input.customer.id, input.companion?.bookingIds ?? null);
+    } else if (input.staffId && intent.reference && input.store.loadPartyByReference) {
+      party = await input.store.loadPartyByReference(intent.reference);
+    } else {
+      return null;
+    }
+    const matched = matchClientWrite(intent, party);
+    const tools = ["modifier_voyageur"];
+    if (!matched.ok) {
+      return { summary: matched.message, bookingId: null, tools, handoff: null, access: false };
+    }
+    const saved = await input.store.commitClientWrite({
+      plan: matched.plan,
+      staffId: input.staffId,
+      piecePath: input.piecePath,
+    });
+    if (!saved.ok) {
+      return { summary: saved.message, bookingId: matched.plan.bookingId, tools, handoff: null, access: false };
+    }
+    return { summary: saved.summary, bookingId: saved.bookingId, tools, handoff: null, access: false };
+  }
+  const space = input.store.performSpace ? classifyClientSpace(input.message, { hasFile: input.hasFile }) : null;
+  if (!space || !input.store.performSpace || !input.store.loadParty) return null;
+  let party: ConciergeTraveler[] = [];
+  if (space.id === "partager_carnet" && input.staffId && space.reference && input.store.loadPartyByReference) {
+    party = await input.store.loadPartyByReference(space.reference);
+    if (!party.length) {
+      return {
+        summary: "Je ne trouve pas ce séjour.",
+        bookingId: null,
+        tools: [space.tool],
+        handoff: null,
+        access: false,
+      };
+    }
+  } else if (input.customer) {
+    party = await input.store.loadParty(input.customer.id, input.companion?.bookingIds ?? null);
+  } else if (input.staffId && space.id === "partager_carnet" && space.clientName && input.store.loadPartyByClientName) {
+    const found = await input.store.loadPartyByClientName(space.clientName);
+    if ("ask" in found) {
+      return { summary: found.ask, bookingId: null, tools: [space.tool], handoff: null, access: false };
+    }
+    party = found.party;
+  } else if (input.staffId && space.id === "partager_carnet") {
+    return {
+      summary: "Indiquez la référence du séjour ou le nom du client.",
+      bookingId: null,
+      tools: [space.tool],
+      handoff: null,
+      access: false,
+    };
+  } else if (input.staffId && space.reference && input.store.loadPartyByReference) {
+    party = await input.store.loadPartyByReference(space.reference);
+  } else {
+    return null;
+  }
+  const saved = await input.store.performSpace({
+    actionId: space.id,
+    message: input.message,
+    customerId: party[0]?.customerId || input.customer?.id || "",
+    holder: Boolean(input.customer) && !input.companion,
+    staff: Boolean(input.staffId),
+    staffId: input.staffId,
+    party,
+    hasFile: input.hasFile,
+    piecePath: input.piecePath,
+    name: space.name,
+    reference: space.reference,
+    access: space.access,
+    tool: space.tool,
+  });
+  if (!saved.summary) return null;
+  return {
+    summary: saved.summary,
+    bookingId: saved.bookingId,
+    tools: [saved.tool],
+    handoff: saved.handoff,
+    access: saved.access,
+  };
 }
 
 /** Le message est déjà dans le fil. L’agence est prévenue. Rien ne part sur WhatsApp. */
@@ -583,6 +837,121 @@ async function holdInboundForAgency(input: {
   }
 }
 
+export async function downloadTwilioAudio(input: {
+  url: string;
+  accountSid: string;
+  authToken: string;
+  fetchImpl?: typeof fetch;
+}) {
+  let parsed: URL;
+  try {
+    parsed = new URL(input.url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "api.twilio.com") return null;
+  const auth = Buffer.from(`${input.accountSid}:${input.authToken}`).toString("base64");
+  const response = await (input.fetchImpl || fetch)(parsed.toString(), {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!response.ok) return null;
+  const audio = normalizeAudioType(response.headers.get("content-type"));
+  if (!audio) return null;
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!bytes.byteLength || bytes.byteLength > 16_000_000) return null;
+  return { bytes, contentType: audio.mime };
+}
+
+type CapturedVoice = {
+  path: string | null;
+  transcript: string | null;
+  marked: string | null;
+  failed: boolean;
+};
+
+function inboundJournal(input: {
+  caption: string;
+  voice: CapturedVoice | null;
+  mediaOnly: boolean;
+  piece: WhatsappPieceResult | null;
+}) {
+  if (input.piece === "pan") return "Numéro de carte non conservé.";
+  const caption = redactIngestText(input.caption);
+  let text = caption;
+  if (input.voice?.marked) text = text ? `${text}\n${input.voice.marked}` : input.voice.marked;
+  else if (input.voice?.failed) text = text ? `${text}\n${VOICE_NOTE_UNAVAILABLE}` : VOICE_NOTE_UNAVAILABLE;
+  else if (!text) text = input.mediaOnly ? "Document reçu sur WhatsApp." : "Message vide.";
+  if (input.mediaOnly && input.piece === "saved") {
+    if (input.voice?.marked || input.voice?.failed) return `${PIECE_MARK}\n${text}`;
+    return PIECE_MARK;
+  }
+  return text;
+}
+
+async function captureInboundVoice(input: {
+  params: Record<string, string>;
+  customerId: string | null;
+  accountSid: string;
+  authToken: string;
+  fetchImpl?: typeof fetch;
+  transcribeAudio?: (file: { bytes: Uint8Array; contentType: string }) => Promise<string | null>;
+  prepareAudio?: (file: { bytes: Uint8Array; contentType: string }) => Promise<{ bytes: Uint8Array; contentType: string }>;
+  saveVoiceNote?: WhatsappStore["saveVoiceNote"];
+}): Promise<CapturedVoice | null> {
+  const audio = inboundAudio(input.params);
+  if (!audio || !input.accountSid) {
+    if (audio) console.error("[whatsapp-voice] telechargement");
+    return audio ? { path: null, transcript: null, marked: null, failed: true } : null;
+  }
+  const file = await downloadTwilioAudio({
+    url: audio.url,
+    accountSid: input.accountSid,
+    authToken: input.authToken,
+    fetchImpl: input.fetchImpl,
+  });
+  if (!file) {
+    console.error("[whatsapp-voice] telechargement");
+    return { path: null, transcript: null, marked: null, failed: true };
+  }
+  let raw: string | null = null;
+  let threw = false;
+  try {
+    raw = await (input.transcribeAudio || transcribeWhatsappAudio)({ bytes: file.bytes, contentType: file.contentType });
+  } catch (err) {
+    threw = true;
+    console.error("[whatsapp-voice] transcription", err instanceof Error ? err.name : "error");
+  }
+  const transcript = raw ? redactIngestText(raw).replace(/\s+/g, " ").trim() : "";
+  const marked = transcript ? voiceNoteText(transcript) : null;
+  if (!marked && input.transcribeAudio && !threw) console.error("[whatsapp-voice] transcription");
+  let stored: { bytes: Uint8Array<ArrayBuffer>; contentType: string } = {
+    bytes: file.bytes,
+    contentType: file.contentType,
+  };
+  try {
+    const prepared = await (input.prepareAudio || toPlayableVoice)(stored);
+    if (prepared?.bytes?.byteLength) {
+      stored = { bytes: new Uint8Array(prepared.bytes), contentType: prepared.contentType };
+    }
+  } catch (err) {
+    console.error("[whatsapp-voice] conversion", err instanceof Error ? err.name : "error");
+  }
+  let path: string | null = null;
+  if (input.saveVoiceNote) {
+    try {
+      const saved = await input.saveVoiceNote({
+        customerId: input.customerId,
+        bytes: stored.bytes,
+        contentType: stored.contentType,
+      });
+      path = saved?.path || null;
+    } catch (err) {
+      console.error("[whatsapp-voice] stockage", err instanceof Error ? err.name : "error");
+    }
+  }
+  return { path, transcript: marked ? transcript : null, marked, failed: !marked };
+}
+
 async function storeInboundPieces(input: {
   params: Record<string, string>;
   customerId: string;
@@ -596,6 +965,8 @@ async function storeInboundPieces(input: {
   for (let i = 0; i < count; i += 1) {
     const url = input.params[`MediaUrl${i}`] || "";
     if (!url) continue;
+    const declared = (input.params[`MediaContentType${i}`] || "").split(";")[0].trim().toLowerCase();
+    if (declared.startsWith("audio/")) continue;
     const file = await downloadTwilioMedia({
       url,
       accountSid: input.accountSid,
@@ -613,6 +984,113 @@ async function storeInboundPieces(input: {
     if (saved === "saved") result = "saved";
   }
   return result;
+}
+
+type PartyCompanion = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  usage_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  birth_date?: string | null;
+};
+
+function missingColumn(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return error.code === "42703" || error.code === "PGRST204" || /schema cache|column/i.test(error.message || "");
+}
+
+async function loadPartyCompanions(admin: SupabaseClient, ids: string[]) {
+  const map = new Map<string, PartyCompanion>();
+  if (!ids.length) return map;
+  const withEmail = await admin
+    .from("crm_travel_companions")
+    .select("id, first_name, last_name, usage_name, phone, email, birth_date")
+    .in("id", ids);
+  let rows = (withEmail.data || []) as PartyCompanion[];
+  if (withEmail.error && missingColumn(withEmail.error)) {
+    const plain = await admin
+      .from("crm_travel_companions")
+      .select("id, first_name, last_name, usage_name, phone, birth_date")
+      .in("id", ids);
+    if (plain.error) return map;
+    rows = (plain.data || []) as PartyCompanion[];
+  } else if (withEmail.error) {
+    return map;
+  }
+  for (const row of rows) map.set(row.id, row);
+  return map;
+}
+
+async function loadConciergeParty(
+  admin: SupabaseClient,
+  customerId: string,
+  bookingIds: string[] | null
+): Promise<ConciergeTraveler[]> {
+  const { data: bookings, error } = await admin
+    .from("crm_bookings")
+    .select("id, reference, customer_id, title, destination")
+    .eq("customer_id", customerId)
+    .is("archived_at", null);
+  if (error || !bookings?.length) return [];
+  const allowed = bookingIds ? new Set(bookingIds) : null;
+  const stays = (bookings as { id: string; reference: string; customer_id: string; title?: string | null; destination?: string | null }[]).filter(
+    (row) => !allowed || allowed.has(row.id)
+  );
+  if (!stays.length) return [];
+  const { data: travelers, error: travelerError } = await admin
+    .from("crm_booking_travelers")
+    .select("id, booking_id, companion_id, is_account_holder, first_name, last_name")
+    .in(
+      "booking_id",
+      stays.map((row) => row.id)
+    );
+  if (travelerError || !travelers?.length) return [];
+  const companionIds = [
+    ...new Set(
+      (travelers as { companion_id: string | null }[])
+        .map((row) => row.companion_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  const companions = await loadPartyCompanions(admin, companionIds);
+  const { data: holder } = await admin
+    .from("crm_customers")
+    .select("first_name, last_name, usage_name, phone, birth_date")
+    .eq("id", customerId)
+    .maybeSingle();
+  const byStay = new Map(stays.map((row) => [row.id, row]));
+  return (travelers as {
+    id: string;
+    booking_id: string;
+    companion_id: string | null;
+    is_account_holder: boolean;
+    first_name: string | null;
+    last_name: string | null;
+  }[]).flatMap((row) => {
+    const stay = byStay.get(row.booking_id);
+    if (!stay) return [];
+    const person = row.is_account_holder ? holder : row.companion_id ? companions.get(row.companion_id) : null;
+    return [
+      {
+        voyageurId: row.id,
+        bookingId: stay.id,
+        reference: stay.reference,
+        customerId: stay.customer_id,
+        firstName: row.first_name || person?.first_name || null,
+        lastName: row.last_name || person?.last_name || null,
+        usageName: person?.usage_name || null,
+        companionId: row.companion_id,
+        isHolder: Boolean(row.is_account_holder),
+        phone: person?.phone || null,
+        email: row.is_account_holder || !person || !("email" in person) ? null : person.email || null,
+        birthDate: person?.birth_date || null,
+        stayTitle: stay.title || null,
+        stayDestination: stay.destination || null,
+      },
+    ];
+  });
 }
 
 export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStore {
@@ -731,11 +1209,11 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         author_staff_id: row.author_staff_id ?? null,
         media_path: row.media_path ?? null,
       };
-      let attempt = await admin
-        .from("crm_whatsapp_messages")
-        .insert({ ...base, ...extra })
-        .select("id")
-        .single();
+      const withTranscript = row.transcript ? { ...base, ...extra, transcript: row.transcript } : { ...base, ...extra };
+      let attempt = await admin.from("crm_whatsapp_messages").insert(withTranscript).select("id").single();
+      if (attempt.error && row.transcript && schemaMissesColumn(attempt.error, "transcript")) {
+        attempt = await admin.from("crm_whatsapp_messages").insert({ ...base, ...extra }).select("id").single();
+      }
       if (attempt.error && /column|schema cache/i.test(attempt.error.message || "")) {
         attempt = await admin.from("crm_whatsapp_messages").insert(base).select("id").single();
       }
@@ -743,10 +1221,15 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       if (attempt.error || !attempt.data) throw attempt.error || new Error("journal WhatsApp");
       return { id: attempt.data.id as string };
     },
-    async updateStatus(sid, status) {
+    async updateStatus(sid, status, failure) {
       const mapped = status === "undelivered" ? "failed" : status;
       if (!["queued", "sent", "delivered", "read", "failed", "received"].includes(mapped)) return;
-      const { error } = await admin.from("crm_whatsapp_messages").update({ status: mapped }).eq("twilio_sid", sid);
+      const patch: { status: string; error?: string | null } = { status: mapped };
+      if (mapped === "failed") patch.error = (failure || "WhatsApp n’a pas remis le message.").slice(0, 300);
+      if (mapped === "delivered" || mapped === "read") patch.error = null;
+      let query = admin.from("crm_whatsapp_messages").update(patch).eq("twilio_sid", sid);
+      if (mapped === "queued" || mapped === "sent") query = query.neq("status", "failed");
+      const { error } = await query;
       if (error) console.error("[whatsapp-concierge] statut", error.code || "error");
     },
     takePiecePath() {
@@ -954,6 +1437,85 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         return [{ kind, bookingId: row.booking_id, body: String(row.body) }];
       });
     },
+    peekPiecePath() {
+      return lastPiecePath;
+    },
+    async loadParty(customerId, bookingIds) {
+      return loadConciergeParty(admin, customerId, bookingIds ?? null);
+    },
+    async loadPartyByReference(reference) {
+      const { data, error } = await admin
+        .from("crm_bookings")
+        .select("id, customer_id")
+        .eq("reference", reference)
+        .maybeSingle();
+      if (error || !data?.id || !data.customer_id) return [];
+      return loadConciergeParty(admin, String(data.customer_id), [String(data.id)]);
+    },
+    async loadPartyByClientName(name) {
+      const { data, error } = await admin
+        .from("crm_customers")
+        .select("id, first_name, last_name, usage_name")
+        .limit(1000);
+      if (error || !data) {
+        console.error("[whatsapp-concierge] clients", error?.code || "error");
+        return { ask: "Indiquez la référence du séjour ou le nom du client." };
+      }
+      const hits = customersMatchingShareHint(
+        data as { id: string; first_name: string | null; last_name: string | null; usage_name?: string | null }[],
+        name
+      );
+      if (hits.length > 1) {
+        const labels = hits.slice(0, 4).map((row) =>
+          sharePersonLabel({
+            firstName: row.first_name,
+            lastName: row.last_name,
+            usageName: row.usage_name ?? null,
+          })
+        );
+        return { ask: `Plusieurs clients correspondent : ${shareNameList(labels)}. Lequel ?` };
+      }
+      if (!hits.length) return { ask: "Indiquez la référence du séjour ou le nom du client." };
+      const party = await loadConciergeParty(admin, hits[0].id, null);
+      if (!party.length) return { ask: "Ce client n’a pas de séjour ouvert." };
+      return { party };
+    },
+    async staffByPhone(e164) {
+      const { data, error } = await admin.from("crm_staff").select("id, phone").limit(200);
+      if (error) {
+        if (missingColumn(error)) return null;
+        console.error("[whatsapp-concierge] equipe", error.code || "error");
+        return null;
+      }
+      return matchStaffByPhone((data || []) as { id: string; phone: string | null }[], e164);
+    },
+    async commitClientWrite(row) {
+      return commitClientChange(admin, row);
+    },
+    async performSpace(row) {
+      const { liveSpaceDeps } = await import("./concierge-space-live");
+      return performClientSpace(
+        admin,
+        {
+          action: {
+            id: row.actionId,
+            tool: row.tool,
+            name: row.name,
+            reference: row.reference,
+            access: row.access,
+          },
+          message: row.message,
+          customerId: row.customerId,
+          holder: row.holder,
+          staff: row.staff,
+          staffId: row.staffId,
+          party: row.party,
+          hasFile: row.hasFile,
+          piecePath: row.piecePath,
+        },
+        await liveSpaceDeps()
+      );
+    },
     async savePiece({ customerId, bytes, contentType }) {
       const type = pieceContentType(contentType);
       if (!type) return "skipped";
@@ -967,6 +1529,13 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       );
       if (error) throw error;
       return "saved";
+    },
+    async saveVoiceNote({ customerId, bytes, contentType }) {
+      const audio = normalizeAudioType(contentType);
+      if (!audio) return null;
+      const path = voiceNoteStoragePath(customerId, audio.ext);
+      await uploadCrmFile(path, Buffer.from(bytes), audio.mime);
+      return { path };
     },
   };
 }

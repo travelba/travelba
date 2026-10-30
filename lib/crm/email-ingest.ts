@@ -29,6 +29,8 @@ import {
 } from "@/lib/crm/ingest-file";
 import { clipEmailBody } from "@/lib/crm/email-source";
 import { classifyInboundMail, dropInboundImage } from "@/lib/crm/email-prefilter";
+import { isAgencySender, shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
+import { loadSentMailIndex, rememberSentMail } from "@/lib/crm/sent-mail";
 import { openThreadParent, sharesInboxGroup, type ThreadRow } from "@/lib/crm/email-thread";
 import { toAuditRow } from "@/lib/crm/audit-events";
 import { scoreExtractFields } from "@/lib/crm/extract-confidence";
@@ -46,7 +48,6 @@ import {
   type BookingExtract,
   type IngestWarning,
 } from "@/lib/crm/ingest-types";
-import { autoCreateBookingFromIngestId } from "@/lib/crm/email-ingest-create-run";
 import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
   mergeBookingSuggestions,
@@ -441,8 +442,7 @@ export async function closeIngestSiblings(
 
 /**
  * Enregistre l’extract et les suggestions. Ne rattache pas, ne crée pas,
- * n’annule pas. La création automatique suit uniquement dans
- * processEmailIngestRow.
+ * n’annule pas. Le parse ne crée pas de dossier et ne modifie pas les cartes.
  */
 export async function matchAndStoreExtract(
   admin: Admin,
@@ -547,11 +547,36 @@ async function storeAttachment(
   return { name, path, mime_type: mime };
 }
 
-/** Traite une ligne `received` : télécharge le mail, extrait, rapproche, crée le dossier si besoin. */
+/** Traite une ligne `received` : télécharge le mail, extrait, rapproche. Ne crée pas de dossier et ne touche pas aux cartes. */
 export async function processEmailIngestRow(row: CrmEmailIngest) {
   const admin = createServiceClient();
   const message = await getMessage(row.gmail_message_id);
   const bodyPreview = (message.text || "").trim();
+  const sent = await loadSentMailIndex(admin);
+  if (isAgencySender(message.from) || isAgencySender(message.fromEmail)) {
+    await rememberSentMail(
+      {
+        subject: message.subject,
+        rfcMessageId: message.messageId,
+        gmailThreadId: message.threadId,
+        source: "gmail-copy",
+      },
+      admin
+    );
+  }
+  const crmReply = shouldNotifyInboundMail(
+    {
+      label: row.label,
+      from: message.from || message.fromEmail,
+      subject: message.subject,
+      messageId: message.messageId,
+      inReplyTo: message.inReplyTo,
+      references: message.references,
+      threadId: message.threadId,
+      autoSubmitted: message.autoSubmitted,
+    },
+    sent
+  );
   const skip = classifyInboundMail({ subject: message.subject, text: bodyPreview, label: row.label });
   const headerPatch = {
     gmail_thread_id: message.threadId || row.gmail_thread_id,
@@ -561,6 +586,7 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     body_text: clipEmailBody(bodyPreview),
     body_html: clipEmailBody(message.html),
   };
+  await admin.from("crm_email_ingest").update({ crm_reply: crmReply }).eq("id", row.id);
   if (skip) {
     await admin
       .from("crm_email_ingest")
@@ -683,8 +709,7 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     });
     if (proposalError) console.error("[import] proposition non enregistrée");
   }
-  const folded = await foldParsedConfirmation(admin, row.id);
-  if (!folded) await autoCreateBookingFromIngestId(row.id);
+  await foldParsedConfirmation(admin, row.id);
 }
 
 async function foldParsedConfirmation(admin: Admin, rowId: string) {

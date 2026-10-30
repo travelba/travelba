@@ -148,6 +148,69 @@ export function sameRecordedTraveler(a: PersonName, b: PersonName) {
   return namesReferToSamePerson(a, b);
 }
 
+export type PersonIdentity = PersonName & { birth_date?: string | null };
+
+function birthDay(value: string | null | undefined) {
+  const raw = (value || "").trim();
+  return raw ? raw.slice(0, 10) : "";
+}
+
+/**
+ * Ajout d’un accompagnant : le prénom demandé est le début des prénoms enregistrés,
+ * et le nom est le nom de naissance ou le nom d’usage. Jamais le nom de famille seul.
+ * « Joseph Elie Jacob » n’est pas « Élise ».
+ */
+export function addedTravelerNames(recorded: PersonName, query: PersonName) {
+  if (
+    isPlaceholderTraveler(recorded.first_name, recorded.last_name) ||
+    isPlaceholderTraveler(query.first_name, query.last_name)
+  ) {
+    return false;
+  }
+  if (!nameTokens(query.first_name).length || !foldName(query.last_name)) return false;
+  if (!firstNameOnlyMatches(query.first_name, recorded.first_name)) return false;
+  return familiesMatch(recorded, query);
+}
+
+/**
+ * La date de naissance fait partie de la personne.
+ * Une date demandée ne correspond qu’à la même date déjà en fiche.
+ * Sans date dans la demande, le prénom et le nom suffisent.
+ */
+export function sameAddedTraveler(recorded: PersonIdentity, query: PersonIdentity) {
+  if (!addedTravelerNames(recorded, query)) return false;
+  const asked = birthDay(query.birth_date);
+  if (!asked) return true;
+  const known = birthDay(recorded.birth_date);
+  return Boolean(known) && known === asked;
+}
+
+function givenNamesAlign(a: string | null | undefined, b: string | null | undefined) {
+  return firstNameOnlyMatches(a, b) || firstNameOnlyMatches(b, a);
+}
+
+/**
+ * Le titulaire ajouté au séjour : les prénoms s’alignent (la fiche peut n’en
+ * avoir qu’une partie) et le nom est le sien. Une date déjà en fiche qui
+ * diffère est une autre personne. Sans date en fiche, on ne crée pas un
+ * compagnon doublon. « David » n’est pas « Ilan David ». « Joseph » n’est pas « Élise ».
+ */
+export function holderMatchesAddedTraveler(holder: PersonIdentity, query: PersonIdentity) {
+  if (
+    isPlaceholderTraveler(holder.first_name, holder.last_name) ||
+    isPlaceholderTraveler(query.first_name, query.last_name)
+  ) {
+    return false;
+  }
+  if (!nameTokens(query.first_name).length || !foldName(query.last_name)) return false;
+  if (!givenNamesAlign(query.first_name, holder.first_name)) return false;
+  if (!familiesMatch(holder, query)) return false;
+  const asked = birthDay(query.birth_date);
+  const known = birthDay(holder.birth_date);
+  if (asked && known && asked !== known) return false;
+  return true;
+}
+
 export type PartyMatch = { kind: "holder" } | { kind: "companion"; id: string };
 
 export function matchTravelerToParty(

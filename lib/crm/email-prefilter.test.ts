@@ -32,6 +32,17 @@ test("publicité, code, guide API et newsletter sont ignorés sans modèle", () 
   });
 });
 
+test("un label suivi reste dans la file, même s’il ressemble à une newsletter", () => {
+  assert.equal(
+    classifyInboundMail({
+      subject: "What kind of skier is your client?",
+      text: "View this email in your browser. Unsubscribe.",
+      label: "reservations-tba",
+    }),
+    null
+  );
+});
+
 test("une confirmation fournisseur n’est pas écartée par le pied de page", () => {
   const text = `${"Confirmation de réservation à Milan. ".repeat(20)}Unsubscribe`;
   assert.equal(classifyInboundMail({ subject: "Booking", text, label: "little-emperors" }), null);

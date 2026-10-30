@@ -5,20 +5,42 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { applyEditedExtractTitle } from "@/lib/crm/ingest-title";
 import { isCancellationExtract, parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
 import {
-  applyCancellationToBooking,
-  applyReplacementToBooking,
   parseExtractPayload,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
+import {
+  attachFilesSummary,
+  depositEmailAttachments,
+  markEmailAttached,
+  resolveEmailCardId,
+} from "@/lib/crm/email-attach-run";
 import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
 import { closeIngestSiblings, loadEmailIngestFiles, noteIngestDecision, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
+import { sanitizeEmailHtml } from "@/lib/crm/email-source";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
+
+/** Corps du mail, à l’ouverture d’une carte. La liste ne le charge pas. */
+export async function GET(_request: Request, ctx: Ctx) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const { id } = await ctx.params;
+  const { data, error } = await auth.supabase
+    .from("crm_email_ingest")
+    .select("body_html, body_text")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return jsonError("Message introuvable", 404);
+  return NextResponse.json({
+    body_html: sanitizeEmailHtml(data.body_html),
+    body_text: data.body_text || "",
+  });
+}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
@@ -171,10 +193,9 @@ export async function POST(request: Request, ctx: Ctx) {
     const extract = body.extract
       ? parseExtractPayload(storedExtract)
       : parseExtractPayloadSafe(storedExtract);
-    const files = await loadEmailIngestFiles(row);
     const extractPatch = body.extract ? { extract } : {};
 
-    if (action === "attach_booking" || action === "replace_booking") {
+    if (action === "attach_booking") {
       const bookingId = String(body.booking_id || "");
       if (!bookingId) return jsonError("Choisissez un voyage");
       const { data: booking } = await admin
@@ -183,44 +204,54 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("id", bookingId)
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
-      if (isCancellationExtract(extract)) {
-        await applyCancellationToBooking({
-          bookingId,
-          customerId: booking.customer_id,
-          extract,
-          files,
-          staffUserId: auth.user.id,
-          visibleToClient: false,
-          itemId: body.item_id || null,
-        });
-      } else {
-        await applyReplacementToBooking({
-          bookingId,
-          customerId: booking.customer_id,
-          extract,
-          files,
-          staffUserId: auth.user.id,
-          visibleToClient: false,
-          applyStayFields: body.apply_stay_currency === true,
-          emailIngestId: id,
-          replaceItemId: body.item_id || null,
-        });
-      }
-      await admin
-        .from("crm_email_ingest")
-        .update({ status: "attached", created_booking_id: bookingId, ...extractPatch })
-        .eq("id", id);
-      await closeIngestSiblings(admin, row, "attached", auth.user.id);
-      await noteIngestDecision(admin, {
-        actorKind: "human",
-        actorId: auth.user.id,
-        action: "attach",
-        emailIngestId: id,
+      const cardId = await resolveEmailCardId(admin, bookingId, extract);
+      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId);
+      const message = attachFilesSummary(deposited, Boolean(cardId));
+      await markEmailAttached(admin, row, {
         bookingId,
         customerId: booking.customer_id,
-        summary: "Mail rattaché au dossier",
+        actorId: auth.user.id,
+        summary: message,
+        cards: false,
       });
-      return NextResponse.json({ ok: true, booking_id: bookingId });
+      return NextResponse.json({
+        ok: true,
+        booking_id: bookingId,
+        pieces: deposited.added,
+        carte_id: cardId,
+        message,
+      });
+    }
+
+    if (action === "apply_cards" || action === "replace_booking") {
+      const bookingId = String(body.booking_id || "");
+      if (!bookingId) return jsonError("Choisissez un voyage");
+      const { data: booking } = await admin
+        .from("crm_bookings")
+        .select("id, customer_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+      if (!booking) return jsonError("Voyage introuvable", 404);
+      const cardId = await resolveEmailCardId(admin, bookingId, extract);
+      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId);
+      if (extractPatch.extract) {
+        await admin.from("crm_email_ingest").update(extractPatch).eq("id", id);
+      }
+      const message = attachFilesSummary(deposited, Boolean(cardId));
+      await markEmailAttached(admin, row, {
+        bookingId,
+        customerId: booking.customer_id,
+        actorId: auth.user.id,
+        summary: message,
+        cards: false,
+      });
+      return NextResponse.json({
+        ok: true,
+        booking_id: bookingId,
+        pieces: deposited.added,
+        carte_id: cardId,
+        message,
+      });
     }
 
     if (action === "new_booking") {
@@ -229,6 +260,7 @@ export async function POST(request: Request, ctx: Ctx) {
       }
       const customerId = String(body.customer_id || "");
       if (!customerId) return jsonError("Choisissez un client");
+      const files = await loadEmailIngestFiles(row);
       const booking = await persistNewBookingFromExtract({
         customerId,
         extract,

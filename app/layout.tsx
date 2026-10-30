@@ -1,12 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
+import { Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import { siteConfig } from "@/lib/site";
 import "./globals.css";
 
+// Connexion et CRM peignent Plus Jakarta. Space Grotesk ne sert que la vitrine : pas de preload,
+// sinon la carte de /connexion se décale quand la police utile arrive trop tard.
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-space-grotesk",
   display: "swap",
+  adjustFontFallback: true,
   preload: false,
 });
 
@@ -14,6 +17,7 @@ const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
   display: "swap",
+  adjustFontFallback: true,
   preload: true,
 });
 
@@ -21,6 +25,7 @@ const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-plus-jakarta",
   display: "swap",
+  adjustFontFallback: true,
   preload: true,
 });
 
@@ -28,14 +33,6 @@ const nunito = Nunito_Sans({
   subsets: ["latin"],
   weight: ["400", "600", "700"],
   variable: "--font-nunito",
-  display: "swap",
-  preload: false,
-});
-
-const cormorant = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["500", "600"],
-  variable: "--font-cormorant",
   display: "swap",
   preload: false,
 });
@@ -72,7 +69,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${cormorant.variable} ${nunito.variable}`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${nunito.variable}`}
     >
       <body className="bg-background text-foreground antialiased">{children}</body>
     </html>

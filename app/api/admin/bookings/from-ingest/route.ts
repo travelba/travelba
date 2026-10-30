@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
+import { refreshBookingDerived } from "@/lib/crm/dossier-refresh";
+import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
 import {
   collectIngestFiles,
   collectStagedFiles,
@@ -32,6 +34,7 @@ export async function POST(request: Request) {
       status: "draft",
       visibleToClient: false,
     });
+    if (booking?.id) await refreshBookingDerived(booking.id, { signatory: hotelSignatoryName(auth.staff.full_name) });
     return NextResponse.json({ booking });
   } catch (err) {
     if (err instanceof BookingIssuesError) return jsonIssues(err.issues);

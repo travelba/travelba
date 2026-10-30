@@ -1,5 +1,3 @@
-"use client";
-
 import { useTranslations } from "next-intl";
 import { SectionHeading } from "./SectionHeading";
 import { Reveal } from "./Reveal";

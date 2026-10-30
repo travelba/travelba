@@ -3,9 +3,11 @@ import test from "node:test";
 import {
   hotelReplyHref,
   hotelReplyNotices,
+  meaningfulMailExcerpt,
   recentHotelReplies,
   replyExcerpt,
   shouldSyncHotelReplies,
+  stayNeedsHotelReplyWatch,
   type HotelReplyNoticeRow,
 } from "./hotel-reply-notice";
 import { replyMoment } from "./hotel-reply-when";
@@ -69,6 +71,27 @@ test("l’extrait garde la première ligne, sans e-mail ni numéro de carte", ()
   assert.equal(card, "Le règlement est ouvert.");
   assert.equal(replyExcerpt("   "), "L'hôtel a répondu.");
   assert.equal(replyExcerpt("a".repeat(200)).length, 140);
+  assert.match(replyExcerpt("a".repeat(200)), /…$/);
+});
+
+test("l’extrait ignore l’image, la salutation vide et la signature", () => {
+  const body = [
+    "Hello,",
+    "",
+    "[cid:f04a9214-82c1-45e2-bcd8-e1323435a689]",
+    "",
+    "Le lien de paiement est prêt pour le séjour.",
+    "",
+    "Cordialement,",
+    "Front desk",
+    "",
+    "On Tue, 28 Oct 2026, Travel Business Agency <contact@travelba.fr> wrote:",
+    "> Could you send the link",
+  ].join("\n");
+  assert.equal(meaningfulMailExcerpt(body), "Le lien de paiement est prêt pour le séjour.");
+  assert.equal(meaningfulMailExcerpt("Hello,"), "");
+  assert.equal(meaningfulMailExcerpt("[cid:f04a9214-82c1-45e2-bcd8-e1323435a689]"), "");
+  assert.equal(replyExcerpt("Hello,"), "L'hôtel a répondu.");
 });
 
 test("le nom vient de l’hôtel, puis du titre", () => {
@@ -103,6 +126,13 @@ test("les derniers retours suivent les courriers envoyés, du plus récent au pl
   assert.equal(lines[0]?.excerpt.length, 140);
   assert.equal(lines[1]?.subject, "Lien de paiement — Casa Monti");
   assert.equal(lines[1]?.href, `/admin/reservations/${bookingId}?hotel=${itemId}`);
+});
+
+test("un séjour en préparation est relu, un séjour annulé non", () => {
+  assert.equal(stayNeedsHotelReplyWatch("draft"), true);
+  assert.equal(stayNeedsHotelReplyWatch("quoted"), true);
+  assert.equal(stayNeedsHotelReplyWatch("confirmed"), true);
+  assert.equal(stayNeedsHotelReplyWatch("cancelled"), false);
 });
 
 test("la synchro légère attend deux minutes", () => {

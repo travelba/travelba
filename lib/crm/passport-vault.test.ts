@@ -45,6 +45,24 @@ function doc(partial: Partial<CrmTravelDocument>): CrmTravelDocument {
   };
 }
 
+test("le passeport sans nom du titulaire, non relié au voyageur, est à jour", () => {
+  const rows = passportVaultRows(
+    [
+      traveler({
+        id: "ilan",
+        first_name: "Camille Louise",
+        last_name: "Martin",
+        is_account_holder: false,
+      }),
+    ],
+    [doc({ first_name: null, last_name: null, expires_on: "2031-06-14", number: null })],
+    "2026-10-27",
+    { first_name: "Camille Louise", last_name: "Martin", birth_date: null },
+    { start_date: "2027-03-21", end_date: "2027-03-28" }
+  );
+  assert.deepEqual(rows.map((row) => row.label), ["Passeport à jour"]);
+});
+
 test("coffre : à jour, bientôt, manquant, sans numéro", () => {
   const rows = passportVaultRows(
     [
@@ -96,9 +114,9 @@ test("sur un dossier, le passeport se juge au retour, pas à aujourd’hui", () 
   assert.deepEqual(
     rows.map((row) => `${row.name}:${row.label}:${row.tone}`),
     [
-      "Alma Martin:Expire avant le voyage:alert",
+      "Alma Martin:Expire avant le retour:alert",
       "Charles-Elie Martin:Moins de 6 mois après le retour:soon",
-      "Hugo Martin:Expire avant le voyage:alert",
+      "Hugo Martin:Expire avant le retour:alert",
       "Iris Martin:Passeport à jour:ok",
       "Noé Martin:Moins de 6 mois après le retour:soon",
     ]

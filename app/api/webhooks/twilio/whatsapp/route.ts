@@ -4,12 +4,14 @@ import { notifyConciergeRequest } from "@/lib/crm/whatsapp-alert";
 import { issueConciergeMagicLink } from "@/lib/crm/whatsapp-access";
 import { generateConciergeReply } from "@/lib/crm/whatsapp-conversation";
 import { settleTakeoverIdle } from "@/lib/crm/whatsapp-handoff";
+import { captureRestaurantChoice } from "@/lib/crm/restaurants-run";
 import { conciergeAutoreplyEnabled, createWhatsappSupabaseStore, receiveWhatsappWebhook } from "@/lib/crm/whatsapp-inbound";
 import { sendWhatsappSession } from "@/lib/crm/whatsapp-session";
 import { rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
 import { formParams, twilioWebhookUrl, verifyTwilioSignature } from "@/lib/crm/twilio-signature";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -42,6 +44,12 @@ export async function POST(request: Request) {
 
   after(async () => {
     try {
+      try {
+        const captured = await captureRestaurantChoice(admin, params);
+        if (captured.handled) return;
+      } catch (err) {
+        console.error("[restaurants] choix", err instanceof Error ? err.name : "error");
+      }
       await receiveWhatsappWebhook({
         url,
         signature: request.headers.get("x-twilio-signature"),

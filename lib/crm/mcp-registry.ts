@@ -31,7 +31,8 @@ import {
   updateBooking,
   updateClient,
 } from "@/lib/crm/mcp-write";
-import { addTravelPiece, notifyTravelPiece } from "@/lib/crm/mcp-piece";
+import { notifyBoardingPass } from "@/lib/crm/mcp-boarding-pass";
+import { addTravelPiece, notifyTravelPiece, requalifyPiece } from "@/lib/crm/mcp-piece";
 import {
   addAccueilVip,
   addHotel,
@@ -41,16 +42,32 @@ import {
   mergeCompagnon,
   removeCarte,
   removeVoyageur,
+  setCarteVisibilite,
+  prepareCarnetMessage,
   updateHotel,
   updateVol,
 } from "@/lib/crm/mcp-trip";
+import { inviteClientAccess, setCompanyRole, updateHolderProfile } from "@/lib/crm/mcp-account";
+import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
+import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
+import { envoyerReleve } from "@/lib/crm/mcp-statement";
+import { readLireEmail } from "@/lib/crm/mcp-email";
+import {
+  choixRestaurant,
+  createRestaurantTool,
+  listRestaurantsTool,
+  sejoursRestaurants,
+  tablesRestaurant,
+  updateRestaurantTool,
+} from "@/lib/crm/mcp-restaurants";
+import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus } from "@/lib/crm/mcp-restaurant-templates";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
-/** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
-export const MCP_TOOL_CAP = 43;
+/** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
+export const MCP_TOOL_CAP = 62;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -62,9 +79,49 @@ const COMPANY_FIELDS = {
   pays: z.string().trim().max(80).optional().describe("Pays de facturation"),
 };
 
+/** Champs d’une fiche restaurant, partagés par create_restaurant et update_restaurant. */
+const RESTAURANT_FIELDS = {
+  adresse: z.string().trim().max(300).optional().describe("Adresse"),
+  lat: z.union([z.number(), z.string()]).optional(),
+  lng: z.union([z.number(), z.string()]).optional(),
+  telephone: z.string().trim().max(40).optional(),
+  site: z.string().trim().max(300).optional().describe("Site officiel, https"),
+  page: z.string().trim().max(500).optional().describe("Page Google ou site, https : lien « Découvrir l’adresse »"),
+  categories: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .describe("Séparées par des virgules, la première est la principale : pizzeria, japonais, francais, incontournable, italien, festif, enfants, terrasse…"),
+  cuisine: z.string().trim().max(80).optional().describe("Cuisine, texte libre : italienne du sud, omakase"),
+  style: z.string().trim().max(80).optional().describe("Style : bistrot, terrasse les pieds dans l’eau"),
+  description: z.string().trim().max(400).optional().describe("Description courte, ton concierge (concierge_pitch)"),
+  fourchette: z.string().trim().max(80).optional().describe("Prix par personne, par exemple 90 à 140 € (price_band)"),
+  estimation: z.union([z.boolean(), z.string()]).optional().describe("La fourchette est une estimation, pas la carte"),
+  horaires: z.string().trim().max(400).optional().describe("Horaires d’ouverture, texte libre"),
+  fermeture_jours: z.string().trim().max(80).optional().describe("Jours fermés : lundi, mardi…"),
+  fermetures: z.string().trim().max(400).optional().describe("Fermetures annuelles mois-jour/mois-jour, une par ligne"),
+  plateforme: z.string().trim().max(40).optional().describe("resy, opentable, sevenrooms, thefork, zenchef, telephone, whatsapp, formulaire"),
+  lien: z.string().trim().max(400).optional().describe("Lien de réservation (booking_url)"),
+  bot: z.string().trim().max(20).optional().describe("Réservable par le bot : oui, partiel ou non"),
+  empreinte_carte: z.union([z.boolean(), z.string()]).optional().describe("Empreinte de carte demandée à la réservation. Oui ou non, jamais un numéro"),
+  annulation_en_ligne: z.union([z.boolean(), z.string()]).optional().describe("Annulation possible en ligne : oui ou non"),
+  annulation_heures: z.union([z.number(), z.string()]).optional().describe("Délai d’annulation en heures"),
+  annulation_frais: z.union([z.number(), z.string()]).optional().describe("Frais d’annulation en euros"),
+  photos: z.string().trim().max(4000).optional().describe("Photos https, une par ligne. La première est la salle (photo_urls)"),
+  photo_plat: z.string().trim().max(500).optional().describe("Photo https du plat signature (signature_photo_url)"),
+  photo_carte: z.string().trim().max(500).optional().describe("Photo https de la carte, facultative (menu_photo_url)"),
+  disponibilites: z.string().trim().max(1000).optional().describe("Disponibilités et conseils de réservation (availability_notes)"),
+  statut: z.string().trim().max(20).optional().describe("actif, a_valider ou exclu"),
+  motif: z.string().trim().max(40).optional().describe("ferme, gastronomique ou prepaiement"),
+  etoile: z.union([z.boolean(), z.string()]).optional().describe("Étoilé : exclu"),
+  prepaiement: z.union([z.boolean(), z.string()]).optional().describe("Prépaiement obligatoire : exclu"),
+  note: z.string().trim().max(2000).optional().describe("Note interne"),
+};
+
 const PRIX_BILLET = "Prix d’un billet (unitaire). Zéro est accepté. Le séjour le multiplie par le nombre de billets.";
 const PRIX_GROUPE =
-  "Total du groupe pour cette carte. Zéro est accepté. Unitaire = total / billets. Un aller-retour au même prix n’est compté qu’une fois ; deux prix différents comptent tous les deux.";
+  "Total du groupe pour cette carte, gardé au centime. Il n’est pas divisé par le nombre de billets. Zéro est accepté. Le nombre de billets n’est pas obligatoire. Un aller-retour au même prix n’est compté qu’une fois ; deux prix différents comptent tous les deux.";
 
 const text = (value: unknown, keepPieceNumber = false, keepSignedUrl = false, keepCardSecrets = false) => ({
   content: [
@@ -157,7 +214,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "tableau_de_bord",
     description:
-      "À faire aujourd’hui : mails, Little Emperors, formalités, services, départs, pièces, soldes Revolut, Stripe et Pliant. Lecture seule.",
+      "À faire aujourd’hui : mails, Little Emperors, formalités, services, départs, pièces, soldes Revolut, Stripe et Pliant. courriers_hotel : fils d’hôtel encore à traiter, statut synchronisé avec Gmail (Réponse à traiter, En attente de réponse, Sans réponse), qui a écrit en dernier. Un fil où l’agence a répondu en dernier, un paiement fait, une confirmation, un dossier annulé ou un séjour passé sans nouveau message n’y figurent pas. Lecture seule.",
     run: () => readTableauDeBord(),
   },
   {
@@ -197,7 +254,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). carte_id sert à modifier_vol et à modifier_hotel. voyageur_id sert à modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -297,13 +354,22 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "emails_en_attente",
     description:
-      "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, ou rattacher au dossier désigné.",
+      "Mails fournisseurs en attente. L’identifiant sert à lire_email, puis à traiter_email : refuser, rattacher, mettre_a_jour (pièces sur la carte qui correspond, aucune carte créée) ou creer_dossier. Une annulation a alerte true seulement si son numéro est celui d’une carte active. suivi « remplacée » ou « historique » : pas d’alerte.",
     run: () => readEmailsEnAttente(),
+  },
+  {
+    name: "lire_email",
+    description:
+      "Lit un e-mail (id de emails_en_attente). Renvoie le corps, les pièces (nom, type, texte extrait des PDF) et le billet déjà lu (cartes, voyageurs, références). Un aller-retour au même PNR est signalé : une carte à l’écran, une ligne par trajet. Une annulation porte suivi et alerte : alerte n’est true que si le numéro correspond à une carte active ; « remplacée » et « historique » se filtrent. Les numéros de passeport et de carte sont masqués. Pas de chemin de fichier, pas d’URL. Lecture seule.",
+    input: {
+      id: z.string().trim().describe("Identifiant de l’e-mail"),
+    },
+    run: (args) => readLireEmail({ id: str(args, "id") }),
   },
   {
     name: "reservation_little_emperors",
     description:
-      "Lit une réservation Little Emperors, y compris déjà rattachée à un dossier. Par référence, ou par nom du client et hôtel (dates facultatives). Renvoie référence, statut, hôtel, dates, chambres, régime, voyageurs, prix net, prix public, avantages, conditions d’annulation, confirmations hôtel et le dossier lié. Lecture seule. N’invente aucun prix.",
+      "Lit une réservation Little Emperors, y compris déjà rattachée à un dossier. Par référence, ou par nom du client et hôtel (dates facultatives). Renvoie référence, statut, hôtel, dates, reservee_le (date de réservation : création Little Emperors, sinon e-mail de confirmation, sinon l’enregistrement), chambres, régime, voyageurs, prix net, prix public, avantages, conditions d’annulation, confirmations hôtel et le dossier lié. Plusieurs résultats sont cités du plus récent au plus ancien. Une annulation n’est Annulée, avec alerte true, que si le numéro est celui d’une carte active. Sinon statut Remplacée ou Historique, alerte false. Lecture seule. N’invente aucun prix.",
     input: {
       confirmation: z.string().trim().max(80).optional().describe("Référence Little Emperors ou confirmation hôtel"),
       nom: z.string().trim().max(120).optional().describe("Nom du client, avec l’hôtel"),
@@ -315,7 +381,8 @@ export const MCP_TOOLS: ToolDef[] = [
   },
   {
     name: "little_emperors_en_attente",
-    description: "Séjours Little Emperors sans dossier. Ne crée rien.",
+    description:
+      "Séjours Little Emperors sans dossier, date de réservation la plus récente d’abord (création Little Emperors, sinon e-mail de confirmation, sinon l’enregistrement). Chaque ligne porte reservee_le. Une annulation n’a alerte true que si son numéro est celui d’une carte active. suivi « remplacée » ou « historique », alerte false : la routine ne la signale pas. Ne crée rien.",
     run: () => readLittleEmperorsEnAttente(),
   },
   {
@@ -385,7 +452,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée une carte Pliant à usage unique sur le dossier (dossier_id ou reference), au nom indiqué (ex. Visa). Plafond obligatoire, en euros par défaut. Un seul achat : un contrôle de passerelle ne compte pas. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. Le paramètre transactions est ignoré. Elle est rattachée au dossier pour les débits. Ne renvoie pas le numéro : lire_carte_pliant. Réservé à l’assistant autorisé.",
+      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut (usage unique, un contrôle de passerelle ne compte pas). Au-delà, carte virtuelle réutilisable : le plafond total et le montant maximum par transaction sont envoyés, par exemple 1 500 € et 5 achats pour la garantie, les extras et le solde. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie pas le numéro : lire_carte_pliant. Réservé à l’assistant autorisé.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0082"),
@@ -395,7 +462,7 @@ export const MCP_TOOLS: ToolDef[] = [
       transactions: z
         .union([z.number(), z.string()])
         .optional()
-        .describe("Ignoré. La carte est à usage unique : un nombre de transactions n’est pas envoyé"),
+        .describe("Nombre d’achats autorisés. Défaut 1 : carte à usage unique. 5 : carte réutilisable, dans le plafond total"),
       montant_transaction: z
         .union([z.number(), z.string()])
         .optional()
@@ -469,7 +536,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates ou la commission d’agence d’un dossier, puis le grand livre. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. L’état du dossier est En préparation, Visible ou Archivée.",
+      "Met à jour les notes, les dates, le titre, la couverture, la commission d’agence ou la société de facturation d’un dossier, puis le grand livre. titre est le nom du séjour. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -483,6 +550,31 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(20)
         .optional()
         .describe("Taux du dossier : 10, 7,5 ou 5. « compte » retire la dérogation."),
+      societe_id: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Société de facturation déjà sur la fiche du client"),
+      particulier: z
+        .boolean()
+        .optional()
+        .describe("Séjour particulier. Retire la société du dossier"),
+      titre: z.string().trim().max(200).optional().describe("Titre du séjour"),
+      couverture: z
+        .string()
+        .trim()
+        .max(8_000_000)
+        .optional()
+        .describe(
+          "catalogue, un lieu, un identifiant photo-…, une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo)"
+        ),
+      credit: z
+        .string()
+        .trim()
+        .max(120)
+        .optional()
+        .describe("Mention de la couverture importée. Défaut : Image générée par IA"),
     },
     run: (args) => updateBooking(args),
   },
@@ -502,11 +594,30 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "traiter_email",
     write: true,
     description:
-      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher exige dossier_id : le mail met le séjour à jour, sans montrer le carnet.",
+      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher et mettre_a_jour exigent dossier_id : ils déposent les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Sans pièce, le mail est classé et rien n’est ajouté. creer_dossier est le bouton Créer un dossier : il trouve ou crée la fiche (client_id, ou email, ou le nom du billet ; sans e-mail si le billet n’en a pas), crée le dossier caché, les cartes du billet (aller-retour au même PNR : une carte à l’écran, une ligne par trajet) et dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation.",
     input: {
       id: z.string().trim().describe("Identifiant de l’e-mail en attente"),
-      action: z.enum(["rattacher", "refuser"]).describe("rattacher ou refuser"),
-      dossier_id: z.string().trim().optional().describe("Dossier choisi, obligatoire pour rattacher"),
+      action: z
+        .enum(["rattacher", "mettre_a_jour", "refuser", "creer_dossier"])
+        .describe("rattacher, mettre_a_jour, refuser ou creer_dossier"),
+      dossier_id: z
+        .string()
+        .trim()
+        .optional()
+        .describe("Dossier choisi, obligatoire pour rattacher et mettre_a_jour"),
+      client_id: z
+        .string()
+        .trim()
+        .optional()
+        .describe("Fiche déjà choisie, pour creer_dossier. Sinon le billet sert à trouver ou créer la fiche"),
+      email: z
+        .string()
+        .trim()
+        .max(254)
+        .optional()
+        .describe("E-mail du voyageur pour trouver ou créer la fiche. Pas une adresse fournisseur ni agence"),
+      prenom: z.string().trim().max(80).optional().describe("Prénom, si la fiche est créée depuis le billet"),
+      nom: z.string().trim().max(80).optional().describe("Nom, si la fiche est créée depuis le billet"),
     },
     run: (args) => settleEmail(args),
   },
@@ -528,7 +639,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_client",
     write: true,
     description:
-      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). Ne crée pas de fiche. Aucun message.",
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). supprimer_societe_id retire une société vide, sans raison sociale ni SIRET, qui n’est pas utilisée. Ne crée pas de fiche. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       prenom: z.string().max(80).optional().describe("Prénom"),
@@ -542,16 +653,73 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(20)
         .optional()
         .describe("Taux du compte : 10, 7,5 ou 5. « defaut » remet 10 %."),
+      supprimer_societe_id: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Retire cette société si elle est vide et n’est pas utilisée"),
       ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),
+  },
+  {
+    name: "modifier_titulaire",
+    write: true,
+    description:
+      "Met à jour la fiche du titulaire et son passeport : prénoms, nom, nom de passeport, nom d’usage, date de naissance, lieu de naissance, sexe, nationalité, date de délivrance, adresse personnelle. Mêmes champs d’identité que l’accompagnateur. Le nom de passeport peut différer du nom de la fiche. L’adresse (adresse, code_postal, ville, pays) est le domicile, pas la facturation. pays_passeport choisit le livret (FR, IL) et n’est pas recopié dans la nationalité. Plusieurs livrets : la délivrance, le lieu ou le nom de passeport exigent pays_passeport. L’autre nationalité reste. Le numéro n’est ni lu ni renvoyé. Aucun message.",
+    input: {
+      id: z.string().trim().describe("Identifiant du client, le titulaire"),
+      prenoms: z.string().trim().max(120).optional().describe("Prénoms, dans l’ordre du passeport"),
+      nom: z.string().trim().max(80).optional().describe("Nom de la fiche"),
+      nom_passeport: z.string().trim().max(80).optional().describe("Nom imprimé sur le passeport, s’il diffère"),
+      nom_usage: z.string().trim().max(80).optional().describe("Nom d’usage ou nom d’épouse"),
+      date_naissance: z.string().trim().max(40).optional().describe("Naissance, AAAA-MM-JJ"),
+      lieu_naissance: z.string().trim().max(120).optional().describe("Lieu de naissance"),
+      sexe: z.string().trim().max(20).optional().describe("M, F ou X"),
+      nationalite: z.string().trim().max(80).optional().describe("Nationalité, code ou nom. Pas le pays du passeport"),
+      delivrance: z.string().trim().max(40).optional().describe("Délivrance du passeport, AAAA-MM-JJ"),
+      adresse: z.string().trim().max(300).optional().describe("Adresse personnelle, pas la facturation"),
+      code_postal: z.string().trim().max(20).optional().describe("Code postal du domicile"),
+      ville: z.string().trim().max(80).optional().describe("Ville du domicile"),
+      pays: z.string().trim().max(80).optional().describe("Pays du domicile"),
+      pays_passeport: z.string().trim().max(80).optional().describe("Pays émetteur du livret à modifier. Pas la nationalité"),
+    },
+    run: (args) => updateHolderProfile(args),
+  },
+  {
+    name: "definir_role_societe",
+    write: true,
+    description:
+      "Pose le rôle du client sur sa société, comme la fiche agence. admin : wallet société, voit les carnets publiés de ses collaborateurs. membre : collaborateur, payeur_id est l’admin société qui paie (pas lui-même, pas un autre collaborateur). particulier : ni payeur ni plafond. droit_depense est le plafond en euros, vide pour l’effacer. Aucun message.",
+    input: {
+      id: z.string().trim().describe("Identifiant du client"),
+      role: z.string().trim().describe("admin, membre ou particulier"),
+      payeur_id: z.string().trim().max(80).optional().describe("Admin société qui paie, obligatoire pour un membre"),
+      droit_depense: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe("Plafond personnel en euros. Vide : pas de plafond"),
+    },
+    run: (args) => setCompanyRole(args),
+  },
+  {
+    name: "inviter_client",
+    write: true,
+    openWorld: true,
+    description:
+      "Crée l’accès à l’espace du client et envoie l’invitation, le même flux que le bouton de la fiche. L’e-mail part, et WhatsApp avec le même lien si le message part : le canal du lien suit. Rien ne part sans cet appel. Un accès déjà invité ou déjà ouvert n’est pas renvoyé. Le lien n’est pas renvoyé. Un compte de l’agence est refusé.",
+    input: {
+      id: z.string().trim().describe("Identifiant du client"),
+    },
+    run: (args) => inviteClientAccess(args),
   },
   {
     name: "ajouter_piece",
     write: true,
     openWorld: true,
     description:
-      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays) sont écrits ; délivrance, autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » au client et au voyageur concerné s’il a un autre numéro. Une fiche qui a activé WhatsApp reçoit le modèle avec bouton ; sinon le modèle sans lien, une fois approuvé. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. Le numéro n’est pas renvoyé.",
+      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays) sont écrits ; délivrance, autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le WhatsApp « formalité prête » au client et au voyageur concerné s’il a un autre numéro. Une fiche qui a activé WhatsApp reçoit le modèle avec bouton ; sinon le modèle sans lien, une fois approuvé. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. carte_embarquement dépose un PDF sur le dossier, type carte d’embarquement, le même que le bouton Cartes d’embarquement : aucun WhatsApp. Le numéro n’est pas renvoyé.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
@@ -562,7 +730,7 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(80)
         .optional()
         .describe("Voyageur du dossier, ou accompagnateur déjà lié au client, sans dossier"),
-      type: z.string().trim().max(40).describe("visa, eta, passeport, carte_identite, assurance ou autre"),
+      type: z.string().trim().max(40).describe("visa, eta, passeport, carte_identite, assurance, autre ou carte_embarquement"),
       pays: z.string().trim().max(80).optional().describe("Pays émetteur, code ou nom. Pas la nationalité"),
       numero: z.string().trim().max(40).optional().describe("Numéro de la pièce. Il n’est pas renvoyé"),
       expiration: z.string().trim().max(40).optional().describe("Expiration, AAAA-MM-JJ"),
@@ -575,6 +743,21 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("WhatsApp « formalité prête ». Vrai si omis. false pour ne pas écrire au client"),
     },
     run: (args) => addTravelPiece(args),
+  },
+  {
+    name: "requalifier_piece",
+    write: true,
+    description:
+      "Change le type d’une pièce déjà liée à son dossier. document_id et type : visa, eta, passeport, carte_identite, assurance, autre ou carte_embarquement. carte_embarquement aligne la pièce sur le PDF du dossier (type carte d’embarquement) que le bouton Cartes d’embarquement et notifier_carte_embarquement attendent. Le même identifiant est conservé, le fichier n’est pas recopié, aucun message ne part. Une pièce déjà sur le dossier ne se requalifie qu’en carte d’embarquement ou autre. Une pièce sans séjour n’est pas touchée. Le numéro n’est pas renvoyé.",
+    input: {
+      document_id: z.string().trim().max(80).describe("Identifiant de la pièce déjà déposée"),
+      type: z
+        .string()
+        .trim()
+        .max(40)
+        .describe("visa, eta, passeport, carte_identite, assurance, autre ou carte_embarquement"),
+    },
+    run: (args) => requalifyPiece(args),
   },
   {
     name: "notifier_piece",
@@ -592,13 +775,49 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => notifyTravelPiece(args),
   },
   {
+    name: "notifier_carte_embarquement",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie au client du dossier la carte d’embarquement déjà déposée. document_id : PDF de type carte d’embarquement. Le fichier part en en-tête Document du modèle carte_embarquement. Un PDF de plusieurs pages (une page par passager ; un bébé reste sur la page de l’adulte) part en un message par passager, avec le prénom, le vol, le trajet, l’horaire et le siège lus sur la page. Rien n’est inventé. Si la lecture échoue : prenom, vol, trajet, date_heure, siege, ou passagers (mêmes champs, nom facultatif). Un passager déjà prévenu ne repart pas. Sans modèle approuvé par Meta, rien ne part et la réponse décrit le modèle à soumettre. Le numéro de pièce n’est pas renvoyé.",
+    input: {
+      document_id: z.string().trim().max(80).describe("Identifiant de la carte d’embarquement déjà sur le dossier"),
+      prenom: z.string().trim().max(80).optional().describe("Prénom, si la lecture du PDF a échoué"),
+      nom: z.string().trim().max(80).optional().describe("Nom, facultatif, si la lecture du PDF a échoué"),
+      vol: z.string().trim().max(40).optional().describe("Vol, si la lecture du PDF a échoué"),
+      trajet: z.string().trim().max(80).optional().describe("Trajet, si la lecture du PDF a échoué"),
+      date_heure: z.string().trim().max(60).optional().describe("Date et heure de départ, si la lecture du PDF a échoué"),
+      siege: z.string().trim().max(12).optional().describe("Siège, si la lecture du PDF a échoué"),
+      passagers: z
+        .array(
+          z.object({
+            prenom: z.string().trim().max(80),
+            nom: z.string().trim().max(80).optional(),
+            vol: z.string().trim().max(40),
+            trajet: z.string().trim().max(80),
+            date_heure: z.string().trim().max(60),
+            siege: z.string().trim().max(12),
+          })
+        )
+        .max(9)
+        .optional()
+        .describe("Un passager par page, si la lecture du PDF a échoué. Rien n’est inventé."),
+    },
+    run: (args) => notifyBoardingPass(args),
+  },
+  {
     name: "creer_dossier",
     write: true,
     description:
-      "Crée un dossier pour un client déjà en fiche. Titre, destination, dates, notes. Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. La société de la fiche est facturée par défaut : l’unique société, ou la première s’il y en a plusieurs. societe_id en choisit une autre. particulier : true laisse le séjour particulier. Sans société sur la fiche, le séjour reste particulier. facturer_societe sans société est une erreur. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
+      "Crée un dossier pour un client déjà en fiche. Destination, dates, notes. titre est facultatif : sans titre, le nom du séjour est la destination (la ville, pas le nom de l’hôtel). Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. La société de la fiche est facturée par défaut : l’unique société, ou la première s’il y en a plusieurs. societe_id en choisit une autre. particulier : true laisse le séjour particulier. Sans société sur la fiche, le séjour reste particulier. facturer_societe sans société est une erreur. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
     input: {
       client_id: z.string().trim().describe("Identifiant du client"),
-      titre: z.string().trim().describe("Titre du séjour"),
+      titre: z
+        .string()
+        .trim()
+        .max(200)
+        .optional()
+        .describe("Titre du séjour. Sans titre, la destination devient le nom"),
       destination: z.string().trim().max(200).optional().describe("Destination"),
       date_depart: z.string().trim().max(40).optional().describe("Départ, AAAA-MM-JJ"),
       date_retour: z.string().trim().max(40).optional().describe("Retour, AAAA-MM-JJ"),
@@ -621,7 +840,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_voyageur",
     write: true,
     description:
-      "Ajoute un voyageur au dossier et à la liste du client. Le nom d’usage et le premier prénom rattachent un compagnon déjà en fiche (Victoria Boukris = Victoria Marie Tetard, nom d’usage Boukris). compagnon_id rattache ce compagnon. Plusieurs homonymes : celui qui a un passeport, sinon il faut compagnon_id. Civilité, prénoms, nom, naissance, nationalité, téléphone. Le passeport est enregistré comme sur la fiche. Le numéro n’est pas renvoyé. L’e-mail n’ouvre pas de compte et n’est pas enregistré. Aucun message.",
+      "Ajoute un voyageur au dossier et à la liste du client. La correspondance est le prénom (le début des prénoms), le nom de naissance ou d’usage, et la date de naissance. Jamais le seul nom de famille. Une autre date, ou aucun compagnon exact, crée un accompagnant : on ne met pas à jour un autre voyageur sans compagnon_id. Le nom d’usage et le premier prénom rattachent un compagnon déjà en fiche quand la date concorde (Victoria Boukris = Victoria Marie Tetard, nom d’usage Boukris). Plusieurs homonymes : celui qui a un passeport, sinon il faut compagnon_id. Civilité, prénoms, nom, naissance, nationalité, téléphone. Le passeport est enregistré comme sur la fiche. Le numéro n’est pas renvoyé. L’e-mail n’ouvre pas de compte et n’est pas enregistré. Aucun message.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
@@ -648,6 +867,30 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Passeport, enregistré comme sur la fiche"),
     },
     run: (args) => addVoyageur(args),
+  },
+  {
+    name: "modifier_voyageur",
+    write: true,
+    description:
+      "Modifie un voyageur déjà sur le dossier, par voyageur_id (crm_booking_travelers, celui de fiche_dossier). Téléphone, e-mail, date de naissance, sexe, nationalité, prénoms, nom, nom d’usage, lien, programme de fidélité. Ce n’est pas compagnon_id : ajouter_voyageur refuse un voyageur_id. L’e-mail d’un accompagnateur est un contact, il n’ouvre pas de compte. L’e-mail du titulaire ne change pas ici (mettre_a_jour_client). Aucun message, aucun numéro de passeport.",
+    input: {
+      voyageur_id: z.string().trim().describe("Identifiant du voyageur sur le séjour"),
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier, pour vérifier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier, pour vérifier"),
+      prenoms: z.string().trim().max(120).optional().describe("Prénoms"),
+      nom: z.string().trim().max(80).optional().describe("Nom"),
+      nom_usage: z.string().trim().max(80).optional().describe("Nom d’usage"),
+      lien: z.string().trim().max(40).optional().describe("Lien avec le titulaire"),
+      civilite: z.string().trim().max(40).optional().describe("Monsieur, Madame ou autre"),
+      sexe: z.string().trim().max(20).optional().describe("M, F ou X"),
+      date_naissance: z.string().trim().max(40).optional().describe("Naissance, AAAA-MM-JJ"),
+      nationalite: z.string().trim().max(80).optional().describe("Nationalité, code ou nom"),
+      telephone: z.string().trim().max(40).optional().describe("Téléphone"),
+      email: z.string().trim().max(200).optional().describe("E-mail de contact d’un accompagnateur. Pas celui du titulaire"),
+      programme: z.string().trim().max(40).optional().describe("Programme : Flying Blue, Marriott Bonvoy, ALL Accor…"),
+      numero_fidelite: z.string().trim().max(40).optional().describe("Numéro du programme. Il n’est pas un numéro de passeport"),
+    },
+    run: (args) => updateVoyageur(args),
   },
   {
     name: "retirer_voyageur",
@@ -708,7 +951,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_vol",
     write: true,
     description:
-      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier). Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet, prix_total est le total du groupe pour cette carte. Le séjour caché ne débite pas. Aucun message.",
+      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier) et ne change pas le prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet. prix_total est le total du groupe, gardé au centime, sans prix unitaire imposé. devise omise garde la devise déjà sur la carte (euro par défaut), pas la devise du document fournisseur. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -755,6 +998,38 @@ export const MCP_TOOLS: ToolDef[] = [
       carte_id: z.string().trim().describe("Identifiant de la carte"),
     },
     run: (args) => removeCarte(args),
+  },
+  {
+    name: "definir_visibilite_carte",
+    write: true,
+    description:
+      "Montre ou cache une seule carte du dossier (vol, hôtel, frais ou autre prestation), et peut cocher ou décocher « Inclure dans les transactions ». visible vrai la montre au client, faux la cache ; omis, la visibilité ne change pas. inclure_transactions vrai crée ou rétablit le débit, faux l’annule, sur la même ligne. Le prix est le total exact si la carte porte un total de groupe. Ne publie pas le carnet et n’envoie rien : ni e-mail, ni WhatsApp. Sur un carnet déjà montré, un brouillon est préparé ; l’agence l’envoie en un clic. Le grand livre est recalculé comme à l’enregistrement d’une carte dans l’agence, sans doublon. Le séjour caché ne débite pas. Une carte non incluse dans les transactions ne crée pas de ligne.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().describe("Identifiant de la carte"),
+      visible: z.boolean().optional().describe("vrai : montrée au client. faux : cachée. Omis : la visibilité ne change pas"),
+      inclure_transactions: z
+        .boolean()
+        .optional()
+        .describe("Case « Inclure dans les transactions ». vrai coche, faux décoche. Omis : la case ne change pas"),
+    },
+    run: (args) => setCarteVisibilite(args),
+  },
+  {
+    name: "preparer_message_carnet",
+    write: true,
+    description:
+      "Prépare le message WhatsApp d’un dossier déjà montré au client : les prestations ajoutées au carnet, en une phrase, avec le lien. Plusieurs prestations tiennent dans un seul brouillon. carte_ids limite la phrase à ces cartes, sinon toutes les prestations déjà montrées. Rien n’est envoyé : l’agence l’envoie en un clic. Pas de prix, pas de commission, pas de fournisseur.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_ids: z
+        .array(z.string())
+        .optional()
+        .describe("Cartes à citer. Omis : les prestations déjà montrées dans le carnet"),
+    },
+    run: (args) => prepareCarnetMessage(args),
   },
   {
     name: "ajouter_hotel",
@@ -880,6 +1155,129 @@ export const MCP_TOOLS: ToolDef[] = [
       document_id: z.string().trim().max(80).optional().describe("Confirmation déjà déposée sur le dossier"),
     },
     run: (args) => addAccueilVip(args),
+  },
+  {
+    name: "enregistrement_en_ligne",
+    write: true,
+    description:
+      "Enregistrement en ligne d’un vol du dossier. Sans statut : lecture, pour vérifier avant de proposer un enregistrement (statut, heure d’ouverture, qui l’a fait, alerte si c’est ouvert et pas fait). Avec carte_id et statut : met à jour. Statuts : à faire, ouvert, en cours, fait, cartes reçues, envoyées au client. Une carte d’embarquement déjà au dossier passe à cartes reçues, un envoi déjà fait reste envoyées. L’auteur est le bot Enregistrement en ligne. Pas de passeport, pas de MRZ.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().max(80).optional().describe("Identifiant de la carte vol. Obligatoire pour changer le statut"),
+      statut: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("à faire, ouvert, en cours, fait, cartes reçues ou envoyées au client. Omis : lecture seule"),
+    },
+    run: (args) => enregistrementEnLigne(args),
+  },
+  {
+    name: "envoyer_releve",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie le relevé de compte du client, comme le bouton admin. customer_id. canal whatsapp par défaut. L’e-mail n’est pas ouvert. Le PDF est le même, déposé au coffre, puis envoyé sur WhatsApp : hors des 24 heures, le modèle approuvé TWILIO_CONTENT_RELEVE (en-tête Document) ; dans la fenêtre, le message de session. Chaque essai est écrit dans le journal, y compris un échec. L’auteur est le jeton, pas un collaborateur. La réponse donne twilio_sid et statut. Un second envoi réussi pour le même client dans les cinq minutes est refusé, sauf force.",
+    input: {
+      customer_id: z.string().trim().max(80).describe("Identifiant du client"),
+      channel: z.enum(["whatsapp", "email"]).optional().describe("whatsapp par défaut. email est refusé : ce canal n’est pas ouvert"),
+      force: z.boolean().optional().describe("Renvoie même si un relevé réussi est parti dans les cinq dernières minutes"),
+    },
+    run: (args) => envoyerReleve(args),
+  },
+  {
+    name: "sejours_restaurants",
+    description:
+      "Dossiers en séjour ce soir, heure locale : hôtel, ville, dates, voyageurs, WhatsApp du client (téléphone et s’il peut recevoir un message). couverts vaut toujours 2. Lecture seule. Pas de passeport.",
+    run: (args) => sejoursRestaurants(args),
+  },
+  {
+    name: "list_restaurants",
+    description:
+      "Catalogue restaurants. ville : les fiches de cette ville (pour vérifier qu’une maison n’existe pas déjà avant create_restaurant). restaurant_id : une fiche. q : recherche sur le nom ou la ville. statut : actif, a_valider ou exclu. Chaque fiche porte fiche_complete et champs_manquants (photo de la salle, photo du plat, description, fourchette, lien), selection (pourquoi elle est hors sélection, sinon null) et tous les champs de create_restaurant. Lecture seule. Pas de numéro de carte.",
+    input: {
+      ville: z.string().trim().max(80).optional().describe("Ville. Seule : filtre la liste"),
+      restaurant_id: z.string().trim().max(80).optional().describe("Identifiant : lit une fiche"),
+      q: z.string().trim().max(80).optional().describe("Recherche sur le nom ou la ville"),
+      statut: z.string().trim().max(20).optional().describe("actif, a_valider ou exclu"),
+    },
+    run: (args) => listRestaurantsTool(args),
+  },
+  {
+    name: "create_restaurant",
+    write: true,
+    description:
+      "Crée une fiche restaurant. nom et ville obligatoires. Une maison du même nom dans la même ville est refusée (la fiche existante est citée) sauf forcer true. Statut a_valider par défaut : la fiche reste hors sélection tant que l’agence ne l’active pas. categories : la première est la catégorie principale (pizzeria, japonais, francais, incontournable, italien, festif, enfants, terrasse…). Étoilé, gastronomique et prépaiement obligatoire sont exclus et ne peuvent pas être choisis. La réponse porte fiche_complete et champs_manquants. Pas de numéro de carte : empreinte_carte est seulement oui ou non.",
+    input: {
+      nom: z.string().trim().max(200).describe("Nom"),
+      ville: z.string().trim().max(80).describe("Ville"),
+      forcer: z.boolean().optional().describe("Crée malgré une fiche du même nom dans la ville"),
+      ...RESTAURANT_FIELDS,
+    },
+    run: (args) => createRestaurantTool(args),
+  },
+  {
+    name: "update_restaurant",
+    write: true,
+    description:
+      "Met à jour une fiche restaurant (restaurant_id). Seuls les champs indiqués changent. statut actif active la fiche (elle entre dans la sélection), a_valider la remet en relecture, exclu la sort avec un motif. Mêmes champs que create_restaurant. La réponse porte fiche_complete et champs_manquants. Pas de numéro de carte.",
+    input: {
+      restaurant_id: z.string().trim().max(80).describe("Identifiant de la fiche"),
+      nom: z.string().trim().max(200).optional().describe("Nom"),
+      ville: z.string().trim().max(80).optional().describe("Ville"),
+      ...RESTAURANT_FIELDS,
+    },
+    run: (args) => updateRestaurantTool(args),
+  },
+  {
+    name: "tables_restaurant",
+    write: true,
+    description:
+      "Crée ou met à jour une table du soir (A ou B) : restaurant, heure, confirmation, compte (défaut concierge@travelba.fr), statut. Les couverts sont fixés à 2. Garantie : quatre derniers chiffres seulement, jamais le numéro complet. statut annulee ou annuler true passe la table en annulée, avec l’heure et les frais. Un gastronomique, un étoilé ou un prépaiement est refusé.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      date: z.string().trim().max(20).describe("Soir, aaaa-mm-jj"),
+      table: z.string().trim().max(2).describe("A ou B"),
+      restaurant_id: z.string().trim().max(80).optional(),
+      heure: z.string().trim().max(8).optional(),
+      couverts: z.union([z.number(), z.string()]).optional().describe("Toujours 2. Un autre nombre est refusé"),
+      confirmation: z.string().trim().max(80).optional(),
+      compte: z.string().trim().max(200).optional().describe("Défaut concierge@travelba.fr"),
+      garantie: z.string().trim().max(8).optional().describe("Quatre derniers chiffres. Jamais le numéro complet"),
+      statut: z.string().trim().max(40).optional().describe("a_reserver, reservee, proposee, choisie, a_annuler, annulee, echec"),
+      annuler: z.union([z.boolean(), z.string()]).optional().describe("Passe la table en annulée"),
+      frais: z.union([z.number(), z.string()]).optional().describe("Frais d’annulation en euros"),
+    },
+    run: (args) => tablesRestaurant(args),
+  },
+  {
+    name: "choix_restaurant",
+    description:
+      "Choix du client et envoi de 16 h : pré-message, puis une fiche par restaurant. J’accepte sur l’une passe l’autre à annuler. Lecture seule. date limite à un soir.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      date: z.string().trim().max(20).optional().describe("Soir aaaa-mm-jj. Omis : tous les soirs du dossier"),
+    },
+    run: (args) => choixRestaurant(args),
+  },
+  {
+    name: "create_restaurant_whatsapp_templates",
+    write: true,
+    openWorld: true,
+    description:
+      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les trois modèles WhatsApp restaurants : restaurant_selection (pré-message), restaurant_proposition (carrousel salle et plat) et restaurant_proposition_carte (avec la carte). Mêmes textes que scripts/create-restaurant-whatsapp-templates.ts. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent : un modèle qui porte déjà ce nom est repris, pas dupliqué. Renvoie pour chacun le nom, le content_sid (HX…) et le statut d’approbation. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Le cron utilise un modèle approuvé dès la variable TWILIO_CONTENT_RESTAURANT_* posée, ou le retrouve par son nom si elle ne l’est pas.",
+    run: (args) => createRestaurantWhatsappTemplates(args),
+  },
+  {
+    name: "get_restaurant_whatsapp_templates_status",
+    openWorld: true,
+    description:
+      "Statut d’approbation Meta des trois modèles WhatsApp restaurants (restaurant_selection, restaurant_proposition, restaurant_proposition_carte) : nom, content_sid, statut (approved, pending, rejected, unsubmitted, absent), source (variable ou retrouvé par son nom chez Twilio), motif de refus. pret vrai quand les trois sont approuvés. Lecture seule, n’envoie aucun message, ne crée rien.",
+    run: (args) => getRestaurantWhatsappTemplatesStatus(args),
   },
 ];
 

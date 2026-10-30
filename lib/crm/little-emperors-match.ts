@@ -32,7 +32,7 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
   extract.end_date = booking.check_out || "";
   extract.currency = booking.currency || "EUR";
   extract.total_amount = null;
-  extract.title = booking.hotel_name || "";
+  extract.title = booking.city || "";
   const people = booking.guest_names
     .map(splitGuestName)
     .filter((person): person is { first_name: string; last_name: string } => Boolean(person));
@@ -94,10 +94,9 @@ export function decideLittleEmperorsAuto(input: {
   ignored?: boolean;
 }): LeAutoDecision {
   if (input.linkedBookingId) return { kind: "link", bookingId: input.linkedBookingId };
+  if (input.ignored || isLeCancelled(input.booking.state)) return { kind: "wait" };
   if (input.suggestion.autoBookingId) return { kind: "link", bookingId: input.suggestion.autoBookingId };
-  if (input.ignored || isLeCancelled(input.booking.state) || input.suggestion.candidates.length) {
-    return { kind: "wait" };
-  }
+  if (input.suggestion.candidates.length) return { kind: "wait" };
   const customer = suggestCustomerFromExtract(input.customers, leBookingExtract(input.booking));
   const chosen = customer.candidates.find((row) => row.customer_id === customer.autoCustomerId);
   if (!customer.autoCustomerId || !chosen || chosen.score < 85) return { kind: "wait" };

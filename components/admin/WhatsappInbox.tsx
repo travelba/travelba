@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { whatsappThreadHref } from "@/lib/crm/boite-tabs";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConciergeProposalDesk } from "@/components/admin/ConciergeProposalDesk";
 import { WhatsappHoldButton, type HandoffResult } from "@/components/admin/WhatsappHoldButton";
 import {
   conversationBadge,
-  deliveryLabel,
+  deliveryCaption,
   filterThreads,
+  isVoiceNotePath,
   messageSpeaker,
   messagesNewestFirst,
   parisStamp,
@@ -17,7 +19,9 @@ import {
   type InboxMessage,
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
+import { askBrowserAlerts, browserAlert } from "@/lib/crm/browser-alert";
 import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
+import { VoiceNote } from "@/components/admin/VoiceNote";
 
 export type InboxProposal = { id: string; draft: string };
 export type InboxTemplate = { key: string; label: string };
@@ -25,6 +29,7 @@ export type InboxTemplate = { key: string; label: string };
 const FILTERS: { id: InboxFilter; label: string }[] = [
   { id: "tous", label: "Tous" },
   { id: "non-lus", label: "Non lus" },
+  { id: "a-approuver", label: "À approuver" },
   { id: "escalade", label: "Escaladés" },
   { id: "robot", label: "Le Concierge" },
   { id: "agence", label: "Agence" },
@@ -40,6 +45,7 @@ export function WhatsappInbox({
   windowOpen,
   previewBlocked,
   embedded = false,
+  initialFilter = "tous",
 }: {
   threads: InboxThread[];
   messages: InboxMessage[];
@@ -49,10 +55,12 @@ export function WhatsappInbox({
   windowOpen: boolean;
   previewBlocked: boolean;
   embedded?: boolean;
+  /** `?filtre=` de la Boîte : le filtre à l’ouverture. */
+  initialFilter?: InboxFilter;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<InboxFilter>("tous");
+  const [filter, setFilter] = useState<InboxFilter>(initialFilter);
   const [body, setBody] = useState("");
   const [template, setTemplate] = useState("");
   const [note, setNote] = useState("");
@@ -81,9 +89,7 @@ export function WhatsappInbox({
     if (embedded || typeof Notification === "undefined") return;
     const unread = threads.reduce((sum, thread) => sum + thread.unread, 0);
     const previous = Number(sessionStorage.getItem("tba-wa-unread") || "0");
-    if (unread > previous && document.hidden && Notification.permission === "granted") {
-      new Notification("WhatsApp", { body: "Un nouveau message est arrivé." });
-    }
+    if (unread > previous && document.hidden) browserAlert("WhatsApp", "Un nouveau message est arrivé.");
     sessionStorage.setItem("tba-wa-unread", String(unread));
   }, [embedded, threads]);
 
@@ -164,7 +170,7 @@ export function WhatsappInbox({
             {visible.map((thread) => (
               <li key={thread.key}>
                 <Link
-                  href={`/admin/whatsapp?fil=${encodeURIComponent(thread.key)}`}
+                  href={whatsappThreadHref(thread.key)}
                   className={`block border-b border-[var(--border)] px-3 py-3 ${thread.key === activeKey ? "bg-[#f7f1e6]" : ""}`}
                 >
                   <span className="flex items-center justify-between gap-2">
@@ -239,10 +245,11 @@ export function WhatsappInbox({
             }
             const speaker = messageSpeaker(message);
             const mine = speaker !== "client";
+            const voice = isVoiceNotePath(message.mediaPath);
             return (
               <article key={message.id} id={`m-${message.id}`} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${voice ? "w-[min(100%,20rem)]" : ""} ${
                     message.requestId
                       ? "border border-[#C5A880] bg-white"
                       : speaker === "client"
@@ -256,8 +263,12 @@ export function WhatsappInbox({
                     {speakerLabel(speaker, message.authorName)}
                     {speaker === "robot" ? " · robot" : ""}
                   </p>
-                  <p className="whitespace-pre-wrap">{message.body}</p>
-                  {message.mediaPath ? (
+                  {voice && message.mediaPath ? (
+                    <VoiceNote path={message.mediaPath} text={message.body} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{message.body}</p>
+                  )}
+                  {!voice && message.mediaPath ? (
                     <a className="mt-2 block text-xs underline" href={`/api/files?path=${encodeURIComponent(message.mediaPath)}`}>
                       Pièce jointe
                     </a>
@@ -267,7 +278,7 @@ export function WhatsappInbox({
                   ) : null}
                   <p className={`mt-1 text-[10px] ${mine && speaker === "agency" ? "text-white/70" : "text-[var(--color-ink-soft)]"}`}>
                     {parisStamp(message.createdAt)}
-                    {deliveryLabel(message.status) ? ` · ${deliveryLabel(message.status)}` : ""}
+                    {deliveryCaption(message.status, message.error) ? ` · ${deliveryCaption(message.status, message.error)}` : ""}
                     {message.requestId ? " · Demande ouverte" : ""}
                   </p>
                   {message.requestId ? (
@@ -440,7 +451,6 @@ function fileToBase64(file: File) {
   });
 }
 
-export async function askWhatsappNotifications() {
-  if (typeof Notification === "undefined" || Notification.permission !== "default") return;
-  await Notification.requestPermission();
+export function askWhatsappNotifications() {
+  askBrowserAlerts();
 }

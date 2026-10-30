@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import test from "node:test";
+import { HotelThread } from "../../components/admin/HotelThread";
 import { cardLinkNote } from "./card-link";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -11,6 +12,7 @@ import {
   HOTEL_DESK_FROM,
   gmailAfterDate,
   gmailSubjectClause,
+  followUpSubject,
   hotelMailSubjectKey,
   hotelReplyForDesk,
   hotelReplyLink,
@@ -727,6 +729,162 @@ test("une confirmation Milano rejoint l'hôtel Milan, un mail écarté non", () 
   assert.equal(hotelMailPieceMatches(hotel(), { id: "other", extract: { items: [{ kind: "hotel", title: "Aman Tokyo" }] } }), false);
 });
 
+test("un envoi sans réponse se relance, une réponse retire le bouton", () => {
+  const item = hotel();
+  const now = Date.parse("2026-10-26T12:00:00.000Z");
+  const open = hotelThread({
+    item,
+    requests: [
+      letter({
+        status: "sent",
+        sent_at: "2026-10-20T08:00:00.000Z",
+        replied_at: null,
+        reply_body: "",
+        reply_subject: "",
+        follow_up_count: 0,
+      }),
+    ],
+    messages: [],
+    attached: [],
+    nowMs: now,
+  });
+  const sent = open.find((turn) => turn.direction === "out");
+  assert.equal(sent?.relance?.unanswered, true);
+  assert.equal(sent?.relance?.followUps, 0);
+  assert.equal(sent?.relance?.requestId, "req-1");
+  assert.equal(JSON.stringify(open).includes("@"), false);
+
+  const chased = hotelThread({
+    item,
+    requests: [letter({ status: "sent", sent_at: "2026-10-20T08:00:00.000Z", replied_at: null, reply_body: "", reply_subject: "" })],
+    messages: [],
+    attached: [],
+    thread: [
+      threadMessage({
+        id: "first",
+        gmail_message_id: "crm-first",
+        direction: "out",
+        source: "crm",
+        counts_as_reply: false,
+        request_id: "req-1",
+        subject: "Lien de paiement — Le Bristol — HB-9",
+        body: "Pourriez-vous envoyer le lien ?",
+        received_at: "2026-10-20T08:00:00.000Z",
+        link: null,
+      }),
+      threadMessage({
+        id: "again",
+        gmail_message_id: "crm-again",
+        direction: "out",
+        source: "crm",
+        counts_as_reply: false,
+        request_id: "req-1",
+        subject: "Re: Lien de paiement — Le Bristol — HB-9",
+        subject_key: "lien de paiement - le bristol - hb-9",
+        body: "Nous revenons vers vous.",
+        received_at: "2026-10-22T08:00:00.000Z",
+        link: null,
+      }),
+    ],
+    nowMs: now,
+  });
+  const latest = chased.filter((turn) => turn.direction === "out").at(-1);
+  assert.equal(latest?.relance?.followUps, 1);
+  assert.equal(chased.filter((turn) => turn.relance).length, 1);
+  const html = renderToStaticMarkup(
+    createElement(HotelThread, {
+      item,
+      requests: [
+        letter({
+          status: "sent",
+          sent_at: "2026-10-20T08:00:00.000Z",
+          replied_at: null,
+          reply_body: "",
+          reply_subject: "",
+        }),
+      ],
+      messages: [],
+      attached: [],
+      onRelance() {},
+    })
+  );
+  assert.match(html, /Relancer/);
+  assert.match(html, /Sans réponse/);
+  assert.equal(html.includes("Envoyer"), false);
+
+  const answered = hotelThread({
+    item,
+    requests: [letter()],
+    messages: [],
+    attached: [],
+    nowMs: now,
+  });
+  assert.equal(answered.some((turn) => turn.relance), false);
+  const inbound = answered.find((turn) => turn.direction === "in");
+  assert.equal(inbound?.reply?.requestId, "req-1");
+  assert.equal(inbound?.reply?.threadId, null);
+  assert.equal(JSON.stringify(answered).includes("@"), false);
+
+  const htmlReply = renderToStaticMarkup(
+    createElement(HotelThread, {
+      item,
+      requests: [letter()],
+      messages: [],
+      attached: [],
+      thread: [threadMessage({ id: "thread-sof", gmail_message_id: "gmail-sof" })],
+      onReply() {},
+      onRelance() {},
+    })
+  );
+  assert.match(htmlReply, /Répondre/);
+  assert.match(htmlReply, /min-h-11/);
+  assert.equal(htmlReply.includes("Envoyer"), false);
+  assert.equal(htmlReply.includes("@"), false);
+});
+
+test("la relance regarde le dernier message, pas une réponse plus ancienne", () => {
+  const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
+  const start = src.indexOf("export async function sendHotelFollowUp");
+  const end = src.indexOf("export async function sendHotelReply");
+  const fn = src.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(fn, /followUpRefused/);
+  assert.match(fn, /loadFollowUpTurns/);
+  assert.match(fn, /addressWithAppearedContacts/);
+  assert.match(src, /includeAppearedContacts/);
+  assert.match(src, /source: "thread"/);
+  assert.doesNotMatch(fn, /status === "replied" \|\| row\.replied_at/);
+  assert.doesNotMatch(fn, /if \(message\.replied_at\)/);
+  const mirrorStart = src.indexOf("async function mirrorThreadReplies");
+  const mirrorEnd = src.indexOf("export async function loadHotelThread");
+  const mirror = src.slice(mirrorStart, mirrorEnd);
+  assert.match(mirror, /supplierAnsweredLatest/);
+  assert.match(mirror, /status: "sent"/);
+  const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
+  assert.match(thread, /Relancer/);
+});
+
+test("répondre réutilise l’envoi et relie ce message", () => {
+  const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
+  const start = src.indexOf("export async function sendHotelReply");
+  const end = src.indexOf("/** Garde le premier envoi");
+  const fn = src.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(fn, /deliverHotelMail/);
+  assert.match(fn, /threadingHeaders/);
+  assert.match(fn, /gmailHeaderValues/);
+  assert.match(fn, /addressWithAppearedContacts/);
+  assert.doesNotMatch(fn, /follow_up_count/);
+  const form = readFileSync(join(process.cwd(), "components/admin/HotelFollowUp.tsx"), "utf8");
+  assert.match(form, /action: "relance"[\s\S]*cc: copied/);
+  const desk = readFileSync(join(process.cwd(), "components/admin/HotelDesk.tsx"), "utf8");
+  assert.match(desk, /threadPartyAddresses/);
+  assert.match(desk, /ccRecipients=\{relanceParties\.cc\}/);
+  const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
+  assert.match(thread, /Répondre/);
+  assert.doesNotMatch(thread, /md:hidden|hidden md:|sm:hidden/);
+});
+
 test("écrire à l'hôtel n'ajoute pas d'étape et coche les destinataires à l'envoi", () => {
   const root = join(process.cwd(), "lib/crm/hotel-desk-run.ts");
   const src = readFileSync(root, "utf8");
@@ -751,6 +909,10 @@ test("écrire à l'hôtel n'ajoute pas d'étape et coche les destinataires à l'
 });
 
 test("le titre parti ignore Re, R, AW et la relance", () => {
+  assert.equal(followUpSubject("Lien de paiement — Le Bristol — HB-9"), "Re: Lien de paiement — Le Bristol — HB-9");
+  assert.equal(followUpSubject("Re: Lien de paiement — Le Bristol — HB-9"), "Re: Lien de paiement — Le Bristol — HB-9");
+  assert.equal(followUpSubject("Relance : Lien de paiement — Le Bristol — HB-9"), "Re: Lien de paiement — Le Bristol — HB-9");
+  assert.equal(hotelMailSubjectKey("Relance : Lien de paiement — Le Bristol — HB-9"), hotelMailSubjectKey("Lien de paiement — Le Bristol — HB-9"));
   assert.equal(hotelMailSubjectKey("R: Payment link — Casa Monti — 36441"), "payment link - casa monti - 36441");
   assert.equal(hotelMailSubjectKey("AW: Payment link — Casa Monti — 36441"), "payment link - casa monti - 36441");
   assert.equal(hotelMailSubjectKey("Re: Follow-up — Payment link - Casa Monti - 36441"), "payment link - casa monti - 36441");
@@ -759,6 +921,40 @@ test("le titre parti ignore Re, R, AW et la relance", () => {
     1
   );
   assert.equal(appendSentSubject(["Payment link — Casa Monti — 36441"], "VIP welcome — Casa Monti — 36441").length, 2);
+});
+
+test("le tableau sonde aussi l’onglet en arrière-plan", () => {
+  const src = readFileSync(join(process.cwd(), "components/admin/HotelReplyToasts.tsx"), "utf8");
+  const start = src.indexOf("async function tick");
+  const end = src.indexOf("function onMessage");
+  const tick = src.slice(start, end);
+  assert.doesNotMatch(tick, /visibilityState === "hidden"\) return/);
+  assert.match(tick, /browserAlert/);
+  assert.match(tick, /replied > 0/);
+  assert.match(src, /askBrowserAlerts/);
+});
+
+test("la Boîte › Hôtels et le cron relisent le fil Gmail, et le connecteur expose le statut", () => {
+  const page = readFileSync(join(process.cwd(), "components/admin/boite/HotelsPanel.tsx"), "utf8");
+  const cron = readFileSync(join(process.cwd(), "app/api/cron/gmail-ingest/route.ts"), "utf8");
+  const mcp = readFileSync(join(process.cwd(), "lib/crm/mcp-read.ts"), "utf8");
+  const registry = readFileSync(join(process.cwd(), "lib/crm/mcp-registry.ts"), "utf8");
+  assert.match(page, /refreshStaleHotelThreads/);
+  assert.match(page, /budgetMs: 1500/);
+  assert.match(cron, /refreshStaleHotelThreads/);
+  assert.match(mcp, /courriers_hotel/);
+  assert.match(registry, /courriers_hotel/);
+});
+
+test("la synchro des réponses relit aussi un séjour en préparation", () => {
+  const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
+  const start = src.indexOf("export async function syncRecentHotelReplies");
+  const end = src.indexOf("export async function syncOpenHotelThreads");
+  const fn = src.slice(start, end);
+  assert.match(fn, /HOTEL_REPLY_STAY_STATUSES/);
+  assert.match(fn, /stayNeedsHotelReplyWatch/);
+  assert.doesNotMatch(fn, /\.eq\("status", "confirmed"\)/);
+  assert.match(fn, /limit\(12\)|,\s*12\)/);
 });
 
 test("seul un courrier envoyé lance la recherche", () => {
@@ -802,6 +998,17 @@ test("une réponse d'une autre adresse reste, un objet voisin non", () => {
   });
   assert.equal(copy.direction, "out");
   assert.equal(copy.countsAsReply, false);
+  const rewritten = classifyHotelMail({
+    from: "Reservations <h5242@sofitel.com>",
+    subject: "Your transfer request",
+    body: "The arrival transfer is confirmed for 18:40.",
+    keys,
+    acceptThreadReply: true,
+  });
+  assert.equal(rewritten.keep, true);
+  assert.equal(rewritten.countsAsReply, true);
+  assert.equal(rewritten.subjectKey, hotelMailSubjectKey(keys[0] || ""));
+  assert.equal(rewritten.body.includes("18:40"), true);
 });
 
 test("une absence ou un bounce ne passe pas le courrier à Répondu", () => {
@@ -827,6 +1034,23 @@ test("une absence ou un bounce ne passe pas le courrier à Répondu", () => {
   assert.equal(nextLetterStatus("follow_up", true), "replied");
   assert.equal(nextLetterStatus("skipped", true), "skipped");
   assert.equal(nextLetterStatus("sent", away.countsAsReply), "sent");
+});
+
+test("une réponse Gmail de l’agence compte même sans texte utile, et le cid disparaît", () => {
+  const keys = ["Payment link — Le Bristol — HB-9"];
+  const fromGmail = classifyHotelMail({
+    from: "Benjamin <benjamin@travelba.fr>",
+    subject: "Re: Payment link — Le Bristol — HB-9",
+    body: "On Tue, 30 Sep 2026, Hotel <desk@hotel.test> wrote:\n> The link is ready",
+    keys,
+  });
+  assert.equal(fromGmail.keep, true);
+  assert.equal(fromGmail.direction, "out");
+  assert.equal(fromGmail.countsAsReply, false);
+  assert.equal(fromGmail.body, "Message de l'agence.");
+  const cid = hotelReplyForDesk("Hello,\n[cid:f04a9214-82c1-45e2-bcd8-e1323435a689]\nThe link is ready.");
+  assert.equal(cid.includes("cid:"), false);
+  assert.match(cid, /link is ready/);
 });
 
 function threadMessage(patch: Partial<CrmHotelThreadMessage> = {}): CrmHotelThreadMessage {
@@ -1011,6 +1235,43 @@ test("Autre demande suit Concierge et coche le destinataire prévu", async () =>
     assert.equal(boxes.filter((box) => box.includes("checked")).length, 1);
     assert.equal((html.match(/shadow-\[inset_3px_0_0_#C5A880\]/g) || []).length, 1);
     assert.doesNotMatch(html, /RecipientRoster/);
+  } finally {
+    Module._load = load;
+  }
+});
+
+test("la relance montre en copie une personne apparue dans le fil", async () => {
+  const nodeRequire = createRequire(import.meta.url);
+  const Module = nodeRequire("module") as { _load: (...args: unknown[]) => unknown };
+  const load = Module._load;
+  Module._load = function (request: unknown, parent: unknown, isMain: unknown) {
+    if (request === "next/navigation") return { useRouter: () => ({ refresh() {} }) };
+    return load.call(this, request, parent, isMain);
+  };
+  try {
+    const { HotelFollowUp } = await import("../../components/admin/HotelFollowUp");
+    const html = renderToStaticMarkup(
+      createElement(HotelFollowUp, {
+        bookingId: "b1",
+        itemId: "item-hotel",
+        requestId: "req-1",
+        messageId: null,
+        people: [
+          { email: "reservations@sofitel.test", firstName: "Reservations", lastName: "", role: "" },
+          { email: "achraf@sofitel.test", firstName: "Achraf", lastName: "Chouichi", role: "" },
+        ],
+        recipients: ["reservations@sofitel.test"],
+        ccRecipients: ["achraf@sofitel.test"],
+        subject: "Re: Lien de paiement — Sofitel — QSX",
+        body: "Nous faisons suite à votre message.",
+        onClose() {},
+      })
+    );
+    assert.match(html, /Les personnes apparues dans le fil sont en copie/);
+    assert.match(html, /Copie/);
+    assert.match(html, /achraf@sofitel\.test/);
+    assert.match(html, /checked/);
+    assert.equal(html.includes("Envoyer la relance"), true);
   } finally {
     Module._load = load;
   }

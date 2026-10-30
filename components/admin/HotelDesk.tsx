@@ -1,36 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { HotelFollowUp } from "@/components/admin/HotelFollowUp";
 import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownPersonName } from "@/lib/crm/identity";
-import { applyHotelSalutation, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, signHotelLetter, type HotelMailPiece } from "@/lib/crm/hotel-desk";
-import { applyPaymentLinkChoice, hotelLanguage } from "@/lib/crm/hotel-arrival";
+import { applyHotelSalutation, bookingToken, ensureHotelMailIdentity, followUpSubject, hotelMailSubjectKey, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelThread, signHotelLetter, type DeskRosterPerson, type HotelMailPiece, type HotelThreadTurn } from "@/lib/crm/hotel-desk";
+import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
+import { followUpBody } from "@/lib/crm/mail-followup";
+import { partiesFromThreadRows, replyAddresses, replyDraftBody, threadPartyAddresses } from "@/lib/crm/mail-reply";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
-import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
+import { HOTEL_DESK_KINDS, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 
 const letterFieldClass =
   "w-full rounded-xl border border-[#d9d1c3] bg-[#faf9f6] px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C] focus:bg-white";
-
-export function HotelDeskSummary({
-  requests,
-}: {
-  requests: CrmHotelRequest[];
-  today: string;
-}) {
-  const trip = hotelTripChecklist(requests);
-  if (!trip.openCount) return null;
-  return (
-    <p className="text-sm font-semibold text-[#0B192C]">
-      {trip.openCount > 1 ? `${trip.openCount} courriers hôtel` : "Courrier hôtel"}
-    </p>
-  );
-}
 
 export function HotelChecklistGlance({ itemId, requests }: { itemId: string; requests: CrmHotelRequest[] }) {
   const stay = hotelStayChecklist(itemId, requests);
@@ -53,14 +42,13 @@ export function HotelDesk({
   identityDocs = [],
   holder = null,
   cardLast4 = null,
-  clientCardName: _clientCardName = null,
-  hasCardCode: _hasCardCode = false,
-  cardViews: _cardViews = [],
   messages = [],
   thread = [],
   attached = [],
   signatory = "",
   focusReply = false,
+  initialRelanceId = null,
+  initialReplyId = null,
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -70,25 +58,58 @@ export function HotelDesk({
   identityDocs?: CrmTravelDocument[];
   holder?: { first_name: string; last_name: string } | null;
   cardLast4?: string | null;
-  clientCardName?: string | null;
-  hasCardCode?: boolean;
-  cardViews?: CardViewLine[];
   messages?: CrmHotelMessage[];
   thread?: CrmHotelThreadMessage[];
   attached?: HotelMailPiece[];
   reference?: string;
   signatory?: string;
   focusReply?: boolean;
+  initialRelanceId?: string | null;
+  initialReplyId?: string | null;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
   );
   const router = useRouter();
-  const [open, setOpen] = useState<HotelDeskKind | null>(focusReply ? "other" : null);
+  const replyFormRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState<HotelDeskKind | null>(focusReply && !initialRelanceId && !initialReplyId ? "other" : null);
+  const [relanceKey, setRelanceKey] = useState<string | null>(initialRelanceId);
+  const [replyKey, setReplyKey] = useState<string | null>(initialReplyId);
   const [marking, setMarking] = useState<string | null>(null);
   const [markError, setMarkError] = useState<string | null>(null);
+  const turns = hotelThread({ item, requests, messages, thread, attached });
+  const relanceTurn =
+    relanceKey == null
+      ? null
+      : turns.find(
+          (turn) => turn.relance && (turn.relance.requestId === relanceKey || turn.relance.messageId === relanceKey)
+        ) || null;
+  const replyTurn =
+    replyKey == null
+      ? null
+      : turns.find((turn) => {
+          const reply = turn.reply;
+          if (!reply) return false;
+          if (reply.threadId && reply.threadId === replyKey) return true;
+          if (reply.pieceId && reply.pieceId === replyKey) return true;
+          if (!reply.threadId && !reply.pieceId && (reply.requestId === replyKey || reply.messageId === replyKey)) return true;
+          return false;
+        }) || null;
+  const replyParties = replyTurn?.reply ? replyPartiesFor(item, requests, messages, thread, attached, replyTurn) : null;
+  const relanceParties = relanceTurn?.relance ? relancePartiesFor(item, requests, messages, thread, relanceTurn) : null;
+  const replyFormId = replyTurn?.id || "";
+  useEffect(() => {
+    if (!replyFormId) return;
+    replyFormRef.current?.scrollIntoView({ block: "nearest" });
+  }, [replyFormId]);
   if (!rows.length) return null;
   const stay = hotelStayChecklist(item.id, rows);
+  const guest = principalGuest({ travelers, holder });
+  const relanceIdentity = {
+    lang: hotelLanguage(hotelContact(item).country),
+    guest: `${guest.firstName} ${guest.lastName}`.trim(),
+    ref: bookingToken(item.confirmation_ref),
+  };
 
   async function mark(row: CrmHotelRequest, action: "skip" | "restore") {
     if (marking) return;
@@ -184,7 +205,67 @@ export function HotelDesk({
         messages={messages}
         thread={thread}
         attached={attached}
+        turns={turns}
+        onRelance={(turn: HotelThreadTurn) => {
+          const key = turn.relance?.requestId || turn.relance?.messageId;
+          if (!key) return;
+          setOpen(null);
+          setReplyKey(null);
+          setRelanceKey(key);
+        }}
+        onReply={(turn: HotelThreadTurn) => {
+          const reply = turn.reply;
+          const key = reply?.threadId || reply?.pieceId || reply?.requestId || reply?.messageId;
+          if (!key) return;
+          setOpen(null);
+          setRelanceKey(null);
+          setReplyKey(key);
+        }}
       />
+      {relanceTurn?.relance && relanceParties ? (
+        <HotelFollowUp
+          key={relanceTurn.id}
+          bookingId={bookingId}
+          itemId={item.id}
+          requestId={relanceTurn.relance.requestId}
+          messageId={relanceTurn.relance.messageId}
+          people={relanceParties.people}
+          recipients={relanceParties.to}
+          ccRecipients={relanceParties.cc}
+          subject={followUpSubject(relanceTurn.subject)}
+          body={signHotelLetter(
+            ensureHotelMailIdentity(followUpBody({ body: relanceTurn.body, sentAt: relanceTurn.at }), relanceIdentity),
+            signatory
+          )}
+          onClose={() => setRelanceKey(null)}
+        />
+      ) : null}
+      {replyTurn?.reply && replyParties ? (
+        <div ref={replyFormRef}>
+          <HotelFollowUp
+            key={replyTurn.id}
+            mode="reponse"
+            bookingId={bookingId}
+            itemId={item.id}
+            threadId={replyTurn.reply.threadId}
+            pieceId={replyTurn.reply.pieceId}
+            requestId={replyTurn.reply.requestId}
+            messageId={replyTurn.reply.messageId}
+            people={replyParties.people}
+            recipients={replyParties.to}
+            ccRecipients={replyParties.cc}
+            subject={followUpSubject(replyTurn.subject)}
+            body={signHotelLetter(
+              ensureHotelMailIdentity(
+                replyDraftBody({ body: replyTurn.body, at: replyTurn.at, speaker: replyTurn.speaker }),
+                relanceIdentity
+              ),
+              signatory
+            )}
+            onClose={() => setReplyKey(null)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -244,8 +325,9 @@ function HotelDeskEditor({
     });
     setBusy(null);
     if (!result.ok) {
-      setError(result.error || "Action impossible");
-      return false;
+      const message = result.error || "Action impossible";
+      setError(message);
+      return message;
     }
     if (action !== "save") {
       onClose();
@@ -327,21 +409,31 @@ function HotelDeskEditor({
         <textarea className={`${letterFieldClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
       </label>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]" disabled={Boolean(busy) || recipients.length === 0} onClick={() => void run("send")}>
-          {busy === "send" ? "Envoi…" : "Envoyer"}
-        </button>
+      <div className="flex flex-wrap items-start gap-2">
+        <ConfirmAction
+          label="Envoyer"
+          confirmLabel="Envoyer le courrier"
+          question={`Envoyer ce courrier à ${recipients.length > 1 ? `${recipients.length} destinataires` : recipients[0] || "l’hôtel"} ?`}
+          hint="Le courrier part tout de suite par Gmail. Rien d’autre ne change sur le dossier."
+          busyLabel="Envoi…"
+          disabled={Boolean(busy) || recipients.length === 0}
+          className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6] disabled:opacity-50"
+          onConfirm={async () => {
+            const sent = await run("send");
+            return sent === true ? null : sent;
+          }}
+        />
         <button
           type="button"
           className="rounded-full border border-[#d9d1c3] bg-white px-3 py-2 text-sm font-semibold text-[#0B192C]"
           disabled={Boolean(busy)}
           onClick={() =>
             void run("save").then((saved) => {
-              if (saved) router.refresh();
+              if (saved === true) router.refresh();
             })
           }
         >
-          {busy === "save" ? "…" : "Enregistrer"}
+          {busy === "save" ? "…" : "Enregistrer le brouillon"}
         </button>
         <button type="button" className="px-3 py-2 text-sm font-medium text-[#3d4654]" disabled={Boolean(busy)} onClick={() => void run("skip")}>
           Pas besoin
@@ -349,6 +441,97 @@ function HotelDeskEditor({
       </div>
     </div>
   );
+}
+
+function partiesForSubject(itemId: string, subject: string, thread: CrmHotelThreadMessage[]) {
+  const key = hotelMailSubjectKey(subject);
+  if (!key) return [];
+  return partiesFromThreadRows(thread.filter((row) => row.booking_item_id === itemId && row.subject_key === key));
+}
+
+function withPartyPeople(people: DeskRosterPerson[], addresses: string[]) {
+  const next = [...people];
+  for (const email of addresses) {
+    if (!next.some((person) => person.email === email)) next.push({ email, firstName: "", lastName: "", role: "" });
+  }
+  return next;
+}
+
+function replyPartiesFor(
+  item: CrmBookingItem,
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  thread: CrmHotelThreadMessage[],
+  attached: HotelMailPiece[],
+  turn: HotelThreadTurn
+) {
+  const reply = turn.reply;
+  const from = reply ? replySender(reply, thread, requests, messages, attached) : "";
+  const originals = replyOriginals(item, requests, messages, reply);
+  const addresses = threadPartyAddresses({
+    mode: "reply",
+    from,
+    originals,
+    parties: partiesForSubject(item.id, turn.subject, thread),
+  });
+  const base = addresses.to.length ? addresses : replyAddresses({ from, originals });
+  return { ...base, people: withPartyPeople(hotelSendPeople(item, requests, messages), [...base.to, ...base.cc]) };
+}
+
+function relancePartiesFor(
+  item: CrmBookingItem,
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  thread: CrmHotelThreadMessage[],
+  turn: HotelThreadTurn
+) {
+  const relance = turn.relance;
+  const originals = relance ? relanceRecipients(item, requests, messages, relance) : [];
+  const addresses = threadPartyAddresses({
+    mode: "followup",
+    originals,
+    parties: partiesForSubject(item.id, turn.subject, thread),
+  });
+  const to = addresses.to.length ? addresses.to : originals;
+  return { to, cc: addresses.cc, people: withPartyPeople(hotelSendPeople(item, requests, messages), [...to, ...addresses.cc]) };
+}
+
+function replySender(
+  reply: NonNullable<HotelThreadTurn["reply"]>,
+  thread: CrmHotelThreadMessage[],
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  attached: HotelMailPiece[]
+) {
+  if (reply.threadId) return thread.find((row) => row.id === reply.threadId)?.from_email || "";
+  if (reply.requestId) return requests.find((row) => row.id === reply.requestId)?.reply_from || "";
+  if (reply.messageId) return messages.find((row) => row.id === reply.messageId)?.reply_from || "";
+  if (reply.pieceId) return attached.find((row) => row.id === reply.pieceId)?.from_email || "";
+  return "";
+}
+
+function replyOriginals(
+  item: CrmBookingItem,
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  reply: HotelThreadTurn["reply"]
+) {
+  const letter = reply?.requestId ? requests.find((row) => row.id === reply.requestId) : undefined;
+  const note = reply?.messageId ? messages.find((row) => row.id === reply.messageId) : undefined;
+  const listed = letter?.recipients?.length ? letter.recipients : note?.recipients || [];
+  return listed.length ? listed : hotelSendDefaults(item, requests, messages);
+}
+
+function relanceRecipients(
+  item: CrmBookingItem,
+  requests: CrmHotelRequest[],
+  messages: CrmHotelMessage[],
+  relance: { requestId: string | null; messageId: string | null }
+) {
+  const letter = relance.requestId ? requests.find((row) => row.id === relance.requestId) : undefined;
+  const note = relance.messageId ? messages.find((row) => row.id === relance.messageId) : undefined;
+  const listed = letter?.recipients?.length ? letter.recipients : note?.recipients || [];
+  return listed.length ? listed : hotelSendDefaults(item, requests, messages);
 }
 
 async function post(

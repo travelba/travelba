@@ -2,10 +2,12 @@
 name: travelba-email-ingest
 description: >-
   Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, booking-cancellation, crm, reservations-tba, cdsgroupe.com) → crm_email_ingest →
-  parse → suggestions. Création automatique du dossier (et de la fiche s’il
-  n’existe pas) sur une confirmation sans voyage reconnu. Un match unique
-  (un client, un séjour, une carte) met à jour l’itinéraire seul. Le reste
-  attend le clic. Use when touching Gmail webhook, cron
+  parse → suggestions. La file garde tous ces mails. La notification ne part que pour une réponse à un envoi du CRM.
+  Déposer les pièces et Mettre à jour, sur un dossier déjà ouvert, copient les
+  fichiers sur la carte qui correspond (PNR, puis compagnie et trajet, puis
+  fournisseur) ou sur le dossier. Aucune carte n’est créée ni modifiée. Seul
+  Créer un dossier crée des cartes. Le parse ne crée
+  plus de dossier et n’applique plus le séjour. Use when touching Gmail webhook, cron
   gmail-ingest / gmail-watch-renew, email-match, cancellation mail, or a booking
   confirmation. Dropzone PDF/photos (relecture humaine) : travelba-document-ingest.
   Identity / MRZ : travelba-identity.
@@ -14,20 +16,36 @@ description: >-
 # Travelba — e-mails fournisseur (Gmail)
 
 Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**, **booking-cancellation**,
-**crm**, **reservations-tba**, **cdsgroupe.com**) → ligne
-`crm_email_ingest` → parse extract → suggestions (client / voyage).
-**Rattachement autonome seulement si le match est unique** : un client déjà
-reconnu, un seul séjour (référence forte, ou une seule destination, y compris
-annulée), et `replacementPlan` / `cancellationApplyPlan` sans choix. Deux
-séjours vers la même ville, deux cartes du même type, une annulation sans
-référence, un devis ou une pièce d’identité restent dans `/admin/emails`.
+**crm**, **reservations-tba**, **cdsgroupe.com**) → ligne `crm_email_ingest` → parse extract → suggestions (client / voyage).
+La file « e-mails à relire » garde ces mails. La notification (« Un e-mail est arrivé dans la file », y compris l’alerte du navigateur) ne part que si le mail répond à un envoi du CRM (In-Reply-To, fil, ou `Re:` sur un objet envoyé). Un autre mail reste dans la file, sans alerte.
+**Déposer les pièces** (bouton, raccourci A, `traiter_email` `rattacher`) copie
+les pièces jointes dans les pièces du dossier. Il ne modifie pas les cartes et
+n’en crée pas. Sans pièce utile (ou seulement une image de signature), le mail
+est classé et rien n’est ajouté. La même empreinte n’est pas déposée deux fois.
+Le mail reste lié au dossier (`attached`).
 
-L’IA **ne publie jamais** le carnet. Une carte nouvelle reste cachée. Une carte
-déjà montrée, mise à jour sur la même référence, le reste.
-Sur une confirmation sans voyage reconnu, elle **crée** le dossier en brouillon.
-Si aucun client n’est reconnu et que le mail porte un e-mail de voyageur (ni
-boîte agence, ni expéditeur, ni domaine fournisseur), elle crée d’abord la fiche.
-Elle **n’invite pas** : pas de compte Auth, pas de lien. Le carnet reste caché.
+**Mettre à jour** (`apply_cards`, MCP `mettre_a_jour`) sur un dossier déjà ouvert
+est le même geste que **Déposer les pièces** : les fichiers vont sur la carte
+qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le
+dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Il ne part
+jamais tout seul. **Créer un dossier** reste le seul clic qui crée des cartes
+(brouillon caché, sans invitation). Le connecteur fait ce clic avec
+`traiter_email` `creer_dossier` : la fiche est trouvée ou créée (sans e-mail
+si le billet n’en a pas ; sinon `client_id` ou `email`), le dossier reste caché,
+les cartes viennent du billet (aller-retour au même PNR : une carte à l’écran,
+une ligne par trajet) et les fichiers sont déposés. `rattacher` et
+`mettre_a_jour` ne créent toujours pas de carte. `lire_email` donne le corps,
+le texte des PDF et le billet déjà lu, sans numéro de passeport ni de carte.
+Le parse ne crée plus de fiche ni de
+dossier, et n’applique plus le séjour.
+
+Deux séjours vers la même ville, deux cartes du même type, une annulation sans
+référence, un devis ou une pièce d’identité restent dans la Boîte de réception
+(`/admin/boite?onglet=fournisseurs`, `components/admin/boite/FournisseursPanel.tsx`) tant
+que l’agence n’a pas cliqué.
+
+L’IA **ne publie jamais** le carnet. Un mail lié à un dossier existant
+n’ajoute pas de carte et n’en modifie pas. Elle **n’invite pas**.
 
 Un mail **remplit** une carte vol ou hôtel, puis vit avec les **pièces**. Il n’est jamais une étape glissable du voyage (ni l’original, ni le `Fw:`). Les doublons évidents (même passager + date de billet, même confirmation d’hôtel, Milano = Milan) se regroupent. Sur chaque fiche, la liste est **repliée** : fermée, elle dit qu’il y en a et combien ; ouverte, chaque copie grisée a **Écarter**. Écarter marque la ligne, ne la supprime pas, et ne retire pas la carte. Le fichier reste dans le dossier. Ne pas lancer soi-même un nettoyage des lignes prod.
 
@@ -37,7 +55,7 @@ Un mail **remplit** une carte vol ou hôtel, puis vit avec les **pièces**. Il n
 |--|---------------------------|----------------------------|
 | Entrée | Dropzone PDF/photos **admin** | Push Gmail **labels** → `crm_email_ingest` |
 | Suite | Relecture humaine, puis **Enregistrer** | Parse → suggestions. Clic agence pour rattacher |
-| Persist | Clic agent | Clic agence, ou création auto : `persistNewBookingFromExtract` |
+| Persist | Clic agent | Clic agence : pièces seules, ou cartes / nouveau dossier à part |
 
 Identité / MRZ : skill `travelba-identity`.
 
@@ -53,22 +71,22 @@ Identité / MRZ : skill `travelba-identity`.
 Gmail label (little-emperors | expedia-taap | billet-avion | booking-cancellation | crm | reservations-tba | cdsgroupe.com)
   → webhook / cron capture → crm_email_ingest status=received
   → parse extract (pièces + corps ; mêmes parseurs / LLM que l’import)
+  → crm_reply : vrai seulement si réponse à un envoi du CRM (notification, pas la file)
   → suggestCustomerFromExtract
   → suggestBookingByReference ∪ suggestBookingByTripSignals
   → status matched|parsed + candidats
-  → /admin/emails jusqu’au clic agence
+  → Boîte de réception › Fournisseurs jusqu’au clic agence
 ```
 
 `matchAndStoreExtract` enregistre l’extract et les suggestions. Il n’applique
-rien. Juste après, sur un mail **reçu** seulement, `autoCreateBookingFromIngestId`
-peut créer le dossier, ou appliquer un séjour unique
-(`applyReplacementToBooking` / `applyCancellationToBooking`). Le rematch ne crée
-pas et n’applique pas. `received` et `error` restent dans la file, pas seulement
-`parsed` / `matched`.
+rien. Le parse ne crée pas le dossier et n’applique pas les cartes. Le rematch
+non plus. `received` et `error` restent dans la file, pas seulement `parsed` /
+`matched`.
 
-Le clic **Rattacher au voyage** sur une annulation appelle
-`applyCancellationToBooking`. **Créer un dossier** est refusé si le mail est une
-annulation.
+Le clic **Mettre à jour** sur une annulation, comme **Déposer les pièces**, ne
+fait qu’attacher les fichiers. Il n’appelle pas `applyCancellationToBooking`.
+**Créer
+un dossier** est refusé si le mail est une annulation.
 
 ## Billets d'avion
 
@@ -98,17 +116,18 @@ ne crée ni fiche ni dossier.
 Label Gmail **`crm`** (`label:crm`). « CRM » compte aussi. Il est toujours suivi,
 même si `GMAIL_LABELS` ne le cite pas. Le cron `gmail-ingest` appelle
 `backfillCrmMessages` (curseur `gmail-crm`). L’adresse `crm@travelba.fr` n’est
-jamais l’e-mail d’une fiche. Le reste du contrat (match unique, pas de second
-dossier, pas d’invitation, pas de publication) est le même.
+jamais l’e-mail d’une fiche. Il entre dans la file comme les autres labels.
+Une copie partie de `@travelba.fr` est notée (objet, fil, identifiant) et reste
+dans la file. Elle ne déclenche pas la notification.
 
 ## Label reservations-tba
 
 Label Gmail **`reservations-tba`** (`label:reservations-tba`). « Reservations TBA »
 compte aussi. Il est toujours suivi, même si `GMAIL_LABELS` ne le cite pas. Le
 cron `gmail-ingest` appelle `backfillReservationsTbaMessages` (curseur
-`gmail-reservations-tba`). C’est une confirmation : le parse et la création
-automatique sont les mêmes que pour Little Emperors ou `crm`. Ce n’est pas une
-annulation.
+`gmail-reservations-tba`). Il entre dans la file, y compris une newsletter.
+La notification ne part que si c’est une réponse à un envoi du CRM. Ce n’est pas
+une annulation. Ne pas sortir ces mails de la file.
 
 ## Label cdsgroupe.com
 
@@ -134,11 +153,11 @@ Prénom aligné (`Simon` = `Simon, Iony`). Destination : ville / pays, casse,
 accents, inclusion (`Dan Tel Aviv Hotel` ⊃ `Tel Aviv`). `cancelled` exclus.
 Document `identity` : pas de proposition de voyage. Prix document manquant : pas de blocage du rattachement manuel. On n’invente pas le montant.
 
-Nombre de billets **facultatif** (saisie manuelle et import). Vide : le montant est le total du billet. On ne calcule pas de prix unitaire, on ne l’affiche pas, l’import n’avertit pas. Le grand livre prend ce total (`itemSellingAmount`). Un nombre saisi reste unitaire × billets.
+Nombre de billets **facultatif** (saisie manuelle et import). Vide : le montant est le total du billet. On ne calcule pas de prix unitaire, on ne l’affiche pas, l’import n’avertit pas. Le grand livre prend ce total (`itemSellingAmount`). Un nombre saisi reste unitaire × billets. Un total marqué `amount_is_total` (saisie `prix_total`) reste le total du groupe, au centime.
 
 ## Avant le modèle
 
-Images de signature (moins d’environ 20 Ko, `image001`, App Store, logo) : pas d’appel. Publicité, code à 6 chiffres, guide API, newsletter : statut `ignored`, sans modèle. Un label de confirmation (Little Emperors, Expedia, billet, annulation, reservations-tba, cdsgroupe) n’est pas écarté pour un pied de page.
+Images de signature (moins d’environ 20 Ko, `image001`, App Store, logo) : pas d’appel. Publicité, code à 6 chiffres, guide API, newsletter : statut `ignored`, sans modèle. Un label de confirmation (Little Emperors, Expedia, billet, annulation, reservations-tba, cdsgroupe) n’est pas écarté pour un pied de page. La notification ne suit pas cette règle : elle ne part que pour une réponse à un envoi du CRM.
 
 Un fil Gmail, ou la même confirmation (y compris `64570` et `64570SH046795`), fait **une** carte dans la file. Les autres messages du fil se ferment au traitement ou au clic (rattacher, refuser, créer). Rien n’est effacé.
 
@@ -152,12 +171,12 @@ Chaque décision (auto ou humain) va dans `crm_audit_events` : qui, quand, quoi.
 
 ## Confiance et proposition
 
-Chaque champ lu porte une confiance et, quand la ligne est dans le mail, la citation. `crm_import_proposals` garde l’avant / après (ajouter, remplacer, annuler, joindre le mail). On n’applique seul que si la référence de confirmation est unique, la confiance est au moins 0,9 et il n’y a pas de conflit. Sans confiance notée, le rapprochement unique d’avant reste. `/admin/emails` a trois vues : à traiter, appliqués (24 h, Annuler), ignorés (remettre). Raccourcis A, I, E sur la première carte. Les champs peu sûrs sont en orange, citation au survol.
+Chaque champ lu porte une confiance et, quand la ligne est dans le mail, la citation. `crm_import_proposals` garde l’avant / après (ajouter, remplacer, annuler, joindre le mail). On n’applique seul que si la référence de confirmation est unique, la confiance est au moins 0,9 et il n’y a pas de conflit. Sans confiance notée, le rapprochement unique d’avant reste. Boîte de réception › **Fournisseurs** (`lib/crm/boite-tabs.ts`) a trois vues : **À traiter**, **Déposés (24 h)** (`?vue=rattaches`, Annuler), **Classés** (`?vue=classes`, Remettre à traiter), plus la pilule **Little Emperors** (`?source=little-emperors`, toutes les réservations). Dans À traiter, les réservations Little Emperors sans dossier sont des cartes de la même file, sous les e-mails (`LittleEmperorsInbox compact`). Une carte mail a quatre gestes : **Déposer les pièces**, **Créer un dossier**, **Choisir / Changer** le client, **Classer** ; **Écarter le doublon** reste pour un doublon. Reproposer a disparu de l’écran (l’API `rematch` reste). Raccourcis A, I, E sur la première carte. Les anciennes pages `/admin/emails`, `/admin/whatsapp`, `/admin/hotels-demandes` redirigent (`LEGACY_BOITE_ROUTES`) ; `/admin/little-emperors` reste la page des partenaires MyLER et redirige l’agence. L’onglet **Hôtels** (`HotelsPanel`) porte les courriers hôtel et leurs réponses (`RecentMails`, qui a quitté l’accueil), **Sans réponse** (Relancer) et **Demandes hôtels** ; l’onglet **WhatsApp** (`WhatsappPanel`) est l’ancienne page, avec `?filtre=non-lus|a-approuver` (brouillons du Concierge en attente) et `?fil=`. Les champs peu sûrs sont en orange, citation au survol.
 
 ## Pas de voyage
 
 Confirmation avec une carte (vol, hôtel, transfert…) et une date, sans candidat
-de voyage fort : le cron crée le dossier et le laisse en **brouillon**
+de voyage fort : le clic **Créer un dossier** crée le dossier et le laisse en **brouillon**
 (`status=draft`, même si le mail est une confirmation, `visible_to_client=false`,
 note `IMPORT_AUTO_NOTE`). Une réserve de devis (« Plusieurs options tarifaires »,
 « Devis — tarifs non bloqués, à confirmer. ») reste dans `notes_internal`.
@@ -170,7 +189,7 @@ n’est pas la destination : le titre ne garde que la ville du séjour, pas le d
 
 Le clic **Créer un dossier** reste disponible (`persistNewBookingFromExtract`).
 
-Ne jamais créer depuis `matchAndStoreExtract` ni depuis le rematch. E-mail
+Ne jamais créer depuis `matchAndStoreExtract`, le parse ou le rematch. E-mail
 extract seulement s’il n’est **pas** une boîte agence (`contact@travelba.fr`,
 `crm@travelba.fr`, `agence@`, `hello@`, `info@`, `CONTACT_FROM_EMAIL`), **pas** l’expéditeur du
 mail, **pas** un domaine fournisseur (Little Emperors, Expedia, Amadeus).
@@ -189,8 +208,17 @@ Signal extract : `document_status=cancelled` (LLM + parseur). Détecté aussi
 sur l’objet / le corps (« Cancellation confirmation », « has been cancelled »,
 « a été annulée ») — **pas** une politique « free cancellation ».
 
-Match unique (la référence désigne la carte) → le cron appelle
-`applyCancellationToBooking`. Sinon, clic agence :
+Une annulation ne lève une alerte, ni un statut annulé, que si son numéro de
+confirmation est celui d’une carte active. Une confirmation plus récente pour
+le même hôtel, le même client ou voyageur et des dates qui se croisent est
+`suivi` « remplacée » (`alerte` false). Une annulation antérieure à la
+confirmation active est « historique » et s’ignore. `emails_en_attente`,
+`lire_email`, `little_emperors_en_attente` et `reservation_little_emperors`
+exposent `suivi`, `alerte` et `remplacee_par` pour que la routine filtre.
+
+Le parse ne l’applique pas. Le clic sur un dossier déjà ouvert non plus : il
+attache les fichiers, il n’annule pas la carte. L’annulation d’une carte reste
+un geste à part (`applyCancellationToBooking`, hors de ce clic) :
 - cartes reconnues par leur référence : `lifecycle=cancelled`, hors carnet, hors total. Sur la fiche agence la carte est barrée, pastille **Annulée**, sans prix. Dans la file, la carte du mail et celle du séjour portent **Serait annulée**.
 - une carte déjà remplacée ne fait pas annuler le dossier s’il reste une carte active ;
 - sans référence, et s’il reste des cartes actives : la file demande laquelle. Elle n’annule pas tout le séjour ;
@@ -205,9 +233,10 @@ séjour (ouvert ou annulé, non archivé) vers la même destination. Les dates
 peuvent avoir changé. Milano = Milan. Deux séjours vers la même ville restent
 tous les deux proposés.
 
-Match unique → le cron appelle `applyReplacementToBooking`. Sinon, clic
-**Remplacer sur ce dossier** (ou **Rouvrir et remplacer** si le dossier
-est annulé) :
+Le parse ne l’applique pas. Le clic sur un dossier déjà ouvert non plus : il
+attache les fichiers à la carte qui correspond et n’en crée pas. Le
+remplacement ci-dessous n’est plus ce clic (`applyReplacementToBooking` reste
+pour un autre geste) :
 - même référence : la carte est mise à jour, le prix vendu ne change pas, et
   une carte déjà montrée le reste ;
 - même hôtel, nuits qui se croisent, carte sans référence (ou un seul côté
@@ -235,12 +264,18 @@ est annulé) :
   du même nom qui a déjà des dates : les avantages s’ajoutent, les dates et le
   numéro restent ;
 - les dates du dossier suivent les cartes actives, sauf le ski (cours, forfait, matériel) qui ne les déplace pas ;
-- le mail appliqué seul sort de la file (`attached`), note « Itinéraire mis à jour depuis le mail. » ;
+- le clic Mettre à jour les cartes sort le mail de la file (`attached`) ;
 - la nouvelle carte d’un remplacement reste cachée jusqu’au clic Montrer ;
 - un dossier annulé redevient actif, sans être montré : pas de débit tant que le séjour n’est pas Visible ;
 - le montant lu dans le mail n’est jamais écrit comme prix vendu.
 
 « Créer un dossier » reste un clic, pour un vrai second voyage.
+
+## Réponse et relance à l’hôtel
+
+Une réponse ou une relance reprend les personnes apparues dans le fil, pas seulement le destinataire d’origine. Celui qui a répondu est À (réponse) ou en copie (relance). Une copie du fil reste en copie. L’adresse nouvelle est enregistrée sur l’hôtel (`crm_hotel_contacts`, source `thread`), dédoublonnée par e-mail, y compris pour le prochain séjour. Le client, l’agence, Little Emperors et Expedia n’y entrent pas. Rien ne part sans le clic. `npx tsx scripts/list-thread-hotel-contacts.ts` liste les adresses qui seraient ajoutées. Il n’écrit pas.
+
+Le tableau de bord relit le fil Gmail du courrier (`refreshStaleHotelThreads`, boîte déjà impersonnée) à l’ouverture, dans un budget court, et le cron `gmail-ingest` reprend les fils les plus anciens. Le dernier message décide : l’agence (`@travelba.fr`, y compris une réponse partie de Gmail) a écrit en dernier, le courrier sort de la liste ; l’hôtel a écrit en dernier, la pastille est « Réponse à traiter ». Un paiement Pliant, un lien payé, une confirmation, un dossier annulé, ou un fil muet sur un séjour passé sortent aussi. `tableau_de_bord` expose `courriers_hotel` avec ce statut.
 
 ## Relancer une ligne déjà parsée
 
@@ -253,8 +288,9 @@ Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
 
 | Rôle | Path |
 |------|------|
-| Orchestration (parse + suggestions, création auto après un reçu) | `lib/crm/email-ingest.ts` |
-| Création auto, et apply d’un séjour unique (jamais invite, jamais publish) | `lib/crm/email-ingest-create.ts`, `email-ingest-create-run.ts` |
+| Orchestration (parse + suggestions, sans création ni cartes) | `lib/crm/email-ingest.ts` |
+| Dépôt des pièces (empreinte, sans carte) | `lib/crm/email-attach-files.ts`, `lib/crm/email-attach-run.ts` |
+| Ancien geste automatique, plus appelé par le parse | `lib/crm/email-ingest-create.ts`, `email-ingest-create-run.ts` |
 | Match + décision apply/create/review | `lib/crm/email-match.ts` |
 | Client Gmail (labels, history, watch) | `lib/crm/gmail.ts` |
 | Parse message / pièces | `lib/crm/gmail-parse.ts` |
@@ -265,6 +301,7 @@ Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
 | Renouvellement watch | `app/api/cron/gmail-watch-renew/route.ts` |
 | Tests règles | `lib/crm/email-match.test.ts` |
 | Inbox relecture | `components/admin/EmailIngestInbox.tsx` |
+| Lecture et création MCP | `lib/crm/mcp-email.ts` (`lire_email`, `traiter_email` `creer_dossier`) |
 
 ## Vérifier
 
@@ -274,7 +311,7 @@ npx tsc --noEmit
 ```
 
 Couvrir : réf. exacte, dates+dest+nom flou, deux voyages égaux, *Albilla* / *Albilila*.
-`lib/crm/email-ingest-policy.test.ts` interdit apply, annulation et invitation dans le parse et le rematch. Seul `email-ingest-create-run.ts` applique un séjour unique. La création auto n’est appelée qu’une fois, après le parse d’un reçu.
+`lib/crm/email-ingest-policy.test.ts` interdit apply, annulation, invitation et création dans le parse et le rematch. Le parse n’appelle plus `autoCreateBookingFromIngestId`.
 Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 
 ## Hôtel Little Emperors
@@ -283,7 +320,9 @@ Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 
 Contacts de l’hôtel : catalogue Little Emperors à l’affichage, pas l’adresse du mail ni le correspondant imprimé. Milano = Milan (`CITY_ALIASES`). Skill `travelba-carnet`.
 
-L’API (cron toutes les 30 minutes et webhook) crée le dossier quand aucun séjour n’est proposé et que le nom du voyageur désigne une seule fiche (`suggestCustomerFromExtract`, score ≥ 85). Brouillon caché, sans invitation, carte avec `le_hotel_id` et les photos du catalogue. Le montant net n’est pas copié. Aucune fiche, homonymes, ex æquo, ligne ignorée ou réservation annulée : la file `/admin/little-emperors` attend, et aucune fiche n’est créée. Le mail cherche d’abord ce dossier par la confirmation (`64570` = `64570SH046795`) et y dépose le PDF. L’API, dans l’autre sens, relie le dossier né du mail et y pose `le_hotel_id`. Avant de créer, le mail et l’API rapprochent aussi par l’hôtel (ou `le_hotel_id`), les dates exactes et le nom du voyageur, même si le numéro du mail n’est pas celui de l’API : les deux numéros restent sur la carte. Deux séjours possibles : rien n’est créé, la file attend. Un second passage ne recrée pas le dossier.
+Plusieurs références sur une carte : elle reste active dès qu’une est réservée. Le sync (cron, webhook) n’annule pas la carte parce qu’une référence est annulée, ne change pas la visibilité d’une carte réservée, et n’écrit ni le grand livre ni les coûts hôtel. Chaque statut ou visibilité qu’il change va dans `crm_audit_events` (source, avant, après). Une confirmation annulée ne s’ajoute pas à une carte qui a déjà une autre référence. Le geste agence qui annule vraiment la réservation chez Little Emperors retire le débit seulement si aucune référence de la carte n’est réservée.
+
+L’API (cron toutes les 30 minutes et webhook) crée le dossier quand aucun séjour n’est proposé et que le nom du voyageur désigne une seule fiche (`suggestCustomerFromExtract`, score ≥ 85). Brouillon caché, sans invitation, carte avec `le_hotel_id` et les photos du catalogue. Le montant net n’est pas copié. Aucune fiche, homonymes, ex æquo, ligne ignorée ou réservation annulée : la file `/admin/little-emperors` attend, et aucune fiche n’est créée. Le clic Déposer les pièces dépose le PDF sur le dossier reconnu par la confirmation (`64570` = `64570SH046795`), sans toucher la carte. L’API, dans l’autre sens, relie le dossier né du mail et y pose `le_hotel_id`. Avant de créer, l’API rapproche aussi par l’hôtel (ou `le_hotel_id`), les dates exactes et le nom du voyageur, même si le numéro du mail n’est pas celui de l’API : les deux numéros restent sur la carte au clic Mettre à jour les cartes. Deux séjours possibles : rien n’est créé, la file attend. Un second passage ne recrée pas le dossier.
 
 ## Interdits
 
@@ -293,7 +332,7 @@ L’API (cron toutes les 30 minutes et webhook) crée le dossier quand aucun sé
 - Écrire le montant du mail comme prix vendu sur une carte déjà tarifée
 - Inviter le client, ou publier le carnet, dans la création automatique
 - Publier le carnet / `visible_to_client=true`
-- Retirer `received` ou `error` de la file `/admin/emails`
+- Retirer `received` ou `error` de la file Boîte de réception › Fournisseurs
 - Inventer horaires, inclus, nets, e-mail client agence
 - Réduire un bloc Benefits au seul petit-déjeuner
 - Traiter ce flux comme le dropzone (pas de « Enregistrer » obligatoire)

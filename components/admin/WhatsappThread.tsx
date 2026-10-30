@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { whatsappThreadHref } from "@/lib/crm/boite-tabs";
 import { WhatsappInbox, type InboxProposal, type InboxTemplate } from "@/components/admin/WhatsappInbox";
 import { foldThreads, sessionWindowOpen, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
 
@@ -7,11 +8,13 @@ export type WhatsappThreadMessage = {
   direction: string;
   body: string;
   status: string | null;
+  error?: string | null;
   created_at: string;
   booking_id?: string | null;
   template_key?: string | null;
   author_name?: string | null;
   media_path?: string | null;
+  transcript?: string | null;
   tools?: string[] | null;
   phone?: string | null;
   concierge_mark?: string | null;
@@ -66,9 +69,11 @@ export function WhatsappThread({
     body: message.body,
     createdAt: message.created_at,
     status: message.status,
+    error: message.error || null,
     templateKey: message.template_key || null,
     authorName: message.author_name || null,
     mediaPath: message.media_path || null,
+    transcript: message.transcript || null,
     tools: message.tools || [],
     requestId: requestByMessage.get(message.id) || null,
     conciergeMark: message.concierge_mark === "good" || message.concierge_mark === "bad" ? message.concierge_mark : null,
@@ -89,7 +94,7 @@ export function WhatsappThread({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-[var(--color-ink-soft)]">Même fil que la boîte WhatsApp.</p>
         {phone ? (
-          <Link href={`/admin/whatsapp?fil=${encodeURIComponent(phone)}`} className="text-sm underline">
+          <Link href={whatsappThreadHref(phone)} className="text-sm underline">
             Ouvrir dans la boîte
           </Link>
         ) : null}

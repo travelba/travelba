@@ -148,7 +148,7 @@ describe("soldes des comptes", () => {
         accounts: [
           {
             label: "Revolut",
-            href: "/admin/revolut",
+            href: "/admin/argent?onglet=comptes",
             pockets: dashboardRevolutPocket(
               revolutBalancePockets([
                 { name: "Main", currency: "EUR", state: "active", balance: 202.91 },
@@ -159,7 +159,7 @@ describe("soldes des comptes", () => {
           },
           {
             label: "Stripe",
-            href: "/admin/stripe",
+            href: "/admin/argent?onglet=comptes",
             pockets: dashboardStripePocket(
               stripeBalancePockets({
                 available: [{ amount: 0, currency: "eur" }],
@@ -169,7 +169,7 @@ describe("soldes des comptes", () => {
           },
           {
             label: "Pliant",
-            href: "/admin/pliant",
+            href: "/admin/argent?onglet=comptes",
             pockets: pliantBalancePocket({ availableCents: 226142, currency: "EUR" }),
           },
         ],
@@ -190,16 +190,14 @@ describe("soldes des comptes", () => {
     const html = renderToStaticMarkup(
       createElement(AgencyAccountBalances, {
         accounts: [
-          { label: "Revolut", href: "/admin/revolut", pockets: [{ name: null, amount: 10, currency: "EUR", pending: null }] },
-          { label: "Stripe", href: "/admin/stripe", pockets: [{ name: null, amount: null, currency: "EUR", pending: null }] },
-          { label: "Pliant", href: "/admin/pliant", pockets: [{ name: null, amount: 20, currency: "EUR", pending: null }] },
+          { label: "Revolut", href: "/admin/argent?onglet=comptes", pockets: [{ name: null, amount: 10, currency: "EUR", pending: null }] },
+          { label: "Stripe", href: "/admin/argent?onglet=comptes", pockets: [{ name: null, amount: null, currency: "EUR", pending: null }] },
+          { label: "Pliant", href: "/admin/argent?onglet=comptes", pockets: [{ name: null, amount: 20, currency: "EUR", pending: null }] },
         ],
       })
     );
     assert.match(html, /Soldes des comptes/);
-    assert.match(html, /href="\/admin\/revolut"/);
-    assert.match(html, /href="\/admin\/stripe"/);
-    assert.match(html, /href="\/admin\/pliant"/);
+    assert.equal((html.match(/href="\/admin\/argent\?onglet=comptes"/g) || []).length, 3);
     assert.match(html, /Indisponible/);
     assert.ok(html.includes(formatMoney(10)));
   });
@@ -211,7 +209,7 @@ describe("soldes des comptes", () => {
         accounts: [
           {
             label: "Revolut",
-            href: "/admin/revolut",
+            href: "/admin/argent?onglet=comptes",
             pockets: [
               { name: "Main", amount: 1234.5, currency: "EUR", pending: null },
               { name: "Dollar", amount: 40, currency: "USD", pending: null },
@@ -220,7 +218,7 @@ describe("soldes des comptes", () => {
         ],
       })
     );
-    assert.equal((html.match(/href="\/admin\/revolut"/g) || []).length, 2);
+    assert.equal((html.match(/href="\/admin\/argent\?onglet=comptes"/g) || []).length, 2);
     assert.match(html, /Main/);
     assert.match(html, /Dollar/);
     assert.ok(html.includes(formatMoney(1234.5)));
@@ -254,24 +252,30 @@ describe("soldes des comptes", () => {
     assert.match(unread, /Alimentez-le si ce solde ne couvre pas la carte/);
   });
 
-  it("l’onglet Carte du dossier affiche toujours le solde Pliant", () => {
+  it("le bloc Carte Pliant de l’onglet Argent affiche toujours le solde Pliant", () => {
     const page = readFileSync(join(root, "app/admin/reservations/[id]/page.tsx"), "utf8");
     const editor = readFileSync(join(root, "components/admin/BookingEditor.tsx"), "utf8");
-    assert.match(page, /loadPliantAccountBalance/);
-    assert.match(page, /pliantAccount=\{pliantAccount\}/);
-    const cartes = editor.slice(editor.indexOf('tab === "cartes"'));
-    assert.match(cartes, /PliantAccountBalanceCard/);
+    const balance = readFileSync(join(root, "components/admin/DossierPliantBalance.tsx"), "utf8");
+    assert.match(balance, /loadPliantAccountBalance/);
+    assert.match(balance, /PliantAccountBalanceCard/);
+    assert.match(page, /DossierPliantBalance/);
+    assert.match(page, /<Suspense/);
+    const argent = editor.slice(editor.indexOf('{tab === "argent" ? ('));
+    const pliant = argent.slice(argent.indexOf('className="order-7'));
+    assert.match(pliant, /Carte Pliant/);
+    assert.match(pliant, /pliantBalance/);
+    assert.match(pliant, /<BookingCards/);
+    assert.equal(editor.includes('tab === "cartes"'), false);
   });
 
-  it("l’accueil et les pages argent affichent ces soldes", () => {
+  it("l’accueil et l’onglet Comptes d’Argent affichent ces soldes", () => {
     const home = readFileSync(join(root, "app/admin/page.tsx"), "utf8");
-    const stripe = readFileSync(join(root, "app/admin/stripe/page.tsx"), "utf8");
-    const revolut = readFileSync(join(root, "app/admin/revolut/page.tsx"), "utf8");
+    const comptes = readFileSync(join(root, "components/admin/argent/ComptesPanel.tsx"), "utf8");
     assert.match(home, /AgencyAccountBalances/);
     assert.match(home, /loadAgencyAccounts/);
-    assert.match(stripe, /AccountBalanceCard/);
-    assert.match(stripe, /loadStripeAccountBalance/);
-    assert.match(revolut, /AccountBalanceCard/);
-    assert.match(revolut, /loadRevolutAccountBalances/);
+    assert.match(comptes, /AccountBalanceCard/);
+    assert.match(comptes, /loadStripeAccountBalance/);
+    assert.match(comptes, /loadRevolutAccountBalances/);
+    assert.match(comptes, /PliantAccountBalanceCard/);
   });
 });

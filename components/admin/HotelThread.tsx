@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { hotelThread, hotelStayContext, type HotelMailPiece } from "@/lib/crm/hotel-desk";
+import { hotelThread, hotelStayContext, type HotelMailPiece, type HotelThreadTurn } from "@/lib/crm/hotel-desk";
+import { followUpCountLabel } from "@/lib/crm/mail-followup";
 import { formatDateTimeFr } from "@/lib/crm/money";
 import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage } from "@/lib/crm/types";
 
@@ -12,16 +13,22 @@ export function HotelThread({
   messages,
   thread = [],
   attached,
+  turns: turnsProp,
+  onRelance,
+  onReply,
 }: {
   item: CrmBookingItem;
   requests: CrmHotelRequest[];
   messages: CrmHotelMessage[];
   thread?: CrmHotelThreadMessage[];
   attached: HotelMailPiece[];
+  turns?: HotelThreadTurn[];
+  onRelance?: (turn: HotelThreadTurn) => void;
+  onReply?: (turn: HotelThreadTurn) => void;
 }) {
   const logRef = useRef<HTMLOListElement>(null);
   const context = hotelStayContext(item);
-  const turns = hotelThread({ item, requests, messages, attached, thread });
+  const turns = turnsProp ?? hotelThread({ item, requests, messages, attached, thread });
 
   useEffect(() => {
     const node = logRef.current;
@@ -72,6 +79,36 @@ export function HotelThread({
                   <p className={outbound ? "mt-2 text-xs text-[#C5A880]" : "mt-2 text-xs font-medium text-[#3d4654]"}>
                     {formatDateTimeFr(turn.at)}
                   </p>
+                ) : null}
+                {turn.relance?.unanswered ? (
+                  <p className="mt-2">
+                    <span className="inline-block rounded-full bg-[#C5A880] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0B192C]">
+                      Sans réponse
+                    </span>
+                  </p>
+                ) : null}
+                {turn.relance && turn.relance.followUps > 0 ? (
+                  <p className={outbound ? "mt-1 text-xs text-[#C5A880]" : "mt-1 text-xs font-medium text-[#3d4654]"}>
+                    {followUpCountLabel(turn.relance.followUps)}
+                  </p>
+                ) : null}
+                {outbound && turn.relance && onRelance ? (
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex min-h-11 items-center rounded-full bg-[#C5A880] px-3 text-sm font-semibold text-[#0B192C]"
+                    onClick={() => onRelance(turn)}
+                  >
+                    Relancer
+                  </button>
+                ) : null}
+                {!outbound && turn.reply && onReply ? (
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex min-h-11 items-center rounded-full bg-[#0B192C] px-3 text-sm font-semibold text-[#faf9f6]"
+                    onClick={() => onReply(turn)}
+                  >
+                    Répondre
+                  </button>
                 ) : null}
               </li>
             );

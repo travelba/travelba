@@ -116,6 +116,27 @@ export function parseBillingCompanyId(value: unknown): { id: string | null } | {
   return { id };
 }
 
+/** Raison sociale, SIRET, TVA, e-mail et adresse absents. Le pays seul ne compte pas. */
+export function billingCompanyIsEmpty(row: {
+  company_name?: string | null;
+  siret?: string | null;
+  vat_number?: string | null;
+  billing_email?: string | null;
+  billing_address_line?: string | null;
+  billing_postal_code?: string | null;
+  billing_city?: string | null;
+}) {
+  return ![
+    row.company_name,
+    row.siret,
+    row.vat_number,
+    row.billing_email,
+    row.billing_address_line,
+    row.billing_postal_code,
+    row.billing_city,
+  ].some((value) => (value || "").trim());
+}
+
 function blankCompany(row: {
   company_name: string | null;
   siret: string | null;
@@ -455,6 +476,70 @@ export async function upsertBillingCompany(
     null;
   if (!company) return { error: "Enregistrement de la société impossible." };
   return { ok: true, company };
+}
+
+const BILLING_COMPANY_USE = [
+  "crm_bookings",
+  "crm_booking_items",
+  "crm_transactions",
+  "crm_mb3m_account_invoices",
+  "crm_mb3m_parties",
+] as const;
+
+async function billingCompanyReferenced(supabase: SupabaseClient, companyId: string) {
+  for (const table of BILLING_COMPANY_USE) {
+    const { data, error } = await supabase.from(table).select("id").eq("billing_company_id", companyId).limit(1);
+    if (error) return billingWriteError(error);
+    if ((data || []).length) return { used: true as const };
+  }
+  return { used: false as const };
+}
+
+/**
+ * Retire une société sans raison sociale, SIRET, TVA, e-mail ni adresse.
+ * Un compte avance / pro, ou une société encore citée, reste.
+ */
+export async function deleteEmptyBillingCompany(
+  supabase: SupabaseClient,
+  customerId: string,
+  companyId: string
+): Promise<{ ok: true } | { error: string }> {
+  const { data, error } = await supabase
+    .from("crm_billing_companies")
+    .select(
+      "id, company_name, siret, vat_number, billing_email, billing_address_line, billing_postal_code, billing_city, funding"
+    )
+    .eq("id", companyId)
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  if (error) return billingWriteError(error);
+  if (!data) return { error: "Cette société n’est pas sur la fiche du client." };
+  const row = data as {
+    funding?: string | null;
+    company_name: string | null;
+    siret: string | null;
+    vat_number: string | null;
+    billing_email: string | null;
+    billing_address_line: string | null;
+    billing_postal_code: string | null;
+    billing_city: string | null;
+  };
+  if (row.funding === "advance" || row.funding === "pro") {
+    return { error: "Ce compte société n’est pas retiré." };
+  }
+  if (!billingCompanyIsEmpty(row)) return { error: "Cette société n’est pas vide." };
+  const used = await billingCompanyReferenced(supabase, companyId);
+  if ("error" in used) return used;
+  if (used.used) return { error: "Cette société est encore utilisée." };
+  const { error: deleteError } = await supabase
+    .from("crm_billing_companies")
+    .delete()
+    .eq("id", companyId)
+    .eq("customer_id", customerId);
+  if (deleteError) return billingWriteError(deleteError);
+  const saved = await readBillingCompanies(supabase, customerId);
+  if ("error" in saved) return saved;
+  return mirrorPrimaryBillingCompany(supabase, customerId, saved.companies);
 }
 
 /** Rattache un séjour ou une dépense à une société du compte facturé. */

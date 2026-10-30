@@ -18,6 +18,7 @@ const EXPECTED = [
   "comptabilite_voyage",
   "stripe_en_attente",
   "emails_en_attente",
+  "lire_email",
   "reservation_little_emperors",
   "little_emperors_en_attente",
   "crediter_virement",
@@ -34,18 +35,36 @@ const EXPECTED = [
   "traiter_email",
   "creer_client",
   "mettre_a_jour_client",
+  "modifier_titulaire",
+  "definir_role_societe",
+  "inviter_client",
   "ajouter_piece",
+  "requalifier_piece",
   "notifier_piece",
+  "notifier_carte_embarquement",
   "creer_dossier",
   "ajouter_voyageur",
+  "modifier_voyageur",
   "retirer_voyageur",
   "fusionner_compagnon",
   "ajouter_vol",
   "modifier_vol",
   "retirer_carte",
+  "definir_visibilite_carte",
+  "preparer_message_carnet",
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
+  "enregistrement_en_ligne",
+  "envoyer_releve",
+  "sejours_restaurants",
+  "list_restaurants",
+  "create_restaurant",
+  "update_restaurant",
+  "tables_restaurant",
+  "choix_restaurant",
+  "create_restaurant_whatsapp_templates",
+  "get_restaurant_whatsapp_templates_status",
 ];
 
 const WRITE_TOOLS = [
@@ -62,25 +81,39 @@ const WRITE_TOOLS = [
   "traiter_email",
   "creer_client",
   "mettre_a_jour_client",
+  "modifier_titulaire",
+  "definir_role_societe",
+  "inviter_client",
   "ajouter_piece",
+  "requalifier_piece",
   "notifier_piece",
+  "notifier_carte_embarquement",
   "creer_dossier",
   "ajouter_voyageur",
+  "modifier_voyageur",
   "retirer_voyageur",
   "fusionner_compagnon",
   "ajouter_vol",
   "modifier_vol",
   "retirer_carte",
+  "definir_visibilite_carte",
+  "preparer_message_carnet",
   "ajouter_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
+  "enregistrement_en_ligne",
+  "envoyer_releve",
+  "create_restaurant",
+  "update_restaurant",
+  "tables_restaurant",
+  "create_restaurant_whatsapp_templates",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
   const names = MCP_TOOLS.map((tool) => tool.name);
   assert.deepEqual(names, EXPECTED);
   assert.equal(new Set(names).size, names.length);
-  assert.ok(names.length <= MCP_TOOL_CAP);
+  assert.equal(names.length, MCP_TOOL_CAP);
   for (const tool of MCP_TOOLS) {
     assert.ok(tool.description.length > 20);
   }
@@ -106,6 +139,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   );
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.cardSecrets, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.write, true);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /transactions/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /plafond total/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /chaque débit/i);
+  assert.doesNotMatch(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /ignoré/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "lire_carte_pliant")?.write, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "bloquer_carte_pliant")?.openWorld, true);
@@ -116,16 +153,91 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /voyageur_ids/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_voyage")?.description || "", /carte_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /date de naissance/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /compagnon_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /voyageur_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /passeport/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /societe_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /titre/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /couverture/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /base64/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_dossier")?.description || "", /Image générée par IA/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_dossier")?.description || "", /sans titre/i);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_client")?.description || "", /supprimer_societe_id/);
+  const titulaire = MCP_TOOLS.find((tool) => tool.name === "modifier_titulaire");
+  assert.equal(titulaire?.write, true);
+  assert.equal(titulaire?.openWorld, undefined);
+  assert.equal(titulaire?.pieceNumbers, undefined);
+  assert.match(titulaire?.description || "", /nom de passeport/);
+  assert.match(titulaire?.description || "", /adresse personnelle/);
+  assert.match(titulaire?.description || "", /n’est ni lu ni renvoyé/);
+  assert.match(titulaire?.description || "", /pays_passeport/);
+  const role = MCP_TOOLS.find((tool) => tool.name === "definir_role_societe");
+  assert.equal(role?.write, true);
+  assert.equal(role?.openWorld, undefined);
+  assert.match(role?.description || "", /admin/);
+  assert.match(role?.description || "", /membre/);
+  assert.match(role?.description || "", /particulier/);
+  const invite = MCP_TOOLS.find((tool) => tool.name === "inviter_client");
+  assert.equal(invite?.write, true);
+  assert.equal(invite?.openWorld, true);
+  assert.equal(invite?.pieceNumbers, undefined);
+  assert.equal(invite?.signedUrl, undefined);
+  assert.match(invite?.description || "", /même flux/);
+  assert.match(invite?.description || "", /n’est pas renvoyé/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /prix de vente/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /MAD/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /déjà rattachée/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /alerte/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "little_emperors_en_attente")?.description || "", /historique/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "emails_en_attente")?.description || "", /remplacée/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.write, undefined);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.pieceNumbers, undefined);
+  const requalifier = MCP_TOOLS.find((tool) => tool.name === "requalifier_piece");
+  assert.equal(requalifier?.write, true);
+  assert.equal(requalifier?.openWorld, undefined);
+  assert.equal(requalifier?.pieceNumbers, undefined);
+  assert.equal(requalifier?.signedUrl, undefined);
+  assert.match(requalifier?.description || "", /document_id/);
+  assert.match(requalifier?.description || "", /carte d’embarquement/);
+  assert.match(requalifier?.description || "", /n’est pas recopié/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.description || "", /carte_embarquement/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
+  const carte = MCP_TOOLS.find((tool) => tool.name === "notifier_carte_embarquement");
+  assert.equal(carte?.write, true);
+  assert.equal(carte?.openWorld, true);
+  assert.equal(carte?.pieceNumbers, undefined);
+  assert.equal(carte?.signedUrl, undefined);
+  assert.match(carte?.description || "", /document_id/);
+  assert.match(carte?.description || "", /ne repart pas/);
+  assert.match(carte?.description || "", /approuvé/);
+  assert.match(carte?.description || "", /passagers/);
+  assert.match(carte?.description || "", /Rien n’est inventé/);
+  const visibilite = MCP_TOOLS.find((tool) => tool.name === "definir_visibilite_carte");
+  assert.equal(visibilite?.write, true);
+  assert.equal(visibilite?.openWorld, undefined);
+  assert.equal(visibilite?.pieceNumbers, undefined);
+  assert.equal(visibilite?.signedUrl, undefined);
+  assert.equal(visibilite?.cardSecrets, undefined);
+  assert.match(visibilite?.description || "", /n’envoie rien/);
+  assert.match(visibilite?.description || "", /un clic/);
+  assert.match(visibilite?.description || "", /WhatsApp/);
+  assert.match(visibilite?.description || "", /inclure_transactions/);
+  assert.match(visibilite?.description || "", /total exact/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /au centime/);
+  const message = MCP_TOOLS.find((tool) => tool.name === "preparer_message_carnet");
+  assert.equal(message?.write, true);
+  assert.equal(message?.openWorld, undefined);
+  assert.equal(message?.pieceNumbers, undefined);
+  assert.equal(message?.signedUrl, undefined);
+  assert.equal(message?.cardSecrets, undefined);
+  assert.match(message?.description || "", /Rien n’est envoyé/);
+  assert.match(message?.description || "", /un clic/);
+  assert.match(message?.description || "", /fournisseur/);
+  for (const name of ["creer_dossier", "ajouter_voyageur", "modifier_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip", "enregistrement_en_ligne"]) {
     const tool = MCP_TOOLS.find((item) => item.name === name);
     assert.equal(tool?.write, true);
     assert.equal(tool?.openWorld, undefined);
@@ -133,6 +245,34 @@ test("mcp tools stay unique, named, and under the cap", () => {
     assert.equal(tool?.signedUrl, undefined);
     assert.equal(tool?.cardSecrets, undefined);
   }
+  const checkinTool = MCP_TOOLS.find((tool) => tool.name === "enregistrement_en_ligne");
+  assert.match(checkinTool?.description || "", /Pas de passeport, pas de MRZ/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /enregistrement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /modifier_voyageur/);
+  const releve = MCP_TOOLS.find((tool) => tool.name === "envoyer_releve");
+  assert.equal(releve?.write, true);
+  assert.equal(releve?.openWorld, true);
+  assert.equal(releve?.pieceNumbers, undefined);
+  assert.equal(releve?.signedUrl, undefined);
+  assert.equal(releve?.cardSecrets, undefined);
+  assert.match(releve?.description || "", /TWILIO_CONTENT_RELEVE/);
+  assert.match(releve?.description || "", /cinq minutes/);
+  assert.match(releve?.description || "", /force/);
+  assert.match(releve?.description || "", /twilio_sid/);
+  assert.match(releve?.description || "", /e-mail n’est pas ouvert/);
+  const lecture = MCP_TOOLS.find((tool) => tool.name === "lire_email");
+  assert.equal(lecture?.write, undefined);
+  assert.equal(lecture?.pieceNumbers, undefined);
+  assert.equal(lecture?.signedUrl, undefined);
+  assert.equal(lecture?.cardSecrets, undefined);
+  assert.match(lecture?.description || "", /PDF/);
+  assert.match(lecture?.description || "", /passeport/);
+  assert.match(lecture?.description || "", /PNR/);
+  const mail = MCP_TOOLS.find((tool) => tool.name === "traiter_email");
+  assert.match(mail?.description || "", /creer_dossier/);
+  assert.match(mail?.description || "", /Aucune carte n’est créée ni modifiée/);
+  assert.match(mail?.description || "", /sans e-mail/);
+  assert.match(mail?.description || "", /Aucune invitation/);
 });
 
 test("passport tools name the travelba-passeports namespace and stay off the general token", () => {
@@ -208,4 +348,19 @@ test("only lire_carte_pliant keeps the card number", () => {
   assert.equal("pan" in fiche, false);
   assert.equal(fiche.note, "•••");
   assert.equal(fiche.titulaire, "Camille Martin");
+});
+
+test("une table de restaurant ne renvoie pas un numéro de carte", () => {
+  const row = JSON.parse(
+    previewMcpTool("tables_restaurant", {
+      garantie: "4242",
+      pan: "4242424242424242",
+      note: "4242424242424242",
+    }).content[0].text
+  ) as Record<string, unknown>;
+  assert.equal(row.garantie, "4242");
+  assert.equal("pan" in row, false);
+  assert.equal(row.note, "•••");
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "tables_restaurant")?.description || "", /quatre derniers chiffres/i);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "choix_restaurant")?.description || "", /16 h/);
 });

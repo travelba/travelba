@@ -234,6 +234,10 @@ export function dayHeading(isoDate: string) {
 }
 
 export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) {
+  if (doc.kind === "carte d'embarquement" || doc.kind === "carte d’embarquement") {
+    const name = doc.file_name || "";
+    return visibleServiceCopy(name ? `Carte d’embarquement · ${name}` : "Carte d’embarquement");
+  }
   const related = items.find((item) => item.source_document_id === doc.id);
   if (!related && doc.kind === "invoice") return visibleServiceCopy(doc.file_name || "Facture");
   const metier = related
@@ -259,13 +263,19 @@ export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingI
 }
 
 export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
+  return documentsForItems([item], docs);
+}
+
+export function documentsForItems(items: CrmBookingItem[], docs: CrmBookingDocument[]) {
   const seen = new Set<string>();
   const list: CrmBookingDocument[] = [];
-  for (const doc of docs) {
-    const hit = doc.booking_item_id === item.id || doc.id === item.source_document_id;
-    if (!hit || seen.has(doc.id)) continue;
-    seen.add(doc.id);
-    list.push(doc);
+  for (const item of items) {
+    for (const doc of docs) {
+      const hit = doc.booking_item_id === item.id || doc.id === item.source_document_id;
+      if (!hit || seen.has(doc.id)) continue;
+      seen.add(doc.id);
+      list.push(doc);
+    }
   }
   return list;
 }
@@ -374,8 +384,14 @@ export function itemPriceLabel(
   if (!pricesVisible) return HIDDEN_PRICE_LABEL;
   const money = formatMoney(Number(item.amount), currency);
   const count = statedTicketCount(item);
-  if (count != null && count > 1) return `${count} × ${money}`;
+  if (count != null && count > 1 && !flightAmountIsGroupTotal(item.details)) return `${count} × ${money}`;
   return money;
+}
+
+/** Le montant stocké est le total du groupe, au centime. Le nombre de billets ne le divise pas. */
+export function flightAmountIsGroupTotal(details: object | null | undefined) {
+  if (!details || !("amount_is_total" in details)) return false;
+  return (details as { amount_is_total?: unknown }).amount_is_total === true;
 }
 
 export function clientVisibleItems<T extends { visible_to_client?: boolean | null }>(items: T[]) {

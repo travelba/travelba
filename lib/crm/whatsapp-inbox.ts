@@ -2,7 +2,15 @@
 
 export type InboxSpeaker = "client" | "robot" | "agency";
 export type InboxThreadStatus = "robot" | "agency" | "escalated";
-export type InboxFilter = "tous" | "non-lus" | "robot" | "agence" | "escalade" | "prospects";
+export type InboxFilter = "tous" | "non-lus" | "a-approuver" | "robot" | "agence" | "escalade" | "prospects";
+
+export const INBOX_FILTERS: readonly InboxFilter[] = ["tous", "non-lus", "a-approuver", "robot", "agence", "escalade", "prospects"];
+
+/** `?filtre=` de la Boîte : un filtre connu, sinon Tous. */
+export function inboxFilterFromParam(raw: string | string[] | undefined): InboxFilter {
+  const value = (Array.isArray(raw) ? raw[0] : raw) || "";
+  return (INBOX_FILTERS as readonly string[]).includes(value) ? (value as InboxFilter) : "tous";
+}
 
 export type InboxMessage = {
   id: string;
@@ -15,9 +23,13 @@ export type InboxMessage = {
   body: string;
   createdAt: string;
   status: string | null;
+  /** Raison française d’un échec Twilio. Vide tant que le message n’a pas échoué. */
+  error?: string | null;
   templateKey: string | null;
   authorName: string | null;
   mediaPath: string | null;
+  /** Transcription brute. Le corps porte déjà « Note vocale : … » ou la phrase d’échec. */
+  transcript?: string | null;
   tools: string[];
   requestId: string | null;
   /** Note d’agence sur une réponse du Concierge. */
@@ -38,9 +50,23 @@ export type InboxThread = {
   status: InboxThreadStatus;
   /** Vrai tant qu’un humain tient le fil (pause encore active). */
   held?: boolean;
+  /** Brouillons du Concierge en attente du clic de l’agence sur ce fil. */
+  pending?: number;
 };
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** Vrai si PostgREST ou Postgres dit que la colonne n’est pas encore là. */
+export function schemaMissesColumn(error: { message?: string } | null | undefined, column: string) {
+  if (!error?.message) return false;
+  return new RegExp(`\\b${column}\\b`, "i").test(error.message) && /column|schema cache/i.test(error.message);
+}
+
+/** Fichier audio d’une note vocale, lu par le lecteur du fil. */
+export function isVoiceNotePath(path: string | null | undefined) {
+  const file = (path || "").split("?")[0];
+  return /\.(ogg|opus|mp3|m4a|aac|wav|amr|webm)$/i.test(file);
+}
 
 export function threadKey(row: { phone?: string | null; customerId?: string | null }) {
   return (row.phone || "").trim() || row.customerId || "";
@@ -50,6 +76,15 @@ export function messageSpeaker(row: Pick<InboxMessage, "direction" | "authorName
   if (row.direction === "inbound") return "client";
   if (row.authorName || row.templateKey === "staff" || row.templateKey === "agence") return "agency";
   return "robot";
+}
+
+export function deliveryCaption(status: string | null | undefined, error?: string | null) {
+  const failed = (status || "").toLowerCase() === "failed" || (status || "").toLowerCase() === "undelivered";
+  const label = deliveryLabel(failed ? "failed" : status);
+  if (!failed) return label;
+  const reason = (error || "").replace(/https?:\/\/\S+/g, "").replace(/\+?\d{8,}/g, "").replace(/\s+/g, " ").trim();
+  if (!reason) return label || "Échec";
+  return `${label || "Échec"} · ${reason}`;
 }
 
 export function deliveryLabel(status: string | null | undefined) {
@@ -158,6 +193,7 @@ export function filterThreads(threads: InboxThread[], input: { query?: string; f
   const filter = input.filter || "tous";
   return threads.filter((thread) => {
     if (filter === "non-lus" && thread.unread < 1) return false;
+    if (filter === "a-approuver" && !(thread.pending && thread.pending > 0)) return false;
     if (filter === "robot" && thread.status !== "robot") return false;
     if (filter === "agence" && thread.status !== "agency") return false;
     if (filter === "escalade" && thread.status !== "escalated") return false;

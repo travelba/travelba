@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { BookingsFilters } from "@/components/admin/BookingsFilters";
 import { BookingsTable } from "@/components/admin/BookingsTable";
 import { ReservationWeek, ReservationsViewToggle } from "@/components/admin/ReservationWeek";
+import { FormalitesPanel } from "@/components/admin/dossiers/FormalitesPanel";
+import { ServicesPanel } from "@/components/admin/dossiers/ServicesPanel";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
@@ -28,6 +30,8 @@ import {
   type FilterableQuery,
   type SearchParamValue,
 } from "@/lib/crm/admin-list";
+import { resolveListCovers } from "@/lib/crm/cover-resolve";
+import { DOSSIERS_VIEW_HELP, dossiersViewFromParam } from "@/lib/crm/dossiers-views";
 import { reservationWeek } from "@/lib/crm/reservation-week";
 import { stayToday } from "@/lib/crm/stay-moment";
 
@@ -49,7 +53,13 @@ function pickRecord<T>(source: Record<string, T>, ids: Set<string>) {
   return out;
 }
 
-export const metadata = { title: "Réservations" };
+export const metadata = { title: "Dossiers" };
+
+const NEW_BOOKING_ACTION = (
+  <Link href="/admin/reservations/nouveau" className="admin-af-btn admin-tap inline-flex items-center rounded-xl px-4 py-2.5 text-sm">
+    + Nouveau dossier
+  </Link>
+);
 
 export default async function AdminReservationsPage({ searchParams }: Props) {
   const params = await searchParams;
@@ -57,10 +67,25 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   const q = (firstParam(params.q) || "").trim();
   const state = parseBookingState(params.etat);
   const sort = parseBookingSort(params.tri);
-  const vue = firstParam(params.vue) === "liste" ? "liste" : null;
-  const listView = Boolean(q || state || sort !== "proche" || page > 1 || vue);
+  const view = dossiersViewFromParam(firstParam(params.vue));
+  const vue = view === "liste" ? "liste" : null;
+  const listView = view === "liste" || Boolean(q || state || sort !== "proche" || page > 1);
   const today = stayToday();
   const { supabase } = await requireStaffPage();
+
+  if (view === "formalites" || view === "services") {
+    return (
+      <div>
+        <PageEyebrow>Espace agence</PageEyebrow>
+        <PageTitle title="Dossiers" subtitle={DOSSIERS_VIEW_HELP[view]} actions={NEW_BOOKING_ACTION} />
+        <div className="mt-6 space-y-6">
+          <ReservationsViewToggle active={view} listeHref={listHref("/admin/reservations", { vue: "liste" })} />
+          <h2 className="sr-only">{view === "formalites" ? "Formalités" : "Services à confirmer"}</h2>
+          {view === "formalites" ? <FormalitesPanel supabase={supabase} /> : <ServicesPanel supabase={supabase} />}
+        </div>
+      </div>
+    );
+  }
   const listeHref = listHref(
     "/admin/reservations",
     {
@@ -95,7 +120,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     const boardError = travelError || upcomingError;
     if (boardError) {
       console.error("[admin/reservations]", boardError.code ?? "?", boardError.message ?? "");
-      throw new Error("Réservations indisponibles");
+      throw new Error("Dossiers indisponibles");
     }
     const pool = [...((travellingRows || []) as CrmBooking[]), ...((upcomingRows || []) as CrmBooking[])];
     const columns = reservationWeek(pool, today);
@@ -135,21 +160,16 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     const names = new Map(
       [...customersById.entries()].map(([id, row]) => [id, customerFullName(row)])
     );
+    const covers = await resolveListCovers(
+      shown.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))
+    );
 
     return (
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
-        <PageTitle
-          title="Réservations"
-          subtitle="Enregistrez le dossier, puis montrez-le au client. Enregistrer ne le rend pas visible."
-          actions={
-            <Link href="/admin/reservations/nouveau" className="admin-af-btn admin-tap inline-flex items-center rounded-xl px-4 py-2.5 text-sm">
-              + Nouveau dossier
-            </Link>
-          }
-        />
+        <PageTitle title="Dossiers" subtitle={DOSSIERS_VIEW_HELP.semaine} actions={NEW_BOOKING_ACTION} />
         <div className="mt-6 space-y-3">
-          <ReservationsViewToggle liste={false} listeHref={listeHref} />
+          <ReservationsViewToggle active="semaine" listeHref={listeHref} />
           <BookingsFilters q="" etat={null} tri={sort} revision="semaine" />
           <ReservationWeek
             columns={columns}
@@ -157,6 +177,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
             places={maps}
             amounts={displayed}
             payerLabels={payerLabels}
+            covers={covers}
           />
         </div>
       </div>
@@ -252,7 +273,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   // Lecture en échec : la page d’erreur (« Réessayer ») plutôt qu’un faux « Aucune réservation trouvée ».
   if (listResult.error) {
     console.error("[admin/reservations]", listResult.error.code ?? "?", listResult.error.message ?? "");
-    throw new Error("Réservations indisponibles");
+    throw new Error("Dossiers indisponibles");
   }
   const pool = q ? [...listResult.scanned, ...listResult.archived] : listResult.scanned;
   const customerIds = [...new Set(pool.map((row) => row.customer_id).filter(Boolean))];
@@ -330,6 +351,9 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     redirect(listHref("/admin/reservations", { q, etat: state, tri: bookingSortParam(sort) }, lastPage));
   }
   const rows = q || order.proximity ? matched.slice(from, to + 1) : matched;
+  const covers = await resolveListCovers(
+    rows.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))
+  );
   const hiddenArchiveHits =
     q && state !== "archive"
       ? listResult.archived.filter((row) => smartSearchMatch(q, searchText.get(row.id))).length
@@ -347,17 +371,9 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   return (
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
-      <PageTitle
-        title="Réservations"
-        subtitle="Enregistrez le dossier, puis montrez-le au client. Enregistrer ne le rend pas visible."
-        actions={
-          <Link href="/admin/reservations/nouveau" className="admin-af-btn admin-tap inline-flex items-center rounded-xl px-4 py-2.5 text-sm">
-            + Nouveau dossier
-          </Link>
-        }
-      />
+      <PageTitle title="Dossiers" subtitle={DOSSIERS_VIEW_HELP.liste} actions={NEW_BOOKING_ACTION} />
       <div className="mt-6 space-y-3">
-        <ReservationsViewToggle liste listeHref={listeHref} />
+        <ReservationsViewToggle active="liste" listeHref={listeHref} />
         <BookingsTable
           bookings={rows}
           customers={customers.map((row) => ({ id: row.id, first_name: row.first_name, last_name: row.last_name }))}
@@ -372,6 +388,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
           total={total}
           filters={{ q, etat: state, tri: sort, vue }}
           hiddenArchiveHits={hiddenArchiveHits}
+          covers={covers}
         />
       </div>
     </div>

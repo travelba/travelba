@@ -13,14 +13,14 @@ import {
   DuplicateBookingButton,
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
-import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
-import { wireAccountChoices } from "@/lib/crm/funding-wallet";
-import { ClientStripeSuggestions } from "@/components/admin/ClientStripeSuggestions";
+import { ClientPaymentsToCredit } from "@/components/admin/argent/ClientPaymentsToCredit";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
+import { StatementRequest } from "@/components/account/StatementRequest";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
+import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { getPortalAccess } from "@/lib/crm/invite";
 import {
   REVOLUT_MATCH_SELECT,
@@ -55,6 +55,7 @@ import {
 import { documentExpiryStatus } from "@/lib/crm/identity";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import { listStayTitle } from "@/lib/crm/carnet";
+import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { StatusChip } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
@@ -69,6 +70,7 @@ import { WhatsappThread } from "@/components/admin/WhatsappThread";
 import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { threadIsPaused } from "@/lib/crm/whatsapp-takeover";
+import { loadCustomerWhatsappMessages } from "@/lib/crm/whatsapp-dock-load";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -116,6 +118,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     .is("billing_company_id", null)
     .maybeSingle();
   const mb3mSent = Boolean(mb3mParty?.id);
+  await repairCustomerDownloads([id]);
 
   const [
     { data: companions },
@@ -199,11 +202,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         return { rows: [] as CrmStripeTransaction[], people: [] as StripeMatchCustomer[] };
       }
     })(),
-    supabase
-      .from("crm_whatsapp_messages")
-      .select("id, direction, body, status, created_at, booking_id, concierge_mark")
-      .eq("customer_id", id)
-      .order("created_at", { ascending: true }),
+    loadCustomerWhatsappMessages(supabase, id),
     supabase
       .from("crm_whatsapp_requests")
       .select("id, kind, body, booking_id, created_at")
@@ -267,24 +266,19 @@ export default async function AdminClientDetailPage({ params }: Props) {
     supabase,
     bookingRows.map((row) => row.id)
   );
-  const pauseRow = c.phone
-    ? await supabase.from("crm_whatsapp_threads").select("paused_until").eq("phone", c.phone).maybeSingle()
-    : { data: null };
+  const [pauseRow, covers] = await Promise.all([
+    c.phone
+      ? supabase.from("crm_whatsapp_threads").select("paused_until").eq("phone", c.phone).maybeSingle()
+      : Promise.resolve({ data: null }),
+    resolveListCovers(
+      activeBookings.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }))
+    ),
+  ]);
   const conciergePaused = !pauseRow.data ? false : threadIsPaused(pauseRow.data.paused_until, new Date());
-  const threadMessages = whatsappMessages.error
-    ? (
-        await supabase
-          .from("crm_whatsapp_messages")
-          .select("id, direction, body, status, created_at")
-          .eq("customer_id", id)
-          .order("created_at", { ascending: true })
-      ).data || []
-    : whatsappMessages.data || [];
-  const revolutSuggestions = suggestionsForCustomer(c, revolut.rows, revolut.people);
-  const stripeSuggestions = suggestionsForStripeCustomer(c, stripe.rows, stripe.people).map((item) => ({
-    ...item,
-    row: { ...item.row, payer_email: null, raw: {} },
-  }));
+  const threadMessages = whatsappMessages;
+  const paymentsToCredit =
+    suggestionsForCustomer(c, revolut.rows, revolut.people).length +
+    suggestionsForStripeCustomer(c, stripe.rows, stripe.people).length;
   return (
     <div className="space-y-5">
       <header className="admin-af-hero-band overflow-hidden rounded-3xl">
@@ -303,12 +297,17 @@ export default async function AdminClientDetailPage({ params }: Props) {
               {[contactLine, `Dernière visite · ${lastVisit}`].filter(Boolean).join("  ·  ")}
             </p>
           </div>
-          <Link
-            href={clientLedgerAdminHref(c.id)}
-            className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
-          >
-            Transactions
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="w-56 [&>div]:mt-0">
+              <StatementRequest endpoint={`/api/admin/clients/${c.id}/releve`} audience="staff" />
+            </div>
+            <Link
+              href={clientLedgerAdminHref(c.id)}
+              className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
+            >
+              Transactions
+            </Link>
+          </div>
         </div>
         <div className="grid grid-cols-2 border-t border-white/10 sm:grid-cols-4 sm:divide-x sm:divide-white/10">
           <Link href={clientLedgerAdminHref(c.id)} className="block px-6 py-4 transition hover:bg-white/5 sm:px-8">
@@ -371,18 +370,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
       <Mb3mFicheAction customerId={c.id} blocker={mb3mFicheBlocker(c)} sent={mb3mSent} />
-      <ClientRevolutSuggestions
-        suggestions={revolutSuggestions}
-        accounts={
-          wireAccountChoices(
-            ((billingCompanies || []) as CrmBillingCompany[]).map((company) => ({
-              ...company,
-              customer_id: c.id,
-            }))
-          )[c.id] || []
-        }
-      />
-      <ClientStripeSuggestions suggestions={stripeSuggestions} />
+      <ClientPaymentsToCredit customerId={c.id} count={paymentsToCredit} />
       <section className="admin-af-card rounded-3xl px-5 py-4">
         <div className="flex items-end justify-between gap-3">
           <div>
@@ -411,7 +399,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     href={`/admin/reservations/${b.id}`}
                     className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)]"
                   >
-                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-20 shrink-0 rounded-xl lg:w-24" />
+                    <BookingHero
+                      booking={b}
+                      places={places.arrival[b.id]}
+                      plain
+                      list
+                      resolvedSrc={covers[b.id] ?? null}
+                      className="h-14 w-20 shrink-0 rounded-xl lg:w-24"
+                    />
                     <span className="min-w-0">
                       <span className="block break-words font-medium lg:truncate">
                         {listStayTitle(b.title, b.destination, places.arrival[b.id], places.route[b.id], places.layovers[b.id], "Séjour", b.customer_id === c.id ? c.city : null)}

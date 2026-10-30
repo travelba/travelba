@@ -236,6 +236,7 @@ export function companionActivityDetail(input: {
   birthDate?: string | null;
   nationality?: string | null;
   phone?: string | null;
+  email?: string | null;
   loyalty?: LoyaltyMap | null;
 }) {
   const programs = filledLoyaltyLabels(input.loyalty);
@@ -244,6 +245,7 @@ export function companionActivityDetail(input: {
     input.birthDate ? `né(e) le ${formatDateFr(input.birthDate)}` : "",
     input.nationality ? countryName(input.nationality) : "",
     tidyName(input.phone),
+    tidyName(input.email),
     programs.length ? programs.join(", ") : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" · ").slice(0, 400) : null;
@@ -328,7 +330,10 @@ export function activitySharesViewWindow(action: string) {
   return action === "view" || action === "download";
 }
 
-/** Libellé d’un téléchargement. Jamais le nom du fichier (il peut porter un numéro de pièce). */
+/**
+ * Repli quand la pièce n’est pas retrouvée.
+ * Le libellé précis (nom du fichier, ou « Passeport de <prénom> ») est `describeDownload`.
+ */
 export function clientDownloadSummary(input: {
   scope: "booking" | "own";
   path: string;
@@ -374,11 +379,42 @@ export type CustomerActivityInput = {
   path?: string | null;
   bookingId?: string | null;
   detail?: string | null;
+  documentId?: string | null;
+  documentTable?: "crm_booking_documents" | "crm_travel_documents" | null;
+  documentKind?: string | null;
+  documentName?: string | null;
 };
+
+const DOCUMENT_TABLES = new Set(["crm_booking_documents", "crm_travel_documents"]);
+
+function stripDownloadSecrets(value: string) {
+  return value
+    .replace(/[A-Z0-9<]{20,}/gi, " ")
+    .replace(/\b\d{2}[A-Z]{2}\d{5}\b/gi, " ")
+    .replace(/\b[A-Z]{1,2}\d{6,9}\b/gi, " ")
+    .replace(/\b\d{6,}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function documentInsert(input: CustomerActivityInput) {
+  const id = input.documentId?.trim().toLowerCase() || "";
+  const table = input.documentTable || "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) return null;
+  if (!DOCUMENT_TABLES.has(table)) return null;
+  const name = input.documentName ? stripDownloadSecrets(input.documentName).slice(0, 180) : null;
+  return {
+    document_id: id,
+    document_table: table,
+    document_kind: input.documentKind?.replace(/\s+/g, " ").trim().slice(0, 40) || null,
+    document_name: name || null,
+  };
+}
 
 /** Écrit une ligne d’activité. Une ouverture par l’agence n’est pas celle du client. */
 export async function recordCustomerActivity(input: CustomerActivityInput) {
-  const summary = input.summary.replace(/\s+/g, " ").trim().slice(0, 180);
+  const raw = input.summary.replace(/\s+/g, " ").trim();
+  const summary = (input.action === "download" ? stripDownloadSecrets(raw) : raw).slice(0, 180);
   const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, 400) || null;
   const customerId = input.customerId.trim();
   const authUserId = input.authUserId.trim();
@@ -404,7 +440,7 @@ export async function recordCustomerActivity(input: CustomerActivityInput) {
       const previousAt = typeof data?.created_at === "string" ? data.created_at : null;
       if (!shouldRecordView(previousAt, new Date())) return;
     }
-    const { error } = await admin.from("crm_customer_activity").insert({
+    const row: Record<string, unknown> = {
       customer_id: customerId,
       auth_user_id: authUserId,
       action: input.action,
@@ -412,8 +448,24 @@ export async function recordCustomerActivity(input: CustomerActivityInput) {
       detail,
       path: input.path || null,
       booking_id: input.bookingId || null,
-    });
-    if (error) throw new Error(error.message || "insert");
+      ...(documentInsert(input) || {}),
+    };
+    const { error } = await admin.from("crm_customer_activity").insert(row);
+    const missingColumn =
+      error &&
+      (error.code === "42703" ||
+        error.code === "PGRST204" ||
+        /document_id|document_table|document_kind|document_name/.test(error.message || ""));
+    if (missingColumn && "document_id" in row) {
+      delete row.document_id;
+      delete row.document_table;
+      delete row.document_kind;
+      delete row.document_name;
+      const retry = await admin.from("crm_customer_activity").insert(row);
+      if (retry.error) throw new Error(retry.error.message || "insert");
+    } else if (error) {
+      throw new Error(error.message || "insert");
+    }
   } catch {
     console.error("[customer-activity] enregistrement impossible");
   }

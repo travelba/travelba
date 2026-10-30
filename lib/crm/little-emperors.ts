@@ -1,4 +1,6 @@
+import "server-only";
 import { hotelRefsShareBooking } from "./item-match";
+import { leBookedAtFromPayload } from "./le-made-at";
 import { secretEquals } from "./secret-equals";
 
 /** Preview, développement, et toute revue hors Vercel Production. */
@@ -56,6 +58,8 @@ export type LeBooking = {
   room_types: string[];
   benefits: string[];
   rooms?: LeRoom[];
+  /** Date de la réservation chez Little Emperors, si l’API l’écrit. Pas la date d’arrivée. */
+  booked_at?: string | null;
 };
 
 export type LeHotelPublic = {
@@ -432,6 +436,7 @@ export function parseLeBooking(payload: unknown): LeBooking | null {
     room_types: roomTypes,
     benefits,
     rooms: parsedRooms,
+    booked_at: leBookedAtFromPayload(row),
   };
 }
 

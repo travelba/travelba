@@ -5,8 +5,7 @@ export const SIGNATURE_IMAGE_BYTES = 20 * 1024;
 const SIGNATURE_NAME =
   /(?:^|[/\\])(?:image\d+|app\s*store|google\s*play|logo|signature|facebook|linkedin|twitter|instagram|spacer|pixel|icon)/i;
 
-const BOOKING_LABEL =
-  /little-emperors|expedia|billet|cancellation|reservations-tba|cdsgroupe/i;
+const BOOKING_LABEL = /little-emperors|expedia|billet|cancellation|reservations-tba|cdsgroupe/i;
 
 export function dropInboundImage(file: {
   filename?: string | null;
@@ -24,7 +23,9 @@ export type MailSkip = { reason: string };
 
 /**
  * Publicité, code à 6 chiffres, guide API, newsletter.
- * Un label de confirmation (Little Emperors, Expedia, billet, CDS) n’est pas écarté ici.
+ * Un label suivi (Little Emperors, Expedia, billet, annulation, reservations-tba, CDS)
+ * n’est pas écarté ici : il reste dans la file. La notification, elle, ne part
+ * que pour une réponse à un envoi du CRM (`shouldNotifyInboundMail`).
  */
 export function classifyInboundMail(input: {
   subject?: string | null;

@@ -828,3 +828,48 @@ button:disabled,
     outline-offset: 2px;
   }
 }
+
+/* Ancres sous l’en-tête fixe. */
+#about,
+#services,
+#why,
+#process,
+#testimonials,
+#contact,
+#accreditations {
+  scroll-margin-top: 5rem;
+}
+
+/* Entrée du hero en CSS : visible même si le JavaScript n’a pas encore hydraté. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-rise {
+    animation: hero-rise 0.7s cubic-bezier(0.21, 0.47, 0.32, 0.98) both;
+  }
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.menu-toggle {
+  list-style: none;
+}
+.menu-toggle::-webkit-details-marker {
+  display: none;
+}
+details:not([open]) .menu-icon-close {
+  display: none;
+}
+details[open] .menu-icon-open {
+  display: none;
+}
+body:has(header details[open]) {
+  overflow: hidden;
+}

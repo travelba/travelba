@@ -31,7 +31,6 @@ import { emailHtmlHasText, sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { collapseSharedTicketPrice } from "@/lib/crm/item-match";
 import { collapseInboxRows } from "@/lib/crm/email-thread";
 import { proposalLine, type ProposalOp } from "@/lib/crm/import-proposal";
-import { inboxStayAction, type LifecycleCard } from "@/lib/crm/item-lifecycle";
 
 type ExtractItem = {
   kind?: string;
@@ -99,9 +98,31 @@ function printedTravelers(row: CrmEmailIngest) {
 }
 
 function OriginalMail({ row }: { row: CrmEmailIngest }) {
-  const html = sanitizeEmailHtml(row.body_html);
-  const text = (row.body_text || "").trim();
-  const htmlVisible = emailHtmlHasText(row.body_html);
+  const hasBody = Boolean(row.body_html || row.body_text);
+  const [body, setBody] = useState<{ html: string; text: string } | null>(
+    hasBody ? { html: row.body_html || "", text: row.body_text || "" } : null
+  );
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (body || failed) return;
+    let cancelled = false;
+    void adminAction<{ body_html?: string; body_text?: string }>(`/api/admin/email-ingest/${row.id}`, {
+      method: "GET",
+    }).then((result) => {
+      if (cancelled) return;
+      if (!result.ok || !result.data) {
+        setFailed(true);
+        return;
+      }
+      setBody({ html: result.data.body_html || "", text: result.data.body_text || "" });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [body, failed, row.id]);
+  const html = sanitizeEmailHtml(body?.html);
+  const text = (body?.text || "").trim();
+  const htmlVisible = emailHtmlHasText(body?.html);
   return (
     <aside className="rounded-2xl border border-[#C5A880] bg-[#FAF9F6] p-3">
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">
@@ -112,36 +133,42 @@ function OriginalMail({ row }: { row: CrmEmailIngest }) {
         {row.from_email || "Expéditeur inconnu"}
         {row.received_at ? ` · ${formatDateTimeFr(row.received_at)}` : ""}
       </p>
-      {htmlVisible ? (
+      {!body && !failed ? <p className="mt-3 text-sm text-muted">Chargement du message…</p> : null}
+      {failed ? <p className="mt-3 text-sm text-muted">Le message n’a pas pu être lu.</p> : null}
+      {body && htmlVisible ? (
         <div
           className="mt-3 max-h-[32rem] overflow-auto rounded-xl bg-white p-3 text-sm text-[#0B192C]"
           dangerouslySetInnerHTML={{ __html: html }}
         />
-      ) : text ? (
+      ) : body && text ? (
         <pre className="mt-3 max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 font-sans text-sm text-[#0B192C]">
           {text}
         </pre>
-      ) : (
+      ) : body ? (
         <p className="mt-3 text-sm text-muted">
           Ce mail n’a pas de texte. Le document est dans les pièces jointes.
         </p>
-      )}
+      ) : null}
     </aside>
   );
 }
 
 function pendingLabel(action: string) {
   if (action === "new_booking") return "Création…";
-  if (action === "refuse") return "Refus…";
-  if (action === "rematch") return "Nouvelle proposition…";
-  if (action === "replace_booking") return "Remplacement…";
+  if (action === "refuse" || action === "ignore") return "Classement…";
+  if (action === "attach_booking") return "Dépôt…";
+  if (action === "apply_cards" || action === "replace_booking") return "Dépôt…";
   return "Rattachement…";
 }
 
 function doneLabel(action: string) {
-  if (action === "new_booking") return "Le dossier est créé. Le mail quitte la file.";
-  if (action === "refuse") return "Le mail est classé sans dossier.";
-  return "Le mail est rattaché au voyage.";
+  if (action === "new_booking") return "Le dossier est créé. Le mail quitte la boîte.";
+  if (action === "refuse" || action === "ignore") return "Le mail est classé sans dossier. Il reste dans Classés.";
+  if (action === "attach_booking") return "Les pièces sont déposées. Les étapes n’ont pas changé.";
+  if (action === "apply_cards" || action === "replace_booking") {
+    return "Les pièces sont déposées. Les étapes n’ont pas changé.";
+  }
+  return "Le mail est classé sur le dossier.";
 }
 
 function itemLabel(kind: string | undefined) {
@@ -153,12 +180,15 @@ export function EmailIngestInbox({
   customers,
   mode = "file",
   proposals = [],
+  initialOpenId = null,
 }: {
   rows: CrmEmailIngest[];
   customers: PickableCustomer[];
   /** file : à traiter. appliques : 24 h, avec Annuler. ignores : à récupérer. */
   mode?: "file" | "appliques" | "ignores";
   proposals?: { emailIngestId: string; ops: ProposalOp[]; conflict: boolean }[];
+  /** Carte déjà ouverte (test). La liste reste repliée. */
+  initialOpenId?: string | null;
 }) {
   const router = useRouter();
   const customerLabelById = useMemo(() => {
@@ -182,10 +212,10 @@ export function EmailIngestInbox({
   // Dernier client demandé par ligne : une réponse tardive d’un autre client est ignorée.
   const latestLoad = useRef<Record<string, string>>({});
   const [selectedBooking, setSelectedBooking] = useState<Record<string, string>>({});
-  const [selectedItem, setSelectedItem] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
   const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
+  const [openedId, setOpenedId] = useState<string | null>(initialOpenId);
 
   const cards = useMemo(() => collapseInboxRows(rows), [rows]);
   const proposalById = useMemo(() => {
@@ -298,31 +328,6 @@ export function EmailIngestInbox({
     if (!result.ok) setError(result.error || "Titre non enregistré.");
   }
 
-  /** Reproposer : relance client / voyage sur l’extract stocké, sans rattacher. */
-  async function rematch(rowId: string) {
-    setBusy({ id: rowId, action: "rematch" });
-    setError(null);
-    setNotice(null);
-    const result = await adminAction(`/api/admin/email-ingest/${rowId}`, { method: "POST", body: { action: "rematch" } });
-    setBusy(null);
-    if (!result.ok) {
-      setError(result.error || "Nouvelle proposition impossible.");
-      return;
-    }
-    setChosen((prev) => {
-      const next = { ...prev };
-      delete next[rowId];
-      return next;
-    });
-    setBookings((prev) => {
-      const next = { ...prev };
-      delete next[rowId];
-      return next;
-    });
-    preloaded.current.delete(rowId);
-    router.refresh();
-  }
-
   function viewOf(row: CrmEmailIngest): ExtractView {
     return drafts[row.id] || ((row.extract || {}) as ExtractView);
   }
@@ -385,6 +390,7 @@ export function EmailIngestInbox({
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         issues?: BookingIssue[];
+        message?: string;
       };
       if (!res.ok) {
         const detail = (data.issues || []).map((issue) => issue.message).filter(Boolean).join(" ");
@@ -394,7 +400,7 @@ export function EmailIngestInbox({
         }));
         return;
       }
-      setNotice(doneLabel(payload.action));
+      setNotice(data.message || doneLabel(payload.action));
       if (opts?.refresh !== false) router.refresh();
     } catch {
       setRowError((prev) => ({ ...prev, [rowId]: "Réseau indisponible, réessayez." }));
@@ -406,8 +412,8 @@ export function EmailIngestInbox({
   if (!rows.length) {
     return (
       <EmptyState
-        title="Aucun e-mail à rattacher"
-        description="Les mails fournisseurs (Little Emperors, Expedia TAAP, billets d’avion) restent ici tant que l’agence ne les a pas rattachés ou refusés."
+        title="Aucun e-mail à traiter"
+        description="Les e-mails fournisseurs (Little Emperors, Expedia TAAP, billets d’avion) restent ici tant que l’agence ne les a pas déposés sur un dossier ou classés."
       />
     );
   }
@@ -461,6 +467,27 @@ export function EmailIngestInbox({
             destination: extract.destination,
             subject: row.subject,
           });
+
+        if (openedId !== row.id) {
+          return (
+            <article key={row.id} className="rounded-2xl border border-border bg-white px-4 py-3 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setOpenedId(row.id)}
+                className="admin-tap flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-left"
+              >
+                <span className="min-w-0 flex-1 truncate font-semibold text-[#0B192C]">
+                  {row.subject?.trim() || "Sans objet"}
+                </span>
+                <span className="max-w-[16rem] truncate text-sm text-muted">{row.from_email || "—"}</span>
+                <span className="text-sm text-muted">{row.received_at ? formatDateFr(row.received_at) : ""}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#0B192C]">
+                  {row.label || row.status}
+                </span>
+              </button>
+            </article>
+          );
+        }
 
         return (
           <article
@@ -547,7 +574,7 @@ export function EmailIngestInbox({
                       ))}
                     </ul>
                     {proposalById.get(row.id)?.conflict ? (
-                      <p className="mt-1 text-xs font-semibold text-[#8A5A12]">Conflit : choisir la carte.</p>
+                      <p className="mt-1 text-xs font-semibold text-[#8A5A12]">Conflit : choisir l’étape.</p>
                     ) : null}
                   </div>
                 ) : null}
@@ -715,7 +742,7 @@ export function EmailIngestInbox({
               </ul>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                Aucune carte extraite — à saisir après rattachement.
+                Aucune étape lue. Déposer les pièces n’en crée pas.
               </p>
             )}
 
@@ -779,7 +806,6 @@ export function EmailIngestInbox({
                     }}
                     onChange={(e) => {
                       setSelectedBooking((prev) => ({ ...prev, [row.id]: e.target.value }));
-                      setSelectedItem((prev) => ({ ...prev, [row.id]: "" }));
                     }}
                   >
                     {!options || loadingBookings ? (
@@ -802,76 +828,46 @@ export function EmailIngestInbox({
                   </select>
                   </label>
                   {(() => {
-                    const stay = options?.find((booking) => booking.id === selectedBooking[row.id]);
-                    const gesture = stay
-                      ? inboxStayAction({
-                          documentStatus: extract.document_status,
-                          incoming: items,
-                          bookingStatus: stay.statusKey,
-                          items: (stay.items || []) as LifecycleCard[],
-                          chosenItemId: selectedItem[row.id] || null,
-                        })
-                      : null;
-                    const waitingForCard = Boolean(gesture?.choices.length && !gesture.itemId);
+                    const picked = selectedBooking[row.id];
+                    const depositBookingId = picked != null ? picked : row.suggested_booking_id || "";
+                    // Un seul geste de dépôt : la relecture (titre, extract) part avec, les étapes ne changent pas.
+                    const edited = Boolean(drafts[row.id]);
                     return (
                       <>
-                        {gesture?.cancelCards?.length ? (
-                          <ul className="space-y-1 sm:col-span-2">
-                            {gesture.cancelCards.map((card) => (
-                              <li
-                                key={card.id}
-                                className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[#F4F1EA] px-3 py-2 text-sm"
-                              >
-                                <span className="text-muted line-through">{card.title}</span>
-                                <span className="inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
-                                  Serait annulée
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                        {gesture?.choices.length ? (
-                          <select
-                            className="admin-af-input text-sm sm:col-span-2"
-                            value={selectedItem[row.id] || ""}
-                            aria-label="Carte du séjour"
-                            onChange={(event) =>
-                              setSelectedItem((prev) => ({ ...prev, [row.id]: event.target.value }))
+                        <div className="flex flex-wrap gap-2 sm:col-span-2">
+                          <button
+                            type="button"
+                            disabled={isBusy || !depositBookingId}
+                            aria-busy={isBusy || undefined}
+                            className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                            onClick={() =>
+                              act(
+                                row.id,
+                                edited
+                                  ? {
+                                      action: "apply_cards",
+                                      booking_id: depositBookingId,
+                                      item_id: undefined,
+                                      title: cardTitle.trim(),
+                                      ...(drafts[row.id]
+                                        ? {
+                                            extract: drafts[row.id],
+                                            apply_stay_currency: Boolean(currencyChosen[row.id]),
+                                          }
+                                        : {}),
+                                    }
+                                  : { action: "attach_booking", booking_id: depositBookingId }
+                              )
                             }
                           >
-                            <option value="">Choisir la carte à remplacer</option>
-                            {gesture.choices.map((card) => (
-                              <option key={card.id} value={card.id}>
-                                {itemLabel(card.kind)} — {card.title}
-                              </option>
-                            ))}
-                          </select>
-                        ) : null}
-                        <button
-                          type="button"
-                          disabled={isBusy || !selectedBooking[row.id] || waitingForCard}
-                          aria-busy={isBusy || undefined}
-                          className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                          onClick={() =>
-                            act(row.id, {
-                              action: gesture?.action === "replace" ? "replace_booking" : "attach_booking",
-                              booking_id: selectedBooking[row.id],
-                              item_id: gesture?.itemId || undefined,
-                              title: cardTitle.trim(),
-                              ...(drafts[row.id]
-                                ? {
-                                    extract: drafts[row.id],
-                                    apply_stay_currency: Boolean(currencyChosen[row.id]),
-                                  }
-                                : {}),
-                            })
-                          }
-                        >
-                          {isBusy ? pendingLabel(busy?.action || "") : gesture?.label || "Rattacher au voyage"}
-                        </button>
-                        {gesture?.hint ? (
-                          <p className="text-xs text-muted sm:col-span-2">{gesture.hint}</p>
-                        ) : null}
+                            {isBusy && (busy?.action === "attach_booking" || busy?.action === "apply_cards")
+                              ? pendingLabel("attach_booking")
+                              : "Déposer les pièces"}
+                          </button>
+                        </div>
+                        <p className="text-xs text-muted sm:col-span-2">
+                          Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée.
+                        </p>
                       </>
                     );
                   })()}
@@ -911,19 +907,7 @@ export function EmailIngestInbox({
                     className="admin-tap rounded-lg bg-[#0B192C] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
                     onClick={() => act(row.id, { action: "restore" })}
                   >
-                    {isBusy && busy?.action === "restore" ? "Retour…" : "Remettre dans la file"}
-                  </button>
-                ) : null}
-                {mode === "file" && row.suggested_booking_id ? (
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="admin-tap rounded-lg bg-[#0B192C] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                    onClick={() =>
-                      act(row.id, { action: "attach_booking", booking_id: row.suggested_booking_id || "" })
-                    }
-                  >
-                    {isBusy && busy?.action === "attach_booking" ? "Acceptation…" : "Accepter"}
+                    {isBusy && busy?.action === "restore" ? "Retour…" : "Remettre à traiter"}
                   </button>
                 ) : null}
                 {mode === "file" ? (
@@ -934,16 +918,6 @@ export function EmailIngestInbox({
                     onClick={() => act(row.id, { action: "dismiss_duplicate" })}
                   >
                     {isBusy && busy?.action === "dismiss_duplicate" ? "Écart…" : "Écarter le doublon"}
-                  </button>
-                ) : null}
-                {mode === "file" ? (
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="admin-tap rounded-lg px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
-                    onClick={() => act(row.id, { action: "ignore" })}
-                  >
-                    {isBusy && busy?.action === "ignore" ? "Ignoré…" : "Ignorer"}
                   </button>
                 ) : null}
                 {mode === "file" ? (
@@ -969,25 +943,15 @@ export function EmailIngestInbox({
                   <Icon name="add" className="h-4 w-4" />
                   {isBusy && busy?.action === "new_booking" ? "Création…" : "Créer un dossier"}
                 </button>
-                {row.extract ? (
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="admin-tap inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-[var(--admin-navy)] disabled:opacity-40"
-                    onClick={() => void rematch(row.id)}
-                  >
-                    <Icon name="sync_alt" className="h-4 w-4" />
-                    {isBusy && busy?.action === "rematch" ? "Nouvelle proposition…" : "Reproposer"}
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   disabled={isBusy}
                   className="admin-tap inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:text-accent disabled:opacity-40"
-                  onClick={() => act(row.id, { action: "refuse" })}
+                  onClick={() => act(row.id, { action: "ignore" })}
+                  title="Sort des mails à traiter, sans dossier. Le mail reste dans Classés."
                 >
                   <Icon name="close" className="h-4 w-4" />
-                  {isBusy && busy?.action === "refuse" ? "Refus…" : "Refuser"}
+                  {isBusy && busy?.action === "ignore" ? "Classement…" : "Classer"}
                 </button>
                 </>
                 ) : null}

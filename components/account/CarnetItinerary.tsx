@@ -18,7 +18,7 @@ import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
 import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import {
-  documentsForItem,
+  documentsForItems,
   dayHeading,
   detailList,
   detailStr,
@@ -34,6 +34,7 @@ import {
   itemPriceLabel,
   undatedTimeline,
 } from "@/lib/crm/carnet";
+import { flightLegLine, roundTripMate, roundTripPriceLabel, roundTripReturnIds } from "@/lib/crm/flight-roundtrip";
 import { statedTicketCount } from "@/lib/crm/item-match";
 import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import {
@@ -47,7 +48,7 @@ import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-open";
 import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
 import { HotelFreeCancel } from "@/components/account/HotelFreeCancel";
-import type { ClientHotelCancelOffer } from "@/lib/crm/le-free-cancel";
+import type { ClientHotelCancelOffer } from "@/lib/crm/le-cancel-copy";
 import {
   bookingHasFlight,
   composeItineraryDay,
@@ -101,6 +102,9 @@ function CardBody({
   showPrice = true,
   reference = null,
   cancelOffer = null,
+  returnLeg = null,
+  returnCalendarHref = null,
+  stayItems = null,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -114,8 +118,15 @@ function CardBody({
   showPrice?: boolean;
   reference?: string | null;
   cancelOffer?: ClientHotelCancelOffer | null;
+  returnLeg?: CrmBookingItem | null;
+  returnCalendarHref?: string | null;
+  stayItems?: CrmBookingItem[] | null;
 }) {
-  const price = showPrice ? itemPriceLabel(item, currency, day, pricesVisible) : null;
+  const price = returnLeg && stayItems
+    ? roundTripPriceLabel(item, returnLeg, stayItems, currency, pricesVisible)
+    : showPrice
+      ? itemPriceLabel(item, currency, day, pricesVisible)
+      : null;
   const included = detailList(item, "included");
   const iata = flightIata(item);
   const cities = flightCities(item);
@@ -160,6 +171,7 @@ function CardBody({
     <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
       {item.kind === "flight" || item.kind === "rail" ? (
         <>
+          {returnLeg ? <p className="text-xs font-semibold uppercase tracking-wide text-muted">Aller</p> : null}
           {airline ? <p>{airline}</p> : null}
           {detailStr(item, "flight_number") ? <p>{detailStr(item, "flight_number")}</p> : null}
           {cities ? <p>{cities}</p> : null}
@@ -169,6 +181,13 @@ function CardBody({
           {seat ? <p>Siège {seat}</p> : null}
           {gate ? <p>Porte {gate}</p> : null}
           {terminal ? <p>Terminal {terminal}</p> : null}
+          {returnLeg ? (
+            <>
+              <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted">Retour</p>
+              <p>{flightLegLine(returnLeg)}</p>
+              {flightCardSubtitle(returnLeg) ? <p>{flightCardSubtitle(returnLeg)}</p> : null}
+            </>
+          ) : null}
         </>
       ) : null}
       {item.kind === "hotel" ? (
@@ -223,10 +242,17 @@ function CardBody({
         <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
       ) : null}
       {cancelOffer && reference && item.kind === "hotel" ? (
-        <HotelFreeCancel reference={reference} offer={cancelOffer} />
+        <HotelFreeCancel
+          reference={reference}
+          free={cancelOffer.mode === "free"}
+          itemId={cancelOffer.itemId}
+          hotelName={cancelOffer.mode === "free" ? cancelOffer.hotelName : ""}
+          stayLabel={cancelOffer.mode === "free" ? cancelOffer.stayLabel : ""}
+          untilLabel={cancelOffer.mode === "free" ? cancelOffer.untilLabel : ""}
+        />
       ) : null}
       <div className="flex flex-wrap items-end gap-3">
-        {documentsForItem(item, docs).map((doc) => (
+        {documentsForItems(returnLeg ? [item, returnLeg] : [item], docs).map((doc) => (
           <FilePreviewTile
             key={doc.id}
             file={{
@@ -242,7 +268,12 @@ function CardBody({
         ))}
         {calendarHref ? (
           <AgendaLink href={calendarHref} phone={calendarPhone}>
-            Ajouter à l’agenda
+            {returnLeg ? "Ajouter l’aller à l’agenda" : "Ajouter à l’agenda"}
+          </AgendaLink>
+        ) : null}
+        {returnLeg && returnCalendarHref ? (
+          <AgendaLink href={returnCalendarHref} phone={null}>
+            Ajouter le retour à l’agenda
           </AgendaLink>
         ) : null}
       </div>
@@ -274,6 +305,7 @@ function CardBody({
             {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)}
             {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
+            {returnLeg ? " · aller-retour" : ""}
             {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
             {watchLine ? ` · ${watchLine}` : ""}
           </p>
@@ -290,6 +322,9 @@ function CardBody({
             <>
               {flightSubtitle ? (
                 <p className="break-words text-xs leading-snug text-muted">{flightSubtitle}</p>
+              ) : null}
+              {returnLeg ? (
+                <p className="break-words text-xs leading-snug text-muted">Retour · {flightLegLine(returnLeg)}</p>
               ) : null}
               {ticketTravelers ? (
                 <p className="break-words text-xs leading-snug text-[var(--admin-navy)]">{ticketTravelers}</p>
@@ -384,6 +419,7 @@ export function CarnetItinerary({
   } | null;
 }) {
   const liveItems = completeFlightRoutes(items).filter((item) => isActiveItem(item));
+  const returnIds = roundTripReturnIds(liveItems);
   const days = groupByDay(liveItems);
   const undated = undatedTimeline(liveItems);
   const now = new Date();
@@ -493,9 +529,11 @@ export function CarnetItinerary({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
               {dayHeading(day)}
             </p>
-            {rows.map((row) =>
-              row.type === "item" ? (
-                coveredExtraIds.has(row.item.id) ? null : (
+            {rows.map((row) => {
+              if (row.type !== "item") return offerCard(row.offer);
+              if (coveredExtraIds.has(row.item.id) || returnIds.has(row.item.id)) return null;
+              const mate = roundTripMate(row.item, liveItems);
+              return (
                   <CardBody
                     key={`${row.item.id}-${day}`}
                     item={row.item}
@@ -514,12 +552,12 @@ export function CarnetItinerary({
                     showPrice={flightCountsInStay(row.item, items)}
                     reference={booking.reference}
                     cancelOffer={hotelCancels.find((offer) => offer.itemId === row.item.id) || null}
+                    returnLeg={mate}
+                    returnCalendarHref={mate ? itemHref(mate.id) : null}
+                    stayItems={liveItems}
                   />
-                )
-              ) : (
-                offerCard(row.offer)
-              )
-            )}
+              );
+            })}
           </div>
         ))}
         {undated.length ? (
@@ -527,7 +565,9 @@ export function CarnetItinerary({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
               Sans horaire
             </p>
-            {undated.map((item) => (
+            {undated.filter((item) => !returnIds.has(item.id)).map((item) => {
+              const mate = roundTripMate(item, liveItems);
+              return (
               <CardBody
                 key={item.id}
                 item={item}
@@ -540,8 +580,12 @@ export function CarnetItinerary({
                 partage={partage}
                 reference={booking.reference}
                 cancelOffer={hotelCancels.find((offer) => offer.itemId === item.id) || null}
+                returnLeg={mate}
+                returnCalendarHref={mate ? itemHref(mate.id) : null}
+                stayItems={liveItems}
               />
-            ))}
+              );
+            })}
           </div>
         ) : null}
       </section>

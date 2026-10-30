@@ -72,6 +72,29 @@ test("les voyageurs nommés sont liés et le placeholder est retiré", () => {
   );
 });
 
+test("un voyageur déjà lié n’est pas reporté sur un homonyme", () => {
+  const plans = planPartyLinks(
+    [
+      traveler({
+        id: "child",
+        first_name: "Joseph Elie Jacob",
+        last_name: "Chocron",
+        companion_id: "joseph",
+      }),
+    ],
+    { first_name: "Samuel", last_name: "Chocron" },
+    [
+      {
+        id: "elise",
+        first_name: "Élise Emmanuelle Alexandra",
+        last_name: "Saada",
+        usage_name: "Chocron",
+      },
+    ]
+  );
+  assert.deepEqual(plans, [{ id: "child", action: "keep" }]);
+});
+
 test("sans nom réel, Adulte 1 et 2 restent", () => {
   const plans = planPartyLinks(
     [

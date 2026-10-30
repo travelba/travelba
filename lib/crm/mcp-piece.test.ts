@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { previewMcpTool } from "./mcp-registry";
-import { addTravelPiece, notifyTravelPiece, prepareTravelPiece } from "./mcp-piece";
+import { addTravelPiece, notifyTravelPiece, prepareTravelPiece, requalifyPiece } from "./mcp-piece";
 import { McpWriteError } from "./mcp-write";
 import { customerDocumentStoragePath } from "./travel-document-write";
 
@@ -11,6 +11,7 @@ const CLIENT = "11111111-1111-4111-8111-111111111111";
 const BOOKING = "22222222-2222-4222-8222-222222222222";
 const TRAVELER = "33333333-3333-4333-8333-333333333333";
 const OTHER = "44444444-4444-4444-8444-444444444444";
+const DOC = "55555555-5555-4555-8555-555555555555";
 
 const PDF = Buffer.from("%PDF-1.4 eta").toString("base64");
 
@@ -672,6 +673,236 @@ test("notifier_piece can target only the traveller", async () => {
   );
 });
 
+test("carte d’embarquement is a piece type", () => {
+  assert.equal(prepareTravelPiece(piece({ type: "carte_embarquement" })).docType, "carte_embarquement");
+  assert.equal(prepareTravelPiece(piece({ type: "carte d'embarquement" })).docType, "carte_embarquement");
+  assert.equal(prepareTravelPiece(piece({ type: "carte d’embarquement" })).docType, "carte_embarquement");
+  assert.throws(() => prepareTravelPiece(piece({ type: "billet" })), /carte_embarquement/);
+});
+
+test("adding a boarding pass stores the dossier PDF and does not notify", async () => {
+  const { admin, writes, uploads } = fakeCrm();
+  let reconciled = false;
+  let notified = false;
+  const result = await addTravelPiece(
+    piece({
+      type: "carte_embarquement",
+      dossier_id: BOOKING,
+      nom_fichier: "carte.pdf",
+      numero: "12AB34567",
+    }),
+    admin,
+    {
+      upload: async (path, bytes, mime) => {
+        uploads.push({ path, bytes, mime });
+      },
+      reconcile: async () => {
+        reconciled = true;
+      },
+      notify: async () => {
+        notified = true;
+        return [];
+      },
+    }
+  );
+  assert.equal(uploads.length, 1);
+  assert.match(uploads[0].path, new RegExp(`^bookings/${BOOKING}/\\d+-carte\\.pdf$`));
+  assert.equal(uploads[0].mime, "application/pdf");
+  assert.deepEqual(
+    writes.map((row) => `${row.op}:${row.table}`),
+    ["insert:crm_booking_documents"]
+  );
+  assert.equal(writes[0].payload.booking_id, BOOKING);
+  assert.equal(writes[0].payload.kind, "carte d'embarquement");
+  assert.equal(writes[0].payload.file_name, "carte.pdf");
+  assert.equal(writes[0].payload.storage_path, uploads[0].path);
+  assert.equal(writes[0].payload.visible_to_client, false);
+  assert.equal(result.id, "doc-1");
+  assert.equal(result.dossier_id, BOOKING);
+  assert.equal(result.type, "carte_embarquement");
+  assert.equal(result.libelle, "Carte d’embarquement");
+  assert.equal(result.notifie, false);
+  assert.equal(result.raison, "La carte d’embarquement ne part pas toute seule.");
+  assert.deepEqual(result.destinataires, []);
+  assert.equal(result.endroit, "Dossier TB-2026-0082 · cartes d’embarquement");
+  assert.equal("numero" in result, false);
+  assert.equal("storage_path" in result, false);
+  assert.equal(reconciled, false);
+  assert.equal(notified, false);
+});
+
+test("a boarding pass needs a dossier and a PDF", async () => {
+  const loose = fakeCrm();
+  await assert.rejects(
+    () =>
+      addTravelPiece(piece({ type: "carte_embarquement" }), loose.admin, {
+        upload: async () => {
+          loose.uploads.push({ path: "x", bytes: Buffer.alloc(0), mime: "application/pdf" });
+        },
+      }),
+    /se dépose sur un dossier/
+  );
+  assert.equal(loose.uploads.length, 0);
+  assert.deepEqual(loose.writes, []);
+
+  const image = fakeCrm();
+  await assert.rejects(
+    () =>
+      addTravelPiece(
+        piece({
+          type: "carte_embarquement",
+          dossier_id: BOOKING,
+          nom_fichier: "scan.png",
+          type_mime: "image/png",
+        }),
+        image.admin,
+        {
+          upload: async () => {
+            image.uploads.push({ path: "x", bytes: Buffer.alloc(0), mime: "image/png" });
+          },
+        }
+      ),
+    /doit être un PDF/
+  );
+  assert.equal(image.uploads.length, 0);
+  assert.deepEqual(image.writes, []);
+});
+
+test("requalifying a deposited piece keeps the same id on the dossier PDF", async () => {
+  const { admin, writes } = fakeCrm({
+    documents: [
+      {
+        id: DOC,
+        booking_id: BOOKING,
+        doc_type: "other",
+        file_name: "carte.pdf",
+        mime_type: "application/pdf",
+        storage_path: `customers/${CLIENT}/documents/carte.pdf`,
+      },
+    ],
+  });
+  const moved = await requalifyPiece({ document_id: DOC, type: "carte d’embarquement" }, admin);
+  assert.equal(moved.id, DOC);
+  assert.equal(moved.dossier_id, BOOKING);
+  assert.equal(moved.type, "carte_embarquement");
+  assert.equal(moved.libelle, "Carte d’embarquement");
+  assert.equal(moved.fichier, "carte.pdf");
+  assert.equal("numero" in moved, false);
+  assert.equal("storage_path" in moved, false);
+  const insert = writes.find((row) => row.op === "insert" && row.table === "crm_booking_documents");
+  assert.equal(insert?.payload.id, DOC);
+  assert.equal(insert?.payload.booking_id, BOOKING);
+  assert.equal(insert?.payload.kind, "carte d'embarquement");
+  assert.equal(insert?.payload.storage_path, `customers/${CLIENT}/documents/carte.pdf`);
+  assert.equal(insert?.payload.visible_to_client, false);
+  const removed = writes.find((row) => row.op === "delete" && row.table === "crm_travel_documents");
+  assert.deepEqual(removed?.eqs, [
+    ["id", DOC],
+    ["booking_id", BOOKING],
+  ]);
+  const again = await requalifyPiece({ document_id: DOC, type: "carte_embarquement" }, admin);
+  assert.equal(again.id, DOC);
+  assert.equal(again.type, "carte_embarquement");
+  assert.equal(writes.filter((row) => row.op === "insert").length, 1);
+});
+
+test("requalifying stays on the piece dossier", async () => {
+  const visa = fakeCrm({
+    documents: [
+      {
+        id: DOC,
+        booking_id: BOOKING,
+        doc_type: "visa",
+        file_name: "visa.pdf",
+        mime_type: "application/pdf",
+        storage_path: "customers/x/visa.pdf",
+      },
+    ],
+  });
+  const updated = await requalifyPiece({ document_id: DOC, type: "eta" }, visa.admin);
+  assert.equal(updated.type, "eta");
+  assert.equal(updated.libelle, "Autorisation de voyage (ETA)");
+  assert.deepEqual(visa.writes, [
+    {
+      op: "update",
+      table: "crm_travel_documents",
+      payload: { doc_type: "eta" },
+      eqs: [
+        ["id", DOC],
+        ["booking_id", BOOKING],
+      ],
+    },
+  ]);
+
+  const loose = fakeCrm({
+    documents: [
+      {
+        id: DOC,
+        booking_id: null,
+        doc_type: "other",
+        file_name: "carte.pdf",
+        mime_type: "application/pdf",
+        storage_path: "customers/x/carte.pdf",
+      },
+    ],
+  });
+  await assert.rejects(
+    () => requalifyPiece({ document_id: DOC, type: "carte_embarquement" }, loose.admin),
+    /pas liée à un séjour/
+  );
+  assert.deepEqual(loose.writes, []);
+  await assert.rejects(() => requalifyPiece({ document_id: OTHER, type: "visa" }, loose.admin), /Pièce introuvable/);
+});
+
+test("a dossier piece only becomes a boarding pass or other", async () => {
+  const { admin, writes } = fakeCrm({
+    bookingDocuments: [
+      {
+        id: DOC,
+        booking_id: BOOKING,
+        kind: "other",
+        file_name: "carte.pdf",
+        mime_type: "application/pdf",
+        storage_path: `bookings/${BOOKING}/carte.pdf`,
+      },
+    ],
+  });
+  const updated = await requalifyPiece({ document_id: DOC, type: "carte_embarquement" }, admin);
+  assert.equal(updated.id, DOC);
+  assert.equal(updated.type, "carte_embarquement");
+  assert.deepEqual(writes, [
+    {
+      op: "update",
+      table: "crm_booking_documents",
+      payload: { kind: "carte d'embarquement" },
+      eqs: [
+        ["id", DOC],
+        ["booking_id", BOOKING],
+      ],
+    },
+  ]);
+  await assert.rejects(() => requalifyPiece({ document_id: DOC, type: "visa" }, admin), /carte d’embarquement ou autre/);
+  await assert.rejects(
+    () =>
+      requalifyPiece(
+        { document_id: DOC, type: "carte_embarquement" },
+        fakeCrm({
+          bookingDocuments: [
+            {
+              id: DOC,
+              booking_id: BOOKING,
+              kind: "other",
+              file_name: "scan.png",
+              mime_type: "image/png",
+              storage_path: `bookings/${BOOKING}/scan.png`,
+            },
+          ],
+        }).admin
+      ),
+    /doit être un PDF/
+  );
+});
+
 type Write = { op: string; table: string; payload: Record<string, unknown>; eqs: [string, unknown][] };
 
 function fakeCrm(
@@ -682,11 +913,13 @@ function fakeCrm(
     travelers?: Record<string, unknown>[];
     companions?: Record<string, unknown>[];
     customers?: Record<string, unknown>[];
+    bookingDocuments?: Record<string, unknown>[];
   } = {}
 ) {
   const writes: Write[] = [];
   const uploads: { path: string; bytes: Buffer; mime: string }[] = [];
   const documents = (options.documents || []).map((row) => ({ ...row }));
+  const bookingDocuments = (options.bookingDocuments || []).map((row) => ({ ...row }));
   const messages = (options.messages || []).map((row) => ({ ...row }));
   const customers = options.customers || [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }];
   const bookings = [
@@ -771,6 +1004,11 @@ function fakeCrm(
         documents.push(row);
         return { data: row, error: null };
       }
+      if (op === "insert" && table === "crm_booking_documents") {
+        const row = { id: "doc-1", ...payload };
+        bookingDocuments.push(row);
+        return { data: row, error: null };
+      }
       if (op === "insert" && table === "crm_whatsapp_messages") {
         const row = { id: "msg-1", status: "queued", ...payload };
         messages.push(row);
@@ -789,6 +1027,8 @@ function fakeCrm(
                   ? companions.filter((row) => matches(row))
                 : table === "crm_travel_documents"
                 ? documents.filter((row) => matches(row))
+                : table === "crm_booking_documents"
+                  ? bookingDocuments.filter((row) => matches(row))
                 : table === "crm_whatsapp_messages"
                   ? messages.filter((row) => matches(row))
                   : [];

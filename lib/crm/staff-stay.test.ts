@@ -21,6 +21,21 @@ test("l’état visible est préparation, visible ou archivée", () => {
   );
 });
 
+test("un enregistrement ouvert compte dans À faire", () => {
+  const chips = staffBlockingChips({
+    travelers: [],
+    missingPassportIds: [],
+    hotelLettersOpen: 0,
+    amountHidden: false,
+    checkinAlerts: 2,
+  });
+  assert.deepEqual(
+    chips.map((chip) => chip.label),
+    ["2 enregistrements ouverts"]
+  );
+  assert.equal(chips[0].tab, undefined);
+});
+
 test("les manques comptent passeport, courriers hôtel et montant caché", () => {
   const chips = staffBlockingChips({
     travelers: [
@@ -36,6 +51,23 @@ test("les manques comptent passeport, courriers hôtel et montant caché", () =>
     ["Passeport Judith", "2 courriers hôtel", "Montant non montré"]
   );
   assert.ok(chips.every((chip) => chip.tab == null));
+});
+
+test("un passeport qui expire avant le retour n’est pas un passeport manquant", () => {
+  const chips = staffBlockingChips({
+    travelers: [
+      { id: "a", first_name: "Jonas", last_name: "Martin" },
+      { id: "b", first_name: "Nava", last_name: "Martin" },
+    ],
+    missingPassportIds: ["b"],
+    expiringPassportIds: ["a"],
+    hotelLettersOpen: 0,
+    amountHidden: false,
+  });
+  assert.deepEqual(
+    chips.map((chip) => chip.label),
+    ["Expire avant le retour · Jonas", "Passeport Nava"]
+  );
 });
 
 test("les coûts à pointer et la marge à corriger ouvrent Règlement", () => {

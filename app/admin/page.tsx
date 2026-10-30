@@ -5,28 +5,24 @@ import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { addIsoDays } from "@/lib/crm/dates";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
-import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { AgencyAccountBalances } from "@/components/admin/AccountBalance";
 import { ClientActivity } from "@/components/admin/ClientActivity";
-import { RecentMails } from "@/components/admin/RecentMails";
 import { loadClientActivityFeed } from "@/lib/crm/client-activity-feed";
-import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
-import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
-import { buildLaunchItems } from "@/lib/crm/launch-status";
-import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
 import { DashboardWeek } from "@/components/admin/DashboardWeek";
 import { dashboardWeek } from "@/lib/crm/dashboard-week";
+import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { ADMIN_ROUTES } from "@/lib/crm/admin-nav";
 import { loadAgencyServiceDesk } from "@/lib/crm/service-desk-load";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
 import { siteConfig } from "@/lib/site";
 
 /** Même segment que le layout : le modèle de titre ne s’applique pas ici. */
-export const metadata = { title: { absolute: `Tableau de bord — ${siteConfig.shortName}` } };
+export const metadata = { title: { absolute: `Accueil — ${siteConfig.shortName}` } };
 
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
@@ -38,18 +34,12 @@ export default async function AdminHomePage() {
   const [
     { data: travellingRows },
     { data: upcomingRows },
-    { count: bookingCount },
-    { count: publishedCount },
-    { count: customerCount },
-    { count: withPhoneCount },
     { data: balances },
     { count: departTomorrowCount },
     { count: openFormalities },
-    revolutIsConnected,
     badges,
     serviceLines,
     agencyAccounts,
-    recentMails,
     clientActivity,
   ] = await Promise.all([
     supabase
@@ -70,18 +60,6 @@ export default async function AdminHomePage() {
       .is("archived_at", null)
       .order("start_date")
       .limit(40),
-    supabase.from("crm_bookings").select("id", { count: "exact", head: true }).is("archived_at", null),
-    supabase
-      .from("crm_bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("visible_to_client", true)
-      .is("archived_at", null),
-    supabase.from("crm_customers").select("id", { count: "exact", head: true }),
-    supabase
-      .from("crm_customers")
-      .select("id", { count: "exact", head: true })
-      .not("phone", "is", null)
-      .neq("phone", ""),
     supabase.from("crm_customer_balances").select("balance, currency"),
     supabase
       .from("crm_bookings")
@@ -90,24 +68,11 @@ export default async function AdminHomePage() {
       .neq("status", "cancelled")
       .is("archived_at", null),
     supabase.from("crm_visa_tasks").select("id", { count: "exact", head: true }).is("done_at", null),
-    revolutConnected(),
     adminBadges(),
     loadAgencyServiceDesk(supabase),
     loadAgencyAccounts(),
-    loadDashboardMails(supabase),
     loadClientActivityFeed(supabase, today),
   ]);
-  const customersTotal = customerCount ?? 0;
-  const launchItems = buildLaunchItems({
-    customerCount: customersTotal,
-    customersWithoutPhone: Math.max(0, customersTotal - (withPhoneCount ?? 0)),
-    bookingCount: bookingCount ?? 0,
-    publishedCount: publishedCount ?? 0,
-    revolutConfigured: revolutConfigured(),
-    revolutConnected: revolutIsConnected,
-    stripeConfigured: stripeConfigured(),
-    stripeWebhookConfigured: stripeWebhookConfigured(),
-  });
   const remainingDue = ((balances || []) as Pick<CrmBalance, "balance" | "currency">[]).reduce(
     (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
     0
@@ -127,6 +92,9 @@ export default async function AdminHomePage() {
     ),
   ]);
   const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
+  const covers = await resolveListCovers(
+    shown.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }))
+  );
   const whatsappOpen = await supabase
     .from("crm_whatsapp_requests")
     .select("id", { count: "exact", head: true })
@@ -140,6 +108,9 @@ export default async function AdminHomePage() {
     expiring: badges.pieces,
     whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
     unread: badges.whatsapp,
+    hotels: badges.hotels,
+    credits: badges.revolut + badges.stripe,
+    costs: badges.costs,
   });
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
 
@@ -147,10 +118,8 @@ export default async function AdminHomePage() {
     <div className="space-y-6">
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
-        <PageTitle title={`Bonjour ${staffFirst}`} subtitle={formatDateFr(today)} />
+        <PageTitle title="Accueil" subtitle={`Bonjour ${staffFirst}, ${formatDateFr(today)}.`} />
       </div>
-
-      <AgencyAccountBalances accounts={agencyAccounts} />
 
       <section aria-labelledby="a-faire-titre">
         <h2 id="a-faire-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
@@ -175,27 +144,31 @@ export default async function AdminHomePage() {
         )}
       </section>
 
-      <ClientActivity groups={clientActivity} today={today} />
-
-      <RecentMails mails={recentMails} />
+      <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} covers={covers} />
 
       <section aria-labelledby="argent-titre" className="space-y-3">
-        <h2 id="argent-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
-          Argent
-        </h2>
-        <Link
-          href="/admin/transactions"
-          className="block max-w-sm rounded-2xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-5 py-4 text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)]"
-        >
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Reste à encaisser</p>
-          <p className="mt-2 font-display text-3xl font-bold tabular-nums">{formatMoney(remainingDue)}</p>
-          <p className="mt-1 text-xs text-muted">Somme des comptes débiteurs</p>
-        </Link>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="argent-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
+            Argent
+          </h2>
+          <Link href={ADMIN_ROUTES.argent} className="text-sm font-semibold text-[var(--admin-navy)] underline">
+            Tout voir
+          </Link>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(13.5rem,1fr))]">
+          <Link
+            href={`${ADMIN_ROUTES.argent}?onglet=grand-livre`}
+            className="rounded-2xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-5 py-4 text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)]"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Reste à encaisser</p>
+            <p className="mt-2 font-display text-3xl font-bold tabular-nums">{formatMoney(remainingDue)}</p>
+            <p className="mt-1 text-xs text-muted">Somme des comptes débiteurs</p>
+          </Link>
+          <AgencyAccountBalances accounts={agencyAccounts} bare />
+        </div>
       </section>
 
-      <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} />
-
-      <AdminLaunchStatus items={launchItems} />
+      <ClientActivity groups={clientActivity} today={today} collapsed />
     </div>
   );
 }

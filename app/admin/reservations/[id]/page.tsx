@@ -1,24 +1,25 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { redactVaultDocument } from "@/lib/crm/agency-access";
 import { staffAllows } from "@/lib/crm/agency-guard";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
+import { loadCustomerWhatsappMessages } from "@/lib/crm/whatsapp-dock-load";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { DEFAULT_AGENCY_FEE_RATE, loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
-import { syncBookingTitleFromSteps } from "@/lib/crm/bookings";
 import { BookingEditor } from "@/components/admin/BookingEditor";
+import { DossierPliantBalance } from "@/components/admin/DossierPliantBalance";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
-import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
-import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
+import { pliantConfigured } from "@/lib/crm/pliant";
+import { pliantCardForBooking, pliantSpendsForCards, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
 import { pliantBookingCards, pliantCardRecaps } from "@/lib/crm/pliant-booking";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
-import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
-import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
-import { markEstaNoticesSeen, syncEstaForBookingId } from "@/lib/crm/esta-run";
-import { markUkEtaNoticesSeen, syncUkEtaForBookingId } from "@/lib/crm/uk-eta-run";
+import { companionsForShare, isTripShareCode, tripShareUrl } from "@/lib/crm/trip-share";
+import { loadEstaForBookingId } from "@/lib/crm/esta-run";
+import { readUkEtaLines } from "@/lib/crm/uk-eta-run";
 import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
 import {
   buildTripAccountingView,
@@ -29,15 +30,14 @@ import type { TripAccountingView } from "@/lib/crm/trip-costs";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
-import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
+import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
-import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
-import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
-import { companionNames, hotelSignatoryName } from "@/lib/crm/hotel-desk";
-import { ensureHotelRequests, loadHotelThread, syncHotelDeskThreads, syncHotelMessages } from "@/lib/crm/hotel-desk-run";
-import { principalGuest } from "@/lib/crm/hotel-arrival";
+import { loadClientLedger, loadClientLedgerViews, type ClientLedgerView } from "@/lib/crm/client-ledger";
+import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
+import type { StoredFlightCheckin } from "@/lib/crm/online-checkin";
+import { loadHotelThread } from "@/lib/crm/hotel-desk-run";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import type {
   CrmBooking,
@@ -59,7 +59,7 @@ import type {
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ hotel?: string | string[] }>;
+  searchParams: Promise<{ hotel?: string | string[]; relance?: string | string[]; repondre?: string | string[] }>;
 };
 
 export async function generateMetadata({ params }: Props) {
@@ -76,31 +76,22 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function AdminBookingPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const hotelQuery = (await searchParams).hotel;
+  const query = await searchParams;
+  const hotelQuery = query.hotel;
   const hotel = Array.isArray(hotelQuery) ? hotelQuery[0] : hotelQuery;
   const openHotelItemId = hotel && /^[0-9a-f-]{36}$/i.test(hotel) ? hotel : null;
+  const relanceQuery = query.relance;
+  const relance = Array.isArray(relanceQuery) ? relanceQuery[0] : relanceQuery;
+  const openRelanceId = relance && /^[0-9a-f-]{36}$/i.test(relance) ? relance : null;
+  const replyQuery = query.repondre;
+  const reply = Array.isArray(replyQuery) ? replyQuery[0] : replyQuery;
+  const openReplyId = reply && /^[0-9a-f-]{36}$/i.test(reply) ? reply : null;
   const { supabase, staff } = await requireStaffPage();
   const signatory = hotelSignatoryName(staff.full_name);
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
-  const pliantAccountPromise = pliantConfigured()
-    ? new Promise<Awaited<ReturnType<typeof loadPliantAccountBalance>>>((resolve) => {
-        const timer = setTimeout(() => resolve(null), 12_000);
-        loadPliantAccountBalance().then(
-          (value) => {
-            clearTimeout(timer);
-            resolve(value);
-          },
-          () => {
-            clearTimeout(timer);
-            resolve(null);
-          }
-        );
-      })
-    : Promise.resolve(null);
   const b = booking as CrmBooking;
-  const syncedTitle = await syncBookingTitleFromSteps(supabase, id);
-  if (syncedTitle) b.title = syncedTitle;
+  await repairCustomerDownloads([b.customer_id]);
   const relatedIds = Array.from(
     new Set([b.customer_id, b.billing_customer_id].filter((value): value is string => Boolean(value)))
   );
@@ -122,7 +113,6 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     whatsappRequests,
     { data: stayRefs },
     { data: ficheCompanyRows },
-    { data: companyAdminRows },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -164,11 +154,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .eq("customer_id", b.customer_id)
       .order("created_at", { ascending: false })
       .limit(200),
-    supabase
-      .from("crm_whatsapp_messages")
-      .select("id, direction, body, status, created_at, booking_id, concierge_mark")
-      .eq("customer_id", b.customer_id)
-      .order("created_at", { ascending: true }),
+    loadCustomerWhatsappMessages(supabase, b.customer_id),
     supabase
       .from("crm_whatsapp_requests")
       .select("id, kind, body, booking_id, created_at")
@@ -176,25 +162,11 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .order("created_at", { ascending: false }),
     supabase.from("crm_bookings").select("id, reference").eq("customer_id", b.customer_id),
     supabase.from("crm_billing_companies").select("*").eq("customer_id", b.customer_id).order("sort_order"),
-    supabase.from("crm_customers").select(CUSTOMER_PICK_SELECT).eq("company_role", "admin"),
   ]);
   const ficheBillingCompanies = (ficheCompanyRows || []) as CrmBillingCompany[];
-  const companyAdmins = ((companyAdminRows || []) as PickableCustomer[]).sort(
-    (a, b) =>
-      (a.last_name || "").localeCompare(b.last_name || "", "fr") ||
-      (a.first_name || "").localeCompare(b.first_name || "", "fr")
-  );
   const customerLogins = (loginRows || []) as CrmCustomerLogin[];
   const customerActivity = (activityRows || []) as CrmCustomerActivity[];
-  const threadMessages = whatsappMessages.error
-    ? (
-        await supabase
-          .from("crm_whatsapp_messages")
-          .select("id, direction, body, status, created_at")
-          .eq("customer_id", b.customer_id)
-          .order("created_at", { ascending: true })
-      ).data || []
-    : whatsappMessages.data || [];
+  const threadMessages = whatsappMessages;
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
   const billingCustomer =
@@ -217,50 +189,23 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     .order("created_at", { ascending: true });
   if (!cardError && cardRows) bookingCards = cardRows as CrmBookingCard[];
 
+  const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
   let arrivals: CrmHotelArrival[] = [];
   let hotelRequests: CrmHotelRequest[] = [];
   let hotelMessages: CrmHotelMessage[] = [];
   let hotelThreadMessages: CrmHotelThreadMessage[] = [];
-  const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
-  const guest = principalGuest({
-    travelers: bookingTravelers,
-    holder: customer ? { first_name: customer.first_name || "", last_name: customer.last_name || "" } : null,
-  });
-  const guestName = `${guest.firstName} ${guest.lastName}`.trim();
   try {
     const arrivalAdmin = createServiceClient();
-    arrivals = await syncStayCards(arrivalAdmin, {
-      bookingId: id,
-      bookingStatus: b.status,
-      bookingEndDate: b.end_date || null,
-      currency: b.currency,
-      items: bookingItems,
-      travelers: bookingTravelers,
-      holder: customer ? { first_name: customer.first_name, last_name: customer.last_name } : null,
-    });
-    hotelRequests = await ensureHotelRequests(arrivalAdmin, {
-      bookingId: id,
-      reference: b.reference,
-      currency: b.currency,
-      guest: guestName,
-      companions: companionNames(bookingTravelers, guestName),
-      signatory,
-      items: bookingItems,
-    });
-    hotelMessages = await syncHotelMessages(arrivalAdmin, id);
-    try {
-      await syncHotelDeskThreads(arrivalAdmin, id);
-      const [{ data: freshRequests }, { data: freshMessages }, thread] = await Promise.all([
-        arrivalAdmin.from("crm_hotel_requests").select("*").eq("booking_id", id),
-        arrivalAdmin.from("crm_hotel_messages").select("*").eq("booking_id", id),
-        loadHotelThread(arrivalAdmin, id),
-      ]);
-      if (freshRequests) hotelRequests = freshRequests as CrmHotelRequest[];
-      if (freshMessages) hotelMessages = freshMessages as CrmHotelMessage[];
-      hotelThreadMessages = thread;
-    } catch {
-      hotelThreadMessages = [];
-    }
+    const [arrivalRows, requestRows, messageRows, thread] = await Promise.all([
+      arrivalAdmin.from("crm_hotel_arrivals").select("*").eq("booking_id", id),
+      arrivalAdmin.from("crm_hotel_requests").select("*").eq("booking_id", id),
+      arrivalAdmin.from("crm_hotel_messages").select("*").eq("booking_id", id),
+      loadHotelThread(arrivalAdmin, id).catch(() => [] as CrmHotelThreadMessage[]),
+    ]);
+    if (!arrivalRows.error && arrivalRows.data) arrivals = arrivalRows.data as CrmHotelArrival[];
+    if (!requestRows.error && requestRows.data) hotelRequests = requestRows.data as CrmHotelRequest[];
+    if (!messageRows.error && messageRows.data) hotelMessages = messageRows.data as CrmHotelMessage[];
+    hotelThreadMessages = thread;
   } catch {
     arrivals = [];
     hotelRequests = [];
@@ -284,11 +229,6 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     } catch {
       // Le lien vers la réservation manque ; les transactions restent lisibles.
     }
-    try {
-      await showPliantLast4(cardAdmin, { bookingCards, arrivals, registry: pliantCard });
-    } catch {
-      // Les quatre derniers chiffres manquent ; le récap des dépenses reste lisible.
-    }
   } catch {
     pliantCard = null;
     pliantTabSpends = [];
@@ -307,48 +247,56 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     pliantTabSpends
   );
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
-  let shareUrl: string | null = null;
-  if (b.visible_to_client) {
-    try {
-      const shareAdmin = createServiceClient();
-      const shareCode = await ensureTripShareCode(shareAdmin, b.id);
-      if (shareCode) shareUrl = tripShareUrl(siteConfig.url, shareCode);
-    } catch {
-      shareUrl = null;
-    }
-  }
+  const storedShare = (booking as { share_code?: string | null }).share_code;
+  const shareUrl =
+    b.visible_to_client && storedShare && isTripShareCode(storedShare)
+      ? tripShareUrl(siteConfig.url, storedShare)
+      : null;
 
-  let ledger: ClientLedgerView | null = null;
-  let accountLedger: ClientLedgerView | null = null;
   const accountHolder = billingCustomer || customer;
-  if (customer || accountHolder) {
+  const ledgerTask = (async () => {
+    let ledger: ClientLedgerView | null = null;
+    let accountLedger: ClientLedgerView | null = null;
+    if (customer && accountHolder && customer.id === accountHolder.id) {
+      const views = await loadClientLedgerViews(supabase, customer, ["client", "staff"]).catch(() => []);
+      ledger = views[0] || null;
+      accountLedger = views[1] || null;
+      return { ledger, accountLedger };
+    }
     const [clientView, staffView] = await Promise.all([
       customer ? loadClientLedger(supabase, customer, "client").catch(() => null) : Promise.resolve(null),
       accountHolder
         ? loadClientLedger(supabase, accountHolder, "staff").catch(() => null)
         : Promise.resolve(null),
     ]);
-    ledger = clientView;
-    accountLedger = staffView;
-  }
+    return { ledger: clientView, accountLedger: staffView };
+  })();
 
-  let estaLines: Awaited<ReturnType<typeof syncEstaForBookingId>> = [];
-  try {
-    const estaAdmin = createServiceClient();
-    estaLines = await syncEstaForBookingId(estaAdmin, id);
-    await markEstaNoticesSeen(estaAdmin, id);
-  } catch {
-    estaLines = [];
-  }
-
-  let ukEtaLines: Awaited<ReturnType<typeof syncUkEtaForBookingId>> = [];
-  try {
-    const ukEtaAdmin = createServiceClient();
-    ukEtaLines = await syncUkEtaForBookingId(ukEtaAdmin, id);
-    await markUkEtaNoticesSeen(ukEtaAdmin, id);
-  } catch {
-    ukEtaLines = [];
-  }
+  const accountingTask = (async () => {
+    const mb3mAdmin = createServiceClient();
+    let accountingInputs: DossierAccountingInputs = {
+      charges: [],
+      pieces: [],
+      costs: [],
+      coveredIds: [],
+      openNumber: null,
+    };
+    let accounting: TripAccountingView | null = null;
+    try {
+      accountingInputs = await loadDossierAccountingInputs(mb3mAdmin, id);
+      accounting = await buildTripAccountingView(mb3mAdmin, b, bookingItems, accountingInputs);
+    } catch (error) {
+      console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
+      accounting = null;
+    }
+    return { accountingInputs, accounting };
+  })();
+  const [{ ledger, accountLedger }, { accountingInputs, accounting }, estaLines, ukEtaLines] = await Promise.all([
+    ledgerTask,
+    accountingTask,
+    loadEstaForBookingId(createServiceClient(), id).catch(() => []),
+    readUkEtaLines(createServiceClient(), id).catch(() => []),
+  ]);
 
   const le = ((leRows || [])[0] || null) as {
     id: string;
@@ -393,18 +341,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     billing_city?: string | null;
     billing_country?: string | null;
   }[];
-  const mb3mAdmin = createServiceClient();
-  let accountingInputs: DossierAccountingInputs = { charges: [], pieces: [], costs: [], coveredIds: [], openNumber: null };
-  let accounting: TripAccountingView | null = null;
-  try {
-    accountingInputs = await loadDossierAccountingInputs(mb3mAdmin, id);
-    accounting = await buildTripAccountingView(mb3mAdmin, b, bookingItems, accountingInputs);
-  } catch (error) {
-    console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
-    accounting = null;
-  }
   const mb3mPiece = accountingInputs.openNumber ? { number: accountingInputs.openNumber } : null;
-  const pliantAccount = await pliantAccountPromise;
   const mb3mContext = buildMb3mInvoiceContext({
     booking: b,
     items: bookingItems,
@@ -424,6 +361,12 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const importTasks = importTasksQuery.error
     ? []
     : ((importTasksQuery.data || []) as { id: string; kind: string; title: string }[]);
+  let checkins: StoredFlightCheckin[] = [];
+  const checkinRows = await supabase
+    .from("crm_flight_checkins")
+    .select("booking_item_id, status, actor")
+    .eq("booking_id", id);
+  if (!checkinRows.error && checkinRows.data) checkins = checkinRows.data as StoredFlightCheckin[];
 
   const [appliedFees, inheritedFees] = await Promise.all([
     loadResolvedAgencyFees(supabase, [b]),
@@ -466,7 +409,11 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
             })
           )}
           pliantReady={pliantConfigured()}
-          pliantAccount={pliantAccount}
+          pliantBalance={
+            <Suspense fallback={<p className="rounded-3xl bg-[#faf9f6] px-5 py-4 text-sm text-muted">Solde Pliant…</p>}>
+              <DossierPliantBalance />
+            </Suspense>
+          }
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
           arrivals={arrivals}
@@ -475,6 +422,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           hotelMessages={hotelMessages}
           hotelThreadMessages={hotelThreadMessages}
           openHotelItemId={openHotelItemId}
+          openRelanceId={openRelanceId}
+          openReplyId={openReplyId}
           billingCompanies={(billingCompanies || []) as {
             id: string;
             company_name: string | null;
@@ -512,10 +461,10 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           customerLogins={customerLogins}
           customerActivity={customerActivity}
           ficheBillingCompanies={ficheBillingCompanies}
-          companyAdmins={companyAdmins}
           mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece }}
           accounting={accounting}
           importTasks={importTasks}
+          checkins={checkins}
         />
   );
 }

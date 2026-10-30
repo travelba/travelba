@@ -50,6 +50,8 @@ export type DetachDocument = {
   storage_path?: string | null;
   booking_item_id?: string | null;
   created_at: string;
+  /** Pièce déposée par ce mail. L’annulation la retire sans toucher aux autres cartes. */
+  email_ingest_id?: string | null;
 };
 
 export type DetachTraveler = DetachPerson & {
@@ -189,8 +191,9 @@ export function planEmailDetach(input: EmailDetachInput): EmailDetachPlan {
       Boolean(doc.file_name && names.has(baseName(doc.file_name))) &&
       createdDuringAttach(doc.created_at, input.attachedAt);
     const sourced = sourceIds.has(doc.id);
+    const stamped = Boolean(doc.email_ingest_id && doc.email_ingest_id === input.emailId);
     if (!path) continue;
-    if (linkedToRemoved || sourced || (named && !linkedToOther)) {
+    if (stamped || linkedToRemoved || sourced || (named && !linkedToOther)) {
       documentIds.push(doc.id);
       storagePaths.push(path);
     }

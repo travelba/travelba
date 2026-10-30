@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer, requireStaff } from "@/lib/crm/auth";
 import { clientDownloadSummary, downloadActivityPath, recordCustomerActivity } from "@/lib/crm/customer-activity";
+import { describeDownload, lookupDownloadPiece, recordStaffDownload } from "@/lib/crm/download-journal";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExampleFile } from "@/lib/crm/example-store";
 import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
@@ -97,6 +98,8 @@ export async function GET(request: Request) {
 
   const staff = await requireStaff();
   if (!(staff instanceof NextResponse)) {
+    const download = url.searchParams.get("download") === "1" && url.searchParams.get("thumb") !== "1";
+    if (download) await recordStaffDownload(staff.staff.id, path, staff.supabase);
     return sendCrmFile(path, url);
   }
 
@@ -121,31 +124,44 @@ export async function GET(request: Request) {
     }
     const { data: doc } = await client.supabase
       .from("crm_booking_documents")
-      .select("id")
+      .select("id, kind, file_name, booking_item_id")
       .eq("booking_id", bookingId)
       .eq("storage_path", path)
       .eq("visible_to_client", true)
       .maybeSingle();
     if (!doc) return jsonError("Document non publié", 403);
-    if (download) {
-      const summary = clientDownloadSummary({
-        scope: "booking",
-        path,
-        customerId: client.customer.id,
-        reference: booking.reference,
-        title: booking.title,
-        destination: booking.destination,
-      });
-      if (summary) {
-        await recordCustomerActivity({
-          customerId: client.customer.id,
-          authUserId: client.user.id,
-          action: "download",
-          summary,
-          bookingId,
-          path: downloadActivityPath(typeof doc.id === "string" ? doc.id : bookingId),
-        });
+    if (download && typeof doc.id === "string") {
+      let itemKind: string | null = null;
+      if (typeof doc.booking_item_id === "string") {
+        const { data: item } = await client.supabase
+          .from("crm_booking_items")
+          .select("kind")
+          .eq("id", doc.booking_item_id)
+          .maybeSingle();
+        itemKind = typeof item?.kind === "string" ? item.kind : null;
       }
+      const piece = describeDownload({
+        id: doc.id,
+        table: "crm_booking_documents",
+        kind: typeof doc.kind === "string" ? doc.kind : "pdf",
+        fileName: typeof doc.file_name === "string" ? doc.file_name : null,
+        bookingId,
+        reference: typeof booking.reference === "string" ? booking.reference : null,
+        itemKind,
+        customerId: client.customer.id,
+      });
+      await recordCustomerActivity({
+        customerId: client.customer.id,
+        authUserId: client.user.id,
+        action: "download",
+        summary: piece.summary,
+        bookingId,
+        path: piece.path,
+        documentId: piece.documentId,
+        documentTable: piece.documentTable,
+        documentKind: piece.documentKind,
+        documentName: piece.documentName,
+      });
     }
   } else if (download) {
     const summary = clientDownloadSummary({
@@ -153,7 +169,21 @@ export async function GET(request: Request) {
       path,
       customerId: client.customer.id,
     });
-    if (summary) {
+    const found = summary ? await lookupDownloadPiece(client.supabase, path) : null;
+    if (found && "documentId" in found) {
+      await recordCustomerActivity({
+        customerId: client.customer.id,
+        authUserId: client.user.id,
+        action: "download",
+        summary: found.summary,
+        bookingId: found.bookingId,
+        path: found.path,
+        documentId: found.documentId,
+        documentTable: found.documentTable,
+        documentKind: found.documentKind,
+        documentName: found.documentName,
+      });
+    } else if (summary) {
       await recordCustomerActivity({
         customerId: client.customer.id,
         authUserId: client.user.id,

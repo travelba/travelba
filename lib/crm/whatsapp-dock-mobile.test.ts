@@ -109,6 +109,27 @@ test("la liste téléphone est une feuille plein écran avec Fermer", async () =
   assert.doesNotMatch(html, /w-\[min\(100%,22rem\)\]/);
 });
 
+test("le fil téléphone joue la note sans la charger avant le clic", async () => {
+  const html = await render({
+    initialPanelOpen: true,
+    initialTabs: [{ key: "+33601020304", expanded: true }],
+    messagesByKey: {
+      "+33601020304": [
+        {
+          ...message,
+          body: "Note vocale : La vue est belle",
+          mediaPath: "customers/client-camille/whatsapp/note.wav",
+        },
+      ],
+    },
+  });
+  assert.match(html, /<audio[^>]*preload="none"/);
+  assert.match(html, /playsinline/i);
+  assert.match(html, /La vue est belle/);
+  assert.match(html, /\/api\/files\?path=/);
+  assert.match(html, /w-\[min\(100%,20rem\)\]/);
+});
+
 test("la bulle affiche les non-lus et reste au-dessus de la barre", async () => {
   const html = await render({});
   assert.match(html, /aria-label="Discussions WhatsApp, 1 non lu"/);

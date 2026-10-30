@@ -10,6 +10,7 @@ import {
   isLedgerExpenseKind,
 } from "@/lib/crm/types";
 import { formatMoney, parseMoney } from "@/lib/crm/money";
+import { flightAmountIsGroupTotal } from "@/lib/crm/carnet";
 import { parseTicketCountInput, statedTicketCount } from "@/lib/crm/item-match";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
@@ -256,22 +257,34 @@ export function IngestItemCard({
           </Field>
         ) : null}
         <Field
-          label={item.kind === "flight" && statedTicketCount(item) != null ? "Prix du billet" : "Prix"}
+          label={
+            item.kind === "flight" && statedTicketCount(item) != null && !flightAmountIsGroupTotal(item.details)
+              ? "Prix du billet"
+              : "Prix"
+          }
           hint={
-            item.kind === "flight" && statedTicketCount(item) == null
-              ? "Total. Sans nombre de billets, ce montant est enregistré tel quel."
-              : undefined
+            item.kind === "flight" && flightAmountIsGroupTotal(item.details)
+              ? "Total du groupe, au centime. Le nombre de billets ne le divise pas."
+              : item.kind === "flight" && statedTicketCount(item) == null
+                ? "Total. Sans nombre de billets, ce montant est enregistré tel quel."
+                : undefined
           }
         >
           <MoneyInput
             value={item.amount}
             onChange={(amount) => onChange({ ...item, amount })}
             aria-label={
-              item.kind === "flight" && statedTicketCount(item) != null ? "Prix du billet" : "Prix"
+              item.kind === "flight" && statedTicketCount(item) != null && !flightAmountIsGroupTotal(item.details)
+                ? "Prix du billet"
+                : "Prix"
             }
           />
         </Field>
-        {item.kind === "flight" && statedTicketCount(item) != null && statedTicketCount(item)! > 1 && item.amount != null ? (
+        {item.kind === "flight" &&
+        !flightAmountIsGroupTotal(item.details) &&
+        statedTicketCount(item) != null &&
+        statedTicketCount(item)! > 1 &&
+        item.amount != null ? (
           <p className="text-xs text-muted sm:col-span-2">
             {statedTicketCount(item)} × {formatMoney(item.amount, "EUR")}
           </p>

@@ -92,8 +92,42 @@ test("a booking update only accepts notes and dates", () => {
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, date_depart: "hier" }), /Date de départ/);
   assert.throws(() => prepareBookingUpdate({ reference: "TB-1" }), /Rien à modifier/);
   assert.equal(prepareBookingUpdate({ id: BOOKING, commission_agence: "7,5" }).patch.agency_fee_rate, "0.0750");
+  assert.deepEqual(prepareBookingUpdate({ id: BOOKING, societe_id: CLIENT }).billing, {
+    particulier: false,
+    societeId: CLIENT,
+  });
+  assert.equal(prepareBookingUpdate({ reference: "TB-2026-0107", particulier: true }).billing?.particulier, true);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, particulier: true, societe_id: CLIENT }), /particulier/);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, particulier: "oui" }), /Particulier/);
   assert.equal(prepareBookingUpdate({ id: BOOKING, commission_agence: "compte" }).patch.agency_fee_rate, null);
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, commission_agence: "12" }), /7,5/);
+  const titled = prepareBookingUpdate({ id: BOOKING, titre: "Montpellier" });
+  assert.equal(titled.patch.title, "Montpellier");
+  assert.equal(titled.cover, null);
+  const cleared = prepareBookingUpdate({ id: BOOKING, couverture: "catalogue" });
+  assert.equal(cleared.patch.cover_image_path, null);
+  assert.equal(cleared.patch.cover_credit, null);
+  assert.deepEqual(cleared.cover, { clear: true });
+  const place = prepareBookingUpdate({ id: BOOKING, couverture: "Montpellier" });
+  assert.deepEqual(place.cover, { photo: "photo-city-montpellier" });
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, titre: "   " }), /vide/);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: "photo-inconnu-xyz" }), /inconnue/i);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: "Millau" }), /Pas de photo/);
+  const png =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const image = prepareBookingUpdate({ id: BOOKING, couverture: png });
+  assert.equal("cover_image_path" in image.patch, false);
+  assert.equal(image.cover && "image" in image.cover && image.cover.image.source, "file");
+  assert.equal(image.cover && "image" in image.cover && image.cover.credit, "Image générée par IA");
+  const named = prepareBookingUpdate({
+    id: BOOKING,
+    couverture: `https://images.example.com/cover.png`,
+    credit: "Image générée par IA",
+  });
+  assert.equal(named.cover && "image" in named.cover && named.cover.image.source, "url");
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: "http://images.example.com/a.jpg" }), /HTTPS/);
+  const gif = Buffer.concat([Buffer.from("GIF89a"), Buffer.alloc(80)]).toString("base64");
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, couverture: gif }), /JPEG/);
 });
 
 test("an email leaves the queue only with an explicit action", () => {
@@ -103,8 +137,12 @@ test("an email leaves the queue only with an explicit action", () => {
     dossierId: "",
   });
   assert.equal(prepareEmailAction({ id: WIRE, action: "rattacher", dossier_id: BOOKING }).dossierId, BOOKING);
+  assert.equal(prepareEmailAction({ id: WIRE, action: "mettre_a_jour", dossier_id: BOOKING }).action, "mettre_a_jour");
   assert.throws(() => prepareEmailAction({ id: WIRE, action: "rattacher" }), /Dossier invalide/);
+  assert.throws(() => prepareEmailAction({ id: WIRE, action: "mettre_a_jour" }), /Dossier invalide/);
   assert.throws(() => prepareEmailAction({ id: WIRE, action: "ignorer" }), /Action inconnue/);
+  assert.equal(prepareEmailAction({ id: WIRE, action: "creer_dossier" }).action, "creer_dossier");
+  assert.equal(prepareEmailAction({ id: WIRE, action: "creer_dossier" }).dossierId, "");
 });
 
 test("a client is created with an email and a name, and updated by id", () => {
@@ -123,6 +161,7 @@ test("a client is created with an email and a name, and updated by id", () => {
   assert.equal(prepareClientUpdate({ id: CLIENT, commission_agence: "5" }).patch.agency_fee_rate, "0.0500");
   assert.equal(prepareClientUpdate({ id: CLIENT, commission_agence: "defaut" }).patch.agency_fee_rate, null);
   assert.throws(() => prepareClientUpdate({ id: CLIENT, commission_agence: "8" }), /7,5/);
+  assert.equal(prepareClientUpdate({ id: CLIENT, supprimer_societe_id: BOOKING }).removeCompanyId, BOOKING);
   assert.throws(() => prepareClientUpdate({ id: CLIENT }), /Rien à modifier/);
   assert.throws(() => prepareClientUpdate({ id: "nom", prenom: "Ada" }), /Client invalide/);
 });
@@ -208,6 +247,8 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "crediter_virement")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "publier_carnet")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "tableau_de_bord")?.readOnly, true);
+  assert.equal(seen.find((tool) => tool.name === "lire_email")?.readOnly, true);
+  assert.equal(seen.find((tool) => tool.name === "lire_email")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
   assert.equal(seen.find((tool) => tool.name === "crediter_revolut")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "rapprocher_depense_revolut")?.readOnly, false);
@@ -215,9 +256,21 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "crediter_stripe")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "ajouter_piece")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "ajouter_piece")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "requalifier_piece")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "requalifier_piece")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
-  for (const name of ["creer_dossier", "ajouter_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
+  assert.equal(seen.find((tool) => tool.name === "notifier_carte_embarquement")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "notifier_carte_embarquement")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "envoyer_releve")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "envoyer_releve")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "modifier_titulaire")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "modifier_titulaire")?.openWorld, false);
+  assert.equal(seen.find((tool) => tool.name === "definir_role_societe")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "definir_role_societe")?.openWorld, false);
+  assert.equal(seen.find((tool) => tool.name === "inviter_client")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "inviter_client")?.openWorld, true);
+  for (const name of ["creer_dossier", "ajouter_voyageur", "modifier_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
     assert.equal(seen.find((tool) => tool.name === name)?.readOnly, false);
     assert.equal(seen.find((tool) => tool.name === name)?.openWorld, false);
   }
