@@ -133,19 +133,6 @@ export async function updateSession(request: NextRequest) {
       url.search = "";
       return seal(NextResponse.redirect(url));
     }
-    if (user && staff && !partner && pathname !== "/admin/securite" && !isAdminLogin) {
-      try {
-        const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (assurance?.currentLevel === "aal1" && assurance.nextLevel === "aal2") {
-          const url = request.nextUrl.clone();
-          url.pathname = "/admin/securite";
-          url.search = "";
-          return seal(NextResponse.redirect(url));
-        }
-      } catch {
-        /* Un facteur illisible ne ferme pas l’agence. */
-      }
-    }
     return seal(supabaseResponse);
   }
 

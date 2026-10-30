@@ -173,10 +173,6 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
     });
   }
 
-  if (path === "/api/admin/securite") {
-    return classify({ permission: null, action: "update", entity: "session", journal: mutation });
-  }
-
   if (/\/travel-documents\/scan$/.test(path)) {
     // La route écrit elle-même la ligne « Lecture d’une pièce » et l’alerte.
     return classify({
