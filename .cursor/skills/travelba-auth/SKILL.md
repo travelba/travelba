@@ -78,6 +78,9 @@ Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id
 - `requireStaff` / `requireStaffPage`. Premier user si table vide → admin.
 - Ajouter un agent = Auth user + insert `crm_staff`. Ne pas recycler un client.
 - `ensureStaff` d’un client déjà en `crm_customers` ne doit **pas** le promouvoir.
+- Rôles : `admin`, `manager`, `agent`, `comptable`, `lecture`, `partner`. Tous les rôles de l’agence voient **tous** les dossiers, marges comprises ; aucun périmètre « ses dossiers », aucun plafond, aucune validation. Les alertes (`crm_agency_alerts`) informent seulement. Grille : `lib/crm/agency-access.ts`, garde `lib/crm/agency-gate.ts`.
+- Connexion Google (`/admin/login`, bouton « Continuer avec Google travelba.fr ») : `signInWithOAuth` avec `hd=travelba.fr`, puis `/auth/callback?staff=google` vérifie côté serveur l’adresse `@travelba.fr` **et** une ligne `crm_staff` active (`lib/crm/google-staff.ts`). Refus → `/admin/login?error=google-…`, compte Auth orphelin supprimé. Mot de passe et code e-mail restent. Pas de MFA.
+- Départ d’un collègue : `/admin/equipe/[id]` → « Couper l’accès » (ban + `sessions_revoked_at` + `crm_staff_sessions.revoked_at`) et réattribution de ses dossiers en charge (`lib/crm/staff-departure.ts`). Un dossier sans responsable reste « À prendre ».
 - Suppression client (`deleteCustomerById`) : ne **pas** `auth.admin.deleteUser` si le même `auth_user_id` est staff.
 
 ## Client : pas de self-delete
