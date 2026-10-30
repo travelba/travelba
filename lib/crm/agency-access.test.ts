@@ -301,6 +301,15 @@ test("la migration : idempotente, append-only, sans backfill de responsable, san
   assert.match(sql, /'partner'/);
   assert.match(sql, /'role_change'/);
   assert.match(sql, /'refund'/);
+  // `public.crm_agency_settings` existe en production sous un autre format (registre clé/valeur) : on n’y touche pas.
+  const code = sql.replace(/--.*$/gm, "");
+  assert.doesNotMatch(code, /crm_agency_settings\b(?!_)/);
+  assert.match(code, /create table if not exists public\.crm_agency_access_settings/);
+  // `current_role` est un mot réservé : pas une variable plpgsql.
+  assert.doesNotMatch(code, /\bcurrent_role\b/);
+  const guard = readFileSync(join(process.cwd(), "scripts/check-migrations.mjs"), "utf8");
+  assert.match(guard, /crm_agency_settings/);
+  assert.match(guard, /PRODUCTION_EXTERNAL_TABLES/);
   for (const statement of sql.split("\n").filter((line) => /^create table/i.test(line))) {
     assert.match(statement, /if not exists/i);
   }

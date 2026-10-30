@@ -19,7 +19,22 @@ from auth.users u
 where s.auth_user_id = u.id
   and (s.email is null or btrim(s.email) = '');
 
-alter table public.crm_staff drop constraint if exists crm_staff_role_check;
+-- Quel que soit son nom en production, l’ancienne contrainte sur role (admin, agent, partner) est remplacée.
+do $$
+declare
+  existing record;
+begin
+  for existing in
+    select c.conname
+    from pg_constraint c
+    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+    where c.conrelid = 'public.crm_staff'::regclass
+      and c.contype = 'c'
+      and a.attname = 'role'
+  loop
+    execute format('alter table public.crm_staff drop constraint if exists %I', existing.conname);
+  end loop;
+end $$;
 alter table public.crm_staff
   add constraint crm_staff_role_check
   check (role in ('admin', 'manager', 'agent', 'comptable', 'lecture', 'partner'));
@@ -58,16 +73,15 @@ create table if not exists public.crm_role_permissions (
   primary key (role, permission)
 );
 
-create table if not exists public.crm_agency_settings (
+-- Seuils d’alerte de l’accès agence. Nom propre : `public.crm_agency_settings` existe déjà en production
+-- sous un autre format (registre clé/valeur) et n’est pas touchée ici.
+create table if not exists public.crm_agency_access_settings (
   id integer primary key check (id = 1),
   payment_alert_cents integer not null default 500000,
   failed_login_alert_count integer not null default 5
 );
 
--- Une version précédente portait un plafond de carte pour les agents : retiré, il n’y a pas de plafond.
-alter table public.crm_agency_settings drop column if exists pliant_agent_ceiling_cents;
-
-insert into public.crm_agency_settings (id)
+insert into public.crm_agency_access_settings (id)
 values (1)
 on conflict (id) do nothing;
 
@@ -175,36 +189,36 @@ security definer
 set search_path = public
 as $$
 declare
-  current_role text;
+  actor_role text;
   stored boolean;
 begin
-  current_role := crm_private.agency_role();
-  if current_role is null or current_role = 'partner' then
+  actor_role := crm_private.agency_role();
+  if actor_role is null or actor_role = 'partner' then
     return false;
   end if;
-  if current_role = 'admin' then
+  if actor_role = 'admin' then
     return true;
   end if;
   select allowed into stored
   from public.crm_role_permissions
-  where role = current_role
+  where role = actor_role
     and crm_role_permissions.permission = agency_allows.permission;
   if found then
     return stored;
   end if;
-  if current_role = 'manager' then
+  if actor_role = 'manager' then
     return agency_allows.permission in (
       'edit_dossiers', 'create_dossiers', 'reassign_dossier', 'view_finances', 'view_margins',
       'create_pliant_card', 'message_client', 'passport_reveal', 'delete_archive', 'view_journal', 'view_inbox'
     );
   end if;
-  if current_role = 'agent' then
+  if actor_role = 'agent' then
     return agency_allows.permission in (
       'edit_dossiers', 'create_dossiers', 'view_finances', 'edit_finances', 'view_margins',
       'create_pliant_card', 'pay_supplier', 'message_client', 'passport_reveal', 'view_inbox'
     );
   end if;
-  if current_role = 'comptable' then
+  if actor_role = 'comptable' then
     return agency_allows.permission in (
       'view_finances', 'edit_finances', 'view_margins', 'pay_supplier', 'export_data', 'view_journal'
     );
@@ -330,7 +344,7 @@ create trigger trg_reject_agency_journal_change
   for each row execute function crm_private.reject_agency_journal_change();
 
 alter table public.crm_role_permissions enable row level security;
-alter table public.crm_agency_settings enable row level security;
+alter table public.crm_agency_access_settings enable row level security;
 alter table public.crm_agency_journal enable row level security;
 alter table public.crm_agency_alerts enable row level security;
 alter table public.crm_staff_sessions enable row level security;
@@ -340,8 +354,8 @@ create policy crm_role_permissions_read on public.crm_role_permissions
   for select to authenticated
   using (crm_private.agency_role() is not null and crm_private.agency_role() <> 'partner');
 
-drop policy if exists crm_agency_settings_read on public.crm_agency_settings;
-create policy crm_agency_settings_read on public.crm_agency_settings
+drop policy if exists crm_agency_access_settings_read on public.crm_agency_access_settings;
+create policy crm_agency_access_settings_read on public.crm_agency_access_settings
   for select to authenticated
   using (crm_private.is_staff());
 
@@ -377,8 +391,8 @@ grant select on public.crm_staff_sessions to authenticated;
 revoke all on public.crm_role_permissions from anon, public, authenticated;
 grant select on public.crm_role_permissions to authenticated;
 
-revoke all on public.crm_agency_settings from anon, public, authenticated;
-grant select on public.crm_agency_settings to authenticated;
+revoke all on public.crm_agency_access_settings from anon, public, authenticated;
+grant select on public.crm_agency_access_settings to authenticated;
 
 revoke all on function crm_private.agency_role() from public, anon;
 revoke all on function crm_private.agency_staff_id() from public, anon;

@@ -46,7 +46,7 @@ async function readSettings(admin: ReturnType<typeof createServiceClient>): Prom
     failedLoginAlerts: DEFAULT_FAILED_LOGIN_ALERTS,
   };
   const { data, error } = await admin
-    .from("crm_agency_settings")
+    .from("crm_agency_access_settings")
     .select("payment_alert_cents, failed_login_alert_count")
     .eq("id", 1)
     .maybeSingle();

@@ -52,7 +52,7 @@ export async function PATCH(request: Request) {
     const patch: Record<string, number> = { id: 1 };
     if (payment != null) patch.payment_alert_cents = payment * 100;
     if (failed != null) patch.failed_login_alert_count = failed;
-    const { error } = await admin.from("crm_agency_settings").upsert(patch);
+    const { error } = await admin.from("crm_agency_access_settings").upsert(patch);
     if (error) return jsonError("Les seuils d’alerte n’ont pas pu être enregistrés.", 502);
     await recordAgencyJournal({
       staffId: auth.staff.id,
