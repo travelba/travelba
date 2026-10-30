@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectPublishIssues } from "@/lib/crm/booking-issues";
 import { agencyFeeColumnMissing } from "@/lib/crm/agency-fee-rate";
@@ -251,6 +252,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
 export async function DELETE(_req: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
+  const denied = await assertStaffPermission(auth.staff, "delete_archive");
+  if (denied) return denied;
   const { id } = await ctx.params;
   try {
     const result = await archiveBookingById(id);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DOSSIERS_VIEW_LABELS, DOSSIERS_VIEWS, dossiersHref, type DossiersView } from "@/lib/crm/dossiers-views";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { OwnerBadge } from "@/components/admin/OwnerBadge";
 import { EmptyState } from "@/components/crm/ui";
 import { listStayTitle } from "@/lib/crm/carnet";
 import { formatMoney } from "@/lib/crm/money";
@@ -30,6 +31,20 @@ export function ReservationsViewToggle({ active, listeHref }: { active: Dossiers
   );
 }
 
+/** « Tous » / « Mes dossiers » : les dossiers dont le collègue connecté est en charge. */
+export function MineToggle({ mine, allHref, mineHref }: { mine: boolean; allHref: string; mineHref: string }) {
+  return (
+    <div className="flex w-fit rounded-xl border border-[var(--border)] bg-white p-1" role="tablist" aria-label="Dossiers de qui">
+      <Link href={allHref} role="tab" aria-selected={!mine} className={toggleClass(!mine)}>
+        Tous
+      </Link>
+      <Link href={mineHref} role="tab" aria-selected={mine} className={toggleClass(mine)}>
+        Mes dossiers
+      </Link>
+    </div>
+  );
+}
+
 function toggleClass(on: boolean) {
   return `shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold ${on ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)]"}`;
 }
@@ -40,6 +55,7 @@ export function ReservationWeek({
   places,
   amounts,
   payerLabels = {},
+  owners = {},
   covers = {},
 }: {
   columns: ReservationWeekColumn<CrmBooking>[];
@@ -47,6 +63,8 @@ export function ReservationWeek({
   places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
   amounts: Map<string, number>;
   payerLabels?: Record<string, string>;
+  /** Prénom du collègue en charge, par dossier. */
+  owners?: Record<string, string>;
   covers?: Record<string, string | null>;
 }) {
   const total = columns.reduce((sum, column) => sum + column.entries.length, 0);
@@ -69,7 +87,7 @@ export function ReservationWeek({
       <div className="flex w-max min-w-full snap-x snap-mandatory items-start gap-3" aria-label="Séjours par jour">
         {columns.map((column) =>
           column.entries.length ? (
-            <WeekColumn key={column.id} column={column} names={names} places={places} amounts={amounts} payerLabels={payerLabels} covers={covers} />
+            <WeekColumn key={column.id} column={column} names={names} places={places} amounts={amounts} payerLabels={payerLabels} owners={owners} covers={covers} />
           ) : (
             <FoldedDay key={column.id} column={column} />
           )
@@ -103,6 +121,7 @@ function WeekColumn({
   places,
   amounts,
   payerLabels,
+  owners,
   covers,
 }: {
   column: ReservationWeekColumn<CrmBooking>;
@@ -110,6 +129,7 @@ function WeekColumn({
   places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
   amounts: Map<string, number>;
   payerLabels: Record<string, string>;
+  owners: Record<string, string>;
   covers: Record<string, string | null>;
 }) {
   const today = column.tone === "today";
@@ -135,7 +155,7 @@ function WeekColumn({
       <ul className="min-h-0 divide-y divide-border overflow-y-auto">
         {column.entries.map((entry) => (
           <li key={entry.booking.id}>
-            <StayRow entry={entry} column={column} names={names} places={places} amounts={amounts} payerLabels={payerLabels} covers={covers} />
+            <StayRow entry={entry} column={column} names={names} places={places} amounts={amounts} payerLabels={payerLabels} owners={owners} covers={covers} />
           </li>
         ))}
       </ul>
@@ -150,6 +170,7 @@ function StayRow({
   places,
   amounts,
   payerLabels,
+  owners,
   covers,
 }: {
   entry: ReservationWeekEntry<CrmBooking>;
@@ -158,6 +179,7 @@ function StayRow({
   places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
   amounts: Map<string, number>;
   payerLabels: Record<string, string>;
+  owners: Record<string, string>;
   covers: Record<string, string | null>;
 }) {
   const booking = entry.booking;
@@ -196,6 +218,7 @@ function StayRow({
           <p className="truncate text-xs font-semibold text-[var(--admin-navy)]">{payerLabels[booking.id]}</p>
         ) : null}
         <p className="mt-1 flex flex-wrap items-center gap-2">
+          <OwnerBadge name={owners[booking.id]} />
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)] ${entry.unseen ? "bg-white" : "bg-[var(--admin-peach)]"}`}>
             {staffStayLabel(booking)}
           </span>

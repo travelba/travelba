@@ -10,12 +10,13 @@ import {
   nextBookingTab,
 } from "./booking-tabs";
 
-test("la fiche dossier a quatre onglets : Voyage, Client, À faire, Argent", () => {
-  assert.deepEqual([...BOOKING_TAB_IDS], ["voyage", "client", "todo", "argent"]);
+test("la fiche dossier a cinq onglets : Voyage, Client, À faire, Argent, Historique", () => {
+  assert.deepEqual([...BOOKING_TAB_IDS], ["voyage", "client", "todo", "argent", "historique"]);
   assert.deepEqual(
     BOOKING_TAB_IDS.map((id) => BOOKING_TAB_LABELS[id]),
-    ["Voyage", "Client", "À faire", "Argent"]
+    ["Voyage", "Client", "À faire", "Argent", "Historique"]
   );
+  assert.equal(bookingTabFromParam("historique"), "historique");
 });
 
 test("l’onglet se lit dans l’URL et retombe sur Voyage", () => {
@@ -54,9 +55,10 @@ test("les flèches bouclent sur les onglets", () => {
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "voyage", "ArrowRight"), "client");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "client", "ArrowRight"), "todo");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "todo", "ArrowRight"), "argent");
-  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "voyage", "ArrowLeft"), "argent");
-  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "argent", "ArrowRight"), "voyage");
+  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "voyage", "ArrowLeft"), "historique");
+  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "argent", "ArrowRight"), "historique");
+  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "historique", "ArrowRight"), "voyage");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "todo", "Home"), "voyage");
-  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "client", "End"), "argent");
+  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "client", "End"), "historique");
   assert.equal(bookingStepAnchor("abc"), "step-abc");
 });

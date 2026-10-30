@@ -1,5 +1,8 @@
 /** Menu de l’espace agence : cinq entrées et Réglages, badges, entrée active, barre basse téléphone. */
 
+import type { Permission } from "@/lib/crm/agency-access";
+import type { StaffRole } from "@/lib/crm/staff-team";
+
 export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp" | "hotels" | "costs";
 
 export type AdminNavCounts = Record<AdminBadgeKey, number>;
@@ -44,8 +47,15 @@ export const ADMIN_ROUTES = {
   reglages: "/admin/reglages",
 } as const;
 
-/** Les cinq entrées du menu, puis Réglages. Le libellé de l’entrée est le H1 de la page. */
-export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | ""; showExample?: boolean }): AdminNavGroup[] {
+/**
+ * Les cinq entrées du menu, puis Réglages. Le libellé de l’entrée est le H1 de la page.
+ * `allows` null : menu d’aujourd’hui. Renseigné (matrice en base) : Argent et Boîte suivent le droit du rôle.
+ */
+export function adminNavGroups(input: {
+  role?: StaffRole | "";
+  showExample?: boolean;
+  allows?: Partial<Record<Permission, boolean>> | null;
+}): AdminNavGroup[] {
   if (input.role === "partner") {
     return [
       {
@@ -56,7 +66,10 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
     ];
   }
   const admin = input.role === "admin";
-  return [
+  const allows = input.allows ?? null;
+  const show = (permission: Permission) => !allows || allows[permission] === true;
+  const manageUsers = admin || (allows != null && show("manage_users"));
+  const groups: AdminNavGroup[] = [
     {
       id: "accueil",
       label: "Accueil",
@@ -110,6 +123,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
         ? [
             { href: ADMIN_ROUTES.reglages, label: "Réglages", icon: "build", exact: true },
             { href: "/admin/equipe", label: "Équipe", icon: "user_cog" },
+            { href: "/admin/journal", label: "Journal", icon: "history_edu" },
             { href: `${ADMIN_ROUTES.reglages}/whatsapp`, label: "Modèles WhatsApp", icon: "chat" },
             { href: `${ADMIN_ROUTES.reglages}/mails`, label: "E-mails au client", icon: "mail" },
             { href: "/admin/concierge", label: "Savoir du Concierge", icon: "menu_book" },
@@ -120,11 +134,21 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | "
               : []),
           ]
         : [
+            ...(manageUsers ? [{ href: "/admin/equipe", label: "Équipe", icon: "user_cog" } satisfies AdminNavItem] : []),
+            ...(allows != null && show("view_journal")
+              ? [{ href: "/admin/journal", label: "Journal", icon: "history_edu" } satisfies AdminNavItem]
+              : []),
             { href: `${ADMIN_ROUTES.reglages}/whatsapp`, label: "Modèles WhatsApp", icon: "chat" },
             { href: `${ADMIN_ROUTES.reglages}/mails`, label: "E-mails au client", icon: "mail" },
           ],
     },
   ];
+  if (!allows || admin) return groups;
+  return groups.filter((group) => {
+    if (group.id === "argent") return show("view_finances");
+    if (group.id === "boite") return show("view_inbox");
+    return true;
+  });
 }
 
 function splitHref(href: string) {
@@ -251,6 +275,8 @@ export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search
   if (pathname === "/admin/restaurants/aujourdhui" || pathname === "/admin/restaurants") return "Restaurants";
   if (pathname === "/admin/recherche") return "Recherche";
   if (pathname === "/admin/reglages" || pathname.startsWith("/admin/reglages/")) return "Réglages";
+  if (pathname === "/admin/journal") return "Journal";
+  if (/^\/admin\/equipe\/[^/]+/.test(pathname)) return "Collègue";
   const active = activeAdminNavHref(groups, pathname, search);
   for (const group of groups) {
     const item = group.items.find((entry) => entry.href === active);

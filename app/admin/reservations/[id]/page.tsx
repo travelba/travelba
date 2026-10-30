@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { redactVaultDocument } from "@/lib/crm/agency-access";
+import { staffAllows } from "@/lib/crm/agency-guard";
+import { loadStaffNames } from "@/lib/crm/dossier-responsables";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
 import { loadCustomerWhatsappMessages } from "@/lib/crm/whatsapp-dock-load";
@@ -173,6 +176,15 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
+  const revealPassports = await staffAllows(staff, "passport_reveal");
+  const shownIdentity = allIdentity.map((doc) => redactVaultDocument(doc, revealPassports));
+  const showMargins = await staffAllows(staff, "view_margins");
+  const ownerRow = booking as { owner_staff_id?: string | null; created_by_staff_id?: string | null };
+  const staffNames = await loadStaffNames(createServiceClient(), [ownerRow.owner_staff_id, ownerRow.created_by_staff_id]);
+  const ownership = {
+    owner: ownerRow.owner_staff_id ? staffNames.get(ownerRow.owner_staff_id) || "Collègue" : null,
+    createdBy: ownerRow.created_by_staff_id ? staffNames.get(ownerRow.created_by_staff_id) || "Collègue" : null,
+  };
   const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
   let bookingCards: CrmBookingCard[] = [];
   const { data: cardRows, error: cardError } = await supabase
@@ -382,7 +394,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           items={bookingItems}
           travelers={bookingTravelers}
           documents={(documents || []) as CrmBookingDocument[]}
-          identityDocs={allIdentity}
+          identityDocs={shownIdentity}
+          showMargins={showMargins}
+          ownership={ownership}
           companions={(companions || []) as CrmCompanion[]}
           customer={customer}
           billingCustomer={billingCustomer}

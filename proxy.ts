@@ -1,6 +1,7 @@
 import createMiddleware from "next-intl/middleware";
 import { NextResponse, type NextRequest } from "next/server";
 import { routing } from "./i18n/routing";
+import { gateAgencyApi } from "./lib/crm/agency-gate";
 import { updateSession } from "./lib/supabase/middleware";
 
 const intlMiddleware = createMiddleware(routing);
@@ -31,6 +32,13 @@ export default async function proxy(request: NextRequest) {
   if (forwarded) return forwarded;
 
   const path = request.nextUrl.pathname;
+
+  if (path.startsWith("/api/")) {
+    if (path.startsWith("/api/admin") || path === "/api/auth/known-password" || path === "/api/auth/staff-failure") {
+      return gateAgencyApi(request);
+    }
+    return NextResponse.next();
+  }
 
   if (
     path === "/demo" ||
@@ -89,5 +97,5 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|_vercel|.*\\..*).*)"],
+  matcher: ["/((?!_next|_vercel|.*\\..*).*)"],
 };

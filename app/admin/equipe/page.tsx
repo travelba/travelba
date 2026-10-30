@@ -1,5 +1,10 @@
+import { AgencyLimitsForm } from "@/components/admin/AgencyLimitsForm";
+import { RightsMatrix } from "@/components/admin/RightsMatrix";
 import { TeamDesk } from "@/components/admin/TeamDesk";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
+import { rightsGrid } from "@/lib/crm/agency-access";
+import { loadPermissionMatrix } from "@/lib/crm/agency-guard";
+import { loadAgencySettings } from "@/lib/crm/agency-log";
 import { requireAdminPage } from "@/lib/crm/auth";
 import { listColleagues } from "@/lib/crm/staff-directory";
 
@@ -21,6 +26,7 @@ export default async function AdminTeamPage() {
   } catch {
     console.error("[admin/equipe] lecture");
   }
+  const [matrix, settings] = await Promise.all([loadPermissionMatrix(), loadAgencySettings()]);
 
   return (
     <div>
@@ -36,6 +42,11 @@ export default async function AdminTeamPage() {
           Impossible de charger l’équipe. Réessayez.
         </p>
       )}
+      <RightsMatrix grid={rightsGrid(matrix)} />
+      <AgencyLimitsForm
+        paymentEuros={Math.round(settings.paymentAlertCents / 100)}
+        failedLogins={settings.failedLoginAlerts}
+      />
     </div>
   );
 }

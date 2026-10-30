@@ -1,6 +1,7 @@
 import "server-only";
 
 import WebSocket from "ws";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { parseMoneyToCents, principalGuest } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardBody, sameCardNameCount } from "./manual-stay-card";
@@ -158,6 +159,19 @@ async function writeCardAudit(
     kind: row.kind,
     outcome: row.outcome,
   });
+  if (row.kind === "reveal" && row.outcome === "ok") {
+    // Historique du dossier et alerte informative : le numéro complet est sorti, sans le journaliser.
+    await recordAgencyJournal({
+      staffId: null,
+      action: "reveal",
+      entityType: "card",
+      entityId: row.bookingId && UUID.test(row.bookingId) ? row.bookingId : null,
+      summary: `Carte Pliant ouverte (numéro complet) par le connecteur ${row.actor.slice(0, 40)}.`,
+      diff: { carte: auditLabel(row.label) },
+      sensitive: "card_reveal",
+      path: "/api/mcp",
+    });
+  }
   if (!error) return true;
   console.error("[mcp] carte journal", error.code ?? "?");
   return false;

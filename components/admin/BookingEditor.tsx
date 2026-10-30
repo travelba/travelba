@@ -58,6 +58,8 @@ import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
+import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
+import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
 import type { TripAccountingView } from "@/lib/crm/trip-costs";
 import { reglementChecklist, reglementCostsToPoint } from "@/lib/crm/reglement-checklist";
@@ -344,7 +346,9 @@ export function BookingEditor({
   accounting = null,
   agencyFee,
   importTasks = [],
+  showMargins = true,
   checkins = [],
+  ownership = null,
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -432,8 +436,12 @@ export function BookingEditor({
   accounting?: TripAccountingView | null;
   /** Enregistrement, visa et pré-enregistrement issus d’un mail. Pas des étapes. */
   importTasks?: { id: string; kind: string; title: string }[];
+  /** Faux : marges, coûts nets et commission restent cachés. */
+  showMargins?: boolean;
   /** Statut d’enregistrement en ligne déjà noté, une ligne par vol. */
   checkins?: StoredFlightCheckin[];
+  /** Qui est en charge (null : à prendre) et qui a créé le dossier (null : inconnu). */
+  ownership?: { owner: string | null; createdBy: string | null } | null;
 }) {
   const items = useMemo(() => completeFlightRoutes(sourceItems), [sourceItems]);
   const router = useRouter();
@@ -1300,6 +1308,20 @@ export function BookingEditor({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {stateChip}
+          {ownership ? (
+            <button
+              type="button"
+              onClick={() => setTab("historique")}
+              title={ownership.createdBy ? `Créé par ${ownership.createdBy}` : "Créé par : inconnu"}
+              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                ownership.owner
+                  ? "bg-[#0B192C] text-[#C5A880]"
+                  : "border border-dashed border-[#9e7e51] bg-white text-[#9e7e51]"
+              }`}
+            >
+              {ownership.owner ? `En charge : ${ownership.owner}` : "À prendre"}
+            </button>
+          ) : null}
           {checkinBadge && !checkinBadge.alert ? (
             <button
               type="button"
@@ -2090,7 +2112,12 @@ export function BookingEditor({
             <ReglementSummary
               amount={stayAmount}
               currency={stayCurrency(booking.currency)}
-              commissionCaption={`Commission d’agence ${formatAgencyFeePercent(previewFeeRate)} · ${agencyFeeSourceLabel(previewFeeSource)}`}
+              showMargins={showMargins}
+              commissionCaption={
+                showMargins
+                  ? `Commission d’agence ${formatAgencyFeePercent(previewFeeRate)} · ${agencyFeeSourceLabel(previewFeeSource)}`
+                  : null
+              }
               ledgerCaption={staffLedgerCaption({
                 ...booking,
                 include_in_ledger: includeInLedger,
@@ -2206,6 +2233,7 @@ export function BookingEditor({
                 cards={pliantRecap}
                 revolutLinked={revolutExpenses}
                 busy={busy !== "idle"}
+                showMargins={showMargins}
               />
             ) : (
               <section className="admin-af-card space-y-2 rounded-3xl p-5">
@@ -2405,6 +2433,12 @@ export function BookingEditor({
         </div>
       ) : null}
 
+      {tab === "historique" ? (
+        <>
+          <ResponsableForm bookingId={booking.id} />
+          <AgencyHistoryPanel entity="dossier" entityId={booking.id} />
+        </>
+      ) : null}
       </div>
     </div>
   );

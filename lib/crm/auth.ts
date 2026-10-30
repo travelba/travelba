@@ -118,6 +118,7 @@ export const getStaffForUser = cache(async (userId: string) => {
 export async function ensureStaff(user: User): Promise<CrmStaff | null> {
   const existing = await getStaffForUser(user.id);
   if (existing) {
+    if (existing.active === false) return null;
     await stampStaffRole(user, existing.role);
     return existing;
   }

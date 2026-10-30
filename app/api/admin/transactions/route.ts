@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createTransactionSchema, parseBody } from "@/lib/crm/admin-schemas";
+import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveWireAccount } from "@/lib/crm/funding-wallet";
 
@@ -20,6 +21,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
+  const denied = await assertStaffPermission(auth.staff, "edit_finances");
+  if (denied) return denied;
   const parsed = parseBody(createTransactionSchema, await request.json().catch(() => null));
   if (parsed.error !== null) return jsonError(parsed.error, 400);
   const body = parsed.data;

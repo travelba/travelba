@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireAdmin } from "@/lib/crm/auth";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { actOnDirectStay } from "@/lib/crm/hotel-direct-run";
 import type { StayEvent } from "@/lib/crm/hotel-direct";
 
@@ -36,6 +37,18 @@ export async function POST(request: Request, ctx: Ctx) {
   try {
     const result = await actOnDirectStay({ customerId: id, stayId, event, actor: "agency" });
     if (!result.ok) return jsonError(result.message, 400);
+    if (event.type === "refund_now") {
+      // Alerte informative : le remboursement est lancé, rien n’attend de validation.
+      await recordAgencyJournal({
+        staffId: auth.staff.id,
+        action: "update",
+        entityType: "finance",
+        entityId: stayId,
+        summary: "Remboursement du client lancé (séjour hôtel direct).",
+        sensitive: "refund",
+        path: `/api/admin/clients/${id}/hotels/sejour`,
+      });
+    }
     return NextResponse.json({ ok: true, view: result.view });
   } catch {
     return jsonError("L’action n’a pas abouti.", 500);

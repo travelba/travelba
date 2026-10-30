@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import WebSocket from "ws";
 import { resolveCountryCode, resolveNationality } from "@/lib/crm/countries";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
@@ -203,6 +204,18 @@ function auditRow(
 }
 
 async function writeAudit(admin: SupabaseClient, row: AuditRow) {
+  if (row.outcome === "ok") {
+    // Historique du dossier et alerte informative : un passeport a été lu, sans numéro.
+    await recordAgencyJournal({
+      staffId: null,
+      action: "reveal",
+      entityType: "document",
+      entityId: row.booking_id,
+      summary: `Passeport ${row.kind === "scan" ? "ouvert (fichier)" : "lu (données APIS)"} par le connecteur ${row.actor}.`,
+      sensitive: "passport_reveal",
+      path: "/api/mcp",
+    });
+  }
   const payload = {
     actor: row.actor,
     customer_id: row.customer_id,
