@@ -12,6 +12,7 @@ import {
   hotelSearchAllowed,
   hotelSearchCacheKey,
   hotelSearchDraft,
+  hotelStayFromTrip,
   mergeOffers,
   offerBeats,
   mergePlaceSuggestions,
@@ -29,6 +30,7 @@ import {
   type HotelStreamEvent,
   type PricedStay,
 } from "./hotel-search";
+import { localTodayIso } from "./dates";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -717,20 +719,55 @@ test("une recherche passée repart aujourd’hui, pour la même durée", () => {
   });
 });
 
-test("le formulaire propose un vendredi, deux nuits, au moins quatorze jours plus tard", () => {
-  const friday = defaultHotelStay("2026-10-23");
-  assert.equal(friday.checkIn, "2026-11-06");
-  assert.equal(friday.checkOut, "2026-11-08");
-  assert.equal(nightsBetween(friday.checkIn, friday.checkOut), 2);
-  assert.equal(new Date(`${friday.checkIn}T00:00:00Z`).getUTCDay(), 5);
-  const saturday = defaultHotelStay("2026-10-24");
-  assert.equal(saturday.checkIn, "2026-11-13");
-  assert.equal(saturday.checkOut, "2026-11-15");
-  assert.ok(saturday.checkIn >= "2026-11-07");
+test("le formulaire propose demain et après-demain, dans le jour de l’appareil", () => {
+  const stay = defaultHotelStay("2026-10-23");
+  assert.equal(stay.checkIn, "2026-10-24");
+  assert.equal(stay.checkOut, "2026-10-25");
+  assert.equal(nightsBetween(stay.checkIn, stay.checkOut), 1);
+  // Fin de mois et fin d’année : le calendrier tourne.
+  assert.deepEqual(defaultHotelStay("2026-10-31"), { checkIn: "2026-11-01", checkOut: "2026-11-02" });
+  assert.deepEqual(defaultHotelStay("2026-12-31"), { checkIn: "2027-01-01", checkOut: "2027-01-02" });
+  // Le jour local, pas le jour UTC : à 00:30 à Jérusalem le 31, UTC est encore le 30.
+  const jerusalemMidnight = new Date(2026, 9, 31, 0, 30);
+  assert.equal(localTodayIso(jerusalemMidnight), "2026-10-31");
+  assert.equal(defaultHotelStay(localTodayIso(jerusalemMidnight)).checkIn, "2026-11-01");
+
+  // Depuis un dossier : ses dates. Sans dates : demain et après-demain.
+  assert.deepEqual(hotelStayFromTrip({ today: "2026-10-23", start: "2026-12-01", end: "2026-12-05" }), {
+    checkIn: "2026-12-01",
+    checkOut: "2026-12-05",
+    fromTrip: true,
+  });
+  assert.deepEqual(hotelStayFromTrip({ today: "2026-10-23", start: "2026-12-01", end: null }), {
+    checkIn: "2026-12-01",
+    checkOut: "2026-12-02",
+    fromTrip: true,
+  });
+  assert.deepEqual(hotelStayFromTrip({ today: "2026-10-23", start: null, end: "2026-12-05" }), {
+    checkIn: "2026-12-04",
+    checkOut: "2026-12-05",
+    fromTrip: true,
+  });
+  assert.deepEqual(hotelStayFromTrip({ today: "2026-10-23", start: "2026-12-05", end: "2026-12-01" }), {
+    checkIn: "2026-12-05",
+    checkOut: "2026-12-06",
+    fromTrip: true,
+  });
+  assert.deepEqual(hotelStayFromTrip({ today: "2026-10-23", start: null, end: "" }), {
+    checkIn: "2026-10-24",
+    checkOut: "2026-10-25",
+    fromTrip: false,
+  });
+  assert.deepEqual(hotelStayFromTrip({ today: "2026-10-23", start: "n’importe quoi", end: undefined }), {
+    checkIn: "2026-10-24",
+    checkOut: "2026-10-25",
+    fromTrip: false,
+  });
 
   const fresh = hotelSearchDraft("2026-10-23", null);
   assert.equal(fresh.destination, "");
-  assert.equal(fresh.checkIn, "2026-11-06");
+  assert.equal(fresh.checkIn, "2026-10-24");
+  assert.equal(fresh.checkOut, "2026-10-25");
   assert.deepEqual(fresh.rooms, [{ adults: 2, children: [] }]);
 
   const kept = hotelSearchDraft("2026-10-23", {
@@ -754,7 +791,7 @@ test("le formulaire propose un vendredi, deux nuits, au moins quatorze jours plu
     target: { kind: "ville", id: 3 },
   });
   assert.equal(expired.destination, "Paris");
-  assert.equal(expired.checkIn, "2026-11-06");
+  assert.equal(expired.checkIn, "2026-10-24");
   assert.equal(expired.target?.id, 3);
 
   assert.equal(parseHotelSearchDraft({ destination: "Paris" }), null);

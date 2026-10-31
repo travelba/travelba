@@ -1954,6 +1954,8 @@ export function BookingEditor({
         openReplyId={openReplyId}
         reference={booking.reference}
         checkins={checkins}
+        tripStart={startDraft || booking.start_date}
+        tripEnd={endDraft || booking.end_date}
         onLiveItems={onLiveItems}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;

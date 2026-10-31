@@ -31,6 +31,8 @@ import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { DRAFT_STEP_PREFIX, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
 import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
+import { localTodayIso } from "@/lib/crm/dates";
+import { hotelStayFromTrip } from "@/lib/crm/hotel-search";
 import { flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
 import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
 import { reviewDoubts } from "@/lib/crm/review-doubt";
@@ -297,9 +299,14 @@ export function BookingItemsPanel({
   onLiveItems,
   onStepsPending,
   checkins = [],
+  tripStart = null,
+  tripEnd = null,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
+  /** Dates du dossier : une nouvelle carte hôtel les reprend. Sans dates : demain et après-demain. */
+  tripStart?: string | null;
+  tripEnd?: string | null;
   stayVisible?: boolean;
   hotelRequests?: CrmHotelRequest[];
   hotelSignatory?: string;
@@ -393,10 +400,34 @@ export function BookingItemsPanel({
     setError(null);
   }
 
+  /** Dates proposées à l’ouverture d’une carte hôtel ; l’agence les change librement. */
+  const hotelDatesRef = useRef<{ start_at: string; end_at: string } | null>(null);
+
   function startNew() {
+    const stay = hotelStayFromTrip({ today: localTodayIso(), start: tripStart, end: tripEnd });
+    hotelDatesRef.current = { start_at: stay.checkIn, end_at: stay.checkOut };
     setEditingId("new");
-    setDraft(emptyDraft());
+    setDraft({ ...emptyDraft(), ...hotelDatesRef.current });
     setError(null);
+  }
+
+  /** Changer de type retire les dates proposées pour l’hôtel si elles n’ont pas été touchées ; revenir à Hôtel les repropose. */
+  function changeNewDraft(next: ItemDraft) {
+    const proposed = hotelDatesRef.current;
+    if (!proposed || next.kind === draft.kind) {
+      setDraft(next);
+      return;
+    }
+    const untouched = draft.start_at === proposed.start_at && draft.end_at === proposed.end_at;
+    if (draft.kind === "hotel" && untouched) {
+      setDraft({ ...next, start_at: "", end_at: "" });
+      return;
+    }
+    if (next.kind === "hotel" && !next.start_at && !next.end_at) {
+      setDraft({ ...next, ...proposed });
+      return;
+    }
+    setDraft(next);
   }
 
   function startVip() {
@@ -1026,7 +1057,7 @@ export function BookingItemsPanel({
             item={draft as BookingExtract["items"][number]}
             household={household}
             lockStayLedger={clientSettlesStay}
-            onChange={setDraft}
+            onChange={changeNewDraft}
             onRemove={() => setEditingId(null)}
           />
           )}

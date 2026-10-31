@@ -6,7 +6,7 @@ import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
-import { parisTodayIso } from "@/lib/crm/dates";
+import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
 import {
   hotelSearchDraft,
@@ -218,6 +218,18 @@ function subscribeHotelDraft(onChange: () => void) {
   return () => window.removeEventListener("storage", onChange);
 }
 
+function subscribeNever() {
+  return () => {};
+}
+
+/**
+ * Jour de l’appareil (fuseau du navigateur) pour les dates proposées. Le serveur rend le jour de Paris ;
+ * React remplace par le jour local à l’hydratation, sans décalage d’affichage.
+ */
+function useDeviceToday() {
+  return useSyncExternalStore(subscribeNever, () => localTodayIso(), () => parisTodayIso());
+}
+
 function seedFromSnapshot(today: string, raw: string) {
   if (!raw) return hotelSearchDraft(today, null);
   try {
@@ -230,7 +242,7 @@ function seedFromSnapshot(today: string, raw: string) {
 }
 
 export function HotelSearch({ trial = true }: { trial?: boolean }) {
-  const today = useMemo(() => parisTodayIso(), []);
+  const today = useDeviceToday();
   const storedDraft = useSyncExternalStore(subscribeHotelDraft, readHotelDraftSnapshot, emptyHotelDraftSnapshot);
   const seed = useMemo(() => seedFromSnapshot(today, storedDraft), [today, storedDraft]);
   const [destinationText, setDestination] = useState<string | null>(null);

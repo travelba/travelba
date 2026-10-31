@@ -340,12 +340,25 @@ export function shiftStayForward(today: string, checkIn: string, checkOut: strin
   return { checkIn: today, checkOut: addIsoDays(today, span) };
 }
 
-/** Vendredi le plus proche, au moins quatorze jours après aujourd’hui, pour deux nuits. */
+/** Les deux prochains jours : arrivée demain, départ après-demain. `today` est le jour de l’appareil. */
 export function defaultHotelStay(today: string) {
-  const earliest = addIsoDays(today, 14);
-  const dow = new Date(`${earliest}T00:00:00Z`).getUTCDay();
-  const checkIn = addIsoDays(earliest, (5 - dow + 7) % 7);
-  return { checkIn, checkOut: addIsoDays(checkIn, 2) };
+  const checkIn = addIsoDays(today, 1);
+  return { checkIn, checkOut: addIsoDays(checkIn, 1) };
+}
+
+/**
+ * Dates proposées pour un hôtel ouvert depuis un dossier : les dates du voyage quand il en a,
+ * sinon demain et après-demain. Un dossier qui n’a qu’une date de départ donne une nuit.
+ */
+export function hotelStayFromTrip(input: { today: string; start: string | null | undefined; end: string | null | undefined }) {
+  const start = (input.start || "").slice(0, 10);
+  const end = (input.end || "").slice(0, 10);
+  const startOk = isValidIsoDate(start);
+  const endOk = isValidIsoDate(end);
+  if (startOk && endOk && end > start) return { checkIn: start, checkOut: end, fromTrip: true };
+  if (startOk) return { checkIn: start, checkOut: addIsoDays(start, 1), fromTrip: true };
+  if (endOk) return { checkIn: addIsoDays(end, -1), checkOut: end, fromTrip: true };
+  return { ...defaultHotelStay(input.today), fromTrip: false };
 }
 
 export type HotelSearchDraftRoom = { adults: number; children: number[] };
