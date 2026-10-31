@@ -12,8 +12,10 @@ import { deskOpenDecision, deskSetCookie } from "@/lib/crm/desk-mode";
 import { isStaffAccount } from "@/lib/crm/desk-open";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
+  detectInAppBrowser,
   entryDestination,
   entryDoorForPath,
+  entryEscapeHtml,
   entryInstantHtml,
   entryLinkExpiresAt,
   entryOptInFromLink,
@@ -30,6 +32,7 @@ import {
   storedEntryEmail,
   type EntryPreview,
 } from "./entry-link";
+import type { InAppDetection } from "./in-app-browser";
 
 type LinkRow = {
   token_hash: string | null;
@@ -45,6 +48,12 @@ type LinkRow = {
   channel?: string | null;
   created_by_staff_id?: string | null;
 };
+
+/**
+ * 303 : le bouton « Continuer ici » poste le formulaire ; un 307 rejouerait ce POST sur /mon-compte.
+ * Le GET `?ouvrir=1` suit un 303 comme un 307.
+ */
+export const ENTRY_REDIRECT_STATUS = 303;
 
 /** Lecture du lien court. Sur la preview, la clé de service MyLER est autorisée. */
 function entryAdmin() {
@@ -126,8 +135,26 @@ export function entryInstantResponse(origin: string, code: string) {
  */
 export async function serveEntryGet(request: Request, origin: string, code: string) {
   if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(origin, code);
-  if (isPreviewBot(request.headers.get("user-agent"))) return entryPreviewResponse(origin, code);
+  const userAgent = request.headers.get("user-agent");
+  if (isPreviewBot(userAgent)) return entryPreviewResponse(origin, code);
+  const inApp = detectInAppBrowser(userAgent);
+  if (inApp.inApp) return entryEscapeResponse(origin, code, inApp);
   return entryInstantResponse(origin, code);
+}
+
+/**
+ * Navigateur intégré (WhatsApp, Instagram…) : porte de sortie vers Safari ou Chrome, sans consommer
+ * le jeton. Le lien reste entier pour le vrai navigateur ; « Continuer ici » poste quand même.
+ */
+export function entryEscapeResponse(origin: string, code: string, detection: InAppDetection) {
+  const safe = isEntryCode(code) ? code : "00000000";
+  return new NextResponse(entryEscapeHtml(origin, safe, detection), {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "private, no-store",
+      Vary: "User-Agent",
+    },
+  });
 }
 
 export async function entryPreviewResponse(origin: string, code: string, enter = true) {
@@ -154,7 +181,7 @@ export async function openEntry(origin: string, code: string) {
 
   const now = new Date();
   const expiresAt = entryLinkExpiresAt(link);
-  const response = NextResponse.redirect(new URL("/mon-compte", origin));
+  const response = NextResponse.redirect(new URL("/mon-compte", origin), ENTRY_REDIRECT_STATUS);
   const supabase = await cookieClient(response);
   const jar = await cookies();
   const existing = hasAuthSessionCookie(jar.getAll().map((cookie) => cookie.name))
@@ -232,7 +259,7 @@ export async function openEntry(origin: string, code: string) {
  */
 async function openDeskEntry(origin: string, code: string, link: LinkRow) {
   const now = new Date();
-  const response = NextResponse.redirect(new URL("/mon-compte", origin));
+  const response = NextResponse.redirect(new URL("/mon-compte", origin), ENTRY_REDIRECT_STATUS);
   response.headers.set("Cache-Control", "private, no-store");
   const supabase = await cookieClient(response);
   const existing = await currentUser(supabase);

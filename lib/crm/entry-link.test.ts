@@ -47,6 +47,13 @@ test("l’adresse publique est courte", () => {
   assert.equal(entryCodeFromLink("https://travelba.fr/auth/callback?token_hash=secret"), null);
 });
 
+const SAFARI_IPHONE =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+const WHATSAPP_IPHONE =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 WAiOS/25.30.74";
+const WHATSAPP_ANDROID =
+  "Mozilla/5.0 (Linux; Android 15; Pixel 8 Build/AP4A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0.0.0 Mobile Safari/537.36 WA4A/2.25.30.76";
+
 test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(isLinkCrawler("WhatsApp/2.23"), true);
   assert.equal(isLinkCrawler("facebookexternalhit/1.1"), true);
@@ -79,9 +86,41 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(
     shouldOpenFromGet({
       search: "",
-      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      userAgent: SAFARI_IPHONE,
       secFetchUser: "?1",
       secFetchDest: "document",
+      purpose: null,
+    }),
+    true
+  );
+  // Navigateur intégré de WhatsApp : l’appui ne consomme pas le jeton, la porte de sortie répond.
+  assert.equal(
+    shouldOpenFromGet({
+      search: "",
+      userAgent: WHATSAPP_IPHONE,
+      secFetchUser: "?1",
+      secFetchDest: "document",
+      purpose: null,
+    }),
+    false
+  );
+  assert.equal(
+    shouldOpenFromGet({
+      search: "",
+      userAgent: WHATSAPP_ANDROID,
+      secFetchUser: "?1",
+      secFetchDest: "document",
+      purpose: null,
+    }),
+    false
+  );
+  // « Continuer ici » ou le script de la porte humaine : `?ouvrir=1` ouvre, même dans WhatsApp.
+  assert.equal(
+    shouldOpenFromGet({
+      search: "?ouvrir=1",
+      userAgent: WHATSAPP_IPHONE,
+      secFetchUser: null,
+      secFetchDest: null,
       purpose: null,
     }),
     true
