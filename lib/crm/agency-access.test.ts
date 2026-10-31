@@ -252,6 +252,12 @@ test("la garde : l’agent d’aujourd’hui passe, les rôles sans droit sont r
   assert.equal(dossierRouteSummary("POST", `/api/admin/bookings/${id}/extras`)?.startsWith("Options du séjour"), true);
   assert.equal(classifyAgencyRoute("PATCH", `/api/admin/bookings/${id}/items/abc`)?.summary, "Étape du carnet modifiée.");
   assert.equal(classifyAgencyRoute("POST", "/api/admin/bookings")?.summary, "Dossier créé.");
+  const hotelOption = classifyAgencyRoute("POST", `/api/admin/clients/${id}/hotels`);
+  assert.equal(hotelOption?.action, "update");
+  assert.equal(hotelOption?.entity, "client");
+  assert.equal(hotelOption?.journal, true);
+  assert.match(hotelOption?.summary || "", /^Option Hôtels du client/);
+  assert.equal(classifyAgencyRoute("POST", `/api/admin/clients/${id}/hotels/sejour`)?.summary.startsWith("Option Hôtels"), false);
 });
 
 test("chaque mutation admin est classée ; elle est journalisée par la garde ou par la route", () => {

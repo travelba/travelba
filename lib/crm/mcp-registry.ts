@@ -48,6 +48,7 @@ import {
   updateVol,
 } from "@/lib/crm/mcp-trip";
 import { inviteClientAccess, setCompanyRole, updateHolderProfile } from "@/lib/crm/mcp-account";
+import { setHotelOption } from "@/lib/crm/mcp-hotel-option";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
@@ -67,7 +68,7 @@ import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 62;
+export const MCP_TOOL_CAP = 63;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -230,7 +231,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_client",
     description:
-      "Fiche d’un client : coordonnées, encours (signe brut), pièces à échéance (type et date, jamais le numéro). id ou q.",
+      "Fiche d’un client : coordonnées, encours (signe brut), pièces à échéance (type et date, jamais le numéro), option_hotel (active, mode test ou reel, bouton_visible, demande_en_attente ; activer_option_hotel la change). id ou q.",
     input: { id, q },
     run: (args: ToolArgs) => readFicheClient({ id: str(args, "id"), q: str(args, "q") }),
   },
@@ -713,6 +714,21 @@ export const MCP_TOOLS: ToolDef[] = [
       id: z.string().trim().describe("Identifiant du client"),
     },
     run: (args) => inviteClientAccess(args),
+  },
+  {
+    name: "activer_option_hotel",
+    write: true,
+    description:
+      "Active ou désactive l’option Hôtels d’un client, le même interrupteur que la carte Accès Hôtels de la fiche agence. Activée, l’entrée Hôtels apparaît dans l’espace client : le client cherche un hôtel (ville, dates, chambres, voyageurs, avantages) et confie sa demande à l’agence, qui la retrouve dans la Boîte de réception, onglet Hôtels. Aucune réservation automatique, aucun prix net, aucune commission côté client. mode_reel omis : le mode déjà enregistré reste (test par défaut : aucun e-mail à l’hôtel, aucun encaissement). Désactiver éteint le mode réel. Un compte de démonstration reste en test. Sans changement : inchange true, rien n’est écrit. Le changement est journalisé (fiche et journal d’agence) au nom du jeton. Aucun message au client ; fiche_client montre option_hotel.",
+    input: {
+      id: z.string().trim().describe("Identifiant du client"),
+      actif: z.union([z.boolean(), z.string()]).describe("true pour activer, false pour désactiver"),
+      mode_reel: z
+        .union([z.boolean(), z.string()])
+        .optional()
+        .describe("Envois réels à l’hôtel et encaissement. Omis : le mode enregistré reste. Refusé sur un compte de démonstration"),
+    },
+    run: (args) => setHotelOption(args),
   },
   {
     name: "ajouter_piece",

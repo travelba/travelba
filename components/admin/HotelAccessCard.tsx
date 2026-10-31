@@ -51,7 +51,12 @@ export function HotelAccessCard({
           <p className="mt-1 text-sm text-[var(--admin-navy)]">
             {enabled ? "Activé" : "Désactivé"}
             {demo ? " · compte de démonstration, mode test" : ""}
-            {live ? " · mode réel" : ""}
+            {live ? " · mode réel" : enabled ? " · mode test" : ""}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            {enabled
+              ? "L’entrée Hôtels est dans l’espace client. Sa demande arrive dans la Boîte de réception, onglet Hôtels."
+              : "Activé, le client voit l’entrée Hôtels et confie sa demande à l’agence. Aucune réservation automatique."}
           </p>
         </div>
         {admin ? (

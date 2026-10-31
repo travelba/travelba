@@ -31,6 +31,8 @@ import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
 import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { loadDossierPeople, type DossierPeople } from "@/lib/crm/dossier-responsables";
+import { hotelOptionState, type HotelAccessCustomer } from "@/lib/crm/hotel-access";
+import { readHotelButtonVisibility, readPendingAccess } from "@/lib/crm/hotel-access-run";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
 import { formatDateTimeFr } from "@/lib/crm/dates";
 import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation-mail";
@@ -490,7 +492,7 @@ export async function readFicheClient(input: { id?: string; q?: string }) {
   if (found.kind === "none") return { introuvable: true };
   if (found.kind === "many") return { choix: found.customers.map(customerLine) };
   const customer = found.customer;
-  const [{ data: balances }, { data: docs }] = await Promise.all([
+  const [{ data: balances }, { data: docs }, { data: hotelRow }, visibility, pending] = await Promise.all([
     admin.from("crm_customer_balances").select("currency, balance").eq("customer_id", customer.id),
     admin
       .from("crm_travel_documents")
@@ -501,6 +503,9 @@ export async function readFicheClient(input: { id?: string; q?: string }) {
       .lte("expires_on", isoDateInDays(90))
       .order("expires_on")
       .limit(20),
+    admin.from("crm_customers").select("hotel_booking_enabled, hotel_demo, hotel_direct_live").eq("id", customer.id).maybeSingle(),
+    readHotelButtonVisibility(admin),
+    readPendingAccess(customer.id, admin),
   ]);
   const wallets = ((balances || []) as { currency: string; balance: number | string }[]).map((row) => ({
     devise: row.currency || "EUR",
@@ -512,6 +517,11 @@ export async function readFicheClient(input: { id?: string; q?: string }) {
   return {
     ...customerLine(customer),
     en_veille: customer.on_hold === true,
+    option_hotel: hotelOptionState({
+      customer: (hotelRow as HotelAccessCustomer | null) ?? null,
+      visibility,
+      pending: Boolean(pending),
+    }),
     encours: wallets,
     pieces_a_echeance: pieces.map((doc) => pieceLine(doc)),
   };
