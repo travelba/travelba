@@ -139,16 +139,34 @@ function failed(message: string) {
   };
 }
 
+/** Chaque écriture réussie laisse une ligne d’Historique au nom du connecteur. Jamais bloquant. */
+async function journalWrite(name: string, write: boolean, args: ToolArgs, result: unknown) {
+  if (!write) return;
+  try {
+    const { currentMcpAccess } = await import("@/lib/crm/mcp-auth");
+    const { mcpJournalLine } = await import("@/lib/crm/mcp-journal");
+    const line = mcpJournalLine({ tool: name, write, actor: currentMcpAccess().actor, args, result });
+    if (!line) return;
+    const { recordAgencyJournal } = await import("@/lib/crm/agency-log");
+    await recordAgencyJournal({ staffId: null, ...line, path: "/api/mcp" });
+  } catch {
+    /* le journal ne refuse jamais l’écriture métier */
+  }
+}
+
 async function guard(
   name: string,
   write: boolean,
   keepPieceNumber: boolean,
   keepSignedUrl: boolean,
   keepCardSecrets: boolean,
-  run: () => Promise<unknown>
+  run: () => Promise<unknown>,
+  args: ToolArgs = {}
 ) {
   try {
-    return text(await run(), keepPieceNumber, keepSignedUrl, keepCardSecrets);
+    const result = await run();
+    await journalWrite(name, write, args, result);
+    return text(result, keepPieceNumber, keepSignedUrl, keepCardSecrets);
   } catch (err) {
     console.error("[mcp]", name, err instanceof Error ? err.message : "error");
     if ((write && err instanceof McpWriteError) || err instanceof McpReadError) return failed(err.message);
@@ -1302,7 +1320,8 @@ export function registerTravelbaTools(server: McpServer) {
           keepPieceNumber(tool),
           keepSignedUrl(tool),
           keepCardSecrets(tool),
-          () => tool.run((args ?? {}) as ToolArgs)
+          () => tool.run((args ?? {}) as ToolArgs),
+          (args ?? {}) as ToolArgs
         )
     );
   }

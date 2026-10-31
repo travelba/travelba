@@ -2,6 +2,8 @@
  * Écriture du journal et des alertes. Service role uniquement.
  * Les alertes sont informatives : elles n’arrêtent jamais le geste.
  * Si la table n’est pas encore là, l’action métier continue.
+ * Chaque ligne peut porter une étiquette métier, le dossier lié, un montant et quatre chiffres de carte :
+ * jamais un numéro complet, jamais un CVC.
  */
 
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -20,6 +22,7 @@ import {
   type JournalAction,
   type JournalEntity,
 } from "@/lib/crm/agency-journal";
+import { journalBusinessFields, type JournalKind } from "@/lib/crm/agency-journal-kinds";
 
 export type AgencyJournalInput = {
   staffId: string | null;
@@ -32,7 +35,17 @@ export type AgencyJournalInput = {
   userAgent?: string | null;
   path?: string | null;
   sensitive?: AlertKind | null;
+  /** Montant en centimes : alerte au-dessus du seuil, et colonne `amount_cents` de la ligne. */
   amountCents?: number | null;
+  /** Étiquette métier lisible (option posée, carte émise, paiement reçu…). */
+  kind?: JournalKind | null;
+  /** Dossier lié, quelle que soit l’entité. */
+  bookingId?: string | null;
+  currency?: string | null;
+  /** Quatre derniers chiffres. Un numéro plus long est réduit à ses quatre derniers chiffres. */
+  cardLast4?: string | null;
+  /** Auteur hors équipe (connecteur), quand `staffId` est nul. */
+  actorLabel?: string | null;
 };
 
 type Settings = {
@@ -63,14 +76,21 @@ export async function recordAgencyJournal(entry: AgencyJournalInput) {
     const admin = createServiceClient({ allowPreview: true });
     const diff = entry.diff == null ? null : maskJournalTree(entry.diff);
     const summary = entry.summary.slice(0, 500);
+    const business = journalBusinessFields(entry);
     const canonical = journalCanonical({
       action: entry.action,
       entityType: entry.entityType,
       entityId: entry.entityId ?? null,
       summary,
       diff,
+      kind: business.kind,
+      bookingId: business.booking_id,
+      amountCents: business.amount_cents,
+      currency: business.currency,
+      cardLast4: business.card_last4,
+      actorLabel: business.actor_label,
     });
-    const { error } = await admin.from("crm_agency_journal").insert({
+    const base = {
       staff_id: entry.staffId,
       action: entry.action,
       entity_type: entry.entityType,
@@ -82,7 +102,12 @@ export async function recordAgencyJournal(entry: AgencyJournalInput) {
       path: entry.path ?? null,
       canonical,
       row_hash: "pending",
-    });
+    };
+    let { error } = await admin.from("crm_agency_journal").insert({ ...base, ...business });
+    if (error && /column|schema cache/i.test(error.message || "")) {
+      // Avant la migration du journal métier : la ligne s’écrit sans les colonnes nouvelles.
+      ({ error } = await admin.from("crm_agency_journal").insert(base));
+    }
     if (error) return;
 
     const settings = await readSettings(admin);

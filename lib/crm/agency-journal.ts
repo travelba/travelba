@@ -89,15 +89,38 @@ export function maskJournalTree(value: unknown): unknown {
   return next;
 }
 
+/**
+ * Même calcul que le trigger `crm_private.seal_agency_journal` : les anciens champs d’abord, puis l’étiquette
+ * métier, le dossier, le montant, la devise, les quatre chiffres et l’auteur hors équipe. Une ligne écrite avant
+ * ces colonnes garde son canonical stocké : la chaîne se vérifie toujours ligne à ligne.
+ */
 export function journalCanonical(input: {
   action: string;
   entityType: string;
   entityId: string | null;
   summary: string;
   diff: unknown;
+  kind?: string | null;
+  bookingId?: string | null;
+  amountCents?: number | null;
+  currency?: string | null;
+  cardLast4?: string | null;
+  actorLabel?: string | null;
 }) {
   const diff = input.diff == null ? "" : JSON.stringify(input.diff);
-  return [input.action, input.entityType, input.entityId ?? "", input.summary, diff].join("|");
+  return [
+    input.action,
+    input.entityType,
+    input.entityId ?? "",
+    input.summary,
+    diff,
+    input.kind ?? "",
+    input.bookingId ?? "",
+    input.amountCents == null ? "" : String(input.amountCents),
+    input.currency ?? "",
+    input.cardLast4 ?? "",
+    input.actorLabel ?? "",
+  ].join("|");
 }
 
 export async function journalRowHash(prev: string | null, canonical: string) {
