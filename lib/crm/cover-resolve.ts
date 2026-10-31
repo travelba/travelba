@@ -17,6 +17,7 @@ export type ListCoverInput = {
   booking: CoverBooking;
   places?: string[];
   items?: CoverPlaceItem[];
+  countries?: string[];
 };
 
 /**
@@ -29,7 +30,7 @@ export async function resolveListCovers(rows: ListCoverInput[]): Promise<Record<
   const pending: { query: string; ids: string[] }[] = [];
   const index = new Map<string, { query: string; ids: string[] }>();
   for (const row of rows) {
-    const plan = bookingCoverPlan(row.booking, { places: row.places, items: row.items });
+    const plan = bookingCoverPlan(row.booking, { places: row.places, items: row.items, countries: row.countries });
     if (plan.mode !== "none") continue;
     const query = coverGeocodeQuery(row.booking, { places: row.places, items: row.items });
     if (query.length < 2) {

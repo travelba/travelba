@@ -93,7 +93,12 @@ export default async function AdminHomePage() {
   ]);
   const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
   const covers = await resolveListCovers(
-    shown.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }))
+    shown.map((row) => ({
+      id: row.id,
+      booking: row,
+      places: places.arrival[row.id],
+      countries: places.countries[row.id],
+    }))
   );
   const whatsappOpen = await supabase
     .from("crm_whatsapp_requests")

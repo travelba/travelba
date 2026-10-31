@@ -56,7 +56,8 @@ export async function loadStayMaps(
   const arrival: Record<string, string[]> = {};
   const route: Record<string, string[]> = {};
   const layovers: Record<string, string[]> = {};
-  if (!ids.length) return { arrival, route, layovers };
+  const countries: Record<string, string[]> = {};
+  if (!ids.length) return { arrival, route, layovers, countries };
   const { data } = await supabase
     .from("crm_booking_items")
     .select("booking_id, kind, title, details, sort_order, start_at, end_at, visible_to_client")
@@ -77,8 +78,21 @@ export async function loadStayMaps(
     if (cities.length) route[id] = cities;
     const stops = tripCityPlan(titled).layovers;
     if (stops.length) layovers[id] = stops;
+    const named = stayCountries(items);
+    if (named.length) countries[id] = named;
   }
-  return { arrival, route, layovers };
+  return { arrival, route, layovers, countries };
+}
+
+/** Pays écrits sur les cartes, pour le repli de couverture d’une ville sans image. */
+export function stayCountries(items: Array<{ details?: Record<string, unknown> | null }>) {
+  const names: string[] = [];
+  for (const item of items) {
+    const value = item.details?.country;
+    const name = typeof value === "string" ? value.trim() : "";
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
 }
 
 /** Villes d’arrivée par dossier, pour la couverture (pays / diagonale). */
