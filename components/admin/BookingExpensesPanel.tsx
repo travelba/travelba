@@ -10,12 +10,19 @@ import { agencyFeeBaseFromItems } from "@/lib/crm/bookings";
 import { formatAgencyFeePercent } from "@/lib/crm/agency-fee-rate";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import { isAutoTicketingExpense, ticketingExpenseTouched, AUTO_TICKETING_FEE } from "@/lib/crm/ticketing-fee";
+import { expensePricingLabel, parseExpenseQuantity, readExpensePricing } from "@/lib/crm/expense-pricing";
+import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
+import { formatDateFr } from "@/lib/crm/dates";
 import {
   AGENCY_FEE_LABEL,
   isLedgerExpenseKind,
   visibleServiceCopy,
   type CrmBookingItem,
 } from "@/lib/crm/types";
+
+function cents(value: number) {
+  return Math.round(value * 100) / 100;
+}
 
 function postsNow(visible: boolean) {
   return visible;
@@ -59,30 +66,60 @@ export function BookingExpensesPanel({
   }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [quantityText, setQuantityText] = useState("1");
+  const [unitPrice, setUnitPrice] = useState<number | null>(null);
   const [amount, setAmount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Dépense enregistrée mais grand livre refusé : visible jusqu’au prochain enregistrement réussi.
   const [ledgerNote, setLedgerNote] = useState<string | null>(null);
+  const quantity = parseExpenseQuantity(quantityText);
 
   function beginNew() {
     setEditingId("new");
     setTitle("");
+    setQuantityText("1");
+    setUnitPrice(null);
     setAmount(null);
     setError(null);
   }
 
   function beginEdit(item: CrmBookingItem) {
+    const pricing = readExpensePricing(item.details, item.amount);
     setEditingId(item.id);
     setTitle(visibleServiceCopy(item.title));
+    setQuantityText(pricing.quantity.toLocaleString("fr-FR", { maximumFractionDigits: 3, useGrouping: false }));
+    setUnitPrice(pricing.unitPrice);
     setAmount(item.amount);
     setError(null);
+  }
+
+  /** Quantité ou prix unitaire : le montant suit. */
+  function changeQuantity(text: string) {
+    setQuantityText(text);
+    const next = parseExpenseQuantity(text);
+    if (next != null && unitPrice != null) setAmount(cents(next * unitPrice));
+  }
+
+  function changeUnitPrice(next: number | null) {
+    setUnitPrice(next);
+    if (next != null && quantity != null) setAmount(cents(next * quantity));
+  }
+
+  /** Montant saisi directement : la quantité reste, le prix unitaire se recalcule. */
+  function changeAmount(next: number | null) {
+    setAmount(next);
+    if (next != null && quantity != null && quantity > 0) setUnitPrice(cents(next / quantity));
   }
 
   async function save() {
     const label = title.trim();
     if (!label) {
       setError("Libellé requis.");
+      return;
+    }
+    if (quantity == null) {
+      setError("Quantité invalide (un nombre supérieur à zéro).");
       return;
     }
     if (amount == null || amount <= 0) {
@@ -92,19 +129,24 @@ export function BookingExpensesPanel({
     setBusy(true);
     setError(null);
     const current = expenses.find((item) => item.id === editingId);
+    // Les détails déjà sur la ligne (origine Pliant, frais de billeterie) restent ; seuls quantité et prix unitaire changent.
+    const keptDetails =
+      current?.details && typeof current.details === "object" && !Array.isArray(current.details)
+        ? { ...(current.details as Record<string, unknown>) }
+        : {};
     const payload = {
       kind: "expense",
       title: label,
+      quantity,
+      unit_price: unitPrice ?? cents(amount / quantity),
       amount,
       include_in_ledger: true,
       supplier: null,
       confirmation_ref: null,
-      start_at: null,
-      end_at: null,
       details:
         current && isAutoTicketingExpense(current)
-          ? { auto_fee: AUTO_TICKETING_FEE, fee_touched: true }
-          : {},
+          ? { ...keptDetails, auto_fee: AUTO_TICKETING_FEE, fee_touched: true }
+          : keptDetails,
     };
     const res =
       editingId && editingId !== "new"
@@ -138,6 +180,8 @@ export function BookingExpensesPanel({
     }
     setEditingId(null);
     setTitle("");
+    setQuantityText("1");
+    setUnitPrice(null);
     setAmount(null);
     router.refresh();
   }
@@ -204,9 +248,28 @@ export function BookingExpensesPanel({
             aria-label="Libellé de la dépense"
           />
         </Field>
+        <div className="grid grid-cols-[5.5rem_1fr] gap-2">
+          <Field label="Quantité">
+            <input
+              value={quantityText}
+              onChange={(event) => changeQuantity(event.target.value)}
+              inputMode="decimal"
+              className={fieldControlClass}
+              aria-label="Quantité"
+            />
+          </Field>
+          <Field label="Prix unitaire">
+            <MoneyInput value={unitPrice} onChange={changeUnitPrice} aria-label="Prix unitaire" />
+          </Field>
+        </div>
         <Field label="Montant">
-          <MoneyInput value={amount} onChange={setAmount} aria-label="Montant de la dépense" />
+          <MoneyInput value={amount} onChange={changeAmount} aria-label="Montant de la dépense" />
         </Field>
+        <p className="self-end pb-2 text-xs text-muted">
+          {quantity != null && unitPrice != null
+            ? `${quantityText} × ${formatMoney(unitPrice, currency)} = ${formatMoney(cents(quantity * unitPrice), currency)}`
+            : "Le montant vaut quantité × prix unitaire. Saisir le montant recalcule le prix unitaire."}
+        </p>
       </div>
       <div className="flex flex-wrap gap-2">
         <button
@@ -296,6 +359,12 @@ export function BookingExpensesPanel({
                   </p>
                   <p className="break-words text-xs text-muted">
                     {item.amount != null ? formatMoney(Number(item.amount), currency) : "Montant manquant"}
+                    {(() => {
+                      const detail = expensePricingLabel(readExpensePricing(item.details, item.amount), (value) =>
+                        formatMoney(value, currency)
+                      );
+                      return detail ? ` (${detail})` : "";
+                    })()}
                     {" · "}
                     {isAutoTicketingExpense(item)
                       ? ticketingExpenseTouched(item.details)
@@ -303,6 +372,20 @@ export function BookingExpensesPanel({
                         : "25 € par voyageur du dossier. Modifier ou retirer met à jour la transaction."
                       : "Absente de l’itinéraire"}
                   </p>
+                  {(() => {
+                    const origin = pliantExpenseOrigin(item.details, item.amount);
+                    if (!origin) return null;
+                    return (
+                      <p className="break-words text-xs text-[#9e7e51]">
+                        Carte Pliant
+                        {origin.merchant ? ` · ${origin.merchant}` : ""}
+                        {origin.date ? ` · ${formatDateFr(origin.date)}` : ""}
+                        {origin.edited && origin.amount != null
+                          ? ` · Montant modifié (Pliant : ${formatMoney(origin.amount, "EUR")})`
+                          : " · Montant modifiable, la dépense Pliant ne change pas"}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-2 lg:shrink-0">
                   <button

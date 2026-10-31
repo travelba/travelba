@@ -29,6 +29,7 @@ import {
   reconcilePliantDebit,
   settleEmail,
   updateBooking,
+  updateBookingExpense,
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { notifyBoardingPass } from "@/lib/crm/mcp-boarding-pass";
@@ -440,7 +441,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "rapprocher_pliant",
     write: true,
     description:
-      "Rapproche un débit Pliant sur la réservation désignée. Les deux identifiants sont obligatoires. Le compte est celui qui règle le séjour. Ne choisit pas la réservation à la place de l’agence.",
+      "Rapproche un débit Pliant sur la réservation désignée. Les deux identifiants sont obligatoires. Par défaut, une ligne Dépense du dossier est créée (une par transaction Pliant : commerçant, montant, date), renvoyée en ligne_depense_id ; son montant se corrige ensuite avec mettre_a_jour_dossier.depense, sans toucher la transaction Pliant. Le compte est celui qui règle le séjour. Ne choisit pas la réservation à la place de l’agence.",
     input: {
       mouvement_id: z.string().trim().describe("Identifiant de la dépense Pliant"),
       dossier_id: z.string().trim().describe("Identifiant de la réservation"),
@@ -536,7 +537,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates, le titre, la couverture, la commission d’agence ou la société de facturation d’un dossier, puis le grand livre. titre est le nom du séjour. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
+      "Met à jour les notes, les dates, le titre, la couverture, la commission d’agence, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire) d’un dossier, puis le grand livre. titre est le nom du séjour. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -575,8 +576,30 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(120)
         .optional()
         .describe("Mention de la couverture importée. Défaut : Image générée par IA"),
+      depense: z
+        .object({
+          carte_id: z.string().trim().describe("Identifiant de la dépense (carte_id d’une ligne kind « expense » de fiche_dossier)"),
+          libelle: z.string().trim().max(200).optional().describe("Nouveau libellé"),
+          quantite: z.union([z.number(), z.string()]).optional().describe("Quantité, ex. 2 ou 1,5"),
+          prix_unitaire: z.union([z.number(), z.string()]).optional().describe("Prix unitaire client, en devise du dossier"),
+          montant: z
+            .union([z.number(), z.string()])
+            .optional()
+            .describe("Montant total. Seul : la quantité reste et le prix unitaire se recalcule"),
+        })
+        .optional()
+        .describe(
+          "Corrige une dépense du dossier : quantité × prix unitaire = montant. Une dépense venue d’une carte Pliant garde son origine ; la transaction Pliant ne change pas"
+        ),
     },
-    run: (args) => updateBooking(args),
+    run: async (args) => {
+      const { depense, ...rest } = args as Record<string, unknown> & { depense?: unknown };
+      const hasOther = Object.keys(rest).some((key) => key !== "id" && key !== "reference" && rest[key] !== undefined);
+      const base = hasOther || !depense ? await updateBooking(rest) : null;
+      if (!depense) return base;
+      const expense = await updateBookingExpense({ id: rest.id, reference: rest.reference, depense });
+      return base ? { ...(base as Record<string, unknown>), ...expense } : expense;
+    },
   },
   {
     name: "confirmer_service",

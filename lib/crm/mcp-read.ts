@@ -48,6 +48,7 @@ import {
   EMAIL_INBOX_QUEUE_STATUSES,
   customerFullName,
   isActiveItem,
+  isLedgerExpenseKind,
   type CrmBooking,
   type CrmBookingItem,
   type CrmCustomer,
@@ -58,6 +59,8 @@ import {
   type CrmTravelDocument,
   type TravelDocType,
 } from "@/lib/crm/types";
+import { readExpensePricing } from "@/lib/crm/expense-pricing";
+import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
 import { CLIENT_VISA_STEPS, clientVisaStepCopy, type ClientVisaStep } from "@/lib/crm/visa-flow";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import { deskView, reasonLabel, type DeskTask } from "@/lib/crm/visa-desk";
@@ -176,7 +179,7 @@ async function dossierAmounts(admin: SupabaseClient, rows: BookingRow[]) {
 async function bookingCards(admin: SupabaseClient, bookingId: string) {
   const { data, error } = await admin
     .from("crm_booking_items")
-    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details, lifecycle, visible_to_client, sort_order")
+    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, amount, details, lifecycle, visible_to_client, sort_order")
     .eq("booking_id", bookingId)
     .order("sort_order");
   if (error) {
@@ -630,6 +633,24 @@ function cardLine(
       fin: item.end_at,
       reference: item.confirmation_ref,
       montre: item.visible_to_client,
+    };
+  }
+  if (isLedgerExpenseKind(item.kind)) {
+    const amount = full.amount == null ? null : Number(full.amount);
+    const pricing = readExpensePricing(item.details, amount);
+    const origin = pliantExpenseOrigin(item.details, amount);
+    return {
+      carte_id: item.id,
+      kind: "expense",
+      titre: item.title,
+      date: item.start_at ? String(item.start_at).slice(0, 10) : null,
+      quantite: pricing.quantity,
+      prix_unitaire: pricing.unitPrice,
+      montant: pricing.amount,
+      pliant: origin
+        ? { commercant: origin.merchant, date: origin.date, montant_pliant: origin.amount, montant_modifie: origin.edited }
+        : null,
+      modifier: "mettre_a_jour_dossier.depense",
     };
   }
   return {

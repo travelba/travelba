@@ -16,6 +16,7 @@ import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-a
 import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { parseMoney } from "@/lib/crm/money";
+import { applyExpensePricing } from "@/lib/crm/expense-pricing";
 import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
@@ -122,19 +123,26 @@ async function insertBookingItem(
   const kind = knownKind(body.kind || "fee");
   if (!kind) return { error: jsonError("Type de carte inconnu") };
   if (!title && kind !== "accueil_vip") return { error: jsonError("Titre requis") };
-  const amount = parseMoney(moneyField(body.amount));
-  if (isLedgerExpenseKind(kind) && (amount == null || amount <= 0)) {
-    return { error: jsonError("Montant requis") };
-  }
+  let amount = parseMoney(moneyField(body.amount));
   const details = parseItemDetails(body.details);
   if ("error" in details) return { error: jsonError(details.error) };
+  let detailsForInsert = details.details;
+  if (isLedgerExpenseKind(kind)) {
+    // Quantité × prix unitaire : le montant de la dépense en découle et reste cohérent avec les deux.
+    const priced = applyExpensePricing(
+      { quantity: body.quantity, unit_price: body.unit_price, amount: body.amount },
+      { amount: null, details: details.details }
+    );
+    if (!priced.ok) return { error: jsonError(priced.error) };
+    amount = priced.pricing.amount;
+    detailsForInsert = priced.details;
+  }
   let titleForInsert = title;
   let supplier = body.supplier || null;
   let confirmation = body.confirmation_ref || null;
   let startAt = body.start_at || null;
   let endAt = body.end_at || null;
   let amountForInsert = amount;
-  let detailsForInsert = details.details;
   let ledger = isLedgerExpenseKind(kind) ? true : parseIncludeInLedger(body.include_in_ledger, false);
   if (kind === "accueil_vip") {
     const loaded = await dossierFlights(supabase, bookingId);
@@ -205,12 +213,6 @@ async function updateBookingItem(
   if ("include_in_ledger" in body) {
     patch.include_in_ledger = parseIncludeInLedger(body.include_in_ledger, false);
   }
-  if (isLedgerExpenseKind(nextKind)) {
-    const amount = "amount" in body ? parseMoney(moneyField(body.amount)) : parseMoney(current.amount);
-    if (amount == null || amount <= 0) return { error: jsonError("Montant requis") };
-    patch.include_in_ledger = true;
-    if ("amount" in body) patch.amount = amount;
-  }
   if (body.sort_order != null) {
     const sortOrder = parseSortOrder(body.sort_order);
     if (sortOrder == null) return { error: jsonError(SORT_ORDER_ERROR) };
@@ -220,6 +222,17 @@ async function updateBookingItem(
     const details = parseItemDetails(body.details);
     if ("error" in details) return { error: jsonError(details.error) };
     patch.details = details.details;
+  }
+  if (isLedgerExpenseKind(nextKind)) {
+    // Dépense : quantité × prix unitaire. Le montant seul garde la quantité et recalcule le prix unitaire.
+    const priced = applyExpensePricing(
+      { quantity: body.quantity, unit_price: body.unit_price, amount: "amount" in body ? body.amount : undefined },
+      { amount: parseMoney(current.amount), details: "details" in patch ? patch.details : current.details }
+    );
+    if (!priced.ok) return { error: jsonError(priced.error === "Montant requis." ? "Montant requis" : priced.error) };
+    patch.include_in_ledger = true;
+    patch.amount = priced.pricing.amount;
+    patch.details = priced.details;
   }
   if ("visible_to_client" in body) {
     const visible = Boolean(body.visible_to_client);
