@@ -131,7 +131,8 @@ test("cover catalogue matches the arrival place only", () => {
   assert.notEqual(unsplashKeywordMatch({ destination: "Provence", title: "Séjour" }), paris);
   assert.equal(unsplashKeywordMatch({ destination: "Bordeaux", title: "Séjour" }), "photo-city-bordeaux");
   assert.notEqual(unsplashKeywordMatch({ destination: "Bordeaux", title: "Séjour" }), paris);
-  assert.equal(unsplashKeywordMatch({ destination: "France", title: "Séjour" }), paris);
+  assert.equal(unsplashKeywordMatch({ destination: "France", title: "Séjour" }), "photo-france-campagne");
+  assert.notEqual(unsplashKeywordMatch({ destination: "France", title: "Séjour" }), paris);
   assert.equal(unsplashKeywordMatch({ destination: "Italie", title: "Voyage" }), "photo-1552832230-c0197dd311b5");
   assert.equal(
     unsplashKeywordMatch({ destination: "Florence", title: "Séjour" }),
@@ -242,7 +243,7 @@ test("cover catalogue matches the arrival place only", () => {
       { destination: "Valmorel", title: "Valmorel" },
       { items: [{ kind: "hotel", details: { city: "Valmorel", country: "France" } }] }
     ),
-    [{ place: "Valmorel", generatedId: "photo-city-valmorel", fallbackPhoto: "photo-1502602898657-3e91760cbb34" }]
+    [{ place: "Valmorel", generatedId: "photo-city-valmorel", fallbackPhoto: "photo-france-campagne" }]
   );
   assert.deepEqual(
     fallbackCoverTargets({ destination: "Bordeaux", title: "Séjour" }),
@@ -293,8 +294,10 @@ test("cover catalogue matches the arrival place only", () => {
   assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Portugal", title: "Séjour" }), null);
   assert.equal(unsplashKeywordMatch({ destination: "Paris · Inconnue · Portugal", title: "Séjour" }), null);
   const france = unsplashKeywordMatch({ destination: "France", title: "Séjour" });
-  assert.match(france || "", /photo-1502602898657-3e91760cbb34/);
-  assert.equal(unsplashKeywordMatch({ destination: "Millau, France", title: "Séjour" }), null);
+  assert.equal(france, "photo-france-campagne");
+  // Le pays en dernier recours, comme « Douar, Maroc » : la campagne, jamais la tour Eiffel.
+  // Le plan du séjour, lui, garde l’image générée de Millau (plus bas).
+  assert.equal(unsplashKeywordMatch({ destination: "Millau, France", title: "Séjour" }), france);
   const unknownHotel = bookingCoverPlan(
     {
       destination: "Inconnue · Portugal",
@@ -424,7 +427,8 @@ test("une ville sans image ne retombe jamais sur la tour Eiffel", () => {
   if (deauville.mode !== "single") return;
   assert.match(deauville.src, /photo-city-deauville/);
   assert.doesNotMatch(deauville.src, EIFFEL);
-  assert.equal(deauville.fallback, null);
+  // Le repli, si la génération échoue, est la photo neutre de la France.
+  assert.match(deauville.fallback || "", /photo-france-campagne/);
 
   // Le pays écrit sur la carte hôtel ne ramène pas Paris non plus.
   const deauvilleCard = bookingCoverPlan(

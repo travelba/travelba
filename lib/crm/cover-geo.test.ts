@@ -57,7 +57,8 @@ describe("photoFromGeocodeHit", () => {
       countryCode: "fr",
     });
     assert.notEqual(photo, "photo-1502602898657-3e91760cbb34");
-    assert.equal(photo, "photo-antibes-garoupe");
+    // La photo de la France ne montre aucune ville : elle passe avant Antibes, à 300 km.
+    assert.equal(photo, "photo-france-campagne");
   });
 
   it("reconnaît Montpellier avant le pays", () => {
@@ -70,14 +71,14 @@ describe("photoFromGeocodeHit", () => {
     assert.equal(photo, "photo-city-montpellier");
   });
 
-  it("garde la tour Eiffel quand le lieu est la France", () => {
+  it("garde la photo de la France, pas la tour Eiffel, quand le lieu est la France", () => {
     const photo = photoFromGeocodeHit({
       label: "France",
       lat: 46.6034,
       lon: 1.8883,
       countryCode: "fr",
     });
-    assert.equal(photo, "photo-1502602898657-3e91760cbb34");
+    assert.equal(photo, "photo-france-campagne");
   });
 
   it("garde Marrakech quand la région est écrite", () => {

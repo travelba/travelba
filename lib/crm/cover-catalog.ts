@@ -71,7 +71,8 @@ const COUNTRIES: Array<[code: string, photo: string | null, names: string[]]> = 
   ["et", null, ["ethiopie", "ethiopia"]],
   ["fj", null, ["fidji", "fiji"]],
   ["fi", null, ["finlande", "finland"]],
-  ["fr", "photo-1502602898657-3e91760cbb34", ["france"]],
+  // Campagne, village, vignes : aucune ville. La tour Eiffel reste la photo de Paris.
+  ["fr", "photo-france-campagne", ["france"]],
   ["ga", null, ["gabon"]],
   ["gm", null, ["gambie", "gambia"]],
   ["ge", null, ["georgie", "georgia"]],
