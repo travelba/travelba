@@ -26,7 +26,12 @@ export function DashboardWeek({
     week: DashboardWeekEntry<CrmBooking>[];
   };
   names: Map<string, string>;
-  places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
+  places: {
+    arrival: Record<string, string[]>;
+    route: Record<string, string[]>;
+    layovers?: Record<string, string[]>;
+    countries?: Record<string, string[]>;
+  };
   amounts: Map<string, number>;
   covers?: Record<string, string | null>;
 }) {
@@ -85,6 +90,7 @@ export function DashboardWeek({
                           <BookingHero
                             booking={booking}
                             places={places.arrival[booking.id]}
+                            countries={places.countries?.[booking.id]}
                             plain
                             list
                             resolvedSrc={covers[booking.id] ?? null}

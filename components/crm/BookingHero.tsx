@@ -23,6 +23,7 @@ export function BookingHero({
   partage = null,
   items,
   places,
+  countries,
   transitionName,
   children,
 }: {
@@ -42,12 +43,15 @@ export function BookingHero({
   /** Cartes du séjour : deux villes → diagonale de leurs images. */
   items?: CoverPlaceItem[];
   places?: string[];
+  /** Pays lus sur les cartes, quand la liste ne passe pas les cartes : repli d’une ville sans image. */
+  countries?: string[];
   transitionName?: string;
   children?: ReactNode;
 }) {
   const plan = bookingCoverPlan(booking, {
     items,
     places,
+    countries,
     partage: partage || undefined,
   });
   const query = plan.mode === "none" ? coverGeocodeQuery(booking, { items, places }) : "";
@@ -81,12 +85,22 @@ export function BookingHero({
   const fallback = plan.mode === "single" ? plan.fallback : null;
   const place = coverQuery(booking.destination, booking.title);
   const label = place && place !== "voyage" ? place : booking.title || "Séjour";
-  const showPlaceName = !src && !children;
+  // Une image générée peut encore être en route, ou avoir échoué sans repli :
+  // le nom du lieu reste sous la photo plutôt qu’une vignette vide.
+  const generated = Boolean(src && /\/api\/covers\/photo-city-/.test(src));
+  const showPlaceName = !children && (!src || generated);
   const alt = booking.destination || booking.title || label;
 
   const frame = (
     <div className={`relative overflow-hidden bg-[var(--admin-navy)] text-white ${className}`}>
       <div className={plain ? "relative h-full w-full" : frameClassName}>
+        {showPlaceName ? (
+          <div className="absolute inset-0 flex items-center justify-center p-1">
+            <p className="text-center font-display text-[11px] font-bold leading-tight text-white">
+              {label}
+            </p>
+          </div>
+        ) : null}
         {src ? (
           <CoverPhoto
             src={src}
@@ -109,13 +123,6 @@ export function BookingHero({
             width={photoWidth}
             sizes={photoSizes}
           />
-        ) : null}
-        {showPlaceName ? (
-          <div className="absolute inset-0 flex items-center justify-center p-1">
-            <p className="text-center font-display text-[11px] font-bold leading-tight text-white">
-              {label}
-            </p>
-          </div>
         ) : null}
         {plain ? null : (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/35 to-transparent" />

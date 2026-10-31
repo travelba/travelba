@@ -183,13 +183,25 @@ function arrivalPhotoId(place: string) {
   return cityCoverPhoto(key) || (generatedPlaceAllowed(key) ? cityGeneratedCoverId(key) : null);
 }
 
-/** La photo du pays n’accompagne qu’une image générée, et seulement si la génération échoue. */
-function singlePlan(photo: string, countryPhoto: string | null): CoverPlan {
+/**
+ * La photo du pays n’accompagne qu’une image générée, et seulement si la génération échoue.
+ * Une photo de pays qui montre une ville (la tour Eiffel) ne remplace jamais une autre ville :
+ * Deauville sans image reste Deauville, pas Paris.
+ */
+function singlePlan(photo: string, countryPhoto: string | null, placeKeys: string[] = []): CoverPlan {
   const fallback =
-    photo.startsWith("photo-city-") && countryPhoto && countryPhoto !== photo
+    photo.startsWith("photo-city-") &&
+    countryPhoto &&
+    countryPhoto !== photo &&
+    countryLandmarkPhotoAllowed(countryPhoto, placeKeys.length ? placeKeys : [generatedPlaceKey(photo)])
       ? catalogUrl(countryPhoto)
       : null;
   return { mode: "single", src: catalogUrl(photo), fallback };
+}
+
+/** Lieu d’une image générée (`photo-city-val-d-isere` → `val d isere`). */
+function generatedPlaceKey(photo: string) {
+  return photo.startsWith("photo-city-") ? photo.slice("photo-city-".length).replace(/-/g, " ") : "";
 }
 
 function countryPhotoNamed(place: string) {
@@ -197,9 +209,12 @@ function countryPhotoNamed(place: string) {
   return code ? countryCoverPhoto(code) : null;
 }
 
+/** Pays écrits sur les cartes (`details.country`) ou fournis par la liste. */
+export type CoverCountryContext = { items?: CoverPlaceItem[]; countries?: string[] };
+
 function contextCountryPhoto(
   booking: Pick<CrmBooking, "destination" | "title">,
-  items?: CoverPlaceItem[]
+  context?: CoverCountryContext
 ) {
   const codes: string[] = [];
   const push = (value: string) => {
@@ -207,7 +222,8 @@ function contextCountryPhoto(
     if (code && !codes.includes(code)) codes.push(code);
   };
   for (const token of [...labelTokens(booking.destination), ...labelTokens(booking.title)]) push(token);
-  for (const item of items || []) push(detailText(item.details, "country"));
+  for (const item of context?.items || []) push(detailText(item.details, "country"));
+  for (const name of context?.countries || []) push(name);
   if (codes.length !== 1) return null;
   return countryCoverPhoto(codes[0]);
 }
@@ -215,9 +231,9 @@ function contextCountryPhoto(
 function countryFallbackFor(
   place: string,
   booking: Pick<CrmBooking, "destination" | "title">,
-  items?: CoverPlaceItem[]
+  context?: CoverCountryContext
 ) {
-  return countryPhotoNamed(place) || contextCountryPhoto(booking, items);
+  return countryPhotoNamed(place) || contextCountryPhoto(booking, context);
 }
 
 function countryPostcardInsteadOfPlace(places: string[], photo: string) {
@@ -272,11 +288,17 @@ function arrivalPlaces(
   return stayed.length ? stayed : raw;
 }
 
+export type CoverPlanOptions = {
+  items?: CoverPlaceItem[];
+  places?: string[];
+  /** Pays lus sur les cartes quand la liste ne passe pas les cartes elles-mêmes. */
+  countries?: string[];
+  partage?: string | null;
+};
+
 /** Une ville : sa photo, ou une image générée de cette ville. Deux villes : diagonale. */
-export function bookingCoverPlan(
-  booking: CoverBooking,
-  options?: { items?: CoverPlaceItem[]; places?: string[]; partage?: string | null }
-): CoverPlan {
+export function bookingCoverPlan(booking: CoverBooking, options?: CoverPlanOptions): CoverPlan {
+  const context: CoverCountryContext = { items: options?.items, countries: options?.countries };
   if (booking.cover_image_path) {
     const params = new URLSearchParams({ path: booking.cover_image_path });
     if (booking.updated_at) params.set("v", booking.updated_at);
@@ -319,9 +341,9 @@ export function bookingCoverPlan(
     if (photos.length >= 2) {
       return { mode: "split", src: catalogUrl(photos[0]), srcB: catalogUrl(photos[1]) };
     }
-    if (photos.length === 1) return singlePlan(photos[0], countryCoverPhoto(countries[0]));
-    const photo = countryCoverPhoto(countries[0]);
     const placeKeys = coverPlaces.map((place) => placeKey(place));
+    if (photos.length === 1) return singlePlan(photos[0], countryCoverPhoto(countries[0]), placeKeys);
+    const photo = countryCoverPhoto(countries[0]);
     if (photo && countryLandmarkPhotoAllowed(photo, placeKeys)) {
       return { mode: "single", src: catalogUrl(photo), fallback: null };
     }
@@ -352,12 +374,16 @@ export function bookingCoverPlan(
     const photo = lookupCoverPhoto(placeKey(coverPlaces[0])) || coverPhotoInText(coverPlaces[0]);
     const placeKeys = places.map((place) => placeKey(place));
     if (photo && countryLandmarkPhotoAllowed(photo, placeKeys)) {
-      return singlePlan(photo, countryFallbackFor(coverPlaces[0], booking, options?.items));
+      return singlePlan(photo, countryFallbackFor(coverPlaces[0], booking, context), placeKeys);
     }
   }
   const single = unsplashKeywordMatch(booking);
   if (single && !countryPostcardInsteadOfPlace(coverPlaces, single)) {
-    return singlePlan(single, coverPlaces[0] ? countryFallbackFor(coverPlaces[0], booking, options?.items) : null);
+    return singlePlan(
+      single,
+      coverPlaces[0] ? countryFallbackFor(coverPlaces[0], booking, context) : null,
+      coverPlaces.map((place) => placeKey(place))
+    );
   }
   const mentioned = coverMatchInText(stayCoverText(booking, options?.items));
   if (mentioned && mentioned.rank >= 3) {
@@ -373,7 +399,11 @@ export function bookingCoverPlan(
   }
   if (generated.length === 1) {
     const place = coverPlaces.find((item) => arrivalPhotoId(item) === generated[0]) || coverPlaces[0] || "";
-    return singlePlan(generated[0], countryFallbackFor(place, booking, options?.items));
+    return singlePlan(
+      generated[0],
+      countryFallbackFor(place, booking, context),
+      coverPlaces.map((item) => placeKey(item))
+    );
   }
   const countryPhoto = coverPhotoInText(stayCoverText(booking, options?.items));
   if (countryPhoto) return { mode: "single", src: catalogUrl(countryPhoto), fallback: null };
@@ -475,11 +505,7 @@ export function placeCoverUrl(booking: Pick<CrmBooking, "destination" | "title">
 }
 
 /** Import agence, sinon photo du lieu, sinon image générée. Le pays n'est que le repli. */
-export function bookingCoverUrl(
-  booking: CoverBooking,
-  width = 960,
-  access?: { partage?: string | null; items?: CoverPlaceItem[]; places?: string[] }
-) {
+export function bookingCoverUrl(booking: CoverBooking, width = 960, access?: CoverPlanOptions) {
   const plan = bookingCoverPlan(booking, access);
   if (plan.mode === "none") return null;
   return coverDisplayUrl(plan.src, width);
