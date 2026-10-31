@@ -57,6 +57,16 @@ export async function GET(request: Request, ctx: Ctx) {
     return NextResponse.json({ state: "pending" }, { headers: noStore });
   }
   if (!bytes?.byteLength && generatedCityCoverSpec(id)) {
+    // `attendre=1` : l’appelant attend la génération et reçoit l’image même si elle
+    // n’a pas pu être conservée (preview sans clé de service, disque en lecture seule).
+    if (url.searchParams.get("attendre") === "1") {
+      const generated = await enqueueCityCover(id);
+      if (!generated?.byteLength) return new NextResponse(null, { status: 404, headers: noStore });
+      const body = width ? await sizedWebp(generated, width) : generated;
+      return new NextResponse(new Uint8Array(body), {
+        headers: { "Content-Type": "image/webp", ...noStore },
+      });
+    }
     after(() => enqueueCityCover(id));
     return new NextResponse(null, { status: 404, headers: noStore });
   }
