@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { stampClientSession } from "@/lib/crm/client-session-cookie";
 import { dbError, jsonError } from "@/lib/crm/auth";
 import { mustSetPassword, pathAfterPassword, withOnboardingDone } from "@/lib/crm/session";
 import { createClient } from "@/lib/supabase/server";
@@ -39,5 +41,6 @@ export async function POST() {
     });
   }
 
-  return NextResponse.json({ ok: true, next: pathAfterPassword(customer?.phone) });
+  const response = NextResponse.json({ ok: true, next: pathAfterPassword(customer?.phone) });
+  return stampClientSession(response, (await cookies()).getAll(), process.env.NODE_ENV === "production");
 }

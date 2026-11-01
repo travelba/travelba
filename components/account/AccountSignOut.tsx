@@ -1,15 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { Icon } from "@/components/crm/icons";
 
 export function AccountSignOut({ className }: { className?: string }) {
   const router = useRouter();
 
   async function signOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await signOutAccount("global");
     router.push("/connexion");
     router.refresh();
   }

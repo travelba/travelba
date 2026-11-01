@@ -1,6 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
+import {
+  accessTimingFromCookies,
+  clientSessionCookieWrites,
+  isRouterPrefetch,
+  mergeCookieValues,
+  requestIsSecure,
+  shouldRefreshClientSession,
+} from "@/lib/crm/client-session-cookie";
+import { AUTH_COOKIE_OPTIONS, clientAuthCookieOptions } from "@/lib/supabase/cookie-options";
 import {
   DESK_COOKIE,
   accessWhileDesk,
@@ -27,31 +35,54 @@ import { publicSupabaseEnv } from "@/lib/supabase/env";
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
   const { url: supabaseUrl, anonKey } = publicSupabaseEnv();
+  const secure = requestIsSecure({
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    protocol: request.nextUrl.protocol,
+  });
+  const prefetch = isRouterPrefetch((name) => request.headers.get(name));
+  const timing = accessTimingFromCookies(request.cookies.getAll());
+  const written: { name: string; value: string; options: Record<string, unknown> }[] = [];
+  const cacheHeaders: Record<string, string> = {};
 
   const supabase = createServerClient(
     supabaseUrl,
     anonKey,
     {
-      cookieOptions: AUTH_COOKIE_OPTIONS,
+      cookieOptions: timing.audience === "client" ? clientAuthCookieOptions(secure) : AUTH_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, {
-              ...AUTH_COOKIE_OPTIONS,
-              ...options,
-            })
-          );
+          for (const [key, value] of Object.entries(cacheHeaders)) {
+            supabaseResponse.headers.set(key, value);
+          }
+          written.length = 0;
+          cookiesToSet.forEach(({ name, value, options }) => {
+            const merged = { ...AUTH_COOKIE_OPTIONS, ...options };
+            written.push({ name, value, options: merged });
+            supabaseResponse.cookies.set(name, value, merged);
+          });
+          for (const [key, value] of Object.entries(headers ?? {})) {
+            cacheHeaders[key] = value;
+            supabaseResponse.headers.set(key, value);
+          }
         },
       },
     }
   );
+
+  if (!prefetch && shouldRefreshClientSession(timing, Math.floor(Date.now() / 1000))) {
+    try {
+      await supabase.auth.refreshSession();
+    } catch {
+      /* La visite suivante réessaie. Le cookie déjà posé reste. */
+    }
+  }
 
   const {
     data: { user },
@@ -85,6 +116,22 @@ export async function updateSession(request: NextRequest) {
   });
 
   function seal(response: NextResponse) {
+    if (response !== supabaseResponse) {
+      for (const [key, value] of Object.entries(cacheHeaders)) response.headers.set(key, value);
+      for (const cookie of written) {
+        response.cookies.set(cookie.name, cookie.value, cookie.options);
+      }
+    }
+    // Chaque visite client réécrit le cookie avec une date de fin. Un préchargement ne le fait pas :
+    // sa réponse peut arriver après et reposer l’ancien jeton.
+    if (!prefetch) {
+      const merged = mergeCookieValues(request.cookies.getAll(), written);
+      const stamps = clientSessionCookieWrites(merged, secure);
+      for (const cookie of stamps) {
+        response.cookies.set(cookie.name, cookie.value, cookie.options);
+      }
+      if (stamps.length > 0) response.headers.set("Cache-Control", "private, no-store");
+    }
     if (!user && request.cookies.get(DESK_COOKIE)) {
       const clear = deskClearCookie();
       response.cookies.set(clear.name, clear.value, clear.options);

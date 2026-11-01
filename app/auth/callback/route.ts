@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { stampClientSession } from "@/lib/crm/client-session-cookie";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
@@ -93,6 +95,9 @@ export async function GET(request: Request) {
   const dest = safeNext.startsWith("/admin") && !staff ? "/mon-compte" : safeNext;
   const response = NextResponse.redirect(new URL(dest, url.origin));
   response.cookies.set(PASSWORD_SETUP_COOKIE, "", passwordSetupCookieOptions(false));
+  if (!staff) {
+    stampClientSession(response, (await cookies()).getAll(), process.env.NODE_ENV === "production");
+  }
   return response;
 }
 

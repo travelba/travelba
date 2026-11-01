@@ -5,7 +5,8 @@ import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { jsonError } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
-import { PASSWORD_SETUP_COOKIE, withoutMustSetPassword } from "@/lib/crm/session";
+import { stampClientSession } from "@/lib/crm/client-session-cookie";
+import { PASSWORD_SETUP_COOKIE, needsClientOnboarding, withoutMustSetPassword } from "@/lib/crm/session";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -59,7 +60,7 @@ export async function POST() {
   if (deskBypass(jar.get(DESK_COOKIE)?.value, user.id)) {
     // Mode desk : pas de drapeau à retirer, mais la connexion reste journalisée.
     await recordCustomerLogin(user.id, "desk");
-    return NextResponse.json({ ok: true });
+    return sessionResponse(jar.getAll(), { staff: false, needsOnboarding: false });
   }
 
   if (user.app_metadata?.must_set_password === true) {
@@ -83,14 +84,24 @@ export async function POST() {
 
   await recordCustomerLogin(user.id, "password");
 
-  const response = NextResponse.json({ ok: true });
+  return sessionResponse(jar.getAll(), {
+    staff: Boolean(staff),
+    needsOnboarding: !staff && needsClientOnboarding(user),
+  });
+}
+
+function sessionResponse(
+  jar: { name: string; value: string }[],
+  payload: { staff: boolean; needsOnboarding: boolean },
+) {
+  const response = NextResponse.json({ ok: true, ...payload });
   response.cookies.set(PASSWORD_SETUP_COOKIE, "", {
     path: "/",
     sameSite: "lax",
     httpOnly: true,
     maxAge: 0,
   });
-  return response;
+  return stampClientSession(response, jar, process.env.NODE_ENV === "production");
 }
 
 async function readActiveStaff(userId: string): Promise<{ id: string; active: boolean } | null> {
