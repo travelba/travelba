@@ -297,6 +297,14 @@
   border-radius: 12px;
   box-shadow: 0 8px 22px rgba(26, 26, 26, 0.06);
 }
+/* Un résultat de recherche : une carte à part entière, lisible en défilant. */
+.hotel-theme .h-result {
+  background: var(--h-card);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-radius);
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(11, 25, 44, 0.08);
+}
 .hotel-theme .h-pill {
   display: inline-flex;
   min-height: 36px;

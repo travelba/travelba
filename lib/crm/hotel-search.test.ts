@@ -726,6 +726,17 @@ test("les avantages des résultats reprennent le bloc des réservations, dès la
   assert.match(ui, /const perk = hasBenefits \? "" : PERK_LABEL\.find/);
 });
 
+test("chaque résultat de recherche est une carte distincte", () => {
+  const ui = readFileSync(join(root, "components/account/HotelSearch.tsx"), "utf8");
+  const css = readFileSync(join(root, "app/globals.css"), "utf8");
+  assert.match(ui, /<article className="hotel-rise h-result" data-hotel-card="1">/);
+  assert.match(ui, /<div className="space-y-5" aria-live="polite">/);
+  assert.doesNotMatch(ui, /article className="hotel-rise -mx-4"/);
+  assert.match(css, /\.hotel-theme \.h-result \{[^}]*border: 1px solid var\(--h-line\)/);
+  assert.match(css, /\.hotel-theme \.h-result \{[^}]*background: var\(--h-card\)/);
+  assert.match(css, /\.hotel-theme \.h-result \{[^}]*box-shadow: 0 10px 28px rgba\(11, 25, 44, 0\.08\)/);
+});
+
 test("une recherche passée repart demain, pour la même durée", () => {
   assert.deepEqual(shiftStayForward("2026-10-23", "2026-11-06", "2026-11-08"), {
     checkIn: "2026-11-06",
