@@ -704,17 +704,17 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.doesNotMatch(journey, /bg-gradient|rounded-full|commission/i);
 });
 
-test("une recherche passée repart aujourd’hui, pour la même durée", () => {
+test("une recherche passée repart demain, pour la même durée", () => {
   assert.deepEqual(shiftStayForward("2026-10-23", "2026-11-06", "2026-11-08"), {
     checkIn: "2026-11-06",
     checkOut: "2026-11-08",
   });
   assert.deepEqual(shiftStayForward("2026-10-23", "2026-10-01", "2026-10-04"), {
-    checkIn: "2026-10-23",
-    checkOut: "2026-10-26",
+    checkIn: "2026-10-24",
+    checkOut: "2026-10-27",
   });
   assert.deepEqual(shiftStayForward("2026-10-23", "2026-10-20", "2026-10-20"), {
-    checkIn: "2026-10-23",
+    checkIn: "2026-10-24",
     checkOut: "2026-10-25",
   });
 });
@@ -778,9 +778,12 @@ test("le formulaire propose demain et après-demain, dans le jour de l’apparei
     rooms: [{ adults: 1, children: [4] }],
     target: { kind: "hotel", id: 12 },
   });
+  // La dernière recherche redonne la destination et les chambres ; les dates repartent de demain.
   assert.equal(kept.destination, "Ritz Paris");
-  assert.equal(kept.checkIn, "2026-12-01");
+  assert.equal(kept.checkIn, "2026-10-24");
+  assert.equal(kept.checkOut, "2026-10-25");
   assert.equal(kept.rooms[0]?.adults, 1);
+  assert.equal(kept.target?.id, 12);
 
   const expired = hotelSearchDraft("2026-10-23", {
     destination: "Paris",

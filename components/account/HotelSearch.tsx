@@ -399,6 +399,13 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
     setPanel("when");
   }
 
+  /** Le calendrier s’ouvre sur le mois de l’arrivée proposée (demain), déjà sélectionnée avec le départ. */
+  function openDates() {
+    setNote("");
+    setCursor(null);
+    setPanel("when");
+  }
+
   function pickDay(iso: string) {
     if (iso < today) return;
     setNote("");
@@ -668,7 +675,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
             <button
               type="button"
               data-hotel-dates="1"
-              onClick={() => setPanel(panel === "when" ? null : "when")}
+              onClick={() => (panel === "when" ? setPanel(null) : openDates())}
               className="h-field h-press flex min-h-14 w-full items-center gap-3 px-1 text-left"
             >
               <Icon name="event" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
@@ -921,7 +928,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
 
             <button
               type="button"
-              onClick={() => setPanel("when")}
+              onClick={openDates}
               className="h-field w-full px-4 py-3 text-left"
             >
               <span className="h-kicker">Vos dates</span>

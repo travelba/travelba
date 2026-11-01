@@ -332,12 +332,13 @@ export function nightsBetween(checkIn: string, checkOut: string) {
   return Math.round((end - start) / 86_400_000);
 }
 
-/** Garde la durée. Si l’arrivée est passée, le séjour part d’aujourd’hui. */
+/** Garde la durée. Si l’arrivée est passée, le séjour repart de demain. */
 export function shiftStayForward(today: string, checkIn: string, checkOut: string) {
   const nights = nightsBetween(checkIn, checkOut);
-  const span = nights >= 1 && nights <= 30 ? nights : 2;
+  const span = nights >= 1 && nights <= 30 ? nights : 1;
   if (checkIn >= today && checkOut > checkIn) return { checkIn, checkOut };
-  return { checkIn: today, checkOut: addIsoDays(today, span) };
+  const start = addIsoDays(today, 1);
+  return { checkIn: start, checkOut: addIsoDays(start, span) };
 }
 
 /** Les deux prochains jours : arrivée demain, départ après-demain. `today` est le jour de l’appareil. */
@@ -420,6 +421,11 @@ export function parseHotelSearchDraft(value: unknown): HotelSearchDraft | null {
   };
 }
 
+/**
+ * Ce que la barre de recherche propose à l’ouverture. Les dates sont toujours les deux prochains jours
+ * (arrivée demain, départ après-demain) : la dernière recherche ne redonne que la destination et les chambres.
+ * « Dernières recherches » garde ses propres dates, décalées si elles sont passées.
+ */
 export function hotelSearchDraft(today: string, saved: HotelSearchDraft | null): HotelSearchDraft {
   const dates = defaultHotelStay(today);
   const blank: HotelSearchDraft = {
@@ -431,13 +437,11 @@ export function hotelSearchDraft(today: string, saved: HotelSearchDraft | null):
     target: null,
   };
   if (!saved) return blank;
-  const nights = nightsBetween(saved.checkIn, saved.checkOut);
-  const datesOk = saved.checkIn >= today && nights >= 1 && nights <= 30;
   return {
     destination: saved.destination.replace(/\s+/g, " ").trim().slice(0, 80),
     city: saved.city.replace(/\s+/g, " ").trim().slice(0, 80),
-    checkIn: datesOk ? saved.checkIn : dates.checkIn,
-    checkOut: datesOk ? saved.checkOut : dates.checkOut,
+    checkIn: dates.checkIn,
+    checkOut: dates.checkOut,
     rooms: saved.rooms.length ? saved.rooms : blank.rooms,
     target: saved.target,
   };
