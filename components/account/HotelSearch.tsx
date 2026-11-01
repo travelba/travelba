@@ -804,11 +804,11 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
         </div>
       ) : null}
 
-      <div className="space-y-3" aria-live="polite">
+      <div className="space-y-5" aria-live="polite">
         {searching && hotels.length === 0
           ? [0, 1, 2].map((index) => (
-              <article key={index} className="-mx-4" aria-hidden>
-                <div className="h-72 animate-pulse h-skel" />
+              <article key={index} className="h-result" aria-hidden>
+                <div className="h-64 animate-pulse h-skel" />
                 <div className="space-y-2 px-4 py-4">
                   <div className="h-5 w-2/3 animate-pulse h-skel" />
                   <div className="h-4 w-1/3 animate-pulse h-skel" />
@@ -1228,9 +1228,9 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
   const hasBenefits = hotel.benefits.length > 0;
   const perk = hasBenefits ? "" : PERK_LABEL.find((item) => hotel.perks[item.key])?.label || "";
   return (
-    <article className="hotel-rise -mx-4">
+    <article className="hotel-rise h-result" data-hotel-card="1">
       <button type="button" onClick={onOpen} className="block w-full text-left">
-        <div className="h-72 bg-[#eceae6]">
+        <div className="h-64 bg-[#eceae6]">
           {photo ? (
             // eslint-disable-next-line @next/next/no-img-element -- photo fournisseur https, hors next/image
             <img
@@ -1252,7 +1252,7 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
             </div>
           )}
         </div>
-        <div className="space-y-1 px-4 pb-8 pt-3">
+        <div className="space-y-1 px-4 pb-5 pt-3">
           {hasBenefits ? (
             <div className="pb-2" data-hotel-benefits="1">
               <HotelBenefits lines={hotel.benefits} />
@@ -1265,7 +1265,7 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
             {euros(hotel.sellCents, hotel.currency)}
             <span className="ml-2 text-sm font-normal h-muted">{euros(hotel.perNightCents, hotel.currency)} / nuit</span>
           </p>
-          <p className="pt-1 text-sm h-ink">Voir l’hôtel</p>
+          <p className="pt-1 text-sm font-semibold h-gold">Voir l’hôtel</p>
         </div>
       </button>
     </article>
