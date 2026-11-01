@@ -808,7 +808,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
         {searching && hotels.length === 0
           ? [0, 1, 2].map((index) => (
               <article key={index} className="h-result" aria-hidden>
-                <div className="h-64 animate-pulse h-skel" />
+                <div className="h-cover animate-pulse h-skel" />
                 <div className="space-y-2 px-4 py-4">
                   <div className="h-5 w-2/3 animate-pulse h-skel" />
                   <div className="h-4 w-1/3 animate-pulse h-skel" />
@@ -1218,9 +1218,9 @@ function Stepper({
 }
 
 /**
- * Résultat de la liste. Les avantages reprennent le bloc des réservations (`HotelBenefits`),
- * en haut de la carte, dès l’affichage : pas besoin d’ouvrir la fiche. Sans avantage lu,
- * une seule ligne discrète (annulation gratuite) reste.
+ * Résultat de la liste. Le nom et la ville sont sur la photo.
+ * Juste en dessous : le tarif et « Voir l’hôtel ». Les avantages (`HotelBenefits`) ferment la carte.
+ * Sans avantage lu, une seule ligne discrète (annulation gratuite) reste à cette place.
  */
 function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolean; onOpen: () => void }) {
   const [photoFailed, setPhotoFailed] = useState(false);
@@ -1230,12 +1230,12 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
   return (
     <article className="hotel-rise h-result" data-hotel-card="1">
       <button type="button" onClick={onOpen} className="block w-full text-left">
-        <div className="h-64 bg-[#eceae6]">
+        <div className="h-cover" data-hotel-cover="1">
           {photo ? (
             // eslint-disable-next-line @next/next/no-img-element -- photo fournisseur https, hors next/image
             <img
               src={photo}
-              alt={hotel.name}
+              alt=""
               width={800}
               height={560}
               sizes="(max-width: 480px) 100vw, 480px"
@@ -1243,30 +1243,36 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
               decoding="async"
               fetchPriority={first ? "high" : "auto"}
               referrerPolicy="no-referrer"
-              className="h-fade h-full w-full object-cover"
+              className="h-fade absolute inset-0 h-full w-full object-cover"
               onError={() => setPhotoFailed(true)}
             />
           ) : (
-            <div className="grid h-full place-items-center h-muted">
+            <div className="grid h-full place-items-center text-[#C5A880]">
               <Icon name="hotel" className="h-8 w-8" />
             </div>
           )}
+          <div className="h-cover-fade" aria-hidden />
+          <div className="h-cover-copy" data-hotel-title="1">
+            <h3 className="h-serif line-clamp-2 text-[1.2rem] font-semibold leading-tight">{hotel.name}</h3>
+            {hotel.city ? <p className="mt-0.5 text-sm text-white/80">{hotel.city}</p> : null}
+          </div>
         </div>
-        <div className="space-y-1 px-4 pb-5 pt-3">
-          {hasBenefits ? (
-            <div className="pb-2" data-hotel-benefits="1">
-              <HotelBenefits lines={hotel.benefits} />
-            </div>
-          ) : null}
-          <h3 className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{hotel.name}</h3>
-          {hotel.city ? <p className="text-[15px] h-muted">{hotel.city}</p> : null}
-          {perk ? <p className="pt-1 text-[12px] text-[#9a7b4f]">{perk}</p> : null}
-          <p className="pt-2 text-lg font-medium h-ink">
+        <div className="flex items-end justify-between gap-3 px-4 py-3" data-hotel-price="1">
+          <p className="min-w-0 text-lg font-medium leading-tight h-ink">
             {euros(hotel.sellCents, hotel.currency)}
-            <span className="ml-2 text-sm font-normal h-muted">{euros(hotel.perNightCents, hotel.currency)} / nuit</span>
+            <span className="mt-0.5 block text-sm font-normal h-muted">{euros(hotel.perNightCents, hotel.currency)} / nuit</span>
           </p>
-          <p className="pt-1 text-sm font-semibold h-gold">Voir l’hôtel</p>
+          <span className="mb-0.5 shrink-0 rounded-full border border-[#C5A880] px-3 py-1.5 text-sm font-semibold text-[#8c7352]">
+            Voir l’hôtel
+          </span>
         </div>
+        {hasBenefits ? (
+          <div className="px-4 pb-4" data-hotel-benefits="1">
+            <HotelBenefits lines={hotel.benefits} />
+          </div>
+        ) : perk ? (
+          <p className="px-4 pb-4 text-[12px] text-[#9a7b4f]">{perk}</p>
+        ) : null}
       </button>
     </article>
   );

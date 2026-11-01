@@ -10,7 +10,7 @@ import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
 import { loadInboundReplies, loadUnansweredMails } from "@/lib/crm/hotel-boite-load";
 import { roomsFromStored, stayPartyLabel } from "@/lib/crm/hotel-search";
-import { listHotelRequests, loadRequestCustomers } from "@/lib/crm/hotel-search-store";
+import { listHotelRequests, loadOfferPhotos, loadRequestCustomers } from "@/lib/crm/hotel-search-store";
 import { pliantConfigured } from "@/lib/crm/pliant";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -24,6 +24,7 @@ async function loadHotelRequests(): Promise<HotelRequestView[]> {
   try {
     const requests = await listHotelRequests();
     const people = await loadRequestCustomers(requests.map((row) => row.customer_id));
+    const photos = await loadOfferPhotos(requests.map((row) => row.offer_id || ""));
     return requests.map((row) => {
       const person = people.get(row.customer_id);
       const guest = person ? `${person.first_name} ${person.last_name}`.trim() : "Client";
@@ -44,6 +45,7 @@ async function loadHotelRequests(): Promise<HotelRequestView[]> {
         currency: row.currency,
         benefits: row.benefits,
         origin: originOf(row.account),
+        photo: row.offer_id ? photos.get(row.offer_id) || null : null,
       };
     });
   } catch {
