@@ -12,11 +12,11 @@ import { deskOpenDecision, deskSetCookie } from "@/lib/crm/desk-mode";
 import { isStaffAccount } from "@/lib/crm/desk-open";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
-  detectInAppBrowser,
   entryDestination,
   entryDoorForPath,
-  entryEscapeHtml,
   entryInstantHtml,
+  inAppHandoffDecision,
+  inAppHandoffHtml,
   entryLinkExpiresAt,
   entryOptInFromLink,
   entryPreviewHtml,
@@ -32,7 +32,6 @@ import {
   storedEntryEmail,
   type EntryPreview,
 } from "./entry-link";
-import type { InAppDetection } from "./in-app-browser";
 
 type LinkRow = {
   token_hash: string | null;
@@ -134,27 +133,24 @@ export function entryInstantResponse(origin: string, code: string) {
  * (Safari, iPhone) reçoit la porte immédiate : le script relance l’ouverture.
  */
 export async function serveEntryGet(request: Request, origin: string, code: string) {
-  if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(origin, code);
-  const userAgent = request.headers.get("user-agent");
-  if (isPreviewBot(userAgent)) return entryPreviewResponse(origin, code);
-  const inApp = detectInAppBrowser(userAgent);
-  if (inApp.inApp) return entryEscapeResponse(origin, code, inApp);
-  return entryInstantResponse(origin, code);
-}
-
-/**
- * Navigateur intégré (WhatsApp, Instagram…) : porte de sortie vers Safari ou Chrome, sans consommer
- * le jeton. Le lien reste entier pour le vrai navigateur ; « Continuer ici » poste quand même.
- */
-export function entryEscapeResponse(origin: string, code: string, detection: InAppDetection) {
-  const safe = isEntryCode(code) ? code : "00000000";
-  return new NextResponse(entryEscapeHtml(origin, safe, detection), {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "private, no-store",
-      Vary: "User-Agent",
-    },
+  // Navigateur intégré (WhatsApp…) : le proxy a déjà renvoyé vers Safari ou Chrome ; même garde ici,
+  // pour que le jeton ne soit jamais consommé dans la vue intégrée.
+  const handoff = inAppHandoffDecision({
+    url: new URL(new URL(request.url).pathname + new URL(request.url).search, origin).toString(),
+    method: request.method,
+    userAgent: request.headers.get("user-agent"),
+    secFetchDest: request.headers.get("sec-fetch-dest"),
+    accept: request.headers.get("accept"),
+    cookie: request.headers.get("cookie"),
   });
+  if (handoff.kind === "handoff") {
+    return new NextResponse(inAppHandoffHtml(handoff.external, handoff.detection), {
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store", Vary: "User-Agent" },
+    });
+  }
+  if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(origin, code);
+  if (isPreviewBot(request.headers.get("user-agent"))) return entryPreviewResponse(origin, code);
+  return entryInstantResponse(origin, code);
 }
 
 export async function entryPreviewResponse(origin: string, code: string, enter = true) {

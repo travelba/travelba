@@ -11,9 +11,9 @@ import {
   entryLinkUrl,
   isEntryCode,
 } from "./entry-code";
-import { detectInAppBrowser, externalBrowserUrl, type InAppDetection } from "./in-app-browser";
+import { detectInAppBrowser } from "./in-app-browser";
 
-export { detectInAppBrowser, externalBrowserUrl } from "./in-app-browser";
+export { detectInAppBrowser, externalBrowserUrl, inAppHandoffDecision, inAppHandoffHtml } from "./in-app-browser";
 
 export {
   ENTRY_CODE_LENGTH,
@@ -403,122 +403,6 @@ export function entryInstantHtml(origin: string, code: string, door: EntryDoor =
 </form>
 </main>
 <script>location.replace(location.pathname+"?ouvrir=1")</script>
-</body>
-</html>`;
-}
-
-type EscapeCopy = {
-  lead: string;
-  open: string;
-  hint: string;
-  stay: string;
-  staySub: string;
-};
-
-function escapeCopy(detection: InAppDetection, lang: "fr" | "en"): EscapeCopy {
-  const ios = detection.platform === "ios";
-  const browser = ios ? "Safari" : lang === "en" ? "your browser" : "votre navigateur";
-  const appName =
-    detection.app === "whatsapp"
-      ? "WhatsApp"
-      : detection.app === "instagram"
-        ? "Instagram"
-        : detection.app === "threads"
-          ? "Threads"
-          : detection.app === "facebook"
-            ? "Facebook"
-            : detection.app === "messenger"
-              ? "Messenger"
-              : detection.app === "line"
-                ? "Line"
-                : lang === "en"
-                  ? "this app"
-                  : "cette application";
-  if (lang === "en") {
-    return {
-      lead: `The ${appName} browser does not keep you signed in. Your space opens in ${browser}.`,
-      open: ios ? "Open in Safari" : "Open in my browser",
-      hint: ios
-        ? "Nothing happens? Tap ··· at the top right, then “Open in Safari”. Or long-press the link in the chat and choose “Open in Safari”."
-        : "Nothing happens? Tap ⋮ at the top right, then “Open in Chrome” or “Open in browser”.",
-      stay: "Continue here",
-      staySub: `Your space will stay inside ${appName}.`,
-    };
-  }
-  return {
-    lead: `Le navigateur de ${appName} ne garde pas votre connexion. Votre espace s’ouvre dans ${browser}.`,
-    open: ios ? "Ouvrir dans Safari" : "Ouvrir dans le navigateur",
-    hint: ios
-      ? "Rien ne se passe ? Touchez ··· en haut à droite, puis « Ouvrir dans Safari ». Ou, dans la conversation, appui long sur le lien › « Ouvrir dans Safari »."
-      : "Rien ne se passe ? Touchez ⋮ en haut à droite, puis « Ouvrir dans Chrome » ou « Ouvrir dans le navigateur ».",
-    stay: "Continuer ici",
-    staySub: `Votre espace restera dans ${appName}.`,
-  };
-}
-
-/**
- * Porte de sortie du navigateur intégré (WhatsApp, Instagram…). Le jeton n’est pas consommé ici :
- * le script ouvre la même adresse dans Safari ou Chrome, où la porte humaine ouvre la session.
- * Un bouton reprend ce geste, une ligne explique le menu de l’application, et « Continuer ici »
- * poste le formulaire : la connexion marche aussi dans la vue intégrée.
- */
-export function entryEscapeHtml(
-  origin: string,
-  code: string,
-  detection: InAppDetection,
-  door: EntryDoor = ENTRY_DOOR_CLIENT
-) {
-  const base = origin.replace(/\/$/, "");
-  const page = entryLinkUrl(base, code);
-  const external = externalBrowserUrl(page, detection);
-  if (!external) return entryInstantHtml(origin, code, door);
-  const action = escapeHtml(page);
-  const outside = escapeHtml(external);
-  const title = escapeHtml(door.title);
-  const copy = escapeCopy(detection, door.lang);
-  const mark = door.lang === "en" ? "Little Emperors" : "Travel Business Agency";
-  const auto = detection.autoOpen ? `<script>setTimeout(function(){location.href=${JSON.stringify(external)}},60)</script>` : "";
-  return `<!DOCTYPE html>
-<html lang="${door.lang}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0B192C">
-<title>${title}</title>
-<meta name="description" content="${escapeHtml(door.description)}">
-<meta name="robots" content="noindex">
-<style>
-  * { box-sizing: border-box; }
-  html, body { margin: 0; min-height: 100%; }
-  body { background: #0B192C; color: #F3EDE2; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  main { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; }
-  .sheet { width: min(100%, 420px); padding: 28px 22px calc(28px + env(safe-area-inset-bottom)); }
-  .mark { margin: 0 0 14px; font-size: 11px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #C5A880; }
-  h1 { margin: 0; font-family: Georgia, "Iowan Old Style", Palatino, serif; font-size: 34px; font-weight: 500; line-height: 1.12; }
-  .lead { margin: 12px 0 0; font-size: 16px; line-height: 1.45; color: #E4D5BE; }
-  .open { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 54px; margin: 28px 0 0; border-radius: 999px; background: #C5A880; color: #0B192C; font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-decoration: none; }
-  .hint { margin: 14px 0 0; font-size: 13px; line-height: 1.45; color: rgba(243, 237, 226, 0.72); }
-  form { margin: 26px 0 0; }
-  .stay { width: 100%; min-height: 48px; border: 1px solid rgba(197, 168, 128, 0.55); border-radius: 999px; background: transparent; color: #F3EDE2; font: 600 15px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; cursor: pointer; }
-  .sub { margin: 8px 0 0; text-align: center; font-size: 12px; color: rgba(243, 237, 226, 0.6); }
-</style>
-</head>
-<body>
-<main>
-<div class="sheet">
-<p class="mark">${mark}</p>
-<h1>${title}</h1>
-<p class="lead">${escapeHtml(copy.lead)}</p>
-<a class="open" id="ouvrir-navigateur" href="${outside}" rel="noopener">${escapeHtml(copy.open)}</a>
-<p class="hint">${escapeHtml(copy.hint)}</p>
-<form method="post" action="${action}">
-<input type="hidden" name="ouvrir" value="1">
-<button type="submit" class="stay">${escapeHtml(copy.stay)}</button>
-</form>
-<p class="sub">${escapeHtml(copy.staySub)}</p>
-</div>
-</main>
-${auto}
 </body>
 </html>`;
 }
