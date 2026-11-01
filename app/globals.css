@@ -305,6 +305,29 @@
   overflow: hidden;
   box-shadow: 0 10px 28px rgba(11, 25, 44, 0.08);
 }
+.hotel-theme .h-cover {
+  position: relative;
+  height: 13.5rem;
+  overflow: hidden;
+  background: #0b192c;
+}
+.hotel-theme .h-cover-fade {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 7.25rem;
+  background: linear-gradient(to top, #0b192c 12%, rgba(11, 25, 44, 0.62) 52%, transparent 100%);
+  pointer-events: none;
+}
+.hotel-theme .h-cover-copy {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 2.25rem 1rem 0.85rem;
+  color: #f7f4ee;
+}
 .hotel-theme .h-pill {
   display: inline-flex;
   min-height: 36px;

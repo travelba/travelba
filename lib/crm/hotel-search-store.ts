@@ -156,6 +156,7 @@ export type HotelRequestRow = {
   rate_title?: string | null;
   pliant_card_id: string | null;
   created_at: string;
+  offer_id?: string | null;
 };
 
 export async function listHotelRequests(): Promise<HotelRequestRow[]> {
@@ -163,7 +164,7 @@ export async function listHotelRequests(): Promise<HotelRequestRow[]> {
   const { data, error } = await db
     .from("crm_hotel_search_requests")
     .select(
-      "id, customer_id, status, hotel_name, city, room_label, rate_title, check_in, check_out, adults, rooms, guests, sell_cents, currency, benefits, account, pliant_card_id, created_at"
+      "id, customer_id, status, offer_id, hotel_name, city, room_label, rate_title, check_in, check_out, adults, rooms, guests, sell_cents, currency, benefits, account, pliant_card_id, created_at"
     )
     .order("created_at", { ascending: false })
     .limit(40);
@@ -175,6 +176,22 @@ export async function listHotelRequests(): Promise<HotelRequestRow[]> {
     ...row,
     benefits: Array.isArray(row.benefits) ? row.benefits.filter((line) => typeof line === "string") : [],
   }));
+}
+
+/** Photo de l’offre liée, https seulement. Une offre expirée ou absente laisse la couverture marine. */
+export async function loadOfferPhotos(ids: string[]) {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (!unique.length) return new Map<string, string>();
+  const db = admin();
+  const { data, error } = await db.from("crm_hotel_search_offers").select("id, photo_url").in("id", unique);
+  if (error) return new Map<string, string>();
+  const photos = new Map<string, string>();
+  for (const row of (data || []) as { id?: string; photo_url?: string | null }[]) {
+    if (typeof row.id === "string" && typeof row.photo_url === "string" && row.photo_url.startsWith("https://")) {
+      photos.set(row.id, row.photo_url);
+    }
+  }
+  return photos;
 }
 
 export async function loadRequestCustomers(ids: string[]) {

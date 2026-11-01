@@ -718,10 +718,23 @@ test("les avantages des résultats reprennent le bloc des réservations, dès la
   assert.doesNotMatch(desk, /benefits\.slice\(0, 4\)\.join/);
   assert.match(block, /bg-\[#0B192C\]/);
   assert.match(block, /text-\[#C5A880\]/);
-  // Dans la liste, le bloc précède le nom de l’hôtel : visible sans ouvrir la fiche.
-  const benefitsAt = ui.indexOf('data-hotel-benefits="1"');
-  const nameAt = ui.indexOf("{hotel.name}</h3>");
-  assert.ok(benefitsAt > 0 && benefitsAt < nameAt);
+  // Photo (nom dessus), puis tarif et « Voir l’hôtel », puis les avantages. Le nom n’est pas répété.
+  const marks = ['data-hotel-cover="1"', 'data-hotel-title="1"', "{hotel.name}", 'data-hotel-price="1"', "Voir l’hôtel", 'data-hotel-benefits="1"'];
+  let at = -1;
+  for (const mark of marks) {
+    const next = ui.indexOf(mark, at + 1);
+    assert.ok(next > at, mark);
+    at = next;
+  }
+  assert.equal(ui.split("{hotel.name}").length - 1, 1);
+  const deskMarks = ['data-hotel-cover="1"', 'data-hotel-title="1"', "{row.hotelName}", 'data-hotel-price="1"', 'data-hotel-benefits="1"'];
+  at = -1;
+  for (const mark of deskMarks) {
+    const next = desk.indexOf(mark, at + 1);
+    assert.ok(next > at, mark);
+    at = next;
+  }
+  assert.equal(desk.split("{row.hotelName}").length - 1, 1);
   // Sans avantage lu, la ligne discrète reste ; avec, elle s’efface au profit du bloc.
   assert.match(ui, /const perk = hasBenefits \? "" : PERK_LABEL\.find/);
 });
