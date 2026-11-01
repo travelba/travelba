@@ -2042,7 +2042,7 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
     message_pret: draft.prepared,
     sejour_visible: booking.visible_to_client === true,
     incluse_transactions: itemIncludedInLedger(
-      { kind: row.kind, include_in_ledger: row.include_in_ledger },
+      { kind: row.kind, include_in_ledger: row.include_in_ledger, details: row.details },
       booking.client_settles_stay === true
     ),
     grand_livre: {

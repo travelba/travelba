@@ -6,7 +6,8 @@ import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { staffStayFacts } from "@/lib/crm/staff-stay";
 import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
-import { isActiveItem, isLedgerExpenseKind, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
+import { isActiveItem, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
+import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 
 type PayerCustomer = Pick<
   CrmCustomer,
@@ -229,7 +230,7 @@ export function dossierStayAmount(input: {
     stayTotal: bookingTotalFromItems(items),
     agencyCommission: input.agencyCommission,
     expenses: items
-      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
       .map((item) => ({ amount: item.amount, agencyFee: !isAutoTicketingExpense(item) })),
     extras: agencyFeeExtraAmounts(items),
     ticketingFee: chargeableTicketingFee({

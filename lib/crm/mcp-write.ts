@@ -50,6 +50,7 @@ import { attachOutgoing, TripCostError } from "@/lib/crm/trip-costs-db";
 import { patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { readExpensePricing } from "@/lib/crm/expense-pricing";
 import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
+import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -238,6 +239,8 @@ export type ExpenseUpdateInput = {
   quantity?: number | string;
   unitPrice?: number | string;
   amount?: number | string;
+  /** true : valider (la dépense compte côté client) ; false : remettre à valider (cachée). */
+  validate?: boolean;
 };
 
 /** `depense` de mettre_a_jour_dossier : la ligne, puis libellé, quantité, prix unitaire ou montant. */
@@ -260,8 +263,12 @@ export function prepareExpenseUpdate(input: unknown): ExpenseUpdateInput {
     if (typeof value !== "number" && typeof value !== "string") throw new McpWriteError(`${key} : un nombre.`);
     out[field] = value;
   }
-  if (!out.title && out.quantity == null && out.unitPrice == null && out.amount == null) {
-    throw new McpWriteError("Indiquez le libellé, la quantité, le prix unitaire ou le montant de la dépense.");
+  if (row.valider != null && row.valider !== "") {
+    if (row.valider !== true && row.valider !== false) throw new McpWriteError("valider : vrai ou faux.");
+    out.validate = row.valider;
+  }
+  if (!out.title && out.quantity == null && out.unitPrice == null && out.amount == null && out.validate == null) {
+    throw new McpWriteError("Indiquez le libellé, la quantité, le prix unitaire, le montant ou valider.");
   }
   return out;
 }
@@ -292,12 +299,14 @@ export async function updateBookingExpense(input: Record<string, unknown>, admin
   if (depense.quantity != null) body.quantity = depense.quantity;
   if (depense.unitPrice != null) body.unit_price = depense.unitPrice;
   if (depense.amount != null) body.amount = depense.amount;
+  if (depense.validate != null) body.validate = depense.validate;
   const saved = await patchStaffBookingCard(db, booking.id, depense.carteId, body);
   if ("error" in saved) throw new McpWriteError(saved.error);
   const item = saved.item as { id: string; title?: string | null; amount?: number | string | null; details?: unknown };
   const amount = item.amount == null ? null : Number(item.amount);
   const pricing = readExpensePricing(item.details, amount);
   const origin = pliantExpenseOrigin(item.details, amount);
+  const awaiting = expenseAwaitsValidation({ kind: "expense", details: item.details });
   return {
     depense: {
       carte_id: item.id,
@@ -307,6 +316,8 @@ export async function updateBookingExpense(input: Record<string, unknown>, admin
       quantite: pricing.quantity,
       prix_unitaire: pricing.unitPrice,
       montant: pricing.amount,
+      a_valider: awaiting,
+      visible_client: !awaiting && booking.visible_to_client === true,
       pliant: origin
         ? { commercant: origin.merchant, date: origin.date, montant_pliant: origin.amount, montant_modifie: origin.edited }
         : null,

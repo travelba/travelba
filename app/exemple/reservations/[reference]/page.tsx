@@ -24,7 +24,8 @@ import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
-import { isActiveItem, isLedgerExpenseKind } from "@/lib/crm/types";
+import { isActiveItem } from "@/lib/crm/types";
+import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { findVisaExtra, visaProposed } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -89,7 +90,7 @@ export default async function ExampleReservationPage({ params }: Props) {
     feeMode: b.fee_mode,
   });
   const expenseChoices = visibleItems
-    .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+    .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
     .map((item) => ({
       id: item.id,
       title: item.title,

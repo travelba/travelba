@@ -17,6 +17,7 @@ import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { parseMoney } from "@/lib/crm/money";
 import { applyExpensePricing } from "@/lib/crm/expense-pricing";
+import { awaitingExpenseDetails, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
@@ -222,6 +223,11 @@ async function updateBookingItem(
     const details = parseItemDetails(body.details);
     if ("error" in details) return { error: jsonError(details.error) };
     patch.details = details.details;
+  }
+  if (isLedgerExpenseKind(nextKind) && typeof body.validate === "boolean") {
+    // Valider : la dépense automatique sort de « À valider » et compte côté client. false la remet à valider.
+    const base = "details" in patch ? patch.details : current.details;
+    patch.details = body.validate ? validatedExpenseDetails(base) : awaitingExpenseDetails(base);
   }
   if (isLedgerExpenseKind(nextKind)) {
     // Dépense : quantité × prix unitaire. Le montant seul garde la quantité et recalcule le prix unitaire.

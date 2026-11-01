@@ -61,6 +61,7 @@ import {
 } from "@/lib/crm/types";
 import { readExpensePricing } from "@/lib/crm/expense-pricing";
 import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
+import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { CLIENT_VISA_STEPS, clientVisaStepCopy, type ClientVisaStep } from "@/lib/crm/visa-flow";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import { deskView, reasonLabel, type DeskTask } from "@/lib/crm/visa-desk";
@@ -647,6 +648,7 @@ function cardLine(
       quantite: pricing.quantity,
       prix_unitaire: pricing.unitPrice,
       montant: pricing.amount,
+      a_valider: expenseAwaitsValidation(item),
       pliant: origin
         ? { commercant: origin.merchant, date: origin.date, montant_pliant: origin.amount, montant_modifie: origin.edited }
         : null,

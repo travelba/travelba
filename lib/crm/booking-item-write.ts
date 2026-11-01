@@ -9,6 +9,7 @@ import {
 } from "@/lib/crm/bookings";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { applyExpensePricing, hasExpensePricingInput } from "@/lib/crm/expense-pricing";
+import { awaitingExpenseDetails, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
@@ -197,7 +198,11 @@ export async function patchStaffBookingCard(
     patch.details = details.details;
   }
   const row = current as { kind?: string | null; amount?: number | string | null; details?: unknown };
-  if (isLedgerExpenseKind(row.kind) && ("amount" in body || "details" in body || hasExpensePricingInput(body))) {
+  if (isLedgerExpenseKind(row.kind) && typeof body.validate === "boolean") {
+    const base = "details" in patch ? patch.details : row.details;
+    patch.details = body.validate ? validatedExpenseDetails(base) : awaitingExpenseDetails(base);
+  }
+  if (isLedgerExpenseKind(row.kind) && ("amount" in body || "details" in body || hasExpensePricingInput(body) || typeof body.validate === "boolean")) {
     // Dépense : quantité × prix unitaire, le montant suit. Le montant seul recalcule le prix unitaire.
     const priced = applyExpensePricing(
       { quantity: body.quantity, unit_price: body.unit_price, amount: "amount" in body ? body.amount : undefined },

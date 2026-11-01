@@ -1,5 +1,6 @@
 import { pliantExpenseTitle, pliantExpenseTransactionId } from "./pliant-booking";
 import { EXPENSE_QUANTITY_KEY, EXPENSE_UNIT_PRICE_KEY } from "./expense-pricing";
+import { EXPENSE_AWAITING_KEY } from "./expense-validation";
 import type { TripCostDraft } from "./trip-costs";
 import { isActiveItem, isLedgerExpenseKind } from "./types";
 
@@ -66,6 +67,8 @@ export function pliantExpenseDraft(draft: Pick<TripCostDraft, "sourceId" | "amou
       [PLIANT_EXPENSE_DATE_KEY]: date,
       [EXPENSE_QUANTITY_KEY]: 1,
       [EXPENSE_UNIT_PRICE_KEY]: amount,
+      // Créée sans l’agence : cachée au client (livre, prix, facture, règlement) jusqu’à Valider.
+      [EXPENSE_AWAITING_KEY]: true,
     },
   };
 }

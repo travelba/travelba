@@ -35,7 +35,6 @@ import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import {
   isActiveItem,
-  isLedgerExpenseKind,
   visibleServiceCopy,
   type CrmBooking,
   type CrmBookingDocument,
@@ -45,6 +44,7 @@ import {
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import { clientHotelCancelOffers, type LeCancelRow } from "@/lib/crm/le-free-cancel";
@@ -380,7 +380,7 @@ async function loadExpenseChoices(bookingId: string, fallback: CrmBookingItem[])
         details?: Record<string, unknown> | null;
       }[]
     )
-      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
       .map((item) => ({
         id: item.id,
         title: visibleServiceCopy(item.title),
@@ -390,7 +390,7 @@ async function loadExpenseChoices(bookingId: string, fallback: CrmBookingItem[])
       }));
   } catch {
     return fallback
-      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
       .map((item) => ({
         id: item.id,
         title: visibleServiceCopy(item.title),

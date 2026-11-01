@@ -7,6 +7,7 @@ import { pliantExpenseTitle } from "./pliant-booking";
 import { pliantExpenseDraft } from "./pliant-expense";
 import { ensurePliantExpenseItem, removePliantExpenseItem } from "./pliant-expense-db";
 import { EXPENSE_QUANTITY_KEY, EXPENSE_UNIT_PRICE_KEY } from "./expense-pricing";
+import { validatedExpenseDetails } from "./expense-validation";
 import { withoutRefusedSuggestions, type TripCostActor } from "./pliant-link";
 import { revolutDebitLine } from "./revolut-inbox";
 import {
@@ -316,8 +317,9 @@ async function resolveCostItem(admin: SupabaseClient, input: AttachInput, draft:
         start_at: pliant?.start_at ?? null,
         include_in_ledger: true,
         sort_order: maxSort + 1,
+        // Prix saisi par l’agence : la ligne est validée d’emblée.
         details: pliant
-          ? { ...pliant.details, [EXPENSE_UNIT_PRICE_KEY]: sold }
+          ? { ...validatedExpenseDetails(pliant.details), [EXPENSE_UNIT_PRICE_KEY]: sold }
           : input.source === "pliant"
             ? { pliant_transaction_id: input.sourceId, [EXPENSE_QUANTITY_KEY]: 1, [EXPENSE_UNIT_PRICE_KEY]: sold }
             : { [EXPENSE_QUANTITY_KEY]: 1, [EXPENSE_UNIT_PRICE_KEY]: sold },

@@ -89,6 +89,10 @@ test("mettre_a_jour_dossier.depense lit la ligne, la quantité, le prix unitaire
     title: "Transferts",
     amount: 90,
   });
+  // Valider seul suffit : la dépense automatique devient visible côté client.
+  assert.deepEqual(prepareExpenseUpdate({ carte_id: id, valider: true }), { carteId: id, validate: true });
+  assert.deepEqual(prepareExpenseUpdate({ carte_id: id, valider: false, montant: 120 }), { carteId: id, amount: 120, validate: false });
+  assert.throws(() => prepareExpenseUpdate({ carte_id: id, valider: "oui" }), McpWriteError);
   assert.throws(() => prepareExpenseUpdate({ carte_id: id }), McpWriteError);
   assert.throws(() => prepareExpenseUpdate({ carte_id: "pas-un-uuid", montant: 90 }), McpWriteError);
   assert.throws(() => prepareExpenseUpdate({ carte_id: id, quantite: { n: 2 } }), McpWriteError);

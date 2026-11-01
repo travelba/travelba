@@ -12,6 +12,7 @@ import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import { isAutoTicketingExpense, ticketingExpenseTouched, AUTO_TICKETING_FEE } from "@/lib/crm/ticketing-fee";
 import { expensePricingLabel, parseExpenseQuantity, readExpensePricing } from "@/lib/crm/expense-pricing";
 import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
+import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { formatDateFr } from "@/lib/crm/dates";
 import {
   AGENCY_FEE_LABEL,
@@ -35,6 +36,8 @@ export type ExpenseWrite = {
   previousAmount: number;
   amount: number;
   removed?: boolean;
+  /** La dépense automatique vient d’être validée : elle compte côté client. */
+  validated?: boolean;
 };
 
 export function BookingExpensesPanel({
@@ -57,6 +60,7 @@ export function BookingExpensesPanel({
 }) {
   const router = useRouter();
   const expenses = items.filter((item) => isLedgerExpenseKind(item.kind));
+  const awaitingCount = expenses.filter((item) => expenseAwaitsValidation(item)).length;
   const [commissionOn, setCommissionOn] = useState(agencyCommission);
   // Le serveur a changé la commission (router.refresh) : l’interrupteur suit, sans effet.
   const [syncedCommission, setSyncedCommission] = useState(agencyCommission);
@@ -186,6 +190,33 @@ export function BookingExpensesPanel({
     router.refresh();
   }
 
+  /** Valider une dépense automatique : elle compte côté client (livre, prix, facture) dès que le séjour est Visible. */
+  async function validate(item: CrmBookingItem) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, validate: true }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setError(json.error || "Validation impossible.");
+      return;
+    }
+    setLedgerNote(readLedgerWarning(json));
+    onExpenseWrite?.({
+      id: item.id,
+      previousTitle: visibleServiceCopy(item.title),
+      title: visibleServiceCopy(item.title),
+      previousAmount: 0,
+      amount: item.amount == null ? 0 : Number(item.amount),
+      validated: true,
+    });
+    router.refresh();
+  }
+
   async function remove(id: string) {
     setBusy(true);
     setError(null);
@@ -304,6 +335,13 @@ export function BookingExpensesPanel({
           ? "Les frais de billeterie se créent ici dès qu’il y a un vol. Modifier ou retirer une ligne met à jour la transaction."
           : "Les frais de billeterie se créent ici dès qu’il y a un vol. Le débit part quand le séjour est visible."}
       </p>
+      {awaitingCount ? (
+        <p className="mt-1 text-xs font-semibold text-[#9e7e51]">
+          {awaitingCount === 1
+            ? "1 dépense Pliant à valider : cachée au client, hors prix, livre et facture jusqu’à Valider."
+            : `${awaitingCount} dépenses Pliant à valider : cachées au client, hors prix, livre et facture jusqu’à Valider.`}
+        </p>
+      ) : null}
       <label className="mt-3 flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)]">
         <input
           type="checkbox"
@@ -353,9 +391,15 @@ export function BookingExpensesPanel({
                 <div className="min-w-0">
                   <p className="break-words font-medium">
                     {visibleServiceCopy(item.title)}
-                    <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                      Transactions
-                    </span>
+                    {expenseAwaitsValidation(item) ? (
+                      <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                        À valider · cachée au client
+                      </span>
+                    ) : (
+                      <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
+                        Transactions
+                      </span>
+                    )}
                   </p>
                   <p className="break-words text-xs text-muted">
                     {item.amount != null ? formatMoney(Number(item.amount), currency) : "Montant manquant"}
@@ -383,11 +427,22 @@ export function BookingExpensesPanel({
                         {origin.edited && origin.amount != null
                           ? ` · Montant modifié (Pliant : ${formatMoney(origin.amount, "EUR")})`
                           : " · Montant modifiable, la dépense Pliant ne change pas"}
+                        {expenseAwaitsValidation(item) ? " · Hors prix, livre et facture tant qu’elle n’est pas validée" : ""}
                       </p>
                     );
                   })()}
                 </div>
                 <div className="flex items-center gap-2 lg:shrink-0">
+                  {expenseAwaitsValidation(item) ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="admin-af-btn admin-tap inline-flex min-h-11 items-center rounded-full px-3 text-xs lg:min-h-0 disabled:opacity-50"
+                      onClick={() => void validate(item)}
+                    >
+                      Valider · afficher au client
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="admin-tap inline-flex min-h-11 items-center rounded-full px-3 text-xs font-semibold text-[var(--admin-navy)] lg:min-h-0"

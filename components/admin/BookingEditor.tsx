@@ -26,6 +26,7 @@ import {
   type CrmCustomerLogin,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import { expenseCountsForClient, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { Icon } from "@/components/crm/icons";
@@ -190,7 +191,16 @@ function withExpenseWrite(items: CrmBookingItem[], change: ExpenseWrite, booking
   if (change.removed) return items.filter((item) => item.id !== change.id);
   if (items.some((item) => item.id === change.id)) {
     return items.map((item) =>
-      item.id === change.id ? { ...item, title: change.title, amount: change.amount, kind: "expense" } : item
+      item.id === change.id
+        ? {
+            ...item,
+            title: change.title,
+            amount: change.amount,
+            kind: "expense",
+            // Validée : la ligne compte dans le prix affiché sans attendre le rechargement.
+            details: change.validated ? validatedExpenseDetails(item.details) : item.details,
+          }
+        : item
     );
   }
   return [
@@ -1024,7 +1034,7 @@ export function BookingEditor({
     agencyCommission: booking.agency_commission === true,
     agencyFeeRate: previewFeeRate,
     expenses: pricedItems
-      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
       .map((item) => ({ ...item, agencyFee: !isAutoTicketingExpense(item) })),
     extras: agencyFeeExtraAmounts(pricedItems),
     ticketingFee: chargeableTicketingFee({
