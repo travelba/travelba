@@ -122,8 +122,8 @@ export async function updateSession(request: NextRequest) {
         response.cookies.set(cookie.name, cookie.value, cookie.options);
       }
     }
-    // Chaque visite client réécrit le cookie (400 jours, HttpOnly). Un préchargement ne le fait pas :
-    // sa réponse peut arriver après le renouvellement et reposer l’ancien jeton.
+    // Chaque visite client réécrit le cookie avec une date de fin. Un préchargement ne le fait pas :
+    // sa réponse peut arriver après et reposer l’ancien jeton.
     if (!prefetch) {
       const merged = mergeCookieValues(request.cookies.getAll(), written);
       const stamps = clientSessionCookieWrites(merged, secure);

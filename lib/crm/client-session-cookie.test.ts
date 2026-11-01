@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { serialize } from "cookie";
+import { NextResponse } from "next/server";
 import { AUTH_COOKIE_MAX_AGE, AUTH_COOKIE_OPTIONS, clientAuthCookieOptions } from "../supabase/cookie-options";
 import {
-  CLIENT_SESSION_REFRESH_GRACE_SECONDS,
+  CLIENT_SESSION_REFRESH_WINDOW_SECONDS,
   accessTimingFromCookies,
   clearAuthSessionCookieWrites,
   clientSessionCookieWrites,
@@ -40,16 +42,16 @@ test("le cookie agence reste lisible par le navigateur, 400 jours", () => {
   assert.equal("secure" in AUTH_COOKIE_OPTIONS, false);
 });
 
-test("le cookie client est HttpOnly, Secure selon l’appel, SameSite Lax, 400 jours", () => {
-  assert.deepEqual(clientAuthCookieOptions(true), {
-    path: "/",
-    sameSite: "lax",
-    httpOnly: true,
-    secure: true,
-    maxAge: AUTH_COOKIE_MAX_AGE,
-  });
-  assert.equal(clientAuthCookieOptions(false).secure, false);
-  assert.equal(clientAuthCookieOptions(false).httpOnly, true);
+test("le cookie client a une date Expires et Max-Age, HttpOnly, Secure", () => {
+  const now = Date.parse("2026-11-01T18:00:00.000Z");
+  const options = clientAuthCookieOptions(true, now);
+  assert.equal(options.path, "/");
+  assert.equal(options.sameSite, "lax");
+  assert.equal(options.httpOnly, true);
+  assert.equal(options.secure, true);
+  assert.equal(options.maxAge, AUTH_COOKIE_MAX_AGE);
+  assert.equal(options.expires.toISOString(), "2027-12-06T18:00:00.000Z");
+  assert.equal(clientAuthCookieOptions(false, now).secure, false);
 });
 
 test("seul le cookie de session est reconnu", () => {
@@ -90,15 +92,15 @@ test("un cookie découpé se lit et se réécrit", () => {
   assert.equal(accessTimingFromCookies(chunks).exp, now + 10);
 });
 
-test("renouvellement à chaque visite, pas dans les deux minutes, pas pour l’agence", () => {
+test("le jeton ne tourne pas au bout de quelques minutes, seulement près de la fin", () => {
   const now = 1_800_000_000;
-  const client = { audience: "client" as const, iat: now - 10, exp: now + 3500 };
-  assert.equal(shouldRefreshClientSession(client, now), false);
+  const fresh = { audience: "client" as const, iat: now - 180, exp: now + 3600 - 180 };
+  assert.equal(shouldRefreshClientSession(fresh, now), false);
   assert.equal(
-    shouldRefreshClientSession({ ...client, iat: now - CLIENT_SESSION_REFRESH_GRACE_SECONDS }, now),
+    shouldRefreshClientSession({ ...fresh, exp: now + CLIENT_SESSION_REFRESH_WINDOW_SECONDS }, now),
     true,
   );
-  assert.equal(shouldRefreshClientSession({ ...client, exp: now - 1 }, now), true);
+  assert.equal(shouldRefreshClientSession({ ...fresh, exp: now - 1 }, now), true);
   assert.equal(shouldRefreshClientSession({ audience: "staff", iat: now - 10_000, exp: now + 10 }, now), false);
   assert.equal(shouldRefreshClientSession({ audience: "unknown", iat: null, exp: null }, now), false);
 });
@@ -127,6 +129,25 @@ test("la déconnexion efface le cookie HttpOnly", () => {
   assert.equal(clears[0]?.options.httpOnly, true);
   assert.equal(clears[0]?.options.secure, true);
   assert.equal(clears[0]?.value, "");
+});
+
+test("le mot de passe navigateur n’écrit pas de date, le serveur oui", () => {
+  const now = Date.parse("2026-11-01T18:00:00.000Z");
+  const browser = serialize("sb-ref-auth-token", "session", AUTH_COOKIE_OPTIONS);
+  assert.match(browser, /Max-Age=34560000/);
+  assert.doesNotMatch(browser, /Expires=/i);
+  assert.doesNotMatch(browser, /Secure/i);
+  assert.doesNotMatch(browser, /HttpOnly/i);
+
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set("sb-ref-auth-token", "session", clientAuthCookieOptions(true, now));
+  const header = response.headers.getSetCookie()[0] || "";
+  assert.match(header, /Max-Age=34560000/);
+  assert.match(header, /Expires=[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT/);
+  assert.match(header, /HttpOnly/);
+  assert.match(header, /Secure/);
+  assert.match(header, /SameSite=lax/i);
+  assert.doesNotMatch(header, /\([^)]+\)/);
 });
 
 test("Secure en production, et le préchargement ne renouvelle pas", () => {

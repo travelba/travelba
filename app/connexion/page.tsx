@@ -2,7 +2,6 @@
 
 import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createAccountBrowserClient } from "@/lib/supabase/client";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { LOGIN_FAILURE_MESSAGE } from "@/lib/crm/login-message";
 import { pathAfterKnownPassword } from "@/lib/crm/session";
@@ -23,13 +22,16 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
 
 
-  async function goAfterClientSession() {
-    const ack = await fetch("/api/auth/known-password", { method: "POST" });
-    const json = (await ack.json().catch(() => ({}))) as { staff?: boolean; needsOnboarding?: boolean };
+  async function completePasswordLogin(trimmedEmail: string) {
+    const ack = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: trimmedEmail, password }),
+    });
+    const json = (await ack.json().catch(() => ({}))) as { staff?: boolean; needsOnboarding?: boolean; error?: string };
     if (!ack.ok) {
-      await signOutAccount("local");
       setLoading(false);
-      setError("Connexion impossible.");
+      setError(ack.status === 401 ? LOGIN_FAILURE_MESSAGE : json.error || "Connexion impossible.");
       return;
     }
     setLoading(false);
@@ -44,20 +46,6 @@ function LoginForm() {
       })
     );
     router.refresh();
-  }
-
-  async function completePasswordLogin(trimmedEmail: string) {
-    const supabase = createAccountBrowserClient();
-    const { error: signError } = await supabase.auth.signInWithPassword({
-      email: trimmedEmail,
-      password,
-    });
-    if (signError) {
-      setLoading(false);
-      setError(LOGIN_FAILURE_MESSAGE);
-      return;
-    }
-    await goAfterClientSession();
   }
 
   async function loginWithPassword(event: FormEvent) {

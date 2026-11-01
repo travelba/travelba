@@ -1,7 +1,11 @@
 import { clientAuthCookieOptions } from "@/lib/supabase/cookie-options";
 
-/** Juste après l’émission, la redirection ne fait pas tourner le jeton une seconde fois. */
-export const CLIENT_SESSION_REFRESH_GRACE_SECONDS = 120;
+/**
+ * On ne fait tourner le jeton que lorsqu’il approche de sa fin.
+ * Le faire à chaque visite révoque la session : deux requêtes parallèles
+ * présentent l’ancien jeton, et le client se retrouve déconnecté au retour.
+ */
+export const CLIENT_SESSION_REFRESH_WINDOW_SECONDS = 15 * 60;
 
 const AUTH_SESSION_COOKIE = /^sb-[a-z0-9]+-auth-token(?:\.\d+)?$/;
 const STAFF_COOKIE_ROLES = new Set(["admin", "manager", "agent", "comptable", "lecture", "partner"]);
@@ -110,16 +114,10 @@ export function accessTimingFromCookies(cookies: readonly CookieRecord[]): Acces
   };
 }
 
-/**
- * Visite client : renouveler le jeton. Pas dans les deux minutes qui suivent l’émission,
- * pour ne pas faire tourner deux fois le même lien ou le même mot de passe.
- * Un jeton déjà expiré est toujours renouvelé.
- */
+/** Renouvelle seulement si le jeton d’accès est expiré ou dans le dernier quart d’heure. */
 export function shouldRefreshClientSession(timing: AccessTiming, nowSeconds: number) {
-  if (timing.audience !== "client") return false;
-  if (timing.exp != null && timing.exp <= nowSeconds) return true;
-  if (timing.iat != null && nowSeconds - timing.iat < CLIENT_SESSION_REFRESH_GRACE_SECONDS) return false;
-  return true;
+  if (timing.audience !== "client" || timing.exp == null) return false;
+  return timing.exp - nowSeconds <= CLIENT_SESSION_REFRESH_WINDOW_SECONDS;
 }
 
 export function isRouterPrefetch(header: (name: string) => string | null) {
@@ -148,7 +146,7 @@ export function clientSessionCookieWrites(cookies: readonly CookieRecord[], secu
 }
 
 export function clearAuthSessionCookieWrites(cookies: readonly CookieRecord[], secure: boolean) {
-  const options = { ...clientAuthCookieOptions(secure), maxAge: 0 };
+  const options = { ...clientAuthCookieOptions(secure), maxAge: 0, expires: new Date(0) };
   const names = new Set<string>();
   for (const cookie of cookies) {
     if (isAuthSessionCookieName(cookie.name)) names.add(cookie.name);

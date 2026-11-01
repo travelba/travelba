@@ -12,15 +12,18 @@ export const AUTH_COOKIE_OPTIONS = {
 };
 
 /**
- * Session client. Posée par le serveur (HttpOnly, Secure) : Safari ne la plafonne pas
- * à 7 jours, contrairement à un cookie écrit par `document.cookie`.
+ * Session client, posée par le serveur.
+ * `Expires` (date RFC) et `Max-Age` ensemble : un cookie qui n’a que `Max-Age`,
+ * écrit par `document.cookie`, est traité comme un cookie de session par Safari
+ * iOS dès que l’app ou l’onglet est fermé. Le mot de passe doit alors être ressaisi.
  */
-export function clientAuthCookieOptions(secure: boolean) {
+export function clientAuthCookieOptions(secure: boolean, now = Date.now()) {
   return {
     path: "/",
     sameSite: "lax" as const,
     httpOnly: true as const,
     secure,
     maxAge: AUTH_COOKIE_MAX_AGE,
+    expires: new Date(now + AUTH_COOKIE_MAX_AGE * 1000),
   };
 }
