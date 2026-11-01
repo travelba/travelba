@@ -332,20 +332,34 @@ export function nightsBetween(checkIn: string, checkOut: string) {
   return Math.round((end - start) / 86_400_000);
 }
 
-/** Garde la durée. Si l’arrivée est passée, le séjour part d’aujourd’hui. */
+/** Garde la durée. Si l’arrivée est passée, le séjour repart de demain. */
 export function shiftStayForward(today: string, checkIn: string, checkOut: string) {
   const nights = nightsBetween(checkIn, checkOut);
-  const span = nights >= 1 && nights <= 30 ? nights : 2;
+  const span = nights >= 1 && nights <= 30 ? nights : 1;
   if (checkIn >= today && checkOut > checkIn) return { checkIn, checkOut };
-  return { checkIn: today, checkOut: addIsoDays(today, span) };
+  const start = addIsoDays(today, 1);
+  return { checkIn: start, checkOut: addIsoDays(start, span) };
 }
 
-/** Vendredi le plus proche, au moins quatorze jours après aujourd’hui, pour deux nuits. */
+/** Les deux prochains jours : arrivée demain, départ après-demain. `today` est le jour de l’appareil. */
 export function defaultHotelStay(today: string) {
-  const earliest = addIsoDays(today, 14);
-  const dow = new Date(`${earliest}T00:00:00Z`).getUTCDay();
-  const checkIn = addIsoDays(earliest, (5 - dow + 7) % 7);
-  return { checkIn, checkOut: addIsoDays(checkIn, 2) };
+  const checkIn = addIsoDays(today, 1);
+  return { checkIn, checkOut: addIsoDays(checkIn, 1) };
+}
+
+/**
+ * Dates proposées pour un hôtel ouvert depuis un dossier : les dates du voyage quand il en a,
+ * sinon demain et après-demain. Un dossier qui n’a qu’une date de départ donne une nuit.
+ */
+export function hotelStayFromTrip(input: { today: string; start: string | null | undefined; end: string | null | undefined }) {
+  const start = (input.start || "").slice(0, 10);
+  const end = (input.end || "").slice(0, 10);
+  const startOk = isValidIsoDate(start);
+  const endOk = isValidIsoDate(end);
+  if (startOk && endOk && end > start) return { checkIn: start, checkOut: end, fromTrip: true };
+  if (startOk) return { checkIn: start, checkOut: addIsoDays(start, 1), fromTrip: true };
+  if (endOk) return { checkIn: addIsoDays(end, -1), checkOut: end, fromTrip: true };
+  return { ...defaultHotelStay(input.today), fromTrip: false };
 }
 
 export type HotelSearchDraftRoom = { adults: number; children: number[] };
@@ -407,6 +421,11 @@ export function parseHotelSearchDraft(value: unknown): HotelSearchDraft | null {
   };
 }
 
+/**
+ * Ce que la barre de recherche propose à l’ouverture. Les dates sont toujours les deux prochains jours
+ * (arrivée demain, départ après-demain) : la dernière recherche ne redonne que la destination et les chambres.
+ * « Dernières recherches » garde ses propres dates, décalées si elles sont passées.
+ */
 export function hotelSearchDraft(today: string, saved: HotelSearchDraft | null): HotelSearchDraft {
   const dates = defaultHotelStay(today);
   const blank: HotelSearchDraft = {
@@ -418,13 +437,11 @@ export function hotelSearchDraft(today: string, saved: HotelSearchDraft | null):
     target: null,
   };
   if (!saved) return blank;
-  const nights = nightsBetween(saved.checkIn, saved.checkOut);
-  const datesOk = saved.checkIn >= today && nights >= 1 && nights <= 30;
   return {
     destination: saved.destination.replace(/\s+/g, " ").trim().slice(0, 80),
     city: saved.city.replace(/\s+/g, " ").trim().slice(0, 80),
-    checkIn: datesOk ? saved.checkIn : dates.checkIn,
-    checkOut: datesOk ? saved.checkOut : dates.checkOut,
+    checkIn: dates.checkIn,
+    checkOut: dates.checkOut,
     rooms: saved.rooms.length ? saved.rooms : blank.rooms,
     target: saved.target,
   };

@@ -11,6 +11,9 @@ import {
   entryLinkUrl,
   isEntryCode,
 } from "./entry-code";
+import { detectInAppBrowser } from "./in-app-browser";
+
+export { detectInAppBrowser, externalBrowserUrl, inAppHandoffDecision, inAppHandoffHtml } from "./in-app-browser";
 
 export {
   ENTRY_CODE_LENGTH,
@@ -217,6 +220,9 @@ export function shouldOpenFromGet(input: {
   if (isPrefetch(input.purpose)) return false;
   if (isPreviewBot(input.userAgent)) return false;
   if (entryOpenRequested(input.search)) return true;
+  // Navigateur intégré (WhatsApp, Instagram…) : l’appui ne consomme pas le jeton ici.
+  // La porte de sortie l’envoie vers Safari ou Chrome, où le lien reste entier.
+  if (detectInAppBrowser(input.userAgent).inApp) return false;
   return input.secFetchUser === "?1" && (input.secFetchDest || "document") === "document";
 }
 

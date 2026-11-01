@@ -3,7 +3,8 @@ import { loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
 import { bookingTotalFromItems, itemIncludedInLedger, itemSellingAmount } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
-import { isActiveItem, isExtraItemKind, isLedgerExpenseKind } from "@/lib/crm/types";
+import { expenseCountsForClient } from "@/lib/crm/expense-validation";
+import { isActiveItem, isExtraItemKind } from "@/lib/crm/types";
 
 type StayRow = {
   id: string;
@@ -36,18 +37,17 @@ export function displayedStayAmount(
   agencyFeeRate?: number | null
 ) {
   const active = items.filter((item) => isActiveItem(item));
-  const amounts = (kind: (value: string | null | undefined) => boolean) =>
-    active
-      .filter((item) => kind(item.kind))
-      .map((item) => ({
-        amount: item.amount == null ? null : Number(item.amount),
-        agencyFee: !isAutoTicketingExpense(item),
-      }));
+  const amounts = (keep: (item: StayItemRow) => boolean) =>
+    active.filter(keep).map((item) => ({
+      amount: item.amount == null ? null : Number(item.amount),
+      agencyFee: !isAutoTicketingExpense(item),
+    }));
   return stayPriceWithExpenses({
     stayTotal: Number(booking.total_amount),
     agencyCommission: booking.agency_commission === true,
-    expenses: amounts(isLedgerExpenseKind),
-    extras: amounts(isExtraItemKind),
+    // Une dépense automatique « à valider » n’entre pas dans le prix lu par le client.
+    expenses: amounts((item) => expenseCountsForClient(item)),
+    extras: amounts((item) => isExtraItemKind(item.kind)),
     ticketingFee: chargeableTicketingFee({
       items: active,
       status: booking.status,

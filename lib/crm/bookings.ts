@@ -14,6 +14,7 @@ import {
   type CrmTransaction,
 } from "@/lib/crm/types";
 import { statedTicketCount } from "@/lib/crm/item-match";
+import { expenseAwaitsValidation, expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { flightAmountIsGroupTotal, hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
@@ -286,14 +287,14 @@ export function stayIncludedInLedger(booking: {
 }
 
 /**
- * Dépense libre : toujours. Carte du séjour : jamais si le client règle.
+ * Dépense libre : toujours, sauf une dépense automatique encore « à valider ». Carte du séjour : jamais si le client règle.
  * Extra (chauffeur, VIP, visa, enregistrement) : selon sa propre case.
  */
 export function itemIncludedInLedger(
-  item: { kind?: string | null; include_in_ledger?: boolean | null },
+  item: { kind?: string | null; include_in_ledger?: boolean | null; details?: unknown },
   clientSettlesStay: boolean
 ) {
-  if (isLedgerExpenseKind(item.kind)) return true;
+  if (isLedgerExpenseKind(item.kind)) return !expenseAwaitsValidation(item);
   if (clientSettlesStay && isStayAmountKind(item.kind)) return false;
   return Boolean(item.include_in_ledger);
 }
@@ -359,7 +360,7 @@ export function agencyFeeBaseFromItems(items: AgencyFeeItem[]) {
     if (!isActiveItem(item)) continue;
     const amount = itemSellingAmount(item);
     if (isExtraItemKind(item.kind)) extras.push({ amount });
-    else if (isLedgerExpenseKind(item.kind) && !isAutoTicketingExpense(item)) expenses.push({ amount });
+    else if (expenseCountsForClient(item) && !isAutoTicketingExpense(item)) expenses.push({ amount });
   }
   return agencyFeeBaseAmount({
     stayTotal: bookingTotalFromItems(items),

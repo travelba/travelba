@@ -6,7 +6,7 @@ import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
-import { parisTodayIso } from "@/lib/crm/dates";
+import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
 import {
   hotelSearchDraft,
@@ -218,6 +218,18 @@ function subscribeHotelDraft(onChange: () => void) {
   return () => window.removeEventListener("storage", onChange);
 }
 
+function subscribeNever() {
+  return () => {};
+}
+
+/**
+ * Jour de l’appareil (fuseau du navigateur) pour les dates proposées. Le serveur rend le jour de Paris ;
+ * React remplace par le jour local à l’hydratation, sans décalage d’affichage.
+ */
+function useDeviceToday() {
+  return useSyncExternalStore(subscribeNever, () => localTodayIso(), () => parisTodayIso());
+}
+
 function seedFromSnapshot(today: string, raw: string) {
   if (!raw) return hotelSearchDraft(today, null);
   try {
@@ -230,7 +242,7 @@ function seedFromSnapshot(today: string, raw: string) {
 }
 
 export function HotelSearch({ trial = true }: { trial?: boolean }) {
-  const today = useMemo(() => parisTodayIso(), []);
+  const today = useDeviceToday();
   const storedDraft = useSyncExternalStore(subscribeHotelDraft, readHotelDraftSnapshot, emptyHotelDraftSnapshot);
   const seed = useMemo(() => seedFromSnapshot(today, storedDraft), [today, storedDraft]);
   const [destinationText, setDestination] = useState<string | null>(null);
@@ -384,6 +396,13 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
     setDestination(item.label);
     setCity(item.kind === "hotel" ? item.detail : "");
     setTarget(item.id ? { kind: item.kind, id: item.id } : null);
+    setPanel("when");
+  }
+
+  /** Le calendrier s’ouvre sur le mois de l’arrivée proposée (demain), déjà sélectionnée avec le départ. */
+  function openDates() {
+    setNote("");
+    setCursor(null);
     setPanel("when");
   }
 
@@ -656,7 +675,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
             <button
               type="button"
               data-hotel-dates="1"
-              onClick={() => setPanel(panel === "when" ? null : "when")}
+              onClick={() => (panel === "when" ? setPanel(null) : openDates())}
               className="h-field h-press flex min-h-14 w-full items-center gap-3 px-1 text-left"
             >
               <Icon name="event" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
@@ -909,7 +928,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
 
             <button
               type="button"
-              onClick={() => setPanel("when")}
+              onClick={openDates}
               className="h-field w-full px-4 py-3 text-left"
             >
               <span className="h-kicker">Vos dates</span>

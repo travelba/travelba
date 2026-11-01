@@ -133,6 +133,17 @@ export function parisTodayIso(now = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Jour calendaire de l’appareil, `yyyy-mm-dd`, dans son propre fuseau (Asia/Jerusalem, Europe/Paris…).
+ * Les dates proposées à l’agence partent de ce jour-là, pas du jour UTC : à minuit passé à Jérusalem,
+ * « demain » est bien demain.
+ */
+export function localTodayIso(now = new Date()) {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 export function maskFrDate(value: string): string {
   const iso = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) return isoToFrInput(value);

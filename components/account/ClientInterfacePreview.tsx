@@ -49,6 +49,7 @@ import {
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { visaRequestShown, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { ClientLedgerView } from "@/lib/crm/client-ledger";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
@@ -293,7 +294,7 @@ function ClientScreen({
   const feeExtras = agencyFeeExtraAmounts(allItems);
   const stayTotal = bookingTotalFromItems(allItems);
   const expenseChoices = allItems
-    .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+    .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
     .map((item) => ({
       id: item.id,
       title: visibleServiceCopy(item.title),

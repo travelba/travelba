@@ -15,6 +15,8 @@ import {
   entryDestination,
   entryDoorForPath,
   entryInstantHtml,
+  inAppHandoffDecision,
+  inAppHandoffHtml,
   entryLinkExpiresAt,
   entryOptInFromLink,
   entryPreviewHtml,
@@ -45,6 +47,12 @@ type LinkRow = {
   channel?: string | null;
   created_by_staff_id?: string | null;
 };
+
+/**
+ * 303 : le bouton « Continuer ici » poste le formulaire ; un 307 rejouerait ce POST sur /mon-compte.
+ * Le GET `?ouvrir=1` suit un 303 comme un 307.
+ */
+export const ENTRY_REDIRECT_STATUS = 303;
 
 /** Lecture du lien court. Sur la preview, la clé de service MyLER est autorisée. */
 function entryAdmin() {
@@ -125,6 +133,21 @@ export function entryInstantResponse(origin: string, code: string) {
  * (Safari, iPhone) reçoit la porte immédiate : le script relance l’ouverture.
  */
 export async function serveEntryGet(request: Request, origin: string, code: string) {
+  // Navigateur intégré (WhatsApp…) : le proxy a déjà renvoyé vers Safari ou Chrome ; même garde ici,
+  // pour que le jeton ne soit jamais consommé dans la vue intégrée.
+  const handoff = inAppHandoffDecision({
+    url: new URL(new URL(request.url).pathname + new URL(request.url).search, origin).toString(),
+    method: request.method,
+    userAgent: request.headers.get("user-agent"),
+    secFetchDest: request.headers.get("sec-fetch-dest"),
+    accept: request.headers.get("accept"),
+    cookie: request.headers.get("cookie"),
+  });
+  if (handoff.kind === "handoff") {
+    return new NextResponse(inAppHandoffHtml(handoff.external, handoff.detection), {
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store", Vary: "User-Agent" },
+    });
+  }
   if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(origin, code);
   if (isPreviewBot(request.headers.get("user-agent"))) return entryPreviewResponse(origin, code);
   return entryInstantResponse(origin, code);
@@ -154,7 +177,7 @@ export async function openEntry(origin: string, code: string) {
 
   const now = new Date();
   const expiresAt = entryLinkExpiresAt(link);
-  const response = NextResponse.redirect(new URL("/mon-compte", origin));
+  const response = NextResponse.redirect(new URL("/mon-compte", origin), ENTRY_REDIRECT_STATUS);
   const supabase = await cookieClient(response);
   const jar = await cookies();
   const existing = hasAuthSessionCookie(jar.getAll().map((cookie) => cookie.name))
@@ -232,7 +255,7 @@ export async function openEntry(origin: string, code: string) {
  */
 async function openDeskEntry(origin: string, code: string, link: LinkRow) {
   const now = new Date();
-  const response = NextResponse.redirect(new URL("/mon-compte", origin));
+  const response = NextResponse.redirect(new URL("/mon-compte", origin), ENTRY_REDIRECT_STATUS);
   response.headers.set("Cache-Control", "private, no-store");
   const supabase = await cookieClient(response);
   const existing = await currentUser(supabase);

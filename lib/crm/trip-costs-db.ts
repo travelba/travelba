@@ -4,6 +4,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { refreshBookingLedger } from "./bookings";
 import { pliantAgencyCardLabel } from "./pliant-match";
 import { pliantExpenseTitle } from "./pliant-booking";
+import { pliantExpenseDraft } from "./pliant-expense";
+import { ensurePliantExpenseItem, removePliantExpenseItem } from "./pliant-expense-db";
+import { EXPENSE_QUANTITY_KEY, EXPENSE_UNIT_PRICE_KEY } from "./expense-pricing";
+import { validatedExpenseDetails } from "./expense-validation";
 import { withoutRefusedSuggestions, type TripCostActor } from "./pliant-link";
 import { revolutDebitLine } from "./revolut-inbox";
 import {
@@ -298,18 +302,27 @@ async function resolveCostItem(admin: SupabaseClient, input: AttachInput, draft:
   if (input.newExpense) {
     const amount = Number(input.newExpense.amount);
     if (!Number.isFinite(amount) || amount <= 0) throw new TripCostError("Prix vendu requis.");
+    const sold = Math.round(amount * 100) / 100;
     const { data: existing } = await admin.from("crm_booking_items").select("sort_order").eq("booking_id", input.bookingId);
     const maxSort = (existing || []).reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1);
+    // Dépense Pliant : la ligne garde l’origine (transaction, montant Pliant, commerçant, date) ; le prix vendu est celui de l’agence.
+    const pliant = input.source === "pliant" ? pliantExpenseDraft(draft) : null;
     const { data: item, error } = await admin
       .from("crm_booking_items")
       .insert({
         booking_id: input.bookingId,
         kind: "expense",
         title: pliantExpenseTitle(input.newExpense.title || draft.supplier),
-        amount: Math.round(amount * 100) / 100,
+        amount: sold,
+        start_at: pliant?.start_at ?? null,
         include_in_ledger: true,
         sort_order: maxSort + 1,
-        details: input.source === "pliant" ? { pliant_transaction_id: input.sourceId } : {},
+        // Prix saisi par l’agence : la ligne est validée d’emblée.
+        details: pliant
+          ? { ...validatedExpenseDetails(pliant.details), [EXPENSE_UNIT_PRICE_KEY]: sold }
+          : input.source === "pliant"
+            ? { pliant_transaction_id: input.sourceId, [EXPENSE_QUANTITY_KEY]: 1, [EXPENSE_UNIT_PRICE_KEY]: sold }
+            : { [EXPENSE_QUANTITY_KEY]: 1, [EXPENSE_UNIT_PRICE_KEY]: sold },
         visible_to_client: false,
       })
       .select("id")
@@ -329,6 +342,16 @@ async function resolveCostItem(admin: SupabaseClient, input: AttachInput, draft:
     return input.itemId;
   }
   if (input.stayOnly) return null;
+  // Par défaut, une dépense Pliant devient une ligne Dépense du dossier (une par transaction),
+  // montant modifiable ensuite. Un remboursement garde l’ancienne règle (ligne devinée, sinon le séjour).
+  if (input.source === "pliant") {
+    try {
+      const expense = await ensurePliantExpenseItem(admin, input.bookingId, draft);
+      if (expense) return expense.itemId;
+    } catch (error) {
+      throw new TripCostError(error instanceof Error ? error.message : "La dépense n’a pas pu être créée.", 500);
+    }
+  }
   return defaultItemFor(admin, input.bookingId, draft);
 }
 
@@ -492,6 +515,14 @@ export async function moveOutgoing(input: AttachInput, admin: SupabaseClient = c
     })
     .eq("id", cost.id);
   if (error) throw new TripCostError(error.message, 500);
+  if (cost.source === "pliant" && cost.bookingId !== input.bookingId) {
+    // La ligne Dépense née de cette transaction quitte l’ancien dossier si l’agence ne l’a pas modifiée.
+    try {
+      await removePliantExpenseItem(admin, cost.bookingId, cost.sourceId);
+    } catch (removeError) {
+      console.error("[comptabilite] dépense Pliant non retirée de l’ancien dossier", removeError instanceof Error ? removeError.message : removeError);
+    }
+  }
   const payer = bookingRow.billing_customer_id || bookingRow.customer_id || null;
   await markSource(admin, cost.source, cost.sourceId, "matched", { bookingId: input.bookingId, customerId: payer });
   await recordTripCostEvent(admin, {

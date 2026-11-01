@@ -35,6 +35,8 @@ import { applyStripeToCustomer } from "@/lib/crm/stripe-match";
 import {
   EMAIL_INBOX_QUEUE_STATUSES,
   customerFullName,
+  isActiveItem,
+  isLedgerExpenseKind,
   type BookingStatus,
   type CrmBooking,
   type CrmBookingItem,
@@ -45,6 +47,10 @@ import {
 } from "@/lib/crm/types";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { attachOutgoing, TripCostError } from "@/lib/crm/trip-costs-db";
+import { patchStaffBookingCard } from "@/lib/crm/booking-item-write";
+import { readExpensePricing } from "@/lib/crm/expense-pricing";
+import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
+import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -225,6 +231,99 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
   const billing = particulier || societeId ? { particulier, societeId } : null;
   if (!Object.keys(patch).length && !billing && !cover) throw new McpWriteError("Rien à modifier.");
   return { ...target, patch, billing, cover };
+}
+
+export type ExpenseUpdateInput = {
+  carteId: string;
+  title?: string;
+  quantity?: number | string;
+  unitPrice?: number | string;
+  amount?: number | string;
+  /** true : valider (la dépense compte côté client) ; false : remettre à valider (cachée). */
+  validate?: boolean;
+};
+
+/** `depense` de mettre_a_jour_dossier : la ligne, puis libellé, quantité, prix unitaire ou montant. */
+export function prepareExpenseUpdate(input: unknown): ExpenseUpdateInput {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new McpWriteError("Dépense invalide.");
+  const row = input as Record<string, unknown>;
+  const out: ExpenseUpdateInput = { carteId: uuid(row.carte_id, "Dépense") };
+  if (row.libelle != null && row.libelle !== "") {
+    const title = text(row.libelle, "Libellé", 200);
+    if (!title) throw new McpWriteError("Le libellé est vide.");
+    out.title = title;
+  }
+  for (const [key, field] of [
+    ["quantite", "quantity"],
+    ["prix_unitaire", "unitPrice"],
+    ["montant", "amount"],
+  ] as const) {
+    const value = row[key];
+    if (value == null || value === "") continue;
+    if (typeof value !== "number" && typeof value !== "string") throw new McpWriteError(`${key} : un nombre.`);
+    out[field] = value;
+  }
+  if (row.valider != null && row.valider !== "") {
+    if (row.valider !== true && row.valider !== false) throw new McpWriteError("valider : vrai ou faux.");
+    out.validate = row.valider;
+  }
+  if (!out.title && out.quantity == null && out.unitPrice == null && out.amount == null && out.validate == null) {
+    throw new McpWriteError("Indiquez le libellé, la quantité, le prix unitaire, le montant ou valider.");
+  }
+  return out;
+}
+
+/**
+ * Corrige une dépense du dossier : quantité × prix unitaire donne le montant ; le montant seul
+ * recalcule le prix unitaire. Une dépense née d’une transaction Pliant garde son origine, et la
+ * transaction Pliant ne change pas. Le grand livre suit (un séjour caché ne débite pas).
+ */
+export async function updateBookingExpense(input: Record<string, unknown>, admin?: McpAdmin) {
+  const target = prepareCarnetTarget(input);
+  const depense = prepareExpenseUpdate(input.depense);
+  const db = client(admin);
+  const booking = await loadBooking(db, target);
+  const { data: current, error } = await db
+    .from("crm_booking_items")
+    .select("id, kind, lifecycle")
+    .eq("id", depense.carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  if (error) failDb(error, "Dépense introuvable.");
+  const row = current as { id: string; kind: string | null; lifecycle?: string | null } | null;
+  if (!row) throw new McpWriteError("Cette dépense n’est pas sur ce dossier.");
+  if (!isLedgerExpenseKind(row.kind)) throw new McpWriteError("Cette carte n’est pas une dépense : modifier_vol ou modifier_hotel.");
+  if (!isActiveItem(row)) throw new McpWriteError("Cette dépense est archivée.");
+  const body: Record<string, unknown> = {};
+  if (depense.title) body.title = depense.title;
+  if (depense.quantity != null) body.quantity = depense.quantity;
+  if (depense.unitPrice != null) body.unit_price = depense.unitPrice;
+  if (depense.amount != null) body.amount = depense.amount;
+  if (depense.validate != null) body.validate = depense.validate;
+  const saved = await patchStaffBookingCard(db, booking.id, depense.carteId, body);
+  if ("error" in saved) throw new McpWriteError(saved.error);
+  const item = saved.item as { id: string; title?: string | null; amount?: number | string | null; details?: unknown };
+  const amount = item.amount == null ? null : Number(item.amount);
+  const pricing = readExpensePricing(item.details, amount);
+  const origin = pliantExpenseOrigin(item.details, amount);
+  const awaiting = expenseAwaitsValidation({ kind: "expense", details: item.details });
+  return {
+    depense: {
+      carte_id: item.id,
+      dossier_id: booking.id,
+      reference: booking.reference,
+      libelle: item.title,
+      quantite: pricing.quantity,
+      prix_unitaire: pricing.unitPrice,
+      montant: pricing.amount,
+      a_valider: awaiting,
+      visible_client: !awaiting && booking.visible_to_client === true,
+      pliant: origin
+        ? { commercant: origin.merchant, date: origin.date, montant_pliant: origin.amount, montant_modifie: origin.edited }
+        : null,
+    },
+    ...(saved.ledgerWarning ? { avertissement: saved.ledgerWarning } : {}),
+  };
 }
 
 export function prepareServiceConfirm(input: Record<string, unknown>) {
@@ -523,6 +622,8 @@ export async function reconcilePliantDebit(input: Record<string, unknown>, admin
       devise: "EUR",
       sens: cost.amountEur < 0 ? "credit" : "debit",
       source: "pliant",
+      /** Ligne Dépense du dossier créée (ou retrouvée) pour cette transaction ; null pour un remboursement. */
+      ligne_depense_id: cost.bookingItemId,
     },
   };
 }
