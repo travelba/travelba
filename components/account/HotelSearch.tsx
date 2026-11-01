@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
@@ -1216,10 +1217,16 @@ function Stepper({
   );
 }
 
+/**
+ * Résultat de la liste. Les avantages reprennent le bloc des réservations (`HotelBenefits`),
+ * en haut de la carte, dès l’affichage : pas besoin d’ouvrir la fiche. Sans avantage lu,
+ * une seule ligne discrète (annulation gratuite) reste.
+ */
 function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolean; onOpen: () => void }) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const photo = !photoFailed ? hotel.photo || hotel.thumb || hotel.images?.[0] : null;
-  const perk = PERK_LABEL.find((item) => hotel.perks[item.key])?.label || "";
+  const hasBenefits = hotel.benefits.length > 0;
+  const perk = hasBenefits ? "" : PERK_LABEL.find((item) => hotel.perks[item.key])?.label || "";
   return (
     <article className="hotel-rise -mx-4">
       <button type="button" onClick={onOpen} className="block w-full text-left">
@@ -1246,6 +1253,11 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
           )}
         </div>
         <div className="space-y-1 px-4 pb-8 pt-3">
+          {hasBenefits ? (
+            <div className="pb-2" data-hotel-benefits="1">
+              <HotelBenefits lines={hotel.benefits} />
+            </div>
+          ) : null}
           <h3 className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{hotel.name}</h3>
           {hotel.city ? <p className="text-[15px] h-muted">{hotel.city}</p> : null}
           {perk ? <p className="pt-1 text-[12px] text-[#9a7b4f]">{perk}</p> : null}

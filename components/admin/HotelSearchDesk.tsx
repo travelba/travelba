@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 
 export type HotelRequestView = {
@@ -75,7 +76,11 @@ export function HotelSearchDesk({ rows, canIssue, blockedReason }: { rows: Hotel
             <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{formatMoney(row.sellCents / 100, row.currency)}</p>
           </div>
           <p className="mt-2 text-xs text-[#5c5348]">Compte interne : {row.origin}</p>
-          {row.benefits.length ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{row.benefits.slice(0, 4).join(" · ")}</p> : null}
+          {row.benefits.length ? (
+            <div className="mt-3" data-hotel-benefits="1">
+              <HotelBenefits lines={row.benefits} />
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             {row.status === "pending" ? (
               <>

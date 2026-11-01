@@ -704,6 +704,28 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.doesNotMatch(journey, /bg-gradient|rounded-full|commission/i);
 });
 
+test("les avantages des résultats reprennent le bloc des réservations, dès la liste", () => {
+  const ui = readFileSync(join(root, "components/account/HotelSearch.tsx"), "utf8");
+  const desk = readFileSync(join(root, "components/admin/HotelSearchDesk.tsx"), "utf8");
+  const stayFacts = readFileSync(join(root, "components/crm/HotelStayFacts.tsx"), "utf8");
+  const block = readFileSync(join(root, "components/crm/HotelBenefits.tsx"), "utf8");
+  // Un seul composant, celui des cartes hôtel du carnet : même fond, mêmes couleurs.
+  assert.match(stayFacts, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);
+  assert.match(ui, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);
+  assert.match(desk, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);
+  assert.match(ui, /<HotelBenefits lines=\{hotel\.benefits\} \/>/);
+  assert.match(desk, /<HotelBenefits lines=\{row\.benefits\} \/>/);
+  assert.doesNotMatch(desk, /benefits\.slice\(0, 4\)\.join/);
+  assert.match(block, /bg-\[#0B192C\]/);
+  assert.match(block, /text-\[#C5A880\]/);
+  // Dans la liste, le bloc précède le nom de l’hôtel : visible sans ouvrir la fiche.
+  const benefitsAt = ui.indexOf('data-hotel-benefits="1"');
+  const nameAt = ui.indexOf("{hotel.name}</h3>");
+  assert.ok(benefitsAt > 0 && benefitsAt < nameAt);
+  // Sans avantage lu, la ligne discrète reste ; avec, elle s’efface au profit du bloc.
+  assert.match(ui, /const perk = hasBenefits \? "" : PERK_LABEL\.find/);
+});
+
 test("une recherche passée repart demain, pour la même durée", () => {
   assert.deepEqual(shiftStayForward("2026-10-23", "2026-11-06", "2026-11-08"), {
     checkIn: "2026-11-06",
