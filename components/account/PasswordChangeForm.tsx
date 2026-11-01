@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
 import { postJson } from "@/lib/crm/client-fetch";
 import { Field, fieldControlClass } from "@/components/crm/fields";
@@ -56,9 +56,8 @@ export function PasswordChangeForm() {
   }
 
   async function signOutEverywhere() {
-    const supabase = createClient();
-    const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
-    if (signOutError) return { ok: false, error: "La déconnexion n’a pas abouti. Réessayez." };
+    const result = await signOutAccount("global");
+    if (!result.ok) return { ok: false, error: "La déconnexion n’a pas abouti. Réessayez." };
     router.push("/connexion");
     router.refresh();
     return { ok: true };

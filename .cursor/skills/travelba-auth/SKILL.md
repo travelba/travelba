@@ -65,8 +65,9 @@ Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id
 
 ## Sessions
 
-- Cookies `AUTH_COOKIE_OPTIONS` : `maxAge` 400 jours, `sameSite=lax`, `path=/`.
-- Dashboard Auth : time-box + inactivity **désactivés**.
+- Agence : `AUTH_COOKIE_OPTIONS` inchangé (`maxAge` 400 jours, `sameSite=lax`, `path=/`, lisible par le navigateur, rafraîchissement du client Supabase). Ne pas le passer en HttpOnly.
+- Client (`crm_role=client`) : cookie **HttpOnly**, **Secure** en production, `sameSite=lax`, `maxAge` 400 jours. Le proxy le réécrit à chaque visite (pas au préchargement) et renouvelle le jeton, sauf dans les 2 minutes après l’émission. Le navigateur de l’espace client ne rafraîchit pas tout seul : Safari plafonne à 7 jours un cookie écrit par `document.cookie`. Déconnexion : `POST /api/auth/sign-out` (`local` ou `global`).
+- Dashboard Auth : time-box + inactivity **désactivés** (sinon le renouvellement ne suffit pas). `auth.sessions.not_after` vide = time-box non appliqué.
 - Déconnexion explicite seulement. Pas de « rester connecté » checkbox (c’est déjà le cas).
 
 ## Mur téléphone

@@ -1,15 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { signOutAccount } from "@/lib/crm/account-sign-out";
 
 export function SignOutButton() {
   const router = useRouter();
 
   async function signOut() {
-    const supabase = createClient();
     // Cet appareil seulement. Les autres appareils se ferment depuis Sécurité.
-    await supabase.auth.signOut({ scope: "local" });
+    await signOutAccount("local");
     router.push("/connexion");
     router.refresh();
   }

@@ -3,7 +3,8 @@ import { createClient, type EmailOtpType, type SupabaseClient, type User } from 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
+import { isAuthSessionCookieName, sessionAudienceFromCookies } from "@/lib/crm/client-session-cookie";
+import { AUTH_COOKIE_OPTIONS, clientAuthCookieOptions } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { ensureCustomerForUser, getStaffForUser } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
@@ -206,6 +207,7 @@ export async function openEntry(origin: string, code: string) {
   }
 
   const [, staff] = await Promise.all([ensureCustomerForUser(user), getStaffForUser(user.id)]);
+  finishEntrySessionCookies(response, Boolean(staff));
   if (gate !== "session") {
     const userId = user.id;
     const staffMember = Boolean(staff);
@@ -321,12 +323,16 @@ function deskBusyResponse() {
   });
 }
 
-/** Client Supabase sur les cookies de la requête ; les cookies posés partent avec la réponse. */
+/**
+ * Lien d’entrée : session client HttpOnly. Une session d’agence déjà ouverte garde ses cookies.
+ * Si le compte ouvert est un collègue, `finishEntrySessionCookies` retire HttpOnly.
+ */
 async function cookieClient(response: NextResponse) {
   const cookieStore = await cookies();
   const { url, anonKey } = publicSupabaseEnv();
+  const staffSession = sessionAudienceFromCookies(cookieStore.getAll()) === "staff";
   return createServerClient(url, anonKey, {
-    cookieOptions: AUTH_COOKIE_OPTIONS,
+    cookieOptions: staffSession ? AUTH_COOKIE_OPTIONS : clientAuthCookieOptions(process.env.NODE_ENV === "production"),
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -338,6 +344,15 @@ async function cookieClient(response: NextResponse) {
       },
     },
   });
+}
+
+/** Collègue : cookies lisibles, comme le reste de l’agence. Client : on confirme HttpOnly et 400 jours. */
+function finishEntrySessionCookies(response: NextResponse, staff: boolean) {
+  const options = staff ? AUTH_COOKIE_OPTIONS : clientAuthCookieOptions(process.env.NODE_ENV === "production");
+  for (const cookie of response.cookies.getAll()) {
+    if (!isAuthSessionCookieName(cookie.name) || !cookie.value) continue;
+    response.cookies.set(cookie.name, cookie.value, options);
+  }
 }
 
 /** Session déjà ouverte sur ce navigateur, ou null. */

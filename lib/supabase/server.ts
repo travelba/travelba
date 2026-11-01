@@ -1,17 +1,19 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
+import { sessionAudienceFromCookies } from "@/lib/crm/client-session-cookie";
+import { AUTH_COOKIE_OPTIONS, clientAuthCookieOptions } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 
 export async function createClient() {
   const cookieStore = await cookies();
   const { url, anonKey } = publicSupabaseEnv();
+  const clientSession = sessionAudienceFromCookies(cookieStore.getAll()) === "client";
 
   return createServerClient(
     url,
     anonKey,
     {
-      cookieOptions: AUTH_COOKIE_OPTIONS,
+      cookieOptions: clientSession ? clientAuthCookieOptions(process.env.NODE_ENV === "production") : AUTH_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return cookieStore.getAll();

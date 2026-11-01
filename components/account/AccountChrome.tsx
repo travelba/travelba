@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { BrandMark } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
@@ -89,9 +89,8 @@ export function AccountChrome({
         keepalive: true,
       }).catch(() => {});
     }
-    const supabase = createClient();
     // Cet appareil seulement : « Se déconnecter de tous les appareils » vit dans Mon compte › Sécurité.
-    await supabase.auth.signOut({ scope: "local" });
+    await signOutAccount("local");
     router.push("/connexion");
     router.refresh();
   }
