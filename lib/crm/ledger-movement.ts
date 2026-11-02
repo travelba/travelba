@@ -14,6 +14,11 @@ export type LedgerMovementRow = {
   mb3mHref?: string | null;
   /** Séjour du mouvement, pour regrouper les cartes. Absent d’un virement. */
   bookingId?: string | null;
+  /** Montant signé hors libellé, pour retrouver un crédit. */
+  amountValue?: number;
+  source?: string | null;
+  /** Crédit Revolut, Stripe ou virement saisi : l’agence peut le remettre en file. */
+  unmatchable?: boolean;
   /** Raison sociale, seulement si le compte a plusieurs sociétés. */
   companyLabel?: string | null;
 };

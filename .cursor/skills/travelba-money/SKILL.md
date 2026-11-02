@@ -88,6 +88,8 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 **Ne pas** imputer sans le clic Valider, quel que soit le score. Un nom de famille seul, même unique, reste une proposition.
 
+**Remettre en non rattaché** (`remettre_non_rattache`, bouton du grand livre et de la vue client agence) annule un crédit Revolut, Stripe ou virement saisi. La ligne passe en `void` et garde le paiement d’origine dans `external_id` (suffixe `#annule#`) : le solde ne la compte plus, la trace reste, et le même paiement peut être crédité de nouveau. Le mouvement Revolut ou Stripe revient `unmatched` (À encaisser). Un virement saisi n’a pas de file : seul le crédit est annulé. Refus, message français, si ce crédit est sur une facture MB3M imprimée (sans avoir) ou en préparation depuis moins de trois minutes. Le geste est dans `crm_agency_journal` (auteur, montant, client). La synchro Stripe ne recrédite pas seule un paiement ainsi détaché.
+
 ## Comptabilité du voyage (coûts, marge, MB3M)
 
 Une sortie Pliant (achat, retrait ; remboursement et chargeback en négatif) ou Revolut (débit) est un **coût**. Une ligne vendue du dossier (débit `posted` : carte, dépense libre, frais, ou montant global « Séjour ») est une **vente**. Pointer = rattacher chaque coût à une ligne vendue, **au clic**. Marge par ligne = vente − Σ coûts, négative possible (affichée, pas bloquée). Le client ne voit ni coût ni marge.

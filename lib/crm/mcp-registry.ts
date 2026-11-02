@@ -66,9 +66,10 @@ import {
 } from "@/lib/crm/mcp-restaurants";
 import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus } from "@/lib/crm/mcp-restaurant-templates";
 import { redactMcp } from "@/lib/crm/mcp-redact";
+import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 62;
+export const MCP_TOOL_CAP = 63;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -320,7 +321,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "grand_livre",
     description:
-      "Encours et derniers mouvements d’un client. Positif = avoir, négatif = reste à payer. id ou q. Lecture seule.",
+      "Encours et derniers mouvements d’un client. Positif = avoir, négatif = reste à payer. credits liste les crédits Revolut, Stripe et virements saisis encore rattachés (id, montant, paiement_id) pour remettre_non_rattache. id ou q. Lecture seule.",
     input: { id, q },
     run: (args: ToolArgs) => readGrandLivre({ id: str(args, "id"), q: str(args, "q") }),
   },
@@ -436,6 +437,36 @@ export const MCP_TOOLS: ToolDef[] = [
       client_id: z.string().trim().describe("Identifiant du client à créditer"),
     },
     run: (args) => creditStripePayment(args),
+  },
+  {
+    name: "remettre_non_rattache",
+    write: true,
+    description:
+      "Annule un crédit Revolut, Stripe ou virement saisi et remet le paiement dans la file (revolut_en_attente ou stripe_en_attente). id : écriture du grand livre, ou identifiant du paiement. motif facultatif. Le crédit passe en annulé et reste en trace. Refus si la facture MB3M qui le contient est imprimée ou en cours de préparation. Un virement saisi n’a pas de file : il est seulement annulé.",
+    input: {
+      id: z.string().trim().max(80).optional().describe("Crédit du grand livre, ou paiement Revolut / Stripe"),
+      mouvement_id: z.string().trim().max(80).optional().describe("Même identifiant que id"),
+      virement_id: z.string().trim().max(80).optional().describe("Virement Revolut, si c’est lui que l’on détache"),
+      paiement_id: z.string().trim().max(80).optional().describe("Paiement Stripe, si c’est lui que l’on détache"),
+      motif: z.string().trim().max(300).optional().describe("Motif, facultatif"),
+    },
+    run: async (args) => {
+      const result = await releaseMatchedCredit(args);
+      if (!result.ok) throw new McpWriteError(result.error);
+      return {
+        remis: true,
+        mouvement_id: result.mouvement_id,
+        client_id: result.client_id,
+        client: result.client,
+        montant: result.montant,
+        devise: result.devise,
+        source: result.source,
+        paiement_id: result.paiement_id,
+        file: result.file,
+        motif: result.motif,
+        deja: result.deja,
+      };
+    },
   },
   {
     name: "rapprocher_pliant",

@@ -6,6 +6,7 @@ import {
   tokensSpell,
 } from "@/lib/crm/revolut-match";
 import { stripeCreditFromIntent } from "@/lib/crm/stripe-pay";
+import { paymentCreditReleased } from "@/lib/crm/unmatch-credit";
 import {
   stripeInboxCreditKind,
   stripeInboxCreditLabel,
@@ -252,6 +253,7 @@ export async function applyStripeToCustomer(
       .select("*")
       .eq("source", "stripe")
       .eq("external_id", row.stripe_payment_intent_id)
+      .eq("status", "posted")
       .maybeSingle();
     if (!existing) return { ok: false as const, error: error.message as string };
     if (existing.customer_id && existing.customer_id !== customerId) {
@@ -302,6 +304,7 @@ export async function autoMatchUnmatchedStripe(limit = 100) {
   for (const row of list) {
     const { autoCustomerId } = scoreStripeMatches(row, people);
     if (!autoCustomerId) continue;
+    if (await paymentCreditReleased(service, "stripe", row.stripe_payment_intent_id)) continue;
     const result = await applyStripeToCustomer(service, row, autoCustomerId);
     if (result.ok) matched += 1;
   }

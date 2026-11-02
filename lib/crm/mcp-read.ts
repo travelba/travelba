@@ -13,6 +13,7 @@ import {
   type FilterableQuery,
 } from "@/lib/crm/admin-list";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { clientCreditLines } from "@/lib/crm/unmatch-credit";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
 import { checkinMcpLine, type FlightCheckinView } from "@/lib/crm/online-checkin";
@@ -840,6 +841,7 @@ export async function readGrandLivre(input: { id?: string; q?: string }) {
     .select("company_role, spending_allowance")
     .eq("id", customer.id)
     .maybeSingle();
+  const creditsPromise = postedClientCredits(admin, customer.id);
   const ledger = await loadClientLedger(
     admin,
     {
@@ -863,14 +865,34 @@ export async function readGrandLivre(input: { id?: string; q?: string }) {
       solde_valeur: wallet.balanceValue,
     })),
     mouvements: ledger.movements.slice(0, 15).map((row) => ({
+      id: row.id,
       titre: row.title,
       montant: row.amountLabel,
+      montant_valeur: row.amountValue ?? null,
+      source: row.source ?? null,
       date: row.occurredLabel,
       reference: row.reference,
       lieu: row.whenWhere,
       lien: row.bookingId ? `/admin/reservations/${row.bookingId}` : null,
     })),
+    credits: await creditsPromise,
   };
+}
+
+async function postedClientCredits(admin: ReturnType<typeof db>, customerId: string) {
+  const { data, error } = await admin
+    .from("crm_transactions")
+    .select("id, amount, currency, source, kind, label, occurred_on, external_id, status, direction")
+    .eq("customer_id", customerId)
+    .eq("direction", "credit")
+    .eq("status", "posted")
+    .order("occurred_on", { ascending: false })
+    .limit(80);
+  if (error) {
+    logRead("credits", error);
+    return [];
+  }
+  return clientCreditLines((data || []) as Parameters<typeof clientCreditLines>[0]);
 }
 
 export async function readRevolutEnAttente() {

@@ -215,6 +215,17 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
     });
   }
 
+  if (/\/transactions\/[^/]+\/non-rattache$/.test(path) && mutation) {
+    // La route écrit le montant, le client et l’auteur : pas de seconde ligne.
+    return classify({
+      permission: "edit_finances",
+      action: "update",
+      entity: "finance",
+      journal: false,
+      sensitive: "payment",
+    });
+  }
+
   if (/\/(transactions|revolut|stripe|comptabilite|mb3m)/.test(path)) {
     return classify({
       permission: mutation ? "edit_finances" : "view_finances",
