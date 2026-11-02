@@ -25,6 +25,10 @@ export type PieceRow = {
   transaction_ids: string[] | null;
   line_signature: string | null;
   amount: number | string | null;
+  attempt_status?: string | null;
+  attempt_error?: string | null;
+  attempt_started_at?: string | null;
+  attempt_started_by?: string | null;
 };
 
 export type DossierAccountingInputs = {
@@ -48,7 +52,9 @@ export async function loadDossierAccountingInputs(admin: SupabaseClient, booking
       .eq("direction", "debit"),
     admin
       .from("crm_mb3m_pieces")
-      .select("id, piece_number, printed_at, credited_at, transaction_ids, line_signature, amount")
+      .select(
+        "id, piece_number, printed_at, credited_at, transaction_ids, line_signature, amount, attempt_status, attempt_error, attempt_started_at, attempt_started_by"
+      )
       .eq("booking_id", bookingId)
       .eq("kind", "invoice")
       .eq("realm", mb3mRealm()),

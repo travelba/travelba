@@ -9,6 +9,7 @@ import {
   mb3mBlockedOnProduction,
   mb3mConfigured,
   mb3mFaultDetail,
+  mb3mOperationMessage,
   mb3mFindPersons,
   mb3mPartnerCode,
   mb3mPdfBytes,
@@ -241,6 +242,34 @@ describe("client MB3M Partners", () => {
         assert.ok(error instanceof Mb3mError);
         assert.equal(error.resultCode, -1);
         assert.match(error.message, /activité/);
+        return true;
+      }
+    );
+  });
+
+  it("ajoute Details au message quand MB3M refuse la pièce", async () => {
+    arm();
+    const xml = `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FolderOperationResponse xmlns="http://schemas.mb3m.fr/Partners"><Message>Une erreur s'est produite durant l'enregistrement de la facture</Message><Details>Code interne -22 : Impossible de sauvegarder la pièce car une prestation de billetterie n'a pas de commission renseignée.</Details><ResultCode>-504</ResultCode></FolderOperationResponse></s:Body></s:Envelope>`;
+    assert.equal(
+      mb3mOperationMessage(xml),
+      "Une erreur s'est produite durant l'enregistrement de la facture — Code interne -22 : Impossible de sauvegarder la pièce car une prestation de billetterie n'a pas de commission renseignée."
+    );
+    await assert.rejects(
+      () =>
+        mb3mAddInvoice(
+          {
+            folderId: "22-AAAAAAA",
+            customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+            title: "Sonde",
+            lines: [{ label: "Vol", quantity: 1, netPriceUnit: 400, netPriceTotal: 400, activityId: 2, marginUnit: 0 }],
+          },
+          async () => new Response(xml)
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof Mb3mError);
+        assert.equal(error.resultCode, -504);
+        assert.match(error.message, /code interne -22/i);
+        assert.match(error.message, /billetterie/);
         return true;
       }
     );

@@ -441,7 +441,11 @@ export function BookingEditor({
   whatsappPreviewBlocked?: boolean;
   customerLogins?: CrmCustomerLogin[];
   customerActivity?: CrmCustomerActivity[];
-  mb3m: { blocker: string | null; piece: { number: string } | null };
+  mb3m: {
+    blocker: string | null;
+    piece: { number: string } | null;
+    preparation: { state: "running" | "failed" | null; message: string | null; resume: boolean };
+  };
   /** Comptabilité du voyage : ventes, coûts rattachés, marge, sorties proposées. */
   accounting?: TripAccountingView | null;
   /** Enregistrement, visa et pré-enregistrement issus d’un mail. Pas des étapes. */
@@ -2268,6 +2272,7 @@ export function BookingEditor({
                 marginStale: Boolean(accounting?.invoice.marginStale),
                 printedTotal: accounting?.invoice.printedTotal ?? null,
                 saleTotal: accounting?.totals.sale ?? null,
+                preparation: mb3m.preparation,
               }}
               note={invoiceNote}
               onBusy={(active) => setBusy(active ? "invoice" : "idle")}

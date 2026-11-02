@@ -26,6 +26,7 @@ type PayerCustomer = Pick<
   | "country"
 >;
 import {
+  MB3M_ACTIVITY_TICKETING,
   mb3mDossierLines,
   mb3mFactureHref,
   mb3mFactureMention,
@@ -35,6 +36,12 @@ import {
   type Mb3mAccountLine,
   type Mb3mLedgerRow,
 } from "@/lib/crm/mb3m-account";
+import {
+  mb3mActorLabel,
+  mb3mPrepInProgress,
+  mb3mPreparationLockMessage,
+  type Mb3mAttemptStatus,
+} from "@/lib/crm/mb3m-prep";
 import { defaultPayer, type PayerCompany } from "@/lib/crm/payer";
 import {
   accountLines,
@@ -63,8 +70,6 @@ import {
   type Mb3mAddress,
 } from "@/lib/crm/mb3m";
 import { createServiceClient } from "@/lib/supabase/admin";
-
-const STALE_MS = 3 * 60 * 1000;
 
 type StayItem = {
   kind?: string | null;
@@ -133,6 +138,11 @@ export type Mb3mStoredPiece = {
   transactionIds: string[];
   /** Lignes telles qu’envoyées à MB3M : l’avoir les reprend. */
   lines: Mb3mLine[];
+  /** preparing : tentative vivante. failed : le clic suivant reprend cette ligne. */
+  attemptStatus: Mb3mAttemptStatus | null;
+  attemptError: string | null;
+  attemptStartedAt: string | null;
+  attemptStartedBy: string | null;
 };
 
 export type Mb3mInvoiceResult = {
@@ -156,6 +166,10 @@ type PiecePatch = {
   signature?: string | null;
   transactionIds?: string[];
   lines?: Mb3mLine[];
+  attemptStatus?: Mb3mAttemptStatus | null;
+  attemptError?: string | null;
+  attemptStartedAt?: string | null;
+  attemptStartedBy?: string | null;
 };
 
 /**
@@ -167,14 +181,28 @@ type PiecePatch = {
  * facture »), et ses types Fees / Note ne conviennent pas (non supporté / ligne absente du PDF).
  * Une ligne de marge pure (frais, prestation sans coût pointé) part donc avec un net plancher
  * d’un centime et la marge qui complète : la pièce imprime le bon montant, la marge varie de 0,01 €.
+ *
+ * Billetterie (activité 2) : MB3M refuse une commission absente ou à 0
+ * (-504, code interne -22). On envoie 0,01 € de commission et on retire le même centime du net :
+ * le TTC de la ligne ne change pas.
  */
 export const MB3M_MIN_NET = 0.01;
+export const MB3M_MIN_COMMISSION = 0.01;
 
 export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
   const raw = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
   let net = raw == null ? line.amount : Math.round((line.amount - raw) * 100) / 100;
   let margin = raw;
-  if (raw != null && net < MB3M_MIN_NET && line.amount >= MB3M_MIN_NET) {
+  const commission = margin == null ? null : Math.round(margin * 100) / 100;
+  if (
+    line.activityId === MB3M_ACTIVITY_TICKETING &&
+    (commission == null || commission === 0) &&
+    line.amount >= MB3M_MIN_NET + MB3M_MIN_COMMISSION
+  ) {
+    margin = MB3M_MIN_COMMISSION;
+    net = Math.round((line.amount - MB3M_MIN_COMMISSION) * 100) / 100;
+  }
+  if (margin != null && net < MB3M_MIN_NET && line.amount >= MB3M_MIN_NET) {
     net = MB3M_MIN_NET;
     margin = Math.round((line.amount - MB3M_MIN_NET) * 100) / 100;
   }
@@ -192,7 +220,12 @@ export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
 
 export type Mb3mInvoiceDeps = {
   now: () => number;
-  claim: (bookingId: string, amount: number) => Promise<{ piece: Mb3mStoredPiece; created: boolean }>;
+  /** Nom de la personne qui clique, pour le message de verrou. */
+  actorName?: string | null;
+  claim: (
+    bookingId: string,
+    amount: number
+  ) => Promise<{ piece: Mb3mStoredPiece; created: boolean; busy?: boolean; owned?: boolean }>;
   save: (id: string, patch: PiecePatch) => Promise<void>;
   remove: (id: string) => Promise<void>;
   savePerson: typeof mb3mSavePerson;
@@ -458,116 +491,155 @@ async function attachPdf(
 
 export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps): Promise<Mb3mInvoiceResult> {
   const signature = mb3mLineSignature(ctx.lines);
-  const { piece, created } = await deps.claim(ctx.bookingId, ctx.amount);
-  if (!ctx.lines.length) {
-    if (piece.pieceNumber && !piece.printedAt) {
-      const state = await deps.findPiece(piece.pieceNumber);
-      if (state === "open" && piece.folderId) await deps.cancelInvoice(piece.folderId, piece.pieceNumber);
-      if (state !== "printed") await deps.remove(piece.id);
-    } else if (created) {
-      await deps.remove(piece.id);
-    } else if (recent(deps, piece)) {
-      throw new Mb3mError("Une facture MB3M est déjà en cours pour ce séjour.", 0);
-    }
-    throw new Mb3mError(mb3mInvoiceBlocker(ctx) || "Aucune dépense de ce séjour n’est au grand livre.", 0);
+  const claimed = await deps.claim(ctx.bookingId, ctx.amount);
+  let piece = claimed.piece;
+  const created = Boolean(claimed.created);
+  const mine = created || claimed.owned === true;
+  if (claimed.busy || (!mine && mb3mPrepInProgress(piece, deps.now()))) {
+    throw new Mb3mError(mb3mPreparationLockMessage(piece, deps.now()), 0);
   }
-  let previous: { folderId: string; number: string } | null = null;
-  if (piece.pieceNumber) {
-    const state = await deps.findPiece(piece.pieceNumber);
-    if (state === "printed") {
-      let documentId = piece.documentId;
-      if (!piece.printedAt) {
-        documentId = await attachPdf(ctx, deps, piece, piece.pieceNumber);
-        await deps.save(piece.id, { printedAt: new Date().toISOString(), documentId });
+  let trackFailure = !(piece.pieceNumber || "").trim();
+  try {
+    if (!ctx.lines.length) {
+      if (piece.pieceNumber && !piece.printedAt) {
+        const state = await deps.findPiece(piece.pieceNumber);
+        if (state === "open" && piece.folderId) await deps.cancelInvoice(piece.folderId, piece.pieceNumber);
+        if (state !== "printed") await deps.remove(piece.id);
+      } else if (created) {
+        trackFailure = false;
+        await deps.remove(piece.id);
       }
-      const covered = new Set(piece.transactionIds);
-      const fresh = ctx.lines.filter((line) => !covered.has(line.transactionId));
-      if (!fresh.length) {
+      throw new Mb3mError(mb3mInvoiceBlocker(ctx) || "Aucune dépense de ce séjour n’est au grand livre.", 0);
+    }
+    let previous: { folderId: string; number: string } | null = null;
+    if (piece.pieceNumber) {
+      const state = await deps.findPiece(piece.pieceNumber);
+      if (state === "printed") {
+        let documentId = piece.documentId;
+        if (!piece.printedAt) {
+          documentId = await attachPdf(ctx, deps, piece, piece.pieceNumber);
+          await deps.save(piece.id, { printedAt: new Date().toISOString(), documentId });
+        }
+        const covered = new Set(piece.transactionIds);
+        const fresh = ctx.lines.filter((line) => !covered.has(line.transactionId));
+        if (!fresh.length) {
+          return {
+            number: piece.pieceNumber,
+            documentId,
+            created: false,
+            replaced: false,
+            printed: true,
+            visibleToClient: ctx.visibleToClient,
+          };
+        }
+        return runMb3mInvoice(
+          { ...ctx, lines: fresh, amount: Math.round(fresh.reduce((sum, line) => sum + line.amount, 0) * 100) / 100, hadExpenses: true },
+          deps
+        );
+      }
+      if (state === "open" && piece.signature === signature) {
         return {
           number: piece.pieceNumber,
-          documentId,
+          documentId: null,
           created: false,
           replaced: false,
-          printed: true,
+          printed: false,
           visibleToClient: ctx.visibleToClient,
         };
       }
-      return runMb3mInvoice(
-        { ...ctx, lines: fresh, amount: Math.round(fresh.reduce((sum, line) => sum + line.amount, 0) * 100) / 100, hadExpenses: true },
-        deps
-      );
+      // L’ancienne pro forma s’annule après la nouvelle : un refus de MB3M ne laisse pas le dossier sans pièce.
+      if (state === "open" && piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
     }
-    if (state === "open" && piece.signature === signature) {
-      return {
-        number: piece.pieceNumber,
-        documentId: null,
-        created: false,
-        replaced: false,
-        printed: false,
-        visibleToClient: ctx.visibleToClient,
+    const blocker = mb3mInvoiceBlocker(ctx);
+    if (blocker && !piece.customerUid) {
+      if (created) {
+        trackFailure = false;
+        await deps.remove(piece.id);
+      }
+      throw new Mb3mError(blocker, 0);
+    }
+    if (blocker && !piece.pieceNumber) {
+      if (created) {
+        trackFailure = false;
+        await deps.remove(piece.id);
+      }
+      throw new Mb3mError(blocker, 0);
+    }
+    if (!piece.pieceNumber && !mb3mPrepInProgress(piece, deps.now())) {
+      const startedAt = new Date(deps.now()).toISOString();
+      const startedBy = mb3mActorLabel(deps.actorName);
+      await deps.save(piece.id, {
+        attemptStatus: "preparing",
+        attemptError: null,
+        attemptStartedAt: startedAt,
+        attemptStartedBy: startedBy,
+      });
+      piece = {
+        ...piece,
+        attemptStatus: "preparing",
+        attemptError: null,
+        attemptStartedAt: startedAt,
+        attemptStartedBy: startedBy,
       };
     }
-    // L’ancienne pro forma s’annule après la nouvelle : un refus de MB3M ne laisse pas le dossier sans pièce.
-    if (state === "open" && piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
-  } else if (!created && recent(deps, piece)) {
-    throw new Mb3mError("Une facture MB3M est déjà en cours pour ce séjour.", 0);
-  }
-  const blocker = mb3mInvoiceBlocker(ctx);
-  if (blocker && !piece.customerUid) {
-    if (created) await deps.remove(piece.id);
-    throw new Mb3mError(blocker, 0);
-  }
-  if (blocker && !piece.pieceNumber) {
-    if (created) await deps.remove(piece.id);
-    throw new Mb3mError(blocker, 0);
-  }
 
-  const savedPiece = await ensureFolder(ctx, deps, piece);
-  const replaced = Boolean(piece.pieceNumber);
-  const invoice = await deps.addInvoice({
-    folderId: savedPiece.folderId || "",
-    customerUid: savedPiece.customerUid || "",
-    title: ctx.title,
-    refCommand: ctx.reference,
-    dateStart: ctx.dateStart || undefined,
-    dateEnd: ctx.dateEnd || undefined,
-    destination: ctx.destination || undefined,
-    destinationIso: ctx.destinationIso || undefined,
-    lines: ctx.lines.map(mb3mInvoiceLine),
-    travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
-    agencyUid: savedPiece.agencyUid,
-  });
-  if (previous && previous.number !== invoice.number) {
-    try {
-      await deps.cancelInvoice(previous.folderId, previous.number);
-    } catch (err) {
-      console.error(`[mb3m] annulation de la pro forma n° ${previous.number}`, err instanceof Error ? err.message : err);
+    const savedPiece = await ensureFolder(ctx, deps, piece);
+    const replaced = Boolean(piece.pieceNumber);
+    const invoice = await deps.addInvoice({
+      folderId: savedPiece.folderId || "",
+      customerUid: savedPiece.customerUid || "",
+      title: ctx.title,
+      refCommand: ctx.reference,
+      dateStart: ctx.dateStart || undefined,
+      dateEnd: ctx.dateEnd || undefined,
+      destination: ctx.destination || undefined,
+      destinationIso: ctx.destinationIso || undefined,
+      lines: ctx.lines.map(mb3mInvoiceLine),
+      travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
+      agencyUid: savedPiece.agencyUid,
+    });
+    if (previous && previous.number !== invoice.number) {
+      try {
+        await deps.cancelInvoice(previous.folderId, previous.number);
+      } catch (err) {
+        console.error(`[mb3m] annulation de la pro forma n° ${previous.number}`, err instanceof Error ? err.message : err);
+      }
     }
+    await deps.save(savedPiece.id, {
+      pieceNumber: invoice.number,
+      pieceUid: invoice.uid || null,
+      amount: ctx.amount,
+      signature,
+      transactionIds: ctx.lines.map((line) => line.transactionId),
+      lines: ctx.lines.map(mb3mInvoiceLine),
+      customerUid: savedPiece.customerUid,
+      folderId: savedPiece.folderId,
+      folderUid: savedPiece.folderUid,
+      attemptStatus: null,
+      attemptError: null,
+    });
+    return {
+      number: invoice.number,
+      documentId: null,
+      created: !replaced,
+      replaced,
+      printed: false,
+      visibleToClient: ctx.visibleToClient,
+    };
+  } catch (error) {
+    if (trackFailure) {
+      const message = (error instanceof Error ? error.message : "La facture MB3M n’a pas abouti.")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 1000);
+      try {
+        await deps.save(piece.id, { attemptStatus: "failed", attemptError: message || "La facture MB3M n’a pas abouti." });
+      } catch (saveError) {
+        console.error("[mb3m] échec non enregistré", saveError instanceof Error ? saveError.message : saveError);
+      }
+    }
+    throw error;
   }
-  await deps.save(savedPiece.id, {
-    pieceNumber: invoice.number,
-    pieceUid: invoice.uid || null,
-    amount: ctx.amount,
-    signature,
-    transactionIds: ctx.lines.map((line) => line.transactionId),
-    lines: ctx.lines.map(mb3mInvoiceLine),
-    customerUid: savedPiece.customerUid,
-    folderId: savedPiece.folderId,
-    folderUid: savedPiece.folderUid,
-  });
-  return {
-    number: invoice.number,
-    documentId: null,
-    created: !replaced,
-    replaced,
-    printed: false,
-    visibleToClient: ctx.visibleToClient,
-  };
-}
-
-function recent(deps: Mb3mInvoiceDeps, piece: Mb3mStoredPiece) {
-  const age = deps.now() - Date.parse(piece.updatedAt);
-  return !Number.isFinite(age) || age < STALE_MS;
 }
 
 async function ensureFolder(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps, piece: Mb3mStoredPiece) {
@@ -651,6 +723,10 @@ function mapPiece(row: Record<string, unknown>): Mb3mStoredPiece {
     signature: row.line_signature ? String(row.line_signature) : null,
     transactionIds: Array.isArray(row.transaction_ids) ? row.transaction_ids.map(String) : [],
     lines: Array.isArray(row.lines) ? (row.lines as Mb3mLine[]) : [],
+    attemptStatus: row.attempt_status === "preparing" || row.attempt_status === "failed" ? row.attempt_status : null,
+    attemptError: row.attempt_error ? String(row.attempt_error) : null,
+    attemptStartedAt: row.attempt_started_at ? String(row.attempt_started_at) : null,
+    attemptStartedBy: row.attempt_started_by ? String(row.attempt_started_by) : null,
   };
 }
 
@@ -725,9 +801,13 @@ export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId
   });
 }
 
-export async function emitMb3mInvoice(supabase: SupabaseClient, bookingId: string): Promise<Mb3mInvoiceResult> {
+export async function emitMb3mInvoice(
+  supabase: SupabaseClient,
+  bookingId: string,
+  actorName?: string | null
+): Promise<Mb3mInvoiceResult> {
   const ctx = await loadMb3mInvoiceContext(supabase, bookingId);
-  return runMb3mInvoice(ctx, supabaseInvoiceDeps(supabase));
+  return runMb3mInvoice(ctx, supabaseInvoiceDeps(supabase, actorName));
 }
 
 /** Pièces imprimées dont la marge a changé depuis l’impression. */
@@ -739,7 +819,7 @@ export function mb3mStalePieces(printed: Mb3mStoredPiece[], lines: Mb3mAccountLi
  * Avoir et nouvelle facture. L’avoir reprend la facture imprimée ligne à ligne ; la facture suivante
  * repart avec la même vente et la marge corrigée. Les deux se valident dans MB3M, à l’impression.
  */
-export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: string) {
+export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: string, actorName?: string | null) {
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!booking) throw new Mb3mError("Réservation introuvable.", 0);
   const stay = booking as CrmBooking;
@@ -802,37 +882,81 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
     creditNotes.push(credit.number);
   }
   if (!creditNotes.length) throw new Mb3mError("La facture imprimée n’a pas de dossier MB3M connu.", 0);
-  const invoice = await emitMb3mInvoice(supabase, bookingId);
+  const invoice = await emitMb3mInvoice(supabase, bookingId, actorName);
   return { creditNote: creditNotes.join(", "), ...invoice };
 }
 
-function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
+function supabaseInvoiceDeps(supabase: SupabaseClient, actorName?: string | null): Mb3mInvoiceDeps {
+  const actor = mb3mActorLabel(actorName);
+  const now = () => Date.now();
   return {
-    now: () => Date.now(),
+    now,
+    actorName: actor,
     claim: async (bookingId, amount) => {
+      const startedAt = new Date(now()).toISOString();
       const inserted = await supabase
         .from("crm_mb3m_pieces")
-        .insert({ booking_id: bookingId, kind: "invoice", amount, currency: "EUR", realm: mb3mRealm() })
+        .insert({
+          booking_id: bookingId,
+          kind: "invoice",
+          amount,
+          currency: "EUR",
+          realm: mb3mRealm(),
+          attempt_status: "preparing",
+          attempt_error: null,
+          attempt_started_at: startedAt,
+          attempt_started_by: actor,
+        })
         .select("*")
         .maybeSingle();
       if (!inserted.error && inserted.data) {
-        return { piece: mapPiece(inserted.data as Record<string, unknown>), created: true };
+        return { piece: mapPiece(inserted.data as Record<string, unknown>), created: true, owned: true };
       }
       if (inserted.error?.code !== "23505") {
         dbFail(inserted.error || { message: "insert" }, "La facture n’a pas pu être enregistrée.");
       }
-      const existing = await supabase
-        .from("crm_mb3m_pieces")
-        .select("*")
-        .eq("booking_id", bookingId)
-        .eq("kind", "invoice")
-        .eq("realm", mb3mRealm())
-        .is("printed_at", null)
-        .maybeSingle();
-      if (existing.error || !existing.data) {
-        dbFail(existing.error || { message: "select" }, "La facture n’a pas pu être enregistrée.");
-      }
-      return { piece: mapPiece(existing.data as Record<string, unknown>), created: false };
+      const loadOpen = async () => {
+        const existing = await supabase
+          .from("crm_mb3m_pieces")
+          .select("*")
+          .eq("booking_id", bookingId)
+          .eq("kind", "invoice")
+          .eq("realm", mb3mRealm())
+          .is("printed_at", null)
+          .maybeSingle();
+        if (existing.error || !existing.data) {
+          dbFail(existing.error || { message: "select" }, "La facture n’a pas pu être enregistrée.");
+        }
+        return mapPiece(existing.data as Record<string, unknown>);
+      };
+      let piece = await loadOpen();
+      if (mb3mPrepInProgress(piece, now())) return { piece, created: false, busy: true };
+      const take = async (updatedAt: string) => {
+        const taken = await supabase
+          .from("crm_mb3m_pieces")
+          .update({
+            attempt_status: "preparing",
+            attempt_error: null,
+            attempt_started_at: new Date(now()).toISOString(),
+            attempt_started_by: actor,
+            updated_at: new Date(now()).toISOString(),
+          })
+          .eq("id", piece.id)
+          .eq("updated_at", updatedAt)
+          .select("*")
+          .maybeSingle();
+        if (taken.error) dbFail(taken.error, "La facture n’a pas pu être enregistrée.");
+        return taken.data ? mapPiece(taken.data as Record<string, unknown>) : null;
+      };
+      const first = await take(piece.updatedAt);
+      if (first) return { piece: first, created: false, owned: true };
+      piece = await loadOpen();
+      if (mb3mPrepInProgress(piece, now())) return { piece, created: false, busy: true };
+      const second = await take(piece.updatedAt);
+      if (second) return { piece: second, created: false, owned: true };
+      piece = await loadOpen();
+      if (mb3mPrepInProgress(piece, now())) return { piece, created: false, busy: true };
+      return { piece, created: false, owned: true };
     },
     save: async (id, patch) => {
       const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -847,6 +971,10 @@ function supabaseInvoiceDeps(supabase: SupabaseClient): Mb3mInvoiceDeps {
       if ("signature" in patch) row.line_signature = patch.signature;
       if ("transactionIds" in patch) row.transaction_ids = patch.transactionIds;
       if ("lines" in patch) row.lines = patch.lines;
+      if ("attemptStatus" in patch) row.attempt_status = patch.attemptStatus;
+      if ("attemptError" in patch) row.attempt_error = patch.attemptError;
+      if ("attemptStartedAt" in patch) row.attempt_started_at = patch.attemptStartedAt;
+      if ("attemptStartedBy" in patch) row.attempt_started_by = patch.attemptStartedBy;
       const { error } = await supabase.from("crm_mb3m_pieces").update(row).eq("id", id);
       if (error) dbFail(error, "La facture n’a pas pu être enregistrée.");
     },
