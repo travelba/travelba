@@ -545,13 +545,19 @@ export function planMissingPieceNotices(input: {
   alreadySent: { passport: boolean; formalityNames: string[]; expiringTravelerIds?: string[] };
   /** Faux : le visa n’est pas proposé, aucun rappel de formalité. */
   visaOffered?: boolean;
+  /**
+   * Faux : la carte d’identité suffit (France, Schengen, sans vol hors zone).
+   * Aucun rappel de passeport manquant ni d’expiration. Défaut : vrai.
+   */
+  passportRequired?: boolean;
 }): MissingPiecePlan[] {
   if (!input.published) return [];
   if (!input.startDate || input.startDate < input.today) return [];
   const reservation = reservationPath(input.reference);
   if (!reservation) return [];
   const plans: MissingPiecePlan[] = [];
-  if (input.missingPassports > 0 && !input.alreadySent.passport) {
+  const askPassport = input.passportRequired !== false;
+  if (askPassport && input.missingPassports > 0 && !input.alreadySent.passport) {
     const many = input.missingPassports > 1;
     plans.push({
       template: many ? "passeports" : "passeport",
@@ -566,7 +572,7 @@ export function planMissingPieceNotices(input: {
     });
   }
   const sentExpiry = new Set(input.alreadySent.expiringTravelerIds || []);
-  for (const row of input.expiringPassports || []) {
+  for (const row of askPassport ? input.expiringPassports || [] : []) {
     if (!row.travelerId || sentExpiry.has(row.travelerId)) continue;
     const sentence = passportExpirySentence(row.givenName, row.expiresOn, row.returnOn);
     const expires = slashDate(row.expiresOn);

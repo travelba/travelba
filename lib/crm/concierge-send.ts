@@ -7,7 +7,7 @@ import { cityCoverAuthFailed } from "@/lib/crm/cover-retouch";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { missingPassportCount, travelersPassportExpiresBeforeReturn } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
-import { frenchPassportTrip } from "./visa-trip";
+import { frenchPassportRequired, frenchPassportTrip } from "./visa-trip";
 import { toE164 } from "./phone";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { sendContentTemplate, type WhatsappSendResult } from "./whatsapp";
@@ -591,7 +591,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
 async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
   const [{ data: items }, { data: travelers }, { data: docs }, { data: visas }, { data: sent }, { data: customer }, { data: companions }] =
     await Promise.all([
-      admin.from("crm_booking_items").select("kind, details").eq("booking_id", booking.id),
+      admin.from("crm_booking_items").select("kind, details, lifecycle").eq("booking_id", booking.id),
       admin.from("crm_booking_travelers").select("*").eq("booking_id", booking.id),
       admin.from("crm_travel_documents").select("*").eq("customer_id", booking.customer_id),
       admin.from("crm_visa_requests").select("country, status").eq("booking_id", booking.id),
@@ -626,7 +626,8 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
         birth_date: profile.birth_date ?? null,
       }
     : null;
-  const trip = frenchPassportTrip((items || []) as CrmBookingItem[], party.length);
+  const steps = (items || []) as CrmBookingItem[];
+  const trip = frenchPassportTrip(steps, party.length);
   const filedRequests = new Set(
     ((visas || []) as { country?: string; status?: string }[])
       .filter((row) => row.status === "piece" && row.country)
@@ -662,6 +663,10 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
     bookingId: booking.id,
     startDate: booking.start_date,
     today: now.toISOString().slice(0, 10),
+    passportRequired: frenchPassportRequired(steps, {
+      destination: booking.destination,
+      title: booking.title,
+    }),
     missingPassports: missingPassportCount(party, papers, passportOptions),
     expiringPassports: expiring.map((row) => ({
       travelerId: row.traveler.id,

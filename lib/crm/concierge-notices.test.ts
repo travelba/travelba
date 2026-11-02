@@ -434,6 +434,21 @@ test("un passeport qui expire avant le retour a son propre message", () => {
   });
   assert.equal(absent[0].dedupe, "passeport:booking");
   assert.match(absent[0].body, /Le passeport manque avant le départ/);
+  const france = planMissingPieceNotices({
+    published: true,
+    reference,
+    bookingId: "booking",
+    startDate: "2027-03-21",
+    today: "2026-10-28",
+    missingPassports: 1,
+    expiringPassports: [
+      { travelerId: "voyageur", givenName: "Camille", expiresOn: "2027-02-07", returnOn: "2027-03-28" },
+    ],
+    formalities: [],
+    alreadySent: { passport: false, formalityNames: [] },
+    passportRequired: false,
+  });
+  assert.equal(france.length, 0);
 });
 
 test("les modèles n’embarquent aucun SID", () => {

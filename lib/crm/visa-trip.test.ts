@@ -3,7 +3,7 @@ import test from "node:test";
 import { countryForIata } from "./airports";
 import { visaFeeAmount, visaFeeTitle, visaPassengerCount } from "./extras";
 import { entryForFrenchPassport, officialVisaApplyUrl } from "./visa-fr";
-import { frenchPassportTrip } from "./visa-trip";
+import { frenchPassportRequired, frenchPassportTrip } from "./visa-trip";
 
 function flight(to: string, from = "CDG") {
   return { kind: "flight", details: { from, to } };
@@ -64,6 +64,69 @@ test("a connection via the United States still flags ESTA when the destination i
   assert.equal(trip.needsFormality, true);
   assert.ok(trip.entries.some((entry) => entry.iso === "US"));
   assert.equal(trip.entries.some((entry) => entry.iso === "MX"), false);
+});
+
+test("Valmorel stays in France and does not ask for a passport", () => {
+  const valmorel = [
+    { kind: "hotel", details: { city: "Valmorel", country: "France", hotel_name: "Club Med Valmorel" } },
+  ];
+  assert.equal(frenchPassportRequired(valmorel, { destination: "Valmorel", title: "Valmorel" }), false);
+  assert.equal(
+    frenchPassportRequired(
+      [
+        { kind: "flight", lifecycle: "cancelled", details: { from: "CDG", to: "JFK" } },
+        ...valmorel,
+      ],
+      { destination: "Valmorel" }
+    ),
+    false
+  );
+  assert.equal(
+    frenchPassportRequired(
+      [{ kind: "rail", details: { city_from: "Paris", city_to: "Les Arcs" } }, ...valmorel],
+      { destination: "Valmorel" }
+    ),
+    false
+  );
+  const rome = [
+    { kind: "flight", details: { from: "CDG", to: "FCO" } },
+    { kind: "hotel", details: { city: "Rome", country: "Italie" } },
+  ];
+  assert.equal(frenchPassportRequired(rome, { destination: "Rome" }), false);
+  assert.equal(frenchPassportRequired([{ kind: "flight", details: { from: "CDG", to: "PTP" } }], { destination: "Guadeloupe" }), false);
+  assert.equal(
+    frenchPassportRequired([{ kind: "flight", details: { from: "CDG", to: "JFK" } }], { destination: "New York" }),
+    true
+  );
+  assert.equal(
+    frenchPassportRequired(
+      [
+        { kind: "flight", details: { from: "CDG", to: "LHR" } },
+        { kind: "hotel", details: { city: "Londres", country: "Royaume-Uni" } },
+      ],
+      { destination: "Londres" }
+    ),
+    true
+  );
+  assert.equal(
+    frenchPassportRequired([{ kind: "rail", details: { city_from: "Paris", city_to: "Londres" } }], { destination: "Londres" }),
+    true
+  );
+  assert.equal(frenchPassportRequired([{ kind: "flight", details: { from: "CDG", to: "CMN" } }], { destination: "Marrakech" }), true);
+  assert.equal(
+    frenchPassportRequired(
+      [{ kind: "hotel", details: { city: "Valmorel", country: "France" } }, { kind: "flight", details: { from: "CDG", to: "ZZZ" } }],
+      { destination: "Valmorel" }
+    ),
+    true
+  );
+  assert.equal(frenchPassportRequired([], { destination: "Quelque part" }), true);
+  assert.equal(frenchPassportRequired([], { destination: "Tel Aviv" }), true);
+  assert.equal(frenchPassportRequired([], { destination: "Marrakech" }), true);
+  assert.equal(
+    frenchPassportRequired([{ kind: "hotel", details: { city: "Zermatt", country: "Suisse" } }], { destination: "Zermatt" }),
+    false
+  );
 });
 
 test("Guadeloupe and an unknown airport do not open the paid service", () => {

@@ -203,7 +203,7 @@ test("l’évaluation simulée couvre le carnet et les échecs réels", async ()
     failed.map((result) => `${result.id}: ${result.detail}`),
     []
   );
-  assert.equal(results.length, 14);
+  assert.equal(results.length, 15);
 });
 
 test("les faits du savoir arrivent au modèle, pas les exemples", async () => {
