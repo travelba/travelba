@@ -84,6 +84,7 @@ export function adminNavGroups(input: {
         { href: "/admin/restaurants", label: "Restaurants", icon: "restaurant" },
         { href: `${ADMIN_ROUTES.dossiers}?vue=formalites`, label: "Formalités", icon: "shield_check" },
         { href: `${ADMIN_ROUTES.dossiers}?vue=services`, label: "Services à confirmer", icon: "headset" },
+        { href: "/admin/ratehawk", label: "Ratehawk", icon: "hotel" },
       ],
     },
     {
@@ -234,7 +235,7 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     label: "Dossiers",
     icon: "luggage",
     href: ADMIN_ROUTES.dossiers,
-    paths: ["/admin/reservations", "/admin/restaurants", "/admin/formalites", "/admin/services"],
+    paths: ["/admin/reservations", "/admin/restaurants", "/admin/formalites", "/admin/services", "/admin/ratehawk"],
     badges: [],
   },
   { id: "clients", label: "Clients", icon: "group", href: ADMIN_ROUTES.clients, paths: ["/admin/clients"], badges: [] },
