@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { HOTEL_MEMBERSHIP_LABEL } from "@/lib/crm/hotel-access";
+import { adminAction } from "@/lib/crm/admin-action";
 
 export function HotelAccessCard({
   customerId,
@@ -24,6 +26,16 @@ export function HotelAccessCard({
   const router = useRouter();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+
+  async function announce() {
+    if (preview) return { ok: false, error: "Aperçu : rien n’est envoyé." };
+    const result = await adminAction(`/api/admin/clients/${customerId}/hotels/annoncer`, { method: "POST" });
+    if (result.ok) {
+      setNote("Accès Hôtels annoncé par WhatsApp. Le message ne contient pas de mot de passe.");
+      router.refresh();
+    }
+    return result;
+  }
 
   async function post(body: Record<string, unknown>) {
     if (preview) return;
@@ -70,6 +82,19 @@ export function HotelAccessCard({
           <p className="text-xs text-muted">Réservé aux administrateurs.</p>
         )}
       </div>
+      {admin && enabled ? (
+        <div className="mt-3">
+          <ConfirmAction
+            label="Annoncer par WhatsApp"
+            question="Annoncer l’accès Hôtels par WhatsApp ?"
+            hint="Un lien personnel, à usage unique, valable 30 jours, vers la rubrique Hôtels. Aucun mot de passe."
+            confirmLabel="Envoyer"
+            busyLabel="Envoi…"
+            disabled={busy || preview}
+            onConfirm={announce}
+          />
+        </div>
+      ) : null}
       {admin && enabled && !demo ? (
         <label className="mt-3 flex items-center gap-2 text-sm text-[var(--admin-navy)]">
           <input

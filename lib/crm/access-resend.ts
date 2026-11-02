@@ -9,6 +9,15 @@ export { accessLoginEmailVariable, loginEmailFromSearch } from "./login-email";
 export const ACCESS_TEMPLATE_KEY = "acces_client";
 export const ACCESS_TEMPLATE_ENV = "TWILIO_CONTENT_ACCES_CLIENT";
 export const ACCESS_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const ACCESS_HOME_PATH = "/mon-compte";
+export const ACCESS_HOTELS_PATH = "/mon-compte/hotels";
+
+/** Seules ces pages peuvent s’ouvrir après le jeton. */
+export function accessNextPath(value: string | null | undefined) {
+  const path = (value || "").split("?")[0];
+  if (path === ACCESS_HOTELS_PATH) return ACCESS_HOTELS_PATH;
+  return ACCESS_HOME_PATH;
+}
 export const ACCESS_TOKEN_BYTES = 32;
 
 /** 32 octets en base64url : 43 caractères, sans padding. */
@@ -230,10 +239,21 @@ export async function deliverAccessResend(
     token: string;
     staffId: string | null;
     actor: string;
+    nextPath?: string;
+    body?: string | null;
+    variables?: Record<string, string> | null;
+    failSummary?: string;
+    okSummary?: string;
   },
   deps: {
     revokeActive: (customerId: string) => Promise<boolean>;
-    insertToken: (row: { customerId: string; tokenHash: string; expiresAt: string; staffId: string | null }) => Promise<boolean>;
+    insertToken: (row: {
+      customerId: string;
+      tokenHash: string;
+      expiresAt: string;
+      staffId: string | null;
+      nextPath: string;
+    }) => Promise<boolean>;
     revokeHash: (tokenHash: string) => Promise<void>;
     send: (variables: Record<string, string>) => Promise<WhatsappSendResult>;
     remember: (row: AccessJournalRow) => Promise<boolean>;
@@ -242,27 +262,30 @@ export async function deliverAccessResend(
   }
 ): Promise<AccessDeliverResult> {
   const now = deps.now ?? new Date();
-  const variables = accessContentVariables(input.firstName, input.email, input.token);
-  const body = accessTemplatePreview(input.firstName);
+  const variables = input.variables === undefined ? accessContentVariables(input.firstName, input.email, input.token) : input.variables;
+  const body = input.body === undefined ? accessTemplatePreview(input.firstName) : input.body;
   const actor = input.actor.replace(/[\r\n]+/g, " ").trim().slice(0, 80) || "l’agence";
+  const failSummary = input.failSummary || `Échec du renvoi des accès par WhatsApp (${actor}).`;
+  const okSummary = input.okSummary || `Accès renvoyés par WhatsApp (${actor}).`;
   if (!variables || !body) {
-    await deps.audit(`Échec du renvoi des accès par WhatsApp (${actor}).`);
-    return { ok: false, code: "variables", statut: "failed", message: "Ces accès ne peuvent pas partir par WhatsApp." };
+    await deps.audit(failSummary);
+    return { ok: false, code: "variables", statut: "failed", message: "Ce message ne peut pas partir par WhatsApp." };
   }
   const tokenHash = hashAccessToken(input.token);
   if (!(await deps.revokeActive(input.customerId))) {
-    await deps.audit(`Échec du renvoi des accès par WhatsApp (${actor}).`);
-    return { ok: false, code: "insert", statut: "failed", message: "Les accès n’ont pas pu être préparés. Rien n’a été envoyé." };
+    await deps.audit(failSummary);
+    return { ok: false, code: "insert", statut: "failed", message: "Le lien n’a pas pu être préparé. Rien n’a été envoyé." };
   }
   const inserted = await deps.insertToken({
     customerId: input.customerId,
     tokenHash,
     expiresAt: accessExpiresAt(now).toISOString(),
     staffId: input.staffId,
+    nextPath: accessNextPath(input.nextPath),
   });
   if (!inserted) {
-    await deps.audit(`Échec du renvoi des accès par WhatsApp (${actor}).`);
-    return { ok: false, code: "insert", statut: "failed", message: "Les accès n’ont pas pu être préparés. Rien n’a été envoyé." };
+    await deps.audit(failSummary);
+    return { ok: false, code: "insert", statut: "failed", message: "Le lien n’a pas pu être préparé. Rien n’a été envoyé." };
   }
   const base = {
     customer_id: input.customerId,
@@ -274,7 +297,7 @@ export async function deliverAccessResend(
   const queued = await deps.remember({ ...base, status: "queued", error: null, twilio_sid: null });
   if (!queued) {
     await deps.revokeHash(tokenHash);
-    await deps.audit(`Échec du renvoi des accès par WhatsApp (${actor}).`);
+    await deps.audit(failSummary);
     return { ok: false, code: "journal", statut: "failed", message: "L’envoi n’a pas pu être enregistré. Rien n’a été envoyé." };
   }
   const sent = await deps.send(variables);
@@ -282,10 +305,10 @@ export async function deliverAccessResend(
     await deps.revokeHash(tokenHash);
     const error = accessSafeDetail(sent.detail, input.token) || sent.reason;
     await deps.remember({ ...base, status: "failed", error, twilio_sid: null });
-    await deps.audit(`Échec du renvoi des accès par WhatsApp (${actor}).`);
-    return { ok: false, code: "rejected", statut: "failed", message: "WhatsApp n’a pas pu remettre les accès. Réessayez." };
+    await deps.audit(failSummary);
+    return { ok: false, code: "rejected", statut: "failed", message: "WhatsApp n’a pas pu remettre le message. Réessayez." };
   }
   await deps.remember({ ...base, status: "sent", error: null, twilio_sid: sent.sid });
-  await deps.audit(`Accès renvoyés par WhatsApp (${actor}).`);
-  return { ok: true, sid: sent.sid, statut: "sent", message: "Accès renvoyés par WhatsApp." };
+  await deps.audit(okSummary);
+  return { ok: true, sid: sent.sid, statut: "sent", message: okSummary };
 }

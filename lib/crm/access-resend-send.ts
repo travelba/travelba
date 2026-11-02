@@ -5,12 +5,21 @@ import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "./rate-limit";
 import { resolveContentSid } from "./twilio-content-sid";
 import { sendContentTemplate, twilioReady, whatsappAddress } from "./whatsapp";
 import {
+  ACCESS_HOME_PATH,
   ACCESS_TEMPLATE_ENV,
   ACCESS_TEMPLATE_KEY,
+  accessTemplatePreview,
   createAccessToken,
   deliverAccessResend,
   type AccessJournalRow,
 } from "./access-resend";
+import {
+  HOTEL_OPTION_NEXT_PATH,
+  HOTEL_OPTION_TEMPLATE_ENV,
+  HOTEL_OPTION_TEMPLATE_KEY,
+  hotelOptionContentVariables,
+  hotelOptionTemplatePreview,
+} from "./hotel-option-whatsapp";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -38,9 +47,36 @@ export async function sendClientAccessWhatsapp(input: {
   path: string;
   confirmer: boolean;
 }): Promise<AccessSendResult> {
+  return sendAccessLink(input, "access");
+}
+
+/** Annonce l’option hôtel déjà activée. Même jeton 30 jours, vers /mon-compte/hotels. */
+export async function sendHotelOptionWhatsapp(input: {
+  customerId: string;
+  staffId: string | null;
+  actor: string;
+  path: string;
+  confirmer: boolean;
+}): Promise<AccessSendResult> {
+  return sendAccessLink(input, "hotel");
+}
+
+async function sendAccessLink(
+  input: {
+    customerId: string;
+    staffId: string | null;
+    actor: string;
+    path: string;
+    confirmer: boolean;
+  },
+  kind: "access" | "hotel"
+): Promise<AccessSendResult> {
+  const hotel = kind === "hotel";
   if (input.confirmer !== true) {
     return refused(
-      "Rien n’a été envoyé. Confirmez pour renvoyer les accès par WhatsApp. Aucun mot de passe n’est dans le message.",
+      hotel
+        ? "Rien n’a été envoyé. Confirmez pour annoncer l’accès Hôtels par WhatsApp. Aucun mot de passe n’est dans le message."
+        : "Rien n’a été envoyé. Confirmez pour renvoyer les accès par WhatsApp. Aucun mot de passe n’est dans le message.",
       "confirm",
       400
     );
@@ -48,7 +84,7 @@ export async function sendClientAccessWhatsapp(input: {
   if (!UUID.test(input.customerId)) return refused("Client invalide.", "invalid", 400);
 
   const allowed = await rateLimit({
-    key: rateLimitKey("acces-whatsapp", input.customerId),
+    key: rateLimitKey(hotel ? "option-hotel-whatsapp" : "acces-whatsapp", input.customerId),
     limit: 8,
     windowSeconds: 60 * 60,
   });
@@ -57,7 +93,7 @@ export async function sendClientAccessWhatsapp(input: {
   const admin = createServiceClient();
   const { data: customer, error: readError } = await admin
     .from("crm_customers")
-    .select("id, email, phone, first_name, auth_user_id")
+    .select("id, email, phone, first_name, auth_user_id, hotel_booking_enabled")
     .eq("id", input.customerId)
     .maybeSingle();
   if (readError) {
@@ -78,23 +114,44 @@ export async function sendClientAccessWhatsapp(input: {
     return refused("La fiche n’a pas pu être lue.", "read", 502);
   }
   if (staffRow) return refused("Réservé à un client.", "staff", 403);
+  if (hotel && customer.hotel_booking_enabled !== true) {
+    return refused("Activez d’abord l’accès Hôtels. Rien n’a été envoyé.", "disabled", 409);
+  }
 
   const to = whatsappAddress(customer.phone);
   if (!to) {
-    return refused("Ajoutez un téléphone à la fiche : les accès partent par WhatsApp.", "no_phone", 409);
+    return refused(
+      hotel
+        ? "Ajoutez un téléphone à la fiche : l’annonce part par WhatsApp."
+        : "Ajoutez un téléphone à la fiche : les accès partent par WhatsApp.",
+      "no_phone",
+      409
+    );
   }
 
-  const templateSid = (await resolveContentSid(ACCESS_TEMPLATE_ENV)).trim();
+  const templateEnv = hotel ? HOTEL_OPTION_TEMPLATE_ENV : ACCESS_TEMPLATE_ENV;
+  const templateKey = hotel ? HOTEL_OPTION_TEMPLATE_KEY : ACCESS_TEMPLATE_KEY;
+  const nextPath = hotel ? HOTEL_OPTION_NEXT_PATH : ACCESS_HOME_PATH;
+  const templateSid = (await resolveContentSid(templateEnv)).trim();
   if (!templateSid || !twilioReady()) {
     await recordAgencyJournal({
       staffId: input.staffId,
       action: "send",
       entityType: "client",
       entityId: customer.id,
-      summary: `Renvoi des accès WhatsApp refusé : le modèle n’est pas encore approuvé (${input.actor}).`.slice(0, 500),
+      summary: (hotel
+        ? `Annonce Hôtels refusée : le modèle n’est pas encore approuvé (${input.actor}).`
+        : `Renvoi des accès WhatsApp refusé : le modèle n’est pas encore approuvé (${input.actor}).`
+      ).slice(0, 500),
       path: input.path,
     });
-    return refused("Le modèle WhatsApp des accès n’est pas encore approuvé. Rien n’a été envoyé.", "not_configured", 409);
+    return refused(
+      hotel
+        ? "Le modèle WhatsApp de l’accès Hôtels n’est pas encore approuvé. Rien n’a été envoyé."
+        : "Le modèle WhatsApp des accès n’est pas encore approuvé. Rien n’a été envoyé.",
+      "not_configured",
+      409
+    );
   }
 
   const token = createAccessToken();
@@ -110,6 +167,15 @@ export async function sendClientAccessWhatsapp(input: {
       token,
       staffId: input.staffId,
       actor: input.actor,
+      nextPath,
+      body: hotel ? hotelOptionTemplatePreview(customer.first_name) : accessTemplatePreview(customer.first_name),
+      variables: hotel
+        ? hotelOptionContentVariables(customer.first_name, customer.email, token)
+        : undefined,
+      failSummary: hotel
+        ? `Échec de l’annonce Hôtels par WhatsApp (${input.actor}).`
+        : undefined,
+      okSummary: hotel ? `Accès Hôtels annoncé par WhatsApp (${input.actor}).` : undefined,
     },
     {
       async revokeActive(customerId) {
@@ -117,6 +183,7 @@ export async function sendClientAccessWhatsapp(input: {
           .from("crm_access_resend_tokens")
           .update({ revoked_at: new Date().toISOString() })
           .eq("customer_id", customerId)
+          .eq("next_path", nextPath)
           .is("revoked_at", null)
           .is("used_at", null);
         if (error) console.error("[acces] révocation");
@@ -128,6 +195,7 @@ export async function sendClientAccessWhatsapp(input: {
           token_hash: row.tokenHash,
           expires_at: row.expiresAt,
           created_by_staff_id: row.staffId,
+          next_path: row.nextPath,
         });
         if (error) console.error("[acces] empreinte");
         return !error;
@@ -150,7 +218,7 @@ export async function sendClientAccessWhatsapp(input: {
             .insert({
               customer_id: row.customer_id,
               direction: "outbound",
-              template_key: ACCESS_TEMPLATE_KEY,
+              template_key: templateKey,
               body: row.body,
               status: row.status,
               error: row.error,

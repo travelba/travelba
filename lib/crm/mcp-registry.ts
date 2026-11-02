@@ -56,6 +56,7 @@ import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { envoyerReleve } from "@/lib/crm/mcp-statement";
 import { renvoyerAccesWhatsapp } from "@/lib/crm/mcp-access-resend";
+import { annoncerOptionHotel } from "@/lib/crm/mcp-hotel-option";
 import { readLireEmail } from "@/lib/crm/mcp-email";
 import {
   choixRestaurant,
@@ -106,7 +107,7 @@ import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 91;
+export const MCP_TOOL_CAP = 92;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -848,6 +849,19 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: z.boolean().optional().describe("true pour envoyer. Sans true, rien ne part"),
     },
     run: (args) => renvoyerAccesWhatsapp(args),
+  },
+  {
+    name: "annoncer_option_hotel",
+    write: true,
+    openWorld: true,
+    selfJournal: true,
+    description:
+      "Annonce l’accès Hôtels déjà activé, comme le bouton Annoncer par WhatsApp de la fiche. client_id. confirmer doit être true : sans lui, rien n’est envoyé. Un seul bouton, Ouvrir mon espace, vers la rubrique Hôtels : lien personnel à usage unique, valable 30 jours. Aucun mot de passe. Le lien n’est pas renvoyé. Réservé aux administrateurs. Sans le modèle approuvé TWILIO_CONTENT_OPTION_HOTEL, rien n’est envoyé.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      confirmer: z.boolean().optional().describe("true pour envoyer. Sans true, rien ne part"),
+    },
+    run: (args) => annoncerOptionHotel(args),
   },
   {
     name: "ajouter_piece",

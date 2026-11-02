@@ -22,6 +22,7 @@ import {
   accessBusyMarkup,
   accessDeadMarkup,
   accessLinkGate,
+  accessNextPath,
   accessOtpType,
   accessPreviewMarkup,
   accessRowAlive,
@@ -70,7 +71,7 @@ async function readTokenRow(tokenHash: string) {
   const admin = createServiceClient();
   const { data, error } = await admin
     .from("crm_access_resend_tokens")
-    .select("id, customer_id, expires_at, revoked_at, used_at")
+    .select("id, customer_id, expires_at, revoked_at, used_at, next_path")
     .eq("token_hash", tokenHash)
     .maybeSingle();
   if (error) {
@@ -115,13 +116,15 @@ async function loadCustomer(customerId: string) {
   return data;
 }
 
-function destinationFor(user: User) {
+function destinationFor(user: User, nextPath: string) {
   if (mustSetPassword(user)) return SET_PASSWORD_PATH;
-  return signedInClientDestination({
+  const home = signedInClientDestination({
     mustSetPassword: false,
     needsOnboarding: needsClientOnboarding(user),
     staff: false,
   });
+  if (home !== "/mon-compte") return home;
+  return accessNextPath(nextPath);
 }
 
 /**
@@ -136,6 +139,7 @@ export async function openAccessToken(request: Request, rawToken: string, opts?:
   const openRequested = opts?.forceOpen === true || new URL(request.url).searchParams.get("ouvrir") === "1";
   const previewBot = isPreviewBot(request.headers.get("user-agent"));
   const row = tokenOk ? await readTokenRow(hashAccessToken(token)) : null;
+  const nextPath = accessNextPath(row?.next_path);
   const alive = accessRowAlive(row, now);
   const customer = row?.customer_id ? await loadCustomer(row.customer_id) : null;
   if (!openRequested || previewBot) {
@@ -162,7 +166,7 @@ export async function openAccessToken(request: Request, rawToken: string, opts?:
   });
   if (gate === "busy") return html(accessBusyMarkup(), 409);
   if (gate === "same" && existing) {
-    response.headers.set("Location", new URL(destinationFor(existing), origin).toString());
+    response.headers.set("Location", new URL(destinationFor(existing, nextPath), origin).toString());
     return response;
   }
 
@@ -207,13 +211,7 @@ export async function openAccessToken(request: Request, rawToken: string, opts?:
 
   await ensureCustomerForUser(user);
   finishClientCookies(response);
-  const dest = mustSet
-    ? SET_PASSWORD_PATH
-    : signedInClientDestination({
-        mustSetPassword: false,
-        needsOnboarding: needsClientOnboarding(user),
-        staff: false,
-      });
+  const dest = mustSet ? SET_PASSWORD_PATH : destinationFor(user, nextPath);
   response.headers.set("Location", new URL(dest, origin).toString());
   if (dest === SET_PASSWORD_PATH) {
     const meta = user.app_metadata || {};
