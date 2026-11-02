@@ -14,4 +14,11 @@ test("une écriture de clé nominative est au nom du membre sur le dossier", () 
   assert.equal(money.entityType, "finance");
   assert.match(money.summary, /par Raphael/);
   assert.equal(JSON.stringify(row).includes("tbk_"), false);
+  const facture = mcpWriteJournalDraft("envoyer_facture", { dossier_id: DOSSIER }, "Raphael");
+  assert.equal(facture.action, "send");
+  assert.equal(facture.entityType, "dossier");
+  assert.match(facture.summary, /Facture envoyée par Raphael/);
+  const removed = mcpWriteJournalDraft("supprimer_client", {}, "Raphael");
+  assert.equal(removed.action, "delete");
+  assert.match(removed.summary, /Client supprimé/);
 });

@@ -19,9 +19,12 @@ const CREATE = new Set([
   "ajouter_piece",
   "creer_carte_pliant",
   "create_restaurant",
+  "dupliquer_dossier",
+  "ajouter_carte",
+  "deposer_piece_dossier",
 ]);
 
-const REMOVE = new Set(["retirer_carte", "retirer_voyageur"]);
+const REMOVE = new Set(["retirer_carte", "retirer_voyageur", "supprimer_client", "archiver_dossier", "retirer_piece_dossier"]);
 
 const FINANCE = new Set([
   "crediter_virement",
@@ -31,6 +34,10 @@ const FINANCE = new Set([
   "remettre_non_rattache",
   "rapprocher_pliant",
   "preparer_facture_mb3m",
+  "reprendre_facture_mb3m",
+  "creer_fiche_mb3m",
+  "comptabilite_sortie",
+  "refuser_encaissement",
 ]);
 
 const PHRASES: Record<string, string> = {
@@ -76,6 +83,22 @@ const PHRASES: Record<string, string> = {
   update_restaurant: "Restaurant modifié",
   tables_restaurant: "Table de restaurant mise à jour",
   create_restaurant_whatsapp_templates: "Modèles WhatsApp restaurants déposés",
+  supprimer_client: "Client supprimé",
+  enregistrer_societes: "Sociétés de facturation enregistrées",
+  regler_acces_hotels: "Accès hôtels modifié",
+  archiver_dossier: "Dossier archivé",
+  restaurer_dossier: "Dossier rouvert",
+  dupliquer_dossier: "Dossier dupliqué",
+  cacher_carnet: "Carnet caché",
+  ajouter_carte: "Carte ajoutée",
+  modifier_carte: "Carte modifiée",
+  reordonner_cartes: "Cartes réordonnées",
+  deposer_piece_dossier: "Pièce déposée sur le dossier",
+  retirer_piece_dossier: "Pièce retirée du dossier",
+  reprendre_facture_mb3m: "Facture MB3M reprise",
+  creer_fiche_mb3m: "Fiche envoyée à MB3M",
+  comptabilite_sortie: "Sortie fournisseur rapprochée",
+  refuser_encaissement: "Encaissement refusé",
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

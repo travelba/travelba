@@ -70,21 +70,43 @@ import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
 import { envoyerFacture } from "@/lib/crm/mcp-invoice";
 import {
+  comptabiliteSortie,
+  creerFicheMb3m,
+  refuserEncaissement,
+  reprendreFactureMb3m,
+} from "@/lib/crm/mcp-finance-ops";
+import {
   ajouterMembre,
   changerRoleMembre,
   creerCleApi,
   desactiverMembre,
   listerClesApi,
   listerMembres,
+  reactiverMembre,
   revoquerCleApi,
 } from "@/lib/crm/mcp-agency";
+import {
+  ajouterCarte,
+  archiverDossier,
+  cacherCarnet,
+  deposerPieceDossier,
+  dupliquerDossier,
+  enregistrerSocietes,
+  lireJournal,
+  modifierCarte,
+  reglerAccesHotels,
+  reordonnerCartes,
+  restaurerDossier,
+  retirerPieceDossier,
+  supprimerClient,
+} from "@/lib/crm/mcp-desk";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 73;
+export const MCP_TOOL_CAP = 91;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -214,6 +236,8 @@ type ToolDef = {
   cardSecrets?: boolean;
   /** L’outil écrit déjà sa ligne de journal. */
   selfJournal?: boolean;
+  /** Suppression, archivage, ou remplacement qui retire des données. */
+  destructive?: boolean;
   run: (args: ToolArgs) => Promise<unknown>;
 };
 
@@ -1496,6 +1520,277 @@ export const MCP_TOOLS: ToolDef[] = [
     },
     run: (args) => revoquerCleApi({ cle_id: str(args, "cle_id") }),
   },
+  {
+    name: "supprimer_client",
+    write: true,
+    destructive: true,
+    description:
+      "Supprime définitivement la fiche, ses dossiers et ses pièces, comme le bouton Supprimer. Réservé aux administrateurs. confirmer est le nom complet du client (casse et accents indifférents). Les virements rapprochés reviennent dans la file. Le numéro de pièce n’est pas renvoyé.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      confirmer: z.string().trim().max(200).describe("Nom complet du client, pour confirmer"),
+    },
+    run: (args) => supprimerClient(args),
+  },
+  {
+    name: "enregistrer_societes",
+    write: true,
+    destructive: true,
+    description:
+      "Enregistre les sociétés de facturation du client, comme Enregistrer sur la fiche. La liste remplace les sociétés : une société absente est retirée, sauf un compte Crédit ou Pro. confirmer true est obligatoire. Même SIRET : la ligne existante est mise à jour.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      confirmer: z.boolean().describe("true pour remplacer la liste"),
+      societes: z
+        .array(
+          z.object({
+            id: z.string().trim().max(80).optional().describe("Société déjà là. Absent : création"),
+            raison_sociale: z.string().trim().max(300).optional(),
+            siret: z.string().trim().max(40).optional(),
+            tva: z.string().trim().max(40).optional(),
+            email: z.string().trim().max(180).optional(),
+            adresse: z.string().trim().max(300).optional(),
+            code_postal: z.string().trim().max(20).optional(),
+            ville: z.string().trim().max(80).optional(),
+            pays: z.string().trim().max(80).optional(),
+          })
+        )
+        .max(12)
+        .describe("Sociétés à garder, dans l’ordre"),
+    },
+    run: (args) => enregistrerSocietes(args),
+  },
+  {
+    name: "regler_acces_hotels",
+    write: true,
+    description:
+      "Réglage Accès Hôtels de la fiche. actif ouvre ou ferme l’option. mode_reel passe en mode réel (sinon démonstration). demande accepter ou refuser traite la demande en attente. Réservé aux administrateurs. Aucun message au client.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      actif: z.boolean().optional().describe("true ouvre l’accès hôtels"),
+      mode_reel: z.boolean().optional().describe("true : mode réel. Sinon démonstration"),
+      demande: z.enum(["accepter", "refuser"]).optional().describe("Traite la demande d’accès en attente"),
+    },
+    run: (args) => reglerAccesHotels(args),
+  },
+  {
+    name: "archiver_dossier",
+    write: true,
+    destructive: true,
+    description:
+      "Archive le dossier, comme Archiver. Le client ne le voit plus et les débits ouverts sont retirés. confirmer true. On le rouvre avec restaurer_dossier. Ce n’est pas une suppression.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+      confirmer: z.boolean().describe("true pour archiver"),
+    },
+    run: (args) => archiverDossier(args),
+  },
+  {
+    name: "restaurer_dossier",
+    write: true,
+    description:
+      "Rouvre un dossier archivé, comme Réactiver. Le grand livre reprend. Le carnet reste caché tant qu’il n’est pas montré.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+    },
+    run: (args) => restaurerDossier(args),
+  },
+  {
+    name: "dupliquer_dossier",
+    write: true,
+    description:
+      "Duplique le dossier, comme Dupliquer : visas, refus et courriers compris. Le nouveau séjour est caché, avec une référence neuve. Aucune invitation, aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+    },
+    run: (args) => dupliquerDossier(args),
+  },
+  {
+    name: "cacher_carnet",
+    write: true,
+    description:
+      "Cache le carnet au client, l’inverse de publier_carnet. Le débit ouvert est retiré. confirmer true. Aucun message. Pour le montrer à nouveau : publier_carnet.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      confirmer: z.boolean().describe("true pour cacher"),
+    },
+    run: (args) => cacherCarnet(args),
+  },
+  {
+    name: "ajouter_carte",
+    write: true,
+    description:
+      "Ajoute une carte au dossier, comme le formulaire d’étape : train, transfert, activité, voiture, bateau, assurance, frais, chauffeur, VIP, visa, enregistrement, dépense, accueil, vol ou hôtel. La carte reste cachée. Le séjour caché ne débite pas. Aucun message. Vol et hôtel détaillés : ajouter_vol et ajouter_hotel. Pas de numéro de pièce ni de carte.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      type: z.string().trim().max(40).describe("train, transfert, activite, frais, depense, vol, hotel…"),
+      titre: z.string().trim().max(300).optional(),
+      fournisseur: z.string().trim().max(120).optional(),
+      confirmation: z.string().trim().max(80).optional(),
+      debut: z.string().trim().max(40).optional().describe("Date ou heure locale"),
+      fin: z.string().trim().max(40).optional(),
+      prix: z.union([z.number(), z.string()]).optional(),
+      inclure_transactions: z.boolean().optional(),
+      details: z.record(z.string(), z.unknown()).optional().describe("Champs de la carte, sans numéro de pièce"),
+    },
+    run: (args) => ajouterCarte(args),
+  },
+  {
+    name: "modifier_carte",
+    write: true,
+    description:
+      "Corrige une carte déjà au dossier (carte_id de fiche_dossier) : titre, fournisseur, confirmation, dates, prix, détails. Ne change pas la visibilité et n’envoie rien. Le séjour caché ne débite pas. Vol et hôtel détaillés : modifier_vol et modifier_hotel.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      carte_id: z.string().trim().max(80).describe("Identifiant de la carte"),
+      titre: z.string().trim().max(300).optional(),
+      fournisseur: z.string().trim().max(120).optional(),
+      confirmation: z.string().trim().max(80).optional(),
+      debut: z.string().trim().max(40).optional(),
+      fin: z.string().trim().max(40).optional(),
+      prix: z.union([z.number(), z.string()]).optional(),
+      details: z.record(z.string(), z.unknown()).optional(),
+    },
+    run: (args) => modifierCarte(args),
+  },
+  {
+    name: "reordonner_cartes",
+    write: true,
+    description:
+      "Range les cartes du dossier dans l’ordre indiqué, comme le glisser de l’agence. ordre : les identifiants de cartes, du premier au dernier. Les dépenses ne bougent pas. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      ordre: z.array(z.string().trim().max(80)).min(1).max(80).describe("Identifiants de cartes, dans l’ordre"),
+    },
+    run: (args) => reordonnerCartes(args),
+  },
+  {
+    name: "deposer_piece_dossier",
+    write: true,
+    description:
+      "Dépose un fichier sur le dossier, ou sur une carte si carte_id est indiqué. Même geste que Documents du dossier. contenu est le fichier en base64. La pièce reste cachée. carte d'embarquement met à jour l’enregistrement. Pas de numéro de pièce dans la réponse, aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      carte_id: z.string().trim().max(80).optional().describe("Carte à laquelle attacher le fichier"),
+      type: z.string().trim().max(40).optional().describe("other, ou carte d'embarquement"),
+      nom_fichier: z.string().trim().max(180).describe("Nom du fichier, avec l’extension"),
+      type_mime: z.string().trim().max(120).optional(),
+      contenu: z.string().max(40_000_000).describe("Fichier en base64"),
+    },
+    run: (args) => deposerPieceDossier(args),
+  },
+  {
+    name: "retirer_piece_dossier",
+    write: true,
+    destructive: true,
+    description:
+      "Retire une pièce du dossier et son fichier. document_id et le dossier. confirmer true. N’efface pas une pièce du coffre client.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      document_id: z.string().trim().max(80).describe("Identifiant de la pièce du dossier"),
+      confirmer: z.boolean().describe("true pour retirer"),
+    },
+    run: (args) => retirerPieceDossier(args),
+  },
+  {
+    name: "lire_journal",
+    description:
+      "Lit le journal de l’agence : qui, quand, quelle action, résumé. entite et id limitent à un client ou un dossier (ouvert à l’agence). Sans cible, le droit Voir le journal est requis. Pas d’export, pas de hash, pas de numéro de pièce.",
+    input: {
+      entite: z
+        .enum(["client", "dossier", "finance", "document", "message", "membre", "reglage", "session", "carte"])
+        .optional(),
+      id: z.string().trim().max(80).optional().describe("Identifiant de l’entité"),
+      action: z.string().trim().max(40).optional().describe("create, update, delete, send…"),
+      limite: z.number().int().min(1).max(50).optional(),
+    },
+    run: (args) => lireJournal(args),
+  },
+  {
+    name: "reactiver_membre",
+    write: true,
+    selfJournal: true,
+    description:
+      "Rouvre l’accès d’un membre désactivé, comme le bouton de la page Équipe. staff_id. Réservé aux administrateurs. Les clés révoquées restent révoquées.",
+    input: {
+      staff_id: z.string().trim().max(80).describe("Identifiant du membre"),
+    },
+    run: (args) => reactiverMembre({ staff_id: str(args, "staff_id") }),
+  },
+  {
+    name: "reprendre_facture_mb3m",
+    write: true,
+    openWorld: true,
+    destructive: true,
+    description:
+      "Avoir et nouvelle facture MB3M, comme le bouton quand la marge d’une facture imprimée a changé. confirmer true. dossier_id ou reference. N’imprime pas la nouvelle pièce dans MB3M. La réponse donne le numéro d’avoir et le nouveau numéro.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      confirmer: z.boolean().describe("true pour émettre l’avoir et préparer la facture suivante"),
+    },
+    run: (args) => reprendreFactureMb3m(args),
+  },
+  {
+    name: "creer_fiche_mb3m",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie la fiche client et ses sociétés dans MB3M, comme Créer dans MB3M. client_id. L’adresse de la fiche est requise. Ne prépare pas une facture de dossier.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+    },
+    run: (args) => creerFicheMb3m(args),
+  },
+  {
+    name: "comptabilite_sortie",
+    write: true,
+    destructive: true,
+    description:
+      "Paiement fournisseur, comme la page Argent. action : rattacher, deplacer, detacher, ligne, refuser, hors_voyage, remettre. source revolut ou pliant, sortie_id. dossier_id pour rattacher, déplacer ou refuser. carte_id choisit la ligne ; sejour true laisse le montant sur le séjour ; nouvelle_depense { titre, prix } ouvre une dépense. montant_eur pour une sortie hors euros. detacher, deplacer, hors_voyage et refuser exigent confirmer true. La vente du client ne change pas. Pas de numéro de carte.",
+    input: {
+      action: z
+        .enum(["rattacher", "deplacer", "detacher", "ligne", "refuser", "hors_voyage", "remettre"])
+        .describe("Geste de la page Argent"),
+      confirmer: z.boolean().optional().describe("true pour détacher, déplacer, hors voyage ou refuser"),
+      source: z.enum(["revolut", "pliant"]).optional(),
+      sortie_id: z.string().trim().max(80).optional().describe("Identifiant du mouvement Revolut ou Pliant"),
+      cout_id: z.string().trim().max(80).optional().describe("Coût déjà rattaché, pour détacher ou changer de ligne"),
+      dossier_id: z.string().trim().max(80).optional(),
+      carte_id: z.string().trim().max(80).optional(),
+      sejour: z.boolean().optional().describe("true : montant du séjour, sans ligne"),
+      montant_eur: z.union([z.number(), z.string()]).optional(),
+      nouvelle_depense: z
+        .object({
+          titre: z.string().trim().max(160).optional(),
+          prix: z.union([z.number(), z.string()]),
+        })
+        .optional(),
+    },
+    run: (args) => comptabiliteSortie(args),
+  },
+  {
+    name: "refuser_encaissement",
+    write: true,
+    destructive: true,
+    description:
+      "Refuse un crédit Revolut ou Stripe encore dans la file, comme Refuser. source revolut ou stripe, id du mouvement. confirmer true. Un mouvement déjà rapproché est refusé : remettre_non_rattache le remet en file.",
+    input: {
+      source: z.enum(["revolut", "stripe"]),
+      id: z.string().trim().max(80).describe("Identifiant du mouvement"),
+      confirmer: z.boolean().describe("true pour refuser"),
+    },
+    run: (args) => refuserEncaissement(args),
+  },
 ];
 
 export function registerTravelbaTools(server: McpServer) {
@@ -1508,7 +1803,7 @@ export function registerTravelbaTools(server: McpServer) {
         inputSchema: input,
         annotations: {
           readOnlyHint: tool.write !== true,
-          destructiveHint: false,
+          destructiveHint: tool.destructive === true,
           openWorldHint: tool.openWorld === true,
         },
       },

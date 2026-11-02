@@ -130,7 +130,8 @@ function pieceType(value: unknown): PieceDocType {
   return docType;
 }
 
-function decodePiece(raw: unknown): Buffer {
+/** Décode un fichier base64 (ou data-URL) déposé par le connecteur. */
+export function decodeUploadedBytes(raw: unknown): Buffer {
   if (typeof raw !== "string" || !raw.trim()) throw new McpWriteError(UPLOAD_EMPTY_ERROR);
   const compact = raw.replace(/\s+/g, "");
   const payload = compact.replace(/^data:[^;,]*(?:;[^,]*)?,/i, "");
@@ -158,7 +159,7 @@ export function prepareTravelPiece(input: Record<string, unknown>): PreparedPiec
   const mimeType = optionalText(input.type_mime, "Type mime", 120) || "";
   const expiresOn = optionalText(input.expiration, "Date d’expiration", 40);
   if (expiresOn && !isIsoDate(expiresOn)) throw new McpWriteError("Date d’expiration invalide (AAAA-MM-JJ).");
-  const bytes = decodePiece(input.contenu);
+  const bytes = decodeUploadedBytes(input.contenu);
   try {
     assertUpload({ size: bytes.length, type: mimeType, name: fileName });
   } catch (err) {

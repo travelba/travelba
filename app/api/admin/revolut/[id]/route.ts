@@ -4,7 +4,7 @@ import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { isUuid } from "@/lib/crm/ids";
-import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
+import { applyRevolutToCustomer, refuseRevolutInbox } from "@/lib/crm/revolut-match";
 import { attachOutgoing, TripCostError } from "@/lib/crm/trip-costs-db";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
@@ -30,13 +30,11 @@ export async function POST(request: Request, ctx: Ctx) {
   if (denied) return denied;
 
   if (body?.action === "ignore" || body?.action === "refuse") {
-    if (movement.status === "matched") return jsonError("Déjà rapprochée");
-    const patch =
-      movement.direction === "debit"
-        ? { status: "ignored", settled_at: new Date().toISOString() }
-        : { status: "ignored" };
-    const { error } = await admin.from("crm_revolut_transactions").update(patch).eq("id", id);
-    if (error) return jsonError("Impossible de refuser ce mouvement.", 400);
+    const refused = await refuseRevolutInbox(admin, movement);
+    if (!refused.ok) {
+      if (refused.error === "already_matched") return jsonError("Déjà rapprochée");
+      return jsonError("Impossible de refuser ce mouvement.", 400);
+    }
     return NextResponse.json({ ok: true });
   }
 
