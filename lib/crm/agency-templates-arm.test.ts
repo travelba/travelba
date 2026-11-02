@@ -63,7 +63,7 @@ function fakeTwilio(seed: { contents?: { sid: string; friendly_name: string }[];
 test("les trois brouillons sont acces, hôtel et facture", () => {
   assert.deepEqual(
     agencyTemplateDrafts().map((draft) => draft.friendlyName),
-    ["acces_client", "option_hotel_activee", "facture_paiement"]
+    ["espace_client_lien", "option_hotel_activee", "facture_paiement"]
   );
   assert.deepEqual(
     agencyTemplateDrafts().map((draft) => draft.env),
@@ -79,7 +79,7 @@ test("dépose les trois modèles, écrit les SID et ne renvoie pas le jeton", as
   assert.equal(result.ok, true);
   assert.deepEqual(
     result.modeles.map((row) => row.nom),
-    ["acces_client", "option_hotel_activee", "facture_paiement"]
+    ["espace_client_lien", "option_hotel_activee", "facture_paiement"]
   );
   for (const row of result.modeles) {
     assert.match(row.content_sid || "", /^HX/);
@@ -101,7 +101,7 @@ test("le réglage prime sur la variable, qui reste le repli", async () => {
   process.env.TWILIO_CONTENT_ACCES_CLIENT = fromEnv;
   const store = memoryContentSidStore({ TWILIO_CONTENT_ACCES_CLIENT: stored });
   const twilio = fakeTwilio({
-    contents: [{ sid: stored, friendly_name: "acces_client" }],
+    contents: [{ sid: stored, friendly_name: "espace_client_lien" }],
     approvals: { [stored]: "approved" },
   });
   const sid = await resolveAgencyContentSid("TWILIO_CONTENT_ACCES_CLIENT", twilio.fetchImpl, store);
@@ -109,6 +109,37 @@ test("le réglage prime sur la variable, qui reste le repli", async () => {
   const empty = memoryContentSidStore();
   const fallback = await resolveAgencyContentSid("TWILIO_CONTENT_ACCES_CLIENT", twilio.fetchImpl, empty);
   assert.equal(fallback, fromEnv);
+});
+
+test("un SID enregistré sous un nom refusé n’est pas repris", async () => {
+  armTwilio();
+  const refused = "HXaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const store = memoryContentSidStore({ TWILIO_CONTENT_ACCES_CLIENT: refused });
+  store.names.TWILIO_CONTENT_ACCES_CLIENT = "acces_client";
+  const twilio = fakeTwilio({
+    contents: [
+      { sid: refused, friendly_name: "acces_client" },
+      { sid: "HXbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", friendly_name: "option_hotel_activee" },
+      { sid: "HXcccccccccccccccccccccccccccccccc", friendly_name: "facture_paiement" },
+    ],
+    approvals: {
+      [refused]: "rejected",
+      HXbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: "approved",
+      HXcccccccccccccccccccccccccccccccc: "approved",
+    },
+  });
+  const result = await ensureAgencyTemplates(twilio.fetchImpl, store);
+  assert.equal(result.ok, true);
+  const access = result.modeles[0];
+  assert.equal(access.nom, "espace_client_lien");
+  assert.equal(access.cree, true);
+  assert.notEqual(access.content_sid, refused);
+  assert.equal(store.rows.TWILIO_CONTENT_ACCES_CLIENT, access.content_sid);
+  assert.equal(store.names.TWILIO_CONTENT_ACCES_CLIENT, "espace_client_lien");
+  assert.equal(result.modeles[1].cree, false);
+  assert.equal(result.modeles[1].content_sid, "HXbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  assert.equal(result.modeles[2].cree, false);
+  assert.equal(twilio.calls.some((call) => call.url.includes(refused)), false);
 });
 
 test("le statut lit Meta, et sans Twilio rien n’est créé", async () => {

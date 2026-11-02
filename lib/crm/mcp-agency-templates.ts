@@ -36,7 +36,7 @@ function present(row: AgencyTemplateReport) {
 const NOTE =
   "Aucun WhatsApp n’est envoyé. Le SID est enregistré dans le réglage crm_whatsapp_content_sids. L’envoi le lit sans redéploiement, et retombe sur la variable du même nom si le réglage est vide.";
 
-/** Dépose acces_client, option_hotel_activee et facture_paiement. Réservé aux administrateurs. */
+/** Dépose espace_client_lien, option_hotel_activee et facture_paiement. Réservé aux administrateurs. */
 export async function deposerModelesWhatsapp(input: Record<string, unknown>, fetchImpl?: typeof fetch) {
   void input;
   const result = await ensureAgencyTemplates(fetchImpl);

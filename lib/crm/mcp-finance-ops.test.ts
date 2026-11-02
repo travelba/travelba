@@ -37,6 +37,7 @@ test("reprendre une facture exige confirmer et renvoie l’avoir", async () => {
         replaced: false,
         printed: false,
         visibleToClient: false,
+        reglements: [],
       }),
     }
   );

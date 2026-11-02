@@ -68,7 +68,7 @@ test("la page de connexion lit l’e-mail du paramètre", () => {
 test("le modèle français a un seul bouton, Ouvrir mon espace", () => {
   const draft = accessContentDrafts()[0];
   const actions = draft.create.types["twilio/call-to-action"].actions;
-  assert.equal(draft.friendlyName, "acces_client");
+  assert.equal(draft.friendlyName, "espace_client_lien");
   assert.equal(draft.env, "TWILIO_CONTENT_ACCES_CLIENT");
   assert.equal(draft.create.language, "fr");
   assert.equal(actions.length, 1);
@@ -77,8 +77,9 @@ test("le modèle français a un seul bouton, Ouvrir mon espace", () => {
   const body = draft.create.types["twilio/call-to-action"].body;
   assert.equal(body.includes("http"), false);
   assert.equal(body.includes("Se connecter"), false);
-  assert.match(body, /Voici votre accès à l’espace client\./);
-  assert.match(body, /Le bouton ci-dessous est personnel, à usage unique, et reste valable 30 jours\./);
+  assert.match(body, /Comme demandé, voici le lien vers votre espace client Travel BA/);
+  assert.match(body, /Ce lien personnel reste valable 30 jours\./);
+  assert.equal(/\b(mot de passe|code|connexion|accès|acces|usage unique)\b/i.test(body), false);
   assert.match(body, /Le Concierge$/);
   assert.equal(draft.create.variables["2"], TOKEN);
   assert.equal("3" in draft.create.variables, false);

@@ -1344,7 +1344,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), erreur et auteur (le jeton). Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M.",
+      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. Les crédits postés du client partent en règlements MB3M (reglements : date, montant, numero_mb3m, statut envoye, deja_dans_mb3m ou erreur), d’abord sur la facture CRM puis sur les factures Amadeus. Un vol dont le PNR est déjà une facture MB3M (RefCommand) n’est pas refacturé : vols_amadeus dit « déjà dans MB3M via Amadeus (facture n°…) ». Sans PNR identique, la ligne reste ; suggestions_amadeus ne fait que signaler. La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), reglements, erreur et auteur (le jeton). Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
@@ -1476,14 +1476,14 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les modèles acces_client, option_hotel_activee et facture_paiement. Même geste que create_restaurant_whatsapp_templates. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent par nom. Le content_sid est écrit dans le réglage crm_whatsapp_content_sids : l’envoi le lit sans redéploiement, et retombe sur la variable du même nom si le réglage est vide. Renvoie nom, content_sid et statut. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Réservé aux administrateurs.",
+      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les modèles espace_client_lien, option_hotel_activee et facture_paiement. Un nom déjà refusé n’est pas repris. Même geste que create_restaurant_whatsapp_templates. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent par nom. Le content_sid est écrit dans le réglage crm_whatsapp_content_sids : l’envoi le lit sans redéploiement, et retombe sur la variable du même nom si le réglage est vide. Renvoie nom, content_sid et statut. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Réservé aux administrateurs.",
     run: (args) => deposerModelesWhatsapp(args),
   },
   {
     name: "statut_modeles_whatsapp",
     openWorld: true,
     description:
-      "Statut d’approbation Meta de acces_client, option_hotel_activee et facture_paiement : nom, content_sid, statut, source (reglage, env ou retrouvé par son nom). pret vrai quand les trois sont approuvés. Lecture seule. N’envoie aucun message. Réservé aux administrateurs.",
+      "Statut d’approbation Meta de espace_client_lien, option_hotel_activee et facture_paiement : nom, content_sid, statut, source (reglage, env ou retrouvé par son nom). pret vrai quand les trois sont approuvés. Lecture seule. N’envoie aucun message. Réservé aux administrateurs.",
     run: (args) => statutModelesWhatsapp(args),
   },
   {

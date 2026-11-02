@@ -154,6 +154,22 @@ function envSid(env: string) {
   return isContentSid(value) ? value : "";
 }
 
+/**
+ * Un SID déjà enregistré ne sert que s’il porte le nom du brouillon.
+ * Un nom refusé (`acces_client`) ne bloque pas le nouveau (`espace_client_lien`).
+ */
+async function chooseExistingSid(draft: Draft, fetchImpl: typeof fetch, store: ContentSidStore) {
+  const storedSid = await store.read(draft.env);
+  const storedName = await store.readName(draft.env);
+  if (storedSid && (!storedName || storedName === draft.friendlyName)) {
+    return { sid: storedSid, source: "reglage" as const };
+  }
+  const fromEnv = envSid(draft.env);
+  if (fromEnv && fromEnv !== storedSid) return { sid: fromEnv, source: "env" as const };
+  const found = await findContentByName(draft.friendlyName, fetchImpl);
+  return { sid: found, source: found ? ("twilio" as const) : null };
+}
+
 async function remember(store: ContentSidStore, env: string, sid: string, name: string) {
   const current = await store.read(env);
   if (current === sid) return;
@@ -208,10 +224,9 @@ export async function ensureAgencyTemplates(
       soumis: false,
     };
     try {
-      const fromStore = await store.read(draft.env);
-      const fromEnv = envSid(draft.env);
-      let sid = fromStore || fromEnv || (await findContentByName(draft.friendlyName, fetchImpl));
-      report.source = fromStore ? "reglage" : fromEnv && sid === fromEnv ? "env" : sid ? "twilio" : null;
+      const existing = await chooseExistingSid(draft, fetchImpl, store);
+      let sid = existing.sid;
+      report.source = existing.source;
       if (!sid) {
         sid = await createContent(draft.create, fetchImpl);
         report.cree = true;
@@ -268,16 +283,15 @@ export async function agencyTemplatesStatus(
       source: null,
     };
     try {
-      const fromStore = await store.read(draft.env);
-      const fromEnv = envSid(draft.env);
-      const sid = fromStore || fromEnv || (await findContentByName(draft.friendlyName, fetchImpl));
+      const existing = await chooseExistingSid(draft, fetchImpl, store);
+      const sid = existing.sid;
       if (sid) {
         report.content_sid = sid;
-        report.source = fromStore ? "reglage" : fromEnv && sid === fromEnv ? "env" : "twilio";
+        report.source = existing.source;
         const approval = await readApproval(sid, fetchImpl);
         report.statut = approval.statut;
         report.motif_refus = approval.motif;
-        if (!fromStore) await remember(store, draft.env, sid, draft.friendlyName);
+        if (existing.source !== "reglage") await remember(store, draft.env, sid, draft.friendlyName);
       }
     } catch (error) {
       report.erreur = quietAgencyTwilioError(error);

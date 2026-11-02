@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { InvoiceSendPanel } from "@/components/admin/InvoiceSendPanel";
 import { StatusChip } from "@/components/crm/ui";
 import { formatMoney } from "@/lib/crm/money";
-import { mb3mInvoiceActionLabel, mb3mInvoiceChip, type Mb3mPreparationView } from "@/lib/crm/mb3m-prep";
+import {
+  mb3mAmadeusSentence,
+  mb3mAmadeusSuggestionSentence,
+  mb3mInvoiceActionLabel,
+  mb3mInvoiceChip,
+  mb3mReglementNote,
+  type Mb3mPreparationView,
+} from "@/lib/crm/mb3m-prep";
 
 export type InvoiceBlockView = {
   number: string | null;
@@ -15,6 +22,7 @@ export type InvoiceBlockView = {
   printedTotal: number | null;
   saleTotal: number | null;
   preparation: Mb3mPreparationView;
+  amadeus?: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }[];
 };
 
 /**
@@ -60,12 +68,18 @@ export function InvoiceBlock({
         created?: boolean;
         replaced?: boolean;
         printed?: boolean;
+        reglements?: { montant: number; numero_mb3m: string | null; statut: "envoye" | "deja_dans_mb3m" | "erreur"; erreur?: string | null }[];
+        amadeus?: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }[];
+        suggestionsAmadeus?: { label: string; invoiceNumber: string }[];
       } | null;
       if (!res.ok || !json?.number) {
         setError(json?.error || "La facture MB3M n’a pas abouti.");
         router.refresh();
         return;
       }
+      const payments = [mb3mReglementNote(json.reglements || []), ...(json.amadeus || []).map((row) => mb3mAmadeusSentence(row)), ...(json.suggestionsAmadeus || []).map((row) => mb3mAmadeusSuggestionSentence(row))]
+        .filter(Boolean)
+        .join(" ");
       const message = json.printed
         ? `Facture MB3M n° ${json.number} validée. Le PDF est dans les pièces.`
         : json.replaced
@@ -73,7 +87,7 @@ export function InvoiceBlock({
           : json.created
             ? `Facture pro forma n° ${json.number} préparée. Elle se valide dans MB3M.`
             : `Facture pro forma n° ${json.number}. Elle se valide dans MB3M.`;
-      onInvoiced(json.number, message);
+      onInvoiced(json.number, payments ? `${message} ${payments}` : message);
     } catch {
       setError("La facture MB3M n’a pas abouti.");
     } finally {
@@ -190,6 +204,13 @@ export function InvoiceBlock({
       ) : null}
       {running && view.preparation.message ? (
         <p className="text-sm text-[var(--admin-navy)]">{view.preparation.message}</p>
+      ) : null}
+      {view.amadeus?.length ? (
+        <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+          {view.amadeus.map((row) => (
+            <li key={`${row.invoiceNumber}-${row.label}`}>{mb3mAmadeusSentence(row)}</li>
+          ))}
+        </ul>
       ) : null}
       {note ? <p className="text-sm text-[var(--admin-navy)]">{note}</p> : null}
       {failedMessage ? (
