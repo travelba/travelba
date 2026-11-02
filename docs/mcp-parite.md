@@ -1,0 +1,104 @@
+# Parité admin ↔ MCP
+
+URL : `https://travelba.fr/api/mcp`. Chaque outil suit le rôle de la clé nominative (`crm_mcp_api_keys`). Le jeton général n’est pas filtré par rôle. Les écritures d’une clé sont au journal, au nom du membre. Les actions qui retirent des données exigent `confirmer`. Les numéros de pièce et de carte ne sortent pas, sauf les jetons dédiés.
+
+Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil de cette série. **hors API** = volontairement absent, raison en bas.
+
+## Clients, sociétés, accès
+
+| Action admin | Outil MCP |
+| --- | --- |
+| Créer la fiche | `creer_client` — couvert |
+| Modifier la fiche (identité, e-mail, téléphone, commission) | `mettre_a_jour_client`, `modifier_titulaire` — couvert |
+| Rôle société | `definir_role_societe` — couvert |
+| Une société, ou retirer une société vide | `mettre_a_jour_client` — couvert |
+| Liste complète des sociétés (ajout, modification, retrait) | `enregistrer_societes` — ajouté |
+| Supprimer la fiche | `supprimer_client` (`confirmer` = nom complet) — ajouté |
+| Inviter / renvoyer l’invitation | `inviter_client` — couvert |
+| Accès Hôtels, mode réel, accepter ou refuser une demande | `regler_acces_hotels` — ajouté |
+| Relevé WhatsApp | `envoyer_releve` — couvert |
+| Créer la fiche dans MB3M | hors API pour l’instant (voir Finances) |
+| Ouvrir l’espace à la place du client, lien d’accès WhatsApp | hors API |
+| Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
+| Accompagnateur de la fiche (hors dossier) | hors API — `ajouter_voyageur` porte sur un dossier |
+
+## Dossiers et cartes
+
+| Action admin | Outil MCP |
+| --- | --- |
+| Créer un séjour caché | `creer_dossier` — couvert |
+| Titre, dates, notes, société, couverture | `mettre_a_jour_dossier` — couvert |
+| Montrer au client | `publier_carnet` — couvert |
+| Cacher le carnet | `cacher_carnet` — ajouté |
+| Archiver / rouvrir / dupliquer | `archiver_dossier`, `restaurer_dossier`, `dupliquer_dossier` — ajouté |
+| Voyageurs du dossier | `ajouter_voyageur`, `modifier_voyageur`, `retirer_voyageur`, `fusionner_compagnon` — couvert |
+| Vol, hôtel, accueil VIP | `ajouter_vol`, `modifier_vol`, `ajouter_hotel`, `modifier_hotel`, `ajouter_accueil_vip` — couvert |
+| Train, transfert, activité, frais, dépense, autres types | `ajouter_carte`, `modifier_carte` — ajouté |
+| Visibilité d’une carte, inclusion au grand livre | `definir_visibilite_carte` — couvert |
+| Retirer une carte | `retirer_carte` — couvert |
+| Réordonner les étapes | `reordonner_cartes` — ajouté |
+| Confirmer chauffeur, VIP, enregistrement | `confirmer_service` — couvert |
+| Statut d’enregistrement des vols | `enregistrement_en_ligne` — couvert |
+| Brouillon WhatsApp d’un ajout | `preparer_message_carnet` — couvert, n’envoie pas |
+| Demander ou annuler une option (extras), devis chauffeur | hors API |
+| Responsable du dossier, partage WhatsApp accompagnateur | hors API |
+| Import PDF dropzone (analyse puis application) | hors API — le parse e-mail reste `traiter_email` `creer_dossier` |
+| Services proposés (`offer_*`), destination, devise, titulaire facturé | partiel dans `mettre_a_jour_dossier` |
+
+## Fichiers
+
+| Action admin | Outil MCP |
+| --- | --- |
+| Pièce du coffre client (visa, ETA, passeport, assurance) | `ajouter_piece`, `requalifier_piece`, `notifier_piece` — couvert |
+| Carte d’embarquement déjà déposée | `notifier_carte_embarquement` — couvert |
+| Fichier sur le dossier ou sur une carte | `deposer_piece_dossier` — ajouté |
+| Retirer cette pièce | `retirer_piece_dossier` — ajouté |
+| Lecture du numéro ou du scan de passeport | `passeport_voyageur`, `scan_passeport` — jeton passeport seulement |
+| OCR « Mal lu » sur la fiche | hors API |
+
+## Finances, factures, fournisseurs
+
+| Action admin | Outil MCP |
+| --- | --- |
+| Grand livre, encours, comptabilité voyage | `grand_livre`, `comptabilite_voyage` — couvert |
+| Créditer Revolut, Stripe, virement | `crediter_revolut`, `crediter_stripe`, `crediter_virement` — couvert |
+| Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
+| Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
+| Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert |
+| Avoir et nouvelle facture (marge périmée) | hors API pour l’instant |
+| Créer la fiche client dans MB3M | hors API pour l’instant |
+| Refuser un encaissement Revolut ou Stripe | hors API pour l’instant |
+| Détacher, déplacer, refuser, hors voyage, nouvelle dépense | hors API pour l’instant — `rapprocher_*` ne couvre que le rattachement simple |
+| Compte de facturation sur un crédit | partiel |
+| Sync Revolut / Pliant, OAuth Revolut | hors API |
+
+## Mails, journal, équipe
+
+| Action admin | Outil MCP |
+| --- | --- |
+| File fournisseurs, lire un mail | `emails_en_attente`, `lire_email` — couvert |
+| Déposer les pièces, mettre à jour, refuser, créer un dossier | `traiter_email` — couvert |
+| Classer (ignorer), doublon, remettre, détacher, relancer un hôtel | hors API — la relance envoie un e-mail |
+| Journal (fiche ou agence) | `lire_journal` — ajouté. Pas d’export CSV |
+| Membres et clés | `lister_membres`, `ajouter_membre`, `changer_role_membre`, `desactiver_membre`, `lister_cles_api`, `creer_cle_api`, `revoquer_cle_api` — couvert |
+| Rouvrir un accès coupé | `reactiver_membre` — ajouté |
+| Départ (réattribuer les dossiers), sessions, matrice des droits | hors API |
+| Restaurants du catalogue et tables du soir | `list_restaurants`, `create_restaurant`, `update_restaurant`, `tables_restaurant`, `choix_restaurant`, `sejours_restaurants` — couvert |
+| Envoyer le WhatsApp 16 h, modèles | `create_restaurant_whatsapp_templates`, `get_restaurant_whatsapp_templates_status` — le dépôt des modèles est couvert ; l’envoi du soir reste le cron |
+| Little Emperors | `reservation_little_emperors`, `little_emperors_en_attente` — couvert |
+| Cartes Pliant du dossier | `creer_carte_pliant`, `lire_carte_pliant`, `bloquer_carte_pliant` — jeton carte pour le numéro |
+| Formalités (lecture) | `formalites` — couvert |
+| Lancer, remplir ou payer une formalité (ESTA, ETA, visa) | hors API — envoie au client ou crée une carte |
+| Répondre sur WhatsApp, valider une proposition Concierge | hors API — envoie un message |
+| Réglages Gmail, WhatsApp, mot de passe staff, connexion | hors API |
+
+## Hors API, et pourquoi
+
+- **OAuth, sync bancaire, diagnostics, mot de passe, connexion.** Ce sont des réglages d’infrastructure, pas des gestes dossier.
+- **Numéro de passeport et PAN.** Ils restent sur `TRAVELBA_MCP_PASSPORT_TOKENS` et `TRAVELBA_MCP_CARD_TOKENS`. Une clé nominative ne les ouvre pas.
+- **Messages libres** (réponse hôtel, WhatsApp, partage, formalité qui part au client). Le connecteur prépare (`preparer_message_carnet`, `traiter_email`) ; l’envoi libre reste un clic humain, pour ne pas écrire à un client sans le geste prévu.
+- **Réservation Ratehawk, remplissage de portail visa, import dropzone.** Ce sont des parcours longs, avec de l’argent ou une lecture de document, déjà tenus par l’écran.
+- **Ouvrir l’espace client à la place du client.** Cela crée une session. Ce n’est pas un outil de lecture.
+- **Export CSV du journal.** Le droit d’export et le volume de données restent sur l’écran.
+
+Aucune migration : ces outils réutilisent les tables déjà en place.

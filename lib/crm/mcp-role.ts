@@ -87,6 +87,20 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   lister_cles_api: "admin",
   creer_cle_api: "admin",
   revoquer_cle_api: "admin",
+  supprimer_client: "admin",
+  enregistrer_societes: "edit_dossiers",
+  regler_acces_hotels: "admin",
+  archiver_dossier: "delete_archive",
+  restaurer_dossier: "delete_archive",
+  dupliquer_dossier: "create_dossiers",
+  cacher_carnet: "message_client",
+  ajouter_carte: "edit_dossiers",
+  modifier_carte: "edit_dossiers",
+  reordonner_cartes: "edit_dossiers",
+  deposer_piece_dossier: "edit_dossiers",
+  retirer_piece_dossier: "edit_dossiers",
+  lire_journal: "agency",
+  reactiver_membre: "admin",
 };
 
 export type McpStaffGate = {

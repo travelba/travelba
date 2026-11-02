@@ -147,6 +147,27 @@ export async function changerRoleMembre(input: { staff_id?: string; role?: strin
   }
 }
 
+export async function reactiverMembre(input: { staff_id?: string }) {
+  const actor = actorFromContext();
+  const staffId = (input.staff_id || "").trim();
+  if (!isUuid(staffId)) throw new McpWriteError("Membre introuvable.");
+  try {
+    const result = await setColleagueActive(staffId, true, actor.staffId || "00000000-0000-0000-0000-000000000000");
+    const admin = createServiceClient({ allowPreview: true });
+    const { data: row } = await admin.from("crm_staff").select("full_name").eq("id", staffId).maybeSingle();
+    const who = staffKeyName((row as { full_name?: string | null } | null)?.full_name);
+    await journal(actor, {
+      action: "update",
+      entityId: staffId,
+      summary: `Accès de ${who} rouvert par ${actor.name}.`,
+      diff: { actif: { avant: false, apres: result.active } },
+    });
+    return { ok: true, staff_id: staffId, actif: result.active };
+  } catch (err) {
+    fail(err);
+  }
+}
+
 export async function desactiverMembre(input: { staff_id?: string }) {
   const actor = actorFromContext();
   const staffId = (input.staff_id || "").trim();
