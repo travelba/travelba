@@ -53,30 +53,44 @@ describe("mb3mInvoiceLine", () => {
     assert.equal(hotelZero.marginUnit, 0);
   });
 
-  it("billetterie à commission 0 : 0,01 € de commission, le net baisse d’autant, le TTC ne change pas", () => {
-    for (const margin of [0, null, undefined] as const) {
-      const line = mb3mInvoiceLine({
+  it("vol, train et low cost : net et marge réels, activité 22, le TTC reste celui du CRM", () => {
+    const sold = (line: { netPriceUnit: number; marginUnit?: number | null }) =>
+      Math.round((line.netPriceUnit + (line.marginUnit || 0)) * 100) / 100;
+    for (const activityId of [2, 5, 27, 22]) {
+      const priced = mb3mInvoiceLine({
         transactionId: "tx-flight",
-        label: "Tuifly AGA-ORY",
-        amount: 842.4,
-        activityId: 2,
-        margin,
+        label: "Air France",
+        amount: 1198.44,
+        activityId,
+        margin: 1000.44,
       });
-      assert.equal(line.activityId, 2);
-      assert.equal(line.marginUnit, 0.01);
-      assert.equal(line.netPriceUnit, 842.39);
-      assert.equal(line.netPriceTotal, 842.39);
-      assert.equal(Math.round(((line.netPriceUnit || 0) + (line.marginUnit || 0)) * 100) / 100, 842.4);
+      assert.equal(priced.activityId, 22);
+      assert.equal(priced.netPriceUnit, 198);
+      assert.equal(priced.netPriceTotal, 198);
+      assert.equal(priced.marginUnit, 1000.44);
+      assert.equal(sold(priced), 1198.44);
+      const zero = mb3mInvoiceLine({
+        transactionId: "tx-zero",
+        label: "Train",
+        amount: 362,
+        activityId,
+        margin: 0,
+      });
+      assert.equal(zero.activityId, 22);
+      assert.equal(zero.netPriceUnit, 362);
+      assert.equal(zero.marginUnit, 0);
+      assert.equal(sold(zero), 362);
     }
-    const kept = mb3mInvoiceLine({
-      transactionId: "tx-kept",
-      label: "Tuifly ORY-AGA",
-      amount: 900,
+    const pure = mb3mInvoiceLine({
+      transactionId: "tx-pure",
+      label: "Vol sans coût",
+      amount: 842.4,
       activityId: 2,
-      margin: 40,
+      margin: 842.4,
     });
-    assert.equal(kept.netPriceUnit, 860);
-    assert.equal(kept.marginUnit, 40);
+    assert.equal(pure.netPriceUnit, 0.01);
+    assert.equal(pure.marginUnit, 842.39);
+    assert.equal(sold(pure), 842.4);
   });
 });
 

@@ -15,6 +15,7 @@ import {
   mb3mDossierActivityId,
   MB3M_ACTIVITY_LOW_COST,
   MB3M_ACTIVITY_RAIL,
+  MB3M_ACTIVITY_TICKETING,
 } from "./mb3m-account";
 
 const companies = [
@@ -134,9 +135,13 @@ describe("facture MB3M du compte", () => {
   });
 
   it("reprend le fichier d’activités de l’agence, une activité par dépense", () => {
-    assert.equal(mb3mAgencyActivityId("flight"), 2);
+    assert.equal(MB3M_ACTIVITY_TICKETING, 2);
+    assert.equal(mb3mAgencyActivityId("flight"), 22);
+    assert.notEqual(mb3mAgencyActivityId("flight"), MB3M_ACTIVITY_TICKETING);
     assert.equal(mb3mAgencyActivityId("insurance"), 3);
-    assert.equal(mb3mAgencyActivityId("rail"), MB3M_ACTIVITY_RAIL);
+    assert.equal(mb3mAgencyActivityId("rail"), 22);
+    assert.equal(mb3mAgencyActivityId("low_cost"), 22);
+    assert.equal(MB3M_ACTIVITY_RAIL, 5);
     assert.equal(MB3M_ACTIVITY_LOW_COST, 27);
     assert.equal(mb3mAgencyActivityId("expense"), 22);
     assert.equal(mb3mAgencyActivityId("hotel"), 7);
@@ -174,7 +179,7 @@ describe("facture MB3M du compte", () => {
       lines.map((line) => [line.transactionId, line.activityId]),
       [
         ["e", 22],
-        ["f", 2],
+        ["f", 22],
         ["h", 7],
         ["s", 11],
       ]

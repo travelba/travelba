@@ -49,24 +49,26 @@ export function mb3mLineNote(suppliers: string[]) {
 /**
  * Activités du fichier agence.
  * Le 3 de la base de test n’est pas l’assurance.
- * Maritime (9) et Low Cost (27) n’ont pas de type Travelba : on ne les devine pas.
- * Le 27 reste une activité de billetterie si une ligne le porte déjà (`mb3mTicketingActivity`).
+ * Maritime (9) n’a pas de type Travelba : on ne le devine pas.
+ * Vol, train et low cost (2, 5, 27 dans le fichier MB3M) partent en Divers terrestre :
+ * MB3M refuse ces activités de billetterie sans commission (-22), même à 0,01 €.
  * Frais généraux (14) est une activité de charges : la base agence refuse une ligne de facture
  * dessus (-504, « Nullable object must have a value » sur la facture entière). Les frais d’agence
  * partent en Divers Terrestre.
  */
 
-/** Billetterie aérienne (fichier agence). Une commission à 0 est refusée par MB3M. */
+/** Identifiants du fichier MB3M. On ne les envoie plus : la ligne part en 22. */
 export const MB3M_ACTIVITY_TICKETING = 2;
-/** Ferroviaire. Même exigence de commission que l’aérien. */
 export const MB3M_ACTIVITY_RAIL = 5;
-/** Low cost. Pas de type Travelba : conservé pour une ligne qui porte déjà cette activité. */
 export const MB3M_ACTIVITY_LOW_COST = 27;
+/** Divers terrestre. Frais, vol, train, low cost. */
+export const MB3M_ACTIVITY_STANDARD = 22;
 
 const AGENCY_ACTIVITY: Record<string, number> = {
-  flight: MB3M_ACTIVITY_TICKETING,
+  flight: MB3M_ACTIVITY_STANDARD,
   insurance: 3,
-  rail: MB3M_ACTIVITY_RAIL,
+  rail: MB3M_ACTIVITY_STANDARD,
+  low_cost: MB3M_ACTIVITY_STANDARD,
   hotel: 7,
   car: 8,
   package: 11,

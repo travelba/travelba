@@ -27,7 +27,6 @@ type PayerCustomer = Pick<
 > &
   Partial<Pick<CrmCustomer, "phone" | "phone_secondary" | "sex" | "birth_date" | "nationality">>;
 import {
-  MB3M_ACTIVITY_TICKETING,
   mb3mDossierLines,
   mb3mFactureHref,
   mb3mFactureMention,
@@ -62,6 +61,7 @@ import {
   mb3mConfigured,
   mb3mFindPiece,
   mb3mPartnerCode,
+  mb3mPrestationActivityId,
   mb3mRealm,
   mb3mRenderPiece,
   mb3mCivilityFromSex,
@@ -191,27 +191,14 @@ type PiecePatch = {
  * facture »), et ses types Fees / Note ne conviennent pas (non supporté / ligne absente du PDF).
  * Une ligne de marge pure (frais, prestation sans coût pointé) part donc avec un net plancher
  * d’un centime et la marge qui complète : la pièce imprime le bon montant, la marge varie de 0,01 €.
- *
- * Billetterie (activité 2) : MB3M refuse une commission absente ou à 0
- * (-504, code interne -22). On envoie 0,01 € de commission et on retire le même centime du net :
- * le TTC de la ligne ne change pas.
+ * Vol, train et low cost suivent la même règle : net et marge réels, sans commission forcée.
  */
 export const MB3M_MIN_NET = 0.01;
-export const MB3M_MIN_COMMISSION = 0.01;
 
 export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
   const raw = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
   let net = raw == null ? line.amount : Math.round((line.amount - raw) * 100) / 100;
   let margin = raw;
-  const commission = margin == null ? null : Math.round(margin * 100) / 100;
-  if (
-    line.activityId === MB3M_ACTIVITY_TICKETING &&
-    (commission == null || commission === 0) &&
-    line.amount >= MB3M_MIN_NET + MB3M_MIN_COMMISSION
-  ) {
-    margin = MB3M_MIN_COMMISSION;
-    net = Math.round((line.amount - MB3M_MIN_COMMISSION) * 100) / 100;
-  }
   if (margin != null && net < MB3M_MIN_NET && line.amount >= MB3M_MIN_NET) {
     net = MB3M_MIN_NET;
     margin = Math.round((line.amount - MB3M_MIN_NET) * 100) / 100;
@@ -221,7 +208,7 @@ export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
     quantity: 1,
     netPriceUnit: net,
     netPriceTotal: net,
-    activityId: line.activityId ?? undefined,
+    activityId: mb3mPrestationActivityId(line.activityId),
     type: "Standard" as const,
     marginUnit: margin,
     note: line.note ?? null,

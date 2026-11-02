@@ -386,18 +386,14 @@ export async function mb3mSaveFolder(
   return { id, uid };
 }
 
-/** Plancher : 0,001 est refusé (-22) même avec CommissionTotal. */
-const MB3M_TICKETING_COMMISSION = 0.01;
+/** Vol, train et low cost du fichier MB3M. On les facture en Divers terrestre. */
+const MB3M_TICKETING_FILE_IDS = new Set([2, 5, 27]);
+const MB3M_STANDARD_ACTIVITY = 22;
 
-/**
- * Activités « prestation de billetterie » du fichier agence.
- * 2 aérien, 5 ferroviaire, 27 low cost. Le low cost n’a pas de type Travelba :
- * il n’est posé que si la ligne porte déjà cette activité.
- */
-export const MB3M_TICKETING_ACTIVITY_IDS = [2, 5, 27] as const;
-
-export function mb3mTicketingActivity(activityId: number | null | undefined) {
-  return activityId != null && (MB3M_TICKETING_ACTIVITY_IDS as readonly number[]).includes(activityId);
+/** 2, 5 et 27 deviennent 22. Les autres activités restent. */
+export function mb3mPrestationActivityId(activityId: number | null | undefined) {
+  if (activityId == null) return undefined;
+  return MB3M_TICKETING_FILE_IDS.has(activityId) ? MB3M_STANDARD_ACTIVITY : activityId;
 }
 
 const MB3M_GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -418,14 +414,8 @@ export function mb3mDefaultProviderId() {
 
 function commissionXml(line: Mb3mLine) {
   const given = line.commissionTotal;
-  const value =
-    given != null && Number.isFinite(given) && given !== 0
-      ? given
-      : mb3mTicketingActivity(line.activityId)
-        ? MB3M_TICKETING_COMMISSION
-        : null;
-  if (value == null) return "";
-  const amount = money(value);
+  if (given == null || !Number.isFinite(given) || given === 0) return "";
+  const amount = money(given);
   // Ordre WCF : CommissionNetTotal, CommissionTaxRate, CommissionTotal.
   return `${tag("CommissionNetTotal", amount)}${tag("CommissionTaxRate", 0)}${tag("CommissionTotal", amount)}`;
 }
@@ -443,7 +433,8 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
       if (line.activityId != null && (!Number.isInteger(line.activityId) || line.activityId <= 0)) {
         throw new Mb3mError("Activité MB3M invalide.", -1);
       }
-      const activity = line.activityId == null ? "" : tag("ActivityId", line.activityId);
+      const activityId = mb3mPrestationActivityId(line.activityId);
+      const activity = activityId == null ? "" : tag("ActivityId", activityId);
       const margin =
         line.marginUnit == null || !Number.isFinite(line.marginUnit) ? "" : tag("MarginUnit", money(line.marginUnit));
       const note = tag("Note", (line.note || "").trim().slice(0, 250));
