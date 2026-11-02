@@ -337,6 +337,31 @@ test("fiche et recherche montrent la société, les cartes et le même montant",
   assert.equal(byRef.get("TB-2026-0088")?.societe, "ATELIER");
 });
 
+test("chercher_dossiers suit l’ordre renvoyé par la recherche indexée", async () => {
+  const base = dossierClient();
+  const admin = {
+    rpc: async (name: string, args: { q: string }) => {
+      assert.equal(name, "crm_attach_booking_search");
+      assert.equal(args.q, "atelier");
+      return { data: [{ id: DOSSIER_88 }, { id: DOSSIER_79 }], error: null };
+    },
+    from: (table: string) => base.from(table),
+  };
+  const list = await readChercherDossiers({ q: "atelier", etat: null }, admin as unknown as SupabaseClient);
+  assert.deepEqual(
+    list.dossiers.map((row) => row.reference),
+    ["TB-2026-0088", "TB-2026-0079", "TB-2026-0082"]
+  );
+  const none = {
+    rpc: async () => ({ data: [], error: null }),
+    from() {
+      throw new Error("aucune lecture");
+    },
+  };
+  const empty = await readChercherDossiers({ q: "inconnu", etat: null }, none as unknown as SupabaseClient);
+  assert.deepEqual(empty.dossiers, []);
+});
+
 test("une lecture société ou cartes en échec remonte, elle ne vide pas la fiche", async () => {
   await assert.rejects(
     () => readFicheDossier({ reference: "TB-2026-0079" }, dossierClient({ fail: "societe" })),

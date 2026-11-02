@@ -12,6 +12,7 @@ import {
   type BookingStateFilter,
   type FilterableQuery,
 } from "@/lib/crm/admin-list";
+import { findAttachBookingIds } from "@/lib/crm/attach-search-db";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { clientCreditLines } from "@/lib/crm/unmatch-credit";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
@@ -540,8 +541,11 @@ export async function readChercherDossiers(
   const etat = input.etat ?? (q ? null : "a-venir");
   const today = todayIsoDate();
   const pattern = searchPattern(q);
+  const rankedIds =
+    pattern && typeof (admin as { rpc?: unknown }).rpc === "function" ? await findAttachBookingIds(admin, q) : null;
+  if (rankedIds && !rankedIds.length) return { etat: etat || "recherche", dossiers: [] };
   let matchedCustomerIds: string[] = [];
-  if (pattern) {
+  if (pattern && !rankedIds) {
     const { data } = await admin
       .from("crm_customers")
       .select("id")
@@ -551,7 +555,8 @@ export async function readChercherDossiers(
   }
   let query = admin.from("crm_bookings").select(BOOKING_COLUMNS) as unknown as FilterableQuery;
   query = applyBookingFilters(query, { etat, today });
-  if (pattern) {
+  if (rankedIds?.length) query = query.in("id", rankedIds);
+  else if (pattern) {
     query = query.or(orSearchFilter(pattern, ["reference", "title", "destination"], "customer_id", matchedCustomerIds));
   }
   const upcomingOnly = etat === "a-venir";
@@ -568,7 +573,17 @@ export async function readChercherDossiers(
     logRead("dossiers", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = sortBookingsByProximity(data || [], stayToday()).slice(0, LIST_LIMIT);
+  const found = data || [];
+  const rows = rankedIds?.length
+    ? found
+        .slice()
+        .sort((a, b) => {
+          const left = rankedIds.indexOf(a.id);
+          const right = rankedIds.indexOf(b.id);
+          return (left < 0 ? rankedIds.length : left) - (right < 0 ? rankedIds.length : right);
+        })
+        .slice(0, LIST_LIMIT)
+    : sortBookingsByProximity(found, stayToday()).slice(0, LIST_LIMIT);
   const [names, amounts, companies] = await Promise.all([
     customerNames(admin, rows.map((row) => row.customer_id)),
     dossierAmounts(admin, rows),

@@ -3,7 +3,7 @@ import { RevolutInbox } from "@/components/admin/RevolutInbox";
 import { StripeInbox } from "@/components/admin/StripeInbox";
 import { argentHref } from "@/lib/crm/argent-tabs";
 import type { CrmRevolutTransaction, CrmStripeTransaction } from "@/lib/crm/types";
-import { customerPickLabel, type PickableCustomer } from "@/lib/crm/customer-search";
+import { companiesByCustomer, customerPickLabel, type PickableCustomer } from "@/lib/crm/customer-search";
 import { wireAccountChoices } from "@/lib/crm/funding-wallet";
 import { revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import {
@@ -36,16 +36,23 @@ export async function EncaisserPanel({ clientId = null, connectedParam = null, e
 
   const { data: people } = await admin
     .from("crm_customers")
-    .select(`${REVOLUT_MATCH_SELECT}, email, phone, stripe_customer_id`)
+    .select(`${REVOLUT_MATCH_SELECT}, usage_name, email, phone, stripe_customer_id`)
     .order("last_name");
   const index = (people || []) as (RevolutMatchCustomer & StripeMatchCustomer & PickableCustomer)[];
-  const customers: PickableCustomer[] = index.map(({ id, first_name, last_name, company_name, email, phone }) => ({
+  const customerIds = index.map((row) => row.id);
+  const { data: companyRows } = customerIds.length
+    ? await admin.from("crm_billing_companies").select("customer_id, company_name").in("customer_id", customerIds)
+    : { data: [] };
+  const byCustomer = companiesByCustomer((companyRows || []) as { customer_id: string; company_name: string | null }[]);
+  const customers: PickableCustomer[] = index.map(({ id, first_name, last_name, usage_name, company_name, email, phone }) => ({
     id,
     first_name,
     last_name,
+    usage_name,
     company_name,
     email,
     phone,
+    companies: byCustomer.get(id) || [],
   }));
 
   let revolutRows: CrmRevolutTransaction[] = [];

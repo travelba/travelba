@@ -195,6 +195,7 @@ export type FilterableQuery = {
   eq(column: string, value: unknown): FilterableQuery;
   neq(column: string, value: unknown): FilterableQuery;
   gte(column: string, value: unknown): FilterableQuery;
+  in(column: string, values: string[]): FilterableQuery;
   is(column: string, value: null): FilterableQuery;
   not(column: string, operator: string, value: null): FilterableQuery;
 };

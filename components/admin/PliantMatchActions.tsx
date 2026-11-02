@@ -5,10 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/crm/ConfirmDialog";
 import { StatusChip } from "@/components/crm/ui";
+import { ATTACH_SEARCH_DEBOUNCE_MS, ATTACH_SEARCH_MIN_CHARS } from "@/lib/crm/attach-search";
 import { formatMoney } from "@/lib/crm/money";
 import { pliantLinkPhase, pliantLinkPhaseLabel } from "@/lib/crm/pliant-link";
 import { costSuggestionReasonLabel, type OutgoingLine } from "@/lib/crm/trip-costs";
-import type { TargetOption } from "@/components/admin/OutgoingAttach";
+import { AttachTargetList, type TargetOption } from "@/components/admin/OutgoingAttach";
 
 const STAY = "__stay__";
 const PRIMARY = "admin-tap admin-af-btn inline-flex min-h-11 items-center rounded-full px-4 text-sm disabled:opacity-50";
@@ -36,8 +37,8 @@ function money(amount: number) {
   }
 }
 
-function place(reference: string, title: string, client?: string) {
-  return [reference, title, client].map((value) => (value || "").trim()).filter(Boolean).join(" · ");
+function place(reference: string, title: string, client?: string, dates?: string, company?: string) {
+  return [reference, title, dates, client, company].map((value) => (value || "").trim()).filter(Boolean).join(" · ");
 }
 
 /**
@@ -61,6 +62,7 @@ export function PliantMatchActions({
   const [picker, setPicker] = useState<null | "attach" | "move">(null);
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<TargetOption[]>([]);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [bookingId, setBookingId] = useState("");
   const [lineId, setLineId] = useState(STAY);
   const [busy, setBusy] = useState(false);
@@ -68,21 +70,34 @@ export function PliantMatchActions({
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
 
   useEffect(() => {
-    if (!picker || query.trim().length < 2) return;
+    const trimmed = query.trim();
+    if (!picker || trimmed.length < ATTACH_SEARCH_MIN_CHARS) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/admin/comptabilite/cibles?q=${encodeURIComponent(query.trim())}`, { signal: controller.signal })
+      fetch(`/api/admin/comptabilite/cibles?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal })
         .then((res) => res.json())
-        .then((json: { bookings?: TargetOption[] }) => setOptions(json.bookings || []))
-        .catch(() => undefined);
-    }, 200);
+        .then((json: { bookings?: TargetOption[] }) => {
+          if (controller.signal.aborted) return;
+          setOptions(json.bookings || []);
+          setLoadedFor(trimmed);
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setOptions([]);
+          setLoadedFor(trimmed);
+        });
+    }, ATTACH_SEARCH_DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
   }, [picker, query]);
 
-  const booking = useMemo(() => options.find((row) => row.id === bookingId) || null, [options, bookingId]);
+  const trimmedQuery = query.trim();
+  const resultsReady = loadedFor === trimmedQuery && trimmedQuery.length >= ATTACH_SEARCH_MIN_CHARS;
+  const shownOptions = useMemo(() => (resultsReady ? options : []), [resultsReady, options]);
+  const pending = Boolean(picker) && trimmedQuery.length >= ATTACH_SEARCH_MIN_CHARS && !resultsReady;
+  const booking = useMemo(() => shownOptions.find((row) => row.id === bookingId) || null, [shownOptions, bookingId]);
 
   async function post(body: Record<string, unknown>, failure: string) {
     setBusy(true);
@@ -254,32 +269,23 @@ export function PliantMatchActions({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Référence, destination, nom du client…"
+            placeholder="Référence, client, société, voyageur…"
             aria-label="Chercher un dossier"
             className="min-h-11 w-full rounded-xl border border-border px-3 text-sm"
           />
-          {query.trim().length < 2 ? <p className="text-xs text-muted">Saisissez une référence, une destination ou un nom.</p> : null}
-          {query.trim().length >= 2 && !options.length ? (
-            <p className="text-xs text-muted">Aucun dossier pour « {query.trim()} ».</p>
+          {query.trim().length < ATTACH_SEARCH_MIN_CHARS ? (
+            <p className="text-xs text-muted">Saisissez une référence, un prénom, un nom, une société ou un voyageur.</p>
           ) : null}
-          <ul className="max-h-52 space-y-1 overflow-y-auto">
-            {options.map((row) => (
-              <li key={row.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBookingId(row.id);
-                    setLineId(STAY);
-                  }}
-                  className={`admin-tap min-h-11 w-full rounded-xl px-3 py-2 text-left text-sm ${
-                    bookingId === row.id ? "bg-[#C5A880]/20 font-semibold text-[var(--admin-navy)]" : "text-[var(--admin-navy)]"
-                  }`}
-                >
-                  {place(row.reference, row.title, row.client)}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <AttachTargetList
+            options={shownOptions}
+            bookingId={bookingId}
+            pending={pending}
+            query={trimmedQuery.length < ATTACH_SEARCH_MIN_CHARS ? "" : query}
+            onPick={(id) => {
+              setBookingId(id);
+              setLineId(STAY);
+            }}
+          />
           {booking ? (
             <div className="space-y-1">
               <p className="text-xs text-muted">Ligne du dossier</p>
