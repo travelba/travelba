@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as
 import { createPortal } from "react-dom";
 import { HotelMap } from "@/components/account/HotelMap";
 import { Icon } from "@/components/crm/icons";
+import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
 import { HotelCardHold } from "@/components/account/HotelCardHold";
 import { PAY_COPY } from "@/lib/crm/hotel-direct";
@@ -494,11 +495,18 @@ export function HotelJourney({
     const picked = collapseRooms([next])[0] || next;
     setRoom(picked);
     setRate(picked.rates[0] || null);
+    postHotelActivity({
+      kind: "room",
+      hotel: file?.name || hotel.name,
+      room: picked.name,
+      rate: picked.rates[0]?.title,
+    });
     onStep("room");
   }
 
   function chooseRate(next: ClientRate) {
     if (!next.offerId) return;
+    postHotelActivity({ kind: "room", hotel: file?.name || hotel.name, room: next.room, rate: next.title });
     setRate(next);
     setSkipSelf(false);
     setLead(stayRooms.map((_, index) => (index === 0 && selfName ? selfName : "")));

@@ -107,10 +107,11 @@ import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
+import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 97;
+export const MCP_TOOL_CAP = 98;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1845,6 +1846,19 @@ export const MCP_TOOLS: ToolDef[] = [
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
     },
     run: (args) => statutFormalite(args),
+  },
+  {
+    name: "recherches_hotels",
+    description:
+      "Lit les gestes de la rubrique Hôtels de l’espace client : page ouverte, recherche, suggestion, fiche, chambre, tri, page, filtre, demande, erreur. client_id ou nom, du et au (jours). Chaque ligne : client, heure, résumé, lien vers la fiche. Pas de prix net, pas de marge.",
+    input: {
+      client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
+      nom: z.string().trim().max(80).optional().describe("Nom ou prénom"),
+      du: z.string().trim().max(10).optional().describe("Début, aaaa-mm-jj"),
+      au: z.string().trim().max(10).optional().describe("Fin, aaaa-mm-jj"),
+      limite: z.number().int().min(1).max(80).optional(),
+    },
+    run: (args) => lireRecherchesHotels(args),
   },
   {
     name: "lancer_formalite",

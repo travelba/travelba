@@ -111,6 +111,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   comptabilite_sortie: "edit_finances",
   refuser_encaissement: "edit_finances",
   statut_formalite: "agency",
+  recherches_hotels: "agency",
   lancer_formalite: "edit_dossiers",
 };
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { parisTodayIso } from "@/lib/crm/dates";
 import { hotelBookingEnabled } from "@/lib/crm/hotel-access";
+import { hotelActivityMode, hotelFilterLabels } from "@/lib/crm/hotel-activity";
+import { recordHotelClientActivity } from "@/lib/crm/hotel-activity-run";
 import {
   hotelSearchCacheKey,
   parseHotelSearchQuery,
@@ -45,7 +47,18 @@ export async function POST(request: Request) {
   if (!hotelBookingEnabled(auth.customer)) return jsonError("Introuvable", 404);
   const body = await request.json().catch(() => null);
   const parsed = parseHotelSearchQuery(body, parisTodayIso());
-  if (!parsed.ok) return jsonError(parsed.message, 400);
+  const mode = hotelActivityMode(auth.customer);
+  const filters = hotelFilterLabels(body && typeof body === "object" ? (body as { filters?: unknown }).filters : null);
+  if (!parsed.ok) {
+    const place = typeof body?.destination === "string" ? body.destination : "";
+    await recordHotelClientActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      mode,
+      gesture: { kind: "error", where: "recherche", message: parsed.message, place },
+    });
+    return jsonError(parsed.message, 400);
+  }
   const key = hotelSearchCacheKey(parsed.query);
   const cached = readHotelSearchCache(key);
   const encoder = new TextEncoder();
@@ -57,6 +70,7 @@ export async function POST(request: Request) {
       const stays: PricedStay[] = [];
       const links: Promise<void>[] = [];
       let supplierFailed = false;
+      let noted = false;
       try {
         const stay = {
           destination: parsed.query.destination,
@@ -111,9 +125,36 @@ export async function POST(request: Request) {
           await Promise.all(links);
           if (supplierFailed && stays.length === 0) {
             send({ type: "error", message: "La recherche n’a pas abouti. Réessayez." });
+            await recordHotelClientActivity({
+              customerId: auth.customer.id,
+              authUserId: auth.user.id,
+              mode,
+              gesture: {
+                kind: "error",
+                where: "recherche",
+                message: "La recherche n’a pas abouti. Réessayez.",
+                place: parsed.query.destination,
+              },
+            });
+            noted = true;
             continue;
           }
           if (!event.cached) writeHotelSearchCache(key, stays);
+          await recordHotelClientActivity({
+            customerId: auth.customer.id,
+            authUserId: auth.user.id,
+            mode,
+            gesture: {
+              kind: "search",
+              destination: parsed.query.destination,
+              checkIn: parsed.query.checkIn,
+              checkOut: parsed.query.checkOut,
+              rooms: parsed.query.rooms,
+              count: event.count,
+              filters,
+            },
+          });
+          noted = true;
           send({
             type: "done",
             tFirstMs: event.tFirstMs,
@@ -123,7 +164,19 @@ export async function POST(request: Request) {
           });
         }
       } catch {
+        if (noted) return;
         send({ type: "error", message: "La recherche n’a pas abouti. Réessayez." });
+        await recordHotelClientActivity({
+          customerId: auth.customer.id,
+          authUserId: auth.user.id,
+          mode,
+          gesture: {
+            kind: "error",
+            where: "recherche",
+            message: "La recherche n’a pas abouti. Réessayez.",
+            place: parsed.query.destination,
+          },
+        });
       } finally {
         controller.close();
       }

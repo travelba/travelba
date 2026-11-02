@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { hotelBookingEnabled, hotelDirectLive } from "@/lib/crm/hotel-access";
+import { hotelActivityMode } from "@/lib/crm/hotel-activity";
+import { recordHotelClientActivity } from "@/lib/crm/hotel-activity-run";
 import { beginDirectCard, openDirectStay } from "@/lib/crm/hotel-direct-run";
 import { guestNameOk } from "@/lib/crm/hotel-journey";
 
@@ -27,16 +29,27 @@ export async function POST(request: Request) {
   const payMethod = body?.payMethod === "agency" ? "agency" : body?.payMethod === "card" ? "card" : null;
   const arrival = typeof body?.arrival === "string" ? body.arrival.replace(/[^\d:h ]/g, "").trim().slice(0, 12) : null;
   const intentId = typeof body?.intentId === "string" && INTENT.test(body.intentId) ? body.intentId : null;
-  if (!UUID.test(offerId)) return jsonError("Cette offre n’est plus disponible.", 400);
+  const mode = hotelActivityMode(auth.customer);
+  if (!UUID.test(offerId)) {
+    await noteError(auth.customer.id, auth.user.id, mode, "Cette offre n’est plus disponible.");
+    return jsonError("Cette offre n’est plus disponible.", 400);
+  }
   if (!guests.length || guests.some((name) => !guestNameOk(name))) {
+    await noteError(auth.customer.id, auth.user.id, mode, "Indiquez le prénom et le nom de chaque chambre.");
     return jsonError("Indiquez le prénom et le nom de chaque chambre.", 400);
   }
-  if (!payMethod) return jsonError("Choisissez un règlement.", 400);
+  if (!payMethod) {
+    await noteError(auth.customer.id, auth.user.id, mode, "Choisissez un règlement.");
+    return jsonError("Choisissez un règlement.", 400);
+  }
   const live = hotelDirectLive(auth.customer);
   try {
     if (payMethod === "card" && live && !intentId) {
       const hold = await beginDirectCard({ customer: auth.customer, offerId });
-      if (!hold.ok) return jsonError(hold.message, 400);
+      if (!hold.ok) {
+        await noteError(auth.customer.id, auth.user.id, mode, hold.message);
+        return jsonError(hold.message, 400);
+      }
       return NextResponse.json({ ok: true, clientSecret: hold.clientSecret, intentId: hold.intentId });
     }
     const opened = await openDirectStay({
@@ -47,9 +60,34 @@ export async function POST(request: Request) {
       payMethod,
       stripeIntent: intentId,
     });
-    if (!opened.ok) return jsonError(opened.message, 400);
+    if (!opened.ok) {
+      await noteError(auth.customer.id, auth.user.id, mode, opened.message);
+      return jsonError(opened.message, 400);
+    }
+    await recordHotelClientActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      mode,
+      gesture: {
+        kind: "request",
+        via: "offre",
+        hotel: opened.view.hotelName,
+        room: opened.view.room || undefined,
+        pay: payMethod === "card" ? "carte" : "agence",
+      },
+    });
     return NextResponse.json({ ok: true, view: opened.view, trial: !live });
   } catch {
+    await noteError(auth.customer.id, auth.user.id, mode, "La demande n’a pas pu être envoyée.");
     return jsonError("La demande n’a pas pu être envoyée.", 500);
   }
+}
+
+function noteError(customerId: string, authUserId: string, mode: "essai" | "réel", message: string) {
+  return recordHotelClientActivity({
+    customerId,
+    authUserId,
+    mode,
+    gesture: { kind: "error", where: "demande", message },
+  });
 }

@@ -289,6 +289,15 @@ export const CLIENT_SPACE_ACTIONS: ClientSpaceAction[] = [
     rule: "Les suggestions restent celles de l’écran Hôtels.",
   },
   {
+    id: "journal_hotels",
+    page: "/mon-compte/hotels",
+    route: "/api/client/hotels/activite",
+    method: "POST",
+    client: "Note un tri, une page, un filtre, une suggestion ou une chambre.",
+    concierge: "journal_hotels",
+    rule: "Le libellé est calculé sur le serveur. Pas de prix net, pas de marge. La lecture est recherches_hotels.",
+  },
+  {
     id: "voyageurs_hotel",
     page: "/mon-compte/hotels",
     route: "/api/client/hotels/voyageurs",

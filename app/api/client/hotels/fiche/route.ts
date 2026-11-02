@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { parisTodayIso } from "@/lib/crm/dates";
 import { hotelBookingEnabled } from "@/lib/crm/hotel-access";
+import { hotelActivityMode } from "@/lib/crm/hotel-activity";
+import { recordHotelClientActivity } from "@/lib/crm/hotel-activity-run";
 import {
   parseHotelSearchQuery,
   perNightCents,
@@ -39,9 +41,29 @@ export async function POST(request: Request) {
   if (!hotelBookingEnabled(auth.customer)) return jsonError("Introuvable", 404);
   const body = await request.json().catch(() => null);
   const hotelId = Number(body && typeof body === "object" ? (body as { hotelId?: unknown }).hotelId : NaN);
-  if (!Number.isInteger(hotelId) || hotelId < 1) return jsonError("Cet hôtel n’est pas disponible.", 400);
+  const hinted = body && typeof body === "object" && typeof (body as { destination?: unknown }).destination === "string"
+    ? (body as { destination: string }).destination
+    : "";
+  const mode = hotelActivityMode(auth.customer);
+  if (!Number.isInteger(hotelId) || hotelId < 1) {
+    await recordHotelClientActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      mode,
+      gesture: { kind: "error", where: "fiche", message: "Cet hôtel n’est pas disponible.", place: hinted },
+    });
+    return jsonError("Cet hôtel n’est pas disponible.", 400);
+  }
   const parsed = parseHotelSearchQuery(body, parisTodayIso());
-  if (!parsed.ok) return jsonError(parsed.message, 400);
+  if (!parsed.ok) {
+    await recordHotelClientActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      mode,
+      gesture: { kind: "error", where: "fiche", message: parsed.message, place: hinted },
+    });
+    return jsonError(parsed.message, 400);
+  }
 
   const loaded = await loadLittleEmperorsHotelFile({
     hotelId,
@@ -50,7 +72,15 @@ export async function POST(request: Request) {
     rooms: parsed.query.rooms,
     fetchImpl: fetch,
   });
-  if (!loaded) return jsonError("La fiche n’a pas abouti. Réessayez.", 503);
+  if (!loaded) {
+    await recordHotelClientActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      mode,
+      gesture: { kind: "error", where: "fiche", message: "La fiche n’a pas abouti. Réessayez.", place: hinted },
+    });
+    return jsonError("La fiche n’a pas abouti. Réessayez.", 503);
+  }
 
   const profile = loaded.profile;
   const prose = [
@@ -125,5 +155,11 @@ export async function POST(request: Request) {
     coords: profile.coords,
     rooms,
   };
+  await recordHotelClientActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    mode,
+    gesture: { kind: "view", hotel: name, city },
+  });
   return NextResponse.json({ file });
 }
