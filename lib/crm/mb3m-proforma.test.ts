@@ -17,13 +17,17 @@ describe("aperçu facture pro forma", () => {
     const copy = mb3mProformaCopy(model);
     assert.equal(copy.kicker, "Facture pro forma");
     assert.equal(copy.number, "N° 4531");
-    assert.equal(copy.notice, "Non imprimée. Elle se valide dans MB3M.");
+    assert.equal(copy.notice.includes("MB3M"), false);
+    assert.match(copy.notice, /pro forma/);
     assert.equal(copy.lines[0]?.label, "Hôtel Mamounia");
     assert.match(copy.total, /1[\s\u202f]?050,00/);
+    assert.equal(copy.issuer.some((line) => line.includes("43865")), true);
+    assert.equal(copy.issuer.some((line) => line.includes("20291655")), true);
   });
 
   it("produit un PDF ouvrable", async () => {
     const pdf = await renderMb3mProformaPdf(model);
     assert.equal(Buffer.from(pdf.subarray(0, 4)).toString("utf8"), "%PDF");
+    assert.ok(pdf.byteLength > 1000);
   });
 });

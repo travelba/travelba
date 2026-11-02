@@ -65,6 +65,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
 | Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
 | Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert |
+| Envoyer la facture et demander le paiement | `envoyer_facture` — ajouté. Sans `confirmer`, aperçu seulement |
 | Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — ajouté |
 | Créer la fiche client dans MB3M | `creer_fiche_mb3m` — ajouté |
 | Refuser un encaissement Revolut ou Stripe | `refuser_encaissement` — ajouté |
@@ -102,3 +103,19 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 - **Export CSV du journal.** Le droit d’export et le volume de données restent sur l’écran.
 
 Aucune migration : ces outils réutilisent les tables déjà en place.
+
+## Facture pro forma
+
+`envoyer_facture` est le bouton **Envoyer la facture et demander le paiement**.
+
+- Sans `confirmer`, l’outil renvoie l’aperçu : numéro, reste à payer, échéance, RIB présent ou manquant, lien Stripe s’il existe, message, canaux prêts. Rien ne part.
+- `confirmer: true` envoie. `email` et `whatsapp` valent vrai par défaut ; `false` retire le canal.
+- Le PDF est joint. Le message porte le reste dû, le RIB et le lien de paiement.
+- Hors fenêtre de 24 h, WhatsApp exige le modèle Utility `facture_paiement` (`TWILIO_CONTENT_FACTURE`, en-tête Document). Tant qu’il n’est pas approuvé, le canal est refusé et la réponse décrit le modèle à soumettre à Meta. `scripts/arm-whatsapp-concierge.ts` le dépose avec les autres modèles.
+- L’envoi est écrit dans le journal d’agence, avec l’auteur (le jeton, ou le membre de la clé nominative).
+- Un second envoi réussi dans les cinq minutes est refusé, sauf `force`.
+- `lien_stripe` enregistre un lien déjà émis. L’outil n’en crée pas.
+
+Le même envoi est `POST /api/admin/bookings/{id}/facture` avec `confirmer: true`, après l’aperçu.
+
+La facture client ajoute les tables `crm_invoice_settings` (RIB de repli, délai) et `crm_booking_pay_links` (lien Stripe déjà émis). Les autres outils de ce tableau ne migrent rien.
