@@ -5,8 +5,11 @@ import { greetingForWhatsapp, CONCIERGE_SIGNATURE, type WhatsappSendResult } fro
 
 export { accessLoginEmailVariable, loginEmailFromSearch } from "./login-email";
 
-/** Modèle Utility soumis par `scripts/arm-whatsapp-concierge.ts`. Le SID n’est pas ici. */
-export const ACCESS_TEMPLATE_KEY = "acces_client";
+/**
+ * Nom Twilio du modèle. `acces_client` a été refusé par Meta et ne se réutilise pas.
+ * Le SID reste sous la variable `TWILIO_CONTENT_ACCES_CLIENT`.
+ */
+export const ACCESS_TEMPLATE_KEY = "espace_client_lien";
 export const ACCESS_TEMPLATE_ENV = "TWILIO_CONTENT_ACCES_CLIENT";
 export const ACCESS_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const ACCESS_HOME_PATH = "/mon-compte";
@@ -28,8 +31,7 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 const TEMPLATE_BODY = [
   "Bonjour {{1}},",
   "",
-  "Voici votre accès à l’espace client.",
-  "Le bouton ci-dessous est personnel, à usage unique, et reste valable 30 jours. Il ouvre votre espace, ou la page pour choisir votre mot de passe.",
+  "Comme demandé, voici le lien vers votre espace client Travel BA, où retrouver vos voyages et documents. Ce lien personnel reste valable 30 jours.",
   "",
   CONCIERGE_SIGNATURE,
 ].join("\n");

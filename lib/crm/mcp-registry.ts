@@ -1475,14 +1475,14 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les modèles acces_client, option_hotel_activee et facture_paiement. Même geste que create_restaurant_whatsapp_templates. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent par nom. Le content_sid est écrit dans le réglage crm_whatsapp_content_sids : l’envoi le lit sans redéploiement, et retombe sur la variable du même nom si le réglage est vide. Renvoie nom, content_sid et statut. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Réservé aux administrateurs.",
+      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les modèles espace_client_lien, option_hotel_activee et facture_paiement. Un nom déjà refusé n’est pas repris. Même geste que create_restaurant_whatsapp_templates. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent par nom. Le content_sid est écrit dans le réglage crm_whatsapp_content_sids : l’envoi le lit sans redéploiement, et retombe sur la variable du même nom si le réglage est vide. Renvoie nom, content_sid et statut. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Réservé aux administrateurs.",
     run: (args) => deposerModelesWhatsapp(args),
   },
   {
     name: "statut_modeles_whatsapp",
     openWorld: true,
     description:
-      "Statut d’approbation Meta de acces_client, option_hotel_activee et facture_paiement : nom, content_sid, statut, source (reglage, env ou retrouvé par son nom). pret vrai quand les trois sont approuvés. Lecture seule. N’envoie aucun message. Réservé aux administrateurs.",
+      "Statut d’approbation Meta de espace_client_lien, option_hotel_activee et facture_paiement : nom, content_sid, statut, source (reglage, env ou retrouvé par son nom). pret vrai quand les trois sont approuvés. Lecture seule. N’envoie aucun message. Réservé aux administrateurs.",
     run: (args) => statutModelesWhatsapp(args),
   },
   {
