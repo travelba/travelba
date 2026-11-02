@@ -14,7 +14,7 @@ export function loginEmailFromSearch(value: string | null | undefined) {
   return email;
 }
 
-/** Suffixe du bouton « Se connecter ». Le domaine reste fixe dans le modèle. */
+/** Adresse normalisée pour un contrôle. Le modèle WhatsApp des accès ne la met pas dans le message. */
 export function accessLoginEmailVariable(email: string) {
   const clean = loginEmailFromSearch(email);
   if (!clean || clean.length > 200) return null;

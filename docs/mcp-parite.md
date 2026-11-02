@@ -15,7 +15,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Liste complète des sociétés (ajout, modification, retrait) | `enregistrer_societes` — ajouté |
 | Supprimer la fiche | `supprimer_client` (`confirmer` = nom complet) — ajouté |
 | Inviter / renvoyer l’invitation | `inviter_client` — couvert |
-| Renvoyer ses accès par WhatsApp | `renvoyer_acces_whatsapp` (`confirmer: true`) — ajouté. Page de connexion avec l’e-mail, lien personnel 30 jours (empreinte seulement), aucun mot de passe, le lien n’est pas renvoyé |
+| Renvoyer ses accès par WhatsApp | `renvoyer_acces_whatsapp` (`confirmer: true`) — ajouté. Un bouton, Ouvrir mon espace : lien personnel 30 jours (empreinte seulement), aucun mot de passe, le lien n’est pas renvoyé |
 | Accès Hôtels, mode réel, accepter ou refuser une demande | `regler_acces_hotels` — ajouté |
 | Relevé WhatsApp | `envoyer_releve` — couvert |
 | Créer la fiche dans MB3M | `creer_fiche_mb3m` — ajouté |

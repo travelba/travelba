@@ -842,7 +842,7 @@ export const MCP_TOOLS: ToolDef[] = [
     openWorld: true,
     selfJournal: true,
     description:
-      "Renvoie les accès du client par WhatsApp, comme le bouton de la fiche. customer_id. confirmer doit être true : sans lui, rien n’est envoyé. Le message contient la page de connexion avec l’e-mail, et un lien personnel à usage unique valable 30 jours. Aucun mot de passe. Le lien n’est pas renvoyé. Un nouvel envoi annule le précédent. L’auteur est le jeton. La réponse donne twilio_sid et statut. Sans le modèle approuvé TWILIO_CONTENT_ACCES_CLIENT, rien n’est envoyé.",
+      "Renvoie les accès du client par WhatsApp, comme le bouton de la fiche. customer_id. confirmer doit être true : sans lui, rien n’est envoyé. Le message a un seul bouton, Ouvrir mon espace : lien personnel à usage unique, valable 30 jours. Aucun mot de passe. Le lien n’est pas renvoyé. Un nouvel envoi annule le précédent. L’auteur est le jeton. La réponse donne twilio_sid et statut. Sans le modèle approuvé TWILIO_CONTENT_ACCES_CLIENT, rien n’est envoyé.",
     input: {
       customer_id: z.string().trim().max(80).describe("Identifiant du client"),
       confirmer: z.boolean().optional().describe("true pour envoyer. Sans true, rien ne part"),

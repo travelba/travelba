@@ -65,24 +65,25 @@ test("la page de connexion lit l’e-mail du paramètre", () => {
   assert.match(page, /loginEmailFromSearch\(searchParams\.get\("email"\)\)/);
 });
 
-test("le modèle français a les deux boutons et pas de mot de passe dans le corps", () => {
+test("le modèle français a un seul bouton, Ouvrir mon espace", () => {
   const draft = accessContentDrafts()[0];
   const actions = draft.create.types["twilio/call-to-action"].actions;
   assert.equal(draft.friendlyName, "acces_client");
   assert.equal(draft.env, "TWILIO_CONTENT_ACCES_CLIENT");
   assert.equal(draft.create.language, "fr");
-  assert.equal(actions[0].title, "Se connecter");
-  assert.equal(actions[0].url, "https://travelba.fr/connexion?email={{2}}");
-  assert.equal(actions[1].title, "Ouvrir mon espace");
-  assert.equal(actions[1].url, "https://travelba.fr/acces/{{3}}");
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].title, "Ouvrir mon espace");
+  assert.equal(actions[0].url, "https://travelba.fr/acces/{{2}}");
   const body = draft.create.types["twilio/call-to-action"].body;
   assert.equal(body.includes("http"), false);
-  assert.match(body, /Aucun mot de passe/);
-  assert.match(body, /30 jours/);
-  assert.equal(draft.create.variables["3"], TOKEN);
+  assert.equal(body.includes("Se connecter"), false);
+  assert.match(body, /Voici votre accès à l’espace client\./);
+  assert.match(body, /Le bouton ci-dessous est personnel, à usage unique, et reste valable 30 jours\./);
+  assert.match(body, /Le Concierge$/);
+  assert.equal(draft.create.variables["2"], TOKEN);
+  assert.equal("3" in draft.create.variables, false);
   const variables = accessContentVariables("Camille", EMAIL, TOKEN);
-  assert.equal(variables?.["2"], encodeURIComponent(EMAIL));
-  assert.equal(variables?.["3"], TOKEN);
+  assert.equal(variables?.["2"], TOKEN);
   assert.equal(accessContentVariables("Camille", "non", TOKEN), null);
   const preview = accessTemplatePreview("Camille");
   assert.match(preview || "", /Bonjour Camille/);
@@ -171,7 +172,7 @@ test("l’envoi révoque l’ancien jeton, journalise l’auteur, et n’écrit 
         revokedHash = hash;
       },
       async send(variables) {
-        assert.equal(variables["3"], TOKEN);
+        assert.equal(variables["2"], TOKEN);
         return { ok: true, sid: "SM123" };
       },
       async remember(row) {

@@ -236,7 +236,7 @@ export function InviteCustomerPanel({
         <ConfirmAction
           label="Renvoyer ses accès par WhatsApp"
           question="Renvoyer les accès de ce client par WhatsApp ?"
-          hint="La page de connexion, avec l’e-mail, et un lien personnel valable 30 jours. Aucun mot de passe."
+          hint="Un lien personnel, à usage unique, valable 30 jours. Aucun mot de passe."
           confirmLabel="Envoyer"
           align={stacked ? "start" : "end"}
           disabled={loading || sendingAccess || deskBusy}

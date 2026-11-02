@@ -19,10 +19,8 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 const TEMPLATE_BODY = [
   "Bonjour {{1}},",
   "",
-  "Voici vos accès à l’espace client.",
-  "Le premier bouton ouvre la page de connexion, avec votre e-mail déjà indiqué.",
-  "Le second est personnel, à usage unique, et reste valable 30 jours. Il ouvre votre espace, ou la page pour choisir votre mot de passe.",
-  "Aucun mot de passe n’est dans ce message.",
+  "Voici votre accès à l’espace client.",
+  "Le bouton ci-dessous est personnel, à usage unique, et reste valable 30 jours. Il ouvre votre espace, ou la page pour choisir votre mot de passe.",
   "",
   CONCIERGE_SIGNATURE,
 ].join("\n");
@@ -84,14 +82,13 @@ function cleanName(firstName: string | null | undefined) {
   return (greetingForWhatsapp(firstName) || "").replace(/[\r\n]+/g, " ").trim().slice(0, 40);
 }
 
-/** {{1}} prénom, {{2}} e-mail encodé, {{3}} jeton. Pas d’URL dans le corps. */
+/** {{1}} prénom, {{2}} jeton du bouton. Pas d’URL dans le corps. L’e-mail reste requis, il n’entre pas dans le message. */
 export function accessContentVariables(firstName: string | null | undefined, email: string, token: string) {
   if (!isAccessToken(token)) return null;
-  const mail = accessLoginEmailVariable(email);
-  if (!mail) return null;
+  if (!accessLoginEmailVariable(email)) return null;
   const name = cleanName(firstName);
   if (/https?:|travelba\.fr|\/acces|\/connexion|mot de passe/i.test(name)) return null;
-  return { "1": name || " ", "2": mail, "3": token };
+  return { "1": name || " ", "2": token };
 }
 
 /** Texte du journal. Le jeton et les adresses n’y entrent pas. */
@@ -102,7 +99,6 @@ export function accessTemplatePreview(firstName: string | null | undefined) {
 }
 
 export function accessContentDrafts() {
-  const sampleMail = accessLoginEmailVariable("camille.exemple@travelba.fr");
   return [
     {
       template: ACCESS_TEMPLATE_KEY,
@@ -113,8 +109,7 @@ export function accessContentDrafts() {
         language: "fr" as const,
         variables: {
           "1": "Camille",
-          "2": sampleMail || "camille.exemple%40travelba.fr",
-          "3": EXAMPLE_ACCESS_TOKEN,
+          "2": EXAMPLE_ACCESS_TOKEN,
         },
         types: {
           "twilio/call-to-action": {
@@ -122,13 +117,8 @@ export function accessContentDrafts() {
             actions: [
               {
                 type: "URL" as const,
-                title: "Se connecter",
-                url: `${siteConfig.url}/connexion?email={{2}}`,
-              },
-              {
-                type: "URL" as const,
                 title: "Ouvrir mon espace",
-                url: `${siteConfig.url}/acces/{{3}}`,
+                url: `${siteConfig.url}/acces/{{2}}`,
               },
             ],
           },
