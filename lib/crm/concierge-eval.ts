@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { planMissingPieceNotices } from "@/lib/crm/concierge-notices";
+import { frenchPassportRequired } from "@/lib/crm/visa-trip";
 import { buildConciergeDossier, planConciergeTurn, replyOverCap } from "@/lib/crm/whatsapp-concierge";
 import { planConciergeConversation, readBoundDossier, usesTutoiement } from "@/lib/crm/whatsapp-conversation";
 import { planPhase2 } from "@/lib/crm/concierge-phase2";
@@ -433,6 +435,79 @@ export async function runConciergeEval(): Promise<EvalResult[]> {
       });
       assert.equal(turn.text.includes("Je vous confirme"), false);
       assert.ok(turn.text.length <= 400, turn.text);
+    }),
+    check("valmorel-no-passport", async () => {
+      const place = { destination: "Valmorel", title: "Valmorel" };
+      const hotel = [
+        {
+          kind: "hotel",
+          details: { city: "Valmorel", country: "France", hotel_name: "Club Med Valmorel" },
+        },
+      ];
+      assert.equal(frenchPassportRequired(hotel, place), false);
+      const shown = planMissingPieceNotices({
+        published: true,
+        reference: "TB-2027-0315",
+        bookingId: "valmorel",
+        startDate: "2027-03-21",
+        today: "2026-10-28",
+        missingPassports: 1,
+        expiringPassports: [
+          { travelerId: "voyageur", givenName: "Camille", expiresOn: "2027-02-07", returnOn: "2027-03-28" },
+        ],
+        formalities: [],
+        alreadySent: { passport: false, formalityNames: [] },
+        passportRequired: frenchPassportRequired(hotel, place),
+      });
+      assert.equal(shown.length, 0);
+      const hidden = planMissingPieceNotices({
+        published: false,
+        reference: "TB-2027-0315",
+        bookingId: "valmorel",
+        startDate: "2027-03-21",
+        today: "2026-10-28",
+        missingPassports: 1,
+        formalities: [],
+        alreadySent: { passport: false, formalityNames: [] },
+      });
+      assert.equal(hidden.length, 0);
+      const usa = [
+        { kind: "flight", details: { from: "CDG", to: "JFK" } },
+        { kind: "hotel", details: { city: "New York", country: "États-Unis" } },
+      ];
+      const esta = planMissingPieceNotices({
+        published: true,
+        reference: "TB-2027-0401",
+        bookingId: "newyork",
+        startDate: "2027-04-01",
+        today: "2026-10-28",
+        missingPassports: 1,
+        formalities: [{ name: "ESTA", filed: false }],
+        visaOffered: true,
+        alreadySent: { passport: false, formalityNames: [] },
+        passportRequired: frenchPassportRequired(usa, { destination: "New York", title: "New York" }),
+      });
+      assert.equal(esta.some((row) => row.template === "passeport"), true);
+      assert.equal(esta.some((row) => row.template === "formalite_manquante"), true);
+      assert.match(esta.find((row) => row.template === "passeport")?.body || "", /passeport manque/);
+      const uk = [
+        { kind: "flight", details: { from: "CDG", to: "LHR" } },
+        { kind: "hotel", details: { city: "Londres", country: "Royaume-Uni" } },
+      ];
+      const eta = planMissingPieceNotices({
+        published: true,
+        reference: "TB-2027-0402",
+        bookingId: "londres",
+        startDate: "2027-04-08",
+        today: "2026-10-28",
+        missingPassports: 1,
+        formalities: [{ name: "ETA", filed: false }],
+        visaOffered: true,
+        alreadySent: { passport: false, formalityNames: [] },
+        passportRequired: frenchPassportRequired(uk, { destination: "Londres", title: "Londres" }),
+      });
+      assert.equal(eta.some((row) => row.template === "passeport"), true);
+      assert.equal(eta.some((row) => row.template === "formalite_manquante"), true);
     }),
   ]);
 }
