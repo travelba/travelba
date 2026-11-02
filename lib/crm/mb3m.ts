@@ -66,9 +66,9 @@ export type Mb3mLine = {
   /** Marge unitaire : prix vendu − coûts rattachés. Peut être négative. */
   marginUnit?: number | null;
   /**
-   * Commission de la ligne. Absente ou nulle : 0,001 sur une billetterie (activité 2),
-   * sinon le champ n’est pas envoyé. MB3M refuse AddPieces sans commission aérienne
-   * (-504, code interne -22).
+   * Commission de la ligne. Absente ou nulle : 0,001 sur une billetterie
+   * (aérien 2, ferroviaire 5, low cost 27), sinon le champ n’est pas envoyé.
+   * MB3M refuse AddPieces sans cette commission (-504, code interne -22).
    */
   commissionTotal?: number | null;
   /** Fournisseurs des coûts (pas de ProviderId : l’API ne crée pas de fournisseur). */
@@ -350,13 +350,28 @@ export async function mb3mSaveFolder(
   return { id, uid };
 }
 
-/** Plancher : MB3M refuse une billetterie (activité 2) sans commission non nulle. */
-const MB3M_AIR_COMMISSION = 0.001;
+/** Plancher : MB3M refuse une billetterie sans commission non nulle. */
+const MB3M_TICKETING_COMMISSION = 0.001;
+
+/**
+ * Activités « prestation de billetterie » du fichier agence.
+ * 2 aérien, 5 ferroviaire, 27 low cost. Le low cost n’a pas de type Travelba :
+ * il n’est posé que si la ligne porte déjà cette activité.
+ */
+export const MB3M_TICKETING_ACTIVITY_IDS = [2, 5, 27] as const;
+
+export function mb3mTicketingActivity(activityId: number | null | undefined) {
+  return activityId != null && (MB3M_TICKETING_ACTIVITY_IDS as readonly number[]).includes(activityId);
+}
 
 function commissionXml(line: Mb3mLine) {
   const given = line.commissionTotal;
   const value =
-    given != null && Number.isFinite(given) && given !== 0 ? given : line.activityId === 2 ? MB3M_AIR_COMMISSION : null;
+    given != null && Number.isFinite(given) && given !== 0
+      ? given
+      : mb3mTicketingActivity(line.activityId)
+        ? MB3M_TICKETING_COMMISSION
+        : null;
   return value == null ? "" : tag("CommissionTotal", money(value));
 }
 
