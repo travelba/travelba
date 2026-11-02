@@ -445,6 +445,7 @@ export function BookingEditor({
     blocker: string | null;
     piece: { number: string } | null;
     preparation: { state: "running" | "failed" | null; message: string | null; resume: boolean };
+    amadeus?: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }[];
   };
   /** Comptabilité du voyage : ventes, coûts rattachés, marge, sorties proposées. */
   accounting?: TripAccountingView | null;
@@ -2273,6 +2274,7 @@ export function BookingEditor({
                 printedTotal: accounting?.invoice.printedTotal ?? null,
                 saleTotal: accounting?.totals.sale ?? null,
                 preparation: mb3m.preparation,
+                amadeus: mb3m.amadeus,
               }}
               note={invoiceNote}
               onBusy={(active) => setBusy(active ? "invoice" : "idle")}

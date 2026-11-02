@@ -21,7 +21,10 @@ import {
   mb3mRenderPiece,
   mb3mSaveCompany,
   mb3mSaveFolder,
+  mb3mChangeFolder,
   mb3mFindCustomerPayments,
+  mb3mFindCustomerPieces,
+  mb3mGetInvoice,
   mb3mPaymentAccount,
   mb3mPaymentReference,
   mb3mSavePayment,
@@ -795,5 +798,39 @@ describe("règlements MB3M", () => {
     assert.deepEqual(rows, [
       { number: "2153", reference: "Saisi à la main", amount: 2639.96, date: "2026-10-30", invoiceNumber: "2152" },
     ]);
+  });
+
+  it("lit les factures du client puis le détail, et change de dossier", async () => {
+    arm();
+    const pieces = await mb3mFindCustomerPieces("customer-uid", async (_url, init) => {
+      const body = String(init?.body);
+      assert.ok(body.includes("<CustomerIdentity><Uid>customer-uid</Uid></CustomerIdentity>"));
+      assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IFolderService/FindAllPieces"');
+      return new Response(
+        `<FindAllPiecesResponse><ResultCode>1</ResultCode><PieceSummary><Number>3001</Number><RefCommand> abc12 </RefCommand><Cancelled>false</Cancelled></PieceSummary><PieceSummary><Number>3002</Number><Cancelled>true</Cancelled></PieceSummary></FindAllPiecesResponse>`
+      );
+    });
+    assert.equal(pieces[0]?.number, "3001");
+    assert.equal(pieces[0]?.refCommand, "abc12");
+    assert.equal(pieces[0]?.cancelled, false);
+    assert.equal(pieces[1]?.cancelled, true);
+    const invoice = await mb3mGetInvoice("3001", async (_url, init) => {
+      assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IPieceService/GetInvoice"');
+      return new Response(
+        `<GetInvoiceResponse><ResultCode>1</ResultCode><Invoice><Number>3001</Number><RefCommand>ABC12</RefCommand><Date>2026-11-02T00:00:00</Date><Lines><InvoiceLine><ActivityId>2</ActivityId><NetPriceTotal>400</NetPriceTotal><MarginUnit>20</MarginUnit></InvoiceLine></Lines><Travelers><Traveler><Person><FirstName>Ada</FirstName><Name>Lovelace</Name></Person></Traveler></Travelers></Invoice></GetInvoiceResponse>`
+      );
+    });
+    assert.equal(invoice.refCommand, "ABC12");
+    assert.deepEqual(invoice.activityIds, [2]);
+    assert.equal(invoice.amount, 420);
+    assert.equal(invoice.date, "2026-11-02");
+    assert.deepEqual(invoice.travelers, [{ firstName: "Ada", lastName: "Lovelace" }]);
+    let body = "";
+    await mb3mChangeFolder({ number: "3001", folderId: "01-0002007" }, async (_url, init) => {
+      body = String(init?.body);
+      assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IPieceService/ChangeFolder"');
+      return new Response(`<ChangeFolderResponse><ResultCode>1</ResultCode></ChangeFolderResponse>`);
+    });
+    assert.ok(body.indexOf("<FolderId>01-0002007</FolderId>") < body.indexOf("<Number>3001</Number>"));
   });
 });

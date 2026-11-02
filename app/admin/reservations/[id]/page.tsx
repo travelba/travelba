@@ -22,6 +22,7 @@ import { companionsForShare, isTripShareCode, tripShareUrl } from "@/lib/crm/tri
 import { loadEstaForBookingId } from "@/lib/crm/esta-run";
 import { readUkEtaLines } from "@/lib/crm/uk-eta-run";
 import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
+import { mb3mRealm } from "@/lib/crm/mb3m";
 import { mb3mPreparationFromRow } from "@/lib/crm/mb3m-prep";
 import {
   buildTripAccountingView,
@@ -353,6 +354,20 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const mb3mDraft =
     accountingInputs.pieces.find((row) => !row.printed_at && !(row.piece_number || "").trim()) || null;
   const mb3mPreparation = mb3mPreparationFromRow(mb3mDraft);
+  const gdsPieces = await createServiceClient()
+    .from("crm_mb3m_pieces")
+    .select("piece_number, lines")
+    .eq("booking_id", id)
+    .eq("kind", "gds")
+    .eq("realm", mb3mRealm());
+  const amadeus = ((gdsPieces.data || []) as { piece_number: string | null; lines: unknown }[]).flatMap((row) => {
+    const line = Array.isArray(row.lines) ? (row.lines[0] as { label?: string; placement?: string } | undefined) : undefined;
+    const placement: "move" | "here" | "other" =
+      line?.placement === "move" || line?.placement === "other" ? line.placement : "here";
+    const number = (row.piece_number || "").trim();
+    if (!number) return [];
+    return [{ label: (line?.label || "Vol").trim(), invoiceNumber: number, placement }];
+  });
   const mb3mContext = buildMb3mInvoiceContext({
     booking: b,
     items: bookingItems,
@@ -473,7 +488,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           customerLogins={customerLogins}
           customerActivity={customerActivity}
           ficheBillingCompanies={ficheBillingCompanies}
-          mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece, preparation: mb3mPreparation }}
+          mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece, preparation: mb3mPreparation, amadeus }}
           accounting={accounting}
           importTasks={importTasks}
           checkins={checkins}

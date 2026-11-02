@@ -551,6 +551,101 @@ export async function mb3mFindCustomerPayments(customerUid: string, fetchImpl?: 
   });
 }
 
+export type Mb3mRemotePiece = {
+  number: string;
+  refCommand: string;
+  folderId: string | null;
+  cancelled: boolean;
+};
+
+function pieceBlocks(xml: string) {
+  return xml.match(/<(?:PieceSummary|InvoiceSummary|Piece)(?:\s[^>]*)?>[\s\S]*?<\/(?:PieceSummary|InvoiceSummary|Piece)>/g) || [];
+}
+
+function blockCancelled(block: string) {
+  return /<(?:Cancelled|IsCancelled)>\s*true\s*</i.test(block);
+}
+
+/** Factures du client. Le filtre est le client : un PNR ou un dossier ne filtre pas. */
+export async function mb3mFindCustomerPieces(customerUid: string, fetchImpl?: FetchImpl): Promise<Mb3mRemotePiece[]> {
+  const inner = `<FolderFindAllPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><CustomerIdentity><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></CustomerIdentity></FolderFindAllPiecesRequest>`;
+  const xml = await mb3mSoap("FolderService", "IFolderService", "FindAllPieces", inner, fetchImpl);
+  assertOperation(xml);
+  const blocks = pieceBlocks(xml);
+  const source = blocks.length ? blocks : [];
+  return source.flatMap((block) => {
+    const number = mb3mXmlText(block, "Number");
+    if (!number) return [];
+    const folderId = mb3mXmlText(block, "FolderId") || null;
+    return [
+      {
+        number,
+        refCommand: mb3mXmlText(block, "RefCommand"),
+        folderId,
+        cancelled: blockCancelled(block),
+      },
+    ];
+  });
+}
+
+export type Mb3mRemoteInvoice = {
+  number: string;
+  refCommand: string;
+  folderId: string | null;
+  cancelled: boolean;
+  amount: number | null;
+  date: string | null;
+  activityIds: number[];
+  travelers: { firstName: string; lastName: string }[];
+};
+
+/** Détail d’une facture : PNR (`RefCommand`), billets, activité, voyageurs. */
+export async function mb3mGetInvoice(number: string, fetchImpl?: FetchImpl): Promise<Mb3mRemoteInvoice> {
+  const inner = `<PieceGetInvoiceRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("Number", number.trim())}</PieceGetInvoiceRequest>`;
+  const xml = await mb3mSoap("PieceService", "IPieceService", "GetInvoice", inner, fetchImpl);
+  assertOperation(xml);
+  const invoice = xml.match(/<Invoice(?:\s[^>]*)?>[\s\S]*?<\/Invoice>/)?.[0] || xml;
+  const head = invoice.split("<Lines>")[0] || invoice;
+  const lineBlocks = invoice.match(/<InvoiceLine(?:\s[^>]*)?>[\s\S]*?<\/InvoiceLine>/g) || [];
+  const activityIds = lineBlocks.flatMap((block) => {
+    const id = Number(mb3mXmlText(block, "ActivityId"));
+    return Number.isInteger(id) && id > 0 ? [id] : [];
+  });
+  const lineSum = lineBlocks.reduce((sum, block) => {
+    const net = Number(mb3mXmlText(block, "NetPriceTotal"));
+    const margin = Number(mb3mXmlText(block, "MarginUnit"));
+    const part = (Number.isFinite(net) ? net : 0) + (Number.isFinite(margin) ? margin : 0);
+    return sum + part;
+  }, 0);
+  const headAmount = Number(mb3mXmlText(head, "Total") || mb3mXmlText(head, "Amount"));
+  const amount = Number.isFinite(headAmount) && headAmount > 0 ? headAmount : lineSum > 0 ? Math.round(lineSum * 100) / 100 : null;
+  const date = (mb3mXmlText(head, "Date") || mb3mXmlText(head, "DateStart")).slice(0, 10);
+  const travelers = [...invoice.matchAll(/<Traveler(?:\s[^>]*)?>[\s\S]*?<\/Traveler>/g)].flatMap((match) => {
+    const person = match[0].match(/<Person(?:\s[^>]*)?>[\s\S]*?<\/Person>/)?.[0] || match[0];
+    const firstName = mb3mXmlText(person, "FirstName");
+    const lastName = mb3mXmlText(person, "Name");
+    return firstName || lastName ? [{ firstName, lastName }] : [];
+  });
+  return {
+    number: mb3mXmlText(head, "Number") || number.trim(),
+    refCommand: mb3mXmlText(head, "RefCommand"),
+    folderId: mb3mXmlText(head, "FolderId") || null,
+    cancelled: blockCancelled(invoice),
+    amount,
+    date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
+    activityIds,
+    travelers,
+  };
+}
+
+/** Range une facture sans dossier dans le dossier du séjour. */
+export async function mb3mChangeFolder(input: { number: string; folderId: string }, fetchImpl?: FetchImpl) {
+  const inner = `<PieceChangeFolderRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("FolderId", input.folderId.trim())}${tag("Number", input.number.trim())}</PieceChangeFolderRequest>`;
+  const xml = await mb3mSoap("PieceService", "IPieceService", "ChangeFolder", inner, fetchImpl);
+  assertOperation(xml);
+  return { number: input.number.trim(), folderId: input.folderId.trim() };
+}
+
 export async function mb3mAddInvoice(
   input: {
     folderId: string;

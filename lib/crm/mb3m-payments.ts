@@ -42,6 +42,8 @@ export type Mb3mPlannedPayment = {
   lockedInvoice: string | null;
   /** Lecture MB3M impossible : on n’envoie pas de second règlement. */
   hold: string | null;
+  /** Facture du lettrage. Vide : la facture CRM en cours. */
+  targetInvoice: string | null;
   bank: string;
   mode: string;
   reference: string;
@@ -120,6 +122,7 @@ export function planMb3mPayments(input: {
         alreadyMatched: false,
         lockedInvoice: null,
         hold: MB3M_PAYMENT_LOOKUP_HOLD,
+        targetInvoice: null,
       });
       continue;
     }
@@ -144,6 +147,7 @@ export function planMb3mPayments(input: {
         alreadyMatched: true,
         lockedInvoice: here ? null : remote.invoiceNumber,
         hold: null,
+        targetInvoice: null,
       });
       if (here) remaining = cents(remaining - matched);
       continue;
@@ -157,6 +161,7 @@ export function planMb3mPayments(input: {
       alreadyMatched: false,
       lockedInvoice: null,
       hold: null,
+      targetInvoice: null,
     });
     remaining = cents(remaining - matched);
   }
@@ -178,6 +183,7 @@ export async function applyMb3mPaymentPlans(
   }
 ): Promise<Mb3mReglement[]> {
   const reglements: Mb3mReglement[] = [];
+  const savedNumbers = new Map<string, string>();
   for (const plan of input.plans) {
     const base = { date: plan.credit.date, montant: plan.matched };
     if (plan.hold) {
@@ -185,13 +191,14 @@ export async function applyMb3mPaymentPlans(
       continue;
     }
     try {
-      let number = plan.existingNumber;
+      let number = plan.existingNumber || savedNumbers.get(plan.credit.id) || null;
       const statut: Mb3mReglement["statut"] = number ? "deja_dans_mb3m" : "envoye";
       if (!number) {
         const saved = await deps.savePayment(plan);
         number = saved.number;
         await deps.remember(plan, number, "", false);
       }
+      savedNumbers.set(plan.credit.id, number);
       if (!plan.alreadyMatched) {
         const matching = await deps.writeMatching(plan, number);
         await deps.remember(plan, number, matching.id, true);
@@ -250,6 +257,82 @@ function asCredit(row: Mb3mCreditRow): Mb3mCredit | null {
   };
 }
 
+export type Mb3mGdsInvoiceTarget = { number: string; amount: number };
+
+/**
+ * Après la facture CRM, le reste de chaque crédit se lettre sur les factures Amadeus,
+ * dans l’ordre donné, sans second encaissement.
+ */
+export function planMb3mGdsMatchings(input: {
+  bookingId: string;
+  crmInvoiceNumber: string;
+  credits: Mb3mCredit[];
+  primary: Mb3mPlannedPayment[];
+  links: Mb3mPaymentLink[];
+  gdsInvoices: Mb3mGdsInvoiceTarget[];
+  otherOpenBookings: number;
+}): Mb3mPlannedPayment[] {
+  const gdsNumbers = new Set(input.gdsInvoices.map((invoice) => invoice.number));
+  const crmInvoice = input.crmInvoiceNumber.trim();
+  const used = new Map<string, number>();
+  const paymentNumber = new Map<string, string>();
+  for (const link of input.links) {
+    used.set(link.transactionId, cents((used.get(link.transactionId) || 0) + link.matchedAmount));
+    if (link.paymentNumber) paymentNumber.set(link.transactionId, link.paymentNumber);
+  }
+  const blocked = new Set<string>();
+  for (const plan of input.primary) {
+    if (plan.hold || plan.lockedInvoice) blocked.add(plan.credit.id);
+    if (!plan.hold && !plan.lockedInvoice) {
+      used.set(plan.credit.id, cents((used.get(plan.credit.id) || 0) + plan.matched));
+    }
+    if (plan.existingNumber) paymentNumber.set(plan.credit.id, plan.existingNumber);
+  }
+  for (const link of input.links) {
+    const invoice = link.invoiceNumber?.trim() || "";
+    if (invoice && invoice !== crmInvoice && !gdsNumbers.has(invoice)) blocked.add(link.transactionId);
+  }
+  const plans: Mb3mPlannedPayment[] = [];
+  const credits = [...input.credits].sort(
+    (left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id)
+  );
+  for (const invoice of input.gdsInvoices) {
+    let remaining = cents(
+      invoice.amount -
+        input.links.reduce(
+          (sum, link) => (link.invoiceNumber?.trim() === invoice.number ? sum + link.matchedAmount : sum),
+          0
+        )
+    );
+    if (remaining < 0) remaining = 0;
+    for (const credit of credits) {
+      if (blocked.has(credit.id)) continue;
+      if (credit.bookingId && credit.bookingId !== input.bookingId) continue;
+      if (!credit.bookingId && input.otherOpenBookings > 0) continue;
+      const remainder = cents(credit.amount - (used.get(credit.id) || 0));
+      if (remainder <= CENT || remaining <= CENT) continue;
+      const matched = cents(Math.min(remainder, remaining));
+      const account = mb3mPaymentAccount(credit.source, credit.label);
+      plans.push({
+        credit,
+        matched,
+        attributeBooking: false,
+        existingNumber: paymentNumber.get(credit.id) || null,
+        alreadyMatched: false,
+        lockedInvoice: null,
+        hold: null,
+        targetInvoice: invoice.number,
+        bank: account.bank,
+        mode: account.mode,
+        reference: mb3mPaymentReference(credit.id),
+      });
+      used.set(credit.id, cents((used.get(credit.id) || 0) + matched));
+      remaining = cents(remaining - matched);
+    }
+  }
+  return plans;
+}
+
 export async function recordMb3mInvoicePayments(
   supabase: SupabaseClient,
   input: {
@@ -258,6 +341,7 @@ export async function recordMb3mInvoicePayments(
     customerUid: string;
     invoiceNumber: string;
     invoiceAmount: number;
+    gdsInvoices?: Mb3mGdsInvoiceTarget[];
   }
 ): Promise<Mb3mReglement[]> {
   const booking = await supabase
@@ -296,7 +380,7 @@ export async function recordMb3mInvoicePayments(
       .neq("status", "cancelled"),
     supabase
       .from("crm_mb3m_payments")
-      .select("transaction_id, mb3m_payment_number, mb3m_invoice_number, matched_amount")
+      .select("id, transaction_id, mb3m_payment_number, mb3m_invoice_number, matched_amount")
       .eq("realm", mb3mRealm()),
   ]);
   if (direct.error || wallet.error || peers.error || links.error) {
@@ -320,25 +404,65 @@ export async function recordMb3mInvoicePayments(
       remoteReady = false;
     }
   }
+  const stored = ((links.data || []) as {
+    id?: string;
+    transaction_id: string;
+    mb3m_payment_number: string;
+    mb3m_invoice_number: string | null;
+    matched_amount: number | string;
+  }[]);
+  const paymentIds = stored.flatMap((row) => (row.id ? [row.id] : []));
+  const matchRows = paymentIds.length
+    ? await supabase
+        .from("crm_mb3m_payment_matches")
+        .select("payment_id, mb3m_invoice_number, matched_amount")
+        .in("payment_id", paymentIds)
+    : { data: [], error: null };
+  if (matchRows.error) throw new Mb3mError("Les règlements du dossier n’ont pas pu être lus.", -1);
+  const transactionByPayment = new Map(stored.flatMap((row) => (row.id ? [[row.id, row.transaction_id] as const] : [])));
+  const linkRows: Mb3mPaymentLink[] = [
+    ...stored.map((row) => ({
+      transactionId: row.transaction_id,
+      paymentNumber: row.mb3m_payment_number,
+      invoiceNumber: row.mb3m_invoice_number,
+      matchedAmount: Number(row.matched_amount) || 0,
+    })),
+    ...((matchRows.data || []) as { payment_id: string; mb3m_invoice_number: string; matched_amount: number | string }[]).flatMap(
+      (row) => {
+        const transactionId = transactionByPayment.get(row.payment_id);
+        if (!transactionId) return [];
+        return [
+          {
+            transactionId,
+            paymentNumber: stored.find((payment) => payment.id === row.payment_id)?.mb3m_payment_number || "",
+            invoiceNumber: row.mb3m_invoice_number,
+            matchedAmount: Number(row.matched_amount) || 0,
+          },
+        ];
+      }
+    ),
+  ];
   const plans = planMb3mPayments({
     bookingId: stay.id,
     invoiceNumber: input.invoiceNumber,
     invoiceAmount: input.invoiceAmount,
     credits: unique,
     otherOpenBookings: ((peers.data || []) as { id: string }[]).length,
-    links: ((links.data || []) as { transaction_id: string; mb3m_payment_number: string; mb3m_invoice_number: string | null; matched_amount: number | string }[]).map(
-      (row) => ({
-        transactionId: row.transaction_id,
-        paymentNumber: row.mb3m_payment_number,
-        invoiceNumber: row.mb3m_invoice_number,
-        matchedAmount: Number(row.matched_amount) || 0,
-      })
-    ),
+    links: linkRows,
     remote,
     remoteReady,
   });
+  const gdsPlans = planMb3mGdsMatchings({
+    bookingId: stay.id,
+    crmInvoiceNumber: input.invoiceNumber,
+    credits: unique,
+    primary: plans,
+    links: linkRows,
+    gdsInvoices: input.gdsInvoices || [],
+    otherOpenBookings: ((peers.data || []) as { id: string }[]).length,
+  });
   return applyMb3mPaymentPlans(
-    { folderId: input.folderId, invoiceNumber: input.invoiceNumber, plans },
+    { folderId: input.folderId, invoiceNumber: input.invoiceNumber, plans: [...plans, ...gdsPlans] },
     {
       savePayment: (plan) =>
         mb3mSavePayment({
@@ -352,16 +476,39 @@ export async function recordMb3mInvoicePayments(
       writeMatching: (plan, paymentNumber) =>
         mb3mWriteMatching({
           paymentNumber,
-          invoiceNumber: input.invoiceNumber,
+          invoiceNumber: plan.targetInvoice || input.invoiceNumber,
           amount: plan.matched,
         }),
       remember: async (plan, paymentNumber, matchingId, settled) => {
+        const realm = mb3mRealm();
+        const target = plan.targetInvoice || input.invoiceNumber;
+        if (plan.targetInvoice && plan.targetInvoice !== input.invoiceNumber) {
+          const payment = await supabase
+            .from("crm_mb3m_payments")
+            .select("id")
+            .eq("transaction_id", plan.credit.id)
+            .eq("realm", realm)
+            .maybeSingle();
+          const paymentId = (payment.data as { id?: string } | null)?.id;
+          if (payment.error || !paymentId) throw new Mb3mError("Le règlement n’a pas pu être enregistré.", -1);
+          const { error } = await supabase.from("crm_mb3m_payment_matches").upsert(
+            {
+              payment_id: paymentId,
+              mb3m_invoice_number: plan.targetInvoice,
+              mb3m_matching_id: matchingId || null,
+              matched_amount: plan.matched,
+            },
+            { onConflict: "payment_id,mb3m_invoice_number" }
+          );
+          if (error) throw new Mb3mError("Le règlement n’a pas pu être enregistré.", -1);
+          return;
+        }
         const row = {
           transaction_id: plan.credit.id,
           booking_id: plan.lockedInvoice ? null : stay.id,
-          realm: mb3mRealm(),
+          realm,
           mb3m_payment_number: paymentNumber,
-          mb3m_invoice_number: settled ? plan.lockedInvoice || input.invoiceNumber : null,
+          mb3m_invoice_number: settled ? plan.lockedInvoice || target : null,
           mb3m_matching_id: settled && matchingId ? matchingId : null,
           amount: plan.credit.amount,
           matched_amount: settled ? plan.matched : 0,

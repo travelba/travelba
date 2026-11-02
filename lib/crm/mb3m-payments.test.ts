@@ -6,6 +6,7 @@ import {
   MB3M_PAYMENT_LOOKUP_HOLD,
   applyMb3mPaymentPlans,
   mb3mWalletCreditRows,
+  planMb3mGdsMatchings,
   planMb3mPayments,
   type Mb3mCredit,
   type Mb3mPlannedPayment,
@@ -188,6 +189,38 @@ describe("plan des règlements MB3M", () => {
   });
 });
 
+describe("lettrage Amadeus après la facture CRM", () => {
+  it("lettre d’abord la facture CRM, puis le reste sur la facture GDS", () => {
+    const credits = [credit({ amount: 300 })];
+    const primary = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2152",
+      invoiceAmount: 100,
+      credits,
+    });
+    const extra = planMb3mGdsMatchings({
+      bookingId: BOOKING,
+      crmInvoiceNumber: "2152",
+      credits,
+      primary,
+      links: [],
+      gdsInvoices: [
+        { number: "3001", amount: 250 },
+        { number: "3002", amount: 80 },
+      ],
+      otherOpenBookings: 0,
+    });
+    assert.equal(primary[0]?.matched, 100);
+    assert.equal(primary[0]?.targetInvoice, null);
+    assert.deepEqual(
+      extra.map((row) => [row.targetInvoice, row.matched, row.existingNumber]),
+      [
+        ["3001", 200, null],
+      ]
+    );
+  });
+});
+
 describe("envoi des règlements", () => {
   function planned(patch: Partial<Mb3mPlannedPayment> = {}): Mb3mPlannedPayment {
     return {
@@ -198,6 +231,7 @@ describe("envoi des règlements", () => {
       alreadyMatched: false,
       lockedInvoice: null,
       hold: null,
+      targetInvoice: null,
       bank: "REVOLUT",
       mode: "Virement",
       reference: `CRM ${CREDIT_ID}`,
