@@ -11,7 +11,8 @@ import {
   type InvoiceDocument,
   type InvoiceWire,
 } from "./invoice-document";
-import { resolveContentSid, whatsappContentApproved } from "./twilio-content-sid";
+import { resolveAgencyContentSid } from "./agency-templates-arm";
+import { whatsappContentApproved } from "./twilio-content-sid";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -107,9 +108,9 @@ async function discoverStripeUrl(bookingId: string, reference: string) {
 
 async function templateSid() {
   try {
-    const fromEnv = (await resolveContentSid(INVOICE_TEMPLATE_ENV)) || "";
-    if (!fromEnv) return null;
-    return (await whatsappContentApproved(fromEnv)) ? fromEnv : null;
+    const sid = (await resolveAgencyContentSid(INVOICE_TEMPLATE_ENV)) || "";
+    if (!sid) return null;
+    return (await whatsappContentApproved(sid)) ? sid : null;
   } catch {
     return null;
   }

@@ -4,6 +4,8 @@
  * N’écrit aucun secret. Affiche chaque SID à coller dans l’env indiqué.
  * Si la variable est déjà définie, ce modèle n’est pas recréé.
  */
+import { accessContentDrafts } from "../lib/crm/access-resend";
+import { hotelOptionContentDrafts } from "../lib/crm/hotel-option-whatsapp";
 import { boardingPassContentDrafts } from "../lib/crm/boarding-pass-whatsapp";
 import { conciergeContentDrafts } from "../lib/crm/concierge-notices";
 import { flightNoticeDrafts } from "../lib/crm/flight-watch";
@@ -88,6 +90,8 @@ async function main() {
     ...statementContentDrafts(),
     invoiceContentDraft(),
     ...tripShareContentDrafts(),
+    ...accessContentDrafts(),
+    ...hotelOptionContentDrafts(),
   ]) {
     if (process.env[draft.env]?.trim()) {
       console.log(`${draft.env} est déjà défini. ${draft.friendlyName} n’est pas recréé.`);

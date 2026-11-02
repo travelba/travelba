@@ -13,6 +13,7 @@ function secretKey(key: string, keepPieceNumber: boolean, keepCardSecrets: boole
 function scrubString(value: string, keepCardSecrets: boolean) {
   if (JWT.test(value)) return "retiré";
   if (/^https?:\/\//i.test(value) && (/\/sign\//.test(value) || /[?&]token=/.test(value))) return "retiré";
+  if (/\/acces\/[A-Za-z0-9_-]{20,}/.test(value)) return value.replace(/\/acces\/[A-Za-z0-9_-]{20,}/g, "/acces/…");
   if (keepCardSecrets) return value;
   return value.replace(/\b\d{13,19}\b/g, "•••").replace(/\b(?:\d{4} ){3}\d{4,7}\b/g, "•••");
 }

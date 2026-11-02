@@ -25,6 +25,9 @@ test("chaque outil a un droit, les outils d’équipe sont administrateur", () =
     "revoquer_cle_api",
     "supprimer_client",
     "regler_acces_hotels",
+    "annoncer_option_hotel",
+    "deposer_modeles_whatsapp",
+    "statut_modeles_whatsapp",
     "reactiver_membre",
   ]) {
     assert.equal(MCP_TOOL_GATES[name], "admin");

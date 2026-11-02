@@ -39,6 +39,8 @@ const EXPECTED = [
   "modifier_titulaire",
   "definir_role_societe",
   "inviter_client",
+  "renvoyer_acces_whatsapp",
+  "annoncer_option_hotel",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
@@ -69,6 +71,8 @@ const EXPECTED = [
   "choix_restaurant",
   "create_restaurant_whatsapp_templates",
   "get_restaurant_whatsapp_templates_status",
+  "deposer_modeles_whatsapp",
+  "statut_modeles_whatsapp",
   "lister_membres",
   "ajouter_membre",
   "changer_role_membre",
@@ -114,6 +118,8 @@ const WRITE_TOOLS = [
   "modifier_titulaire",
   "definir_role_societe",
   "inviter_client",
+  "renvoyer_acces_whatsapp",
+  "annoncer_option_hotel",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
@@ -139,6 +145,7 @@ const WRITE_TOOLS = [
   "update_restaurant",
   "tables_restaurant",
   "create_restaurant_whatsapp_templates",
+  "deposer_modeles_whatsapp",
   "ajouter_membre",
   "changer_role_membre",
   "desactiver_membre",
@@ -240,6 +247,14 @@ test("mcp tools stay unique, named, and under the cap", () => {
   const invite = MCP_TOOLS.find((tool) => tool.name === "inviter_client");
   assert.equal(invite?.write, true);
   assert.equal(invite?.openWorld, true);
+  const acces = MCP_TOOLS.find((tool) => tool.name === "renvoyer_acces_whatsapp");
+  assert.equal(acces?.write, true);
+  assert.equal(acces?.openWorld, true);
+  assert.equal(acces?.selfJournal, true);
+  assert.match(acces?.description || "", /confirmer/);
+  assert.match(acces?.description || "", /TWILIO_CONTENT_ACCES_CLIENT/);
+  assert.match(acces?.description || "", /mot de passe/);
+  assert.match(acces?.description || "", /n’est pas renvoyé/);
   assert.equal(invite?.pieceNumbers, undefined);
   assert.equal(invite?.signedUrl, undefined);
   assert.match(invite?.description || "", /même flux/);

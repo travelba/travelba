@@ -7,6 +7,8 @@ const SEND = new Set([
   "envoyer_releve",
   "envoyer_facture",
   "inviter_client",
+  "renvoyer_acces_whatsapp",
+  "annoncer_option_hotel",
 ]);
 
 const CREATE = new Set([
@@ -58,6 +60,8 @@ const PHRASES: Record<string, string> = {
   modifier_titulaire: "Titulaire modifié",
   definir_role_societe: "Rôle de société modifié",
   inviter_client: "Invitation envoyée",
+  renvoyer_acces_whatsapp: "Accès renvoyés par WhatsApp",
+  annoncer_option_hotel: "Accès Hôtels annoncé",
   ajouter_piece: "Pièce déposée",
   requalifier_piece: "Pièce requalifiée",
   notifier_piece: "Pièce notifiée",
@@ -83,6 +87,7 @@ const PHRASES: Record<string, string> = {
   update_restaurant: "Restaurant modifié",
   tables_restaurant: "Table de restaurant mise à jour",
   create_restaurant_whatsapp_templates: "Modèles WhatsApp restaurants déposés",
+  deposer_modeles_whatsapp: "Modèles WhatsApp accès et facture déposés",
   supprimer_client: "Client supprimé",
   enregistrer_societes: "Sociétés de facturation enregistrées",
   regler_acces_hotels: "Accès hôtels modifié",

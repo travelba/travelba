@@ -15,10 +15,13 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Liste complète des sociétés (ajout, modification, retrait) | `enregistrer_societes` — ajouté |
 | Supprimer la fiche | `supprimer_client` (`confirmer` = nom complet) — ajouté |
 | Inviter / renvoyer l’invitation | `inviter_client` — couvert |
+| Renvoyer ses accès par WhatsApp | `renvoyer_acces_whatsapp` (`confirmer: true`) — ajouté. Un bouton, Ouvrir mon espace : lien personnel 30 jours (empreinte seulement), aucun mot de passe, le lien n’est pas renvoyé |
+| Annoncer l’accès Hôtels | `annoncer_option_hotel` (`confirmer: true`) — ajouté. Même lien, vers la rubrique Hôtels. Réservé aux administrateurs. L’option doit déjà être activée |
 | Accès Hôtels, mode réel, accepter ou refuser une demande | `regler_acces_hotels` — ajouté |
 | Relevé WhatsApp | `envoyer_releve` — couvert |
 | Créer la fiche dans MB3M | `creer_fiche_mb3m` — ajouté |
-| Ouvrir l’espace à la place du client, lien d’accès WhatsApp | hors API |
+| Ouvrir l’espace à la place du client | hors API |
+| Lien d’accès magique 24 h (mot de passe déjà posé) | hors API — le bouton « Envoyer un lien d’accès » reste à l’écran |
 | Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
 | Accompagnateur de la fiche (hors dossier) | hors API — `ajouter_voyageur` porte sur un dossier |
 
@@ -86,6 +89,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Départ (réattribuer les dossiers), sessions, matrice des droits | hors API |
 | Restaurants du catalogue et tables du soir | `list_restaurants`, `create_restaurant`, `update_restaurant`, `tables_restaurant`, `choix_restaurant`, `sejours_restaurants` — couvert |
 | Envoyer le WhatsApp 16 h, modèles | `create_restaurant_whatsapp_templates`, `get_restaurant_whatsapp_templates_status` — le dépôt des modèles est couvert ; l’envoi du soir reste le cron |
+| Déposer acces_client, option_hotel_activee, facture_paiement | `deposer_modeles_whatsapp`, `statut_modeles_whatsapp` — ajouté. Administrateurs. Le SID est dans `crm_whatsapp_content_sids`, repli sur la variable |
 | Little Emperors | `reservation_little_emperors`, `little_emperors_en_attente` — couvert |
 | Cartes Pliant du dossier | `creer_carte_pliant`, `lire_carte_pliant`, `bloquer_carte_pliant` — jeton carte pour le numéro |
 | Formalités (lecture) | `formalites` — couvert |
@@ -99,10 +103,10 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 - **Numéro de passeport et PAN.** Ils restent sur `TRAVELBA_MCP_PASSPORT_TOKENS` et `TRAVELBA_MCP_CARD_TOKENS`. Une clé nominative ne les ouvre pas.
 - **Messages libres** (réponse hôtel, WhatsApp, partage, formalité qui part au client). Le connecteur prépare (`preparer_message_carnet`, `traiter_email`) ; l’envoi libre reste un clic humain, pour ne pas écrire à un client sans le geste prévu.
 - **Réservation Ratehawk, remplissage de portail visa, import dropzone.** Ce sont des parcours longs, avec de l’argent ou une lecture de document, déjà tenus par l’écran.
-- **Ouvrir l’espace client à la place du client.** Cela crée une session. Ce n’est pas un outil de lecture.
+- **Ouvrir l’espace client à la place du client.** Cela crée une session sur le poste de l’agence. Ce n’est pas un outil. Le renvoi des accès au client, lui, est `renvoyer_acces_whatsapp`.
 - **Export CSV du journal.** Le droit d’export et le volume de données restent sur l’écran.
 
-Aucune migration : ces outils réutilisent les tables déjà en place.
+`renvoyer_acces_whatsapp` ajoute `crm_access_resend_tokens` : empreinte du jeton seulement, 30 jours, usage unique, révoqué par un nouvel envoi du même geste. `annoncer_option_hotel` ouvre la rubrique Hôtels avec le même jeton.
 
 ## Facture pro forma
 
@@ -118,4 +122,4 @@ Aucune migration : ces outils réutilisent les tables déjà en place.
 
 Le même envoi est `POST /api/admin/bookings/{id}/facture` avec `confirmer: true`, après l’aperçu.
 
-La facture client ajoute les tables `crm_invoice_settings` (RIB de repli, délai) et `crm_booking_pay_links` (lien Stripe déjà émis). Les autres outils de ce tableau ne migrent rien.
+La facture client ajoute les tables `crm_invoice_settings` (RIB de repli, délai) et `crm_booking_pay_links` (lien Stripe déjà émis).

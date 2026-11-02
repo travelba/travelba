@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
+import { loginEmailFromSearch } from "@/lib/crm/login-email";
 import { LOGIN_FAILURE_MESSAGE } from "@/lib/crm/login-message";
 import { pathAfterKnownPassword } from "@/lib/crm/session";
 import { siteConfig } from "@/lib/site";
@@ -12,9 +13,21 @@ import { BusyBar } from "@/components/crm/BusyBar";
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
 
+function EmailFromQuery({ onEmail }: { onEmail: (email: string) => void }) {
+  const searchParams = useSearchParams();
+  const email = loginEmailFromSearch(searchParams.get("email"));
+  useEffect(() => {
+    if (email) onEmail(email);
+  }, [email, onEmail]);
+  return null;
+}
+
 function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const prefillEmail = useCallback((value: string) => {
+    setEmail((current) => current || value);
+  }, []);
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"login" | "forgot" | "magic" | "sent">("login");
   const [channel, setChannel] = useState<"email" | "whatsapp">("email");
@@ -229,6 +242,7 @@ function LoginForm() {
     <form onSubmit={loginWithPassword} className="mt-6 space-y-5">
       <Suspense fallback={null}>
         <ConnexionQueryNotice />
+        <EmailFromQuery onEmail={prefillEmail} />
       </Suspense>
       <label className="block space-y-1.5 text-sm">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
