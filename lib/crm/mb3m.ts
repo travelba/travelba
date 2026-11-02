@@ -166,12 +166,20 @@ function dayStamp(value: string) {
 /** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
 let lastCall: { service: string; action: string; inner: string } | null = null;
 
+/** Message MB3M pour l’écran : le texte générique, puis Details (code interne). */
+export function mb3mOperationMessage(xml: string) {
+  const message = (mb3mXmlText(xml, "Message") || "L’opération MB3M a échoué.").replace(/\s+/g, " ").trim();
+  const details = mb3mXmlText(xml, "Details").replace(/\s+/g, " ").trim();
+  if (!details || message.includes(details)) return message;
+  return `${message} — ${details}`;
+}
+
 function assertOperation(xml: string) {
   const raw = mb3mXmlText(xml, "ResultCode");
   if (!raw) return;
   const code = Number(raw);
   if (code === 1) return;
-  const message = mb3mXmlText(xml, "Message") || "L’opération MB3M a échoué.";
+  const message = mb3mOperationMessage(xml);
   const body = xml.replace(/^[\s\S]*?<s:Body>/, "").replace(/<\/s:Body>[\s\S]*$/, "").slice(0, 3000);
   console.error(
     `[mb3m] ${lastCall ? `${lastCall.service}/${lastCall.action}` : "?"} ResultCode ${raw} ${message}\nréponse : ${body}\nrequête : ${(lastCall?.inner || "").slice(0, 6000)}`
@@ -409,10 +417,8 @@ export function mb3mPdfBytes(xml: string) {
   if (!payload) {
     const raw = mb3mXmlText(xml, "ResultCode");
     const code = Number(raw);
-    throw new Mb3mError(
-      mb3mXmlText(xml, "Message") || "MB3M n’a pas renvoyé le PDF.",
-      Number.isFinite(code) ? code : -1
-    );
+    const spoken = mb3mXmlText(xml, "Message") || mb3mXmlText(xml, "Details");
+    throw new Mb3mError(spoken ? mb3mOperationMessage(xml) : "MB3M n’a pas renvoyé le PDF.", Number.isFinite(code) ? code : -1);
   }
   const bytes = Buffer.from(payload, "base64");
   if (bytes.length < 5 || bytes.subarray(0, 4).toString("utf8") !== "%PDF") {

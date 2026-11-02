@@ -48,11 +48,12 @@ export async function POST(request: Request, ctx: Ctx) {
   if (error) return dbError(error, 500);
   if (!booking) return jsonError("Réservation introuvable", 404);
   const body = (await request.json().catch(() => null)) as { action?: string } | null;
+  const actorName = auth.staff.full_name?.trim() || null;
   try {
     const invoice =
       body?.action === "reissue"
-        ? await reissueMb3mInvoice(createServiceClient(), id)
-        : await emitMb3mInvoice(createServiceClient(), id);
+        ? await reissueMb3mInvoice(createServiceClient(), id, actorName)
+        : await emitMb3mInvoice(createServiceClient(), id, actorName);
     console.info(`[mb3m] ${body?.action || "emit"} ${id}`, JSON.stringify(invoice));
     revalidatePath(`/admin/reservations/${id}`);
     return NextResponse.json(invoice);

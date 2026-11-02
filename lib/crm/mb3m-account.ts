@@ -54,8 +54,12 @@ export function mb3mLineNote(suppliers: string[]) {
  * dessus (-504, « Nullable object must have a value » sur la facture entière). Les frais d’agence
  * partent en Divers Terrestre.
  */
+
+/** Billetterie aérienne (fichier agence). Une commission à 0 est refusée par MB3M. */
+export const MB3M_ACTIVITY_TICKETING = 2;
+
 const AGENCY_ACTIVITY: Record<string, number> = {
-  flight: 2,
+  flight: MB3M_ACTIVITY_TICKETING,
   insurance: 3,
   rail: 5,
   hotel: 7,

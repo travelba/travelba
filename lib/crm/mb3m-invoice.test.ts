@@ -11,6 +11,7 @@ import {
   type Mb3mInvoiceDeps,
   type Mb3mStoredPiece,
 } from "./mb3m-invoice";
+import { mb3mInvoiceChip, mb3mPreparationView } from "./mb3m-prep";
 
 const previous = {
   user: process.env.MB3M_API_USER,
@@ -47,9 +48,35 @@ describe("mb3mInvoiceLine", () => {
     assert.equal(cent.marginUnit, 0);
     const cents = mb3mInvoiceLine({ transactionId: "tx-3", label: "DJ", amount: 401.28, activityId: 22, margin: 0.1 });
     assert.equal(cents.netPriceUnit, 401.18);
-    const noMargin = mb3mInvoiceLine({ transactionId: "tx-4", label: "Vol", amount: 400, activityId: 2 });
-    assert.equal(noMargin.netPriceUnit, 400);
-    assert.equal(noMargin.marginUnit, null);
+    const hotelZero = mb3mInvoiceLine({ transactionId: "tx-7", label: "Hôtel", amount: 400, activityId: 7, margin: 0 });
+    assert.equal(hotelZero.netPriceUnit, 400);
+    assert.equal(hotelZero.marginUnit, 0);
+  });
+
+  it("billetterie à commission 0 : 0,01 € de commission, le net baisse d’autant, le TTC ne change pas", () => {
+    for (const margin of [0, null, undefined] as const) {
+      const line = mb3mInvoiceLine({
+        transactionId: "tx-flight",
+        label: "Tuifly AGA-ORY",
+        amount: 842.4,
+        activityId: 2,
+        margin,
+      });
+      assert.equal(line.activityId, 2);
+      assert.equal(line.marginUnit, 0.01);
+      assert.equal(line.netPriceUnit, 842.39);
+      assert.equal(line.netPriceTotal, 842.39);
+      assert.equal(Math.round(((line.netPriceUnit || 0) + (line.marginUnit || 0)) * 100) / 100, 842.4);
+    }
+    const kept = mb3mInvoiceLine({
+      transactionId: "tx-kept",
+      label: "Tuifly ORY-AGA",
+      amount: 900,
+      activityId: 2,
+      margin: 40,
+    });
+    assert.equal(kept.netPriceUnit, 860);
+    assert.equal(kept.marginUnit, 40);
   });
 });
 
@@ -157,6 +184,10 @@ function blankPiece(patch: Partial<Mb3mStoredPiece> = {}): Mb3mStoredPiece {
     signature: null,
     transactionIds: [],
     lines: [],
+    attemptStatus: null,
+    attemptError: null,
+    attemptStartedAt: null,
+    attemptStartedBy: null,
     ...patch,
   };
 }
@@ -402,11 +433,6 @@ describe("facture MB3M", () => {
     assert.equal(second.number, "4531");
     assert.equal(invoices, 1);
     assert.equal(renders, 0);
-    stored = blankPiece({ updatedAt: new Date().toISOString(), customerUid: "customer-uid" });
-    await assert.rejects(
-      () => runMb3mInvoice(context(), deps),
-      (error: unknown) => error instanceof Mb3mError && /déjà en cours/.test(error.message)
-    );
   });
 
   it("crée la nouvelle pro forma avant d’annuler l’ancienne ; un refus MB3M laisse l’ancienne en place", async () => {
@@ -468,5 +494,205 @@ describe("facture MB3M", () => {
       (error: unknown) => error instanceof Mb3mError && error.resultCode === -504
     );
     assert.deepEqual(calls, ["add"]);
+  });
+
+  it("verrouille une préparation en cours, puis reprend quand elle est périmée ou en échec", async () => {
+    const started = Date.parse("2026-11-02T13:05:00.000Z");
+    const running = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "22-0000099",
+      folderUid: "folder-uid",
+      attemptStatus: "preparing",
+      attemptStartedAt: new Date(started).toISOString(),
+      attemptStartedBy: "Camille",
+    });
+    let invoices = 0;
+    const base = (now: number, piece: Mb3mStoredPiece): Mb3mInvoiceDeps => ({
+      now: () => now,
+      actorName: "Camille",
+      claim: async () => ({ piece: { ...piece }, created: false }),
+      save: async () => undefined,
+      remove: async () => undefined,
+      savePerson: async () => {
+        throw new Error("fiche en double");
+      },
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async (input) => ({ id: input.id || "22-NEW", uid: "folder-uid" }),
+      addInvoice: async () => {
+        invoices += 1;
+        return { number: "4533", uid: "piece-uid" };
+      },
+      findPiece: async () => "missing",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+    });
+    await assert.rejects(
+      () => runMb3mInvoice(context(), base(started + 60_000, running)),
+      (error: unknown) =>
+        error instanceof Mb3mError &&
+        error.message === "Préparation en cours (démarrée à 14h05 par Camille), réessaie dans 2 min"
+    );
+    assert.equal(invoices, 0);
+
+    const stale = await runMb3mInvoice(context(), base(started + 4 * 60_000, running));
+    assert.equal(stale.number, "4533");
+    assert.equal(invoices, 1);
+
+    const failed = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "22-0000099",
+      folderUid: "folder-uid",
+      attemptStatus: "failed",
+      attemptError: "Code interne -22 : commission",
+      updatedAt: new Date(started).toISOString(),
+    });
+    const again = await runMb3mInvoice(context(), base(started + 30_000, failed));
+    assert.equal(again.number, "4533");
+    assert.equal(invoices, 2);
+  });
+
+  it("écrit l’erreur MB3M sur la ligne et reprend la même fiche et le même dossier", async () => {
+    let stored = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "22-0000099",
+      folderUid: "folder-uid",
+    });
+    let persons = 0;
+    const folders: Array<string | undefined> = [];
+    let fail = true;
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.parse("2026-11-02T13:10:00.000Z"),
+      actorName: "Camille",
+      claim: async () => ({ piece: { ...stored }, created: false }),
+      save: async (_id, patch) => {
+        stored = {
+          ...stored,
+          customerUid: patch.customerUid === undefined ? stored.customerUid : patch.customerUid,
+          folderId: patch.folderId === undefined ? stored.folderId : patch.folderId,
+          folderUid: patch.folderUid === undefined ? stored.folderUid : patch.folderUid,
+          pieceNumber: patch.pieceNumber === undefined ? stored.pieceNumber : patch.pieceNumber,
+          attemptStatus: patch.attemptStatus === undefined ? stored.attemptStatus : patch.attemptStatus,
+          attemptError: patch.attemptError === undefined ? stored.attemptError : patch.attemptError,
+          attemptStartedAt: patch.attemptStartedAt === undefined ? stored.attemptStartedAt : patch.attemptStartedAt,
+          attemptStartedBy: patch.attemptStartedBy === undefined ? stored.attemptStartedBy : patch.attemptStartedBy,
+        };
+      },
+      remove: async () => undefined,
+      savePerson: async () => {
+        persons += 1;
+        return { uid: "autre-fiche", partnerId: "11111111222243" };
+      },
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      agencyUid: async () => "agency-uid",
+      saveFolder: async (input) => {
+        folders.push(input.id);
+        return { id: input.id || "22-NEW", uid: "folder-uid" };
+      },
+      addInvoice: async () => {
+        if (fail) {
+          throw new Mb3mError(
+            "Une erreur s'est produite durant l'enregistrement de la facture — Code interne -22 : Impossible de sauvegarder la pièce car une prestation de billetterie n'a pas de commission renseignée.",
+            -504
+          );
+        }
+        return { number: "4540", uid: "piece-uid" };
+      },
+      findPiece: async () => "missing",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+    };
+    await assert.rejects(
+      () => runMb3mInvoice(context(), deps),
+      (error: unknown) => error instanceof Mb3mError && error.resultCode === -504
+    );
+    assert.equal(persons, 0);
+    assert.deepEqual(folders, ["22-0000099"]);
+    assert.equal(stored.customerUid, "customer-uid");
+    assert.equal(stored.folderId, "22-0000099");
+    assert.equal(stored.pieceNumber, null);
+    assert.equal(stored.attemptStatus, "failed");
+    assert.match(stored.attemptError || "", /billetterie/);
+    assert.equal(stored.attemptStartedBy, "Camille");
+
+    fail = false;
+    const resumed = await runMb3mInvoice(context(), deps);
+    assert.equal(resumed.number, "4540");
+    assert.equal(persons, 0);
+    assert.deepEqual(folders, ["22-0000099", "22-0000099"]);
+    assert.equal(stored.attemptStatus, null);
+    assert.equal(stored.customerUid, "customer-uid");
+  });
+
+  it("pastille : en cours, échouée, ou à préparer", () => {
+    const started = Date.parse("2026-11-02T13:05:00.000Z");
+    const now = started + 60_000;
+    const running = mb3mPreparationView(
+      {
+        pieceNumber: null,
+        attemptStatus: "preparing",
+        attemptError: null,
+        attemptStartedAt: new Date(started).toISOString(),
+        attemptStartedBy: "Camille",
+      },
+      now
+    );
+    assert.equal(running.state, "running");
+    assert.equal(running.resume, false);
+    assert.equal(running.message, "Préparation en cours (démarrée à 14h05 par Camille), réessaie dans 2 min");
+    const stale = mb3mPreparationView(
+      {
+        pieceNumber: null,
+        attemptStatus: "preparing",
+        attemptError: null,
+        attemptStartedAt: new Date(started).toISOString(),
+        attemptStartedBy: "Camille",
+      },
+      started + 4 * 60_000
+    );
+    assert.equal(stale.state, "failed");
+    assert.equal(stale.resume, true);
+    assert.match(stale.message || "", /interrompue/);
+    const failed = mb3mPreparationView(
+      {
+        pieceNumber: null,
+        attemptStatus: "failed",
+        attemptError: "Code interne -22 : commission",
+        attemptStartedAt: new Date(started).toISOString(),
+        attemptStartedBy: "Camille",
+      },
+      now
+    );
+    assert.equal(failed.state, "failed");
+    assert.equal(failed.message, "Code interne -22 : commission");
+    const legacy = mb3mPreparationView(
+      {
+        pieceNumber: null,
+        attemptStatus: null,
+        attemptError: null,
+        attemptStartedAt: null,
+        attemptStartedBy: null,
+      },
+      now
+    );
+    assert.equal(legacy.state, "failed");
+    assert.equal(legacy.resume, true);
+    assert.equal(
+      mb3mInvoiceChip({ marginStale: false, printed: false, number: null, preparation: "running" }).label,
+      "Préparation en cours"
+    );
+    assert.equal(
+      mb3mInvoiceChip({ marginStale: false, printed: false, number: null, preparation: "failed" }).label,
+      "Préparation échouée"
+    );
+    assert.equal(
+      mb3mInvoiceChip({ marginStale: false, printed: false, number: null, preparation: null }).label,
+      "À préparer"
+    );
   });
 });

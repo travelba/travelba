@@ -22,6 +22,7 @@ import { companionsForShare, isTripShareCode, tripShareUrl } from "@/lib/crm/tri
 import { loadEstaForBookingId } from "@/lib/crm/esta-run";
 import { readUkEtaLines } from "@/lib/crm/uk-eta-run";
 import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
+import { mb3mPreparationFromRow } from "@/lib/crm/mb3m-prep";
 import {
   buildTripAccountingView,
   loadDossierAccountingInputs,
@@ -349,6 +350,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     billing_country?: string | null;
   }[];
   const mb3mPiece = accountingInputs.openNumber ? { number: accountingInputs.openNumber } : null;
+  const mb3mDraft =
+    accountingInputs.pieces.find((row) => !row.printed_at && !(row.piece_number || "").trim()) || null;
+  const mb3mPreparation = mb3mPreparationFromRow(mb3mDraft);
   const mb3mContext = buildMb3mInvoiceContext({
     booking: b,
     items: bookingItems,
@@ -469,7 +473,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           customerLogins={customerLogins}
           customerActivity={customerActivity}
           ficheBillingCompanies={ficheBillingCompanies}
-          mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece }}
+          mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece, preparation: mb3mPreparation }}
           accounting={accounting}
           importTasks={importTasks}
           checkins={checkins}
