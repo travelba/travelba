@@ -167,6 +167,7 @@ export async function preparerFactureMb3m(input: Record<string, unknown>, deps: 
       imprimee: result.printed,
       lignes: view.lignes.length ? view.lignes : publicLines(null),
       montant: view.montant,
+      reglements: result.reglements || [],
       erreur: null,
       auteur,
     };
@@ -194,6 +195,7 @@ export async function preparerFactureMb3m(input: Record<string, unknown>, deps: 
       imprimee: Boolean(piece?.printed_at),
       lignes: view.lignes,
       montant: view.montant,
+      reglements: [],
       erreur: err.message,
       auteur,
     };

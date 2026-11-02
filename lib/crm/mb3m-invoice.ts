@@ -36,6 +36,7 @@ import {
   type Mb3mAccountLine,
   type Mb3mLedgerRow,
 } from "@/lib/crm/mb3m-account";
+import { recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
 import {
   mb3mActorLabel,
   mb3mPrepInProgress,
@@ -162,6 +163,7 @@ export type Mb3mInvoiceResult = {
   replaced: boolean;
   printed: boolean;
   visibleToClient: boolean;
+  reglements: Mb3mReglement[];
 };
 
 type PiecePatch = {
@@ -241,6 +243,14 @@ export type Mb3mInvoiceDeps = {
     bytes: Buffer;
     visibleToClient: boolean;
   }) => Promise<string>;
+  /** Crédits du client sur la pièce. Une erreur ici ne retire pas la facture. */
+  recordPayments?: (input: {
+    bookingId: string;
+    folderId: string;
+    customerUid: string;
+    invoiceNumber: string;
+    invoiceAmount: number;
+  }) => Promise<Mb3mReglement[]>;
 };
 
 /** Même chiffre que l’onglet Argent, à partir des cartes déjà enregistrées. */
@@ -493,6 +503,41 @@ async function attachPdf(
   return documentId;
 }
 
+async function attachReglements(
+  ctx: Mb3mInvoiceContext,
+  deps: Mb3mInvoiceDeps,
+  result: Omit<Mb3mInvoiceResult, "reglements">,
+  invoiceAmount: number,
+  folderId: string | null,
+  customerUid: string | null
+): Promise<Mb3mInvoiceResult> {
+  if (!deps.recordPayments) return { ...result, reglements: [] };
+  try {
+    const reglements = await deps.recordPayments({
+      bookingId: ctx.bookingId,
+      folderId: folderId || "",
+      customerUid: customerUid || "",
+      invoiceNumber: result.number,
+      invoiceAmount,
+    });
+    return { ...result, reglements };
+  } catch (err) {
+    console.error("[mb3m] règlements", err instanceof Error ? err.message : err);
+    return {
+      ...result,
+      reglements: [
+        {
+          date: "",
+          montant: 0,
+          numero_mb3m: null,
+          statut: "erreur",
+          erreur: "Les règlements n’ont pas pu être enregistrés.",
+        },
+      ],
+    };
+  }
+}
+
 export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps): Promise<Mb3mInvoiceResult> {
   const signature = mb3mLineSignature(ctx.lines);
   const claimed = await deps.claim(ctx.bookingId, ctx.amount);
@@ -527,14 +572,21 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
         const covered = new Set(piece.transactionIds);
         const fresh = ctx.lines.filter((line) => !covered.has(line.transactionId));
         if (!fresh.length) {
-          return {
-            number: piece.pieceNumber,
-            documentId,
-            created: false,
-            replaced: false,
-            printed: true,
-            visibleToClient: ctx.visibleToClient,
-          };
+          return attachReglements(
+            ctx,
+            deps,
+            {
+              number: piece.pieceNumber,
+              documentId,
+              created: false,
+              replaced: false,
+              printed: true,
+              visibleToClient: ctx.visibleToClient,
+            },
+            piece.amount ?? ctx.amount,
+            piece.folderId,
+            piece.customerUid
+          );
         }
         return runMb3mInvoice(
           { ...ctx, lines: fresh, amount: Math.round(fresh.reduce((sum, line) => sum + line.amount, 0) * 100) / 100, hadExpenses: true },
@@ -542,14 +594,21 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
         );
       }
       if (state === "open" && piece.signature === signature) {
-        return {
-          number: piece.pieceNumber,
-          documentId: null,
-          created: false,
-          replaced: false,
-          printed: false,
-          visibleToClient: ctx.visibleToClient,
-        };
+        return attachReglements(
+          ctx,
+          deps,
+          {
+            number: piece.pieceNumber,
+            documentId: null,
+            created: false,
+            replaced: false,
+            printed: false,
+            visibleToClient: ctx.visibleToClient,
+          },
+          piece.amount ?? ctx.amount,
+          piece.folderId,
+          piece.customerUid
+        );
       }
       // L’ancienne pro forma s’annule après la nouvelle : un refus de MB3M ne laisse pas le dossier sans pièce.
       if (state === "open" && piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
@@ -622,14 +681,21 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
       attemptStatus: null,
       attemptError: null,
     });
-    return {
-      number: invoice.number,
-      documentId: null,
-      created: !replaced,
-      replaced,
-      printed: false,
-      visibleToClient: ctx.visibleToClient,
-    };
+    return attachReglements(
+      ctx,
+      deps,
+      {
+        number: invoice.number,
+        documentId: null,
+        created: !replaced,
+        replaced,
+        printed: false,
+        visibleToClient: ctx.visibleToClient,
+      },
+      ctx.amount,
+      savedPiece.folderId,
+      savedPiece.customerUid
+    );
   } catch (error) {
     if (trackFailure) {
       const message = (error instanceof Error ? error.message : "La facture MB3M n’a pas abouti.")
@@ -997,6 +1063,7 @@ function supabaseInvoiceDeps(supabase: SupabaseClient, actorName?: string | null
     saveCompany: mb3mSaveCompany,
     saveFolder: mb3mSaveFolder,
     addInvoice: mb3mAddInvoice,
+    recordPayments: (input) => recordMb3mInvoicePayments(supabase, input),
     agencyUid: mb3mSingleAgencyUid,
     findPiece: mb3mFindPiece,
     cancelInvoice: mb3mCancelInvoice,

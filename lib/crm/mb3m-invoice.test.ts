@@ -380,6 +380,7 @@ describe("facture MB3M", () => {
     let stored = blankPiece();
     let invoices = 0;
     let renders = 0;
+    let payments = 0;
     const deps: Mb3mInvoiceDeps = {
       now: () => Date.now(),
       claim: async () => ({ piece: { ...stored }, created: stored.pieceNumber == null && stored.customerUid == null }),
@@ -434,10 +435,20 @@ describe("facture MB3M", () => {
         assert.equal(input.bytes.subarray(0, 4).toString("utf8"), "%PDF");
         return "doc-1";
       },
+      recordPayments: async (input) => {
+        payments += 1;
+        assert.equal(input.invoiceNumber, "4531");
+        assert.equal(input.folderId, "22-0000099");
+        if (payments === 1) throw new Error("coupure");
+        return [{ date: "2026-10-30", montant: 10, numero_mb3m: "1", statut: "envoye" }];
+      },
     };
     const first = await runMb3mInvoice(context(), deps);
     const second = await runMb3mInvoice(context({ amount: 20, visibleToClient: true }), deps);
-    assert.deepEqual(Object.keys(first).sort(), ["created", "documentId", "number", "printed", "replaced", "visibleToClient"]);
+    assert.deepEqual(Object.keys(first).sort(), ["created", "documentId", "number", "printed", "reglements", "replaced", "visibleToClient"]);
+    assert.equal(first.reglements[0]?.statut, "erreur");
+    assert.equal(second.reglements[0]?.numero_mb3m, "1");
+    assert.equal(payments, 2);
     assert.equal(first.created, true);
     assert.equal(first.printed, false);
     assert.equal(first.documentId, null);
