@@ -15,7 +15,7 @@ import { DateFrInput, MoneyInput } from "@/components/crm/fields";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { UnmatchCreditButton } from "@/components/admin/UnmatchCreditButton";
 import { ledgerEmptyMessage } from "@/lib/crm/launch-status";
-import { isReleasableCredit } from "@/lib/crm/unmatch-credit";
+import { isReleasableCredit } from "@/lib/crm/releasable-credit";
 
 const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
   pending: "En attente",

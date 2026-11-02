@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { createElement } from "react";
@@ -315,6 +316,23 @@ test("un virement saisi s’annule sans file, un débit est refusé", async () =
   const tool = await releaseMatchedCredit({ paiement_id: "inconnu" }, db as never, { journal: db.journal });
   assert.equal(tool.ok, false);
   if (!tool.ok) assert.equal(tool.error, "Crédit introuvable.");
+});
+
+test("l’écran client n’importe pas le détachement serveur", () => {
+  const files = [
+    "components/admin/Ledger.tsx",
+    "components/admin/UnmatchCreditButton.tsx",
+    "components/account/LedgerMovements.tsx",
+    "lib/crm/client-ledger.ts",
+    "lib/crm/releasable-credit.ts",
+  ];
+  for (const file of files) {
+    const src = readFileSync(file, "utf8");
+    assert.doesNotMatch(src, /unmatch-credit/);
+    assert.doesNotMatch(src, /mcp-auth/);
+    assert.doesNotMatch(src, /node:async_hooks/);
+  }
+  assert.match(readFileSync("components/admin/UnmatchCreditButton.tsx", "utf8"), /\/api\/admin\/transactions\//);
 });
 
 test("la ligne du grand livre agence propose Remettre en non rattaché", async () => {

@@ -10,13 +10,13 @@ import { eurosToAlertCents } from "@/lib/crm/agency-access";
 import { customerFullName } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
+import { isReleasableCredit } from "@/lib/crm/releasable-credit";
+
+export { isReleasableCredit } from "@/lib/crm/releasable-credit";
 
 export const CREDIT_RELEASE_MARK = "#annule#";
 const PREPARING_MS = 3 * 60 * 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const RELEASE_SOURCES = new Set(["revolut", "stripe", "manual"]);
-const RELEASE_KINDS = new Set(["transfer", "card_payment"]);
 
 type Row = Record<string, unknown>;
 
@@ -41,20 +41,6 @@ export type CreditAccountInvoice = {
   piece_number?: string | null;
   printed_at?: string | null;
 };
-
-export function isReleasableCredit(row: {
-  direction?: string | null;
-  kind?: string | null;
-  source?: string | null;
-  status?: string | null;
-}) {
-  return (
-    row.direction === "credit" &&
-    row.status === "posted" &&
-    RELEASE_KINDS.has(row.kind || "") &&
-    RELEASE_SOURCES.has(row.source || "")
-  );
-}
 
 export function releasedExternalId(externalId: string, transactionId: string) {
   if (externalId.includes(CREDIT_RELEASE_MARK)) return externalId;

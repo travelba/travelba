@@ -24,7 +24,7 @@ import {
 } from "@/lib/crm/spending-desk";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { mb3mPieceLinksFor } from "@/lib/crm/mb3m-invoice";
-import { isReleasableCredit } from "@/lib/crm/unmatch-credit";
+import { isReleasableCredit } from "@/lib/crm/releasable-credit";
 import { fundingPockets, payingCompanyLabels, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
 import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
