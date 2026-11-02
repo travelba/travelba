@@ -58,6 +58,9 @@ describe("préparer la facture MB3M", () => {
               replaced: false,
               printed: false,
               visibleToClient: false,
+              reglements: [
+                { date: "2026-10-30", montant: 100, numero_mb3m: "2153", statut: "deja_dans_mb3m" },
+              ],
             };
           },
         })
@@ -71,6 +74,8 @@ describe("préparer la facture MB3M", () => {
     assert.equal(result.lignes[0]?.marge, 1000.44);
     assert.equal(result.erreur, null);
     assert.equal(result.auteur, "grok");
+    assert.equal(result.reglements[0]?.numero_mb3m, "2153");
+    assert.equal(result.reglements[0]?.statut, "deja_dans_mb3m");
     const shown = previewMcpTool("preparer_facture_mb3m", { numero_mb3m: "4542", numero_piece: "SECRET" });
     assert.match(shown.content[0].text, /4542/);
     assert.equal(shown.content[0].text.includes("SECRET"), false);

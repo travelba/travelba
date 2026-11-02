@@ -1,5 +1,7 @@
 /** Préparation d’une facture MB3M : verrou, échec, pastille. Sans accès réseau. */
 
+import { formatMoney } from "@/lib/crm/money";
+
 export const MB3M_PREP_STALE_MS = 3 * 60 * 1000;
 
 export type Mb3mAttemptStatus = "preparing" | "failed";
@@ -123,4 +125,24 @@ export function mb3mInvoiceActionLabel(input: {
   if (input.resume) return "Reprendre";
   if (input.number) return "Mettre à jour la pro forma";
   return "Préparer la facture";
+}
+
+/** Phrase après le clic : les crédits envoyés ou déjà présents chez MB3M. */
+export function mb3mReglementNote(
+  rows: {
+    montant: number;
+    numero_mb3m: string | null;
+    statut: "envoye" | "deja_dans_mb3m" | "erreur";
+    erreur?: string | null;
+  }[]
+) {
+  return rows
+    .map((row) => {
+      if (row.statut === "erreur") return row.erreur?.trim() || "Un règlement n’a pas pu être enregistré.";
+      const amount = formatMoney(row.montant);
+      const number = row.numero_mb3m ? ` (n° ${row.numero_mb3m})` : "";
+      if (row.statut === "deja_dans_mb3m") return `Règlement de ${amount} déjà dans MB3M${number}.`;
+      return `Règlement de ${amount} envoyé${number}.`;
+    })
+    .join(" ");
 }

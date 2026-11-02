@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { InvoiceSendPanel } from "@/components/admin/InvoiceSendPanel";
 import { StatusChip } from "@/components/crm/ui";
 import { formatMoney } from "@/lib/crm/money";
-import { mb3mInvoiceActionLabel, mb3mInvoiceChip, type Mb3mPreparationView } from "@/lib/crm/mb3m-prep";
+import { mb3mInvoiceActionLabel, mb3mInvoiceChip, mb3mReglementNote, type Mb3mPreparationView } from "@/lib/crm/mb3m-prep";
 
 export type InvoiceBlockView = {
   number: string | null;
@@ -60,12 +60,14 @@ export function InvoiceBlock({
         created?: boolean;
         replaced?: boolean;
         printed?: boolean;
+        reglements?: { montant: number; numero_mb3m: string | null; statut: "envoye" | "deja_dans_mb3m" | "erreur"; erreur?: string | null }[];
       } | null;
       if (!res.ok || !json?.number) {
         setError(json?.error || "La facture MB3M n’a pas abouti.");
         router.refresh();
         return;
       }
+      const payments = mb3mReglementNote(json.reglements || []);
       const message = json.printed
         ? `Facture MB3M n° ${json.number} validée. Le PDF est dans les pièces.`
         : json.replaced
@@ -73,7 +75,7 @@ export function InvoiceBlock({
           : json.created
             ? `Facture pro forma n° ${json.number} préparée. Elle se valide dans MB3M.`
             : `Facture pro forma n° ${json.number}. Elle se valide dans MB3M.`;
-      onInvoiced(json.number, message);
+      onInvoiced(json.number, payments ? `${message} ${payments}` : message);
     } catch {
       setError("La facture MB3M n’a pas abouti.");
     } finally {

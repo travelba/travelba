@@ -1343,7 +1343,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), erreur et auteur (le jeton). Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M.",
+      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. Les crédits postés du client partent en règlements MB3M (reglements : date, montant, numero_mb3m, statut envoye, deja_dans_mb3m ou erreur). La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), reglements, erreur et auteur (le jeton). Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
