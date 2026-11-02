@@ -107,9 +107,10 @@ import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
+import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 95;
+export const MCP_TOOL_CAP = 97;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1834,6 +1835,44 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: z.boolean().describe("true pour refuser"),
     },
     run: (args) => refuserEncaissement(args),
+  },
+  {
+    name: "statut_formalite",
+    description:
+      "Lit le parcours d’une formalité sur un dossier (dossier_id ou reference) : ETA-IL, ESTA, ETA Royaume-Uni. Pour chaque pays détecté : lancé ou pas, étape, statut, qui a lancé, voyageurs. offre_visa dit si le service est proposé. Ne lance rien. Pas de numéro de passeport, pas les réponses du formulaire.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+    },
+    run: (args) => statutFormalite(args),
+  },
+  {
+    name: "lancer_formalite",
+    write: true,
+    selfJournal: true,
+    description:
+      "Lance une formalité à la place du client (ETA-IL, ESTA, ETA Royaume-Uni), comme le bouton du dossier. dossier_id ou reference, pays, voyageurs (voyageur_id, tous si omis), reponses (adresse, emploi, pays_visites, refus — les mêmes champs que le client ; Israël n’en a pas). Sans confirmer, renvoie le prix, les frais d’État et ce qui manque : rien n’est lancé. confirmer true active le visa si besoin et démarre le même parcours que la confirmation du client. Le client voit le suivi. L’auteur est le membre, ou le jeton. Le remplissage du portail et le paiement restent à l’écran. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      pays: z.string().trim().max(40).describe("Israël, États-Unis, Royaume-Uni, ou IL, US, GB, ESTA, ETA-IL"),
+      voyageurs: z
+        .array(z.string().trim().max(80))
+        .max(20)
+        .optional()
+        .describe("voyageur_id des passagers. Omis : tous les voyageurs du dossier"),
+      reponses: z
+        .object({
+          adresse: z.string().trim().max(500).optional().describe("Adresse du séjour aux États-Unis"),
+          emploi: z.string().trim().max(300).optional(),
+          pays_visites: z.string().trim().max(500).optional(),
+          refus: z.string().trim().max(300).optional().describe("Refus de visa antérieur, États-Unis et Royaume-Uni"),
+        })
+        .optional()
+        .describe("Réponses du formulaire. Israël : omettre"),
+      confirmer: z.boolean().optional().describe("true pour lancer. Sans cela, aperçu du prix seulement"),
+    },
+    run: (args) => lancerFormalite(args),
   },
 ];
 

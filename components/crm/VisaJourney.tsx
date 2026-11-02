@@ -16,6 +16,8 @@ import {
   clientVisaProgress,
   clientVisaStepNote,
   clientVisaTrack,
+  confirmBlockMessage,
+  frenchPassportCount,
   journeyStarted,
   paymentHold,
   visaConfirmationCopy,
@@ -31,6 +33,7 @@ type VisaRequest = {
   step?: ClientVisaStep | null;
   status?: string | null;
   accepted_at?: string | null;
+  launched_by_name?: string | null;
 };
 
 const EMPTY: EstaAnswers = {
@@ -214,7 +217,7 @@ export function VisaJourney({
       variant === "admin" ? `/api/admin/bookings/${bookingId}/visa` : `/api/client/bookings/${reference}/visa`;
     const payload =
       variant === "admin"
-        ? { action: "run", country, answers: current, confirm: true, travelerIds: ids }
+        ? { action: "lancer", country, answers: current, confirm: true, travelerIds: ids }
         : { country, answers: current, confirm: true, travelerIds: ids };
     const res = await fetch(visaUrl, {
       method: "POST",
@@ -238,7 +241,8 @@ export function VisaJourney({
         const started = journeyStarted(request);
         const alreadyValid = visaAlreadyValid(documents, country) || settled.includes(country);
         const offerCard = variant !== "admin" && proposed && !started && !alreadyValid;
-        if (!started && !offerCard) return null;
+        const agencyLaunch = variant === "admin" && !started && !alreadyValid;
+        if (!started && !offerCard && !agencyLaunch) return null;
         const step = (
           started && !canReturnToOffer(request)
             ? request?.step || (request?.status === "piece" ? "piece" : "preparation")
@@ -252,6 +256,44 @@ export function VisaJourney({
         const chosen = selection(country);
         const count = travelers.length ? chosen.length : Math.max(1, trip.passengers || 1);
         const open = confirming === country;
+        if (agencyLaunch) {
+          return (
+            <AgencyLaunchCard
+              key={country}
+              entry={entry}
+              country={country}
+              open={open}
+              busy={busy === country}
+              locked={busy !== null}
+              ready={ready}
+              error={open ? error : null}
+              gapNote={
+                open && !ready
+                  ? confirmBlockMessage(
+                      country === "GB" ? "antécédent de refus manquant" : "questionnaire ESTA incomplet",
+                      country,
+                      current
+                    )
+                  : null
+              }
+              passportNote={
+                frenchPassportCount(documents) < 1 ? confirmBlockMessage("passeport français manquant") : null
+              }
+              quote={visaConfirmationCopy({ travelers: count, country })}
+              travelers={travelers}
+              chosen={chosen}
+              answers={current}
+              onAnswer={(key, value) => patchAnswer(country, key, value)}
+              onToggle={(id) => toggleTraveler(country, id)}
+              onOpen={() => {
+                setError(null);
+                setConfirming(country);
+              }}
+              onClose={() => setConfirming(null)}
+              onConfirm={() => void confirm(entry as FormalityEntry & { iso: VisaCorridor })}
+            />
+          );
+        }
         return (
           <article
             key={country}
@@ -263,7 +305,12 @@ export function VisaJourney({
               </p>
               <h2 className="font-display mt-1 text-base leading-none font-semibold">{entry.name}</h2>
               {step ? (
-                <JourneyBody step={step} paid={paid} paymentHeld={paymentHeld} pieces={pieces} pliantReady={pliantReady} />
+                <>
+                  <JourneyBody step={step} paid={paid} paymentHeld={paymentHeld} pieces={pieces} pliantReady={pliantReady} />
+                  {variant === "admin" && request?.launched_by_name ? (
+                    <p className="mt-3 text-xs text-[#C5A880]">Lancée pour le client par {request.launched_by_name}.</p>
+                  ) : null}
+                </>
               ) : (
                 <div className="mt-3 space-y-3">
                   <p className="text-sm leading-snug text-[#faf9f6]/85">
@@ -417,6 +464,145 @@ export function VisaJourney({
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </section>
+  );
+}
+
+function AgencyLaunchCard({
+  entry,
+  country,
+  open,
+  busy,
+  locked,
+  ready,
+  error,
+  gapNote,
+  passportNote,
+  quote,
+  travelers,
+  chosen,
+  answers,
+  onAnswer,
+  onToggle,
+  onOpen,
+  onClose,
+  onConfirm,
+}: {
+  entry: FormalityEntry;
+  country: VisaCorridor;
+  open: boolean;
+  busy: boolean;
+  locked: boolean;
+  ready: boolean;
+  error: string | null;
+  gapNote: string | null;
+  passportNote: string | null;
+  quote: string;
+  travelers: CrmBookingTraveler[];
+  chosen: string[];
+  answers: EstaAnswers;
+  onAnswer: (key: keyof EstaAnswers, value: string) => void;
+  onToggle: (id: string) => void;
+  onOpen: () => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const canConfirm = ready && !passportNote && (travelers.length === 0 || chosen.length > 0);
+  return (
+    <article className="rounded-2xl bg-[#faf9f6] px-4 py-4 text-[var(--admin-navy)] ring-1 ring-[#e5e3dc]">
+      <p className="text-[10px] font-semibold tracking-[0.14em] text-[#C5A880] uppercase">
+        {entry.formality || "Formalité"}
+      </p>
+      <h3 className="font-display mt-1 text-base font-semibold">{entry.name}</h3>
+      {open ? (
+        <div className="mt-3 space-y-3">
+          <p className="text-sm leading-snug">
+            Les réponses sont celles du formulaire client. Le prix apparaît ici, avant la confirmation.
+          </p>
+          {country === "US" ? (
+            <div className="grid gap-3">
+              <AdminField label="Adresse du séjour aux États-Unis" value={answers.usAddress} onChange={(value) => onAnswer("usAddress", value)} />
+              <AdminField label="Emploi" value={answers.employment} onChange={(value) => onAnswer("employment", value)} />
+              <AdminField label="Pays visités" value={answers.countriesVisited} onChange={(value) => onAnswer("countriesVisited", value)} />
+              <AdminField label="Refus de visa antérieur" value={answers.priorRefusal} onChange={(value) => onAnswer("priorRefusal", value)} />
+            </div>
+          ) : null}
+          {country === "GB" ? (
+            <AdminField label="Refus de visa antérieur" value={answers.priorRefusal} onChange={(value) => onAnswer("priorRefusal", value)} />
+          ) : null}
+          <p className="text-sm leading-snug">{quote}</p>
+          {travelers.length ? (
+            <ul className="space-y-2">
+              {travelers.map((traveler) => (
+                <li key={traveler.id}>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={chosen.includes(traveler.id)}
+                      onChange={() => onToggle(traveler.id)}
+                      className="h-4 w-4 accent-[#0B192C]"
+                    />
+                    {travelerDisplayName(traveler)}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <button
+            type="button"
+            disabled={locked || !canConfirm}
+            onClick={onConfirm}
+            className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#0B192C] px-4 text-sm font-semibold text-[#faf9f6] disabled:opacity-50"
+          >
+            {busy ? "Demande en cours…" : "Confirmer"}
+          </button>
+          <button
+            type="button"
+            disabled={locked}
+            onClick={onClose}
+            className="inline-flex h-10 w-full items-center justify-center rounded-full text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Pas maintenant
+          </button>
+          <BusyBar active={busy} label="Demande en cours…" />
+          {gapNote ? <p className="text-sm text-red-700">{gapNote}</p> : null}
+          {passportNote ? <p className="text-sm text-red-700">{passportNote}</p> : null}
+          {error ? <p className="text-sm text-red-700">{error}</p> : null}
+        </div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          <p className="text-sm leading-snug">Le client n’a pas confirmé. Vous pouvez lancer la demande à sa place.</p>
+          <button
+            type="button"
+            disabled={locked}
+            onClick={onOpen}
+            className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C] disabled:opacity-50"
+          >
+            Lancer la demande pour le client
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function AdminField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-1.5 text-xs font-semibold text-[var(--admin-navy)]">
+      {label}
+      <input
+        className="rounded-2xl border border-[#e5e3dc] bg-white px-3 py-3 text-sm font-normal text-[var(--admin-navy)] outline-none"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   );
 }
 

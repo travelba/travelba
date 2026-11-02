@@ -117,6 +117,13 @@ test("dupliquer reprend visa, refus et courrier, pas un paiement", () => {
   assert.equal(visa.booking_id, "copy");
   assert.equal(visa.country, "US");
   assert.equal(visa.pliant_transaction_id, null);
+  assert.equal(visa.launched_by, null);
+  const launched = duplicateVisaRequestRow(
+    { country: "IL", launched_by: "staff-1", launched_by_name: "Camille Martin" },
+    "copy"
+  );
+  assert.equal(launched.launched_by, "staff-1");
+  assert.equal(launched.launched_by_name, "Camille Martin");
   const refusal = duplicateDeclinedServiceRow(
     { kind: "chauffeur", service_leg: "arrival", place: "hotel", moment: "" },
     "copy"

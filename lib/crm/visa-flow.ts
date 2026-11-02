@@ -208,6 +208,8 @@ export function visaResetPatch() {
     pay_attempts: 0,
     pliant_transaction_id: null,
     paid_cents: null,
+    launched_by: null,
+    launched_by_name: null,
   };
 }
 
@@ -296,4 +298,268 @@ export function confirmAllowed(input: {
   if (input.country === "US" && !estaReady(input.esta)) return "questionnaire ESTA incomplet";
   if (input.country === "GB" && !input.esta?.priorRefusal?.trim()) return "antécédent de refus manquant";
   return null;
+}
+
+export function formalityName(country: VisaCorridor) {
+  if (country === "US") return "ESTA";
+  if (country === "GB") return "ETA Royaume-Uni";
+  return "ETA-IL";
+}
+
+export function clientVisaStepLabel(step: ClientVisaStep) {
+  return STEP_LABEL[step];
+}
+
+export function frenchPassportCount(
+  documents: { doc_type?: string | null; issuing_country?: string | null; number?: string | null }[] | null | undefined
+) {
+  return (documents || []).filter((row) => row.doc_type === "passport" && row.issuing_country === "FR" && row.number)
+    .length;
+}
+
+const ESTA_FIELD_LABEL: Record<keyof EstaAnswers, string> = {
+  usAddress: "l’adresse du séjour aux États-Unis",
+  employment: "l’emploi",
+  countriesVisited: "les pays visités",
+  priorRefusal: "le refus de visa antérieur",
+};
+
+/** Champs encore vides. Israël n’en a pas. */
+export function missingLaunchAnswers(country: VisaCorridor, answers: Partial<EstaAnswers> | null | undefined) {
+  if (country === "IL") return [];
+  if (country === "GB") return answers?.priorRefusal?.trim() ? [] : [ESTA_FIELD_LABEL.priorRefusal];
+  return (Object.keys(ESTA_FIELD_LABEL) as (keyof EstaAnswers)[])
+    .filter((key) => !answers?.[key]?.trim())
+    .map((key) => ESTA_FIELD_LABEL[key]);
+}
+
+/** Phrase lisible pour un refus de confirmAllowed. Le code court reste la clé interne. */
+export function confirmBlockMessage(
+  block: string | null | undefined,
+  country?: VisaCorridor,
+  answers?: Partial<EstaAnswers> | null
+) {
+  if (!block) return null;
+  if (block === "déjà demandé") return "Cette formalité est déjà demandée pour ce dossier.";
+  if (block === "passeport français manquant") {
+    return "Passeport français manquant. Ajoutez un passeport français avec son numéro au coffre du client avant de lancer la demande.";
+  }
+  if (block === "antécédent de refus manquant" || (block === "questionnaire ESTA incomplet" && country === "GB")) {
+    return "Réponse manquante pour le Royaume-Uni : indiquez s’il y a eu un refus de visa antérieur.";
+  }
+  if (block === "questionnaire ESTA incomplet") {
+    const missing = country ? missingLaunchAnswers(country, answers) : [];
+    if (missing.length) return `Questionnaire ESTA incomplet. Il manque ${missing.join(", ")}.`;
+    return "Questionnaire ESTA incomplet. Indiquez l’adresse du séjour aux États-Unis, l’emploi, les pays visités et le refus de visa antérieur.";
+  }
+  return block;
+}
+
+export function parseVisaCorridor(value: unknown): VisaCorridor | null {
+  if (value === "IL" || value === "US" || value === "GB") return value;
+  const key = String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+  if (key === "il" || key === "israel" || key === "etail") return "IL";
+  if (key === "us" || key === "usa" || key === "etatsunis" || key === "esta") return "US";
+  if (key === "gb" || key === "uk" || key === "royaumeuni" || key === "etaroyaumeuni" || key === "etauk") return "GB";
+  return null;
+}
+
+/** Mêmes réponses que le formulaire client, avec les noms français du connecteur. */
+export function estaAnswersFrom(value: unknown): Partial<EstaAnswers> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const row = value as Record<string, unknown>;
+  const text = (...keys: string[]) => {
+    for (const key of keys) {
+      const item = row[key];
+      if (typeof item === "string" && item.trim()) return item.trim();
+    }
+    return "";
+  };
+  return {
+    usAddress: text("usAddress", "adresse", "adresse_sejour"),
+    employment: text("employment", "emploi"),
+    countriesVisited: text("countriesVisited", "pays_visites", "paysVisites"),
+    priorRefusal: text("priorRefusal", "refus", "refus_anterieur"),
+  };
+}
+
+export function visaLaunchSummary(country: VisaCorridor, name: string) {
+  const author = name.trim() || "l’agence";
+  return `${formalityName(country)} lancée pour le client par ${author}.`.slice(0, 500);
+}
+
+export type VisaLaunchPreview = {
+  lance: false;
+  pays: string;
+  code: VisaCorridor;
+  formalite: string;
+  voyageurs: { voyageur_id: string; nom: string; retenu: boolean }[];
+  prix_eur: number;
+  par_passager_eur: number;
+  frais_etat: string;
+  manque: string[];
+  pret: boolean;
+  offre_visa: boolean;
+  message: string;
+};
+
+export type VisaLaunchDecision =
+  | { kind: "refuse"; error: string }
+  | { kind: "preview"; preview: VisaLaunchPreview }
+  | {
+      kind: "launch";
+      travelerIds: string[];
+      step: ClientVisaStep;
+      status: "en_cours" | "paye" | "piece" | "refuse";
+      answers: Partial<EstaAnswers>;
+      enableOffer: boolean;
+      fillIsrael: boolean;
+      preview: VisaLaunchPreview;
+    };
+
+function launchSelection(partyIds: string[], requested: string[] | null) {
+  if (!requested) return { ids: partyIds, error: null as string | null };
+  const allowed = new Set(partyIds);
+  if (requested.some((id) => !allowed.has(id))) {
+    return { ids: [] as string[], error: "Un voyageur indiqué ne fait pas partie du dossier." };
+  }
+  if (partyIds.length && requested.length < 1) {
+    return { ids: [] as string[], error: "Choisissez au moins un voyageur." };
+  }
+  return { ids: requested, error: null as string | null };
+}
+
+function launchGaps(country: VisaCorridor, answers: Partial<EstaAnswers>, frenchPassports: number) {
+  const gaps = missingLaunchAnswers(country, answers);
+  if (frenchPassports < 1) return ["passeport français", ...gaps];
+  return gaps;
+}
+
+export type VisaJourneyLine = {
+  pays: string;
+  code: string;
+  formalite: string;
+  lance: boolean;
+  etape: string;
+  statut: string | null;
+  lance_par: string | null;
+  voyageurs: string[];
+};
+
+/** Parcours enregistrés, plus les pays détectés qui n’ont pas encore démarré. */
+export function visaJourneyLines(input: {
+  travelers: { id: string; nom: string }[];
+  requests: {
+    country: string;
+    step?: ClientVisaStep | null;
+    status?: string | null;
+    accepted_at?: string | null;
+    accepted?: boolean | null;
+    traveler_ids?: string[] | null;
+    launched_by_name?: string | null;
+  }[];
+  detected: VisaCorridor[];
+}): VisaJourneyLine[] {
+  const names = new Map(input.travelers.map((row) => [row.id, row.nom]));
+  const seen = new Set<string>();
+  const lines: VisaJourneyLine[] = [];
+  const push = (
+    country: string,
+    request?: (typeof input.requests)[number] | null
+  ) => {
+    if (seen.has(country)) return;
+    seen.add(country);
+    const corridor = country === "IL" || country === "US" || country === "GB" ? country : null;
+    const started = journeyStarted(request);
+    const step = request?.step;
+    const ids = Array.isArray(request?.traveler_ids) ? request.traveler_ids.filter((id) => typeof id === "string") : [];
+    lines.push({
+      pays: corridor ? VISA_OFFICIAL[corridor].countryName : country,
+      code: country,
+      formalite: corridor ? formalityName(corridor) : "Formalité",
+      lance: started,
+      etape: started && step ? clientVisaStepLabel(step) : "Pas lancée",
+      statut: request?.status ?? null,
+      lance_par: started ? request?.launched_by_name?.trim() || null : null,
+      voyageurs: ids.map((id) => names.get(id) || "Voyageur"),
+    });
+  };
+  for (const country of input.detected) push(country, input.requests.find((row) => row.country === country));
+  for (const request of input.requests) push(request.country, request);
+  return lines;
+}
+
+/** Aperçu sans écriture, ou lancement. Rien ne part sans confirm. */
+export function decideVisaLaunch(input: {
+  confirm: boolean;
+  country: VisaCorridor;
+  requestedTravelerIds: string[] | null;
+  party: { id: string; nom: string }[];
+  alreadyAccepted: boolean;
+  frenchPassports: number;
+  answers: Partial<EstaAnswers>;
+  offerVisa: boolean;
+  priorStep?: ClientVisaStep | null;
+  priorStatus?: string | null;
+  passengers?: number;
+}): VisaLaunchDecision {
+  if (input.alreadyAccepted) return { kind: "refuse", error: "Le parcours est déjà lancé." };
+  const partyIds = input.party.map((row) => row.id);
+  const picked = launchSelection(partyIds, input.requestedTravelerIds);
+  if (picked.error) return { kind: "refuse", error: picked.error };
+  const count = partyIds.length ? picked.ids.length : Math.max(1, input.passengers || 1);
+  const quote = visaConfirmationQuote({ travelers: count, country: input.country });
+  const gaps = launchGaps(input.country, input.answers, input.frenchPassports);
+  const block = confirmAllowed({
+    already: [],
+    country: input.country,
+    frenchPassports: input.frenchPassports,
+    esta: input.answers,
+  });
+  const kept = new Set(picked.ids);
+  const preview: VisaLaunchPreview = {
+    lance: false,
+    pays: VISA_OFFICIAL[input.country].countryName,
+    code: input.country,
+    formalite: formalityName(input.country),
+    voyageurs: input.party.map((row) => ({
+      voyageur_id: row.id,
+      nom: row.nom,
+      retenu: partyIds.length ? kept.has(row.id) : true,
+    })),
+    prix_eur: quote.agencyTotalEur,
+    par_passager_eur: quote.perPassengerEur,
+    frais_etat: `${quote.officialAmount} ${quote.officialCurrency}`,
+    manque: gaps,
+    pret: block == null,
+    offre_visa: input.offerVisa,
+    message: block
+      ? `${confirmBlockMessage(block, input.country, input.answers)} Rien n’est lancé.`
+      : "Confirmez pour lancer la demande. Rien n’est lancé.",
+  };
+  if (!input.confirm) return { kind: "preview", preview };
+  if (block) return { kind: "refuse", error: confirmBlockMessage(block, input.country, input.answers) || block };
+  const decision = acceptVisaDecision({
+    confirm: true,
+    travelerIds: picked.ids,
+    partyIds,
+    alreadyAccepted: false,
+    step: input.priorStep || null,
+    status: input.priorStatus || null,
+  });
+  if (!decision.start) return { kind: "refuse", error: decision.error };
+  return {
+    kind: "launch",
+    travelerIds: decision.travelerIds,
+    step: decision.step,
+    status: decision.status,
+    answers: input.answers,
+    enableOffer: !input.offerVisa,
+    fillIsrael: input.country === "IL" && decision.step === "preparation",
+    preview,
+  };
 }

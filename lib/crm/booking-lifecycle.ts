@@ -173,6 +173,8 @@ export function duplicateVisaRequestRow(row: Record<string, unknown>, bookingId:
     pay_attempts: 0,
     pliant_transaction_id: null,
     paid_cents: null,
+    launched_by: typeof row.launched_by === "string" ? row.launched_by : null,
+    launched_by_name: typeof row.launched_by_name === "string" ? row.launched_by_name : null,
   };
 }
 

@@ -13,6 +13,7 @@ type VisaRequest = {
   status?: string | null;
   accepted_at?: string | null;
   answers?: Partial<EstaAnswers> | null;
+  launched_by_name?: string | null;
 };
 
 export function VisaSection({

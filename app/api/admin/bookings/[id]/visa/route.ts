@@ -11,12 +11,15 @@ import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/p
 import { DEFAULT_PLIANT_TRANSACTIONS } from "@/lib/crm/pliant-controls";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { openAcceptedVisa } from "@/lib/crm/visa-accept";
+import { launchVisaForAgency } from "@/lib/crm/visa-launch";
 import { postVisaCharge } from "@/lib/crm/visa-post";
 import { euroRates } from "@/lib/crm/visa-ecb";
 import {
   acceptVisaDecision,
   astraFillsCountry,
   confirmAllowed,
+  confirmBlockMessage,
+  frenchPassportCount,
   hasEstaAnswers,
   launchWouldRewind,
   mergeEstaAnswers,
@@ -109,9 +112,8 @@ function idList(value: unknown) {
   return value.filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
-function frenchPassportCount(documents: Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[] | null) {
-  return (documents || []).filter((row) => row.doc_type === "passport" && row.issuing_country === "FR" && row.number)
-    .length;
+function blockMessage(block: string | null, country: VisaCorridor, answers: Partial<EstaAnswers> | null | undefined) {
+  return confirmBlockMessage(block, country, answers) || block || "La demande n’a pas pu partir.";
 }
 
 export async function POST(request: Request, ctx: Ctx) {
@@ -145,6 +147,30 @@ export async function POST(request: Request, ctx: Ctx) {
     if (error) return jsonError("La demande n’a pas pu être recommencée.");
     await auth.supabase.from("crm_visa_portal_events").delete().eq("booking_id", b.id).eq("country", country);
     return NextResponse.json({ reset: true, country, accepted_at: null, step: patch.step });
+  }
+
+  if (body.action === "lancer") {
+    const result = await launchVisaForAgency(auth.supabase, {
+      bookingId: b.id,
+      country,
+      travelerIds: idList(body.travelerIds),
+      answers: body.answers || {},
+      confirm: body.confirm === true,
+      author: { staffId: auth.staff.id, name: auth.staff.full_name || "l’agence" },
+      path: `/api/admin/bookings/${b.id}/visa`,
+    });
+    if (!result.ok) return jsonError(result.error);
+    if (!result.launched) return NextResponse.json(result.preview);
+    if (result.fillIsrael) after(() => continueEtaIlRequest(b.id));
+    const phase = phaseForSavedStep(result.step);
+    return NextResponse.json({
+      country,
+      accepted: true,
+      step: result.step,
+      phase,
+      hold: phase === "paiement" ? paymentHold(pliantConfigured()) : null,
+      lance_par: result.author,
+    });
   }
 
   if (body.action === "run") {
@@ -181,7 +207,7 @@ export async function POST(request: Request, ctx: Ctx) {
       esta: answers,
       resumable: Boolean(priorRow?.step),
     });
-    if (block) return jsonError(block);
+    if (block) return jsonError(blockMessage(block, country, answers));
     if (!customer) return jsonError("Client introuvable", 404);
     const stay = await openStay(auth.supabase, b);
     if (!stay.ok) return jsonError(stay.error, 400);
@@ -240,7 +266,7 @@ export async function POST(request: Request, ctx: Ctx) {
       esta: merged,
       resumable: true,
     });
-    if (block) return jsonError(block);
+    if (block) return jsonError(blockMessage(block, country, merged));
     const stay = await openStay(auth.supabase, b);
     if (!stay.ok) return jsonError(stay.error, 400);
     await saveVisaStep(auth.supabase, b.id, country, stepAfterPrepare(country), merged);
@@ -322,7 +348,7 @@ export async function POST(request: Request, ctx: Ctx) {
     esta,
     resumable: current?.step === "preparation" || current?.step === "remplissage" || current?.step === "validation",
   });
-  if (block) return jsonError(block);
+  if (block) return jsonError(blockMessage(block, country, esta));
 
   const fx = await euroRates();
   const countries = already.includes(country) ? already : [...already, country];
