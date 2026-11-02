@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { DELETE_CUSTOMER_CONFIRM_ERROR } from "./delete-confirm";
 import { bookingDocumentKind } from "./booking-document-write";
 import { reactiverMembre } from "./mcp-agency";
@@ -20,6 +21,14 @@ import { mcpWriteJournalDraft } from "./mcp-journal";
 import { McpWriteError } from "./mcp-write";
 import { permissionFlags } from "./agency-access";
 
+function fakeAdmin(): SupabaseClient {
+  return {
+    from() {
+      throw new Error("Le test ne doit pas interroger Supabase.");
+    },
+  } as unknown as SupabaseClient;
+}
+
 const CLIENT = "11111111-1111-4111-8111-111111111111";
 const DOSSIER = "22222222-2222-4222-8222-222222222222";
 const CARTE = "33333333-3333-4333-8333-333333333333";
@@ -32,6 +41,7 @@ test("supprimer un client exige son nom complet", async () => {
       supprimerClient(
         { client_id: CLIENT, confirmer: "Autre Nom" },
         {
+          admin: fakeAdmin(),
           loadCustomer: async () => ({ first_name: "Léa", last_name: "Martin" }),
           deleteCustomer: async () => {
             removed = true;
@@ -45,6 +55,7 @@ test("supprimer un client exige son nom complet", async () => {
   const done = await supprimerClient(
     { client_id: CLIENT, confirmer: "lea martin" },
     {
+      admin: fakeAdmin(),
       loadCustomer: async () => ({ first_name: "Léa", last_name: "Martin" }),
       deleteCustomer: async () => ({ ok: true, name: "Léa Martin" }),
     }
@@ -55,7 +66,11 @@ test("supprimer un client exige son nom complet", async () => {
 
 test("les sociétés remplacent la liste seulement avec confirmer", async () => {
   await assert.rejects(
-    () => enregistrerSocietes({ client_id: CLIENT, societes: [] }, { saveCompanies: async () => ({ ok: true, companies: [] }) }),
+    () =>
+      enregistrerSocietes(
+        { client_id: CLIENT, societes: [] },
+        { admin: fakeAdmin(), saveCompanies: async () => ({ ok: true, companies: [] }) }
+      ),
     /confirmer true/
   );
   let payload: unknown = null;
@@ -66,6 +81,7 @@ test("les sociétés remplacent la liste seulement avec confirmer", async () => 
       societes: [{ raison_sociale: "Martin SAS", siret: "12345678901234", ville: "Paris" }],
     },
     {
+      admin: fakeAdmin(),
       saveCompanies: (async (_db, _id, raw) => {
         payload = raw;
         return {
@@ -98,6 +114,7 @@ test("l’accès hôtels passe par le même geste que la fiche", async () => {
   const opened = await reglerAccesHotels(
     { client_id: CLIENT, actif: true, mode_reel: true },
     {
+      admin: fakeAdmin(),
       writeHotelAccess: async (input) => {
         seen = input;
         return { ok: true, enabled: true, live: true };
@@ -110,6 +127,7 @@ test("l’accès hôtels passe par le même geste que la fiche", async () => {
   const refused = await reglerAccesHotels(
     { client_id: CLIENT, demande: "refuser" },
     {
+      admin: fakeAdmin(),
       reviewHotelAccess: async () => ({ ok: true, enabled: false, status: "refused" }),
     }
   );
@@ -122,7 +140,14 @@ test("archiver et cacher exigent une confirmation", async () => {
     () =>
       archiverDossier(
         { dossier_id: DOSSIER },
-        { findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }), archive: async () => { archived = true; return {}; } }
+        {
+          admin: fakeAdmin(),
+          findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }),
+          archive: async () => {
+            archived = true;
+            return {};
+          },
+        }
       ),
     /confirmer true/
   );
@@ -130,6 +155,7 @@ test("archiver et cacher exigent une confirmation", async () => {
   const hidden = await cacherCarnet(
     { dossier_id: DOSSIER, confirmer: true },
     {
+      admin: fakeAdmin(),
       findBooking: async () => ({ id: DOSSIER, reference: "TB-1", visible_to_client: true }),
       hideCarnet: async () => undefined,
       syncLedger: async () => undefined,
@@ -143,6 +169,7 @@ test("une carte train réutilise l’ajout agence", async () => {
   const card = await ajouterCarte(
     { dossier_id: DOSSIER, type: "train", titre: "Paris → Lyon", prix: 80 },
     {
+      admin: fakeAdmin(),
       findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }),
       addCard: async (_db, _id, next) => {
         body = next;
@@ -157,7 +184,7 @@ test("une carte train réutilise l’ajout agence", async () => {
     () =>
       ajouterCarte(
         { dossier_id: DOSSIER, type: "train", titre: "X", details: { passport_number: "123" } },
-        { findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }) }
+        { admin: fakeAdmin(), findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }) }
       ),
     /numéros de pièce/
   );
@@ -174,6 +201,7 @@ test("déposer et retirer une pièce de dossier", async () => {
       type: "confirmation",
     },
     {
+      admin: fakeAdmin(),
       findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }),
       attach: async () => ({
         document: { id: DOC, booking_item_id: CARTE, file_name: "billet.pdf", kind: "confirmation" },
@@ -186,7 +214,7 @@ test("déposer et retirer une pièce de dossier", async () => {
     () =>
       retirerPieceDossier(
         { dossier_id: DOSSIER, document_id: DOC },
-        { findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }) }
+        { admin: fakeAdmin(), findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }) }
       ),
     /confirmer true/
   );

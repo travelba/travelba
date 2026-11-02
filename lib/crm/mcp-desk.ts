@@ -110,7 +110,25 @@ export type JournalPage = {
 };
 
 function db(admin?: SupabaseClient) {
-  return admin ?? createServiceClient();
+  if (admin) return admin;
+  return createServiceClient();
+}
+
+/**
+ * Le client réel n’est ouvert qu’après la validation, et seulement si l’écriture
+ * n’est pas déjà remplacée (test ou appelant). Un remplacement sans client
+ * reçoit un objet qui refuse toute requête.
+ */
+function clientOf(deps: DeskDeps, injected: boolean): SupabaseClient {
+  if (deps.admin) return deps.admin;
+  if (injected) {
+    return {
+      from() {
+        throw new McpWriteError("Base non utilisée.");
+      },
+    } as unknown as SupabaseClient;
+  }
+  return createServiceClient();
 }
 
 function text(value: unknown, max = 300) {
@@ -266,7 +284,7 @@ export async function enregistrerSocietes(input: Record<string, unknown>, deps: 
   if (!Array.isArray(input.societes)) throw new McpWriteError("Liste de sociétés invalide.");
   const payload = input.societes.map(mapCompany);
   const save = deps.saveCompanies ?? saveCustomerBillingCompanies;
-  const saved = await save(db(deps.admin), id, payload);
+  const saved = await save(clientOf(deps, Boolean(deps.saveCompanies)), id, payload);
   if ("error" in saved) throw new McpWriteError(saved.error);
   return {
     client_id: id,
@@ -358,7 +376,7 @@ export async function dupliquerDossier(input: Record<string, unknown>, deps: Des
         deps.stampCreator ??
         (async (bookingId: string, actorId: string) => {
           const { stampBookingCreator } = await import("@/lib/crm/dossier-responsables");
-          await stampBookingCreator(db(deps.admin), {
+          await stampBookingCreator(clientOf(deps, false), {
             bookingId,
             staffId: actorId,
             path: "/api/mcp",
@@ -389,7 +407,7 @@ export async function cacherCarnet(input: Record<string, unknown>, deps: DeskDep
   if (booking.visible_to_client === false) {
     return { deja_cache: true, dossier_id: booking.id, reference: booking.reference };
   }
-  const admin = db(deps.admin);
+  const admin = clientOf(deps, Boolean(deps.hideCarnet && deps.syncLedger));
   const hide = deps.hideCarnet ?? ((client: SupabaseClient, id: string) => setCarnetPublished(client, id, false));
   try {
     await hide(admin, booking.id);
@@ -427,9 +445,10 @@ function cardBody(input: Record<string, unknown>, kind: BookingItemKind) {
 export async function ajouterCarte(input: Record<string, unknown>, deps: DeskDeps = {}) {
   const kind = kindOf(input.type);
   if (!kind) throw new McpWriteError("Type de carte inconnu.");
+  const body = cardBody(input, kind);
   const booking = await bookingOf(input, deps);
   const add = deps.addCard ?? addStaffBookingCard;
-  const result = await add(db(deps.admin), booking.id, cardBody(input, kind));
+  const result = await add(clientOf(deps, Boolean(deps.addCard)), booking.id, body);
   if ("error" in result) throw new McpWriteError(result.error);
   return {
     carte_id: result.item.id,
@@ -447,7 +466,7 @@ export async function modifierCarte(input: Record<string, unknown>, deps: DeskDe
   const body = cardBody(input, kind || "fee");
   delete body.kind;
   const patch = deps.patchCard ?? patchStaffBookingCard;
-  const result = await patch(db(deps.admin), booking.id, carteId, body);
+  const result = await patch(clientOf(deps, Boolean(deps.patchCard)), booking.id, carteId, body);
   if ("error" in result) throw new McpWriteError(result.error);
   return { carte_id: carteId, dossier_id: booking.id, avertissement: result.ledgerWarning };
 }
@@ -458,7 +477,7 @@ export async function reordonnerCartes(input: Record<string, unknown>, deps: Des
   const order = input.ordre.map((value) => requireUuid(value, "Carte"));
   const reorder = deps.reorder ?? persistBookingCardOrder;
   try {
-    await reorder(db(deps.admin), booking.id, { submittedIds: order });
+    await reorder(clientOf(deps, Boolean(deps.reorder)), booking.id, { submittedIds: order });
   } catch (err) {
     throw new McpWriteError(err instanceof Error ? err.message : "Ordre non enregistré.");
   }
@@ -466,14 +485,14 @@ export async function reordonnerCartes(input: Record<string, unknown>, deps: Des
 }
 
 export async function deposerPieceDossier(input: Record<string, unknown>, deps: DeskDeps = {}) {
-  const booking = await bookingOf(input, deps);
   const name = text(input.nom_fichier, 180);
   if (!name) throw new McpWriteError("Nom de fichier requis.");
   const bytes = decodeUploadedBytes(input.contenu);
   const carteId = text(input.carte_id, 80);
   if (carteId && !UUID.test(carteId)) throw new McpWriteError("Carte invalide.");
+  const booking = await bookingOf(input, deps);
   const attach = deps.attach ?? attachBookingDocument;
-  const saved = await attach(db(deps.admin), {
+  const saved = await attach(clientOf(deps, Boolean(deps.attach)), {
     bookingId: booking.id,
     itemId: carteId || null,
     kind: text(input.type, 40) || "other",
@@ -497,10 +516,10 @@ export async function deposerPieceDossier(input: Record<string, unknown>, deps: 
 
 export async function retirerPieceDossier(input: Record<string, unknown>, deps: DeskDeps = {}) {
   confirmed(input);
-  const booking = await bookingOf(input, deps);
   const documentId = requireUuid(input.document_id, "Pièce");
+  const booking = await bookingOf(input, deps);
   const remove = deps.removeDoc ?? removeBookingDocument;
-  const result = await remove(db(deps.admin), booking.id, documentId);
+  const result = await remove(clientOf(deps, Boolean(deps.removeDoc)), booking.id, documentId);
   if ("error" in result) throw new McpWriteError(result.error);
   return { retiree: true, document_id: documentId, dossier_id: booking.id };
 }
