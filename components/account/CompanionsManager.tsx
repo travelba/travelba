@@ -28,6 +28,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
   const router = useRouter();
   const [phone, setPhone] = useState(companion.phone || "");
+  const [email, setEmail] = useState(companion.email || "");
   const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer({ loyalty: companion.loyalty }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +50,7 @@ function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
           nationality: companion.nationality,
           relationship: companion.relationship,
           phone,
+          email,
           loyalty,
         },
         { method: "PATCH" }
@@ -66,6 +68,15 @@ function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
   return (
     <div className="space-y-2">
       <PhoneField name={`phone-${companion.id}`} label="Téléphone" value={phone} onChange={setPhone} />
+      <Field label="E-mail" hint="Contact seulement. N’ouvre pas de compte.">
+        <input
+          type="email"
+          autoComplete="off"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className={fieldControlClass}
+        />
+      </Field>
       <div className="space-y-3">
         <p className="text-sm font-semibold text-[var(--admin-navy)]">Programmes de fidélité</p>
         <LoyaltyFields values={loyalty} onChange={setLoyalty} onlyFilled />
@@ -106,6 +117,7 @@ export function CompanionsManager({
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer({}));
   const [scan, setScan] = useState<ScanResult | null>(null);
   /** La carte passeport importe déjà (plusieurs livrets) : « Ajouter » attend, pour ne pas importer deux fois. */
@@ -124,6 +136,7 @@ export function CompanionsManager({
     setBirthDate("");
     setSex("");
     setPhone("");
+    setEmail("");
     setLoyalty(loyaltyFromCustomer({}));
     setScan(null);
     setError(null);
@@ -180,6 +193,7 @@ export function CompanionsManager({
       birth_date: birthDate,
       sex,
       phone,
+      email,
       loyalty,
     });
     if (!created.ok || !created.data?.companion?.id) {
@@ -348,6 +362,17 @@ export function CompanionsManager({
           <div className="sm:col-span-2">
             <PhoneField name="phone" label="Téléphone" value={phone} onChange={setPhone} />
             <p className="mt-1 text-xs text-muted">Pour lui envoyer la page du voyage par WhatsApp.</p>
+            <div className="mt-3">
+              <Field label="E-mail" hint="Contact seulement. N’ouvre pas de compte.">
+                <input
+                  type="email"
+                  autoComplete="off"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className={fieldControlClass}
+                />
+              </Field>
+            </div>
           </div>
           <div className="space-y-3 sm:col-span-2">
             <p className="text-sm font-semibold text-[var(--admin-navy)]">Programmes de fidélité</p>

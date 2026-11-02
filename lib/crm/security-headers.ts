@@ -20,3 +20,13 @@ export function securityHeaders() {
     },
   ];
 }
+
+/** Fichiers publics versionnés (vidéo du hero, badge). Le HTML Next reste en revalidation. */
+const IMMUTABLE_ASSET = "public, max-age=31536000, immutable";
+
+export function staticCacheHeaders() {
+  return [
+    { source: "/videos/:path*", headers: [{ key: "Cache-Control", value: IMMUTABLE_ASSET }] },
+    { source: "/brand/:path*", headers: [{ key: "Cache-Control", value: IMMUTABLE_ASSET }] },
+  ];
+}

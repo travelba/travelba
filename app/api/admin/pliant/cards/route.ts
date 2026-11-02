@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
@@ -18,6 +19,8 @@ const MAX_CENTS = 50_000_000;
 export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
+  const denied = await assertStaffPermission(auth.staff, "create_pliant_card");
+  if (denied) return denied;
   if (!pliantConfigured()) return jsonError("Pliant n’est pas branché.", 400);
   const body = (await request.json().catch(() => null)) as {
     action?: string;

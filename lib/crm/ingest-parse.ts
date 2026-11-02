@@ -17,6 +17,9 @@ const AIRPORTS: { re: RegExp; iata: string; city: string }[] = [
   { re: /CHARLES-DE-GAULLE|CHARLES DE GAULLE/i, iata: "CDG", city: "Paris" },
   { re: /\bORLY\b/i, iata: "ORY", city: "Paris" },
   { re: /TEL AVIV|BEN GOURION|BEN GURION/i, iata: "TLV", city: "Tel Aviv" },
+  { re: /MAKTOUM|WORLD CENTRAL/i, iata: "DWC", city: "Dubaï" },
+  { re: /DUBA[IÏ]|DUBAYY/i, iata: "DXB", city: "Dubaï" },
+  { re: /SEYCHELLES|(?:^|[^A-Za-z])MAH[EeÉé](?![A-Za-z])/i, iata: "SEZ", city: "Seychelles" },
   { re: /A[ÉE]ROPORT DE GEN[ÈE]VE|GEN[ÈE]VE GEN[ÈE]VE/i, iata: "GVA", city: "Genève" },
   { re: /HEATHROW/i, iata: "LHR", city: "Londres" },
   { re: /MARSEILLE PROVENCE/i, iata: "MRS", city: "Marseille" },
@@ -522,6 +525,15 @@ export function frenchLeBenefitLine(raw: string): string {
     line.match(/^(USD|GBP|EUR)\s+(\d+(?:[.,]\d+)?)\s+hotel credit(?: per stay)?$/i);
   if (credit) return `Crédit hôtel de ${leMoney(credit[1], credit[2])} par séjour`;
   if (/^petit[- ]d[eé]jeuner$/i.test(line)) return "Petit-déjeuner";
+  if (/^upgrade at time of check[-\s]?in(?: \(subject to availability\))?$/i.test(line)) {
+    return "Surclassement à l'enregistrement, sous réserve de disponibilité";
+  }
+  const breakfastCredit = line.match(
+    /^([$£€]|USD|GBP|EUR)\s*(\d+(?:[.,]\d+)?)\s+daily \(for 2 people\) breakfast credit$/i
+  );
+  if (breakfastCredit) {
+    return `Crédit petit-déjeuner de ${leMoney(breakfastCredit[1], breakfastCredit[2])} par jour pour 2 personnes`;
+  }
   return line;
 }
 
@@ -541,6 +553,8 @@ function looksLikeLeBenefit(line: string) {
     /^daily \(for 2 people\) breakfast credit$/i.test(flat) ||
     /^complimentary breakfast$/i.test(flat) ||
     /^priority upgrade at check-?in$/i.test(flat) ||
+    /^upgrade at time of check[-\s]?in(?: \(subject to availability\))?$/i.test(flat) ||
+    /^(?:[$£€]|USD|GBP|EUR)\s*\d+(?:[.,]\d+)?\s+daily \(for 2 people\) breakfast credit$/i.test(flat) ||
     /^early check-?in,? subject to availability$/i.test(flat) ||
     /^early check[-\s]?in\s*\/\s*late check[-\s]?out$/i.test(flat) ||
     /^guaranteed\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+late check-?out$/i.test(flat) ||
@@ -858,14 +872,12 @@ export function fillStayFromItems(extract: BookingExtract): BookingExtract {
     .sort();
   const hotel = items.find((item) => item.kind === "hotel");
   const city = typeof hotel?.details?.city === "string" ? hotel.details.city.trim() : "";
-  const hotelName =
-    typeof hotel?.details?.hotel_name === "string" ? hotel.details.hotel_name.trim() : "";
   return {
     ...extract,
     start_date: (extract.start_date || "").trim() || starts[0] || extract.start_date,
     end_date: (extract.end_date || "").trim() || ends[ends.length - 1] || extract.end_date,
     destination: (extract.destination || "").trim() || city || extract.destination,
-    title: (extract.title || "").trim() || hotelName || city || extract.title,
+    title: (extract.title || "").trim() || city || extract.title,
   };
 }
 

@@ -8,6 +8,7 @@ import { siteConfig } from "@/lib/site";
 import { staffRoleLabel, type StaffRole } from "@/lib/crm/staff-team";
 import {
   ADMIN_MOBILE_TABS,
+  ADMIN_ROUTES,
   adminNavBadge,
   mobileTabActive,
   mobileTabBadge,
@@ -193,20 +194,31 @@ export function UserMenu({
             {role ? <p className="text-xs text-muted">{role === "partner" ? "MyLER partner" : staffRoleLabel(role)}</p> : null}
           </div>
           {role === "partner" ? null : (
-          <a
-            ref={(node) => {
-              firstItemRef.current = node;
-            }}
-            role="menuitem"
-            href={`https://wa.me/${siteConfig.whatsappNumber}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => setOpen(false)}
-            className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
-          >
-            <Icon name="support_agent" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
-            WhatsApp agence
-          </a>
+            <>
+              <Link
+                ref={(node) => {
+                  firstItemRef.current = node;
+                }}
+                role="menuitem"
+                href={role === "admin" ? ADMIN_ROUTES.reglages : `${ADMIN_ROUTES.reglages}/whatsapp`}
+                onClick={() => setOpen(false)}
+                className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
+              >
+                <Icon name="build" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+                Réglages
+              </Link>
+              <a
+                role="menuitem"
+                href={`https://wa.me/${siteConfig.whatsappNumber}`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setOpen(false)}
+                className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
+              >
+                <Icon name="support_agent" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+                WhatsApp agence
+              </a>
+            </>
           )}
           <button
             type="button"
@@ -233,18 +245,8 @@ export function UserMenu({
   );
 }
 
-/** Barre basse téléphone : cinq entrées, « Plus » ouvre la feuille (D-09). */
-export function MobileTabBar({
-  pathname,
-  counts,
-  moreOpen,
-  onMore,
-}: {
-  pathname: string;
-  counts: AdminNavCounts;
-  moreOpen: boolean;
-  onMore: () => void;
-}) {
+/** Barre basse téléphone : les cinq entrées du menu, avec leurs badges (D-09). */
+export function MobileTabBar({ pathname, counts }: { pathname: string; counts: AdminNavCounts }) {
   return (
     <nav
       aria-label="Navigation principale"
@@ -252,38 +254,23 @@ export function MobileTabBar({
     >
       <ul className="grid grid-cols-5">
         {ADMIN_MOBILE_TABS.map((tab) => {
-          const active = !moreOpen && mobileTabActive(tab, pathname);
+          const active = mobileTabActive(tab, pathname);
           const badge = mobileTabBadge(tab, counts);
-          const className = `admin-tap relative flex h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
-            active || (tab.id === "plus" && moreOpen) ? "text-[var(--admin-gold)]" : "text-[#c5c6cd]"
-          }`;
-          const body = (
-            <>
-              <span className="relative">
-                <Icon name={tab.icon} className="h-5 w-5" />
-                {badge != null ? <NavBadge value={badge} className="absolute -right-3 -top-2" /> : null}
-              </span>
-              <span>{tab.label}</span>
-            </>
-          );
           return (
             <li key={tab.id}>
-              {tab.href ? (
-                <Link href={tab.href} aria-current={active ? "page" : undefined} className={className}>
-                  {body}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  aria-expanded={moreOpen}
-                  aria-controls="admin-more-sheet"
-                  aria-current={active ? "page" : undefined}
-                  onClick={onMore}
-                  className={`${className} w-full`}
-                >
-                  {body}
-                </button>
-              )}
+              <Link
+                href={tab.href}
+                aria-current={active ? "page" : undefined}
+                className={`admin-tap relative flex h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                  active ? "text-[var(--admin-gold)]" : "text-[#c5c6cd]"
+                }`}
+              >
+                <span className="relative">
+                  <Icon name={tab.icon} className="h-5 w-5" />
+                  {badge != null ? <NavBadge value={badge} className="absolute -right-3 -top-2" /> : null}
+                </span>
+                <span>{tab.label}</span>
+              </Link>
             </li>
           );
         })}
@@ -337,108 +324,6 @@ export function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElem
       previous?.focus?.();
     };
   }, [open, panelRef]);
-}
-
-/** Feuille basse « Plus » du téléphone : boîtes, outils, équipe, puis l’utilisateur (D-09). */
-export function MoreSheet({
-  open,
-  groups,
-  activeHref,
-  counts,
-  name,
-  role,
-  onClose,
-  onSignOut,
-}: {
-  open: boolean;
-  groups: AdminNavGroup[];
-  activeHref: string | null;
-  counts: AdminNavCounts;
-  name: string;
-  role?: StaffRole | "";
-  onClose: () => void;
-  onSignOut: () => void | Promise<void>;
-}) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  useDialogFocus(open, panelRef, onClose);
-  if (!open) return null;
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-end bg-[#0b192c]/55 lg:hidden"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        id="admin-more-sheet"
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl bg-[#faf9f6] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 text-[var(--admin-navy)] shadow-[0_-18px_50px_rgba(11,25,44,0.3)]"
-      >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border)]" aria-hidden />
-        <div className="flex items-center justify-between gap-3">
-          <p id={titleId} className="font-display text-base font-bold">
-            Plus
-          </p>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fermer"
-            className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-full"
-          >
-            <Icon name="close" className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="mt-2">
-          <SidebarGroups
-            groups={groups}
-            activeHref={activeHref}
-            counts={counts}
-            openIds={groups.map((group) => group.id)}
-            onToggle={() => {}}
-            onNavigate={onClose}
-            variant="light"
-            ariaLabel="Autres pages"
-          />
-        </div>
-        <div className="mt-4 rounded-2xl border border-[var(--border)] bg-white">
-          <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[var(--admin-gold)]">
-              {staffInitials(name)}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate font-display text-sm font-bold">{name || "Agent connecté"}</span>
-              {role ? <span className="block text-xs text-muted">{staffRoleLabel(role)}</span> : null}
-            </span>
-          </div>
-          <a
-            href={`https://wa.me/${siteConfig.whatsappNumber}`}
-            target="_blank"
-            rel="noreferrer"
-            className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium"
-          >
-            <Icon name="support_agent" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
-            WhatsApp agence
-          </a>
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              void onSignOut();
-            }}
-            className="admin-tap flex w-full items-center gap-2 border-t border-[var(--border)] px-4 py-3 text-left text-sm font-medium"
-          >
-            <Icon name="logout" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
-            Déconnexion
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /** Recherche en plein écran sur téléphone : la loupe l’ouvre, le clavier arrive tout de suite. */

@@ -5,6 +5,8 @@ import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { customerFullName } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
+import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
+import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 
 export const metadata = {
   title: `Mon compte — ${siteConfig.shortName}`,
@@ -33,9 +35,11 @@ export default async function AccountLayout({
       .toUpperCase() || "TB";
   const jar = await cookies();
   const desk = deskBypass(jar.get(DESK_COOKIE)?.value, user.id);
+  const enabled = hotelBookingEnabled(customer);
+  const hotels = showHotelButton({ enabled, visibility: await readHotelButtonVisibility() });
 
   return (
-    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk} desk={desk}>
+    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk} desk={desk} hotels={hotels}>
       {children}
     </AccountChrome>
   );

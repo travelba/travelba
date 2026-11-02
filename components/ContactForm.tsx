@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Send, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { SERVICE_KEYS, siteConfig } from "@/lib/site";
-import { PhoneField } from "@/components/crm/fields";
 import { BusyBar } from "@/components/crm/BusyBar";
 
 type Status = "idle" | "loading" | "success" | "undelivered" | "error";
@@ -13,8 +12,6 @@ export function ContactForm() {
   const t = useTranslations("Contact.form");
   const tServices = useTranslations("Services");
   const [status, setStatus] = useState<Status>("idle");
-  const [phone, setPhone] = useState("");
-  const [phoneKey, setPhoneKey] = useState(0);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,15 +31,13 @@ export function ContactForm() {
       // L’API répond ok sans envoi quand la messagerie n’est pas configurée : ne pas promettre une réponse.
       setStatus(json.delivered === false ? "undelivered" : "success");
       form.reset();
-      setPhone("");
-      setPhoneKey((key) => key + 1);
     } catch {
       setStatus("error");
     }
   }
 
   const inputClass =
-    "w-full rounded-xl border border-border bg-background/60 px-4 py-3 text-sm text-foreground placeholder:text-muted/70 outline-none transition-colors focus:border-accent/60 focus:ring-1 focus:ring-accent/40";
+    "w-full rounded-xl border border-border bg-background/60 px-4 py-3 text-base text-foreground placeholder:text-muted/70 outline-none transition-colors focus:border-accent/60 focus:ring-1 focus:ring-accent/40";
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -76,15 +71,19 @@ export function ContactForm() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <PhoneField
-          key={phoneKey}
-          name="phone"
-          label={t("phone")}
-          value={phone}
-          onChange={setPhone}
-          controlClassName={inputClass}
-          labelClassName="mb-1.5 block text-sm text-muted"
-        />
+        <div>
+          <label htmlFor="phone" className="mb-1.5 block text-sm text-muted">
+            {t("phone")}
+          </label>
+          <input
+            id="phone"
+            name="phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            className={inputClass}
+          />
+        </div>
         <div>
           <label htmlFor="service" className="mb-1.5 block text-sm text-muted">
             {t("service")}

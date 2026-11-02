@@ -13,6 +13,8 @@ import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
+import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
+import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 import {
   BoardingPassSkeleton,
   HomeBoardingPass,
@@ -31,6 +33,10 @@ export default async function AccountHomePage() {
   if (!customer) redirect("/connexion");
 
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
+  const hotels = showHotelButton({
+    enabled: hotelBookingEnabled(customer),
+    visibility: await readHotelButtonVisibility(),
+  });
 
   return (
     <AccountPage>
@@ -43,6 +49,19 @@ export default async function AccountHomePage() {
             Bonjour {firstName}
           </h1>
         </section>
+
+        {hotels ? (
+          <Link
+            href="/mon-compte/hotels"
+            className="account-press flex items-center justify-between bg-[#f4efe6] px-4 py-4 text-[#1a1a1a]"
+          >
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8c7352]">Hôtels</span>
+              <span className="text-[15px] font-semibold">Réserver un séjour</span>
+            </span>
+            <Icon name="arrow_forward" className="h-4 w-4 text-[#8c7352]" />
+          </Link>
+        ) : null}
 
         <Suspense fallback={<HomeEncoursSkeleton />}>
           <HomeEncours customer={customer} />

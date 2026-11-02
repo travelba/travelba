@@ -20,6 +20,7 @@ import {
   parseDdMonYy,
   parseHotelConfirmationLetter,
   parseExpediaTaap,
+  frenchLeBenefitLine,
   parseLittleEmperorsGuests,
   parseLittleEmperorsHotel,
   parseLittleEmperorsIncluded,
@@ -285,6 +286,13 @@ describe("inferAirportIata", () => {
     assert.equal(inferAirportIata("AÉROPORT DE GENÈVE GENÈVE")?.iata, "GVA");
     assert.equal(inferAirportIata("HEATHROW LONDRES")?.iata, "LHR");
     assert.equal(inferAirportIata("MARSEILLE PROVENCE MARSEILLE")?.iata, "MRS");
+    assert.equal(inferAirportIata("Seychelles")?.iata, "SEZ");
+    assert.equal(inferAirportIata("Mahé")?.iata, "SEZ");
+    assert.equal(inferAirportIata("Dubai")?.iata, "DXB");
+    assert.equal(inferAirportIata("Dubaï")?.iata, "DXB");
+    assert.equal(inferAirportIata("Al Maktoum International")?.iata, "DWC");
+    assert.equal(inferAirportIata("Dubai World Central")?.iata, "DWC");
+    assert.equal(inferAirportIata("Paris"), null);
   });
 });
 
@@ -640,6 +648,14 @@ No deposit required
       "Petit-déjeuner quotidien pour deux personnes",
       "Crédit hôtel de 50 £ par séjour",
     ]);
+    assert.equal(
+      frenchLeBenefitLine("Upgrade at time of check in (subject to availability)"),
+      "Surclassement à l'enregistrement, sous réserve de disponibilité"
+    );
+    assert.equal(
+      frenchLeBenefitLine("$70 daily (for 2 people) breakfast credit"),
+      "Crédit petit-déjeuner de 70 $ par jour pour 2 personnes"
+    );
   });
 
   it("continue le bloc après la ligne IATA et ignore une phrase qui n’est pas un bénéfice", () => {

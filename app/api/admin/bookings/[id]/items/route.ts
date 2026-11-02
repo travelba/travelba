@@ -1,7 +1,9 @@
 import { revalidatePath } from "next/cache";
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { refreshBookingDerived } from "@/lib/crm/dossier-refresh";
+import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import {
   ledgerWarning,
@@ -10,15 +12,18 @@ import {
   parseSortOrder,
   refreshBookingLedger,
 } from "@/lib/crm/bookings";
-import { detailsForCardVisibility } from "@/lib/crm/carnet";
+import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-addition";
+import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { parseMoney } from "@/lib/crm/money";
+import { applyExpensePricing } from "@/lib/crm/expense-pricing";
+import { awaitingExpenseDetails, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
-import { BOOKING_ITEM_KINDS, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_KINDS, countsAsCarnetCard, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 
 function knownKind(value: unknown) {
   const kind = String(value || "");
@@ -38,7 +43,7 @@ const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
 async function ledgerAfterItemWrite(supabase: SupabaseClient, bookingId: string, saved: string) {
   const warning = await ledgerWarning(saved, () => refreshBookingLedger(supabase, bookingId));
   revalidatePath(`/admin/reservations/${bookingId}`);
-  revalidatePath("/admin/transactions");
+  revalidatePath("/admin/argent");
   revalidatePath("/mon-compte/transactions");
   return warning ? { ledger_warning: warning } : {};
 }
@@ -119,19 +124,26 @@ async function insertBookingItem(
   const kind = knownKind(body.kind || "fee");
   if (!kind) return { error: jsonError("Type de carte inconnu") };
   if (!title && kind !== "accueil_vip") return { error: jsonError("Titre requis") };
-  const amount = parseMoney(moneyField(body.amount));
-  if (isLedgerExpenseKind(kind) && (amount == null || amount <= 0)) {
-    return { error: jsonError("Montant requis") };
-  }
+  let amount = parseMoney(moneyField(body.amount));
   const details = parseItemDetails(body.details);
   if ("error" in details) return { error: jsonError(details.error) };
+  let detailsForInsert = details.details;
+  if (isLedgerExpenseKind(kind)) {
+    // Quantité × prix unitaire : le montant de la dépense en découle et reste cohérent avec les deux.
+    const priced = applyExpensePricing(
+      { quantity: body.quantity, unit_price: body.unit_price, amount: body.amount },
+      { amount: null, details: details.details }
+    );
+    if (!priced.ok) return { error: jsonError(priced.error) };
+    amount = priced.pricing.amount;
+    detailsForInsert = priced.details;
+  }
   let titleForInsert = title;
   let supplier = body.supplier || null;
   let confirmation = body.confirmation_ref || null;
   let startAt = body.start_at || null;
   let endAt = body.end_at || null;
   let amountForInsert = amount;
-  let detailsForInsert = details.details;
   let ledger = isLedgerExpenseKind(kind) ? true : parseIncludeInLedger(body.include_in_ledger, false);
   if (kind === "accueil_vip") {
     const loaded = await dossierFlights(supabase, bookingId);
@@ -169,7 +181,9 @@ async function insertBookingItem(
     .select("id")
     .single();
   if (error || !data) return { error: dbError(error, 400) };
-  return { id: String(data.id) };
+  const id = String(data.id);
+  const shown = body.visible_to_client === true && countsAsCarnetCard(kind) ? { id, kind } : null;
+  return { id, shown };
 }
 
 async function updateBookingItem(
@@ -181,7 +195,7 @@ async function updateBookingItem(
   if (!itemId) return { error: jsonError("id requis") };
   const { data: current, error: currentError } = await supabase
     .from("crm_booking_items")
-    .select("kind, amount, details, lifecycle, supplier, confirmation_ref, start_at, end_at")
+    .select("kind, amount, details, lifecycle, supplier, confirmation_ref, start_at, end_at, visible_to_client")
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .maybeSingle();
@@ -200,12 +214,6 @@ async function updateBookingItem(
   if ("include_in_ledger" in body) {
     patch.include_in_ledger = parseIncludeInLedger(body.include_in_ledger, false);
   }
-  if (isLedgerExpenseKind(nextKind)) {
-    const amount = "amount" in body ? parseMoney(moneyField(body.amount)) : parseMoney(current.amount);
-    if (amount == null || amount <= 0) return { error: jsonError("Montant requis") };
-    patch.include_in_ledger = true;
-    if ("amount" in body) patch.amount = amount;
-  }
   if (body.sort_order != null) {
     const sortOrder = parseSortOrder(body.sort_order);
     if (sortOrder == null) return { error: jsonError(SORT_ORDER_ERROR) };
@@ -215,6 +223,22 @@ async function updateBookingItem(
     const details = parseItemDetails(body.details);
     if ("error" in details) return { error: jsonError(details.error) };
     patch.details = details.details;
+  }
+  if (isLedgerExpenseKind(nextKind) && typeof body.validate === "boolean") {
+    // Valider : la dépense automatique sort de « À valider » et compte côté client. false la remet à valider.
+    const base = "details" in patch ? patch.details : current.details;
+    patch.details = body.validate ? validatedExpenseDetails(base) : awaitingExpenseDetails(base);
+  }
+  if (isLedgerExpenseKind(nextKind)) {
+    // Dépense : quantité × prix unitaire. Le montant seul garde la quantité et recalcule le prix unitaire.
+    const priced = applyExpensePricing(
+      { quantity: body.quantity, unit_price: body.unit_price, amount: "amount" in body ? body.amount : undefined },
+      { amount: parseMoney(current.amount), details: "details" in patch ? patch.details : current.details }
+    );
+    if (!priced.ok) return { error: jsonError(priced.error === "Montant requis." ? "Montant requis" : priced.error) };
+    patch.include_in_ledger = true;
+    patch.amount = priced.pricing.amount;
+    patch.details = priced.details;
   }
   if ("visible_to_client" in body) {
     const visible = Boolean(body.visible_to_client);
@@ -263,15 +287,26 @@ async function updateBookingItem(
     .select("*")
     .single();
   if (error) return { error: dbError(error, 400) };
-  return { item: data };
+  const wasHidden =
+    current.visible_to_client !== true ||
+    keptHiddenFromClient(
+      current.details && typeof current.details === "object" ? (current.details as Record<string, unknown>) : null
+    );
+  const shown =
+    "visible_to_client" in body && Boolean(body.visible_to_client) && wasHidden && countsAsCarnetCard(nextKind)
+      ? { id: itemId, kind: nextKind }
+      : null;
+  return { item: data, shown };
 }
 
 /** Modifications et suppressions d’étapes : une seule écriture, au moment d’enregistrer le séjour. */
 async function commitStaySteps(
   supabase: SupabaseClient,
   bookingId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  signatory?: string
 ) {
+  const shown: CarnetAdditionCard[] = [];
   const deleted = Array.isArray(body.deleted)
     ? body.deleted.map((value) => String(value || "")).filter(Boolean)
     : [];
@@ -286,6 +321,7 @@ async function commitStaySteps(
     if (!item || typeof item !== "object") return jsonError("Étape invalide");
     const failed = await updateBookingItem(supabase, bookingId, item as Record<string, unknown>);
     if ("error" in failed) return failed.error;
+    if (failed.shown) shown.push(failed.shown);
   }
   if (deleted.length) {
     const { error } = await supabase
@@ -302,6 +338,7 @@ async function commitStaySteps(
     const inserted = await insertBookingItem(supabase, bookingId, row, order.length + index);
     if ("error" in inserted) return inserted.error;
     idMap.set(String(row.client_id || ""), inserted.id);
+    if (inserted.shown) shown.push(inserted.shown);
   }
   try {
     await persistBookingCardOrder(supabase, bookingId, {
@@ -316,7 +353,8 @@ async function commitStaySteps(
   } catch (error) {
     return dbError(error as { message?: string; code?: string }, 400);
   }
-  scheduleFormalitySync(bookingId);
+  await refreshBookingDerived(bookingId, { signatory });
+  await noteCarnetAdditions(supabase, bookingId, shown);
   return NextResponse.json({
     ok: true,
     ids: Object.fromEntries(idMap),
@@ -329,12 +367,14 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
-  if (body?.commit === true) return commitStaySteps(auth.supabase, id, body);
+  if (body?.commit === true) {
+    return commitStaySteps(auth.supabase, id, body, hotelSignatoryName(auth.staff.full_name));
+  }
   const saved = await addStaffBookingCard(auth.supabase, id, (body || {}) as Record<string, unknown>);
   if ("error" in saved) return jsonError(saved.error, saved.status);
-  scheduleFormalitySync(id);
+  await refreshBookingDerived(id, { signatory: hotelSignatoryName(auth.staff.full_name) });
   revalidatePath(`/admin/reservations/${id}`);
-  revalidatePath("/admin/transactions");
+  revalidatePath("/admin/argent");
   revalidatePath("/mon-compte/transactions");
   return NextResponse.json({
     item: saved.item,
@@ -359,6 +399,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   const updated = await updateBookingItem(auth.supabase, bookingId, body || {});
   if ("error" in updated) return updated.error;
+  if (updated.shown) await noteCarnetAdditions(auth.supabase, bookingId, [updated.shown]);
   const moved =
     body?.start_at !== undefined || body?.kind !== undefined;
   if (moved) {
@@ -375,7 +416,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       return dbError(error as { message?: string; code?: string }, 400);
     }
   }
-  scheduleFormalitySync(bookingId);
+  await refreshBookingDerived(bookingId, { signatory: hotelSignatoryName(auth.staff.full_name) });
   return NextResponse.json({
     item: updated.item,
     ...(await ledgerAfterItemWrite(auth.supabase, bookingId, "Modification enregistrée")),
@@ -413,33 +454,9 @@ export async function DELETE(request: Request, ctx: Ctx) {
   } catch (syncError) {
     return dbError(syncError as { message?: string; code?: string }, 400);
   }
-  scheduleFormalitySync(bookingId);
+  await refreshBookingDerived(bookingId, { signatory: hotelSignatoryName(auth.staff.full_name) });
   return NextResponse.json({
     ok: true,
     ...(await ledgerAfterItemWrite(auth.supabase, bookingId, "Suppression enregistrée")),
   });
-}
-
-function scheduleFormalitySync(bookingId: string) {
-  after(() => Promise.all([touchEsta(bookingId), touchUkEta(bookingId)]));
-}
-
-async function touchEsta(bookingId: string) {
-  try {
-    const { createServiceClient } = await import("@/lib/supabase/admin");
-    const { syncEstaForBookingId } = await import("@/lib/crm/esta-run");
-    await syncEstaForBookingId(createServiceClient(), bookingId);
-  } catch {
-    console.info("[esta] synchro dossier ignorée");
-  }
-}
-
-async function touchUkEta(bookingId: string) {
-  try {
-    const { createServiceClient } = await import("@/lib/supabase/admin");
-    const { syncUkEtaForBookingId } = await import("@/lib/crm/uk-eta-run");
-    await syncUkEtaForBookingId(createServiceClient(), bookingId);
-  } catch {
-    console.info("[uk-eta] synchro dossier ignorée");
-  }
 }

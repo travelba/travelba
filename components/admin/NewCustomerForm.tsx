@@ -61,13 +61,14 @@ export function NewCustomerForm() {
       </label>
       <div className="sm:col-span-4">
         <BusyBar active={saving} label="Création…" />
+        <p className="text-xs text-muted">Créer la fiche n’envoie rien au client. Inviter se fait depuis la fiche.</p>
       </div>
       <button
         type="submit"
         disabled={saving}
         className="admin-af-btn self-end rounded-full px-4 py-2.5 text-sm"
       >
-        {saving ? "Création…" : "Créer"}
+        {saving ? "Création…" : "Créer la fiche"}
       </button>
       {error ? <p className="text-sm text-accent sm:col-span-4">{error}</p> : null}
     </form>

@@ -1,9 +1,8 @@
 import { revalidatePath } from "next/cache";
 
-/** Écrans qui lisent les coûts : dossier, Pliant, Revolut, comptabilité. */
+/** Écrans qui lisent les coûts : le dossier et la page Argent (À pointer, Comptes). */
 export function revalidateTripAccounting(bookingId: string | null) {
   if (bookingId) revalidatePath(`/admin/reservations/${bookingId}`);
-  revalidatePath("/admin/pliant");
-  revalidatePath("/admin/revolut");
-  revalidatePath("/admin/comptabilite");
+  revalidatePath("/admin/argent");
+  revalidatePath("/admin");
 }

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/crm/icons";
+import { askBrowserAlerts, browserAlert } from "@/lib/crm/browser-alert";
+import type { AgencyAlert } from "@/lib/crm/agency-alerts";
 import type { HotelReplyNotice } from "@/lib/crm/hotel-reply-notice";
 import { replyMoment } from "@/lib/crm/hotel-reply-when";
 import {
@@ -39,6 +41,25 @@ function isNotice(value: unknown): value is HotelReplyNotice {
   if (!value || typeof value !== "object") return false;
   const notice = value as HotelReplyNotice;
   return Boolean(notice.id && notice.href && notice.hotel);
+}
+
+function isAlert(value: unknown): value is AgencyAlert {
+  if (!value || typeof value !== "object") return false;
+  const alert = value as AgencyAlert;
+  return Boolean(alert.id && alert.href && alert.title && alert.at && alert.kicker);
+}
+
+function alertNotice(alert: AgencyAlert): HotelReplyNotice {
+  return {
+    id: alert.id,
+    bookingId: "",
+    itemId: "",
+    hotel: alert.title,
+    excerpt: alert.body,
+    receivedAt: alert.at,
+    href: alert.href,
+    kicker: alert.kicker,
+  };
 }
 
 function readOpen() {
@@ -122,10 +143,15 @@ function useClock(active: boolean) {
 
 export function HotelReplyToasts() {
   const router = useRouter();
+  const refresh = useRef(router.refresh);
   const [queue, setQueue] = useState<HotelReplyNotice[]>([]);
   const [ready, setReady] = useState(false);
   const dismissed = useRef<Set<string>>(new Set());
   const visible = queue.slice(0, 4);
+
+  useEffect(() => {
+    refresh.current = router.refresh;
+  }, [router]);
 
   useEffect(() => {
     if (!ready) return;
@@ -156,33 +182,43 @@ export function HotelReplyToasts() {
       });
     }
 
-    // Un seul onglet sonde (A-27) : le meneur bat toutes les POLL_MS ; les autres reçoivent ses réponses.
+    // Un seul onglet sonde (A-27), y compris en arrière-plan : sinon l’écran verrouillé ne voit rien.
     async function tick() {
-      if (stopped || document.visibilityState === "hidden") return;
+      if (stopped) return;
       const now = Date.now();
       if (!shouldLead(readLeader(), tabId, now)) return;
       writeLeader(tabId, now);
       if (!memorySince) {
         memorySince = new Date().toISOString();
         writeSince(memorySince);
-        return;
       }
       const since = memorySince;
       let notices: HotelReplyNotice[] = [];
+      let alerts: AgencyAlert[] = [];
+      let replied = 0;
       try {
         const res = await fetch(`/api/admin/hotel-replies?since=${encodeURIComponent(since)}`, {
           headers: { accept: "application/json" },
         });
         if (!res.ok) return;
-        const json = (await res.json()) as { notices?: HotelReplyNotice[] };
+        const json = (await res.json()) as { notices?: HotelReplyNotice[]; alerts?: AgencyAlert[]; replied?: number };
         notices = Array.isArray(json.notices) ? json.notices.filter(isNotice) : [];
+        alerts = Array.isArray(json.alerts) ? json.alerts.filter(isAlert) : [];
+        replied = typeof json.replied === "number" ? json.replied : 0;
       } catch {
         return;
       }
-      if (stopped || !notices.length) return;
-      enqueue(notices);
+      if (stopped) return;
+      if (replied > 0) refresh.current();
+      const incoming = [...notices, ...alerts.map(alertNotice)];
+      if (!incoming.length) return;
+      enqueue(incoming);
+      const hidden = document.visibilityState === "hidden";
+      if (hidden) {
+        for (const notice of incoming) browserAlert(notice.kicker || "L’hôtel a répondu", `${notice.hotel}. ${notice.excerpt}`);
+      }
       const sinceMs = Date.parse(since);
-      const latestMs = notices.reduce((max, notice) => {
+      const latestMs = incoming.reduce((max, notice) => {
         const at = Date.parse(notice.receivedAt);
         return Number.isFinite(at) && at > max ? at : max;
       }, sinceMs);
@@ -190,7 +226,7 @@ export function HotelReplyToasts() {
         memorySince = new Date(latestMs).toISOString();
         writeSince(memorySince);
       }
-      channel?.postMessage({ type: "notices", notices, since: memorySince } satisfies TabMessage);
+      channel?.postMessage({ type: "notices", notices: incoming, since: memorySince } satisfies TabMessage);
     }
 
     function onMessage(event: MessageEvent<TabMessage>) {
@@ -218,12 +254,18 @@ export function HotelReplyToasts() {
       clearLeader(tabId);
       channel?.postMessage({ type: "resign", id: tabId } satisfies TabMessage);
     };
+    const onAsk = () => {
+      document.removeEventListener("pointerdown", onAsk);
+      askBrowserAlerts();
+    };
     document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("pointerdown", onAsk);
     window.addEventListener("pagehide", onLeave);
     return () => {
       stopped = true;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("pointerdown", onAsk);
       window.removeEventListener("pagehide", onLeave);
       channel?.removeEventListener("message", onMessage);
       onLeave();
@@ -306,7 +348,9 @@ export function HotelReplyToastStack({
                 </span>
                 <div className="min-w-0">
                   <p className="flex items-baseline justify-between gap-3">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#C5A880]">L’hôtel a répondu</span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#C5A880]">
+                      {notice.kicker || "L’hôtel a répondu"}
+                    </span>
                     {when ? <span className="shrink-0 text-[10px] font-medium text-[#faf9f6]/55">{when}</span> : null}
                   </p>
                   <p className="mt-1 truncate font-display text-[15px] font-semibold tracking-[-0.02em]">{notice.hotel}</p>

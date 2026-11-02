@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { coverQuery } from "@/lib/crm/carnet";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { unsplashKeywordMatch } from "@/lib/crm/covers";
+import { bookingCoverPlan, catalogPhotoId, unsplashKeywordMatch } from "@/lib/crm/covers";
+import { generatedCityCoverSpec } from "@/lib/crm/cover-catalog";
+import { rebuildCityCover } from "@/lib/crm/cover-generate";
 import { toCoverJpeg, toCoverWebp, writePublicCover } from "@/lib/crm/cover-file";
 import { downloadCoverImage } from "@/lib/crm/cover-search";
 import { catalogCachePath, retouchCoverBytes } from "@/lib/crm/cover-retouch";
@@ -26,8 +28,19 @@ export async function POST(_request: Request, ctx: Ctx) {
   if (error) return dbError(error, 400);
   if (!booking) return jsonError("Réservation introuvable", 404);
 
-  const photoId = unsplashKeywordMatch(booking);
+  const plan = bookingCoverPlan({
+    destination: booking.destination,
+    title: booking.title,
+    cover_image_path: null,
+  });
+  const photoId =
+    (plan.mode === "single" ? catalogPhotoId(plan.src) : null) || unsplashKeywordMatch(booking);
   if (!photoId) return jsonError("Pas de photo de catalogue pour ce lieu.");
+  if (generatedCityCoverSpec(photoId)) {
+    const webp = await rebuildCityCover(photoId);
+    if (!webp?.byteLength) return jsonError("Génération indisponible.", 502);
+    return NextResponse.json({ ok: true, photoId });
+  }
   const place = coverQuery(booking.destination, booking.title);
   const remote = `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=1600&h=900&q=80`;
   let source: Buffer;

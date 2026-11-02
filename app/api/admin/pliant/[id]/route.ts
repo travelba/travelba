@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { attachOutgoing, setOutgoingOutsideTrip, TripCostError } from "@/lib/crm/trip-costs-db";
+import { tripCostActorFromStaff } from "@/lib/crm/pliant-link";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { revalidateTripAccounting } from "@/lib/crm/trip-costs-paths";
 
@@ -45,6 +46,7 @@ export async function POST(request: Request, ctx: Ctx) {
         newExpense: body?.new_expense
           ? { title: body.new_expense.title ? String(body.new_expense.title) : null, amount: Number(body.new_expense.amount) }
           : null,
+        actor: tripCostActorFromStaff(auth.staff),
       },
       admin
     );

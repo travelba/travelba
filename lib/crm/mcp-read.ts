@@ -15,11 +15,26 @@ import {
 import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
+import { checkinMcpLine, type FlightCheckinView } from "@/lib/crm/online-checkin";
+import { loadCheckinContext, viewsFromContext } from "@/lib/crm/online-checkin-db";
 import { loadLedgerCountedStayAmounts } from "@/lib/crm/displayed-stay";
+import {
+  cancellationStatut,
+  extractCancellationVerdict,
+  leCancellationVerdict,
+  loadStayAnchors,
+  parseStoredExtract,
+} from "@/lib/crm/cancellation-standing";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
+import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
+import { loadDossierPeople, type DossierPeople } from "@/lib/crm/dossier-responsables";
+import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
+import { formatDateTimeFr } from "@/lib/crm/dates";
+import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation-mail";
+import { compareLeMadeAt, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
@@ -33,6 +48,7 @@ import {
   EMAIL_INBOX_QUEUE_STATUSES,
   customerFullName,
   isActiveItem,
+  isLedgerExpenseKind,
   type CrmBooking,
   type CrmBookingItem,
   type CrmCustomer,
@@ -43,6 +59,9 @@ import {
   type CrmTravelDocument,
   type TravelDocType,
 } from "@/lib/crm/types";
+import { readExpensePricing } from "@/lib/crm/expense-pricing";
+import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
+import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { CLIENT_VISA_STEPS, clientVisaStepCopy, type ClientVisaStep } from "@/lib/crm/visa-flow";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import { deskView, reasonLabel, type DeskTask } from "@/lib/crm/visa-desk";
@@ -54,7 +73,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SERVICE_KINDS = ["chauffeur", "greeter", "checkin"] as const;
 
 const BOOKING_COLUMNS =
-  "id, reference, title, destination, status, start_date, end_date, created_at, currency, total_amount, agency_commission, visible_to_client, archived_at, customer_id, client_settles_stay, include_in_ledger, billing_company_id, payer_kind";
+  "id, reference, title, destination, status, start_date, end_date, created_at, currency, total_amount, agency_commission, fee_mode, visible_to_client, archived_at, customer_id, client_settles_stay, include_in_ledger, billing_company_id, payer_kind";
 
 type BookingRow = Pick<
   CrmBooking,
@@ -71,6 +90,7 @@ type BookingRow = Pick<
   | "customer_id"
 > & {
   agency_commission?: boolean | null;
+  fee_mode?: string | null;
   archived_at?: string | null;
   client_settles_stay?: boolean | null;
   include_in_ledger?: boolean | null;
@@ -160,7 +180,7 @@ async function dossierAmounts(admin: SupabaseClient, rows: BookingRow[]) {
 async function bookingCards(admin: SupabaseClient, bookingId: string) {
   const { data, error } = await admin
     .from("crm_booking_items")
-    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details, lifecycle, visible_to_client, sort_order")
+    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, amount, details, lifecycle, visible_to_client, sort_order")
     .eq("booking_id", bookingId)
     .order("sort_order");
   if (error) {
@@ -201,13 +221,13 @@ async function bookingPliantCards(admin: SupabaseClient, bookingId: string) {
 async function bookingTravelers(admin: SupabaseClient, bookingId: string) {
   const { data, error } = await admin
     .from("crm_booking_travelers")
-    .select("first_name, last_name")
+    .select("id, first_name, last_name")
     .eq("booking_id", bookingId);
   if (error) {
     logRead("voyageurs", error);
     throw new McpReadError("Lecture des voyageurs impossible.");
   }
-  return (data || []) as { first_name: string | null; last_name: string | null }[];
+  return (data || []) as { id: string; first_name: string | null; last_name: string | null }[];
 }
 
 type VisaTaskRow = {
@@ -347,6 +367,13 @@ export async function readTableauDeBord() {
     (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
     0
   );
+  let courriers: Awaited<ReturnType<typeof loadDashboardMails>> = [];
+  try {
+    await refreshStaleHotelThreads(admin, { limit: 4, budgetMs: 1500 });
+    courriers = await loadDashboardMails(admin);
+  } catch {
+    courriers = [];
+  }
   return {
     a_faire: adminTodoLines({
       emails: badges.emails,
@@ -370,6 +397,16 @@ export async function readTableauDeBord() {
     })),
     departs_sous_7_jours: departSoon.count ?? 0,
     dossiers_actifs: bookingCount.count ?? 0,
+    courriers_hotel: courriers.map((mail) => ({
+      hotel: mail.title,
+      reference: mail.reference,
+      demande: mail.mark,
+      statut: mail.replyLabel,
+      activite: formatDateTimeFr(mail.receivedAt),
+      par: mail.lastWriter,
+      extrait: mail.excerpt || null,
+      lien: mail.href,
+    })),
   };
 }
 
@@ -542,13 +579,18 @@ export async function readChercherDossiers(
   };
 }
 
-function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "confirmation_ref" | "start_at" | "end_at" | "details" | "visible_to_client">) {
+function cardLine(
+  item: Pick<CrmBookingItem, "id" | "kind" | "title" | "supplier" | "confirmation_ref" | "start_at" | "end_at" | "details" | "visible_to_client">,
+  checkin?: FlightCheckinView | null
+) {
   const full = item as CrmBookingItem;
   const city = typeof item.details?.city === "string" ? item.details.city : null;
   if (item.kind === "flight") {
     const from = typeof item.details?.from === "string" ? item.details.from : null;
     const to = typeof item.details?.to === "string" ? item.details.to : null;
+    const line = checkin ? checkinMcpLine(checkin) : null;
     return {
+      carte_id: item.id,
       kind: "vol",
       titre: flightCities(full) || item.title,
       aeroports: flightIata(full) || null,
@@ -556,10 +598,23 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
       fin: dossierFlightStamp(item.end_at, to, item.details?.arrival_timezone),
       reference: item.confirmation_ref,
       montre: item.visible_to_client,
+      enregistrement: line
+        ? {
+            statut: line.statut,
+            libelle: line.libelle,
+            ouverture: line.ouverture,
+            ouverture_libelle: line.ouverture_libelle,
+            heures_avant: line.heures_avant,
+            par: line.par,
+            alerte: line.alerte,
+            fait: line.fait,
+          }
+        : null,
     };
   }
   if (item.kind === "accueil_vip") {
     return {
+      carte_id: item.id,
       kind: "accueil VIP",
       titre: item.title,
       fournisseur: item.supplier,
@@ -571,6 +626,7 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
   }
   if (item.kind === "hotel") {
     return {
+      carte_id: item.id,
       kind: "hôtel",
       titre: hotelDisplayName(full),
       ville: city,
@@ -580,7 +636,27 @@ function cardLine(item: Pick<CrmBookingItem, "kind" | "title" | "supplier" | "co
       montre: item.visible_to_client,
     };
   }
+  if (isLedgerExpenseKind(item.kind)) {
+    const amount = full.amount == null ? null : Number(full.amount);
+    const pricing = readExpensePricing(item.details, amount);
+    const origin = pliantExpenseOrigin(item.details, amount);
+    return {
+      carte_id: item.id,
+      kind: "expense",
+      titre: item.title,
+      date: item.start_at ? String(item.start_at).slice(0, 10) : null,
+      quantite: pricing.quantity,
+      prix_unitaire: pricing.unitPrice,
+      montant: pricing.amount,
+      a_valider: expenseAwaitsValidation(item),
+      pliant: origin
+        ? { commercant: origin.merchant, date: origin.date, montant_pliant: origin.amount, montant_modifie: origin.edited }
+        : null,
+      modifier: "mettre_a_jour_dossier.depense",
+    };
+  }
   return {
+    carte_id: item.id,
     kind: item.kind,
     titre: item.title,
     fournisseur: item.supplier,
@@ -627,7 +703,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     return { choix: rows.map((row) => bookingLine(row, names, new Map(), companies)) };
   }
   const booking = rows[0];
-  const [cards, pliantCards, travelers, visas, tasks, names, amounts, companies] = await Promise.all([
+  const [cards, pliantCards, travelers, visas, tasks, names, amounts, companies, checkin] = await Promise.all([
     bookingCards(admin, booking.id),
     bookingPliantCards(admin, booking.id),
     bookingTravelers(admin, booking.id),
@@ -636,7 +712,9 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     customerNames(admin, [booking.customer_id]),
     dossierAmounts(admin, [booking]),
     companyNames(admin, [booking.billing_company_id]),
+    loadCheckinContext(admin, booking.id),
   ]);
+  const checkinByItem = new Map(viewsFromContext(checkin).map((line) => [line.itemId, line]));
   if (visas.error) logRead("visas", visas.error);
   if (tasks.error) logRead("taches", tasks.error);
   let commission: ResolvedAgencyFee = { rate: 0.1, source: "defaut" };
@@ -646,13 +724,25 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
   } catch (err) {
     logRead("commission", err as { code?: string; message?: string });
   }
+  let people: DossierPeople = { createdBy: null, owner: null, intervenants: [] };
+  try {
+    people = await loadDossierPeople(admin, booking);
+  } catch (err) {
+    logRead("responsables", err as { code?: string; message?: string });
+  }
   return {
     ...bookingLine(booking, names, amounts, companies),
+    en_charge: people.owner?.name ?? null,
+    cree_par: people.createdBy?.name ?? null,
+    intervenants: people.intervenants.map((person) => person.name),
     commission_agence: formatAgencyFeePercent(commission.rate),
     commission_source: commission.source,
     commission_appliquee: booking.agency_commission === true,
-    voyageurs: travelers.map((row) => [row.first_name, row.last_name].filter(Boolean).join(" ").trim()),
-    cartes: cards.map(cardLine),
+    voyageurs: travelers.map((row) => ({
+      voyageur_id: row.id,
+      nom: [row.first_name, row.last_name].filter(Boolean).join(" ").trim(),
+    })),
+    cartes: cards.map((item) => cardLine(item, checkinByItem.get(item.id) || null)),
     cartes_pliant: pliantCards,
     formalites: [
       ...((visas.data || []) as { country: string; status: string | null; step: string | null }[])
@@ -801,7 +891,7 @@ export async function readRevolutEnAttente() {
     "id" | "amount" | "currency" | "counterparty_name" | "reference" | "booked_at"
   >[];
   return {
-    lien: "/admin/revolut",
+    lien: "/admin/argent?onglet=a-encaisser",
     virements: rows.map((row) => ({
       id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
@@ -858,7 +948,7 @@ export async function readRevolutDebits() {
     ((stays.data || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference])
   );
   return {
-    lien: "/admin/revolut",
+    lien: "/admin/argent?onglet=a-pointer&vue=revolut",
     debits: rows.map((row) => {
       const line = revolutDebitLine(row);
       return {
@@ -937,7 +1027,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     etat: cost.state === "pending" ? "en attente" : "confirmé",
   });
   return {
-    lien: `/admin/reservations/${booking.id}?tab=reglement`,
+    lien: `/admin/reservations/${booking.id}?tab=argent`,
     reference: booking.reference,
     titre: booking.title || booking.destination,
     commission_agence: formatAgencyFeePercent(commission.rate),
@@ -945,6 +1035,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     commission_appliquee: booking.agency_commission === true,
     etat: TRIP_ACCOUNTING_LABELS[view.state],
     lignes: view.lines.map((line) => ({
+      carte_id: line.itemId,
       vente: line.label,
       vendu: eur(line.sale),
       cout: eur(line.cost),
@@ -998,7 +1089,7 @@ export async function readStripeEnAttente() {
     "id" | "amount" | "currency" | "payer_name" | "reference" | "method" | "booked_at"
   >[];
   return {
-    lien: "/admin/stripe",
+    lien: "/admin/argent?onglet=a-encaisser",
     paiements: rows.map((row) => ({
       id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
@@ -1014,7 +1105,7 @@ export async function readEmailsEnAttente() {
   const admin = db();
   const { data, error } = await admin
     .from("crm_email_ingest")
-    .select("id, label, from_email, subject, received_at, status, candidates, error")
+    .select("id, label, from_email, subject, received_at, status, candidates, error, extract")
     .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
     .order("received_at", { ascending: false, nullsFirst: false })
     .limit(INBOX_LIMIT);
@@ -1024,46 +1115,56 @@ export async function readEmailsEnAttente() {
   }
   const rows = (data || []) as Pick<
     CrmEmailIngest,
-    "id" | "label" | "from_email" | "subject" | "received_at" | "status" | "candidates" | "error"
+    "id" | "label" | "from_email" | "subject" | "received_at" | "status" | "candidates" | "error" | "extract"
   >[];
+  const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
-    lien: "/admin/emails",
-    mails: rows.map((row) => ({
-      id: row.id,
-      expediteur: row.from_email,
-      sujet: row.subject,
-      recu_le: row.received_at ? formatDateFr(row.received_at) : null,
-      label: row.label,
-      statut: EMAIL_STATUS[row.status] || row.status,
-      propositions: (row.candidates || []).slice(0, 5).map((candidate) => ({
-        libelle: candidate.label,
-        client_id: candidate.customer_id,
-        dossier_id: candidate.booking_id || null,
-      })),
-      erreur: row.error,
-    })),
+    lien: "/admin/boite?onglet=fournisseurs",
+    mails: rows.map((row) => {
+      const verdict = extractCancellationVerdict(
+        { label: row.label, receivedAt: row.received_at, extract: parseStoredExtract(row.extract) },
+        known
+      );
+      return {
+        id: row.id,
+        expediteur: row.from_email,
+        sujet: row.subject,
+        recu_le: row.received_at ? formatDateFr(row.received_at) : null,
+        label: row.label,
+        statut: EMAIL_STATUS[row.status] || row.status,
+        suivi: verdict.suivi,
+        alerte: verdict.alerte,
+        remplacee_par: verdict.remplacee_par,
+        propositions: (row.candidates || []).slice(0, 5).map((candidate) => ({
+          libelle: candidate.label,
+          client_id: candidate.customer_id,
+          dossier_id: candidate.booking_id || null,
+        })),
+        erreur: row.error,
+      };
+    }),
   };
 }
 
-export async function readLittleEmperorsEnAttente() {
-  const admin = db();
+export async function readLittleEmperorsEnAttente(admin = db()) {
   const { data, error } = await admin
     .from("crm_le_bookings")
     .select(
-      "id, confirmation_number, state, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost"
+      "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost, raw, created_at"
     )
-    .eq("status", "unmatched")
-    .order("check_in", { ascending: false, nullsFirst: false })
-    .limit(INBOX_LIMIT);
+    .eq("status", "unmatched");
   if (error) {
     logRead("little-emperors", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = (data || []) as Pick<
+  const mails = await loadLeConfirmationMails(admin);
+  const rows = ((data || []) as (Pick<
     CrmLeBooking,
+    | "id"
     | "confirmation_number"
     | "state"
     | "hotel_name"
+    | "hotel_id"
     | "city"
     | "country"
     | "check_in"
@@ -1072,20 +1173,34 @@ export async function readLittleEmperorsEnAttente() {
     | "candidates"
     | "currency"
     | "total_cost"
-  >[];
+    | "le_booking_id"
+    | "created_at"
+  > & { raw?: unknown; booked_at?: string | null })[])
+    .map((row) => ({ ...row, booked_on: leListMadeAt(row, mails) }))
+    .sort((left, right) => compareLeMadeAt(left.booked_on, right.booked_on) || left.id.localeCompare(right.id))
+    .slice(0, INBOX_LIMIT);
+  const known = rows.length ? await loadStayAnchors(admin) : [];
   return {
-    lien: "/admin/little-emperors",
-    sejours: rows.map((row) => ({
-      hotel: row.hotel_name,
-      ville: row.city,
-      pays: row.country,
-      arrivee: row.check_in,
-      depart: row.check_out,
-      voyageurs: row.guest_names,
-      confirmation: row.confirmation_number,
-      etat_le: row.state,
-      montant_lu: row.total_cost ? `${row.total_cost} ${row.currency || ""}`.trim() : null,
-      propositions: (row.candidates || []).slice(0, 5).map((candidate) => candidate.label),
-    })),
+    lien: "/admin/boite?onglet=fournisseurs&source=little-emperors",
+    sejours: rows.map((row) => {
+      const verdict = leCancellationVerdict(row, known);
+      return {
+        hotel: row.hotel_name,
+        ville: row.city,
+        pays: row.country,
+        arrivee: row.check_in,
+        depart: row.check_out,
+        reservee_le: leMadeDayLabel(row.booked_on),
+        voyageurs: row.guest_names,
+        confirmation: row.confirmation_number,
+        etat_le: row.state,
+        statut: cancellationStatut(row.state, verdict),
+        suivi: verdict.suivi,
+        alerte: verdict.alerte,
+        remplacee_par: verdict.remplacee_par,
+        montant_lu: row.total_cost ? `${row.total_cost} ${row.currency || ""}`.trim() : null,
+        propositions: (row.candidates || []).slice(0, 5).map((candidate) => candidate.label),
+      };
+    }),
   };
 }

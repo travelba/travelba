@@ -37,13 +37,15 @@ export function staffStayLabel(booking: {
   return LABELS[staffStayVisibility(booking)];
 }
 
-/** Onglet que la pastille ouvre : À faire par défaut, Règlement pour l’argent. */
+/** Onglet que la pastille ouvre : À faire par défaut, Argent pour l’argent. */
 export type StaffBlocker = { id: string; label: string; tab?: "todo" | "argent" };
 
 /** Ce qui empêche de considérer le dossier comme prêt. */
 export function staffBlockingChips(input: {
   travelers: { id: string; first_name?: string | null; last_name?: string | null }[];
   missingPassportIds: string[];
+  /** Passeport déposé, mais il expire avant le retour. */
+  expiringPassportIds?: string[];
   hotelLettersOpen: number;
   amountHidden: boolean;
   /** Sorties proposées et coûts sans vente qui attendent dans Coûts du voyage. */
@@ -52,13 +54,21 @@ export function staffBlockingChips(input: {
   marginStale?: boolean;
   /** Cartes hôtel dont Pliant a refusé l’émission, une fois pour toutes. */
   cardAlerts?: number;
+  /** Vols dont l’enregistrement en ligne est ouvert et pas encore fait. */
+  checkinAlerts?: number;
 }): StaffBlocker[] {
   const missing = new Set(input.missingPassportIds);
+  const expiring = new Set(input.expiringPassportIds || []);
   const chips: StaffBlocker[] = [];
   for (const traveler of input.travelers) {
-    if (!missing.has(traveler.id)) continue;
     const name = greetingGivenName(traveler.first_name) || (traveler.last_name || "").trim() || "voyageur";
-    chips.push({ id: `passport-${traveler.id}`, label: `Passeport ${name}` });
+    if (missing.has(traveler.id)) {
+      chips.push({ id: `passport-${traveler.id}`, label: `Passeport ${name}` });
+      continue;
+    }
+    if (expiring.has(traveler.id)) {
+      chips.push({ id: `passport-expire-${traveler.id}`, label: `Expire avant le retour · ${name}` });
+    }
   }
   if (input.hotelLettersOpen > 0) {
     chips.push({
@@ -77,6 +87,13 @@ export function staffBlockingChips(input: {
     chips.push({
       id: "pliant-card",
       label: cardAlerts > 1 ? `${cardAlerts} cartes hôtel refusées` : "Carte hôtel refusée",
+    });
+  }
+  const checkinAlerts = input.checkinAlerts || 0;
+  if (checkinAlerts > 0) {
+    chips.push({
+      id: "checkin",
+      label: checkinAlerts > 1 ? `${checkinAlerts} enregistrements ouverts` : "Enregistrement ouvert",
     });
   }
   return chips;

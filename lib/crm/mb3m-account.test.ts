@@ -13,6 +13,8 @@ import {
   mb3mAgencyActivityId,
   mb3mChargeKind,
   mb3mDossierActivityId,
+  MB3M_ACTIVITY_LOW_COST,
+  MB3M_ACTIVITY_RAIL,
 } from "./mb3m-account";
 
 const companies = [
@@ -134,7 +136,9 @@ describe("facture MB3M du compte", () => {
   it("reprend le fichier d’activités de l’agence, une activité par dépense", () => {
     assert.equal(mb3mAgencyActivityId("flight"), 2);
     assert.equal(mb3mAgencyActivityId("insurance"), 3);
-    assert.equal(mb3mAgencyActivityId("rail"), 5);
+    assert.equal(mb3mAgencyActivityId("rail"), MB3M_ACTIVITY_RAIL);
+    assert.equal(MB3M_ACTIVITY_LOW_COST, 27);
+    assert.equal(mb3mAgencyActivityId("expense"), 22);
     assert.equal(mb3mAgencyActivityId("hotel"), 7);
     assert.equal(mb3mAgencyActivityId("car"), 8);
     assert.equal(mb3mAgencyActivityId("cruise"), 20);

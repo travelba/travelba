@@ -399,5 +399,5 @@ test("l’alerte agence ne promet aucune écriture", () => {
     to: "contact@travelba.fr",
   });
   assert.match(lead?.text || "", /\+33699001122/);
-  assert.match(lead?.text || "", /\/admin\/whatsapp/);
+  assert.match(lead?.text || "", /\/admin\/boite\?onglet=whatsapp/);
 });

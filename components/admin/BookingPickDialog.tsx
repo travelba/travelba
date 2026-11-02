@@ -158,7 +158,7 @@ export function BookingPickDialog({
             <p className="px-3 py-8 text-center text-sm text-[#44474c]">Chargement des réservations…</p>
           ) : failed ? (
             <p className="px-3 py-8 text-center text-sm text-[#44474c]">
-              Réservations indisponibles. Fermez et réessayez.
+              Dossiers indisponibles. Fermez et réessayez.
             </p>
           ) : !rows.length ? (
             <p className="px-3 py-8 text-center text-sm text-[#44474c]">Ce client n’a pas de réservation.</p>

@@ -23,7 +23,7 @@ Gmail labels → `crm_email_ingest` → suggestions, clic agence : skill `travel
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule. Un total `5,920.33` (virgule = milliers) vaut 5920.33, pas 920.33. `£` = GBP.
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets, ou le total déjà saisi si `amount_is_total`), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule. Un total `5,920.33` (virgule = milliers) vaut 5920.33, pas 920.33. `£` = GBP.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_internal`. L’import n’écrit jamais `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
@@ -95,7 +95,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 - « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
 - Email agence ≠ `customer_email`.
 
-Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
+Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`, Seychelles/Mahé `SEZ`, Dubaï `DXB`, Al Maktoum/World Central `DWC`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM. Dans la même réservation, l’arrivée d’un segment remplit le départ du suivant. Les deux codes connus retirent l’avertissement « codes IATA non imprimés ». Le titre du vol reste « ville → ville ».
 
 ## Hôtel
 

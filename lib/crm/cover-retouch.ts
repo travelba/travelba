@@ -29,57 +29,156 @@ export function catalogCachePath(photoId: string) {
   return `covers/catalog/${photoId}.webp`;
 }
 
-export function coverGeneratePrompt(place: string, country?: string) {
+const SKI_PLACES = new Set([
+  "valmorel",
+  "courchevel",
+  "meribel",
+  "val thorens",
+  "tignes",
+  "val d isere",
+  "les arcs",
+  "la plagne",
+  "chamonix",
+  "megeve",
+  "avoriaz",
+  "morzine",
+  "les gets",
+  "chatel",
+  "portes du soleil",
+  "flaine",
+  "alpe d huez",
+  "les deux alpes",
+  "serre chevalier",
+  "la clusaz",
+  "le grand bornand",
+  "la rosiere",
+  "valfrejus",
+  "les menuires",
+  "les sybelles",
+  "val cenis",
+  "zermatt",
+  "verbier",
+  "crans montana",
+  "saint moritz",
+  "st moritz",
+  "davos",
+  "gstaad",
+  "lech",
+  "kitzbuhel",
+  "cortina",
+  "cortina d ampezzo",
+  "sestriere",
+  "cervinia",
+  "courmayeur",
+  "aspen",
+  "whistler",
+  "niseko",
+]);
+
+const ALPINE_ADMIN =
+  /\b(savoie|haute savoie|isere|valais|tirol|tyrol|grisons|graubunden|vorarlberg|valle d aosta|trentino|tarentaise)\b/;
+const SMALL_PLACE = /village|hamlet|locality|isolated|peak|valley|neighbourhood|suburb/;
+
+function foldScene(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export type CoverSceneGeo = { state?: string | null; type?: string | null };
+
+/** Station de ski : hiver, chalets, pentes. Une ville de plaine reste une ville. */
+export function coverScene(place: string, geo?: CoverSceneGeo | null): "ski" | "place" {
+  const key = foldScene(place);
+  if (SKI_PLACES.has(key)) return "ski";
+  const state = foldScene(geo?.state || "");
+  const type = (geo?.type || "").toLowerCase();
+  if (state && ALPINE_ADMIN.test(state) && SMALL_PLACE.test(type)) return "ski";
+  return "place";
+}
+
+export function coverGeneratePrompt(place: string, country?: string, geo?: CoverSceneGeo | null) {
   const lieu = place.replace(/\s+/g, " ").trim().slice(0, 80) || "this city";
   const where = country?.trim() ? `${lieu}, ${country.trim()}` : lieu;
-  return [
+  const lines = [
     `Create a wide photograph of ${where} for a luxury travel magazine.`,
     "Show this exact place: its real landmarks, architecture, water or landscape, and local light.",
+  ];
+  if (coverScene(place, geo) === "ski") {
+    lines.push(
+      "This place is an alpine ski resort. Photograph it in winter: snow-covered mountains, wooden chalets, and ski slopes under a clear cold light.",
+      "Do not show a capital, a tower, a beach, or a city skyline."
+    );
+  }
+  lines.push(
     "Warm golden hour, rich natural color, crisp detail, elegant wide composition.",
     "Do not depict another city. Do not substitute the capital or a famous skyline from somewhere else.",
     "Do not show the Eiffel Tower, Notre-Dame, or a Paris street unless the place is Paris.",
     "People only as a small distant presence. No close-up faces.",
-    "No text, logos, watermarks, or frames.",
-  ].join(" ");
+    "No text, logos, watermarks, or frames."
+  );
+  return lines.join(" ");
 }
 
 export type CoverImageGenerator = (prompt: string, bytes: Buffer) => Promise<Buffer | null>;
 export type CoverPromptGenerator = (prompt: string) => Promise<Buffer | null>;
 
-async function defaultGenerate(prompt: string, bytes: Buffer) {
-  if (!aiGatewayConfigured()) return null;
-  const key = openaiApiKey();
-  const model = key
-    ? createOpenAI({ apiKey: key }).imageModel("gpt-image-1")
-    : gateway.imageModel("openai/gpt-image-1");
-  const result = await generateImage({
-    model,
-    prompt: { text: prompt, images: [bytes] },
-    size: "1536x1024",
-    maxRetries: 0,
-    abortSignal: AbortSignal.timeout(90_000),
-  });
-  const raw = result.image?.uint8Array;
-  if (!raw?.byteLength) return null;
-  return Buffer.from(raw);
+/**
+ * Modèles d’image OpenAI, du premier essayé au dernier.
+ * `gpt-image-1` n’est plus servi par la passerelle Vercel (« Model not found ») :
+ * la génération échouait en production et les vignettes restaient vides.
+ * `COVER_IMAGE_MODELS` (liste séparée par des virgules) remplace cette liste.
+ */
+const DEFAULT_IMAGE_MODEL_IDS = ["gpt-image-1.5", "gpt-image-1-mini"];
+
+export function coverImageModelIds(raw = process.env.COVER_IMAGE_MODELS) {
+  const listed = (raw || "")
+    .split(",")
+    .map((value) => value.trim().replace(/^openai\//i, ""))
+    .filter((value) => /^[a-z0-9][a-z0-9._-]{1,60}$/i.test(value));
+  return listed.length ? listed : [...DEFAULT_IMAGE_MODEL_IDS];
 }
 
-function cityImageModels() {
-  const models: Array<Parameters<typeof generateImage>[0]["model"]> = [];
+type ImageModel = Parameters<typeof generateImage>[0]["model"];
+
+/** Clé OpenAI directe d’abord, puis la passerelle Vercel. Chaque modèle de la liste, dans l’ordre. */
+export function coverImageModels(options?: { ids?: string[] }) {
+  const ids = options?.ids || coverImageModelIds();
+  const models: Array<{ label: string; model: ImageModel }> = [];
   const key = openaiApiKey();
-  if (key) models.push(createOpenAI({ apiKey: key }).imageModel("gpt-image-1"));
-  if (process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || process.env.VERCEL) {
-    models.push(gateway.imageModel("openai/gpt-image-1"));
+  const viaGateway = Boolean(
+    process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || process.env.VERCEL
+  );
+  if (key) {
+    const openai = createOpenAI({ apiKey: key });
+    for (const id of ids) models.push({ label: `openai:${id}`, model: openai.imageModel(id) });
+  }
+  if (viaGateway) {
+    for (const id of ids) {
+      models.push({ label: `gateway:openai/${id}`, model: gateway.imageModel(`openai/${id}`) });
+    }
   }
   return models;
 }
 
-async function defaultGenerateFromPrompt(prompt: string) {
+function describeError(err: unknown) {
+  const detail = err instanceof Error ? err.message : "error";
+  return detail.replace(/sk-\S+/g, "sk-REDACTED").slice(0, 240);
+}
+
+/** Un modèle après l’autre. Un modèle inconnu de la passerelle ne bloque pas le suivant. */
+async function generateWithModels(
+  tag: string,
+  prompt: Parameters<typeof generateImage>[0]["prompt"]
+) {
   if (!aiGatewayConfigured()) return null;
-  const models = cityImageModels();
+  const models = coverImageModels();
   if (!models.length) return null;
   let last: unknown = null;
-  for (const model of models) {
+  for (const { label, model } of models) {
     try {
       const result = await generateImage({
         model,
@@ -92,26 +191,41 @@ async function defaultGenerateFromPrompt(prompt: string) {
       if (raw?.byteLength) return Buffer.from(raw);
     } catch (err) {
       last = err;
+      console.error(tag, "modèle", label, describeError(err));
     }
   }
   if (last) throw last;
   return null;
 }
 
+async function defaultGenerate(prompt: string, bytes: Buffer) {
+  return generateWithModels("[cover-retouch]", { text: prompt, images: [bytes] });
+}
+
+async function defaultGenerateFromPrompt(prompt: string) {
+  return generateWithModels("[cover-generate]", prompt);
+}
+
 let lastCityCoverError = "";
 
-/** La clé ou la passerelle a refusé l’appel. Inutile de relancer tout le catalogue. */
+/**
+ * La clé, la passerelle ou le modèle a refusé l’appel.
+ * Inutile de relancer tout le catalogue tant que la configuration ne change pas.
+ */
 export function cityCoverAuthFailed(message = lastCityCoverError) {
-  return /incorrect api key|authentication failed|no authentication provided/i.test(message);
+  return /incorrect api key|authentication failed|no authentication provided|model '[^']*' not found/i.test(
+    message
+  );
 }
 
 /** Image nouvelle d’une ville, sans photo source. Un essai, puis un retry. */
 export async function generateCityCoverBytes(
   place: string,
   country?: string,
-  generate: CoverPromptGenerator = defaultGenerateFromPrompt
+  generate: CoverPromptGenerator = defaultGenerateFromPrompt,
+  geo?: CoverSceneGeo | null
 ) {
-  const prompt = coverGeneratePrompt(place, country);
+  const prompt = coverGeneratePrompt(place, country, geo);
   lastCityCoverError = "";
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -121,13 +235,10 @@ export async function generateCityCoverBytes(
         return next;
       }
     } catch (err) {
-      const detail = err instanceof Error ? err.message : "error";
+      const detail = describeError(err);
       lastCityCoverError = detail;
-      console.error(
-        "[cover-generate]",
-        attempt === 0 ? "retry" : "failed",
-        detail.replace(/sk-\S+/g, "sk-REDACTED").slice(0, 240)
-      );
+      console.error("[cover-generate]", attempt === 0 ? "retry" : "failed", detail);
+      if (cityCoverAuthFailed(detail)) break;
     }
   }
   return null;
@@ -145,12 +256,7 @@ export async function retouchCoverBytes(
       const next = await generate(prompt, bytes);
       if (next?.byteLength) return next;
     } catch (err) {
-      const detail = err instanceof Error ? err.message : "error";
-      console.error(
-        "[cover-retouch]",
-        attempt === 0 ? "retry" : "failed",
-        detail.replace(/sk-\S+/g, "sk-REDACTED").slice(0, 240)
-      );
+      console.error("[cover-retouch]", attempt === 0 ? "retry" : "failed", describeError(err));
     }
   }
   return null;

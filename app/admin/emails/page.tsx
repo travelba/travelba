@@ -1,45 +1,12 @@
-import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { EmailIngestInbox } from "@/components/admin/EmailIngestInbox";
-import { requireStaffPage } from "@/lib/crm/auth";
-import { sanitizeEmailHtml } from "@/lib/crm/email-source";
-import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest } from "@/lib/crm/types";
-import type { PickableCustomer } from "@/lib/crm/customer-search";
+import { redirect } from "next/navigation";
+import { firstParam, type SearchParamValue } from "@/lib/crm/admin-list";
+import { boiteHref, LEGACY_BOITE_ROUTES } from "@/lib/crm/boite-tabs";
 
-export const metadata = { title: "E-mails" };
-
-export default async function AdminEmailsPage() {
-  const { supabase } = await requireStaffPage();
-  const [{ data: rows }, { data: customers }] = await Promise.all([
-    supabase
-      .from("crm_email_ingest")
-      .select("*")
-      .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
-      .order("received_at", { ascending: false, nullsFirst: false }),
-    supabase
-      .from("crm_customers")
-      .select("id, first_name, last_name, company_name, email, phone")
-      .order("last_name"),
-  ]);
-
-  // Le corps manquant d’un mail se complète au cron gmail-ingest, pas pendant l’affichage (A-26).
-  const inbox = ((rows || []) as CrmEmailIngest[]).map((row) => ({
-    ...row,
-    body_html: sanitizeEmailHtml(row.body_html),
-  }));
-
-  return (
-    <div>
-      <PageEyebrow>Espace agence</PageEyebrow>
-      <PageTitle
-        title="E-mails"
-        subtitle="Mails fournisseurs lus sur la boîte agence. Rien n’est rattaché seul : choisissez le client ou le voyage. Le carnet reste invisible tant qu’il n’est pas publié."
-      />
-      <div className="mt-6">
-        <EmailIngestInbox
-          rows={inbox}
-          customers={(customers || []) as PickableCustomer[]}
-        />
-      </div>
-    </div>
-  );
+/** Ancienne page : l’onglet de la Boîte de réception la remplace. La requête est conservée. */
+export default async function LegacyPage({ searchParams }: { searchParams: Promise<Record<string, SearchParamValue>> }) {
+  const params = await searchParams;
+  const target = LEGACY_BOITE_ROUTES["/admin/emails"];
+  const kept: Record<string, string | null | undefined> = { ...target.params };
+  for (const [key, value] of Object.entries(params)) if (key !== "onglet") kept[key] = firstParam(value);
+  redirect(boiteHref(target.tab, kept));
 }

@@ -25,6 +25,7 @@ import {
 
 test("une page client a un libellé, un chemin étranger n’en a pas", () => {
   assert.equal(clientPathSummary("/mon-compte"), "A ouvert l’accueil");
+  assert.equal(clientPathSummary("/mon-compte/hotels"), "A ouvert les hôtels");
   assert.equal(clientPathSummary("/mon-compte/"), "A ouvert l’accueil");
   assert.equal(clientPathSummary("/mon-compte/profil/documents"), "A ouvert ses pièces");
   assert.equal(clientPathSummary("/mon-compte/reservations/TB-2026-0055"), "A ouvert le séjour TB-2026-0055");

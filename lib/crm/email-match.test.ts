@@ -10,7 +10,9 @@ import {
   lastNamesClose,
   mergeBookingSuggestions,
   referenceTokens,
+  HOTEL_STAY_REASON,
   suggestBookingByDestination,
+  suggestBookingByHotelStay,
   suggestBookingByReference,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
@@ -143,6 +145,29 @@ describe("suggestBookingByReference", () => {
     const res = suggestBookingByReference(extract, bookings, itemsByBooking);
     assert.equal(res.autoBookingId, "b2");
     assert.equal(res.candidates[0].reason, "Référence fournisseur");
+  });
+
+  it("prend 64570 et 64570SH046795 pour la même confirmation", () => {
+    const extract = extractWith({
+      items: [
+        {
+          kind: "hotel",
+          title: "Hôtel",
+          supplier: "Little Emperors",
+          confirmation_ref: "64570SH046795",
+          start_at: null,
+          end_at: null,
+          amount: null,
+          details: {},
+        },
+      ],
+    });
+    const res = suggestBookingByReference(
+      extract,
+      bookings,
+      new Map([["b1", [{ confirmation_ref: "64570" }]]])
+    );
+    assert.equal(res.autoBookingId, "b1");
   });
 
   it("ne suggère rien sans référence connue", () => {
@@ -788,5 +813,138 @@ describe("annulation extract", () => {
     assert.equal(alreadyReplaced.cancelBooking, false);
     assert.equal(alreadyReplaced.needsCardChoice, false);
     assert.deepEqual(alreadyReplaced.itemIds, []);
+  });
+});
+
+describe("suggestBookingByHotelStay", () => {
+  const nobu = {
+    id: "b1",
+    reference: "TB-1",
+    title: "Londres",
+    destination: "Londres",
+    customer_id: "c1",
+    status: "draft" as const,
+    start_date: "2026-11-02",
+    end_date: "2026-11-05",
+  };
+  const card = {
+    booking_id: "b1",
+    kind: "hotel",
+    title: "Nobu Hotel London Portman Square",
+    confirmation_ref: "HTL99881",
+    start_at: "2026-11-02",
+    end_at: "2026-11-05",
+    details: { hotel_name: "Nobu Hotel London Portman Square", le_hotel_id: 9626 },
+  };
+  const mail = extractWith({
+    document_status: "confirmed",
+    destination: "Londres",
+    start_date: "2026-11-02",
+    end_date: "2026-11-05",
+    customer_first_name: "Jean",
+    customer_last_name: "Martin",
+    items: [
+      {
+        kind: "hotel",
+        title: "Nobu Hotel London Portman Square",
+        supplier: "Little Emperors",
+        confirmation_ref: "LECONF88",
+        start_at: "2026-11-02",
+        end_at: "2026-11-05",
+        amount: null,
+        details: { hotel_name: "Nobu Hotel London Portman Square", le_hotel_id: 9626 },
+      },
+    ],
+  });
+
+  it("relie le dossier quand le numéro diffère mais l’hôtel, les dates et le voyageur sont les mêmes", () => {
+    const suggestion = suggestBookingByHotelStay(mail, [nobu], [card], customers);
+    assert.equal(suggestion.autoBookingId, "b1");
+    assert.equal(suggestion.candidates[0]?.reason, HOTEL_STAY_REASON);
+    assert.equal(suggestion.candidates[0]?.score, 91);
+    const decision = decideEmailIngestAction({
+      extract: mail,
+      suggestedCustomerId: "c1",
+      suggestedBookingId: suggestion.autoBookingId,
+      candidates: suggestion.candidates.map((row) => ({
+        customer_id: row.customer_id || "",
+        booking_id: row.booking_id,
+        label: row.label,
+        reason: row.reason,
+        score: row.score,
+      })),
+    });
+    assert.equal(decision.kind, "apply");
+  });
+
+  it("laisse en relecture deux dossiers du même séjour", () => {
+    const other = { ...nobu, id: "b2", reference: "TB-2" };
+    const suggestion = suggestBookingByHotelStay(
+      mail,
+      [nobu, other],
+      [card, { ...card, booking_id: "b2" }],
+      customers
+    );
+    assert.equal(suggestion.autoBookingId, null);
+    assert.equal(suggestion.candidates.length, 2);
+    const decision = decideEmailIngestAction({
+      extract: mail,
+      suggestedCustomerId: "c1",
+      suggestedBookingId: null,
+      candidates: suggestion.candidates.map((row) => ({
+        customer_id: row.customer_id || "",
+        booking_id: row.booking_id,
+        label: row.label,
+        reason: row.reason,
+        score: row.score,
+      })),
+    });
+    assert.equal(decision.kind, "review");
+  });
+
+  it("ignore un autre hôtel, d’autres dates ou un autre voyageur", () => {
+    const otherHotel = extractWith({
+      ...mail,
+      items: [
+        {
+          ...mail.items[0],
+          title: "Autre hôtel",
+          details: { hotel_name: "Autre hôtel", le_hotel_id: 4 },
+        },
+      ],
+    });
+    assert.equal(suggestBookingByHotelStay(otherHotel, [nobu], [card], customers).candidates.length, 0);
+    const otherDates = extractWith({
+      ...mail,
+      items: [{ ...mail.items[0], start_at: "2026-12-01", end_at: "2026-12-04" }],
+    });
+    assert.equal(suggestBookingByHotelStay(otherDates, [nobu], [card], customers).candidates.length, 0);
+    const otherPerson = extractWith({
+      ...mail,
+      customer_first_name: "Marie",
+      customer_last_name: "Dupont",
+    });
+    assert.equal(suggestBookingByHotelStay(otherPerson, [nobu], [card], customers).candidates.length, 0);
+    const lastOnly = extractWith({ ...mail, customer_first_name: "", customer_last_name: "Martin" });
+    assert.equal(suggestBookingByHotelStay(lastOnly, [nobu], [card], customers).candidates.length, 0);
+  });
+
+  it("reconnaît le voyageur sur la carte ou le nom d’usage", () => {
+    const guestCard = {
+      ...card,
+      details: { ...card.details, guests: "Jean Martin" },
+    };
+    const marieBooking = { ...nobu, customer_id: "c2" };
+    assert.equal(
+      suggestBookingByHotelStay(mail, [marieBooking], [guestCard], customers).autoBookingId,
+      "b1"
+    );
+    const usage = suggestBookingByHotelStay(
+      mail,
+      [nobu],
+      [card],
+      [{ id: "c1", first_name: "Jean", last_name: "Dupont", usage_name: "Martin", company_name: null, email: "" }]
+    );
+    assert.equal(usage.autoBookingId, "b1");
   });
 });

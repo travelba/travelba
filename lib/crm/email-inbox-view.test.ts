@@ -68,6 +68,7 @@ test("le mail Emirates n’affiche ni le choix de carte, ni la date deux fois, n
   const html = renderToStaticMarkup(
     createElement(EmailIngestInbox, {
       rows: [row],
+      initialOpenId: "mail-1",
       customers: [
         {
           id: "client-1",
@@ -87,6 +88,12 @@ test("le mail Emirates n’affiche ni le choix de carte, ni la date deux fois, n
   assert.match(html, /Sans objet/);
   assert.match(html, /n’est pas répété/);
   assert.match(html, /Total du billet, une fois pour ces vols/);
-  assert.match(html, /Rattacher au voyage/);
+  assert.match(html, /Déposer les pièces/);
+  assert.equal(html.includes("Mettre à jour les cartes"), false);
+  assert.equal(html.includes("Rattacher au voyage"), false);
+  assert.equal(html.includes("Ignorer"), false);
+  assert.equal(html.includes("Refuser"), false);
+  assert.match(html, /Classer/);
+  assert.match(html, /Aucune étape n’est créée ni modifiée/);
   assert.equal(html.split("Prix imprimé sur le document").length - 1, 1);
 });

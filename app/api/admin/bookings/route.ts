@@ -3,6 +3,7 @@ import { createBookingSchema, parseBody } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
 import { createStaffBooking, StaffWriteError } from "@/lib/crm/booking-create";
+import { stampBookingCreator } from "@/lib/crm/dossier-responsables";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export async function GET() {
@@ -30,6 +31,11 @@ export async function POST(request: Request) {
   try {
     // La RPC n’est plus exécutable par le rôle authenticated (B-14).
     const created = await createStaffBooking(auth.supabase, parsed.data, createServiceClient());
+    await stampBookingCreator(createServiceClient(), {
+      bookingId: created.booking.id,
+      staffId: auth.staff.id,
+      path: "/api/admin/bookings",
+    });
     return NextResponse.json({
       booking: created.booking,
       ...(created.ledgerWarning ? { ledger_warning: created.ledgerWarning } : {}),

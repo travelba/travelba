@@ -4,8 +4,11 @@
  * N’écrit aucun secret. Affiche chaque SID à coller dans l’env indiqué.
  * Si la variable est déjà définie, ce modèle n’est pas recréé.
  */
+import { boardingPassContentDrafts } from "../lib/crm/boarding-pass-whatsapp";
 import { conciergeContentDrafts } from "../lib/crm/concierge-notices";
 import { flightNoticeDrafts } from "../lib/crm/flight-watch";
+import { statementContentDrafts } from "../lib/crm/statement-whatsapp";
+import { tripShareContentDrafts } from "../lib/crm/trip-share-whatsapp";
 
 const CONTENT_URL = "https://content.twilio.com/v1/Content";
 
@@ -77,7 +80,13 @@ async function main() {
     return;
   }
 
-  for (const draft of [...conciergeContentDrafts(), ...flightNoticeDrafts()]) {
+  for (const draft of [
+    ...conciergeContentDrafts(),
+    ...flightNoticeDrafts(),
+    ...boardingPassContentDrafts(),
+    ...statementContentDrafts(),
+    ...tripShareContentDrafts(),
+  ]) {
     if (process.env[draft.env]?.trim()) {
       console.log(`${draft.env} est déjà défini. ${draft.friendlyName} n’est pas recréé.`);
       continue;

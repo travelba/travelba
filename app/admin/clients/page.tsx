@@ -1,5 +1,6 @@
 import { NewCustomerForm } from "@/components/admin/NewCustomerForm";
 import { ClientsTable } from "@/components/admin/ClientsTable";
+import { ClientsFilters } from "@/components/admin/ClientsFilters";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -28,7 +29,8 @@ export async function generateMetadata({
   searchParams: Promise<Record<string, SearchParamValue>>;
 }) {
   const params = await searchParams;
-  return { title: firstParam(params.pieces) === "echeance" ? "Pièces à échéance" : "Clients" };
+  const expiry = firstParam(params.pieces) === "echeance" || parseClientFilter(params.filtre) === "echeance";
+  return { title: expiry ? "Clients · Pièces à échéance" : "Clients" };
 }
 
 export default async function AdminClientsPage({
@@ -41,9 +43,10 @@ export default async function AdminClientsPage({
   const page = parsePage(params.page);
   const filter = parseClientFilter(params.filtre);
   const pattern = searchPattern(q);
+  // Ancien lien `?pieces=echeance` : la même vue, en filtre de la liste.
+  if (firstParam(params.pieces) === "echeance") redirect(listHref("/admin/clients", { q: q || null, filtre: "echeance" }));
   const { supabase } = await requireStaffPage();
-  const expiryOnly = firstParam(params.pieces) === "echeance";
-  if (expiryOnly) {
+  if (filter === "echeance") {
     const { data } = await supabase
       .from("crm_travel_documents")
       .select("id, customer_id, doc_type, expires_on")
@@ -64,15 +67,13 @@ export default async function AdminClientsPage({
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle
-          title="Pièces à échéance"
-          subtitle="Déjà expirées, puis celles qui expirent dans les 90 jours. Le nom ouvre la fiche."
-          actions={
-            <Link href="/admin/clients" className="text-sm font-semibold text-[var(--admin-navy)] underline">
-              Tous les clients
-            </Link>
-          }
+          title="Clients"
+          subtitle="Pièces à échéance : déjà expirées, puis celles qui expirent dans les 90 jours. Le nom ouvre la fiche."
         />
-        <section className="admin-af-card mt-6 overflow-hidden rounded-2xl">
+        <div className="mt-6">
+          <ClientsFilters q="" filtre={filter} revision="echeance" />
+        </div>
+        <section className="admin-af-card mt-4 overflow-hidden rounded-2xl">
           <ul className="divide-y divide-border text-sm">
             <li className="bg-[var(--admin-sky)]/50 px-5 py-2 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
               Déjà expirées

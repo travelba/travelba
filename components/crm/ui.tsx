@@ -21,14 +21,14 @@ export function BrandMark({
         </span>
         {subtitle ? (
           <span
-            className={`truncate font-display font-semibold leading-none text-[var(--admin-navy)] ${
+            className={`account-title truncate font-display font-semibold leading-none text-[var(--admin-navy)] ${
               compact ? "text-[15px]" : "text-lg"
             }`}
           >
             {subtitle}
           </span>
         ) : (
-          <span className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">
+          <span className="account-title font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">
             {siteConfig.shortName}
           </span>
         )}

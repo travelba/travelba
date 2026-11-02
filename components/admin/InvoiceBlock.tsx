@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusChip } from "@/components/crm/ui";
 import { formatMoney } from "@/lib/crm/money";
+import { mb3mInvoiceActionLabel, mb3mInvoiceChip, type Mb3mPreparationView } from "@/lib/crm/mb3m-prep";
 
 export type InvoiceBlockView = {
   number: string | null;
@@ -12,6 +13,7 @@ export type InvoiceBlockView = {
   /** Somme des factures imprimées, pour le contrôle avec les ventes au livre. */
   printedTotal: number | null;
   saleTotal: number | null;
+  preparation: Mb3mPreparationView;
 };
 
 /**
@@ -60,6 +62,7 @@ export function InvoiceBlock({
       } | null;
       if (!res.ok || !json?.number) {
         setError(json?.error || "La facture MB3M n’a pas abouti.");
+        router.refresh();
         return;
       }
       const message = json.printed
@@ -105,20 +108,22 @@ export function InvoiceBlock({
 
   const control =
     view.printedTotal == null || view.saleTotal == null ? null : Math.abs(view.printedTotal - view.saleTotal) < 0.005;
-  const stateLabel = view.marginStale
-    ? "Marge à corriger"
-    : view.printed
-      ? "Imprimée"
-      : view.number
-        ? "Pro forma"
-        : "À préparer";
-  const stateTone: "green" | "gold" | "red" | "sky" = view.marginStale
-    ? "red"
-    : view.printed
-      ? "green"
-      : view.number
-        ? "gold"
-        : "sky";
+  const chip = mb3mInvoiceChip({
+    marginStale: view.marginStale,
+    printed: view.printed,
+    number: view.number,
+    preparation: view.preparation.state,
+  });
+  const running = view.preparation.state === "running";
+  const failed = view.preparation.state === "failed";
+  const action = mb3mInvoiceActionLabel({
+    invoicing,
+    number: view.number,
+    resume: view.preparation.resume,
+    running,
+  });
+  const failedMessage =
+    failed && view.preparation.message && view.preparation.message !== reason ? view.preparation.message : null;
 
   return (
     <section className="admin-af-card space-y-3 rounded-3xl p-5">
@@ -132,9 +137,7 @@ export function InvoiceBlock({
             MB3M ; le grand livre ne change pas.
           </p>
         </div>
-        <StatusChip tone={stateTone}>
-          {view.number ? `${stateLabel} · n° ${view.number}` : stateLabel}
-        </StatusChip>
+        <StatusChip tone={chip.tone}>{view.number ? `${chip.label} · n° ${view.number}` : chip.label}</StatusChip>
       </div>
 
       {view.printed && view.marginStale ? (
@@ -157,11 +160,11 @@ export function InvoiceBlock({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={busy || Boolean(reason)}
+          disabled={busy || Boolean(reason) || running}
           onClick={() => void prepare()}
           className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50"
         >
-          {invoicing ? "Préparation…" : view.number ? "Mettre à jour la pro forma" : "Préparer la facture"}
+          {action}
         </button>
         {view.number ? (
           <a
@@ -183,8 +186,16 @@ export function InvoiceBlock({
             : `Factures imprimées ${formatMoney(view.printedTotal || 0, "EUR")} · ventes au livre ${formatMoney(view.saleTotal || 0, "EUR")}.`}
         </p>
       ) : null}
+      {running && view.preparation.message ? (
+        <p className="text-sm text-[var(--admin-navy)]">{view.preparation.message}</p>
+      ) : null}
       {note ? <p className="text-sm text-[var(--admin-navy)]">{note}</p> : null}
-      {error ? (
+      {failedMessage ? (
+        <p role="alert" className="text-sm text-[var(--admin-red)]">
+          {failedMessage}
+        </p>
+      ) : null}
+      {error && error !== failedMessage && error !== view.preparation.message ? (
         <p role="alert" className="text-sm text-[var(--admin-red)]">
           {error}
         </p>

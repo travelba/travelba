@@ -281,6 +281,7 @@ describe("carnet", () => {
     );
     if (!url) throw new Error("couverture attendue");
     assert.match(url, /^\/api\/covers\/photo-/);
+    assert.match(url, /[?&]w=800(?:&|$)/);
     assert.doesNotMatch(url, /unsplash/);
   });
 

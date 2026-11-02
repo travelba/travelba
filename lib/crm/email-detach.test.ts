@@ -289,6 +289,45 @@ describe("planEmailDetach", () => {
     assert.equal(plan.deleteBooking, false);
     assert.deepEqual(plan.itemIds, ["item-1"]);
   });
+
+  it("retire la pièce tamponnée par le mail sans retirer une carte déjà là", () => {
+    const plan = planEmailDetach(
+      input({
+        items: [
+          {
+            id: "item-old",
+            kind: "hotel",
+            title: "Andaz Papagayo",
+            confirmation_ref: "97620170",
+            start_at: "2026-11-02",
+            created_at: BEFORE,
+            details: { hotel_name: "Andaz Papagayo" },
+          },
+        ],
+        documents: [
+          {
+            id: "doc-mail",
+            file_name: "billet.pdf",
+            storage_path: "bookings/book-1/abc-billet.pdf",
+            created_at: BEFORE,
+            email_ingest_id: "mail-1",
+          },
+          {
+            id: "doc-other",
+            file_name: "autre.pdf",
+            storage_path: "bookings/book-1/autre.pdf",
+            created_at: BEFORE,
+            email_ingest_id: "mail-2",
+          },
+        ],
+        travelers: [],
+        arrivals: [],
+      })
+    );
+    assert.deepEqual(plan.itemIds, []);
+    assert.deepEqual(plan.documentIds, ["doc-mail"]);
+    assert.deepEqual(plan.storagePaths, ["bookings/book-1/abc-billet.pdf"]);
+  });
 });
 
 describe("withImportStamp", () => {

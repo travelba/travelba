@@ -58,6 +58,15 @@ test("la billeterie déjà en dépense ne se rajoute pas au prix", () => {
     }),
     125
   );
+  assert.equal(
+    chargeableTicketingFee({
+      items: [{ kind: "flight" }],
+      status: "draft",
+      travelerCount: 2,
+      feeMode: "ticketing_off",
+    }),
+    0
+  );
 });
 
 test("une copie au même libellé rejoint la ligne automatique, les autres sortent", () => {

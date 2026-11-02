@@ -28,7 +28,7 @@ export default async function ConciergeKnowledgePage() {
         />
       </div>
       <p className="text-sm">
-        <Link href="/admin/whatsapp" className="font-semibold underline-offset-2 hover:underline">
+        <Link href="/admin/boite?onglet=whatsapp" className="font-semibold underline-offset-2 hover:underline">
           Retour à la file WhatsApp
         </Link>
       </p>

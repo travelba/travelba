@@ -11,11 +11,14 @@ import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { HotelContactButton } from "@/components/crm/HotelContact";
+import { HotelReservationCard } from "@/components/crm/HotelReservationCard";
+import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
+import { hotelPhotos, hotelRoomLine } from "@/lib/crm/hotel-gallery";
 import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
 import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import {
-  documentsForItem,
+  documentsForItems,
   dayHeading,
   detailList,
   detailStr,
@@ -26,13 +29,14 @@ import {
   groupByDay,
   hotelCityLine,
   hotelDisplayName,
-  hotelRooms,
   hotelStayLabel,
   itemClock,
   itemPriceLabel,
   undatedTimeline,
 } from "@/lib/crm/carnet";
-import { itemTicketCount } from "@/lib/crm/item-match";
+import { flightLegLine, roundTripMate, roundTripPriceLabel, roundTripReturnIds } from "@/lib/crm/flight-roundtrip";
+import { statedTicketCount } from "@/lib/crm/item-match";
+import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import {
   accueilVipDayTitle,
   accueilVipLegOnDay,
@@ -43,6 +47,8 @@ import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-open";
 import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
+import { HotelFreeCancel } from "@/components/account/HotelFreeCancel";
+import type { ClientHotelCancelOffer } from "@/lib/crm/le-cancel-copy";
 import {
   bookingHasFlight,
   composeItineraryDay,
@@ -94,6 +100,11 @@ function CardBody({
   partage = null,
   pricesVisible = true,
   showPrice = true,
+  reference = null,
+  cancelOffer = null,
+  returnLeg = null,
+  returnCalendarHref = null,
+  stayItems = null,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -105,16 +116,24 @@ function CardBody({
   partage?: string | null;
   pricesVisible?: boolean;
   showPrice?: boolean;
+  reference?: string | null;
+  cancelOffer?: ClientHotelCancelOffer | null;
+  returnLeg?: CrmBookingItem | null;
+  returnCalendarHref?: string | null;
+  stayItems?: CrmBookingItem[] | null;
 }) {
-  const price = showPrice ? itemPriceLabel(item, currency, day, pricesVisible) : null;
+  const price = returnLeg && stayItems
+    ? roundTripPriceLabel(item, returnLeg, stayItems, currency, pricesVisible)
+    : showPrice
+      ? itemPriceLabel(item, currency, day, pricesVisible)
+      : null;
   const included = detailList(item, "included");
-  const rooms = hotelRooms(item);
   const iata = flightIata(item);
   const cities = flightCities(item);
   const flightTitle = item.kind === "flight" || item.kind === "rail" ? flightCardTitle(item) : "";
   const flightSubtitle =
     item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
-  const tickets = itemTicketCount(item);
+  const tickets = statedTicketCount(item) ?? 0;
   const vipLeg = item.kind === "accueil_vip" ? accueilVipLegOnDay(item, day) : null;
   const vipTitle = item.kind === "accueil_vip" ? accueilVipDayTitle(item, day || "") : "";
   const vipClock = vipLeg ? itemClock(vipLeg.at) : "";
@@ -136,11 +155,145 @@ function CardBody({
   const cabin = detailStr(item, "cabin");
   const airline = detailStr(item, "airline") || item.supplier || "";
   const city = detailStr(item, "city");
-  const board = detailStr(item, "board");
   const hotelName = item.kind === "hotel" ? hotelDisplayName(item) : "";
   const ticketTravelers =
     item.kind === "flight" || item.kind === "rail" ? ticketTravelerNames(item.details).join(", ") : "";
   const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
+  const photos = item.kind === "hotel" ? hotelPhotos(item) : [];
+  const checkInDay = (item.start_at || "").slice(0, 10);
+  const showGallery = photos.length > 0 && (!day || day === checkInDay);
+  const roomLine = item.kind === "hotel" ? hotelRoomLine(item, photos) : "";
+  const roomShown =
+    roomLine && roomLine.localeCompare(hotelName, "fr", { sensitivity: "accent" }) !== 0 ? roomLine : "";
+  const hotelKicker = [visibleServiceCopy(BOOKING_ITEM_LABELS.hotel), hotelCity].filter(Boolean).join(" · ");
+
+  const panel = (
+    <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
+      {item.kind === "flight" || item.kind === "rail" ? (
+        <>
+          {returnLeg ? <p className="text-xs font-semibold uppercase tracking-wide text-muted">Aller</p> : null}
+          {airline ? <p>{airline}</p> : null}
+          {detailStr(item, "flight_number") ? <p>{detailStr(item, "flight_number")}</p> : null}
+          {cities ? <p>{cities}</p> : null}
+          {iata ? <p>{iata}</p> : null}
+          {cabin ? <p>Classe {cabin}</p> : null}
+          {baggage ? <p>Bagages {baggage}</p> : null}
+          {seat ? <p>Siège {seat}</p> : null}
+          {gate ? <p>Porte {gate}</p> : null}
+          {terminal ? <p>Terminal {terminal}</p> : null}
+          {returnLeg ? (
+            <>
+              <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted">Retour</p>
+              <p>{flightLegLine(returnLeg)}</p>
+              {flightCardSubtitle(returnLeg) ? <p>{flightCardSubtitle(returnLeg)}</p> : null}
+            </>
+          ) : null}
+        </>
+      ) : null}
+      {item.kind === "hotel" ? (
+        <>
+          <HotelStayFacts item={item} />
+          {occupancy ? <p>{occupancy}</p> : null}
+          {special ? <p>Demandes : {special}</p> : null}
+        </>
+      ) : null}
+      {item.kind === "chauffeur" || item.kind === "greeter" ? (
+        <>
+          {detailStr(item, "pickup") ? <p>{detailStr(item, "pickup")}</p> : null}
+          {item.kind === "greeter" ? (
+            <p className="text-muted">
+              Accueil à la sortie chauffeur, enregistrement, sûreté, porte ou salon.
+            </p>
+          ) : (
+            <p className="text-muted">Trajet domicile ↔ aéroport, mis en place par l’agence.</p>
+          )}
+        </>
+      ) : null}
+      {item.kind === "transfer" ? (
+        <>
+          <p>
+            {[detailStr(item, "pickup"), detailStr(item, "dropoff")].filter(Boolean).join(" → ")}
+          </p>
+          {pickupNote ? <p>{pickupNote}</p> : null}
+        </>
+      ) : null}
+      {item.kind === "car" ? (
+        <p>
+          {[detailStr(item, "vehicle"), detailStr(item, "driver"), detailStr(item, "pickup"), detailStr(item, "dropoff")]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      ) : null}
+      {item.kind === "activity" || item.kind === "cruise" ? (
+        <>
+          <p>
+            {[detailStr(item, "meeting_point") || city, detailStr(item, "duration")].filter(Boolean).join(" · ")}
+          </p>
+          {included.length ? (
+            <ul className="list-disc pl-4 text-muted">
+              {included.map((row) => (
+                <li key={row}>{row}</li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : null}
+      {item.confirmation_ref ? (
+        <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
+      ) : null}
+      {cancelOffer && reference && item.kind === "hotel" ? (
+        <HotelFreeCancel
+          reference={reference}
+          free={cancelOffer.mode === "free"}
+          itemId={cancelOffer.itemId}
+          hotelName={cancelOffer.mode === "free" ? cancelOffer.hotelName : ""}
+          stayLabel={cancelOffer.mode === "free" ? cancelOffer.stayLabel : ""}
+          untilLabel={cancelOffer.mode === "free" ? cancelOffer.untilLabel : ""}
+        />
+      ) : null}
+      <div className="flex flex-wrap items-end gap-3">
+        {documentsForItems(returnLeg ? [item, returnLeg] : [item], docs).map((doc) => (
+          <FilePreviewTile
+            key={doc.id}
+            file={{
+              id: doc.id,
+              path: doc.storage_path,
+              fileName: doc.file_name || "document",
+              mimeType: doc.mime_type,
+              label: doc.id === item.source_document_id ? "Confirmation" : doc.file_name || "Pièce jointe",
+              shareText: "Bonjour, je vous transmets une pièce de la réservation.",
+              partage,
+            }}
+          />
+        ))}
+        {calendarHref ? (
+          <AgendaLink href={calendarHref} phone={calendarPhone}>
+            {returnLeg ? "Ajouter l’aller à l’agenda" : "Ajouter à l’agenda"}
+          </AgendaLink>
+        ) : null}
+        {returnLeg && returnCalendarHref ? (
+          <AgendaLink href={returnCalendarHref} phone={null}>
+            Ajouter le retour à l’agenda
+          </AgendaLink>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  if (showGallery) {
+    return (
+      <HotelReservationCard
+        photos={photos}
+        title={hotelName || item.title}
+        kicker={hotelKicker}
+        room={roomShown}
+        price={price}
+        item={withoutHotelRoster(item)}
+      >
+        {panel}
+      </HotelReservationCard>
+    );
+  }
 
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
@@ -152,6 +305,7 @@ function CardBody({
             {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)}
             {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
+            {returnLeg ? " · aller-retour" : ""}
             {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
             {watchLine ? ` · ${watchLine}` : ""}
           </p>
@@ -168,6 +322,9 @@ function CardBody({
             <>
               {flightSubtitle ? (
                 <p className="break-words text-xs leading-snug text-muted">{flightSubtitle}</p>
+              ) : null}
+              {returnLeg ? (
+                <p className="break-words text-xs leading-snug text-muted">Retour · {flightLegLine(returnLeg)}</p>
               ) : null}
               {ticketTravelers ? (
                 <p className="break-words text-xs leading-snug text-[var(--admin-navy)]">{ticketTravelers}</p>
@@ -201,106 +358,7 @@ function CardBody({
           </p>
         ) : null}
       </summary>
-      <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
-        {item.kind === "flight" || item.kind === "rail" ? (
-          <>
-            {airline ? <p>{airline}</p> : null}
-            {detailStr(item, "flight_number") ? <p>{detailStr(item, "flight_number")}</p> : null}
-            {cities ? <p>{cities}</p> : null}
-            {iata ? <p>{iata}</p> : null}
-            {cabin ? <p>Classe {cabin}</p> : null}
-            {baggage ? <p>Bagages {baggage}</p> : null}
-            {seat ? <p>Siège {seat}</p> : null}
-            {gate ? <p>Porte {gate}</p> : null}
-            {terminal ? <p>Terminal {terminal}</p> : null}
-          </>
-        ) : null}
-        {item.kind === "hotel" ? (
-          <>
-            {city ? <p>{city}</p> : null}
-            {board ? <p>{board}</p> : null}
-            {occupancy ? <p>{occupancy}</p> : null}
-            {rooms.map((room, index) => (
-              <p key={index} className="text-muted">
-                {[room.room, room.guests, room.confirmation_ref].filter(Boolean).join(" · ")}
-              </p>
-            ))}
-            {included.length ? (
-              <ul className="list-disc pl-4 text-muted">
-                {included.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : null}
-            {special ? <p>Demandes : {special}</p> : null}
-          </>
-        ) : null}
-        {item.kind === "chauffeur" || item.kind === "greeter" ? (
-          <>
-            {detailStr(item, "pickup") ? <p>{detailStr(item, "pickup")}</p> : null}
-            {item.kind === "greeter" ? (
-              <p className="text-muted">
-                Accueil à la sortie chauffeur, enregistrement, sûreté, porte ou salon.
-              </p>
-            ) : (
-              <p className="text-muted">Trajet domicile ↔ aéroport, mis en place par l’agence.</p>
-            )}
-          </>
-        ) : null}
-        {item.kind === "transfer" ? (
-          <>
-            <p>
-              {[detailStr(item, "pickup"), detailStr(item, "dropoff")].filter(Boolean).join(" → ")}
-            </p>
-            {pickupNote ? <p>{pickupNote}</p> : null}
-          </>
-        ) : null}
-        {item.kind === "car" ? (
-          <p>
-            {[detailStr(item, "vehicle"), detailStr(item, "driver"), detailStr(item, "pickup"), detailStr(item, "dropoff")]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        ) : null}
-        {item.kind === "activity" || item.kind === "cruise" ? (
-          <>
-            <p>
-              {[detailStr(item, "meeting_point") || city, detailStr(item, "duration")].filter(Boolean).join(" · ")}
-            </p>
-            {included.length ? (
-              <ul className="list-disc pl-4 text-muted">
-                {included.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : null}
-          </>
-        ) : null}
-        {item.confirmation_ref ? (
-          <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
-        ) : null}
-        <div className="flex flex-wrap items-end gap-3">
-          {documentsForItem(item, docs).map((doc) => (
-            <FilePreviewTile
-              key={doc.id}
-              file={{
-                id: doc.id,
-                path: doc.storage_path,
-                fileName: doc.file_name || "document",
-                mimeType: doc.mime_type,
-                label: doc.id === item.source_document_id ? "Confirmation" : doc.file_name || "Pièce jointe",
-                shareText: "Bonjour, je vous transmets une pièce de la réservation.",
-                partage,
-              }}
-            />
-          ))}
-          {calendarHref ? (
-            <AgendaLink href={calendarHref} phone={calendarPhone}>
-              Ajouter à l’agenda
-            </AgendaLink>
-          ) : null}
-        </div>
-      </div>
+      {panel}
     </details>
     {item.kind === "accueil_vip" && (clientInfo || hotline || providerMail || party) ? (
       <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3">
@@ -337,6 +395,7 @@ export function CarnetItinerary({
   refusals = [],
   partage = null,
   pricesVisible = true,
+  hotelCancels = [],
 }: {
   booking: PublicBooking;
   items: CrmBookingItem[];
@@ -348,6 +407,8 @@ export function CarnetItinerary({
   partage?: string | null;
   /** Faux : chaque ligne qui aurait un montant affiche « Prix à la publication ». */
   pricesVisible?: boolean;
+  /** Titulaire seulement. Absent de l’aperçu, du lien public et de l’exemple. */
+  hotelCancels?: ClientHotelCancelOffer[];
   refusals?: ServiceRefusal[];
   services?: {
     variant: "admin" | "client";
@@ -357,7 +418,8 @@ export function CarnetItinerary({
     whatsappHref?: string;
   } | null;
 }) {
-  const liveItems = items.filter((item) => isActiveItem(item));
+  const liveItems = completeFlightRoutes(items).filter((item) => isActiveItem(item));
+  const returnIds = roundTripReturnIds(liveItems);
   const days = groupByDay(liveItems);
   const undated = undatedTimeline(liveItems);
   const now = new Date();
@@ -467,9 +529,11 @@ export function CarnetItinerary({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
               {dayHeading(day)}
             </p>
-            {rows.map((row) =>
-              row.type === "item" ? (
-                coveredExtraIds.has(row.item.id) ? null : (
+            {rows.map((row) => {
+              if (row.type !== "item") return offerCard(row.offer);
+              if (coveredExtraIds.has(row.item.id) || returnIds.has(row.item.id)) return null;
+              const mate = roundTripMate(row.item, liveItems);
+              return (
                   <CardBody
                     key={`${row.item.id}-${day}`}
                     item={row.item}
@@ -486,12 +550,14 @@ export function CarnetItinerary({
                     partage={partage}
                     pricesVisible={pricesVisible}
                     showPrice={flightCountsInStay(row.item, items)}
+                    reference={booking.reference}
+                    cancelOffer={hotelCancels.find((offer) => offer.itemId === row.item.id) || null}
+                    returnLeg={mate}
+                    returnCalendarHref={mate ? itemHref(mate.id) : null}
+                    stayItems={liveItems}
                   />
-                )
-              ) : (
-                offerCard(row.offer)
-              )
-            )}
+              );
+            })}
           </div>
         ))}
         {undated.length ? (
@@ -499,7 +565,9 @@ export function CarnetItinerary({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
               Sans horaire
             </p>
-            {undated.map((item) => (
+            {undated.filter((item) => !returnIds.has(item.id)).map((item) => {
+              const mate = roundTripMate(item, liveItems);
+              return (
               <CardBody
                 key={item.id}
                 item={item}
@@ -510,8 +578,14 @@ export function CarnetItinerary({
                 pricesVisible={pricesVisible}
                 showPrice={flightCountsInStay(item, items)}
                 partage={partage}
+                reference={booking.reference}
+                cancelOffer={hotelCancels.find((offer) => offer.itemId === item.id) || null}
+                returnLeg={mate}
+                returnCalendarHref={mate ? itemHref(mate.id) : null}
+                stayItems={liveItems}
               />
-            ))}
+              );
+            })}
           </div>
         ) : null}
       </section>

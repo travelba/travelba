@@ -145,8 +145,11 @@ export { AGENCY_FEE_LABEL } from "./agency-fee-rate";
 export type CrmStaff = {
   id: string;
   auth_user_id: string;
-  role: "admin" | "agent" | "partner";
+  role: "admin" | "manager" | "agent" | "comptable" | "lecture" | "partner";
   full_name: string;
+  /** Faux : accès coupé, la ligne reste. Absent : accès ouvert (avant la migration). */
+  active?: boolean;
+  email?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -188,9 +191,19 @@ export type CrmCustomer = {
   /** Droit de dépense en euros sur le wallet société. Null = pas de plafond personnel. */
   spending_allowance?: number | null;
   language: string;
+  /** Le client a ouvert un lien WhatsApp. Sans cette date, aucun message proactif. */
+  whatsapp_opt_in_at?: string | null;
+  /** Le client a demandé l’arrêt. Les messages proactifs s’arrêtent. */
+  whatsapp_opt_out_at?: string | null;
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */
   on_hold?: boolean;
+  /** Réservation d’hôtels en autonomie. Faux par défaut. L’agence seule l’écrit. */
+  hotel_booking_enabled?: boolean;
+  /** Compte de démonstration : jamais de mode réel. */
+  hotel_demo?: boolean;
+  /** Envois réels (hôtel, carte, Stripe) pour ce client seulement. Défaut faux. */
+  hotel_direct_live?: boolean;
   /** Taux du compte : 0.1, 0.075 ou 0.05. Null = 10 %. */
   agency_fee_rate?: number | string | null;
   created_at: string;
@@ -209,6 +222,8 @@ export type CrmCompanion = {
   relationship: string | null;
   /** E.164. Absent : le lien du voyage reste copiable, WhatsApp ne part pas. */
   phone?: string | null;
+  /** Contact seulement. N’ouvre pas de compte. */
+  email?: string | null;
   /** Numéros de programmes (Flying Blue, Grand Voyageur, Great Members, …). */
   loyalty?: Record<string, string | null> | null;
   created_at: string;
@@ -255,6 +270,10 @@ export type CrmBooking = {
   fees_follow_stay?: boolean;
   /** True : l’agence a rangé les cartes autrement que par les dates. */
   items_order_custom?: boolean;
+  /** Collègue en charge. Null : le dossier reste « À prendre ». Absent avant la migration. */
+  owner_staff_id?: string | null;
+  /** Collègue qui a créé le dossier depuis l’espace agence. Null : inconnu (dossier antérieur, connecteur). */
+  created_by_staff_id?: string | null;
   reference: string;
   title: string;
   destination: string | null;
@@ -480,6 +499,10 @@ export type CrmHotelThreadMessage = {
   subject_key: string;
   direction: "out" | "in";
   from_email: string;
+  /** Destinataires du message. Vide tant que le fil n’a pas été relu. */
+  to_emails?: string[] | null;
+  /** Copies du message. */
+  cc_emails?: string[] | null;
   subject: string;
   body: string;
   link: string | null;
@@ -509,6 +532,10 @@ export type CrmBookingDocument = {
   mime_type: string | null;
   storage_path: string;
   visible_to_client: boolean;
+  /** Empreinte du fichier déposé depuis un mail. Vide pour les pièces plus anciennes. */
+  content_sha256?: string | null;
+  /** Mail dont cette pièce a été copiée. */
+  email_ingest_id?: string | null;
   created_at: string;
 };
 
@@ -643,9 +670,11 @@ export const EMAIL_INGEST_STATUSES = [
   "attached",
   "refused",
   "error",
+  "ignored",
+  "grouped",
 ] as const;
 
-/** File /admin/emails : tout ce qui n’a pas encore été traité par l’agence. */
+/** File Boîte de réception › Fournisseurs : tout ce qui n’a pas encore été traité par l’agence. */
 export const EMAIL_INBOX_QUEUE_STATUSES = [
   "received",
   "parsed",
@@ -722,6 +751,19 @@ export type CrmEmailIngest = {
   suggested_booking_id: string | null;
   created_booking_id: string | null;
   error: string | null;
+  /** Raison d’un mail classé ignoré, sans passage par le modèle. */
+  ignore_reason?: string | null;
+  /** Vrai si le mail répond à un envoi du CRM. Sert à la notification, pas à la file. */
+  crm_reply?: boolean | null;
+  /** Message du même fil déjà ouvert. La ligne ne s’affiche plus seule. */
+  grouped_into?: string | null;
+  /** Références lues (confirmation, PNR, Little Emperors). */
+  confirmation_refs?: string[] | null;
+  /** reference, email_dates, traveler_hotel_dates ou human. */
+  match_tier?: string | null;
+  /** Plus faible confiance des champs cités. 1 = certain. */
+  field_confidence?: number | null;
+  field_quotes?: { key: string; value: string; confidence: number; quote: string }[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -743,6 +785,12 @@ export type CrmCustomerActivity = {
   detail: string | null;
   path: string | null;
   booking_id: string | null;
+  /** Pièce téléchargée, quand le geste est un téléchargement. */
+  document_id?: string | null;
+  document_table?: "crm_booking_documents" | "crm_travel_documents" | null;
+  document_kind?: string | null;
+  /** Libellé sûr. Un passeport : « Passeport de <prénom> ». */
+  document_name?: string | null;
   created_at: string;
 };
 

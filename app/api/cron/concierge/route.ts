@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { flushConcierge } from "@/lib/crm/concierge-send";
+import { draftConciergeTouchpoints } from "@/lib/crm/concierge-touchpoint-run";
 import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { sendCatalogSamples } from "@/lib/crm/whatsapp-samples";
@@ -13,5 +14,9 @@ export async function GET(request: Request) {
   }
   const result = await flushConcierge();
   const samples = await sendCatalogSamples(createServiceClient()).catch(() => ({ skipped: "error" as const }));
-  return NextResponse.json({ ...result, samples });
+  const touchpoints = await draftConciergeTouchpoints(createServiceClient()).catch(() => {
+    console.error("[concierge] brouillons");
+    return { drafted: 0 };
+  });
+  return NextResponse.json({ ...result, samples, touchpoints });
 }

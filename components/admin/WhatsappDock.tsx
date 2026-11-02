@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { whatsappThreadHref } from "@/lib/crm/boite-tabs";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { WhatsappHoldButton } from "@/components/admin/WhatsappHoldButton";
 import { Icon } from "@/components/crm/icons";
+import { browserAlert } from "@/lib/crm/browser-alert";
 import { createClient } from "@/lib/supabase/client";
 import {
   applyDockMessage,
@@ -29,8 +31,9 @@ import {
 } from "@/lib/crm/whatsapp-dock";
 import {
   conversationBadge,
-  deliveryLabel,
+  deliveryCaption,
   filterThreads,
+  isVoiceNotePath,
   messageSpeaker,
   messagesNewestFirst,
   parisStamp,
@@ -41,6 +44,7 @@ import {
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
 import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
+import { VoiceNote } from "@/components/admin/VoiceNote";
 
 export function WhatsappDock({
   threads: initialThreads,
@@ -121,9 +125,7 @@ export function WhatsappDock({
     if (known || !booted.current || message.direction !== "inbound") return;
     setTabs((current) => inboundDockTabs(current, key, dockIsMobile()));
     chime();
-    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
-      new Notification("WhatsApp", { body: message.body.slice(0, 120) });
-    }
+    if (document.hidden) browserAlert("WhatsApp", message.body);
   }
 
   useEffect(() => {
@@ -164,6 +166,7 @@ export function WhatsappDock({
           created_at?: string;
           status?: string | null;
           template_key?: string | null;
+          media_path?: string | null;
         };
         if (!row?.id || !row.created_at) return;
         onArrive({
@@ -179,9 +182,31 @@ export function WhatsappDock({
           status: row.status || null,
           templateKey: row.template_key || null,
           authorName: null,
-          mediaPath: null,
+          mediaPath: row.media_path || null,
           tools: [],
           requestId: null,
+        });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "crm_whatsapp_messages" }, (payload) => {
+        const row = payload.new as {
+          id?: string;
+          phone?: string | null;
+          customer_id?: string | null;
+          status?: string | null;
+          error?: string | null;
+        };
+        if (!row?.id) return;
+        const key = (row.phone || "").trim() || row.customer_id || "";
+        if (!key) return;
+        setCache((current) => {
+          const list = current[key];
+          if (!list?.some((message) => message.id === row.id)) return current;
+          return {
+            ...current,
+            [key]: list.map((message) =>
+              message.id === row.id ? { ...message, status: row.status ?? message.status, error: row.error ?? null } : message
+            ),
+          };
         });
       })
       .subscribe();
@@ -199,6 +224,7 @@ export function WhatsappDock({
             if (!booted.current) continue;
             onTabs((current) => inboundDockTabs(current, thread.key, dockIsMobile()));
             chime();
+            if (document.hidden) browserAlert("WhatsApp", thread.lastBody);
           }
         })
         .catch(() => undefined);
@@ -677,7 +703,7 @@ function ChatPane({
       <div className={sheet ? "flex shrink-0 gap-3 px-3 text-sm" : "flex gap-2 px-3 py-1 text-[10px]"}>
         {thread.customerId ? <Link className={linkClass} href={`/admin/clients/${thread.customerId}`}>Fiche</Link> : null}
         {thread.bookingId ? <Link className={linkClass} href={`/admin/reservations/${thread.bookingId}?onglet=whatsapp`}>Dossier</Link> : null}
-        {thread.phone ? <Link className={linkClass} href={`/admin/whatsapp?fil=${encodeURIComponent(thread.phone)}`}>Fil complet</Link> : null}
+        {thread.phone ? <Link className={linkClass} href={whatsappThreadHref(thread.phone)}>Fil complet</Link> : null}
       </div>
       <div className={sheet ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-2 py-2" : "min-h-0 flex-1 space-y-2 overflow-y-auto px-2 py-2"}>
         {ordered.map((message) => {
@@ -690,12 +716,13 @@ function ChatPane({
           }
           const speaker = messageSpeaker(message);
           const mine = speaker !== "client";
+          const voice = isVoiceNotePath(message.mediaPath);
           return (
             <article key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[90%] rounded-2xl px-2.5 py-1.5 text-xs ${speaker === "client" ? "bg-white" : speaker === "agency" ? "bg-[#0B192C] text-white" : "bg-[#f7f1e6]"}`}>
+              <div className={`max-w-[90%] rounded-2xl px-2.5 py-1.5 text-xs ${voice ? "w-[min(100%,20rem)]" : ""} ${speaker === "client" ? "bg-white" : speaker === "agency" ? "bg-[#0B192C] text-white" : "bg-[#f7f1e6]"}`}>
                 <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{speakerLabel(speaker, message.authorName)}{speaker === "robot" ? " · robot" : ""}</p>
-                <p className="whitespace-pre-wrap">{message.body}</p>
-                <p className="mt-1 text-[10px] opacity-70">{parisStamp(message.createdAt)}{deliveryLabel(message.status) ? ` · ${deliveryLabel(message.status)}` : ""}</p>
+                {voice && message.mediaPath ? <VoiceNote path={message.mediaPath} text={message.body} /> : <p className="whitespace-pre-wrap">{message.body}</p>}
+                <p className="mt-1 text-[10px] opacity-70">{parisStamp(message.createdAt)}{deliveryCaption(message.status, message.error) ? ` · ${deliveryCaption(message.status, message.error)}` : ""}</p>
               </div>
             </article>
           );

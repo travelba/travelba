@@ -34,7 +34,7 @@ export function PliantAccountBalance({
   );
 }
 
-/** Toujours visible sur l’onglet Carte : le disponible du compte, pas le plafond d’une carte. */
+/** Toujours visible dans le bloc Carte Pliant de l’onglet Argent : le disponible du compte, pas le plafond d’une carte. */
 export function PliantAccountBalanceCard({
   account,
 }: {

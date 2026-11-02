@@ -317,7 +317,7 @@ export type TripAccountingState = "a_pointer" | "pointe" | "comptabilise";
 /**
  * À pointer : une sortie proposée attend, ou un coût n’a pas de vente.
  * Pointé : tout rattaché, facture préparée.
- * Comptabilisé : facture imprimée, marge à jour.
+ * Facturé : facture imprimée, marge à jour. (« Comptabilisé » ne désigne que la ligne du grand livre.)
  */
 export function tripAccountingState(input: {
   proposedCount: number;
@@ -334,7 +334,7 @@ export function tripAccountingState(input: {
 export const TRIP_ACCOUNTING_LABELS: Record<TripAccountingState, string> = {
   a_pointer: "À pointer",
   pointe: "Pointé",
-  comptabilise: "Comptabilisé",
+  comptabilise: "Facturé",
 };
 
 /**
@@ -651,7 +651,7 @@ export function round(value: number) {
   return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
 }
 
-/** Le bloc « Coûts du voyage » de l’onglet Règlement, et la lecture MCP. */
+/** Le bloc « Coûts du voyage » de l’onglet Argent, et la lecture MCP. */
 export type TripAccountingView = {
   lines: AccountedLine[];
   unsold: TripCost[];

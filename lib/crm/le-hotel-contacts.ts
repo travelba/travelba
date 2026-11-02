@@ -1,8 +1,11 @@
 import "server-only";
 
+import { applyHotelPresentation, catalogNameAgrees, presentationFromLeHotel } from "@/lib/crm/hotel-gallery";
+import { hotelRooms } from "@/lib/crm/carnet";
 import {
-  fetchLePublicHotel,
+  fetchLePublicHotelJson,
   leHotelIdFromItem,
+  hotelCatalogFromLePayload,
   rowsFromHotelCatalog,
   type HotelContactRow,
   type LeHotelCatalog,
@@ -15,18 +18,25 @@ export { peopleFromContactRows, rowsFromHotelCatalog, type HotelContactRow } fro
 async function writeContactsToHotelItems(
   admin: SupabaseClient,
   bookingId: string,
-  catalog: LeHotelCatalog
+  catalog: LeHotelCatalog,
+  payload: unknown
 ) {
   if (catalog.hotel_id == null) return;
   const { data: items } = await admin
     .from("crm_booking_items")
-    .select("id, details")
+    .select("id, kind, title, details")
     .eq("booking_id", bookingId)
     .eq("kind", "hotel");
   for (const item of items || []) {
     const details = { ...((item.details || {}) as Record<string, unknown>) };
     const itemHotelId = leHotelIdFromItem({ details });
     if (itemHotelId != null && itemHotelId !== catalog.hotel_id) continue;
+    const itemName = typeof details.hotel_name === "string" && details.hotel_name.trim()
+      ? details.hotel_name
+      : typeof item.title === "string"
+        ? item.title
+        : "";
+    if (!catalogNameAgrees(itemName, catalog.hotel_name || "")) continue;
     details.le_hotel_id = catalog.hotel_id;
     if (catalog.contacts.length) details.hotel_contacts = catalog.contacts;
     if (catalog.country && !details.country) details.country = catalog.country;
@@ -36,7 +46,11 @@ async function writeContactsToHotelItems(
     if (catalog.email && !details.email) details.email = catalog.email;
     if (catalog.phone && !details.phone) details.phone = catalog.phone;
     if (!details.source_family) details.source_family = "little_emperors";
-    await admin.from("crm_booking_items").update({ details }).eq("id", item.id);
+    const rooms = hotelRooms({ kind: "hotel", details } as never).map((room) => room.room);
+    const presented = payload
+      ? applyHotelPresentation({ kind: "hotel", details }, presentationFromLeHotel(payload, rooms))
+      : { details };
+    await admin.from("crm_booking_items").update({ details: presented.details }).eq("id", item.id);
   }
 }
 
@@ -56,9 +70,11 @@ export async function persistLittleEmperorsHotelContacts(opts: {
   fetchImpl?: typeof fetch;
 }): Promise<LeHotelCatalog | null> {
   let catalog = opts.catalog ?? null;
+  let payload: unknown = null;
   if (!catalog) {
     try {
-      catalog = await fetchLePublicHotel(opts.hotelId, opts.fetchImpl);
+      payload = await fetchLePublicHotelJson(opts.hotelId, opts.fetchImpl);
+      catalog = payload ? hotelCatalogFromLePayload(payload) : null;
     } catch {
       catalog = null;
     }
@@ -76,7 +92,14 @@ export async function persistLittleEmperorsHotelContacts(opts: {
   }
   if (opts.crmBookingId) {
     try {
-      await writeContactsToHotelItems(admin, opts.crmBookingId, catalog);
+      if (!payload) {
+        try {
+          payload = await fetchLePublicHotelJson(opts.hotelId, opts.fetchImpl);
+        } catch {
+          payload = null;
+        }
+      }
+      await writeContactsToHotelItems(admin, opts.crmBookingId, catalog, payload);
     } catch {
       return catalog;
     }

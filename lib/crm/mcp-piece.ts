@@ -6,7 +6,9 @@ import { DOC_TYPE_LABELS, isTravelAuthorization, type CrmBooking, type TravelDoc
 import { resolveNationality } from "@/lib/crm/countries";
 import { notifyFormalitiesReady, type FormalityAudience, type FormalityNotice, type FormalityRecipient } from "@/lib/crm/concierge-send";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
-import { uploadCrmFile } from "@/lib/crm/files";
+import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { BOARDING_PASS_KIND, isBoardingPassFile } from "@/lib/crm/boarding-pass-whatsapp";
+import { syncCheckinWithPasses } from "@/lib/crm/online-checkin-db";
 import {
   assertBookingForCustomer,
   assertTravelerOnBooking,
@@ -26,7 +28,9 @@ import { McpWriteError } from "./mcp-write";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_B64 = 4 * Math.ceil(MAX_UPLOAD_BYTES / 3);
 
-const DOC_TYPE_INPUT: Record<string, TravelDocType> = {
+export type PieceDocType = TravelDocType | "carte_embarquement";
+
+const DOC_TYPE_INPUT: Record<string, PieceDocType> = {
   visa: "visa",
   eta: "eta",
   eta_il: "eta",
@@ -43,7 +47,11 @@ const DOC_TYPE_INPUT: Record<string, TravelDocType> = {
   insurance: "insurance",
   autre: "other",
   other: "other",
+  carte_embarquement: "carte_embarquement",
+  carte_d_embarquement: "carte_embarquement",
 };
+
+const PIECE_TYPE_ERROR = "Type de pièce inconnu. visa, eta, passeport, carte_identite, assurance, autre ou carte_embarquement.";
 
 const KNOWN_WRITE = new Set([
   "Réservation introuvable",
@@ -65,7 +73,7 @@ export type PreparedPiece = {
   dossierId: string;
   reference: string;
   voyageurId: string;
-  docType: TravelDocType;
+  docType: PieceDocType;
   issuingCountry: string | null;
   number: string | null;
   expiresOn: string | null;
@@ -107,7 +115,7 @@ function optionalText(value: unknown, label: string, max: number) {
   return trimmed;
 }
 
-function pieceType(value: unknown): TravelDocType {
+function pieceType(value: unknown): PieceDocType {
   if (typeof value !== "string" || !value.trim()) throw new McpWriteError("Type de pièce requis.");
   const key = value
     .trim()
@@ -118,9 +126,7 @@ function pieceType(value: unknown): TravelDocType {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
   const docType = DOC_TYPE_INPUT[key];
-  if (!docType) {
-    throw new McpWriteError("Type de pièce inconnu. visa, eta, passeport, carte_identite, assurance ou autre.");
-  }
+  if (!docType) throw new McpWriteError(PIECE_TYPE_ERROR);
   return docType;
 }
 
@@ -509,6 +515,9 @@ export async function addTravelPiece(
     .maybeSingle();
   if (customerError) failDb(customerError, "Client introuvable.");
   if (!customer) throw new McpWriteError("Client introuvable.");
+  if (draft.docType === "carte_embarquement") {
+    return storeBoardingPass(db, target, draft, deps?.upload);
+  }
   let document: SavedPiece;
   try {
     await assertBookingForCustomer(db, target.customerId, target.booking?.id ?? null);
@@ -565,6 +574,182 @@ export async function addTravelPiece(
     notifie: notice.notifie,
     raison: notice.raison,
     destinataires: notice.destinataires,
+  };
+}
+
+const BOARDING_PASS_LABEL = "Carte d’embarquement";
+
+function boardingPassQuiet(reference: string) {
+  return {
+    notifie: false,
+    raison: "La carte d’embarquement ne part pas toute seule.",
+    destinataires: [] as FormalityRecipient[],
+    endroit: `Dossier ${reference} · cartes d’embarquement`,
+  };
+}
+
+/** PDF du dossier, même type que le bouton Cartes d’embarquement. Aucun WhatsApp. */
+async function storeBoardingPass(
+  db: SupabaseClient,
+  target: PieceTarget,
+  draft: PreparedPiece,
+  upload?: PieceUpload
+) {
+  if (!target.booking) throw new McpWriteError("La carte d’embarquement se dépose sur un dossier.");
+  if (!isBoardingPassFile({ kind: BOARDING_PASS_KIND, mime_type: draft.mimeType, file_name: draft.fileName })) {
+    throw new McpWriteError("La carte d’embarquement doit être un PDF.");
+  }
+  await assertBookingForCustomer(db, target.customerId, target.booking.id);
+  const path = `bookings/${target.booking.id}/${Date.now()}-${safeFileName(draft.fileName)}`;
+  await (upload ?? uploadCrmFile)(path, draft.bytes, draft.mimeType || "application/pdf");
+  const { data, error } = await db
+    .from("crm_booking_documents")
+    .insert({
+      booking_id: target.booking.id,
+      kind: BOARDING_PASS_KIND,
+      file_name: draft.fileName,
+      mime_type: draft.mimeType || "application/pdf",
+      storage_path: path,
+      visible_to_client: false,
+    })
+    .select("id, file_name")
+    .single();
+  if (error) failDb(error, "Enregistrement impossible.");
+  await syncCheckinWithPasses(db, target.booking.id, "bot");
+  const quiet = boardingPassQuiet(target.booking.reference);
+  return {
+    id: String(data?.id || ""),
+    client_id: target.customerId,
+    dossier_id: target.booking.id,
+    reference: target.booking.reference,
+    voyageur_id: null,
+    type: "carte_embarquement" as const,
+    libelle: BOARDING_PASS_LABEL,
+    pays: null,
+    fichier: draft.fileName,
+    endroit: quiet.endroit,
+    lien: `/mon-compte/reservations/${target.booking.reference}`,
+    lien_agence: `/admin/reservations/${target.booking.id}`,
+    notifie: quiet.notifie,
+    raison: quiet.raison,
+    destinataires: quiet.destinataires,
+  };
+}
+
+type TravelPieceRow = {
+  id: string;
+  booking_id: string | null;
+  doc_type: string;
+  file_name: string | null;
+  mime_type: string | null;
+  storage_path: string | null;
+};
+
+type BookingPieceRow = {
+  id: string;
+  booking_id: string;
+  kind: string;
+  file_name: string | null;
+  mime_type: string | null;
+  storage_path: string | null;
+};
+
+function pieceLabel(type: PieceDocType) {
+  if (type === "carte_embarquement") return BOARDING_PASS_LABEL;
+  return DOC_TYPE_LABELS[type];
+}
+
+/**
+ * Change le type d’une pièce déjà sur un dossier.
+ * `carte_embarquement` devient le PDF du dossier que l’envoi WhatsApp attend.
+ * Le fichier n’est pas recopié. Une pièce sans séjour n’est pas touchée.
+ */
+export async function requalifyPiece(input: Record<string, unknown>, admin?: SupabaseClient) {
+  const id = uuid(input.document_id, "Pièce");
+  const type = pieceType(input.type);
+  const db = client(admin);
+  const { data: bookingData, error: bookingError } = await db
+    .from("crm_booking_documents")
+    .select("id, booking_id, kind, file_name, mime_type, storage_path")
+    .eq("id", id)
+    .maybeSingle();
+  if (bookingError) failDb(bookingError, "Pièce introuvable.");
+  const bookingDoc = bookingData as BookingPieceRow | null;
+  if (bookingDoc) return requalifyBookingPiece(db, bookingDoc, type);
+
+  const { data: travelData, error: travelError } = await db
+    .from("crm_travel_documents")
+    .select("id, booking_id, doc_type, file_name, mime_type, storage_path")
+    .eq("id", id)
+    .maybeSingle();
+  if (travelError) failDb(travelError, "Pièce introuvable.");
+  const travelDoc = travelData as TravelPieceRow | null;
+  if (!travelDoc) throw new McpWriteError("Pièce introuvable.");
+  if (!travelDoc.booking_id) throw new McpWriteError("La pièce n’est pas liée à un séjour.");
+  if (type === "carte_embarquement") return moveTravelPieceToBoardingPass(db, travelDoc);
+  const { error } = await db
+    .from("crm_travel_documents")
+    .update({ doc_type: type })
+    .eq("id", travelDoc.id)
+    .eq("booking_id", travelDoc.booking_id);
+  if (error) failDb(error, "Requalification impossible.");
+  return pieceResult(travelDoc.id, travelDoc.booking_id, type, travelDoc.file_name);
+}
+
+async function requalifyBookingPiece(db: SupabaseClient, doc: BookingPieceRow, type: PieceDocType) {
+  if (!doc.booking_id) throw new McpWriteError("La pièce n’est pas liée à un séjour.");
+  if (type !== "carte_embarquement" && type !== "other") {
+    throw new McpWriteError("Cette pièce du dossier se requalifie en carte d’embarquement ou autre.");
+  }
+  const kind = type === "carte_embarquement" ? BOARDING_PASS_KIND : "other";
+  if (kind === BOARDING_PASS_KIND && !isBoardingPassFile({ kind, mime_type: doc.mime_type, file_name: doc.file_name })) {
+    throw new McpWriteError("La carte d’embarquement doit être un PDF.");
+  }
+  if (doc.kind !== kind) {
+    const { error } = await db
+      .from("crm_booking_documents")
+      .update({ kind })
+      .eq("id", doc.id)
+      .eq("booking_id", doc.booking_id);
+    if (error) failDb(error, "Requalification impossible.");
+  }
+  if (kind === BOARDING_PASS_KIND) await syncCheckinWithPasses(db, doc.booking_id, "bot");
+  return pieceResult(doc.id, doc.booking_id, type, doc.file_name);
+}
+
+async function moveTravelPieceToBoardingPass(db: SupabaseClient, doc: TravelPieceRow) {
+  const bookingId = doc.booking_id || "";
+  if (!doc.storage_path) throw new McpWriteError("La pièce n’a pas de fichier.");
+  if (!isBoardingPassFile({ kind: BOARDING_PASS_KIND, mime_type: doc.mime_type, file_name: doc.file_name })) {
+    throw new McpWriteError("La carte d’embarquement doit être un PDF.");
+  }
+  const { error: insertError } = await db.from("crm_booking_documents").insert({
+    id: doc.id,
+    booking_id: bookingId,
+    kind: BOARDING_PASS_KIND,
+    file_name: doc.file_name,
+    mime_type: doc.mime_type || "application/pdf",
+    storage_path: doc.storage_path,
+    visible_to_client: false,
+  });
+  if (insertError) failDb(insertError, "Requalification impossible.");
+  const { error: deleteError } = await db
+    .from("crm_travel_documents")
+    .delete()
+    .eq("id", doc.id)
+    .eq("booking_id", bookingId);
+  if (deleteError) failDb(deleteError, "Requalification impossible.");
+  await syncCheckinWithPasses(db, bookingId, "bot");
+  return pieceResult(doc.id, bookingId, "carte_embarquement", doc.file_name);
+}
+
+async function pieceResult(id: string, bookingId: string, type: PieceDocType, fileName: string | null) {
+  return {
+    id,
+    dossier_id: bookingId,
+    type: type === "carte_embarquement" ? "carte_embarquement" : type,
+    libelle: pieceLabel(type),
+    fichier: fileName,
   };
 }
 

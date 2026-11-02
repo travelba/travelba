@@ -61,7 +61,7 @@ export async function detachAttachedEmail(row: CrmEmailIngest) {
     admin.from("crm_booking_items").select("*").eq("booking_id", bookingId),
     admin
       .from("crm_booking_documents")
-      .select("id, file_name, storage_path, booking_item_id, created_at")
+      .select("id, file_name, storage_path, booking_item_id, created_at, email_ingest_id")
       .eq("booking_id", bookingId),
     admin
       .from("crm_booking_travelers")

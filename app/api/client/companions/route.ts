@@ -5,6 +5,7 @@ import { emptyToNull } from "@/lib/crm/identity";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 import { companionActivityDetail, companionActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
+import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { loyaltyPatchFromBody, normalizeLoyaltyMap } from "@/lib/crm/loyalty";
 
 function phonePatch(body: Record<string, unknown> | null) {
@@ -12,6 +13,15 @@ function phonePatch(body: Record<string, unknown> | null) {
   const stored = storedCompanionPhone(body.phone);
   if (!stored.ok) return null;
   return { phone: stored.phone };
+}
+
+function emailPatch(body: Record<string, unknown> | null) {
+  if (!body || !Object.prototype.hasOwnProperty.call(body, "email")) return {};
+  const raw = body.email;
+  if (raw == null || String(raw).trim() === "") return { email: null };
+  const email = normalizeCustomerEmail(String(raw));
+  if (customerEmailError(email)) return null;
+  return { email };
 }
 
 export async function GET() {
@@ -35,6 +45,8 @@ export async function POST(request: Request) {
   if (!first || !last) return jsonError("Nom et prénom requis");
   const phone = phonePatch(body || {});
   if (!phone) return jsonError("Téléphone invalide");
+  const email = emailPatch(body || {});
+  if (!email) return jsonError("Indiquez une adresse e-mail valide.");
   const { data, error } = await auth.supabase
     .from("crm_travel_companions")
     .insert({
@@ -47,6 +59,7 @@ export async function POST(request: Request) {
       nationality: resolveNationality(String(body?.nationality || "")),
       relationship: emptyToNull(body?.relationship),
       ...phone,
+      ...email,
       ...loyaltyPatchFromBody(body || {}),
     })
     .select("*")
@@ -62,6 +75,7 @@ export async function POST(request: Request) {
       birthDate: emptyToNull(body?.birth_date),
       nationality: resolveNationality(String(body?.nationality || "")),
       phone: "phone" in phone ? phone.phone : null,
+      email: "email" in email ? email.email : null,
       loyalty: normalizeLoyaltyMap(body?.loyalty),
     }),
   });
@@ -77,6 +91,8 @@ export async function PATCH(request: Request) {
   if (!id) return jsonError("id requis");
   const phone = phonePatch(body);
   if (!phone) return jsonError("Téléphone invalide");
+  const email = emailPatch(body);
+  if (!email) return jsonError("Indiquez une adresse e-mail valide.");
   const { data, error } = await auth.supabase
     .from("crm_travel_companions")
     .update({
@@ -88,6 +104,7 @@ export async function PATCH(request: Request) {
       nationality: resolveNationality(String(body.nationality || "")),
       relationship: emptyToNull(body.relationship),
       ...phone,
+      ...email,
       ...loyaltyPatchFromBody(body),
     })
     .eq("id", id)
@@ -108,6 +125,7 @@ export async function PATCH(request: Request) {
       birthDate: emptyToNull(data.birth_date),
       nationality: emptyToNull(data.nationality),
       phone: emptyToNull(data.phone),
+      email: emptyToNull(data.email),
       loyalty: normalizeLoyaltyMap(data.loyalty),
     }),
   });

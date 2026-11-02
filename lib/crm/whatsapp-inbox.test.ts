@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   approvedManualTemplates,
+  deliveryCaption,
   deliveryLabel,
   draftTemplateRefused,
   filterThreads,
@@ -76,6 +77,12 @@ test("le fil regroupe, marque le non-lu et distingue robot, agence et escalade",
   const found = filterThreads(threads, { query: "hôtel", filter: "prospects" });
   assert.equal(found.length, 1);
   assert.equal(deliveryLabel("read"), "Lu");
+  assert.equal(deliveryCaption("sent"), "Envoyé");
+  assert.equal(
+    deliveryCaption("failed", "Hors des 24 heures. WhatsApp refuse un message libre si la personne n’a pas écrit aujourd’hui."),
+    "Échec · Hors des 24 heures. WhatsApp refuse un message libre si la personne n’a pas écrit aujourd’hui."
+  );
+  assert.equal(deliveryCaption("undelivered"), "Échec");
   assert.equal(sessionWindowOpen("2026-10-20T08:00:00Z", new Date("2026-10-21T09:00:00Z")), false);
   assert.equal(sessionWindowOpen("2026-10-20T08:00:00Z", new Date("2026-10-20T20:00:00Z")), true);
   assert.equal(draftTemplateRefused("concierge_depart"), true);

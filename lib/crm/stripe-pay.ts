@@ -120,6 +120,7 @@ type IntentLike = {
 export function stripeCreditFromIntent(intent: IntentLike) {
   if (intent.status !== "succeeded" || !intent.id) return null;
   const metadata = intent.metadata || {};
+  if (metadata.purpose === "hotel_direct") return null;
   const customerId = metadata.crm_customer_id || "";
   const bookingId = (metadata.crm_booking_id || "").trim();
   const method = stayPayMethodOf(metadata.pay_method);

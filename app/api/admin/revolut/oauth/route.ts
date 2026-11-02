@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 
   if (denied) {
     // Refus ou annulation côté Revolut (access_denied…) : retour à l’écran, cookie effacé.
-    return clearState(NextResponse.redirect(new URL("/admin/revolut?error=oauth", url.origin)));
+    return clearState(NextResponse.redirect(new URL("/admin/argent?onglet=a-encaisser&error=oauth", url.origin)));
   }
 
   if (code) {
@@ -48,10 +48,10 @@ export async function GET(request: Request) {
     }
     try {
       await exchangeRevolutAuthCode(code);
-      return clearState(NextResponse.redirect(new URL("/admin/revolut?connected=1", url.origin)));
+      return clearState(NextResponse.redirect(new URL("/admin/argent?onglet=a-encaisser&connected=1", url.origin)));
     } catch (err) {
       console.error("[revolut/oauth]", err instanceof Error ? err.message : "échange impossible");
-      return clearState(NextResponse.redirect(new URL("/admin/revolut?error=oauth", url.origin)));
+      return clearState(NextResponse.redirect(new URL("/admin/argent?onglet=a-encaisser&error=oauth", url.origin)));
     }
   }
 

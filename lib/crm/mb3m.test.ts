@@ -8,8 +8,11 @@ import {
   mb3mAgencyNames,
   mb3mBlockedOnProduction,
   mb3mConfigured,
+  mb3mDefaultProviderId,
   mb3mFaultDetail,
+  mb3mOperationMessage,
   mb3mFindPersons,
+  linesXml,
   mb3mPartnerCode,
   mb3mPdfBytes,
   mb3mPieceState,
@@ -19,8 +22,11 @@ import {
   mb3mSaveFolder,
   mb3mSavePerson,
   mb3mSingleAgencyUid,
+  mb3mTicketingActivity,
   mb3mXmlText,
 } from "./mb3m";
+import { mb3mDossierLines } from "./mb3m-account";
+import { mb3mInvoiceLine } from "./mb3m-invoice";
 
 const previous = {
   user: process.env.MB3M_API_USER,
@@ -29,6 +35,8 @@ const previous = {
   prodUser: process.env.MB3M_PROD_API_USER,
   prodPassword: process.env.MB3M_PROD_API_PASSWORD,
   prodActivity: process.env.MB3M_PROD_ACTIVITY_ID,
+  provider: process.env.MB3M_PROVIDER_ID,
+  prodProvider: process.env.MB3M_PROD_PROVIDER_ID,
   vercel: process.env.VERCEL_ENV,
 };
 
@@ -39,6 +47,8 @@ afterEach(() => {
   restore("MB3M_PROD_API_USER", previous.prodUser);
   restore("MB3M_PROD_API_PASSWORD", previous.prodPassword);
   restore("MB3M_PROD_ACTIVITY_ID", previous.prodActivity);
+  restore("MB3M_PROVIDER_ID", previous.provider);
+  restore("MB3M_PROD_PROVIDER_ID", previous.prodProvider);
   restore("VERCEL_ENV", previous.vercel);
 });
 
@@ -49,8 +59,14 @@ function restore(name: string, value: string | undefined) {
 
 function arm() {
   delete process.env.VERCEL_ENV;
+  delete process.env.MB3M_PROVIDER_ID;
+  delete process.env.MB3M_PROD_PROVIDER_ID;
   process.env.MB3M_API_USER = "agent@partner";
   process.env.MB3M_API_PASSWORD = "secret-value";
+}
+
+function commissionTags(amount: number | string) {
+  return `<CommissionNetTotal>${amount}</CommissionNetTotal><CommissionTaxRate>0</CommissionTaxRate><CommissionTotal>${amount}</CommissionTotal>`;
 }
 
 describe("client MB3M Partners", () => {
@@ -179,6 +195,11 @@ describe("client MB3M Partners", () => {
       }
     );
     assert.ok(invoiceBody.includes("<Invoice><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
+    assert.ok(
+      invoiceBody.includes(
+        "<NetPriceUnit>100</NetPriceUnit><ProviderId>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</ProviderId><Quantity>1</Quantity>"
+      )
+    );
   });
 
   it("crée une fiche et lit l’identifiant renvoyé", async () => {
@@ -246,6 +267,34 @@ describe("client MB3M Partners", () => {
     );
   });
 
+  it("ajoute Details au message quand MB3M refuse la pièce", async () => {
+    arm();
+    const xml = `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FolderOperationResponse xmlns="http://schemas.mb3m.fr/Partners"><Message>Une erreur s'est produite durant l'enregistrement de la facture</Message><Details>Code interne -22 : Impossible de sauvegarder la pièce car une prestation de billetterie n'a pas de commission renseignée.</Details><ResultCode>-504</ResultCode></FolderOperationResponse></s:Body></s:Envelope>`;
+    assert.equal(
+      mb3mOperationMessage(xml),
+      "Une erreur s'est produite durant l'enregistrement de la facture — Code interne -22 : Impossible de sauvegarder la pièce car une prestation de billetterie n'a pas de commission renseignée."
+    );
+    await assert.rejects(
+      () =>
+        mb3mAddInvoice(
+          {
+            folderId: "22-AAAAAAA",
+            customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+            title: "Sonde",
+            lines: [{ label: "Vol", quantity: 1, netPriceUnit: 400, netPriceTotal: 400, activityId: 2, marginUnit: 0 }],
+          },
+          async () => new Response(xml)
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof Mb3mError);
+        assert.equal(error.resultCode, -504);
+        assert.match(error.message, /code interne -22/i);
+        assert.match(error.message, /billetterie/);
+        return true;
+      }
+    );
+  });
+
   it("place l’activité avant le libellé et garde le dernier numéro", async () => {
     arm();
     let body = "";
@@ -293,9 +342,198 @@ describe("client MB3M Partners", () => {
     );
     assert.ok(order.every((index) => index >= 0), hotel);
     assert.deepEqual(order, [...order].sort((left, right) => left - right));
+    assert.equal(hotel.includes("<CommissionNetTotal>"), false);
+    assert.equal(hotel.includes("<CommissionTotal>"), false);
     const flight = body.slice(body.lastIndexOf("<InvoiceLine>"));
     assert.equal(flight.includes("<MarginUnit>"), false);
     assert.equal(flight.includes("<Note>"), false);
+    assert.ok(flight.includes(`<ActivityId>2</ActivityId>${commissionTags(0.01)}<Label>Vol</Label>`), flight);
+  });
+
+  it("pose un ProviderId sur chaque ligne, le défaut d’environnement avant l’agence", () => {
+    const provider = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
+    const supplier = "11111111-2222-4333-8444-555555555555";
+    delete process.env.VERCEL_ENV;
+    delete process.env.MB3M_PROVIDER_ID;
+    const bare = linesXml("InvoiceLine", [{ label: "Hôtel", quantity: 1, netPriceUnit: 81, netPriceTotal: 81, activityId: 7 }]);
+    assert.equal(bare.includes("<ProviderId>"), false);
+    const fromAgency = linesXml(
+      "InvoiceLine",
+      [
+        { label: "Frais d’agence", quantity: 1, netPriceUnit: 0.01, netPriceTotal: 0.01, activityId: 22 },
+        { label: "Vol", quantity: 1, netPriceUnit: 0.01, netPriceTotal: 0.01, activityId: 2, note: "Fournisseur : AIR FRANCE" },
+      ],
+      provider
+    );
+    assert.equal(fromAgency.match(/<ProviderId>/g)?.length, 2);
+    assert.ok(fromAgency.includes(`<NetPriceUnit>0.01</NetPriceUnit><ProviderId>${provider}</ProviderId><Quantity>1</Quantity>`));
+    assert.ok(
+      fromAgency.includes(`<Note>Fournisseur : AIR FRANCE</Note><ProviderId>${provider}</ProviderId><Quantity>1</Quantity>`)
+    );
+    process.env.MB3M_PROVIDER_ID = supplier;
+    assert.equal(mb3mDefaultProviderId(), supplier);
+    const fromEnv = linesXml(
+      "InvoiceLine",
+      [{ label: "Hôtel", quantity: 1, netPriceUnit: 81, netPriceTotal: 81, activityId: 7, providerId: provider }],
+      "22222222-2222-4222-8222-222222222222"
+    );
+    assert.ok(fromEnv.includes(`<ProviderId>${provider}</ProviderId>`));
+    assert.equal(fromEnv.includes(supplier), false);
+    process.env.VERCEL_ENV = "preview";
+    process.env.MB3M_PROD_PROVIDER_ID = provider;
+    assert.equal(mb3mDefaultProviderId(), supplier);
+    process.env.VERCEL_ENV = "production";
+    delete process.env.MB3M_PROVIDER_ID;
+    assert.equal(mb3mDefaultProviderId(), provider);
+  });
+
+  it("renseigne CommissionTotal sur une billetterie, et sur l’avoir, dans l’ordre du schéma", () => {
+    const base = { quantity: 1, netPriceUnit: 400, netPriceTotal: 400 };
+    const air = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId: 2 }]);
+    assert.ok(air.includes(`<ActivityId>2</ActivityId>${commissionTags(0.01)}<Label>Vol</Label>`));
+    for (const commissionTotal of [0, null] as const) {
+      const fallback = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId: 2, commissionTotal }]);
+      assert.ok(fallback.includes(commissionTags(0.01)));
+    }
+    const priced = linesXml("InvoiceLine", [
+      { ...base, label: "Vol", activityId: 2, commissionTotal: 12.5, marginUnit: 12.5 },
+    ]);
+    const pricedAt = [
+      "<ActivityId>2",
+      "<CommissionNetTotal>12.5",
+      "<CommissionTaxRate>0",
+      "<CommissionTotal>12.5",
+      "<Label>Vol",
+      "<MarginUnit>12.5",
+      "<NetPriceTotal>400",
+      "<NetPriceUnit>400",
+      "<Quantity>1",
+      "<Type>Standard",
+    ].map((needle) => priced.indexOf(needle));
+    assert.ok(pricedAt.every((index) => index >= 0), priced);
+    assert.deepEqual(pricedAt, [...pricedAt].sort((left, right) => left - right));
+    const hotel = linesXml("InvoiceLine", [{ ...base, label: "Hôtel", activityId: 7 }]);
+    assert.equal(hotel.includes("<CommissionNetTotal>"), false);
+    assert.equal(hotel.includes("<CommissionTotal>"), false);
+    const hotelCommission = linesXml("InvoiceLine", [{ ...base, label: "Hôtel", activityId: 7, commissionTotal: 8 }]);
+    assert.ok(hotelCommission.includes(`<ActivityId>7</ActivityId>${commissionTags(8)}<Label>Hôtel</Label>`));
+    const credit = linesXml("CreditNoteLine", [{ ...base, label: "Avoir vol", activityId: 2 }]);
+    assert.ok(credit.includes(`<CreditNoteLine><ActivityId>2</ActivityId>${commissionTags(0.01)}<Label>Avoir vol</Label>`));
+    for (const activityId of [2, 5, 27]) assert.equal(mb3mTicketingActivity(activityId), true);
+    assert.equal(mb3mTicketingActivity(22), false);
+    assert.equal(mb3mTicketingActivity(7), false);
+  });
+
+  it("le train (activité 5) et le low cost (27) portent la commission ; Frais Billet (22) non", async () => {
+    process.env.VERCEL_ENV = "production";
+    const train = "11111111-1111-4111-8111-111111111111";
+    const fee = "22222222-2222-4222-8222-222222222222";
+    const booking = "33333333-3333-4333-8333-333333333333";
+    const account = mb3mDossierLines(
+      [
+        {
+          id: "tx-train",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 362,
+          label: "Train · Paris Est · Strasbourg",
+          external_id: `booking:${booking}:item:${train}`,
+          booking_id: booking,
+        },
+        {
+          id: "tx-fee",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 10,
+          label: "Dépense · Frais Billet",
+          external_id: `booking:${booking}:expense:${fee}`,
+          booking_id: booking,
+        },
+      ],
+      [
+        { id: train, kind: "rail" },
+        { id: fee, kind: "expense" },
+      ]
+    );
+    assert.deepEqual(
+      account.map((line) => [line.transactionId, line.activityId]),
+      [
+        ["tx-fee", 22],
+        ["tx-train", 5],
+      ]
+    );
+    const issued = account.map(mb3mInvoiceLine);
+    assert.equal(issued.find((line) => line.label.includes("Strasbourg"))?.activityId, 5);
+    assert.equal(issued.find((line) => line.label.includes("Frais Billet"))?.activityId, 22);
+    assert.equal(
+      issued.every((line) => line.commissionTotal == null),
+      true
+    );
+    const xml = linesXml("InvoiceLine", issued);
+    const feeXml = xml.slice(xml.indexOf("<InvoiceLine>"), xml.indexOf("</InvoiceLine>"));
+    const trainXml = xml.slice(xml.lastIndexOf("<InvoiceLine>"));
+    assert.ok(feeXml.includes("<ActivityId>22</ActivityId><Label>"), feeXml);
+    assert.equal(feeXml.includes("<CommissionNetTotal>"), false);
+    assert.equal(feeXml.includes("<CommissionTotal>"), false);
+    assert.ok(trainXml.includes(`<ActivityId>5</ActivityId>${commissionTags(0.01)}`), trainXml);
+    for (const activityId of [5, 27] as const) {
+      const credit = linesXml("CreditNoteLine", [
+        { label: "Avoir", quantity: 1, netPriceUnit: 10, netPriceTotal: 10, activityId },
+      ]);
+      assert.ok(credit.includes(`<CreditNoteLine><ActivityId>${activityId}</ActivityId>${commissionTags(0.01)}`));
+    }
+    arm();
+    let invoiceBody = "";
+    let creditBody = "";
+    const ok = (number: string, kind: "Invoice" | "CreditNote") =>
+      new Response(
+        `<FolderOperationResponse><ResultCode>1</ResultCode>${
+          kind === "Invoice"
+            ? `<Invoices><Invoice><Number>${number}</Number></Invoice></Invoices>`
+            : `<CreditNotes><CreditNote><Number>${number}</Number></CreditNote></CreditNotes>`
+        }</FolderOperationResponse>`
+      );
+    await mb3mAddInvoice(
+      {
+        folderId: "22-0000025",
+        customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+        title: "Sonde",
+        lines: issued,
+      },
+      async (_url, init) => {
+        invoiceBody = String(init?.body);
+        return ok("4542", "Invoice");
+      }
+    );
+    await mb3mAddCreditNote(
+      {
+        folderId: "22-0000025",
+        customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+        folderTitle: "Sonde",
+        folderType: "Prestation",
+        dateStart: "2026-11-01",
+        dateEnd: "2026-11-08",
+        title: "Avoir",
+        lines: issued,
+      },
+      async (_url, init) => {
+        creditBody = String(init?.body);
+        return ok("4543", "CreditNote");
+      }
+    );
+    for (const body of [invoiceBody, creditBody]) {
+      assert.ok(body.includes(`<ActivityId>5</ActivityId>${commissionTags(0.01)}`), body);
+      const feeSlice = body.slice(body.indexOf("<ActivityId>22</ActivityId>"), body.indexOf("<ActivityId>5</ActivityId>"));
+      assert.ok(feeSlice.includes("<Label>"), feeSlice);
+      assert.equal(feeSlice.includes("<CommissionNetTotal>"), false);
+      assert.equal(feeSlice.includes("<CommissionTotal>"), false);
+    }
+    const lowCost = linesXml("InvoiceLine", [
+      { label: "Low cost", quantity: 1, netPriceUnit: 80, netPriceTotal: 80, activityId: 27 },
+    ]);
+    assert.ok(lowCost.includes(`<ActivityId>27</ActivityId>${commissionTags(0.01)}<Label>Low cost</Label>`));
   });
 
   it("crée un avoir sur le dossier déjà ouvert", async () => {

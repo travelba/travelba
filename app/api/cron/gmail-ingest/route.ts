@@ -13,6 +13,8 @@ import {
   rematchStoredEmailIngest,
 } from "@/lib/crm/email-ingest";
 import { gmailConfigured } from "@/lib/crm/gmail";
+import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -109,6 +111,12 @@ export async function GET(request: Request) {
         err instanceof Error ? err.message : err
       );
     }
+    let hotelThreads = 0;
+    try {
+      hotelThreads = await refreshStaleHotelThreads(createServiceClient(), { limit: 6, budgetMs: 12000 });
+    } catch (err) {
+      console.error("[cron/gmail-ingest] hotel-threads", err instanceof Error ? err.message : err);
+    }
     return NextResponse.json({
       captured,
       backfill,
@@ -119,6 +127,7 @@ export async function GET(request: Request) {
       ...result,
       rematch,
       bodies,
+      hotelThreads,
     });
   } catch (err) {
     console.error("[cron/gmail-ingest]", err instanceof Error ? err.message : err);

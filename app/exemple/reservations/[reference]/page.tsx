@@ -22,9 +22,10 @@ import {
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
-import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
+import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
-import { isActiveItem, isLedgerExpenseKind } from "@/lib/crm/types";
+import { isActiveItem } from "@/lib/crm/types";
+import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { findVisaExtra, visaProposed } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -39,7 +40,7 @@ import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
-import { tripDocCoverage } from "@/lib/crm/trip-documents";
+import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { visaRequestShown } from "@/lib/crm/visa-flow";
 
@@ -56,8 +57,18 @@ export default async function ExampleReservationPage({ params }: Props) {
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
   const party = session.travelers;
-  const coverage = tripDocCoverage(party, session.documents);
-  const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
+  const holder = {
+    first_name: session.customer.first_name,
+    last_name: session.customer.last_name,
+    usage_name: session.customer.usage_name,
+    birth_date: session.customer.birth_date,
+  };
+  const missingCount = missingPassportCount(party, session.documents, {
+    holder,
+    companions: session.companions,
+    returnOn: b.end_date || b.start_date,
+  });
+  const missingPassports = missingCount > 0;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination, {
     title: b.title,
     homeCity: session.customer.city,
@@ -66,7 +77,6 @@ export default async function ExampleReservationPage({ params }: Props) {
   const labels = nextStayLabels(b.title, b.destination, visibleItems, "Séjour", session.customer.city);
   const headline = labels.title || "Séjour";
   const placeLine = tripPlaceLine(headline, labels.destination);
-  const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
   // Même formule que la page réelle : commission + billetterie + dépenses.
   const ticketCount = ticketingTicketCount({
@@ -77,9 +87,10 @@ export default async function ExampleReservationPage({ params }: Props) {
     items: session.items,
     status: b.status,
     travelerCount: party.length,
+    feeMode: b.fee_mode,
   });
   const expenseChoices = visibleItems
-    .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+    .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
     .map((item) => ({
       id: item.id,
       title: item.title,
@@ -87,10 +98,11 @@ export default async function ExampleReservationPage({ params }: Props) {
       agencyFee: !isAutoTicketingExpense(item),
     }));
   const feeExtras = agencyFeeExtraAmounts(session.items);
+  const stayTotal = bookingTotalFromItems(session.items);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
-    stayTotal: Number(b.total_amount),
+    stayTotal,
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
     extras: feeExtras,
@@ -202,17 +214,7 @@ export default async function ExampleReservationPage({ params }: Props) {
       }
       passports={
         <TripPassportGroup
-          rows={passportVaultRows(
-            party,
-            session.documents,
-            todayIsoDate(),
-            {
-              first_name: session.customer.first_name,
-              last_name: session.customer.last_name,
-              usage_name: session.customer.usage_name,
-            },
-            b
-          )}
+          rows={passportVaultRows(party, session.documents, todayIsoDate(), holder, b, session.companions)}
           hrefFor={() => `${EXAMPLE_BASE}/profil/documents`}
           passports={passportPreviewsForStay(party, session.documents, session.customer, b.reference)}
           missingHref={`${EXAMPLE_BASE}/profil/documents`}
@@ -234,7 +236,7 @@ export default async function ExampleReservationPage({ params }: Props) {
           </p>
           <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
             {clientStayPriceLabel({
-              stayTotal: Number(b.total_amount),
+              stayTotal,
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,

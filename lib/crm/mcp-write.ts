@@ -8,6 +8,15 @@ import {
   formatAgencyFeePercent,
 } from "@/lib/crm/agency-fee-rate";
 import { BookingIssuesError, collectPublishIssues } from "@/lib/crm/booking-issues";
+import { toAuditRow } from "@/lib/crm/audit-events";
+import { bookingCoverPlan, catalogCoverChoice, catalogPhotoFromPlan } from "@/lib/crm/covers";
+import {
+  classifyProvidedCover,
+  coverCreditText,
+  materializeProvidedCover,
+  providedCoverFailure,
+  type ProvidedCoverImage,
+} from "@/lib/crm/cover-provided";
 import {
   bookingMetaPatch,
   setCarnetPublished,
@@ -15,7 +24,7 @@ import {
   syncBookingTotalFromItems,
   syncInheritedAgencyFees,
 } from "@/lib/crm/bookings";
-import { upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
+import { deleteEmptyBillingCompany, upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
@@ -26,6 +35,8 @@ import { applyStripeToCustomer } from "@/lib/crm/stripe-match";
 import {
   EMAIL_INBOX_QUEUE_STATUSES,
   customerFullName,
+  isActiveItem,
+  isLedgerExpenseKind,
   type BookingStatus,
   type CrmBooking,
   type CrmBookingItem,
@@ -36,6 +47,10 @@ import {
 } from "@/lib/crm/types";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { attachOutgoing, TripCostError } from "@/lib/crm/trip-costs-db";
+import { patchStaffBookingCard } from "@/lib/crm/booking-item-write";
+import { readExpensePricing } from "@/lib/crm/expense-pricing";
+import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
+import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -172,9 +187,143 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     if ("error" in parsed) throw new McpWriteError(parsed.error);
     body.agency_fee_rate = parsed.rate;
   }
+  if ("titre" in input) {
+    const title = text(input.titre, "Titre", 200);
+    if (!title) throw new McpWriteError("Le titre est vide.");
+    body.title = title;
+  }
   const patch = bookingMetaPatch(body);
-  if (!Object.keys(patch).length) throw new McpWriteError("Rien à modifier.");
-  return { ...target, patch };
+  let cover: { clear: true } | { photo: string } | { image: ProvidedCoverImage; credit: string } | null = null;
+  if ("couverture" in input && input.couverture != null) {
+    if (typeof input.couverture !== "string") throw new McpWriteError("Couverture invalide.");
+    const provided = classifyProvidedCover(input.couverture);
+    if ("error" in provided) throw new McpWriteError(provided.error);
+    if (provided.kind === "catalog") {
+      const choice = catalogCoverChoice(input.couverture);
+      if ("error" in choice) throw new McpWriteError(choice.error);
+      cover = choice;
+      patch.cover_image_path = null;
+      patch.cover_credit = null;
+    } else {
+      const credit = coverCreditText(input.credit);
+      if ("error" in credit) throw new McpWriteError(credit.error);
+      const image: ProvidedCoverImage =
+        provided.source === "url"
+          ? { source: "url", url: provided.url }
+          : { source: "file", bytes: provided.bytes, mime: provided.mime };
+      cover = { image, credit: credit.credit };
+    }
+  }
+  let particulier = false;
+  let societeId = "";
+  if ("particulier" in input && input.particulier != null && input.particulier !== "") {
+    if (input.particulier !== true && input.particulier !== false) {
+      throw new McpWriteError("Particulier : vrai ou faux.");
+    }
+    particulier = input.particulier === true;
+  }
+  if ("societe_id" in input && input.societe_id != null && String(input.societe_id).trim() !== "") {
+    societeId = uuid(input.societe_id, "Société");
+  }
+  if (particulier && societeId) {
+    throw new McpWriteError("Un séjour particulier ne se facture pas à une société.");
+  }
+  const billing = particulier || societeId ? { particulier, societeId } : null;
+  if (!Object.keys(patch).length && !billing && !cover) throw new McpWriteError("Rien à modifier.");
+  return { ...target, patch, billing, cover };
+}
+
+export type ExpenseUpdateInput = {
+  carteId: string;
+  title?: string;
+  quantity?: number | string;
+  unitPrice?: number | string;
+  amount?: number | string;
+  /** true : valider (la dépense compte côté client) ; false : remettre à valider (cachée). */
+  validate?: boolean;
+};
+
+/** `depense` de mettre_a_jour_dossier : la ligne, puis libellé, quantité, prix unitaire ou montant. */
+export function prepareExpenseUpdate(input: unknown): ExpenseUpdateInput {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new McpWriteError("Dépense invalide.");
+  const row = input as Record<string, unknown>;
+  const out: ExpenseUpdateInput = { carteId: uuid(row.carte_id, "Dépense") };
+  if (row.libelle != null && row.libelle !== "") {
+    const title = text(row.libelle, "Libellé", 200);
+    if (!title) throw new McpWriteError("Le libellé est vide.");
+    out.title = title;
+  }
+  for (const [key, field] of [
+    ["quantite", "quantity"],
+    ["prix_unitaire", "unitPrice"],
+    ["montant", "amount"],
+  ] as const) {
+    const value = row[key];
+    if (value == null || value === "") continue;
+    if (typeof value !== "number" && typeof value !== "string") throw new McpWriteError(`${key} : un nombre.`);
+    out[field] = value;
+  }
+  if (row.valider != null && row.valider !== "") {
+    if (row.valider !== true && row.valider !== false) throw new McpWriteError("valider : vrai ou faux.");
+    out.validate = row.valider;
+  }
+  if (!out.title && out.quantity == null && out.unitPrice == null && out.amount == null && out.validate == null) {
+    throw new McpWriteError("Indiquez le libellé, la quantité, le prix unitaire, le montant ou valider.");
+  }
+  return out;
+}
+
+/**
+ * Corrige une dépense du dossier : quantité × prix unitaire donne le montant ; le montant seul
+ * recalcule le prix unitaire. Une dépense née d’une transaction Pliant garde son origine, et la
+ * transaction Pliant ne change pas. Le grand livre suit (un séjour caché ne débite pas).
+ */
+export async function updateBookingExpense(input: Record<string, unknown>, admin?: McpAdmin) {
+  const target = prepareCarnetTarget(input);
+  const depense = prepareExpenseUpdate(input.depense);
+  const db = client(admin);
+  const booking = await loadBooking(db, target);
+  const { data: current, error } = await db
+    .from("crm_booking_items")
+    .select("id, kind, lifecycle")
+    .eq("id", depense.carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  if (error) failDb(error, "Dépense introuvable.");
+  const row = current as { id: string; kind: string | null; lifecycle?: string | null } | null;
+  if (!row) throw new McpWriteError("Cette dépense n’est pas sur ce dossier.");
+  if (!isLedgerExpenseKind(row.kind)) throw new McpWriteError("Cette carte n’est pas une dépense : modifier_vol ou modifier_hotel.");
+  if (!isActiveItem(row)) throw new McpWriteError("Cette dépense est archivée.");
+  const body: Record<string, unknown> = {};
+  if (depense.title) body.title = depense.title;
+  if (depense.quantity != null) body.quantity = depense.quantity;
+  if (depense.unitPrice != null) body.unit_price = depense.unitPrice;
+  if (depense.amount != null) body.amount = depense.amount;
+  if (depense.validate != null) body.validate = depense.validate;
+  const saved = await patchStaffBookingCard(db, booking.id, depense.carteId, body);
+  if ("error" in saved) throw new McpWriteError(saved.error);
+  const item = saved.item as { id: string; title?: string | null; amount?: number | string | null; details?: unknown };
+  const amount = item.amount == null ? null : Number(item.amount);
+  const pricing = readExpensePricing(item.details, amount);
+  const origin = pliantExpenseOrigin(item.details, amount);
+  const awaiting = expenseAwaitsValidation({ kind: "expense", details: item.details });
+  return {
+    depense: {
+      carte_id: item.id,
+      dossier_id: booking.id,
+      reference: booking.reference,
+      libelle: item.title,
+      quantite: pricing.quantity,
+      prix_unitaire: pricing.unitPrice,
+      montant: pricing.amount,
+      a_valider: awaiting,
+      visible_client: !awaiting && booking.visible_to_client === true,
+      pliant: origin
+        ? { commercant: origin.merchant, date: origin.date, montant_pliant: origin.amount, montant_modifie: origin.edited }
+        : null,
+    },
+    ...(saved.ledgerWarning ? { avertissement: saved.ledgerWarning } : {}),
+  };
 }
 
 export function prepareServiceConfirm(input: Record<string, unknown>) {
@@ -185,10 +334,17 @@ export function prepareServiceConfirm(input: Record<string, unknown>) {
 }
 
 export function prepareEmailAction(input: Record<string, unknown>) {
-  const action = input.action === "rattacher" || input.action === "refuser" ? input.action : "";
+  const action =
+    input.action === "rattacher" ||
+    input.action === "mettre_a_jour" ||
+    input.action === "refuser" ||
+    input.action === "creer_dossier"
+      ? input.action
+      : "";
   if (!action) throw new McpWriteError("Action inconnue.");
   const id = uuid(input.id, "E-mail");
-  const dossierId = action === "rattacher" ? uuid(input.dossier_id, "Dossier") : "";
+  const dossierId =
+    action === "rattacher" || action === "mettre_a_jour" ? uuid(input.dossier_id, "Dossier") : "";
   return { action, id, dossierId };
 }
 
@@ -264,8 +420,12 @@ export function prepareClientUpdate(input: Record<string, unknown>) {
     if ("error" in parsed) throw new McpWriteError(parsed.error);
     patch.agency_fee_rate = agencyFeeRateColumn(parsed.rate);
   }
-  if (!Object.keys(patch).length && !company) throw new McpWriteError("Rien à modifier.");
-  return { id, patch, company };
+  const removeCompanyId =
+    input.supprimer_societe_id == null || input.supprimer_societe_id === ""
+      ? ""
+      : uuid(input.supprimer_societe_id, "Société");
+  if (!Object.keys(patch).length && !company && !removeCompanyId) throw new McpWriteError("Rien à modifier.");
+  return { id, patch, company, removeCompanyId };
 }
 
 async function loadBooking(admin: McpAdmin, target: { id: string; reference: string }) {
@@ -411,7 +571,7 @@ export async function matchRevolutExpense(input: Record<string, unknown>, admin?
   if (!stay) throw new McpWriteError(revolutExpenseError("booking_not_found"));
   if (!bookingBelongsToCustomer(stay, clientId)) throw new McpWriteError(revolutExpenseError("booking_not_for_customer"));
   try {
-    await attachOutgoing({ source: "revolut", sourceId: depenseId, bookingId: dossierId }, db);
+    await attachOutgoing({ source: "revolut", sourceId: depenseId, bookingId: dossierId, actor: { label: "mcp" } }, db);
   } catch (err) {
     if (err instanceof TripCostError) throw new McpWriteError(err.message);
     throw err;
@@ -447,7 +607,7 @@ export async function reconcilePliantDebit(input: Record<string, unknown>, admin
   if (!stay) throw new McpWriteError("Dossier introuvable.");
   let cost: Awaited<ReturnType<typeof attachOutgoing>>;
   try {
-    cost = await attachOutgoing({ source: "pliant", sourceId: mouvementId, bookingId: dossierId }, db);
+    cost = await attachOutgoing({ source: "pliant", sourceId: mouvementId, bookingId: dossierId, actor: { label: "mcp" } }, db);
   } catch (err) {
     if (err instanceof TripCostError) throw new McpWriteError(err.status === 409 ? "Déjà rapprochée." : err.message);
     throw err;
@@ -462,6 +622,8 @@ export async function reconcilePliantDebit(input: Record<string, unknown>, admin
       devise: "EUR",
       sens: cost.amountEur < 0 ? "credit" : "debit",
       source: "pliant",
+      /** Ligne Dépense du dossier créée (ou retrouvée) pour cette transaction ; null pour un remboursement. */
+      ligne_depense_id: cost.bookingItemId,
     },
   };
 }
@@ -550,13 +712,82 @@ export async function publishCarnet(input: Record<string, unknown>, admin?: McpA
   return { montre: true, id: booking.id, reference: booking.reference };
 }
 
+function coverPhotoId(booking: CrmBooking, items: { kind?: string | null; title?: string | null; start_at?: string | null; end_at?: string | null; sort_order?: number | null; details?: Record<string, unknown> | null }[]) {
+  const plan = bookingCoverPlan(booking, { items });
+  return catalogPhotoFromPlan(plan);
+}
+
 export async function updateBooking(input: Record<string, unknown>, admin?: McpAdmin) {
-  const { id, reference, patch } = prepareBookingUpdate(input);
+  const { id, reference, patch, billing, cover } = prepareBookingUpdate(input);
   const db = client(admin);
   const prev = await loadBooking(db, { id, reference });
+  const nextPatch = { ...patch };
+  type StayCoverItem = {
+    kind?: string | null;
+    title?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    sort_order?: number | null;
+    details?: Record<string, unknown> | null;
+  };
+  let stayItems: StayCoverItem[] | null = null;
+  async function readStayItems(strict: boolean) {
+    if (stayItems) return stayItems;
+    const { data: itemRows, error: itemsError } = await db
+      .from("crm_booking_items")
+      .select("kind, title, start_at, end_at, sort_order, details, lifecycle")
+      .eq("booking_id", prev.id);
+    if (itemsError) {
+      if (strict) failDb(itemsError, "Couverture non enregistrée.");
+      console.error("[mcp] cartes couverture", itemsError.code ?? "?");
+      stayItems = [];
+      return stayItems;
+    }
+    stayItems = (itemRows || []) as StayCoverItem[];
+    return stayItems;
+  }
+  if (cover && "image" in cover) {
+    try {
+      const stored = await materializeProvidedCover({ bookingId: prev.id, image: cover.image });
+      nextPatch.cover_image_path = stored.path;
+      nextPatch.cover_credit = cover.credit;
+    } catch (err) {
+      throw new McpWriteError(providedCoverFailure(err));
+    }
+  }
+  if (cover && "photo" in cover) {
+    const preview = {
+      ...prev,
+      ...(typeof nextPatch.title === "string" ? { title: nextPatch.title } : {}),
+      cover_image_path: null,
+      cover_credit: null,
+    } as CrmBooking;
+    const photo = coverPhotoId(preview, await readStayItems(true));
+    if (photo !== cover.photo) {
+      throw new McpWriteError(
+        photo
+          ? `La couverture de ce séjour est ${photo}. « catalogue » l’affiche.`
+          : "Ce séjour n’a pas encore de photo de catalogue."
+      );
+    }
+  }
+  if (billing?.particulier) {
+    nextPatch.payer_kind = "personal";
+    nextPatch.billing_company_id = null;
+  } else if (billing?.societeId) {
+    const { data: companyRows, error: companyError } = await db
+      .from("crm_billing_companies")
+      .select("id")
+      .eq("id", billing.societeId)
+      .eq("customer_id", prev.customer_id);
+    if (companyError) failDb(companyError, "Société introuvable.");
+    if (!(companyRows || []).length) throw new McpWriteError("Cette société n’est pas sur la fiche du client.");
+    nextPatch.payer_kind = "company";
+    nextPatch.billing_company_id = billing.societeId;
+  }
   const { data, error } = await db
     .from("crm_bookings")
-    .update(patch)
+    .update(nextPatch)
     .eq("id", prev.id)
     .select("*")
     .single();
@@ -570,10 +801,37 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     console.error("[mcp] livre", err instanceof Error ? err.message : "error");
     throw new McpWriteError("Le dossier est enregistré, mais le grand livre n’a pas pu être mis à jour.");
   }
-  const saved = (await db.from("crm_bookings").select("id, reference, status, visible_to_client, archived_at, start_date, end_date, notes_client, notes_internal").eq("id", booking.id).maybeSingle()).data as
-    | Pick<CrmBooking, "id" | "reference" | "status" | "visible_to_client" | "archived_at" | "start_date" | "end_date" | "notes_client" | "notes_internal">
+  const saved = (await db.from("crm_bookings").select("id, reference, title, destination, status, visible_to_client, archived_at, start_date, end_date, notes_client, notes_internal, payer_kind, billing_company_id, cover_image_path, cover_credit").eq("id", booking.id).maybeSingle()).data as
+    | Pick<
+        CrmBooking,
+        | "id"
+        | "reference"
+        | "title"
+        | "destination"
+        | "status"
+        | "visible_to_client"
+        | "archived_at"
+        | "start_date"
+        | "end_date"
+        | "notes_client"
+        | "notes_internal"
+        | "payer_kind"
+        | "billing_company_id"
+        | "cover_image_path"
+        | "cover_credit"
+      >
     | null;
   const row = saved || booking;
+  let societe: string | null = null;
+  if (row.billing_company_id) {
+    const { data: company } = await db
+      .from("crm_billing_companies")
+      .select("company_name")
+      .eq("id", row.billing_company_id)
+      .maybeSingle();
+    societe = (company as { company_name?: string | null } | null)?.company_name || null;
+  }
+  const factureSociete = row.payer_kind === "company" || Boolean(row.billing_company_id);
   let commission_agence = "10 %";
   let commission_source: "dossier" | "compte" | "defaut" = "defaut";
   try {
@@ -583,9 +841,40 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
   } catch (err) {
     console.error("[mcp] commission", err instanceof Error ? err.message : "error");
   }
+  const titleChanged = (prev.title || "") !== (row.title || "");
+  const imageCover = Boolean(cover && "image" in cover);
+  const coverChanged =
+    imageCover || (Boolean(cover) && (prev.cover_image_path || "") !== (row.cover_image_path || ""));
+  const coverItems = await readStayItems(false);
+  if (titleChanged || coverChanged) {
+    const photo = coverPhotoId(row as CrmBooking, coverItems);
+    const { error: auditError } = await db.from("crm_audit_events").insert(
+      toAuditRow({
+        actorKind: "auto",
+        action: "titre_couverture",
+        bookingId: row.id,
+        customerId: booking.customer_id,
+        summary: "Titre ou couverture du dossier",
+        detail: {
+          reference: row.reference,
+          ...(titleChanged ? { titre_avant: prev.title, titre_apres: row.title } : {}),
+          ...(coverChanged
+            ? imageCover
+              ? { couverture: "image", credit: cover && "image" in cover ? cover.credit : null }
+              : { couverture: photo, import_retire: true }
+            : {}),
+        },
+      })
+    );
+    if (auditError) console.error("[mcp] journal titre", auditError.code ?? "?");
+  }
+  const shownPhoto = coverPhotoId(row as CrmBooking, coverItems);
   return {
     id: row.id,
     reference: row.reference,
+    titre: row.title,
+    couverture: row.cover_image_path ? null : shownPhoto,
+    credit: row.cover_credit,
     statut: staffStayLabel(row),
     date_depart: row.start_date,
     date_retour: row.end_date,
@@ -593,6 +882,9 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     notes_internes: row.notes_internal,
     commission_agence,
     commission_source,
+    paye_par: factureSociete ? ("société" as const) : ("particulier" as const),
+    societe: factureSociete ? societe : null,
+    societe_id: factureSociete ? row.billing_company_id || null : null,
   };
 }
 
@@ -639,6 +931,10 @@ export async function confirmService(input: Record<string, unknown>, admin?: Mcp
 
 export async function settleEmail(input: Record<string, unknown>, admin?: McpAdmin) {
   const action = prepareEmailAction(input);
+  if (action.action === "creer_dossier") {
+    const { createDossierFromEmail } = await import("@/lib/crm/mcp-email");
+    return createDossierFromEmail(input, admin);
+  }
   const db = client(admin);
   const { data, error } = await db.from("crm_email_ingest").select("*").eq("id", action.id).maybeSingle();
   if (error) failDb(error, "E-mail introuvable.");
@@ -652,44 +948,48 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
     if (updateError) failDb(updateError, "E-mail non traité.");
     return { id: row.id, statut: "refused" as const };
   }
-  if (!row.extract) throw new McpWriteError("Extrait introuvable.");
   const booking = await loadBooking(db, { id: action.dossierId, reference: "" });
-  const { parseExtractPayloadSafe, isCancellationExtract } = await import("@/lib/crm/ingest-types");
-  const { loadEmailIngestFiles } = await import("@/lib/crm/email-ingest");
-  const { applyCancellationToBooking, applyReplacementToBooking } = await import("@/lib/crm/ingest-booking");
-  const extract = parseExtractPayloadSafe(row.extract);
-  const files = await loadEmailIngestFiles(row);
+  const { depositEmailAttachments, markEmailAttached, attachFilesSummary, resolveEmailCardId } = await import(
+    "@/lib/crm/email-attach-run"
+  );
+  const { parseExtractPayloadSafe } = await import("@/lib/crm/ingest-types");
+  const extract = row.extract ? parseExtractPayloadSafe(row.extract) : null;
+  let cardId: string | null = null;
   try {
-    if (isCancellationExtract(extract)) {
-      await applyCancellationToBooking({
-        bookingId: booking.id,
-        customerId: booking.customer_id,
-        extract,
-        files,
-        visibleToClient: false,
-        itemId: null,
-      });
-    } else {
-      await applyReplacementToBooking({
-        bookingId: booking.id,
-        customerId: booking.customer_id,
-        extract,
-        files,
-        visibleToClient: false,
-        applyStayFields: false,
-        emailIngestId: row.id,
-        replaceItemId: null,
-      });
-    }
+    cardId = await resolveEmailCardId(db, booking.id, extract);
   } catch (err) {
     raise(err, "E-mail non traité.");
   }
-  const { error: attachedError } = await db
-    .from("crm_email_ingest")
-    .update({ status: "attached", created_booking_id: booking.id })
-    .eq("id", row.id);
-  if (attachedError) failDb(attachedError, "E-mail non traité.");
-  return { id: row.id, statut: "attached" as const, dossier_id: booking.id };
+  if (action.action === "rattacher" || action.action === "mettre_a_jour") {
+    let deposited;
+    try {
+      deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments, cardId);
+    } catch (err) {
+      raise(err, "E-mail non traité.");
+    }
+    const message = attachFilesSummary(deposited, Boolean(cardId));
+    try {
+      await markEmailAttached(db, row, {
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        actorId: null,
+        summary: message,
+        cards: false,
+      });
+    } catch (err) {
+      raise(err, "E-mail non traité.");
+    }
+    return {
+      id: row.id,
+      statut: "attached" as const,
+      dossier_id: booking.id,
+      pieces: deposited.added,
+      sans_piece: deposited.empty,
+      carte_id: cardId,
+      cartes: false as const,
+    };
+  }
+  throw new McpWriteError("Action inconnue.");
 }
 
 export async function createClient(input: Record<string, unknown>, admin?: McpAdmin) {
@@ -731,7 +1031,7 @@ export async function createClient(input: Record<string, unknown>, admin?: McpAd
 }
 
 export async function updateClient(input: Record<string, unknown>, admin?: McpAdmin) {
-  const { id, patch, company } = prepareClientUpdate(input);
+  const { id, patch, company, removeCompanyId } = prepareClientUpdate(input);
   const db = client(admin);
   const { data: current, error: currentError } = await db
     .from("crm_customers")
@@ -783,6 +1083,16 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     if ("error" in result) throw new McpWriteError(result.error);
     saved = result.company;
   }
+  let societeRetiree = false;
+  if (removeCompanyId) {
+    const removed = await deleteEmptyBillingCompany(db, id, removeCompanyId);
+    if ("error" in removed) throw new McpWriteError(removed.error);
+    societeRetiree = true;
+    const refreshed = await db.from("crm_customers").select("company_name").eq("id", id).maybeSingle();
+    if (!refreshed.error && refreshed.data) {
+      row = { ...row, company_name: (refreshed.data as { company_name?: string | null }).company_name ?? null };
+    }
+  }
   if ("agency_fee_rate" in patch) {
     try {
       await syncInheritedAgencyFees(db, id);
@@ -806,6 +1116,7 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     societe_id: saved?.id ?? null,
     siret: saved?.siret ?? null,
     tva: saved?.vat_number ?? null,
+    societe_retiree: societeRetiree,
     commission_agence,
   };
 }

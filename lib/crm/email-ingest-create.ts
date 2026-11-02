@@ -4,6 +4,7 @@ import {
   STRONG_BOOKING_SCORE,
   blocksSecondDossier,
   decideEmailIngestAction,
+  proposesAddToDossier,
   usableCustomerEmail,
   type EmailIngestDecision,
 } from "@/lib/crm/email-match";
@@ -18,6 +19,7 @@ import {
   replacementPlan,
   type LifecycleCard,
 } from "@/lib/crm/item-lifecycle";
+import { canAutoApply } from "@/lib/crm/import-proposal";
 import { countsAsCarnetCard, type EmailIngestCandidate } from "@/lib/crm/types";
 
 /** Domaines fournisseur : jamais une adresse de compte client. */
@@ -35,6 +37,8 @@ export const AUTO_CREATE_HOLDS = {
   quote: "Devis : le dossier n’est pas créé automatiquement.",
   thin: "Création automatique en attente : il manque une carte ou une date.",
   same_stay: "Même client, même destination : le dossier n’est pas créé. Remplacez la carte sur le séjour existant.",
+  overlap: "Ce client a déjà un dossier sur ces dates. Ajouter au dossier.",
+  low_confidence: "Confiance insuffisante, ou pas de numéro de confirmation : la file attend.",
 } as const;
 
 export const AUTO_STAY_NOTE = "Itinéraire mis à jour depuis le mail.";
@@ -54,6 +58,8 @@ export type AutoCreateRow = {
   suggested_customer_id?: string | null;
   suggested_booking_id?: string | null;
   candidates?: EmailIngestCandidate[] | null;
+  /** Présent quand le mail a été noté. Absent : l’ancien rapprochement unique reste. */
+  field_confidence?: number | null;
 };
 
 export type AutoCreateHandlers = {
@@ -164,9 +170,21 @@ export function autoCreatePlan(input: {
   fromEmail?: string | null;
   candidates?: EmailIngestCandidate[] | null;
   items?: LifecycleCard[] | null;
+  /** Quand il est noté : on n’applique que sur une référence, à 0,9 ou plus, sans conflit. */
+  confidence?: number | null;
 }): { plan: AutoCreatePlan; hold: null; message: null } | { plan: null; hold: AutoCreateHold; message: string | null } {
   const { extract, decision } = input;
   const stay = stayApplyPlan(input);
+  if (stay && input.confidence != null) {
+    const allowed = canAutoApply({
+      candidates: input.candidates || [],
+      confidence: input.confidence,
+      conflict: false,
+    });
+    if (!allowed) {
+      return { plan: null, hold: "low_confidence", message: AUTO_CREATE_HOLDS.low_confidence };
+    }
+  }
   if (stay) return { plan: stay, hold: null, message: null };
   if (isCancellationExtract(extract) || extract.document_status === "cancelled") {
     return { plan: null, hold: "cancellation", message: null };
@@ -178,6 +196,12 @@ export function autoCreatePlan(input: {
     blocksSecondDossier(input.candidates || [])
   ) {
     return { plan: null, hold: "same_stay", message: AUTO_CREATE_HOLDS.same_stay };
+  }
+  if (
+    proposesAddToDossier(input.candidates) &&
+    decision.kind !== "apply"
+  ) {
+    return { plan: null, hold: "overlap", message: AUTO_CREATE_HOLDS.overlap };
   }
   if (decision.kind === "apply") return { plan: null, hold: "apply", message: null };
   if (decision.kind === "review") return { plan: null, hold: "review", message: null };
@@ -242,6 +266,7 @@ export async function runEmailAutoCreate(
     fromEmail: row.from_email,
     candidates,
     items,
+    confidence: typeof row.field_confidence === "number" ? row.field_confidence : null,
   });
   if (!outcome.plan) {
     if (outcome.message) await handlers.hold(outcome.message);

@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { greetingGivenName, shownPersonName } from "@/lib/crm/identity";
+import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import {
   countsAsCarnetCard,
   isActiveItem,
@@ -13,7 +15,6 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
-  type CardViewLine,
   type CrmHotelArrival,
   type CrmHotelMessage,
   type CrmHotelThreadMessage,
@@ -25,10 +26,9 @@ import {
   type CrmCustomerLogin,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import { expenseCountsForClient, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
-import { EstaOnBooking } from "@/components/admin/EstaOnBooking";
-import { UkEtaOnBooking } from "@/components/admin/UkEtaOnBooking";
 import { Icon } from "@/components/crm/icons";
 import type { EstaTravelerLine } from "@/lib/crm/esta-status";
 import { settledAuthorizationCountries } from "@/lib/crm/visa-cover";
@@ -54,28 +54,23 @@ import {
   keptHiddenFromClient,
   stayNameField,
 } from "@/lib/crm/carnet";
-import { unsplashKeywordMatch } from "@/lib/crm/covers";
-import { BookingIngest } from "@/components/crm/BookingIngest";
+import { bookingCoverPlan, catalogPhotoId } from "@/lib/crm/covers";
 import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
-import { BookingCards } from "@/components/admin/BookingCards";
-import { PliantAccountBalanceCard } from "@/components/admin/PliantCardDesk";
-import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
-import { TripCostsBlock } from "@/components/admin/TripCostsBlock";
-import { InvoiceBlock } from "@/components/admin/InvoiceBlock";
+import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
+import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
 import type { TripAccountingView } from "@/lib/crm/trip-costs";
 import { reglementChecklist, reglementCostsToPoint } from "@/lib/crm/reglement-checklist";
 import { hotelCardNeedsAlert, principalGuest } from "@/lib/crm/hotel-arrival";
 import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
-import { WhatsappThread, type WhatsappThreadMessage, type WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
-import { BookingExpensesPanel, type ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
-import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
+import type { WhatsappThreadMessage, WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
+import type { ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
-import { ClientInterfacePreview } from "@/components/account/ClientInterfacePreview";
+import { BoardingPassSend } from "@/components/admin/BoardingPassSend";
 import { applyExpenseLedgerChange, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import {
   ArchiveBookingButton,
@@ -83,14 +78,15 @@ import {
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
+import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { hotelTripChecklist } from "@/lib/crm/hotel-desk";
+import { dossierCheckinBadge, flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
+import { OnlineCheckinChecklist } from "@/components/admin/OnlineCheckinChecklist";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
-import { VisaSection } from "@/components/crm/VisaSection";
-import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
@@ -105,9 +101,8 @@ import {
 } from "@/lib/crm/staff-stay";
 import { type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
-import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
-import { TripSharePanel } from "@/components/account/TripSharePanel";
-import type { ShareCompanion } from "@/lib/crm/trip-share";
+import { travelersMissingPassport, travelersPassportExpiresBeforeReturn } from "@/lib/crm/trip-documents";
+import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import {
   customerBillingPickLabel,
@@ -120,6 +115,7 @@ import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
 import { fundingCompanyOptionLabel, payingCompanyCaption } from "@/lib/crm/funding-wallet";
 import { defaultBillingCompany } from "@/lib/crm/payer";
 import {
+  BOOKING_TAB_HELP,
   BOOKING_TAB_IDS,
   BOOKING_TAB_LABELS,
   BOOKING_TAB_SLUGS,
@@ -131,6 +127,55 @@ import {
 } from "@/lib/crm/booking-tabs";
 import { useMirror } from "@/lib/crm/use-mirror";
 import { adminAction } from "@/lib/crm/admin-action";
+import { TITLE_REVIEW_MARK } from "@/lib/crm/import-title";
+
+function panelLoading(label: string) {
+  return <p className="rounded-3xl bg-[#faf9f6] px-5 py-4 text-sm text-muted">{label}</p>;
+}
+
+/** Panneaux absents du premier affichage (ou sous les cartes) : chunk séparé. */
+const BookingIngest = dynamic(() => import("@/components/crm/BookingIngest").then((m) => m.BookingIngest), {
+  loading: () => panelLoading("Chargement de l’import…"),
+});
+const WhatsappThread = dynamic(() => import("@/components/admin/WhatsappThread").then((m) => m.WhatsappThread), {
+  loading: () => panelLoading("Chargement de WhatsApp…"),
+});
+const BookingExpensesPanel = dynamic(
+  () => import("@/components/admin/BookingExpensesPanel").then((m) => m.BookingExpensesPanel),
+  { loading: () => panelLoading("Chargement des dépenses…") }
+);
+const ClientTransactionsPanel = dynamic(
+  () => import("@/components/account/ClientTransactionsPanel").then((m) => m.ClientTransactionsPanel),
+  { loading: () => panelLoading("Chargement du compte…") }
+);
+const TripCostsBlock = dynamic(() => import("@/components/admin/TripCostsBlock").then((m) => m.TripCostsBlock), {
+  loading: () => panelLoading("Chargement des coûts…"),
+});
+const InvoiceBlock = dynamic(() => import("@/components/admin/InvoiceBlock").then((m) => m.InvoiceBlock), {
+  loading: () => panelLoading("Chargement de la facture…"),
+});
+const BookingCards = dynamic(() => import("@/components/admin/BookingCards").then((m) => m.BookingCards), {
+  loading: () => panelLoading("Chargement des cartes…"),
+});
+const VisaSection = dynamic(() => import("@/components/crm/VisaSection").then((m) => m.VisaSection), {
+  loading: () => panelLoading("Chargement des formalités…"),
+});
+const ExtrasPanel = dynamic(() => import("@/components/crm/ExtrasPanel").then((m) => m.ExtrasPanel), {
+  loading: () => panelLoading("Chargement des prestations…"),
+});
+const EstaOnBooking = dynamic(() => import("@/components/admin/EstaOnBooking").then((m) => m.EstaOnBooking), {
+  loading: () => panelLoading("Chargement ESTA…"),
+});
+const UkEtaOnBooking = dynamic(() => import("@/components/admin/UkEtaOnBooking").then((m) => m.UkEtaOnBooking), {
+  loading: () => panelLoading("Chargement ETA…"),
+});
+const BookingRestaurants = dynamic(() => import("@/components/admin/BookingRestaurants").then((m) => m.BookingRestaurants), {
+  loading: () => panelLoading("Chargement des restaurants…"),
+});
+const ClientInterfacePreview = dynamic(
+  () => import("@/components/account/ClientInterfacePreview").then((m) => m.ClientInterfacePreview),
+  { loading: () => panelLoading("Chargement de l’aperçu…") }
+);
 
 /** Assez pour recalculer le montant : prix, billets, aéroports, aller-retour. */
 function ledgerMoneyKey(view: ClientLedgerView | null) {
@@ -146,7 +191,16 @@ function withExpenseWrite(items: CrmBookingItem[], change: ExpenseWrite, booking
   if (change.removed) return items.filter((item) => item.id !== change.id);
   if (items.some((item) => item.id === change.id)) {
     return items.map((item) =>
-      item.id === change.id ? { ...item, title: change.title, amount: change.amount, kind: "expense" } : item
+      item.id === change.id
+        ? {
+            ...item,
+            title: change.title,
+            amount: change.amount,
+            kind: "expense",
+            // Validée : la ligne compte dans le prix affiché sans attendre le rechargement.
+            details: change.validated ? validatedExpenseDetails(item.details) : item.details,
+          }
+        : item
     );
   }
   return [
@@ -255,7 +309,7 @@ function Segmented<T extends string>({
 
 export function BookingEditor({
   booking,
-  items,
+  items: sourceItems,
   travelers,
   documents,
   identityDocs,
@@ -268,21 +322,20 @@ export function BookingEditor({
   refusals = [],
   visaRequests = [],
   pliantReady = false,
-  pliantAccount = null,
+  pliantBalance = null,
   shareUrl = null,
   shareCompanions = [],
   arrivals = [],
   hotelRequests = [],
   hotelSignatory = "",
-  hasCardCode = false,
-  cardViews = [],
   attachedEmails = [],
   hotelMessages = [],
   hotelThreadMessages = [],
   openHotelItemId = null,
+  openRelanceId = null,
+  openReplyId = null,
   billingCompanies = [],
   ficheBillingCompanies = [],
-  companyAdmins = [],
   littleEmperors = null,
   expenseBilling = [],
   revolutExpenses = [],
@@ -302,6 +355,10 @@ export function BookingEditor({
   mb3m,
   accounting = null,
   agencyFee,
+  importTasks = [],
+  showMargins = true,
+  checkins = [],
+  ownership = null,
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -331,14 +388,12 @@ export function BookingEditor({
   }[];
   pliantReady?: boolean;
   /** Disponible du compte Pliant de l’agence. Null : lecture impossible, le solde reste affiché. */
-  pliantAccount?: { availableCents: number | null; currency: string } | null;
+  pliantBalance?: ReactNode;
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
   hotelRequests?: CrmHotelRequest[];
   hotelSignatory?: string;
-  hasCardCode?: boolean;
-  cardViews?: CardViewLine[];
   attachedEmails?: {
     id: string;
     subject: string | null;
@@ -351,6 +406,8 @@ export function BookingEditor({
   hotelMessages?: CrmHotelMessage[];
   hotelThreadMessages?: CrmHotelThreadMessage[];
   openHotelItemId?: string | null;
+  openRelanceId?: string | null;
+  openReplyId?: string | null;
   billingCompanies?: {
     id: string;
     company_name: string | null;
@@ -359,7 +416,6 @@ export function BookingEditor({
   }[];
   /** Sociétés de la fiche du client du dossier, colonnes complètes. */
   ficheBillingCompanies?: CrmBillingCompany[];
-  companyAdmins?: PickableCustomer[];
   littleEmperors?: {
     id: string;
     hotel_name: string | null;
@@ -385,10 +441,23 @@ export function BookingEditor({
   whatsappPreviewBlocked?: boolean;
   customerLogins?: CrmCustomerLogin[];
   customerActivity?: CrmCustomerActivity[];
-  mb3m: { blocker: string | null; piece: { number: string } | null };
+  mb3m: {
+    blocker: string | null;
+    piece: { number: string } | null;
+    preparation: { state: "running" | "failed" | null; message: string | null; resume: boolean };
+  };
   /** Comptabilité du voyage : ventes, coûts rattachés, marge, sorties proposées. */
   accounting?: TripAccountingView | null;
+  /** Enregistrement, visa et pré-enregistrement issus d’un mail. Pas des étapes. */
+  importTasks?: { id: string; kind: string; title: string }[];
+  /** Faux : marges, coûts nets et commission restent cachés. */
+  showMargins?: boolean;
+  /** Statut d’enregistrement en ligne déjà noté, une ligne par vol. */
+  checkins?: StoredFlightCheckin[];
+  /** Qui est en charge (null : à prendre) et qui a créé le dossier (null : inconnu). */
+  ownership?: { owner: string | null; createdBy: string | null } | null;
 }) {
+  const items = useMemo(() => completeFlightRoutes(sourceItems), [sourceItems]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -434,10 +503,17 @@ export function BookingEditor({
   const titleEdit = stayNameField(routeTitle, titleDraft);
   const [coverOpen, setCoverOpen] = useState(false);
   const tab = bookingTabFromParam(searchParams.get("tab"));
+  const [previewOpen, setPreviewOpen] = useState(false);
+  useEffect(() => {
+    void adminAction(`/api/admin/bookings/${booking.id}/vu`, { method: "POST" });
+  }, [booking.id]);
   const [more, setMore] = useState(false);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
+  const coverPlan = bookingCoverPlan(booking, { items });
+  const catalogCoverId =
+    !booking.cover_image_path && coverPlan.mode === "single" ? catalogPhotoId(coverPlan.src) : null;
   const [flash, setFlash] = useState<string | null>(null);
   const [invoicePiece, setInvoicePiece] = useState(mb3m.piece);
   const [invoiceNote, setInvoiceNote] = useState<string | null>(null);
@@ -448,6 +524,11 @@ export function BookingEditor({
   const [partyError, setPartyError] = useState<string | null>(null);
   const [docBusy, setDocBusy] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+  const [passesOpen, setPassesOpen] = useState(false);
+  useEffect(() => {
+    if (!passesOpen) return;
+    document.getElementById("cartes-embarquement")?.scrollIntoView({ block: "start" });
+  }, [passesOpen]);
   const [compact, setCompact] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pendingStep = useRef<string | null>(null);
@@ -826,7 +907,7 @@ export function BookingEditor({
     setBusy("cover");
     setFlash(null);
     setCoverNotice(null);
-    const catalog = !booking.cover_image_path && unsplashKeywordMatch(booking);
+    const catalog = Boolean(catalogCoverId);
     const res = await fetch(
       catalog
         ? `/api/admin/bookings/${booking.id}/cover/catalog`
@@ -908,11 +989,13 @@ export function BookingEditor({
 
   const updatesPending = revealItems.length > 0 || revealDocs.length > 0;
   const showPrimaryPublish = !booking.visible_to_client || updatesPending;
-  const passportGap = travelers.filter(
-    (traveler) =>
-      tripDocumentsForTraveler(identityDocs, traveler).length === 0 &&
-      reusableDocumentsForTraveler(identityDocs, traveler, holderProfile).length === 0
-  );
+  const passportParty = {
+    holder: holderProfile,
+    companions,
+    returnOn: booking.end_date || booking.start_date,
+  };
+  const passportGap = travelersMissingPassport(travelers, identityDocs, passportParty);
+  const passportExpiry = travelersPassportExpiresBeforeReturn(travelers, identityDocs, passportParty);
   const hotelLetters = hotelTripChecklist(hotelRequests);
   const hasFlight = bookingHasFlight(items);
   const leOpen =
@@ -925,14 +1008,18 @@ export function BookingEditor({
     endDate: booking.end_date,
   });
   const costsToPoint = reglementCostsToPoint(accounting);
+  const checkinLines = flightCheckinViews({ items, documents, rows: checkins, now: new Date() });
+  const checkinBadge = dossierCheckinBadge(checkinLines);
   const blockers = staffBlockingChips({
     travelers,
     missingPassportIds: passportGap.map((traveler) => traveler.id),
+    expiringPassportIds: passportExpiry.map((row) => row.traveler.id),
     hotelLettersOpen: hotelLetters.openCount,
     amountHidden: !booking.archived_at && (!booking.visible_to_client || booking.prices_visible === false),
     costsToPoint,
     marginStale: Boolean(accounting?.invoice.printed && accounting.invoice.marginStale),
     cardAlerts: arrivals.filter((row) => hotelCardNeedsAlert(row)).length,
+    checkinAlerts: checkinLines.filter((line) => line.alert).length,
   });
   const travelerLabel = travelers.length
     ? travelers.length <= 4
@@ -951,13 +1038,14 @@ export function BookingEditor({
     agencyCommission: booking.agency_commission === true,
     agencyFeeRate: previewFeeRate,
     expenses: pricedItems
-      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
       .map((item) => ({ ...item, agencyFee: !isAutoTicketingExpense(item) })),
     extras: agencyFeeExtraAmounts(pricedItems),
     ticketingFee: chargeableTicketingFee({
       items: pricedItems,
       status: booking.status,
       travelerCount: travelers.length,
+      feeMode: booking.fee_mode,
     }),
   });
   const statementCustomer = billingCustomer || customer;
@@ -999,6 +1087,8 @@ export function BookingEditor({
     tabRefs.current[next]?.focus();
   }
 
+  // Le geste principal ne disparaît jamais : Montrer au client, puis Mettre à jour le carnet quand
+  // quelque chose est caché, sinon Cacher au client. Chacun passe par la confirmation.
   const primaryAction = booking.archived_at ? (
     <RestoreBookingButton bookingId={booking.id} />
   ) : !booking.visible_to_client || updatesPending ? (
@@ -1008,9 +1098,30 @@ export function BookingEditor({
       onClick={() => setConfirm(showPrimaryPublish ? "publish" : "unpublish")}
       className="admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50"
     >
-      {!booking.visible_to_client ? "Montrer au client" : "Mettre à jour"}
+      {!booking.visible_to_client ? "Montrer au client" : "Mettre à jour le carnet"}
     </button>
-  ) : null;
+  ) : (
+    <button
+      type="button"
+      disabled={busy !== "idle"}
+      onClick={() => setConfirm("unpublish")}
+      className="admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+    >
+      Cacher au client
+    </button>
+  );
+  const passesButton = (compactBar: boolean) => (
+    <button
+      type="button"
+      onClick={() => {
+        setMore(false);
+        setPassesOpen((open) => !open);
+      }}
+      className={`admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white font-semibold text-[var(--admin-navy)] ${compactBar ? "px-3 py-2 text-xs" : "px-4 py-2 text-sm"}`}
+    >
+      Cartes d’embarquement
+    </button>
+  );
   const saveLabel = busy === "save" ? "Enregistrement…" : "Enregistrer";
   const saveButton = (
     <button
@@ -1054,55 +1165,45 @@ export function BookingEditor({
       {staffStayLabel(booking)}
     </p>
   );
+  const menuItem = "admin-tap text-sm font-semibold text-[var(--admin-navy)]";
   const moreMenu = (
     <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl bg-[var(--admin-sky)] px-4 py-3">
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <DuplicateBookingButton bookingId={booking.id} label={`${booking.reference} — ${titleEdit.value.trim() || booking.title}`} />
         <button
           type="button"
-          className="text-sm font-semibold text-[var(--admin-navy)]"
+          className={menuItem}
           disabled={busy !== "idle"}
           onClick={() => {
             setCoverNotice(null);
             setCoverOpen(true);
           }}
         >
-          Importer une photo
+          Couverture
         </button>
-        {booking.cover_image_path || unsplashKeywordMatch(booking) ? (
-          <button
-            type="button"
-            className="text-sm font-semibold text-[var(--admin-navy)]"
-            disabled={busy !== "idle"}
-            onClick={() => void regenerateCover()}
-          >
+        {booking.cover_image_path || catalogCoverId ? (
+          <button type="button" className={menuItem} disabled={busy !== "idle"} onClick={() => void regenerateCover()}>
             Autre version
           </button>
         ) : null}
         {booking.cover_image_path ? (
-          <button
-            type="button"
-            className="text-sm font-semibold text-[var(--admin-navy)]"
-            disabled={busy !== "idle"}
-            onClick={clearCover}
-          >
+          <button type="button" className={menuItem} disabled={busy !== "idle"} onClick={clearCover}>
             Photo du lieu
           </button>
         ) : null}
-        {booking.visible_to_client ? (
-          <button
-            type="button"
-            className="text-sm font-semibold text-[var(--admin-navy)]"
-            onClick={() => {
-              setMore(false);
-              setConfirm("unpublish");
-            }}
-          >
-            Cacher au client
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={menuItem}
+          aria-pressed={previewOpen}
+          onClick={() => {
+            setMore(false);
+            setPreviewOpen((open) => !open);
+          }}
+        >
+          {previewOpen ? "Fermer l’aperçu client" : "Aperçu de l’espace client"}
+        </button>
         {shareUrl ? (
-          <a href={shareUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[var(--admin-navy)] underline">
+          <a href={shareUrl} target="_blank" rel="noreferrer" className={`${menuItem} underline`}>
             Voir comme le client
           </a>
         ) : null}
@@ -1153,6 +1254,7 @@ export function BookingEditor({
               ) : null}
               {saveIconButton}
               <span className="hidden lg:contents">{saveButton}</span>
+              {hasFlight ? passesButton(true) : null}
               {primaryAction}
               {moreButton}
             </div>
@@ -1165,7 +1267,7 @@ export function BookingEditor({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-start lg:gap-3">
             <Link href="/admin/reservations" className="admin-tap inline-flex shrink-0 items-center text-sm font-semibold text-[var(--admin-navy)] lg:pt-5">
-              ← Réservations
+              ← Dossiers
             </Link>
             <div className="min-w-0 flex-1">
               <label className="block min-w-0">
@@ -1187,6 +1289,13 @@ export function BookingEditor({
                 Référence {booking.reference}
                 {jMinusLabel(facts.start) ? ` · ${jMinusLabel(facts.start)}` : ""}
               </p>
+              {(booking.notes_internal || "").includes(TITLE_REVIEW_MARK) || notesInternal.includes(TITLE_REVIEW_MARK) ? (
+                <p className="mt-1 px-1.5">
+                  <span className="rounded-full bg-[#C5A880]/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#0B192C]">
+                    Titre à vérifier
+                  </span>
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
@@ -1201,6 +1310,7 @@ export function BookingEditor({
               </button>
             ) : null}
             {saveButton}
+            {hasFlight ? passesButton(false) : null}
             {primaryAction}
             {moreButton}
           </div>
@@ -1210,7 +1320,34 @@ export function BookingEditor({
           {facts.placeLine ? <span>· {facts.placeLine}</span> : null}
           <span>· {travelerLabel}</span>
         </p>
-        {stateChip}
+        <div className="flex flex-wrap items-center gap-2">
+          {stateChip}
+          {ownership ? (
+            <button
+              type="button"
+              onClick={() => setTab("historique")}
+              title={ownership.createdBy ? `Créé par ${ownership.createdBy}` : "Créé par : inconnu"}
+              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                ownership.owner
+                  ? "bg-[#0B192C] text-[#C5A880]"
+                  : "border border-dashed border-[#9e7e51] bg-white text-[#9e7e51]"
+              }`}
+            >
+              {ownership.owner ? `En charge : ${ownership.owner}` : "À prendre"}
+            </button>
+          ) : null}
+          {checkinBadge && !checkinBadge.alert ? (
+            <button
+              type="button"
+              onClick={() => setTab("todo")}
+              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                checkinBadge.done ? "bg-white text-[#0B192C] ring-1 ring-[#d9d1c3]" : "bg-[#0B192C] text-white"
+              }`}
+            >
+              {checkinBadge.label}
+            </button>
+          ) : null}
+        </div>
         {blockers.length ? (
           <ul className="flex flex-wrap gap-2">
             {blockers.map((chip) => (
@@ -1243,19 +1380,12 @@ export function BookingEditor({
                 tabIndex={selected ? 0 : -1}
                 onClick={() => setTab(id)}
                 onKeyDown={onTabKey}
-                className={
-                  id === "interface"
-                    ? `mb-2 inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-3 py-1.5 font-display text-sm font-semibold lg:ml-auto lg:min-h-0 ${
-                        selected
-                          ? "bg-[var(--admin-peach)] text-[var(--admin-navy)]"
-                          : "text-[#9e7e51] hover:text-[var(--admin-navy)]"
-                      }`
-                    : `-mb-px inline-flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold lg:min-h-0 ${
-                        selected
-                          ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
-                          : "border-transparent text-muted hover:text-[var(--admin-navy)]"
-                      }`
-                }
+                className={`-mb-px inline-flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold lg:min-h-0 ${
+                  selected
+                    ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
+                    : "border-transparent text-muted hover:text-[var(--admin-navy)]"
+                }`}
+                title={BOOKING_TAB_HELP[id]}
               >
                 {BOOKING_TAB_LABELS[id]}
                 {id === "todo" && blockers.length > 0 ? (
@@ -1272,7 +1402,7 @@ export function BookingEditor({
         </div>
         <BusyBar
           active={busy !== "idle"}
-          label={busy === "publish" ? "Envoi au client…" : busy === "invoice" ? "Facturation…" : "Enregistrement…"}
+          label={busy === "publish" ? "Mise à jour du carnet…" : busy === "invoice" ? "Facturation…" : "Enregistrement…"}
         />
         {unsaved && busy === "idle" ? (
           <p role="status" className="text-sm font-semibold text-[var(--admin-gold-dark)]">
@@ -1289,6 +1419,20 @@ export function BookingEditor({
         {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
         <IssuesList issues={issues} />
       </header>
+      {passesOpen ? (
+        <BoardingPassSend
+          bookingId={booking.id}
+          clientName={shownPersonName(customer) || shownPersonName(holderName)}
+          phone={customer?.phone || null}
+          optInAt={customer?.whatsapp_opt_in_at}
+          optOutAt={customer?.whatsapp_opt_out_at}
+          documents={documents}
+          items={items}
+          travelers={travelers}
+          open
+          onClose={() => setPassesOpen(false)}
+        />
+      ) : null}
       <CoverPickDialog
         open={coverOpen}
         bookingId={booking.id}
@@ -1357,6 +1501,42 @@ export function BookingEditor({
         </section>
       ) : null}
 
+      {previewOpen ? (
+        <section className="admin-af-card space-y-4 rounded-3xl border border-[var(--admin-gold)]/50 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CoverMark>Aperçu de l’espace client</CoverMark>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(false)}
+              className="admin-tap rounded-full border border-[var(--border)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--admin-navy)]"
+            >
+              Fermer l’aperçu
+            </button>
+          </div>
+        <ClientInterfacePreview
+          booking={booking}
+          agencyFeeRate={previewFeeRate}
+          items={items}
+          documents={documents}
+          travelers={travelers}
+          identityDocs={identityDocs}
+          companions={companions}
+          customer={customer}
+          visaRequests={visaRequests}
+          refusals={refusals}
+          pliantReady={pliantReady}
+          shareUrl={shareUrl}
+          shareCompanions={shareCompanions}
+          ledger={ledger}
+          settled={settledAuthorizationCountries({
+            travelerIds: travelers.map((traveler) => traveler.id),
+            estaTones: estaLines,
+            ukEtaTones: ukEtaLines,
+          })}
+        />
+        </section>
+      ) : null}
+
       <div role="tabpanel" id="booking-panel" aria-labelledby={tabButtonId(tab)} className="flex flex-col gap-6">
       <form id="booking-meta" onSubmit={save} className="contents">
         <div className="contents">
@@ -1390,10 +1570,48 @@ export function BookingEditor({
                   onClick={() => setTab("argent")}
                   className="font-semibold text-[var(--admin-navy)] underline underline-offset-2"
                 >
-                  Règlement
+                  Argent
                 </button>
               </p>
             </div>
+            {customer ? (
+              <dl className="grid gap-x-6 gap-y-2 rounded-2xl bg-[#faf9f6] px-4 py-3 text-sm text-[var(--admin-navy)] sm:grid-cols-2">
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">E-mail</dt>
+                  <dd className="truncate">{customer.email || "—"}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">Téléphone</dt>
+                  <dd className="truncate">
+                    {customer.phone || "—"}
+                    {customer.whatsapp_opt_out_at
+                      ? " · WhatsApp refusé"
+                      : customer.whatsapp_opt_in_at
+                        ? " · WhatsApp activé"
+                        : ""}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">Foyer</dt>
+                  <dd className="truncate">
+                    {companions.length
+                      ? `${companions.length} compagnon${companions.length > 1 ? "s" : ""}`
+                      : "Aucun compagnon"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">Sociétés</dt>
+                  <dd className="truncate">
+                    {ficheBillingCompanies.length
+                      ? ficheBillingCompanies.map((company) => company.company_name).filter(Boolean).join(", ")
+                      : "Particulier"}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
+            {customer ? (
+              <p className="text-xs text-muted">Identité, coordonnées, passeports et sociétés se modifient sur la fiche client.</p>
+            ) : null}
             <details className="group rounded-2xl bg-[#faf9f6]">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
                 <span className="min-w-0">
@@ -1539,7 +1757,7 @@ export function BookingEditor({
                   value: "company",
                   title: "Société",
                   hint: payerCompanies.length
-                    ? "Ce voyage entre dans la part société de l’encours. Le client règle cette part dans Transactions."
+                    ? "Ce voyage entre dans la part société de l’encours. Le client règle cette part depuis son compte."
                     : "Aucune société sur la fiche.",
                   disabled: !payerCompanies.length,
                 },
@@ -1689,7 +1907,7 @@ export function BookingEditor({
       </form>
       {tab === "voyage" ? (
         <>
-      <div className="order-5">
+      <div className="order-5 space-y-3">
       <BookingIngest
         role="admin"
         mode="append"
@@ -1700,22 +1918,32 @@ export function BookingEditor({
         aiConfigured={aiConfigured}
         preserveTitle={booking.title}
       />
+      <details className="group rounded-2xl border border-dashed border-[var(--border)] bg-white/70">
+        <summary className="admin-tap flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[var(--admin-navy)] [&::-webkit-details-marker]:hidden">
+          <span>Joindre une pièce sans la lire</span>
+          <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+        </summary>
+        <form onSubmit={addDoc} className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] px-4 py-3">
+          <p className="basis-full text-xs text-muted">Le fichier arrive dans Pièces, sans créer d’étape.</p>
+          <select name="kind" defaultValue="other" disabled={docBusy} aria-label="Type de pièce" className="rounded-full border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)]">
+            <option value="other">Confirmation</option>
+            <option value="carte d'embarquement">Carte d’embarquement</option>
+          </select>
+          <input name="file" type="file" required disabled={docBusy} aria-label="Confirmation PDF ou photo" className="text-sm" />
+          <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
+            {docBusy ? "Envoi…" : "Joindre"}
+          </button>
+          <div className="basis-full">
+            <BusyBar active={docBusy} label="Envoi de la pièce…" />
+            {docError ? (
+              <p role="alert" className="text-sm text-[var(--admin-red)]">
+                {docError}
+              </p>
+            ) : null}
+          </div>
+        </form>
+      </details>
       </div>
-      <form onSubmit={addDoc} className="admin-af-card order-6 flex flex-wrap items-center gap-3 rounded-3xl p-5">
-        <p className="text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
-        <input name="file" type="file" required disabled={docBusy} aria-label="Confirmation PDF ou photo" className="text-sm" />
-        <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
-          {docBusy ? "Envoi…" : "Joindre"}
-        </button>
-        <div className="basis-full">
-          <BusyBar active={docBusy} label="Envoi de la pièce…" />
-          {docError ? (
-            <p role="alert" className="text-sm text-[var(--admin-red)]">
-              {docError}
-            </p>
-          ) : null}
-        </div>
-      </form>
       <div className="order-2">
       <BookingItemsPanel
         bookingId={booking.id}
@@ -1730,15 +1958,18 @@ export function BookingEditor({
         identityDocs={identityDocs}
         holder={holderProfile}
         arrivals={arrivals}
-        hasCardCode={hasCardCode}
-        cardViews={cardViews}
         clientSettlesStay={clientSettles}
         stayVisible={booking.visible_to_client}
         attachedEmails={attachedEmails}
         hotelMessages={hotelMessages}
         hotelThreadMessages={hotelThreadMessages}
         openHotelItemId={openHotelItemId}
+        openRelanceId={openRelanceId}
+        openReplyId={openReplyId}
         reference={booking.reference}
+        checkins={checkins}
+        tripStart={startDraft || booking.start_date}
+        tripEnd={endDraft || booking.end_date}
         onLiveItems={onLiveItems}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
@@ -1751,7 +1982,7 @@ export function BookingEditor({
         onClick={() => setTab("argent")}
         className="order-3 admin-af-card flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-3xl px-5 py-4 text-left"
       >
-        <span className="font-display text-lg font-bold text-[var(--admin-navy)]">Règlement</span>
+        <span className="font-display text-lg font-bold text-[var(--admin-navy)]">Argent</span>
         <span className="text-sm text-muted">{payerCaption}</span>
         <span className="text-sm font-semibold text-[var(--admin-navy)]">
           {formatMoney(stayAmount, stayCurrency(booking.currency))}
@@ -1774,27 +2005,9 @@ export function BookingEditor({
           ))}
         </ul>
       ) : null}
+      <BookingRestaurants bookingId={booking.id} />
       </div>
         </>
-      ) : null}
-
-      {customer ? (
-        <div className={tab === "client" ? "order-2" : "hidden"}>
-          {clientPick && clientPick.id !== customer.id ? (
-            <p className="mb-4 text-sm text-muted">
-              Enregistrez le dossier pour ouvrir la fiche de{" "}
-              {[clientPick.first_name, clientPick.last_name].filter(Boolean).join(" ") || "ce client"}.
-            </p>
-          ) : null}
-          <CustomerEditor
-            key={customer.updated_at}
-            customer={customer}
-            companions={companions}
-            documents={identityDocs}
-            companyAdmins={companyAdmins}
-            billingCompanies={ficheBillingCompanies}
-          />
-        </div>
       ) : null}
 
       {tab === "client" ? (
@@ -1821,16 +2034,12 @@ export function BookingEditor({
             documents={identityDocs}
             holder={holderProfile}
             companions={companions}
-            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile, booking)}
+            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile, booking, companions)}
             scans={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
             onRemove={(id) => removeTraveler(id)}
           />
         )}
-        {travelers.some(
-          (traveler) =>
-            tripDocumentsForTraveler(identityDocs, traveler).length === 0 &&
-            reusableDocumentsForTraveler(identityDocs, traveler, holderProfile).length === 0
-        ) ? (
+        {passportGap.length ? (
           <Link
             href={`/admin/clients/${booking.customer_id}`}
             className="inline-flex text-sm font-semibold text-[var(--admin-navy)] underline"
@@ -1884,23 +2093,7 @@ export function BookingEditor({
         </div>
       </section>
 
-      {shareUrl ? (
-        <div className="order-4">
-        <TripSharePanel
-          bookingId={booking.id}
-          shareUrl={shareUrl}
-          companions={shareCompanions}
-          sendUrl={`/api/admin/bookings/${booking.id}/partage`}
-        />
-        </div>
-      ) : null}
-      <div className="order-5">
-        <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
-      </div>
-        </>
-      ) : null}
-
-      {tab === "whatsapp" ? (
+      <div className="order-4">
         <WhatsappThread
           messages={whatsappMessages}
           requests={whatsappRequests}
@@ -1912,6 +2105,21 @@ export function BookingEditor({
           templates={whatsappTemplates}
           previewBlocked={whatsappPreviewBlocked}
         />
+      </div>
+      {shareUrl ? (
+        <div className="order-5">
+        <TripSharePanel
+          bookingId={booking.id}
+          shareUrl={shareUrl}
+          companions={shareCompanions}
+          sendUrl={`/api/admin/bookings/${booking.id}/partage`}
+        />
+        </div>
+      ) : null}
+      <div className="order-6">
+        <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
+      </div>
+        </>
       ) : null}
 
       {tab === "argent" ? (
@@ -1920,7 +2128,12 @@ export function BookingEditor({
             <ReglementSummary
               amount={stayAmount}
               currency={stayCurrency(booking.currency)}
-              commissionCaption={`Commission d’agence ${formatAgencyFeePercent(previewFeeRate)} · ${agencyFeeSourceLabel(previewFeeSource)}`}
+              showMargins={showMargins}
+              commissionCaption={
+                showMargins
+                  ? `Commission d’agence ${formatAgencyFeePercent(previewFeeRate)} · ${agencyFeeSourceLabel(previewFeeSource)}`
+                  : null
+              }
               ledgerCaption={staffLedgerCaption({
                 ...booking,
                 include_in_ledger: includeInLedger,
@@ -2036,6 +2249,7 @@ export function BookingEditor({
                 cards={pliantRecap}
                 revolutLinked={revolutExpenses}
                 busy={busy !== "idle"}
+                showMargins={showMargins}
               />
             ) : (
               <section className="admin-af-card space-y-2 rounded-3xl p-5">
@@ -2058,6 +2272,7 @@ export function BookingEditor({
                 marginStale: Boolean(accounting?.invoice.marginStale),
                 printedTotal: accounting?.invoice.printedTotal ?? null,
                 saleTotal: accounting?.totals.sale ?? null,
+                preparation: mb3m.preparation,
               }}
               note={invoiceNote}
               onBusy={(active) => setBusy(active ? "invoice" : "idle")}
@@ -2103,24 +2318,33 @@ export function BookingEditor({
               )}
             </div>
           </details>
-        </>
-      ) : null}
 
-      {tab === "cartes" ? (
-        <div className="space-y-6">
-          <PliantAccountBalanceCard account={pliantAccount} />
-          <BookingCards
-            bookingId={booking.id}
-            cards={bookingCards}
-            recap={pliantRecap}
-            firstName={stayGuest.firstName}
-            lastName={stayGuest.lastName}
-          />
-        </div>
+          <div className="order-7 space-y-4">
+            <CoverMark>Carte Pliant</CoverMark>
+            {pliantBalance}
+            <BookingCards
+              bookingId={booking.id}
+              cards={bookingCards}
+              recap={pliantRecap}
+              firstName={stayGuest.firstName}
+              lastName={stayGuest.lastName}
+            />
+          </div>
+        </>
       ) : null}
 
       {tab === "todo" ? (
         <div className="space-y-6">
+          {importTasks.length ? (
+            <section className="admin-af-card space-y-2 rounded-3xl p-5">
+              <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">À faire, venus du mail</h2>
+              <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+                {importTasks.map((task) => (
+                  <li key={task.id}>{task.title}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           {passportGap.length ? (
             <section className="admin-af-card space-y-2 rounded-3xl p-5">
               <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Passeports à joindre</h2>
@@ -2134,6 +2358,21 @@ export function BookingEditor({
               <Link href={`/admin/clients/${booking.customer_id}`} className="inline-flex text-sm font-semibold underline">
                 Ouvrir la fiche client
               </Link>
+            </section>
+          ) : null}
+          {passportExpiry.length ? (
+            <section className="admin-af-card space-y-2 rounded-3xl p-5">
+              <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Expire avant le retour</h2>
+              <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+                {passportExpiry.map((row) => {
+                  const [year, month, day] = row.expiresOn.split("-");
+                  return (
+                    <li key={row.traveler.id}>
+                      {row.givenName} — {day}/{month}/{year}
+                    </li>
+                  );
+                })}
+              </ul>
             </section>
           ) : null}
           {hasFlight && account ? (
@@ -2199,6 +2438,7 @@ export function BookingEditor({
               state={littleEmperors.state}
             />
           ) : null}
+          <OnlineCheckinChecklist bookingId={booking.id} lines={checkinLines} />
           <ServiceOfferToggles
             bookingId={booking.id}
             chauffeur={booking.offer_chauffeur === true}
@@ -2210,28 +2450,11 @@ export function BookingEditor({
         </div>
       ) : null}
 
-      {tab === "interface" ? (
-        <ClientInterfacePreview
-          booking={booking}
-          agencyFeeRate={previewFeeRate}
-          items={items}
-          documents={documents}
-          travelers={travelers}
-          identityDocs={identityDocs}
-          companions={companions}
-          customer={customer}
-          visaRequests={visaRequests}
-          refusals={refusals}
-          pliantReady={pliantReady}
-          shareUrl={shareUrl}
-          shareCompanions={shareCompanions}
-          ledger={ledger}
-          settled={settledAuthorizationCountries({
-            travelerIds: travelers.map((traveler) => traveler.id),
-            estaTones: estaLines,
-            ukEtaTones: ukEtaLines,
-          })}
-        />
+      {tab === "historique" ? (
+        <>
+          <ResponsableForm bookingId={booking.id} />
+          <AgencyHistoryPanel entity="dossier" entityId={booking.id} />
+        </>
       ) : null}
       </div>
     </div>

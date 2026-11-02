@@ -20,6 +20,9 @@ export async function PATCH(request: Request) {
   delete patch.company_role;
   delete patch.billing_parent_id;
   delete patch.spending_allowance;
+  delete patch.hotel_booking_enabled;
+  delete patch.hotel_demo;
+  delete patch.hotel_direct_live;
   // L’IBAN n’est pas dans les grants par colonne du rôle authenticated (B-15) :
   // le titulaire est déjà vérifié, on l’écrit avec le service role, sur sa seule fiche.
   if ("iban" in patch) {

@@ -12,6 +12,7 @@ import {
   colleagueAccessLink,
   colleagueEmailFrame,
   colleagueEmailError,
+  activeChangeBlock,
   colleagueInviteBlock,
   colleagueNameError,
   normalizeColleagueEmail,
@@ -39,6 +40,7 @@ type RosterRow = {
   role: StaffRole;
   auth_user_id: string;
   full_name: string;
+  active?: boolean;
 };
 
 function isAlreadyRegistered(message: string) {
@@ -100,11 +102,11 @@ async function sendColleagueEmail(email: string, fullName: string, link: string,
 }
 
 async function loadRoster(admin: SupabaseClient) {
-  const { data, error } = await admin
-    .from("crm_staff")
-    .select("id, role, auth_user_id, full_name");
-  if (error) throw new StaffTeamError("Impossible de lire l’équipe.", 500);
-  return (data || []) as RosterRow[];
+  const first = await admin.from("crm_staff").select("id, role, auth_user_id, full_name, active");
+  if (!first.error) return (first.data || []) as RosterRow[];
+  const second = await admin.from("crm_staff").select("id, role, auth_user_id, full_name");
+  if (second.error) throw new StaffTeamError("Impossible de lire l’équipe.", 500);
+  return (second.data || []) as RosterRow[];
 }
 
 async function writeAppMetadata(
@@ -140,10 +142,11 @@ export async function listColleagues(): Promise<Colleague[]> {
         fullName: row.full_name?.trim() || "Collègue",
         email,
         role,
+        active: row.active !== false,
       } satisfies Colleague;
     })
   );
-  const rank: Record<string, number> = { admin: 0, agent: 1, partner: 2 };
+  const rank: Record<string, number> = { admin: 0, manager: 1, agent: 2, comptable: 3, lecture: 4, partner: 5 };
   colleagues.sort((a, b) => {
     const byRole = (rank[a.role] ?? 9) - (rank[b.role] ?? 9);
     if (byRole !== 0) return byRole;
@@ -277,6 +280,7 @@ export async function addColleague(
       fullName,
       email,
       role,
+      active: true,
     } satisfies Colleague,
   };
 }
@@ -374,6 +378,30 @@ export async function setColleagueRole(staffId: string, nextRole: StaffRole) {
     throw err;
   }
   return { role };
+}
+
+export async function setColleagueActive(staffId: string, nextActive: boolean, actorId: string) {
+  const admin = createServiceClient();
+  const roster = await loadRoster(admin);
+  const target = roster.find((row) => row.id === staffId);
+  if (!target) throw new StaffTeamError(STAFF_COPY.notFound, 404);
+  const adminCount = roster.filter((row) => row.role === "admin" && row.active !== false).length;
+  const block = activeChangeBlock({
+    actorId,
+    targetId: target.id,
+    targetRole: target.role,
+    nextActive,
+    adminCount,
+  });
+  if (block) throw new StaffTeamError(block, 403);
+  const { error } = await admin.from("crm_staff").update({ active: nextActive }).eq("id", staffId);
+  if (error) throw new StaffTeamError("Impossible de modifier cet accès.", 502);
+  if (!nextActive) {
+    await admin.auth.admin.updateUserById(target.auth_user_id, { ban_duration: "87600h" });
+  } else {
+    await admin.auth.admin.updateUserById(target.auth_user_id, { ban_duration: "none" });
+  }
+  return { active: nextActive };
 }
 
 export async function removeColleague(staffId: string, actorId: string) {

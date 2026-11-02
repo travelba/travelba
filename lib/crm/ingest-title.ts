@@ -1,3 +1,4 @@
+import { importTitleGuard } from "@/lib/crm/import-title";
 import type { BookingExtract } from "./ingest-types";
 
 /** Fichier corps de mail : son titre est souvent le sujet, pas le nom du séjour. */
@@ -46,4 +47,19 @@ export function stayTitleForExtract(input: {
 /** Titre enregistré sur le dossier. Le sujet du mail n’est pas un repli. */
 export function dossierTitle(extract: Pick<BookingExtract, "title" | "destination">): string {
   return (extract.title || "").trim() || (extract.destination || "").trim() || "Voyage";
+}
+
+/**
+ * Titre d’un import. Sans titre choisi, c’est la ville du séjour.
+ * Le nom de l’hôtel reste sur la carte. « 40 ans » reste.
+ */
+export function dossierTitleFromImport(
+  extract: Pick<BookingExtract, "title" | "destination" | "items">
+): string {
+  const guarded = importTitleGuard({
+    title: extract.title,
+    destination: extract.destination,
+    items: extract.items || [],
+  });
+  return guarded.title || dossierTitle(extract);
 }

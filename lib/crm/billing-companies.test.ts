@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  billingCompanyIsEmpty,
   billingCompanyTabLabel,
   companyLabelForTransaction,
   DUPLICATE_SIRET_ERROR,
@@ -82,6 +83,12 @@ test("le libellé société n’apparaît que s’il y en a plusieurs", () => {
     companyLabelForTransaction({ customer_id: "c1", billing_company_id: null }, companies),
     null
   );
+});
+
+test("une société sans raison sociale ni SIRET est vide", () => {
+  assert.equal(billingCompanyIsEmpty({ company_name: "  ", billing_city: "" }), true);
+  assert.equal(billingCompanyIsEmpty({ company_name: "Atelier" }), false);
+  assert.equal(billingCompanyIsEmpty({ siret: "73282932000074" }), false);
 });
 
 test("une société vide n’est pas enregistrée et le miroir suit la première", () => {

@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { suggestLittleEmperorsBooking, leBookingExtract } from "./little-emperors-match";
+import {
+  decideLittleEmperorsAuto,
+  leBookingExtract,
+  leHotelStampPatch,
+  leItemsForHotelStamp,
+  suggestLittleEmperorsBooking,
+} from "./little-emperors-match";
+import { suggestBookingByReference } from "./email-match";
+import { emptyBookingExtract } from "./ingest-types";
 import {
   LITTLE_EMPERORS_STAGING_ORIGIN,
   applyHotelPublicFields,
@@ -146,6 +154,9 @@ describe("little emperors staging client", () => {
     assert.equal(JSON.stringify(booking).includes("guest@example.com"), false);
     assert.deepEqual(booking.guest_names, ["Nico Santos"]);
     assert.equal(booking.check_in, "2026-11-02");
+    assert.equal(booking.booked_at, null);
+    const dated = parseLeBooking({ ...sample, created_at: "2026-10-04T16:05:00Z", booking_date: "2026-01-01" });
+    assert.equal(dated?.booked_at, "2026-10-04T16:05:00.000Z");
     assert.equal(leDateOnly("2026-11-02T00:00:00"), "2026-11-02");
     const hotel = hotelPublicFields({
       name: "Nobu Hotel London Portman Square",
@@ -162,6 +173,42 @@ describe("little emperors staging client", () => {
     const merged = applyHotelPublicFields(booking, hotel);
     assert.equal(merged.website, "https://www.nobuhotels.com");
     assert.equal(merged.city, "London");
+  });
+
+  it("garde le régime, le prix public et la confirmation hôtel, pas le numéro Little Emperors en double", () => {
+    const booking = parseLeBooking({
+      id: 90,
+      hotel_name: "La Mamounia",
+      currency: "MAD",
+      total_cost: 12000,
+      public_price: 15000,
+      confirmation_number: "64570",
+      state: "booked",
+      phone: "+212 5 24 00 00 00",
+      email: "stay@example.com",
+      rooms: [
+        {
+          guest_name: "Camille Martin",
+          room_type: "Suite",
+          board: "Petit-déjeuner",
+          hotel_confirmation: "H998877",
+          confirmation: "64570SH046795",
+          cancellation_policy: "Free cancellation before 1 Oct",
+          benefits: ["Complimentary breakfast"],
+          guest_email: "guest@example.com",
+        },
+      ],
+    });
+    assert.ok(booking);
+    assert.equal(booking.board, "Petit-déjeuner");
+    assert.equal(booking.public_price, "15000");
+    assert.equal(booking.public_currency, "MAD");
+    assert.equal(booking.total_cost, "12000");
+    assert.deepEqual(booking.hotel_confirmations, ["H998877"]);
+    assert.equal(booking.rooms?.[0]?.hotel_confirmation, "H998877");
+    assert.equal(JSON.stringify(booking).includes("guest@example.com"), false);
+    assert.equal(JSON.stringify(booking).includes("+212"), false);
+    assert.equal(JSON.stringify(booking).includes("stay@example.com"), false);
   });
 
   it("ne fabrique pas de réservation quand la liste répond 400", async () => {
@@ -264,12 +311,289 @@ describe("little emperors staging client", () => {
     assert.equal(withSite.items[0]?.details?.website, "https://www.maison-test.example/hotel");
     assert.equal(withSite.items[0]?.details?.le_hotel_id, cancelled.hotel_id);
     assert.deepEqual(withSite.items[0]?.details?.included, ["Petit-déjeuner offert"]);
+    assert.deepEqual(withSite.items[0]?.details?.conditions, ["Free cancellation before 16:00 on 1 Oct"]);
+    assert.equal(withSite.items[0]?.details?.rooms?.[0]?.guests, "Nico Santos");
+    assert.equal(withSite.items[0]?.details?.rooms?.[0]?.type, "Superior Double-Double");
+    assert.equal(JSON.stringify(withSite.items[0]).includes("243.83"), false);
     assert.equal(withSite.items[0]?.details?.phone, undefined);
     assert.equal(withSite.items[0]?.details?.email, undefined);
     assert.equal(canRemoteCancel({ is_cancellable: false }), false);
     assert.equal(canRemoteCancel({ is_cancellable: null }), false);
     assert.equal(splitGuestName("Nico Santos")?.last_name, "Santos");
     assert.equal(splitGuestName("Madonna"), null);
+  });
+
+  it("crée le dossier pour une fiche unique et laisse le doute en attente", () => {
+    const booking = parseLeBooking(sample);
+    assert.ok(booking);
+    const nico = {
+      id: "c1",
+      first_name: "Nico",
+      last_name: "Santos",
+      company_name: null,
+      email: "nico@example.com",
+    };
+    const unique = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers: [nico],
+    });
+    assert.deepEqual(unique, { kind: "create", customerId: "c1" });
+
+    const homonyms = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers: [nico, { ...nico, id: "c2", email: "autre@example.com" }],
+    });
+    assert.equal(homonyms.kind, "wait");
+
+    const nobody = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers: [],
+    });
+    assert.equal(nobody.kind, "wait");
+
+    const fuzzy = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers: [
+        { id: "c9", first_name: "Zoé", last_name: "Santoz", company_name: null, email: "zoe@example.com" },
+      ],
+    });
+    assert.equal(fuzzy.kind, "wait");
+
+    const cancelled = parseLeBooking({ ...sample, state: "cancelled" });
+    assert.ok(cancelled);
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking: cancelled,
+        suggestion: { autoBookingId: null, candidates: [] },
+        customers: [nico],
+      }).kind,
+      "wait"
+    );
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking: cancelled,
+        suggestion: { autoBookingId: "b-hotel", candidates: [] },
+        customers: [nico],
+      }).kind,
+      "wait"
+    );
+    assert.deepEqual(
+      decideLittleEmperorsAuto({
+        booking: cancelled,
+        suggestion: { autoBookingId: null, candidates: [] },
+        customers: [nico],
+        linkedBookingId: "b-deja",
+      }),
+      { kind: "link", bookingId: "b-deja" }
+    );
+
+    const tied = decideLittleEmperorsAuto({
+      booking,
+      suggestion: {
+        autoBookingId: null,
+        candidates: [
+          { booking_id: "b1", customer_id: "c1", label: "TB1", reason: "Référence fournisseur", score: 90 },
+          { booking_id: "b2", customer_id: "c1", label: "TB2", reason: "Référence fournisseur", score: 90 },
+        ],
+      },
+      customers: [nico],
+    });
+    assert.equal(tied.kind, "wait");
+
+    assert.deepEqual(
+      decideLittleEmperorsAuto({
+        booking,
+        suggestion: { autoBookingId: "b-mail", candidates: [] },
+        customers: [nico],
+      }),
+      { kind: "link", bookingId: "b-mail" }
+    );
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking,
+        suggestion: { autoBookingId: null, candidates: [] },
+        customers: [nico],
+        ignored: true,
+      }).kind,
+      "wait"
+    );
+    assert.equal(leBookingExtract(booking).customer_email, "");
+    assert.equal(leBookingExtract(booking).title, "London");
+    assert.equal(leBookingExtract(booking).items[0]?.title, "Nobu Hotel London Portman Square");
+  });
+
+  it("relie la confirmation du mail et celle de l’API, puis pose l’hôtel", () => {
+    const booking = parseLeBooking({ ...sample, confirmation_number: "64570" });
+    assert.ok(booking);
+    const suggestion = suggestLittleEmperorsBooking(
+      booking,
+      [
+        {
+          id: "b-mail",
+          reference: "TB9",
+          title: "Londres",
+          destination: "London",
+          customer_id: "c1",
+          status: "draft",
+          start_date: "2026-11-02",
+          end_date: "2026-11-05",
+        },
+      ],
+      new Map([["b-mail", [{ confirmation_ref: "64570SH046795" }]]]),
+      [{ id: "c1", first_name: "Nico", last_name: "Santos", company_name: null, email: "nico@example.com" }]
+    );
+    assert.equal(suggestion.autoBookingId, "b-mail");
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking,
+        suggestion,
+        customers: [{ id: "c1", first_name: "Nico", last_name: "Santos", company_name: null, email: "" }],
+      }).kind,
+      "link"
+    );
+
+    const extract = emptyBookingExtract();
+    extract.items = [
+      {
+        kind: "hotel",
+        title: "Nobu Hotel London Portman Square",
+        supplier: "Little Emperors",
+        confirmation_ref: "64570SH046795",
+        start_at: "2026-11-02",
+        end_at: "2026-11-05",
+        amount: null,
+        details: {},
+      },
+    ];
+    const fromMail = suggestBookingByReference(
+      extract,
+      [{ id: "b-api", reference: "TB8", title: "Londres", destination: "London", customer_id: "c1" }],
+      new Map([["b-api", [{ confirmation_ref: "64570" }]]])
+    );
+    assert.equal(fromMail.autoBookingId, "b-api");
+
+    const ids = leItemsForHotelStamp(
+      [
+        { id: "room", title: "Nobu", confirmation_ref: "64570SH046795", details: { hotel_name: "Nobu Hotel London Portman Square" } },
+        { id: "other", title: "Autre hôtel", confirmation_ref: "99999", details: { hotel_name: "Autre hôtel" } },
+        { id: "named", title: "Nobu Hotel London Portman Square", confirmation_ref: null, details: {} },
+        { id: "wrong", title: "Nobu Hotel London Portman Square", confirmation_ref: null, details: { le_hotel_id: 4 } },
+      ],
+      { confirmation_number: "64570", hotel_name: "Nobu Hotel London Portman Square", hotel_id: 9626 }
+    );
+    assert.deepEqual(ids, ["room", "named"]);
+
+    const hotelNumber = {
+      id: "hotel-conf",
+      title: "Nobu",
+      confirmation_ref: "HTL99881",
+      start_at: "2026-11-02",
+      end_at: "2026-11-05",
+      details: { hotel_name: "Nobu Hotel London Portman Square", le_hotel_id: 9626 },
+    };
+    const byStay = leItemsForHotelStamp(
+      [hotelNumber],
+      {
+        confirmation_number: "LECONF88",
+        hotel_name: "Nobu Hotel London Portman Square",
+        hotel_id: 9626,
+        check_in: "2026-11-02",
+        check_out: "2026-11-05",
+      }
+    );
+    assert.deepEqual(byStay, ["hotel-conf"]);
+    const otherNight = leItemsForHotelStamp(
+      [{ ...hotelNumber, end_at: "2026-11-06" }],
+      {
+        confirmation_number: "LECONF88",
+        hotel_name: "Nobu Hotel London Portman Square",
+        hotel_id: 9626,
+        check_in: "2026-11-02",
+        check_out: "2026-11-05",
+      }
+    );
+    assert.deepEqual(otherNight, []);
+    const one = leHotelStampPatch(hotelNumber, { confirmation_number: "LECONF88", hotel_id: 9626 }, 1);
+    assert.equal(one.confirmation_ref, "HTL99881;LECONF88");
+    assert.equal(one.details.le_hotel_id, 9626);
+    const many = leHotelStampPatch(hotelNumber, { confirmation_number: "LECONF88", hotel_id: 9626 }, 2);
+    assert.equal(many.confirmation_ref, undefined);
+    assert.equal(many.details.le_hotel_id, 9626);
+  });
+
+  it("relie par hôtel, dates et voyageur quand les numéros diffèrent, et n’en crée pas un second", () => {
+    const booking = parseLeBooking(sample);
+    assert.ok(booking);
+    const nico = {
+      id: "c1",
+      first_name: "Nico",
+      last_name: "Santos",
+      company_name: null,
+      email: "nico@example.com",
+    };
+    const dossier = {
+      id: "b-mail",
+      reference: "TB9",
+      title: "Londres",
+      destination: "London",
+      customer_id: "c1",
+      status: "draft",
+      start_date: "2026-11-02",
+      end_date: "2026-11-05",
+    };
+    const card = {
+      kind: "hotel" as const,
+      title: "Nobu Hotel London Portman Square",
+      confirmation_ref: "HTL99881",
+      start_at: "2026-11-02",
+      end_at: "2026-11-05",
+      details: { hotel_name: "Nobu Hotel London Portman Square", le_hotel_id: booking.hotel_id },
+    };
+    const suggestion = suggestLittleEmperorsBooking(
+      booking,
+      [dossier],
+      new Map([["b-mail", [card]]]),
+      [nico]
+    );
+    assert.equal(suggestion.autoBookingId, "b-mail");
+    assert.equal(suggestion.candidates[0]?.reason, "Hôtel, dates et voyageur");
+    assert.equal(
+      decideLittleEmperorsAuto({ booking, suggestion, customers: [nico] }).kind,
+      "link"
+    );
+
+    const second = { ...dossier, id: "b2", reference: "TB2" };
+    const tied = suggestLittleEmperorsBooking(
+      booking,
+      [dossier, second],
+      new Map([
+        ["b-mail", [card]],
+        ["b2", [{ ...card }]],
+      ]),
+      [nico]
+    );
+    assert.equal(tied.autoBookingId, null);
+    assert.equal(decideLittleEmperorsAuto({ booking, suggestion: tied, customers: [nico] }).kind, "wait");
+
+    const otherGuest = suggestLittleEmperorsBooking(
+      booking,
+      [dossier],
+      new Map([["b-mail", [card]]]),
+      [{ ...nico, first_name: "Ada", last_name: "Lovelace" }]
+    );
+    assert.equal(otherGuest.candidates.length, 0);
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking,
+        suggestion: otherGuest,
+        customers: [{ ...nico, first_name: "Ada", last_name: "Lovelace" }],
+      }).kind,
+      "wait"
+    );
   });
 
   it("la preview enregistre la lecture MyLER, pas les autres secrets", () => {

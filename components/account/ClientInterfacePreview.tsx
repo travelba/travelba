@@ -27,16 +27,16 @@ import {
 } from "@/lib/crm/carnet";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
-import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
+import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
-import { stripePublishableKey } from "@/lib/crm/stripe";
+import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
-import { tripDocCoverage } from "@/lib/crm/trip-documents";
+import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
-import type { ShareCompanion } from "@/lib/crm/trip-share";
+import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 import {
   isActiveItem,
   isLedgerExpenseKind,
@@ -49,6 +49,7 @@ import {
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { visaRequestShown, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { ClientLedgerView } from "@/lib/crm/client-ledger";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
@@ -268,9 +269,18 @@ function ClientScreen({
   agencyFeeRate?: number;
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
-  const coverage = tripDocCoverage(travelers, identityDocs);
-  const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
-  const missingCount = coverage.total - coverage.ready;
+  const holder = {
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    usage_name: customer.usage_name,
+    birth_date: customer.birth_date,
+  };
+  const missingCount = missingPassportCount(travelers, identityDocs, {
+    holder,
+    companions,
+    returnOn: booking.end_date || booking.start_date,
+  });
+  const missingPassports = missingCount > 0;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination, {
     title: booking.title,
     homeCity: customer.city,
@@ -282,8 +292,9 @@ function ClientScreen({
   const placeLine = tripPlaceLine(headline, labels.destination);
   const formalities = frenchPassportTrip(items, travelers.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
+  const stayTotal = bookingTotalFromItems(allItems);
   const expenseChoices = allItems
-    .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+    .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
     .map((item) => ({
       id: item.id,
       title: visibleServiceCopy(item.title),
@@ -299,30 +310,21 @@ function ClientScreen({
     items: allItems,
     status: booking.status,
     travelerCount: travelers.length,
+    feeMode: booking.fee_mode,
   });
   const pricesVisible = booking.prices_visible !== false;
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: booking.agency_commission === true,
     agencyFeeRate,
-    stayTotal: Number(booking.total_amount),
+    stayTotal,
     currency: booking.currency,
     pricesVisible,
     extras: feeExtras,
     ticketingFee,
     ticketCount,
   });
-  const passportRows = passportVaultRows(
-    travelers,
-    identityDocs,
-    todayIsoDate(),
-    {
-      first_name: customer.first_name,
-      last_name: customer.last_name,
-      usage_name: customer.usage_name,
-    },
-    booking
-  );
+  const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), holder, booking, companions);
   const encoursPay =
     ledger && !ledger.member && ledger.owed.total > 0 ? (
       <EncoursPayment
@@ -479,7 +481,7 @@ function ClientScreen({
                 </p>
                 <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
                   {clientStayPriceLabel({
-                    stayTotal: Number(booking.total_amount),
+                    stayTotal,
                     currency: booking.currency,
                     pricesVisible,
                     agencyCommission: booking.agency_commission === true,

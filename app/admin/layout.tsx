@@ -1,5 +1,6 @@
 import { siteConfig } from "@/lib/site";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { navAllows } from "@/lib/crm/agency-guard";
 import { getSessionUser, getStaffForUser } from "@/lib/crm/auth";
 import { adminBadges, EMPTY_ADMIN_BADGES } from "@/lib/crm/admin-badges";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
@@ -7,7 +8,7 @@ import { emptyDockSnapshot, loadDockSnapshot } from "@/lib/crm/whatsapp-dock-loa
 
 export const metadata = {
   title: {
-    default: `Tableau de bord — ${siteConfig.shortName}`,
+    default: `Accueil — ${siteConfig.shortName}`,
     template: `%s — ${siteConfig.shortName}`,
   },
   robots: { index: false, follow: false },
@@ -21,23 +22,21 @@ export default async function AdminLayout({
   const { user } = await getSessionUser();
   const staff = user ? await getStaffForUser(user.id) : null;
   // Comptés une fois par requête : le tableau de bord réutilise le même résultat (A-23, D-41).
-  const badges = staff && staff.role !== "partner" ? await adminBadges() : EMPTY_ADMIN_BADGES;
-  const dock = staff && staff.role !== "partner" ? await loadDockSnapshot() : emptyDockSnapshot();
+  const [badges, dock, allows] =
+    staff && staff.role !== "partner"
+      ? await Promise.all([adminBadges(), loadDockSnapshot(), navAllows(staff)])
+      : [EMPTY_ADMIN_BADGES, emptyDockSnapshot(), null];
 
   return (
     <div className="admin-af min-h-screen">
       <AdminNav
-        unmatchedCount={badges.revolut}
-        stripeCount={badges.stripe}
-        emailCount={badges.emails}
-        leCount={badges.le}
-        pieceCount={badges.pieces}
-        whatsappCount={badges.whatsapp}
+        counts={badges}
         whatsappThreads={dock.threads}
         whatsappTemplates={dock.templates}
         whatsappPreview={dock.previewBlocked}
         staffName={staff?.full_name || ""}
         staffRole={staff?.role}
+        allows={allows}
         showExample={exampleSessionEnabled()}
       >
         {children}

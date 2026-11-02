@@ -5,11 +5,19 @@ import type { TripStep } from "./layover";
 
 /** Définitions Utility. Elles ne sont pas soumises à Meta et ne sont pas armées. */
 
+export type ConciergeTemplateKey =
+  | "concierge_reprise"
+  | "concierge_depart"
+  | "concierge_retour"
+  | "concierge_veille"
+  | "concierge_arrivee"
+  | "concierge_merci";
+
 export type ConciergeTemplate = {
-  key: "concierge_reprise" | "concierge_depart" | "concierge_retour";
+  key: ConciergeTemplateKey;
   category: "utility";
   status: "draft_not_submitted";
-  variables: ["prenom"] | ["prenom", "destination"];
+  variables: ("prenom" | "destination" | "vol" | "lieu")[];
   bodies: { fr: string; en: string; he: string };
 };
 
@@ -45,6 +53,39 @@ export const CONCIERGE_TEMPLATES: ConciergeTemplate[] = [
       fr: "Bonjour {{prenom}}, nous espérons que votre séjour {{destination}} a été à la hauteur de vos attentes. Votre avis nous est précieux et nous serions ravis de préparer votre prochaine escapade.",
       en: "Hello {{prenom}}, we hope your stay {{destination}} was everything you wished for. Your impression means a great deal to us, and we would be delighted to arrange your next escape.",
       he: "שלום {{prenom}}, אנו מקווים שהשהות שלכם {{destination}} עמדה בציפיותיכם. דעתכם יקרה לנו, ונשמח להכין את הבריחה הבאה שלכם.",
+    },
+  },
+  {
+    key: "concierge_veille",
+    category: "utility",
+    status: "draft_not_submitted",
+    variables: ["prenom", "destination", "vol"],
+    bodies: {
+      fr: "Bonjour {{prenom}}, votre séjour {{destination}} commence demain. {{vol}} Vos pièces sont dans votre carnet.",
+      en: "Hello {{prenom}}, your stay {{destination}} starts tomorrow. {{vol}} Your documents are in your travel journal.",
+      he: "שלום {{prenom}}, השהות שלכם {{destination}} מתחילה מחר. {{vol}} המסמכים ביומן.",
+    },
+  },
+  {
+    key: "concierge_arrivee",
+    category: "utility",
+    status: "draft_not_submitted",
+    variables: ["prenom", "lieu"],
+    bodies: {
+      fr: "Bonjour {{prenom}}, bienvenue {{lieu}}. Besoin de quelque chose ?",
+      en: "Hello {{prenom}}, welcome {{lieu}}. Do you need anything?",
+      he: "שלום {{prenom}}, ברוכים הבאים {{lieu}}. צריכים משהו?",
+    },
+  },
+  {
+    key: "concierge_merci",
+    category: "utility",
+    status: "draft_not_submitted",
+    variables: ["prenom", "destination"],
+    bodies: {
+      fr: "Bonjour {{prenom}}, merci pour ce séjour {{destination}}. Comment s’est-il passé ?",
+      en: "Hello {{prenom}}, thank you for this stay {{destination}}. How was it?",
+      he: "שלום {{prenom}}, תודה על השהות {{destination}}. איך היה?",
     },
   },
 ];
@@ -127,16 +168,18 @@ function hebrewStay(names: string[]) {
 export function renderConciergeTemplate(
   key: string,
   lang: "fr" | "en" | "he",
-  vars: { prenom?: string | null; destination?: string | null }
+  vars: { prenom?: string | null; destination?: string | null; vol?: string | null; lieu?: string | null }
 ) {
   const template = conciergeTemplate(key);
   if (!template) return "";
-  const name = (vars.prenom || "").replace(/[\r\n]+/g, " ").trim();
-  const destination = (vars.destination || "").replace(/[\r\n]+/g, " ").trim();
+  const clean = (value?: string | null) => (value || "").replace(/[\r\n]+/g, " ").trim();
   return template.bodies[lang]
-    .replace(/\{\{\s*prenom\s*\}\}/g, name)
-    .replace(/\{\{\s*destination\s*\}\}/g, destination)
+    .replace(/\{\{\s*prenom\s*\}\}/g, clean(vars.prenom))
+    .replace(/\{\{\s*destination\s*\}\}/g, clean(vars.destination))
+    .replace(/\{\{\s*vol\s*\}\}/g, clean(vars.vol))
+    .replace(/\{\{\s*lieu\s*\}\}/g, clean(vars.lieu))
     .replace(/\s+,/g, ",")
     .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+\./g, ".")
     .trim();
 }

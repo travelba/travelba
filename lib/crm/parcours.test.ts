@@ -3,7 +3,7 @@ import test from "node:test";
 import { identityOverwriteWarning } from "./identity";
 import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
 import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
-import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl } from "./covers";
+import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl, fallbackCoverTargets } from "./covers";
 import { stayArrivalPlaces } from "./carnet";
 import {
   catalogCitiesWithoutPhoto,
@@ -131,7 +131,8 @@ test("cover catalogue matches the arrival place only", () => {
   assert.notEqual(unsplashKeywordMatch({ destination: "Provence", title: "Séjour" }), paris);
   assert.equal(unsplashKeywordMatch({ destination: "Bordeaux", title: "Séjour" }), "photo-city-bordeaux");
   assert.notEqual(unsplashKeywordMatch({ destination: "Bordeaux", title: "Séjour" }), paris);
-  assert.equal(unsplashKeywordMatch({ destination: "France", title: "Séjour" }), paris);
+  assert.equal(unsplashKeywordMatch({ destination: "France", title: "Séjour" }), "photo-france-campagne");
+  assert.notEqual(unsplashKeywordMatch({ destination: "France", title: "Séjour" }), paris);
   assert.equal(unsplashKeywordMatch({ destination: "Italie", title: "Voyage" }), "photo-1552832230-c0197dd311b5");
   assert.equal(
     unsplashKeywordMatch({ destination: "Florence", title: "Séjour" }),
@@ -154,6 +155,33 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "Maroc", title: "Séjour" })
   );
   assert.equal(unsplashKeywordMatch({ destination: "Alpes", title: "Ski" }), null);
+  const valmorel = bookingCoverPlan(
+    { destination: "Valmorel", title: "Valmorel", cover_image_path: null },
+    {
+      items: [
+        {
+          kind: "hotel",
+          details: { city: "Valmorel", country: "France", hotel_name: "Club Med Valmorel" },
+        },
+      ],
+    }
+  );
+  assert.equal(valmorel.mode, "single");
+  if (valmorel.mode === "single") {
+    assert.match(valmorel.src, /photo-city-valmorel/);
+    assert.doesNotMatch(valmorel.src, /photo-1502602898657/);
+    assert.doesNotMatch(valmorel.fallback || "", /photo-1502602898657/);
+  }
+  const valmorelFrance = bookingCoverPlan({
+    destination: "Valmorel, France",
+    title: "Valmorel",
+    cover_image_path: null,
+  });
+  assert.equal(valmorelFrance.mode, "single");
+  if (valmorelFrance.mode === "single") {
+    assert.match(valmorelFrance.src, /photo-city-valmorel/);
+    assert.doesNotMatch(valmorelFrance.src, /photo-1502602898657/);
+  }
   assert.equal(
     unsplashKeywordMatch({ destination: "Lago di Como", title: "Lac" }),
     "photo-city-lago-di-como"
@@ -210,6 +238,17 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "France", title: "Séjour" })
   );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
+  assert.deepEqual(
+    fallbackCoverTargets(
+      { destination: "Valmorel", title: "Valmorel" },
+      { items: [{ kind: "hotel", details: { city: "Valmorel", country: "France" } }] }
+    ),
+    [{ place: "Valmorel", generatedId: "photo-city-valmorel", fallbackPhoto: "photo-france-campagne" }]
+  );
+  assert.deepEqual(
+    fallbackCoverTargets({ destination: "Bordeaux", title: "Séjour" }),
+    []
+  );
   const marrakechPhoto = unsplashKeywordMatch({ destination: "Marrakech", title: "Séjour" });
   const moroccoPhoto = unsplashKeywordMatch({ destination: "Maroc", title: "Séjour" });
   assert.equal(
@@ -244,21 +283,21 @@ test("cover catalogue matches the arrival place only", () => {
     { items: [{ kind: "hotel", details: { city: "Douar", country: "Maroc" } }] }
   );
   assert.equal(countryOnly.mode, "single");
-  if (countryOnly.mode === "single") assert.match(countryOnly.src, /photo-1489749798305-4fea3ae63d43/);
+  if (countryOnly.mode === "single") {
+    assert.match(countryOnly.src, /photo-city-douar/);
+    assert.match(countryOnly.fallback || "", /photo-1489749798305-4fea3ae63d43/);
+  }
   const portugal = unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" });
   assert.ok(portugal);
-  assert.equal(
-    unsplashKeywordMatch({ destination: "Inconnue · Portugal", title: "Séjour" }),
-    portugal
-  );
-  assert.equal(
-    unsplashKeywordMatch({ destination: "Inconnue, Portugal", title: "Séjour" }),
-    portugal
-  );
-  assert.equal(
-    unsplashKeywordMatch({ destination: "Paris · Inconnue · Portugal", title: "Séjour" }),
-    portugal
-  );
+  assert.match(portugal, /photo-1585208798174-6cedd86e019a/);
+  assert.equal(unsplashKeywordMatch({ destination: "Inconnue · Portugal", title: "Séjour" }), null);
+  assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Portugal", title: "Séjour" }), null);
+  assert.equal(unsplashKeywordMatch({ destination: "Paris · Inconnue · Portugal", title: "Séjour" }), null);
+  const france = unsplashKeywordMatch({ destination: "France", title: "Séjour" });
+  assert.equal(france, "photo-france-campagne");
+  // Le pays en dernier recours, comme « Douar, Maroc » : la campagne, jamais la tour Eiffel.
+  // Le plan du séjour, lui, garde l’image générée de Millau (plus bas).
+  assert.equal(unsplashKeywordMatch({ destination: "Millau, France", title: "Séjour" }), france);
   const unknownHotel = bookingCoverPlan(
     {
       destination: "Inconnue · Portugal",
@@ -267,8 +306,39 @@ test("cover catalogue matches the arrival place only", () => {
     },
     { items: [{ kind: "hotel", details: { city: "Inconnue" } }] }
   );
-  assert.equal(unknownHotel.mode, "single");
-  if (unknownHotel.mode === "single") assert.match(unknownHotel.src, /photo-1585208798174-6cedd86e019a/);
+  assert.equal(unknownHotel.mode, "none");
+  const montpellier = bookingCoverPlan(
+    {
+      destination: "Montpellier",
+      title: "Hôtel Richer de Belleval",
+      cover_image_path: null,
+    },
+    {
+      items: [
+        {
+          kind: "hotel",
+          title: "Hôtel Richer de Belleval",
+          details: {
+            city: "Montpellier",
+            country: "France",
+            address: "Place de la Canourgue, 34000 Montpellier, France",
+          },
+        },
+      ],
+    }
+  );
+  assert.equal(montpellier.mode, "single");
+  if (montpellier.mode === "single") assert.match(montpellier.src, /photo-city-montpellier/);
+  const millau = bookingCoverPlan({
+    destination: "Millau",
+    title: "Séjour",
+    cover_image_path: null,
+  });
+  assert.equal(millau.mode, "single");
+  if (millau.mode === "single") {
+    assert.match(millau.src, /photo-city-millau/);
+    assert.doesNotMatch(millau.src, /photo-1502602898657/);
+  }
   assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Belgique", title: "Séjour" }), null);
   assert.equal(
     bookingCoverUrl({
@@ -343,6 +413,84 @@ test("deux villes ont chacune leur image, deux pays se coupent", () => {
   if (split.mode !== "split") return;
   assert.match(split.src, /photo-1489749798305-4fea3ae63d43/);
   assert.match(split.srcB, /photo-1496442226666-8d4d0e62e6e9/);
+});
+
+const EIFFEL = /photo-1502602898657-3e91760cbb34/;
+
+test("une ville sans image ne retombe jamais sur la tour Eiffel", () => {
+  // TB-2026-0089 : la liste passe les lieux d’arrivée, pas les cartes.
+  const deauville = bookingCoverPlan(
+    { destination: "Deauville", title: "Deauville", cover_image_path: null },
+    { places: ["Deauville"] }
+  );
+  assert.equal(deauville.mode, "single");
+  if (deauville.mode !== "single") return;
+  assert.match(deauville.src, /photo-city-deauville/);
+  assert.doesNotMatch(deauville.src, EIFFEL);
+  // Le repli, si la génération échoue, est la photo neutre de la France.
+  assert.match(deauville.fallback || "", /photo-france-campagne/);
+
+  // Le pays écrit sur la carte hôtel ne ramène pas Paris non plus.
+  const deauvilleCard = bookingCoverPlan(
+    { destination: "Deauville", title: "Deauville", cover_image_path: null },
+    { items: [{ kind: "hotel", details: { city: "Deauville", country: "France" } }] }
+  );
+  assert.equal(deauvilleCard.mode, "single");
+  if (deauvilleCard.mode !== "single") return;
+  assert.match(deauvilleCard.src, /photo-city-deauville/);
+  assert.doesNotMatch(deauvilleCard.fallback || "", EIFFEL);
+
+  // Toute ville française du catalogue sans photo : ni en image, ni en repli.
+  for (const key of catalogCitiesWithoutPhoto()) {
+    if (countryCodeForPlace(key) !== "fr") continue;
+    const plan = bookingCoverPlan(
+      { destination: key, title: key, cover_image_path: null },
+      { places: [key], countries: ["France"] }
+    );
+    assert.equal(plan.mode, "single", key);
+    if (plan.mode !== "single") continue;
+    assert.doesNotMatch(plan.src, EIFFEL, key);
+    assert.doesNotMatch(plan.fallback || "", EIFFEL, key);
+  }
+
+  // Paris garde sa photo ; la France seule aussi.
+  const paris = bookingCoverPlan({ destination: "Paris", title: "Paris", cover_image_path: null });
+  assert.equal(paris.mode, "single");
+  if (paris.mode === "single") assert.match(paris.src, EIFFEL);
+});
+
+test("Qingdao a son image, la Chine en repli", () => {
+  // TB-2026-0086 : les cartes hôtel n’ont pas de pays, le catalogue le sait.
+  const china = countryCoverPhoto("cn");
+  assert.ok(china);
+  assert.equal(countryCodeForPlace("qingdao"), "cn");
+  const qingdao = bookingCoverPlan(
+    { destination: "Qingdao", title: "Qingdao", cover_image_path: null },
+    { places: ["Qingdao"] }
+  );
+  assert.equal(qingdao.mode, "single");
+  if (qingdao.mode !== "single") return;
+  assert.match(qingdao.src, /photo-city-qingdao/);
+  assert.match(qingdao.fallback || "", new RegExp(china));
+  assert.doesNotMatch(qingdao.fallback || "", EIFFEL);
+
+  // Une ville hors catalogue dont la carte nomme le pays : repli sur ce pays.
+  const byCountry = bookingCoverPlan(
+    { destination: "Weihai", title: "Weihai", cover_image_path: null },
+    { places: ["Weihai"], countries: ["Chine"] }
+  );
+  assert.equal(byCountry.mode, "single");
+  if (byCountry.mode !== "single") return;
+  assert.match(byCountry.src, /photo-city-weihai/);
+  assert.match(byCountry.fallback || "", new RegExp(china));
+
+  // Sans pays connu : image générée, pas de repli inventé.
+  const unknown = bookingCoverPlan(
+    { destination: "Weihai", title: "Weihai", cover_image_path: null },
+    { places: ["Weihai"] }
+  );
+  assert.equal(unknown.mode, "single");
+  if (unknown.mode === "single") assert.equal(unknown.fallback, null);
 });
 
 test("vault documents for a person ignore trip clones", () => {

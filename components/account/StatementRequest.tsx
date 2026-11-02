@@ -32,6 +32,12 @@ export function StatementRequest({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<"download" | "whatsapp" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [tone, setTone] = useState<"ok" | "error">("ok");
+
+  function show(message: string, next: "ok" | "error") {
+    setNotice(message);
+    setTone(next);
+  }
 
   async function loadPdf() {
     if (!endpoint) return null;
@@ -49,13 +55,13 @@ export function StatementRequest({
     try {
       const file = await loadPdf();
       if (!file) {
-        setNotice("Le relevé n’a pas pu être préparé. Réessayez.");
+        show("Le relevé n’a pas pu être préparé. Réessayez.", "error");
         return;
       }
       saveBlob(file.blob, file.filename);
-      setNotice("Relevé téléchargé.");
+      show("Relevé téléchargé.", "ok");
     } catch {
-      setNotice("Le relevé n’a pas pu être préparé. Réessayez.");
+      show("Le relevé n’a pas pu être préparé. Réessayez.", "error");
     } finally {
       setBusy(null);
     }
@@ -84,23 +90,23 @@ export function StatementRequest({
       const response = await fetch(endpoint, { method: "POST" });
       const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; message?: string } | null;
       if (response.ok && payload?.ok) {
-        setNotice(payload.message || "Relevé envoyé sur votre WhatsApp.");
+        show(payload.message || "Relevé envoyé sur votre WhatsApp.", "ok");
         return;
       }
       if (audience === "client") {
         const shared = await shareFile();
         if (shared === "shared") {
-          setNotice("Le relevé est prêt à partir sur WhatsApp.");
+          show("Le relevé est prêt à partir sur WhatsApp.", "ok");
           return;
         }
         if (shared === "cancelled") {
-          setNotice("Envoi annulé. Le relevé reste à télécharger.");
+          show("Envoi annulé. Le relevé reste à télécharger.", "error");
           return;
         }
       }
-      setNotice(payload?.error || "WhatsApp n’a pas pu remettre le relevé. Téléchargez-le.");
+      show(payload?.error || "WhatsApp n’a pas pu remettre le relevé. Téléchargez-le.", "error");
     } catch {
-      setNotice("WhatsApp n’a pas pu remettre le relevé. Téléchargez-le.");
+      show("WhatsApp n’a pas pu remettre le relevé. Téléchargez-le.", "error");
     } finally {
       setBusy(null);
     }
@@ -113,11 +119,10 @@ export function StatementRequest({
         aria-expanded={open}
         onClick={() => {
           if (!endpoint) {
-            setNotice("Le relevé n’est pas disponible ici.");
+            show("Le relevé n’est pas disponible ici.", "error");
             return;
           }
           setOpen((value) => !value);
-          setNotice(null);
         }}
         className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-full border border-[#e5e3dc] bg-white text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--admin-navy)]"
       >
@@ -153,8 +158,12 @@ export function StatementRequest({
             active={Boolean(busy)}
             label={busy === "whatsapp" ? "Envoi par WhatsApp…" : "Préparation du relevé…"}
           />
-          {notice ? <p className="text-[13px] text-[var(--admin-navy)]">{notice}</p> : null}
         </div>
+      ) : null}
+      {notice ? (
+        <p role={tone === "error" ? "alert" : "status"} className="mt-2 text-[13px] font-medium text-[var(--admin-navy)]">
+          {notice}
+        </p>
       ) : null}
     </div>
   );

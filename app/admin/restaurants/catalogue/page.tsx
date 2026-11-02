@@ -1,0 +1,39 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { RestaurantCatalog } from "@/components/admin/RestaurantCatalog";
+import { PageEyebrow, PageTitle } from "@/components/crm/ui";
+import { requireStaffPage } from "@/lib/crm/auth";
+import { listRestaurants } from "@/lib/crm/restaurants-db";
+
+export const metadata = { title: "Catalogue restaurants" };
+
+export default async function RestaurantCatalogPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { supabase, staff } = await requireStaffPage();
+  if (staff.role === "partner") redirect("/admin/little-emperors");
+  const { q } = await searchParams;
+  const query = (q || "").slice(0, 40);
+  const catalog = await listRestaurants(supabase, query);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <PageEyebrow>Espace agence</PageEyebrow>
+        <PageTitle
+          title="Catalogue"
+          subtitle="Une carte par restaurant. La fiche est complète quand la salle, le plat, la description, le prix et le lien sont là."
+          actions={
+            <Link href="/admin/restaurants" className="admin-tap inline-flex min-h-11 items-center rounded-full bg-[#0B192C] px-4 text-sm font-semibold text-white">
+              Restaurants du soir
+            </Link>
+          }
+        />
+      </div>
+      {catalog.ready ? null : (
+        <p className="rounded-3xl bg-[#faf9f6] px-5 py-4 text-sm text-[#0B192C]">
+          {"error" in catalog && catalog.error ? catalog.error : "Le module restaurants n’est pas encore en place."}
+        </p>
+      )}
+      <RestaurantCatalog rows={catalog.rows} query={query} />
+    </div>
+  );
+}

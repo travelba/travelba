@@ -65,7 +65,7 @@ Nouvelle page CRM : `loading.tsx` sibling. Nouvelle API : `runtime = "nodejs"` s
 3. Créer le bucket privé `crm-files`.
 4. Auth dashboard : skill `travelba-auth` / `travelba-go-live`.
 5. Ouvrir `/admin/login` avec un compte Auth. Si `crm_staff` est **vide**, `ensureStaff` insère le premier utilisateur en `admin`. **Ne jamais vider `crm_staff` en prod.**
-6. Créer un client (bouton **Créer**, sans inviter) → fiche → **Envoyer l’invitation** si besoin.
+6. Créer un client (bouton **Créer la fiche**, rien n’est envoyé) → fiche → **Inviter** si besoin.
 
 `npm run seed:demo` : **uniquement** base locale / projet jetable. Identifiants console. Jamais contre `travelba.fr` ni le projet prod.
 

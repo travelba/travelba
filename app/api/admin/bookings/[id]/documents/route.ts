@@ -4,8 +4,15 @@ import { queuePublishedPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { normalizePieceKind } from "@/lib/crm/concierge-notices";
 import { removeCrmFiles, safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { uploadIssue } from "@/lib/crm/upload-policy";
+import { syncCheckinWithPasses } from "@/lib/crm/online-checkin-db";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+function documentKind(raw: string) {
+  const value = raw.replace(/\s+/g, " ").trim().slice(0, 40);
+  if (value === "carte d'embarquement" || value === "carte d’embarquement") return "carte d'embarquement";
+  return value || "other";
+}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
@@ -16,7 +23,7 @@ export async function POST(request: Request, ctx: Ctx) {
   if (!(file instanceof File)) return jsonError("Fichier requis");
   const issue = uploadIssue(file, "dossier");
   if (issue) return jsonError(issue, 400);
-  const kind = String(form.get("kind") || "other");
+  const kind = documentKind(String(form.get("kind") || "other"));
   // La carte est vérifiée avant le téléversement : pas de fichier orphelin sur « Carte introuvable ».
   const itemId = String(form.get("booking_item_id") || "").trim() || null;
   if (itemId) {
@@ -45,6 +52,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  if (kind === "carte d'embarquement") await syncCheckinWithPasses(auth.supabase, id, "agence");
   return NextResponse.json({ document: data });
 }
 
@@ -55,15 +63,26 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const body = await request.json().catch(() => null);
   const docId = String(body?.id || "");
   if (!docId) return jsonError("id requis");
+  const update: { visible_to_client?: boolean; kind?: string } = {};
+  if (body && Object.prototype.hasOwnProperty.call(body, "visible_to_client")) {
+    update.visible_to_client = Boolean(body.visible_to_client);
+  }
+  if (body && Object.prototype.hasOwnProperty.call(body, "kind")) {
+    const kind = documentKind(String(body.kind || ""));
+    if (kind !== "carte d'embarquement" && kind !== "other") return jsonError("Type de pièce invalide.");
+    update.kind = kind;
+  }
+  if (!Object.keys(update).length) return jsonError("Rien à modifier.");
   const { data, error } = await auth.supabase
     .from("crm_booking_documents")
-    .update({ visible_to_client: Boolean(body?.visible_to_client) })
+    .update(update)
     .eq("id", docId)
     .eq("booking_id", id)
     .select("*")
     .single();
   if (error) return dbError(error, 400);
   const doc = data as { id: string; kind: string; booking_item_id?: string | null; visible_to_client?: boolean };
+  if (doc.kind === "carte d'embarquement") await syncCheckinWithPasses(auth.supabase, id, "agence");
   if (doc.visible_to_client) {
     const { data: booking } = await auth.supabase
       .from("crm_bookings")

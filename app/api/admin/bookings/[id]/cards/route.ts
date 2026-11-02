@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { issueBookingCard, setBookingCardLocked, terminateBookingCard } from "@/lib/crm/booking-cards";
 import { ownedBookingPliantCard } from "@/lib/crm/pliant-booking";
 import { pliantConfigured, pliantPciWidget } from "@/lib/crm/pliant";
@@ -98,6 +99,15 @@ export async function POST(request: Request, ctx: Ctx) {
           viewer: "staff",
         });
         if (viewError) return jsonError("La consultation n’a pas pu être notée.", 500);
+        await recordAgencyJournal({
+          staffId: auth.staff.id,
+          action: "reveal",
+          entityType: "card",
+          entityId: id,
+          summary: "Carte Pliant ouverte (numéro complet).",
+          sensitive: "card_reveal",
+          path: `/api/admin/bookings/${id}/cards`,
+        });
         return NextResponse.json(
           { widgetUrl: widget.src, frameId: widget.frameId },
           { headers: { "Cache-Control": "private, no-store" } }
@@ -120,6 +130,15 @@ export async function POST(request: Request, ctx: Ctx) {
     if (!pliantConfigured()) return jsonError("Pliant n’est pas branché.", 400);
     try {
       const widget = await pliantPciWidget(row.pliant_card_id, `carte-${row.id}`);
+      await recordAgencyJournal({
+        staffId: auth.staff.id,
+        action: "reveal",
+        entityType: "card",
+        entityId: id,
+        summary: "Carte Pliant ouverte (numéro complet).",
+        sensitive: "card_reveal",
+        path: `/api/admin/bookings/${id}/cards`,
+      });
       return NextResponse.json({ widgetUrl: widget.src, frameId: widget.frameId });
     } catch {
       return jsonError("La carte n’a pas pu être lue.", 502);

@@ -1,4 +1,4 @@
-import { whatsappAddress } from "./whatsapp";
+import { twilioAcceptedSend, whatsappAddress } from "./whatsapp";
 
 export function whatsappSessionConfigured() {
   return Boolean(
@@ -62,9 +62,12 @@ export async function sendWhatsappSession(input: {
     const detail = safeTwilioDetail(payload?.message || "");
     return { ok: false, detail: detail || undefined };
   }
-  const payload = (await response.json().catch(() => null)) as { sid?: string } | null;
-  if (!payload?.sid) return { ok: false };
-  return { ok: true, sid: payload.sid };
+  const payload = (await response.json().catch(() => null)) as {
+    sid?: string;
+    error_code?: number | null;
+    status?: string;
+  } | null;
+  return twilioAcceptedSend(payload);
 }
 
 export function sessionAddress(phone: string) {

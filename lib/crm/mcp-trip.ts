@@ -3,26 +3,40 @@ import WebSocket from "ws";
 import { createBookingSchema, isIsoDate, parseBody } from "@/lib/crm/admin-schemas";
 import { dossierFlightStamp, timezoneForIata } from "@/lib/crm/airport-time";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
+import { clearPrintedIataDoubt } from "@/lib/crm/flight-route";
 import { composeAccueilVip, parseAccueilVipService, readAccueilVipLegs, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { createStaffBooking, StaffWriteError, type StaffBookingInput } from "@/lib/crm/booking-create";
-import { ledgerWarning, refreshBookingLedger, refreshTicketingFee } from "@/lib/crm/bookings";
+import {
+  bookingChargeExternalId,
+  isStayAmountKind,
+  itemIncludedInLedger,
+  itemSellingAmount,
+  ledgerWarning,
+  refreshBookingLedger,
+  refreshTicketingFee,
+} from "@/lib/crm/bookings";
+import { toAuditRow } from "@/lib/crm/audit-events";
+import { noteCarnetAdditions } from "@/lib/crm/carnet-addition";
+import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { addIsoDays } from "@/lib/crm/dates";
 import { resolveNationality } from "@/lib/crm/countries";
 import { companionKey, holderKey } from "@/lib/crm/household";
-import { itemTicketCount } from "@/lib/crm/item-match";
+import { joinConfirmationRefs, statedTicketCount } from "@/lib/crm/item-match";
+import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
+import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
-import { sameRecordedTraveler, type PersonName } from "@/lib/crm/person-match";
+import { addedTravelerNames, holderMatchesAddedTraveler, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { cloneTravelDocument, insertTravelDocument } from "@/lib/crm/travel-document-write";
-import { isActiveItem, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
+import { countsAsCarnetCard, isActiveItem, isLedgerExpenseKind, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 
@@ -247,6 +261,45 @@ function idList(value: unknown, label: string) {
   return ids;
 }
 
+function httpsPhoto(value: unknown, label: string) {
+  const raw = text(typeof value === "string" ? value : "", label, 500);
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new McpWriteError(`${label} : adresse https requise.`);
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new McpWriteError(`${label} : adresse https requise.`);
+  }
+  return url.toString();
+}
+
+function hotelPhotoInput(value: unknown) {
+  if (value == null || value === "") return [];
+  if (!Array.isArray(value)) throw new McpWriteError("Photos : liste attendue.");
+  if (value.length > 8) throw new McpWriteError("Huit photos au plus.");
+  return value.map((entry, index) => {
+    const label = `Photo ${index + 1}`;
+    const row = typeof entry === "string" ? { url: entry } : entry;
+    if (!row || typeof row !== "object") throw new McpWriteError(`${label} invalide.`);
+    const url = httpsPhoto((row as { url?: unknown }).url, label);
+    const caption = optionalText((row as { legende?: unknown }).legende, "Légende", 120) || "";
+    return { url, thumb: url, caption, kind: "hotel" as const };
+  });
+}
+
+function clockField(value: unknown, label: string) {
+  if (value == null || value === "") return null;
+  const raw = text(value, label, 5);
+  if (!/^\d{2}:\d{2}$/.test(raw)) throw new McpWriteError(`${label} : HH:mm.`);
+  const [hour, minute] = raw.split(":").map(Number);
+  if (hour > 23 || minute > 59 || (hour === 0 && minute === 0)) {
+    throw new McpWriteError(`${label} : une heure réelle.`);
+  }
+  return raw;
+}
+
 function lines(value: unknown, label: string) {
   if (value == null || value === "") return [];
   const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/\n+/) : null;
@@ -307,6 +360,8 @@ type PricePlan = {
   documentAmount: number | null;
   documentCurrency: string | null;
   devise: string;
+  /** Vrai : `amount` (ou le prix du document) est le total du groupe, au centime. */
+  amountIsTotal: boolean;
 };
 
 /** Prix vendu dans la devise du dossier. Une autre devise reste le prix du document, sans conversion. */
@@ -317,30 +372,54 @@ export function flightPrice(input: {
   devise: string | null;
   dossierDevise: string;
 }): PricePlan {
-  const count = Math.max(1, input.passengers);
   const devise = input.devise || input.dossierDevise;
-  let unit = input.prix;
-  if (unit == null && input.prixTotal != null) {
-    unit = Math.round((input.prixTotal / count) * 100) / 100;
-  }
-  if (unit != null && input.prixTotal != null) {
-    const expected = Math.round(unit * count * 100) / 100;
-    if (Math.abs(expected - input.prixTotal) > 0.05) {
-      throw new McpWriteError("Le prix du billet et le total ne correspondent pas.");
-    }
-  }
-  const total = input.prixTotal ?? (unit == null ? null : Math.round(unit * count * 100) / 100);
   const ticketCount = input.passengers > 0 ? input.passengers : null;
-  if (devise !== input.dossierDevise) {
-    return { amount: null, ticketCount, documentAmount: total, documentCurrency: devise, devise };
+  if (input.prixTotal != null) {
+    if (input.prix != null) {
+      const count = ticketCount ?? 1;
+      const expected = Math.round(input.prix * count * 100) / 100;
+      if (Math.abs(expected - input.prixTotal) > 0.05) {
+        throw new McpWriteError("Le prix du billet et le total ne correspondent pas.");
+      }
+    }
+    if (devise !== input.dossierDevise) {
+      return {
+        amount: null,
+        ticketCount,
+        documentAmount: input.prixTotal,
+        documentCurrency: devise,
+        devise,
+        amountIsTotal: true,
+      };
+    }
+    return {
+      amount: input.prixTotal,
+      ticketCount,
+      documentAmount: null,
+      documentCurrency: null,
+      devise,
+      amountIsTotal: true,
+    };
   }
-  return { amount: unit, ticketCount, documentAmount: null, documentCurrency: null, devise };
+  const unit = input.prix;
+  const documentAmount = unit == null || !ticketCount ? unit : Math.round(unit * ticketCount * 100) / 100;
+  if (devise !== input.dossierDevise) {
+    return {
+      amount: null,
+      ticketCount,
+      documentAmount,
+      documentCurrency: unit == null ? null : devise,
+      devise,
+      amountIsTotal: false,
+    };
+  }
+  return { amount: unit, ticketCount, documentAmount: null, documentCurrency: null, devise, amountIsTotal: false };
 }
 
 export function hotelPrice(input: { prix: number | null; devise: string | null; dossierDevise: string }): PricePlan {
   const devise = input.devise || input.dossierDevise;
   if (input.prix == null) {
-    return { amount: null, ticketCount: null, documentAmount: null, documentCurrency: null, devise };
+    return { amount: null, ticketCount: null, documentAmount: null, documentCurrency: null, devise, amountIsTotal: false };
   }
   if (devise !== input.dossierDevise) {
     return {
@@ -349,9 +428,10 @@ export function hotelPrice(input: { prix: number | null; devise: string | null; 
       documentAmount: input.prix,
       documentCurrency: devise,
       devise,
+      amountIsTotal: false,
     };
   }
-  return { amount: input.prix, ticketCount: null, documentAmount: null, documentCurrency: null, devise };
+  return { amount: input.prix, ticketCount: null, documentAmount: null, documentCurrency: null, devise, amountIsTotal: false };
 }
 
 function partyKey(person: FlightPassenger) {
@@ -402,6 +482,7 @@ export function buildFlightCard(
   if (departureZone) details.departure_timezone = departureZone;
   if (arrivalZone) details.arrival_timezone = arrivalZone;
   if (input.price.ticketCount) details.ticket_count = input.price.ticketCount;
+  if (input.price.amountIsTotal) details.amount_is_total = true;
   if (input.price.documentAmount != null) details.document_amount = input.price.documentAmount;
   if (input.price.documentCurrency) details.document_currency = input.price.documentCurrency;
   if (passengers.length) {
@@ -436,16 +517,27 @@ export function buildHotelCard(input: {
   confirmation: string | null;
   fournisseur: string | null;
   annulation: string | null;
+  adresse?: string | null;
+  arriveeHeure?: string | null;
+  departHeure?: string | null;
+  photos?: { url: string; thumb: string; caption: string; kind: "hotel" }[];
   price: PricePlan;
   guests: FlightPassenger[];
 }) {
   const details: Record<string, unknown> = { hotel_name: input.nom };
   if (input.ville) details.city = input.ville;
   if (input.pays) details.country = input.pays;
+  if (input.adresse) details.address = input.adresse;
   if (input.chambre) details.room = input.chambre;
   if (input.pension) details.board = input.pension;
   if (input.inclus.length) details.included = input.inclus;
-  if (input.annulation) details.notes = input.annulation;
+  if (input.annulation) {
+    details.notes = input.annulation;
+    details.conditions = [input.annulation];
+  }
+  if (input.arriveeHeure) details.check_in_time = input.arriveeHeure;
+  if (input.departHeure) details.check_out_time = input.departHeure;
+  if (input.photos?.length) details.photos = input.photos;
   if (input.price.documentAmount != null) details.document_amount = input.price.documentAmount;
   if (input.price.documentCurrency) details.document_currency = input.price.documentCurrency;
   const guestLine = input.guests.map(personLine).filter(Boolean).join(", ");
@@ -510,8 +602,8 @@ async function passengersOf(db: Admin, bookingId: string, ids: string[]) {
 
 function sellingAmount(price: PricePlan) {
   if (price.amount == null) return null;
-  const tickets = price.ticketCount && price.ticketCount > 0 ? price.ticketCount : 1;
-  return Math.round(price.amount * tickets * 100) / 100;
+  if (price.amountIsTotal || !(price.ticketCount && price.ticketCount > 0)) return price.amount;
+  return Math.round(price.amount * price.ticketCount * 100) / 100;
 }
 
 function detailText(details: Record<string, unknown>, key: string) {
@@ -533,13 +625,15 @@ function flightClocks(item: Record<string, unknown>) {
 
 function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: PricePlan, warning: string | null) {
   const tickets = price.ticketCount && price.ticketCount > 0 ? price.ticketCount : null;
+  const groupTotal = price.amountIsTotal === true;
   return {
     id: item.id,
     dossier_id: booking.id,
     reference: booking.reference,
     titre: item.title,
     prix_vendu: sellingAmount(price),
-    ...(tickets ? { prix_billet: price.amount, billets: tickets } : {}),
+    ...(tickets && !groupTotal ? { prix_billet: price.amount, billets: tickets } : {}),
+    ...(tickets && groupTotal ? { billets: tickets } : {}),
     prix_document: price.documentAmount,
     devise: price.devise,
     devise_dossier: booking.currency || "EUR",
@@ -551,7 +645,10 @@ function cardReply(item: Record<string, unknown>, booking: CrmBooking, price: Pr
 }
 
 export async function createDossier(input: Record<string, unknown>, admin?: Admin) {
-  const draft = prepareDossier(input);
+  const givenTitle = typeof input.titre === "string" ? input.titre.trim() : "";
+  const destination = typeof input.destination === "string" ? input.destination.trim() : "";
+  if (!givenTitle && !destination) throw new McpWriteError("Indiquez un titre ou une destination.");
+  const draft = prepareDossier({ ...input, titre: givenTitle || destination });
   const societeId = optionalId(input.societe_id, "Société");
   const particulier = flag(input.particulier, "Particulier");
   const billCompany = facturerSociete(input.facturer_societe);
@@ -617,17 +714,20 @@ type CompanionRow = {
   first_name: string | null;
   last_name: string | null;
   usage_name: string | null;
+  birth_date: string | null;
 };
 
 function personOf(row: {
   first_name?: string | null;
   last_name?: string | null;
   usage_name?: string | null;
-}): PersonName {
+  birth_date?: string | null;
+}): PersonIdentity {
   return {
     first_name: row.first_name ?? null,
     last_name: row.last_name ?? null,
     usage_name: row.usage_name ?? null,
+    birth_date: row.birth_date ?? null,
   };
 }
 
@@ -674,10 +774,14 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
     nationality?: string | null;
     phone?: string | null;
   };
-  const query = { first_name: prenoms || null, last_name: nom || null };
+  const query: PersonIdentity = {
+    first_name: prenoms || null,
+    last_name: nom || null,
+    birth_date: naissance,
+  };
   const { data: companionRows, error: companionError } = await db
     .from("crm_travel_companions")
-    .select("id, first_name, last_name, usage_name")
+    .select("id, first_name, last_name, usage_name, birth_date")
     .eq("customer_id", customerId);
   if (companionError) throw new McpWriteError("Voyageur non ajouté.");
   const companions = (companionRows || []) as CompanionRow[];
@@ -695,13 +799,13 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
   if (compagnonId) {
     known = companions.find((row) => row.id === compagnonId) || null;
     if (!known) throw new McpWriteError("Ce compagnon n’est pas sur la fiche du client.");
-    if ((prenoms || nom) && !sameRecordedTraveler(personOf(known), query)) {
+    if ((prenoms || nom) && !addedTravelerNames(personOf(known), query)) {
       throw new McpWriteError("Ce compagnon ne correspond pas au nom indiqué.");
     }
   }
-  const isHolder = !known && Boolean(prenoms && nom) && sameRecordedTraveler(personOf(holder), query);
+  const isHolder = !known && Boolean(prenoms && nom) && holderMatchesAddedTraveler(personOf(holder), query);
   if (!known && !isHolder) {
-    const matches = companions.filter((row) => sameRecordedTraveler(personOf(row), query));
+    const matches = companions.filter((row) => sameAddedTraveler(personOf(row), query));
     known = pickCompanion(matches, passportIds);
     if (!known && matches.length > 1) {
       throw new McpWriteError("Plusieurs voyageurs correspondent. Indiquez compagnon_id.");
@@ -728,7 +832,7 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
       if (isHolder && row.is_account_holder) return true;
       const linked = row.companion_id ? companions.find((item) => item.id === row.companion_id) : null;
       const person = row.is_account_holder ? personOf(holder) : linked ? personOf(linked) : personOf(row);
-      return sameRecordedTraveler(person, known ? personOf(known) : query);
+      return sameAddedTraveler(person, known ? personOf(known) : query);
     });
     if (present) throw new McpWriteError("Ce voyageur est déjà sur le séjour.");
   }
@@ -736,14 +840,17 @@ export async function addVoyageur(input: Record<string, unknown>, admin?: Admin)
   if (!isHolder) {
     if (known) {
       companionId = known.id;
-      const patch: Record<string, unknown> = {};
-      if (naissance) patch.birth_date = naissance;
-      if (sex) patch.sex = sex;
-      if (nationalite) patch.nationality = nationalite;
-      if (telephone) patch.phone = telephone;
-      if (Object.keys(patch).length) {
-        const { error } = await db.from("crm_travel_companions").update(patch).eq("id", known.id).eq("customer_id", customerId);
-        if (error) throw new McpWriteError("Voyageur non ajouté.");
+      // Sans compagnon_id, on rattache. On n’écrit pas sur la fiche d’un autre voyageur.
+      if (compagnonId) {
+        const patch: Record<string, unknown> = {};
+        if (naissance) patch.birth_date = naissance;
+        if (sex) patch.sex = sex;
+        if (nationalite) patch.nationality = nationalite;
+        if (telephone) patch.phone = telephone;
+        if (Object.keys(patch).length) {
+          const { error } = await db.from("crm_travel_companions").update(patch).eq("id", known.id).eq("customer_id", customerId);
+          if (error) throw new McpWriteError("Voyageur non ajouté.");
+        }
       }
     } else {
       const { data, error } = await db
@@ -924,8 +1031,28 @@ function stampFlightZones(details: Record<string, unknown>) {
   if (arrival) details.arrival_timezone = arrival;
 }
 
+/**
+ * Devise du prix vendu déjà sur la carte.
+ * Un montant en devise du dossier (euro par défaut) gagne sur la devise du document fournisseur.
+ * Sans prix vendu, la devise du document reste. Sinon l’euro.
+ */
+export function sellingCurrency(
+  item: { amount?: unknown },
+  details: Record<string, unknown>,
+  dossierCurrency: string | null | undefined
+) {
+  const dossier = dossierCurrency || "EUR";
+  const amount = typeof item.amount === "number" ? item.amount : item.amount == null || item.amount === "" ? null : Number(item.amount);
+  if (amount != null && Number.isFinite(amount)) return dossier;
+  const documentCurrency = detailText(details, "document_currency");
+  if (documentCurrency && /^[A-Z]{3}$/.test(documentCurrency)) return documentCurrency;
+  return dossier;
+}
+
 function applyFlightPrice(details: Record<string, unknown>, price: PricePlan) {
   if (price.ticketCount) details.ticket_count = price.ticketCount;
+  if (price.amountIsTotal) details.amount_is_total = true;
+  else delete details.amount_is_total;
   if (price.documentAmount != null) details.document_amount = price.documentAmount;
   else delete details.document_amount;
   if (price.documentCurrency) details.document_currency = price.documentCurrency;
@@ -1003,8 +1130,19 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
     else delete details.notes;
   }
 
-  const hasVoyageurs = input.voyageurs != null && input.voyageurs !== "";
-  const voyageurIds = hasVoyageurs ? idList(input.voyageurs, "Voyageur") : null;
+  const originalDetails: Record<string, unknown> = { ...details };
+  const originalAmount =
+    typeof item.amount === "number" ? item.amount : item.amount == null || item.amount === "" ? null : Number(item.amount);
+  const saleBefore = itemSellingAmount({
+    kind: "flight",
+    amount: originalAmount != null && Number.isFinite(originalAmount) ? originalAmount : null,
+    details: originalDetails,
+  });
+
+  const passengerInput =
+    input.voyageur_ids != null && input.voyageur_ids !== "" ? input.voyageur_ids : input.voyageurs;
+  const hasVoyageurs = passengerInput != null && passengerInput !== "";
+  const voyageurIds = hasVoyageurs ? idList(passengerInput, "Voyageur") : null;
   if (voyageurIds && !voyageurIds.length) throw new McpWriteError("Indiquez au moins un voyageur.");
   const passengers = voyageurIds ? await passengersOf(db, booking.id, voyageurIds) : null;
   if (passengers) {
@@ -1015,16 +1153,18 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
     const keys = passengers.map(partyKey).filter(Boolean);
     if (keys.length) details.party_keys = keys;
     else delete details.party_keys;
-    details.ticket_count = passengers.length;
   }
 
   const prix = optionalMoney(input.prix, "Prix");
   const prixTotal = optionalMoney(input.prix_total, "Prix total");
   const sansFrais = flag(input.sans_frais, "Sans frais");
-  const count = passengers ? passengers.length : itemTicketCount({ kind: "flight", details });
-  let price = priceFromFlight(item, details, booking);
+  const count = passengers ? passengers.length : statedTicketCount({ kind: "flight", details }) ?? 0;
+  let price = priceFromFlight(item, originalDetails, booking);
   if (prix != null || prixTotal != null) {
-    const devise = input.devise == null || input.devise === "" ? price.devise : currencyOf(input.devise);
+    const explicitDevise = input.devise == null || input.devise === "" ? null : currencyOf(input.devise);
+    const devise = explicitDevise || sellingCurrency(item, originalDetails, booking.currency);
+    const keptDocumentAmount = originalDetails.document_amount;
+    const keptDocumentCurrency = originalDetails.document_currency;
     price = flightPrice({
       prix,
       prixTotal,
@@ -1033,12 +1173,37 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
       dossierDevise: booking.currency || "EUR",
     });
     applyFlightPrice(details, price);
+    if (passengers) details.ticket_count = passengers.length;
+    if (!explicitDevise && price.documentCurrency == null) {
+      if (keptDocumentCurrency) details.document_currency = keptDocumentCurrency;
+      if (keptDocumentAmount != null) details.document_amount = keptDocumentAmount;
+    }
     patch.amount = price.amount;
   } else if (passengers) {
-    price = { ...price, ticketCount: passengers.length };
+    details.ticket_count = passengers.length;
+    if (saleBefore != null) {
+      details.amount_is_total = true;
+      patch.amount = saleBefore;
+    }
+    price = {
+      ...price,
+      ticketCount: passengers.length,
+      amount: saleBefore ?? price.amount,
+      amountIsTotal: saleBefore != null ? true : originalDetails.amount_is_total === true,
+      devise: sellingCurrency(item, originalDetails, booking.currency),
+    };
   }
 
   stampFlightZones(details);
+  clearPrintedIataDoubt(details);
+  const routeFrom = detailText(details, "city_from");
+  const routeTo = detailText(details, "city_to");
+  const currentTitle = typeof patch.title === "string" ? patch.title : typeof item.title === "string" ? item.title : "";
+  if (routeFrom && routeTo && !currentTitle.includes("→")) patch.title = `${routeFrom} → ${routeTo}`;
+  if (flag(input.effacer_avertissement, "Effacer l’avertissement")) {
+    delete details.needs_review;
+    delete details.review_reason;
+  }
   if (sansFrais || (await freeFlights(db, booking.id, prix, prixTotal, carteId))) {
     await dismissTicketing(db, booking.id);
   }
@@ -1049,7 +1214,7 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
 }
 
 function priceFromFlight(item: Record<string, unknown>, details: Record<string, unknown>, booking: CrmBooking): PricePlan {
-  const tickets = itemTicketCount({ kind: "flight", details });
+  const tickets = statedTicketCount({ kind: "flight", details });
   const dossierDevise = booking.currency || "EUR";
   const documentCurrency = detailText(details, "document_currency");
   const documentAmount = typeof details.document_amount === "number" ? details.document_amount : null;
@@ -1060,6 +1225,7 @@ function priceFromFlight(item: Record<string, unknown>, details: Record<string, 
       documentAmount,
       documentCurrency,
       devise: documentCurrency,
+      amountIsTotal: details.amount_is_total === true,
     };
   }
   const amount = typeof item.amount === "number" ? item.amount : item.amount == null ? null : Number(item.amount);
@@ -1069,6 +1235,7 @@ function priceFromFlight(item: Record<string, unknown>, details: Record<string, 
     documentAmount: null,
     documentCurrency: null,
     devise: dossierDevise,
+    amountIsTotal: details.amount_is_total === true,
   };
 }
 
@@ -1087,6 +1254,10 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
   const confirmation = optionalText(input.confirmation, "Confirmation", 80);
   const fournisseur = optionalText(input.fournisseur, "Fournisseur", 120);
   const annulation = optionalText(input.annulation, "Annulation", 2000);
+  const adresse = optionalText(input.adresse, "Adresse", 240);
+  const arriveeHeure = clockField(input.heure_arrivee, "Heure d’arrivée");
+  const departHeure = clockField(input.heure_depart, "Heure de départ");
+  const photos = hotelPhotoInput(input.photos);
   const prix = optionalMoney(input.prix, "Prix");
   const devise = currencyOf(input.devise);
   const voyageurs = idList(input.voyageurs, "Voyageur");
@@ -1106,12 +1277,350 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
     confirmation,
     fournisseur,
     annulation,
+    adresse,
+    arriveeHeure,
+    departHeure,
+    photos,
     price,
     guests,
   });
   const saved = await addStaffBookingCard(db, booking.id, body);
   if ("error" in saved) throw new McpWriteError(saved.error);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
+}
+
+type SupplierNet = {
+  supplier_net: number;
+  supplier_currency: string;
+  supplier_net_eur: number | null;
+};
+
+/**
+ * Coût fournisseur. Une devise autre que l’euro garde le montant d’origine
+ * et l’équivalent en euros s’il est indiqué. Aucun taux n’est calculé.
+ * Sans montant, rien ne change.
+ */
+export function planSupplierNet(input: {
+  prixNet: number | null;
+  devise: string | null;
+  prixNetEur: number | null;
+  leNet: { amount: number; currency: string | null } | null;
+}): SupplierNet | null {
+  const le = input.leNet && input.leNet.amount != null ? input.leNet : null;
+  const eurOnly = input.prixNetEur;
+  if (input.prixNet == null && input.devise == null && eurOnly != null && !le) {
+    return { supplier_net: eurOnly, supplier_currency: "EUR", supplier_net_eur: eurOnly };
+  }
+  if (input.prixNet == null && input.prixNetEur == null && input.devise == null && !le) return null;
+  if (input.devise && input.prixNet == null && !le) throw new McpWriteError("Indiquez le coût net.");
+  const currency = input.devise || (input.prixNet == null ? le?.currency : null) || "EUR";
+  const amount = input.prixNet != null ? input.prixNet : le?.amount;
+  if (amount == null) throw new McpWriteError("Indiquez le coût net.");
+  if (currency === "EUR") {
+    if (input.prixNetEur != null && Math.abs(input.prixNetEur - amount) > 0.05) {
+      throw new McpWriteError("Le coût net en euros ne correspond pas.");
+    }
+    return { supplier_net: amount, supplier_currency: "EUR", supplier_net_eur: amount };
+  }
+  return { supplier_net: amount, supplier_currency: currency, supplier_net_eur: input.prixNetEur };
+}
+
+function priceFromHotel(item: Record<string, unknown>, details: Record<string, unknown>, booking: CrmBooking): PricePlan {
+  const dossierDevise = booking.currency || "EUR";
+  const documentCurrency = detailText(details, "document_currency");
+  const documentAmount = typeof details.document_amount === "number" ? details.document_amount : null;
+  if (documentCurrency && documentCurrency !== dossierDevise) {
+    return {
+      amount: null,
+      ticketCount: null,
+      documentAmount,
+      documentCurrency,
+      devise: documentCurrency,
+      amountIsTotal: false,
+    };
+  }
+  const amount = typeof item.amount === "number" ? item.amount : item.amount == null ? null : Number(item.amount);
+  return {
+    amount: amount != null && Number.isFinite(amount) ? amount : null,
+    ticketCount: null,
+    documentAmount: null,
+    documentCurrency: null,
+    devise: dossierDevise,
+    amountIsTotal: false,
+  };
+}
+
+type HotelRoomDraft = {
+  room: string | null;
+  type: string | null;
+  guests: string | null;
+  confirmation_ref: string | null;
+  board?: string;
+  party_keys?: string[];
+};
+
+function hotelRoomDrafts(value: unknown): HotelRoomDraft[] | null {
+  if (value == null || value === "") return null;
+  if (!Array.isArray(value) || !value.length) throw new McpWriteError("Indiquez au moins une chambre.");
+  return value.map((entry, index) => {
+    const label = `Chambre ${index + 1}`;
+    if (typeof entry === "string") {
+      const room = requiredText(entry, label, 120);
+      return { room, type: room, guests: null, confirmation_ref: null };
+    }
+    if (!entry || typeof entry !== "object") throw new McpWriteError(`${label} invalide.`);
+    const row = entry as Record<string, unknown>;
+    const room = optionalText(row.type ?? row.chambre, label, 120);
+    const regime = optionalText(row.regime ?? row.pension, "Régime", 120);
+    const confirmation = optionalText(row.confirmation, "Confirmation", 80);
+    const guests = optionalText(row.voyageurs ?? row.voyageur, "Voyageurs", 240);
+    return {
+      room,
+      type: room,
+      guests,
+      confirmation_ref: confirmation,
+      ...(regime ? { board: regime } : {}),
+    };
+  });
+}
+
+function dayPrefix(value: unknown) {
+  return typeof value === "string" ? value.slice(0, 10) : "";
+}
+
+function hotelReply(
+  item: Record<string, unknown>,
+  booking: CrmBooking,
+  price: PricePlan,
+  warning: string | null
+) {
+  const details = item.details && typeof item.details === "object" ? (item.details as Record<string, unknown>) : {};
+  const net = typeof details.supplier_net === "number" ? details.supplier_net : null;
+  const netEur = typeof details.supplier_net_eur === "number" ? details.supplier_net_eur : null;
+  return {
+    ...cardReply(item, booking, price, warning),
+    hotel: detailText(details, "hotel_name") || (typeof item.title === "string" ? item.title : null),
+    ville: detailText(details, "city"),
+    arrivee: dayPrefix(item.start_at) || null,
+    depart: dayPrefix(item.end_at) || null,
+    confirmation: typeof item.confirmation_ref === "string" ? item.confirmation_ref : null,
+    prix_net: net,
+    devise_net: net != null ? detailText(details, "supplier_currency") : null,
+    prix_net_eur: netEur,
+  };
+}
+
+/** Corrige une carte hôtel. Le prix de vente ne change que si `prix` est indiqué. */
+export async function updateHotel(input: Record<string, unknown>, admin?: Admin) {
+  const target = dossierTarget(input);
+  const carteId = uuid(input.carte_id, "Carte");
+  const db = client(admin);
+  const booking = await loadBooking(db, target);
+  const { data, error } = await db
+    .from("crm_booking_items")
+    .select("*")
+    .eq("id", carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  if (error || !data) throw new McpWriteError("Carte introuvable sur ce dossier.");
+  const item = data as Record<string, unknown>;
+  if (item.kind !== "hotel") throw new McpWriteError("Cette carte n’est pas un hôtel.");
+  const details: Record<string, unknown> = {
+    ...(item.details && typeof item.details === "object" ? (item.details as Record<string, unknown>) : {}),
+  };
+  const patch: Record<string, unknown> = { details };
+  const referenceLe = optionalText(input.reference_le, "Référence Little Emperors", 80);
+  let fill: ReturnType<typeof leCardFill> | null = null;
+  if (referenceLe) {
+    try {
+      const loaded = await loadLeReservation({ confirmation: referenceLe }, db);
+      fill = leCardFill(loaded.booking);
+    } catch (err) {
+      if (err instanceof McpReadError) throw new McpWriteError(err.message);
+      throw err;
+    }
+  }
+  if (fill?.nom) {
+    details.hotel_name = fill.nom;
+    patch.title = fill.nom;
+  }
+  if (fill?.ville) details.city = fill.ville;
+  if (fill?.adresse) details.address = fill.adresse;
+  if (fill?.arrivee) patch.start_at = fill.arrivee;
+  if (fill?.depart) patch.end_at = fill.depart;
+  if (fill?.pension) details.board = fill.pension;
+  if (fill?.inclus.length) details.included = fill.inclus;
+  if (fill?.conditions.length) details.conditions = fill.conditions;
+  if (fill?.guests.length) details.guests = fill.guests.join(", ");
+  if (fill?.rooms.length) details.rooms = fill.rooms;
+  if (fill?.confirmation) {
+    patch.confirmation_ref = joinConfirmationRefs(
+      typeof item.confirmation_ref === "string" ? item.confirmation_ref : null,
+      fill.confirmation
+    );
+  }
+  if (fill?.leHotelId != null) details.le_hotel_id = fill.leHotelId;
+  if (fill) {
+    details.source_family = details.source_family || "little_emperors";
+    if (!("fournisseur" in input)) patch.supplier = typeof item.supplier === "string" && item.supplier ? item.supplier : "Little Emperors";
+  }
+
+  if (input.nom != null && input.nom !== "") {
+    const nom = requiredText(input.nom, "Hôtel", 160);
+    details.hotel_name = nom;
+    patch.title = nom;
+  }
+  const ville = optionalText(input.ville, "Ville", 80);
+  if (ville) details.city = ville;
+  const pays = optionalText(input.pays, "Pays", 80);
+  if (pays) details.country = pays;
+  const adresse = optionalText(input.adresse, "Adresse", 240);
+  if (adresse) details.address = adresse;
+  const arrivee = input.arrivee != null && input.arrivee !== "" ? isoDay(input.arrivee, "Arrivée") : null;
+  const depart = input.depart != null && input.depart !== "" ? isoDay(input.depart, "Départ") : null;
+  if (arrivee) patch.start_at = arrivee;
+  if (depart) patch.end_at = depart;
+  const startDay = dayPrefix(patch.start_at ?? item.start_at);
+  const endDay = dayPrefix(patch.end_at ?? item.end_at);
+  if (startDay && endDay && endDay < startDay) throw new McpWriteError("La date de départ est avant l’arrivée.");
+
+  const pension = optionalText(input.pension ?? input.regime, "Régime", 120);
+  if (pension) details.board = pension;
+  const chambres = hotelRoomDrafts(input.chambres);
+  const chambre = optionalText(input.chambre, "Chambre", 120);
+  if (chambres) {
+    details.rooms = chambres;
+    const label = chambres.map((room) => room.room).filter(Boolean).join(" · ");
+    if (label) details.room = label;
+  } else if (chambre) {
+    details.room = chambre;
+    const current = Array.isArray(details.rooms) ? (details.rooms as Record<string, unknown>[]) : [];
+    if (current.length <= 1) {
+      const first = current[0] && typeof current[0] === "object" ? current[0] : {};
+      details.rooms = [{ ...first, room: chambre, type: chambre }];
+    }
+  }
+  const confirmations = lines(input.confirmations, "Confirmation");
+  const confirmation = optionalText(input.confirmation, "Confirmation", 80);
+  const confirmationParts = [...confirmations, ...(confirmation ? [confirmation] : [])];
+  if (confirmationParts.length) {
+    patch.confirmation_ref = confirmationParts.reduce<string | null>(
+      (acc, ref) => joinConfirmationRefs(acc, ref),
+      typeof patch.confirmation_ref === "string"
+        ? patch.confirmation_ref
+        : typeof item.confirmation_ref === "string"
+          ? item.confirmation_ref
+          : null
+    );
+    if (Array.isArray(details.rooms) && details.rooms.length === 1) {
+      const room = details.rooms[0] as Record<string, unknown>;
+      if (!room.confirmation_ref) room.confirmation_ref = confirmationParts[0];
+    }
+  }
+  if ("fournisseur" in input) patch.supplier = optionalText(input.fournisseur, "Fournisseur", 120);
+  const notes = optionalText(input.notes, "Notes", 2000);
+  if (notes) details.notes = notes;
+  const conditions = lines(input.annulation, "Annulation");
+  if (conditions.length) details.conditions = conditions;
+  const inclus = lines("avantages" in input ? input.avantages : input.inclus, "Avantages");
+  if (inclus.length) details.included = inclus;
+
+  const hasVoyageurs = input.voyageurs != null && input.voyageurs !== "";
+  if (hasVoyageurs) {
+    const ids = idList(input.voyageurs, "Voyageur");
+    if (!ids.length) throw new McpWriteError("Indiquez au moins un voyageur.");
+    const guests = await passengersOf(db, booking.id, ids);
+    const guestLine = guests.map(personLine).filter(Boolean).join(", ");
+    const keys = guests.map(partyKey).filter(Boolean);
+    if (guestLine) details.guests = guestLine;
+    else delete details.guests;
+    if (keys.length) details.party_keys = keys;
+    else delete details.party_keys;
+    if (Array.isArray(details.rooms)) {
+      details.rooms = (details.rooms as Record<string, unknown>[]).map((room, index) => {
+        const next = { ...room };
+        if (details.rooms && (details.rooms as unknown[]).length === 1) {
+          next.guests = guestLine || null;
+          if (keys.length) next.party_keys = keys;
+        } else if (guests.length === (details.rooms as unknown[]).length) {
+          next.guests = personLine(guests[index]) || null;
+          const key = partyKey(guests[index]);
+          if (key) next.party_keys = [key];
+        }
+        return next;
+      });
+    }
+  }
+
+  const prixNet = optionalMoney(input.prix_net, "Coût net");
+  const prixNetEur = optionalMoney(input.prix_net_eur, "Coût net en euros");
+  const deviseNet = input.devise_net == null || input.devise_net === "" ? null : currencyOf(input.devise_net);
+  const net = planSupplierNet({
+    prixNet,
+    devise: deviseNet,
+    prixNetEur,
+    leNet: fill && fill.prixNet != null ? { amount: fill.prixNet, currency: fill.deviseNet } : null,
+  });
+  if (net) {
+    if (prixNet == null && prixNetEur != null && !deviseNet && !fill?.prixNet && typeof details.supplier_net === "number") {
+      details.supplier_net_eur = prixNetEur;
+      if (detailText(details, "supplier_currency") === "EUR") details.supplier_net = prixNetEur;
+    } else {
+      const sameNet =
+        details.supplier_net === net.supplier_net && detailText(details, "supplier_currency") === net.supplier_currency;
+      details.supplier_net = net.supplier_net;
+      details.supplier_currency = net.supplier_currency;
+      if (net.supplier_net_eur != null) details.supplier_net_eur = net.supplier_net_eur;
+      else if (!sameNet) delete details.supplier_net_eur;
+    }
+  }
+
+  const hasPrix = input.prix != null && input.prix !== "";
+  let price = priceFromHotel(item, details, booking);
+  if (hasPrix) {
+    const prix = optionalMoney(input.prix, "Prix");
+    const devise = input.devise == null || input.devise === "" ? null : currencyOf(input.devise);
+    price = hotelPrice({ prix, devise, dossierDevise: booking.currency || "EUR" });
+    patch.amount = price.amount;
+    if (price.documentAmount != null) details.document_amount = price.documentAmount;
+    else delete details.document_amount;
+    if (price.documentCurrency) details.document_currency = price.documentCurrency;
+    else delete details.document_currency;
+  }
+
+  const asked = [
+    "reference_le",
+    "nom",
+    "ville",
+    "pays",
+    "adresse",
+    "arrivee",
+    "depart",
+    "chambre",
+    "chambres",
+    "pension",
+    "regime",
+    "confirmation",
+    "confirmations",
+    "voyageurs",
+    "fournisseur",
+    "notes",
+    "annulation",
+    "avantages",
+    "inclus",
+    "prix_net",
+    "devise_net",
+    "prix_net_eur",
+    "prix",
+    "devise",
+  ].some((key) => input[key] != null && input[key] !== "");
+  if (!asked) throw new McpWriteError("Rien à modifier.");
+
+  const saved = await patchStaffBookingCard(db, booking.id, carteId, patch);
+  if ("error" in saved) throw new McpWriteError(saved.error);
+  const savedDetails =
+    saved.item.details && typeof saved.item.details === "object" ? (saved.item.details as Record<string, unknown>) : details;
+  return hotelReply(saved.item, booking, hasPrix ? price : priceFromHotel(saved.item, savedDetails, booking), saved.ledgerWarning);
 }
 
 function wholeInput(value: unknown, label: string) {
@@ -1319,6 +1828,287 @@ async function rewriteBookingParty(
   }
 }
 
+function requiredFlag(value: unknown, label: string) {
+  if (value === true || value === false) return value;
+  throw new McpWriteError(`${label} : vrai ou faux.`);
+}
+
+function optionalFlag(value: unknown, label: string) {
+  if (value == null || value === "") return null;
+  return requiredFlag(value, label);
+}
+
+/** Même case que « Inclure dans les transactions ». Une dépense reste cochée. Le client qui règle son séjour ne débite pas l’hôtel ni le vol. */
+function ledgerInclusion(
+  item: { kind: string },
+  requested: boolean,
+  clientSettlesStay: boolean
+) {
+  if (isLedgerExpenseKind(item.kind)) {
+    if (!requested) throw new McpWriteError("Une dépense reste dans les transactions.");
+    return true;
+  }
+  if (clientSettlesStay && isStayAmountKind(item.kind)) {
+    if (requested) throw new McpWriteError("Le client règle ce séjour. Cette carte ne va pas aux transactions.");
+    return false;
+  }
+  return requested;
+}
+
+/** Même geste que Cacher / Montrer dans l’agence : le masquage n’existe que si on le choisit. */
+export function cardVisibilityUpdate(
+  item: { lifecycle?: string | null; details?: Record<string, unknown> | null },
+  visible: boolean
+): { error: string } | { visible_to_client: boolean; details: Record<string, unknown> } {
+  if (visible && !isActiveItem(item)) {
+    return { error: "Cette carte est archivée. Elle ne revient pas dans le carnet." as const };
+  }
+  const details = visible
+    ? detailsForCardVisibility(item.details, true)
+    : { ...(item.details || {}), client_hidden: true };
+  return { visible_to_client: visible, details };
+}
+
+type LedgerRow = {
+  id?: string;
+  external_id?: string | null;
+  status?: string | null;
+  amount?: number | string | null;
+  direction?: string | null;
+};
+
+function cardDebit(rows: LedgerRow[], bookingId: string, item: { id: string; kind?: string | null }) {
+  const externalId = bookingChargeExternalId(bookingId, item);
+  return rows.find((row) => row.external_id === externalId && row.direction === "debit") || null;
+}
+
+function debitPosted(row: LedgerRow | null) {
+  return Boolean(row) && row?.status !== "void";
+}
+
+function ledgerSnapshot(row: LedgerRow | null): LedgerRow | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    external_id: row.external_id,
+    status: row.status,
+    amount: row.amount,
+    direction: row.direction,
+  };
+}
+
+function ledgerMove(before: LedgerRow | null, after: LedgerRow | null) {
+  const was = debitPosted(before);
+  const now = debitPosted(after);
+  if (!before && !after) return "hors_livre" as const;
+  if (!was && now && !before) return "ajoute" as const;
+  if (!was && now) return "retabli" as const;
+  if (was && !now) return "annule" as const;
+  if (was && now && Number(before?.amount) !== Number(after?.amount)) return "mis_a_jour" as const;
+  return "inchange" as const;
+}
+
+/**
+ * Montre ou cache une seule carte, et coche ou décoche « Inclure dans les transactions ».
+ * Aucun envoi, aucun publier_carnet. Sur un carnet déjà montré, un brouillon WhatsApp est préparé.
+ * Le grand livre reprend la même ligne.
+ */
+export async function setCarteVisibilite(input: Record<string, unknown>, admin?: Admin) {
+  const visible = optionalFlag(input.visible, "Visible");
+  const include = optionalFlag(input.inclure_transactions, "Inclure dans les transactions");
+  if (visible == null && include == null) throw new McpWriteError("Indiquez visible ou inclure_transactions.");
+  const carteId = uuid(input.carte_id, "Carte");
+  const db = client(admin);
+  const booking = await loadBooking(db, dossierTarget(input));
+  const { data, error } = await db
+    .from("crm_booking_items")
+    .select("id, kind, title, amount, details, lifecycle, visible_to_client, include_in_ledger")
+    .eq("id", carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  if (error || !data) throw new McpWriteError("Carte introuvable sur ce dossier.");
+  const item = data as {
+    id: string;
+    kind: string;
+    title: string | null;
+    amount: number | null;
+    details: Record<string, unknown> | null;
+    lifecycle: string | null;
+    visible_to_client: boolean | null;
+    include_in_ledger: boolean | null;
+  };
+  const next = visible == null ? null : cardVisibilityUpdate(item, visible);
+  if (next && "error" in next) throw new McpWriteError(next.error);
+  const includeNext =
+    include == null ? null : ledgerInclusion(item, include, booking.client_settles_stay === true);
+  const { data: beforeRows } = await db
+    .from("crm_transactions")
+    .select("id, external_id, status, amount, direction")
+    .eq("booking_id", booking.id)
+    .eq("direction", "debit");
+  const before = ledgerSnapshot(cardDebit((beforeRows || []) as LedgerRow[], booking.id, item));
+  const visibilityChanged =
+    next != null &&
+    visible != null &&
+    (Boolean(item.visible_to_client) !== visible ||
+      (visible ? item.details?.client_hidden === true : item.details?.client_hidden !== true));
+  const ledgerChanged = includeNext != null && Boolean(item.include_in_ledger) !== includeNext;
+  const patch: Record<string, unknown> = {};
+  if (visibilityChanged && next && !("error" in next)) {
+    patch.visible_to_client = next.visible_to_client;
+    patch.details = next.details;
+  }
+  if (ledgerChanged) patch.include_in_ledger = includeNext;
+  if (Object.keys(patch).length) {
+    const { error: updateError } = await db
+      .from("crm_booking_items")
+      .update(patch)
+      .eq("id", carteId)
+      .eq("booking_id", booking.id);
+    if (updateError) throw new McpWriteError("Carte non mise à jour.");
+  }
+  const noted: boolean[] = [];
+  if (visibilityChanged && visible != null) {
+    const { error: auditError } = await db.from("crm_audit_events").insert(
+      toAuditRow({
+        actorKind: "auto",
+        action: "visibilite_carte",
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        summary: visible ? "Carte montrée au client" : "Carte cachée au client",
+        detail: { carte_id: carteId, kind: item.kind, visible },
+      })
+    );
+    noted.push(!auditError);
+    if (auditError) console.error("[mcp] journal visibilité", auditError.code ?? "?");
+  }
+  if (ledgerChanged) {
+    const { error: auditError } = await db.from("crm_audit_events").insert(
+      toAuditRow({
+        actorKind: "auto",
+        action: "transactions_carte",
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        summary: includeNext ? "Carte incluse dans les transactions" : "Carte retirée des transactions",
+        detail: { carte_id: carteId, kind: item.kind, inclure_transactions: includeNext },
+      })
+    );
+    noted.push(!auditError);
+    if (auditError) console.error("[mcp] journal transactions", auditError.code ?? "?");
+  }
+  const journal = noted.length > 0 && noted.every(Boolean);
+  const warning = await ledgerWarning("Carte enregistrée", () => refreshBookingLedger(db, booking.id));
+  await import("@/lib/crm/dossier-refresh")
+    .then((mod) => mod.refreshBookingDerived(booking.id))
+    .catch(() => undefined);
+  const draft =
+    visibilityChanged && visible === true
+      ? await noteCarnetAdditions(db, booking.id, [{ id: carteId, kind: item.kind }])
+      : { prepared: false as const };
+  const { data: saved } = await db
+    .from("crm_booking_items")
+    .select("id, kind, title, visible_to_client, include_in_ledger, details")
+    .eq("id", carteId)
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+  const row = (saved || {
+    ...item,
+    visible_to_client: visibilityChanged && next && !("error" in next) ? next.visible_to_client : item.visible_to_client,
+    details: visibilityChanged && next && !("error" in next) ? next.details : item.details,
+    include_in_ledger: ledgerChanged ? includeNext : item.include_in_ledger,
+  }) as {
+    id: string;
+    kind: string;
+    title: string | null;
+    visible_to_client: boolean | null;
+    include_in_ledger: boolean | null;
+    details: Record<string, unknown> | null;
+  };
+  const { data: afterRows } = await db
+    .from("crm_transactions")
+    .select("id, external_id, status, amount, direction")
+    .eq("booking_id", booking.id)
+    .eq("direction", "debit");
+  const after = ledgerSnapshot(cardDebit((afterRows || []) as LedgerRow[], booking.id, item));
+  const compte = debitPosted(after);
+  return {
+    carte_id: carteId,
+    dossier_id: booking.id,
+    reference: booking.reference,
+    kind: row.kind,
+    titre: row.title,
+    visible: row.visible_to_client === true,
+    notifie: false,
+    message_pret: draft.prepared,
+    sejour_visible: booking.visible_to_client === true,
+    incluse_transactions: itemIncludedInLedger(
+      { kind: row.kind, include_in_ledger: row.include_in_ledger, details: row.details },
+      booking.client_settles_stay === true
+    ),
+    grand_livre: {
+      compte,
+      statut: !after ? "absent" : compte ? "compte" : "annule",
+      montant: compte ? Number(after?.amount) : null,
+      mouvement_id: after?.id || null,
+      effet: ledgerMove(before, after),
+    },
+    journal,
+    ...(warning ? { avertissement: warning } : {}),
+  };
+}
+
+/**
+ * Prépare à la main le WhatsApp « ajouté à votre carnet ».
+ * Un seul brouillon. Rien n’est envoyé.
+ */
+export async function prepareCarnetMessage(input: Record<string, unknown>, admin?: Admin) {
+  const db = client(admin);
+  const booking = await loadBooking(db, dossierTarget(input));
+  const asked = idList(input.carte_ids ?? input.cartes, "Carte");
+  const { data, error } = await db
+    .from("crm_booking_items")
+    .select("id, kind, lifecycle, visible_to_client, details")
+    .eq("booking_id", booking.id);
+  if (error) throw new McpWriteError("Cartes du dossier illisibles.");
+  const items = (data || []) as {
+    id: string;
+    kind: string;
+    lifecycle: string | null;
+    visible_to_client: boolean | null;
+    details: Record<string, unknown> | null;
+  }[];
+  const wanted = asked.length ? new Set(asked) : null;
+  if (wanted) {
+    for (const id of wanted) {
+      if (!items.some((item) => item.id === id)) throw new McpWriteError("Carte introuvable sur ce dossier.");
+    }
+  }
+  const cards = items.filter((item) => {
+    if (wanted && !wanted.has(item.id)) return false;
+    if (!isActiveItem(item) || item.visible_to_client !== true || keptHiddenFromClient(item.details)) return false;
+    return countsAsCarnetCard(item.kind);
+  });
+  if (wanted && cards.length !== wanted.size) {
+    throw new McpWriteError("Cette prestation n’est pas montrée dans le carnet.");
+  }
+  const draft = await noteCarnetAdditions(
+    db,
+    booking.id,
+    cards.map((item) => ({ id: item.id, kind: item.kind })),
+    { replace: true }
+  );
+  if (!draft.prepared) throw new McpWriteError(draft.raison);
+  return {
+    dossier_id: booking.id,
+    reference: booking.reference,
+    envoye: false,
+    notifie: false,
+    message: draft.message,
+    suivi_id: draft.suivi_id,
+    prestations: draft.prestations,
+  };
+}
+
 /** Retire une carte. Les frais de billeterie ne reviennent pas, et leur débit est annulé. Aucun message. */
 export async function removeCarte(input: Record<string, unknown>, admin?: Admin) {
   const booking = await loadBooking(client(admin), dossierTarget(input));
@@ -1339,6 +2129,9 @@ export async function removeCarte(input: Record<string, unknown>, admin?: Admin)
   if (deleteError) throw new McpWriteError("Carte non retirée.");
   await resyncAccueilVip(db, booking.id);
   const warning = await ledgerWarning("Carte retirée", () => refreshBookingLedger(db, booking.id));
+  await import("@/lib/crm/dossier-refresh")
+    .then((mod) => mod.refreshBookingDerived(booking.id))
+    .catch(() => undefined);
   return {
     carte_id: carteId,
     dossier_id: booking.id,

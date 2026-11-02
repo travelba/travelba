@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { FoldedRow } from "@/components/crm/FoldedRow";
-import type { ShareCompanion } from "@/lib/crm/trip-share";
+import type { ShareCompanion } from "@/lib/crm/trip-share-types";
 
 export function TripSharePanel({
   bookingId,
@@ -12,6 +12,8 @@ export function TripSharePanel({
   preview = false,
   canSend = true,
   sendUrl,
+  initialNotice = null,
+  initialTone = "ok",
 }: {
   bookingId: string;
   shareUrl: string;
@@ -21,19 +23,25 @@ export function TripSharePanel({
   /** Faux : le client n’a pas de téléphone, l’envoi reste bloqué. */
   canSend?: boolean;
   sendUrl?: string;
+  /** Avis déjà connu. Il reste visible quand la ligne est repliée. */
+  initialNotice?: string | null;
+  initialTone?: "ok" | "error";
 }) {
   const [copied, setCopied] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(initialNotice);
+  const [tone, setTone] = useState<"ok" | "error">(initialTone);
   const sendTarget = preview ? null : sendUrl || `/api/client/bookings/${bookingId}/partage`;
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
+      setTone("ok");
       setNotice("Lien copié.");
     } catch {
       setCopied(false);
+      setTone("error");
       setNotice("Sélectionnez le lien pour le copier.");
     }
   }
@@ -43,6 +51,7 @@ export function TripSharePanel({
     setSendingId(companion.companionId);
     setNotice(null);
     if (!sendTarget) {
+      setTone("error");
       setNotice("Aperçu : aucun message n’est envoyé.");
       setSendingId(null);
       return;
@@ -53,21 +62,25 @@ export function TripSharePanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companion_id: companion.companionId }),
       });
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) {
-        setNotice(payload?.error || "WhatsApp n’a pas pu envoyer le message. Le lien reste à copier.");
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; message?: string } | null;
+      if (response.ok && payload?.ok) {
+        setTone("ok");
+        setNotice(payload.message || `Lien envoyé à ${companion.firstName} par WhatsApp.`);
         return;
       }
-      setNotice(`Lien envoyé à ${companion.firstName} par WhatsApp.`);
+      setTone("error");
+      setNotice(payload?.error || "WhatsApp n’a pas pu remettre le lien. Le lien reste à copier.");
     } catch {
-      setNotice("WhatsApp n’a pas pu envoyer le message. Le lien reste à copier.");
+      setTone("error");
+      setNotice("WhatsApp n’a pas pu remettre le lien. Le lien reste à copier.");
     } finally {
       setSendingId(null);
     }
   }
 
   return (
-    <FoldedRow title="Partager le voyage">
+    <div className="space-y-2">
+      <FoldedRow title="Partager le voyage">
       <p className="text-sm text-[var(--admin-navy)]">
         Ce lien ouvre la page du voyage, sans compte.
       </p>
@@ -122,7 +135,12 @@ export function TripSharePanel({
         </ul>
       ) : null}
 
-      {notice ? <p className="text-sm text-[var(--admin-navy)]">{notice}</p> : null}
-    </FoldedRow>
+      </FoldedRow>
+      {notice ? (
+        <p role={tone === "error" ? "alert" : "status"} data-partage-notice="" className="px-1 text-sm font-medium text-[var(--admin-navy)]">
+          {notice}
+        </p>
+      ) : null}
+    </div>
   );
 }

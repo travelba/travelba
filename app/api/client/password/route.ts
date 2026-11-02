@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { stampClientSession } from "@/lib/crm/client-session-cookie";
 import { dbError, jsonError } from "@/lib/crm/auth";
 import {
   MIN_PASSWORD_LENGTH,
@@ -64,7 +66,7 @@ export async function POST(request: Request) {
       summary: change ? "A changé son mot de passe" : "A enregistré son mot de passe",
     });
   }
-  if (change) return NextResponse.json({ ok: true });
+  if (change) return sealClient(NextResponse.json({ ok: true }));
 
   const { data: fresh } = await admin.auth.admin.getUserById(user.id);
   const [{ data: customer }, { data: staffRow }] = await Promise.all([
@@ -129,5 +131,10 @@ export async function POST(request: Request) {
     httpOnly: true,
     maxAge: 0,
   });
-  return response;
+  return sealClient(response);
+}
+
+async function sealClient(response: NextResponse) {
+  const jar = await cookies();
+  return stampClientSession(response, jar.getAll(), process.env.NODE_ENV === "production");
 }

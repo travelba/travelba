@@ -4,10 +4,12 @@ import { formatDateTimeFr } from "@/lib/crm/dates";
 import Link from "next/link";
 
 const replyClass = {
-  received:
+  treat:
     "inline-block max-w-full break-words rounded-full bg-[var(--admin-peach)] px-2.5 py-1 text-xs font-semibold leading-snug text-[var(--admin-navy)]",
   waiting:
     "inline-block max-w-full break-words rounded-full bg-[#f8f4ed] px-2.5 py-1 text-xs font-semibold leading-snug text-[#9e7e51] ring-1 ring-[var(--admin-gold)]/40",
+  silent:
+    "inline-block max-w-full break-words rounded-full bg-[#0B192C] px-2.5 py-1 text-xs font-semibold leading-snug text-[#C5A880]",
 } as const;
 
 const paymentClass = {
@@ -17,17 +19,31 @@ const paymentClass = {
 } as const;
 
 function MailRow({ mail }: { mail: DashboardCourrier }) {
+  const when = formatDateTimeFr(mail.receivedAt);
   return (
     <li>
       <Link href={mail.href} className="block px-4 py-3 transition hover:bg-[#f8f4ed]">
         <div className="flex flex-col gap-0.5 lg:flex-row lg:items-baseline lg:justify-between lg:gap-3">
           <p className="min-w-0 font-display font-bold break-words text-[var(--admin-navy)] lg:flex-1">{mail.title}</p>
-          <p className="shrink-0 text-xs tabular-nums text-muted">{formatDateTimeFr(mail.receivedAt)}</p>
+          <p className="shrink-0 text-xs tabular-nums text-muted">
+            {when}
+            {when ? ` · ${mail.lastWriter}` : mail.lastWriter}
+          </p>
         </div>
-        {mail.detail ? <p className="mt-1 break-words text-sm text-[var(--admin-navy)]">{mail.detail}</p> : null}
+        {mail.excerpt ? (
+          <>
+            {mail.reference ? <p className="mt-1 break-words text-sm text-muted">{mail.reference}</p> : null}
+            <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#e5e0d4] border-l-4 border-l-[#C5A880] bg-[#faf9f6] px-3 py-2 text-sm leading-relaxed text-[var(--admin-navy)]">
+              {mail.excerpt}
+            </p>
+          </>
+        ) : mail.reference ? (
+          <p className="mt-1 break-words text-sm text-[var(--admin-navy)]">{mail.reference}</p>
+        ) : null}
         <div className="mt-2 flex flex-col items-start gap-1.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-gold-dark)]">{mail.mark}</p>
           <span className={replyClass[mail.replyState]}>{mail.replyLabel}</span>
+          {mail.followUpLabel ? <span className="text-xs font-medium text-[#3d4654]">{mail.followUpLabel}</span> : null}
           {mail.paymentLabel && mail.paymentState !== "hidden" ? (
             <span className={paymentClass[mail.paymentState === "paid" ? "paid" : "unpaid"]}>{mail.paymentLabel}</span>
           ) : null}
@@ -70,7 +86,7 @@ export function RecentMails({ mails }: { mails: DashboardCourrier[] }) {
           ) : null}
         </div>
       ) : (
-        <p className="mt-2 text-sm text-muted">Aucun courrier d’hôtel envoyé pour le moment.</p>
+        <p className="mt-2 text-sm text-muted">Rien à traiter pour le moment.</p>
       )}
     </section>
   );

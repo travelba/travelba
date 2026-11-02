@@ -17,11 +17,14 @@ const NAV_ITEMS = [
   { key: "contact", href: "#contact" },
 ] as const;
 
+function closeMenu(event: { currentTarget: EventTarget & Element }) {
+  event.currentTarget.closest("details")?.removeAttribute("open");
+}
+
 export function Header() {
   const t = useTranslations("Nav");
   const tCommon = useTranslations("Common");
   const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 16);
@@ -29,13 +32,6 @@ export function Header() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [open]);
 
   return (
     <header
@@ -76,50 +72,48 @@ export function Header() {
           >
             {t("cta")}
           </a>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground lg:hidden"
-            aria-label={open ? tCommon("close") : tCommon("menu")}
-            aria-expanded={open}
-          >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {/* <details> natif : le menu s’ouvre avant l’hydratation, y compris sur iOS. */}
+          <details className="lg:hidden">
+            <summary
+              className="menu-toggle inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border text-foreground"
+              aria-label={tCommon("menu")}
+            >
+              <Menu className="menu-icon-open h-5 w-5" />
+              <X className="menu-icon-close h-5 w-5" />
+            </summary>
+            <nav className="absolute inset-x-0 top-16 z-50 max-h-[calc(100dvh-4rem)] overflow-auto border-t border-border bg-background/95 backdrop-blur-xl">
+              <div className="mx-auto flex max-w-7xl flex-col px-5 py-4 sm:px-8">
+                {NAV_ITEMS.map((item) => (
+                  <a
+                    key={item.key}
+                    href={item.href}
+                    onClick={closeMenu}
+                    className="border-b border-border/60 py-3 text-base text-foreground/90"
+                  >
+                    {t(item.key)}
+                  </a>
+                ))}
+                <Link
+                  href="/connexion"
+                  onClick={closeMenu}
+                  className="py-3 text-base font-semibold text-foreground"
+                >
+                  {t("account")}
+                </Link>
+                <a
+                  href={`https://wa.me/${siteConfig.whatsappNumber}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={closeMenu}
+                  className="mt-4 rounded-full bg-[#C5A880] px-4 py-3 text-center text-sm font-semibold text-[#0B192C]"
+                >
+                  {t("cta")}
+                </a>
+              </div>
+            </nav>
+          </details>
         </div>
       </div>
-
-      {open && (
-        <div className="border-t border-border bg-background/95 backdrop-blur-xl lg:hidden">
-          <nav className="mx-auto flex max-w-7xl flex-col px-5 py-4 sm:px-8">
-            {NAV_ITEMS.map((item) => (
-              <a
-                key={item.key}
-                href={item.href}
-                onClick={() => setOpen(false)}
-                className="border-b border-border/60 py-3 text-base text-foreground/90"
-              >
-                {t(item.key)}
-              </a>
-            ))}
-            <Link
-              href="/connexion"
-              onClick={() => setOpen(false)}
-              className="py-3 text-base font-semibold text-foreground"
-            >
-              {t("account")}
-            </Link>
-            <a
-              href={`https://wa.me/${siteConfig.whatsappNumber}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setOpen(false)}
-              className="mt-4 rounded-full bg-[#C5A880] px-4 py-3 text-center text-sm font-semibold text-[#0B192C]"
-            >
-              {t("cta")}
-            </a>
-          </nav>
-        </div>
-      )}
     </header>
   );
 }

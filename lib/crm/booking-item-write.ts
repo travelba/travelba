@@ -8,6 +8,8 @@ import {
   refreshBookingLedger,
 } from "@/lib/crm/bookings";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
+import { applyExpensePricing, hasExpensePricingInput } from "@/lib/crm/expense-pricing";
+import { awaitingExpenseDetails, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
@@ -62,9 +64,18 @@ export async function addStaffBookingCard(
   const kind = knownKind(body.kind || "fee");
   if (!kind) return { error: "Type de carte inconnu", status: 400 };
   if (!title && kind !== "accueil_vip") return { error: "Titre requis", status: 400 };
-  const amount = parseMoney(moneyField(body.amount));
-  if (isLedgerExpenseKind(kind) && (amount == null || amount <= 0)) {
-    return { error: "Montant requis", status: 400 };
+  let amount = parseMoney(moneyField(body.amount));
+  let expenseDetails: Record<string, unknown> | null = null;
+  if (isLedgerExpenseKind(kind)) {
+    const parsedDetails = parseItemDetails(body.details);
+    if ("error" in parsedDetails) return { error: parsedDetails.error, status: 400 };
+    const priced = applyExpensePricing(
+      { quantity: body.quantity, unit_price: body.unit_price, amount: body.amount },
+      { amount: null, details: parsedDetails.details }
+    );
+    if (!priced.ok) return { error: priced.error === "Montant requis." ? "Montant requis" : priced.error, status: 400 };
+    amount = priced.pricing.amount;
+    expenseDetails = priced.details;
   }
   const { data: existing, error: existingError } = await supabase
     .from("crm_booking_items")
@@ -87,7 +98,7 @@ export async function addStaffBookingCard(
   const details = parseItemDetails(body.details);
   if ("error" in details) return { error: details.error, status: 400 };
   let nextBody = body;
-  let nextDetails = details.details;
+  let nextDetails = expenseDetails ?? details.details;
   let nextAmount = amount;
   if (kind === "accueil_vip") {
     const composed = composeAccueilVip(
@@ -168,7 +179,7 @@ export async function patchStaffBookingCard(
 ): Promise<{ item: Record<string, unknown>; ledgerWarning: string | null } | { error: string; status: number }> {
   const { data: current, error: currentError } = await supabase
     .from("crm_booking_items")
-    .select("id")
+    .select("id, kind, amount, details")
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .maybeSingle();
@@ -185,6 +196,22 @@ export async function patchStaffBookingCard(
     const details = parseItemDetails(body.details);
     if ("error" in details) return { error: details.error, status: 400 };
     patch.details = details.details;
+  }
+  const row = current as { kind?: string | null; amount?: number | string | null; details?: unknown };
+  if (isLedgerExpenseKind(row.kind) && typeof body.validate === "boolean") {
+    const base = "details" in patch ? patch.details : row.details;
+    patch.details = body.validate ? validatedExpenseDetails(base) : awaitingExpenseDetails(base);
+  }
+  if (isLedgerExpenseKind(row.kind) && ("amount" in body || "details" in body || hasExpensePricingInput(body) || typeof body.validate === "boolean")) {
+    // Dépense : quantité × prix unitaire, le montant suit. Le montant seul recalcule le prix unitaire.
+    const priced = applyExpensePricing(
+      { quantity: body.quantity, unit_price: body.unit_price, amount: "amount" in body ? body.amount : undefined },
+      { amount: parseMoney(row.amount), details: "details" in patch ? patch.details : row.details }
+    );
+    if (!priced.ok) return { error: priced.error === "Montant requis." ? "Montant requis" : priced.error, status: 400 };
+    patch.amount = priced.pricing.amount;
+    patch.details = priced.details;
+    patch.include_in_ledger = true;
   }
   if (!Object.keys(patch).length) return { error: "Rien à mettre à jour", status: 400 };
   const { data, error } = await supabase

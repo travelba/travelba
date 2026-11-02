@@ -10,7 +10,7 @@ export function AgencyLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element -- marque locale, pas next/image
     <img
-      src={siteConfig.logoSrc}
+      src="/brand/logo-tba-256.png"
       alt={alt}
       width={36}
       height={36}

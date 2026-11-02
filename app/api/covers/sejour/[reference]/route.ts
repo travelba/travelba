@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { publicCoverPath, toCoverJpeg } from "@/lib/crm/cover-file";
 import { catalogCachePath, isCatalogPhotoId } from "@/lib/crm/cover-retouch";
-import { unsplashKeywordMatch } from "@/lib/crm/covers";
+import { bookingCoverPlan, catalogPhotoId } from "@/lib/crm/covers";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { isBookingReference } from "@/lib/crm/concierge-notices";
 import { entryCoverAllowed, isEntryCode } from "@/lib/crm/entry-link";
@@ -71,10 +71,12 @@ export async function GET(request: Request, ctx: Ctx) {
     }
   }
   if (!bytes) {
-    const photo = unsplashKeywordMatch({
+    const plan = bookingCoverPlan({
       destination: booking.destination,
       title: booking.title || "",
+      cover_image_path: null,
     });
+    const photo = plan.mode === "none" ? null : catalogPhotoId(plan.src);
     if (photo && isCatalogPhotoId(photo)) {
       try {
         const file = await downloadCrmFile(catalogCachePath(photo));

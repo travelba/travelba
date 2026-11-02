@@ -173,7 +173,8 @@ export function sortBookingsByProximity<T extends ProximityDated>(rows: T[], tod
   return rows.slice().sort((a, b) => compareBookingsByProximity(a, b, today));
 }
 
-export const CLIENT_FILTERS = ["veille"] as const;
+/** Filtres de la liste Clients : `?filtre=`. Pièces à échéance est une vue de la même liste. */
+export const CLIENT_FILTERS = ["veille", "echeance"] as const;
 export type ClientFilter = (typeof CLIENT_FILTERS)[number];
 
 export function parseClientFilter(value: SearchParamValue): ClientFilter | null {

@@ -2,6 +2,7 @@ import { shownPersonName } from "@/lib/crm/identity";
 import { documentPriceIssues } from "@/lib/crm/booking-issues";
 import { cityPlaceKey } from "@/lib/crm/city-names";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
+import { hotelExactStay, hotelRefsShareBooking } from "@/lib/crm/item-match";
 import {
   firstNamesMatch,
   foldName,
@@ -14,6 +15,7 @@ import {
   type CrmBookingItem,
   type CrmCustomer,
   type EmailIngestCandidate,
+  isActiveItem,
 } from "@/lib/crm/types";
 import { normalizeMatchText } from "@/lib/crm/revolut-match";
 
@@ -33,6 +35,10 @@ type ExtractPerson = { first_name: string; last_name: string };
 
 /** Score mini pour rattacher un voyage automatiquement (réf. ou trio nom+lieu+dates). */
 export const STRONG_BOOKING_SCORE = 84;
+
+/** Au-dessus du seuil fort, sous la référence dossier. Un ex æquo ne choisit pas. */
+export const HOTEL_STAY_SCORE = 91;
+export const HOTEL_STAY_REASON = "Hôtel, dates et voyageur";
 
 const AGENCY_INBOXES = new Set(
   [
@@ -191,6 +197,14 @@ export function referenceTokens(value: string | null | undefined): string[] {
     .split(/[\s;,/|]+/)
     .map((token) => normalizeMatchText(token))
     .filter((token) => token.length >= 4);
+}
+
+/** Même confirmation, y compris `64570` et `64570SH046795`. */
+export function confirmationRefsAlign(a: string | null | undefined, b: string | null | undefined) {
+  const left = referenceTokens(a);
+  const right = new Set(referenceTokens(b));
+  if (left.some((token) => right.has(token))) return true;
+  return hotelRefsShareBooking(a, b);
 }
 
 /** Toutes les références présentes dans un extract (items + réf. dossier). */
@@ -445,7 +459,7 @@ export function suggestBookingByReference(
       } else {
         const items = itemsByBooking.get(booking.id) || [];
         const hit = items.some((item) =>
-          referenceTokens(item.confirmation_ref).some((token) => refs.has(token))
+          [...refs].some((token) => confirmationRefsAlign(token, item.confirmation_ref))
         );
         if (hit) {
           score = 90;
@@ -515,8 +529,131 @@ export function suggestBookingByTripSignals(
   return { autoBookingId: pickAutoBookingId(candidates), candidates };
 }
 
+export type HotelStayCard = {
+  booking_id: string;
+  kind?: string | null;
+  title?: string | null;
+  confirmation_ref?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  details?: Record<string, unknown> | null;
+  lifecycle?: string | null;
+};
+
+function guestPerson(value: string): ExtractPerson | null {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  return { first_name: parts.slice(0, -1).join(" "), last_name: parts[parts.length - 1] };
+}
+
+function cardGuests(card: HotelStayCard): ExtractPerson[] {
+  const details = card.details || {};
+  const raw: string[] = [];
+  if (typeof details.guests === "string") raw.push(...details.guests.split(","));
+  const rooms = Array.isArray(details.rooms) ? details.rooms : [];
+  for (const room of rooms) {
+    if (!room || typeof room !== "object") continue;
+    const guests = (room as { guests?: unknown }).guests;
+    if (typeof guests === "string") raw.push(...guests.split(","));
+  }
+  const people: ExtractPerson[] = [];
+  for (const value of raw) {
+    const person = guestPerson(value);
+    if (person) people.push(person);
+  }
+  return people;
+}
+
+/** Nom et prénom exacts. Le nom de famille seul, ou un nom approchant, ne suffit pas. */
+function travelerNameMatches(
+  person: ExtractPerson,
+  first: string | null | undefined,
+  last: string | null | undefined,
+  usage?: string | null
+) {
+  if (!person.first_name.trim() || !person.last_name.trim()) return false;
+  const incoming = compactName(person.last_name);
+  const lasts = [compactName(last), compactName(usage)].filter(Boolean);
+  if (!incoming || !lasts.includes(incoming)) return false;
+  return firstNamesAlign(person.first_name, first);
+}
+
+/**
+ * Séjour déjà ouvert : même hôtel (nom ou `le_hotel_id`), mêmes dates, même voyageur.
+ * La confirmation peut différer (numéro d’hôtel et numéro Little Emperors).
+ * Deux dossiers : aucun rattachement automatique.
+ */
+export function suggestBookingByHotelStay(
+  extract: BookingExtract,
+  bookings: TripBooking[],
+  cards: HotelStayCard[],
+  customers: CustomerLite[]
+): BookingSuggestion {
+  const people = extractPeople(extract).filter((person) => person.first_name && person.last_name);
+  const hotels = (extract.items || []).filter((item) => (item.kind || "") === "hotel");
+  if (!people.length || !hotels.length) return { autoBookingId: null, candidates: [] };
+  const byCustomer = new Map(customers.map((row) => [row.id, row]));
+  const byBooking = new Map<string, HotelStayCard[]>();
+  for (const card of cards) {
+    if (!card.booking_id || !isActiveItem(card)) continue;
+    if (card.kind && card.kind !== "hotel") continue;
+    const list = byBooking.get(card.booking_id) || [];
+    list.push(card);
+    byBooking.set(card.booking_id, list);
+  }
+  const candidates: BookingSuggestion["candidates"] = [];
+  for (const booking of bookings) {
+    if (booking.status === "cancelled") continue;
+    const customer = booking.customer_id ? byCustomer.get(booking.customer_id) : undefined;
+    const stayCards = byBooking.get(booking.id) || [];
+    const hit = hotels.some((item) => {
+      const incoming = {
+        kind: "hotel",
+        title: item.title,
+        confirmation_ref: item.confirmation_ref,
+        start_at: item.start_at,
+        end_at: item.end_at,
+        details: item.details || null,
+      };
+      return stayCards.some((card) => {
+        const current = {
+          kind: card.kind || "hotel",
+          title: card.title,
+          confirmation_ref: card.confirmation_ref,
+          start_at: card.start_at,
+          end_at: card.end_at,
+          details: card.details || null,
+        };
+        if (!hotelExactStay(current, incoming)) return false;
+        const holder = customer
+          ? people.some((person) =>
+              travelerNameMatches(person, customer.first_name, customer.last_name, customer.usage_name)
+            )
+          : false;
+        if (holder) return true;
+        return cardGuests(card).some((guest) =>
+          people.some((person) => travelerNameMatches(person, guest.first_name, guest.last_name))
+        );
+      });
+    });
+    if (!hit) continue;
+    candidates.push({
+      booking_id: booking.id,
+      customer_id: booking.customer_id || null,
+      label: bookingLabel(booking),
+      reason: HOTEL_STAY_REASON,
+      score: HOTEL_STAY_SCORE,
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
+  return { autoBookingId: pickAutoBookingId(candidates), candidates };
+}
+
 export const SAME_DESTINATION_REASON = "Même client, même destination";
 export const SAME_DESTINATION_CANCELLED_REASON = "Même client, même destination, séjour annulé";
+/** Même client, dates qui se croisent : on propose d’ajouter, on ne crée pas. */
+export const OVERLAP_ADD_REASON = "Ajouter au dossier";
+const EMAIL_DATES_SCORE = 83;
 
 /** Sous le seuil de rattachement automatique : la file propose, elle ne crée pas. */
 const SAME_DESTINATION_SCORE = 80;
@@ -559,6 +696,79 @@ export function suggestBookingByDestination(
 
   candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
   return { autoBookingId: null, candidates };
+}
+
+/**
+ * Deuxième palier : e-mail du client et dates qui se chevauchent.
+ * Pas de rattachement automatique : la file propose « Ajouter au dossier ».
+ */
+export function suggestBookingByClientEmail(
+  extract: BookingExtract,
+  bookings: TripBooking[],
+  customers: CustomerLite[]
+): BookingSuggestion {
+  if (isCancellationExtract(extract)) return { autoBookingId: null, candidates: [] };
+  const email = usableCustomerEmail(extract.customer_email);
+  if (!email) return { autoBookingId: null, candidates: [] };
+  const window = extractWindow(extract);
+  if (!window.start) return { autoBookingId: null, candidates: [] };
+  const customer = customers.find((row) => (row.email || "").trim().toLowerCase() === email);
+  if (!customer) return { autoBookingId: null, candidates: [] };
+  const candidates: BookingSuggestion["candidates"] = [];
+  for (const booking of bookings) {
+    if (booking.customer_id !== customer.id) continue;
+    if (booking.status === "cancelled") continue;
+    if (!dateRangesOverlap(window.start, window.end, booking.start_date, booking.end_date)) continue;
+    candidates.push({
+      booking_id: booking.id,
+      customer_id: customer.id,
+      label: bookingLabel(booking),
+      reason: OVERLAP_ADD_REASON,
+      score: EMAIL_DATES_SCORE,
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
+  return { autoBookingId: null, candidates };
+}
+
+export type MatchTier = "reference" | "email_dates" | "traveler_hotel_dates" | "human";
+
+function uniqueByBooking(rows: BookingSuggestionCandidate[]) {
+  const seen = new Map<string, BookingSuggestionCandidate>();
+  for (const row of rows) {
+    if (!seen.has(row.booking_id)) seen.set(row.booking_id, row);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Confirmation / PNR / réf. Expedia ou Little Emperors, puis e-mail + dates,
+ * puis voyageur + hôtel + dates. Plusieurs dossiers au même palier : un humain.
+ */
+export function deterministicBookingId(
+  candidates: BookingSuggestionCandidate[]
+): { tier: MatchTier; bookingId: string | null } {
+  const references = uniqueByBooking(
+    candidates.filter((row) => row.score >= 90 && /référence/i.test(row.reason))
+  );
+  if (references.length === 1) return { tier: "reference", bookingId: references[0].booking_id };
+  if (references.length > 1) return { tier: "reference", bookingId: null };
+  const byEmail = uniqueByBooking(candidates.filter((row) => row.reason === OVERLAP_ADD_REASON));
+  if (byEmail.length === 1) return { tier: "email_dates", bookingId: byEmail[0].booking_id };
+  if (byEmail.length > 1) return { tier: "email_dates", bookingId: null };
+  const byStay = uniqueByBooking(
+    candidates.filter(
+      (row) => row.reason === HOTEL_STAY_REASON || row.reason.startsWith("Nom, destination")
+    )
+  );
+  if (byStay.length === 1) return { tier: "traveler_hotel_dates", bookingId: byStay[0].booking_id };
+  return { tier: "human", bookingId: null };
+}
+
+export function proposesAddToDossier(
+  candidates: { reason?: string | null }[] | null | undefined
+) {
+  return (candidates || []).some((row) => row.reason === OVERLAP_ADD_REASON);
 }
 
 export function blocksSecondDossier(

@@ -92,7 +92,10 @@ export function chargeableTicketingFee(input: {
   items: { kind?: string | null; details?: Record<string, unknown> | null; lifecycle?: string | null }[];
   status: string;
   travelerCount?: number;
+  /** `ticketing_off` : l’agence a retiré les frais. On ne les rajoute pas. */
+  feeMode?: string | null;
 }) {
+  if (ticketingFeeDismissed(input.feeMode)) return 0;
   const active = input.items.filter((item) => isActiveItem(item));
   if (active.some((item) => isAutoTicketingExpense(item))) return 0;
   return collectableTicketingFee({

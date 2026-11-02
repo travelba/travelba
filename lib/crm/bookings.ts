@@ -13,8 +13,9 @@ import {
   type CrmBookingItem,
   type CrmTransaction,
 } from "@/lib/crm/types";
-import { itemTicketCount } from "@/lib/crm/item-match";
-import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
+import { statedTicketCount } from "@/lib/crm/item-match";
+import { expenseAwaitsValidation, expenseCountsForClient } from "@/lib/crm/expense-validation";
+import { flightAmountIsGroupTotal, hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import {
@@ -178,7 +179,12 @@ export function bookingDebitIntent(input: {
   return "update";
 }
 
-/** Prix vendu d’une carte : vol = unitaire × billets, sinon amount. */
+/**
+ * Prix vendu d’une carte.
+ * Vol avec un nombre de billets : unitaire × billets, tant que le montant n’est pas déjà le total du groupe.
+ * Un total saisi (`amount_is_total`) reste au centime : le nombre de billets ne le multiplie pas.
+ * Vol sans nombre : le montant saisi est déjà le total.
+ */
 export function itemSellingAmount(item: {
   kind?: string | null;
   amount?: number | null;
@@ -186,7 +192,10 @@ export function itemSellingAmount(item: {
 }): number | null {
   const unit = Number(item.amount);
   if (!Number.isFinite(unit) || unit <= 0) return null;
-  const total = unit * itemTicketCount(item);
+  if ((item.kind || "") !== "flight") return Math.round(unit * 100) / 100;
+  if (flightAmountIsGroupTotal(item.details)) return Math.round(unit * 100) / 100;
+  const count = statedTicketCount(item);
+  const total = count == null ? unit : unit * count;
   return Math.round(total * 100) / 100;
 }
 
@@ -206,10 +215,15 @@ function flightsReturn(a: { details?: Record<string, unknown> | null }, b: { det
   return Boolean(aFrom && aTo && aFrom === bTo && aTo === bFrom);
 }
 
+/** Même prix vendu : au centime. Un centime d’écart, ce sont deux prix. */
+function sameSoldCents(a: number, b: number) {
+  return Math.round(a * 100) === Math.round(b * 100);
+}
+
 /**
  * Vols dont le prix entre dans le séjour.
  * Aller-retour au même prix vendu : le billet complet, compté une fois.
- * Deux prix différents (deux allers simples) : les deux entrent.
+ * Deux prix différents, même à un centime : les deux entrent.
  * Un seul des deux vols a un prix : ce prix est celui du billet, compté une fois.
  */
 export function flightsInStayTotal<T extends {
@@ -232,7 +246,7 @@ export function flightsInStayTotal<T extends {
       used.add(pair);
       const outbound = itemSellingAmount(flight);
       const inbound = itemSellingAmount(pair);
-      if (outbound != null && inbound != null && Math.abs(outbound - inbound) > 0.05) {
+      if (outbound != null && inbound != null && !sameSoldCents(outbound, inbound)) {
         counted.push(flight, pair);
         continue;
       }
@@ -273,14 +287,14 @@ export function stayIncludedInLedger(booking: {
 }
 
 /**
- * Dépense libre : toujours. Carte du séjour : jamais si le client règle.
+ * Dépense libre : toujours, sauf une dépense automatique encore « à valider ». Carte du séjour : jamais si le client règle.
  * Extra (chauffeur, VIP, visa, enregistrement) : selon sa propre case.
  */
 export function itemIncludedInLedger(
-  item: { kind?: string | null; include_in_ledger?: boolean | null },
+  item: { kind?: string | null; include_in_ledger?: boolean | null; details?: unknown },
   clientSettlesStay: boolean
 ) {
-  if (isLedgerExpenseKind(item.kind)) return true;
+  if (isLedgerExpenseKind(item.kind)) return !expenseAwaitsValidation(item);
   if (clientSettlesStay && isStayAmountKind(item.kind)) return false;
   return Boolean(item.include_in_ledger);
 }
@@ -346,7 +360,7 @@ export function agencyFeeBaseFromItems(items: AgencyFeeItem[]) {
     if (!isActiveItem(item)) continue;
     const amount = itemSellingAmount(item);
     if (isExtraItemKind(item.kind)) extras.push({ amount });
-    else if (isLedgerExpenseKind(item.kind) && !isAutoTicketingExpense(item)) expenses.push({ amount });
+    else if (expenseCountsForClient(item) && !isAutoTicketingExpense(item)) expenses.push({ amount });
   }
   return agencyFeeBaseAmount({
     stayTotal: bookingTotalFromItems(items),

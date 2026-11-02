@@ -11,13 +11,14 @@ export const AEROAPI_ORIGIN = "https://aeroapi.flightaware.com/aeroapi";
 /**
  * Ouverture de l’enregistrement en ligne, en heures avant le départ.
  * Seulement les compagnies dont la fenêtre est publique et stable.
- * Les autres ne déclenchent pas de message.
+ * Les autres ne déclenchent pas de message. Lufthansa : 23 h.
  */
 const CHECKIN_LEAD_HOURS: Record<string, number> = {
   AF: 30,
   KL: 30,
   DL: 24,
   BA: 24,
+  LH: 23,
   EK: 48,
   QR: 48,
   TO: 30,
@@ -25,6 +26,15 @@ const CHECKIN_LEAD_HOURS: Record<string, number> = {
   FR: 24,
   U2: 30 * 24,
 };
+
+/** Heures avant le départ, si la compagnie est dans la table. Sinon null. */
+export function knownCheckinLeadHours(iata: string | null | undefined) {
+  const code = String(iata || "")
+    .trim()
+    .toUpperCase();
+  const lead = CHECKIN_LEAD_HOURS[code];
+  return lead || null;
+}
 
 export type FlightWatchStatus =
   | "scheduled"

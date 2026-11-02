@@ -61,11 +61,21 @@ function part(now: Date, options: Intl.DateTimeFormatOptions) {
     }, {});
 }
 
+/** Date civile dans un fuseau IANA. Repli Paris si le fuseau est inconnu. */
+export function civilDate(now: Date, timeZone = "Europe/Paris") {
+  try {
+    const day = part(now, { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    if (day.year && day.month && day.day) return `${day.year}-${day.month}-${day.day}`;
+  } catch {
+    /* fuseau illisible */
+  }
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
 /** Date et heure civiles à Paris. Le jour ne dépend pas du fuseau du serveur. */
 export function parisMoment(now: Date): ParisMoment {
-  const day = part(now, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const date = civilDate(now, "Europe/Paris");
   const clock = part(now, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  const date = `${day.year}-${day.month}-${day.day}`;
   const weekday = frenchWeekday(date);
   const time = `${clock.hour}:${clock.minute}`;
   return { date, time, weekday, label: `${weekday} ${frenchLongDate(date)}, ${time}` };
@@ -101,11 +111,11 @@ export function englishLongDate(isoDate: string) {
  * « jeudi prochain » un jeudi = le jeudi d’après.
  * « demain », « mon dernier voyage », « le retour ».
  */
-export function relativeWhen(message: string, now: Date): RelativeWhen | null {
+export function relativeWhen(message: string, now: Date, timeZone = "Europe/Paris"): RelativeWhen | null {
   const text = fold(message);
   if (/dernier (voyage|sejour|vol)|last (trip|stay)|הטיול האחרון/.test(text)) return { kind: "last-trip" };
   if (/\b(le retour|vol de retour|au retour|date de retour|return flight|the return)\b/.test(text)) return { kind: "return" };
-  const today = parisMoment(now).date;
+  const today = civilDate(now, timeZone);
   if (/\b(apres-demain|apres demain|day after tomorrow)\b/.test(text)) return { kind: "date", date: addIsoDays(today, 2) };
   if (/\b(demain|tomorrow)\b/.test(text)) return { kind: "date", date: addIsoDays(today, 1) };
   if (/\b(hier|yesterday)\b/.test(text)) return { kind: "date", date: addIsoDays(today, -1) };

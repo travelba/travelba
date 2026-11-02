@@ -22,8 +22,8 @@ Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ens
 
 ## Créer ≠ Inviter
 
-- `POST /api/admin/clients` **sans** `invite` → insert `crm_customers` uniquement (`NewCustomerForm` bouton **Créer**).
-- Invitation : `InviteCustomerPanel` → `POST /api/admin/clients/[id]/invite` → `inviteCustomer()`.
+- `POST /api/admin/clients` **sans** `invite` → insert `crm_customers` uniquement (`NewCustomerForm` bouton **Créer la fiche**).
+- Invitation : `InviteCustomerPanel` (bouton **Inviter**, puis **Renvoyer l’invitation**) → `POST /api/admin/clients/[id]/invite` → `inviteCustomer()`. Le MCP `inviter_client` appelle ce même flux et son canal. Rien ne part sans cet appel. Un accès déjà invité ou prêt n’est pas renvoyé.
 - Copier le lien toujours disponible après génération (Resend down / local).
 
 `generateLink({ type: "invite" })` ; si déjà inscrit → `type: "recovery"`. URL courte `/e/CODE` (jeton en `crm_entry_links`), puis mot de passe.
@@ -65,8 +65,9 @@ Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id
 
 ## Sessions
 
-- Cookies `AUTH_COOKIE_OPTIONS` : `maxAge` 400 jours, `sameSite=lax`, `path=/`.
-- Dashboard Auth : time-box + inactivity **désactivés**.
+- Agence : `AUTH_COOKIE_OPTIONS` inchangé (`maxAge` 400 jours, `sameSite=lax`, `path=/`, lisible par le navigateur, rafraîchissement du client Supabase). Ne pas le passer en HttpOnly.
+- Client (`crm_role=client`) : cookie **HttpOnly**, **Secure** en production, `sameSite=lax`, `maxAge` 400 jours. Le proxy le réécrit à chaque visite (pas au préchargement) et renouvelle le jeton, sauf dans les 15 dernières minutes du jeton. Le navigateur de l’espace client ne rafraîchit pas tout seul : Safari iOS jette un cookie sans date `Expires` en quittant l’app. Le mot de passe passe par `POST /api/auth/login` (Set-Cookie). Déconnexion : `POST /api/auth/sign-out` (`local` ou `global`).
+- Dashboard Auth : time-box + inactivity **désactivés** (sinon le renouvellement ne suffit pas). `auth.sessions.not_after` vide = time-box non appliqué.
 - Déconnexion explicite seulement. Pas de « rester connecté » checkbox (c’est déjà le cas).
 
 ## Mur téléphone
@@ -78,6 +79,9 @@ Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id
 - `requireStaff` / `requireStaffPage`. Premier user si table vide → admin.
 - Ajouter un agent = Auth user + insert `crm_staff`. Ne pas recycler un client.
 - `ensureStaff` d’un client déjà en `crm_customers` ne doit **pas** le promouvoir.
+- Rôles : `admin`, `manager`, `agent`, `comptable`, `lecture`, `partner`. Tous les rôles de l’agence voient **tous** les dossiers, marges comprises ; aucun périmètre « ses dossiers », aucun plafond, aucune validation. Les alertes (`crm_agency_alerts`) informent seulement. Grille : `lib/crm/agency-access.ts`, garde `lib/crm/agency-gate.ts`.
+- Connexion Google (`/admin/login`, bouton « Continuer avec Google travelba.fr ») : `signInWithOAuth` avec `hd=travelba.fr`, puis `/auth/callback?staff=google` vérifie côté serveur l’adresse `@travelba.fr` **et** une ligne `crm_staff` active (`lib/crm/google-staff.ts`). Refus → `/admin/login?error=google-…`, compte Auth orphelin supprimé. Mot de passe et code e-mail restent. Pas de MFA.
+- Départ d’un collègue : `/admin/equipe/[id]` → « Couper l’accès » (ban + `sessions_revoked_at` + `crm_staff_sessions.revoked_at`) et réattribution de ses dossiers en charge (`lib/crm/staff-departure.ts`). Un dossier sans responsable reste « À prendre ».
 - Suppression client (`deleteCustomerById`) : ne **pas** `auth.admin.deleteUser` si le même `auth_user_id` est staff.
 
 ## Client : pas de self-delete

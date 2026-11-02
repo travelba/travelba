@@ -4,13 +4,11 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { revolutDebitEmptyMessage, revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
-import { revolutInboxCopy, type RevolutDebitLine } from "@/lib/crm/revolut-inbox";
-import type { OutgoingLine } from "@/lib/crm/trip-costs";
-import { OutgoingAttach } from "@/components/admin/OutgoingAttach";
-import Link from "next/link";
+import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
+import { revolutInboxCopy } from "@/lib/crm/revolut-inbox";
 import { StatusChip } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { Icon } from "@/components/crm/icons";
 import {
@@ -29,16 +27,9 @@ import {
   type RevolutMatchCandidate,
 } from "@/lib/crm/revolut-match";
 
-/** Sortie du compte : à rattacher à un voyage, rattachée, ou hors voyage. */
-export type RevolutDebitRow = RevolutDebitLine & {
-  status: string;
-  outgoing: OutgoingLine | null;
-  cost: { bookingId: string; reference: string; itemLabel: string | null } | null;
-};
-
+/** Crédits Revolut reçus : chaque ligne attend le clic Créditer. Les sorties sont dans À pointer. */
 export function RevolutInbox({
   rows,
-  debits,
   customers,
   suggestions: suggestionsById,
   /** Clients qui ont crédit et Pro : le virement reçu attend le compte. */
@@ -49,7 +40,6 @@ export function RevolutInbox({
   initialMessage = null,
 }: {
   rows: CrmRevolutTransaction[];
-  debits: RevolutDebitRow[];
   customers: PickableCustomer[];
   /** Candidats par ligne, calculés côté serveur (l’IBAN ne quitte pas le serveur). */
   suggestions: Record<string, RevolutMatchCandidate[]>;
@@ -68,12 +58,7 @@ export function RevolutInbox({
   const [accountFor, setAccountFor] = useState<Record<string, string>>({});
   const [pickerRow, setPickerRow] = useState<string | null>(null);
   const [scope, setScope] = useState<"unmatched" | "all">("unmatched");
-  const [debitScope, setDebitScope] = useState<"unmatched" | "all">("unmatched");
-  const [view, setView] = useState<"credits" | "debits">("credits");
   const shown = scope === "unmatched" ? rows.filter((row) => row.status === "unmatched") : rows;
-  const shownDebits =
-    debitScope === "unmatched" ? debits.filter((line) => line.status === "unmatched") : debits;
-  const openDebits = debits.filter((line) => line.status === "unmatched").length;
 
   const byId = useMemo(
     () => new Map(customers.map((c) => [c.id, c])),
@@ -111,40 +96,12 @@ export function RevolutInbox({
         setError(json.error || "Synchronisation impossible. Réessayez.");
         return;
       }
-      setMessage(
-        revolutSyncSummary(
-          Number(json.fetched || 0),
-          Number(json.inserted || 0),
-          Number(json.auto_matched || 0)
-        )
-      );
+      setMessage(revolutSyncSummary(Number(json.fetched || 0), Number(json.inserted || 0)));
       router.refresh();
     } catch {
       setError("Connexion interrompue. Réessayez.");
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function restoreDebit(id: string) {
-    setRowBusy(id);
-    setError(null);
-    try {
-      const res = await fetch("/api/admin/comptabilite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "restore", source: "revolut", id }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(json.error || "Impossible de remettre cette sortie dans la file.");
-        return;
-      }
-      router.refresh();
-    } catch {
-      setError("Connexion interrompue. Réessayez.");
-    } finally {
-      setRowBusy(null);
     }
   }
 
@@ -171,25 +128,27 @@ export function RevolutInbox({
     }
   }
 
+  /** Crédite le client : seulement au clic de confirmation. Renvoie l’erreur à afficher, sinon null. */
   async function match(id: string, customerId: string, gross: number, currency: string) {
     if (!customerId) {
-      setError("Choisissez le client à rapprocher.");
+      setError("Choisissez le client à créditer.");
       setPickerRow(id);
-      return;
+      return "Choisissez le client à créditer.";
     }
     const choices = accounts[customerId] || [];
     const billingCompanyId = accountFor[id] || "";
     if (choices.length > 1 && !choices.some((choice) => choice.id === billingCompanyId)) {
       setError("Choisissez le compte : crédit ou Pro.");
-      return;
+      return "Choisissez le compte : crédit ou Pro.";
     }
     const ok = await post(
       id,
       { customer_id: customerId, billing_company_id: billingCompanyId || null },
-      "Rapprochement impossible. Réessayez."
+      "Crédit impossible. Réessayez."
     );
-    if (!ok) return;
+    if (!ok) return "Crédit impossible. Réessayez.";
     setMessage(`Crédit enregistré : ${formatMoney(gross, currency)}.`);
+    return null;
   }
 
   return (
@@ -227,124 +186,19 @@ export function RevolutInbox({
           {busy ? "Synchronisation…" : "Synchroniser Revolut"}
         </button>
         {configured && connected ? (
-          <p className="text-sm text-muted">
-            {view === "credits"
-              ? "Crédits reçus — Valider ou Refuser. Rien n’est crédité sans ce clic."
-              : "Sorties du compte. Chacune se rattache à une ligne d’un voyage (coût), ou reste hors voyage. Un débit ne crédite pas un client."}
-          </p>
+          <p className="text-sm text-muted">Paiements reçus : Créditer ou Refuser. Rien n’est crédité sans ce clic.</p>
         ) : null}
         <button
           type="button"
-          onClick={() =>
-            view === "credits"
-              ? setScope((current) => (current === "unmatched" ? "all" : "unmatched"))
-              : setDebitScope((current) => (current === "unmatched" ? "all" : "unmatched"))
-          }
+          onClick={() => setScope((current) => (current === "unmatched" ? "all" : "unmatched"))}
           className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
         >
-          {view === "credits"
-            ? scope === "unmatched"
-              ? "Voir tous les crédits"
-              : "Seulement à rapprocher"
-            : debitScope === "unmatched"
-              ? "Voir toutes les sorties"
-              : "Seulement à rapprocher"}
+          {scope === "unmatched" ? "Voir tous les virements" : "Seulement à encaisser"}
         </button>
-      </div>
-      <div
-        className="grid grid-cols-2 gap-1 rounded-full bg-[#e9e8e5] p-1"
-        role="tablist"
-        aria-label="Mouvements Revolut"
-      >
-        {(
-          [
-            { id: "credits" as const, label: "Crédits" },
-            { id: "debits" as const, label: openDebits ? `Débits (${openDebits})` : "Débits" },
-          ]
-        ).map(({ id, label }) => {
-          const selected = view === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              id={`revolut-tab-${id}`}
-              aria-controls={`revolut-panel-${id}`}
-              aria-selected={selected}
-              onClick={() => setView(id)}
-              className={`admin-tap rounded-full px-3 py-2 text-sm font-semibold ${
-                selected ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)]"
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
-      <ul
-        id="revolut-panel-debits"
-        role="tabpanel"
-        aria-labelledby="revolut-tab-debits"
-        hidden={view !== "debits"}
-        className="admin-af-card divide-y divide-border rounded-3xl"
-      >
-          {shownDebits.map((line) => (
-            <li key={line.id} className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
-              <div className="min-w-0 flex-1">
-                <p className="break-words font-medium">
-                  {line.party} · −{formatMoney(line.amount, line.currency)}
-                </p>
-                <p className="text-xs text-muted">
-                  {formatDateFr(line.bookedAt)}
-                  {` · ${line.kind}`}
-                  {line.reference ? ` · ${line.reference}` : ""}
-                </p>
-              </div>
-              <div className="basis-full sm:basis-auto sm:max-w-md">
-                {line.cost ? (
-                  <p className="text-sm font-semibold text-[var(--admin-navy)]">
-                    <Link href={`/admin/reservations/${line.cost.bookingId}?tab=reglement`} className="underline">
-                      {line.cost.reference}
-                    </Link>
-                    {line.cost.itemLabel ? <span className="block text-xs font-normal text-muted">{line.cost.itemLabel}</span> : null}
-                  </p>
-                ) : line.status === "ignored" ? (
-                  <p className="text-sm text-muted">
-                    Hors voyage
-                    <button
-                      type="button"
-                      disabled={rowBusy === line.id}
-                      onClick={() => void restoreDebit(line.id)}
-                      className="ml-2 text-xs font-semibold text-[#9e7e51] underline disabled:opacity-50"
-                    >
-                      Remettre dans la file
-                    </button>
-                  </p>
-                ) : line.outgoing ? (
-                  <OutgoingAttach line={line.outgoing} />
-                ) : (
-                  <p className="text-sm text-muted">—</p>
-                )}
-              </div>
-            </li>
-          ))}
-          {!shownDebits.length ? (
-            <li className="px-5 py-8 text-center text-sm text-muted">
-              {debits.length && debitScope === "unmatched"
-                ? "Aucune sortie à rapprocher."
-                : revolutDebitEmptyMessage({ configured, connected })}
-            </li>
-          ) : null}
-      </ul>
-      <ul
-        id="revolut-panel-credits"
-        role="tabpanel"
-        aria-labelledby="revolut-tab-credits"
-        hidden={view !== "credits"}
-        className="admin-af-card divide-y divide-border rounded-3xl"
-      >
+      <ul aria-label="Virements Revolut" className="admin-af-card divide-y divide-border rounded-3xl">
         {shown.map((r) => {
           const candidates = suggestions.get(r.id) || [];
           const suggestedId = suggestedCustomerId(candidates);
@@ -378,7 +232,7 @@ export function RevolutInbox({
                 {r.status === "unmatched" ? (
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                     <div className="w-full">
-                      <BusyBar active={rowBusy === r.id} label="Rapprochement…" />
+                      <BusyBar active={rowBusy === r.id} label="Crédit…" />
                     </div>
                     <button
                       type="button"
@@ -386,7 +240,7 @@ export function RevolutInbox({
                       onClick={() => setPickerRow(r.id)}
                       aria-haspopup="dialog"
                       aria-expanded={pickerRow === r.id}
-                      aria-label="Choisir le client à rapprocher"
+                      aria-label="Choisir le client à créditer"
                       className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)] sm:min-w-[12rem] sm:max-w-xs sm:w-auto"
                     >
                       <span className="min-w-0 truncate">
@@ -419,24 +273,40 @@ export function RevolutInbox({
                         </select>
                       </label>
                     ) : null}
-                    <button
-                      type="button"
-                      disabled={rowBusy === r.id}
-                      className="admin-af-btn rounded-full px-3 py-1 text-sm"
-                      onClick={() => void match(r.id, chosenId, Number(r.amount), r.currency)}
-                    >
-                      {rowBusy === r.id ? "En cours…" : "Valider"}
-                    </button>
-                    <button
-                      type="button"
+                    {chosen ? (
+                      <ConfirmAction
+                        size="sm"
+                        label={`Créditer ${customerPickLabel(chosen)}`}
+                        confirmLabel="Créditer"
+                        question={`Créditer ${signed} au compte de ${customerPickLabel(chosen)} ?`}
+                        hint="Le crédit entre au grand livre et dans l’espace du client. Un virement crédité ne se rapproche plus."
+                        busyLabel="Crédit…"
+                        disabled={rowBusy === r.id}
+                        className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                        onConfirm={() => match(r.id, chosenId, Number(r.amount), r.currency)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={rowBusy === r.id}
+                        className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                        onClick={() => void match(r.id, chosenId, Number(r.amount), r.currency)}
+                      >
+                        Créditer…
+                      </button>
+                    )}
+                    <ConfirmAction
+                      size="sm"
+                      tone="danger"
+                      label="Refuser"
+                      confirmLabel="Refuser le virement"
+                      question="Refuser ce virement ? Il sort des crédits à encaisser, sans créditer personne."
                       disabled={rowBusy === r.id}
                       className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
-                      onClick={() =>
-                        void post(r.id, { action: "refuse" }, "Impossible de refuser ce mouvement.")
+                      onConfirm={async () =>
+                        (await post(r.id, { action: "refuse" }, "Impossible de refuser ce mouvement.")) ? null : "Impossible de refuser ce mouvement."
                       }
-                    >
-                      Refuser
-                    </button>
+                    />
                   </div>
                 ) : null}
               </div>
@@ -447,7 +317,7 @@ export function RevolutInbox({
           <li className="space-y-3 px-5 py-8 text-center text-sm text-muted">
             <p>
               {rows.length && scope === "unmatched"
-                ? "Aucun crédit à rapprocher."
+                ? "Aucun virement à encaisser."
                 : revolutInboxEmptyMessage({ configured, connected })}
             </p>
             {configured && !connected ? (
@@ -467,7 +337,7 @@ export function RevolutInbox({
         customers={customers}
         suggestedIds={pickerRow ? (suggestions.get(pickerRow) || []).map((c) => c.customer_id) : []}
         selectedId={pickerRow ? chosenFor(pickerRow) : ""}
-        title="Rapprocher vers un client"
+        title="Créditer un client"
         onSelect={(customer) => {
           if (!pickerRow) return;
           setPicked((current) => ({ ...current, [pickerRow]: customer.id }));

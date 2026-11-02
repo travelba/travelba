@@ -18,6 +18,7 @@ export function DashboardWeek({
   names,
   places,
   amounts,
+  covers = {},
 }: {
   groups: {
     travelling: DashboardWeekEntry<CrmBooking>[];
@@ -25,8 +26,14 @@ export function DashboardWeek({
     week: DashboardWeekEntry<CrmBooking>[];
   };
   names: Map<string, string>;
-  places: { arrival: Record<string, string[]>; route: Record<string, string[]>; layovers?: Record<string, string[]> };
+  places: {
+    arrival: Record<string, string[]>;
+    route: Record<string, string[]>;
+    layovers?: Record<string, string[]>;
+    countries?: Record<string, string[]>;
+  };
   amounts: Map<string, number>;
+  covers?: Record<string, string | null>;
 }) {
   const total = groups.travelling.length + groups.soon.length + groups.week.length;
   if (!total) {
@@ -83,7 +90,10 @@ export function DashboardWeek({
                           <BookingHero
                             booking={booking}
                             places={places.arrival[booking.id]}
+                            countries={places.countries?.[booking.id]}
                             plain
+                            list
+                            resolvedSrc={covers[booking.id] ?? null}
                             className="h-14 w-20 shrink-0 rounded-xl"
                           />
                           <div className="min-w-0 flex-1">

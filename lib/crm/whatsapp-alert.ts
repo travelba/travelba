@@ -24,7 +24,7 @@ export function buildConciergeAlert(input: {
   const excerpt = oneLine(input.body).slice(0, 500);
   const href = input.customerId
     ? `${siteConfig.url}/admin/clients/${input.customerId}`
-    : `${siteConfig.url}/admin/whatsapp`;
+    : `${siteConfig.url}/admin/boite?onglet=whatsapp`;
   const stay = input.bookingId ? `${siteConfig.url}/admin/reservations/${input.bookingId}` : "";
   const subject = oneLine(`WhatsApp · ${label}`).slice(0, 140);
   const intro = input.customerId

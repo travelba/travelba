@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { eurosToAlertCents } from "@/lib/crm/agency-access";
+import { assertStaffPermission } from "@/lib/crm/agency-guard";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { isUuid } from "@/lib/crm/ids";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
@@ -22,6 +25,10 @@ export async function POST(request: Request, ctx: Ctx) {
   if (!row) return jsonError("Mouvement introuvable", 404);
   const movement = row as CrmRevolutTransaction;
 
+  const debit = movement.direction === "debit";
+  const denied = await assertStaffPermission(auth.staff, debit ? "pay_supplier" : "edit_finances");
+  if (denied) return denied;
+
   if (body?.action === "ignore" || body?.action === "refuse") {
     if (movement.status === "matched") return jsonError("Déjà rapprochée");
     const patch =
@@ -43,6 +50,16 @@ export async function POST(request: Request, ctx: Ctx) {
         { source: "revolut", sourceId: id, bookingId, itemId: typeof body?.item_id === "string" ? body.item_id : null },
         admin
       );
+      await recordAgencyJournal({
+        staffId: auth.staff.id,
+        action: "update",
+        entityType: "finance",
+        entityId: id,
+        summary: "Rapprochement d’une sortie.",
+        sensitive: "payment",
+        amountCents: eurosToAlertCents(Number(movement.amount)),
+        path: `/api/admin/revolut/${id}`,
+      });
       return NextResponse.json({ ok: true, cost });
     } catch (err) {
       if (err instanceof TripCostError) return jsonError(err.message, err.status);

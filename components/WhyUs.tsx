@@ -1,5 +1,3 @@
-"use client";
-
 import { useTranslations } from "next-intl";
 import { Zap, Globe2, Gem, ShieldCheck, type LucideIcon } from "lucide-react";
 import { SectionHeading } from "./SectionHeading";

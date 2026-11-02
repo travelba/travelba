@@ -129,7 +129,7 @@ export const PLIANT_STATUS_LABELS: Record<string, string> = {
   CONFIRMED: "Confirmée",
   DECLINED: "Refusée",
   REVERSED: "Annulée",
-  BOOKED: "Comptabilisée",
+  BOOKED: "Débitée",
 };
 
 export const PLIANT_CATEGORY_LABELS: Record<string, string> = {

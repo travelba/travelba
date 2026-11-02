@@ -288,7 +288,7 @@ export function BookingCards({
             })}
           </ul>
           {recap.length ? (
-            <p className="text-sm text-[var(--admin-navy)]/70">Le détail des transactions est dans Règlement.</p>
+            <p className="text-sm text-[var(--admin-navy)]/70">Le détail des débits est plus haut, dans Argent.</p>
           ) : null}
         </>
       ) : (

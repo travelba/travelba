@@ -1,7 +1,7 @@
 import "server-only";
 
 import { applyMatchedCatalog, peopleFromContactRows, type HotelContactRow, type StoredHotelSource } from "@/lib/crm/hotel-contact";
-import { matchHotelDirectory, type HotelDirectoryEntry } from "@/lib/crm/hotel-catalog";
+import { knownLeHotelId, matchHotelDirectory, type HotelDirectoryEntry } from "@/lib/crm/hotel-catalog";
 import type { CrmBookingItem } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { Db } from "@/lib/supabase/db";
@@ -26,20 +26,45 @@ async function loadDirectory(admin: ContactDb) {
     if (error) throw error;
     const batch = data || [];
     for (const row of batch) {
-      const id = typeof row.le_hotel_id === "number" ? row.le_hotel_id : Number(row.le_hotel_id);
-      const name = typeof row.hotel_name === "string" ? row.hotel_name.trim() : "";
-      if (!Number.isInteger(id) || id <= 0 || !name) continue;
-      rows.push({
-        hotel_id: id,
-        hotel_name: name,
-        city: typeof row.city === "string" ? row.city : "",
-        country: typeof row.country === "string" ? row.country : "",
-      });
+      const entry = directoryEntry(row);
+      if (entry) rows.push(entry);
     }
     if (batch.length < PAGE) break;
   }
   if (rows.length) directoryCache = { at: now, rows };
   return rows;
+}
+
+function directoryEntry(row: {
+  le_hotel_id?: unknown;
+  hotel_name?: unknown;
+  city?: unknown;
+  country?: unknown;
+}): HotelDirectoryEntry | null {
+  const id = typeof row.le_hotel_id === "number" ? row.le_hotel_id : Number(row.le_hotel_id);
+  const name = typeof row.hotel_name === "string" ? row.hotel_name.trim() : "";
+  if (!Number.isInteger(id) || id <= 0 || !name) return null;
+  return {
+    hotel_id: id,
+    hotel_name: name,
+    city: typeof row.city === "string" ? row.city : "",
+    country: typeof row.country === "string" ? row.country : "",
+  };
+}
+
+/** Fiches déjà identifiées : une lecture, pas les 6 000 lignes du catalogue. */
+async function loadHotelsByIds(admin: ContactDb, ids: number[]) {
+  const now = Date.now();
+  if (directoryCache && now - directoryCache.at < DIRECTORY_TTL_MS) {
+    const wanted = new Set(ids);
+    return directoryCache.rows.filter((row) => wanted.has(row.hotel_id));
+  }
+  const { data, error } = await admin
+    .from("crm_le_hotels")
+    .select("le_hotel_id, hotel_name, city, country")
+    .in("le_hotel_id", ids);
+  if (error) throw error;
+  return (data || []).map(directoryEntry).filter((row): row is HotelDirectoryEntry => Boolean(row));
 }
 
 function sourcesFor(matches: HotelDirectoryEntry[], contactRows: HotelContactRow[]): StoredHotelSource[] {
@@ -64,7 +89,12 @@ export async function attachLittleEmperorsCatalog(items: CrmBookingItem[], admin
   if (!items.some((item) => item.kind === "hotel")) return items;
   try {
     const client = admin || createServiceClient();
-    const directory = await loadDirectory(client);
+    const hotels = items.filter((item) => item.kind === "hotel");
+    const knownIds = hotels.map((item) => knownLeHotelId(item));
+    const everyHotelKnown = knownIds.every((id) => id != null);
+    const directory = everyHotelKnown
+      ? await loadHotelsByIds(client, [...new Set(knownIds.filter((id): id is number => id != null))])
+      : await loadDirectory(client);
     if (!directory.length) return items;
     const matches = items
       .map((item) => matchHotelDirectory(item, directory))

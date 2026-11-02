@@ -118,6 +118,7 @@ export function ClientsFilters({
       >
         <option value="">Tous</option>
         <option value="veille">En veille</option>
+        <option value="echeance">Pièces à échéance</option>
       </select>
       {filtering ? (
         <Link

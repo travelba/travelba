@@ -47,12 +47,12 @@ export async function loadAgencyAccounts(): Promise<AgencyAccount[]> {
     bounded(loadPliantAccountBalance(), null),
   ]);
   return [
-    { id: "revolut", label: "Revolut", href: "/admin/revolut", pockets: dashboardRevolutPocket(revolut) },
-    { id: "stripe", label: "Stripe", href: "/admin/stripe", pockets: dashboardStripePocket(stripe) },
+    { id: "revolut", label: "Revolut", href: "/admin/argent?onglet=comptes", pockets: dashboardRevolutPocket(revolut) },
+    { id: "stripe", label: "Stripe", href: "/admin/argent?onglet=comptes", pockets: dashboardStripePocket(stripe) },
     {
       id: "pliant",
       label: "Pliant",
-      href: "/admin/pliant",
+      href: "/admin/argent?onglet=comptes",
       pockets: pliant ? pliantBalancePocket(pliant) : unavailable(),
     },
   ];

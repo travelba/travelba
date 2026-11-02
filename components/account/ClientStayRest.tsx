@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
@@ -13,7 +14,7 @@ import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
-import { tripDocCoverage } from "@/lib/crm/trip-documents";
+import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
@@ -26,15 +27,14 @@ import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
-import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
+import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
-import { stripePublishableKey } from "@/lib/crm/stripe";
+import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import {
   isActiveItem,
-  isLedgerExpenseKind,
   visibleServiceCopy,
   type CrmBooking,
   type CrmBookingDocument,
@@ -44,10 +44,35 @@ import {
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
 import { toPublicBooking } from "@/lib/crm/public-booking";
+import { clientHotelCancelOffers, type LeCancelRow } from "@/lib/crm/le-free-cancel";
+import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
+import { loadClientRestaurantEvenings } from "@/lib/crm/client-tables";
+import { VosTables } from "@/components/account/VosTables";
 
 type VisaRow = { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null };
+
+async function loadLeCancelRows(bookingId: string): Promise<LeCancelRow[]> {
+  try {
+    const admin = createServiceClient();
+    const { data, error } = await admin
+      .from("crm_le_bookings")
+      .select(
+        "id, le_booking_id, confirmation_number, hotel_id, hotel_name, check_in, check_out, state, is_cancellable, cancellation_deadline, cancellation_policies, status"
+      )
+      .eq("crm_booking_id", bookingId);
+    if (error || !data) return [];
+    return (data as LeCancelRow[]).map((row) => ({
+      ...row,
+      le_booking_id: Number(row.le_booking_id),
+      cancellation_policies: Array.isArray(row.cancellation_policies) ? row.cancellation_policies : [],
+    }));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Hôtel, grand livre et formalités : sous l’en-tête, sans le retenir.
@@ -84,20 +109,35 @@ export async function ClientStayRest({
   const visibleDocs = docs;
   const identity = identityDocs;
 
-  const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl] = await Promise.all([
+  const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl, leRows, tableEvenings] = await Promise.all([
     loadHotelContacts(b.id, rawItems),
     loadClientLedger(supabase, customer, "client"),
     settledCountries(b, party, identity, customer),
     loadExpenseChoices(b.id, rawItems),
     loadPayerCompanies(supabase, b),
     loadShareUrl(b.id),
+    b.customer_id === customer.id ? loadLeCancelRows(b.id) : Promise.resolve([] as LeCancelRow[]),
+    b.customer_id === customer.id ? loadClientRestaurantEvenings(b.id) : Promise.resolve([]),
   ]);
 
   const visibleItems = withoutHotelRosterItems(catalogItems);
+  const jar = await cookies();
+  const desk = Boolean(customer.auth_user_id && deskBypass(jar.get(DESK_COOKIE)?.value, customer.auth_user_id));
+  const hotelCancels =
+    b.customer_id === customer.id && !desk ? clientHotelCancelOffers(visibleItems, leRows, new Date()) : [];
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
-  const coverage = tripDocCoverage(party, identity);
-  const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
-  const missingCount = coverage.total - coverage.ready;
+  const holder = {
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    usage_name: customer.usage_name,
+    birth_date: customer.birth_date,
+  };
+  const missingCount = missingPassportCount(party, identity, {
+    holder,
+    companions,
+    returnOn: b.end_date || b.start_date,
+  });
+  const missingPassports = missingCount > 0;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination, {
     title: b.title,
     homeCity: customer.city,
@@ -114,13 +154,15 @@ export async function ClientStayRest({
     items: allItems,
     status: b.status,
     travelerCount: party.length,
+    feeMode: b.fee_mode,
   });
   const agencyFee = await agencyFeeForBooking(supabase, b);
+  const stayTotal = bookingTotalFromItems(allItems);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
     agencyFeeRate: agencyFee.rate,
-    stayTotal: Number(b.total_amount),
+    stayTotal,
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
     extras: feeExtras,
@@ -141,21 +183,16 @@ export async function ClientStayRest({
         />
       </section>
     );
-  const passportRows = passportVaultRows(
-    party,
-    identity,
-    todayIsoDate(),
-    {
-      first_name: customer.first_name,
-      last_name: customer.last_name,
-      usage_name: customer.usage_name,
-    },
-    b
-  );
+  const passportRows = passportVaultRows(party, identity, todayIsoDate(), holder, b, companions);
 
   return (
     <ClientTripBody
-      intro={encoursPay}
+      intro={
+        <>
+          {tableEvenings.length ? <VosTables reference={b.reference} evenings={tableEvenings} /> : null}
+          {encoursPay}
+        </>
+      }
       itinerary={
         <CarnetItinerary
           booking={pub}
@@ -172,6 +209,7 @@ export async function ClientStayRest({
             whatsappHref: modifyHref,
           }}
           refusals={refusals}
+          hotelCancels={hotelCancels}
         />
       }
       services={
@@ -245,7 +283,7 @@ export async function ClientStayRest({
           ) : null}
           <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
             {clientStayPriceLabel({
-              stayTotal: Number(b.total_amount),
+              stayTotal,
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,
@@ -342,7 +380,7 @@ async function loadExpenseChoices(bookingId: string, fallback: CrmBookingItem[])
         details?: Record<string, unknown> | null;
       }[]
     )
-      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
       .map((item) => ({
         id: item.id,
         title: visibleServiceCopy(item.title),
@@ -352,7 +390,7 @@ async function loadExpenseChoices(bookingId: string, fallback: CrmBookingItem[])
       }));
   } catch {
     return fallback
-      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
       .map((item) => ({
         id: item.id,
         title: visibleServiceCopy(item.title),

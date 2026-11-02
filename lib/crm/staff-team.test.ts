@@ -100,6 +100,13 @@ test("limiter le rôle, sans laisser l’agence sans administrateur", () => {
   assert.equal(jwtStaffRole("partner"), "partner");
   assert.equal(jwtStaffRole("agent"), "agent");
   assert.equal(jwtStaffRole("admin"), "admin");
+  assert.equal(jwtStaffRole("manager"), "manager");
+  assert.equal(jwtStaffRole("comptable"), "comptable");
+  assert.equal(jwtStaffRole("lecture"), "lecture");
+  assert.equal(staffRoleLabel("lecture"), "Lecture seule");
+  assert.equal(staffRoleLabel("manager"), "Manager");
+  assert.equal(parseStaffRole("lecture"), "lecture");
+  assert.equal(roleActionLabel("agent", "lecture"), "Passer en lecture seule");
   assert.equal(removalBlockReason({ actorId: "a", targetId: "b", targetRole: "partner" }), null);
 });
 

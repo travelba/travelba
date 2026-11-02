@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  missingPassportCount,
+  travelersPassportExpiresBeforeReturn,
   primaryIdentityDoc,
   reusableDocumentsForTraveler,
   tripDocCoverage,
@@ -224,6 +226,136 @@ test("le passeport Iony du profil Simon, Iony est celui du titulaire Simon", () 
     false
   );
   assert.equal(reusableDocumentsForTraveler(docs, lisa, profile)[0]?.id, "lisa");
+});
+
+test("un passeport de coffre valide au retour ne compte pas comme manquant", () => {
+  const holder = { first_name: "Camille Louise", last_name: "Martin", birth_date: null as string | null };
+  const camille = traveler({
+    id: "camille",
+    first_name: "Camille Louise",
+    last_name: "Martin",
+    is_account_holder: false,
+    companion_id: null,
+  });
+  const lea = traveler({
+    id: "lea",
+    first_name: "Léa",
+    last_name: "Bernard",
+    is_account_holder: false,
+    companion_id: "lea-c",
+  });
+  const noa = traveler({
+    id: "noa",
+    first_name: "Noa",
+    last_name: "Martin",
+    is_account_holder: false,
+    companion_id: "noa-c",
+  });
+  const duplicate = traveler({
+    id: "dup",
+    first_name: "Camille Louise",
+    last_name: "Martin",
+    is_account_holder: false,
+    companion_id: "camille-c",
+  });
+  const docs = [
+    doc({
+      id: "camille-vault",
+      first_name: null,
+      last_name: null,
+      expires_on: "2031-06-14",
+      booking_id: null,
+      traveler_id: null,
+      companion_id: null,
+    }),
+    doc({
+      id: "lea-trip",
+      booking_id: "b1",
+      traveler_id: "lea",
+      companion_id: "lea-c",
+      first_name: "Léa",
+      last_name: "Bernard",
+      expires_on: "2034-12-01",
+    }),
+    doc({
+      id: "noa-vault",
+      booking_id: null,
+      companion_id: "noa-c",
+      first_name: null,
+      last_name: null,
+      expires_on: "2031-01-07",
+    }),
+  ];
+  const companions = [
+    { id: "lea-c", first_name: "Léa", last_name: "Bernard" },
+    { id: "noa-c", first_name: "Noa", last_name: "Martin", birth_date: "2021-03-26" },
+    { id: "camille-c", first_name: "Camille Louise", last_name: "Martin" },
+  ];
+  const options = { holder, companions, returnOn: "2027-03-28" };
+  assert.equal(missingPassportCount([camille, lea, noa], docs, options), 0);
+  assert.equal(missingPassportCount([duplicate], docs, options), 0);
+  assert.equal(
+    missingPassportCount(
+      [traveler({ id: "child", first_name: "Nava", last_name: "Martin", is_account_holder: false, companion_id: null })],
+      docs,
+      options
+    ),
+    1
+  );
+  assert.equal(
+    missingPassportCount([camille], [doc({ id: "expired", first_name: null, last_name: null, expires_on: "2027-03-28" })], options),
+    0
+  );
+  const expiredOnReturn = travelersPassportExpiresBeforeReturn(
+    [camille],
+    [doc({ id: "expired", first_name: null, last_name: null, expires_on: "2027-03-28" })],
+    options
+  );
+  assert.equal(expiredOnReturn.length, 1);
+  assert.equal(expiredOnReturn[0]?.givenName, "Camille");
+  assert.equal(expiredOnReturn[0]?.expiresOn, "2027-03-28");
+  assert.deepEqual(tripDocCoverage([camille], docs), { ready: 0, total: 1 });
+});
+
+test("un passeport déposé qui expire avant le retour n’est pas manquant", () => {
+  const jonas = traveler({
+    id: "jonas",
+    first_name: "Jonas",
+    last_name: "Martin",
+    is_account_holder: false,
+  });
+  const absent = traveler({
+    id: "absent",
+    first_name: "Nava",
+    last_name: "Martin",
+    is_account_holder: false,
+  });
+  const options = { returnOn: "2027-03-28" };
+  const papers = [
+    doc({
+      id: "jonas-pass",
+      first_name: "Jonas",
+      last_name: "Martin",
+      expires_on: "2027-02-07",
+    }),
+  ];
+  assert.equal(missingPassportCount([jonas], papers, options), 0);
+  assert.equal(missingPassportCount([absent], papers, options), 1);
+  assert.equal(travelersPassportExpiresBeforeReturn([absent], papers, options).length, 0);
+  const expiring = travelersPassportExpiresBeforeReturn([jonas], papers, options);
+  assert.equal(expiring.length, 1);
+  assert.equal(expiring[0]?.givenName, "Jonas");
+  assert.equal(expiring[0]?.expiresOn, "2027-02-07");
+  assert.equal(expiring[0]?.returnOn, "2027-03-28");
+  assert.equal(
+    travelersPassportExpiresBeforeReturn(
+      [jonas],
+      [doc({ id: "later", first_name: "Jonas", last_name: "Martin", expires_on: "2031-01-01" })],
+      options
+    ).length,
+    0
+  );
+  assert.equal(travelersPassportExpiresBeforeReturn([jonas], papers, {}).length, 0);
 });
 
 test("la validation ne répète pas le passeport copié sur chaque séjour", () => {

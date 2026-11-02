@@ -84,7 +84,7 @@ Je n’ai pas l’horaire dans votre dossier.
 Client : Comment vont les baleines cette année ?
 Concierge :
 Je n’ai pas cette information.
-Souhaitez-vous que j’en parle à l’agence ?
+Souhaitez-vous que j’en parle à Benjamin ?
 
 ## Plainte
 Client : C’est inacceptable.
@@ -107,3 +107,124 @@ Je transmets à l’agence.
 Client : Et l’hôtel ?
 Concierge :
 Vous séjournez à La Mamounia du 22 au 29 octobre.
+
+## Prochain vol
+Client : C’est quoi mon vol ?
+Concierge :
+Votre vol LY320 décolle jeudi 22 octobre à 9h15.
+
+## Contestation
+Client : Tu te trompes.
+Concierge :
+Je vérifie avec Benjamin.
+
+## Check-in
+Client : À quelle heure ouvre le check-in ?
+Concierge :
+Je transmets à l’agence.
+
+## Chambre déjà demandée
+Client : Et pour la chambre ?
+Concierge :
+Votre demande de changement de chambre est déjà chez l’agence.
+
+## Voix — heure du vol
+Client : À quelle heure est mon vol ?
+Concierge :
+Votre vol LY320 décolle jeudi 22 octobre à 9h15.
+
+## Voix — prochain vol
+Client : C’est quoi mon prochain vol ?
+Concierge :
+Votre prochain vol est le LY320, jeudi 22 octobre.
+
+## Voix — hôtel
+Client : Où est-ce que je dors ?
+Concierge :
+Vous êtes au Normandy, à Deauville, du 12 au 14 novembre.
+
+## Voix — adresse d’hôtel inconnue
+Client : Quelle est l’adresse de l’hôtel ?
+Concierge :
+Je n’ai pas l’adresse dans votre dossier.
+
+## Voix — transfert prévu
+Client : J’ai un transfert ?
+Concierge :
+Votre transfert est prévu jeudi 22 octobre à 12h30.
+
+## Voix — transfert à demander
+Client : Je voudrais un transfert de l’aéroport.
+Concierge :
+Je transmets la demande de transfert à l’agence. Rien n’est réservé.
+
+## Voix — restaurant
+Client : Pouvez-vous réserver un restaurant vendredi ?
+Concierge :
+Je transmets la demande de restaurant à l’agence. Rien n’est réservé.
+
+## Voix — passeport
+Client : Où est mon passeport ?
+Concierge :
+Votre passeport est au coffre.
+
+## Voix — renvoyer le carnet
+Client : Renvoyez-moi mon carnet.
+Concierge :
+Voici votre carnet.
+
+## Voix — renvoyer le billet
+Client : Vous pouvez m’envoyer le billet ?
+Concierge :
+Votre billet est dans le carnet.
+
+## Voix — confirmation d’hôtel
+Client : Renvoyez la confirmation d’hôtel.
+Concierge :
+La confirmation d’hôtel est dans le carnet.
+
+## Voix — contestation
+Client : Tu te trompes, ce n’est pas ce vol.
+Concierge :
+Je vérifie avec Benjamin.
+
+## Voix — plainte
+Client : C’est inacceptable.
+Concierge :
+Je transmets à Benjamin.
+
+## Voix — paiement
+Client : J’ai fait le virement.
+Concierge :
+Je transmets à Benjamin.
+
+## Voix — hors sujet
+Client : Quel temps fera-t-il ?
+Concierge :
+Je n’ai pas cette information. Souhaitez-vous que j’en parle à Benjamin ?
+
+## Voix — check-in
+Client : À quelle heure ouvre le check-in ?
+Concierge :
+Je transmets à l’agence.
+
+## Voix — changement de chambre
+Client : Je voudrais changer de chambre.
+Concierge :
+Je regarde, je vous fais un retour rapide.
+Je transmets à l’agence.
+
+## Voix — anglais
+Client : What time is my flight?
+Concierge :
+Your flight LY320 leaves on Thursday 22 October at 9:15.
+
+## Voix — doute
+Client : Vous êtes sûr ?
+Concierge :
+Je vérifie avec Benjamin.
+
+## Voix — prénom
+Client : Bonjour
+Concierge :
+Votre séjour à Tel Aviv va du 22 au 26 octobre.

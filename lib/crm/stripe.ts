@@ -1,17 +1,13 @@
+import "server-only";
 import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stripeBalancePockets } from "@/lib/crm/account-balances";
+import { isLiveStripePublishable, productionStripeOnly } from "@/lib/crm/stripe-publishable";
+
+export { isLiveStripePublishable } from "@/lib/crm/stripe-publishable";
 
 export function isLiveStripeSecret(secret: string) {
   return secret.startsWith("sk_live_") || secret.startsWith("rk_live_");
-}
-
-export function isLiveStripePublishable(key: string) {
-  return key.startsWith("pk_live_");
-}
-
-function productionStripeOnly() {
-  return process.env.VERCEL_ENV === "production";
 }
 
 export function getStripe() {
@@ -49,13 +45,6 @@ export async function loadStripeAccountBalance() {
     console.error("[stripe] solde", err instanceof Error ? err.message : "échec");
     return stripeBalancePockets(null);
   }
-}
-
-export function stripePublishableKey() {
-  const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() || "";
-  if (!key) return null;
-  if (productionStripeOnly() && !isLiveStripePublishable(key)) return null;
-  return key;
 }
 
 /** Client Stripe du compte qui règle. Aucun PAN. */

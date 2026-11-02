@@ -65,6 +65,32 @@ test("la billeterie automatique n’est pas comptée deux fois, le visa hors liv
   assert.equal(ledgerCountedStayAmount(stay(1971.96), visaAside, 1), 1996.96);
 });
 
+test("TB-2026-0100 : 611,20 et 611,19 sans frais font 1 222,39, pas 661,20", () => {
+  const items = [
+    {
+      kind: "flight",
+      amount: 611.2,
+      start_at: "2026-10-08T18:45:00",
+      lifecycle: "active",
+      include_in_ledger: true,
+      details: { from: "ORY", to: "RAK" },
+    },
+    { kind: "hotel", amount: null, lifecycle: "active", include_in_ledger: true },
+    {
+      kind: "flight",
+      amount: 611.19,
+      start_at: "2026-10-11T11:40:00",
+      lifecycle: "active",
+      include_in_ledger: true,
+      details: { from: "RAK", to: "ORY" },
+    },
+  ];
+  const stored = { ...stay(611.2), status: "draft" as const, fee_mode: "ticketing_off" };
+  assert.equal(displayedStayAmount(stored, items, 2), 611.2);
+  assert.equal(ledgerCountedStayAmount(stored, items, 2), 1222.39);
+  assert.equal(displayedStayAmount({ ...stay(611.2), status: "draft" }, items, 2), 661.2);
+});
+
 test("un séjour réglé par le client ne reprend pas le total, il garde frais et visa inclus", () => {
   const settled = { ...stay(1971.96), client_settles_stay: true };
   assert.equal(ledgerCountedStayAmount(settled, items0082, 1), 50);

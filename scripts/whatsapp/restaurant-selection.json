@@ -1,0 +1,13 @@
+{
+  "friendly_name": "restaurant_selection",
+  "language": "fr",
+  "variables": {
+    "1": "Monsieur Dupont",
+    "2": "mardi 2 juin"
+  },
+  "types": {
+    "twilio/text": {
+      "body": "Bonsoir {{1}}, nous vous avons préparé une sélection de tables pour votre soirée du {{2}}. Toutes sont déjà réservées à votre nom. Nous vous remercions de bien vouloir accepter celle de votre choix et de refuser les autres ; sans réponse de votre part, elles seront automatiquement annulées à 18 h.\n\nLa Conciergerie Travel BA"
+    }
+  }
+}

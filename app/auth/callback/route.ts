@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { stampClientSession } from "@/lib/crm/client-session-cookie";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import { isGoogleUser, rejectGoogleStaffLogin, verifyGoogleStaffLogin } from "@/lib/crm/google-staff";
 import { loginMethodFromCallback, recordCustomerLogin } from "@/lib/crm/customer-login";
 import { safeInternalPath } from "@/lib/crm/safe-path";
 import {
@@ -49,7 +53,24 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL("/connexion?error=auth", url.origin));
+    return NextResponse.redirect(new URL(next.startsWith("/admin") ? "/admin/login?error=auth" : "/connexion?error=auth", url.origin));
+  }
+
+  // Entrée Google de l’équipe : domaine travelba.fr et collègue invité, vérifiés côté serveur.
+  if (url.searchParams.get("staff") === "google" || (next.startsWith("/admin") && isGoogleUser(user))) {
+    const decision = await verifyGoogleStaffLogin(user);
+    if (!decision.ok) {
+      await supabase.auth.signOut();
+      await rejectGoogleStaffLogin(user, decision.reason);
+      return NextResponse.redirect(new URL(`/admin/login?error=google-${decision.reason}`, url.origin));
+    }
+    await recordAgencyJournal({
+      staffId: decision.staffId,
+      action: "login",
+      entityType: "session",
+      summary: "Connexion à l’espace agence par Google.",
+      path: "/auth/callback",
+    });
   }
 
   await ensureCustomerForUser(user);
@@ -74,6 +95,9 @@ export async function GET(request: Request) {
   const dest = safeNext.startsWith("/admin") && !staff ? "/mon-compte" : safeNext;
   const response = NextResponse.redirect(new URL(dest, url.origin));
   response.cookies.set(PASSWORD_SETUP_COOKIE, "", passwordSetupCookieOptions(false));
+  if (!staff) {
+    stampClientSession(response, (await cookies()).getAll(), process.env.NODE_ENV === "production");
+  }
   return response;
 }
 

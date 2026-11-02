@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { fetchRevolutTransactions, upsertRevolutInbox } from "@/lib/crm/revolut";
@@ -36,6 +37,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
+  const denied = await assertStaffPermission(auth.staff, "edit_finances");
+  if (denied) return denied;
   const body = await request.json().catch(() => ({}));
   // L’échange du code OAuth ne passe que par GET /api/admin/revolut/oauth, avec le state.
   if (body?.action === "sync") {

@@ -250,6 +250,9 @@ export function withoutHotelRoster<T extends { kind?: string | null; details?: R
   const nested = nestedRecord(details.hotel);
   const people = [...peopleFromDetails(details), ...peopleFromDetails(nested)];
   delete details.hotel_contacts;
+  for (const key of ["supplier_net", "supplier_currency", "supplier_net_eur", "total_cost", "commission", "margin"]) {
+    delete details[key];
+  }
   scrubRosterFields(details, people);
   if (nested) {
     const hotel = { ...nested };
@@ -581,14 +584,20 @@ export function peopleFromContactRows(rows: HotelContactRow[]): HotelPersonConta
 
 export const LE_PUBLIC_HOTEL = "https://api.littleemperors.com/api/hotels";
 
-export async function fetchLePublicHotel(hotelId: number, fetchImpl?: typeof fetch) {
+export async function fetchLePublicHotelJson(hotelId: number, fetchImpl?: typeof fetch) {
   const fetchFn = fetchImpl || fetch;
   const response = await fetchFn(`${LE_PUBLIC_HOTEL}/${hotelId}`, {
     headers: { Accept: "application/json", "App-Version": "Website" },
     signal: AbortSignal.timeout(6000),
   });
   if (!response.ok) return null;
-  return hotelCatalogFromLePayload(await response.json());
+  return response.json() as Promise<unknown>;
+}
+
+export async function fetchLePublicHotel(hotelId: number, fetchImpl?: typeof fetch) {
+  const payload = await fetchLePublicHotelJson(hotelId, fetchImpl);
+  if (!payload) return null;
+  return hotelCatalogFromLePayload(payload);
 }
 
 /** Complète les fiches dont l’identifiant hôtel est déjà connu. Échec réseau : la fiche reste telle quelle. */

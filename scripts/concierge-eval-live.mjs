@@ -1,6 +1,7 @@
 /**
- * Évaluation optionnelle avec le modèle. Coupée par défaut.
- * Ne envoie ni WhatsApp ni e-mail. Ne part pas en CI.
+ * Appel modèle optionnel. Coupé par défaut.
+ * La suite déterministe (lib/crm/concierge-eval.test.ts) bloque la CI.
+ * Ne envoie ni WhatsApp ni e-mail.
  */
 if (process.env.CONCIERGE_EVAL_LIVE !== "1") {
   console.log("Évaluation live coupée. Poser CONCIERGE_EVAL_LIVE=1 pour un tour avec le modèle. Rien n’est envoyé.");

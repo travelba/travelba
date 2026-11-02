@@ -16,6 +16,7 @@ import {
   decodeGmailPushBody,
   extractEmailAddress,
   gmailLabelMatchKey,
+  headerAddresses,
   headerValue,
   htmlToText,
   matchGmailLabelIds,
@@ -109,6 +110,8 @@ describe("parseGmailMessage", () => {
       payload: {
         headers: [
           { name: "From", value: "Little Emperors <res@little-emperors.com>" },
+          { name: "To", value: "Desk <desk@hotel.test>, contact@travelba.fr" },
+          { name: "Cc", value: "\"Spa, Desk\" <spa@hotel.test>" },
           { name: "Subject", value: "Booking confirmation" },
         ],
         mimeType: "multipart/mixed",
@@ -131,6 +134,9 @@ describe("parseGmailMessage", () => {
     assert.equal(parsed.id, "msg-1");
     assert.equal(parsed.subject, "Booking confirmation");
     assert.equal(parsed.fromEmail, "res@little-emperors.com");
+    assert.deepEqual(parsed.toEmails, ["desk@hotel.test", "contact@travelba.fr"]);
+    assert.deepEqual(parsed.ccEmails, ["spa@hotel.test"]);
+    assert.deepEqual(headerAddresses("a@hotel.test, b@hotel.test"), ["a@hotel.test", "b@hotel.test"]);
     assert.match(parsed.text, /97620170/);
     assert.equal(parsed.attachments.length, 1);
     assert.equal(parsed.attachments[0].filename, "confirmation.pdf");

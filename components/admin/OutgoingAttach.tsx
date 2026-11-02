@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { useRouter } from "next/navigation";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { costSuggestionReasonLabel, isSureSuggestion, type OutgoingLine } from "@/lib/crm/trip-costs";
@@ -61,7 +62,9 @@ export function OutgoingAttach({
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<TargetOption[]>(fixedBooking ? [fixedBooking] : []);
   const [bookingId, setBookingId] = useState<string>(fixedBooking?.id || top?.bookingId || "");
-  const [pickedItem, setItemChoice] = useState<string>(top?.itemId || STAY);
+  // Dépense Pliant sans ligne proposée : par défaut une nouvelle dépense du dossier, au montant Pliant.
+  const fallbackChoice = line.source === "pliant" && line.eurAmount != null && line.eurAmount > 0 ? NEW : STAY;
+  const [pickedItem, setItemChoice] = useState<string>(top?.itemId || fallbackChoice);
   const [saleAmount, setSaleAmount] = useState<string>(line.eurAmount != null ? String(Math.abs(line.eurAmount)) : "");
   const [eurAmount, setEurAmount] = useState<string>("");
   const needsEur = line.eurAmount == null;
@@ -92,8 +95,8 @@ export function OutgoingAttach({
     if (!booking || pickedItem === STAY || pickedItem === NEW) return pickedItem;
     if (booking.items.some((item) => item.id === pickedItem)) return pickedItem;
     const hit = line.suggestions.find((row) => row.bookingId === booking.id);
-    return hit?.itemId && booking.items.some((item) => item.id === hit.itemId) ? hit.itemId : STAY;
-  }, [booking, pickedItem, line.suggestions]);
+    return hit?.itemId && booking.items.some((item) => item.id === hit.itemId) ? hit.itemId : fallbackChoice;
+  }, [booking, pickedItem, line.suggestions, fallbackChoice]);
 
   async function post(body: Record<string, unknown>, failure: string) {
     setBusy(true);
@@ -201,11 +204,11 @@ export function OutgoingAttach({
               </option>
             ))}
             <option value={STAY}>Montant du séjour</option>
-            <option value={NEW}>Nouvelle dépense</option>
+            <option value={NEW}>{line.source === "pliant" ? "Nouvelle dépense du dossier (par défaut)" : "Nouvelle dépense"}</option>
           </select>
           {itemChoice === NEW ? (
             <label className="block text-xs text-muted">
-              Prix vendu au client (€)
+              Prix vendu au client (€){line.source === "pliant" ? " · pré-rempli au montant Pliant, modifiable ensuite dans Dépenses" : ""}
               <input
                 value={saleAmount}
                 onChange={(event) => setSaleAmount(event.target.value)}
@@ -245,14 +248,17 @@ export function OutgoingAttach({
             Rattacher
           </button>
           {!fixedBooking || allowOutside ? (
-            <button
-              type="button"
+            <ConfirmAction
+              size="sm"
+              label="Hors voyage"
+              confirmLabel="Classer hors voyage"
+              question="Classer cette sortie hors voyage ? Elle n’entre dans aucun coût ni aucune marge. Remettre dans la file reste possible."
               disabled={busy}
-              onClick={() => void post({ action: "outside" }, "Impossible de classer cette sortie.")}
               className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
-            >
-              Hors voyage
-            </button>
+              onConfirm={async () =>
+                (await post({ action: "outside" }, "Impossible de classer cette sortie.")) ? null : "Impossible de classer cette sortie."
+              }
+            />
           ) : null}
         </div>
       )}

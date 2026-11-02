@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { OutgoingRow, type TargetOption } from "@/components/admin/OutgoingAttach";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { StatusChip } from "@/components/crm/ui";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -85,6 +86,7 @@ export function TripCostsBlock({
   cards,
   revolutLinked,
   busy,
+  showMargins = true,
 }: {
   bookingId: string;
   booking: TargetOption;
@@ -93,6 +95,7 @@ export function TripCostsBlock({
   /** Débits Revolut rattachés au dossier (libellé déjà formé, montant signé). */
   revolutLinked: { id: string; label: string; amount: string }[];
   busy: boolean;
+  showMargins?: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -114,13 +117,16 @@ export function TripCostsBlock({
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
-        setError(json?.error || failure);
-        return;
+        const message = json?.error || failure;
+        setError(message);
+        return message;
       }
       setMoving(null);
       router.refresh();
+      return null;
     } catch {
       setError("Connexion interrompue. Réessayez.");
+      return "Connexion interrompue. Réessayez.";
     } finally {
       setWorking(null);
     }
@@ -149,14 +155,15 @@ export function TripCostsBlock({
             Coûts du voyage
           </p>
           <p className="text-sm text-muted">
-            Les sorties Pliant et Revolut se rattachent à une ligne vendue, au clic. La marge part sur la facture MB3M. Le
-            client ne voit que la vente.
+            {showMargins
+              ? "Les sorties Pliant et Revolut se rattachent à une ligne vendue, au clic. La marge part sur la facture MB3M. Le client ne voit que la vente."
+              : "Les ventes du séjour."}
           </p>
         </div>
         <StatusChip tone={stateTone(view.state)}>{TRIP_ACCOUNTING_LABELS[view.state]}</StatusChip>
       </div>
 
-      {pending.length ? (
+      {showMargins && pending.length ? (
         <div className="rounded-2xl border border-[var(--admin-gold)]/50 bg-[#fbf7ef] px-4 py-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-gold-dark)]">
             {pending.length > 1 ? `${pending.length} sorties à rattacher` : "Une sortie à rattacher"}
@@ -169,7 +176,7 @@ export function TripCostsBlock({
         </div>
       ) : null}
 
-      {cards.length ? (
+      {showMargins && cards.length ? (
         <div className="space-y-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Cartes Pliant du dossier</p>
           {cards.map((card) => {
@@ -214,7 +221,7 @@ export function TripCostsBlock({
                               {state === "elsewhere" && row.matchedBookingId ? (
                                 <span className="font-semibold text-[var(--admin-navy)]">
                                   Rattachée ·{" "}
-                                  <Link href={`/admin/reservations/${row.matchedBookingId}?tab=reglement`} className="text-[#9e7e51] underline">
+                                  <Link href={`/admin/reservations/${row.matchedBookingId}?tab=argent`} className="text-[#9e7e51] underline">
                                     {row.matchedReference || "autre réservation"}
                                   </Link>
                                 </span>
@@ -225,14 +232,16 @@ export function TripCostsBlock({
                           <div className="flex flex-col items-end gap-1">
                             <p className="font-semibold tabular-nums text-[var(--admin-navy)]">{spendAmount(row)}</p>
                             {state === "here" && placement ? (
-                              <button
-                                type="button"
-                                disabled={locked}
-                                onClick={() => void detach(placement.cost.id)}
-                                className="text-xs text-[#9e7e51] underline disabled:opacity-50"
-                              >
-                                Retirer
-                              </button>
+                              <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className="text-xs text-[#9e7e51] underline disabled:opacity-50"
+                onConfirm={() => detach(placement.cost.id)}
+              />
                             ) : null}
                             {state === "ignored" ? (
                               <button
@@ -269,41 +278,47 @@ export function TripCostsBlock({
             return (
               <li key={line.transactionId} className="rounded-2xl border border-border px-3 py-3 text-sm">
                 <p className="break-words font-medium text-[var(--admin-navy)]">{line.label}</p>
-                <dl className="mt-2 grid grid-cols-3 gap-2">
+                <dl className={`mt-2 grid gap-2 ${showMargins ? "grid-cols-3" : "grid-cols-1"}`}>
                   <div>
                     <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Vendu</dt>
                     <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.sale)}</dd>
                   </div>
-                  <div>
-                    <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
-                    <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
-                    <dd className={`font-semibold tabular-nums ${marginTone(line.margin)}`}>{eur(line.margin)}</dd>
-                  </div>
+                  {showMargins ? (
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
+                      <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</dd>
+                    </div>
+                  ) : null}
+                  {showMargins ? (
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
+                      <dd className={`font-semibold tabular-nums ${marginTone(line.margin)}`}>{eur(line.margin)}</dd>
+                    </div>
+                  ) : null}
                 </dl>
-                {line.costs.length ? (
+                {showMargins && line.costs.length ? (
                   <ul className="mt-2 space-y-1">
                     {line.costs.map((cost) => (
                       <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
                         <span className="min-w-0 break-words">{costCaption(cost)}</span>
                         <span className="tabular-nums">{eur(cost.amountEur)}</span>
                         {costPersisted(cost) ? (
-                          <button
-                            type="button"
-                            disabled={locked}
-                            onClick={() => void detach(cost.id)}
-                            className="admin-tap text-[#9e7e51] underline disabled:opacity-50"
-                          >
-                            Retirer
-                          </button>
+                          <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className="admin-tap text-[#9e7e51] underline disabled:opacity-50"
+                onConfirm={() => detach(cost.id)}
+              />
                         ) : null}
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-2 text-xs text-muted">Aucun coût rattaché</p>
+                  showMargins ? <p className="mt-2 text-xs text-muted">Aucun coût rattaché</p> : null
                 )}
                 <p className="mt-2 text-xs text-muted">
                   {piece ? `Facture n° ${piece.number} · ${piece.printed ? "imprimée" : "pro forma"}` : "Facture —"}
@@ -313,19 +328,23 @@ export function TripCostsBlock({
           })}
           <li className="rounded-2xl bg-[var(--admin-sky)]/60 px-3 py-3 text-sm font-semibold text-[var(--admin-navy)]">
             <p>Total</p>
-            <dl className="mt-2 grid grid-cols-3 gap-2 font-semibold">
+            <dl className={`mt-2 grid gap-2 font-semibold ${showMargins ? "grid-cols-3" : "grid-cols-1"}`}>
               <div>
                 <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Vendu</dt>
                 <dd className="tabular-nums">{eur(view.totals.sale)}</dd>
               </div>
-              <div>
-                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
-                <dd className="tabular-nums">{eur(view.totals.cost)}</dd>
-              </div>
-              <div>
-                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
-                <dd className={`tabular-nums ${marginTone(view.totals.margin)}`}>{eur(view.totals.margin)}</dd>
-              </div>
+              {showMargins ? (
+                <div>
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
+                  <dd className="tabular-nums">{eur(view.totals.cost)}</dd>
+                </div>
+              ) : null}
+              {showMargins ? (
+                <div>
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
+                  <dd className={`tabular-nums ${marginTone(view.totals.margin)}`}>{eur(view.totals.margin)}</dd>
+                </div>
+              ) : null}
             </dl>
           </li>
         </ul>
@@ -335,8 +354,8 @@ export function TripCostsBlock({
               <tr>
                 <th className="py-2 pr-3">Vente</th>
                 <th className="py-2 pr-3 text-right">Vendu</th>
-                <th className="py-2 pr-3 text-right">Coût</th>
-                <th className="py-2 pr-3 text-right">Marge</th>
+                {showMargins ? <th className="py-2 pr-3 text-right">Coût</th> : null}
+                {showMargins ? <th className="py-2 pr-3 text-right">Marge</th> : null}
                 <th className="py-2">Facture</th>
               </tr>
             </thead>
@@ -347,32 +366,40 @@ export function TripCostsBlock({
                   <tr key={line.transactionId} className="align-top">
                     <td className="py-2 pr-3">
                       <p className="font-medium text-[var(--admin-navy)]">{line.label}</p>
-                      {line.costs.length ? (
+                      {showMargins && line.costs.length ? (
                         <ul className="mt-1 space-y-0.5">
                           {line.costs.map((cost) => (
                             <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
                               <span>{costCaption(cost)}</span>
                               <span className="tabular-nums">{eur(cost.amountEur)}</span>
                               {costPersisted(cost) ? (
-                                <button
-                                  type="button"
-                                  disabled={locked}
-                                  onClick={() => void detach(cost.id)}
-                                  className="text-[#9e7e51] underline disabled:opacity-50"
-                                >
-                                  Retirer
-                                </button>
+                                <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className="text-[#9e7e51] underline disabled:opacity-50"
+                onConfirm={() => detach(cost.id)}
+              />
                               ) : null}
                             </li>
                           ))}
                         </ul>
                       ) : (
-                        <p className="mt-1 text-xs text-muted">Aucun coût rattaché</p>
+                        showMargins ? <p className="mt-1 text-xs text-muted">Aucun coût rattaché</p> : null
                       )}
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">{eur(line.sale)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</td>
-                    <td className={`py-2 pr-3 text-right font-semibold tabular-nums ${marginTone(line.margin)}`}>{eur(line.margin)}</td>
+                    {showMargins ? (
+                      <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</td>
+                    ) : null}
+                    {showMargins ? (
+                      <td className={`py-2 pr-3 text-right font-semibold tabular-nums ${marginTone(line.margin)}`}>
+                        {eur(line.margin)}
+                      </td>
+                    ) : null}
                     <td className="py-2 text-xs text-muted">
                       {piece ? `n° ${piece.number} · ${piece.printed ? "imprimée" : "pro forma"}` : "—"}
                     </td>
@@ -384,8 +411,12 @@ export function TripCostsBlock({
               <tr>
                 <td className="py-2 pr-3">Total</td>
                 <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.sale)}</td>
-                <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.cost)}</td>
-                <td className={`py-2 pr-3 text-right tabular-nums ${marginTone(view.totals.margin)}`}>{eur(view.totals.margin)}</td>
+                {showMargins ? <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.cost)}</td> : null}
+                {showMargins ? (
+                  <td className={`py-2 pr-3 text-right tabular-nums ${marginTone(view.totals.margin)}`}>
+                    {eur(view.totals.margin)}
+                  </td>
+                ) : null}
                 <td />
               </tr>
             </tfoot>
@@ -396,7 +427,7 @@ export function TripCostsBlock({
         <p className="text-sm text-muted">Aucune vente au grand livre pour ce séjour. Les coûts se rattachent quand même.</p>
       )}
 
-      {view.unsold.length ? (
+      {showMargins && view.unsold.length ? (
         <div className="rounded-2xl bg-[var(--admin-sky)]/60 px-4 py-3 text-sm">
           <p className="font-semibold text-[var(--admin-navy)]">
             {view.unsold.every((cost) => cost.state === "pending")
@@ -426,14 +457,16 @@ export function TripCostsBlock({
                     </button>
                   ) : null}
                   {costPersisted(cost) ? (
-                    <button
-                      type="button"
-                      disabled={locked}
-                      onClick={() => void detach(cost.id)}
-                      className="text-[#9e7e51] underline disabled:opacity-50"
-                    >
-                      Retirer
-                    </button>
+                    <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className="text-[#9e7e51] underline disabled:opacity-50"
+                onConfirm={() => detach(cost.id)}
+              />
                   ) : null}
                 </div>
                 {moving === cost.id ? (

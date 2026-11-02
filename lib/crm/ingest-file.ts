@@ -24,6 +24,7 @@ import {
   type IngestFamily,
 } from "@/lib/crm/ingest-parse";
 import { mergeFileExtracts, type FileExtractResult } from "@/lib/crm/ingest-merge";
+import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import { redactIngestText } from "@/lib/crm/ingest-redact";
 import {
   aiGatewayConfigured,
@@ -87,7 +88,7 @@ const PROMPT_FLIGHT = `Vol :
 - Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers. Le nombre de billets est compté à la fusion (details.ticket_count). L’agent saisit le prix du billet pour l’aller-retour (aller simple : le prix de ce vol).
 - confirmation_ref = PNR GDS 6 lettres. details.pnr = réf. compagnie. Jamais l’IATA 8 chiffres agence (20287864, 20255270, 96020293, 20289905).
 - details.airline = transporteur opérant. details.airline_iata = code IATA 2 lettres s’il est imprimé (AF, CM). Sinon null. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
-- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Orly=ORY, Tel Aviv=TLV, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS.
+- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Orly=ORY, Tel Aviv=TLV, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS, Seychelles=SEZ, Dubaï=DXB (Al Maktoum=DWC). Une ville à plusieurs aéroports (Paris, Londres) reste vide, sauf si le nom d’aéroport est imprimé. Dans un même dossier, l’arrivée d’un segment est le départ du suivant. needs_review pour les codes IATA seulement s’ils restent inconnus. Le titre du vol est « ville → ville ».
 - details.city_from / city_to = villes. « 03 August 09:45 » : année = ligne « Lundi 03 août 2026 ».
 - Une correspondance (on atterrit et on redécolle en moins de 24 h, sans hôtel) n’est pas une ville du titre ni la destination. Amsterdam entre Paris et Tel Aviv n’est pas la destination. Francfort avec une nuit d’hôtel l’est.
 - Terminal / siège seulement s’ils sont imprimés. « Heure limite d’enregistrement » n’est pas l’horaire du vol.
@@ -290,7 +291,7 @@ function finalizeExtract(extract: BookingExtract, texts: string[], name: string)
   const next = sanitizeExtractedPrices(applyStructuredHints(extract, texts));
   return {
     ...next,
-    items: tagSourceFileName(next.items || [], name),
+    items: completeFlightRoutes(tagSourceFileName(next.items || [], name)),
   };
 }
 
@@ -712,7 +713,8 @@ export async function extractBookingFromPrepared(
   if (!merged.extract.items.length && results.every((row) => row.error)) {
     throw new Error("Lecture automatique impossible. Réessayez avec des fichiers plus lisibles.");
   }
-  const extract = await reconcileExtract(merged.extract);
+  const reconciled = await reconcileExtract(merged.extract);
+  const extract = { ...reconciled, items: completeFlightRoutes(reconciled.items) };
   opts?.onEvent?.({
     event: "progress",
     done: total,

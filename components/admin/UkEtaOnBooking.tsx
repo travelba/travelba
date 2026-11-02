@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { adminAction } from "@/lib/crm/admin-action";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import {
   UK_ETA_PENDING_STALE_MS,
   UK_ETA_POLL_INTERVAL_MS,
@@ -123,11 +124,13 @@ export function UkEtaOnBooking({ bookingId, rows: initialRows }: { bookingId: st
           setRows((current) => current.map((row) => (row.travelerId === travelerId ? previous : row)));
         }
       }
-      setError(result.error || "Impossible pour le moment.");
-      return;
+      const message = result.error || "Impossible pour le moment.";
+      setError(message);
+      return message;
     }
     const lines = readLines(result.data?.lines);
     if (lines?.length) setRows((current) => mergeUkEtaPoll(current, lines));
+    return null;
   }
 
   return (
@@ -160,25 +163,31 @@ export function UkEtaOnBooking({ bookingId, rows: initialRows }: { bookingId: st
                 </button>
               ) : null}
               {row.canSend ? (
-                <button
-                  type="button"
+                <ConfirmAction
+                  size="sm"
+                  align="end"
+                  label="Envoyer au client"
+                  confirmLabel="Envoyer"
+                  question={`Envoyer l’ETA Royaume-Uni de ${row.name} au client par WhatsApp ?`}
+                  busyLabel="Envoi…"
                   disabled={busy !== null}
-                  onClick={() => void run(row.travelerId, "send")}
                   className="admin-tap rounded-full bg-[#0B192C] px-3 py-1 text-xs font-semibold text-[#C5A880] disabled:opacity-50"
-                >
-                  {busy === `send:${row.travelerId}` ? "Envoi…" : "Envoyer au client"}
-                </button>
+                  onConfirm={() => run(row.travelerId, "send")}
+                />
               ) : null}
               {row.sent ? <span className="text-xs text-[#5c6570]">Envoyé au client</span> : null}
               {row.canResend ? (
-                <button
-                  type="button"
+                <ConfirmAction
+                  size="sm"
+                  align="end"
+                  label="Renvoyer"
+                  confirmLabel="Renvoyer"
+                  question={`Renvoyer l’ETA Royaume-Uni de ${row.name} au client ?`}
+                  busyLabel="Envoi…"
                   disabled={busy !== null}
-                  onClick={() => void run(row.travelerId, "resend")}
                   className="admin-tap rounded-full border border-[#0B192C] px-3 py-1 text-xs font-semibold text-[#0B192C] disabled:opacity-50"
-                >
-                  {busy === `resend:${row.travelerId}` ? "Envoi…" : "Renvoyer"}
-                </button>
+                  onConfirm={() => run(row.travelerId, "resend")}
+                />
               ) : null}
             </span>
             {row.preview && !row.pending ? (

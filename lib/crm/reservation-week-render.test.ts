@@ -83,7 +83,7 @@ test("sans séjour à venir, l’onglet propose un nouveau dossier", () => {
       amounts: new Map(),
     })
   );
-  assert.match(html, /Aucun séjour à venir/);
+  assert.match(html, /Aucun dossier à venir/);
   assert.match(html, /href="\/admin\/reservations\/nouveau"/);
   assert.doesNotMatch(html, /data-folded/);
 });

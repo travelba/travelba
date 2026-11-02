@@ -63,6 +63,19 @@ const detailsObjectLoose = z
     guests: looseString,
     special_requests: looseString,
     included: z.array(z.string()).optional(),
+    conditions: z.array(z.string()).optional(),
+    check_in_time: looseString,
+    check_out_time: looseString,
+    photos: z
+      .array(
+        z.object({
+          url: z.string(),
+          thumb: looseString,
+          caption: looseString,
+          kind: z.enum(["room", "hotel"]).optional(),
+        })
+      )
+      .optional(),
     rooms: z.array(roomSchemaLoose.unwrap()).optional(),
     pickup: looseString,
     dropoff: looseString,
@@ -78,6 +91,9 @@ const detailsObjectLoose = z
     review_reason: looseString,
     document_amount: looseNumber,
     document_currency: looseString,
+    supplier_net: looseNumber,
+    supplier_currency: looseString,
+    supplier_net_eur: looseNumber,
     ticket_count: looseNumber,
     party_keys: z.array(z.string()).optional(),
     passengers: z

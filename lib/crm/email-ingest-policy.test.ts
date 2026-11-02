@@ -23,15 +23,16 @@ describe("pas de rattachement autonome", () => {
     }
   });
 
-  it("la création automatique ne part que sur un mail reçu, pas au rematch", () => {
-    const mentions = ingest.split("autoCreateBookingFromIngestId").length - 1;
-    assert.equal(mentions, 2);
-    assert.match(ingest, /await matchAndStoreExtract\([\s\S]*?await autoCreateBookingFromIngestId\(row\.id\)/);
+  it("le parse ne crée pas de dossier et n’applique pas les cartes", () => {
+    assert.equal(ingest.includes("autoCreateBookingFromIngestId"), false);
+    assert.equal(ingest.includes("applyReplacementToBooking"), false);
+    assert.equal(ingest.includes("applyCancellationToBooking"), false);
+    assert.equal(ingest.includes("persistNewBookingFromExtract"), false);
     const rematchStart = ingest.indexOf("export async function rematchEmailIngestRow");
     const rematchEnd = ingest.indexOf("async function storeAttachment");
     const rematch = ingest.slice(rematchStart, rematchEnd);
     assert.match(rematch, /rematchStoredEmailIngest/);
-    assert.equal(rematch.includes("autoCreateBookingFromIngestId"), false);
+    assert.equal(rematch.includes("depositEmailAttachments"), false);
   });
 
   it("le premier dossier est un brouillon caché ; seul ce fichier applique un séjour unique", () => {

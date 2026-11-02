@@ -1,10 +1,15 @@
-export type StaffRole = "admin" | "agent" | "partner";
+/** Rôles agence. `partner` reste le partenaire MyLER, hors matrice. */
+export const AGENCY_ROLES = ["admin", "manager", "agent", "comptable", "lecture"] as const;
+export type AgencyRole = (typeof AGENCY_ROLES)[number];
+export type StaffRole = AgencyRole | "partner";
 
 export type Colleague = {
   id: string;
   fullName: string;
   email: string;
   role: StaffRole;
+  /** Absent ou vrai : accès ouvert. Faux : le collègue ne se connecte plus. */
+  active: boolean;
 };
 
 export const STAFF_COPY = {
@@ -26,9 +31,21 @@ export const STAFF_COPY = {
 
 export function staffRoleLabel(role: StaffRole) {
   if (role === "admin") return "Administrateur";
+  if (role === "manager") return "Manager";
+  if (role === "comptable") return "Comptable";
+  if (role === "lecture") return "Lecture seule";
   if (role === "partner") return "Partenaire MyLER";
   return "Agent";
 }
+
+export const STAFF_ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
+  { value: "admin", label: "Administrateur" },
+  { value: "manager", label: "Manager" },
+  { value: "agent", label: "Agent" },
+  { value: "comptable", label: "Comptable" },
+  { value: "lecture", label: "Lecture seule" },
+  { value: "partner", label: "Partenaire MyLER" },
+];
 
 /**
  * Lien d’e-mail partenaire sur une preview : le jeton de partage ouvre sans mur Vercel.
@@ -91,15 +108,18 @@ export function colleagueEmailFrame(role: StaffRole, fullName: string) {
 }
 
 export function parseStaffRole(value: unknown): StaffRole | null {
-  if (value === "admin" || value === "agent" || value === "partner") return value;
+  if (value === "partner") return "partner";
+  if (typeof value === "string" && (AGENCY_ROLES as readonly string[]).includes(value)) return value as AgencyRole;
   return null;
 }
 
-/** Rôle écrit dans le JWT. Un partenaire ne devient jamais administrateur. */
+/**
+ * Rôle écrit dans le JWT. Un partenaire ne devient jamais administrateur.
+ * Manager, comptable et lecture seule restent eux-mêmes : ils ne sont pas promus admin.
+ */
 export function jwtStaffRole(role: StaffRole): StaffRole {
-  if (role === "partner") return "partner";
-  if (role === "agent") return "agent";
-  return "admin";
+  if (role === "admin") return "admin";
+  return role;
 }
 
 export function normalizeColleagueEmail(value: string) {
@@ -157,6 +177,23 @@ export function roleActionLabel(current: StaffRole, next: StaffRole) {
   if (current === next) return null;
   if (next === "admin") return "Passer administrateur";
   if (next === "partner") return "Limiter à partenaire MyLER";
-  if (current === "partner") return "Passer agent";
-  return "Limiter à agent";
+  if (next === "agent" && current === "partner") return "Passer agent";
+  if (next === "agent") return "Limiter à agent";
+  if (next === "manager") return "Passer manager";
+  if (next === "comptable") return "Passer comptable";
+  return "Passer en lecture seule";
+}
+
+/** Désactiver ne retire pas la ligne. Le dernier administrateur et soi-même restent actifs. */
+export function activeChangeBlock(input: {
+  actorId: string;
+  targetId: string;
+  targetRole: StaffRole;
+  nextActive: boolean;
+  adminCount: number;
+}) {
+  if (input.nextActive) return null;
+  if (input.actorId === input.targetId) return "Vous ne pouvez pas désactiver votre propre accès.";
+  if (input.targetRole === "admin" && input.adminCount <= 1) return STAFF_COPY.lastAdmin;
+  return null;
 }

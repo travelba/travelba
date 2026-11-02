@@ -3,7 +3,8 @@ import { createClient, type EmailOtpType, type SupabaseClient, type User } from 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
+import { isAuthSessionCookieName, sessionAudienceFromCookies } from "@/lib/crm/client-session-cookie";
+import { AUTH_COOKIE_OPTIONS, clientAuthCookieOptions } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { ensureCustomerForUser, getStaffForUser } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
@@ -15,6 +16,8 @@ import {
   entryDestination,
   entryDoorForPath,
   entryInstantHtml,
+  inAppHandoffDecision,
+  inAppHandoffHtml,
   entryLinkExpiresAt,
   entryOptInFromLink,
   entryPreviewHtml,
@@ -45,6 +48,12 @@ type LinkRow = {
   channel?: string | null;
   created_by_staff_id?: string | null;
 };
+
+/**
+ * 303 : le bouton « Continuer ici » poste le formulaire ; un 307 rejouerait ce POST sur /mon-compte.
+ * Le GET `?ouvrir=1` suit un 303 comme un 307.
+ */
+export const ENTRY_REDIRECT_STATUS = 303;
 
 /** Lecture du lien court. Sur la preview, la clé de service MyLER est autorisée. */
 function entryAdmin() {
@@ -125,6 +134,21 @@ export function entryInstantResponse(origin: string, code: string) {
  * (Safari, iPhone) reçoit la porte immédiate : le script relance l’ouverture.
  */
 export async function serveEntryGet(request: Request, origin: string, code: string) {
+  // Navigateur intégré (WhatsApp…) : le proxy a déjà renvoyé vers Safari ou Chrome ; même garde ici,
+  // pour que le jeton ne soit jamais consommé dans la vue intégrée.
+  const handoff = inAppHandoffDecision({
+    url: new URL(new URL(request.url).pathname + new URL(request.url).search, origin).toString(),
+    method: request.method,
+    userAgent: request.headers.get("user-agent"),
+    secFetchDest: request.headers.get("sec-fetch-dest"),
+    accept: request.headers.get("accept"),
+    cookie: request.headers.get("cookie"),
+  });
+  if (handoff.kind === "handoff") {
+    return new NextResponse(inAppHandoffHtml(handoff.external, handoff.detection), {
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store", Vary: "User-Agent" },
+    });
+  }
   if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(origin, code);
   if (isPreviewBot(request.headers.get("user-agent"))) return entryPreviewResponse(origin, code);
   return entryInstantResponse(origin, code);
@@ -154,7 +178,7 @@ export async function openEntry(origin: string, code: string) {
 
   const now = new Date();
   const expiresAt = entryLinkExpiresAt(link);
-  const response = NextResponse.redirect(new URL("/mon-compte", origin));
+  const response = NextResponse.redirect(new URL("/mon-compte", origin), ENTRY_REDIRECT_STATUS);
   const supabase = await cookieClient(response);
   const jar = await cookies();
   const existing = hasAuthSessionCookie(jar.getAll().map((cookie) => cookie.name))
@@ -183,6 +207,7 @@ export async function openEntry(origin: string, code: string) {
   }
 
   const [, staff] = await Promise.all([ensureCustomerForUser(user), getStaffForUser(user.id)]);
+  finishEntrySessionCookies(response, Boolean(staff));
   if (gate !== "session") {
     const userId = user.id;
     const staffMember = Boolean(staff);
@@ -232,7 +257,7 @@ export async function openEntry(origin: string, code: string) {
  */
 async function openDeskEntry(origin: string, code: string, link: LinkRow) {
   const now = new Date();
-  const response = NextResponse.redirect(new URL("/mon-compte", origin));
+  const response = NextResponse.redirect(new URL("/mon-compte", origin), ENTRY_REDIRECT_STATUS);
   response.headers.set("Cache-Control", "private, no-store");
   const supabase = await cookieClient(response);
   const existing = await currentUser(supabase);
@@ -298,12 +323,16 @@ function deskBusyResponse() {
   });
 }
 
-/** Client Supabase sur les cookies de la requête ; les cookies posés partent avec la réponse. */
+/**
+ * Lien d’entrée : session client HttpOnly. Une session d’agence déjà ouverte garde ses cookies.
+ * Si le compte ouvert est un collègue, `finishEntrySessionCookies` retire HttpOnly.
+ */
 async function cookieClient(response: NextResponse) {
   const cookieStore = await cookies();
   const { url, anonKey } = publicSupabaseEnv();
+  const staffSession = sessionAudienceFromCookies(cookieStore.getAll()) === "staff";
   return createServerClient(url, anonKey, {
-    cookieOptions: AUTH_COOKIE_OPTIONS,
+    cookieOptions: staffSession ? AUTH_COOKIE_OPTIONS : clientAuthCookieOptions(process.env.NODE_ENV === "production"),
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -315,6 +344,15 @@ async function cookieClient(response: NextResponse) {
       },
     },
   });
+}
+
+/** Collègue : cookies lisibles, comme le reste de l’agence. Client : on confirme HttpOnly et 400 jours. */
+function finishEntrySessionCookies(response: NextResponse, staff: boolean) {
+  const options = staff ? AUTH_COOKIE_OPTIONS : clientAuthCookieOptions(process.env.NODE_ENV === "production");
+  for (const cookie of response.cookies.getAll()) {
+    if (!isAuthSessionCookieName(cookie.name) || !cookie.value) continue;
+    response.cookies.set(cookie.name, cookie.value, options);
+  }
 }
 
 /** Session déjà ouverte sur ce navigateur, ou null. */

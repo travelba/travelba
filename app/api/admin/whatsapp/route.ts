@@ -46,6 +46,8 @@ export async function POST(request: Request) {
     body?: string;
     template?: string;
     requestId?: string;
+    messageId?: string;
+    mark?: string;
     firstName?: string;
     lastName?: string;
     mediaName?: string;
@@ -57,7 +59,15 @@ export async function POST(request: Request) {
   const customerId = body?.customerId && ID.test(body.customerId) ? body.customerId : null;
   const bookingId = body?.bookingId && ID.test(body.bookingId) ? body.bookingId : null;
   const requestId = body?.requestId && ID.test(body.requestId) ? body.requestId : null;
-  if (action !== "reply" && action !== "resume" && action !== "takeover" && action !== "done" && action !== "create-client" && action !== "read") {
+  if (
+    action !== "reply" &&
+    action !== "resume" &&
+    action !== "takeover" &&
+    action !== "done" &&
+    action !== "create-client" &&
+    action !== "read" &&
+    action !== "mark"
+  ) {
     return jsonError("Action inconnue", 400);
   }
   if ((action === "reply" || action === "resume" || action === "takeover" || action === "read") && !phone) return jsonError("Téléphone manquant", 400);
@@ -67,6 +77,32 @@ export async function POST(request: Request) {
     admin = createServiceClient();
   } catch {
     return jsonError("Service indisponible", 503);
+  }
+
+  if (action === "mark") {
+    const messageId = body?.messageId && ID.test(body.messageId) ? body.messageId : null;
+    const mark = body?.mark === "good" || body?.mark === "bad" ? body.mark : body?.mark === "clear" ? null : undefined;
+    if (!messageId || mark === undefined) return jsonError("Note invalide", 400);
+    const existing = await admin
+      .from("crm_whatsapp_messages")
+      .select("id, direction, template_key")
+      .eq("id", messageId)
+      .maybeSingle();
+    if (existing.error) return jsonError("La note n’est pas encore disponible.", 503);
+    const row = existing.data as { direction?: string; template_key?: string | null } | null;
+    if (!row || row.direction !== "outbound" || row.template_key === "staff" || row.template_key === "agence") {
+      return jsonError("Seule une réponse du Concierge se note.", 400);
+    }
+    const saved = await admin
+      .from("crm_whatsapp_messages")
+      .update({
+        concierge_mark: mark,
+        concierge_marked_at: mark ? new Date().toISOString() : null,
+        concierge_marked_by: mark ? auth.staff.id : null,
+      })
+      .eq("id", messageId);
+    if (saved.error) return jsonError("La note n’est pas encore disponible.", 503);
+    return NextResponse.json({ ok: true, mark });
   }
 
   if (action === "done") {

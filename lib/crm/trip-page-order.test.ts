@@ -110,6 +110,22 @@ test("partager le voyage et les visas reçus sont repliés sur une ligne", () =>
   assert.match(localPreview, /Envoyer à Inès par WhatsApp/);
   assert.doesNotMatch(localPreview, /data-partage=/);
 
+  const noticed = renderToStaticMarkup(
+    createElement(TripSharePanel, {
+      bookingId: "b1",
+      shareUrl: "https://travelba.fr/v/ABCDEFGH",
+      companions: [],
+      initialNotice: "Hors des 24 heures. Cette personne n’a pas écrit aujourd’hui, et le modèle WhatsApp du partage n’est pas encore approuvé. Le lien reste à copier.",
+      initialTone: "error",
+    })
+  );
+  const closed = noticed.indexOf("</details>");
+  const reason = noticed.indexOf("data-partage-notice");
+  assert.ok(closed > 0);
+  assert.ok(reason > closed);
+  assert.match(noticed, /role="alert"/);
+  assert.equal(noticed.includes("Lien envoyé"), false);
+
   const visas = renderToStaticMarkup(
     createElement(FoldedRow, { title: "Visas reçus" }, "Détail")
   );

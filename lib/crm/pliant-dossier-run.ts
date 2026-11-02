@@ -11,6 +11,7 @@ import {
   type DossierSpendAction,
 } from "./pliant-dossier";
 import { pliantDossierLabels, type PliantDossierLink, type PliantStayRef } from "./pliant-tx";
+import { ensurePliantExpenseItem, removePliantExpenseItem, syncPliantExpenseItem } from "./pliant-expense-db";
 import type { TripCost } from "./trip-costs";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,11 +126,13 @@ async function selectCosts(admin: SupabaseClient, spendIds: string[]) {
   return { costs, stateKnown };
 }
 
-async function applyAction(admin: SupabaseClient, action: DossierSpendAction) {
+async function applyAction(admin: SupabaseClient, action: DossierSpendAction, bookingOfCost?: string | null) {
   if (action.op === "drop") {
     const { error } = await admin.from("crm_trip_costs").delete().eq("id", action.costId);
     if (error) throw new Error(error.message);
     await admin.from("crm_pliant_transactions").update({ match_status: "unmatched" }).eq("id", action.spendId);
+    // Autorisation refusée : la ligne Dépense part si l’agence ne l’a pas modifiée.
+    if (bookingOfCost) await quietly(() => removePliantExpenseItem(admin, bookingOfCost, action.spendId), "retrait");
     return;
   }
   const draft = action.draft;
@@ -145,10 +148,12 @@ async function applyAction(admin: SupabaseClient, action: DossierSpendAction) {
     updated_at: new Date().toISOString(),
   };
   if (action.op === "insert") {
+    // Par défaut, la dépense de la carte devient une ligne Dépense du dossier (une par transaction).
+    const expense = await quietly(() => ensurePliantExpenseItem(admin, action.bookingId, draft), "création");
     const { error } = await admin.from("crm_trip_costs").insert({
       ...row,
       booking_id: action.bookingId,
-      booking_item_id: null,
+      booking_item_id: expense?.itemId ?? null,
       source: "pliant",
       source_id: action.spendId,
     });
@@ -159,8 +164,20 @@ async function applyAction(admin: SupabaseClient, action: DossierSpendAction) {
   } else {
     const { error } = await admin.from("crm_trip_costs").update(row).eq("id", action.costId);
     if (error) throw new Error(error.message);
+    // Le règlement a pu changer le montant : la ligne Dépense non touchée suit.
+    if (bookingOfCost) await quietly(() => syncPliantExpenseItem(admin, bookingOfCost, draft), "mise à jour");
   }
   await admin.from("crm_pliant_transactions").update({ match_status: "matched" }).eq("id", action.spendId);
+}
+
+/** La ligne Dépense est un confort : son échec ne bloque pas le rattachement du coût. */
+async function quietly<T>(run: () => Promise<T>, step: string): Promise<T | null> {
+  try {
+    return await run();
+  } catch (error) {
+    console.error(`[pliant] dépense du dossier : ${step} impossible`, error instanceof Error ? error.message : error);
+    return null;
+  }
 }
 
 /** Recopie le dossier sur le registre quand la carte a été émise depuis le dossier. */
@@ -197,7 +214,10 @@ export async function linkDossierPliantSpends(admin: SupabaseClient) {
   );
   if (!loaded.stateKnown) return 0;
   const actions = planDossierPliantSpends({ spends, cardBookingId: bookings, costs: loaded.costs });
-  for (const action of actions) await applyAction(admin, action);
+  const bookingByCost = new Map(loaded.costs.map((cost) => [cost.id, cost.bookingId]));
+  for (const action of actions) {
+    await applyAction(admin, action, action.op === "insert" ? action.bookingId : bookingByCost.get(action.costId) || null);
+  }
   return actions.length;
 }
 
@@ -215,7 +235,7 @@ async function linksForBooking(admin: SupabaseClient, bookingId: string) {
   return rows;
 }
 
-/** Autorisations encore absentes du grand livre des coûts, pour l’onglet Règlement et le MCP. */
+/** Autorisations encore absentes du grand livre des coûts, pour l’onglet Argent et le MCP. */
 export async function loadDossierPendingCosts(admin: SupabaseClient, bookingId: string, existingSourceIds: string[]) {
   const cardIds = [...singleCardBooking(await linksForBooking(admin, bookingId)).keys()];
   if (!cardIds.length) return [] as TripCost[];

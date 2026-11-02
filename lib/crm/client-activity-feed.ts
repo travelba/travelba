@@ -369,6 +369,23 @@ export async function loadClientActivityFeed(
   try {
     const since = clientActivitySinceIso(today);
     const [loginRows, activity] = await Promise.all([readLogins(supabase, since), readActivity(supabase, since)]);
+    const downloadCustomers = [
+      ...new Set(activity.filter((row) => row.action === "download").map((row) => row.customer_id)),
+    ];
+    if (downloadCustomers.length) {
+      try {
+        const { repairCustomerDownloads } = await import("./download-journal");
+        const patches = await repairCustomerDownloads(downloadCustomers);
+        for (const row of activity) {
+          const patch = patches.get(row.id);
+          if (!patch) continue;
+          row.summary = patch.summary;
+          row.booking_id = patch.bookingId;
+        }
+      } catch {
+        console.error("[client-activity] reprise des téléchargements impossible");
+      }
+    }
     const logins = loginRows ?? [];
     if (!logins.length && !activity.length) return [];
     const customerIds = [

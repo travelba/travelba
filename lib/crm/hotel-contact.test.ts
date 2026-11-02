@@ -351,6 +351,18 @@ describe("withoutHotelRoster", () => {
     assert.equal(JSON.stringify(hidden).includes("clara.dubois"), false);
     assert.equal(JSON.stringify(hidden).includes("lars.nordin"), false);
     assert.equal(JSON.stringify(source).includes("clara.dubois@example.com"), true);
+    const priced = hotel({
+      hotel_name: "La Mamounia",
+      supplier_net: 12500,
+      supplier_currency: "MAD",
+      supplier_net_eur: 1160,
+      total_cost: "12500",
+    });
+    const hiddenPrice = withoutHotelRoster(priced);
+    assert.equal(JSON.stringify(hiddenPrice).includes("12500"), false);
+    assert.equal(JSON.stringify(hiddenPrice).includes("1160"), false);
+    assert.equal(JSON.stringify(hiddenPrice).includes("MAD"), false);
+    assert.equal(priced.details?.supplier_net, 12500);
   });
 
   it("n’imprime aucun contact sur la carte client", () => {
