@@ -67,9 +67,10 @@ import {
 import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus } from "@/lib/crm/mcp-restaurant-templates";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
+import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 63;
+export const MCP_TOOL_CAP = 65;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1246,6 +1247,28 @@ export const MCP_TOOLS: ToolDef[] = [
       force: z.boolean().optional().describe("Renvoie même si un relevé réussi est parti dans les cinq dernières minutes"),
     },
     run: (args) => envoyerReleve(args),
+  },
+  {
+    name: "preparer_facture_mb3m",
+    write: true,
+    openWorld: true,
+    description:
+      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), erreur et auteur (le jeton). Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+    },
+    run: (args) => preparerFactureMb3m(args),
+  },
+  {
+    name: "statut_facture_mb3m",
+    description:
+      "Lit la facture MB3M déjà enregistrée sur le dossier. dossier_id ou reference. statut : a_preparer, en_cours, echouee, pro_forma ou imprimee. numero_mb3m, lignes, erreur de la dernière préparation, auteur. Ne prépare rien et n’appelle pas MB3M.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+    },
+    run: (args) => statutFactureMb3m(args),
   },
   {
     name: "sejours_restaurants",
