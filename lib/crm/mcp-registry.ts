@@ -240,7 +240,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "chercher_dossiers",
     description:
-      "Dossiers. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Visible, ou Archivée. À côté du contact : societe et paye_par (société ou particulier).",
+      "Dossiers. q retrouve la référence, le titre, la destination, le prénom, le nom, la société du client, la société facturée et les voyageurs, sans accent et dans n’importe quel ordre. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Visible, ou Archivée. À côté du contact : societe et paye_par (société ou particulier).",
     input: {
       q,
       etat: z

@@ -1,3 +1,4 @@
+import { attachSearchFold, attachSearchMatches } from "./attach-search";
 import { greetingGivenName } from "./identity";
 import { customerFullName, type CrmCustomer } from "./types";
 
@@ -5,7 +6,10 @@ export type PickableCustomer = Pick<
   CrmCustomer,
   "id" | "first_name" | "last_name" | "company_name" | "email" | "phone"
 > &
-  Partial<Pick<CrmCustomer, "usage_name" | "company_role" | "billing_parent_id">>;
+  Partial<Pick<CrmCustomer, "usage_name" | "company_role" | "billing_parent_id">> & {
+    /** Autres sociétés de la fiche, en plus de `company_name`. */
+    companies?: string[] | null;
+  };
 
 /** Colonnes du sélecteur — pas de `select("*")` (IBAN, adresse, etc.). */
 export const CUSTOMER_PICK_SELECT =
@@ -23,13 +27,6 @@ export const CUSTOMER_NAME_SELECT = "id, first_name, last_name";
 
 /** Plafond typeahead ; pagination liste complète = suivi. */
 export const CUSTOMER_PICK_LIMIT = 300;
-
-function fold(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
 
 function digits(value: string) {
   return value.replace(/\D/g, "");
@@ -51,8 +48,25 @@ export function customerDirectoryName(c: Pick<CrmCustomer, "first_name" | "last_
 
 export function customerPickLabel(c: PickableCustomer) {
   const name = customerFullName(c);
-  const company = c.company_name?.trim();
-  return company ? `${name} · ${company}` : name;
+  const company = c.company_name?.trim() || "";
+  const extra = (c.companies || []).find((item) => item.trim() && attachSearchFold(item) !== attachSearchFold(company));
+  const shown = [company, extra?.trim()].filter(Boolean).join(" · ");
+  return shown ? `${name} · ${shown}` : name;
+}
+
+/** Sociétés de facturation, groupées par client, sans doublon de nom. */
+export function companiesByCustomer(rows: { customer_id: string; company_name: string | null }[]) {
+  const map = new Map<string, string[]>();
+  for (const row of rows) {
+    const name = (row.company_name || "").trim();
+    const key = attachSearchFold(name);
+    if (!name || !key) continue;
+    const list = map.get(row.customer_id) || [];
+    if (list.some((item) => attachSearchFold(item) === key)) continue;
+    list.push(name);
+    map.set(row.customer_id, list);
+  }
+  return map;
 }
 
 export function customerRoleSuffix(c: PickableCustomer) {
@@ -73,13 +87,20 @@ export function customerBillingPickLabel(c: PickableCustomer) {
 export function customerMatchesQuery(c: PickableCustomer, query: string) {
   const trimmed = query.trim();
   if (!trimmed) return true;
-  const needle = fold(trimmed);
-  const hay = fold(
-    `${customerFullName(c)} ${c.first_name || ""} ${c.company_name || ""} ${c.email || ""} ${c.phone || ""}`
-  );
-  if (hay.includes(needle)) return true;
+  const hay = [
+    c.first_name,
+    c.last_name,
+    c.usage_name,
+    c.company_name,
+    ...(c.companies || []),
+    c.email,
+    c.phone,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (attachSearchMatches(hay, trimmed)) return true;
   const phoneNeedle = digits(trimmed);
-  if (phoneNeedle.length >= 4) {
+  if (phoneNeedle.length >= 4 && !/\p{L}/u.test(trimmed)) {
     const stored = digits(c.phone || "");
     const national = nationalPhoneDigits(c.phone || "");
     return (

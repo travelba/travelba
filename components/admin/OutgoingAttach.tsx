@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { useRouter } from "next/navigation";
+import { ATTACH_SEARCH_DEBOUNCE_MS, ATTACH_SEARCH_MIN_CHARS, attachTargetCaption } from "@/lib/crm/attach-search";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { costSuggestionReasonLabel, isSureSuggestion, type OutgoingLine } from "@/lib/crm/trip-costs";
 
@@ -10,9 +11,61 @@ export type TargetOption = {
   id: string;
   reference: string;
   title: string;
+  destination?: string;
   client?: string;
+  company?: string;
+  dates?: string;
   items: { id: string; label: string; kind: string | null; amount: number | null }[];
 };
+
+/** Deux lignes : référence et lieu, puis dates, client et société. */
+export function AttachTargetList({
+  options,
+  bookingId,
+  pending,
+  query,
+  onPick,
+}: {
+  options: TargetOption[];
+  bookingId: string;
+  pending: boolean;
+  query: string;
+  onPick: (id: string) => void;
+}) {
+  const typed = query.trim();
+  return (
+    <div className="space-y-1">
+      {pending ? <p className="text-xs text-muted">Recherche…</p> : null}
+      {typed.length === 1 ? <p className="text-xs text-muted">Encore une lettre, ou une référence.</p> : null}
+      {typed.length >= ATTACH_SEARCH_MIN_CHARS && !pending && !options.length ? (
+        <p className="text-xs text-muted">
+          Aucun voyage pour « {typed} ». Référence, prénom, nom, société ou voyageur.
+        </p>
+      ) : null}
+      <ul className="max-h-60 space-y-1 overflow-y-auto" aria-label="Voyages">
+        {options.map((row) => {
+          const caption = attachTargetCaption(row);
+          const selected = bookingId === row.id;
+          return (
+            <li key={row.id}>
+              <button
+                type="button"
+                onClick={() => onPick(row.id)}
+                aria-pressed={selected}
+                className={`admin-tap min-h-11 w-full rounded-xl px-3 py-2 text-left ${
+                  selected ? "bg-[#C5A880]/20 font-semibold text-[var(--admin-navy)]" : "text-[var(--admin-navy)]"
+                }`}
+              >
+                <span className="block text-sm leading-snug">{caption.headline}</span>
+                {caption.detail ? <span className="mt-0.5 block text-xs font-normal leading-5 text-muted">{caption.detail}</span> : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 const STAY = "__stay__";
 const NEW = "__new__";
@@ -61,6 +114,7 @@ export function OutgoingAttach({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<TargetOption[]>(fixedBooking ? [fixedBooking] : []);
+  const [loadedFor, setLoadedFor] = useState<string | null>(fixedBooking ? "" : null);
   const [bookingId, setBookingId] = useState<string>(fixedBooking?.id || top?.bookingId || "");
   // Dépense Pliant sans ligne proposée : par défaut une nouvelle dépense du dossier, au montant Pliant.
   const fallbackChoice = line.source === "pliant" && line.eurAmount != null && line.eurAmount > 0 ? NEW : STAY;
@@ -71,25 +125,48 @@ export function OutgoingAttach({
 
   useEffect(() => {
     if (fixedBooking || !open) return;
+    const trimmed = query.trim();
+    if (trimmed.length === 1) return;
     const controller = new AbortController();
-    const url = query.trim()
-      ? `/api/admin/comptabilite/cibles?q=${encodeURIComponent(query.trim())}`
-      : bookingId
-        ? `/api/admin/comptabilite/cibles?booking=${encodeURIComponent(bookingId)}`
-        : "/api/admin/comptabilite/cibles";
+    const url =
+      trimmed.length >= ATTACH_SEARCH_MIN_CHARS
+        ? `/api/admin/comptabilite/cibles?q=${encodeURIComponent(trimmed)}`
+        : bookingId
+          ? `/api/admin/comptabilite/cibles?booking=${encodeURIComponent(bookingId)}`
+          : "/api/admin/comptabilite/cibles";
     const timer = setTimeout(() => {
       fetch(url, { signal: controller.signal })
         .then((res) => res.json())
-        .then((json: { bookings?: TargetOption[] }) => setOptions(json.bookings || []))
-        .catch(() => undefined);
-    }, 200);
+        .then((json: { bookings?: TargetOption[] }) => {
+          if (controller.signal.aborted) return;
+          const next = json.bookings || [];
+          setOptions((prev) => {
+            if (!bookingId || next.some((row) => row.id === bookingId)) return next;
+            const kept = prev.find((row) => row.id === bookingId);
+            return kept ? [kept, ...next] : next;
+          });
+          setLoadedFor(trimmed);
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setOptions([]);
+          setLoadedFor(trimmed);
+        });
+    }, trimmed ? ATTACH_SEARCH_DEBOUNCE_MS : 0);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
   }, [query, open, fixedBooking, bookingId]);
 
-  const booking = useMemo(() => options.find((row) => row.id === bookingId) || null, [options, bookingId]);
+  const trimmedQuery = query.trim();
+  const resultsReady = loadedFor === trimmedQuery && trimmedQuery.length !== 1;
+  const shownOptions = useMemo(() => (resultsReady ? options : []), [resultsReady, options]);
+  const pending = trimmedQuery.length !== 1 && !resultsReady;
+  const booking = useMemo(
+    () => shownOptions.find((row) => row.id === bookingId) || options.find((row) => row.id === bookingId) || null,
+    [shownOptions, options, bookingId]
+  );
   /** Ligne retenue : le choix de l’agent s’il existe sur ce voyage, sinon la proposition du voyage, sinon le séjour. */
   const itemChoice = useMemo(() => {
     if (!booking || pickedItem === STAY || pickedItem === NEW) return pickedItem;
@@ -167,27 +244,17 @@ export function OutgoingAttach({
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Référence, destination, nom du client…"
+                placeholder="Référence, client, société, voyageur…"
                 className="w-full rounded-xl border border-border px-3 py-2 text-sm"
                 aria-label="Chercher le voyage"
               />
-              <select
-                value={bookingId}
-                onChange={(event) => setBookingId(event.target.value)}
-                className="w-full rounded-xl border border-border px-3 py-2 text-sm"
-                aria-label="Voyage"
-              >
-                <option value="">Choisir le voyage…</option>
-                {options.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.reference} · {row.title}
-                    {row.client ? ` · ${row.client}` : ""}
-                  </option>
-                ))}
-              </select>
-              {query.trim() && !options.length ? (
-                <p className="text-xs text-muted">Aucun voyage pour « {query.trim()} ». Essayez la référence (0034), la destination ou le nom du client.</p>
-              ) : null}
+              <AttachTargetList
+                options={shownOptions}
+                bookingId={bookingId}
+                pending={pending}
+                query={query}
+                onPick={setBookingId}
+              />
             </>
           ) : null}
           <select

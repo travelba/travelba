@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   customerBillingPickLabel,
   customerDirectoryName,
+  companiesByCustomer,
   customerMatchesQuery,
   customerPickLabel,
   customerTravelerPickLabel,
@@ -63,10 +64,24 @@ describe("customer-search", () => {
       phone: "+33612345678",
     });
     assert.equal(customerMatchesQuery(row, "lea beranger"), true);
+    assert.equal(customerMatchesQuery(row, "beranger lea"), true);
     assert.equal(customerMatchesQuery(row, "côte"), true);
     assert.equal(customerMatchesQuery(row, "atelier.fr"), true);
     assert.equal(customerMatchesQuery(row, "061234"), true);
     assert.equal(customerMatchesQuery(row, "inconnu"), false);
+    const usage = customer({ first_name: "Gaëlle", last_name: "Dupont", usage_name: "Khiari", company_name: null });
+    assert.equal(customerMatchesQuery(usage, "gaelle"), true);
+    assert.equal(customerMatchesQuery(usage, "khiari"), true);
+    const billed = customer({ company_name: "Atelier", companies: ["Bel Air SAS"] });
+    assert.equal(customerMatchesQuery(billed, "bel air"), true);
+    assert.equal(customerPickLabel(billed), "Marie Dupont · Atelier · Bel Air SAS");
+    const grouped = companiesByCustomer([
+      { customer_id: "c1", company_name: "Bel Air SAS" },
+      { customer_id: "c1", company_name: "bel air sas" },
+      { customer_id: "c2", company_name: "NILOS" },
+    ]);
+    assert.deepEqual(grouped.get("c1"), ["Bel Air SAS"]);
+    assert.deepEqual(grouped.get("c2"), ["NILOS"]);
   });
 
   it("ajoute le rôle société au libellé voyageur / facturation", () => {

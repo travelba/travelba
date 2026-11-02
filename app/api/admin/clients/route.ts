@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import {
+  companiesByCustomer,
   CUSTOMER_PICK_LIMIT,
   CUSTOMER_PICK_SELECT,
   type PickableCustomer,
@@ -22,7 +23,15 @@ export async function GET(request: Request) {
       .order("last_name", { ascending: true })
       .limit(CUSTOMER_PICK_LIMIT);
     if (error) return dbError(error, 500);
-    return NextResponse.json({ customers: (data || []) as PickableCustomer[] });
+    const customers = (data || []) as PickableCustomer[];
+    const ids = customers.map((row) => row.id);
+    const companyRows = ids.length
+      ? await auth.supabase.from("crm_billing_companies").select("customer_id, company_name").in("customer_id", ids)
+      : { data: [] };
+    const byCustomer = companiesByCustomer((companyRows.data || []) as { customer_id: string; company_name: string | null }[]);
+    return NextResponse.json({
+      customers: customers.map((row) => ({ ...row, companies: byCustomer.get(row.id) || [] })),
+    });
   }
   const { data, error } = await auth.supabase
     .from("crm_customers")
