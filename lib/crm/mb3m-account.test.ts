@@ -6,6 +6,7 @@ import {
   mb3mAccountLines,
   mb3mAccountsSplit,
   mb3mFactureMention,
+  mb3mLedgerMention,
   mb3mInvoiceAction,
   mb3mLineSignature,
   mb3mPieceStale,
@@ -73,6 +74,28 @@ describe("facture MB3M du compte", () => {
     assert.equal(mb3mFactureMention("4540", false).openPdf, false);
     assert.equal(mb3mFactureMention("4540", true).text, "Facture MB3M n° 4540");
     assert.equal(mb3mFactureMention("4540", true).openPdf, true);
+    assert.equal(
+      mb3mLedgerMention({
+        kind: "gds",
+        number: "3001",
+        printed: true,
+        preview: false,
+        href: "/api/files?path=x",
+        bookingId: "b",
+      })?.text,
+      "Facture n° 3001"
+    );
+    assert.equal(
+      mb3mLedgerMention({
+        kind: "gds",
+        number: "3001",
+        printed: false,
+        preview: true,
+        href: null,
+        bookingId: "b",
+      }),
+      null
+    );
   });
 
   it("porte la marge et les fournisseurs des coûts pointés, et signale une pièce imprimée à corriger", () => {

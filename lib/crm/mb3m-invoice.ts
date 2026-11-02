@@ -29,10 +29,9 @@ type PayerCustomer = Pick<
 import {
   mb3mDossierLines,
   mb3mFactureHref,
-  mb3mFactureMention,
+  mb3mLedgerMention,
   mb3mLineSignature,
   mb3mPieceStale,
-  mb3mProformaHref,
   type Mb3mAccountLine,
   type Mb3mLedgerRow,
 } from "@/lib/crm/mb3m-account";
@@ -1212,7 +1211,7 @@ export async function mb3mPieceLinksFor(transactionIds: string[], options?: { pr
   const admin = createServiceClient();
   let query = admin
     .from("crm_mb3m_pieces")
-    .select("booking_id, piece_number, document_id, transaction_ids, printed_at")
+    .select("booking_id, kind, piece_number, document_id, transaction_ids, printed_at")
     .eq("realm", mb3mRealm())
     .overlaps("transaction_ids", ids);
   if (!options?.preview) query = query.not("printed_at", "is", null);
@@ -1220,6 +1219,7 @@ export async function mb3mPieceLinksFor(transactionIds: string[], options?: { pr
   if (error) throw new Error(error.message);
   const pieces = ((data || []) as {
     booking_id: string | null;
+    kind: string | null;
     piece_number: string | null;
     document_id: string | null;
     transaction_ids: string[] | null;
@@ -1242,10 +1242,18 @@ export async function mb3mPieceLinksFor(transactionIds: string[], options?: { pr
     if (!number) continue;
     const issued = Boolean(piece.printed_at);
     const path = piece.document_id ? paths.get(piece.document_id) : "";
-    const href = issued ? (path ? mb3mFactureHref(path, number) : null) : piece.booking_id ? mb3mProformaHref(piece.booking_id) : null;
-    const text = issued ? mb3mFactureMention(number, true).text : `Facture pro forma n° ${number}`;
+    const href = issued && path ? mb3mFactureHref(path, number) : null;
+    const link = mb3mLedgerMention({
+      kind: piece.kind,
+      number,
+      printed: issued,
+      preview: Boolean(options?.preview),
+      href,
+      bookingId: piece.booking_id,
+    });
+    if (!link) continue;
     for (const id of piece.transaction_ids || []) {
-      if (ids.includes(id)) links.set(id, { text, href });
+      if (ids.includes(id)) links.set(id, { text: link.text, href: link.href });
     }
   }
   return links;

@@ -276,6 +276,29 @@ export function mb3mFactureMention(number: string, issued: boolean) {
   return { text: `Comptabilisé dans MB3M · Facture n° ${piece}`, openPdf: false };
 }
 
+/**
+ * Lien sous une ligne du grand livre. Une facture Amadeus n’apparaît que si elle est émise,
+ * avec le PDF. Une pro forma CRM reste visible pour l’agence.
+ */
+export function mb3mLedgerMention(input: {
+  kind: string | null;
+  number: string;
+  printed: boolean;
+  preview: boolean;
+  href: string | null;
+  bookingId: string | null;
+}): { text: string; href: string | null } | null {
+  const number = input.number.trim();
+  if (!number) return null;
+  const gds = input.kind === "gds";
+  if (gds && !input.printed) return null;
+  if (!input.printed && !input.preview) return null;
+  if (input.printed) {
+    return { text: gds ? `Facture n° ${number}` : mb3mFactureMention(number, true).text, href: input.href };
+  }
+  return { text: `Facture pro forma n° ${number}`, href: input.bookingId ? mb3mProformaHref(input.bookingId) : null };
+}
+
 export function mb3mFactureHref(path: string, number: string) {
   const name = encodeURIComponent(`Facture MB3M n° ${number.trim()}.pdf`);
   return `/api/files?path=${encodeURIComponent(path)}&inline=1&name=${name}`;

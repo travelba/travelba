@@ -556,6 +556,7 @@ export type Mb3mRemotePiece = {
   refCommand: string;
   folderId: string | null;
   cancelled: boolean;
+  printed: boolean;
 };
 
 function pieceBlocks(xml: string) {
@@ -564,6 +565,10 @@ function pieceBlocks(xml: string) {
 
 function blockCancelled(block: string) {
   return /<(?:Cancelled|IsCancelled)>\s*true\s*</i.test(block);
+}
+
+function blockPrinted(block: string) {
+  return /<(?:DatePrint|PrintedDate)(?:\s[^>]*)?>\s*[^<\s][^<]*</.test(block);
 }
 
 /** Factures du client. Le filtre est le client : un PNR ou un dossier ne filtre pas. */
@@ -583,6 +588,7 @@ export async function mb3mFindCustomerPieces(customerUid: string, fetchImpl?: Fe
         refCommand: mb3mXmlText(block, "RefCommand"),
         folderId,
         cancelled: blockCancelled(block),
+        printed: blockPrinted(block),
       },
     ];
   });
@@ -597,6 +603,7 @@ export type Mb3mRemoteInvoice = {
   date: string | null;
   activityIds: number[];
   travelers: { firstName: string; lastName: string }[];
+  printed: boolean;
 };
 
 /** Détail d’une facture : PNR (`RefCommand`), billets, activité, voyageurs. */
@@ -635,6 +642,7 @@ export async function mb3mGetInvoice(number: string, fetchImpl?: FetchImpl): Pro
     date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
     activityIds,
     travelers,
+    printed: blockPrinted(invoice),
   };
 }
 

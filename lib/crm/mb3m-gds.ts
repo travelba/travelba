@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { flightCountsInStay, itemSellingAmount } from "@/lib/crm/bookings";
 import { passengersFromDetails } from "@/lib/crm/document-passengers";
+import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import {
   Mb3mError,
   mb3mChangeFolder,
@@ -8,6 +9,7 @@ import {
   mb3mGetInvoice,
   mb3mPartnerCode,
   mb3mRealm,
+  mb3mRenderPiece,
   mb3mSaveFolder,
   mb3mSingleAgencyUid,
   type Mb3mRemoteInvoice,
@@ -37,6 +39,8 @@ export type GdsRemoteInvoice = {
   date: string | null;
   activityIds: number[];
   travelers: { firstName: string; lastName: string }[];
+  /** Émise dans MB3M (DatePrint). Une pro forma ne s’affiche pas au client. */
+  printed?: boolean;
 };
 
 export type GdsCoverage = {
@@ -50,6 +54,7 @@ export type GdsCoverage = {
   folderId: string | null;
   /** move : pas de dossier. here : déjà celui du séjour. other : un autre dossier. */
   placement: "move" | "here" | "other";
+  printed: boolean;
 };
 
 export type GdsSuggestion = {
@@ -145,6 +150,7 @@ export function planGdsFlights(input: {
         amount: flight.amount,
         folderId: invoice.folderId,
         placement: placement(invoice.folderId, input.dossierFolderId),
+        printed: invoice.printed === true,
       });
       continue;
     }
@@ -313,7 +319,8 @@ export async function readMb3mGdsPlan(
     const needsDetail = !ref || wanted.has(ref) || !piece.folderId;
     if (!needsDetail) continue;
     try {
-      details.push(await mb3mGetInvoice(piece.number));
+      const detail = await mb3mGetInvoice(piece.number);
+      details.push({ ...detail, printed: detail.printed || piece.printed });
     } catch (err) {
       const message = err instanceof Error ? err.message : "lecture";
       throw new Mb3mError(`La facture MB3M n° ${piece.number} n’a pas pu être lue. ${message}`, -1);
@@ -336,6 +343,36 @@ export async function readMb3mGdsPlan(
     customerUid,
     folderId: input.folderId,
   };
+}
+
+/** PDF de la facture émise, visible au client comme les autres factures du dossier. */
+async function fileGdsInvoicePdf(supabase: SupabaseClient, bookingId: string, number: string) {
+  try {
+    const pdf = await mb3mRenderPiece({ number });
+    const path = `bookings/${bookingId}/${Date.now()}-${safeFileName(`Facture MB3M n° ${number}.pdf`)}`;
+    await uploadCrmFile(path, pdf.bytes, "application/pdf");
+    const { data, error } = await supabase
+      .from("crm_booking_documents")
+      .insert({
+        booking_id: bookingId,
+        booking_item_id: null,
+        kind: "invoice",
+        file_name: `Facture n° ${number}.pdf`,
+        mime_type: "application/pdf",
+        storage_path: path,
+        visible_to_client: true,
+      })
+      .select("id")
+      .single();
+    if (error || !data?.id) {
+      console.error("[mb3m] PDF Amadeus", error?.message || "insert");
+      return null;
+    }
+    return String(data.id);
+  } catch (err) {
+    console.error("[mb3m] PDF Amadeus", number, err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 /** Déplace les factures sans dossier, puis les note sur le séjour. */
@@ -369,43 +406,74 @@ export async function finishMb3mGds(
     folderId = folder.id;
     input.plan.folderId = folder.id;
   }
+  const groups = new Map<string, GdsCoverage[]>();
   for (const row of input.plan.covered) {
+    const list = groups.get(row.invoiceNumber) || [];
+    list.push(row);
+    groups.set(row.invoiceNumber, list);
+  }
+  for (const [number, rows] of groups) {
+    const row = rows[0];
     if (row.placement === "move" && folderId) {
       try {
-        await mb3mChangeFolder({ number: row.invoiceNumber, folderId });
-        row.placement = "here";
-        row.folderId = folderId;
+        await mb3mChangeFolder({ number, folderId });
+        for (const item of rows) {
+          item.placement = "here";
+          item.folderId = folderId;
+        }
       } catch (err) {
-        console.error("[mb3m] dossier Amadeus", row.invoiceNumber, err instanceof Error ? err.message : err);
+        console.error("[mb3m] dossier Amadeus", number, err instanceof Error ? err.message : err);
       }
     }
-    const lines = [{ label: row.label, pnr: row.pnr, itemId: row.itemId, placement: row.placement }];
+    const lines = rows.map((item) => ({
+      label: item.label,
+      pnr: item.pnr,
+      itemId: item.itemId,
+      placement: item.placement,
+    }));
+    const transactionIds = [
+      ...new Set(rows.map((item) => item.transactionId || "").filter((id) => /^[0-9a-f-]{36}$/i.test(id))),
+    ];
     const existing = await supabase
       .from("crm_mb3m_pieces")
-      .select("id")
+      .select("id, document_id, printed_at")
       .eq("booking_id", input.bookingId)
       .eq("kind", "gds")
       .eq("realm", mb3mRealm())
-      .eq("piece_number", row.invoiceNumber)
+      .eq("piece_number", number)
       .maybeSingle();
     if (existing.error) {
       console.error("[mb3m] mémoire Amadeus", existing.error.message);
       continue;
     }
-    const saved = existing.data
-      ? await supabase
-          .from("crm_mb3m_pieces")
-          .update({ folder_id: row.folderId, amount: row.amount, lines, updated_at: new Date().toISOString() })
-          .eq("id", (existing.data as { id: string }).id)
+    const stored = existing.data as { id: string; document_id: string | null; printed_at: string | null } | null;
+    let documentId = stored?.document_id || null;
+    let printedAt = stored?.printed_at || null;
+    if (row.printed && !documentId) {
+      const filed = await fileGdsInvoicePdf(supabase, input.bookingId, number);
+      if (filed) {
+        documentId = filed;
+        printedAt = new Date().toISOString();
+      }
+    }
+    const payload = {
+      folder_id: row.folderId,
+      amount: row.amount,
+      lines,
+      transaction_ids: transactionIds,
+      document_id: documentId,
+      printed_at: printedAt,
+      updated_at: new Date().toISOString(),
+    };
+    const saved = stored
+      ? await supabase.from("crm_mb3m_pieces").update(payload).eq("id", stored.id)
       : await supabase.from("crm_mb3m_pieces").insert({
           booking_id: input.bookingId,
           kind: "gds",
           realm: mb3mRealm(),
-          piece_number: row.invoiceNumber,
-          folder_id: row.folderId,
-          amount: row.amount,
+          piece_number: number,
           currency: "EUR",
-          lines,
+          ...payload,
         });
     if (saved.error) console.error("[mb3m] mémoire Amadeus", saved.error.message);
   }

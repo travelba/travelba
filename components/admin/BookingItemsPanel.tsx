@@ -705,6 +705,7 @@ export function BookingItemsPanel({
           <button type="button" className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm" onClick={startNew}>
             Ajouter une étape
           </button>
+          <TicketMailForm bookingId={bookingId} />
         </div>
       </div>
       <p className="mt-1 text-xs text-muted">Déplacez une étape par sa poignée, ou Monter / Descendre dans son menu. Par défaut, l’ordre suit les dates.</p>
@@ -811,6 +812,7 @@ export function BookingItemsPanel({
                   docs={docs}
                   items={rows}
                   reference={reference}
+                  ticket={item.kind === "flight"}
                 />
                 )}
                 <div className="flex gap-2">
@@ -1026,6 +1028,7 @@ export function BookingItemsPanel({
                     items={rows}
                     reference={reference}
                     filesOnly
+                    ticket={item.kind === "flight"}
                   />
                 </div>
               ) : null}
@@ -1077,6 +1080,52 @@ export function BookingItemsPanel({
   );
 }
 
+function TicketMailForm({ bookingId, itemId }: { bookingId: string; itemId?: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const form = event.currentTarget;
+    const fd = new FormData(form);
+    if (itemId) fd.set("booking_item_id", itemId);
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const result = await adminAction<{ pnr?: string | null; cree?: boolean }>(
+      `/api/admin/bookings/${bookingId}/billet`,
+      { method: "POST", formData: fd }
+    );
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error || "Le billet n’a pas été déposé.");
+      return;
+    }
+    form.reset();
+    const pnr = result.data?.pnr;
+    setNote(pnr ? `Billet déposé. PNR ${pnr}.` : "Billet déposé sur le vol.");
+    router.refresh();
+  }
+
+  return (
+    <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
+      <input name="file" type="file" accept=".pdf,.eml,application/pdf,message/rfc822" required disabled={busy} aria-label="E-mail ou PDF du billet" className="text-xs" />
+      <button type="submit" disabled={busy} className={flatBtn}>
+        {busy ? "Lecture…" : "Déposer le billet"}
+      </button>
+      {note ? <p className="basis-full text-xs text-[var(--admin-navy)]">{note}</p> : null}
+      {error ? (
+        <p role="alert" className="basis-full text-xs text-[var(--admin-red)]">
+          {error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
 function ItemAttachments({
   bookingId,
   itemId,
@@ -1085,6 +1134,7 @@ function ItemAttachments({
   reference = null,
   compact = false,
   filesOnly = false,
+  ticket = false,
 }: {
   bookingId: string;
   itemId: string;
@@ -1094,6 +1144,7 @@ function ItemAttachments({
   compact?: boolean;
   /** Ligne déroulée : la vignette et Retirer, comme les pièces jointes. */
   filesOnly?: boolean;
+  ticket?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -1164,6 +1215,7 @@ function ItemAttachments({
         ) : null}
       </form>
       )}
+      {ticket ? <TicketMailForm bookingId={bookingId} itemId={itemId} /> : null}
     </div>
   );
 }
