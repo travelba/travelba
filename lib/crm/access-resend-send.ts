@@ -2,7 +2,7 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { recordAgencyJournal } from "./agency-log";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "./rate-limit";
-import { resolveContentSid } from "./twilio-content-sid";
+import { resolveAgencyContentSid } from "./agency-templates-arm";
 import { sendContentTemplate, twilioReady, whatsappAddress } from "./whatsapp";
 import {
   ACCESS_HOME_PATH,
@@ -132,7 +132,7 @@ async function sendAccessLink(
   const templateEnv = hotel ? HOTEL_OPTION_TEMPLATE_ENV : ACCESS_TEMPLATE_ENV;
   const templateKey = hotel ? HOTEL_OPTION_TEMPLATE_KEY : ACCESS_TEMPLATE_KEY;
   const nextPath = hotel ? HOTEL_OPTION_NEXT_PATH : ACCESS_HOME_PATH;
-  const templateSid = (await resolveContentSid(templateEnv)).trim();
+  const templateSid = (await resolveAgencyContentSid(templateEnv)).trim();
   if (!templateSid || !twilioReady()) {
     await recordAgencyJournal({
       staffId: input.staffId,

@@ -67,6 +67,7 @@ import {
   updateRestaurantTool,
 } from "@/lib/crm/mcp-restaurants";
 import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus } from "@/lib/crm/mcp-restaurant-templates";
+import { deposerModelesWhatsapp, statutModelesWhatsapp } from "@/lib/crm/mcp-agency-templates";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
@@ -108,7 +109,7 @@ import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 93;
+export const MCP_TOOL_CAP = 95;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1468,6 +1469,21 @@ export const MCP_TOOLS: ToolDef[] = [
     description:
       "Statut d’approbation Meta des trois modèles WhatsApp restaurants (restaurant_selection, restaurant_proposition, restaurant_proposition_carte) : nom, content_sid, statut (approved, pending, rejected, unsubmitted, absent), source (variable ou retrouvé par son nom chez Twilio), motif de refus. pret vrai quand les trois sont approuvés. Lecture seule, n’envoie aucun message, ne crée rien.",
     run: (args) => getRestaurantWhatsappTemplatesStatus(args),
+  },
+  {
+    name: "deposer_modeles_whatsapp",
+    write: true,
+    openWorld: true,
+    description:
+      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les modèles acces_client, option_hotel_activee et facture_paiement. Même geste que create_restaurant_whatsapp_templates. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent par nom. Le content_sid est écrit dans le réglage crm_whatsapp_content_sids : l’envoi le lit sans redéploiement, et retombe sur la variable du même nom si le réglage est vide. Renvoie nom, content_sid et statut. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Réservé aux administrateurs.",
+    run: (args) => deposerModelesWhatsapp(args),
+  },
+  {
+    name: "statut_modeles_whatsapp",
+    openWorld: true,
+    description:
+      "Statut d’approbation Meta de acces_client, option_hotel_activee et facture_paiement : nom, content_sid, statut, source (reglage, env ou retrouvé par son nom). pret vrai quand les trois sont approuvés. Lecture seule. N’envoie aucun message. Réservé aux administrateurs.",
+    run: (args) => statutModelesWhatsapp(args),
   },
   {
     name: "lister_membres",
