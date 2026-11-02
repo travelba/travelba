@@ -526,9 +526,17 @@ export type Mb3mRemotePayment = {
   amount: number;
   date: string;
   invoiceNumber: string | null;
+  /** Reste à lettrer. 0 : déjà entièrement lettré. */
+  unmatched: number;
 };
 
-/** Règlements déjà saisis chez MB3M pour ce client, pour ne pas les recréer. */
+/**
+ * Règlements déjà saisis chez MB3M pour ce client, pour ne pas les recréer.
+ * Le corps reste FolderFindPaymentsRequest : le WSDL Partners répond 401, et
+ * seule FindAllPieces a fauté (elle attend FolderFindPiecesQuery). SavePayment,
+ * WriteMatching, GetInvoice et ChangeFolder gardent leur *Request, comme
+ * AddPieces et CancelInvoice. Render garde RenderPieceRequest, déjà accepté.
+ */
 export async function mb3mFindCustomerPayments(customerUid: string, fetchImpl?: FetchImpl): Promise<Mb3mRemotePayment[]> {
   const inner = `<FolderFindPaymentsRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><CustomerIdentity><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></CustomerIdentity></FolderFindPaymentsRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "FindPayments", inner, fetchImpl);
@@ -539,16 +547,47 @@ export async function mb3mFindCustomerPayments(customerUid: string, fetchImpl?: 
     const amount = Number(mb3mXmlText(block, "Amount"));
     const date = mb3mXmlText(block, "Date").slice(0, 10);
     if (!number || !Number.isFinite(amount) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+    const invoiceNumber = mb3mXmlText(block, "PieceNumber") || null;
     return [
       {
         number,
         reference: mb3mXmlText(block, "Reference"),
         amount,
         date,
-        invoiceNumber: mb3mXmlText(block, "PieceNumber") || null,
+        invoiceNumber,
+        unmatched: paymentUnmatched(block, amount, Boolean(invoiceNumber)),
       },
     ];
   });
+}
+
+function paymentUnmatched(block: string, amount: number, lettered: boolean) {
+  const named = firstAmount(block, [
+    "UnmatchedAmount",
+    "RemainingAmount",
+    "AmountToMatch",
+    "LeftAmount",
+    "Solde",
+  ]);
+  if (named != null) return Math.max(0, named);
+  const matched = firstAmount(block, ["MatchedAmount", "AmountMatched", "LetteredAmount"]);
+  if (matched != null) return Math.max(0, Math.round((amount - matched) * 100) / 100);
+  const parts = [...block.matchAll(/<Matching(?:\s[^>]*)?>[\s\S]*?<\/Matching>/g)];
+  if (parts.length) {
+    const used = parts.reduce((sum, part) => sum + (Number(mb3mXmlText(part[0], "Amount")) || 0), 0);
+    return Math.max(0, Math.round((amount - used) * 100) / 100);
+  }
+  return lettered ? 0 : amount;
+}
+
+function firstAmount(block: string, names: string[]) {
+  for (const name of names) {
+    const raw = mb3mXmlText(block, name);
+    if (!raw) continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
 }
 
 export type Mb3mRemotePiece = {
@@ -571,27 +610,58 @@ function blockPrinted(block: string) {
   return /<(?:DatePrint|PrintedDate)(?:\s[^>]*)?>\s*[^<\s][^<]*</.test(block);
 }
 
-/** Factures du client. Le filtre est le client : un PNR ou un dossier ne filtre pas. */
-export async function mb3mFindCustomerPieces(customerUid: string, fetchImpl?: FetchImpl): Promise<Mb3mRemotePiece[]> {
-  const inner = `<FolderFindAllPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><CustomerIdentity><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></CustomerIdentity></FolderFindAllPiecesRequest>`;
-  const xml = await mb3mSoap("FolderService", "IFolderService", "FindAllPieces", inner, fetchImpl);
-  assertOperation(xml);
-  const blocks = pieceBlocks(xml);
-  const source = blocks.length ? blocks : [];
-  return source.flatMap((block) => {
+const PIECE_PAGE_SIZE = 50;
+
+/** Corps de FindAllPieces. Le contrat attend FolderFindPiecesQuery, pas une requête inventée. */
+export function mb3mFindPiecesQuery(customerUid: string, pageIndex: number, pageSize = PIECE_PAGE_SIZE) {
+  return `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><Customer><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></Customer><IncludeInvoices>true</IncludeInvoices><PageIndex>${pageIndex}</PageIndex><PageSize>${pageSize}</PageSize></FolderFindPiecesQuery>`;
+}
+
+function piecesOf(xml: string): Mb3mRemotePiece[] {
+  return pieceBlocks(xml).flatMap((block) => {
     const number = mb3mXmlText(block, "Number");
     if (!number) return [];
-    const folderId = mb3mXmlText(block, "FolderId") || null;
     return [
       {
         number,
         refCommand: mb3mXmlText(block, "RefCommand"),
-        folderId,
+        folderId: mb3mXmlText(block, "FolderId") || null,
         cancelled: blockCancelled(block),
         printed: blockPrinted(block),
       },
     ];
   });
+}
+
+/** Factures du client, toutes les pages. Le filtre est le client : un PNR ou un dossier ne filtre pas. */
+export async function mb3mFindCustomerPieces(
+  customerUid: string,
+  fetchImpl?: FetchImpl,
+  pageSize = PIECE_PAGE_SIZE
+): Promise<Mb3mRemotePiece[]> {
+  const seen = new Set<string>();
+  const pieces: Mb3mRemotePiece[] = [];
+  let total = Number.POSITIVE_INFINITY;
+  for (let page = 0; page < 40 && pieces.length < total; page += 1) {
+    const xml = await mb3mSoap(
+      "FolderService",
+      "IFolderService",
+      "FindAllPieces",
+      mb3mFindPiecesQuery(customerUid, page, pageSize),
+      fetchImpl
+    );
+    assertOperation(xml);
+    const reported = Number(mb3mXmlText(xml, "TotalCount"));
+    if (Number.isFinite(reported) && reported >= 0) total = reported;
+    const batch = piecesOf(xml).filter((piece) => {
+      if (seen.has(piece.number)) return false;
+      seen.add(piece.number);
+      return true;
+    });
+    pieces.push(...batch);
+    if (!batch.length || batch.length < pageSize) break;
+  }
+  return pieces;
 }
 
 export type Mb3mRemoteInvoice = {

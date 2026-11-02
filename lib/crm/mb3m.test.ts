@@ -796,24 +796,65 @@ describe("règlements MB3M", () => {
       );
     });
     assert.deepEqual(rows, [
-      { number: "2153", reference: "Saisi à la main", amount: 2639.96, date: "2026-10-30", invoiceNumber: "2152" },
+      {
+        number: "2153",
+        reference: "Saisi à la main",
+        amount: 2639.96,
+        date: "2026-10-30",
+        invoiceNumber: "2152",
+        unmatched: 0,
+      },
     ]);
+  });
+
+  it("lit le reste à lettrer d’un règlement déjà partiellement pointé", async () => {
+    arm();
+    const rows = await mb3mFindCustomerPayments("customer-uid", async () => {
+      return new Response(
+        `<FindPaymentsResponse><ResultCode>1</ResultCode><Payment><Number>2149</Number><Amount>5330.29</Amount><Date>2026-09-12T00:00:00</Date><Reference>OZB</Reference><PieceNumber>2148</PieceNumber><UnmatchedAmount>561.19</UnmatchedAmount></Payment></FindPaymentsResponse>`
+      );
+    });
+    assert.equal(rows[0]?.number, "2149");
+    assert.equal(rows[0]?.amount, 5330.29);
+    assert.equal(rows[0]?.unmatched, 561.19);
   });
 
   it("lit les factures du client puis le détail, et change de dossier", async () => {
     arm();
     const pieces = await mb3mFindCustomerPieces("customer-uid", async (_url, init) => {
       const body = String(init?.body);
-      assert.ok(body.includes("<CustomerIdentity><Uid>customer-uid</Uid></CustomerIdentity>"));
+      const query = body.slice(body.indexOf("<FolderFindPiecesQuery"), body.indexOf("</FolderFindPiecesQuery>") + "</FolderFindPiecesQuery>".length);
+      assert.equal(
+        query,
+        `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><Customer><Uid>customer-uid</Uid></Customer><IncludeInvoices>true</IncludeInvoices><PageIndex>0</PageIndex><PageSize>50</PageSize></FolderFindPiecesQuery>`
+      );
+      assert.equal(body.includes("FolderFindAllPiecesRequest"), false);
+      assert.equal(body.includes("CustomerIdentity"), false);
       assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IFolderService/FindAllPieces"');
       return new Response(
-        `<FindAllPiecesResponse><ResultCode>1</ResultCode><PieceSummary><Number>3001</Number><RefCommand> abc12 </RefCommand><Cancelled>false</Cancelled></PieceSummary><PieceSummary><Number>3002</Number><Cancelled>true</Cancelled></PieceSummary></FindAllPiecesResponse>`
+        `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>2</TotalCount><PieceSummary><Number>3001</Number><RefCommand> abc12 </RefCommand><Cancelled>false</Cancelled></PieceSummary><PieceSummary><Number>3002</Number><Cancelled>true</Cancelled></PieceSummary></FindAllPiecesResponse>`
       );
     });
     assert.equal(pieces[0]?.number, "3001");
     assert.equal(pieces[0]?.refCommand, "abc12");
     assert.equal(pieces[0]?.cancelled, false);
     assert.equal(pieces[1]?.cancelled, true);
+    const pages: string[] = [];
+    const paged = await mb3mFindCustomerPieces(
+      "customer-uid",
+      async (_url, init) => {
+        const body = String(init?.body);
+        const index = body.match(/<PageIndex>(\d+)<\/PageIndex>/)?.[1] || "";
+        pages.push(index);
+        const number = index === "0" ? "11" : "12";
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>2</TotalCount><PieceSummary><Number>${number}</Number><RefCommand>ABC</RefCommand></PieceSummary></FindAllPiecesResponse>`
+        );
+      },
+      1
+    );
+    assert.deepEqual(pages, ["0", "1"]);
+    assert.deepEqual(paged.map((piece) => piece.number), ["11", "12"]);
     const invoice = await mb3mGetInvoice("3001", async (_url, init) => {
       assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IPieceService/GetInvoice"');
       return new Response(

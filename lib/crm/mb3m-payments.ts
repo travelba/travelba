@@ -136,28 +136,43 @@ export function planMb3mPayments(input: {
         ) ||
         null
       : null;
-    if (remote?.invoiceNumber) {
+    if (remote) {
       taken.add(remote.number);
-      const here = remote.invoiceNumber.trim() === invoiceNumber;
+      const cap = remote.unmatched == null ? (remote.invoiceNumber ? 0 : remote.amount) : remote.unmatched;
+      if (cap <= CENT) {
+        const here = remote.invoiceNumber?.trim() === invoiceNumber;
+        plans.push({
+          ...base,
+          matched: here ? matched : 0,
+          attributeBooking: false,
+          existingNumber: remote.number,
+          alreadyMatched: true,
+          lockedInvoice: here ? null : remote.invoiceNumber,
+          hold: null,
+          targetInvoice: null,
+        });
+        if (here) remaining = cents(remaining - matched);
+        continue;
+      }
+      const use = cents(Math.min(matched, cap));
       plans.push({
         ...base,
-        matched: here ? matched : 0,
-        attributeBooking: here && !credit.bookingId && credit.amount <= remaining + CENT,
+        matched: use,
+        attributeBooking: !credit.bookingId && credit.amount <= remaining + CENT && sameMoney(use, credit.amount),
         existingNumber: remote.number,
-        alreadyMatched: true,
-        lockedInvoice: here ? null : remote.invoiceNumber,
+        alreadyMatched: false,
+        lockedInvoice: null,
         hold: null,
         targetInvoice: null,
       });
-      if (here) remaining = cents(remaining - matched);
+      remaining = cents(remaining - use);
       continue;
     }
-    if (remote) taken.add(remote.number);
     plans.push({
       ...base,
       matched,
       attributeBooking: !credit.bookingId && credit.amount <= remaining + CENT,
-      existingNumber: remote?.number || known?.paymentNumber || null,
+      existingNumber: known?.paymentNumber || null,
       alreadyMatched: false,
       lockedInvoice: null,
       hold: null,
