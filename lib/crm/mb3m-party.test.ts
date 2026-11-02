@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { mb3mCompanyDraft, mb3mFicheBlocker, mb3mPersonDraft } from "./mb3m-party";
+import { mb3mCompanyDraft, mb3mFicheBlocker, mb3mHandCompanies, mb3mPersonDraft } from "./mb3m-party";
 
 const customerId = "11111111-2222-4333-8444-555555555555";
 
@@ -45,6 +45,33 @@ describe("fiche MB3M", () => {
     assert.equal(draft?.address.city, "Lyon");
     assert.equal(draft?.address.countryCode, "FR");
     assert.equal(draft?.partnerId, "11111111222243");
+    assert.equal(draft?.civility, "Unknown");
+    const full = mb3mPersonDraft({
+      id: customerId,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "ada@example.invalid",
+      phone: "+33600000000",
+      phone_secondary: "+33100000000",
+      sex: "F",
+      birth_date: "1815-12-10",
+      nationality: "Française",
+      billing_email: null,
+      billing_address_line: null,
+      billing_postal_code: null,
+      billing_city: null,
+      billing_country: null,
+      address_line: "1 rue du Test",
+      postal_code: "75001",
+      city: "Paris",
+      country: "France",
+    });
+    assert.equal(full?.civility, "Mme");
+    assert.equal(full?.birthDate, "1815-12-10");
+    assert.equal(full?.country, "FR");
+    assert.equal(full?.mobileNumber, "+33600000000");
+    assert.equal(full?.phoneNumber, "+33100000000");
+    assert.equal(full?.email, "ada@example.invalid");
   });
 
   it("envoie la société avec son adresse de facturation", () => {
@@ -70,8 +97,29 @@ describe("fiche MB3M", () => {
       billing_country: "France",
     });
     assert.equal(draft?.name, "OZB");
+    assert.equal(draft?.commercialName, "OZB");
     assert.equal(draft?.email, "compta@example.invalid");
     assert.equal(draft?.address.line1, "2 rue de la Paix");
+    assert.equal("siret" in (draft || {}), false);
+    const fromCustomer = mb3mCompanyDraft(
+      {
+        id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        company_name: "OZB",
+        siret: "12345678900012",
+        vat_number: "FR123",
+        billing_email: null,
+        billing_address_line: "2 rue de la Paix",
+        billing_postal_code: "75002",
+        billing_city: "Paris",
+        billing_country: "France",
+      },
+      { email: "ada@example.invalid", phone: "+33600000000" }
+    );
+    assert.equal(fromCustomer?.email, "ada@example.invalid");
+    assert.equal(fromCustomer?.phoneNumber, "+33600000000");
+    assert.deepEqual(mb3mHandCompanies([{ company_name: "OZB", siret: "12345678900012", vat_number: "FR123" }]), [
+      { name: "OZB", siret: "12345678900012", vatNumber: "FR123" },
+    ]);
   });
 
   it("éteint le bouton tant que l’adresse manque", () => {

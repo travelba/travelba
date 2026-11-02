@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { mb3mCompanyDraft, mb3mPersonDraft } from "@/lib/crm/mb3m-party";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import {
   mb3mAccountBalance,
@@ -21,7 +22,6 @@ import {
   mb3mAddInvoice,
   mb3mCancelInvoice,
   mb3mFindPiece,
-  mb3mPartnerCode,
   mb3mRealm,
   mb3mRenderPiece,
   mb3mSaveCompany,
@@ -49,6 +49,11 @@ type CustomerRow = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  phone: string | null;
+  phone_secondary: string | null;
+  sex: string | null;
+  birth_date: string | null;
+  nationality: string | null;
   billing_email: string | null;
   billing_address_line: string | null;
   billing_postal_code: string | null;
@@ -63,6 +68,8 @@ type CustomerRow = {
 type CompanyRow = {
   id: string;
   company_name: string | null;
+  siret: string | null;
+  vat_number: string | null;
   billing_email: string | null;
   billing_address_line: string | null;
   billing_postal_code: string | null;
@@ -202,7 +209,7 @@ async function syncBucket(
     if (!open.piece_number) await admin.from("crm_mb3m_account_invoices").delete().eq("id", open.id);
     return;
   }
-  const savedParty = await ensureParty(admin, open, party);
+  const savedParty = await ensureParty(admin, open, customer, companies, companyId);
   const span = mb3mStaySpan(rows, companyId, split);
   const folder = await ensureFolder(admin, savedParty, span);
   if (action === "replace" && folder.piece_number && folder.folder_id) {
@@ -302,23 +309,18 @@ function partyOf(customer: CustomerRow, companies: CompanyRow[], companyId: stri
   };
 }
 
-async function ensureParty(admin: SupabaseClient, invoice: InvoiceRow, party: Party) {
+async function ensureParty(
+  admin: SupabaseClient,
+  invoice: InvoiceRow,
+  customer: CustomerRow,
+  companies: CompanyRow[],
+  companyId: string | null
+) {
   if (invoice.customer_uid) return invoice;
-  const saved =
-    party.kind === "company"
-      ? await mb3mSaveCompany({
-          partnerId: mb3mPartnerCode(party.id),
-          name: party.name,
-          email: party.email || undefined,
-          address: party.address,
-        })
-      : await mb3mSavePerson({
-          partnerId: mb3mPartnerCode(party.id),
-          firstName: party.firstName,
-          name: party.lastName,
-          email: party.email || undefined,
-          address: party.address,
-        });
+  const company = companyId ? companies.find((row) => row.id === companyId) : null;
+  const saved = company
+    ? await mb3mSaveCompany(draftOrFail(mb3mCompanyDraft(company, customer)))
+    : await mb3mSavePerson(draftOrFail(mb3mPersonDraft(customer)));
   const { error } = await admin
     .from("crm_mb3m_account_invoices")
     .update({ customer_uid: saved.uid, updated_at: new Date().toISOString() })
@@ -452,11 +454,16 @@ async function printedTransactionIds(admin: SupabaseClient, customerId: string, 
   return new Set(((lines || []) as { transaction_id: string }[]).map((row) => row.transaction_id));
 }
 
+function draftOrFail<T>(draft: T | null): T {
+  if (!draft) throw new Mb3mError("La fiche MB3M manque.", -1);
+  return draft;
+}
+
 async function loadCustomer(admin: SupabaseClient, customerId: string) {
   const { data, error } = await admin
     .from("crm_customers")
     .select(
-      "id, first_name, last_name, email, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country, address_line, postal_code, city, country"
+      "id, first_name, last_name, email, phone, phone_secondary, sex, birth_date, nationality, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country, address_line, postal_code, city, country"
     )
     .eq("id", customerId)
     .maybeSingle();
@@ -468,7 +475,7 @@ async function loadCompanies(admin: SupabaseClient, customerId: string) {
   const { data, error } = await admin
     .from("crm_billing_companies")
     .select(
-      "id, company_name, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country, funding, sort_order"
+      "id, company_name, siret, vat_number, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country, funding, sort_order"
     )
     .eq("customer_id", customerId);
   if (error) throw new Error(dbMessage(error));

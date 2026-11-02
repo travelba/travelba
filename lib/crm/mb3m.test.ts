@@ -7,6 +7,7 @@ import {
   mb3mAddInvoice,
   mb3mAgencyNames,
   mb3mBlockedOnProduction,
+  mb3mCivilityFromSex,
   mb3mConfigured,
   mb3mDefaultProviderId,
   mb3mFaultDetail,
@@ -214,6 +215,10 @@ describe("client MB3M Partners", () => {
         firstName: "Probe",
         name: "TRAVELBA & CIE",
         email: "probe.travelba@example.invalid",
+        birthDate: "1984-03-12",
+        country: "FR",
+        mobileNumber: "+33600000000",
+        phoneNumber: "+33100000000",
         address: {
           name: "Probe Travelba",
           line1: "1 rue du Test",
@@ -236,8 +241,21 @@ describe("client MB3M Partners", () => {
     assert.equal(Buffer.from(authorization.slice(6), "base64").toString("utf8"), "agent@partner:secret-value");
     assert.equal(body.includes("secret-value"), false);
     assert.equal(body.includes("TRAVELBA &amp; CIE"), true);
-    assert.ok(body.indexOf("<FirstName>") < body.indexOf("<MainAddress>"));
-    assert.ok(body.indexOf("<MainAddress>") < body.indexOf("<Name>TRAVELBA"));
+    const personOrder = [
+      "<Id>TBAPROBE000001</Id>",
+      "<BirthDate>1984-03-12T00:00:00</BirthDate>",
+      "<Civility>Mr</Civility>",
+      "<Country>FR</Country>",
+      "<Email>probe.travelba@example.invalid</Email>",
+      "<FirstName>Probe</FirstName>",
+      "<MainAddress>",
+      "<MobileNumber>+33600000000</MobileNumber>",
+      "<Name>TRAVELBA",
+      "<PhoneNumber>+33100000000</PhoneNumber>",
+    ].map((needle) => body.indexOf(needle));
+    assert.ok(personOrder.every((index) => index >= 0), body);
+    assert.deepEqual(personOrder, [...personOrder].sort((left, right) => left - right));
+    assert.ok(body.indexOf("<Id>TBAPROBE000001</Id>") < body.indexOf("<Person>"));
     assert.equal(saved.uid, "ac53a900-3ab4-4e41-bfce-0af005dfde72");
     assert.equal(saved.partnerId, "TBAPROBE000001");
   });
@@ -609,7 +627,9 @@ describe("client MB3M Partners", () => {
       {
         partnerId: "COMPANY0000001",
         name: "Travelba & Cie",
+        commercialName: "Travelba",
         email: "compta@example.invalid",
+        phoneNumber: "+33611111111",
         address: {
           name: "Travelba & Cie",
           line1: "2 rue de la Facture",
@@ -626,9 +646,22 @@ describe("client MB3M Partners", () => {
       }
     );
     assert.equal(saved.uid, "company-uid");
-    assert.ok(body.indexOf("<Company>") < body.indexOf("<Id>COMPANY0000001</Id>"));
-    assert.ok(body.indexOf("<MainAddress>") < body.indexOf("<Name>Travelba &amp; Cie</Name>"));
+    assert.equal(mb3mCivilityFromSex("M"), "Mr");
+    assert.equal(mb3mCivilityFromSex("f"), "Mme");
+    assert.equal(mb3mCivilityFromSex("X"), "Unknown");
+    assert.equal(mb3mCivilityFromSex(null), "Unknown");
+    const companyOrder = [
+      "<CommercialName>Travelba</CommercialName>",
+      "<Email>compta@example.invalid</Email>",
+      "<MainAddress>",
+      "<Name>Travelba &amp; Cie</Name>",
+      "<PhoneNumber>+33611111111</PhoneNumber>",
+      "</Company><Id>COMPANY0000001</Id>",
+    ].map((needle) => body.indexOf(needle));
+    assert.ok(companyOrder.every((index) => index >= 0), body);
+    assert.deepEqual(companyOrder, [...companyOrder].sort((left, right) => left - right));
     assert.equal(body.toLowerCase().includes("siret"), false);
+    assert.equal(body.toLowerCase().includes("tva"), false);
     assert.equal(body.includes("secret-value"), false);
   });
 

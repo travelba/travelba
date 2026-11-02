@@ -30,19 +30,39 @@ export type Mb3mAddress = {
 
 export type Mb3mPersonDraft = {
   partnerId?: string;
+  /** M → Mr, F → Mme, sinon Unknown. */
   civility?: Mb3mCivility;
   firstName: string;
   name: string;
   email?: string;
   address: Mb3mAddress;
+  /** YYYY-MM-DD. Envoyé en YYYY-MM-DDT00:00:00. */
+  birthDate?: string | null;
+  /** Code pays de la nationalité. */
+  country?: string | null;
+  /** Téléphone principal → MobileNumber. */
+  mobileNumber?: string | null;
+  /** Téléphone secondaire → PhoneNumber. */
+  phoneNumber?: string | null;
 };
 
 export type Mb3mCompanyDraft = {
   partnerId?: string;
   name: string;
+  /** Nom commercial. À défaut, la raison sociale. */
+  commercialName?: string | null;
   email?: string;
+  /** Téléphone du client, pas un contact distinct. */
+  phoneNumber?: string | null;
   address: Mb3mAddress;
 };
+
+export function mb3mCivilityFromSex(sex: string | null | undefined): Mb3mCivility {
+  const value = (sex || "").trim().toUpperCase();
+  if (value === "M") return "Mr";
+  if (value === "F") return "Mme";
+  return "Unknown";
+}
 
 export type Mb3mTraveler = {
   firstName: string;
@@ -169,6 +189,15 @@ function dayStamp(value: string) {
   const day = value.trim().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Mb3mError("Date MB3M invalide.", -1);
   return day;
+}
+
+function birthStamp(value: string | null | undefined) {
+  const day = (value || "").trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day}T00:00:00` : "";
+}
+
+function addressXml(address: Mb3mAddress, fallbackName: string) {
+  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("PostalCode", address.postalCode.trim())}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}`;
 }
 
 /** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
@@ -306,8 +335,10 @@ export async function mb3mSavePerson(draft: Mb3mPersonDraft, fetchImpl?: FetchIm
   const firstName = draft.firstName.trim();
   const name = draft.name.trim();
   if (!firstName || !name) throw new Mb3mError("Le nom et le prénom sont requis.", -1);
-  const address = draft.address;
-  const inner = `<CustomerSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Customer>${tag("Id", draft.partnerId?.trim())}<Person>${tag("Civility", draft.civility)}${tag("Email", draft.email?.trim())}${tag("FirstName", firstName)}<MainAddress>${tag("Name", address.name.trim())}${tag("Line1", address.line1.trim())}${tag("PostalCode", address.postalCode.trim())}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}</MainAddress>${tag("Name", name)}</Person></Customer></CustomerSaveRequest>`;
+  // Pas de XSD dans le dépôt (WSDL Partners en 401). L’ordre déjà accepté est Id puis Person.
+  // Person : BirthDate, Civility, Country, Email, FirstName, MainAddress, MobileNumber, Name, PhoneNumber.
+  const person = `<Person>${tag("BirthDate", birthStamp(draft.birthDate))}${tag("Civility", draft.civility)}${tag("Country", draft.country?.trim())}${tag("Email", draft.email?.trim())}${tag("FirstName", firstName)}<MainAddress>${addressXml(draft.address, name)}</MainAddress>${tag("MobileNumber", draft.mobileNumber?.trim())}${tag("Name", name)}${tag("PhoneNumber", draft.phoneNumber?.trim())}</Person>`;
+  const inner = `<CustomerSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Customer>${tag("Id", draft.partnerId?.trim())}${person}</Customer></CustomerSaveRequest>`;
   const xml = await mb3mSoap("CustomerService", "ICustomerService", "Save", inner, fetchImpl);
   assertOperation(xml);
   const uid = mb3mXmlText(xml, "Uid");
@@ -318,8 +349,11 @@ export async function mb3mSavePerson(draft: Mb3mPersonDraft, fetchImpl?: FetchIm
 export async function mb3mSaveCompany(draft: Mb3mCompanyDraft, fetchImpl?: FetchImpl) {
   const name = draft.name.trim();
   if (!name) throw new Mb3mError("La raison sociale est requise.", -1);
-  const address = draft.address;
-  const inner = `<CustomerSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Customer><Company>${tag("Email", draft.email?.trim())}<MainAddress>${tag("Name", address.name.trim() || name)}${tag("Line1", address.line1.trim())}${tag("PostalCode", address.postalCode.trim())}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}</MainAddress>${tag("Name", name)}</Company>${tag("Id", draft.partnerId?.trim())}</Customer></CustomerSaveRequest>`;
+  const commercial = (draft.commercialName || name).trim() || name;
+  // Company : CommercialName, Email, MainAddress, Name, PhoneNumber, puis Id du client.
+  // SIRET, TVA et lien du contact : absents du schéma Partners.
+  const company = `<Company>${tag("CommercialName", commercial)}${tag("Email", draft.email?.trim())}<MainAddress>${addressXml(draft.address, name)}</MainAddress>${tag("Name", name)}${tag("PhoneNumber", draft.phoneNumber?.trim())}</Company>`;
+  const inner = `<CustomerSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Customer>${company}${tag("Id", draft.partnerId?.trim())}</Customer></CustomerSaveRequest>`;
   const xml = await mb3mSoap("CustomerService", "ICustomerService", "Save", inner, fetchImpl);
   assertOperation(xml);
   const uid = mb3mXmlText(xml, "Uid");
