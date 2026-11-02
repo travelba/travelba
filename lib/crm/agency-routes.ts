@@ -141,6 +141,17 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
     });
   }
 
+  if (path.startsWith("/api/admin/cles")) {
+    // La route écrit le préfixe et le propriétaire. La clé en clair n’entre pas au journal.
+    return classify({
+      permission: "manage_users",
+      action: path.endsWith("/revoquer") ? "update" : action,
+      entity: "user",
+      journal: false,
+      summary: path.endsWith("/revoquer") ? "Clé API révoquée." : "Clé API créée.",
+    });
+  }
+
   if (path.startsWith("/api/admin/equipe")) {
     // PATCH d’un collègue, fermeture de sessions, départ et grille : la route écrit sa propre ligne, plus précise.
     const selfJournaled =

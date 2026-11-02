@@ -10,6 +10,7 @@ export const metadata = { title: "Réglages" };
 
 const LINKS = [
   { href: "/admin/equipe", title: "Équipe", text: "Collègues et partenaire MyLER." },
+  { href: "/admin/cles", title: "Clés API", text: "Une clé par personne, pour brancher son assistant sur le CRM." },
   { href: "/admin/concierge", title: "Savoir du Concierge", text: "Ce que le Concierge sait répondre au client." },
 ];
 

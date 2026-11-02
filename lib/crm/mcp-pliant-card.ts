@@ -160,13 +160,16 @@ async function writeCardAudit(
     outcome: row.outcome,
   });
   if (row.kind === "reveal" && row.outcome === "ok") {
+    const staff = currentMcpAccess().staff;
     // Historique du dossier et alerte informative : le numéro complet est sorti, sans le journaliser.
     await recordAgencyJournal({
-      staffId: null,
+      staffId: staff?.id ?? null,
       action: "reveal",
       entityType: "card",
       entityId: row.bookingId && UUID.test(row.bookingId) ? row.bookingId : null,
-      summary: `Carte Pliant ouverte (numéro complet) par le connecteur ${row.actor.slice(0, 40)}.`,
+      summary: staff
+        ? `Carte Pliant ouverte (numéro complet) par ${staff.name}.`
+        : `Carte Pliant ouverte (numéro complet) par le connecteur ${row.actor.slice(0, 40)}.`,
       diff: { carte: auditLabel(row.label) },
       sensitive: "card_reveal",
       path: "/api/mcp",

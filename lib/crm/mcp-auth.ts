@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { cronAuthorized } from "./cron-auth";
-import { productionOnlySecret } from "./preview-secrets";
+import { isPersonalApiKey } from "./mcp-api-key";
+import { isVercelPreview, productionOnlySecret } from "./preview-secrets";
 import { secretEquals } from "./secret-equals";
 
 /** Jeton du MCP Grok Bot. Vide sur une preview, même si la variable est encore là. */
@@ -11,14 +12,28 @@ export function mcpSecret() {
 const ACTOR = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const MIN_PASSPORT_SECRET = 16;
 
+export type McpStaffAccess = {
+  id: string;
+  role: string;
+  /** Prénom affiché, ex. Raphael. */
+  name: string;
+  keyId: string;
+  /** Droits effectifs du rôle. Absent : les défauts de `roleAllows`. */
+  allows?: Record<string, boolean> | null;
+};
+
 export type McpAccess = {
-  /** `mcp` : jeton général. Sinon le nom du jeton nommé qui a authentifié l’appel. */
+  /** `mcp` : jeton général. Sinon le nom du jeton, ou le prénom en slug d’une clé nominative. */
   actor: string;
-  /** Jeton cité dans `TRAVELBA_MCP_PASSPORT_TOKENS`. */
+  /** Jeton cité dans `TRAVELBA_MCP_PASSPORT_TOKENS`. Une clé nominative ne l’ouvre pas. */
   passport: boolean;
   /** Jeton cité dans `TRAVELBA_MCP_CARD_TOKENS`. Absent : pas de cartes. */
   cards?: boolean;
+  /** Présent seulement pour une clé nominative. Les jetons d’environnement n’ont pas de collègue. */
+  staff?: McpStaffAccess;
 };
+
+export type PersonalMcpLookup = (token: string) => Promise<McpAccess | null>;
 
 const accessStore = new AsyncLocalStorage<McpAccess>();
 const DENIED: McpAccess = Object.freeze({ actor: "mcp", passport: false, cards: false });
@@ -87,6 +102,41 @@ export function mcpAccessFromAuthorization(authorizationHeader: string | null | 
 
 export function mcpAuthorized(authorizationHeader: string | null | undefined) {
   return mcpAccessFromAuthorization(authorizationHeader) !== null;
+}
+
+export function bearerToken(authorizationHeader: string | null | undefined) {
+  const match = /^Bearer\s+(\S+)\s*$/i.exec((authorizationHeader || "").trim());
+  return match ? match[1] : "";
+}
+
+/**
+ * Jeton d’environnement d’abord (connecteurs déjà branchés), puis clé nominative.
+ * Une preview n’accepte ni les jetons de production ni les clés `tbk_`.
+ * Révoquée, expirée ou membre désactivé : la recherche renvoie null.
+ */
+export async function resolveMcpAccess(
+  authorizationHeader: string | null | undefined,
+  lookup?: PersonalMcpLookup
+): Promise<McpAccess | null> {
+  const fromEnv = mcpAccessFromAuthorization(authorizationHeader);
+  if (fromEnv) return fromEnv;
+  if (isVercelPreview()) return null;
+  const token = bearerToken(authorizationHeader);
+  if (!token || !isPersonalApiKey(token)) return null;
+  const find = lookup ?? (await import("./mcp-api-key-store")).findPersonalMcpAccess;
+  const found = await find(token);
+  return found ? Object.freeze(found) : null;
+}
+
+export async function resolveMcpAuthorized(authorizationHeader: string | null | undefined) {
+  return (await resolveMcpAccess(authorizationHeader)) !== null;
+}
+
+/** Collègue porté par la clé du contexte. Null pour un jeton d’environnement. */
+export function mcpActingStaff() {
+  const staff = currentMcpAccess().staff;
+  if (!staff?.id) return null;
+  return staff;
 }
 
 export function runWithMcpAccess<T>(access: McpAccess, run: () => T): T {

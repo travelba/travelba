@@ -546,9 +546,10 @@ export async function releaseMatchedCredit(
   const prepared = prepareUnmatchCredit(input);
   if ("error" in prepared) return { ok: false, error: prepared.error };
   const db = (admin ?? (await serviceAdmin())) as unknown as UnmatchAdmin;
-  const actor = currentMcpAccess().actor || "mcp";
+  const access = currentMcpAccess();
+  const staff = access.staff;
   return unmatchClientCredit(db, { id: prepared.id, motif: prepared.motif }, {
-    actor: { staffId: null, label: actor },
+    actor: staff ? { staffId: staff.id, label: staff.name } : { staffId: null, label: access.actor || "mcp" },
     journal: deps?.journal,
     path: "/api/mcp",
   });

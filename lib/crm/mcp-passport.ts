@@ -205,13 +205,17 @@ function auditRow(
 
 async function writeAudit(admin: SupabaseClient, row: AuditRow) {
   if (row.outcome === "ok") {
+    const staff = currentMcpAccess().staff;
+    const kind = row.kind === "scan" ? "ouvert (fichier)" : "lu (données APIS)";
     // Historique du dossier et alerte informative : un passeport a été lu, sans numéro.
     await recordAgencyJournal({
-      staffId: null,
+      staffId: staff?.id ?? null,
       action: "reveal",
       entityType: "document",
       entityId: row.booking_id,
-      summary: `Passeport ${row.kind === "scan" ? "ouvert (fichier)" : "lu (données APIS)"} par le connecteur ${row.actor}.`,
+      summary: staff
+        ? `Passeport ${kind} par ${staff.name}.`
+        : `Passeport ${kind} par le connecteur ${row.actor}.`,
       sensitive: "passport_reveal",
       path: "/api/mcp",
     });
