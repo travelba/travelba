@@ -66,12 +66,14 @@ export type Mb3mLine = {
   /** Marge unitaire : prix vendu − coûts rattachés. Peut être négative. */
   marginUnit?: number | null;
   /**
-   * Commission de la ligne. Absente ou nulle : 0,001 sur une billetterie
-   * (aérien 2, ferroviaire 5, low cost 27), sinon le champ n’est pas envoyé.
-   * MB3M refuse AddPieces sans cette commission (-504, code interne -22).
+   * Commission de la ligne. Absente ou nulle : 0,01 sur une billetterie
+   * (aérien 2, ferroviaire 5, low cost 27), sinon le bloc n’est pas envoyé.
+   * MB3M refuse AddPieces sans commission nette et TTC (-504, code interne -22).
    */
   commissionTotal?: number | null;
-  /** Fournisseurs des coûts (pas de ProviderId : l’API ne crée pas de fournisseur). */
+  /** Fournisseur MB3M déjà connu. Sinon le défaut d’environnement, sinon l’agence de la pièce. */
+  providerId?: string | null;
+  /** Nom des fournisseurs des coûts, imprimé en note. Ne crée pas de fournisseur. */
   note?: string | null;
 };
 
@@ -350,8 +352,8 @@ export async function mb3mSaveFolder(
   return { id, uid };
 }
 
-/** Plancher : MB3M refuse une billetterie sans commission non nulle. */
-const MB3M_TICKETING_COMMISSION = 0.001;
+/** Plancher : 0,001 est refusé (-22) même avec CommissionTotal. */
+const MB3M_TICKETING_COMMISSION = 0.01;
 
 /**
  * Activités « prestation de billetterie » du fichier agence.
@@ -364,6 +366,22 @@ export function mb3mTicketingActivity(activityId: number | null | undefined) {
   return activityId != null && (MB3M_TICKETING_ACTIVITY_IDS as readonly number[]).includes(activityId);
 }
 
+const MB3M_GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function mb3mGuid(value: string | null | undefined) {
+  const text = (value || "").trim();
+  return MB3M_GUID.test(text) ? text : "";
+}
+
+/** Fournisseur par défaut. Production : `MB3M_PROD_PROVIDER_ID`. Ailleurs : `MB3M_PROVIDER_ID`. */
+export function mb3mDefaultProviderId() {
+  const raw =
+    mb3mRealm() === "production"
+      ? productionOnlySecret(process.env.MB3M_PROD_PROVIDER_ID)
+      : (process.env.MB3M_PROVIDER_ID || "").trim();
+  return mb3mGuid(raw);
+}
+
 function commissionXml(line: Mb3mLine) {
   const given = line.commissionTotal;
   const value =
@@ -372,10 +390,18 @@ function commissionXml(line: Mb3mLine) {
       : mb3mTicketingActivity(line.activityId)
         ? MB3M_TICKETING_COMMISSION
         : null;
-  return value == null ? "" : tag("CommissionTotal", money(value));
+  if (value == null) return "";
+  const amount = money(value);
+  // Ordre WCF : CommissionNetTotal, CommissionTaxRate, CommissionTotal.
+  return `${tag("CommissionNetTotal", amount)}${tag("CommissionTaxRate", 0)}${tag("CommissionTotal", amount)}`;
 }
 
-export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine[]) {
+function providerXml(line: Mb3mLine, fallback?: string | null) {
+  const id = mb3mGuid(line.providerId) || mb3mDefaultProviderId() || mb3mGuid(fallback);
+  return tag("ProviderId", id);
+}
+
+export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine[], providerFallback?: string | null) {
   if (!lines.length) throw new Mb3mError("La pièce MB3M n’a pas de ligne.", -1);
   return lines
     .map((line) => {
@@ -390,7 +416,7 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
       // Ordre WCF InvoiceLine / CreditNoteLine : ActivityId, CommissionNetTotal, CommissionTaxRate,
       // CommissionTotal, CustomType, Label, MarginTaxRate, MarginTaxTotal, MarginUnit, NetPriceTotal,
       // NetPriceUnit, Note, ProviderId, Quantity, RefPiece, TaxRate, TaxTotal, Type.
-      return `<${kind}>${activity}${commissionXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${tag("Quantity", quantity(line.quantity))}${tag("Type", type)}</${kind}>`;
+      return `<${kind}>${activity}${commissionXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${tag("Type", type)}</${kind}>`;
     })
     .join("");
 }
@@ -438,7 +464,7 @@ export async function mb3mAddInvoice(
   },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice>${agencyXml(input.agencyUid)}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
+  const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice>${agencyXml(input.agencyUid)}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines, input.agencyUid)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "AddPieces", inner, fetchImpl);
   assertOperation(xml);
   return pieceIdentity(xml, "Invoice");
@@ -515,7 +541,7 @@ export async function mb3mAddCreditNote(
   fetchImpl?: FetchImpl
 ) {
   const agency = agencyXml(input.agencyUid);
-  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agency}<CreditNotes><CreditNote>${agency}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines)}</Lines></CreditNote></CreditNotes><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
+  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agency}<CreditNotes><CreditNote>${agency}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines, input.agencyUid)}</Lines></CreditNote></CreditNotes><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "Save", inner, fetchImpl);
   assertOperation(xml);
   return { number: pieceNumber(xml, "CreditNote") };
