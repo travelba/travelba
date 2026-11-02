@@ -65,7 +65,8 @@ export function hotelDirectLive(customer: HotelAccessCustomer | null | undefined
   return hotelBookingEnabled(customer) && customer?.hotel_demo !== true && customer?.hotel_direct_live === true;
 }
 
-export type AccessActor = "admin" | "agent" | "client";
+/** connector : le connecteur MCP, au nom de l’agence (jeton général). */
+export type AccessActor = "admin" | "agent" | "client" | "connector";
 
 export function decideHotelAccessToggle(input: {
   actor: AccessActor;
@@ -73,11 +74,37 @@ export function decideHotelAccessToggle(input: {
   demo: boolean;
   live: boolean;
 }) {
-  if (input.actor !== "admin") {
+  if (input.actor !== "admin" && input.actor !== "connector") {
     return { ok: false as const, error: "Réservé aux administrateurs." };
   }
   const live = input.enabled && !input.demo && input.live;
   return { ok: true as const, enabled: input.enabled, live };
+}
+
+/** État de l’option Hôtels tel que la fiche client et le connecteur le montrent. */
+export type HotelOptionState = {
+  active: boolean;
+  /** test : la demande arrive au CRM, aucun e-mail à l’hôtel, aucun encaissement. reel : envois réels. */
+  mode: "test" | "reel";
+  demo: boolean;
+  /** L’entrée Hôtels est à l’écran du client (accès activé, ou bouton ouvert à tous). */
+  bouton_visible: boolean;
+  demande_en_attente: boolean;
+};
+
+export function hotelOptionState(input: {
+  customer: HotelAccessCustomer | null | undefined;
+  visibility: HotelButtonVisibility;
+  pending: boolean;
+}): HotelOptionState {
+  const enabled = hotelBookingEnabled(input.customer);
+  return {
+    active: enabled,
+    mode: hotelDirectLive(input.customer) ? "reel" : "test",
+    demo: input.customer?.hotel_demo === true,
+    bouton_visible: showHotelButton({ enabled, visibility: input.visibility }),
+    demande_en_attente: input.pending,
+  };
 }
 
 export function decideAccessRequest(input: { enabled: boolean; pending: boolean }) {

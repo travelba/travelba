@@ -38,6 +38,7 @@ const EXPECTED = [
   "modifier_titulaire",
   "definir_role_societe",
   "inviter_client",
+  "activer_option_hotel",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
@@ -84,6 +85,7 @@ const WRITE_TOOLS = [
   "modifier_titulaire",
   "definir_role_societe",
   "inviter_client",
+  "activer_option_hotel",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
@@ -185,6 +187,17 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(invite?.signedUrl, undefined);
   assert.match(invite?.description || "", /même flux/);
   assert.match(invite?.description || "", /n’est pas renvoyé/);
+  const hotelOption = MCP_TOOLS.find((tool) => tool.name === "activer_option_hotel");
+  assert.equal(hotelOption?.write, true);
+  assert.equal(hotelOption?.openWorld, undefined);
+  assert.equal(hotelOption?.pieceNumbers, undefined);
+  assert.equal(hotelOption?.signedUrl, undefined);
+  assert.deepEqual(Object.keys(hotelOption?.input || {}), ["id", "actif", "mode_reel"]);
+  assert.match(hotelOption?.description || "", /Accès Hôtels/);
+  assert.match(hotelOption?.description || "", /Aucune réservation automatique/);
+  assert.match(hotelOption?.description || "", /aucun prix net/);
+  assert.match(hotelOption?.description || "", /journalisé/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_client")?.description || "", /option_hotel/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /prix de vente/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /MAD/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "reservation_little_emperors")?.description || "", /déjà rattachée/);

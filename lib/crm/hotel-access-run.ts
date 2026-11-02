@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import {
   HOTEL_BUTTON_VISIBILITY_KEY,
@@ -12,13 +13,13 @@ import {
   type HotelButtonVisibility,
 } from "./hotel-access";
 
-function admin() {
+function admin(): SupabaseClient {
   return createServiceClient();
 }
 
-export async function readHotelButtonVisibility(): Promise<HotelButtonVisibility> {
+export async function readHotelButtonVisibility(db?: SupabaseClient): Promise<HotelButtonVisibility> {
   try {
-    const { data, error } = await admin()
+    const { data, error } = await (db ?? admin())
       .from("crm_hotel_button_settings")
       .select("value")
       .eq("key", HOTEL_BUTTON_VISIBILITY_KEY)
@@ -47,8 +48,8 @@ export async function writeHotelButtonVisibility(actor: AccessActor, staffId: st
   return { ok: true as const, value: decision.value };
 }
 
-export async function readPendingAccess(customerId: string) {
-  const { data } = await admin()
+export async function readPendingAccess(customerId: string, db?: SupabaseClient) {
+  const { data } = await (db ?? admin())
     .from("crm_hotel_access_requests")
     .select("id, status, created_at")
     .eq("customer_id", customerId)
@@ -76,10 +77,12 @@ export async function writeHotelAccess(input: {
   enabled: boolean;
   demo: boolean;
   live: boolean;
+  /** Client injecté (connecteur, tests). Sinon le service role. */
+  db?: SupabaseClient;
 }) {
   const decision = decideHotelAccessToggle(input);
   if (!decision.ok) return decision;
-  const db = admin();
+  const db = input.db ?? admin();
   const { error } = await db
     .from("crm_customers")
     .update({ hotel_booking_enabled: decision.enabled, hotel_direct_live: decision.live })

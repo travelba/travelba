@@ -249,6 +249,17 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
     return classify({ permission: "delete_archive", action: "delete", entity: "client", journal: true });
   }
 
+  if (new RegExp(`^/api/admin/clients/${UUID}/hotels$`, "i").test(path) && mutation) {
+    // Le même interrupteur que l’outil activer_option_hotel : une phrase lisible dans l’Historique.
+    return classify({
+      permission: "edit_dossiers",
+      action: "update",
+      entity: "client",
+      journal: true,
+      summary: "Option Hôtels du client modifiée (accès, mode réel ou demande Platinum).",
+    });
+  }
+
   if (mutation) {
     return classify({
       permission: "edit_dossiers",

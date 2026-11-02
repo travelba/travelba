@@ -43,6 +43,8 @@ test("le client ne s’ouvre pas l’accès, l’admin journalise l’interrupte
   assert.equal(demo.ok && demo.live, false);
   const off = decideHotelAccessToggle({ actor: "admin", enabled: false, demo: false, live: true });
   assert.equal(off.ok && off.live, false);
+  const connector = decideHotelAccessToggle({ actor: "connector", enabled: true, demo: false, live: false });
+  assert.equal(connector.ok && connector.enabled, true);
 });
 
 test("une demande Platinum est unique, l’acceptation active, le refus non", () => {
