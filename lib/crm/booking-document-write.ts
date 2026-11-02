@@ -29,6 +29,7 @@ export async function attachBookingDocument(
     bookingId: string;
     itemId?: string | null;
     kind?: string | null;
+    visibleToClient?: boolean;
     file: BookingUpload;
     upload?: (path: string, bytes: Buffer, contentType: string) => Promise<unknown>;
   }
@@ -62,7 +63,7 @@ export async function attachBookingDocument(
       file_name: input.file.name,
       mime_type: input.file.type,
       storage_path: path,
-      visible_to_client: false,
+      visible_to_client: input.visibleToClient === true,
     })
     .select("*")
     .single();

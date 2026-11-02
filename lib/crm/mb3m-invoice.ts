@@ -29,13 +29,13 @@ type PayerCustomer = Pick<
 import {
   mb3mDossierLines,
   mb3mFactureHref,
-  mb3mFactureMention,
+  mb3mLedgerMention,
   mb3mLineSignature,
   mb3mPieceStale,
-  mb3mProformaHref,
   type Mb3mAccountLine,
   type Mb3mLedgerRow,
 } from "@/lib/crm/mb3m-account";
+import { chargesWithoutGdsFlights, finishMb3mGds, readMb3mGdsPlan, type Mb3mGdsPlan } from "@/lib/crm/mb3m-gds";
 import { recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
 import {
   mb3mActorLabel,
@@ -131,6 +131,8 @@ export type Mb3mInvoiceContext = {
   configured: boolean;
   lines: Mb3mAccountLine[];
   hadExpenses: boolean;
+  /** Vols déjà importés par Amadeus. Absent : rien à écarter. */
+  gdsPlan?: Mb3mGdsPlan;
 };
 
 export type Mb3mStoredPiece = {
@@ -164,6 +166,8 @@ export type Mb3mInvoiceResult = {
   printed: boolean;
   visibleToClient: boolean;
   reglements: Mb3mReglement[];
+  amadeus?: { label: string; invoiceNumber: string; pnr: string; placement: "move" | "here" | "other" }[];
+  suggestionsAmadeus?: { label: string; invoiceNumber: string }[];
 };
 
 type PiecePatch = {
@@ -243,6 +247,8 @@ export type Mb3mInvoiceDeps = {
     bytes: Buffer;
     visibleToClient: boolean;
   }) => Promise<string>;
+  /** Range les factures Amadeus dans le dossier, une fois qu’il existe. */
+  finishGds?: (folderId: string | null) => Promise<string | null>;
   /** Crédits du client sur la pièce. Une erreur ici ne retire pas la facture. */
   recordPayments?: (input: {
     bookingId: string;
@@ -250,6 +256,7 @@ export type Mb3mInvoiceDeps = {
     customerUid: string;
     invoiceNumber: string;
     invoiceAmount: number;
+    gdsInvoices?: { number: string; amount: number }[];
   }) => Promise<Mb3mReglement[]>;
 };
 
@@ -511,14 +518,23 @@ async function attachReglements(
   folderId: string | null,
   customerUid: string | null
 ): Promise<Mb3mInvoiceResult> {
+  let folder = folderId || "";
+  if (deps.finishGds) {
+    try {
+      folder = (await deps.finishGds(folderId)) || folder;
+    } catch (err) {
+      console.error("[mb3m] Amadeus", err instanceof Error ? err.message : err);
+    }
+  }
   if (!deps.recordPayments) return { ...result, reglements: [] };
   try {
     const reglements = await deps.recordPayments({
       bookingId: ctx.bookingId,
-      folderId: folderId || "",
-      customerUid: customerUid || "",
+      folderId: folder,
+      customerUid: customerUid || ctx.gdsPlan?.customerUid || "",
       invoiceNumber: result.number,
       invoiceAmount,
+      gdsInvoices: ctx.gdsPlan?.invoices,
     });
     return { ...result, reglements };
   } catch (err) {
@@ -866,16 +882,37 @@ export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId
   if (payerResult.error) dbFail(payerResult.error, "La facture n’a pas pu être préparée.");
   if (companiesResult.error) dbFail(companiesResult.error, "La facture n’a pas pu être préparée.");
   const inputs = await dossierInvoiceInputs(supabase, bookingId);
-  return buildMb3mInvoiceContext({
-    booking: stay,
-    items: (items.data || []) as StayItem[],
-    travelers: (travelers.data || []) as { first_name: string | null; last_name: string | null }[],
-    payer: (payerResult.data as PayerCustomer | null) || null,
-    companies: (companiesResult.data || []) as CompanyRow[],
+  const stayItems = (items.data || []) as StayItem[];
+  const openFolder = await supabase
+    .from("crm_mb3m_pieces")
+    .select("folder_id")
+    .eq("booking_id", bookingId)
+    .eq("realm", mb3mRealm())
+    .not("folder_id", "is", null)
+    .limit(1)
+    .maybeSingle();
+  const folderId = (openFolder.data as { folder_id?: string } | null)?.folder_id || null;
+  const gdsPlan = await readMb3mGdsPlan(supabase, {
+    bookingId,
+    payerId,
+    billingCompanyId: stay.billing_company_id || null,
+    items: stayItems,
     charges: inputs.charges,
-    coveredIds: inputs.coveredIds,
-    costs: inputs.costs,
+    folderId,
   });
+  return {
+    ...buildMb3mInvoiceContext({
+      booking: stay,
+      items: stayItems,
+      travelers: (travelers.data || []) as { first_name: string | null; last_name: string | null }[],
+      payer: (payerResult.data as PayerCustomer | null) || null,
+      companies: (companiesResult.data || []) as CompanyRow[],
+      charges: chargesWithoutGdsFlights(inputs.charges, gdsPlan.covered),
+      coveredIds: inputs.coveredIds,
+      costs: inputs.costs,
+    }),
+    gdsPlan,
+  };
 }
 
 export async function emitMb3mInvoice(
@@ -884,7 +921,64 @@ export async function emitMb3mInvoice(
   actorName?: string | null
 ): Promise<Mb3mInvoiceResult> {
   const ctx = await loadMb3mInvoiceContext(supabase, bookingId);
-  return runMb3mInvoice(ctx, supabaseInvoiceDeps(supabase, actorName));
+  const deps = supabaseInvoiceDeps(supabase, actorName);
+  const plan = ctx.gdsPlan;
+  if (plan?.covered.length) {
+    deps.finishGds = (folderId) =>
+      finishMb3mGds(supabase, {
+        bookingId,
+        plan,
+        folderId,
+        title: ctx.title,
+        dateStart: ctx.dateStart,
+        dateEnd: ctx.dateEnd,
+        destination: ctx.destination,
+        destinationIso: ctx.destinationIso,
+      });
+  }
+  const amadeus = (plan?.covered || []).map((row) => ({
+    label: row.label,
+    invoiceNumber: row.invoiceNumber,
+    pnr: row.pnr,
+    placement: row.placement,
+  }));
+  const suggestionsAmadeus = (plan?.suggestions || []).map((row) => ({
+    label: row.label,
+    invoiceNumber: row.invoiceNumber,
+  }));
+  try {
+    const result = await runMb3mInvoice(ctx, deps);
+    return { ...result, amadeus, suggestionsAmadeus };
+  } catch (err) {
+    if (!(plan?.covered.length && err instanceof Mb3mError && /dépense/.test(err.message))) throw err;
+    const folderId = deps.finishGds ? await deps.finishGds(plan.folderId) : plan.folderId;
+    const reglements = deps.recordPayments
+      ? await deps
+          .recordPayments({
+            bookingId,
+            folderId: folderId || "",
+            customerUid: plan.customerUid || "",
+            invoiceNumber: plan.covered[0]?.invoiceNumber || "",
+            invoiceAmount: 0,
+            gdsInvoices: plan.invoices,
+          })
+          .catch((payErr: unknown) => {
+            console.error("[mb3m] règlements", payErr instanceof Error ? payErr.message : payErr);
+            return [];
+          })
+      : [];
+    return {
+      number: plan.covered[0]?.invoiceNumber || "",
+      documentId: null,
+      created: false,
+      replaced: false,
+      printed: false,
+      visibleToClient: ctx.visibleToClient,
+      reglements,
+      amadeus,
+      suggestionsAmadeus,
+    };
+  }
 }
 
 /** Pièces imprimées dont la marge a changé depuis l’impression. */
@@ -1117,7 +1211,7 @@ export async function mb3mPieceLinksFor(transactionIds: string[], options?: { pr
   const admin = createServiceClient();
   let query = admin
     .from("crm_mb3m_pieces")
-    .select("booking_id, piece_number, document_id, transaction_ids, printed_at")
+    .select("booking_id, kind, piece_number, document_id, transaction_ids, printed_at")
     .eq("realm", mb3mRealm())
     .overlaps("transaction_ids", ids);
   if (!options?.preview) query = query.not("printed_at", "is", null);
@@ -1125,6 +1219,7 @@ export async function mb3mPieceLinksFor(transactionIds: string[], options?: { pr
   if (error) throw new Error(error.message);
   const pieces = ((data || []) as {
     booking_id: string | null;
+    kind: string | null;
     piece_number: string | null;
     document_id: string | null;
     transaction_ids: string[] | null;
@@ -1147,10 +1242,18 @@ export async function mb3mPieceLinksFor(transactionIds: string[], options?: { pr
     if (!number) continue;
     const issued = Boolean(piece.printed_at);
     const path = piece.document_id ? paths.get(piece.document_id) : "";
-    const href = issued ? (path ? mb3mFactureHref(path, number) : null) : piece.booking_id ? mb3mProformaHref(piece.booking_id) : null;
-    const text = issued ? mb3mFactureMention(number, true).text : `Facture pro forma n° ${number}`;
+    const href = issued && path ? mb3mFactureHref(path, number) : null;
+    const link = mb3mLedgerMention({
+      kind: piece.kind,
+      number,
+      printed: issued,
+      preview: Boolean(options?.preview),
+      href,
+      bookingId: piece.booking_id,
+    });
+    if (!link) continue;
     for (const id of piece.transaction_ids || []) {
-      if (ids.includes(id)) links.set(id, { text, href });
+      if (ids.includes(id)) links.set(id, { text: link.text, href: link.href });
     }
   }
   return links;

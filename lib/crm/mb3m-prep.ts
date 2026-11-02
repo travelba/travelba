@@ -127,6 +127,17 @@ export function mb3mInvoiceActionLabel(input: {
   return "Préparer la facture";
 }
 
+export function mb3mAmadeusSentence(row: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }) {
+  const base = `${row.label} : déjà dans MB3M via Amadeus (facture n°${row.invoiceNumber}).`;
+  if (row.placement === "other") return `${base} Elle est dans un autre dossier, elle n’a pas été déplacée.`;
+  if (row.placement === "move") return `${base} Elle est rangée dans ce dossier.`;
+  return base;
+}
+
+export function mb3mAmadeusSuggestionSentence(row: { label: string; invoiceNumber: string }) {
+  return `${row.label} : une facture Amadeus sans dossier pourrait correspondre (facture n°${row.invoiceNumber}). Elle reste sur la facture du CRM.`;
+}
+
 /** Phrase après le clic : les crédits envoyés ou déjà présents chez MB3M. */
 export function mb3mReglementNote(
   rows: {

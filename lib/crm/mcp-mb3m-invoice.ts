@@ -168,6 +168,17 @@ export async function preparerFactureMb3m(input: Record<string, unknown>, deps: 
       lignes: view.lignes.length ? view.lignes : publicLines(null),
       montant: view.montant,
       reglements: result.reglements || [],
+      vols_amadeus: (result.amadeus || []).map((row) => ({
+        libelle: row.label,
+        pnr: row.pnr,
+        numero_mb3m: row.invoiceNumber,
+        placement: row.placement,
+        texte: `${row.label} : déjà dans MB3M via Amadeus (facture n°${row.invoiceNumber}).`,
+      })),
+      suggestions_amadeus: (result.suggestionsAmadeus || []).map((row) => ({
+        libelle: row.label,
+        numero_mb3m: row.invoiceNumber,
+      })),
       erreur: null,
       auteur,
     };
@@ -196,6 +207,8 @@ export async function preparerFactureMb3m(input: Record<string, unknown>, deps: 
       lignes: view.lignes,
       montant: view.montant,
       reglements: [],
+      vols_amadeus: [],
+      suggestions_amadeus: [],
       erreur: err.message,
       auteur,
     };
