@@ -120,6 +120,11 @@ async function route(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Maquette vitrine : hors i18n, hors session, sans écriture.
+  if (path === "/preview-refonte" || path.startsWith("/preview-refonte/")) {
+    return NextResponse.next();
+  }
+
   // Aperçu local : aucune session, aucune écriture. Fermé en production.
   if (
     path === "/exemple" ||

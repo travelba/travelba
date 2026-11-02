@@ -1,0 +1,190 @@
+import type { Universe } from "./types";
+import { PREVIEW } from "./paths";
+import { serviceUniverses } from "./services";
+
+const pillars: Universe[] = [
+  {
+    slug: "club",
+    path: `${PREVIEW}/club`,
+    menu: "Club Travel BA",
+    kicker: "Club Travel BA",
+    title: "Petit-déjeuner, surclassement,",
+    em: "jusqu’à 200 $ de crédit.",
+    lede: "Par séjour, selon l’hôtel. Confirmé avant l’arrivée.",
+    image: "photo-1571896349842-33c89424de2d",
+    alt: "Piscine d’hôtel et lumière du soir",
+    essay: [
+      "Meilleurs tarifs, petit-déjeuner, arrivée anticipée, départ tardif, surclassement si une chambre est libre.",
+      "Le crédit va jusqu’à 200 $ par séjour. Il n’existe pas dans tous les hôtels. Nous le disons avant le départ.",
+    ],
+    steps: [
+      { n: "01", title: "L’hôtel", text: "Vous dites le lieu et les dates. Nous proposons des adresses." },
+      { n: "02", title: "Les avantages", text: "Chaque ligne n’entre dans le devis que si l’hôtel la confirme." },
+      { n: "03", title: "Le carnet", text: "Nom, dates et avantages confirmés, avant l’atterrissage." },
+      { n: "04", title: "Le jour J", text: "Si une meilleure chambre se libère, le surclassement reste prioritaire." },
+    ],
+    points: [
+      { title: "Tarifs", text: "Les meilleurs tarifs sur les hôtels choisis avec vous." },
+      { title: "Petit-déjeuner", text: "Offert quand l’hôtel le prévoit." },
+      { title: "Horaires", text: "Arrivée anticipée, départ tardif." },
+      { title: "Surclassement", text: "Si une chambre est libre. Jamais annoncé comme acquis." },
+      { title: "Crédit", text: "Jusqu’à 200 $ par séjour, selon l’hôtel." },
+    ],
+    places: [
+      { name: "Aman Tokyo", where: "Japon", text: "Petit-déjeuner et horaires demandés avec la réservation.", image: "photo-1540959733332-eab4deabeeaf", alt: "Ville la nuit" },
+      { name: "Royal Mansour", where: "Marrakech", text: "Riads privés. Avantages confirmés hôtel par hôtel.", image: "photo-1489749798305-4fea3ae63d43", alt: "Ciel et minaret" },
+      { name: "Ellerman House", where: "Le Cap", text: "Face à l’Atlantique. Le crédit, s’il existe, est dit avant le vol.", image: "photo-1516026672322-bc52d61a55d5", alt: "Plaine dorée" },
+    ],
+    app: "Nom, ville, nuits et avantages dans le carnet.",
+    layout: "membership",
+    wa: "Bonjour, je souhaite parler du Club Travel BA et d’un hôtel.",
+  },
+  {
+    slug: "sur-mesure",
+    path: `${PREVIEW}/sur-mesure`,
+    menu: "Voyages sur mesure",
+    kicker: "Sur mesure",
+    title: "Votre voyage,",
+    em: "organisé de A à Z.",
+    lede: "Dates, personnes, rythme. Nous composons hôtels, vols, transferts et tables.",
+    image: "photo-1488646953014-85cb44e25828",
+    alt: "Carte et lumière de voyage",
+    essay: [
+      "Hôtels avec les avantages du Club quand ils existent. Vols comparés en cabine et en horaire. Jet privé seulement une fois l’avion confirmé.",
+      "Voiture au départ et à l’arrivée. Visas États-Unis, Royaume-Uni et Israël préparés avec vous. Tables demandées, y compris celles qui affichent complet.",
+    ],
+    steps: [
+      { n: "01", title: "Le brief", text: "Dates, personnes, contraintes." },
+      { n: "02", title: "Le devis", text: "Hôtels, vols, transferts, tables. Généralement sous 24 h." },
+      { n: "03", title: "L’organisation", text: "Un seul interlocuteur." },
+      { n: "04", title: "Le séjour", text: "Le carnet s’ouvre. Un conseiller répond, 24h/24." },
+    ],
+    points: [
+      { title: "Hôtels", text: "Avec les avantages du Club, s’ils sont confirmés." },
+      { title: "Vols", text: "Horaire et cabine. Jet privé si l’agenda l’exige." },
+      { title: "Transferts", text: "Voiture au départ, à l’arrivée, accueil à la sortie de l’avion." },
+      { title: "Formalités", text: "Visas États-Unis, Royaume-Uni, Israël." },
+      { title: "Tables", text: "Demandées, même quand elles affichent complet." },
+    ],
+    places: [
+      { name: "À deux", where: "Quelques nuits", text: "Une table, un hôtel, peu de programme.", image: "photo-1523906834658-6e24ef2386f9", alt: "Ville d’eau au crépuscule", href: `${PREVIEW}/services/a-deux` },
+      { name: "Jet privé", where: "Si l’heure commande", text: "L’avion se confirme. Le transfert aussi.", image: "photo-1540962351504-03099e0a754b", alt: "Avion d’affaires au sol", href: `${PREVIEW}/services/jet-prive` },
+      { name: "Accueil", where: "À la porte de l’avion", text: "Un nom, puis la voiture.", image: "photo-1556388158-158ea5ccacbd", alt: "Hall d’aéroport", href: `${PREVIEW}/services/accueil-vip` },
+    ],
+    app: "Jours, vols, hôtels, transferts et documents.",
+    layout: "essay",
+    wa: "Bonjour, je souhaite un voyage sur mesure avec Travel BA.",
+  },
+  {
+    slug: "kids",
+    path: `${PREVIEW}/kids`,
+    menu: "Kids",
+    kicker: "En famille",
+    title: "Le séjour en famille,",
+    em: "sièges compris.",
+    lede: "Club selon les âges. Voiture avec sièges. Nounou si vous la demandez.",
+    image: "photo-1507525428034-b723cf961d3e",
+    alt: "Plage et eau claire",
+    essay: [
+      "Club Med, Sani Resort, Ikos, ou un hôtel dont le kids club existe vraiment.",
+      "Siège bébé ou sièges enfants dès l’aéroport. La nounou est confirmée avant le départ.",
+    ],
+    steps: [
+      { n: "01", title: "Les âges", text: "Demandés avant la destination." },
+      { n: "02", title: "L’hôtel", text: "Club Med, Sani, Ikos, ou un kids club réel." },
+      { n: "03", title: "La voiture", text: "Sièges installés à l’arrivée et pendant le séjour." },
+      { n: "04", title: "La nounou", text: "Sur place, pour les heures que vous choisissez." },
+    ],
+    points: [
+      { title: "Clubs", text: "Une sélection courte, selon l’âge." },
+      { title: "Hôtels", text: "Kids club, chambres reliées." },
+      { title: "Voiture", text: "Le siège est déjà installé." },
+      { title: "Nounou", text: "Confirmée avant le départ." },
+    ],
+    places: [
+      { name: "Club Med", where: "Villages choisis", text: "Le village qui va à l’âge et au rivage.", image: "photo-1551918120-9739cb430c6d", alt: "Lagon et sable" },
+      { name: "Sani Resort", where: "Chalcidique", text: "Mer, pins, kids club. Plusieurs jours au même endroit.", image: "photo-1514282401047-d79a71a590e8", alt: "Eau turquoise" },
+      { name: "Ikos", where: "Méditerranée", text: "Tout compris. Club enfants, table pour les parents.", image: "photo-1571896349842-33c89424de2d", alt: "Piscine et lumière douce" },
+      { name: "Hôtels", where: "Kids club réel", text: "Four Seasons, One&Only, Rosewood, quand le club et les chambres existent.", image: "photo-1520250497591-112f2f40a3f4", alt: "Piscine d’un resort" },
+    ],
+    app: "Vol, hôtel, sièges et club. Nounou si elle est confirmée.",
+    layout: "family",
+    wa: "Bonjour, je prépare un séjour en famille avec Travel BA.",
+  },
+  {
+    slug: "seminaires",
+    path: `${PREVIEW}/seminaires`,
+    menu: "Séminaires",
+    kicker: "Séminaires",
+    title: "Le groupe,",
+    em: "arrivées déjà rangées.",
+    lede: "Séminaire, anniversaire, EVG : chambres, heures et retours écrits avant le jour.",
+    image: "photo-1540575467063-178a50c2df87",
+    alt: "Salle claire, lumière du jour",
+    essay: [
+      "Lieu, ordre du jour, chambres, dîners. Un vol bouge : quelqu’un répond.",
+      "Anniversaire ou EVG : même organisation. Chacun peut avoir son carnet.",
+    ],
+    steps: [
+      { n: "01", title: "Le motif", text: "Nombre, dates, ton." },
+      { n: "02", title: "Le lieu", text: "Hôtel, domaine ou villa. Choisi avec vous." },
+      { n: "03", title: "La logistique", text: "Vols, chambres, salle, dîners, retours." },
+      { n: "04", title: "Le jour", text: "Un interlocuteur jusqu’au dernier départ." },
+    ],
+    points: [
+      { title: "Entreprise", text: "Comité, incentive, séminaire." },
+      { title: "Anniversaire", text: "Maison, table, invités, lendemain." },
+      { title: "EVG", text: "Discret. EVJF tenu de la même façon." },
+      { title: "Suivi", text: "Chacun sait où aller." },
+    ],
+    places: [
+      { name: "Séminaire", where: "Entreprise", text: "Salle, chambres, dîners.", image: "photo-1540575467063-178a50c2df87", alt: "Salle de travail lumineuse", href: `${PREVIEW}/professionnels` },
+      { name: "Anniversaire", where: "Privé", text: "Maison, table, arrivées.", image: "photo-1511795409834-ef04bbd61622", alt: "Table de réception", href: `${PREVIEW}/services/anniversaire` },
+      { name: "EVG", where: "Quelques jours", text: "Le voyage des amis.", image: "photo-1533104816931-20fa691ff6ca", alt: "Côte et villages", href: `${PREVIEW}/services/evg` },
+    ],
+    app: "Vols, hôtel et horaires dans l’application. Le fil reste ouvert.",
+    layout: "occasions",
+    wa: "Bonjour, je prépare un séminaire ou un événement privé avec Travel BA.",
+  },
+  {
+    slug: "professionnels",
+    path: `${PREVIEW}/professionnels`,
+    menu: "Professionnels",
+    kicker: "Déplacements professionnels",
+    title: "Les voyages d’affaires,",
+    em: "avec une règle.",
+    lede: "Cabines, hôtels, facture société. Collaborateurs et cadres dans la même application. Agent 24h/24.",
+    image: "photo-1497366754035-f200968a6e72",
+    alt: "Bureau calme et lumière naturelle",
+    essay: [
+      "La règle se fixe avec l’entreprise : cabines, trains, hôtels, facture au nom de la société.",
+      "Le collaborateur voit son carnet. La réservation reste à l’agence. Un agent répond, jour et nuit.",
+    ],
+    steps: [
+      { n: "01", title: "La règle", text: "Cabines, hôtels, facturation, avant les déplacements." },
+      { n: "02", title: "Les tarifs", text: "Préférentiels, dans cette règle." },
+      { n: "03", title: "Les voyageurs", text: "Ils ouvrent l’application. L’agence réserve." },
+      { n: "04", title: "L’agent", text: "24h/24 pendant le déplacement." },
+    ],
+    points: [
+      { title: "Facture", text: "Au nom de la société." },
+      { title: "Cadres", text: "Même niveau que le privé, avec la règle de l’entreprise." },
+      { title: "Équipes", text: "Plusieurs carnets, une agence." },
+      { title: "Nuit", text: "Quelqu’un répond si le vol change." },
+    ],
+    places: [
+      { name: "Le comité", where: "Plusieurs personnes", text: "Même ville, chambres attribuées.", image: "photo-1540575467063-178a50c2df87", alt: "Salle de réunion" },
+      { name: "Le dirigeant", where: "Seul", text: "Horaire, voiture, accueil.", image: "photo-1540962351504-03099e0a754b", alt: "Avion d’affaires" },
+      { name: "Le séminaire", where: "Le groupe", text: "Quand le déplacement devient un séjour.", image: "photo-1489749798305-4fea3ae63d43", alt: "Ville au soleil", href: `${PREVIEW}/seminaires` },
+    ],
+    app: "Documents, vol et voiture dans le carnet. L’agent Travel BA répond, 24h/24.",
+    layout: "desk",
+    wa: "Bonjour, je souhaite parler des déplacements professionnels de mon entreprise.",
+  },
+];
+
+export const universes: Universe[] = [...pillars, ...serviceUniverses];
+
+export function universeBySlug(slug: string) {
+  return universes.find((item) => item.slug === slug) ?? null;
+}
