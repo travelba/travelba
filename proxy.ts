@@ -116,6 +116,11 @@ async function route(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Renvoi d’accès : le jeton est vérifié par la route, sans session préalable.
+  if (path === "/acces" || path.startsWith("/acces/")) {
+    return NextResponse.next();
+  }
+
   if (path === "/anniversaire-cyril" || path.startsWith("/anniversaire-cyril/")) {
     return NextResponse.next();
   }

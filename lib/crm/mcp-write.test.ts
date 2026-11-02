@@ -270,6 +270,8 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "definir_role_societe")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "inviter_client")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "inviter_client")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "renvoyer_acces_whatsapp")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "renvoyer_acces_whatsapp")?.openWorld, true);
   for (const name of ["creer_dossier", "ajouter_voyageur", "modifier_voyageur", "retirer_voyageur", "fusionner_compagnon", "ajouter_vol", "modifier_vol", "retirer_carte", "definir_visibilite_carte", "preparer_message_carnet", "ajouter_hotel", "modifier_hotel", "ajouter_accueil_vip"]) {
     assert.equal(seen.find((tool) => tool.name === name)?.readOnly, false);
     assert.equal(seen.find((tool) => tool.name === name)?.openWorld, false);

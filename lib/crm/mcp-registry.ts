@@ -55,6 +55,7 @@ import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/cr
 import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
 import { envoyerReleve } from "@/lib/crm/mcp-statement";
+import { renvoyerAccesWhatsapp } from "@/lib/crm/mcp-access-resend";
 import { readLireEmail } from "@/lib/crm/mcp-email";
 import {
   choixRestaurant,
@@ -105,7 +106,7 @@ import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 90;
+export const MCP_TOOL_CAP = 91;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -834,6 +835,19 @@ export const MCP_TOOLS: ToolDef[] = [
       id: z.string().trim().describe("Identifiant du client"),
     },
     run: (args) => inviteClientAccess(args),
+  },
+  {
+    name: "renvoyer_acces_whatsapp",
+    write: true,
+    openWorld: true,
+    selfJournal: true,
+    description:
+      "Renvoie les accès du client par WhatsApp, comme le bouton de la fiche. customer_id. confirmer doit être true : sans lui, rien n’est envoyé. Le message contient la page de connexion avec l’e-mail, et un lien personnel à usage unique valable 30 jours. Aucun mot de passe. Le lien n’est pas renvoyé. Un nouvel envoi annule le précédent. L’auteur est le jeton. La réponse donne twilio_sid et statut. Sans le modèle approuvé TWILIO_CONTENT_ACCES_CLIENT, rien n’est envoyé.",
+    input: {
+      customer_id: z.string().trim().max(80).describe("Identifiant du client"),
+      confirmer: z.boolean().optional().describe("true pour envoyer. Sans true, rien ne part"),
+    },
+    run: (args) => renvoyerAccesWhatsapp(args),
   },
   {
     name: "ajouter_piece",

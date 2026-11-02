@@ -39,6 +39,7 @@ const EXPECTED = [
   "modifier_titulaire",
   "definir_role_societe",
   "inviter_client",
+  "renvoyer_acces_whatsapp",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
@@ -113,6 +114,7 @@ const WRITE_TOOLS = [
   "modifier_titulaire",
   "definir_role_societe",
   "inviter_client",
+  "renvoyer_acces_whatsapp",
   "ajouter_piece",
   "requalifier_piece",
   "notifier_piece",
@@ -238,6 +240,14 @@ test("mcp tools stay unique, named, and under the cap", () => {
   const invite = MCP_TOOLS.find((tool) => tool.name === "inviter_client");
   assert.equal(invite?.write, true);
   assert.equal(invite?.openWorld, true);
+  const acces = MCP_TOOLS.find((tool) => tool.name === "renvoyer_acces_whatsapp");
+  assert.equal(acces?.write, true);
+  assert.equal(acces?.openWorld, true);
+  assert.equal(acces?.selfJournal, true);
+  assert.match(acces?.description || "", /confirmer/);
+  assert.match(acces?.description || "", /TWILIO_CONTENT_ACCES_CLIENT/);
+  assert.match(acces?.description || "", /mot de passe/);
+  assert.match(acces?.description || "", /n’est pas renvoyé/);
   assert.equal(invite?.pieceNumbers, undefined);
   assert.equal(invite?.signedUrl, undefined);
   assert.match(invite?.description || "", /même flux/);

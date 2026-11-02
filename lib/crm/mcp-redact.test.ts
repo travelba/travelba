@@ -21,6 +21,11 @@ test("mcp redact drops piece numbers, iban, tokens and signed urls", () => {
   assert.equal("access_token" in cleaned, false);
   assert.equal(cleaned.note, "retiré");
   assert.equal(cleaned.fichier, "retiré");
+  const link = redactMcp({ note: "ouvert https://travelba.fr/acces/exempleAcces30joursExempleAcces30joursExXXX" }) as {
+    note: string;
+  };
+  assert.equal(link.note.includes("exempleAcces"), false);
+  assert.match(link.note, /\/acces\/…/);
 });
 
 test("piece numbers stay hidden except numero_piece on the passport tool", () => {

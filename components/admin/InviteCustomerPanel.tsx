@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PortalAccess } from "@/lib/crm/invite";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 
 const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string }> = {
@@ -47,6 +48,16 @@ export function InviteCustomerPanel({
   const [deskCopied, setDeskCopied] = useState(false);
 
   const copy = STATUS_COPY[status];
+
+  async function sendAccessWhatsapp() {
+    const result = await adminAction(`/api/admin/clients/${customerId}/acces-whatsapp`, { method: "POST" });
+    if (result.ok) {
+      setError(null);
+      setInfo("Accès renvoyés par WhatsApp. Le message ne contient pas de mot de passe.");
+      router.refresh();
+    }
+    return result;
+  }
 
   /** Espace actif : lien magique par WhatsApp, sans reposer le mot de passe (A-52, A-53). */
   async function sendAccessLink() {
@@ -222,6 +233,16 @@ export function InviteCustomerPanel({
             Mot de passe perdu ? Renvoyer l’invitation
           </button>
         ) : null}
+        <ConfirmAction
+          label="Renvoyer ses accès par WhatsApp"
+          question="Renvoyer les accès de ce client par WhatsApp ?"
+          hint="La page de connexion, avec l’e-mail, et un lien personnel valable 30 jours. Aucun mot de passe."
+          confirmLabel="Envoyer"
+          align={stacked ? "start" : "end"}
+          disabled={loading || sendingAccess || deskBusy}
+          busyLabel="Envoi…"
+          onConfirm={sendAccessWhatsapp}
+        />
         <button
           type="button"
           onClick={() => void openSpace()}

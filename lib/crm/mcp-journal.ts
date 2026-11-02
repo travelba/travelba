@@ -6,6 +6,7 @@ const SEND = new Set([
   "notifier_carte_embarquement",
   "envoyer_releve",
   "inviter_client",
+  "renvoyer_acces_whatsapp",
 ]);
 
 const CREATE = new Set([
@@ -57,6 +58,7 @@ const PHRASES: Record<string, string> = {
   modifier_titulaire: "Titulaire modifié",
   definir_role_societe: "Rôle de société modifié",
   inviter_client: "Invitation envoyée",
+  renvoyer_acces_whatsapp: "Accès renvoyés par WhatsApp",
   ajouter_piece: "Pièce déposée",
   requalifier_piece: "Pièce requalifiée",
   notifier_piece: "Pièce notifiée",
