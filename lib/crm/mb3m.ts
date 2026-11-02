@@ -66,9 +66,9 @@ export type Mb3mLine = {
   /** Marge unitaire : prix vendu − coûts rattachés. Peut être négative. */
   marginUnit?: number | null;
   /**
-   * Commission de la ligne. Absente ou nulle : 0,001 sur une billetterie
-   * (aérien 2, ferroviaire 5, low cost 27), sinon le champ n’est pas envoyé.
-   * MB3M refuse AddPieces sans cette commission (-504, code interne -22).
+   * Commission de la ligne. Absente ou nulle : 0,01 sur une billetterie
+   * (aérien 2, ferroviaire 5, low cost 27), sinon le bloc n’est pas envoyé.
+   * MB3M refuse AddPieces sans commission nette et TTC (-504, code interne -22).
    */
   commissionTotal?: number | null;
   /** Fournisseurs des coûts (pas de ProviderId : l’API ne crée pas de fournisseur). */
@@ -350,8 +350,8 @@ export async function mb3mSaveFolder(
   return { id, uid };
 }
 
-/** Plancher : MB3M refuse une billetterie sans commission non nulle. */
-const MB3M_TICKETING_COMMISSION = 0.001;
+/** Plancher : 0,001 est refusé (-22) même avec CommissionTotal. */
+const MB3M_TICKETING_COMMISSION = 0.01;
 
 /**
  * Activités « prestation de billetterie » du fichier agence.
@@ -372,7 +372,10 @@ function commissionXml(line: Mb3mLine) {
       : mb3mTicketingActivity(line.activityId)
         ? MB3M_TICKETING_COMMISSION
         : null;
-  return value == null ? "" : tag("CommissionTotal", money(value));
+  if (value == null) return "";
+  const amount = money(value);
+  // Ordre WCF : CommissionNetTotal, CommissionTaxRate, CommissionTotal.
+  return `${tag("CommissionNetTotal", amount)}${tag("CommissionTaxRate", 0)}${tag("CommissionTotal", amount)}`;
 }
 
 export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine[]) {
