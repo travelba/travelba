@@ -19,6 +19,19 @@ jobs:
     name: typecheck · lint · tests · migrations
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Postgres au format de la production pour rejouer la migration visée (scripts/check-migration-prod-shape.mjs).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -45,5 +58,7 @@ jobs:
       - name: Évals concierge
         run: npx tsx --tsconfig tsconfig.test.json --test lib/crm/concierge-eval.test.ts
 
-      - name: Migrations (horodatage unique, nommage)
+      - name: Migrations (horodatage unique, nommage, rejeu sur une base de forme prod)
+        env:
+          MIGRATION_DB_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: node scripts/check-migrations.mjs

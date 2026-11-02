@@ -213,6 +213,9 @@ async function writeAudit(admin: SupabaseClient, row: AuditRow) {
       entityId: row.booking_id,
       summary: `Passeport ${row.kind === "scan" ? "ouvert (fichier)" : "lu (données APIS)"} par le connecteur ${row.actor}.`,
       sensitive: "passport_reveal",
+      kind: "passeport_ouvert",
+      bookingId: row.booking_id,
+      actorLabel: row.actor,
       path: "/api/mcp",
     });
   }

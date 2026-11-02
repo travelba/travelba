@@ -107,17 +107,24 @@ export async function issueBookingCard(
     transaction_limit_cents: draft.body.transactionLimit.value,
     max_transaction_count: null,
   });
-  return { ok: true as const };
+  return { ok: true as const, last4, limitCents: draft.body.limit.value, label: draft.body.label };
 }
 
 async function bookingCardRow(admin: Admin, bookingId: string, cardRowId: string) {
   const { data } = await admin
     .from("crm_booking_cards")
-    .select("id, pliant_card_id, status")
+    .select("id, pliant_card_id, status, last4, limit_cents, label")
     .eq("booking_id", bookingId)
     .eq("id", cardRowId)
     .maybeSingle();
-  const row = data as { id: string; pliant_card_id: string; status?: string | null } | null;
+  const row = data as {
+    id: string;
+    pliant_card_id: string;
+    status?: string | null;
+    last4?: string | null;
+    limit_cents?: number | null;
+    label?: string | null;
+  } | null;
   if (!row?.pliant_card_id) throw new Error("Carte introuvable.");
   if (row.status === "terminated") throw new Error("Cette carte est déjà supprimée.");
   return row;
@@ -139,6 +146,7 @@ export async function setBookingCardLocked(admin: Admin, bookingId: string, card
     booking_id: bookingId,
     status: locked ? "locked" : "active",
   });
+  return cardFace(row);
 }
 
 export async function terminateBookingCard(admin: Admin, bookingId: string, cardRowId: string) {
@@ -151,4 +159,10 @@ export async function terminateBookingCard(admin: Admin, bookingId: string, card
     .eq("id", row.id)
     .eq("booking_id", bookingId);
   if (error) throw new Error("Pliant a supprimé la carte, mais le dossier la montre encore.");
+  return cardFace(row);
+}
+
+/** Ce que le journal peut dire d’une carte : quatre chiffres, plafond, libellé. Jamais le numéro. */
+function cardFace(row: { last4?: string | null; limit_cents?: number | null; label?: string | null }) {
+  return { last4: row.last4 ?? null, limitCents: row.limit_cents ?? null, label: row.label ?? null };
 }

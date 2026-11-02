@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertStaffPermission } from "@/lib/crm/agency-guard";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import { formatJournalAmount, maskedCard, type JournalKind } from "@/lib/crm/agency-journal-kinds";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
@@ -37,11 +39,40 @@ export async function POST(request: Request) {
     return jsonError("Action inconnue", 400);
   }
   const admin = createServiceClient();
+  /** Une ligne d’Historique par geste sur la carte : quatre chiffres et plafond, jamais le numéro. */
+  const journal = async (
+    kind: JournalKind,
+    summary: string,
+    card: { booking_id?: string | null; last4?: string | null; limit_cents?: number | null; currency?: string | null },
+    diff?: Record<string, unknown>
+  ) =>
+    recordAgencyJournal({
+      staffId: auth.staff.id,
+      action: kind === "carte_emise" ? "create" : "update",
+      entityType: "card",
+      entityId: card.booking_id ?? null,
+      summary,
+      diff,
+      kind,
+      bookingId: card.booking_id ?? null,
+      amountCents: kind === "carte_emise" || kind === "carte_plafond" ? card.limit_cents ?? null : null,
+      currency: card.currency ?? null,
+      cardLast4: card.last4 ?? null,
+      sensitive: kind === "carte_emise" ? "payment" : null,
+      path: "/api/admin/pliant/cards",
+    });
   try {
     if (action === "lock" || action === "unlock") {
       const cardId = cleanId(body?.cardId);
       if (!cardId) return jsonError("Carte introuvable.", 400);
       await setPliantCardLocked(admin, cardId, action === "lock");
+      const card = await cardFace(admin, cardId);
+      await journal(
+        action === "lock" ? "carte_bloquee" : "carte_debloquee",
+        `Carte Pliant${maskedCard(card.last4) ? ` ${maskedCard(card.last4)}` : ""} ${action === "lock" ? "bloquée" : "débloquée"}.`,
+        card,
+        { statut: { avant: action === "lock" ? "active" : "bloquée", apres: action === "lock" ? "bloquée" : "active" } }
+      );
       return NextResponse.json({ ok: true, cardId, status: action === "lock" ? "locked" : "active" });
     }
     if (action === "limit") {
@@ -49,8 +80,14 @@ export async function POST(request: Request) {
       const cents = eurosToCents(body?.limit);
       if (!cardId) return jsonError("Carte introuvable.", 400);
       if (cents == null) return jsonError("Indiquez un plafond en euros.", 400);
-      const card = await cardCurrency(admin, cardId);
-      await changePliantCardLimit(admin, cardId, cents, card);
+      const before = await cardFace(admin, cardId);
+      await changePliantCardLimit(admin, cardId, cents, before.currency || "EUR");
+      await journal(
+        "carte_plafond",
+        `Plafond de la carte Pliant${maskedCard(before.last4) ? ` ${maskedCard(before.last4)}` : ""} porté à ${formatJournalAmount(cents, before.currency)}.`,
+        { ...before, limit_cents: cents },
+        { plafond: { avant: formatJournalAmount(before.limit_cents, before.currency) || "—", apres: formatJournalAmount(cents, before.currency) } }
+      );
       return NextResponse.json({ ok: true, cardId, limitCents: cents });
     }
     if (body?.customerId) {
@@ -60,6 +97,14 @@ export async function POST(request: Request) {
     if (!bookingId) return jsonError("Dossier introuvable.", 400);
     const issued = await issueBookingCard(admin, bookingId);
     if ("error" in issued) return jsonError(issued.error, issued.status);
+    const card = await cardFace(admin, issued.cardId);
+    await journal(
+      "carte_emise",
+      issued.created
+        ? `Carte Pliant du séjour émise${maskedCard(card.last4) ? ` ${maskedCard(card.last4)}` : ""}${formatJournalAmount(card.limit_cents, card.currency) ? `, plafond ${formatJournalAmount(card.limit_cents, card.currency)}` : ""}.`
+        : `Carte Pliant du séjour reprise${maskedCard(card.last4) ? ` ${maskedCard(card.last4)}` : ""} (déjà émise).`,
+      { ...card, booking_id: bookingId }
+    );
     return NextResponse.json({ ok: true, ...issued });
   } catch (err) {
     console.error("[pliant] carte", err instanceof Error ? err.message : "échec");
@@ -129,10 +174,21 @@ async function issueBookingCard(admin: ReturnType<typeof createServiceClient>, b
   return { cardId: issued.pliant_card_id, created: true as const };
 }
 
-async function cardCurrency(admin: ReturnType<typeof createServiceClient>, cardId: string) {
-  const { data } = await admin.from("crm_pliant_cards").select("currency").eq("pliant_card_id", cardId).maybeSingle();
-  const currency = (data as { currency?: string } | null)?.currency || "EUR";
-  return /^[A-Z]{3}$/.test(currency) ? currency : "EUR";
+/** Quatre chiffres, plafond, devise et dossier d’une carte du registre. Jamais le numéro. */
+async function cardFace(admin: ReturnType<typeof createServiceClient>, cardId: string) {
+  const { data } = await admin
+    .from("crm_pliant_cards")
+    .select("currency, last4, limit_cents, booking_id")
+    .eq("pliant_card_id", cardId)
+    .maybeSingle();
+  const row = (data as { currency?: string | null; last4?: string | null; limit_cents?: number | null; booking_id?: string | null } | null) || {};
+  const currency = row.currency || "EUR";
+  return {
+    currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR",
+    last4: row.last4 ?? null,
+    limit_cents: row.limit_cents ?? null,
+    booking_id: row.booking_id ?? null,
+  };
 }
 
 function eurosToCents(value: unknown) {

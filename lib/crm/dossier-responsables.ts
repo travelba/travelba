@@ -87,6 +87,8 @@ export async function stampBookingCreator(
     entityType: "dossier",
     entityId: input.bookingId,
     summary: input.summary || "Dossier créé.",
+    kind: "dossier_cree",
+    bookingId: input.bookingId,
     path: input.path,
   });
 }

@@ -169,6 +169,9 @@ async function writeCardAudit(
       summary: `Carte Pliant ouverte (numéro complet) par le connecteur ${row.actor.slice(0, 40)}.`,
       diff: { carte: auditLabel(row.label) },
       sensitive: "card_reveal",
+      kind: "carte_ouverte",
+      bookingId: row.bookingId && UUID.test(row.bookingId) ? row.bookingId : null,
+      actorLabel: row.actor.slice(0, 40),
       path: "/api/mcp",
     });
   }

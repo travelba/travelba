@@ -15,7 +15,7 @@ import {
   type StaffRole,
 } from "@/lib/crm/agency-access";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
-import { agencyGateDecision, classifyAgencyRoute, entityIdFromPath } from "@/lib/crm/agency-routes";
+import { agencyGateDecision, bookingIdFromPath, classifyAgencyRoute, entityIdFromPath } from "@/lib/crm/agency-routes";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 
@@ -85,6 +85,8 @@ export async function gateAgencyApi(request: NextRequest) {
       userAgent: request.headers.get("user-agent"),
       path: request.nextUrl.pathname,
       sensitive: classified.sensitive,
+      kind: classified.kind,
+      bookingId: bookingIdFromPath(request.nextUrl.pathname),
     });
   }
 

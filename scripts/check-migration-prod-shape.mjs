@@ -20,7 +20,7 @@ import { join } from "node:path";
 const root = process.cwd();
 const dir = join(root, "supabase", "migrations");
 const fixtures = join(root, "scripts", "migration-fixtures");
-const target = process.argv[2] || "20261030090000_agency_access.sql";
+const target = process.argv[2] || "20261030160000_agency_journal_metier.sql";
 const url = process.env.MIGRATION_DB_URL;
 
 if (!url) {
@@ -121,7 +121,41 @@ try {
   const refused = spawnSync("psql", [test.toString(), "-At", "-c", "delete from public.crm_agency_journal"], { encoding: "utf8" });
   if (refused.status === 0 || !/append-only/.test(refused.stderr)) throw new Error("le journal accepte une suppression");
 
-  console.log("[migration-prod] OK : la table clé/valeur crm_agency_settings est intacte, les droits et le journal sont en place.");
+  // Journal métier (20261030160000) : colonnes additives, sceau étendu, quatre chiffres au plus, droit view_activity.
+  const metierColumns = query(
+    "select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'crm_agency_journal' and column_name in ('kind','booking_id','amount_cents','currency','card_last4','actor_label')"
+  );
+  if (metierColumns !== "6") throw new Error(`colonnes du journal métier : attendu 6, obtenu ${metierColumns}`);
+  const fkTarget = query(
+    "select count(*) from information_schema.table_constraints tc join information_schema.key_column_usage k on k.constraint_name = tc.constraint_name where tc.table_name = 'crm_agency_journal' and tc.constraint_type = 'FOREIGN KEY' and k.column_name = 'booking_id'"
+  );
+  if (fkTarget !== "1") throw new Error(`booking_id du journal sans clé étrangère vers crm_bookings (${fkTarget})`);
+  query(
+    "insert into public.crm_agency_journal (action, entity_type, summary, row_hash, kind, booking_id, amount_cents, currency, card_last4, actor_label) values ('create', 'card', 'Carte Pliant •••• 4821 émise, 2 450 €', 'pending', 'carte_emise', null, 245000, 'EUR', '4821', null)"
+  );
+  const metier = query(
+    "select kind || '|' || amount_cents::text || '|' || currency || '|' || card_last4 || '|' || (canonical like '%|carte_emise|%|245000|EUR|4821|')::text from public.crm_agency_journal order by seq desc limit 1"
+  );
+  if (metier !== "carte_emise|245000|EUR|4821|true") throw new Error(`journal métier non scellé : ${metier}`);
+  // Un numéro complet glissé dans card_last4 est retiré par le sceau avant d’être écrit ; la ligne reste.
+  query(
+    "insert into public.crm_agency_journal (action, entity_type, summary, row_hash, card_last4) values ('create', 'card', 'Carte 4242424242424242 ouverte', 'pending', '4242424242424242')"
+  );
+  const scrubbed = query("select coalesce(card_last4, 'null') || '|' || summary from public.crm_agency_journal order by seq desc limit 1");
+  if (scrubbed !== "null|Carte •••• ouverte") throw new Error(`numéro complet non retiré : ${scrubbed}`);
+  const activity = [
+    ["00000000-0000-4000-8000-000000000001", "t"],
+    ["00000000-0000-4000-8000-000000000003", "f"],
+    ["00000000-0000-4000-8000-000000000004", "f"],
+  ];
+  for (const [sub, expected] of activity) {
+    const got = query(`select set_config('request.jwt.claim.sub', '${sub}', false); select crm_private.agency_allows('view_activity')`).split("\n").pop();
+    if (got !== expected) throw new Error(`agency_allows(view_activity) pour ${sub} : attendu ${expected}, obtenu ${got}`);
+  }
+  const olderChain = query("select count(*) from public.crm_agency_journal where prev_hash is null");
+  if (olderChain !== "1") throw new Error(`la chaîne du journal a ${olderChain} débuts`);
+
+  console.log("[migration-prod] OK : la table clé/valeur crm_agency_settings est intacte, les droits, le journal et le journal métier sont en place.");
 } finally {
   psql(admin, ["-c", `drop database if exists ${dbName}`], { allowFail: true });
 }

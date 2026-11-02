@@ -29,7 +29,16 @@ type JournalDb = {
   canonical: string;
   prev_hash: string | null;
   row_hash: string;
+  kind?: string | null;
+  booking_id?: string | null;
+  amount_cents?: number | null;
+  currency?: string | null;
+  card_last4?: string | null;
+  actor_label?: string | null;
 };
+
+const BASE_COLUMNS = "seq, occurred_at, staff_id, action, entity_type, entity_id, summary, diff, canonical, prev_hash, row_hash";
+const METIER_COLUMNS = `${BASE_COLUMNS}, kind, booking_id, amount_cents, currency, card_last4, actor_label`;
 
 function isAction(value: string | null): value is JournalAction {
   return Boolean(value && (JOURNAL_ACTIONS as readonly string[]).includes(value));
@@ -65,38 +74,53 @@ export async function GET(request: Request) {
   }
 
   const admin = createServiceClient({ allowPreview: true });
-  let query = admin
-    .from("crm_agency_journal")
-    .select("seq, occurred_at, staff_id, action, entity_type, entity_id, summary, diff, canonical, prev_hash, row_hash")
-    .order("seq", { ascending: false })
-    .limit(200);
-
   const agent = agentParam;
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
   const action = url.searchParams.get("action");
-  if (agent && isUuid(agent)) query = query.eq("staff_id", agent);
-  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) query = query.gte("occurred_at", `${from}T00:00:00.000Z`);
-  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) query = query.lte("occurred_at", `${to}T23:59:59.999Z`);
-  if (isEntity(entity)) query = query.eq("entity_type", entity);
-  if (id) query = query.eq("entity_id", id);
-  if (isAction(action)) query = query.eq("action", action);
+  const build = (columns: string) => {
+    let query = admin.from("crm_agency_journal").select(columns).order("seq", { ascending: false }).limit(200);
+    if (agent && isUuid(agent)) query = query.eq("staff_id", agent);
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) query = query.gte("occurred_at", `${from}T00:00:00.000Z`);
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) query = query.lte("occurred_at", `${to}T23:59:59.999Z`);
+    if (entity === "dossier" && id && isUuid(id) && columns === METIER_COLUMNS) {
+      // L’Historique d’un dossier : ses lignes d’entité dossier, et toute ligne (carte, paiement, e-mail) qui lui est liée.
+      query = query.or(`and(entity_type.eq.dossier,entity_id.eq.${id}),booking_id.eq.${id}`);
+    } else {
+      if (isEntity(entity)) query = query.eq("entity_type", entity);
+      if (id) query = query.eq("entity_id", id);
+    }
+    if (isAction(action)) query = query.eq("action", action);
+    return query;
+  };
 
-  const { data, error } = await query;
+  let { data, error } = await build(METIER_COLUMNS);
+  if (error && /column|schema cache/i.test(error.message || "")) {
+    // Avant la migration du journal métier : les colonnes d’origine suffisent.
+    ({ data, error } = await build(BASE_COLUMNS));
+  }
   if (error) {
     if (format === "csv") return new NextResponse("Quand,Qui,Action,Entité,Identifiant,Résumé\n", { status: 200 });
     return NextResponse.json({ rows: [], alerts: [], chainIntact: null });
   }
-  const rows = (data || []) as JournalDb[];
+  const rows = (data || []) as unknown as JournalDb[];
   const names = await actorNames(admin, rows.map((row) => row.staff_id));
   const shaped = rows.map((row) => ({
     seq: row.seq,
     occurred_at: row.occurred_at,
+    staff_id: row.staff_id,
     actor: names.get(row.staff_id || "") || "Agence",
+    actor_label: row.actor_label ?? null,
     action: row.action,
     entity_type: row.entity_type,
     entity_id: row.entity_id,
     summary: row.summary,
+    kind: row.kind ?? null,
+    booking_id: row.booking_id ?? null,
+    amount_cents: row.amount_cents ?? null,
+    currency: row.currency ?? null,
+    // Quatre chiffres au plus, posés à l’écriture : jamais un numéro complet.
+    card_last4: row.card_last4 ?? null,
     // Le diff est masqué à l’écriture (numéros, secrets) : l’avant/après se lit partout.
     diff: format === "csv" ? undefined : row.diff,
   }));

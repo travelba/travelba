@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import type { JournalKind } from "@/lib/crm/agency-journal-kinds";
 import { appOrigin } from "@/lib/crm/invite";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelFollowUp, sendHotelMessage, sendHotelReply, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
@@ -94,10 +96,40 @@ async function readPayload(request: Request) {
   };
 }
 
+const DESK_KIND_WORDS: Record<HotelDeskKind, string> = {
+  payment_link: "lien de paiement",
+  upgrade: "demande de surclassement",
+  precheckin: "pré-enregistrement",
+  full_credit: "garantie de la chambre",
+  transfer: "transfert",
+  concierge: "demande conciergerie",
+  other: "courrier",
+};
+
+function recipientsWords(recipients: unknown) {
+  const count = Array.isArray(recipients) ? recipients.filter((item) => typeof item === "string" && item.trim()).length : 0;
+  if (!count) return "";
+  return count === 1 ? ", 1 destinataire" : `, ${count} destinataires`;
+}
+
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
+  /** Une ligne d’Historique par geste du bureau hôtel : e-mail parti, carte émise, courrier enregistré. */
+  const journal = (kind: JournalKind, summary: string, extra?: { cardLast4?: string | null; diff?: Record<string, unknown> }) =>
+    recordAgencyJournal({
+      staffId: auth.staff.id,
+      action: kind === "carte_emise" ? "create" : kind === "email_envoye" ? "send" : "update",
+      entityType: kind === "carte_emise" ? "card" : kind === "email_envoye" ? "message" : "dossier",
+      entityId: id,
+      summary,
+      diff: extra?.diff,
+      kind,
+      bookingId: id,
+      cardLast4: extra?.cardLast4 ?? null,
+      path: `/api/admin/bookings/${id}/hotel-desk`,
+    });
   let body: Awaited<ReturnType<typeof readPayload>>;
   try {
     body = await readPayload(request);
@@ -121,6 +153,9 @@ export async function POST(request: Request, ctx: Ctx) {
           : undefined,
         staffId: auth.staff.id,
       });
+      await journal("email_envoye", `E-mail envoyé à l’hôtel${recipientsWords(body?.recipients)}.`, {
+        diff: { objet: typeof body?.subject === "string" ? body.subject.slice(0, 120) : "" },
+      });
       return NextResponse.json({ ok: true });
     } catch (error) {
       return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
@@ -141,6 +176,9 @@ export async function POST(request: Request, ctx: Ctx) {
         cc: Array.isArray(body.cc) ? body.cc.filter((value): value is string => typeof value === "string") : [],
         staffId: auth.staff.id,
       });
+      await journal("email_envoye", `Réponse envoyée à l’hôtel${recipientsWords(body.recipients)}.`, {
+        diff: { objet: typeof body.subject === "string" ? body.subject.slice(0, 120) : "" },
+      });
       return NextResponse.json({ ok: true });
     } catch (error) {
       return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
@@ -159,6 +197,9 @@ export async function POST(request: Request, ctx: Ctx) {
         cc: Array.isArray(body.cc) ? body.cc.filter((value): value is string => typeof value === "string") : [],
         staffId: auth.staff.id,
       });
+      await journal("email_envoye", `Relance envoyée à l’hôtel${recipientsWords(body.recipients)}.`, {
+        diff: { objet: typeof body.subject === "string" ? body.subject.slice(0, 120) : "" },
+      });
       return NextResponse.json({ ok: true });
     } catch (error) {
       return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
@@ -168,6 +209,7 @@ export async function POST(request: Request, ctx: Ctx) {
     if (!body.clientCard?.content?.length) return jsonError("Déposez la carte du client.", 400);
     try {
       const saved = await saveUploadedClientCard(admin, id, itemId, body.clientCard);
+      await journal("piece_deposee", "Carte du client déposée pour l’hôtel (photo, sans numéro).");
       return NextResponse.json({ ok: true, name: saved.name });
     } catch (error) {
       return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
@@ -175,6 +217,7 @@ export async function POST(request: Request, ctx: Ctx) {
   }
   if (action === "clear-client-card") {
     await clearClientStayCard(admin, id, itemId);
+    await journal("piece_retiree", "Carte du client retirée du bureau hôtel.");
     return NextResponse.json({ ok: true });
   }
   if (!kind) return jsonError("Action incomplète", 400);
@@ -184,15 +227,20 @@ export async function POST(request: Request, ctx: Ctx) {
   try {
     if (action === "skip") {
       await skipHotelRequest(admin, id, itemId, kind);
+      await journal("etape_modifiee", `Courrier hôtel écarté : ${DESK_KIND_WORDS[kind]}.`);
       return NextResponse.json({ ok: true });
     }
     if (action === "restore") {
       await restoreHotelRequest(admin, id, itemId, kind);
+      await journal("etape_modifiee", `Courrier hôtel remis en attente : ${DESK_KIND_WORDS[kind]}.`);
       return NextResponse.json({ ok: true });
     }
     if (action === "issue-card") {
       if (kind !== "precheckin") return jsonError("Action incomplète", 400);
       const card = await issueHotelCheckinCard(admin, id, itemId);
+      await journal("carte_emise", `Carte Pliant d’enregistrement émise pour l’hôtel${card.last4 ? ` •••• ${card.last4}` : ""}.`, {
+        cardLast4: card.last4,
+      });
       return NextResponse.json({ ok: true, last4: card.last4, holder: card.holder });
     }
     const letter = {
@@ -209,10 +257,14 @@ export async function POST(request: Request, ctx: Ctx) {
     };
     if (action === "save") {
       await saveHotelRequest(admin, letter);
+      await journal("etape_modifiee", `Courrier hôtel enregistré en brouillon : ${DESK_KIND_WORDS[kind]}.`);
       return NextResponse.json({ ok: true });
     }
     if (action === "send") {
       await sendHotelRequest(admin, { ...letter, origin: appOrigin(request), staffId: auth.staff.id });
+      await journal("email_envoye", `E-mail envoyé à l’hôtel : ${DESK_KIND_WORDS[kind]}${recipientsWords(letter.recipients)}.`, {
+        diff: { objet: letter.subject.slice(0, 120) },
+      });
       return NextResponse.json({ ok: true });
     }
   } catch (error) {

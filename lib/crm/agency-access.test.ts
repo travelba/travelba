@@ -26,7 +26,7 @@ import {
   journalRowHash,
   maskJournalTree,
 } from "./agency-journal";
-import { agencyGateDecision, classifyAgencyRoute, dossierRouteSummary, samplePathForRouteFile } from "./agency-routes";
+import { agencyGateDecision, bookingIdFromPath, classifyAgencyRoute, dossierRouteSummary, samplePathForRouteFile } from "./agency-routes";
 import { adminNavGroups } from "./admin-nav";
 import { loginErrorMessage } from "./staff-login";
 import { isFreshAuthUser, isGoogleUser } from "./google-staff";
@@ -252,6 +252,61 @@ test("la garde : l’agent d’aujourd’hui passe, les rôles sans droit sont r
   assert.equal(dossierRouteSummary("POST", `/api/admin/bookings/${id}/extras`)?.startsWith("Options du séjour"), true);
   assert.equal(classifyAgencyRoute("PATCH", `/api/admin/bookings/${id}/items/abc`)?.summary, "Étape du carnet modifiée.");
   assert.equal(classifyAgencyRoute("POST", "/api/admin/bookings")?.summary, "Dossier créé.");
+});
+
+test("la garde pose l’étiquette métier et le dossier ; les routes à montant écrivent elles-mêmes leur ligne", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  assert.equal(classifyAgencyRoute("POST", "/api/admin/bookings")?.kind, "dossier_cree");
+  assert.equal(classifyAgencyRoute("DELETE", `/api/admin/bookings/${id}`)?.kind, "dossier_archive");
+  assert.equal(classifyAgencyRoute("POST", `/api/admin/bookings/${id}/items`)?.kind, "etape_ajoutee");
+  assert.equal(classifyAgencyRoute("DELETE", `/api/admin/bookings/${id}/items/abc`)?.kind, "etape_retiree");
+  assert.equal(classifyAgencyRoute("POST", `/api/admin/bookings/${id}/documents`)?.kind, "piece_deposee");
+  assert.equal(classifyAgencyRoute("POST", `/api/admin/bookings/${id}/partage`)?.kind, "message_envoye");
+  assert.equal(classifyAgencyRoute("POST", `/api/admin/clients/${id}/releve`)?.summary, "Relevé de compte envoyé au client.");
+  assert.equal(classifyAgencyRoute("POST", "/api/admin/whatsapp")?.kind, "whatsapp_envoye");
+  assert.equal(classifyAgencyRoute("POST", "/api/admin/clients")?.kind, "client_cree");
+  assert.equal(classifyAgencyRoute("PATCH", `/api/admin/clients/${id}`)?.kind, "client_modifie");
+  assert.equal(classifyAgencyRoute("DELETE", `/api/admin/clients/${id}`)?.kind, "client_archive");
+  assert.equal(classifyAgencyRoute("POST", "/api/auth/known-password")?.kind, "connexion");
+  assert.equal(bookingIdFromPath(`/api/admin/bookings/${id}/cards`), id);
+  assert.equal(bookingIdFromPath(`/api/admin/clients/${id}`), null);
+  // Options, cartes, bureau hôtel, Pliant, Stripe, virement manuel : la route écrit la ligne avec le montant.
+  for (const [method, path] of [
+    ["POST", `/api/admin/bookings/${id}/extras`],
+    ["POST", `/api/admin/bookings/${id}/cards`],
+    ["POST", `/api/admin/bookings/${id}/hotel-desk`],
+    ["POST", "/api/admin/pliant/cards"],
+    ["POST", `/api/admin/pliant/${id}`],
+    ["POST", `/api/admin/stripe/${id}`],
+    ["POST", `/api/admin/revolut/${id}`],
+    ["POST", "/api/admin/transactions"],
+  ] as const) {
+    const classified = classifyAgencyRoute(method, path);
+    assert.equal(classified?.journal, false, `${method} ${path}`);
+    assert.ok(classified?.kind, `${method} ${path} sans étiquette`);
+  }
+  // Les autres mutations gardent la ligne de la garde, avec une étiquette.
+  assert.equal(classifyAgencyRoute("PATCH", `/api/admin/bookings/${id}/items/abc`)?.journal, true);
+  assert.equal(classifyAgencyRoute("POST", `/api/admin/clients/${id}/hotels/sejour`)?.journal, true);
+  const extras = readFileSync(join(process.cwd(), "app/api/admin/bookings/[id]/extras/route.ts"), "utf8");
+  assert.match(extras, /option_posee/);
+  assert.match(extras, /option_levee/);
+  assert.match(extras, /option_annulee/);
+  const cards = readFileSync(join(process.cwd(), "app/api/admin/bookings/[id]/cards/route.ts"), "utf8");
+  for (const kind of ["carte_emise", "carte_ouverte", "carte_bloquee", "carte_debloquee", "carte_cloturee"]) assert.match(cards, new RegExp(kind));
+  assert.doesNotMatch(cards, /pan\b|cvv|cvc/i);
+  const desk = readFileSync(join(process.cwd(), "app/api/admin/bookings/[id]/hotel-desk/route.ts"), "utf8");
+  assert.match(desk, /email_envoye/);
+  const revolut = readFileSync(join(process.cwd(), "app/api/admin/revolut/[id]/route.ts"), "utf8");
+  assert.match(revolut, /paiement_rapproche/);
+  assert.match(revolut, /fournisseur_paye/);
+  const stripe = readFileSync(join(process.cwd(), "app/api/admin/stripe/[id]/route.ts"), "utf8");
+  assert.match(stripe, /paiement_rapproche/);
+  const transactions = readFileSync(join(process.cwd(), "app/api/admin/transactions/route.ts"), "utf8");
+  assert.match(transactions, /paiement_recu/);
+  const responsable = readFileSync(join(process.cwd(), "app/api/admin/bookings/[id]/responsable/route.ts"), "utf8");
+  assert.match(responsable, /dossier_pris/);
+  assert.match(responsable, /responsable_attribue/);
 });
 
 test("chaque mutation admin est classée ; elle est journalisée par la garde ou par la route", () => {

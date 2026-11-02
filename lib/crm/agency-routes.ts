@@ -5,6 +5,7 @@
 
 import type { Permission, StaffRole } from "./agency-access";
 import { auditSummary, type JournalAction, type JournalEntity } from "./agency-journal";
+import type { JournalKind } from "./agency-journal-kinds";
 
 export type AgencyRouteClass = {
   /** public : mot de passe oublié, sans session. partner : Little Emperors, partenaire compris. */
@@ -16,6 +17,8 @@ export type AgencyRouteClass = {
   journal: boolean;
   sensitive: "passport_reveal" | "card_reveal" | "export" | "payment" | "failed_login" | null;
   summary: string;
+  /** Étiquette métier de la ligne écrite par la garde. Null : rangée d’après l’action et l’entité. */
+  kind: JournalKind | null;
 };
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -54,6 +57,7 @@ function classify(input: {
   sensitive?: AgencyRouteClass["sensitive"];
   /** Phrase lisible dans l’Historique. Sinon « Action · Entité ». */
   summary?: string;
+  kind?: JournalKind | null;
 }): AgencyRouteClass {
   return {
     audience: input.audience ?? "staff",
@@ -63,40 +67,68 @@ function classify(input: {
     journal: input.journal,
     sensitive: input.sensitive ?? null,
     summary: input.summary || auditSummary(input.action, input.entity),
+    kind: input.kind ?? null,
   };
+}
+
+/** Phrase et étiquette du journal pour une route de dossier connue. Null : résumé générique. */
+export function dossierRouteLine(method: string, path: string): { summary: string; kind: JournalKind } | null {
+  const upper = method.toUpperCase();
+  const tail = path.replace(new RegExp(`^/api/admin/bookings/${UUID}`, "i"), "");
+  if (tail === "" && upper === "PATCH") return { summary: "Dossier modifié (en-tête, visibilité ou réglages).", kind: "dossier_modifie" };
+  if (tail === "" && upper === "DELETE") return { summary: "Dossier archivé.", kind: "dossier_archive" };
+  if (tail === "/items" || tail.startsWith("/items/")) {
+    if (upper === "DELETE") return { summary: "Étape retirée du carnet.", kind: "etape_retiree" };
+    if (upper === "POST") return { summary: "Étape ajoutée au carnet.", kind: "etape_ajoutee" };
+    return { summary: "Étape du carnet modifiée.", kind: "etape_modifiee" };
+  }
+  if (tail.startsWith("/travelers")) {
+    return upper === "DELETE"
+      ? { summary: "Voyageur retiré.", kind: "voyageurs_modifies" }
+      : { summary: "Voyageurs du dossier modifiés.", kind: "voyageurs_modifies" };
+  }
+  if (tail.startsWith("/documents")) {
+    return upper === "DELETE"
+      ? { summary: "Pièce retirée du dossier.", kind: "piece_retiree" }
+      : { summary: "Pièce déposée sur le dossier.", kind: "piece_deposee" };
+  }
+  if (tail.startsWith("/cartes-embarquement")) return { summary: "Cartes d’embarquement.", kind: "piece_deposee" };
+  if (tail.startsWith("/pliant")) return { summary: "Carte Pliant du dossier.", kind: "carte_plafond" };
+  if (tail.startsWith("/cards")) return { summary: "Carte Pliant du dossier : émission, blocage ou ouverture.", kind: "carte_plafond" };
+  if (tail.startsWith("/extras")) return { summary: "Options du séjour modifiées (chauffeur, accueil, enregistrement, visa).", kind: "option_posee" };
+  if (tail.startsWith("/enregistrement")) return { summary: "Enregistrement en ligne mis à jour.", kind: "etape_modifiee" };
+  if (tail.startsWith("/hotel-arrival") || tail.startsWith("/hotel-desk")) return { summary: "Courrier ou arrivée hôtel.", kind: "email_envoye" };
+  if (tail.startsWith("/partage")) return { summary: "Carnet partagé.", kind: "message_envoye" };
+  if (tail.startsWith("/mb3m")) return { summary: "Facture MB3M.", kind: "dossier_modifie" };
+  if (tail.startsWith("/billing-company")) return { summary: "Société facturée modifiée.", kind: "dossier_modifie" };
+  if (tail.startsWith("/cover")) return { summary: "Couverture du séjour modifiée.", kind: "dossier_modifie" };
+  if (tail.startsWith("/duplicate")) return { summary: "Dossier dupliqué.", kind: "dossier_duplique" };
+  if (tail.startsWith("/restore")) return { summary: "Dossier restauré.", kind: "dossier_restaure" };
+  if (tail.startsWith("/calendrier")) return { summary: "Calendrier envoyé.", kind: "message_envoye" };
+  if (/^\/(visa|visas|esta|eta-il|uk-eta)/.test(tail)) return { summary: "Formalité du dossier.", kind: "formalite" };
+  if (tail.startsWith("/restaurants")) return { summary: "Restaurants du séjour.", kind: "etape_modifiee" };
+  if (tail.startsWith("/chauffeur-quote")) return { summary: "Devis chauffeur.", kind: "option_posee" };
+  if (tail.startsWith("/vu")) return { summary: "Dossier marqué vu.", kind: "dossier_modifie" };
+  return null;
 }
 
 /** Phrase du journal pour une route de dossier connue. Null : résumé générique. */
 export function dossierRouteSummary(method: string, path: string): string | null {
+  return dossierRouteLine(method, path)?.summary ?? null;
+}
+
+/** Dossier d’un chemin `/api/admin/bookings/{id}/…`, quelle que soit l’entité de la ligne. */
+export function bookingIdFromPath(path: string) {
+  const booking = path.match(new RegExp(`/bookings/(${UUID})`, "i"));
+  return booking ? booking[1] : null;
+}
+
+/** Routes qui écrivent elles-mêmes leur ligne métier (montant, carte, option) : la garde se tait. */
+function selfJournaledDossierRoute(method: string, path: string) {
   const upper = method.toUpperCase();
   const tail = path.replace(new RegExp(`^/api/admin/bookings/${UUID}`, "i"), "");
-  if (tail === "" && upper === "PATCH") return "Dossier modifié (en-tête, visibilité ou réglages).";
-  if (tail === "" && upper === "DELETE") return "Dossier archivé.";
-  if (tail === "/items" || tail.startsWith("/items/")) {
-    if (upper === "DELETE") return "Étape retirée du carnet.";
-    if (upper === "POST") return "Étape ajoutée au carnet.";
-    return "Étape du carnet modifiée.";
-  }
-  if (tail.startsWith("/travelers")) return upper === "DELETE" ? "Voyageur retiré." : "Voyageurs du dossier modifiés.";
-  if (tail.startsWith("/documents")) return upper === "DELETE" ? "Pièce retirée du dossier." : "Pièce déposée sur le dossier.";
-  if (tail.startsWith("/cartes-embarquement")) return "Cartes d’embarquement.";
-  if (tail.startsWith("/pliant")) return "Carte Pliant du dossier.";
-  if (tail.startsWith("/cards")) return "Carte Pliant du dossier : émission, blocage ou ouverture.";
-  if (tail.startsWith("/extras")) return "Options du séjour modifiées (chauffeur, accueil, enregistrement, visa).";
-  if (tail.startsWith("/enregistrement")) return "Enregistrement en ligne mis à jour.";
-  if (tail.startsWith("/hotel-arrival") || tail.startsWith("/hotel-desk")) return "Courrier ou arrivée hôtel.";
-  if (tail.startsWith("/partage")) return "Carnet partagé.";
-  if (tail.startsWith("/mb3m")) return "Facture MB3M.";
-  if (tail.startsWith("/billing-company")) return "Société facturée modifiée.";
-  if (tail.startsWith("/cover")) return "Couverture du séjour modifiée.";
-  if (tail.startsWith("/duplicate")) return "Dossier dupliqué.";
-  if (tail.startsWith("/restore")) return "Dossier restauré.";
-  if (tail.startsWith("/calendrier")) return "Calendrier envoyé.";
-  if (/^\/(visa|visas|esta|eta-il|uk-eta)/.test(tail)) return "Formalité du dossier.";
-  if (tail.startsWith("/restaurants")) return "Restaurants du séjour.";
-  if (tail.startsWith("/chauffeur-quote")) return "Devis chauffeur.";
-  if (tail.startsWith("/vu")) return "Dossier marqué vu.";
-  return null;
+  if (upper !== "POST") return false;
+  return tail === "/cards" || tail === "/extras" || tail === "/hotel-desk";
 }
 
 /** Null hors de l’agence. Toute route `/api/admin` reçoit une classe. */
@@ -111,6 +143,7 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       entity: "session",
       journal: true,
       sensitive: "failed_login",
+      kind: "connexion_refusee",
     });
   }
   if (path === "/api/auth/known-password") {
@@ -120,6 +153,7 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       action: "login",
       entity: "session",
       journal: true,
+      kind: "connexion",
     });
   }
   if (!path.startsWith("/api/admin")) return null;
@@ -138,6 +172,8 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       action,
       entity: "dossier",
       journal: mutation,
+      summary: mutation ? "Réservation Little Emperors traitée." : undefined,
+      kind: mutation ? "dossier_modifie" : null,
     });
   }
 
@@ -154,6 +190,7 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       entity: path.endsWith("/droits") ? "setting" : "user",
       journal: mutation && !selfJournaled,
       summary: upper === "POST" && new RegExp(`^/api/admin/equipe/${UUID}$`, "i").test(path) ? "Lien d’accès renvoyé." : upper === "POST" ? "Collègue ajouté." : upper === "DELETE" ? "Collègue retiré." : undefined,
+      kind: path.endsWith("/droits") ? "reglage_modifie" : "equipe_modifiee",
     });
   }
 
@@ -170,6 +207,7 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       entity: "setting",
       journal: csv || mutation,
       sensitive: csv ? "export" : null,
+      kind: csv ? "export" : "reglage_modifie",
     });
   }
 
@@ -181,16 +219,31 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       entity: "document",
       journal: false,
       sensitive: "passport_reveal",
+      kind: "passeport_ouvert",
     });
   }
 
   if (path === "/api/admin/pliant/cards" && mutation) {
+    // La route écrit la ligne avec le plafond et les quatre chiffres : émission, plafond, blocage.
     return classify({
       permission: "create_pliant_card",
       action: "create",
       entity: "card",
-      journal: true,
+      journal: false,
       summary: "Carte Pliant émise ou plafond modifié.",
+      kind: "carte_emise",
+    });
+  }
+
+  if (/^\/api\/admin\/pliant\/[^/]+$/.test(path) && mutation) {
+    // La route écrit le rapprochement d’une dépense Pliant avec le montant et le dossier.
+    return classify({
+      permission: "pay_supplier",
+      action: "update",
+      entity: "finance",
+      journal: false,
+      sensitive: "payment",
+      kind: "fournisseur_paye",
     });
   }
 
@@ -201,10 +254,11 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       entity: "card",
       journal: mutation,
       sensitive: mutation ? "payment" : null,
+      kind: mutation ? "carte_plafond" : null,
     });
   }
 
-  if (/\/revolut\/[^/]+$/.test(path) && mutation) {
+  if (/\/(revolut|stripe)\/[^/]+$/.test(path) && mutation) {
     // La route journalise le rapprochement avec le montant : pas de seconde ligne.
     return classify({
       permission: "edit_finances",
@@ -212,6 +266,19 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       entity: "finance",
       journal: false,
       sensitive: "payment",
+      kind: "paiement_rapproche",
+    });
+  }
+
+  if (path === "/api/admin/transactions" && upper === "POST") {
+    // La route écrit « Virement reçu » avec le montant, le client et le dossier.
+    return classify({
+      permission: "edit_finances",
+      action: "create",
+      entity: "finance",
+      journal: false,
+      sensitive: "payment",
+      kind: "paiement_recu",
     });
   }
 
@@ -221,41 +288,62 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       action,
       entity: "finance",
       journal: mutation,
+      summary: mutation ? (/\/mb3m/.test(path) ? "Facture MB3M." : "Écriture au grand livre.") : undefined,
+      kind: mutation ? "paiement_recu" : null,
     });
   }
 
   if (/\/(whatsapp|partage|invite|releve)/.test(path) && mutation) {
-    return classify({ permission: "message_client", action: "send", entity: "message", journal: true });
+    const line = /\/whatsapp/.test(path)
+      ? { summary: "Message WhatsApp envoyé au client.", kind: "whatsapp_envoye" as const }
+      : /\/partage/.test(path)
+        ? { summary: "Carnet partagé avec le client.", kind: "message_envoye" as const }
+        : /\/invite/.test(path)
+          ? { summary: "Invitation envoyée au client.", kind: "message_envoye" as const }
+          : { summary: "Relevé de compte envoyé au client.", kind: "message_envoye" as const };
+    return classify({ permission: "message_client", action: "send", entity: "message", journal: true, ...line });
   }
 
   if (new RegExp(`^/api/admin/bookings/${UUID}/responsable$`, "i").test(path) && mutation) {
     // « Je prends ce dossier » est ouvert à qui modifie les dossiers ; la route tranche et écrit la ligne.
-    return classify({ permission: "edit_dossiers", action: "update", entity: "dossier", journal: false });
+    return classify({ permission: "edit_dossiers", action: "update", entity: "dossier", journal: false, kind: "responsable_attribue" });
   }
 
   if (new RegExp(`^/api/admin/bookings/${UUID}$`, "i").test(path) && upper === "DELETE") {
-    return classify({ permission: "delete_archive", action: "delete", entity: "dossier", journal: true, summary: "Dossier archivé." });
+    return classify({ permission: "delete_archive", action: "delete", entity: "dossier", journal: true, summary: "Dossier archivé.", kind: "dossier_archive" });
   }
 
   if (/^\/api\/admin\/bookings(\/from-ingest)?$/.test(path) && upper === "POST") {
-    return classify({ permission: "create_dossiers", action: "create", entity: "dossier", journal: true, summary: "Dossier créé." });
+    return classify({ permission: "create_dossiers", action: "create", entity: "dossier", journal: true, summary: "Dossier créé.", kind: "dossier_cree" });
   }
 
   if (/\/(concierge|outils)/.test(path) && mutation) {
-    return classify({ permission: "change_settings", action, entity: "setting", journal: true });
+    return classify({ permission: "change_settings", action, entity: "setting", journal: true, kind: "reglage_modifie" });
+  }
+
+  if (path === "/api/admin/clients" && upper === "POST") {
+    return classify({ permission: "edit_dossiers", action: "create", entity: "client", journal: true, summary: "Client créé.", kind: "client_cree" });
   }
 
   if (/\/clients\/[^/]+$/.test(path) && upper === "DELETE") {
-    return classify({ permission: "delete_archive", action: "delete", entity: "client", journal: true });
+    return classify({ permission: "delete_archive", action: "delete", entity: "client", journal: true, summary: "Client archivé.", kind: "client_archive" });
   }
 
   if (mutation) {
+    const line = dossierRouteLine(upper, path);
+    const clientLine =
+      entity === "client"
+        ? /\/hotels\//.test(path)
+          ? { summary: "Séjour hôtel direct : geste de l’agence.", kind: "dossier_modifie" as const }
+          : { summary: "Fiche client modifiée.", kind: "client_modifie" as const }
+        : null;
     return classify({
       permission: "edit_dossiers",
       action,
       entity,
-      journal: true,
-      summary: dossierRouteSummary(upper, path) || undefined,
+      journal: !selfJournaledDossierRoute(upper, path),
+      summary: line?.summary || clientLine?.summary || undefined,
+      kind: line?.kind ?? clientLine?.kind ?? null,
     });
   }
 

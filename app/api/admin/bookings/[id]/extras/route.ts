@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import type { JournalKind } from "@/lib/crm/agency-journal-kinds";
 import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import {
@@ -13,6 +15,43 @@ import {
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+const EXTRA_WORDS: Record<string, string> = {
+  chauffeur: "transfert chauffeur",
+  greeter: "accueil VIP Airport",
+  checkin: "enregistrement en ligne",
+  visa: "formalité visa",
+};
+
+const LEG_WORDS: Record<string, string> = { departure: "au départ", arrival: "à l’arrivée" };
+
+/** « transfert chauffeur (aller) » : ce que l’Historique dit de l’option. */
+function extraWords(extra: { kind: string; leg?: string | null }) {
+  const base = EXTRA_WORDS[extra.kind] || extra.kind;
+  const leg = extra.leg ? LEG_WORDS[extra.leg] || extra.leg : null;
+  return leg ? `${base} ${leg}` : base;
+}
+
+/** Une ligne d’Historique par geste sur une option : posée, levée, annulée, adresse modifiée. */
+async function journalExtra(input: {
+  staffId: string;
+  bookingId: string;
+  kind: JournalKind;
+  summary: string;
+  diff?: Record<string, unknown>;
+}) {
+  await recordAgencyJournal({
+    staffId: input.staffId,
+    action: input.kind === "option_annulee" ? "delete" : input.kind === "option_posee" ? "create" : "update",
+    entityType: "dossier",
+    entityId: input.bookingId,
+    summary: input.summary,
+    diff: input.diff,
+    kind: input.kind,
+    bookingId: input.bookingId,
+    path: `/api/admin/bookings/${input.bookingId}/extras`,
+  });
+}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
@@ -44,6 +83,13 @@ export async function POST(request: Request, ctx: Ctx) {
         place: extra.place,
         moment: extra.moment,
       });
+      await journalExtra({
+        staffId: auth.staff.id,
+        bookingId: id,
+        kind: "option_annulee",
+        summary: `Option annulée : ${extraWords(extra)}.`,
+        diff: { option: { avant: "posée", apres: "annulée" } },
+      });
       return NextResponse.json(cancelled);
     }
     if (body?.addresses === true) {
@@ -58,6 +104,12 @@ export async function POST(request: Request, ctx: Ctx) {
         departAddress: extra.depart || "",
         arriveAddress: extra.arrive || "",
       });
+      await journalExtra({
+        staffId: auth.staff.id,
+        bookingId: id,
+        kind: "etape_modifiee",
+        summary: `Adresses du ${extraWords(extra)} modifiées.`,
+      });
       return NextResponse.json(updated);
     }
     if (body?.confirm === true) {
@@ -65,6 +117,13 @@ export async function POST(request: Request, ctx: Ctx) {
         const confirmed = await confirmCheckinExtra(auth.supabase, {
           booking: booking as CrmBooking,
           items: list,
+        });
+        await journalExtra({
+          staffId: auth.staff.id,
+          bookingId: id,
+          kind: "option_levee",
+          summary: `Option levée : ${extraWords(extra)} confirmé.`,
+          diff: { option: { avant: "à confirmer", apres: "confirmée" } },
         });
         return NextResponse.json(confirmed);
       }
@@ -79,6 +138,13 @@ export async function POST(request: Request, ctx: Ctx) {
         place: extra.place,
         moment: extra.moment,
         holder: (holder as CrmCustomer | null) || null,
+      });
+      await journalExtra({
+        staffId: auth.staff.id,
+        bookingId: id,
+        kind: "option_levee",
+        summary: `Option levée : ${extraWords(extra)} confirmé.`,
+        diff: { option: { avant: "à confirmer", apres: "confirmée" } },
       });
       return NextResponse.json(confirmed);
     }
@@ -102,6 +168,13 @@ export async function POST(request: Request, ctx: Ctx) {
       rateId: extra.rateId,
       vehicle: extra.vehicle,
       enforceWindow: false,
+    });
+    await journalExtra({
+      staffId: auth.staff.id,
+      bookingId: id,
+      kind: "option_posee",
+      summary: `Option posée : ${extraWords(extra)}.`,
+      diff: { option: { avant: "aucune", apres: "posée, à confirmer" } },
     });
     return NextResponse.json(created);
   } catch (err) {

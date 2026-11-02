@@ -46,6 +46,7 @@ export async function POST(request: Request, ctx: Ctx) {
         entityId: stayId,
         summary: "Remboursement du client lancé (séjour hôtel direct).",
         sensitive: "refund",
+        kind: "remboursement",
         path: `/api/admin/clients/${id}/hotels/sejour`,
       });
     }
