@@ -8,6 +8,7 @@ import {
   mb3mAgencyNames,
   mb3mBlockedOnProduction,
   mb3mConfigured,
+  mb3mDefaultProviderId,
   mb3mFaultDetail,
   mb3mOperationMessage,
   mb3mFindPersons,
@@ -34,6 +35,8 @@ const previous = {
   prodUser: process.env.MB3M_PROD_API_USER,
   prodPassword: process.env.MB3M_PROD_API_PASSWORD,
   prodActivity: process.env.MB3M_PROD_ACTIVITY_ID,
+  provider: process.env.MB3M_PROVIDER_ID,
+  prodProvider: process.env.MB3M_PROD_PROVIDER_ID,
   vercel: process.env.VERCEL_ENV,
 };
 
@@ -44,6 +47,8 @@ afterEach(() => {
   restore("MB3M_PROD_API_USER", previous.prodUser);
   restore("MB3M_PROD_API_PASSWORD", previous.prodPassword);
   restore("MB3M_PROD_ACTIVITY_ID", previous.prodActivity);
+  restore("MB3M_PROVIDER_ID", previous.provider);
+  restore("MB3M_PROD_PROVIDER_ID", previous.prodProvider);
   restore("VERCEL_ENV", previous.vercel);
 });
 
@@ -54,6 +59,8 @@ function restore(name: string, value: string | undefined) {
 
 function arm() {
   delete process.env.VERCEL_ENV;
+  delete process.env.MB3M_PROVIDER_ID;
+  delete process.env.MB3M_PROD_PROVIDER_ID;
   process.env.MB3M_API_USER = "agent@partner";
   process.env.MB3M_API_PASSWORD = "secret-value";
 }
@@ -188,6 +195,11 @@ describe("client MB3M Partners", () => {
       }
     );
     assert.ok(invoiceBody.includes("<Invoice><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
+    assert.ok(
+      invoiceBody.includes(
+        "<NetPriceUnit>100</NetPriceUnit><ProviderId>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</ProviderId><Quantity>1</Quantity>"
+      )
+    );
   });
 
   it("crée une fiche et lit l’identifiant renvoyé", async () => {
@@ -336,6 +348,43 @@ describe("client MB3M Partners", () => {
     assert.equal(flight.includes("<MarginUnit>"), false);
     assert.equal(flight.includes("<Note>"), false);
     assert.ok(flight.includes(`<ActivityId>2</ActivityId>${commissionTags(0.01)}<Label>Vol</Label>`), flight);
+  });
+
+  it("pose un ProviderId sur chaque ligne, le défaut d’environnement avant l’agence", () => {
+    const provider = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
+    const supplier = "11111111-2222-4333-8444-555555555555";
+    delete process.env.VERCEL_ENV;
+    delete process.env.MB3M_PROVIDER_ID;
+    const bare = linesXml("InvoiceLine", [{ label: "Hôtel", quantity: 1, netPriceUnit: 81, netPriceTotal: 81, activityId: 7 }]);
+    assert.equal(bare.includes("<ProviderId>"), false);
+    const fromAgency = linesXml(
+      "InvoiceLine",
+      [
+        { label: "Frais d’agence", quantity: 1, netPriceUnit: 0.01, netPriceTotal: 0.01, activityId: 22 },
+        { label: "Vol", quantity: 1, netPriceUnit: 0.01, netPriceTotal: 0.01, activityId: 2, note: "Fournisseur : AIR FRANCE" },
+      ],
+      provider
+    );
+    assert.equal(fromAgency.match(/<ProviderId>/g)?.length, 2);
+    assert.ok(fromAgency.includes(`<NetPriceUnit>0.01</NetPriceUnit><ProviderId>${provider}</ProviderId><Quantity>1</Quantity>`));
+    assert.ok(
+      fromAgency.includes(`<Note>Fournisseur : AIR FRANCE</Note><ProviderId>${provider}</ProviderId><Quantity>1</Quantity>`)
+    );
+    process.env.MB3M_PROVIDER_ID = supplier;
+    assert.equal(mb3mDefaultProviderId(), supplier);
+    const fromEnv = linesXml(
+      "InvoiceLine",
+      [{ label: "Hôtel", quantity: 1, netPriceUnit: 81, netPriceTotal: 81, activityId: 7, providerId: provider }],
+      "22222222-2222-4222-8222-222222222222"
+    );
+    assert.ok(fromEnv.includes(`<ProviderId>${provider}</ProviderId>`));
+    assert.equal(fromEnv.includes(supplier), false);
+    process.env.VERCEL_ENV = "preview";
+    process.env.MB3M_PROD_PROVIDER_ID = provider;
+    assert.equal(mb3mDefaultProviderId(), supplier);
+    process.env.VERCEL_ENV = "production";
+    delete process.env.MB3M_PROVIDER_ID;
+    assert.equal(mb3mDefaultProviderId(), provider);
   });
 
   it("renseigne CommissionTotal sur une billetterie, et sur l’avoir, dans l’ordre du schéma", () => {
