@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/crm/icons";
 import { addIsoDays } from "@/lib/crm/dates";
-import type { ClientActivityGroup, ClientActivityRow } from "@/lib/crm/client-activity-feed";
+import { filterHotelActivityFeed, type ClientActivityGroup, type ClientActivityRow } from "@/lib/crm/client-activity-feed";
 
 /** Connexions et visites de l’espace client, sur le tableau de bord agence. */
 export function ClientActivity({
@@ -24,9 +24,11 @@ export function ClientActivity({
     Object.fromEntries(initialOpen.map((id) => [id, true]))
   );
   const [expanded, setExpanded] = useState(!collapsed);
+  const [filtre, setFiltre] = useState<"tout" | "hotels">("tout");
+  const shown = filtre === "hotels" ? filterHotelActivityFeed(groups) : groups;
   const yesterday = addIsoDays(today, -1);
-  const recent = groups.filter((group) => group.day === today || group.day === yesterday);
-  const older = groups.filter((group) => group.day !== today && group.day !== yesterday);
+  const recent = shown.filter((group) => group.day === today || group.day === yesterday);
+  const older = shown.filter((group) => group.day !== today && group.day !== yesterday);
   const todayCount = recent.find((group) => group.day === today)?.rows.length || 0;
 
   return (
@@ -53,21 +55,51 @@ export function ClientActivity({
           </button>
         ) : null}
       </div>
-      <p className="mt-1 text-sm text-muted">Connexions et visites de l’espace client, aujourd’hui et hier.</p>
+      <p className="mt-1 text-sm text-muted">
+        {filtre === "hotels"
+          ? "Recherches et gestes dans Hôtels, aujourd’hui et hier."
+          : "Connexions et visites de l’espace client, aujourd’hui et hier."}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filtrer l’activité">
+        {(
+          [
+            ["tout", "Tout"],
+            ["hotels", "Recherches hôtels"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={filtre === key}
+            onClick={() => setFiltre(key)}
+            className={`min-h-11 rounded-full px-4 text-sm font-semibold ${
+              filtre === key
+                ? "bg-[var(--admin-navy)] text-white"
+                : "bg-white text-[var(--admin-navy)] ring-1 ring-[#e5e0d4]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <div id="activite-clients-detail" hidden={!expanded}>
         {recent.length ? (
           <div className="mt-3 overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
             <ActivityDays groups={recent} open={open} setOpen={setOpen} />
-            {older.length ? <OlderActivity groups={older} open={open} setOpen={setOpen} /> : null}
+            {older.length ? <OlderActivity groups={older} open={open} setOpen={setOpen} hotels={filtre === "hotels"} /> : null}
           </div>
         ) : (
           <>
             <div className="mt-3 rounded-2xl border border-[var(--admin-gold)]/30 bg-[#f8f4ed] px-5 py-8">
-              <p className="font-display text-base font-bold text-[var(--admin-navy)]">Aucune connexion</p>
-              <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">Aucune connexion aujourd’hui ni hier.</p>
+              <p className="font-display text-base font-bold text-[var(--admin-navy)]">
+                {filtre === "hotels" ? "Aucune recherche hôtel" : "Aucune connexion"}
+              </p>
+              <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">
+                {filtre === "hotels" ? "Aucune recherche hôtel aujourd’hui ni hier." : "Aucune connexion aujourd’hui ni hier."}
+              </p>
             </div>
-            <OlderActivity groups={older} open={open} setOpen={setOpen} bare />
+            <OlderActivity groups={older} open={open} setOpen={setOpen} bare hotels={filtre === "hotels"} />
           </>
         )}
       </div>
@@ -80,11 +112,13 @@ function OlderActivity({
   open,
   setOpen,
   bare = false,
+  hotels = false,
 }: {
   groups: ClientActivityGroup[];
   open: Record<string, boolean>;
   setOpen: (value: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>)) => void;
   bare?: boolean;
+  hotels?: boolean;
 }) {
   return (
     <details className={bare ? "group/more mt-3" : "group/more border-t border-[#e5e0d4]"}>
@@ -104,7 +138,9 @@ function OlderActivity({
           <ActivityDays groups={groups} open={open} setOpen={setOpen} />
         </div>
       ) : (
-        <p className="px-4 py-3 text-sm text-muted">Aucune connexion les jours précédents.</p>
+        <p className="px-4 py-3 text-sm text-muted">
+          {hotels ? "Aucune recherche hôtel les jours précédents." : "Aucune connexion les jours précédents."}
+        </p>
       )}
     </details>
   );

@@ -5,6 +5,7 @@ import { HotelSearch } from "@/components/account/HotelSearch";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { hotelBookingEnabled, hotelDirectLive, showHotelButton, showPlatinumScreen } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility, readPendingAccess } from "@/lib/crm/hotel-access-run";
+import { clientPathSummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 export default async function HotelsPage() {
   const { user } = await getSessionUser();
@@ -14,6 +15,13 @@ export default async function HotelsPage() {
   const enabled = hotelBookingEnabled(customer);
   const visibility = await readHotelButtonVisibility();
   if (!showHotelButton({ enabled, visibility })) redirect("/mon-compte");
+  await recordCustomerActivity({
+    customerId: customer.id,
+    authUserId: user.id,
+    action: "view",
+    summary: clientPathSummary("/mon-compte/hotels") || "A ouvert les hôtels",
+    path: "/mon-compte/hotels",
+  });
   if (showPlatinumScreen({ enabled, visibility })) {
     const pending = await readPendingAccess(customer.id);
     return <HotelPlatinum pending={Boolean(pending)} />;

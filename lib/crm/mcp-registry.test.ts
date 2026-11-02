@@ -99,6 +99,7 @@ const EXPECTED = [
   "comptabilite_sortie",
   "refuser_encaissement",
   "statut_formalite",
+  "recherches_hotels",
   "lancer_formalite",
 ];
 

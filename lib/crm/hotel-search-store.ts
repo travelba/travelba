@@ -110,7 +110,12 @@ export async function createHotelRequest(customerId: string, offerId: string, gu
     .eq("status", "pending")
     .maybeSingle();
   if (pending?.id) {
-    return { ok: true as const, message: "Demande envoyée. L’agence la valide avant tout paiement." };
+    return {
+      ok: true as const,
+      message: "Demande envoyée. L’agence la valide avant tout paiement.",
+      hotel: row.hotel_name,
+      room: row.room_label,
+    };
   }
   const { error: insertError } = await db.from("crm_hotel_search_requests").insert({
     customer_id: customerId,
@@ -134,7 +139,12 @@ export async function createHotelRequest(customerId: string, offerId: string, gu
     console.error("[hotels] demande", insertError.code ?? "?");
     return { ok: false as const, message: "La demande n’a pas pu être envoyée." };
   }
-  return { ok: true as const, message: "Demande envoyée. L’agence la valide avant tout paiement." };
+  return {
+    ok: true as const,
+    message: "Demande envoyée. L’agence la valide avant tout paiement.",
+    hotel: row.hotel_name,
+    room: row.room_label,
+  };
 }
 
 export type HotelRequestRow = {

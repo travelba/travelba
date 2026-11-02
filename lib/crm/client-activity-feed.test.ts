@@ -6,6 +6,7 @@ import { ClientActivity } from "../../components/admin/ClientActivity";
 import {
   buildClientActivityFeed,
   clientActivityDayLabel,
+  filterHotelActivityFeed,
   parisCalendarDay,
   parisClock,
   type ClientActivityBooking,
@@ -367,4 +368,53 @@ test("le tableau n’ouvre qu’aujourd’hui et hier, le reste se déplie", () 
   const foldAt = html.indexOf("Voir plus");
   assert.match(html.slice(foldAt), /Samedi 17 octobre/);
   assert.doesNotMatch(html.slice(0, foldAt), /Samedi 17 octobre/);
+  assert.match(html, /Recherches hôtels/);
+});
+
+test("le filtre Recherches hôtels ne garde que la rubrique, avec le nom dans la phrase", () => {
+  const groups = buildClientActivityFeed({
+    today: TODAY,
+    staffAuthIds: [],
+    customers: [CAMILLE],
+    bookings: [],
+    logins: [login({ id: "now", created_at: "2026-10-19T08:00:00.000Z" })],
+    activity: [
+      gesture({
+        id: "open-hotels",
+        created_at: "2026-10-19T08:05:00.000Z",
+        action: "view",
+        path: "/mon-compte/hotels",
+        summary: "A ouvert les hôtels",
+      }),
+      gesture({
+        id: "search",
+        created_at: "2026-10-19T08:06:00.000Z",
+        action: "hotel_search",
+        path: "/mon-compte/hotels",
+        summary: "A cherché Mykonos, 12–19 juil., 2 adultes",
+        detail: "14 hôtels · réel",
+      }),
+      gesture({
+        id: "home",
+        created_at: "2026-10-19T08:07:00.000Z",
+        summary: "A ouvert l’accueil",
+        path: "/mon-compte",
+      }),
+    ],
+  });
+  const hotel = filterHotelActivityFeed(groups);
+  assert.equal(hotel.length, 1);
+  assert.equal(hotel[0].rows.length, 1);
+  assert.equal(hotel[0].rows[0].href, "/admin/clients/client-1");
+  assert.equal(hotel[0].rows[0].meta, "2 gestes dans Hôtels");
+  assert.deepEqual(
+    hotel[0].rows[0].events.map((event) => event.text),
+    [
+      "Camille Morel a ouvert les hôtels",
+      "Camille Morel a cherché Mykonos, 12–19 juil., 2 adultes",
+    ]
+  );
+  assert.equal(hotel[0].rows[0].events[1].detail, "14 hôtels · réel");
+  assert.equal(JSON.stringify(hotel).includes("A ouvert l’accueil"), false);
+  assert.equal(JSON.stringify(hotel).includes("Connexion"), false);
 });

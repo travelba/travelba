@@ -84,6 +84,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Déposer les pièces, mettre à jour, refuser, créer un dossier | `traiter_email` — couvert |
 | Classer (ignorer), doublon, remettre, détacher, relancer un hôtel | hors API — la relance envoie un e-mail |
 | Journal (fiche ou agence) | `lire_journal` — ajouté. Pas d’export CSV |
+| Recherches Hôtels de l’espace client | `recherches_hotels` — ajouté. Client et dates. Résumé, heure, lien fiche. Pas de prix net ni de marge |
 | Membres et clés | `lister_membres`, `ajouter_membre`, `changer_role_membre`, `desactiver_membre`, `lister_cles_api`, `creer_cle_api`, `revoquer_cle_api` — couvert |
 | Rouvrir un accès coupé | `reactiver_membre` — ajouté |
 | Départ (réattribuer les dossiers), sessions, matrice des droits | hors API |

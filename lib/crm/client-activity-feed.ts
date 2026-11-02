@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stayMention } from "./customer-activity";
+import { hotelActivitySentence, isHotelClientActivity } from "./hotel-activity";
 import { loginMethodLabel } from "./customer-login";
 import { addIsoDays } from "./dates";
 import { stayToday } from "./stay-moment";
@@ -16,6 +17,8 @@ export type ClientActivityEvent = {
   time: string;
   text: string;
   detail: string | null;
+  action: string;
+  path: string | null;
 };
 
 export type ClientActivityDossier = {
@@ -55,6 +58,7 @@ export type ClientActivityEventRow = {
   action: string;
   summary: string;
   detail?: string | null;
+  path?: string | null;
   booking_id?: string | null;
   created_at: string;
 };
@@ -253,6 +257,10 @@ export function buildClientActivityFeed(input: {
         })
         .filter((row): row is ClientActivityDossier => Boolean(row))
         .sort((a, b) => a.label.localeCompare(b.label, "fr"));
+      const name = customerFullName({
+        first_name: customer.first_name || "",
+        last_name: customer.last_name || "",
+      });
       const events: ClientActivityEvent[] = [
         ...logins.map((login) => ({
           id: `login-${login.id}`,
@@ -260,26 +268,37 @@ export function buildClientActivityFeed(input: {
           time: parisClock(login.created_at),
           text: `Connexion · ${loginMethodLabel(login.method)}`,
           detail: null as string | null,
+          action: "login",
+          path: null as string | null,
         })),
-        ...activity.map((event) => ({
-          id: `act-${event.id}`,
-          at: event.created_at,
-          time: parisClock(event.created_at),
-          text: event.summary.replace(/\s+/g, " ").trim(),
-          detail: tidyDetail(event.detail),
-        })),
+        ...activity.map((event) => {
+          const summary = event.summary.replace(/\s+/g, " ").trim();
+          return {
+            id: `act-${event.id}`,
+            at: event.created_at,
+            time: parisClock(event.created_at),
+            text: isHotelClientActivity(event) ? hotelActivitySentence(name, summary) : summary,
+            detail: tidyDetail(event.detail),
+            action: event.action,
+            path: event.path || null,
+          };
+        }),
       ]
         .sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))
-        .map((event) => ({ id: event.id, time: event.time, text: event.text, detail: event.detail }));
+        .map((event) => ({
+          id: event.id,
+          time: event.time,
+          text: event.text,
+          detail: event.detail,
+          action: event.action,
+          path: event.path,
+        }));
 
       built.push({
         lastAt: last.created_at,
         row: {
           id: `${customerId}:${day}`,
-          name: customerFullName({
-            first_name: customer.first_name || "",
-            last_name: customer.last_name || "",
-          }),
+          name,
           href: `/admin/clients/${customerId}`,
           meta: rowMeta(parisClock(last.created_at), logins.length, activity.length),
           dossiers,
@@ -294,6 +313,25 @@ export function buildClientActivityFeed(input: {
   }
   groups.sort((a, b) => b.day.localeCompare(a.day));
   return groups;
+}
+
+/** Ne garde que les gestes de la rubrique Hôtels. Une ligne sans recherche disparaît. */
+export function filterHotelActivityFeed(groups: ClientActivityGroup[]): ClientActivityGroup[] {
+  const next: ClientActivityGroup[] = [];
+  for (const group of groups) {
+    const rows: ClientActivityRow[] = [];
+    for (const row of group.rows) {
+      const events = row.events.filter((event) => isHotelClientActivity(event));
+      if (!events.length) continue;
+      rows.push({
+        ...row,
+        meta: events.length === 1 ? "1 geste dans Hôtels" : `${events.length} gestes dans Hôtels`,
+        events,
+      });
+    }
+    if (rows.length) next.push({ ...group, rows });
+  }
+  return next;
 }
 
 function missingRelation(error: DbError) {
@@ -338,12 +376,25 @@ async function readLogins(supabase: SupabaseClient, since: string): Promise<Clie
 async function readActivity(supabase: SupabaseClient, since: string): Promise<ClientActivityEventRow[]> {
   const first = await supabase
     .from("crm_customer_activity")
-    .select("id, customer_id, auth_user_id, action, summary, detail, booking_id, created_at")
+    .select("id, customer_id, auth_user_id, action, summary, detail, path, booking_id, created_at")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(ACTIVITY_LIMIT);
   if (!first.error) return (first.data || []) as ClientActivityEventRow[];
   if (missingRelation(first.error)) return [];
+  if (missingColumn(first.error, "path")) {
+    const second = await supabase
+      .from("crm_customer_activity")
+      .select("id, customer_id, auth_user_id, action, summary, detail, booking_id, created_at")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(ACTIVITY_LIMIT);
+    if (second.error) {
+      console.error("[client-activity] lecture impossible", second.error.code || "");
+      return [];
+    }
+    return (second.data || []) as ClientActivityEventRow[];
+  }
   if (missingColumn(first.error, "detail")) {
     const second = await supabase
       .from("crm_customer_activity")

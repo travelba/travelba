@@ -8,6 +8,8 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
+import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
+import { HOTEL_RESULT_PAGE } from "@/lib/crm/hotel-activity";
 import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
 import {
   hotelSearchDraft,
@@ -271,6 +273,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
   const [clientFirst, setClientFirst] = useState<number | null>(null);
   const [needs, setNeeds] = useState<(keyof HotelPerks)[]>([]);
   const [sort, setSort] = useState<HotelSort>("prix");
+  const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
   const router = useRouter();
@@ -296,6 +299,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
 
   function openHotel(hotel: ClientHotel) {
     const token = tokenOf(hotel);
+    if (!hotel.hotelId) postHotelActivity({ kind: "view", hotel: hotel.name, city: hotel.city });
     setCatalog((current) => (current[token] === hotel ? current : { ...current, [token]: hotel }));
     setPending(token);
     router.push(`/mon-compte/hotels?${hotelJourneySearch(token, "hotel")}`);
@@ -394,6 +398,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
   }
 
   function pickPlace(item: PlaceSuggestion) {
+    postHotelActivity({ kind: "suggest", label: item.label, placeKind: item.kind });
     setDestination(item.label);
     setCity(item.kind === "hotel" ? item.detail : "");
     setTarget(item.id ? { kind: item.kind, id: item.id } : null);
@@ -441,6 +446,11 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
     setRooms(count > rooms.length ? [...rooms, { adults: 1, children: [] }] : rooms.slice(0, count));
   }
 
+  function applyFilters(next: (keyof HotelPerks)[]) {
+    setNeeds(next);
+    postHotelActivity({ kind: "filter", filters: next, destination });
+  }
+
   async function onSearch(override?: RecentStay) {
     const nextDestination = (override?.destination ?? destination).trim();
     const nextCity = override?.city ?? city;
@@ -449,19 +459,43 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
     const nextRooms = override?.rooms ?? rooms;
     const nextTarget = override ? override.target : target;
     const stayRooms = completeRooms(nextRooms);
+    const searchBody = {
+      destination: nextDestination,
+      city: nextCity,
+      checkIn: nextCheckIn,
+      checkOut: nextCheckOut,
+      rooms: stayRooms || nextRooms,
+      target: nextTarget,
+      filters: needs,
+    };
     if (nextDestination.length < 2) {
       setNote("Indiquez une destination ou un hôtel.");
       setPanel("where");
+      void fetch("/api/client/hotels/search", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(searchBody),
+      }).catch(() => {});
       return;
     }
     if (!nextCheckIn || !nextCheckOut) {
       setNote("Indiquez les dates du séjour.");
       setPanel("when");
+      void fetch("/api/client/hotels/search", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(searchBody),
+      }).catch(() => {});
       return;
     }
     if (!stayRooms) {
       setNote("Indiquez l’âge de chaque enfant.");
       setPanel("who");
+      void fetch("/api/client/hotels/search", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(searchBody),
+      }).catch(() => {});
       return;
     }
     if (override) {
@@ -476,6 +510,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
     setNote("");
     setSheet(false);
     setSearched(true);
+    setPage(1);
     setPending(null);
     if (hotelToken) router.replace("/mon-compte/hotels");
     setCommitted({ rooms: stayRooms });
@@ -511,7 +546,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
       const response = await fetch("/api/client/hotels/search", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ destination: nextDestination, city: nextCity, checkIn: nextCheckIn, checkOut: nextCheckOut, rooms: stayRooms, target: nextTarget }),
+        body: JSON.stringify(searchBody),
         signal: controller.signal,
       });
       if (!response.ok || !response.body) {
@@ -566,6 +601,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
   const nightLabel = nightCount > 0 ? `${nightCount} nuit${nightCount > 1 ? "s" : ""}` : "";
 
   const shown = presentHotels(hotels, sort, needs);
+  const visible = shown.slice(0, page * HOTEL_RESULT_PAGE);
   const hotelCount = shown.length;
   const canMap = hotels.some((hotel) => hotel.coords);
   const journeyQuery = useMemo(
@@ -839,10 +875,24 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
           </div>
         ) : null}
         {layout === "liste" || !canMap
-          ? shown.map((hotel, index) => (
+          ? visible.map((hotel, index) => (
               <HotelCard key={hotel.hotelKey} hotel={hotel} first={index === 0} onOpen={() => openHotel(hotel)} />
             ))
           : null}
+        {(layout === "liste" || !canMap) && shown.length > visible.length ? (
+          <button
+            type="button"
+            data-hotel-page="1"
+            className="h-btn-line h-press flex h-12 w-full items-center justify-center text-sm font-semibold h-ink"
+            onClick={() => {
+              const next = page + 1;
+              setPage(next);
+              postHotelActivity({ kind: "page", page: next, total: shown.length, destination });
+            }}
+          >
+            Voir la suite
+          </button>
+        ) : null}
         {searched && !searching && hotels.length === 0 && !note ? (
           <article className="h-recap">
             <h3 className="h-serif text-[1.35rem] font-semibold h-ink">Aucun hôtel pour ces dates</h3>
@@ -855,7 +905,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
         {searched && !searching && hotels.length > 0 && shown.length === 0 ? (
           <article className="h-recap">
             <p className="text-sm h-ink">Aucun hôtel pour ces critères.</p>
-            <button type="button" className="h-btn-line mt-3 text-sm font-semibold h-ink" onClick={() => setNeeds([])}>
+            <button type="button" className="h-btn-line mt-3 text-sm font-semibold h-ink" onClick={() => applyFilters([])}>
               Retirer les filtres
             </button>
           </article>
@@ -1081,7 +1131,9 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
                     aria-pressed={sort === key}
                     className={`h-recap flex w-full items-center justify-between text-left text-sm ${sort === key ? "h-on" : "h-ink"}`}
                     onClick={() => {
+                      if (key !== sort) postHotelActivity({ kind: "sort", sort: key, destination, count: shown.length });
                       setSort(key);
+                      setPage(1);
                       setTool("");
                     }}
                   >
@@ -1095,7 +1147,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
                   <p className="text-sm h-muted">
                     {needs.length ? `${needs.length} ${needs.length > 1 ? "filtres actifs" : "filtre actif"}` : "Aucun filtre"}
                   </p>
-                  <button type="button" className="text-sm font-semibold h-ink disabled:opacity-40" onClick={() => setNeeds([])} disabled={needs.length === 0}>
+                  <button type="button" className="text-sm font-semibold h-ink disabled:opacity-40" onClick={() => applyFilters([])} disabled={needs.length === 0}>
                     Tout effacer
                   </button>
                 </div>
@@ -1115,7 +1167,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
                               role="checkbox"
                               aria-checked={on}
                               className={`h-recap flex min-h-11 w-full items-center justify-between gap-3 text-left text-sm ${on ? "h-on" : "h-ink"}`}
-                              onClick={() => setNeeds((current) => (on ? current.filter((item) => item !== perk.key) : [...current, perk.key]))}
+                              onClick={() => applyFilters(on ? needs.filter((item) => item !== perk.key) : [...needs, perk.key])}
                             >
                               {perk.label}
                               <span
