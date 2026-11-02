@@ -98,6 +98,8 @@ const EXPECTED = [
   "creer_fiche_mb3m",
   "comptabilite_sortie",
   "refuser_encaissement",
+  "statut_formalite",
+  "lancer_formalite",
 ];
 
 const WRITE_TOOLS = [
@@ -168,6 +170,7 @@ const WRITE_TOOLS = [
   "creer_fiche_mb3m",
   "comptabilite_sortie",
   "refuser_encaissement",
+  "lancer_formalite",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
@@ -354,6 +357,14 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(mail?.description || "", /Aucune carte n’est créée ni modifiée/);
   assert.match(mail?.description || "", /sans e-mail/);
   assert.match(mail?.description || "", /Aucune invitation/);
+  const lancer = MCP_TOOLS.find((tool) => tool.name === "lancer_formalite");
+  assert.equal(lancer?.write, true);
+  assert.equal(lancer?.selfJournal, true);
+  assert.equal(lancer?.openWorld, undefined);
+  assert.match(lancer?.description || "", /confirmer/);
+  assert.match(lancer?.description || "", /remplissage du portail/);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "statut_formalite")?.write, undefined);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "statut_formalite")?.description || "", /qui a lancé/);
 });
 
 test("passport tools name the travelba-passeports namespace and stay off the general token", () => {

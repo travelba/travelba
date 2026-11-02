@@ -21,6 +21,7 @@ export async function openAcceptedVisa(
     companions: CrmCompanion[];
     answers?: Partial<EstaAnswers> | null;
     enforceWindow: boolean;
+    launchedBy?: { staffId: string | null; name: string } | null;
   }
 ) {
   const chosen = input.travelerIds.length
@@ -48,6 +49,10 @@ export async function openAcceptedVisa(
     traveler_ids: input.travelerIds,
   };
   if (input.answers && hasEstaAnswers(input.answers)) row.answers = input.answers;
+  if (input.launchedBy) {
+    row.launched_by = input.launchedBy.staffId;
+    row.launched_by_name = input.launchedBy.name.trim() || "l’agence";
+  }
   const { error } = await supabase.from("crm_visa_requests").upsert(row, { onConflict: "booking_id,country" });
   if (error) throw new Error(error.message);
 }

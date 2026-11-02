@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { VISA_EUR } from "./extras";
 import { VISA_OFFICIAL } from "./visa-fees";
 import {
@@ -25,7 +28,17 @@ import {
   phaseForSavedStep,
   readEstaAnswers,
   stepAfterPrepare,
+  clientVisaStepLabel,
+  confirmBlockMessage,
+  decideVisaLaunch,
+  estaAnswersFrom,
+  formalityName,
+  frenchPassportCount,
+  missingLaunchAnswers,
+  parseVisaCorridor,
   visaConfirmationCopy,
+  visaJourneyLines,
+  visaLaunchSummary,
   visaPriceOnCard,
   visaResetPatch,
   visibilityOnRequest,
@@ -182,6 +195,8 @@ test("recommencer remet le client sur la carte de départ", () => {
   assert.equal(fresh.step, "preparation");
   assert.equal(fresh.status, "en_cours");
   assert.deepEqual(fresh.traveler_ids, []);
+  assert.equal(fresh.launched_by, null);
+  assert.equal(fresh.launched_by_name, null);
   assert.equal(journeyStarted(fresh), false);
   assert.equal(canReturnToOffer(fresh), true);
   const again = acceptVisaDecision({
@@ -244,4 +259,162 @@ test("un second paiement échoué alerte, un second pays identique ne part pas",
     }),
     null
   );
+});
+
+const ESTA = {
+  usAddress: "hôtel",
+  employment: "agence",
+  countriesVisited: "France",
+  priorRefusal: "non",
+};
+
+test("un refus de formalité dit ce qui manque", () => {
+  assert.match(confirmBlockMessage("passeport français manquant") || "", /Passeport français manquant/);
+  assert.match(confirmBlockMessage("passeport français manquant") || "", /numéro/);
+  assert.match(
+    confirmBlockMessage("questionnaire ESTA incomplet", "US", { usAddress: "hôtel" }) || "",
+    /l’emploi/
+  );
+  assert.match(confirmBlockMessage("antécédent de refus manquant", "GB", {}) || "", /Royaume-Uni/);
+  assert.equal(confirmBlockMessage(null), null);
+  assert.deepEqual(missingLaunchAnswers("IL", null), []);
+  assert.deepEqual(missingLaunchAnswers("GB", { priorRefusal: "non" }), []);
+  assert.equal(frenchPassportCount([{ doc_type: "passport", issuing_country: "FR", number: "12AB" }]), 1);
+  assert.equal(frenchPassportCount([{ doc_type: "passport", issuing_country: "FR", number: "" }]), 0);
+  assert.equal(parseVisaCorridor("ESTA"), "US");
+  assert.equal(parseVisaCorridor("Royaume-Uni"), "GB");
+  assert.equal(parseVisaCorridor("ETA-IL"), "IL");
+  assert.equal(parseVisaCorridor("eta"), null);
+  assert.equal(estaAnswersFrom({ adresse: " hôtel ", emploi: "agence", pays_visites: "France", refus: "non" }).usAddress, "hôtel");
+  assert.equal(formalityName("US"), "ESTA");
+  assert.equal(clientVisaStepLabel("preparation"), "Préparation");
+  assert.equal(visaLaunchSummary("GB", "Camille Martin"), "ETA Royaume-Uni lancée pour le client par Camille Martin.");
+});
+
+test("lancer sans confirmer montre le prix et n’écrit rien", () => {
+  const preview = decideVisaLaunch({
+    confirm: false,
+    country: "US",
+    requestedTravelerIds: null,
+    party: [
+      { id: "a", nom: "Ada Martin" },
+      { id: "b", nom: "Léo Martin" },
+    ],
+    alreadyAccepted: false,
+    frenchPassports: 1,
+    answers: ESTA,
+    offerVisa: false,
+  });
+  assert.equal(preview.kind, "preview");
+  if (preview.kind !== "preview") return;
+  assert.equal(preview.preview.lance, false);
+  assert.equal(preview.preview.pret, true);
+  assert.equal(preview.preview.prix_eur, 50);
+  assert.match(preview.preview.frais_etat, /USD/);
+  assert.match(preview.preview.message, /Rien n’est lancé/);
+  assert.equal(preview.preview.voyageurs.filter((row) => row.retenu).length, 2);
+});
+
+test("confirmer sans passeport ou sans réponse ESTA reste lisible et ne lance pas", () => {
+  const passport = decideVisaLaunch({
+    confirm: true,
+    country: "IL",
+    requestedTravelerIds: ["a"],
+    party: [{ id: "a", nom: "Ada Martin" }],
+    alreadyAccepted: false,
+    frenchPassports: 0,
+    answers: {},
+    offerVisa: false,
+  });
+  assert.equal(passport.kind, "refuse");
+  if (passport.kind === "refuse") assert.match(passport.error, /Passeport français manquant/);
+  const esta = decideVisaLaunch({
+    confirm: true,
+    country: "US",
+    requestedTravelerIds: null,
+    party: [{ id: "a", nom: "Ada Martin" }],
+    alreadyAccepted: false,
+    frenchPassports: 1,
+    answers: { priorRefusal: "non" },
+    offerVisa: true,
+  });
+  assert.equal(esta.kind, "refuse");
+  if (esta.kind === "refuse") assert.match(esta.error, /Questionnaire ESTA incomplet/);
+  const unknown = decideVisaLaunch({
+    confirm: true,
+    country: "IL",
+    requestedTravelerIds: ["autre"],
+    party: [{ id: "a", nom: "Ada Martin" }],
+    alreadyAccepted: false,
+    frenchPassports: 1,
+    answers: {},
+    offerVisa: true,
+  });
+  assert.equal(unknown.kind, "refuse");
+  if (unknown.kind === "refuse") assert.match(unknown.error, /ne fait pas partie/);
+});
+
+test("confirmer lance le même parcours et retient l’auteur dans le statut", () => {
+  const launch = decideVisaLaunch({
+    confirm: true,
+    country: "IL",
+    requestedTravelerIds: ["a"],
+    party: [
+      { id: "a", nom: "Ada Martin" },
+      { id: "b", nom: "Léo Martin" },
+    ],
+    alreadyAccepted: false,
+    frenchPassports: 1,
+    answers: {},
+    offerVisa: false,
+  });
+  assert.equal(launch.kind, "launch");
+  if (launch.kind !== "launch") return;
+  assert.deepEqual(launch.travelerIds, ["a"]);
+  assert.equal(launch.step, "preparation");
+  assert.equal(launch.enableOffer, true);
+  assert.equal(launch.fillIsrael, true);
+  const again = decideVisaLaunch({
+    confirm: true,
+    country: "IL",
+    requestedTravelerIds: ["a"],
+    party: [{ id: "a", nom: "Ada Martin" }],
+    alreadyAccepted: true,
+    frenchPassports: 1,
+    answers: {},
+    offerVisa: true,
+  });
+  assert.equal(again.kind, "refuse");
+  const lines = visaJourneyLines({
+    travelers: [{ id: "a", nom: "Ada Martin" }],
+    detected: ["US", "IL"],
+    requests: [
+      {
+        country: "IL",
+        step: "preparation",
+        status: "en_cours",
+        accepted_at: "2026-11-02T12:00:00.000Z",
+        traveler_ids: ["a"],
+        launched_by_name: "Camille Martin",
+      },
+    ],
+  });
+  assert.equal(lines[0].code, "US");
+  assert.equal(lines[0].lance, false);
+  assert.equal(lines[0].etape, "Pas lancée");
+  assert.equal(lines[1].lance, true);
+  assert.equal(lines[1].etape, "Préparation");
+  assert.equal(lines[1].lance_par, "Camille Martin");
+  assert.deepEqual(lines[1].voyageurs, ["Ada Martin"]);
+});
+
+test("le dossier agence propose de lancer la demande avant le parcours", () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
+  const screen = readFileSync(join(root, "components/crm/VisaJourney.tsx"), "utf8");
+  assert.match(screen, /Lancer la demande pour le client/);
+  assert.match(screen, /action: "lancer"/);
+  const route = readFileSync(join(root, "app/api/admin/bookings/[id]/visa/route.ts"), "utf8");
+  assert.match(route, /action === "lancer"/);
+  assert.match(route, /launchVisaForAgency/);
+  assert.match(route, /lance_par/);
 });

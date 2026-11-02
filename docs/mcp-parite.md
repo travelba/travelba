@@ -93,7 +93,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Little Emperors | `reservation_little_emperors`, `little_emperors_en_attente` — couvert |
 | Cartes Pliant du dossier | `creer_carte_pliant`, `lire_carte_pliant`, `bloquer_carte_pliant` — jeton carte pour le numéro |
 | Formalités (lecture) | `formalites` — couvert |
-| Lancer, remplir ou payer une formalité (ESTA, ETA, visa) | hors API — envoie au client ou crée une carte |
+| Lancer, remplir ou payer une formalité (ESTA, ETA, visa) | `lancer_formalite` — lancer couvert. `statut_formalite` lit le parcours. Le remplissage du portail et le paiement restent à l’écran |
 | Répondre sur WhatsApp, valider une proposition Concierge | hors API — envoie un message |
 | Réglages Gmail, WhatsApp, mot de passe staff, connexion | hors API |
 
@@ -102,7 +102,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 - **OAuth, sync bancaire, diagnostics, mot de passe, connexion.** Ce sont des réglages d’infrastructure, pas des gestes dossier.
 - **Numéro de passeport et PAN.** Ils restent sur `TRAVELBA_MCP_PASSPORT_TOKENS` et `TRAVELBA_MCP_CARD_TOKENS`. Une clé nominative ne les ouvre pas.
 - **Messages libres** (réponse hôtel, WhatsApp, partage, formalité qui part au client). Le connecteur prépare (`preparer_message_carnet`, `traiter_email`) ; l’envoi libre reste un clic humain, pour ne pas écrire à un client sans le geste prévu.
-- **Réservation Ratehawk, remplissage de portail visa, import dropzone.** Ce sont des parcours longs, avec de l’argent ou une lecture de document, déjà tenus par l’écran.
+- **Réservation Ratehawk, remplissage de portail visa, paiement de la formalité, import dropzone.** Le lancement est `lancer_formalite`. Le remplissage du portail et le paiement restent des parcours longs, tenus par l’écran.
 - **Ouvrir l’espace client à la place du client.** Cela crée une session sur le poste de l’agence. Ce n’est pas un outil. Le renvoi des accès au client, lui, est `renvoyer_acces_whatsapp`.
 - **Export CSV du journal.** Le droit d’export et le volume de données restent sur l’écran.
 

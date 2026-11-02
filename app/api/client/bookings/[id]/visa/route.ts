@@ -9,6 +9,8 @@ import {
   acceptVisaDecision,
   astraFillsCountry,
   confirmAllowed,
+  confirmBlockMessage,
+  frenchPassportCount,
   journeyStarted,
   mergeEstaAnswers,
   readEstaAnswers,
@@ -97,9 +99,7 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   const answers = mergeEstaAnswers(readEstaAnswers(current?.answers), body.answers);
-  const french = ((documents || []) as Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[]).filter(
-    (row) => row.doc_type === "passport" && row.issuing_country === "FR" && row.number
-  ).length;
+  const french = frenchPassportCount(documents as Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[]);
   const block = confirmAllowed({
     already: [],
     country,
@@ -107,7 +107,7 @@ export async function POST(request: Request, ctx: Ctx) {
     esta: answers,
     resumable: Boolean(current?.step),
   });
-  if (block) return jsonError(block);
+  if (block) return jsonError(confirmBlockMessage(block, country, answers) || block);
 
   if (!b.visible_to_client && !auth.customer.phone?.trim()) {
     return jsonError("Ajoutez un téléphone dans Vous avant d’ouvrir ce séjour.");

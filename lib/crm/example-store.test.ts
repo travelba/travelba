@@ -33,7 +33,7 @@ test("le visa s’arrête au paiement, seulement après un fichier de passeport"
   readExample().booking.offer_visa = true;
   assert.throws(() => launchExampleVisa("US", ESTA, { confirm: true }), (err: unknown) => {
     assert.ok(err instanceof ExampleStop);
-    assert.match(err.message, /passeport français manquant/);
+    assert.match(err.message, /Passeport français manquant/);
     return true;
   });
   const doc = saveExampleDocument({

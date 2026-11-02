@@ -29,7 +29,7 @@ import {
 import { exampleLedgerView, exampleSession, EXAMPLE_REFERENCE } from "./example-session";
 import { normalizeLoyaltyMap, type LoyaltyMap } from "./loyalty";
 import type { CrmBookingItem, CrmCompanion, CrmTransaction, CrmTravelDocument } from "./types";
-import { confirmAllowed, type ClientVisaStep, type EstaAnswers } from "./visa-flow";
+import { confirmAllowed, confirmBlockMessage, type ClientVisaStep, type EstaAnswers } from "./visa-flow";
 
 const VERSION = 3;
 
@@ -287,7 +287,7 @@ export function launchExampleVisa(
     frenchPassports: uploadedFrenchPassport(state) ? 1 : 0,
     esta: answers,
   });
-  if (block) throw new ExampleStop(block);
+  if (block) throw new ExampleStop(confirmBlockMessage(block, country, answers) || block);
   const request: VisaRequest = {
     country,
     step: "paiement",

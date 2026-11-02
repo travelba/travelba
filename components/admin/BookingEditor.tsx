@@ -385,6 +385,7 @@ export function BookingEditor({
     status?: string | null;
     accepted_at?: string | null;
     answers?: Partial<EstaAnswers> | null;
+    launched_by_name?: string | null;
   }[];
   pliantReady?: boolean;
   /** Disponible du compte Pliant de l’agence. Null : lecture impossible, le solde reste affiché. */
@@ -2389,6 +2390,11 @@ export function BookingEditor({
                 documents={identityDocs}
                 visaBooked={Boolean(findVisaExtra(items))}
                 pliantReady={pliantReady}
+                settled={settledAuthorizationCountries({
+                  travelerIds: travelers.map((traveler) => traveler.id),
+                  estaTones: estaLines,
+                  ukEtaTones: ukEtaLines,
+                })}
               />
               <ExtrasPanel
                 variant="admin"

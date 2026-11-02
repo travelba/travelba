@@ -110,6 +110,8 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   creer_fiche_mb3m: "edit_finances",
   comptabilite_sortie: "edit_finances",
   refuser_encaissement: "edit_finances",
+  statut_formalite: "agency",
+  lancer_formalite: "edit_dossiers",
 };
 
 export type McpStaffGate = {
