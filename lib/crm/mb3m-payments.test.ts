@@ -106,7 +106,7 @@ describe("plan des règlements MB3M", () => {
       invoiceNumber: "3000",
       invoiceAmount: 100,
       credits: [credit({ amount: 100 })],
-      remote: [{ number: "2153", reference: `CRM ${CREDIT_ID}`, amount: 100, date: "2026-10-30", invoiceNumber: null }],
+      remote: [{ number: "2153", reference: `CRM ${CREDIT_ID}`, amount: 100, date: "2026-10-30", invoiceNumber: null, unmatched: 100 }],
     });
     assert.equal(byReference[0]?.existingNumber, "2153");
     assert.equal(byReference[0]?.alreadyMatched, false);
@@ -115,11 +115,34 @@ describe("plan des règlements MB3M", () => {
       invoiceNumber: "2152",
       invoiceAmount: 2274.96,
       credits: [credit()],
-      remote: [{ number: "2153", reference: "Saisi à la main", amount: 2639.96, date: "2026-10-30", invoiceNumber: "2152" }],
+      remote: [{ number: "2153", reference: "Saisi à la main", amount: 2639.96, date: "2026-10-30", invoiceNumber: "2152", unmatched: 0 }],
     });
     assert.equal(byAmount[0]?.existingNumber, "2153");
     assert.equal(byAmount[0]?.alreadyMatched, true);
     assert.equal(byAmount[0]?.matched, 2274.96);
+  });
+
+  it("lettre seulement le reste d’un règlement saisi à la main, sans le recréer", () => {
+    const [row] = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "3000",
+      invoiceAmount: 2000,
+      credits: [credit({ amount: 5330.29, date: "2026-09-12" })],
+      remote: [
+        {
+          number: "2149",
+          reference: "OZB",
+          amount: 5330.29,
+          date: "2026-09-12",
+          invoiceNumber: "2148",
+          unmatched: 561.19,
+        },
+      ],
+    });
+    assert.equal(row?.existingNumber, "2149");
+    assert.equal(row?.matched, 561.19);
+    assert.equal(row?.alreadyMatched, false);
+    assert.equal(row?.attributeBooking, false);
   });
 
   it("ne relettre pas un règlement déjà posé sur une autre facture", () => {
@@ -128,7 +151,7 @@ describe("plan des règlements MB3M", () => {
       invoiceNumber: "3000",
       invoiceAmount: 100,
       credits: [credit({ amount: 100 })],
-      remote: [{ number: "2148", reference: "OZB", amount: 100, date: "2026-10-30", invoiceNumber: "2140" }],
+      remote: [{ number: "2148", reference: "OZB", amount: 100, date: "2026-10-30", invoiceNumber: "2140", unmatched: 0 }],
     });
     assert.equal(row?.matched, 0);
     assert.equal(row?.lockedInvoice, "2140");
@@ -297,6 +320,35 @@ describe("envoi des règlements", () => {
     assert.equal(matched, 0);
     assert.equal(rows[0]?.statut, "deja_dans_mb3m");
     assert.equal(rows[0]?.numero_mb3m, "2153");
+  });
+
+  it("lettre le reste d’un règlement déjà saisi sans le recréer", async () => {
+    const calls: string[] = [];
+    const rows = await applyMb3mPaymentPlans(
+      {
+        folderId: "01-0002007",
+        invoiceNumber: "3000",
+        plans: [planned({ matched: 561.19, existingNumber: "2149", attributeBooking: false, credit: credit({ amount: 5330.29, date: "2026-09-12" }) })],
+      },
+      {
+        savePayment: async () => {
+          calls.push("save");
+          return { number: "x" };
+        },
+        writeMatching: async (row, number) => {
+          calls.push(`match:${number}:${row.matched}`);
+          return { id: "m-2149" };
+        },
+        remember: async () => undefined,
+        attributeBooking: async () => {
+          calls.push("booking");
+        },
+      }
+    );
+    assert.deepEqual(calls, ["match:2149:561.19"]);
+    assert.equal(rows[0]?.statut, "deja_dans_mb3m");
+    assert.equal(rows[0]?.montant, 561.19);
+    assert.equal(rows[0]?.numero_mb3m, "2149");
   });
 
   it("garde l’erreur d’un règlement sans retirer les autres", async () => {
