@@ -65,6 +65,15 @@ export function adminNavGroups(input: {
       },
     ];
   }
+  if (input.role === "ratehawk_cert") {
+    return [
+      {
+        id: "ratehawk",
+        label: "Ratehawk",
+        items: [{ href: "/admin/ratehawk", label: "Ratehawk", icon: "hotel", exact: true }],
+      },
+    ];
+  }
   const admin = input.role === "admin";
   const allows = input.allows ?? null;
   const show = (permission: Permission) => !allows || allows[permission] === true;

@@ -4,6 +4,7 @@
  * il n’y a pas de périmètre « ses dossiers seulement ». La marge reste invisible côté client.
  * Aucune action ne demande de validation ; aucun plafond. Les alertes préviennent, elles ne bloquent pas.
  * Le partenaire MyLER n’entre pas dans la matrice : il n’ouvre que Little Emperors.
+ * Le relecteur Ratehawk non plus : il n’ouvre que le bac à sable Ratehawk.
  * L’administrateur reste tout ouvert, même si la matrice est modifiée.
  */
 
@@ -115,7 +116,7 @@ export function isAgencyRole(value: unknown): value is AgencyRole {
 }
 
 export function isStaffRoleValue(value: unknown): value is StaffRole {
-  return value === "partner" || isAgencyRole(value);
+  return value === "partner" || value === "ratehawk_cert" || isAgencyRole(value);
 }
 
 /**
@@ -123,7 +124,7 @@ export function isStaffRoleValue(value: unknown): value is StaffRole {
  * Un trou dans la matrice retombe sur le défaut du rôle.
  */
 export function roleAllows(role: StaffRole, permission: Permission, matrix?: PermissionMatrix | null): boolean {
-  if (role === "partner") return false;
+  if (role === "partner" || role === "ratehawk_cert") return false;
   if (role === "admin") return true;
   const override = matrix?.[role]?.[permission];
   if (typeof override === "boolean") return override;

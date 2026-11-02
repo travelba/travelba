@@ -85,7 +85,9 @@ export function AdminNav({
     [staffRole, showExample, allows]
   );
   const partner = staffRole === "partner";
-  const home = partner ? "/admin/little-emperors" : "/admin";
+  const ratehawkCert = staffRole === "ratehawk_cert";
+  const narrow = partner || ratehawkCert;
+  const home = partner ? "/admin/little-emperors" : ratehawkCert ? "/admin/ratehawk" : "/admin";
   const search = searchParams.toString();
   const activeHref = activeAdminNavHref(groups, pathname, search);
   const searching = pathname === "/admin/recherche";
@@ -139,7 +141,7 @@ export function AdminNav({
       <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden">
         <div className="flex h-14 items-center justify-between gap-2 px-3">
           <div className="flex min-w-0 items-center gap-2">
-            <Link href={home} aria-label={partner ? "Little Emperors" : "Accueil"} className="shrink-0">
+            <Link href={home} aria-label={partner ? "Little Emperors" : ratehawkCert ? "Ratehawk" : "Accueil"} className="shrink-0">
               <AgencyLogo className="h-9 w-9" />
             </Link>
             <p className="truncate font-display text-sm font-semibold" aria-live="polite">
@@ -147,7 +149,7 @@ export function AdminNav({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {partner ? null : (
+            {narrow ? null : (
               <>
                 <Link
                   href="/admin/reservations/nouveau"
@@ -182,7 +184,7 @@ export function AdminNav({
         />
       ) : null}
       <aside
-        aria-label={partner ? "Little Emperors" : "Barre latérale agence"}
+        aria-label={partner ? "Little Emperors" : ratehawkCert ? "Ratehawk" : "Barre latérale agence"}
         className="z-50 hidden w-72 flex-col bg-[var(--admin-navy)] px-5 py-6 text-white lg:fixed lg:left-0 lg:top-0 lg:flex lg:h-full lg:shrink-0"
       >
         <Link href={home} className="flex items-center gap-3 px-1">
@@ -191,10 +193,12 @@ export function AdminNav({
             <span className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
               Travel Business
             </span>
-            <span className="text-sm font-medium text-[#dbe5f6]">{partner ? "MyLER partner" : "Espace agence"}</span>
+            <span className="text-sm font-medium text-[#dbe5f6]">
+              {partner ? "MyLER partner" : ratehawkCert ? "Certification Ratehawk" : "Espace agence"}
+            </span>
           </span>
         </Link>
-        {partner ? null : <div className="mt-5">{newBooking}</div>}
+        {narrow ? null : <div className="mt-5">{newBooking}</div>}
         <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
           <SidebarGroups
             groups={groups}
@@ -212,6 +216,8 @@ export function AdminNav({
             <header className="sticky top-0 z-40 hidden h-20 items-center justify-between border-b border-[var(--border)] bg-[rgba(250,249,246,0.9)] px-8 shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-xl lg:flex">
               {partner ? (
                 <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Little Emperors</p>
+              ) : ratehawkCert ? (
+                <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Ratehawk</p>
               ) : (
               <AdminOmnibar
                 value={query}
@@ -225,19 +231,19 @@ export function AdminNav({
                 <UserMenu name={staffName} role={staffRole} onSignOut={signOut} />
               </div>
             </header>
-            <main className={`min-w-0 max-w-full px-4 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pb-8 lg:pt-8 ${partner ? "pb-8" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}>
+            <main className={`min-w-0 max-w-full px-4 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pb-8 lg:pt-8 ${narrow ? "pb-8" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}>
               {children}
             </main>
           </div>
-          {partner ? null : (
+          {narrow ? null : (
             <WhatsappDock threads={whatsappThreads} templates={whatsappTemplates} previewBlocked={whatsappPreview} />
           )}
         </div>
       </div>
-      {partner ? null : (
+      {narrow ? null : (
         <MobileTabBar pathname={pathname} counts={counts} />
       )}
-      {partner ? null : <HotelReplyToasts />}
+      {narrow ? null : <HotelReplyToasts />}
     </>
   );
 }

@@ -23,7 +23,7 @@ export default async function AdminLayout({
   const staff = user ? await getStaffForUser(user.id) : null;
   // Comptés une fois par requête : le tableau de bord réutilise le même résultat (A-23, D-41).
   const [badges, dock, allows] =
-    staff && staff.role !== "partner"
+    staff && staff.role !== "partner" && staff.role !== "ratehawk_cert"
       ? await Promise.all([adminBadges(), loadDockSnapshot(), navAllows(staff)])
       : [EMPTY_ADMIN_BADGES, emptyDockSnapshot(), null];
 

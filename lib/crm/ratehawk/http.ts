@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireStaff } from "@/lib/crm/auth";
+import { requireRatehawkActor } from "@/lib/crm/auth";
+import { certificationEnvironmentAllowed, safeConfig } from "./config";
 
 export function ratehawkJson(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -9,8 +10,11 @@ export function ratehawkJson(body: unknown, status = 200) {
 }
 
 export async function staffOrResponse() {
-  const auth = await requireStaff();
+  const auth = await requireRatehawkActor();
   if (auth instanceof NextResponse) return auth;
+  if (auth.staff.role === "ratehawk_cert" && !certificationEnvironmentAllowed(safeConfig()?.environment)) {
+    return ratehawkJson({ error: "La certification Ratehawk n’ouvre que le bac à sable." }, 403);
+  }
   return auth;
 }
 

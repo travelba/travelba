@@ -1,7 +1,12 @@
-/** Rôles agence. `partner` reste le partenaire MyLER, hors matrice. */
+/** Rôles agence. `partner` (MyLER) et `ratehawk_cert` restent hors matrice. */
 export const AGENCY_ROLES = ["admin", "manager", "agent", "comptable", "lecture"] as const;
 export type AgencyRole = (typeof AGENCY_ROLES)[number];
-export type StaffRole = AgencyRole | "partner";
+export type StaffRole = AgencyRole | "partner" | "ratehawk_cert";
+
+/** Rôles qui n’ouvrent qu’une page. Ils ne sont pas des rôles d’agence. */
+export function isRestrictedStaffRole(role: StaffRole) {
+  return role === "partner" || role === "ratehawk_cert";
+}
 
 export type Colleague = {
   id: string;
@@ -35,6 +40,7 @@ export function staffRoleLabel(role: StaffRole) {
   if (role === "comptable") return "Comptable";
   if (role === "lecture") return "Lecture seule";
   if (role === "partner") return "Partenaire MyLER";
+  if (role === "ratehawk_cert") return "Certification Ratehawk";
   return "Agent";
 }
 
@@ -45,6 +51,7 @@ export const STAFF_ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: "comptable", label: "Comptable" },
   { value: "lecture", label: "Lecture seule" },
   { value: "partner", label: "Partenaire MyLER" },
+  { value: "ratehawk_cert", label: "Certification Ratehawk" },
 ];
 
 /**
@@ -68,6 +75,17 @@ export function colleagueAccessLink(link: string, role: StaffRole, shareToken: s
 
 /** Texte de l’e-mail d’accès. Le partenaire est entièrement en anglais. */
 export function colleagueAccessCopy(role: StaffRole) {
+  if (role === "ratehawk_cert") {
+    return {
+      subject: "Votre accès à la certification Ratehawk",
+      title: "Votre accès à la certification Ratehawk",
+      preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
+      intro: "Travelba vous ouvre le bac à sable Ratehawk.",
+      detail:
+        "Définissez votre mot de passe pour y accéder — le lien reste valable 30 jours. Vous n’ouvrez que Ratehawk.",
+      cta: "Ouvrir Ratehawk",
+    };
+  }
   if (role === "partner") {
     return {
       subject: "Your Little Emperors access",
@@ -109,12 +127,13 @@ export function colleagueEmailFrame(role: StaffRole, fullName: string) {
 
 export function parseStaffRole(value: unknown): StaffRole | null {
   if (value === "partner") return "partner";
+  if (value === "ratehawk_cert") return "ratehawk_cert";
   if (typeof value === "string" && (AGENCY_ROLES as readonly string[]).includes(value)) return value as AgencyRole;
   return null;
 }
 
 /**
- * Rôle écrit dans le JWT. Un partenaire ne devient jamais administrateur.
+ * Rôle écrit dans le JWT. Un partenaire, ou un relecteur Ratehawk, ne devient jamais administrateur.
  * Manager, comptable et lecture seule restent eux-mêmes : ils ne sont pas promus admin.
  */
 export function jwtStaffRole(role: StaffRole): StaffRole {
@@ -177,7 +196,8 @@ export function roleActionLabel(current: StaffRole, next: StaffRole) {
   if (current === next) return null;
   if (next === "admin") return "Passer administrateur";
   if (next === "partner") return "Limiter à partenaire MyLER";
-  if (next === "agent" && current === "partner") return "Passer agent";
+  if (next === "ratehawk_cert") return "Limiter à la certification Ratehawk";
+  if (next === "agent" && (current === "partner" || current === "ratehawk_cert")) return "Passer agent";
   if (next === "agent") return "Limiter à agent";
   if (next === "manager") return "Passer manager";
   if (next === "comptable") return "Passer comptable";

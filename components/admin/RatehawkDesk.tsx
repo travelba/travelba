@@ -79,6 +79,7 @@ export function RatehawkDesk({
   marginPercent,
   orders,
   mappedHotels,
+  linkDossier = true,
 }: {
   configured: boolean;
   bookingReady: boolean;
@@ -88,6 +89,8 @@ export function RatehawkDesk({
   marginPercent: number;
   orders: RatehawkOrder[];
   mappedHotels: number[];
+  /** Le relecteur de certification ne rattache pas un dossier du CRM. */
+  linkDossier?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [choices, setChoices] = useState<Destination[]>([]);
@@ -304,7 +307,7 @@ export function RatehawkDesk({
         price_accepted: priceAccepted || !priceNote,
         accept_form_price: acceptForm,
         scenario: scenario === "none" ? null : scenario,
-        dossier: dossier || null,
+        dossier: linkDossier ? dossier || null : null,
         partner_order_id: acceptForm ? orderId : null,
       }),
     });
@@ -603,9 +606,11 @@ export function RatehawkDesk({
             ))}
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <Field label="Dossier Travel BA" hint="Référence ou identifiant, si le séjour existe déjà.">
-              <input className={fieldControlClass} value={dossier} onChange={(event) => setDossier(event.target.value)} />
-            </Field>
+            {linkDossier ? (
+              <Field label="Dossier Travel BA" hint="Référence ou identifiant, si le séjour existe déjà.">
+                <input className={fieldControlClass} value={dossier} onChange={(event) => setDossier(event.target.value)} />
+              </Field>
+            ) : null}
             <Field label="Scénario bac à sable">
               <select className={fieldControlClass} value={scenario} onChange={(event) => setScenario(event.target.value)}>
                 <option value="none">Réservation normale</option>

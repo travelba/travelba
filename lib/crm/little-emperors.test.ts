@@ -618,6 +618,9 @@ describe("little emperors staging client", () => {
     assert.equal(littleEmperorsActionAllowed("partner", "attach"), false);
     assert.equal(littleEmperorsActionAllowed("partner", "cancel"), false);
     assert.equal(littleEmperorsActionAllowed("partner", "init"), false);
+    assert.equal(littleEmperorsActionAllowed("ratehawk_cert", "sync"), false);
+    assert.equal(littleEmperorsActionAllowed("ratehawk_cert", "attach"), false);
+    assert.equal(littleEmperorsActionAllowed("ratehawk_cert", "cancel"), false);
     assert.equal(littleEmperorsActionAllowed("agent", "attach"), true);
     assert.equal(littleEmperorsActionAllowed("admin", "cancel"), true);
   });

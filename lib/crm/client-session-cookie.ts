@@ -8,7 +8,7 @@ import { clientAuthCookieOptions } from "@/lib/supabase/cookie-options";
 export const CLIENT_SESSION_REFRESH_WINDOW_SECONDS = 15 * 60;
 
 const AUTH_SESSION_COOKIE = /^sb-[a-z0-9]+-auth-token(?:\.\d+)?$/;
-const STAFF_COOKIE_ROLES = new Set(["admin", "manager", "agent", "comptable", "lecture", "partner"]);
+const STAFF_COOKIE_ROLES = new Set(["admin", "manager", "agent", "comptable", "lecture", "partner", "ratehawk_cert"]);
 
 export type CookieRecord = { name: string; value: string };
 export type SessionAudience = "client" | "staff" | "unknown";

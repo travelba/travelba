@@ -113,12 +113,14 @@ export function mayShowPasswordSetup(opts: {
 }
 
 export const PARTNER_ADMIN_HOME = "/admin/little-emperors";
+export const RATEHAWK_ADMIN_HOME = "/admin/ratehawk";
 
 export function pathAfterPassword(
   _phone: string | null | undefined,
-  audience: "client" | "staff" | "partner" = "client"
+  audience: "client" | "staff" | "partner" | "ratehawk" = "client"
 ) {
   if (audience === "partner") return PARTNER_ADMIN_HOME;
+  if (audience === "ratehawk") return RATEHAWK_ADMIN_HOME;
   if (audience === "staff") return "/admin";
   return "/mon-compte";
 }
@@ -187,4 +189,17 @@ export function isStaffRole(user: {
 export function partnerAdminDestination(pathname: string): string | null {
   if (pathname === PARTNER_ADMIN_HOME || pathname.startsWith(`${PARTNER_ADMIN_HOME}/`)) return null;
   return PARTNER_ADMIN_HOME;
+}
+
+/** Hors de Ratehawk, le relecteur de certification y est renvoyé. Null = la page est la sienne. */
+export function ratehawkAdminDestination(pathname: string): string | null {
+  if (pathname === RATEHAWK_ADMIN_HOME || pathname.startsWith(`${RATEHAWK_ADMIN_HOME}/`)) return null;
+  return RATEHAWK_ADMIN_HOME;
+}
+
+/** Accueil d’un rôle fermé. Null pour l’agence. */
+export function restrictedRoleHome(role: string | null | undefined): string | null {
+  if (role === "partner") return PARTNER_ADMIN_HOME;
+  if (role === "ratehawk_cert") return RATEHAWK_ADMIN_HOME;
+  return null;
 }

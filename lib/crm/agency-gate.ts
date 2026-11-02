@@ -8,7 +8,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   accessTokenClaims,
-  isAgencyRole,
+  isStaffRoleValue,
   matrixFromRows,
   roleAllows,
   type PermissionMatrix,
@@ -103,7 +103,7 @@ async function readStaff(
     : first.data;
   if (!data?.role) return null;
   const role = data.role as string;
-  if (role !== "partner" && !isAgencyRole(role)) return null;
+  if (!isStaffRoleValue(role)) return null;
   return {
     id: data.id as string,
     role: role as StaffRole,

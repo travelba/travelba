@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { LittleEmperorsInbox } from "@/components/admin/LittleEmperorsInbox";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { RATEHAWK_ADMIN_HOME } from "@/lib/crm/session";
 import { boiteHref } from "@/lib/crm/boite-tabs";
 import { mylerSheet } from "@/lib/crm/myler-sheet";
 import { leListMadeAt } from "@/lib/crm/le-confirmation-mail";
@@ -20,6 +21,7 @@ export const metadata = { title: "Little Emperors" };
 /** Page des partenaires MyLER. L’agence trouve ces réservations dans la Boîte de réception › Fournisseurs. */
 export default async function AdminLittleEmperorsPage() {
   const { supabase, staff } = await requireStaffPage();
+  if (staff.role === "ratehawk_cert") redirect(RATEHAWK_ADMIN_HOME);
   if (staff.role !== "partner") redirect(boiteHref("fournisseurs", { source: "little-emperors" }));
   const copy = mylerSheet(true);
   const [{ data: rows, error: rowsError }, { data: probe }] = await Promise.all([

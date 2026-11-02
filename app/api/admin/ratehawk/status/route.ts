@@ -12,7 +12,8 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { partner_order_id?: string } | null;
   if (!body?.partner_order_id) return ratehawkJson({ error: "Réservation manquante." }, 400);
   try {
-    const result = await pollBooking(body.partner_order_id);
+    const isolate = auth.staff.role === "ratehawk_cert";
+    const result = await pollBooking(body.partner_order_id, undefined, undefined, { linkCrm: !isolate });
     if (result.ok && result.status === "success") await fetchOrderInfoIfDue(body.partner_order_id);
     return ratehawkJson(result, result.ok ? 200 : 404);
   } catch (caught) {

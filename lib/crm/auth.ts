@@ -4,7 +4,9 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
+import { isAgencyRole } from "@/lib/crm/agency-access";
 import { jwtStaffRole, STAFF_COPY } from "@/lib/crm/staff-team";
+import { restrictedRoleHome } from "@/lib/crm/session";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 
@@ -57,8 +59,25 @@ export async function requireStaff(): Promise<
 > {
   const opened = await openStaffSession();
   if (opened instanceof NextResponse) return opened;
-  if (opened.staff.role === "partner") return jsonError("Accès réservé à l’agence", 403);
+  if (opened.staff.role === "partner" || opened.staff.role === "ratehawk_cert") {
+    return jsonError("Accès réservé à l’agence", 403);
+  }
   return opened;
+}
+
+/** Ratehawk : l’agence, et le relecteur de certification. Le partenaire MyLER reste dehors. */
+export async function requireRatehawkActor(): Promise<
+  | {
+      user: User;
+      supabase: Awaited<ReturnType<typeof createClient>>;
+      staff: CrmStaff;
+    }
+  | NextResponse
+> {
+  const opened = await openStaffSession();
+  if (opened instanceof NextResponse) return opened;
+  if (opened.staff.role === "ratehawk_cert" || isAgencyRole(opened.staff.role)) return opened;
+  return jsonError("Accès réservé à l’agence", 403);
 }
 
 /** Little Emperors : l’agence, et le partenaire pour la lecture et l’actualisation. */
@@ -227,6 +246,7 @@ export async function requireStaffPage(): Promise<{
 export async function requireAdminPage() {
   const { redirect } = await import("next/navigation");
   const ctx = await requireStaffPage();
-  if (ctx.staff.role === "partner") redirect("/admin/little-emperors");
+  const home = restrictedRoleHome(ctx.staff.role);
+  if (home) redirect(home);
   return ctx;
 }
