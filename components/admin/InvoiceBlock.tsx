@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { InvoiceSendPanel } from "@/components/admin/InvoiceSendPanel";
 import { StatusChip } from "@/components/crm/ui";
 import { formatMoney } from "@/lib/crm/money";
 import { mb3mInvoiceActionLabel, mb3mInvoiceChip, type Mb3mPreparationView } from "@/lib/crm/mb3m-prep";
@@ -178,6 +179,7 @@ export function InvoiceBlock({
         ) : null}
         {reason ? <p className="text-sm text-muted">{reason}</p> : null}
       </div>
+      {view.number ? <InvoiceSendPanel bookingId={bookingId} /> : null}
 
       {control != null ? (
         <p className="text-xs text-muted">

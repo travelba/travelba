@@ -72,6 +72,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   envoyer_releve: "message_client",
   preparer_facture_mb3m: "edit_finances",
   statut_facture_mb3m: "view_finances",
+  envoyer_facture: "message_client",
   sejours_restaurants: "agency",
   list_restaurants: "agency",
   create_restaurant: "edit_dossiers",

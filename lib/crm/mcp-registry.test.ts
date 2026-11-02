@@ -60,6 +60,7 @@ const EXPECTED = [
   "envoyer_releve",
   "preparer_facture_mb3m",
   "statut_facture_mb3m",
+  "envoyer_facture",
   "sejours_restaurants",
   "list_restaurants",
   "create_restaurant",
@@ -115,6 +116,7 @@ const WRITE_TOOLS = [
   "enregistrement_en_ligne",
   "envoyer_releve",
   "preparer_facture_mb3m",
+  "envoyer_facture",
   "create_restaurant",
   "update_restaurant",
   "tables_restaurant",
@@ -282,6 +284,13 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(releve?.description || "", /force/);
   assert.match(releve?.description || "", /twilio_sid/);
   assert.match(releve?.description || "", /e-mail n’est pas ouvert/);
+  const facture = MCP_TOOLS.find((tool) => tool.name === "envoyer_facture");
+  assert.equal(facture?.write, true);
+  assert.equal(facture?.openWorld, true);
+  assert.equal(facture?.selfJournal, true);
+  assert.match(facture?.description || "", /confirmer/);
+  assert.match(facture?.description || "", /TWILIO_CONTENT_FACTURE/);
+  assert.match(facture?.description || "", /Rien n’est envoyé|rien n’est envoyé/);
   const lecture = MCP_TOOLS.find((tool) => tool.name === "lire_email");
   assert.equal(lecture?.write, undefined);
   assert.equal(lecture?.pieceNumbers, undefined);
