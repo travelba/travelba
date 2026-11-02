@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mcpAccessFromAuthorization, mcpAuthorized, mcpSecret } from "./mcp-auth";
+import { mcpAccessFromAuthorization, mcpAuthorized, mcpSecret, resolveMcpAccess } from "./mcp-auth";
+import { issueMcpApiKey } from "./mcp-api-key";
 
 function withEnv(
   vercel: string | undefined,
@@ -136,3 +137,45 @@ test("a card token is a separate grant from the passport token", () => {
     assert.equal(mcpAccessFromAuthorization("Bearer card-token-value!!"), null);
   }, undefined, "cartes:card-token-value!!");
 });
+
+test("une clé nominative est acceptée après les jetons d’environnement, et refusée si la recherche dit non", async () => {
+  const issued = issueMcpApiKey();
+  const staff = Object.freeze({
+    actor: "raphael",
+    passport: false as const,
+    cards: false as const,
+    staff: { id: "11111111-1111-4111-8111-111111111111", role: "admin", name: "Raphael", keyId: "22222222-2222-4222-8222-222222222222" },
+  });
+  await withEnvAsync(undefined, "general-token-value", async () => {
+    assert.deepEqual(await resolveMcpAccess("Bearer general-token-value", async () => staff), {
+      actor: "mcp",
+      passport: false,
+      cards: false,
+    });
+    assert.deepEqual(await resolveMcpAccess(`Bearer ${issued.token}`, async () => staff), staff);
+    assert.equal(await resolveMcpAccess(`Bearer ${issued.token}`, async () => null), null);
+    assert.equal(await resolveMcpAccess("Bearer autre-chose", async () => staff), null);
+  });
+  await withEnvAsync("preview", undefined, async () => {
+    assert.equal(await resolveMcpAccess(`Bearer ${issued.token}`, async () => staff), null);
+  });
+});
+
+function withEnvAsync(
+  vercel: string | undefined,
+  token: string | undefined,
+  run: () => Promise<void>
+) {
+  const previousVercel = process.env.VERCEL_ENV;
+  const previousToken = process.env.TRAVELBA_MCP_TOKEN;
+  if (vercel === undefined) delete process.env.VERCEL_ENV;
+  else process.env.VERCEL_ENV = vercel;
+  if (token === undefined) delete process.env.TRAVELBA_MCP_TOKEN;
+  else process.env.TRAVELBA_MCP_TOKEN = token;
+  return run().finally(() => {
+    if (previousVercel === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousVercel;
+    if (previousToken === undefined) delete process.env.TRAVELBA_MCP_TOKEN;
+    else process.env.TRAVELBA_MCP_TOKEN = previousToken;
+  });
+}

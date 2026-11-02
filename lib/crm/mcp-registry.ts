@@ -68,9 +68,22 @@ import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus
 import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
+import {
+  ajouterMembre,
+  changerRoleMembre,
+  creerCleApi,
+  desactiverMembre,
+  listerClesApi,
+  listerMembres,
+  revoquerCleApi,
+} from "@/lib/crm/mcp-agency";
+import { currentMcpAccess } from "@/lib/crm/mcp-auth";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
+import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 65;
+export const MCP_TOOL_CAP = 72;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -148,15 +161,35 @@ async function guard(
   keepPieceNumber: boolean,
   keepSignedUrl: boolean,
   keepCardSecrets: boolean,
+  selfJournal: boolean,
+  args: ToolArgs,
   run: () => Promise<unknown>
 ) {
+  const denial = mcpStaffDenial(name, currentMcpAccess().staff);
+  if (denial) return failed(denial);
   try {
-    return text(await run(), keepPieceNumber, keepSignedUrl, keepCardSecrets);
+    const value = await run();
+    if (write && !selfJournal) await journalPersonalWrite(name, args);
+    return text(value, keepPieceNumber, keepSignedUrl, keepCardSecrets);
   } catch (err) {
     console.error("[mcp]", name, err instanceof Error ? err.message : "error");
-    if ((write && err instanceof McpWriteError) || err instanceof McpReadError) return failed(err.message);
+    if (err instanceof McpWriteError || err instanceof McpReadError) return failed(err.message);
     return failed(write ? "Écriture impossible." : "Lecture impossible.");
   }
+}
+
+async function journalPersonalWrite(name: string, args: ToolArgs) {
+  const staff = currentMcpAccess().staff;
+  if (!staff) return;
+  const draft = mcpWriteJournalDraft(name, args, staff.name);
+  await recordAgencyJournal({
+    staffId: staff.id,
+    action: draft.action,
+    entityType: draft.entityType,
+    entityId: draft.entityId,
+    summary: draft.summary,
+    path: "/api/mcp",
+  });
 }
 
 const q = z.string().trim().max(80).optional().describe("Nom, société, e-mail, téléphone ou référence");
@@ -178,6 +211,8 @@ type ToolDef = {
   signedUrl?: boolean;
   /** Garde `pan`, `cvv` et `expiration`. Tous les autres outils les retirent. */
   cardSecrets?: boolean;
+  /** L’outil écrit déjà sa ligne de journal. */
+  selfJournal?: boolean;
   run: (args: ToolArgs) => Promise<unknown>;
 };
 
@@ -442,6 +477,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "remettre_non_rattache",
     write: true,
+    selfJournal: true,
     description:
       "Annule un crédit Revolut, Stripe ou virement saisi et remet le paiement dans la file (revolut_en_attente ou stripe_en_attente). id : écriture du grand livre, ou identifiant du paiement. motif facultatif. Le crédit passe en annulé et reste en trace. Refus si la facture MB3M qui le contient est imprimée ou en cours de préparation. Un virement saisi n’a pas de file : il est seulement annulé.",
     input: {
@@ -1362,6 +1398,85 @@ export const MCP_TOOLS: ToolDef[] = [
       "Statut d’approbation Meta des trois modèles WhatsApp restaurants (restaurant_selection, restaurant_proposition, restaurant_proposition_carte) : nom, content_sid, statut (approved, pending, rejected, unsubmitted, absent), source (variable ou retrouvé par son nom chez Twilio), motif de refus. pret vrai quand les trois sont approuvés. Lecture seule, n’envoie aucun message, ne crée rien.",
     run: (args) => getRestaurantWhatsappTemplatesStatus(args),
   },
+  {
+    name: "lister_membres",
+    selfJournal: true,
+    description:
+      "Membres de l’agence : nom, e-mail, rôle, accès ouvert ou coupé. Réservé aux administrateurs (clé nominative admin ou jeton général). Un agent reçoit un refus clair. Lecture.",
+    run: () => listerMembres(),
+  },
+  {
+    name: "ajouter_membre",
+    write: true,
+    selfJournal: true,
+    description:
+      "Ajoute un membre @travelba.fr, rôle admin ou agent. nom facultatif : à défaut, il est tiré de l’adresse. Envoie l’invitation comme la page Équipe. Réservé aux administrateurs. Le lien n’est pas réécrit au journal.",
+    input: {
+      email: z.string().trim().max(254).describe("Adresse @travelba.fr"),
+      role: z.enum(["admin", "agent"]).describe("admin ou agent"),
+      nom: z.string().trim().max(120).optional().describe("Nom affiché. À défaut, déduit de l’adresse"),
+    },
+    run: (args) => ajouterMembre({ email: str(args, "email"), role: str(args, "role"), nom: str(args, "nom") }),
+  },
+  {
+    name: "changer_role_membre",
+    write: true,
+    selfJournal: true,
+    description:
+      "Change le rôle d’un membre : admin ou agent. staff_id de lister_membres. Le dernier administrateur ne peut pas être rétrogradé. Réservé aux administrateurs.",
+    input: {
+      staff_id: z.string().trim().max(80).describe("Identifiant du membre"),
+      role: z.enum(["admin", "agent"]).describe("admin ou agent"),
+    },
+    run: (args) => changerRoleMembre({ staff_id: str(args, "staff_id"), role: str(args, "role") }),
+  },
+  {
+    name: "desactiver_membre",
+    write: true,
+    selfJournal: true,
+    description:
+      "Coupe l’accès d’un membre et ferme ses sessions. staff_id. On ne se désactive pas soi-même. Le dernier administrateur reste. Ses clés API sont refusées tant que l’accès est coupé. Réservé aux administrateurs.",
+    input: {
+      staff_id: z.string().trim().max(80).describe("Identifiant du membre"),
+    },
+    run: (args) => desactiverMembre({ staff_id: str(args, "staff_id") }),
+  },
+  {
+    name: "lister_cles_api",
+    selfJournal: true,
+    description:
+      "Clés API nominatives : libellé, préfixe visible, propriétaire, création, dernier usage, révocation, expiration. Jamais la clé en clair. Réservé aux administrateurs.",
+    run: () => listerClesApi(),
+  },
+  {
+    name: "creer_cle_api",
+    write: true,
+    selfJournal: true,
+    description:
+      "Crée une clé MCP pour un membre de l’agence. staff_id, libelle, expire_le facultatif (AAAA-MM-JJ). La clé en clair n’est renvoyée qu’une fois, dans cle. Réservé aux administrateurs. Le journal ne contient pas la clé.",
+    input: {
+      staff_id: z.string().trim().max(80).describe("Membre qui portera la clé"),
+      libelle: z.string().trim().max(80).describe("Nom de la clé, par exemple Assistant de Raphael"),
+      expire_le: z.string().trim().max(10).optional().describe("Expiration AAAA-MM-JJ, fin de jour UTC. Vide : sans expiration"),
+    },
+    run: (args) =>
+      creerCleApi({
+        staff_id: str(args, "staff_id"),
+        libelle: str(args, "libelle"),
+        expire_le: str(args, "expire_le"),
+      }),
+  },
+  {
+    name: "revoquer_cle_api",
+    write: true,
+    selfJournal: true,
+    description:
+      "Révoque une clé API. cle_id de lister_cles_api. Elle est refusée dès la requête suivante. Réservé aux administrateurs.",
+    input: {
+      cle_id: z.string().trim().max(80).describe("Identifiant de la clé"),
+    },
+    run: (args) => revoquerCleApi({ cle_id: str(args, "cle_id") }),
+  },
 ];
 
 export function registerTravelbaTools(server: McpServer) {
@@ -1385,6 +1500,8 @@ export function registerTravelbaTools(server: McpServer) {
           keepPieceNumber(tool),
           keepSignedUrl(tool),
           keepCardSecrets(tool),
+          tool.selfJournal === true,
+          (args ?? {}) as ToolArgs,
           () => tool.run((args ?? {}) as ToolArgs)
         )
     );

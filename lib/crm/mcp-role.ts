@@ -1,0 +1,112 @@
+import { roleAllows, type Permission } from "./agency-access";
+import type { StaffRole } from "./staff-team";
+
+/**
+ * Droit d’un outil pour une clé nominative.
+ * `agency` : tout rôle de l’agence, actif (lecture comprise).
+ * `admin` : rôle administrateur seulement, même si la matrice ouvre « Gérer l’équipe ».
+ * Une permission : la matrice du rôle, sinon les défauts.
+ * Le jeton d’environnement n’est pas concerné : il n’a pas de collègue.
+ */
+export type McpToolGate = "agency" | "admin" | Permission;
+
+export const MCP_ADMIN_DENIAL = "Réservé aux administrateurs.";
+export const MCP_ROLE_DENIAL = "Cette action n’est pas ouverte pour votre rôle.";
+export const MCP_PARTNER_DENIAL = "Cette clé n’ouvre pas le CRM.";
+
+export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
+  tableau_de_bord: "agency",
+  chercher_clients: "agency",
+  fiche_client: "agency",
+  chercher_dossiers: "agency",
+  fiche_dossier: "agency",
+  passeport_voyageur: "passport_reveal",
+  scan_passeport: "passport_reveal",
+  formalites: "agency",
+  services_a_confirmer: "agency",
+  grand_livre: "view_finances",
+  revolut_en_attente: "view_finances",
+  revolut_debits: "view_finances",
+  comptabilite_voyage: "view_margins",
+  stripe_en_attente: "view_finances",
+  emails_en_attente: "view_inbox",
+  lire_email: "view_inbox",
+  reservation_little_emperors: "agency",
+  little_emperors_en_attente: "agency",
+  crediter_virement: "edit_finances",
+  crediter_revolut: "edit_finances",
+  rapprocher_depense_revolut: "edit_finances",
+  crediter_stripe: "edit_finances",
+  remettre_non_rattache: "edit_finances",
+  rapprocher_pliant: "edit_finances",
+  creer_carte_pliant: "create_pliant_card",
+  lire_carte_pliant: "create_pliant_card",
+  bloquer_carte_pliant: "create_pliant_card",
+  publier_carnet: "message_client",
+  mettre_a_jour_dossier: "edit_dossiers",
+  confirmer_service: "edit_dossiers",
+  traiter_email: "edit_dossiers",
+  creer_client: "create_dossiers",
+  mettre_a_jour_client: "edit_dossiers",
+  modifier_titulaire: "edit_dossiers",
+  definir_role_societe: "edit_dossiers",
+  inviter_client: "message_client",
+  ajouter_piece: "edit_dossiers",
+  requalifier_piece: "edit_dossiers",
+  notifier_piece: "message_client",
+  notifier_carte_embarquement: "message_client",
+  creer_dossier: "create_dossiers",
+  ajouter_voyageur: "edit_dossiers",
+  modifier_voyageur: "edit_dossiers",
+  retirer_voyageur: "edit_dossiers",
+  fusionner_compagnon: "edit_dossiers",
+  ajouter_vol: "edit_dossiers",
+  modifier_vol: "edit_dossiers",
+  retirer_carte: "edit_dossiers",
+  definir_visibilite_carte: "edit_dossiers",
+  preparer_message_carnet: "message_client",
+  ajouter_hotel: "edit_dossiers",
+  modifier_hotel: "edit_dossiers",
+  ajouter_accueil_vip: "edit_dossiers",
+  enregistrement_en_ligne: "edit_dossiers",
+  envoyer_releve: "message_client",
+  preparer_facture_mb3m: "edit_finances",
+  statut_facture_mb3m: "view_finances",
+  sejours_restaurants: "agency",
+  list_restaurants: "agency",
+  create_restaurant: "edit_dossiers",
+  update_restaurant: "edit_dossiers",
+  tables_restaurant: "edit_dossiers",
+  choix_restaurant: "agency",
+  create_restaurant_whatsapp_templates: "change_settings",
+  get_restaurant_whatsapp_templates_status: "agency",
+  lister_membres: "admin",
+  ajouter_membre: "admin",
+  changer_role_membre: "admin",
+  desactiver_membre: "admin",
+  lister_cles_api: "admin",
+  creer_cle_api: "admin",
+  revoquer_cle_api: "admin",
+};
+
+export type McpStaffGate = {
+  role: string;
+  allows?: Record<string, boolean> | null;
+};
+
+/** Null : l’appel continue. Une phrase : refus clair, l’outil ne s’exécute pas. */
+export function mcpStaffDenial(tool: string, staff: McpStaffGate | null | undefined): string | null {
+  if (!staff) return null;
+  if (staff.role === "partner") return MCP_PARTNER_DENIAL;
+  const gate = MCP_TOOL_GATES[tool];
+  if (!gate) return MCP_ROLE_DENIAL;
+  if (gate === "agency") return null;
+  if (gate === "admin") return staff.role === "admin" ? null : MCP_ADMIN_DENIAL;
+  if (staff.allows && typeof staff.allows[gate] === "boolean") {
+    return staff.allows[gate] ? null : MCP_ROLE_DENIAL;
+  }
+  if (staff.role === "admin" || staff.role === "manager" || staff.role === "agent" || staff.role === "comptable" || staff.role === "lecture") {
+    return roleAllows(staff.role as StaffRole, gate, null) ? null : MCP_ROLE_DENIAL;
+  }
+  return MCP_ROLE_DENIAL;
+}

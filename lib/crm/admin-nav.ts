@@ -124,6 +124,7 @@ export function adminNavGroups(input: {
         ? [
             { href: ADMIN_ROUTES.reglages, label: "Réglages", icon: "build", exact: true },
             { href: "/admin/equipe", label: "Équipe", icon: "user_cog" },
+            { href: "/admin/cles", label: "Clés API", icon: "key" },
             { href: "/admin/journal", label: "Journal", icon: "history_edu" },
             { href: `${ADMIN_ROUTES.reglages}/whatsapp`, label: "Modèles WhatsApp", icon: "chat" },
             { href: `${ADMIN_ROUTES.reglages}/mails`, label: "E-mails au client", icon: "mail" },

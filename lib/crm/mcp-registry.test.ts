@@ -68,6 +68,13 @@ const EXPECTED = [
   "choix_restaurant",
   "create_restaurant_whatsapp_templates",
   "get_restaurant_whatsapp_templates_status",
+  "lister_membres",
+  "ajouter_membre",
+  "changer_role_membre",
+  "desactiver_membre",
+  "lister_cles_api",
+  "creer_cle_api",
+  "revoquer_cle_api",
 ];
 
 const WRITE_TOOLS = [
@@ -112,6 +119,11 @@ const WRITE_TOOLS = [
   "update_restaurant",
   "tables_restaurant",
   "create_restaurant_whatsapp_templates",
+  "ajouter_membre",
+  "changer_role_membre",
+  "desactiver_membre",
+  "creer_cle_api",
+  "revoquer_cle_api",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
