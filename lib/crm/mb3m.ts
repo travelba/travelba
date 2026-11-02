@@ -65,6 +65,12 @@ export type Mb3mLine = {
   type?: Mb3mLineType;
   /** Marge unitaire : prix vendu − coûts rattachés. Peut être négative. */
   marginUnit?: number | null;
+  /**
+   * Commission de la ligne. Absente ou nulle : 0,001 sur une billetterie (activité 2),
+   * sinon le champ n’est pas envoyé. MB3M refuse AddPieces sans commission aérienne
+   * (-504, code interne -22).
+   */
+  commissionTotal?: number | null;
   /** Fournisseurs des coûts (pas de ProviderId : l’API ne crée pas de fournisseur). */
   note?: string | null;
 };
@@ -344,6 +350,16 @@ export async function mb3mSaveFolder(
   return { id, uid };
 }
 
+/** Plancher : MB3M refuse une billetterie (activité 2) sans commission non nulle. */
+const MB3M_AIR_COMMISSION = 0.001;
+
+function commissionXml(line: Mb3mLine) {
+  const given = line.commissionTotal;
+  const value =
+    given != null && Number.isFinite(given) && given !== 0 ? given : line.activityId === 2 ? MB3M_AIR_COMMISSION : null;
+  return value == null ? "" : tag("CommissionTotal", money(value));
+}
+
 export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine[]) {
   if (!lines.length) throw new Mb3mError("La pièce MB3M n’a pas de ligne.", -1);
   return lines
@@ -356,8 +372,10 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
       const margin =
         line.marginUnit == null || !Number.isFinite(line.marginUnit) ? "" : tag("MarginUnit", money(line.marginUnit));
       const note = tag("Note", (line.note || "").trim().slice(0, 250));
-      // Ordre du schéma InvoiceLine : ActivityId, Label, MarginUnit, NetPriceTotal, NetPriceUnit, Note, Quantity, Type.
-      return `<${kind}>${activity}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${tag("Quantity", quantity(line.quantity))}${tag("Type", type)}</${kind}>`;
+      // Ordre WCF InvoiceLine / CreditNoteLine : ActivityId, CommissionNetTotal, CommissionTaxRate,
+      // CommissionTotal, CustomType, Label, MarginTaxRate, MarginTaxTotal, MarginUnit, NetPriceTotal,
+      // NetPriceUnit, Note, ProviderId, Quantity, RefPiece, TaxRate, TaxTotal, Type.
+      return `<${kind}>${activity}${commissionXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${tag("Quantity", quantity(line.quantity))}${tag("Type", type)}</${kind}>`;
     })
     .join("");
 }
