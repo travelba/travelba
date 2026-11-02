@@ -6,10 +6,12 @@ export function Mb3mFicheAction({
   customerId,
   blocker,
   sent,
+  companies = [],
 }: {
   customerId: string;
   blocker: string | null;
   sent: boolean;
+  companies?: { id: string; company_name: string | null; siret: string | null; vat_number: string | null }[];
 }) {
   const [busy, setBusy] = useState(false);
   const [known, setKnown] = useState(sent);
@@ -41,6 +43,20 @@ export function Mb3mFicheAction({
         Envoie la fiche dans MB3M : le client, et chaque société dont l’adresse de facturation est complète. Rien ne
         part à l’enregistrement.
       </p>
+      <p className="text-sm text-muted">
+        Le SIRET, le numéro de TVA et le lien du contact de la société se saisissent à la main dans MB3M. L’API ne les
+        transporte pas.
+      </p>
+      {companies.length ? (
+        <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+          {companies.map((company) => (
+            <li key={company.id}>
+              {(company.company_name || "").trim() || "Société"} — SIRET {(company.siret || "").trim() || "non renseigné"}{" "}
+              — TVA {(company.vat_number || "").trim() || "non renseigné"}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"

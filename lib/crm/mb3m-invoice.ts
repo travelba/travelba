@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
-import { resolveCountryCode } from "@/lib/crm/countries";
+import { resolveCountryCode, resolveNationality } from "@/lib/crm/countries";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { stayCurrency } from "@/lib/crm/stay-currency";
@@ -24,7 +24,8 @@ type PayerCustomer = Pick<
   | "postal_code"
   | "city"
   | "country"
->;
+> &
+  Partial<Pick<CrmCustomer, "phone" | "phone_secondary" | "sex" | "birth_date" | "nationality">>;
 import {
   MB3M_ACTIVITY_TICKETING,
   mb3mDossierLines,
@@ -63,11 +64,13 @@ import {
   mb3mPartnerCode,
   mb3mRealm,
   mb3mRenderPiece,
+  mb3mCivilityFromSex,
   mb3mSaveCompany,
   mb3mSaveFolder,
   mb3mSavePerson,
   mb3mSingleAgencyUid,
   type Mb3mAddress,
+  type Mb3mCivility,
 } from "@/lib/crm/mb3m";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -108,12 +111,19 @@ export type Mb3mInvoiceContext = {
     lastName: string;
     email: string | null;
     address: Mb3mAddress | null;
+    civility?: Mb3mCivility;
+    birthDate?: string | null;
+    country?: string | null;
+    mobileNumber?: string | null;
+    phoneNumber?: string | null;
   } | null;
   company: {
     id: string;
     name: string;
     email: string | null;
     address: Mb3mAddress | null;
+    commercialName?: string | null;
+    phoneNumber?: string | null;
   } | null;
   travelers: { firstName: string; lastName: string }[];
   visibleToClient: boolean;
@@ -411,13 +421,20 @@ export function buildMb3mInvoiceContext(input: {
           lastName: (input.payer.last_name || "").trim(),
           email: blank(input.payer.billing_email) || blank(input.payer.email),
           address: personAddress(input.payer, personName || "Client"),
+          civility: mb3mCivilityFromSex(input.payer.sex),
+          birthDate: blank(input.payer.birth_date),
+          country: resolveNationality(input.payer.nationality),
+          mobileNumber: blank(input.payer.phone),
+          phoneNumber: blank(input.payer.phone_secondary),
         }
       : null,
     company: company
       ? {
           id: company.id,
           name: companyName,
-          email: blank(company.billing_email),
+          commercialName: companyName,
+          email: blank(company.billing_email) || blank(input.payer?.email),
+          phoneNumber: blank(input.payer?.phone),
           address: addressOf(
             companyName || "Société",
             company.billing_address_line,
@@ -650,16 +667,23 @@ async function ensureFolder(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps, piec
         ? await deps.saveCompany({
             partnerId: mb3mPartnerCode(ctx.company.id),
             name: ctx.company.name,
+            commercialName: ctx.company.commercialName || ctx.company.name,
             email: ctx.company.email || undefined,
+            phoneNumber: ctx.company.phoneNumber,
             address: ctx.company.address,
           })
         : ctx.person?.address
           ? await deps.savePerson({
               partnerId: mb3mPartnerCode(ctx.person.id),
+              civility: ctx.person.civility,
               firstName: ctx.person.firstName,
               name: ctx.person.lastName,
               email: ctx.person.email || undefined,
               address: ctx.person.address,
+              birthDate: ctx.person.birthDate,
+              country: ctx.person.country,
+              mobileNumber: ctx.person.mobileNumber,
+              phoneNumber: ctx.person.phoneNumber,
             })
           : null;
     if (!saved?.uid) throw new Mb3mError("La fiche MB3M n’a pas abouti.", -1);

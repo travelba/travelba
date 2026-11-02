@@ -369,7 +369,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
         companyAdmins={(companyAdmins || []) as PickableCustomer[]}
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
-      <Mb3mFicheAction customerId={c.id} blocker={mb3mFicheBlocker(c)} sent={mb3mSent} />
+      <Mb3mFicheAction
+        customerId={c.id}
+        blocker={mb3mFicheBlocker(c)}
+        sent={mb3mSent}
+        companies={(billingCompanies || []) as CrmBillingCompany[]}
+      />
       <ClientPaymentsToCredit customerId={c.id} count={paymentsToCredit} />
       <section className="admin-af-card rounded-3xl px-5 py-4">
         <div className="flex items-end justify-between gap-3">
