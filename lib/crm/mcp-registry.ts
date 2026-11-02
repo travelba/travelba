@@ -70,6 +70,7 @@ import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus
 import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
+import { envoyerFacture } from "@/lib/crm/mcp-invoice";
 import {
   comptabiliteSortie,
   creerFicheMb3m,
@@ -107,7 +108,7 @@ import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 92;
+export const MCP_TOOL_CAP = 93;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1357,6 +1358,24 @@ export const MCP_TOOLS: ToolDef[] = [
       reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
     },
     run: (args) => statutFactureMb3m(args),
+  },
+  {
+    name: "envoyer_facture",
+    write: true,
+    openWorld: true,
+    selfJournal: true,
+    description:
+      "Prépare l’envoi de la facture pro forma et la demande de paiement, par e-mail et par WhatsApp. dossier_id ou reference. Sans confirmer, rien n’est envoyé : la réponse donne l’aperçu (reste à payer, échéance, RIB présent ou manquant, lien Stripe s’il existe, message, canaux prêts). confirmer true envoie les canaux demandés. email et whatsapp omettent un canal quand ils sont faux ; omis, les deux sont demandés. Le PDF est joint. Le montant restant dû, le RIB et le lien de paiement sont dans le message. Hors des 24 heures, WhatsApp part avec le modèle approuvé facture_paiement (TWILIO_CONTENT_FACTURE, en-tête Document) ; sinon ce canal est refusé et le modèle à soumettre est décrit. Aucune mention du logiciel de facturation pour le client. L’envoi est noté au journal avec l’auteur (le jeton, ou le membre de la clé). Un second envoi réussi dans les cinq minutes est refusé, sauf force. lien_stripe enregistre un lien Stripe déjà émis pour le dossier ; il n’en crée pas.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+      confirmer: z.boolean().optional().describe("Vrai : envoie. Omis ou faux : aperçu seulement"),
+      email: z.boolean().optional().describe("E-mail. Omis : demandé. Faux : pas d’e-mail"),
+      whatsapp: z.boolean().optional().describe("WhatsApp. Omis : demandé. Faux : pas de WhatsApp"),
+      lien_stripe: z.string().trim().max(400).optional().describe("Lien Stripe déjà émis. Vide : retire le lien enregistré"),
+      force: z.boolean().optional().describe("Renvoie même si un envoi réussi est parti dans les cinq dernières minutes"),
+    },
+    run: (args) => envoyerFacture(args),
   },
   {
     name: "sejours_restaurants",

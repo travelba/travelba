@@ -32,10 +32,16 @@ export const siteConfig = {
     ape: "79.12Z — Activités des voyagistes",
     president: "RZ INVEST",
     accreditation: "IATA (International Air Transport Association)",
+    /** Numéro IATA de l’agence, imprimé sur la facture. */
+    iata: "20291655",
     garantieFinanciere:
       "APST — Association Professionnelle de Solidarité du Tourisme, 15 avenue Carnot, 75017 Paris",
-    // À compléter : immatriculation Atout France (IM0xxxxxxxx).
-    atoutFrance: "",
+    /** Numéro d’adhérent APST. */
+    apstNumber: "43865",
+    /** Immatriculation Atout France. */
+    atoutFrance: "IM092260002",
+    /** Téléphone imprimé sur la facture. Le WhatsApp public reste `whatsappDisplay`. */
+    invoicePhone: "07 72 15 82 57",
   },
 } as const;
 
