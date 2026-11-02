@@ -101,6 +101,10 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   retirer_piece_dossier: "edit_dossiers",
   lire_journal: "agency",
   reactiver_membre: "admin",
+  reprendre_facture_mb3m: "edit_finances",
+  creer_fiche_mb3m: "edit_finances",
+  comptabilite_sortie: "edit_finances",
+  refuser_encaissement: "edit_finances",
 };
 
 export type McpStaffGate = {

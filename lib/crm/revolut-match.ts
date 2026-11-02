@@ -222,6 +222,18 @@ async function customerFundingCompanies(admin: RevolutAdmin, customerId: string)
   return (Array.isArray(data) ? data : []) as { id: string; funding?: string | null }[];
 }
 
+/** Même refus que l’écran Argent : le mouvement quitte la file, un débit est soldé. */
+export async function refuseRevolutInbox(admin: RevolutAdmin, row: CrmRevolutTransaction) {
+  if (row.status === "matched") return { ok: false as const, error: "already_matched" as const };
+  const patch =
+    row.direction === "debit"
+      ? { status: "ignored", settled_at: new Date().toISOString() }
+      : { status: "ignored" };
+  const { error } = await admin.from("crm_revolut_transactions").update(patch).eq("id", row.id);
+  if (error) return { ok: false as const, error: "refuse_failed" as const };
+  return { ok: true as const };
+}
+
 export async function applyRevolutToCustomer(
   admin: RevolutAdmin,
   row: CrmRevolutTransaction,

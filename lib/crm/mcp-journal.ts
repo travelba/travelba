@@ -33,6 +33,10 @@ const FINANCE = new Set([
   "remettre_non_rattache",
   "rapprocher_pliant",
   "preparer_facture_mb3m",
+  "reprendre_facture_mb3m",
+  "creer_fiche_mb3m",
+  "comptabilite_sortie",
+  "refuser_encaissement",
 ]);
 
 const PHRASES: Record<string, string> = {
@@ -89,6 +93,10 @@ const PHRASES: Record<string, string> = {
   reordonner_cartes: "Cartes réordonnées",
   deposer_piece_dossier: "Pièce déposée sur le dossier",
   retirer_piece_dossier: "Pièce retirée du dossier",
+  reprendre_facture_mb3m: "Facture MB3M reprise",
+  creer_fiche_mb3m: "Fiche envoyée à MB3M",
+  comptabilite_sortie: "Sortie fournisseur rapprochée",
+  refuser_encaissement: "Encaissement refusé",
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

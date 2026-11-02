@@ -89,6 +89,10 @@ const EXPECTED = [
   "retirer_piece_dossier",
   "lire_journal",
   "reactiver_membre",
+  "reprendre_facture_mb3m",
+  "creer_fiche_mb3m",
+  "comptabilite_sortie",
+  "refuser_encaissement",
 ];
 
 const WRITE_TOOLS = [
@@ -151,6 +155,10 @@ const WRITE_TOOLS = [
   "deposer_piece_dossier",
   "retirer_piece_dossier",
   "reactiver_membre",
+  "reprendre_facture_mb3m",
+  "creer_fiche_mb3m",
+  "comptabilite_sortie",
+  "refuser_encaissement",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
