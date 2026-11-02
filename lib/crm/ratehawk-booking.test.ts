@@ -191,8 +191,20 @@ test("l’identifiant de scénario survit à une régénération, les environnem
   const sandbox = loadRatehawkConfig({ RATEHAWK_ENV: "sandbox", RATEHAWK_KEY_ID: "key", RATEHAWK_API_KEY: "secret" });
   assert.equal(sandbox.baseUrl, "https://api-sandbox.ratehawk.com");
   assert.equal(sandbox.language, "en");
+  const worldota = loadRatehawkConfig({
+    RATEHAWK_ENV: "sandbox",
+    RATEHAWK_BASE_URL: "https://api-sandbox.worldota.net",
+    RATEHAWK_KEY_ID: "key",
+    RATEHAWK_API_KEY: "secret",
+  });
+  assert.equal(worldota.baseUrl, "https://api-sandbox.worldota.net");
+  assert.equal(worldota.environment, "sandbox");
   assert.throws(
     () => loadRatehawkConfig({ RATEHAWK_ENV: "sandbox", RATEHAWK_BASE_URL: "https://api.ratehawk.com" }),
+    RatehawkConfigError
+  );
+  assert.throws(
+    () => loadRatehawkConfig({ RATEHAWK_ENV: "production", RATEHAWK_BASE_URL: "https://api-sandbox.worldota.net" }),
     RatehawkConfigError
   );
   assert.throws(

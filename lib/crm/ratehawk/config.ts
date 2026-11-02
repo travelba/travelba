@@ -22,10 +22,16 @@ export type RatehawkConfig = {
   webhookToken: string;
 };
 
-const HOSTS: Record<RatehawkEnv, string> = {
+const PRODUCTION_HOST = "api.ratehawk.com";
+const SANDBOX_HOSTS = new Set(["api-sandbox.ratehawk.com", "api-sandbox.worldota.net"]);
+const DEFAULT_HOST: Record<RatehawkEnv, string> = {
   sandbox: "api-sandbox.ratehawk.com",
-  production: "api.ratehawk.com",
+  production: PRODUCTION_HOST,
 };
+
+function hostAllowed(mode: RatehawkEnv, hostname: string) {
+  return mode === "sandbox" ? SANDBOX_HOSTS.has(hostname) : hostname === PRODUCTION_HOST;
+}
 
 export const PREBOOK_TIMEOUT_MS = 60_000;
 export const SEARCH_TIMEOUT_MAX_SECONDS = 30;
@@ -46,15 +52,14 @@ export function loadRatehawkConfig(env: Record<string, string | undefined> = pro
   if (env.VERCEL_ENV === "preview" && mode === "production") {
     throw new RatehawkConfigError("Le bac à sable Ratehawk seul est admis en preview.");
   }
-  const expectedHost = HOSTS[mode];
-  const baseUrl = (env.RATEHAWK_BASE_URL || `https://${expectedHost}`).trim().replace(/\/$/, "");
+  const baseUrl = (env.RATEHAWK_BASE_URL || `https://${DEFAULT_HOST[mode]}`).trim().replace(/\/$/, "");
   let url: URL;
   try {
     url = new URL(baseUrl);
   } catch {
     throw new RatehawkConfigError("RATEHAWK_BASE_URL est illisible.");
   }
-  if (url.protocol !== "https:" || url.hostname !== expectedHost || (url.pathname !== "" && url.pathname !== "/")) {
+  if (url.protocol !== "https:" || !hostAllowed(mode, url.hostname) || (url.pathname !== "" && url.pathname !== "/")) {
     throw new RatehawkConfigError("RATEHAWK_BASE_URL ne correspond pas à RATEHAWK_ENV.");
   }
   if (url.username || url.password || url.search || url.hash) {

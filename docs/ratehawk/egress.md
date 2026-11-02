@@ -13,7 +13,7 @@ ETG whitelists source IPs. Vercel functions use dynamic egress unless Static IPs
 
 Set `RATEHAWK_HTTPS_PROXY` to an `http://` or `https://` proxy URL whose egress IP is the one ETG will whitelist. The client uses an undici `ProxyAgent` for API calls and for the region-dump download. The proxy URL is not written to logs. Redirects on API calls are refused so a proxy cannot bounce the call onto the other ETG host.
 
-Do not point sandbox keys at `api.ratehawk.com` or production keys at `api-sandbox.ratehawk.com`. `RATEHAWK_ENV=production` is rejected when `VERCEL_ENV=preview`.
+Do not point sandbox keys at `api.ratehawk.com` or production keys at `api-sandbox.ratehawk.com` or `api-sandbox.worldota.net`. `RATEHAWK_ENV=production` is rejected when `VERCEL_ENV=preview`.
 
 ## What to send ETG
 

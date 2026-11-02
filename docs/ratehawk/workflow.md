@@ -1,6 +1,6 @@
 # Ratehawk / ETG v3 — workflow
 
-Travel BA calls ETG only from the server (`lib/crm/ratehawk`). The agency works in `/admin/ratehawk`. Sandbox host is `https://api-sandbox.ratehawk.com`. Production host is `https://api.ratehawk.com`. Keys, host, and stored rows never cross environments.
+Travel BA calls ETG only from the server (`lib/crm/ratehawk`). The agency works in `/admin/ratehawk`. Sandbox hosts are `https://api-sandbox.ratehawk.com` and `https://api-sandbox.worldota.net`. Production host is `https://api.ratehawk.com`. Keys, host, and stored rows never cross environments.
 
 Hotelpage and prebook are not cached. Each open and each prebook is a live call. Search reads hotel names and room static data from Supabase, filled by the daily content job, and never calls the Content API.
 

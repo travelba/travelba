@@ -1,6 +1,6 @@
 # Seven sandbox certification bookings
 
-Run these on **sandbox** only (`RATEHAWK_ENV=sandbox`, base URL `https://api-sandbox.ratehawk.com`). Production keys must not be present. Each booking needs a real adult name (letters, space, hyphen, apostrophe). Do not use Test, Guest, Child, or xxx.
+Run these on **sandbox** only (`RATEHAWK_ENV=sandbox`, base URL `https://api-sandbox.ratehawk.com` or `https://api-sandbox.worldota.net`). Production keys must not be present. Each booking needs a real adult name (letters, space, hyphen, apostrophe). Do not use Test, Guest, Child, or xxx.
 
 Before the first booking:
 
