@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { attachBookingDocument, bookingDocumentKind, removeBookingDocument } from "@/lib/crm/booking-document-write";
 import { queuePublishedPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { normalizePieceKind } from "@/lib/crm/concierge-notices";
-import { removeCrmFiles, safeFileName, uploadCrmFile } from "@/lib/crm/files";
-import { uploadIssue } from "@/lib/crm/upload-policy";
 import { syncCheckinWithPasses } from "@/lib/crm/online-checkin-db";
+import { uploadIssue } from "@/lib/crm/upload-policy";
 
 type Ctx = { params: Promise<{ id: string }> };
-
-function documentKind(raw: string) {
-  const value = raw.replace(/\s+/g, " ").trim().slice(0, 40);
-  if (value === "carte d'embarquement" || value === "carte d’embarquement") return "carte d'embarquement";
-  return value || "other";
-}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
@@ -23,37 +17,15 @@ export async function POST(request: Request, ctx: Ctx) {
   if (!(file instanceof File)) return jsonError("Fichier requis");
   const issue = uploadIssue(file, "dossier");
   if (issue) return jsonError(issue, 400);
-  const kind = documentKind(String(form.get("kind") || "other"));
-  // La carte est vérifiée avant le téléversement : pas de fichier orphelin sur « Carte introuvable ».
-  const itemId = String(form.get("booking_item_id") || "").trim() || null;
-  if (itemId) {
-    const { data: item } = await auth.supabase
-      .from("crm_booking_items")
-      .select("id")
-      .eq("id", itemId)
-      .eq("booking_id", id)
-      .maybeSingle();
-    if (!item) return jsonError("Carte introuvable", 404);
-  }
   const bytes = Buffer.from(await file.arrayBuffer());
-  const path = `bookings/${id}/${Date.now()}-${safeFileName(file.name)}`;
-  await uploadCrmFile(path, bytes, file.type || "application/octet-stream");
-  const { data, error } = await auth.supabase
-    .from("crm_booking_documents")
-    .insert({
-      booking_id: id,
-      booking_item_id: itemId,
-      kind,
-      file_name: file.name,
-      mime_type: file.type,
-      storage_path: path,
-      visible_to_client: false,
-    })
-    .select("*")
-    .single();
-  if (error) return dbError(error, 400);
-  if (kind === "carte d'embarquement") await syncCheckinWithPasses(auth.supabase, id, "agence");
-  return NextResponse.json({ document: data });
+  const saved = await attachBookingDocument(auth.supabase, {
+    bookingId: id,
+    itemId: String(form.get("booking_item_id") || ""),
+    kind: String(form.get("kind") || "other"),
+    file: { name: file.name, type: file.type, size: file.size, bytes },
+  });
+  if ("error" in saved) return jsonError(saved.error, saved.status);
+  return NextResponse.json({ document: saved.document });
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
@@ -68,7 +40,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     update.visible_to_client = Boolean(body.visible_to_client);
   }
   if (body && Object.prototype.hasOwnProperty.call(body, "kind")) {
-    const kind = documentKind(String(body.kind || ""));
+    const kind = bookingDocumentKind(String(body.kind || ""));
     if (kind !== "carte d'embarquement" && kind !== "other") return jsonError("Type de pièce invalide.");
     update.kind = kind;
   }
@@ -112,20 +84,7 @@ export async function DELETE(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const docId = new URL(request.url).searchParams.get("id") || "";
   if (!docId) return jsonError("id requis");
-  const { data: doc, error: readError } = await auth.supabase
-    .from("crm_booking_documents")
-    .select("id, storage_path")
-    .eq("id", docId)
-    .eq("booking_id", id)
-    .maybeSingle();
-  if (readError) return dbError(readError, 400);
-  if (!doc) return jsonError("Pièce introuvable", 404);
-  const { error } = await auth.supabase
-    .from("crm_booking_documents")
-    .delete()
-    .eq("id", docId)
-    .eq("booking_id", id);
-  if (error) return dbError(error, 400);
-  if (doc.storage_path) await removeCrmFiles([doc.storage_path]);
+  const removed = await removeBookingDocument(auth.supabase, id, docId);
+  if ("error" in removed) return jsonError(removed.error, removed.status);
   return NextResponse.json({ ok: true });
 }

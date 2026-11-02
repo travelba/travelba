@@ -75,6 +75,20 @@ const EXPECTED = [
   "lister_cles_api",
   "creer_cle_api",
   "revoquer_cle_api",
+  "supprimer_client",
+  "enregistrer_societes",
+  "regler_acces_hotels",
+  "archiver_dossier",
+  "restaurer_dossier",
+  "dupliquer_dossier",
+  "cacher_carnet",
+  "ajouter_carte",
+  "modifier_carte",
+  "reordonner_cartes",
+  "deposer_piece_dossier",
+  "retirer_piece_dossier",
+  "lire_journal",
+  "reactiver_membre",
 ];
 
 const WRITE_TOOLS = [
@@ -124,6 +138,19 @@ const WRITE_TOOLS = [
   "desactiver_membre",
   "creer_cle_api",
   "revoquer_cle_api",
+  "supprimer_client",
+  "enregistrer_societes",
+  "regler_acces_hotels",
+  "archiver_dossier",
+  "restaurer_dossier",
+  "dupliquer_dossier",
+  "cacher_carnet",
+  "ajouter_carte",
+  "modifier_carte",
+  "reordonner_cartes",
+  "deposer_piece_dossier",
+  "retirer_piece_dossier",
+  "reactiver_membre",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
