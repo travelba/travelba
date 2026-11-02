@@ -11,6 +11,7 @@ import {
   mb3mFaultDetail,
   mb3mOperationMessage,
   mb3mFindPersons,
+  linesXml,
   mb3mPartnerCode,
   mb3mPdfBytes,
   mb3mPieceState,
@@ -322,9 +323,51 @@ describe("client MB3M Partners", () => {
     );
     assert.ok(order.every((index) => index >= 0), hotel);
     assert.deepEqual(order, [...order].sort((left, right) => left - right));
+    assert.equal(hotel.includes("<CommissionTotal>"), false);
     const flight = body.slice(body.lastIndexOf("<InvoiceLine>"));
     assert.equal(flight.includes("<MarginUnit>"), false);
     assert.equal(flight.includes("<Note>"), false);
+    assert.ok(
+      flight.includes("<ActivityId>2</ActivityId><CommissionTotal>0.001</CommissionTotal><Label>Vol</Label>"),
+      flight
+    );
+  });
+
+  it("renseigne CommissionTotal sur une billetterie, et sur l’avoir, dans l’ordre du schéma", () => {
+    const base = { quantity: 1, netPriceUnit: 400, netPriceTotal: 400 };
+    const air = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId: 2 }]);
+    assert.ok(air.includes("<ActivityId>2</ActivityId><CommissionTotal>0.001</CommissionTotal><Label>Vol</Label>"));
+    for (const commissionTotal of [0, null] as const) {
+      const fallback = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId: 2, commissionTotal }]);
+      assert.ok(fallback.includes("<CommissionTotal>0.001</CommissionTotal>"));
+    }
+    const priced = linesXml("InvoiceLine", [
+      { ...base, label: "Vol", activityId: 2, commissionTotal: 12.5, marginUnit: 12.5 },
+    ]);
+    const pricedAt = [
+      "<ActivityId>2",
+      "<CommissionTotal>12.5",
+      "<Label>Vol",
+      "<MarginUnit>12.5",
+      "<NetPriceTotal>400",
+      "<NetPriceUnit>400",
+      "<Quantity>1",
+      "<Type>Standard",
+    ].map((needle) => priced.indexOf(needle));
+    assert.ok(pricedAt.every((index) => index >= 0), priced);
+    assert.deepEqual(pricedAt, [...pricedAt].sort((left, right) => left - right));
+    const hotel = linesXml("InvoiceLine", [{ ...base, label: "Hôtel", activityId: 7 }]);
+    assert.equal(hotel.includes("<CommissionTotal>"), false);
+    const hotelCommission = linesXml("InvoiceLine", [{ ...base, label: "Hôtel", activityId: 7, commissionTotal: 8 }]);
+    assert.ok(
+      hotelCommission.includes("<ActivityId>7</ActivityId><CommissionTotal>8</CommissionTotal><Label>Hôtel</Label>")
+    );
+    const credit = linesXml("CreditNoteLine", [{ ...base, label: "Avoir vol", activityId: 2 }]);
+    assert.ok(
+      credit.includes(
+        "<CreditNoteLine><ActivityId>2</ActivityId><CommissionTotal>0.001</CommissionTotal><Label>Avoir vol</Label>"
+      )
+    );
   });
 
   it("crée un avoir sur le dossier déjà ouvert", async () => {
