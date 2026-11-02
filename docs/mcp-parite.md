@@ -89,7 +89,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Départ (réattribuer les dossiers), sessions, matrice des droits | hors API |
 | Restaurants du catalogue et tables du soir | `list_restaurants`, `create_restaurant`, `update_restaurant`, `tables_restaurant`, `choix_restaurant`, `sejours_restaurants` — couvert |
 | Envoyer le WhatsApp 16 h, modèles | `create_restaurant_whatsapp_templates`, `get_restaurant_whatsapp_templates_status` — le dépôt des modèles est couvert ; l’envoi du soir reste le cron |
-| Déposer acces_client, option_hotel_activee, facture_paiement | `deposer_modeles_whatsapp`, `statut_modeles_whatsapp` — ajouté. Administrateurs. Le SID est dans `crm_whatsapp_content_sids`, repli sur la variable |
+| Déposer espace_client_lien, option_hotel_activee, facture_paiement | `deposer_modeles_whatsapp`, `statut_modeles_whatsapp` — ajouté. Administrateurs. Le SID est dans `crm_whatsapp_content_sids`, repli sur la variable |
 | Little Emperors | `reservation_little_emperors`, `little_emperors_en_attente` — couvert |
 | Cartes Pliant du dossier | `creer_carte_pliant`, `lire_carte_pliant`, `bloquer_carte_pliant` — jeton carte pour le numéro |
 | Formalités (lecture) | `formalites` — couvert |

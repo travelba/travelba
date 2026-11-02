@@ -5,6 +5,8 @@ export function isContentSid(value: unknown): value is string {
 
 export type ContentSidStore = {
   read(envName: string): Promise<string | null>;
+  /** Nom Twilio enregistré avec le SID. Null si la ligne n’en a pas. */
+  readName(envName: string): Promise<string | null>;
   write(envName: string, sid: string, friendlyName: string): Promise<void>;
 };
 
@@ -20,6 +22,10 @@ export function memoryContentSidStore(seed: Record<string, string> = {}): Conten
     async read(envName) {
       const sid = rows[envName];
       return isContentSid(sid) ? sid : null;
+    },
+    async readName(envName) {
+      const name = names[envName];
+      return name?.trim() || null;
     },
     async write(envName, sid, friendlyName) {
       if (!isContentSid(sid)) throw new Error("sid");
@@ -42,6 +48,21 @@ export function serviceContentSidStore(): ContentSidStore {
           .maybeSingle();
         if (error || !isContentSid(data?.content_sid)) return null;
         return data.content_sid;
+      } catch {
+        return null;
+      }
+    },
+    async readName(envName) {
+      try {
+        const { createServiceClient } = await import("@/lib/supabase/admin");
+        const { data, error } = await createServiceClient()
+          .from("crm_whatsapp_content_sids")
+          .select("friendly_name")
+          .eq("env_name", envName)
+          .maybeSingle();
+        if (error) return null;
+        const name = typeof data?.friendly_name === "string" ? data.friendly_name.trim() : "";
+        return name || null;
       } catch {
         return null;
       }
