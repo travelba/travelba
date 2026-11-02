@@ -24,6 +24,7 @@ import {
 } from "@/lib/crm/spending-desk";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { mb3mPieceLinksFor } from "@/lib/crm/mb3m-invoice";
+import { isReleasableCredit } from "@/lib/crm/releasable-credit";
 import { fundingPockets, payingCompanyLabels, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
 import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
@@ -185,6 +186,9 @@ export function shapeClientLedger(input: {
       carnetLabel: carnet.label,
       companyLabel: transactionCompanyLabel(input.billingCompanyCount || 0, companyName),
       bookingId: row.booking_id,
+      amountValue: Number(row.amount),
+      source: row.source,
+      unmatchable: input.audience === "staff" && isReleasableCredit(row),
       mb3mLabel: credit ? null : input.mb3mByTransaction?.get(row.id)?.text || null,
       mb3mHref: credit ? null : input.mb3mByTransaction?.get(row.id)?.href || null,
     };

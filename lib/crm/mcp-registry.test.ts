@@ -25,6 +25,7 @@ const EXPECTED = [
   "crediter_revolut",
   "rapprocher_depense_revolut",
   "crediter_stripe",
+  "remettre_non_rattache",
   "rapprocher_pliant",
   "creer_carte_pliant",
   "lire_carte_pliant",
@@ -72,6 +73,7 @@ const WRITE_TOOLS = [
   "crediter_revolut",
   "rapprocher_depense_revolut",
   "crediter_stripe",
+  "remettre_non_rattache",
   "rapprocher_pliant",
   "creer_carte_pliant",
   "bloquer_carte_pliant",
@@ -123,6 +125,11 @@ test("mcp tools stay unique, named, and under the cap", () => {
   );
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.write, undefined);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.description || "", /credits/);
+  const unmatch = MCP_TOOLS.find((tool) => tool.name === "remettre_non_rattache");
+  assert.equal(unmatch?.write, true);
+  assert.match(unmatch?.description || "", /motif/);
+  assert.match(unmatch?.description || "", /imprimée/);
   assert.deepEqual(
     MCP_TOOLS.filter((tool) => tool.pieceNumbers).map((tool) => tool.name),
     ["passeport_voyageur"]

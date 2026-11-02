@@ -271,6 +271,7 @@ export async function applyRevolutToCustomer(
       .select("*")
       .eq("source", "revolut")
       .eq("external_id", row.revolut_transaction_id)
+      .eq("status", "posted")
       .maybeSingle();
     if (!existing) return { ok: false as const, error: error.message as string };
     posted = existing;

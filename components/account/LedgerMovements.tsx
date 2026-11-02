@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/crm/icons";
+import { UnmatchCreditButton } from "@/components/admin/UnmatchCreditButton";
 import type { LedgerMovementRow } from "@/lib/crm/ledger-movement";
 
 export type { LedgerMovementRow };
@@ -124,6 +125,15 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                     {row.carnetLabel || "Accéder à ma réservation"}
                   </Link>
                 ) : null}
+              </div>
+            ) : null}
+            {row.unmatchable ? (
+              <div className="px-4 pb-3">
+                <UnmatchCreditButton
+                  transactionId={row.id}
+                  amountLabel={row.amountLabel.replace(/^[+−-]/, "")}
+                  source={row.source}
+                />
               </div>
             ) : null}
           </li>

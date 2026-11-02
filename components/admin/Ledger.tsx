@@ -13,7 +13,9 @@ import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
 import { DateFrInput, MoneyInput } from "@/components/crm/fields";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { UnmatchCreditButton } from "@/components/admin/UnmatchCreditButton";
 import { ledgerEmptyMessage } from "@/lib/crm/launch-status";
+import { isReleasableCredit } from "@/lib/crm/releasable-credit";
 
 const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
   pending: "En attente",
@@ -267,6 +269,13 @@ export function Ledger({
               <StatusChip tone={t.status === "posted" ? "gold" : t.status === "void" ? "red" : "amber"}>
                 {STATUS_LABELS[t.status]}
               </StatusChip>
+              {isReleasableCredit(t) ? (
+                <UnmatchCreditButton
+                  transactionId={t.id}
+                  amountLabel={formatMoney(Number(t.amount), t.currency)}
+                  source={t.source}
+                />
+              ) : null}
             </li>
           ))}
           {!filtered.length ? (
@@ -284,6 +293,9 @@ export function Ledger({
                 <th className="px-5 py-3">Libellé</th>
                 <th className="px-5 py-3 text-right">Crédit</th>
                 <th className="px-5 py-3">Statut</th>
+                <th className="px-5 py-3">
+                  <span className="sr-only">Action</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -318,11 +330,20 @@ export function Ledger({
                       {STATUS_LABELS[t.status]}
                     </StatusChip>
                   </td>
+                  <td className="px-5 py-3">
+                    {isReleasableCredit(t) ? (
+                      <UnmatchCreditButton
+                        transactionId={t.id}
+                        amountLabel={formatMoney(Number(t.amount), t.currency)}
+                        source={t.source}
+                      />
+                    ) : null}
+                  </td>
                 </tr>
               ))}
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-muted">
+                  <td colSpan={6} className="px-5 py-8 text-center text-muted">
                     {ledgerEmptyMessage(transactions.length > 0)}
                   </td>
                 </tr>

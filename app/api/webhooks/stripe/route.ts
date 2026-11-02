@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/crm/stripe";
 import { stripeCreditFromIntent } from "@/lib/crm/stripe-pay";
+import { paymentCreditReleased } from "@/lib/crm/unmatch-credit";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
 import { snapshotFromPaymentIntent, upsertStripeInbox } from "@/lib/crm/stripe-sync";
 
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
       currency: intent.currency,
       metadata: intent.metadata,
     });
-    if (credit) {
+    if (credit && !(await paymentCreditReleased(admin, "stripe", intent.id))) {
       const { error } = await admin.from("crm_transactions").insert(credit);
       if (error && !/duplicate|unique/i.test(String(error.message || ""))) {
         console.error("[stripe] crédit", error.code || "insert");

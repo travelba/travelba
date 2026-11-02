@@ -65,11 +65,12 @@ async function ledgerByIntent(admin: StripeAdmin, ids: string[]) {
     if (!slice.length) continue;
     const { data } = await admin
       .from("crm_transactions")
-      .select("id, customer_id, external_id")
+      .select("id, customer_id, external_id, status")
       .eq("source", "stripe")
+      .eq("status", "posted")
       .in("external_id", slice);
     for (const row of data || []) {
-      if (row?.external_id && row.id) {
+      if (row?.external_id && row.id && row.status !== "void" && !String(row.external_id).includes("#annule#")) {
         found.set(String(row.external_id), { id: String(row.id), customer_id: String(row.customer_id) });
       }
     }

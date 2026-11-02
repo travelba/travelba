@@ -1,3 +1,4 @@
+import "./router-mock";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
@@ -499,4 +500,32 @@ test("crédit et Pro s’affichent à part, même si le solde global est positif
   assert.match(pay, /Carte bancaire/);
   assert.match(pay, /Apple Pay/);
   assert.equal(pay.includes("Virement"), false);
+});
+
+test("seul l’écran agence peut remettre un crédit en non rattaché", () => {
+  const rows = [
+    tx({ id: "wire", direction: "credit", kind: "transfer", amount: 7916.92, source: "revolut" }),
+    tx({ id: "stay", direction: "debit", kind: "booking", amount: 100, source: "manual" }),
+  ];
+  const staff = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: 7816.92,
+    currency: "EUR",
+    audience: "staff",
+    bookings: [],
+    rows,
+  });
+  assert.equal(staff.movements.find((row) => row.id === "wire")?.unmatchable, true);
+  assert.equal(staff.movements.find((row) => row.id === "stay")?.unmatchable, false);
+  const client = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: 7816.92,
+    currency: "EUR",
+    audience: "client",
+    bookings: [],
+    rows,
+  });
+  assert.equal(client.movements.find((row) => row.id === "wire")?.unmatchable, false);
 });
