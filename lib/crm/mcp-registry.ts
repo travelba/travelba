@@ -69,6 +69,12 @@ import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
 import {
+  comptabiliteSortie,
+  creerFicheMb3m,
+  refuserEncaissement,
+  reprendreFactureMb3m,
+} from "@/lib/crm/mcp-finance-ops";
+import {
   ajouterMembre,
   changerRoleMembre,
   creerCleApi,
@@ -99,7 +105,7 @@ import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 86;
+export const MCP_TOOL_CAP = 90;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1700,6 +1706,71 @@ export const MCP_TOOLS: ToolDef[] = [
       staff_id: z.string().trim().max(80).describe("Identifiant du membre"),
     },
     run: (args) => reactiverMembre({ staff_id: str(args, "staff_id") }),
+  },
+  {
+    name: "reprendre_facture_mb3m",
+    write: true,
+    openWorld: true,
+    destructive: true,
+    description:
+      "Avoir et nouvelle facture MB3M, comme le bouton quand la marge d’une facture imprimée a changé. confirmer true. dossier_id ou reference. N’imprime pas la nouvelle pièce dans MB3M. La réponse donne le numéro d’avoir et le nouveau numéro.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      confirmer: z.boolean().describe("true pour émettre l’avoir et préparer la facture suivante"),
+    },
+    run: (args) => reprendreFactureMb3m(args),
+  },
+  {
+    name: "creer_fiche_mb3m",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie la fiche client et ses sociétés dans MB3M, comme Créer dans MB3M. client_id. L’adresse de la fiche est requise. Ne prépare pas une facture de dossier.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+    },
+    run: (args) => creerFicheMb3m(args),
+  },
+  {
+    name: "comptabilite_sortie",
+    write: true,
+    destructive: true,
+    description:
+      "Paiement fournisseur, comme la page Argent. action : rattacher, deplacer, detacher, ligne, refuser, hors_voyage, remettre. source revolut ou pliant, sortie_id. dossier_id pour rattacher, déplacer ou refuser. carte_id choisit la ligne ; sejour true laisse le montant sur le séjour ; nouvelle_depense { titre, prix } ouvre une dépense. montant_eur pour une sortie hors euros. detacher, deplacer, hors_voyage et refuser exigent confirmer true. La vente du client ne change pas. Pas de numéro de carte.",
+    input: {
+      action: z
+        .enum(["rattacher", "deplacer", "detacher", "ligne", "refuser", "hors_voyage", "remettre"])
+        .describe("Geste de la page Argent"),
+      confirmer: z.boolean().optional().describe("true pour détacher, déplacer, hors voyage ou refuser"),
+      source: z.enum(["revolut", "pliant"]).optional(),
+      sortie_id: z.string().trim().max(80).optional().describe("Identifiant du mouvement Revolut ou Pliant"),
+      cout_id: z.string().trim().max(80).optional().describe("Coût déjà rattaché, pour détacher ou changer de ligne"),
+      dossier_id: z.string().trim().max(80).optional(),
+      carte_id: z.string().trim().max(80).optional(),
+      sejour: z.boolean().optional().describe("true : montant du séjour, sans ligne"),
+      montant_eur: z.union([z.number(), z.string()]).optional(),
+      nouvelle_depense: z
+        .object({
+          titre: z.string().trim().max(160).optional(),
+          prix: z.union([z.number(), z.string()]),
+        })
+        .optional(),
+    },
+    run: (args) => comptabiliteSortie(args),
+  },
+  {
+    name: "refuser_encaissement",
+    write: true,
+    destructive: true,
+    description:
+      "Refuse un crédit Revolut ou Stripe encore dans la file, comme Refuser. source revolut ou stripe, id du mouvement. confirmer true. Un mouvement déjà rapproché est refusé : remettre_non_rattache le remet en file.",
+    input: {
+      source: z.enum(["revolut", "stripe"]),
+      id: z.string().trim().max(80).describe("Identifiant du mouvement"),
+      confirmer: z.boolean().describe("true pour refuser"),
+    },
+    run: (args) => refuserEncaissement(args),
   },
 ];
 

@@ -17,7 +17,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Inviter / renvoyer l’invitation | `inviter_client` — couvert |
 | Accès Hôtels, mode réel, accepter ou refuser une demande | `regler_acces_hotels` — ajouté |
 | Relevé WhatsApp | `envoyer_releve` — couvert |
-| Créer la fiche dans MB3M | hors API pour l’instant (voir Finances) |
+| Créer la fiche dans MB3M | `creer_fiche_mb3m` — ajouté |
 | Ouvrir l’espace à la place du client, lien d’accès WhatsApp | hors API |
 | Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
 | Accompagnateur de la fiche (hors dossier) | hors API — `ajouter_voyageur` porte sur un dossier |
@@ -65,10 +65,10 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
 | Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
 | Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert |
-| Avoir et nouvelle facture (marge périmée) | hors API pour l’instant |
-| Créer la fiche client dans MB3M | hors API pour l’instant |
-| Refuser un encaissement Revolut ou Stripe | hors API pour l’instant |
-| Détacher, déplacer, refuser, hors voyage, nouvelle dépense | hors API pour l’instant — `rapprocher_*` ne couvre que le rattachement simple |
+| Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — ajouté |
+| Créer la fiche client dans MB3M | `creer_fiche_mb3m` — ajouté |
+| Refuser un encaissement Revolut ou Stripe | `refuser_encaissement` — ajouté |
+| Détacher, déplacer, refuser, hors voyage, nouvelle dépense, changer de ligne | `comptabilite_sortie` — ajouté |
 | Compte de facturation sur un crédit | partiel |
 | Sync Revolut / Pliant, OAuth Revolut | hors API |
 
