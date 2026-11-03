@@ -9,6 +9,7 @@ import {
   mb3mWriteMatching,
   type Mb3mRemotePayment,
 } from "@/lib/crm/mb3m";
+import { mb3mPaymentUnchanged } from "@/lib/crm/sync-delta";
 
 export type Mb3mCredit = {
   id: string;
@@ -395,7 +396,9 @@ export async function recordMb3mInvoicePayments(
       .neq("status", "cancelled"),
     supabase
       .from("crm_mb3m_payments")
-      .select("id, transaction_id, mb3m_payment_number, mb3m_invoice_number, matched_amount")
+      .select(
+        "id, transaction_id, booking_id, mb3m_payment_number, mb3m_invoice_number, mb3m_matching_id, amount, matched_amount"
+      )
       .eq("realm", mb3mRealm()),
   ]);
   if (direct.error || wallet.error || peers.error || links.error) {
@@ -422,15 +425,18 @@ export async function recordMb3mInvoicePayments(
   const stored = ((links.data || []) as {
     id?: string;
     transaction_id: string;
+    booking_id?: string | null;
     mb3m_payment_number: string;
     mb3m_invoice_number: string | null;
+    mb3m_matching_id?: string | null;
+    amount?: number | string;
     matched_amount: number | string;
   }[]);
   const paymentIds = stored.flatMap((row) => (row.id ? [row.id] : []));
   const matchRows = paymentIds.length
     ? await supabase
         .from("crm_mb3m_payment_matches")
-        .select("payment_id, mb3m_invoice_number, matched_amount")
+        .select("payment_id, mb3m_invoice_number, mb3m_matching_id, matched_amount")
         .in("payment_id", paymentIds)
     : { data: [], error: null };
   if (matchRows.error) throw new Mb3mError("Les règlements du dossier n’ont pas pu être lus.", -1);
@@ -506,6 +512,31 @@ export async function recordMb3mInvoicePayments(
             .maybeSingle();
           const paymentId = (payment.data as { id?: string } | null)?.id;
           if (payment.error || !paymentId) throw new Mb3mError("Le règlement n’a pas pu être enregistré.", -1);
+          const known = ((matchRows.data || []) as {
+            payment_id?: string;
+            mb3m_invoice_number?: string | null;
+            mb3m_matching_id?: string | null;
+            matched_amount?: number | string;
+          }[]).find(
+            (item) => item.payment_id === paymentId && item.mb3m_invoice_number === plan.targetInvoice
+          );
+          if (
+            known &&
+            mb3mPaymentUnchanged(
+              {
+                mb3m_invoice_number: known.mb3m_invoice_number,
+                mb3m_matching_id: known.mb3m_matching_id,
+                matched_amount: known.matched_amount,
+              },
+              {
+                mb3m_invoice_number: plan.targetInvoice,
+                mb3m_matching_id: matchingId || null,
+                matched_amount: plan.matched,
+              }
+            )
+          ) {
+            return;
+          }
           const { error } = await supabase.from("crm_mb3m_payment_matches").upsert(
             {
               payment_id: paymentId,
@@ -528,6 +559,8 @@ export async function recordMb3mInvoicePayments(
           amount: plan.credit.amount,
           matched_amount: settled ? plan.matched : 0,
         };
+        const previous = stored.find((item) => item.transaction_id === plan.credit.id);
+        if (previous && mb3mPaymentUnchanged(previous, row)) return;
         const { error } = await supabase.from("crm_mb3m_payments").upsert(row, { onConflict: "transaction_id,realm" });
         if (error) throw new Mb3mError("Le règlement n’a pas pu être enregistré.", -1);
       },

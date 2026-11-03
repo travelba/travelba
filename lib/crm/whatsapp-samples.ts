@@ -7,6 +7,8 @@ import { connexionContentVariables, sendContentTemplate, whatsappAddress } from 
 import { resolveContentSid } from "./twilio-content-sid";
 import { sendWhatsappSession, whatsappSessionConfigured } from "./whatsapp-session";
 import { whatsappCatalog } from "./whatsapp-catalog";
+import { TWILIO_FIRST_LOOKBACK_MS, TWILIO_OVERLAP_MS, syncSinceIso, twilioMessagesQuery } from "./sync-delta";
+import { SYNC_WATERMARK, readSyncWatermark, writeSyncWatermark } from "./sync-watermark";
 
 /** Ligne de relecture des échantillons (WHATSAPP_SAMPLE_PHONE). Vide = aucun envoi d’échantillon. */
 function samplePhone() {
@@ -32,20 +34,26 @@ const UNREACHABLE = new Set(["63003", "21211", "21614", "63024"]);
 
 const EMPTY_RECEIPT: DeliveryReport = { total: 0, delivered: 0, errors: [], statuses: {} };
 
-/** Statuts Twilio des derniers messages vers le téléphone, sans corps ni numéro. */
-export async function inspectSampleDelivery(to: string, fetchImpl: typeof fetch): Promise<DeliveryReport> {
+/**
+ * Statuts Twilio des messages vers le téléphone, sans corps ni numéro.
+ * `sinceIso` limite à `DateSent>=` (jour UTC). Sans date : les 50 derniers.
+ */
+export async function inspectSampleDelivery(
+  to: string,
+  fetchImpl: typeof fetch,
+  sinceIso: string | null = null
+): Promise<DeliveryReport> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
   const token = process.env.TWILIO_AUTH_TOKEN?.trim();
   if (!accountSid || !token) return EMPTY_RECEIPT;
   try {
-    const url = new URL(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`);
-    url.searchParams.set("To", to);
-    url.searchParams.set("PageSize", "50");
+    const url = twilioMessagesQuery(accountSid, to, sinceIso);
     const response = await fetchImpl(url, {
       headers: { Authorization: `Basic ${Buffer.from(`${accountSid}:${token}`).toString("base64")}` },
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) return EMPTY_RECEIPT;
+    if (sinceIso) await writeSyncWatermark(SYNC_WATERMARK.twilio, new Date().toISOString());
     const payload = (await response.json()) as {
       messages?: Array<{ status?: string; error_code?: number | null }>;
     };
@@ -153,7 +161,16 @@ export async function sendCatalogSamples(
   fetchImpl: typeof fetch = fetch,
   deliverSession: typeof sendWhatsappSession = sendWhatsappSession,
   deliverTemplate: typeof sendContentTemplate = sendContentTemplate,
-  inspect: (to: string) => Promise<DeliveryReport> = (to) => inspectSampleDelivery(to, fetchImpl)
+  inspect: (to: string) => Promise<DeliveryReport> = async (to) => {
+    const cursor = await readSyncWatermark(SYNC_WATERMARK.twilio);
+    const since = syncSinceIso({
+      cursor,
+      now: Date.now(),
+      overlapMs: TWILIO_OVERLAP_MS,
+      firstLookbackMs: TWILIO_FIRST_LOOKBACK_MS,
+    });
+    return inspectSampleDelivery(to, fetchImpl, since);
+  }
 ) {
   if (isVercelPreview() || !whatsappSessionConfigured()) return { skipped: "not_configured" as const };
   const to = whatsappAddress(samplePhone());

@@ -6,7 +6,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** Chaque minute : un fil tenu par l’agence sans activité depuis 5 minutes revient au Concierge. */
+/** Toutes les 2 minutes. Le fil revient au Concierge après 5 minutes : le webhook porte les messages. Voir lib/crm/cron-cadence.ts. */
 export async function GET(request: Request) {
   if (!cronAuthorized(request.headers.get("authorization"), cronSecret())) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });

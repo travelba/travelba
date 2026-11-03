@@ -16,6 +16,7 @@ import { gmailConfigured } from "@/lib/crm/gmail";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 
+/** Toutes les 5 minutes, décalé d’une minute. Les billets ne peuvent pas attendre un quart d’heure. */
 export const runtime = "nodejs";
 export const maxDuration = 300;
 

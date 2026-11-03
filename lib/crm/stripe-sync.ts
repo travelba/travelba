@@ -1,9 +1,15 @@
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/crm/stripe";
-import { stripeInboxFromIntent, type StripeChargeHint, type StripeIntentInput } from "@/lib/crm/stripe-inbox";
+import { stripeInboxFromIntent, type StripeChargeHint, type StripeInboxDraft, type StripeIntentInput } from "@/lib/crm/stripe-inbox";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
-
-const LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
+import {
+  STRIPE_FIRST_LOOKBACK_MS,
+  STRIPE_OVERLAP_MS,
+  stripeStoredMatches,
+  syncSinceUnix,
+  type StripeStoredRow,
+} from "@/lib/crm/sync-delta";
+import { SYNC_WATERMARK, readSyncWatermark, writeSyncWatermark } from "@/lib/crm/sync-watermark";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type StripeAdmin = { from: (table: string) => any };
@@ -78,45 +84,66 @@ async function ledgerByIntent(admin: StripeAdmin, ids: string[]) {
   return found;
 }
 
+const INBOX_COLUMNS =
+  "stripe_payment_intent_id, amount, currency, direction, payer_name, payer_email, reference, method, last4, booked_at, raw, status";
+
+async function inboxByIntent(admin: StripeAdmin, ids: string[]) {
+  const found = new Map<string, StripeStoredRow>();
+  for (let index = 0; index < ids.length; index += 100) {
+    const slice = ids.slice(index, index + 100);
+    if (!slice.length) continue;
+    const { data } = await admin.from("crm_stripe_transactions").select(INBOX_COLUMNS).in("stripe_payment_intent_id", slice);
+    for (const row of data || []) {
+      const id = String(row?.stripe_payment_intent_id || "");
+      if (id) found.set(id, row as StripeStoredRow);
+    }
+  }
+  return found;
+}
+
+function stripeFields(draft: StripeInboxDraft) {
+  return {
+    amount: draft.amount,
+    currency: draft.currency,
+    direction: draft.direction,
+    payer_name: draft.payer_name,
+    payer_email: draft.payer_email,
+    reference: draft.reference,
+    method: draft.method,
+    last4: draft.last4,
+    booked_at: draft.booked_at,
+    raw: draft.raw,
+  };
+}
+
 export async function upsertStripeInbox(admin: StripeAdmin, intents: StripeIntentInput[]) {
   const drafts = intents.flatMap((intent) => {
     const draft = stripeInboxFromIntent(intent);
     return draft ? [draft] : [];
   });
-  const linked = await ledgerByIntent(
-    admin,
-    drafts.map((draft) => draft.stripe_payment_intent_id)
-  );
+  const ids = drafts.map((draft) => draft.stripe_payment_intent_id);
+  const [linked, inbox] = await Promise.all([ledgerByIntent(admin, ids), inboxByIntent(admin, ids)]);
   let inserted = 0;
   for (const draft of drafts) {
     const existing = linked.get(draft.stripe_payment_intent_id);
-    const fields = {
-      amount: draft.amount,
-      currency: draft.currency,
-      direction: draft.direction,
-      payer_name: draft.payer_name,
-      payer_email: draft.payer_email,
-      reference: draft.reference,
-      method: draft.method,
-      last4: draft.last4,
-      booked_at: draft.booked_at,
-      raw: draft.raw,
-    };
-    const { error, data } = await admin
-      .from("crm_stripe_transactions")
-      .upsert(
-        { stripe_payment_intent_id: draft.stripe_payment_intent_id, ...fields },
-        { onConflict: "stripe_payment_intent_id", ignoreDuplicates: true }
-      )
-      .select("id");
-    if (!error && data?.length) inserted += data.length;
-    else {
-      await admin
+    const fields = stripeFields(draft);
+    const row = inbox.get(draft.stripe_payment_intent_id) || null;
+    if (!row) {
+      const { error, data } = await admin
         .from("crm_stripe_transactions")
-        .update(fields)
-        .eq("stripe_payment_intent_id", draft.stripe_payment_intent_id);
+        .upsert(
+          { stripe_payment_intent_id: draft.stripe_payment_intent_id, ...fields },
+          { onConflict: "stripe_payment_intent_id", ignoreDuplicates: true }
+        )
+        .select("id");
+      if (!error && data?.length) inserted += data.length;
+      else if (!stripeStoredMatches(row, fields)) {
+        await admin.from("crm_stripe_transactions").update(fields).eq("stripe_payment_intent_id", draft.stripe_payment_intent_id);
+      }
+    } else if (!stripeStoredMatches(row, fields)) {
+      await admin.from("crm_stripe_transactions").update(fields).eq("stripe_payment_intent_id", draft.stripe_payment_intent_id);
     }
-    if (existing) {
+    if (existing && row?.status !== "matched" && row?.status !== "ignored") {
       await admin
         .from("crm_stripe_transactions")
         .update({
@@ -132,9 +159,16 @@ export async function upsertStripeInbox(admin: StripeAdmin, intents: StripeInten
 }
 
 export async function syncStripeInbox(admin: StripeAdmin, now = Date.now()) {
-  const since = Math.floor((now - LOOKBACK_MS) / 1000);
+  const cursor = await readSyncWatermark(SYNC_WATERMARK.stripe);
+  const since = syncSinceUnix({
+    cursor,
+    now,
+    overlapMs: STRIPE_OVERLAP_MS,
+    firstLookbackMs: STRIPE_FIRST_LOOKBACK_MS,
+  });
   const intents = await fetchSucceededPaymentIntents(since);
   const inserted = await upsertStripeInbox(admin, intents.map(snapshotFromPaymentIntent));
+  await writeSyncWatermark(SYNC_WATERMARK.stripe, new Date(now).toISOString());
   const auto = await autoMatchUnmatchedStripe();
-  return { fetched: intents.length, inserted, auto_matched: auto.matched };
+  return { fetched: intents.length, inserted, auto_matched: auto.matched, since };
 }

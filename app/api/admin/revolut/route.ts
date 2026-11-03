@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { fetchRevolutTransactions, upsertRevolutInbox } from "@/lib/crm/revolut";
+import { REVOLUT_MANUAL_LOOKBACK_MS } from "@/lib/crm/sync-delta";
+import { syncRevolutWindow } from "@/lib/crm/revolut-delta";
 import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 
@@ -43,13 +44,12 @@ export async function POST(request: Request) {
   // L’échange du code OAuth ne passe que par GET /api/admin/revolut/oauth, avec le state.
   if (body?.action === "sync") {
     try {
-      const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const txs = await fetchRevolutTransactions(from);
-      const inserted = await upsertRevolutInbox(txs);
+      const synced = await syncRevolutWindow(REVOLUT_MANUAL_LOOKBACK_MS);
       const auto = await autoMatchUnmatchedRevolut();
       return NextResponse.json({
-        fetched: txs.length,
-        inserted,
+        fetched: synced.fetched,
+        inserted: synced.inserted,
+        written: synced.written,
         auto_matched: auto.matched,
       });
     } catch (err) {

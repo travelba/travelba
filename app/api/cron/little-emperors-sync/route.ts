@@ -3,6 +3,7 @@ import { cronAuthorized } from "@/lib/crm/cron-auth";
 import { littleEmperorsConfigured } from "@/lib/crm/little-emperors";
 import { syncLittleEmperorsBookings } from "@/lib/crm/little-emperors-sync";
 
+/** Toutes les 30 minutes, minutes 14 et 44. L’API reste entière ; seules les lignes changées sont écrites. */
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
