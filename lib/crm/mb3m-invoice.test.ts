@@ -618,6 +618,68 @@ describe("facture MB3M", () => {
     assert.match(noted.attemptError || "", /2005/);
   });
 
+  it("lettre 2149 quand le déplacement de 2005 est seulement un avertissement", async () => {
+    const lines = context().lines;
+    const open = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002007",
+      folderUid: "b127ebaa-8fcd-4399-99c2-202611021224",
+      pieceNumber: "2157",
+      amount: 561.19,
+      signature: mb3mLineSignature(lines),
+      transactionIds: lines.map((line) => line.transactionId),
+    });
+    let payments = 0;
+    const gdsPlan = {
+      covered: [],
+      suggestions: [],
+      invoices: [{ number: "2005", amount: 1197.44 }],
+      customerUid: "customer-uid",
+      folderId: "01-0002007",
+      warnings: [] as string[],
+    };
+    const result = await runMb3mInvoice(
+      {
+        ...context(),
+        gdsPlan,
+      },
+      {
+        now: () => Date.now(),
+        claim: async () => ({ piece: { ...open }, created: false, owned: true }),
+        save: async () => undefined,
+        remove: async () => undefined,
+        savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+        saveCompany: async () => {
+          throw new Error("fiche société");
+        },
+        saveFolder: async () => ({ id: "01-0002007", uid: open.folderUid || "" }),
+        addInvoice: async () => ({ number: "2158", uid: "new" }),
+        findPiece: async () => "open",
+        cancelInvoice: async () => undefined,
+        renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+        putPdf: async () => "doc-1",
+        finishGds: async () => {
+          gdsPlan.warnings.push("La facture Amadeus n° 2005 n’a pas été déplacée dans MB3M : facture fournisseur soldée.");
+          return "01-0002007";
+        },
+        recordPayments: async (input) => {
+          payments += 1;
+          assert.equal(input.invoiceNumber, "2157");
+          assert.equal(input.invoiceAmount, 561.19);
+          return [{ date: "2026-10-15", montant: 561.19, numero_mb3m: "2149", statut: "deja_dans_mb3m" }];
+        },
+      }
+    );
+    const noted = result;
+    assert.equal(payments, 1);
+    assert.equal(noted.number, "2157");
+    assert.equal(noted.created, false);
+    assert.equal(noted.replaced, false);
+    assert.equal(noted.reglements[0]?.numero_mb3m, "2149");
+    assert.equal(noted.reglements[0]?.montant, 561.19);
+    assert.match(noted.avertissement || "", /soldée/);
+  });
+
   it("verrouille une préparation en cours, puis reprend quand elle est périmée ou en échec", async () => {
     const started = Date.parse("2026-11-02T13:05:00.000Z");
     const running = blankPiece({

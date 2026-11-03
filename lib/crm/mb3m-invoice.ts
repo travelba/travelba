@@ -166,8 +166,15 @@ export type Mb3mInvoiceResult = {
   printed: boolean;
   visibleToClient: boolean;
   reglements: Mb3mReglement[];
-  amadeus?: { label: string; invoiceNumber: string; pnr: string; placement: "move" | "here" | "other" }[];
+  amadeus?: {
+    label: string;
+    invoiceNumber: string;
+    pnr: string;
+    placement: "move" | "here" | "other";
+    moveWarning?: string | null;
+  }[];
   suggestionsAmadeus?: { label: string; invoiceNumber: string }[];
+  avertissement?: string | null;
 };
 
 type PiecePatch = {
@@ -520,7 +527,8 @@ async function attachReglements(
 ): Promise<Mb3mInvoiceResult> {
   let folder = folderId || "";
   if (deps.finishGds) folder = (await deps.finishGds(folderId)) || folder;
-  if (!deps.recordPayments) return { ...result, reglements: [] };
+  const avertissement = (ctx.gdsPlan?.warnings || []).filter(Boolean).join(" ") || null;
+  if (!deps.recordPayments) return { ...result, reglements: [], avertissement };
   try {
     const reglements = await deps.recordPayments({
       bookingId: ctx.bookingId,
@@ -532,7 +540,7 @@ async function attachReglements(
     });
     const failed = reglements.find((row) => row.statut === "erreur");
     if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
-    return { ...result, reglements };
+    return { ...result, reglements, avertissement };
   } catch (err) {
     if (err instanceof Mb3mError) throw err;
     throw new Mb3mError(err instanceof Error ? err.message : "Les règlements n’ont pas pu être enregistrés.", -1);
@@ -930,19 +938,21 @@ export async function emitMb3mInvoice(
         destinationIso: ctx.destinationIso,
       });
   }
-  const amadeus = (plan?.covered || []).map((row) => ({
-    label: row.label,
-    invoiceNumber: row.invoiceNumber,
-    pnr: row.pnr,
-    placement: row.placement,
-  }));
   const suggestionsAmadeus = (plan?.suggestions || []).map((row) => ({
     label: row.label,
     invoiceNumber: row.invoiceNumber,
   }));
+  const amadeusOf = () =>
+    (plan?.covered || []).map((row) => ({
+      label: row.label,
+      invoiceNumber: row.invoiceNumber,
+      pnr: row.pnr,
+      placement: row.placement,
+      moveWarning: row.moveWarning,
+    }));
   try {
     const result = await runMb3mInvoice(ctx, deps);
-    return { ...result, amadeus, suggestionsAmadeus };
+    return { ...result, amadeus: amadeusOf(), suggestionsAmadeus };
   } catch (err) {
     if (!(plan?.covered.length && err instanceof Mb3mError && /dépense/.test(err.message))) throw err;
     const folderId = deps.finishGds ? await deps.finishGds(plan.folderId) : plan.folderId;
@@ -966,8 +976,9 @@ export async function emitMb3mInvoice(
       printed: false,
       visibleToClient: ctx.visibleToClient,
       reglements,
-      amadeus,
+      amadeus: amadeusOf(),
       suggestionsAmadeus,
+      avertissement: (plan?.warnings || []).filter(Boolean).join(" ") || null,
     };
   }
 }
