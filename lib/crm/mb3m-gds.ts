@@ -14,6 +14,7 @@ import {
   mb3mSingleAgencyUid,
   type Mb3mRemoteInvoice,
 } from "@/lib/crm/mb3m";
+import { mb3mPieceUnchanged } from "@/lib/crm/sync-delta";
 import { isActiveItem } from "@/lib/crm/types";
 
 /** Vol déjà facturé par l’import Amadeus de MB3M. */
@@ -436,7 +437,7 @@ export async function finishMb3mGds(
     ];
     const existing = await supabase
       .from("crm_mb3m_pieces")
-      .select("id, document_id, printed_at")
+      .select("id, document_id, printed_at, folder_id, amount, lines, transaction_ids")
       .eq("booking_id", input.bookingId)
       .eq("kind", "gds")
       .eq("realm", mb3mRealm())
@@ -446,7 +447,15 @@ export async function finishMb3mGds(
       console.error("[mb3m] mémoire Amadeus", existing.error.message);
       continue;
     }
-    const stored = existing.data as { id: string; document_id: string | null; printed_at: string | null } | null;
+    const stored = existing.data as {
+      id: string;
+      document_id: string | null;
+      printed_at: string | null;
+      folder_id: string | null;
+      amount: number | null;
+      lines: unknown;
+      transaction_ids: string[] | null;
+    } | null;
     let documentId = stored?.document_id || null;
     let printedAt = stored?.printed_at || null;
     if (row.printed && !documentId) {
@@ -465,6 +474,7 @@ export async function finishMb3mGds(
       printed_at: printedAt,
       updated_at: new Date().toISOString(),
     };
+    if (stored && mb3mPieceUnchanged(stored, payload)) continue;
     const saved = stored
       ? await supabase.from("crm_mb3m_pieces").update(payload).eq("id", stored.id)
       : await supabase.from("crm_mb3m_pieces").insert({

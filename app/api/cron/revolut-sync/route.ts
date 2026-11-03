@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
-import {
-  fetchRevolutTransactions,
-  revolutConfigured,
-  revolutConnected,
-  upsertRevolutInbox,
-} from "@/lib/crm/revolut";
+import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
+import { syncRevolutWindow } from "@/lib/crm/revolut-delta";
 import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
 import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 
+/** Quart d’heure, minute 2. Webhook d’abord, ce cron rattrape depuis le dernier curseur. */
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
@@ -27,13 +24,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ skipped: true, reason: "not_connected" });
   }
   try {
-    const from = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-    const txs = await fetchRevolutTransactions(from);
-    const inserted = await upsertRevolutInbox(txs);
+    const synced = await syncRevolutWindow();
     const auto = await autoMatchUnmatchedRevolut();
     return NextResponse.json({
-      fetched: txs.length,
-      inserted,
+      fetched: synced.fetched,
+      inserted: synced.inserted,
+      written: synced.written,
+      from: synced.from,
       auto_matched: auto.matched,
     });
   } catch (err) {

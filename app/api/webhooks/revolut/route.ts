@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  upsertRevolutInbox,
-  verifyRevolutWebhook,
-  type RevolutTx,
-} from "@/lib/crm/revolut";
+import { verifyRevolutWebhook, upsertRevolutInbox, type RevolutTx } from "@/lib/crm/revolut";
+import { changedRevolutTransactions } from "@/lib/crm/revolut-delta";
 import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
 import { isRevolutTimestampFresh } from "@/lib/crm/revolut-webhook";
 
@@ -29,7 +26,14 @@ export async function POST(request: Request) {
     data?: RevolutTx;
   };
   if (payload.event === "TransactionCreated" && payload.data?.id) {
-    await upsertRevolutInbox([payload.data]);
+    let fresh = [payload.data];
+    try {
+      fresh = await changedRevolutTransactions([payload.data]);
+    } catch {
+      fresh = [payload.data];
+    }
+    if (!fresh.length) return NextResponse.json({ ok: true, auto_matched: 0 });
+    await upsertRevolutInbox(fresh);
     const auto = await autoMatchUnmatchedRevolut(50);
     return NextResponse.json({ ok: true, auto_matched: auto.matched });
   }

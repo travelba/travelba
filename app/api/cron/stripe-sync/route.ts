@@ -4,6 +4,7 @@ import { getStripe } from "@/lib/crm/stripe";
 import { syncStripeInbox } from "@/lib/crm/stripe-sync";
 import { createServiceClient } from "@/lib/supabase/admin";
 
+/** Quart d’heure, minute 7. Le webhook crédite ; ici, les PaymentIntents réussis depuis le curseur. */
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
