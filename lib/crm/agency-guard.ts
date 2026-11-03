@@ -14,12 +14,19 @@ import {
 } from "@/lib/crm/agency-access";
 import type { CrmStaff } from "@/lib/crm/types";
 
+/** Matrice des droits, partagée entre les requêtes. Cinq minutes : un changement de rôle n’attend pas plus longtemps. */
+let matrixMemo: { at: number; rows: PermissionMatrix } | null = null;
+const MATRIX_TTL_MS = 5 * 60 * 1000;
+
 export const loadPermissionMatrix = cache(async (): Promise<PermissionMatrix | null> => {
+  if (matrixMemo && Date.now() - matrixMemo.at < MATRIX_TTL_MS) return matrixMemo.rows;
   try {
     const admin = createServiceClient({ allowPreview: true });
     const { data, error } = await admin.from("crm_role_permissions").select("role, permission, allowed");
     if (error || !data) return null;
-    return matrixFromRows(data as { role: string; permission: string; allowed: boolean }[]);
+    const rows = matrixFromRows(data as { role: string; permission: string; allowed: boolean }[]);
+    matrixMemo = { at: Date.now(), rows };
+    return rows;
   } catch {
     return null;
   }

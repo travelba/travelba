@@ -36,6 +36,8 @@ import {
   hotelThreadSearchQuery,
   keepAgencyDraft,
   knownHotelRecipients,
+  sameStoredReply,
+  threadStampDue,
   nextDeskMark,
   nextLetterStatus,
   outboundHotelLetter,
@@ -239,6 +241,7 @@ type ThreadAnchor = {
   sinceMs: number;
   requestId: string | null;
   messageId: string | null;
+  syncedAt: string | null;
 };
 
 type GmailHit = {
@@ -354,7 +357,10 @@ export async function syncHotelDeskThreads(admin: Admin, bookingId: string) {
     const notes = (messages || []) as CrmHotelMessage[];
     const existing = (stored || []) as CrmHotelThreadMessage[];
     const anchors = threadAnchors(letters, notes);
-    for (const anchor of anchors) {
+    const nowMs = Date.now();
+    const dueAnchors = anchors.filter((anchor) => anchor.stamps.some((stamp) => threadStampDue(stamp.syncedAt, nowMs)));
+    if (anchors.length > 0 && dueAnchors.length === 0) return replied;
+    for (const anchor of dueAnchors) {
       const knownThreads = existing
         .filter((row) => row.booking_item_id === anchor.bookingItemId && row.subject_key === anchor.subjectKey && row.gmail_thread_id)
         .map((row) => row.gmail_thread_id || "");
@@ -366,6 +372,7 @@ export async function syncHotelDeskThreads(admin: Admin, bookingId: string) {
       if (!found.searchFailed) {
         const stamped = new Date().toISOString();
         for (const stamp of anchor.stamps) {
+          if (!threadStampDue(stamp.syncedAt, nowMs)) continue;
           await admin.from(stamp.table).update({ thread_synced_at: stamped }).eq("id", stamp.id);
         }
       }
@@ -381,13 +388,13 @@ export async function syncHotelDeskThreads(admin: Admin, bookingId: string) {
 function threadAnchors(letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
   const jobs = new Map<
     string,
-    ThreadAnchor & { subjectKey: string; stamps: { table: ThreadAnchor["table"]; id: string }[] }
+    ThreadAnchor & { subjectKey: string; stamps: { table: ThreadAnchor["table"]; id: string; syncedAt: string | null }[] }
   >();
   const add = (anchor: ThreadAnchor) => {
     const subjectKey = hotelMailSubjectKey(anchor.subject);
     if (!subjectKey) return;
     const mapKey = `${anchor.bookingItemId}:${subjectKey}`;
-    const stamp = { table: anchor.table, id: anchor.id };
+    const stamp = { table: anchor.table, id: anchor.id, syncedAt: anchor.syncedAt };
     const current = jobs.get(mapKey);
     if (!current) {
       jobs.set(mapKey, { ...anchor, subjectKey, stamps: [stamp] });
@@ -414,6 +421,7 @@ function threadAnchors(letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
         sinceMs,
         requestId: row.id,
         messageId: null,
+        syncedAt: row.thread_synced_at ?? null,
       });
     }
   }
@@ -428,6 +436,7 @@ function threadAnchors(letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
         sinceMs,
         requestId: null,
         messageId: row.id,
+        syncedAt: row.thread_synced_at ?? null,
       });
     }
   }
@@ -612,18 +621,17 @@ async function mirrorThreadReplies(admin: Admin, bookingId: string, letters: Crm
     const latest = incoming[incoming.length - 1];
     if (!latest) continue;
     const status = nextLetterStatus(row.status, true);
+    const nextReply = {
+      status,
+      replied_at: latest.received_at,
+      reply_from: latest.from_email.slice(0, 200),
+      reply_subject: latest.subject.slice(0, 300),
+      reply_body: latest.body,
+      reply_message_id: latest.gmail_message_id,
+    };
+    if (sameStoredReply(row, nextReply)) continue;
     if (status === "replied" && row.status !== "replied") replied += 1;
-    await admin
-      .from("crm_hotel_requests")
-      .update({
-        status,
-        replied_at: latest.received_at,
-        reply_from: latest.from_email.slice(0, 200),
-        reply_subject: latest.subject.slice(0, 300),
-        reply_body: latest.body,
-        reply_message_id: latest.gmail_message_id,
-      })
-      .eq("id", row.id);
+    await admin.from("crm_hotel_requests").update(nextReply).eq("id", row.id);
   }
   for (const row of notes) {
     const keys = new Set(subjectsToFollow({ ...row, status: row.sent_at ? "sent" : "draft" }).map((subject) => hotelMailSubjectKey(subject)));
@@ -634,16 +642,15 @@ async function mirrorThreadReplies(admin: Admin, bookingId: string, letters: Crm
     const answered = supplierAnsweredLatest({ sentAt: row.sent_at, repliedAt: row.replied_at, turns: group });
     const latest = incoming[incoming.length - 1];
     if (!answered || !latest) continue;
-    await admin
-      .from("crm_hotel_messages")
-      .update({
-        replied_at: latest.received_at,
-        reply_from: latest.from_email.slice(0, 200),
-        reply_subject: latest.subject.slice(0, 300),
-        reply_body: latest.body,
-        reply_message_id: latest.gmail_message_id,
-      })
-      .eq("id", row.id);
+    const nextReply = {
+      replied_at: latest.received_at,
+      reply_from: latest.from_email.slice(0, 200),
+      reply_subject: latest.subject.slice(0, 300),
+      reply_body: latest.body,
+      reply_message_id: latest.gmail_message_id,
+    };
+    if (sameStoredReply(row, nextReply)) continue;
+    await admin.from("crm_hotel_messages").update(nextReply).eq("id", row.id);
   }
   return replied;
 }

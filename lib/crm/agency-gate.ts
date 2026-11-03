@@ -51,10 +51,11 @@ export async function gateAgencyApi(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-  const staff = await readStaff(supabase, user.id);
+  const gate = await loadGate(supabase, user);
+  const staff = gate.staff;
   const role = staff?.role ?? null;
   const active = staff?.active !== false;
-  const matrix = await readMatrix(supabase);
+  const matrix = gate.matrix;
   const permission = classified.permission;
   const allows = role && permission ? roleAllows(role, permission, matrix.rows) : false;
 
@@ -70,7 +71,7 @@ export async function gateAgencyApi(request: NextRequest) {
     return NextResponse.json({ error: decision.reason }, { status: decision.status });
   }
 
-  if (staff && (await sessionRevoked(supabase, user))) {
+  if (staff && gate.revoked) {
     return NextResponse.json({ error: "Session fermée." }, { status: 401 });
   }
 
@@ -92,6 +93,37 @@ export async function gateAgencyApi(request: NextRequest) {
 }
 
 type StaffRow = { id: string; role: StaffRole; active: boolean };
+
+type GateSnapshot = {
+  at: number;
+  staff: StaffRow | null;
+  matrix: { ready: boolean; rows: PermissionMatrix | null };
+  revoked: boolean;
+};
+
+const gateSnapshots = new Map<string, GateSnapshot>();
+const GATE_TTL_MS = 30_000;
+
+async function loadGate(
+  supabase: ReturnType<typeof createServerClient>,
+  user: { id: string; app_metadata?: Record<string, unknown> }
+) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const claims = accessTokenClaims(session?.access_token);
+  const key = `${user.id}:${claims.sessionId || "none"}`;
+  const hit = gateSnapshots.get(key);
+  if (hit && Date.now() - hit.at < GATE_TTL_MS) return hit;
+  const [staff, matrix, revoked] = await Promise.all([
+    readStaff(supabase, user.id),
+    readMatrix(supabase),
+    sessionRevoked(supabase, user),
+  ]);
+  const snap: GateSnapshot = { at: Date.now(), staff, matrix, revoked };
+  if (matrix.ready) gateSnapshots.set(key, snap);
+  return snap;
+}
 
 async function readStaff(
   supabase: ReturnType<typeof createServerClient>,

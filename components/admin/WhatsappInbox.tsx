@@ -81,7 +81,7 @@ export function WhatsappInbox({
 
   useEffect(() => {
     if (embedded) return;
-    const timer = window.setInterval(() => router.refresh(), 12_000);
+    const timer = window.setInterval(() => router.refresh(), 60_000);
     return () => window.clearInterval(timer);
   }, [embedded, router]);
 

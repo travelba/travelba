@@ -252,7 +252,21 @@ export async function updateSession(request: NextRequest) {
   return seal(supabaseResponse);
 }
 
+const deskAccessCache = new Map<string, { at: number; access: { staff: boolean; partner: boolean; inactive: boolean } }>();
+const DESK_ACCESS_TTL_MS = 60_000;
+
 async function userDeskAccess(
+  supabase: ReturnType<typeof createServerClient>,
+  user: { id: string; app_metadata?: Record<string, unknown> | null }
+) {
+  const hit = deskAccessCache.get(user.id);
+  if (hit && Date.now() - hit.at < DESK_ACCESS_TTL_MS) return hit.access;
+  const access = await readDeskAccess(supabase, user);
+  deskAccessCache.set(user.id, { at: Date.now(), access });
+  return access;
+}
+
+async function readDeskAccess(
   supabase: ReturnType<typeof createServerClient>,
   user: { id: string; app_metadata?: Record<string, unknown> | null }
 ) {

@@ -105,14 +105,22 @@ export async function requireCustomer(): Promise<
   return { user, supabase, customer };
 }
 
+const STAFF_COLUMNS = "id, auth_user_id, role, full_name, active, email, created_at, updated_at";
+const staffRowCache = new Map<string, { at: number; row: CrmStaff | null }>();
+const STAFF_ROW_TTL_MS = 60_000;
+
 export const getStaffForUser = cache(async (userId: string) => {
+  const hit = staffRowCache.get(userId);
+  if (hit && Date.now() - hit.at < STAFF_ROW_TTL_MS) return hit.row;
   const supabase = await createClient();
   const { data } = await supabase
     .from("crm_staff")
-    .select("*")
+    .select(STAFF_COLUMNS)
     .eq("auth_user_id", userId)
     .maybeSingle();
-  return (data as CrmStaff | null) ?? null;
+  const row = (data as CrmStaff | null) ?? null;
+  staffRowCache.set(userId, { at: Date.now(), row });
+  return row;
 });
 
 export async function ensureStaff(user: User): Promise<CrmStaff | null> {
@@ -137,7 +145,7 @@ export async function ensureStaff(user: User): Promise<CrmStaff | null> {
         role: "admin",
         full_name: user.email?.split("@")[0] || "Agent",
       })
-      .select("*")
+      .select(STAFF_COLUMNS)
       .single();
     if (error) return null;
     const staff = created as CrmStaff;

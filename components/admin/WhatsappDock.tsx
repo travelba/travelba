@@ -228,7 +228,7 @@ export function WhatsappDock({
           }
         })
         .catch(() => undefined);
-    }, 12_000);
+    }, 60_000);
     return () => {
       window.clearInterval(timer);
       if (supabase && channel) void supabase.removeChannel(channel);

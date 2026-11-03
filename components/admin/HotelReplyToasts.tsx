@@ -19,7 +19,7 @@ import {
 const STORAGE_KEY = "travelba-hotel-reply-since";
 const OPEN_KEY = "travelba-hotel-reply-open";
 const DISMISSED_KEY = "travelba-hotel-reply-dismissed";
-const POLL_MS = 60_000;
+const POLL_MS = 180_000;
 
 function readSince() {
   try {

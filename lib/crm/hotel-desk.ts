@@ -813,6 +813,57 @@ function houseLetter(input: {
   };
 }
 
+/** Un fil déjà relu dans ce délai n’est pas réécrit : le même identifiant ne part plus en PATCH à chaque passage. */
+export const THREAD_STAMP_WINDOW_MS = 15 * 60 * 1000;
+
+export function threadStampDue(
+  syncedAt: string | null | undefined,
+  nowMs: number,
+  windowMs = THREAD_STAMP_WINDOW_MS
+) {
+  if (!syncedAt) return true;
+  const at = Date.parse(syncedAt);
+  if (!Number.isFinite(at)) return true;
+  return nowMs - at >= windowMs;
+}
+
+function replyTime(value: string | null | undefined) {
+  if (!value) return "";
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? String(at) : value;
+}
+
+/** Vrai quand le courrier porte déjà la réponse qu’on s’apprêtait à réécrire. */
+export function sameStoredReply(
+  current: {
+    status?: string | null;
+    replied_at?: string | null;
+    reply_from?: string | null;
+    reply_subject?: string | null;
+    reply_body?: string | null;
+    reply_message_id?: string | null;
+  },
+  next: {
+    status?: string | null;
+    replied_at?: string | null;
+    reply_from?: string | null;
+    reply_subject?: string | null;
+    reply_body?: string | null;
+    reply_message_id?: string | null;
+  }
+) {
+  const text = (value: string | null | undefined) => value || "";
+  const statusSame = next.status === undefined || (current.status || "") === (next.status || "");
+  return (
+    statusSame &&
+    replyTime(current.replied_at) === replyTime(next.replied_at) &&
+    text(current.reply_from) === text(next.reply_from) &&
+    text(current.reply_subject) === text(next.reply_subject) &&
+    text(current.reply_body) === text(next.reply_body) &&
+    text(current.reply_message_id) === text(next.reply_message_id)
+  );
+}
+
 const LOCKED: HotelDeskStatus[] = ["draft", "sent", "follow_up", "replied", "skipped"];
 
 export function keepAgencyDraft<T extends { edited: boolean; status: HotelDeskStatus; subject: string; body: string; recipients: string[] }>(
