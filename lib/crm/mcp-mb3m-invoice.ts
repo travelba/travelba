@@ -120,7 +120,12 @@ function readStatut(row: InvoiceRow | null) {
           : chip.label === "Pro forma"
             ? "pro_forma"
             : "a_preparer";
-  return { statut, libelle: chip.label, erreur: preparation.state === "failed" ? preparation.message : null };
+  const stored = (row.attempt_error || "").replace(/\s+/g, " ").trim();
+  return {
+    statut,
+    libelle: chip.label,
+    erreur: stored || (preparation.state === "failed" ? preparation.message : null),
+  };
 }
 
 function refresh(bookingId: string) {

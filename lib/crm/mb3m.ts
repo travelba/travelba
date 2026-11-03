@@ -805,9 +805,8 @@ export async function mb3mGetInvoice(number: string, fetchImpl?: FetchImpl): Pro
 }
 
 /**
- * Corps de IFolderService/ChangeFolder.
- * PieceService/ChangeFolder avec seulement FolderId et Number répond -1
- * « Object reference not set » : le dossier et la pièce doivent être des identités (Id, Uid).
+ * Corps de IPieceService/ChangeFolder. NewFolder est une FolderIdentity.
+ * IFolderService/ChangeFolder n’existe pas (ContractFilter).
  */
 export function mb3mChangeFolderBody(input: {
   number: string;
@@ -815,11 +814,11 @@ export function mb3mChangeFolderBody(input: {
   folderUid?: string | null;
   pieceUid?: string | null;
 }) {
-  const folderId = input.folderId.trim();
   const number = input.number.trim();
-  const folder = `<FolderIdentity><Id>${escapeMb3mXml(folderId)}</Id>${tag("Uid", input.folderUid?.trim())}</FolderIdentity>`;
-  const piece = `<PieceIdentity><Number>${escapeMb3mXml(number)}</Number>${tag("Uid", input.pieceUid?.trim())}</PieceIdentity>`;
-  return `<FolderChangeFolderRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(folderId)}</FolderId>${folder}<Number>${escapeMb3mXml(number)}</Number>${piece}</FolderChangeFolderRequest>`;
+  const folderId = input.folderId.trim();
+  const folderUid = (input.folderUid || "").trim();
+  const pieceUid = (input.pieceUid || "").trim();
+  return `<PieceChangeFolderRequest xmlns="http://schemas.mb3m.fr/Partners"><Uid>${escapeMb3mXml(pieceUid)}</Uid><Number>${escapeMb3mXml(number)}</Number><NewFolder><Id>${escapeMb3mXml(folderId)}</Id><Uid>${escapeMb3mXml(folderUid)}</Uid></NewFolder></PieceChangeFolderRequest>`;
 }
 
 /** Range une facture sans dossier dans le dossier du séjour. */
@@ -827,7 +826,7 @@ export async function mb3mChangeFolder(
   input: { number: string; folderId: string; folderUid?: string | null; pieceUid?: string | null },
   fetchImpl?: FetchImpl
 ) {
-  const xml = await mb3mSoap("FolderService", "IFolderService", "ChangeFolder", mb3mChangeFolderBody(input), fetchImpl);
+  const xml = await mb3mSoap("PieceService", "IPieceService", "ChangeFolder", mb3mChangeFolderBody(input), fetchImpl);
   assertOperation(xml);
   return { number: input.number.trim(), folderId: input.folderId.trim() };
 }

@@ -573,7 +573,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
         const covered = new Set(piece.transactionIds);
         const fresh = ctx.lines.filter((line) => !covered.has(line.transactionId));
         if (!fresh.length) {
-          return attachReglements(
+          return await attachReglements(
             ctx,
             deps,
             {
@@ -589,13 +589,13 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
             piece.customerUid
           );
         }
-        return runMb3mInvoice(
+        return await runMb3mInvoice(
           { ...ctx, lines: fresh, amount: Math.round(fresh.reduce((sum, line) => sum + line.amount, 0) * 100) / 100, hadExpenses: true },
           deps
         );
       }
       if (state === "open" && piece.signature === signature) {
-        return attachReglements(
+        return await attachReglements(
           ctx,
           deps,
           {
@@ -691,7 +691,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
       attemptStatus: null,
       attemptError: null,
     });
-    return attachReglements(
+    return await attachReglements(
       ctx,
       deps,
       {
