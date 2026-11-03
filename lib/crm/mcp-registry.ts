@@ -51,6 +51,7 @@ import {
 import { inviteClientAccess, setCompanyRole, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
+import { importLittleEmperorsFromMcp } from "@/lib/crm/le-import";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
@@ -111,7 +112,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 100;
+export const MCP_TOOL_CAP = 101;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -480,6 +481,38 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => readLittleEmperorsEnAttente(undefined, pageOf(args)),
   },
   {
+    name: "importer_reservation_little_emperors",
+    write: true,
+    description:
+      "Importe une réservation Little Emperors sans dossier. reference : référence Little Emperors ou confirmation hôtel. client_id obligatoire. dossier_id ou dossier_reference rattache à un dossier déjà ouvert ; sans dossier, un dossier est créé. regroupement : plusieurs références dans le même dossier. voyageurs : prénom et nom, ajoutés comme voyageurs ou compagnons. La carte hôtel reprend l’hôtel, la ville, les dates, les chambres, le régime, les voyageurs, le coût net, les conditions d’annulation et les confirmations. Réservée ou confirmée : statut confirmé, caché au client. Annulée ou en échec : refus, sauf forcer true. Déjà liée à un autre dossier : refus, en nommant ce dossier. Aucun message, aucune invitation.",
+    input: {
+      reference: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Référence Little Emperors ou confirmation hôtel"),
+      regroupement: z
+        .union([z.string().trim().max(500), z.array(z.string().trim().max(80)).max(12)])
+        .optional()
+        .describe("Plusieurs références Little Emperors dans le même dossier"),
+      client_id: z.string().trim().describe("Identifiant du client"),
+      dossier_id: z.string().trim().max(80).optional().describe("Dossier déjà ouvert. Sinon un dossier est créé"),
+      dossier_reference: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Référence du dossier déjà ouvert, si dossier_id est absent"),
+      voyageurs: z
+        .union([z.string().trim().max(500), z.array(z.string().trim().max(120)).max(12)])
+        .optional()
+        .describe("Prénom et nom, séparés par des virgules ou une liste. Voyageurs ou compagnons"),
+      forcer: z.boolean().optional().describe("true pour importer une réservation annulée ou en échec"),
+    },
+    run: (args) => importLittleEmperorsFromMcp(args),
+  },
+  {
     name: "crediter_virement",
     write: true,
     description:
@@ -784,9 +817,9 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "creer_client",
     write: true,
     description:
-      "Crée une fiche client (e-mail, prénom, nom). Raison sociale, SIRET, TVA et adresse créent la société de facturation sur cette fiche, sans doublon de SIRET. N’envoie pas d’invitation. Un e-mail déjà utilisé est refusé.",
+      "Crée une fiche client (prénom, nom). L’e-mail est facultatif : sans e-mail, la fiche est créée quand même et aucune invitation n’est envoyée. L’adresse peut être ajoutée plus tard. Raison sociale, SIRET, TVA et adresse créent la société de facturation sur cette fiche, sans doublon de SIRET. N’envoie pas d’invitation. Un e-mail déjà utilisé est refusé.",
     input: {
-      email: z.string().trim().describe("E-mail du client"),
+      email: z.string().trim().max(254).optional().describe("E-mail du client. Facultatif : sans e-mail, aucune invitation"),
       prenom: z.string().trim().describe("Prénom"),
       nom: z.string().trim().describe("Nom"),
       telephone: z.string().trim().max(40).optional().describe("Téléphone"),

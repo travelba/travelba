@@ -109,6 +109,9 @@ describe("Boîte de réception : trois onglets, une file par source", () => {
     assert.equal(/Reproposer|rematch|Mettre à jour les cartes/.test(inbox), false);
     const le = readFileSync(join(root, "components/admin/LittleEmperorsInbox.tsx"), "utf8");
     assert.equal(le.includes("dossier brouillon"), false);
+    assert.match(le, /Créer le dossier/);
+    assert.match(le, /Rattacher à un dossier/);
+    assert.match(le, /Nouveau client/);
   });
 
   it("l’accueil ne porte plus le bloc Réponses d’hôtel : il vit dans Boîte › Hôtels", () => {

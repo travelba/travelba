@@ -85,4 +85,7 @@ test("la liste montre la date de réservation, plus récente d’abord", async (
   assert.match(html, /Date de réservation · 18 oct\. 2026/);
   assert.match(html, /Date de réservation · 1 sept\. 2026/);
   assert.match(html, /Séjour · .*20 déc\. 2026/);
+  assert.match(html, /Créer le dossier/);
+  assert.match(html, /Rattacher à un dossier/);
+  assert.match(html, /Regrouper/);
 });

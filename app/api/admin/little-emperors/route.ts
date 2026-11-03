@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { dbError, jsonError, jsonIssues, requireLittleEmperorsActor } from "@/lib/crm/auth";
 import { LittleEmperorsError, littleEmperorsActionAllowed, littleEmperorsPartnerMessage } from "@/lib/crm/little-emperors";
+import { importLittleEmperorsReservations, type LeImportInput } from "@/lib/crm/le-import";
 import {
   attachLittleEmperorsBooking,
   cancelLittleEmperorsFromCrm,
@@ -52,6 +53,30 @@ export async function POST(request: Request) {
         customerId: String(body.customer_id || ""),
       });
       return NextResponse.json(result);
+    }
+    if (action === "import") {
+      const ids = Array.isArray(body.ids) ? body.ids.map((id: unknown) => String(id)) : [];
+      if (body.id) ids.push(String(body.id));
+      const rawNames: string[] = Array.isArray(body.voyageurs)
+        ? body.voyageurs.map((name: unknown) => String(name))
+        : body.voyageurs
+          ? [String(body.voyageurs)]
+          : [];
+      const voyageurs = rawNames.flatMap((name) =>
+        name
+          .split(/[,;\n]+/)
+          .map((part: string) => part.trim())
+          .filter(Boolean)
+      );
+      const input: LeImportInput = {
+        ids,
+        customerId: String(body.customer_id || ""),
+        dossierId: body.dossier_id ? String(body.dossier_id) : null,
+        dossierReference: body.dossier_reference ? String(body.dossier_reference) : null,
+        voyageurs,
+        force: body.forcer === true,
+      };
+      return NextResponse.json(await importLittleEmperorsReservations(input));
     }
     if (action === "cancel") {
       return NextResponse.json(await cancelLittleEmperorsFromCrm(String(body.id || "")));

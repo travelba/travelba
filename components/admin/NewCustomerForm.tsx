@@ -52,16 +52,18 @@ export function NewCustomerForm() {
         <input
           name="email"
           type="email"
-          required
           autoComplete="off"
           disabled={saving}
-          placeholder="client@exemple.fr"
+          placeholder="Facultatif"
           className={fieldClass}
         />
       </label>
       <div className="sm:col-span-4">
         <BusyBar active={saving} label="Création…" />
-        <p className="text-xs text-muted">Créer la fiche n’envoie rien au client. Inviter se fait depuis la fiche.</p>
+        <p className="text-xs text-muted">
+          Créer la fiche n’envoie rien au client. Sans e-mail, aucune invitation : l’adresse peut être ajoutée plus
+          tard. Inviter se fait depuis la fiche.
+        </p>
       </div>
       <button
         type="submit"

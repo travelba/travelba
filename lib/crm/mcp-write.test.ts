@@ -7,6 +7,7 @@ import {
   creditManualTransfer,
   creditRevolutTransfer,
   prepareBookingUpdate,
+  createClient,
   prepareClientCreate,
   prepareClientUpdate,
   prepareEmailAction,
@@ -150,6 +151,9 @@ test("an email leaves the queue only with an explicit action", () => {
 test("a client is created with an email and a name, and updated by id", () => {
   const created = prepareClientCreate({ email: "Ada@Travelba.fr", prenom: "Ada", nom: "Lovelace" });
   assert.equal(created.email, "ada@travelba.fr");
+  const nameless = prepareClientCreate({ prenom: "Yannick", nom: "Benamara" });
+  assert.equal(nameless.email, null);
+  assert.equal(prepareClientCreate({ email: "  ", prenom: "Yannick", nom: "Benamara" }).email, null);
   assert.throws(() => prepareClientCreate({ email: "ada", prenom: "Ada", nom: "Lovelace" }), /e-mail/);
   assert.throws(() => prepareClientCreate({ email: "ada@travelba.fr", prenom: "Ada" }), /Nom invalide/);
   const updated = prepareClientUpdate({ id: CLIENT, prenom: "Ada", societe: "TBA" });
@@ -166,6 +170,22 @@ test("a client is created with an email and a name, and updated by id", () => {
   assert.equal(prepareClientUpdate({ id: CLIENT, supprimer_societe_id: BOOKING }).removeCompanyId, BOOKING);
   assert.throws(() => prepareClientUpdate({ id: CLIENT }), /Rien à modifier/);
   assert.throws(() => prepareClientUpdate({ id: "nom", prenom: "Ada" }), /Client invalide/);
+});
+
+test("créer un client sans e-mail n’écrit pas d’adresse et n’invite pas", async () => {
+  const writes: Record<string, unknown>[] = [];
+  const admin = fakeAdmin({
+    crm_customers: null,
+    onInsert(_table, payload) {
+      writes.push(payload);
+      return { id: CLIENT, first_name: payload.first_name, last_name: payload.last_name, email: payload.email };
+    },
+  });
+  const result = await createClient({ prenom: "Yannick", nom: "Benamara" }, admin);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].email, null);
+  assert.equal(result.email, null);
+  assert.equal(result.invite, false);
 });
 
 test("crediting a missing client does not insert a ledger line", async () => {

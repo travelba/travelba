@@ -14,6 +14,7 @@ const SEND = new Set([
 const CREATE = new Set([
   "creer_dossier",
   "creer_client",
+  "importer_reservation_little_emperors",
   "ajouter_voyageur",
   "ajouter_vol",
   "ajouter_hotel",
@@ -56,6 +57,7 @@ const PHRASES: Record<string, string> = {
   confirmer_service: "Service confirmé",
   traiter_email: "E-mail traité",
   creer_client: "Fiche client créée",
+  importer_reservation_little_emperors: "Réservation Little Emperors importée",
   mettre_a_jour_client: "Fiche client modifiée",
   modifier_titulaire: "Titulaire modifié",
   definir_role_societe: "Rôle de société modifié",
