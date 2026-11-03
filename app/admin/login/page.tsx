@@ -8,6 +8,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { MYLER_PARTNER, MYLER_SHEET } from "@/lib/crm/myler-sheet";
 import { AGENCY_GOOGLE_DOMAIN } from "@/lib/crm/agency-access";
 import { loginErrorMessage } from "@/lib/crm/staff-login";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 function partnerEntry(searchParams: { get(name: string): string | null }) {
   const next = searchParams.get("next") || "";
@@ -89,9 +90,7 @@ function LoginForm() {
       return;
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await readVerifiedUser(supabase);
     const { data: staff } = user
       ? await supabase
           .from("crm_staff")

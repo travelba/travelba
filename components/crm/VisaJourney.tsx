@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useVisiblePoll } from "@/components/crm/useVisiblePoll";
+import { PAGE_POLL_MS } from "@/lib/crm/page-poll";
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -181,11 +183,7 @@ export function VisaJourney({
     return request?.step === "preparation" || request?.step === "remplissage";
   });
 
-  useEffect(() => {
-    if (!liveIsrael) return;
-    const timer = window.setInterval(() => router.refresh(), 5000);
-    return () => window.clearInterval(timer);
-  }, [liveIsrael, router]);
+  useVisiblePoll(() => router.refresh(), PAGE_POLL_MS.visaJourney, liveIsrael);
 
   function fields(iso: string) {
     return answers[iso] || EMPTY;

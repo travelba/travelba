@@ -68,6 +68,7 @@ import { CLIENT_VISA_STEPS, clientVisaStepCopy, type ClientVisaStep } from "@/li
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import { deskView, reasonLabel, type DeskTask } from "@/lib/crm/visa-desk";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { mcpPageMeta, mcpSlice, mcpWindow } from "@/lib/crm/mcp-page";
 
 const LIST_LIMIT = 20;
 const INBOX_LIMIT = 30;
@@ -412,9 +413,10 @@ export async function readTableauDeBord() {
   };
 }
 
-async function searchCustomers(admin: SupabaseClient, q: string, limit = LIST_LIMIT) {
+async function searchCustomers(admin: SupabaseClient, q: string, limit = LIST_LIMIT, page = 1) {
+  const window = mcpWindow({ page, limite: limit }, LIST_LIMIT);
   const pattern = searchPattern(q);
-  let query = admin.from("crm_customers").select(CUSTOMER_LIST_SELECT).order("last_name").limit(limit);
+  let query = admin.from("crm_customers").select(CUSTOMER_LIST_SELECT).order("last_name").order("id");
   if (pattern || phoneSearchFilter(q)) {
     query = query.or(
       joinOrFilters(
@@ -425,15 +427,18 @@ async function searchCustomers(admin: SupabaseClient, q: string, limit = LIST_LI
       )
     );
   }
-  const { data, error } = await query;
+  const { data, error } =
+    window.from === 0
+      ? await query.limit(window.limite + 1)
+      : await query.range(window.from, window.from + window.limite);
   if (error) {
     logRead("clients", error);
     throw new Error("Lecture impossible.");
   }
-  return (data || []) as CustomerListRow[];
+  return mcpPageMeta((data || []) as CustomerListRow[], window);
 }
 
-export async function readChercherClients(input: { q?: string; echeance?: boolean }) {
+export async function readChercherClients(input: { q?: string; echeance?: boolean; page?: number; limite?: number }) {
   const admin = db();
   if (input.echeance) {
     const { data, error } = await admin
@@ -442,29 +447,47 @@ export async function readChercherClients(input: { q?: string; echeance?: boolea
       .not("expires_on", "is", null)
       .gte("expires_on", isoDateInDays(0))
       .lte("expires_on", isoDateInDays(90))
-      .order("expires_on")
-      .limit(40);
+      .order("expires_on");
     if (error) {
       logRead("pieces", error);
       throw new Error("Lecture impossible.");
     }
     const docs = reviewIdentityPieces((data || []) as CrmTravelDocument[]);
-    const names = await customerNames(admin, docs.map((doc) => doc.customer_id));
+    const window = mcpWindow(input, 40);
+    const page = mcpSlice(docs, window);
+    const names = await customerNames(admin, page.rows.map((doc) => doc.customer_id));
     return {
-      pieces: docs.map((doc) => pieceLine(doc, names)),
+      pieces: page.rows.map((doc) => pieceLine(doc, names)),
+      page: page.page,
+      limite: page.limite,
+      suite: page.suite,
+      page_suivante: page.page_suivante,
     };
   }
   const q = (input.q || "").trim();
+  const window = mcpWindow(input, LIST_LIMIT);
+  const listed = await searchCustomers(admin, q, window.limite, window.page);
+  const clients = listed.rows.map(customerLine);
   if (!q) {
     const { count, error } = await admin.from("crm_customers").select("id", { count: "exact", head: true });
     if (error) logRead("clients", error);
     return {
-      message: "Indiquez un nom, une société, un e-mail, un téléphone, ou echeance pour les pièces.",
-      clients: count ?? 0,
+      message: "Clients, par nom. q affine. page continue la liste.",
+      total: count ?? clients.length,
+      clients,
+      page: listed.page,
+      limite: listed.limite,
+      suite: listed.suite,
+      page_suivante: listed.page_suivante,
     };
   }
-  const rows = await searchCustomers(admin, q);
-  return { clients: rows.map(customerLine) };
+  return {
+    clients,
+    page: listed.page,
+    limite: listed.limite,
+    suite: listed.suite,
+    page_suivante: listed.page_suivante,
+  };
 }
 
 async function oneCustomer(admin: SupabaseClient, input: { id?: string; q?: string }) {
@@ -481,7 +504,7 @@ async function oneCustomer(admin: SupabaseClient, input: { id?: string; q?: stri
   }
   const q = (input.q || "").trim();
   if (!q) return { kind: "missing" as const };
-  const rows = await searchCustomers(admin, q, 8);
+  const rows = (await searchCustomers(admin, q, 8)).rows;
   if (!rows.length) return { kind: "none" as const };
   if (rows.length > 1) return { kind: "many" as const, customers: rows };
   return { kind: "one" as const, customer: rows[0] };
@@ -534,16 +557,19 @@ function applyBookingFilters(query: FilterableQuery, input: { etat: BookingState
 }
 
 export async function readChercherDossiers(
-  input: { q?: string; etat?: BookingStateFilter | null },
+  input: { q?: string; etat?: BookingStateFilter | null; page?: number; limite?: number },
   admin = db()
 ) {
   const q = (input.q || "").trim();
   const etat = input.etat ?? (q ? null : "a-venir");
+  const window = mcpWindow(input, LIST_LIMIT);
   const today = todayIsoDate();
   const pattern = searchPattern(q);
   const rankedIds =
     pattern && typeof (admin as { rpc?: unknown }).rpc === "function" ? await findAttachBookingIds(admin, q) : null;
-  if (rankedIds && !rankedIds.length) return { etat: etat || "recherche", dossiers: [] };
+  if (rankedIds && !rankedIds.length) {
+    return { etat: etat || "recherche", dossiers: [], page: window.page, limite: window.limite, suite: false, page_suivante: null };
+  }
   let matchedCustomerIds: string[] = [];
   if (pattern && !rankedIds) {
     const { data } = await admin
@@ -555,43 +581,57 @@ export async function readChercherDossiers(
   }
   let query = admin.from("crm_bookings").select(BOOKING_COLUMNS) as unknown as FilterableQuery;
   query = applyBookingFilters(query, { etat, today });
-  if (rankedIds?.length) query = query.in("id", rankedIds);
+  const rankedPage = rankedIds?.length ? rankedIds.slice(window.from, window.from + window.limite + 1) : null;
+  if (rankedPage && !rankedPage.length) {
+    return { etat: etat || "recherche", dossiers: [], page: window.page, limite: window.limite, suite: false, page_suivante: null };
+  }
+  if (rankedPage) query = query.in("id", rankedPage.slice(0, window.limite));
   else if (pattern) {
     query = query.or(orSearchFilter(pattern, ["reference", "title", "destination"], "customer_id", matchedCustomerIds));
   }
   const upcomingOnly = etat === "a-venir";
-  const { data, error } = await (
+  const ordered = (
     query as unknown as {
       order: (column: string, opts: { ascending: boolean; nullsFirst: boolean }) => {
         limit: (n: number) => Promise<{ data: BookingRow[] | null; error: { code?: string } | null }>;
+        range: (from: number, to: number) => Promise<{ data: BookingRow[] | null; error: { code?: string } | null }>;
       };
     }
-  )
-    .order("start_date", { ascending: upcomingOnly, nullsFirst: false })
-    .limit(upcomingOnly ? LIST_LIMIT : 400);
+  ).order("start_date", { ascending: upcomingOnly || !q, nullsFirst: false });
+  const { data, error } = rankedPage
+    ? await ordered.limit(window.limite + 1)
+    : window.from === 0
+      ? await ordered.limit(window.limite + 1)
+      : await ordered.range(window.from, window.from + window.limite);
   if (error) {
     logRead("dossiers", error);
     throw new Error("Lecture impossible.");
   }
   const found = data || [];
-  const rows = rankedIds?.length
-    ? found
-        .slice()
-        .sort((a, b) => {
-          const left = rankedIds.indexOf(a.id);
-          const right = rankedIds.indexOf(b.id);
-          return (left < 0 ? rankedIds.length : left) - (right < 0 ? rankedIds.length : right);
-        })
-        .slice(0, LIST_LIMIT)
-    : sortBookingsByProximity(found, stayToday()).slice(0, LIST_LIMIT);
+  const orderedRows = rankedIds?.length
+    ? found.slice().sort((a, b) => {
+        const left = rankedIds.indexOf(a.id);
+        const right = rankedIds.indexOf(b.id);
+        return (left < 0 ? rankedIds.length : left) - (right < 0 ? rankedIds.length : right);
+      })
+    : sortBookingsByProximity(found, stayToday());
+  const paged = rankedPage
+    ? mcpPageMeta(orderedRows.slice(0, window.limite + 1), window)
+    : mcpPageMeta(orderedRows, window);
+  const rows = paged.rows;
   const [names, amounts, companies] = await Promise.all([
     customerNames(admin, rows.map((row) => row.customer_id)),
     dossierAmounts(admin, rows),
     companyNames(admin, rows.map((row) => row.billing_company_id)),
   ]);
+  const rankedSuite = Boolean(rankedPage && rankedPage.length > window.limite);
   return {
     etat: etat || "recherche",
     dossiers: rows.map((row) => bookingLine(row, names, amounts, companies)),
+    page: window.page,
+    limite: window.limite,
+    suite: rankedPage ? rankedSuite : paged.suite,
+    page_suivante: (rankedPage ? rankedSuite : paged.suite) ? window.page + 1 : null,
   };
 }
 
@@ -777,7 +817,7 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
 }
 
 export async function readFormalites(
-  input: { reference?: string; dossier_id?: string } = {},
+  input: { reference?: string; dossier_id?: string; page?: number; limite?: number } = {},
   admin = db()
 ) {
   const today = todayIsoDate();
@@ -795,14 +835,16 @@ export async function readFormalites(
     }
     bookingId = rows[0].id;
   }
+  const window = mcpWindow(input, 40);
+  const take = window.from + window.limite + 1;
   const taskQuery = admin
     .from("crm_visa_tasks")
     .select("booking_id, holder_name, reference, reasons, done_at")
     .is("done_at", null);
   const visaQuery = admin.from("crm_visa_requests").select("booking_id, country, status, step");
   const [tasks, visas, esta] = await Promise.all([
-    (bookingId ? taskQuery.eq("booking_id", bookingId) : taskQuery).order("created_at", { ascending: false }).limit(40),
-    (bookingId ? visaQuery.eq("booking_id", bookingId) : visaQuery).order("created_at", { ascending: false }).limit(80),
+    (bookingId ? taskQuery.eq("booking_id", bookingId) : taskQuery).order("created_at", { ascending: false }).limit(take),
+    (bookingId ? visaQuery.eq("booking_id", bookingId) : visaQuery).order("created_at", { ascending: false }).limit(take),
     loadOpenEstaNotices(admin, bookingId || undefined).catch(() => []),
   ]);
   if (tasks.error) logRead("formalites", tasks.error);
@@ -810,39 +852,54 @@ export async function readFormalites(
   const openVisas = ((visas.data || []) as { booking_id: string; country: string; status: string | null; step: string | null }[]).filter(
     (row) => row.status === "refuse" || (row.step !== "piece" && row.status !== "piece")
   );
+  const taskRows = (tasks.data || []) as { booking_id: string; holder_name: string; reference: string; reasons: DeskTask["reasons"] }[];
+  const taskPage = mcpSlice(taskRows, window);
+  const visaPage = mcpSlice(openVisas, window);
+  const suite = taskPage.suite || visaPage.suite || taskRows.length >= take || (visas.data || []).length >= take;
   return {
     jour: today,
-    taches: ((tasks.data || []) as { booking_id: string; holder_name: string; reference: string; reasons: DeskTask["reasons"] }[]).map(
-      (row) => ({
-        reference: row.reference,
-        voyageur: row.holder_name,
-        motif: reasonLabel(row.reasons || []),
-        lien: `/admin/reservations/${row.booking_id}`,
-      })
-    ),
-    demandes: openVisas.map((row) => ({
+    taches: taskPage.rows.map((row) => ({
+      reference: row.reference,
+      voyageur: row.holder_name,
+      motif: reasonLabel(row.reasons || []),
+      lien: `/admin/reservations/${row.booking_id}`,
+    })),
+    demandes: visaPage.rows.map((row) => ({
       pays: corridorName(row.country),
       etape: visaStepLabel(row.step),
       statut: row.status,
       lien: `/admin/reservations/${row.booking_id}`,
     })),
     esta: esta.map((row) => ({ label: row.label, lien: row.href })),
+    page: window.page,
+    limite: window.limite,
+    suite,
+    page_suivante: suite ? window.page + 1 : null,
   };
 }
 
-export async function readServicesAConfirmer() {
+export async function readServicesAConfirmer(input: { page?: number; limite?: number } = {}) {
   const admin = db();
+  const window = mcpWindow(input, LIST_LIMIT);
   const { data } = await admin
     .from("crm_bookings")
     .select("id, reference, status, customer_id")
     .neq("status", "cancelled")
     .is("archived_at", null)
     .or(`end_date.is.null,end_date.gte.${isoDateInDays(-1)}`)
-    .limit(300);
-  return { services: await openServiceLines(admin, (data || []) as ServiceBookingRow[]) };
+    .order("start_date", { ascending: true, nullsFirst: false })
+    .limit(window.from + window.limite + 1);
+  const stays = mcpSlice((data || []) as ServiceBookingRow[], window);
+  return {
+    services: await openServiceLines(admin, stays.rows),
+    page: stays.page,
+    limite: stays.limite,
+    suite: stays.suite,
+    page_suivante: stays.page_suivante,
+  };
 }
 
-export async function readGrandLivre(input: { id?: string; q?: string }) {
+export async function readGrandLivre(input: { id?: string; q?: string; page?: number; limite?: number }) {
   const admin = db();
   const found = await oneCustomer(admin, input);
   if (found.kind === "missing" || found.kind === "invalid") {
@@ -856,7 +913,8 @@ export async function readGrandLivre(input: { id?: string; q?: string }) {
     .select("company_role, spending_allowance")
     .eq("id", customer.id)
     .maybeSingle();
-  const creditsPromise = postedClientCredits(admin, customer.id);
+  const ledgerWindow = mcpWindow(input, 15);
+  const creditsPromise = postedClientCredits(admin, customer.id, ledgerWindow.from + ledgerWindow.limite + 1);
   const ledger = await loadClientLedger(
     admin,
     {
@@ -879,7 +937,7 @@ export async function readGrandLivre(input: { id?: string; q?: string }) {
       solde: formatMoney(wallet.balanceValue, wallet.currency),
       solde_valeur: wallet.balanceValue,
     })),
-    mouvements: ledger.movements.slice(0, 15).map((row) => ({
+    mouvements: mcpSlice(ledger.movements, ledgerWindow).rows.map((row) => ({
       id: row.id,
       titre: row.title,
       montant: row.amountLabel,
@@ -890,11 +948,18 @@ export async function readGrandLivre(input: { id?: string; q?: string }) {
       lieu: row.whenWhere,
       lien: row.bookingId ? `/admin/reservations/${row.bookingId}` : null,
     })),
-    credits: await creditsPromise,
+    credits: mcpSlice(await creditsPromise, ledgerWindow).rows,
+    page: ledgerWindow.page,
+    limite: ledgerWindow.limite,
+    suite: mcpSlice(ledger.movements, ledgerWindow).suite || mcpSlice(await creditsPromise, ledgerWindow).suite,
+    page_suivante:
+      mcpSlice(ledger.movements, ledgerWindow).suite || mcpSlice(await creditsPromise, ledgerWindow).suite
+        ? ledgerWindow.page + 1
+        : null,
   };
 }
 
-async function postedClientCredits(admin: ReturnType<typeof db>, customerId: string) {
+async function postedClientCredits(admin: ReturnType<typeof db>, customerId: string, take = 80) {
   const { data, error } = await admin
     .from("crm_transactions")
     .select("id, amount, currency, source, kind, label, occurred_on, external_id, status, direction")
@@ -902,7 +967,7 @@ async function postedClientCredits(admin: ReturnType<typeof db>, customerId: str
     .eq("direction", "credit")
     .eq("status", "posted")
     .order("occurred_on", { ascending: false })
-    .limit(80);
+    .limit(take);
   if (error) {
     logRead("credits", error);
     return [];
@@ -910,26 +975,31 @@ async function postedClientCredits(admin: ReturnType<typeof db>, customerId: str
   return clientCreditLines((data || []) as Parameters<typeof clientCreditLines>[0]);
 }
 
-export async function readRevolutEnAttente() {
+export async function readRevolutEnAttente(input: { page?: number; limite?: number } = {}) {
   const admin = db();
+  const window = mcpWindow(input, INBOX_LIMIT);
   const { data, error } = await admin
     .from("crm_revolut_transactions")
     .select("id, amount, currency, counterparty_name, reference, booked_at, status, direction")
     .eq("status", "unmatched")
     .eq("direction", "credit")
     .order("booked_at", { ascending: false, nullsFirst: false })
-    .limit(INBOX_LIMIT);
+    .limit(window.from + window.limite + 1);
   if (error) {
     logRead("revolut", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = (data || []) as Pick<
-    CrmRevolutTransaction,
-    "id" | "amount" | "currency" | "counterparty_name" | "reference" | "booked_at"
-  >[];
+  const rows = mcpSlice(
+    (data || []) as Pick<CrmRevolutTransaction, "id" | "amount" | "currency" | "counterparty_name" | "reference" | "booked_at">[],
+    window
+  );
   return {
     lien: "/admin/argent?onglet=a-encaisser",
-    virements: rows.map((row) => ({
+    page: rows.page,
+    limite: rows.limite,
+    suite: rows.suite,
+    page_suivante: rows.page_suivante,
+    virements: rows.rows.map((row) => ({
       id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
       expediteur: row.counterparty_name,
@@ -945,8 +1015,9 @@ const DEBIT_STATE: Record<string, string> = {
   ignored: "refusée",
 };
 
-export async function readRevolutDebits() {
+export async function readRevolutDebits(input: { page?: number; limite?: number } = {}) {
   const admin = db();
+  const window = mcpWindow(input, INBOX_LIMIT);
   const { data, error } = await admin
     .from("crm_revolut_transactions")
     .select(
@@ -955,12 +1026,12 @@ export async function readRevolutDebits() {
     .eq("direction", "debit")
     .order("status", { ascending: false })
     .order("booked_at", { ascending: false, nullsFirst: false })
-    .limit(INBOX_LIMIT);
+    .limit(window.from + window.limite + 1);
   if (error) {
     logRead("revolut-debits", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = (data || []) as CrmRevolutTransaction[];
+  const rows = mcpSlice((data || []) as CrmRevolutTransaction[], window).rows;
   const customerIds = [
     ...new Set(rows.map((row) => row.matched_customer_id).filter((id): id is string => Boolean(id))),
   ];
@@ -984,8 +1055,13 @@ export async function readRevolutDebits() {
   const references = new Map(
     ((stays.data || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference])
   );
+  const page = mcpSlice((data || []) as CrmRevolutTransaction[], window);
   return {
     lien: "/admin/argent?onglet=a-pointer&vue=revolut",
+    page: page.page,
+    limite: page.limite,
+    suite: page.suite,
+    page_suivante: page.page_suivante,
     debits: rows.map((row) => {
       const line = revolutDebitLine(row);
       return {
@@ -1108,26 +1184,31 @@ const EMAIL_STATUS: Record<string, string> = {
   error: "erreur",
 };
 
-export async function readStripeEnAttente() {
+export async function readStripeEnAttente(input: { page?: number; limite?: number } = {}) {
   const admin = db();
+  const window = mcpWindow(input, INBOX_LIMIT);
   const { data, error } = await admin
     .from("crm_stripe_transactions")
     .select("id, amount, currency, payer_name, reference, method, booked_at, status, direction")
     .eq("status", "unmatched")
     .eq("direction", "credit")
     .order("booked_at", { ascending: false, nullsFirst: false })
-    .limit(INBOX_LIMIT);
+    .limit(window.from + window.limite + 1);
   if (error) {
     logRead("stripe", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = (data || []) as Pick<
-    CrmStripeTransaction,
-    "id" | "amount" | "currency" | "payer_name" | "reference" | "method" | "booked_at"
-  >[];
+  const rows = mcpSlice(
+    (data || []) as Pick<CrmStripeTransaction, "id" | "amount" | "currency" | "payer_name" | "reference" | "method" | "booked_at">[],
+    window
+  );
   return {
     lien: "/admin/argent?onglet=a-encaisser",
-    paiements: rows.map((row) => ({
+    page: rows.page,
+    limite: rows.limite,
+    suite: rows.suite,
+    page_suivante: rows.page_suivante,
+    paiements: rows.rows.map((row) => ({
       id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
       payeur: row.payer_name,
@@ -1138,26 +1219,34 @@ export async function readStripeEnAttente() {
   };
 }
 
-export async function readEmailsEnAttente() {
+export async function readEmailsEnAttente(input: { page?: number; limite?: number } = {}) {
   const admin = db();
+  const window = mcpWindow(input, INBOX_LIMIT);
   const { data, error } = await admin
     .from("crm_email_ingest")
     .select("id, label, from_email, subject, received_at, status, candidates, error, extract")
     .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
     .order("received_at", { ascending: false, nullsFirst: false })
-    .limit(INBOX_LIMIT);
+    .limit(window.from + window.limite + 1);
   if (error) {
     logRead("emails", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = (data || []) as Pick<
-    CrmEmailIngest,
-    "id" | "label" | "from_email" | "subject" | "received_at" | "status" | "candidates" | "error" | "extract"
-  >[];
-  const known = rows.length ? await loadStayAnchors(admin) : [];
+  const rows = mcpSlice(
+    (data || []) as Pick<
+      CrmEmailIngest,
+      "id" | "label" | "from_email" | "subject" | "received_at" | "status" | "candidates" | "error" | "extract"
+    >[],
+    window
+  );
+  const known = rows.rows.length ? await loadStayAnchors(admin) : [];
   return {
     lien: "/admin/boite?onglet=fournisseurs",
-    mails: rows.map((row) => {
+    page: rows.page,
+    limite: rows.limite,
+    suite: rows.suite,
+    page_suivante: rows.page_suivante,
+    mails: rows.rows.map((row) => {
       const verdict = extractCancellationVerdict(
         { label: row.label, receivedAt: row.received_at, extract: parseStoredExtract(row.extract) },
         known
@@ -1183,11 +1272,11 @@ export async function readEmailsEnAttente() {
   };
 }
 
-export async function readLittleEmperorsEnAttente(admin = db()) {
+export async function readLittleEmperorsEnAttente(admin = db(), input: { page?: number; limite?: number } = {}) {
   const { data, error } = await admin
     .from("crm_le_bookings")
     .select(
-      "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost, raw, created_at"
+      "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost, raw, created_at, booked_at"
     )
     .eq("status", "unmatched");
   if (error) {
@@ -1214,12 +1303,17 @@ export async function readLittleEmperorsEnAttente(admin = db()) {
     | "created_at"
   > & { raw?: unknown; booked_at?: string | null })[])
     .map((row) => ({ ...row, booked_on: leListMadeAt(row, mails) }))
-    .sort((left, right) => compareLeMadeAt(left.booked_on, right.booked_on) || left.id.localeCompare(right.id))
-    .slice(0, INBOX_LIMIT);
-  const known = rows.length ? await loadStayAnchors(admin) : [];
+    .sort((left, right) => compareLeMadeAt(left.booked_on, right.booked_on) || left.id.localeCompare(right.id));
+  const window = mcpWindow(input, INBOX_LIMIT);
+  const page = mcpSlice(rows, window);
+  const known = page.rows.length ? await loadStayAnchors(admin) : [];
   return {
     lien: "/admin/boite?onglet=fournisseurs&source=little-emperors",
-    sejours: rows.map((row) => {
+    page: page.page,
+    limite: page.limite,
+    suite: page.suite,
+    page_suivante: page.page_suivante,
+    sejours: page.rows.map((row) => {
       const verdict = leCancellationVerdict(row, known);
       return {
         hotel: row.hotel_name,

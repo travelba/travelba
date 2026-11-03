@@ -71,6 +71,9 @@ function fakeDb(options: { legacy?: boolean } = {}) {
       limit() {
         return builder;
       },
+      range() {
+        return builder;
+      },
       maybeSingle: async () => {
         const result = run();
         return { data: result.data?.[0] ?? null, error: result.error };

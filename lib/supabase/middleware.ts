@@ -33,6 +33,7 @@ import {
   needsClientOnboarding,
 } from "@/lib/crm/session";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -86,9 +87,7 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
 
   const pathname = request.nextUrl.pathname;
   const isAdmin = pathname.startsWith("/admin");

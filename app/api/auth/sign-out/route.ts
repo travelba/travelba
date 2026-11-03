@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { clearAuthSessionCookieWrites, requestIsSecure } from "@/lib/crm/client-session-cookie";
 import { createClient } from "@/lib/supabase/server";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 export const runtime = "nodejs";
 
@@ -12,9 +13,7 @@ export async function POST(request: Request) {
   const jar = await cookies();
   const before = jar.getAll();
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (user) {
     const { error } = await supabase.auth.signOut({ scope });
     if (error) {

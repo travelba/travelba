@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PAGE_POLL_MS, pollRunsWhileVisible } from "@/lib/crm/page-poll";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { fieldControlClass, Field } from "@/components/crm/fields";
 import { CERTIFICATION_HOTELS } from "@/lib/crm/ratehawk/catalog";
@@ -124,7 +125,8 @@ export function RatehawkDesk({
   useEffect(() => {
     if (!orderId || orderStatus !== "in_progress") return;
     let stop = false;
-    const timer = setInterval(async () => {
+    const pull = async () => {
+      if (!pollRunsWhileVisible(document.visibilityState)) return;
       const response = await fetch("/api/admin/ratehawk/status", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -139,10 +141,16 @@ export function RatehawkDesk({
         const body = (await fresh.json()) as { orders?: RatehawkOrder[] };
         if (body.orders) setList(body.orders);
       }
-    }, 5000);
+    };
+    const timer = setInterval(() => void pull(), PAGE_POLL_MS.ratehawk);
+    const onVisible = () => {
+      if (pollRunsWhileVisible(document.visibilityState)) void pull();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       stop = true;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [orderId, orderStatus]);
 

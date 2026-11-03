@@ -4,6 +4,7 @@ import { ClientTransactionsPanel } from "@/components/account/ClientTransactions
 import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { siteConfig } from "@/lib/site";
@@ -12,9 +13,7 @@ export const metadata = { title: `Transactions — ${siteConfig.shortName}` };
 
 export default async function TransactionsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");

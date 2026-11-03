@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { customerFullName, type CrmBillingCompany, type CrmCustomer } from "@/lib/crm/types";
 import { BillingForm } from "@/components/account/BillingForm";
@@ -8,9 +9,7 @@ import { AccountPage } from "@/components/account/AccountPage";
 
 export default async function FacturationPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");

@@ -32,6 +32,7 @@ import {
   type TableStatus,
 } from "./restaurants";
 import { timezoneForStay, type StayTimezoneSource } from "./stay-timezone";
+import { MCP_RESTAURANT_COLUMNS } from "./mcp-columns";
 
 const NOT_READY = new Set(["42P01", "42703", "PGRST204", "PGRST205"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -211,11 +212,12 @@ function rowWithoutVisual(row: ReturnType<typeof rowWithoutFiche>) {
   return rest;
 }
 
-export async function listRestaurants(db: SupabaseClient, query = "") {
-  let request = db.from("crm_restaurants").select("*").order("city").order("name").limit(200);
+export async function listRestaurants(db: SupabaseClient, query = "", bounds?: { from: number; to: number }) {
+  let request = db.from("crm_restaurants").select(MCP_RESTAURANT_COLUMNS).order("city").order("name");
   const clean = query.replace(/[%_,()*'"]/g, "").trim().slice(0, 40);
   if (clean) request = request.or(`name.ilike.%${clean}%,city.ilike.%${clean}%`);
-  const { data, error } = await request;
+  const bounded = bounds ? request.range(bounds.from, bounds.to) : request.limit(200);
+  const { data, error } = await bounded;
   if (error) {
     logDb("liste", error);
     if (!restaurantsReady(error)) return { ready: false as const, rows: [] as RestaurantRecord[] };
