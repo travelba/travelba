@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { toAuditRow } from "./audit-events";
+import { MCP_ITEM_COLUMNS } from "./mcp-columns";
 import { syncCheckinSent } from "./online-checkin-db";
 import {
   BOARDING_PASS_MISSING,
@@ -363,7 +364,7 @@ async function passengersFor(
   const read = pages ? readBoardingPassPages(pages) : { recognized: false, passengers: [] as BoardingPassPassenger[] };
   if (read.passengers.length) return read.passengers;
   if (!read.recognized) {
-    const { data: itemRows } = await db.from("crm_booking_items").select("*").eq("booking_id", bookingId);
+    const { data: itemRows } = await db.from("crm_booking_items").select(MCP_ITEM_COLUMNS).eq("booking_id", bookingId);
     const { data: travelerRows } = await db
       .from("crm_booking_travelers")
       .select("first_name, last_name")

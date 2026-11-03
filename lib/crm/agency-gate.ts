@@ -18,6 +18,7 @@ import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { agencyGateDecision, classifyAgencyRoute, entityIdFromPath } from "@/lib/crm/agency-routes";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 function clientIp(request: NextRequest) {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -46,9 +47,7 @@ export async function gateAgencyApi(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
   const staff = await readStaff(supabase, user.id);

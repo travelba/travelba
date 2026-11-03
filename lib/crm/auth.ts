@@ -2,18 +2,17 @@ import { cache } from "react";
 import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
 import { jwtStaffRole, STAFF_COPY } from "@/lib/crm/staff-team";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 
-/** Mémo request-scoped (pas Cache Components) : layout + requireStaffPage partagent getUser. */
+/** Mémo request-scoped (pas Cache Components) : layout + requireStaffPage partagent la vérification du JWT. */
 export const getSessionUser = cache(async () => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   return { supabase, user };
 });
 

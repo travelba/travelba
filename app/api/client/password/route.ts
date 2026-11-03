@@ -15,14 +15,13 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { appOrigin } from "@/lib/crm/invite";
 import { sendSpaceAccessWhatsapp } from "@/lib/crm/space-access";
 import { recordCustomerActivity } from "@/lib/crm/customer-activity";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) return jsonError("Non authentifié", 401);
 
   const body = await request.json().catch(() => null);

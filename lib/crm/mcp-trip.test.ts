@@ -57,6 +57,7 @@ function memoryAdmin(seed: Record<string, Row[]>) {
     let payload: Row = {};
     let limitN: number | null = null;
     let orderCol: string | null = null;
+    let span: { from: number; to: number } | null = null;
     const api = {
       select() {
         return api;
@@ -100,6 +101,10 @@ function memoryAdmin(seed: Record<string, Row[]>) {
         limitN = count;
         return api;
       },
+      range(from: number, to: number) {
+        span = { from, to };
+        return api;
+      },
       maybeSingle() {
         return Promise.resolve(finish(true));
       },
@@ -117,6 +122,7 @@ function memoryAdmin(seed: Record<string, Row[]>) {
         const column = orderCol;
         rows = [...rows].sort((a, b) => Number(a[column] || 0) - Number(b[column] || 0));
       }
+      if (span) rows = rows.slice(span.from, span.to + 1);
       if (limitN != null) rows = rows.slice(0, limitN);
       return rows;
     }

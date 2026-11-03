@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { adminAction } from "@/lib/crm/admin-action";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { PAGE_POLL_MS, pollRunsWhileVisible } from "@/lib/crm/page-poll";
 import {
   UK_ETA_PENDING_STALE_MS,
-  UK_ETA_POLL_INTERVAL_MS,
   UK_ETA_POLL_WINDOW_MS,
   UK_ETA_STALE_LABEL,
   mergeUkEtaPoll,
@@ -61,6 +61,13 @@ export function UkEtaOnBooking({ bookingId, rows: initialRows }: { bookingId: st
       pollAnchor.current = null;
       return;
     }
+    if (!pollRunsWhileVisible(document.visibilityState)) {
+      const onVisible = () => {
+        if (pollRunsWhileVisible(document.visibilityState)) setPollTick((tick) => tick + 1);
+      };
+      document.addEventListener("visibilitychange", onVisible);
+      return () => document.removeEventListener("visibilitychange", onVisible);
+    }
     if (pollAnchor.current == null) pollAnchor.current = Date.now();
     if (Date.now() - pollAnchor.current >= UK_ETA_POLL_WINDOW_MS) return;
     let cancelled = false;
@@ -74,7 +81,7 @@ export function UkEtaOnBooking({ bookingId, rows: initialRows }: { bookingId: st
       if (!cancelled && pollAnchor.current != null && Date.now() - pollAnchor.current < UK_ETA_POLL_WINDOW_MS) {
         setPollTick((tick) => tick + 1);
       }
-    }, UK_ETA_POLL_INTERVAL_MS);
+    }, PAGE_POLL_MS.esta);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);

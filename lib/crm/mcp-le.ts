@@ -28,6 +28,7 @@ import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { foldName } from "@/lib/crm/person-match";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { MCP_LE_STORED_COLUMNS } from "@/lib/crm/mcp-columns";
 
 type Admin = SupabaseClient;
 
@@ -440,12 +441,32 @@ function ambiguity(rows: LeCandidate[]) {
 }
 
 async function loadStored(admin: Admin) {
-  const { data, error } = await admin.from("crm_le_bookings").select("*");
-  if (error) {
-    console.error("[mcp] little-emperors", error.code ?? "?");
-    throw new McpReadError("Lecture Little Emperors impossible.");
+  const pageSize = 200;
+  const rows: StoredLe[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const query = admin
+      .from("crm_le_bookings")
+      .select(MCP_LE_STORED_COLUMNS)
+      .order("le_booking_id", { ascending: true });
+    const ranged = query as typeof query & { range?: (start: number, end: number) => typeof query };
+    const request = typeof ranged.range === "function" ? ranged.range(from, from + pageSize - 1) : query;
+    const { data, error } = await request;
+    if (typeof ranged.range !== "function") {
+      if (error) {
+        console.error("[mcp] little-emperors", error.code ?? "?");
+        throw new McpReadError("Lecture Little Emperors impossible.");
+      }
+      return (data || []) as StoredLe[];
+    }
+    if (error) {
+      console.error("[mcp] little-emperors", error.code ?? "?");
+      throw new McpReadError("Lecture Little Emperors impossible.");
+    }
+    const batch = (data || []) as StoredLe[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
   }
-  return (data || []) as StoredLe[];
+  return rows;
 }
 
 async function loadLive(deps?: { listBookings?: () => Promise<LeBooking[]> }) {

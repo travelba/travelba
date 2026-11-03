@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useVisiblePoll } from "@/components/crm/useVisiblePoll";
+import { PAGE_POLL_MS } from "@/lib/crm/page-poll";
 import { etaIlLiveFramePath, PORTAL_KIND_LABEL, type PortalLogEvent, type PortalLogKind } from "@/lib/crm/eta-il-log";
 
 type Payload = {
@@ -30,6 +32,8 @@ export function EtaIlMonitor({ bookingId }: { bookingId: string }) {
   const [frameOk, setFrameOk] = useState(false);
   const end = useRef<HTMLLIElement | null>(null);
 
+  const loadRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     let stop = false;
     async function load() {
@@ -47,14 +51,16 @@ export function EtaIlMonitor({ bookingId }: { bookingId: string }) {
       setNote(json.note || null);
       setTick((value) => value + 1);
     }
+    loadRef.current = () => {
+      void load();
+    };
     void load();
-    // Sondage toutes les 2 s seulement pendant le direct ; hors direct, une lecture suffit (A-27).
-    const timer = live ? window.setInterval(() => void load(), 2000) : null;
     return () => {
       stop = true;
-      if (timer != null) window.clearInterval(timer);
     };
-  }, [bookingId, live]);
+  }, [bookingId]);
+
+  useVisiblePoll(() => loadRef.current(), PAGE_POLL_MS.etaIl, live);
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "nearest" });

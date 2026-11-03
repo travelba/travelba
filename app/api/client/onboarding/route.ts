@@ -6,15 +6,14 @@ import { mustSetPassword, pathAfterPassword, withOnboardingDone } from "@/lib/cr
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { recordCustomerActivity } from "@/lib/crm/customer-activity";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 export const runtime = "nodejs";
 
 /** Marque la bienvenue comme vue (Passer ou fin). Une seule fois, dans app_metadata. */
 export async function POST() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) return jsonError("Non authentifié", 401);
   if (mustSetPassword(user)) return jsonError("Définissez d’abord votre mot de passe", 403);
 

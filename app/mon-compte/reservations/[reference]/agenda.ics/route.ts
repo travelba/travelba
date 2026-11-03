@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
@@ -12,9 +13,7 @@ export async function GET(request: Request, ctx: Ctx) {
   const { reference } = await ctx.params;
   const itemId = new URL(request.url).searchParams.get("item_id");
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) return new NextResponse("Connexion requise", { status: 401 });
   const customer = await ensureCustomerForUser(user);
   if (!customer) return new NextResponse("Connexion requise", { status: 401 });

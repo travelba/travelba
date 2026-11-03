@@ -12,6 +12,7 @@ import {
   type HotelGesture,
 } from "./hotel-activity";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { mcpSlice, mcpWindow } from "@/lib/crm/mcp-page";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,8 +46,14 @@ export async function lireRecherchesHotels(
   if (input.du && !from) throw new Error("Date de début invalide.");
   if (input.au && !to) throw new Error("Date de fin invalide.");
   if (from && to && from > to) throw new Error("La date de fin précède le début.");
-  const limitRaw = Number(input.limite);
-  const limit = Number.isFinite(limitRaw) ? Math.min(80, Math.max(1, Math.floor(limitRaw))) : 40;
+  const window = mcpWindow(
+    {
+      page: typeof input.page === "number" ? input.page : undefined,
+      limite: typeof input.limite === "number" ? input.limite : undefined,
+    },
+    40
+  );
+  const limit = window.from + window.limite + 1;
   const admin = deps.admin || createServiceClient();
   let customerIds: string[] | null = clientId ? [clientId] : null;
   if (!customerIds && name) {
@@ -57,7 +64,9 @@ export async function lireRecherchesHotels(
     const { data, error } = await query;
     if (error) throw new Error("Lecture impossible.");
     customerIds = ((data || []) as { id: string }[]).map((row) => row.id);
-    if (!customerIds.length) return { lignes: [] };
+    if (!customerIds.length) {
+      return { lignes: [], page: window.page, limite: window.limite, suite: false, page_suivante: null };
+    }
   }
   const span = Math.max(limit * 3, 60);
   const since = from ? `${addIsoDays(from, -1)}T00:00:00.000Z` : "";
@@ -110,7 +119,15 @@ export async function lireRecherchesHotels(
     if (people.error) throw new Error("Lecture impossible.");
     customers = (people.data || []) as typeof customers;
   }
-  return { lignes: presentHotelActivityLines(rows, customers).slice(0, limit) };
+  const listed = mcpSlice(presentHotelActivityLines(rows, customers), window);
+  const suite = listed.suite || (gestureRes.data || []).length >= limit || (openRes.data || []).length >= limit;
+  return {
+    lignes: listed.rows,
+    page: window.page,
+    limite: window.limite,
+    suite,
+    page_suivante: suite ? window.page + 1 : null,
+  };
 }
 
 function text(value: unknown, max: number) {

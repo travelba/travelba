@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import { calendarItemIdFromSegment } from "@/lib/crm/calendar-ics";
 import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
@@ -14,9 +15,7 @@ export async function GET(request: Request, ctx: Ctx) {
   const itemId = calendarItemIdFromSegment(segment);
   if (!itemId) return new NextResponse("Introuvable", { status: 404 });
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) return new NextResponse("Connexion requise", { status: 401 });
   const customer = await ensureCustomerForUser(user);
   if (!customer) return new NextResponse("Connexion requise", { status: 401 });

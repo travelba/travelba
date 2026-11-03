@@ -52,6 +52,14 @@ import { readExpensePricing } from "@/lib/crm/expense-pricing";
 import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
 import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { createServiceClient } from "@/lib/supabase/admin";
+import {
+  MCP_BOOKING_COLUMNS,
+  MCP_CUSTOMER_SERVICE_COLUMNS,
+  MCP_EMAIL_COLUMNS,
+  MCP_ITEM_COLUMNS,
+  MCP_REVOLUT_COLUMNS,
+  MCP_STRIPE_COLUMNS,
+} from "@/lib/crm/mcp-columns";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -429,7 +437,7 @@ export function prepareClientUpdate(input: Record<string, unknown>) {
 }
 
 async function loadBooking(admin: McpAdmin, target: { id: string; reference: string }) {
-  let query = admin.from("crm_bookings").select("*");
+  let query = admin.from("crm_bookings").select(MCP_BOOKING_COLUMNS);
   query = target.id ? query.eq("id", target.id) : query.eq("reference", target.reference);
   const { data, error } = await query.limit(2);
   if (error) failDb(error, "Dossier introuvable.");
@@ -510,7 +518,7 @@ export async function creditRevolutTransfer(input: Record<string, unknown>, admi
   if (!customer) throw new McpWriteError("Client introuvable.");
   const { data: row, error } = await db
     .from("crm_revolut_transactions")
-    .select("*")
+    .select(MCP_REVOLUT_COLUMNS)
     .eq("id", virementId)
     .maybeSingle();
   if (error) failDb(error, "Virement introuvable.");
@@ -553,7 +561,7 @@ export async function matchRevolutExpense(input: Record<string, unknown>, admin?
   if (!customer) throw new McpWriteError(revolutExpenseError("customer_not_found"));
   const { data: row, error } = await db
     .from("crm_revolut_transactions")
-    .select("*")
+    .select(MCP_REVOLUT_COLUMNS)
     .eq("id", depenseId)
     .maybeSingle();
   if (error) failDb(error, "Dépense introuvable.");
@@ -640,7 +648,7 @@ export async function creditStripePayment(input: Record<string, unknown>, admin?
   if (!customer) throw new McpWriteError("Client introuvable.");
   const { data: row, error } = await db
     .from("crm_stripe_transactions")
-    .select("*")
+    .select(MCP_STRIPE_COLUMNS)
     .eq("id", paiementId)
     .maybeSingle();
   if (error) failDb(error, "Paiement introuvable.");
@@ -698,7 +706,7 @@ export async function publishCarnet(input: Record<string, unknown>, admin?: McpA
     await syncBookingTotalFromItems(db, booking.id);
     const { data: priced, error: pricedError } = await db
       .from("crm_bookings")
-      .select("*")
+      .select(MCP_BOOKING_COLUMNS)
       .eq("id", booking.id)
       .maybeSingle();
     if (pricedError) failDb(pricedError, "Le grand livre n’a pas suivi cette écriture.");
@@ -789,13 +797,13 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     .from("crm_bookings")
     .update(nextPatch)
     .eq("id", prev.id)
-    .select("*")
+    .select(MCP_BOOKING_COLUMNS)
     .single();
   if (error || !data) failDb(error, "Dossier non enregistré.");
   const booking = data as CrmBooking;
   try {
     await syncBookingTotalFromItems(db, booking.id);
-    const { data: priced } = await db.from("crm_bookings").select("*").eq("id", booking.id).maybeSingle();
+    const { data: priced } = await db.from("crm_bookings").select(MCP_BOOKING_COLUMNS).eq("id", booking.id).maybeSingle();
     await syncBookingLedger(db, (priced || booking) as CrmBooking, prev.status as BookingStatus);
   } catch (err) {
     console.error("[mcp] livre", err instanceof Error ? err.message : "error");
@@ -894,7 +902,7 @@ export async function confirmService(input: Record<string, unknown>, admin?: Mcp
   const booking = await loadBooking(db, { id: dossierId, reference: "" });
   const { data: itemRows, error: itemsError } = await db
     .from("crm_booking_items")
-    .select("*")
+    .select(MCP_ITEM_COLUMNS)
     .eq("booking_id", booking.id);
   if (itemsError) failDb(itemsError, "Service introuvable.");
   const items = (itemRows || []) as CrmBookingItem[];
@@ -905,7 +913,7 @@ export async function confirmService(input: Record<string, unknown>, admin?: Mcp
     if (target.kind === "checkin") {
       await confirmCheckinExtra(db, { booking, items });
     } else if (target.kind === "chauffeur" || target.kind === "greeter") {
-      const { data: holder } = await db.from("crm_customers").select("*").eq("id", booking.customer_id).maybeSingle();
+      const { data: holder } = await db.from("crm_customers").select(MCP_CUSTOMER_SERVICE_COLUMNS).eq("id", booking.customer_id).maybeSingle();
       await confirmBookingExtra(db, {
         booking,
         items,
@@ -936,7 +944,7 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
     return createDossierFromEmail(input, admin);
   }
   const db = client(admin);
-  const { data, error } = await db.from("crm_email_ingest").select("*").eq("id", action.id).maybeSingle();
+  const { data, error } = await db.from("crm_email_ingest").select(MCP_EMAIL_COLUMNS).eq("id", action.id).maybeSingle();
   if (error) failDb(error, "E-mail introuvable.");
   const row = data as CrmEmailIngest | null;
   if (!row) throw new McpWriteError("E-mail introuvable.");

@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { adminAction } from "@/lib/crm/admin-action";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { PAGE_POLL_MS, pollRunsWhileVisible } from "@/lib/crm/page-poll";
 import {
   ESTA_PENDING_STALE_MS,
-  ESTA_POLL_INTERVAL_MS,
   ESTA_POLL_WINDOW_MS,
   ESTA_STALE_LABEL,
   estaLineAsPending,
@@ -61,6 +61,13 @@ export function EstaOnBooking({ bookingId, rows: initialRows }: { bookingId: str
       pollAnchor.current = null;
       return;
     }
+    if (!pollRunsWhileVisible(document.visibilityState)) {
+      const onVisible = () => {
+        if (pollRunsWhileVisible(document.visibilityState)) setPollTick((tick) => tick + 1);
+      };
+      document.addEventListener("visibilitychange", onVisible);
+      return () => document.removeEventListener("visibilitychange", onVisible);
+    }
     if (pollAnchor.current == null) pollAnchor.current = Date.now();
     if (Date.now() - pollAnchor.current >= ESTA_POLL_WINDOW_MS) return;
     let cancelled = false;
@@ -74,7 +81,7 @@ export function EstaOnBooking({ bookingId, rows: initialRows }: { bookingId: str
       if (!cancelled && pollAnchor.current != null && Date.now() - pollAnchor.current < ESTA_POLL_WINDOW_MS) {
         setPollTick((tick) => tick + 1);
       }
-    }, ESTA_POLL_INTERVAL_MS);
+    }, PAGE_POLL_MS.esta);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
