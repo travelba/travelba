@@ -424,3 +424,71 @@ test("les séjours sans dossier suivent la date de réservation", async () => {
   assert.equal(list.sejours[0].reservee_le, "18 oct. 2026");
   assert.equal(list.sejours[0].arrivee, "2026-11-02");
 });
+
+test("la lecture Little Emperors retombe sans booked_at si la colonne n’existe pas", async () => {
+  const row = {
+    id: "stay-1",
+    le_booking_id: 90,
+    confirmation_number: "64570",
+    state: "booked",
+    hotel_name: "La Mamounia",
+    city: "Marrakech",
+    check_in: "2026-11-02",
+    check_out: "2026-11-05",
+    guest_names: ["Camille Martin"],
+    status: "unmatched",
+    currency: "EUR",
+    total_cost: "215.78",
+    created_at: "2026-10-20T09:00:00Z",
+    raw: { id: 90, created_at: "2026-10-04T16:05:00Z" },
+  };
+  const seen: string[] = [];
+  function query(table: string, columns: string) {
+    const missing = table === "crm_le_bookings" && columns.includes("booked_at");
+    const api = {
+      select(next: string) {
+        return query(table, next);
+      },
+      eq() {
+        return api;
+      },
+      or() {
+        return api;
+      },
+      ilike() {
+        return api;
+      },
+      order() {
+        return api;
+      },
+      limit() {
+        return api;
+      },
+      range() {
+        return api;
+      },
+      maybeSingle() {
+        return Promise.resolve({ data: null, error: null });
+      },
+      then(resolve: (value: { data: unknown; error: { code: string; message: string } | null }) => void) {
+        seen.push(`${table}:${columns}`);
+        if (missing) {
+          resolve({ data: null, error: { code: "42703", message: "column crm_le_bookings.booked_at does not exist" } });
+          return;
+        }
+        resolve({ data: table === "crm_le_bookings" ? [row] : [], error: null });
+      },
+    };
+    return api;
+  }
+  const admin = { from: (table: string) => query(table, "") } as unknown as SupabaseClient;
+  const list = await readLittleEmperorsEnAttente(admin);
+  assert.equal(list.sejours[0]?.confirmation, "64570");
+  assert.equal(list.sejours[0]?.reservee_le, "4 oct. 2026");
+  assert.ok(seen.some((line) => line.includes("booked_at")));
+  assert.ok(seen.some((line) => line.startsWith("crm_le_bookings:") && !line.includes("booked_at")));
+
+  const found = await readReservationLittleEmperors({ confirmation: "64570" }, admin, { listBookings: async () => [] });
+  assert.equal(found.reservee_le, "4 oct. 2026");
+  assert.equal(found.reference, "64570");
+});

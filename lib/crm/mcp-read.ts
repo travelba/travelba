@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { formatAgencyFeePercent, loadResolvedAgencyFees, type ResolvedAgencyFee } from "@/lib/crm/agency-fee-rate";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
+import { attachSearchMatches, attachSearchTokens } from "@/lib/crm/attach-search";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import {
   joinOrFilters,
@@ -40,7 +41,9 @@ import { compareLeMadeAt, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
-import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
+import { MCP_LE_LIST_COLUMNS } from "@/lib/crm/mcp-columns";
+import { queryWithOptionalColumn } from "@/lib/crm/optional-column";
+import { staffLedgerCaption, staffRealStatusLabel, staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { buildTripAccountingView, loadDossierAccountingInputs } from "@/lib/crm/trip-accounting-view";
 import { TRIP_ACCOUNTING_LABELS, type TripCost } from "@/lib/crm/trip-costs";
@@ -152,6 +155,7 @@ function bookingLine(
     dates: [row.start_date, row.end_date].filter(Boolean).join(" → ") || null,
     etat: staffStayLabel(row),
     statut: staffStayLabel(row),
+    statut_reel: staffRealStatusLabel(row.status),
     client: names.get(row.customer_id) || null,
     ...dossierPayerLine(row, row.billing_company_id ? companies.get(row.billing_company_id) : null),
     montant: amount == null ? null : formatMoney(amount, row.currency || "EUR"),
@@ -413,9 +417,15 @@ export async function readTableauDeBord() {
   };
 }
 
+function customerHay(row: CustomerListRow) {
+  return [row.first_name, row.last_name, row.usage_name, row.company_name, row.email, row.phone].filter(Boolean).join(" ");
+}
+
 async function searchCustomers(admin: SupabaseClient, q: string, limit = LIST_LIMIT, page = 1) {
   const window = mcpWindow({ page, limite: limit }, LIST_LIMIT);
-  const pattern = searchPattern(q);
+  const tokens = attachSearchTokens(q);
+  const anchor = tokens[tokens.length - 1] || "";
+  const pattern = searchPattern(anchor || q);
   let query = admin.from("crm_customers").select(CUSTOMER_LIST_SELECT).order("last_name").order("id");
   if (pattern || phoneSearchFilter(q)) {
     query = query.or(
@@ -427,15 +437,14 @@ async function searchCustomers(admin: SupabaseClient, q: string, limit = LIST_LI
       )
     );
   }
-  const { data, error } =
-    window.from === 0
-      ? await query.limit(window.limite + 1)
-      : await query.range(window.from, window.from + window.limite);
+  const { data, error } = await query.limit(80);
   if (error) {
     logRead("clients", error);
     throw new Error("Lecture impossible.");
   }
-  return mcpPageMeta((data || []) as CustomerListRow[], window);
+  const rows = (data || []) as CustomerListRow[];
+  const matched = tokens.length > 1 ? rows.filter((row) => attachSearchMatches(customerHay(row), q)) : rows;
+  return mcpPageMeta(matched, window);
 }
 
 export async function readChercherClients(input: { q?: string; echeance?: boolean; page?: number; limite?: number }) {
@@ -510,8 +519,7 @@ async function oneCustomer(admin: SupabaseClient, input: { id?: string; q?: stri
   return { kind: "one" as const, customer: rows[0] };
 }
 
-export async function readFicheClient(input: { id?: string; q?: string }) {
-  const admin = db();
+export async function readFicheClient(input: { id?: string; q?: string }, admin = db()) {
   const found = await oneCustomer(admin, input);
   if (found.kind === "missing" || found.kind === "invalid") {
     return { message: "Indiquez l’identifiant ou le nom du client." };
@@ -899,8 +907,7 @@ export async function readServicesAConfirmer(input: { page?: number; limite?: nu
   };
 }
 
-export async function readGrandLivre(input: { id?: string; q?: string; page?: number; limite?: number }) {
-  const admin = db();
+export async function readGrandLivre(input: { id?: string; q?: string; page?: number; limite?: number }, admin = db()) {
   const found = await oneCustomer(admin, input);
   if (found.kind === "missing" || found.kind === "invalid") {
     return { message: "Indiquez l’identifiant ou le nom du client." };
@@ -1273,18 +1280,17 @@ export async function readEmailsEnAttente(input: { page?: number; limite?: numbe
 }
 
 export async function readLittleEmperorsEnAttente(admin = db(), input: { page?: number; limite?: number } = {}) {
-  const { data, error } = await admin
-    .from("crm_le_bookings")
-    .select(
-      "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost, raw, created_at, booked_at"
-    )
-    .eq("status", "unmatched");
+  const { data, error } = await queryWithOptionalColumn(
+    (columns) => admin.from("crm_le_bookings").select(columns).eq("status", "unmatched"),
+    MCP_LE_LIST_COLUMNS,
+    "booked_at"
+  );
   if (error) {
-    logRead("little-emperors", error);
+    logRead("little-emperors", { code: error.code || undefined, message: error.message || undefined });
     throw new Error("Lecture impossible.");
   }
   const mails = await loadLeConfirmationMails(admin);
-  const rows = ((data || []) as (Pick<
+  const rows = ((data || []) as unknown as (Pick<
     CrmLeBooking,
     | "id"
     | "confirmation_number"

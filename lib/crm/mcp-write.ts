@@ -45,7 +45,7 @@ import {
   type CrmRevolutTransaction,
   type CrmStripeTransaction,
 } from "@/lib/crm/types";
-import { staffStayLabel } from "@/lib/crm/staff-stay";
+import { staffRealStatusLabel, staffStayLabel } from "@/lib/crm/staff-stay";
 import { attachOutgoing, TripCostError } from "@/lib/crm/trip-costs-db";
 import { patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { readExpensePricing } from "@/lib/crm/expense-pricing";
@@ -175,6 +175,32 @@ export function publishBlock(
   return { deja_montre: false as const };
 }
 
+const BOOKING_STATUS_WORDS: Record<string, BookingStatus> = {
+  draft: "draft",
+  brouillon: "draft",
+  quoted: "quoted",
+  devis: "quoted",
+  confirmed: "confirmed",
+  confirme: "confirmed",
+  confirmee: "confirmed",
+  cancelled: "cancelled",
+  canceled: "cancelled",
+  annule: "cancelled",
+  annulee: "cancelled",
+};
+
+/** brouillon, devis, confirme, annule — avec ou sans accent, comme le dossier agence. */
+export function bookingStatusFromWord(value: unknown): BookingStatus | null {
+  if (typeof value !== "string") return null;
+  const key = value
+    .trim()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+  return BOOKING_STATUS_WORDS[key] || null;
+}
+
 export function prepareBookingUpdate(input: Record<string, unknown>) {
   const target = prepareCarnetTarget(input);
   const body: Record<string, unknown> = {};
@@ -199,6 +225,11 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     const title = text(input.titre, "Titre", 200);
     if (!title) throw new McpWriteError("Le titre est vide.");
     body.title = title;
+  }
+  if ("statut" in input && input.statut != null && String(input.statut).trim() !== "") {
+    const status = bookingStatusFromWord(input.statut);
+    if (!status) throw new McpWriteError("Statut inconnu. brouillon, devis, confirme ou annule.");
+    body.status = status;
   }
   const patch = bookingMetaPatch(body);
   let cover: { clear: true } | { photo: string } | { image: ProvidedCoverImage; credit: string } | null = null;
@@ -884,6 +915,7 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     couverture: row.cover_image_path ? null : shownPhoto,
     credit: row.cover_credit,
     statut: staffStayLabel(row),
+    statut_reel: staffRealStatusLabel(row.status),
     date_depart: row.start_date,
     date_retour: row.end_date,
     notes_client: row.notes_client,

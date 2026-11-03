@@ -26,7 +26,7 @@ const CREATE = new Set([
   "deposer_piece_dossier",
 ]);
 
-const REMOVE = new Set(["retirer_carte", "retirer_voyageur", "supprimer_client", "archiver_dossier", "retirer_piece_dossier"]);
+const REMOVE = new Set(["retirer_carte", "retirer_voyageur", "supprimer_client", "archiver_dossier", "retirer_piece_dossier", "annuler_mouvement", "fusionner_clients"]);
 
 const FINANCE = new Set([
   "crediter_virement",
@@ -89,6 +89,8 @@ const PHRASES: Record<string, string> = {
   create_restaurant_whatsapp_templates: "Modèles WhatsApp restaurants déposés",
   deposer_modeles_whatsapp: "Modèles WhatsApp accès et facture déposés",
   supprimer_client: "Client supprimé",
+  annuler_mouvement: "Mouvement annulé",
+  fusionner_clients: "Clients fusionnés",
   enregistrer_societes: "Sociétés de facturation enregistrées",
   regler_acces_hotels: "Accès hôtels modifié",
   archiver_dossier: "Dossier archivé",

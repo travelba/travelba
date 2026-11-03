@@ -29,6 +29,7 @@ import { parseMoney } from "@/lib/crm/money";
 import { foldName } from "@/lib/crm/person-match";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { MCP_LE_STORED_COLUMNS } from "@/lib/crm/mcp-columns";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 
 type Admin = SupabaseClient;
 
@@ -443,26 +444,33 @@ function ambiguity(rows: LeCandidate[]) {
 async function loadStored(admin: Admin) {
   const pageSize = 200;
   const rows: StoredLe[] = [];
+  let columns = `${MCP_LE_STORED_COLUMNS}, booked_at`;
   for (let from = 0; ; from += pageSize) {
     const query = admin
       .from("crm_le_bookings")
-      .select(MCP_LE_STORED_COLUMNS)
+      .select(columns)
       .order("le_booking_id", { ascending: true });
     const ranged = query as typeof query & { range?: (start: number, end: number) => typeof query };
     const request = typeof ranged.range === "function" ? ranged.range(from, from + pageSize - 1) : query;
     const { data, error } = await request;
+    if (error && columns !== MCP_LE_STORED_COLUMNS && missingDbColumn(error, "booked_at")) {
+      columns = MCP_LE_STORED_COLUMNS;
+      rows.length = 0;
+      from = -pageSize;
+      continue;
+    }
     if (typeof ranged.range !== "function") {
       if (error) {
         console.error("[mcp] little-emperors", error.code ?? "?");
         throw new McpReadError("Lecture Little Emperors impossible.");
       }
-      return (data || []) as StoredLe[];
+      return (data || []) as unknown as StoredLe[];
     }
     if (error) {
       console.error("[mcp] little-emperors", error.code ?? "?");
       throw new McpReadError("Lecture Little Emperors impossible.");
     }
-    const batch = (data || []) as StoredLe[];
+    const batch = (data || []) as unknown as StoredLe[];
     rows.push(...batch);
     if (batch.length < pageSize) break;
   }

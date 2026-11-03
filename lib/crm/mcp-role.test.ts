@@ -29,6 +29,7 @@ test("chaque outil a un droit, les outils d’équipe sont administrateur", () =
     "deposer_modeles_whatsapp",
     "statut_modeles_whatsapp",
     "reactiver_membre",
+    "fusionner_clients",
   ]) {
     assert.equal(MCP_TOOL_GATES[name], "admin");
     assert.match(MCP_TOOLS.find((tool) => tool.name === name)?.description || "", /administrateurs/);

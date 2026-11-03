@@ -16,6 +16,7 @@ import {
   hotelChannel,
   hotelLanguage,
   leStayAmount,
+  printedStayAmount,
   linkRequestMail,
   applyPaymentLinkChoice,
   paymentLinkAsk,
@@ -224,6 +225,40 @@ test("le suivi n'a pas de champ carte, le secret se lit au moment de l'envoi", (
   assert.equal(cardSecretsFromPayload({ pan: "4111" }), null);
 });
 
+test("le montant imprimé ignore le prix de vente", () => {
+  assert.deepEqual(
+    printedStayAmount({
+      le: { cents: 21578, currency: "EUR" },
+      document: { cents: 100000, currency: "EUR" },
+      netCents: 5000,
+      currency: "EUR",
+    }),
+    { cents: 21578, currency: "EUR" }
+  );
+  assert.deepEqual(
+    printedStayAmount({
+      le: null,
+      document: { cents: 18000, currency: "MAD" },
+      netCents: 9000,
+      currency: "EUR",
+    }),
+    { cents: 18000, currency: "MAD" }
+  );
+  assert.deepEqual(
+    printedStayAmount({
+      le: null,
+      document: { cents: null, currency: null },
+      netCents: 9000,
+      currency: "EUR",
+    }),
+    { cents: 9000, currency: "EUR" }
+  );
+  assert.equal(
+    printedStayAmount({ le: null, document: { cents: null, currency: null }, netCents: null, currency: "EUR" }),
+    null
+  );
+});
+
 test("mails : lien avec montant et référence, VIP avec attentions, carte seulement dans le texte d'envoi", () => {
   const link = linkRequestMail({
     lang: "fr",
@@ -237,7 +272,8 @@ test("mails : lien avec montant et référence, VIP avec attentions, carte seule
   assert.match(link.text, /2400,00 EUR/);
   assert.match(link.text, /HB-9/);
   assert.match(link.text, /4 novembre 2026/);
-  assert.match(link.text, /lien de paiement/);
+  assert.match(link.text, /montant brut de la réservation/);
+  assert.match(link.text, /lien de paiement pour ce montant brut de 2400,00 EUR/);
   const charge = linkRequestMail({ ...{
     lang: "fr" as const,
     hotel: "Le Bristol",
@@ -247,10 +283,42 @@ test("mails : lien avec montant et référence, VIP avec attentions, carte seule
     amount: "2400,00 EUR",
     charge: true,
   } });
-  assert.match(charge.text, /prélever le montant/);
+  assert.match(charge.text, /prélever ce montant brut de 2400,00 EUR/);
   assert.doesNotMatch(charge.text, /4242/);
-  assert.equal(applyPaymentLinkChoice(link.text, true, "fr").includes(paymentLinkCharge("fr")), true);
-  assert.equal(applyPaymentLinkChoice(charge.text, false, "fr").includes(paymentLinkAsk("fr")), true);
+  assert.equal(applyPaymentLinkChoice(link.text, true, "fr").includes(paymentLinkCharge("fr", "2400,00 EUR")), true);
+  assert.equal(applyPaymentLinkChoice(charge.text, false, "fr").includes(paymentLinkAsk("fr", "2400,00 EUR")), true);
+  const legacy = link.text.replace(
+    paymentLinkAsk("fr", "2400,00 EUR"),
+    paymentLinkAsk("fr")
+  ).replace(
+    "Le montant brut de la réservation, tel qu'indiqué sur la confirmation, est de 2400,00 EUR.",
+    "Le montant du séjour est de 2400,00 EUR."
+  );
+  const kept = applyPaymentLinkChoice(legacy, true, "fr");
+  assert.equal(kept.includes(paymentLinkAsk("fr")), false);
+  assert.equal(kept.includes(paymentLinkCharge("fr", "2400,00 EUR")), true);
+  assert.equal((kept.match(/lien de paiement/g) || []).length, 0);
+  assert.match(kept, /montant brut de la réservation, tel qu'indiqué sur la confirmation, est de 2400,00 EUR/);
+  const english = linkRequestMail({
+    lang: "en",
+    hotel: "The Leela",
+    reference: "EX-1",
+    checkIn: "2026-11-04",
+    checkOut: "2026-11-08",
+    amount: "215,78 EUR",
+  });
+  assert.match(english.text, /The gross amount of the reservation, as shown on the confirmation, is 215,78 EUR/);
+  assert.match(english.text, /payment link for this gross amount of 215,78 EUR/);
+  const quiet = linkRequestMail({
+    lang: "fr",
+    hotel: "Le Bristol",
+    reference: "HB-9",
+    checkIn: "2026-11-04",
+    checkOut: "2026-11-08",
+    amount: null,
+  });
+  assert.doesNotMatch(quiet.text, /montant/);
+  assert.match(quiet.text, /lien de paiement de cette réservation/);
   const vip = vipMail({
     lang: "en",
     hotel: "The Leela",

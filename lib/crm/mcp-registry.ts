@@ -111,7 +111,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 98;
+export const MCP_TOOL_CAP = 100;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -319,7 +319,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "chercher_dossiers",
     description:
-      "Dossiers. q retrouve la référence, le titre, la destination, le prénom, le nom, la société du client, la société facturée et les voyageurs, sans accent et dans n’importe quel ordre. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Visible, ou Archivée. À côté du contact : societe et paye_par (société ou particulier).",
+      "Dossiers. q retrouve la référence, le titre, la destination, le prénom, le nom, la société du client, la société facturée et les voyageurs, sans accent et dans n’importe quel ordre. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Visible, ou Archivée. Un brouillon l’affiche à côté (Visible · Brouillon). statut_reel : Brouillon, Devis, Confirmé ou Annulé. À côté du contact : societe et paye_par (société ou particulier).",
     input: {
       q,
       etat: z
@@ -339,7 +339,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état, société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee), qui s’en occupe (en_charge, null = à prendre ; cree_par ; intervenants). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état (En préparation, Visible ou Archivée ; un brouillon l’affiche à côté), statut_reel (Brouillon, Devis, Confirmé ou Annulé), société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee), qui s’en occupe (en_charge, null = à prendre ; cree_par ; intervenants). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -661,7 +661,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates, le titre, la couverture, la commission d’agence, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état du dossier est En préparation, Visible ou Archivée.",
+      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : brouillon, devis, confirme ou annule, comme le dossier agence. Un séjour confirmé peut recevoir la carte hôtel. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état visible reste En préparation, Visible ou Archivée ; un brouillon l’affiche à côté.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -686,6 +686,12 @@ export const MCP_TOOLS: ToolDef[] = [
         .optional()
         .describe("Séjour particulier. Retire la société du dossier"),
       titre: z.string().trim().max(200).optional().describe("Titre du séjour"),
+      statut: z
+        .string()
+        .trim()
+        .max(40)
+        .optional()
+        .describe("Statut du dossier : brouillon, devis, confirme ou annule"),
       couverture: z
         .string()
         .trim()
@@ -1916,6 +1922,57 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: z.boolean().optional().describe("true pour lancer. Sans cela, aperçu du prix seulement"),
     },
     run: (args) => lancerFormalite(args),
+  },
+  {
+    name: "annuler_mouvement",
+    write: true,
+    destructive: true,
+    description:
+      "Annule un débit saisi à la main du grand livre, comme le bouton Annuler ce mouvement. id du mouvement. confirmer doit être true. Un crédit se retire avec remettre_non_rattache. Le mouvement passe en annulé et sort du solde. L’auteur est au journal.",
+    input: {
+      id: z.string().trim().max(80).describe("Identifiant du mouvement"),
+      confirmer: z.boolean().describe("true pour annuler"),
+    },
+    run: async (args) => {
+      if (args.confirmer !== true) throw new McpWriteError("confirmer doit être true.");
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const { LedgerVoidError, voidManualLedgerMovement } = await import("@/lib/crm/ledger-void");
+      try {
+        return await voidManualLedgerMovement(createServiceClient(), str(args, "id") || "", currentMcpAccess().actor);
+      } catch (err) {
+        if (err instanceof LedgerVoidError) throw new McpWriteError(err.message);
+        throw err;
+      }
+    },
+  },
+  {
+    name: "fusionner_clients",
+    write: true,
+    destructive: true,
+    description:
+      "Fusionne un doublon dans la fiche conservée, comme le bouton de la fiche. Réservé aux administrateurs. client_id est la fiche gardée, doublon_id celle qui disparaît. confirmer est le nom complet de la fiche gardée. Dossiers, voyageurs, pièces, grand livre, paiements, activité et fils WhatsApp sont déplacés. Rien n’est effacé avant le déplacement. Deux passeports ou cartes d’identité différents exigent forcer true. Les deux accès aussi.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Fiche conservée"),
+      doublon_id: z.string().trim().max(80).describe("Doublon à reprendre"),
+      confirmer: z.string().trim().max(200).describe("Nom complet de la fiche conservée"),
+      forcer: z.boolean().optional().describe("true si les pièces d’identité diffèrent"),
+    },
+    run: async (args) => {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const { MergeCustomersError, mergeCustomers } = await import("@/lib/crm/merge-customers");
+      try {
+        return await mergeCustomers(createServiceClient(), {
+          keepId: str(args, "client_id") || "",
+          dropId: str(args, "doublon_id") || "",
+          confirmer: args.confirmer,
+          force: args.forcer === true,
+          actor: currentMcpAccess().actor,
+        });
+      } catch (err) {
+        if (err instanceof MergeCustomersError) throw new McpWriteError(err.message);
+        throw err;
+      }
+    },
   },
 ];
 

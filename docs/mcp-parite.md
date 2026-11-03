@@ -30,7 +30,9 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Action admin | Outil MCP |
 | --- | --- |
 | Créer un séjour caché | `creer_dossier` — couvert |
-| Titre, dates, notes, société, couverture | `mettre_a_jour_dossier` — couvert |
+| Titre, dates, notes, société, couverture, statut | `mettre_a_jour_dossier` — couvert. `statut_reel` sur `fiche_dossier` |
+| Annuler un débit manuel | `annuler_mouvement` — couvert |
+| Fusionner deux fiches | `fusionner_clients` — couvert |
 | Montrer au client | `publier_carnet` — couvert |
 | Cacher le carnet | `cacher_carnet` — ajouté |
 | Archiver / rouvrir / dupliquer | `archiver_dossier`, `restaurer_dossier`, `dupliquer_dossier` — ajouté |

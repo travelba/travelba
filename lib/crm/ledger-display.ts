@@ -19,6 +19,12 @@ export function isStayRollupDebit(row: LedgerKindRow) {
   return row.direction === "debit" && row.kind === "booking" && !row.external_id;
 }
 
+/** Le séjour « Hors agence » ne laisse aucun débit « Séjour » dans le solde. */
+export function withoutOffAgencyStay<T extends LedgerRow>(rows: T[], offAgencyBookingIds: Set<string>): T[] {
+  if (!offAgencyBookingIds.size) return rows;
+  return rows.filter((row) => !(row.booking_id && offAgencyBookingIds.has(row.booking_id) && isStayRollupDebit(row)));
+}
+
 /** Dépense libre : s’ajoute au livre sans remplacer le montant du séjour. */
 export function isFreeExpenseDebit(row: { external_id?: string | null }) {
   return (row.external_id || "").includes(":expense:");

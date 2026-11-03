@@ -21,7 +21,7 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 
 Liste `/admin/reservations` : du plus proche au plus loin (séjour en cours, puis prochains départs, puis passés du plus récent). « Départ, du plus lointain » reste un tri du menu.
 
-Un seul état honnête : **En préparation**, **Visible**, ou **Archivée**. L’écran n’affiche pas de statut commercial (À l’étude, Devis, Confirmée). Le bouton dit **Montrer au client** ; la pastille dit **Visible**. Archiver dit **Archiver**, jamais Supprimer.
+Un seul état honnête : **En préparation**, **Visible**, ou **Archivée**. Un dossier encore brouillon ajoute **Brouillon** à côté. L’écran n’affiche pas les autres statuts commerciaux (À l’étude, Devis, Confirmée). Le bouton dit **Montrer au client** ; la pastille dit **Visible**. Archiver dit **Archiver**, jamais Supprimer.
 
 L’en-tête (le titre compris) et le bloc Lieu et dates sont en haut et suivent **toutes** les étapes (plusieurs villes, plusieurs dates, sans répéter la même ville, le même séjour ni le même trajet). Le nom du séjour se modifie dans cet en-tête : le texte saisi reste à l’écran, il ne revient pas au titre stocké, et Enregistrer s’allume. On n’affiche pas un seul lieu ni un seul aller-retour figé du dossier, et on ne réécrit pas la destination ni les dates en base pour les aligner.
 

@@ -3,7 +3,7 @@ import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatMoney } from "./money";
 import { McpReadError } from "./mcp-passport";
-import { dossierPayerLine, readChercherDossiers, readFicheDossier, readFormalites } from "./mcp-read";
+import { dossierPayerLine, readChercherDossiers, readFicheClient, readFicheDossier, readFormalites, readGrandLivre } from "./mcp-read";
 
 const BOOKING = "22222222-2222-4222-8222-222222222222";
 
@@ -375,4 +375,67 @@ test("une lecture société ou cartes en échec remonte, elle ne vide pas la fic
     () => readChercherDossiers({ q: "", etat: null }, dossierClient({ fail: "montant" })),
     (err: unknown) => err instanceof McpReadError && err.message === "Lecture du montant impossible."
   );
+});
+
+test("fiche_client et grand_livre retrouvent Prénom Nom", async () => {
+  const CLIENT = "a67a720e-149f-41f3-a4f1-a1fa3ffad3f4";
+  const norman = {
+    id: CLIENT,
+    first_name: "Norman",
+    last_name: "Cohen",
+    usage_name: null,
+    company_name: null,
+    email: null,
+    phone: null,
+    on_hold: false,
+    created_at: "2026-01-01",
+  };
+  const admin = {
+    from(table: string) {
+      let pattern = "";
+      const api = {
+        select() {
+          return api;
+        },
+        order() {
+          return api;
+        },
+        or(filter: string) {
+          pattern = filter;
+          return api;
+        },
+        eq() {
+          return api;
+        },
+        not() {
+          return api;
+        },
+        gte() {
+          return api;
+        },
+        lte() {
+          return api;
+        },
+        limit() {
+          return api;
+        },
+        maybeSingle() {
+          return Promise.resolve({ data: table === "crm_customers" ? { company_role: null, spending_allowance: null } : null, error: null });
+        },
+        then(resolve: (value: { data: unknown; error: null }) => void) {
+          if (table !== "crm_customers") {
+            resolve({ data: [], error: null });
+            return;
+          }
+          resolve({ data: /cohen|norman/i.test(pattern) ? [norman] : [], error: null });
+        },
+      };
+      return api;
+    },
+  } as unknown as SupabaseClient;
+  const fiche = await readFicheClient({ q: "Norman Cohen" }, admin);
+  assert.equal("introuvable" in fiche, false);
+  assert.equal((fiche as { id?: string }).id, CLIENT);
+  const book = await readGrandLivre({ q: "cohen norman" }, admin);
+  assert.equal("introuvable" in book, false);
 });

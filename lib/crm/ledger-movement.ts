@@ -19,6 +19,8 @@ export type LedgerMovementRow = {
   source?: string | null;
   /** Crédit Revolut, Stripe ou virement saisi : l’agence peut le remettre en file. */
   unmatchable?: boolean;
+  /** Débit saisi à la main : l’agence peut l’annuler. */
+  cancellable?: boolean;
   /** Raison sociale, seulement si le compte a plusieurs sociétés. */
   companyLabel?: string | null;
 };

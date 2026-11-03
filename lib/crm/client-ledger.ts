@@ -6,6 +6,7 @@ import {
   ledgerSubjectTitle,
   ledgerWhenWhere,
   visibleLedgerRows,
+  withoutOffAgencyStay,
 } from "@/lib/crm/ledger-display";
 import type { LedgerMovementRow } from "@/lib/crm/ledger-movement";
 import {
@@ -59,6 +60,7 @@ export type ClientLedgerBooking = {
   total_amount?: number | string | null;
   agency_commission?: boolean | null;
   fee_mode?: string | null;
+  client_settles_stay?: boolean | null;
 };
 
 export type ClientLedgerWallet = {
@@ -138,7 +140,12 @@ export function shapeClientLedger(input: {
   mb3mByTransaction?: Map<string, { text: string; href: string | null }>;
 }): ClientLedgerView {
   const member = isCompanyMember({ company_role: input.companyRole ?? null });
-  const scoped = filterClientLedgerRows(input.rows, {
+  const offAgency = new Set(
+    input.bookings.filter((booking) => booking.client_settles_stay === true).map((booking) => booking.id)
+  );
+  const keptRows = withoutOffAgencyStay(input.rows, offAgency);
+  const dropped = input.rows.filter((row) => !keptRows.includes(row));
+  const scoped = filterClientLedgerRows(keptRows, {
     companyRole: input.companyRole,
     travelerBookingIds: input.travelerBookingIds,
   });
@@ -188,6 +195,7 @@ export function shapeClientLedger(input: {
       bookingId: row.booking_id,
       amountValue: Number(row.amount),
       source: row.source,
+      cancellable: input.audience === "staff" && row.source === "manual" && !credit,
       unmatchable: input.audience === "staff" && isReleasableCredit(row),
       mb3mLabel: credit ? null : input.mb3mByTransaction?.get(row.id)?.text || null,
       mb3mHref: credit ? null : input.mb3mByTransaction?.get(row.id)?.href || null,
@@ -196,11 +204,17 @@ export function shapeClientLedger(input: {
 
   // Le pourcentage suit le wallet (séjour compris), pas la liste qui masque le montant global.
   const { debits, settledPct } = postedLedgerTotals(scoped);
+  const restored = (currency: string) =>
+    dropped.reduce((sum, row) => {
+      if ((row.currency || "EUR").toUpperCase() !== currency.toUpperCase()) return sum;
+      const amount = Number(row.amount);
+      return Number.isFinite(amount) ? sum + amount : sum;
+    }, 0);
   const balanceValue = member
     ? -debits
     : input.walletBalance == null
       ? 0
-      : input.walletBalance;
+      : input.walletBalance + restored(input.currency || "EUR");
   const currency = member ? scoped[0]?.currency || input.currency || "EUR" : input.currency || "EUR";
   const remaining = Math.max(0, -balanceValue);
   const payerByBooking = new Map(
@@ -218,7 +232,10 @@ export function shapeClientLedger(input: {
   const walletRows = member
     ? [{ currency, balance: balanceValue }]
     : input.wallets && input.wallets.length
-      ? input.wallets.map((wallet) => ({ currency: wallet.currency || "EUR", balance: Number(wallet.balance) || 0 }))
+      ? input.wallets.map((wallet) => ({
+          currency: wallet.currency || "EUR",
+          balance: (Number(wallet.balance) || 0) + restored(wallet.currency || "EUR"),
+        }))
       : [{ currency, balance: balanceValue }];
   const wallets = walletRows.map((wallet) => walletView(wallet.currency, wallet.balance, scoped));
 
@@ -304,7 +321,7 @@ function serviceClientOrNull() {
 }
 
 const SPEND_BOOKING_SELECT =
-  "id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind, customer_id, billing_company_id, status, total_amount, agency_commission, fee_mode";
+  "id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind, customer_id, billing_company_id, status, total_amount, agency_commission, fee_mode, client_settles_stay";
 
 async function enrichSpendBookings(
   reader: SupabaseClient,

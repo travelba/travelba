@@ -30,11 +30,27 @@ export function staffStayVisibility(booking: {
   return "preparing";
 }
 
+const REAL_STATUS: Record<string, string> = {
+  draft: "Brouillon",
+  quoted: "Devis",
+  confirmed: "Confirmé",
+  cancelled: "Annulé",
+};
+
+/** Statut enregistré du dossier. Distinct de En préparation / Visible / Archivée. */
+export function staffRealStatusLabel(status: string | null | undefined) {
+  const key = (status || "").trim().toLowerCase();
+  return REAL_STATUS[key] || null;
+}
+
 export function staffStayLabel(booking: {
   archived_at?: string | null;
   visible_to_client?: boolean | null;
+  status?: string | null;
 }) {
-  return LABELS[staffStayVisibility(booking)];
+  const visibility = LABELS[staffStayVisibility(booking)];
+  if (!booking.archived_at && booking.status === "draft") return `${visibility} · Brouillon`;
+  return visibility;
 }
 
 /** Onglet que la pastille ouvre : À faire par défaut, Argent pour l’argent. */

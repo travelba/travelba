@@ -88,7 +88,9 @@ test("a booking update only accepts notes and dates", () => {
   assert.equal(next.patch.end_date, null);
   assert.equal("status" in next.patch, false);
   assert.equal("destination" in next.patch, false);
-  assert.throws(() => prepareBookingUpdate({ id: BOOKING, statut: "Confirmée" }), /Rien à modifier/);
+  assert.equal(prepareBookingUpdate({ id: BOOKING, statut: "Confirmée" }).patch.status, "confirmed");
+  assert.equal(prepareBookingUpdate({ id: BOOKING, statut: "brouillon" }).patch.status, "draft");
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, statut: "en voyage" }), /Statut inconnu/);
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, date_depart: "hier" }), /Date de départ/);
   assert.throws(() => prepareBookingUpdate({ reference: "TB-1" }), /Rien à modifier/);
   assert.equal(prepareBookingUpdate({ id: BOOKING, commission_agence: "7,5" }).patch.agency_fee_rate, "0.0750");
