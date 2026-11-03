@@ -541,7 +541,8 @@ async function attachReglements(
     const failed = reglements.find((row) => row.statut === "erreur" && !mb3mIsPaymentGap(row.erreur));
     if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
     const gap = reglements.find((row) => mb3mIsPaymentGap(row.erreur));
-    const avertissement = [gdsWarning, gap?.erreur].filter(Boolean).join(" ") || null;
+    const notes = reglements.flatMap((row) => (row.avertissement ? [row.avertissement] : []));
+    const avertissement = [gdsWarning, gap?.erreur, ...notes].filter(Boolean).join(" ") || null;
     return { ...result, reglements, avertissement };
   } catch (err) {
     if (err instanceof Mb3mError) throw err;
@@ -971,6 +972,7 @@ export async function emitMb3mInvoice(
     const failed = reglements.find((row) => row.statut === "erreur" && !mb3mIsPaymentGap(row.erreur));
     if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
     const gap = reglements.find((row) => mb3mIsPaymentGap(row.erreur));
+    const notes = reglements.flatMap((row) => (row.avertissement ? [row.avertissement] : []));
     return {
       number: plan.covered[0]?.invoiceNumber || "",
       documentId: null,
@@ -981,7 +983,7 @@ export async function emitMb3mInvoice(
       reglements,
       amadeus: amadeusOf(),
       suggestionsAmadeus,
-      avertissement: [(plan?.warnings || []).filter(Boolean).join(" "), gap?.erreur].filter(Boolean).join(" ") || null,
+      avertissement: [(plan?.warnings || []).filter(Boolean).join(" "), gap?.erreur, ...notes].filter(Boolean).join(" ") || null,
     };
   }
 }

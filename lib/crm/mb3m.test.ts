@@ -26,6 +26,7 @@ import {
   mb3mFindCustomerPayments,
   mb3mFindCustomerPieces,
   mb3mGetInvoice,
+  MB3M_PAYMENT_MODES,
   mb3mPaymentAccount,
   mb3mPaymentReference,
   mb3mSavePayment,
@@ -736,11 +737,55 @@ describe("état d’une pièce MB3M", () => {
 });
 
 describe("règlements MB3M", () => {
-  it("choisit le compte selon la source", () => {
-    assert.deepEqual(mb3mPaymentAccount("revolut", "Virement"), { mode: "Virement", bank: "REVOLUT" });
-    assert.deepEqual(mb3mPaymentAccount("stripe", "Règlement"), { mode: "Carte", bank: "STRIPE" });
-    assert.deepEqual(mb3mPaymentAccount("manual", "Virement Qonto"), { mode: "Virement", bank: "QONTO" });
-    assert.deepEqual(mb3mPaymentAccount("manual", "Chèque"), { mode: "Virement", bank: "VIREMENT" });
+  it("choisit le PaymentMode du schéma Partners", () => {
+    const emitted = [
+      mb3mPaymentAccount("revolut", "Virement"),
+      mb3mPaymentAccount("manual", "Virement Qonto"),
+      mb3mPaymentAccount("stripe", "Paiement en ligne"),
+      mb3mPaymentAccount("manual", "Carte physique"),
+      mb3mPaymentAccount("manual", "Chèque"),
+      mb3mPaymentAccount("manual", "Espèces"),
+      mb3mPaymentAccount("manual", "Prélèvement SEPA"),
+      mb3mPaymentAccount("manual", "Ordre de prélèvement"),
+      mb3mPaymentAccount("pliant", "Carte virtuelle Pliant"),
+      mb3mPaymentAccount("pliant", "Carte virtuelle Pliant", 12),
+      mb3mPaymentAccount(null, null),
+      mb3mPaymentAccount("manual", "libellé inconnu"),
+    ];
+    assert.deepEqual([...MB3M_PAYMENT_MODES], [
+      "None",
+      "BankTransfer",
+      "BankOrder",
+      "OnlinePaymentCard",
+      "PaymentCard",
+      "Check",
+      "Cash",
+      "Custom",
+    ]);
+    for (const account of emitted) {
+      assert.equal(MB3M_PAYMENT_MODES.includes(account.mode), true);
+    }
+    for (const rejected of ["Virement", "Carte", "CreditCard", "Cheque", "Unknown", "DirectDebit", "Other"]) {
+      assert.equal((MB3M_PAYMENT_MODES as readonly string[]).includes(rejected), false);
+    }
+    assert.equal(emitted[0]?.mode, "BankTransfer");
+    assert.equal(emitted[0]?.bank, "REVOLUT");
+    assert.equal(emitted[1]?.mode, "BankTransfer");
+    assert.equal(emitted[1]?.bank, "QONTO");
+    assert.equal(emitted[2]?.mode, "OnlinePaymentCard");
+    assert.equal(emitted[3]?.mode, "PaymentCard");
+    assert.equal(emitted[4]?.mode, "Check");
+    assert.equal(emitted[5]?.mode, "Cash");
+    assert.equal(emitted[6]?.mode, "BankOrder");
+    assert.equal(emitted[7]?.mode, "BankOrder");
+    assert.equal(emitted[8]?.mode, "PaymentCard");
+    assert.equal(emitted[8]?.customModeId, null);
+    assert.equal(emitted[9]?.mode, "Custom");
+    assert.equal(emitted[9]?.customModeId, 12);
+    assert.equal(emitted[10]?.mode, "None");
+    assert.match(emitted[10]?.warning || "", /None/);
+    assert.equal(emitted[11]?.mode, "None");
+    assert.match(emitted[11]?.warning || "", /non reconnu/);
     assert.equal(mb3mPaymentReference("0173733f-95a6-4115-8e49-e81cb3e875c5"), "CRM 0173733f-95a6-4115-8e49-e81cb3e875c5");
   });
 
@@ -762,7 +807,7 @@ describe("règlements MB3M", () => {
         date: "2026-10-30",
         reference: "CRM 0173733f-95a6-4115-8e49-e81cb3e875c5",
         bank: "REVOLUT",
-        mode: "Virement",
+        mode: "BankTransfer",
       },
       fetchImpl
     );
@@ -773,7 +818,7 @@ describe("règlements MB3M", () => {
     assert.equal(saved.number, "2154");
     assert.equal(matched.id, "900");
     assert.equal(bodies[0]?.action, '"http://schemas.mb3m.fr/Partners/IFolderService/SavePayment"');
-    const saveOrder = ["<Amount>2639.96</Amount>", "<BankAccount>REVOLUT</BankAccount>", "<Date>2026-10-30T00:00:00</Date>", "<FolderId>01-0002007</FolderId>", "<Mode>Virement</Mode>", "<Reference>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</Reference>"].map(
+    const saveOrder = ["<Amount>2639.96</Amount>", "<BankAccount>REVOLUT</BankAccount>", "<Date>2026-10-30T00:00:00</Date>", "<FolderId>01-0002007</FolderId>", "<Mode>BankTransfer</Mode>", "<Reference>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</Reference>"].map(
       (needle) => (bodies[0]?.body || "").indexOf(needle)
     );
     assert.ok(saveOrder.every((index) => index >= 0));
@@ -808,6 +853,7 @@ describe("règlements MB3M", () => {
         reference: "Saisi à la main",
         amount: 2639.96,
         date: "2026-10-30",
+        folderId: null,
         invoiceNumber: "2152",
         unmatched: 0,
       },
@@ -865,6 +911,32 @@ describe("règlements MB3M", () => {
     });
     assert.equal(rows[0]?.number, "2149");
     assert.equal(rows[0]?.unmatched, 561.19);
+  });
+
+  it("cherche d’abord le dossier de la facture, puis les autres dossiers du client", async () => {
+    arm();
+    const folders: string[] = [];
+    const rows = await mb3mFindCustomerPayments(
+      "customer-uid",
+      async (_url, init) => {
+        const body = String(init?.body);
+        const folder = body.match(/<FolderId>([^<]*)<\/FolderId>/)?.[1] || "";
+        folders.push(folder);
+        assert.equal(body.includes("FindPayments"), false);
+        const number = folder === "01-0002007" ? "3000" : folder === "01-0002000" ? "2149" : "2149";
+        const amount = number === "3000" ? "10" : "5330.29";
+        const left = number === "3000" ? "10" : "561.19";
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><Payment><Number>${number}</Number><Amount>${amount}</Amount><Date>2026-10-15T00:00:00</Date><FolderId>${folder || "01-0002000"}</FolderId><UnmatchedAmount>${left}</UnmatchedAmount></Payment></FindAllPiecesResponse>`
+        );
+      },
+      50,
+      ["01-0002007", "01-0002000", "01-0002007"]
+    );
+    assert.deepEqual(folders, ["01-0002007", "01-0002000", ""]);
+    assert.deepEqual(rows.map((row) => row.number), ["3000", "2149"]);
+    assert.equal(rows.find((row) => row.number === "2149")?.folderId, "01-0002000");
+    assert.equal(rows.find((row) => row.number === "2149")?.unmatched, 561.19);
   });
 
   it("lit les factures du client puis le détail, et change de dossier", async () => {
