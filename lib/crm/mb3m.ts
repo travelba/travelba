@@ -543,24 +543,98 @@ export function mb3mFindPaymentsQuery(customerUid: string, pageIndex: number, pa
   return `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><Customer><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></Customer><IncludeInvoices>true</IncludeInvoices><IncludePayments>true</IncludePayments><PageIndex>${pageIndex}</PageIndex><PageSize>${pageSize}</PageSize></FolderFindPiecesQuery>`;
 }
 
+const PAYMENT_BLOCK_TAGS = new Set(["Payment", "PaymentSummary", "Piece", "PieceSummary", "Invoice", "InvoiceSummary"]);
+
+/** Balises de premier niveau. Un lettrage imbriqué dans une facture n’est pas un encaissement. */
+function topLevelBlocks(xml: string, names: Set<string>) {
+  const re = /<(\/?)([A-Za-z][\w]*)(?:\s[^>]*)?>/g;
+  const blocks: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let name = "";
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(xml))) {
+    const closing = match[1] === "/";
+    const tag = match[2];
+    if (!names.has(tag)) continue;
+    if (!closing && depth === 0) {
+      start = match.index;
+      name = tag;
+      depth = 1;
+      continue;
+    }
+    if (tag !== name || depth === 0) continue;
+    depth += closing ? -1 : 1;
+    if (depth === 0 && start >= 0) {
+      blocks.push(xml.slice(start, re.lastIndex));
+      start = -1;
+    }
+  }
+  return blocks;
+}
+
+function paymentKind(block: string) {
+  return ["Type", "PieceType", "Kind", "Nature", "DocumentType", "PieceKind", "Category"]
+    .map((name) => mb3mXmlText(block, name))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isPaymentBlock(block: string) {
+  const tag = /^<([A-Za-z]+)/.exec(block)?.[1] || "";
+  if (tag === "Payment" || tag === "PaymentSummary") return true;
+  return /paye?ment|r[eè]glement|encaissement/i.test(paymentKind(block));
+}
+
 function paymentBlocks(xml: string) {
   const local = mb3mLocalNames(xml);
-  return local.match(/<(?:PaymentSummary|Payment)(?:\s[^>]*)?>[\s\S]*?<\/(?:PaymentSummary|Payment)>/g) || [];
+  return topLevelBlocks(local, PAYMENT_BLOCK_TAGS).filter(isPaymentBlock);
+}
+
+function withoutMatchings(block: string) {
+  const line = /<(?:Matching|Lettering|Pointage|Affectation|Settlement)(?:\s[^>]*)?>[\s\S]*?<\/(?:Matching|Lettering|Pointage|Affectation|Settlement)>/g;
+  const empty = /<(?:Matchings|Letterings|Pointages|Affectations|Settlements)(?:\s[^>]*)?>\s*<\/(?:Matchings|Letterings|Pointages|Affectations|Settlements)>/g;
+  let current = block;
+  let previous = "";
+  while (current !== previous) {
+    previous = current;
+    current = current.replace(line, "").replace(empty, "");
+  }
+  return current;
+}
+
+/** Montant, numéro et reste de l’encaissement, pas ceux du lettrage déjà fait. */
+function paymentHead(block: string) {
+  return withoutMatchings(withoutNestedIdentities(block));
+}
+
+function paymentNumber(block: string) {
+  const head = paymentHead(block);
+  const identity = head.match(/<Identity(?:\s[^>]*)?>[\s\S]*?<\/Identity>/)?.[0] || "";
+  return mb3mXmlText(identity, "Number") || mb3mXmlText(head, "Number");
 }
 
 function paymentFromBlock(block: string): Mb3mRemotePayment | null {
-  const number = mb3mXmlText(block, "Number");
-  const amount = Number(mb3mXmlText(block, "Amount") || mb3mXmlText(block, "Total"));
-  const date = (mb3mXmlText(block, "Date") || mb3mXmlText(block, "CreationDate")).slice(0, 10);
-  if (!number || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  const invoiceNumber = mb3mXmlText(block, "PieceNumber") || mb3mXmlText(block, "InvoiceNumber") || null;
+  const head = paymentHead(block);
+  const number = paymentNumber(block);
+  const amount = Number(mb3mXmlText(head, "Amount") || mb3mXmlText(head, "Total") || mb3mXmlText(head, "TotalPrice"));
+  const date = (
+    mb3mXmlText(head, "Date") ||
+    mb3mXmlText(head, "CreationDate") ||
+    mb3mXmlText(head, "PieceDate") ||
+    mb3mXmlText(head, "DatePayment") ||
+    mb3mXmlText(head, "PaymentDate")
+  ).slice(0, 10);
+  if (!number || !Number.isFinite(amount) || amount <= 0) return null;
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const invoiceNumber = mb3mXmlText(head, "PieceNumber") || mb3mXmlText(head, "InvoiceNumber") || mb3mXmlText(block, "PieceNumber") || null;
   return {
     number,
-    reference: mb3mXmlText(block, "Reference"),
+    reference: mb3mXmlText(head, "Reference"),
     amount,
     date,
     invoiceNumber,
-    unmatched: paymentUnmatched(block, amount, Boolean(invoiceNumber)),
+    unmatched: paymentUnmatched(block, amount),
   };
 }
 
@@ -585,14 +659,19 @@ export async function mb3mFindCustomerPayments(customerUid: string, fetchImpl?: 
       payments.push(payment);
     }
     const reported = Number(mb3mXmlText(local, "TotalCount"));
-    if (!batch.length || batch.length < pageSize) break;
+    const pageItems = topLevelBlocks(local, PAYMENT_BLOCK_TAGS);
+    if (!pageItems.length || pageItems.length < pageSize) break;
     if (Number.isFinite(reported) && reported >= 0 && (page + 1) * pageSize >= reported) break;
   }
+  console.info(
+    `[mb3m] règlements : ${payments.map((payment) => `${payment.number} reste ${payment.unmatched} sur ${payment.amount}`).join(", ") || "aucun"}`
+  );
   return payments;
 }
 
-function paymentUnmatched(block: string, amount: number, lettered: boolean) {
-  const named = firstAmount(block, [
+function paymentUnmatched(block: string, amount: number) {
+  const head = paymentHead(block);
+  const named = firstAmount(head, [
     "UnmatchedAmount",
     "RemainingAmount",
     "AmountToMatch",
@@ -601,15 +680,22 @@ function paymentUnmatched(block: string, amount: number, lettered: boolean) {
     "AmountLeft",
     "Balance",
     "Solde",
+    "UnletteredAmount",
+    "LeftToLetter",
+    "ResteALettrer",
+    "NotMatchedAmount",
+    "AmountNotMatched",
+    "OpenAmount",
   ]);
-  if (named != null) return Math.max(0, named);
-  const matched = firstAmount(block, ["MatchedAmount", "AmountMatched", "LetteredAmount"]);
+  if (named != null) return Math.max(0, Math.round(named * 100) / 100);
+  const matched = firstAmount(head, ["MatchedAmount", "AmountMatched", "LetteredAmount", "Matched"]);
   if (matched != null) return Math.max(0, Math.round((amount - matched) * 100) / 100);
-  const parts = [...block.matchAll(/<Matching(?:\s[^>]*)?>[\s\S]*?<\/Matching>/g)];
+  const parts = [...block.matchAll(/<(?:Matching|Lettering|Pointage|Affectation)(?:\s[^>]*)?>[\s\S]*?<\/(?:Matching|Lettering|Pointage|Affectation)>/g)];
   if (parts.length) {
     const used = parts.reduce((sum, part) => sum + (Number(mb3mXmlText(part[0], "Amount")) || 0), 0);
     return Math.max(0, Math.round((amount - used) * 100) / 100);
   }
+  const lettered = Boolean(mb3mXmlText(head, "PieceNumber") || mb3mXmlText(head, "InvoiceNumber"));
   return lettered ? 0 : amount;
 }
 

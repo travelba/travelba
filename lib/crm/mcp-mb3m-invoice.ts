@@ -102,6 +102,21 @@ function statutOf(result: Mb3mInvoiceResult) {
   return "preparee";
 }
 
+function warnedStatut(statut: string, warning: string | null) {
+  if (!warning) return statut;
+  if (statut === "echec" || statut === "echouee" || statut === "en_cours" || statut === "imprimee") return statut;
+  return "avertissement";
+}
+
+function preferWarning(run: string | null | undefined, stored: string | null | undefined) {
+  const left = (run || "").replace(/\s+/g, " ").trim();
+  const right = (stored || "").replace(/\s+/g, " ").trim();
+  if (!left) return right || null;
+  if (!right || left.includes(right)) return left;
+  if (right.includes(left)) return right;
+  return `${left} ${right}`;
+}
+
 function readStatut(row: InvoiceRow | null) {
   if (!row) return { statut: "a_preparer", libelle: "À préparer", erreur: null as string | null, avertissement: null as string | null };
   const preparation = mb3mPreparationFromRow(row);
@@ -124,7 +139,7 @@ function readStatut(row: InvoiceRow | null) {
   const stored = (row.attempt_error || "").replace(/\s+/g, " ").trim();
   const warning = (row.warning || "").replace(/\s+/g, " ").trim();
   return {
-    statut,
+    statut: warnedStatut(statut, warning || null),
     libelle: chip.label,
     erreur: stored || (preparation.state === "failed" ? preparation.message : null),
     avertissement: warning || null,
@@ -162,7 +177,8 @@ export async function preparerFactureMb3m(input: Record<string, unknown>, deps: 
     const piece =
       pieces.find((row) => (row.piece_number || "").trim() === result.number) || pieces.find((row) => !row.printed_at) || pieces[0] || null;
     const view = pieceView(piece);
-    const statut = statutOf(result);
+    const avertissement = preferWarning(result.avertissement, piece?.warning);
+    const statut = warnedStatut(statutOf(result), avertissement);
     console.info(`[mb3m] mcp ${booking.reference} ${statut} ${result.number} par ${auteur}`);
     refresh(booking.id);
     return {
@@ -190,7 +206,7 @@ export async function preparerFactureMb3m(input: Record<string, unknown>, deps: 
         numero_mb3m: row.invoiceNumber,
       })),
       erreur: null,
-      avertissement: result.avertissement || null,
+      avertissement,
       auteur,
     };
   } catch (err) {

@@ -5,9 +5,12 @@ import { mb3mReglementNote } from "./mb3m-prep";
 import {
   MB3M_PAYMENT_LOOKUP_HOLD,
   applyMb3mPaymentPlans,
+  mb3mIsPaymentGap,
+  mb3mPaymentGapMessage,
   mb3mWalletCreditRows,
   planMb3mGdsMatchings,
   planMb3mPayments,
+  withoutPaymentGap,
   type Mb3mCredit,
   type Mb3mPlannedPayment,
 } from "./mb3m-payments";
@@ -144,6 +147,39 @@ describe("plan des règlements MB3M", () => {
     assert.equal(byAmount[0]?.existingNumber, "2153");
     assert.equal(byAmount[0]?.alreadyMatched, true);
     assert.equal(byAmount[0]?.matched, 2274.96);
+  });
+
+  it("lettre le reste d’un règlement déjà pointé sur une autre facture", () => {
+    const [row] = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2157",
+      invoiceAmount: 561.19,
+      credits: [credit({ amount: 5330.29, date: "2026-10-15" })],
+      otherOpenBookings: 1,
+      links: [{ transactionId: CREDIT_ID, paymentNumber: "2149", invoiceNumber: "2148", matchedAmount: 4769.1 }],
+      remote: [
+        {
+          number: "2149",
+          reference: "OZB",
+          amount: 5330.29,
+          date: "2026-10-15",
+          invoiceNumber: "2148",
+          unmatched: 561.19,
+        },
+      ],
+    });
+    assert.equal(row?.existingNumber, "2149");
+    assert.equal(row?.matched, 561.19);
+    assert.equal(row?.alreadyMatched, false);
+  });
+
+  it("dit qu’aucun règlement n’a été trouvé au lieu d’une liste vide", () => {
+    const message = mb3mPaymentGapMessage("2157", 561.19);
+    assert.match(message, /2157/);
+    assert.match(message, /561,19/);
+    assert.equal(mb3mIsPaymentGap(message), true);
+    assert.equal(mb3mIsPaymentGap("Autre erreur"), false);
+    assert.equal(withoutPaymentGap(`Déplacement impossible. ${message}`), "Déplacement impossible.");
   });
 
   it("lettre seulement le reste d’un règlement saisi à la main, sans le recréer", () => {

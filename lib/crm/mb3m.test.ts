@@ -826,6 +826,47 @@ describe("règlements MB3M", () => {
     assert.equal(rows[0]?.unmatched, 561.19);
   });
 
+  it("lit le reste 561,19 € d’une pièce de règlement déjà partiellement lettrée", async () => {
+    arm();
+    const pages: string[] = [];
+    const rows = await mb3mFindCustomerPayments(
+      "customer-uid",
+      async (_url, init) => {
+        const body = String(init?.body);
+        assert.equal(body.includes("FindPayments"), false);
+        assert.equal(body.includes("IncludePayments"), true);
+        const index = body.match(/<PageIndex>(\d+)<\/PageIndex>/)?.[1] || "";
+        pages.push(index);
+        if (index === "0") {
+          return new Response(
+            `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>2</TotalCount><Piece><Number>2157</Number><Type>Invoice</Type><Amount>561.19</Amount><Date>2026-11-03T00:00:00</Date><Payment><Number>1</Number><Amount>4769.10</Amount><Date>2026-10-15T00:00:00</Date><PieceNumber>2148</PieceNumber></Payment></Piece></FindAllPiecesResponse>`
+          );
+        }
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>2</TotalCount><Piece><Customer><Uid>92c5a491-b764-4c07-9a08-ebf0e56a21a4</Uid><Number>999</Number></Customer><Identity><Number>2149</Number><Uid>pay-2149</Uid></Identity><Type>Payment</Type><Amount>5330.29</Amount><Date>2026-10-15T00:00:00</Date><Reference>OZB</Reference><Matchings><Matching><Amount>4769.10</Amount><PieceNumber>2148</PieceNumber><UnmatchedAmount>0</UnmatchedAmount></Matching></Matchings><UnmatchedAmount>561.19</UnmatchedAmount></Piece></FindAllPiecesResponse>`
+        );
+      },
+      1
+    );
+    assert.deepEqual(pages, ["0", "1"]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.number, "2149");
+    assert.equal(rows[0]?.amount, 5330.29);
+    assert.equal(rows[0]?.date, "2026-10-15");
+    assert.equal(rows[0]?.unmatched, 561.19);
+  });
+
+  it("calcule le reste quand la pièce n’a que les lettrages", async () => {
+    arm();
+    const rows = await mb3mFindCustomerPayments("customer-uid", async () => {
+      return new Response(
+        `<FindAllPiecesResponse><ResultCode>1</ResultCode><PieceSummary><Number>2149</Number><PieceType>Reglement</PieceType><Amount>5330.29</Amount><Date>2026-10-15T00:00:00</Date><Matchings><Matching><Amount>4769.10</Amount><PieceNumber>2148</PieceNumber></Matching></Matchings></PieceSummary></FindAllPiecesResponse>`
+      );
+    });
+    assert.equal(rows[0]?.number, "2149");
+    assert.equal(rows[0]?.unmatched, 561.19);
+  });
+
   it("lit les factures du client puis le détail, et change de dossier", async () => {
     arm();
     const pieces = await mb3mFindCustomerPieces("customer-uid", async (_url, init) => {
