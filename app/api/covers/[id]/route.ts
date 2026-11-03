@@ -4,6 +4,7 @@ import { cityCoverFailed, enqueueCityCover } from "@/lib/crm/cover-generate";
 import { generatedCityCoverSpec } from "@/lib/crm/cover-catalog";
 import { catalogCachePath, isCatalogPhotoId } from "@/lib/crm/cover-retouch";
 import { coverWidthParam } from "@/lib/crm/covers";
+import { publicImageCacheHeaders } from "@/lib/crm/public-catalogue";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { publicCoverPath } from "@/lib/crm/cover-file";
 import { trySharp } from "@/lib/crm/sharp";
@@ -70,13 +71,10 @@ export async function GET(request: Request, ctx: Ctx) {
     after(() => enqueueCityCover(id));
     return new NextResponse(null, { status: 404, headers: noStore });
   }
-  if (!bytes?.byteLength) return new NextResponse(null, { status: 404 });
+  if (!bytes?.byteLength) return new NextResponse(null, { status: 404, headers: noStore });
   const body = width ? await sizedWebp(bytes, width) : bytes;
 
   return new NextResponse(new Uint8Array(body), {
-    headers: {
-      "Content-Type": "image/webp",
-      "Cache-Control": "public, max-age=31536000, immutable",
-    },
+    headers: publicImageCacheHeaders("image/webp"),
   });
 }

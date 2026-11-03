@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { routing } from "./i18n/routing";
 import { gateAgencyApi } from "./lib/crm/agency-gate";
 import { IN_APP_STAY_COOKIE, IN_APP_STAY_MAX_AGE, IN_APP_STAY_PARAM, inAppHandoffDecision, inAppHandoffHtml } from "./lib/crm/in-app-browser";
+import { catalogueCrawlerDecision } from "./lib/crm/public-catalogue";
 import { updateSession } from "./lib/supabase/middleware";
 
 const intlMiddleware = createMiddleware(routing);
@@ -84,6 +85,23 @@ async function route(request: NextRequest) {
   if (forwarded) return forwarded;
 
   const path = request.nextUrl.pathname;
+  const crawler = catalogueCrawlerDecision({
+    path,
+    userAgent: request.headers.get("user-agent"),
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip"),
+    now: Date.now(),
+  });
+  if (crawler.action === "limit") {
+    return new NextResponse("Trop de requêtes.", {
+      status: 429,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Retry-After": String(crawler.retryAfter),
+        "Cache-Control": "private, no-store",
+        "X-Robots-Tag": "noindex",
+      },
+    });
+  }
 
   if (path.startsWith("/api/")) {
     if (path.startsWith("/api/admin") || path === "/api/auth/known-password" || path === "/api/auth/staff-failure") {
