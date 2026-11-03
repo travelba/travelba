@@ -149,6 +149,100 @@ describe("plan des règlements MB3M", () => {
     assert.equal(byAmount[0]?.matched, 2274.96);
   });
 
+  it("lettre le reste du 2149 même s’il est dans un autre dossier, et le nomme", () => {
+    const [row] = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2157",
+      invoiceAmount: 561.19,
+      folderId: "01-0002007",
+      credits: [credit({ amount: 5330.29, date: "2026-10-15" })],
+      otherOpenBookings: 1,
+      remote: [
+        {
+          number: "2149",
+          reference: "OZB",
+          amount: 5330.29,
+          date: "2026-09-01",
+          folderId: "01-0002000",
+          invoiceNumber: "2148",
+          unmatched: 561.19,
+        },
+        {
+          number: "9000",
+          reference: "",
+          amount: 5330.29,
+          date: "2026-10-15",
+          folderId: "01-0002007",
+          invoiceNumber: null,
+          unmatched: 10,
+        },
+      ],
+    });
+    assert.equal(row?.existingNumber, "9000");
+    assert.equal(row?.matched, 10);
+    assert.match(row?.notice || "", /9000/);
+    assert.match(row?.notice || "", /01-0002007/);
+    const [other] = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2157",
+      invoiceAmount: 561.19,
+      folderId: "01-0002007",
+      credits: [credit({ amount: 5330.29, date: "2026-10-15" })],
+      otherOpenBookings: 1,
+      remote: [
+        {
+          number: "2149",
+          reference: "OZB",
+          amount: 5330.29,
+          date: "2026-10-15",
+          folderId: "01-0002000",
+          invoiceNumber: "2148",
+          unmatched: 561.19,
+        },
+      ],
+    });
+    assert.equal(other?.existingNumber, "2149");
+    assert.equal(other?.matched, 561.19);
+    assert.equal(other?.alreadyMatched, false);
+    assert.match(other?.notice || "", /2149/);
+    assert.match(other?.notice || "", /01-0002000/);
+    assert.match(other?.notice || "", /561,19/);
+  });
+
+  it("ne prend que le règlement déjà identifié pour ce crédit", () => {
+    const [row] = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2157",
+      invoiceAmount: 561.19,
+      folderId: "01-0002007",
+      credits: [credit({ amount: 5330.29, date: "2026-10-15" })],
+      links: [{ transactionId: CREDIT_ID, paymentNumber: "2149", invoiceNumber: "2148", matchedAmount: 4769.1 }],
+      remote: [
+        {
+          number: "9000",
+          reference: "",
+          amount: 5330.29,
+          date: "2026-10-15",
+          folderId: "01-0002007",
+          invoiceNumber: null,
+          unmatched: 561.19,
+        },
+        {
+          number: "2149",
+          reference: "OZB",
+          amount: 5330.29,
+          date: "2026-10-15",
+          folderId: "01-0002000",
+          invoiceNumber: "2148",
+          unmatched: 561.19,
+        },
+      ],
+    });
+    assert.equal(row?.existingNumber, "2149");
+    assert.equal(row?.matched, 561.19);
+    assert.equal(row?.notice, null);
+  });
+
   it("lettre le reste d’un règlement déjà pointé sur une autre facture", () => {
     const [row] = plan({
       bookingId: BOOKING,
@@ -316,8 +410,9 @@ describe("envoi des règlements", () => {
       hold: null,
       targetInvoice: null,
       bank: "REVOLUT",
-      mode: "Virement",
+      mode: "BankTransfer",
       reference: `CRM ${CREDIT_ID}`,
+      notice: null,
       ...patch,
     };
   }

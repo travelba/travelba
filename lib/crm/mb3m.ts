@@ -478,13 +478,41 @@ function travelersXml(travelers: Mb3mTraveler[] | undefined) {
   return `<Travelers>${inner}</Travelers>`;
 }
 
-/** Compte bancaire MB3M d’un crédit CRM. Le mode reste un virement, sauf une carte Stripe. */
+/**
+ * mB3M.PartnersApi.Schema.PaymentMode (DataContract).
+ * `Virement` et `Carte` sont refusés à la désérialisation.
+ * Le WSDL (`FolderService.svc?singleWsdl`) et les XSD répondent 401 sans le login agence,
+ * qui n’est pas dans cet environnement. Les noms envoyés sont ceux du type :
+ * Unknown, Cash, Cheque, CreditCard, BankTransfer, DirectDebit, Other.
+ */
+export const MB3M_PAYMENT_MODES = ["Unknown", "Cash", "Cheque", "CreditCard", "BankTransfer", "DirectDebit", "Other"] as const;
+
+export type Mb3mPaymentMode = (typeof MB3M_PAYMENT_MODES)[number];
+
+/** Mode CRM → valeur du schéma. Un virement Revolut ou Qonto est BankTransfer, une carte (Stripe, Pliant) est CreditCard. */
+export function mb3mPaymentMode(source: string | null | undefined, label: string | null | undefined): Mb3mPaymentMode {
+  const text = `${source || ""} ${label || ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (/\bcheque\b/.test(text)) return "Cheque";
+  if (text.includes("prelevement") || text.includes("sepa")) return "DirectDebit";
+  if (text.includes("espece") || text.includes("cash")) return "Cash";
+  if (source === "stripe" || source === "pliant" || /stripe|pliant|carte|card|visa|mastercard|amex/.test(text)) return "CreditCard";
+  if (source === "revolut" || source === "manual" || /revolut|qonto|virement|transfer|wire/.test(text)) return "BankTransfer";
+  if (!text.trim()) return "Unknown";
+  return "Other";
+}
+
+/** Compte bancaire MB3M d’un crédit CRM, et le PaymentMode du schéma. */
 export function mb3mPaymentAccount(source: string | null | undefined, label: string | null | undefined) {
   const text = `${source || ""} ${label || ""}`.toLowerCase();
-  if (source === "revolut" || text.includes("revolut")) return { mode: "Virement", bank: "REVOLUT" };
-  if (source === "stripe" || text.includes("stripe")) return { mode: "Carte", bank: "STRIPE" };
-  if (text.includes("qonto")) return { mode: "Virement", bank: "QONTO" };
-  return { mode: "Virement", bank: "VIREMENT" };
+  const mode = mb3mPaymentMode(source, label);
+  if (source === "revolut" || text.includes("revolut")) return { mode, bank: "REVOLUT" };
+  if (source === "stripe" || text.includes("stripe")) return { mode, bank: "STRIPE" };
+  if (source === "pliant" || text.includes("pliant")) return { mode, bank: "PLIANT" };
+  if (text.includes("qonto")) return { mode, bank: "QONTO" };
+  return { mode, bank: "VIREMENT" };
 }
 
 export function mb3mPaymentReference(transactionId: string) {
@@ -530,6 +558,8 @@ export type Mb3mRemotePayment = {
   reference: string;
   amount: number;
   date: string;
+  /** Dossier MB3M du règlement. Vide si la liste ne le porte pas. */
+  folderId?: string | null;
   invoiceNumber: string | null;
   /** Reste à lettrer. 0 : déjà entièrement lettré. */
   unmatched: number;
@@ -538,9 +568,12 @@ export type Mb3mRemotePayment = {
 /**
  * Règlements du client. FolderService n’a pas d’opération FindPayments
  * (ContractFilter). La même recherche que les factures, avec IncludePayments.
+ * `folderId` limite à un dossier ; sans lui, la recherche est celle du client.
  */
-export function mb3mFindPaymentsQuery(customerUid: string, pageIndex: number, pageSize = PIECE_PAGE_SIZE) {
-  return `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><Customer><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></Customer><IncludeInvoices>true</IncludeInvoices><IncludePayments>true</IncludePayments><PageIndex>${pageIndex}</PageIndex><PageSize>${pageSize}</PageSize></FolderFindPiecesQuery>`;
+export function mb3mFindPaymentsQuery(customerUid: string, pageIndex: number, pageSize = PIECE_PAGE_SIZE, folderId?: string | null) {
+  const folder = (folderId || "").trim();
+  const folderXml = folder ? `<FolderId>${escapeMb3mXml(folder)}</FolderId>` : "";
+  return `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><Customer><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></Customer>${folderXml}<IncludeInvoices>true</IncludeInvoices><IncludePayments>true</IncludePayments><PageIndex>${pageIndex}</PageIndex><PageSize>${pageSize}</PageSize></FolderFindPiecesQuery>`;
 }
 
 const PAYMENT_BLOCK_TAGS = new Set(["Payment", "PaymentSummary", "Piece", "PieceSummary", "Invoice", "InvoiceSummary"]);
@@ -633,38 +666,77 @@ function paymentFromBlock(block: string): Mb3mRemotePayment | null {
     reference: mb3mXmlText(head, "Reference"),
     amount,
     date,
+    folderId: paymentFolderId(block),
     invoiceNumber,
     unmatched: paymentUnmatched(block, amount),
   };
 }
 
-export async function mb3mFindCustomerPayments(customerUid: string, fetchImpl?: FetchImpl, pageSize = PIECE_PAGE_SIZE): Promise<Mb3mRemotePayment[]> {
+function paymentFolderId(block: string) {
+  const direct = mb3mXmlText(block, "FolderId");
+  if (direct) return direct;
+  const folder = mb3mLocalNames(block).match(/<Folder(?:\s[^>]*)?>[\s\S]*?<\/Folder>/)?.[0] || "";
+  return mb3mXmlText(folder, "Id") || null;
+}
+
+async function readPaymentPage(customerUid: string, page: number, pageSize: number, folderId: string | null, fetchImpl?: FetchImpl) {
+  const xml = await mb3mSoap(
+    "FolderService",
+    "IFolderService",
+    "FindAllPieces",
+    mb3mFindPaymentsQuery(customerUid, page, pageSize, folderId),
+    fetchImpl
+  );
+  assertOperation(xml);
+  const local = mb3mLocalNames(xml);
+  const payments = paymentBlocks(local).flatMap((block) => {
+    const payment = paymentFromBlock(block);
+    return payment ? [payment] : [];
+  });
+  const reported = Number(mb3mXmlText(local, "TotalCount"));
+  const pageItems = topLevelBlocks(local, PAYMENT_BLOCK_TAGS);
+  const done = !pageItems.length || pageItems.length < pageSize || (Number.isFinite(reported) && reported >= 0 && (page + 1) * pageSize >= reported);
+  return { payments, done };
+}
+
+/**
+ * Règlements du client, d’abord dans les dossiers donnés (le dossier de la facture en tête),
+ * puis sur tout le client. Un règlement déjà lu dans un dossier n’est pas écrasé.
+ */
+export async function mb3mFindCustomerPayments(
+  customerUid: string,
+  fetchImpl?: FetchImpl,
+  pageSize = PIECE_PAGE_SIZE,
+  folderIds: string[] = []
+): Promise<Mb3mRemotePayment[]> {
+  const scopes: (string | null)[] = [
+    ...new Set(folderIds.map((id) => id.trim()).filter(Boolean)),
+    null,
+  ];
   const seen = new Set<string>();
   const payments: Mb3mRemotePayment[] = [];
-  for (let page = 0; page < 40; page += 1) {
-    const xml = await mb3mSoap(
-      "FolderService",
-      "IFolderService",
-      "FindAllPieces",
-      mb3mFindPaymentsQuery(customerUid, page, pageSize),
-      fetchImpl
-    );
-    assertOperation(xml);
-    const local = mb3mLocalNames(xml);
-    const batch = paymentBlocks(local);
-    for (const block of batch) {
-      const payment = paymentFromBlock(block);
-      if (!payment || seen.has(payment.number)) continue;
-      seen.add(payment.number);
-      payments.push(payment);
+  let any = false;
+  let lastError: Error | null = null;
+  for (const folderId of scopes) {
+    try {
+      for (let page = 0; page < 40; page += 1) {
+        const batch = await readPaymentPage(customerUid, page, pageSize, folderId, fetchImpl);
+        any = true;
+        for (const payment of batch.payments) {
+          if (seen.has(payment.number)) continue;
+          seen.add(payment.number);
+          payments.push(payment);
+        }
+        if (batch.done) break;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error("lecture");
+      console.error(`[mb3m] règlements ${folderId || "client"}`, lastError.message);
     }
-    const reported = Number(mb3mXmlText(local, "TotalCount"));
-    const pageItems = topLevelBlocks(local, PAYMENT_BLOCK_TAGS);
-    if (!pageItems.length || pageItems.length < pageSize) break;
-    if (Number.isFinite(reported) && reported >= 0 && (page + 1) * pageSize >= reported) break;
   }
+  if (!any && lastError) throw lastError;
   console.info(
-    `[mb3m] règlements : ${payments.map((payment) => `${payment.number} reste ${payment.unmatched} sur ${payment.amount}`).join(", ") || "aucun"}`
+    `[mb3m] règlements : ${payments.map((payment) => `${payment.number} dossier ${payment.folderId || "?"} reste ${payment.unmatched} sur ${payment.amount}`).join(", ") || "aucun"}`
   );
   return payments;
 }
