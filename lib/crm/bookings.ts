@@ -444,12 +444,28 @@ export async function syncBookingDebit(
       .eq("kind", "booking")
       .eq("direction", "debit")
       .is("external_id", null)
-      .neq("status", "void")
-      .maybeSingle(),
+      .neq("status", "void"),
     "Débit séjour"
   );
 
-  const debit = existing as CrmTransaction | null;
+  const openRollups = (existing || []) as CrmTransaction[];
+  if (!stayIncludedInLedger(booking)) {
+    if (openRollups.length) {
+      must(
+        await supabase
+          .from("crm_transactions")
+          .update({ status: "void" })
+          .in(
+            "id",
+            openRollups.map((row) => row.id)
+          ),
+        "Débit séjour"
+      );
+    }
+    return;
+  }
+
+  const debit = openRollups[0] || null;
   const amount = Number(booking.total_amount || 0);
   const intent = bookingDebitIntent({
     status: booking.status,

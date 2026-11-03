@@ -63,7 +63,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261020170000_mcp_pliant_card_block.sql` | `crm_mcp_card_events.kind` : `blocage` et `deblocage`. Pas de PAN |
 | `20261023110000_trip_cost_events.sql` | journal `crm_trip_cost_events` : rattachement Pliant / Revolut. Qui, quand, dossiers. Sans numéro de carte |
 | `20261028103000_flight_online_checkin.sql` | `crm_flight_checkins` : enregistrement en ligne d’un vol. Statut et auteur (agence ou bot). Sans passeport ni MRZ. Additive. Après `20261027210000` |
-| `20261029140000_le_booked_at.sql` | `crm_le_bookings.booked_at` : date de réservation Little Emperors. Additive. À jouer à la main. L’écran n’en dépend pas |
+| `20261029140000_le_booked_at.sql` | `crm_le_bookings.booked_at` : date de réservation Little Emperors. Additive. À jouer à la main. Les lectures MCP réessaient sans la colonne (42703) |
 | `20261103070000_log_retention.sql` | purge pg_cron : audit 12 mois, corps des e-mails terminés 6 mois (ligne gardée), activité 12 mois, suivi Hôtels 24 mois. Pas de donnée métier. À jouer à la main |
 | `20261103071000_hotels_index_slim.sql` | retire les GIN jsonb de `hotels` jamais lus, ajoute les filtres ville / nom / fil hôtel. Pas de déplacement de colonne. À jouer à la main |
 

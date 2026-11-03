@@ -129,9 +129,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     supabase.from("crm_visa_requests").select("country, step, status, answers, accepted_at, launched_by_name").eq("booking_id", id),
     supabase
       .from("crm_le_bookings")
-      .select("id, hotel_name, is_cancellable, cancellation_deadline, cancellation_policies, state")
+      .select("id, hotel_name, check_in, total_cost, currency, is_cancellable, cancellation_deadline, cancellation_policies, state")
       .eq("crm_booking_id", id)
-      .limit(1),
+      .limit(20),
     supabase
       .from("crm_billing_companies")
       .select(
@@ -307,14 +307,18 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     readUkEtaLines(createServiceClient(), id).catch(() => []),
   ]);
 
-  const le = ((leRows || [])[0] || null) as {
+  const leList = (leRows || []) as {
     id: string;
     hotel_name: string | null;
+    check_in: string | null;
+    total_cost: string | null;
+    currency: string | null;
     is_cancellable: boolean | null;
     cancellation_deadline: string | null;
     cancellation_policies: string[] | null;
     state: string | null;
-  } | null;
+  }[];
+  const le = leList[0] || null;
 
   let revolutExpenses: { id: string; label: string; amount: string }[] = [];
   try {
@@ -475,6 +479,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
             warnings?: { file?: string | null; message?: string | null }[] | null;
           }[]}
           littleEmperors={le}
+          leStays={leList}
           ledger={ledger}
           accountLedger={accountLedger}
           bookingCards={bookingCards}

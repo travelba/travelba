@@ -113,6 +113,8 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   statut_formalite: "agency",
   recherches_hotels: "agency",
   lancer_formalite: "edit_dossiers",
+  annuler_mouvement: "edit_finances",
+  fusionner_clients: "admin",
 };
 
 export type McpStaffGate = {

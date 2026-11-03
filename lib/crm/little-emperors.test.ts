@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   decideLittleEmperorsAuto,
@@ -15,6 +16,7 @@ import {
   canRemoteCancel,
   hotelPublicFields,
   isLeCancelled,
+  leCreatedDossierStatus,
   leDateOnly,
   littleEmperorsActionAllowed,
   littleEmperorsApiKey,
@@ -642,5 +644,22 @@ describe("little emperors staging client", () => {
     if (previous === undefined) delete process.env.LITTLE_EMPERORS_WEBHOOK_KEY;
     else process.env.LITTLE_EMPERORS_WEBHOOK_KEY = previous;
     assert.equal(littleEmperorsWebhookConfigured(), Boolean(previous && previous.trim()));
+  });
+});
+
+describe("dossier créé depuis Little Emperors", () => {
+  it("réservé ou confirmé ouvre un dossier confirmé, les autres restent brouillon", () => {
+    assert.equal(leCreatedDossierStatus("booked"), "confirmed");
+    assert.equal(leCreatedDossierStatus("confirmed"), "confirmed");
+    assert.equal(leCreatedDossierStatus("BOOKED"), "confirmed");
+    assert.equal(leCreatedDossierStatus("pending"), "draft");
+    assert.equal(leCreatedDossierStatus(null), "draft");
+    const src = readFileSync(new URL("./little-emperors-sync.ts", import.meta.url), "utf8");
+    const start = src.indexOf("export async function attachLittleEmperorsBooking");
+    const end = src.indexOf("export async function cancelLittleEmperorsFromCrm");
+    const fn = src.slice(start, end);
+    assert.match(fn, /leCreatedDossierStatus\(booking\.state\)/);
+    assert.match(fn, /visibleToClient: false/);
+    assert.doesNotMatch(fn, /status:\s*"draft"/);
   });
 });

@@ -4,6 +4,7 @@ import {
   staffBlockingChips,
   staffLedgerCaption,
   staffStayFacts,
+  staffRealStatusLabel,
   staffStayLabel,
   stayTitleFromItems,
 } from "./staff-stay";
@@ -15,10 +16,20 @@ test("l’état visible est préparation, visible ou archivée", () => {
     "En préparation"
   );
   assert.equal(staffStayLabel({ visible_to_client: true }), "Visible");
+  assert.equal(staffStayLabel({ visible_to_client: true, status: "draft" }), "Visible · Brouillon");
+  assert.equal(staffStayLabel({ visible_to_client: false, status: "draft" }), "En préparation · Brouillon");
+  assert.equal(
+    staffStayLabel({ visible_to_client: true, status: "draft", archived_at: "2026-10-01T00:00:00.000Z" }),
+    "Archivée"
+  );
   assert.equal(
     staffStayLabel({ visible_to_client: true, archived_at: "2026-10-01T00:00:00.000Z" }),
     "Archivée"
   );
+  assert.equal(staffRealStatusLabel("draft"), "Brouillon");
+  assert.equal(staffRealStatusLabel("confirmed"), "Confirmé");
+  assert.equal(staffRealStatusLabel("quoted"), "Devis");
+  assert.equal(staffRealStatusLabel("cancelled"), "Annulé");
 });
 
 test("un enregistrement ouvert compte dans À faire", () => {

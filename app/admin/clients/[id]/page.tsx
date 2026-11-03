@@ -15,6 +15,7 @@ import {
 } from "@/components/admin/ArchiveBookingButton";
 import { ClientPaymentsToCredit } from "@/components/admin/argent/ClientPaymentsToCredit";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
+import { MergeCustomersButton } from "@/components/admin/MergeCustomersButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { StatementRequest } from "@/components/account/StatementRequest";
@@ -562,7 +563,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
           )}
         </div>
       </details>
-      {staff.role === "admin" ? <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} /> : null}
+      {staff.role === "admin" ? (
+        <div className="space-y-3">
+          <MergeCustomersButton customerId={c.id} name={customerFullName(c)} />
+          <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} />
+        </div>
+      ) : null}
         </aside>
       </div>
     </div>

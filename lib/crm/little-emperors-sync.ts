@@ -24,6 +24,7 @@ import {
   fetchLittleEmperorsHotel,
   benefitsFromLeRaw,
   isLeCancelled,
+  leCreatedDossierStatus,
   listLittleEmperorsBookings,
   LittleEmperorsError,
   type LeBooking,
@@ -707,10 +708,11 @@ export async function attachLittleEmperorsBooking(opts: {
   if (!booking.hotel_name) {
     throw new LittleEmperorsError("Little Emperors n’a pas indiqué le nom de l’hôtel.", 422, "hotel_name");
   }
+  const dossierStatus = leCreatedDossierStatus(booking.state);
   const created = await persistNewBookingFromExtract({
     customerId: opts.customerId,
     extract: leBookingExtract(booking),
-    status: "draft",
+    status: dossierStatus,
     visibleToClient: false,
     referenceClient: opts.referenceClient,
   });
@@ -718,7 +720,7 @@ export async function attachLittleEmperorsBooking(opts: {
     .from("crm_bookings")
     .update({
       notes_internal: "Réservation importée depuis Little Emperors.",
-      status: "draft",
+      status: dossierStatus,
       visible_to_client: false,
     })
     .eq("id", created.id);

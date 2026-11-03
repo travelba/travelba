@@ -93,6 +93,24 @@ test("lien et full credit non proposés pour Expedia", () => {
   assert.equal(hotelDeskSuggested("other", "expedia"), false);
 });
 
+test("le lien de paiement cite le brut Little Emperors, pas le prix de vente", () => {
+  const item = hotel({ amount: 315, supplier: "Little Emperors", details: { hotel_name: "Le Bristol", country: "France", email: "reservations@bristol.test", source_family: "little_emperors" } });
+  const link = hotelDeskDraft({
+    ...base,
+    kind: "payment_link",
+    item,
+    printedAmount: { cents: 21578, currency: "EUR" },
+  });
+  assert.match(link.body, /215,78 EUR/);
+  assert.match(link.body, /montant brut de la réservation, tel qu'indiqué sur la confirmation, est de 215,78 EUR/);
+  assert.match(link.body, /lien de paiement pour ce montant brut de 215,78 EUR/);
+  assert.doesNotMatch(link.body, /315/);
+  const quiet = hotelDeskDraft({ ...base, kind: "payment_link", item });
+  assert.doesNotMatch(quiet.body, /montant/);
+  assert.doesNotMatch(quiet.body, /315/);
+  assert.match(quiet.body, /lien de paiement de cette réservation/);
+});
+
 test("brouillon français : lien, full credit sans numéro, tous les contacts", () => {
   const link = hotelDeskDraft({ ...base, kind: "payment_link", item: hotel() });
   assert.match(link.subject, /Camille Martin/);

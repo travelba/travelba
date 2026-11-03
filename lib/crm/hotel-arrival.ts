@@ -429,6 +429,26 @@ export function leStayAmount(
   return null;
 }
 
+/**
+ * Montant imprimé de la confirmation, jamais le prix de vente.
+ * Little Emperors, puis le montant du document, puis le net déjà saisi.
+ */
+export function printedStayAmount(input: {
+  le: { cents: number; currency: string } | null;
+  document: { cents: number | null; currency: string | null };
+  netCents: number | null;
+  currency: string | null;
+}): { cents: number; currency: string } | null {
+  if (input.le && input.le.cents > 0) return { cents: input.le.cents, currency: input.le.currency || "EUR" };
+  if (input.document.cents != null && input.document.cents > 0) {
+    return { cents: input.document.cents, currency: input.document.currency || input.currency || "EUR" };
+  }
+  if (input.netCents != null && input.netCents > 0) {
+    return { cents: input.netCents, currency: input.currency || "EUR" };
+  }
+  return null;
+}
+
 export function quotedAmount(input: {
   channel: HotelArrivalChannel;
   leCents: number | null;
@@ -757,27 +777,96 @@ export function welcomeRequest(lang: "fr" | "en") {
     : "If the house could have the room prepared, with a welcome note, we would be most grateful for the attention. An upgrade, should it be possible on arrival, would mean a great deal to our client.";
 }
 
-export function paymentLinkAsk(lang: "fr" | "en") {
-  return lang === "fr"
-    ? "Si vous pouviez nous adresser le lien de paiement de cette réservation, nous vous en serions très reconnaissants."
+export function paymentLinkAsk(lang: "fr" | "en", amount?: string | null) {
+  const shown = (amount || "").trim();
+  if (lang === "fr") {
+    return shown
+      ? `Pourriez-vous nous adresser le lien de paiement pour ce montant brut de ${shown} ? Nous vous en serions très reconnaissants.`
+      : "Si vous pouviez nous adresser le lien de paiement de cette réservation, nous vous en serions très reconnaissants.";
+  }
+  return shown
+    ? `Could you please send us the payment link for this gross amount of ${shown}? We would be most grateful.`
     : "If you could send us the payment link for this reservation, we would be most grateful.";
 }
 
-export function paymentLinkCharge(lang: "fr" | "en") {
-  return lang === "fr"
-    ? "Lorsque cela vous conviendra, vous pourrez prélever le montant de cette réservation sur la carte ouverte par le lien sécurisé ci-dessous."
+export function paymentLinkCharge(lang: "fr" | "en", amount?: string | null) {
+  const shown = (amount || "").trim();
+  if (lang === "fr") {
+    return shown
+      ? `Lorsque cela vous conviendra, vous pourrez prélever ce montant brut de ${shown} sur la carte ouverte par le lien sécurisé ci-dessous.`
+      : "Lorsque cela vous conviendra, vous pourrez prélever le montant de cette réservation sur la carte ouverte par le lien sécurisé ci-dessous.";
+  }
+  return shown
+    ? `Whenever it suits the house, this gross amount of ${shown} may be charged to the card opened from the secure link below.`
     : "Whenever it suits the house, this reservation may be charged to the card opened from the secure link below.";
 }
 
-/** Remplace la phrase du lien de paiement. Le reste du courrier reste. */
-export function applyPaymentLinkChoice(text: string, charge: boolean, lang: "fr" | "en") {
-  const ask = paymentLinkAsk(lang);
-  const take = paymentLinkCharge(lang);
-  const next = charge ? take : ask;
-  const previous = charge ? ask : take;
-  if (text.includes(previous)) return text.replace(previous, next);
-  if (text.includes(next)) return text;
-  return `${next}\n\n${text}`;
+export function grossAmountLine(lang: "fr" | "en", amount: string) {
+  return lang === "fr"
+    ? `Le montant brut de la réservation, tel qu'indiqué sur la confirmation, est de ${amount}.`
+    : `The gross amount of the reservation, as shown on the confirmation, is ${amount}.`;
+}
+
+function isPaymentAsk(line: string) {
+  const value = line.trim();
+  return (
+    value.startsWith("Si vous pouviez nous adresser le lien de paiement") ||
+    value.startsWith("Pourriez-vous nous adresser le lien de paiement") ||
+    value.startsWith("If you could send us the payment link") ||
+    value.startsWith("Could you please send us the payment link")
+  );
+}
+
+function isPaymentCharge(line: string) {
+  const value = line.trim();
+  return (
+    value.startsWith("Lorsque cela vous conviendra, vous pourrez prélever") ||
+    value.startsWith("Whenever it suits the house")
+  );
+}
+
+function isAmountLine(line: string) {
+  const value = line.trim();
+  return (
+    value.startsWith("Le montant du séjour est de ") ||
+    value.startsWith("Le montant brut de la réservation") ||
+    value.startsWith("The stay amounts to ") ||
+    value.startsWith("The gross amount of the reservation")
+  );
+}
+
+const PRINTED_AMOUNT = /\d[\d\s.]*,\d{2}\s+[A-Z]{3}/;
+
+function amountInLetter(text: string) {
+  const lines = text.split("\n").filter((line) => isPaymentAsk(line) || isPaymentCharge(line) || isAmountLine(line));
+  for (const line of lines) {
+    const match = line.match(PRINTED_AMOUNT);
+    if (match) return match[0].replace(/\s+/g, " ").trim();
+  }
+  return null;
+}
+
+/**
+ * Remplace la phrase du lien, ancienne ou nouvelle, sans en ajouter une seconde.
+ * Le montant déjà écrit dans le brouillon est conservé si on n’en passe pas un autre.
+ */
+export function applyPaymentLinkChoice(text: string, charge: boolean, lang: "fr" | "en", amount?: string | null) {
+  const known = (amount || "").trim() || amountInLetter(text);
+  const next = charge ? paymentLinkCharge(lang, known) : paymentLinkAsk(lang, known);
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  let replaced = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] || "";
+    if (isPaymentAsk(line) || isPaymentCharge(line)) {
+      lines[index] = next;
+      replaced = true;
+      continue;
+    }
+    if (known && isAmountLine(line)) lines[index] = grossAmountLine(lang, known);
+  }
+  const body = lines.join("\n").replace(/\n{3,}/g, "\n\n");
+  if (replaced || body.includes(next)) return body;
+  return `${next}\n\n${body}`;
 }
 
 export function linkRequestMail(input: {
@@ -798,7 +887,7 @@ export function linkRequestMail(input: {
   const ref = input.reference || "—";
   const guest = showGuestName(input.guest);
   const frame = hotelMailFrame(input.lang, input.relance, input.addressee, input.signatory);
-  const request = input.charge ? paymentLinkCharge(input.lang) : paymentLinkAsk(input.lang);
+  const request = input.charge ? paymentLinkCharge(input.lang, input.amount) : paymentLinkAsk(input.lang, input.amount);
   const label = input.lang === "fr" ? "Lien de paiement" : "Payment link";
   const subject = hotelLetterSubject({
     lang: input.lang,
@@ -822,7 +911,7 @@ export function linkRequestMail(input: {
       ? `${who} séjournera à ${input.hotel}, du ${from} au ${to} (confirmation ${ref}).`
       : `${who} will be staying at ${input.hotel}, from ${from} to ${to} (confirmation ${ref}).`;
   const lines = [...frame.open, "", stay];
-  if (input.amount) lines.push(input.lang === "fr" ? `Le montant du séjour est de ${input.amount}.` : `The stay amounts to ${input.amount}.`);
+  if (input.amount) lines.push(grossAmountLine(input.lang, input.amount));
   lines.push("", request, "", ...frame.close);
   return { subject, text: lines.join("\n") };
 }

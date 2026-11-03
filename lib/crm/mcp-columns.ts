@@ -17,8 +17,12 @@ export const MCP_REVOLUT_COLUMNS =
 export const MCP_STRIPE_COLUMNS =
   "id, stripe_payment_intent_id, amount, currency, direction, payer_name, payer_email, reference, method, last4, booked_at, raw, matched_customer_id, matched_transaction_id, status, created_at, updated_at";
 
+/** Sans `booked_at` : la migration `20261029140000_le_booked_at.sql` n’est pas en production. */
 export const MCP_LE_STORED_COLUMNS =
-  "le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, address, check_in, check_out, currency, total_cost, guest_names, cancellation_policies, room_types, is_cancellable, cancellation_deadline, raw, crm_booking_id, created_at, booked_at";
+  "le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, address, check_in, check_out, currency, total_cost, guest_names, cancellation_policies, room_types, is_cancellable, cancellation_deadline, raw, crm_booking_id, created_at";
+
+export const MCP_LE_LIST_COLUMNS =
+  "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, city, country, check_in, check_out, guest_names, status, candidates, currency, total_cost, raw, created_at";
 
 export const MCP_RESTAURANT_COLUMNS =
   "id, name, city, city_key, address, lat, lng, phone, website, categories, cuisine, style, booking_platform, booking_url, bot_reservable, guarantee_card, online_cancellation, cancel_hours, cancel_fee_cents, closed_weekdays, annual_closures, opening_hours, status, exclusion_reason, starred, prepaid_required, internal_note, photo_urls, menu_photo_url, signature_photo_url, concierge_pitch, price_band, price_estimated, place_url, availability_notes";

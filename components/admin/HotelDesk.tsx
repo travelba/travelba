@@ -11,7 +11,7 @@ import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownPersonName } from "@/lib/crm/identity";
 import { applyHotelSalutation, bookingToken, ensureHotelMailIdentity, followUpSubject, hotelMailSubjectKey, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelThread, signHotelLetter, type DeskRosterPerson, type HotelMailPiece, type HotelThreadTurn } from "@/lib/crm/hotel-desk";
-import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
+import { applyPaymentLinkChoice, formatArrivalAmount, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { followUpBody } from "@/lib/crm/mail-followup";
 import { partiesFromThreadRows, replyAddresses, replyDraftBody, threadPartyAddresses } from "@/lib/crm/mail-reply";
@@ -49,6 +49,7 @@ export function HotelDesk({
   focusReply = false,
   initialRelanceId = null,
   initialReplyId = null,
+  printedAmount = null,
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -66,6 +67,8 @@ export function HotelDesk({
   focusReply?: boolean;
   initialRelanceId?: string | null;
   initialReplyId?: string | null;
+  /** Montant brut de la confirmation. Le prix de vente n’entre pas dans le courrier. */
+  printedAmount?: { cents: number; currency: string } | null;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
@@ -196,6 +199,7 @@ export function HotelDesk({
           holder={holder}
           cardLast4={cardLast4}
           signatory={signatory}
+          printedAmount={printedAmount}
           onClose={() => setOpen(null)}
         />
       ) : null}
@@ -279,6 +283,7 @@ function HotelDeskEditor({
   holder,
   cardLast4,
   signatory,
+  printedAmount = null,
   onClose,
 }: {
   bookingId: string;
@@ -289,6 +294,7 @@ function HotelDeskEditor({
   holder: { first_name: string; last_name: string } | null;
   cardLast4: string | null;
   signatory: string;
+  printedAmount?: { cents: number; currency: string } | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -304,6 +310,10 @@ function HotelDeskEditor({
   const [picked, setPicked] = useState<string[] | null>(null);
   const recipients = picked ?? initialRecipients;
   const [chargeCard, setChargeCard] = useState(row?.card_choice === "pliant");
+  const paymentAmount =
+    printedAmount && printedAmount.cents > 0
+      ? formatArrivalAmount(printedAmount.cents, printedAmount.currency || "EUR")
+      : null;
   const [pieceIds, setPieceIds] = useState<string[]>(() =>
     row?.identity_picked ? (row.identity_document_ids || []).filter((id) => availableIds.includes(id)) : availableIds
   );
@@ -385,7 +395,7 @@ function HotelDeskEditor({
             onChange={(event) => {
               const next = event.target.checked;
               setChargeCard(next);
-              setBody(applyPaymentLinkChoice(body, next, letterLang));
+              setBody(applyPaymentLinkChoice(body, next, letterLang, paymentAmount));
             }}
           />
           Prélever sur la carte

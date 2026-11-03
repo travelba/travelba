@@ -459,6 +459,8 @@ export type HotelDeskDraftInput = {
   currency: string;
   holidays: string[];
   relance?: boolean;
+  /** Montant brut de la confirmation. Absent : le courrier ne cite aucun montant. Jamais le prix de vente. */
+  printedAmount?: { cents: number; currency: string } | null;
 };
 
 /** Les autres voyageurs nommés. Le titulaire et les « Adulte 1 » n'y sont pas. */
@@ -564,9 +566,11 @@ export function hotelDeskDraft(input: HotelDeskDraftInput) {
   const ref = input.item.confirmation_ref || input.reference || "—";
   const guest = input.guest.trim() || (lang === "fr" ? "notre client" : "our guest");
   const channel = hotelDeskChannel(input.item);
-  const amountCents =
-    typeof input.item.amount === "number" && input.item.amount > 0 ? Math.round(input.item.amount * 100) : null;
-  const amount = amountCents != null ? formatArrivalAmount(amountCents, input.currency || "EUR") : null;
+  const printed = input.printedAmount;
+  const amount =
+    printed && printed.cents > 0
+      ? formatArrivalAmount(printed.cents, printed.currency || input.currency || "EUR")
+      : null;
   const nights = nightsBetween(checkIn, checkOut);
   const letter = letterFor({
     ...input,

@@ -38,6 +38,7 @@ import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
 import { reviewDoubts } from "@/lib/crm/review-doubt";
 import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
+import { documentMoney, leStayAmount, printedStayAmount } from "@/lib/crm/hotel-arrival";
 import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
 import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
 import type { CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, CrmTravelDocument } from "@/lib/crm/types";
@@ -288,6 +289,7 @@ export function BookingItemsPanel({
   identityDocs = [],
   holder = null,
   arrivals = [],
+  leStays = [],
   attachedEmails = [],
   hotelMessages = [],
   hotelThreadMessages = [],
@@ -315,6 +317,7 @@ export function BookingItemsPanel({
   identityDocs?: CrmTravelDocument[];
   holder?: { first_name: string; last_name: string } | null;
   arrivals?: CrmHotelArrival[];
+  leStays?: { hotel_name: string | null; check_in: string | null; total_cost: string | null; currency: string | null }[];
   attachedEmails?: {
     id: string;
     subject: string | null;
@@ -927,6 +930,20 @@ export function BookingItemsPanel({
                         identityDocs={identityDocs}
                         holder={holder}
                         cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
+                        printedAmount={printedStayAmount({
+                          le: leStayAmount(
+                            { checkIn: (item.start_at || "").slice(0, 10), hotelName: hotelDisplayName(item) },
+                            leStays.map((row) => ({
+                              checkIn: row.check_in,
+                              hotelName: row.hotel_name,
+                              total: row.total_cost,
+                              currency: row.currency,
+                            }))
+                          ),
+                          document: documentMoney(item.details),
+                          netCents: arrivals.find((arrival) => arrival.booking_item_id === item.id)?.net_cents ?? null,
+                          currency,
+                        })}
                         messages={hotelMessages}
                         thread={hotelThreadMessages}
                         attached={attachedEmails}

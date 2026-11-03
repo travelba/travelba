@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/crm/icons";
 import { UnmatchCreditButton } from "@/components/admin/UnmatchCreditButton";
+import { VoidMovementButton } from "@/components/admin/VoidMovementButton";
 import type { LedgerMovementRow } from "@/lib/crm/ledger-movement";
 
 export type { LedgerMovementRow };
@@ -135,6 +136,9 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                   source={row.source}
                 />
               </div>
+            ) : null}
+            {row.cancellable ? (
+              <VoidMovementButton transactionId={row.id} amountLabel={row.amountLabel.replace(/^[+−-]/, "")} />
             ) : null}
           </li>
         );

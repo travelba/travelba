@@ -15,8 +15,12 @@ import {
   CHECKIN_CARD_CURRENCY,
   cardCloseDate,
   cardLast4,
+  documentMoney,
   hotelLanguage,
+  isoDate,
+  leStayAmount,
   parisIsoDate,
+  printedStayAmount,
   principalGuest,
 } from "./hotel-arrival";
 import {
@@ -101,12 +105,36 @@ export async function ensureHotelRequests(
   if (error) return [] as CrmHotelRequest[];
   const existing = (data || []) as CrmHotelRequest[];
   const byKey = new Map(existing.map((row) => [`${row.booking_item_id}:${row.kind}`, row]));
+  const [{ data: leData }, { data: arrivalData }] = await Promise.all([
+    admin.from("crm_le_bookings").select("hotel_name, check_in, total_cost, currency").eq("crm_booking_id", input.bookingId),
+    admin.from("crm_hotel_arrivals").select("booking_item_id, net_cents").eq("booking_id", input.bookingId),
+  ]);
+  const leRows = ((leData || []) as { hotel_name?: string | null; check_in?: string | null; total_cost?: string | null; currency?: string | null }[]).map(
+    (row) => ({
+      checkIn: row.check_in || null,
+      hotelName: row.hotel_name || null,
+      total: row.total_cost || null,
+      currency: row.currency || null,
+    })
+  );
+  const netByItem = new Map(
+    ((arrivalData || []) as { booking_item_id?: string | null; net_cents?: number | null }[]).map((row) => [
+      row.booking_item_id || "",
+      row.net_cents ?? null,
+    ])
+  );
   const fetchImpl = input.fetchImpl || fetch;
   const cache = new Map<string, string[]>();
   for (const item of hotels) {
     const contact = hotelContact(item);
     const checkIn = (item.start_at || "").slice(0, 10);
     const holidays = await holidaysFor(contact.country, checkIn, fetchImpl, cache);
+    const printedAmount = printedStayAmount({
+      le: leStayAmount({ checkIn: isoDate(item.start_at), hotelName: hotelDisplayName(item) }, leRows),
+      document: documentMoney(item.details),
+      netCents: netByItem.get(item.id) ?? null,
+      currency: input.currency || "EUR",
+    });
     for (const kind of HOTEL_DESK_KINDS) {
       const fresh = hotelDeskDraft({
         kind,
@@ -118,6 +146,7 @@ export async function ensureHotelRequests(
         signatory: input.signatory,
         currency: input.currency || "EUR",
         holidays,
+        printedAmount,
       });
       const current = byKey.get(`${item.id}:${kind}`);
       if (!current) {

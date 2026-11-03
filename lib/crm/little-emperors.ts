@@ -230,6 +230,16 @@ export function isLeCancelled(state: string | null | undefined, event?: string |
   return normalized === "cancelled" || normalized === "canceled";
 }
 
+/**
+ * Un séjour déjà réservé chez Little Emperors ouvre un dossier confirmé.
+ * Le client ne le voit pas : `visible_to_client` reste faux. Les autres états restent brouillon.
+ */
+export function leCreatedDossierStatus(state: string | null | undefined): "draft" | "confirmed" {
+  const value = String(state || "").trim().toLowerCase();
+  if (value === "booked" || value === "confirmed") return "confirmed";
+  return "draft";
+}
+
 export function canRemoteCancel(booking: { is_cancellable: boolean | null }) {
   return booking.is_cancellable === true;
 }

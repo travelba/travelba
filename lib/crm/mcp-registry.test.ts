@@ -101,6 +101,8 @@ const EXPECTED = [
   "statut_formalite",
   "recherches_hotels",
   "lancer_formalite",
+  "annuler_mouvement",
+  "fusionner_clients",
 ];
 
 const WRITE_TOOLS = [
@@ -172,6 +174,8 @@ const WRITE_TOOLS = [
   "comptabilite_sortie",
   "refuser_encaissement",
   "lancer_formalite",
+  "annuler_mouvement",
+  "fusionner_clients",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {

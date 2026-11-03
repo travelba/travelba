@@ -337,6 +337,7 @@ export function BookingEditor({
   billingCompanies = [],
   ficheBillingCompanies = [],
   littleEmperors = null,
+  leStays = [],
   expenseBilling = [],
   revolutExpenses = [],
   ledger = null,
@@ -425,6 +426,7 @@ export function BookingEditor({
     cancellation_policies: string[] | null;
     state: string | null;
   } | null;
+  leStays?: { hotel_name: string | null; check_in: string | null; total_cost: string | null; currency: string | null }[];
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
   /** Débits Revolut rattachés au dossier. Hors encours ; montrés dans Coûts du voyage s’ils n’ont pas de coût posé. */
   revolutExpenses?: { id: string; label: string; amount: string }[];
@@ -1960,6 +1962,7 @@ export function BookingEditor({
         identityDocs={identityDocs}
         holder={holderProfile}
         arrivals={arrivals}
+        leStays={leStays}
         clientSettlesStay={clientSettles}
         stayVisible={booking.visible_to_client}
         attachedEmails={attachedEmails}

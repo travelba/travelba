@@ -116,6 +116,66 @@ for (const [table, names] of createdBy) {
   );
 }
 
+/**
+ * Colonne ajoutée par une migration « à la main » sur crm_le_bookings.
+ * Un .select qui l’exige sans repli 42703 casse les outils tant qu’elle n’est pas jouée.
+ */
+function unappliedLeColumns() {
+  const found = [];
+  const add =
+    /alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?crm_le_bookings\s+add\s+column\s+(?:if\s+not\s+exists\s+)?([a-z_][a-z0-9_]*)/gi;
+  for (const name of files) {
+    if (!NAME.test(name)) continue;
+    const raw = readFileSync(join(DIR, name), "utf8");
+    if (!/à (?:jouer|appliquer) à la main/i.test(raw.slice(0, 700))) continue;
+    for (const match of sqlWithoutComments(raw).matchAll(add)) found.push({ column: match[1].toLowerCase(), migration: name });
+  }
+  return found;
+}
+
+function walkSources(dir, out) {
+  let entries = [];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name === ".next") continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walkSources(path, out);
+    else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith(".test.ts") && !entry.name.endsWith(".test.tsx")) out.push(path);
+  }
+}
+
+const sources = [];
+for (const root of ["lib", "app", "components"]) walkSources(join(process.cwd(), root), sources);
+for (const { column, migration } of unappliedLeColumns()) {
+  const token = new RegExp(`\\b${column}\\b`);
+  for (const file of sources) {
+    const text = readFileSync(file, "utf8");
+    if (!text.includes("crm_le_bookings") && !text.includes("MCP_LE_")) continue;
+    for (const match of text.matchAll(/\.select\(\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([A-Z0-9_]+))/g)) {
+      const literal = match[1] || match[2] || match[3] || "";
+      const ident = match[4] || "";
+      let list = literal;
+      if (ident) {
+        const def = sources
+          .map((other) => readFileSync(other, "utf8"))
+          .map((body) => body.match(new RegExp(`export\\s+const\\s+${ident}\\s*=\\s*"([^"]+)"`)))
+          .find(Boolean);
+        list = def ? def[1] : "";
+      }
+      if (!token.test(list)) continue;
+      const around = text.slice(Math.max(0, match.index - 120), match.index + 800);
+      const onLe = ident.startsWith("MCP_LE_") || /from\(\s*["']crm_le_bookings["']\s*\)/.test(text.slice(Math.max(0, match.index - 400), match.index));
+      if (!onLe) continue;
+      if (/42703|PGRST204|missingDbColumn|queryWithOptionalColumn/.test(around)) continue;
+      errors.push(`${file.replace(process.cwd() + "/", "")} sélectionne ${column} (${migration}) sans repli si la colonne n’existe pas`);
+    }
+  }
+}
+
 if (errors.length) {
   console.error(`[migrations] ${errors.length} problème(s) :`);
   for (const line of errors) console.error(`  - ${line}`);
