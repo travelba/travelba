@@ -407,6 +407,12 @@ test("fiche_client et grand_livre retrouvent Prénom Nom", async () => {
         eq() {
           return api;
         },
+        in() {
+          return api;
+        },
+        is() {
+          return api;
+        },
         not() {
           return api;
         },

@@ -417,6 +417,33 @@ export async function readTableauDeBord() {
   };
 }
 
+/** Débits Séjour encore postés sur un dossier Hors agence : ils ne comptent pas dans l’encours. */
+async function offAgencyStayAmounts(admin: SupabaseClient, customerId: string) {
+  const totals = new Map<string, number>();
+  const { data: stays, error } = await admin
+    .from("crm_bookings")
+    .select("id")
+    .eq("client_settles_stay", true)
+    .or(`customer_id.eq.${customerId},billing_customer_id.eq.${customerId}`);
+  if (error || !stays?.length) return totals;
+  const ids = (stays as { id: string }[]).map((row) => row.id);
+  const { data: txs } = await admin
+    .from("crm_transactions")
+    .select("amount, currency")
+    .in("booking_id", ids)
+    .eq("direction", "debit")
+    .eq("kind", "booking")
+    .is("external_id", null)
+    .eq("status", "posted");
+  for (const row of (txs || []) as { amount?: number | string | null; currency?: string | null }[]) {
+    const amount = Number(row.amount);
+    if (!Number.isFinite(amount)) continue;
+    const currency = (row.currency || "EUR").toUpperCase();
+    totals.set(currency, (totals.get(currency) || 0) + amount);
+  }
+  return totals;
+}
+
 function customerHay(row: CustomerListRow) {
   return [row.first_name, row.last_name, row.usage_name, row.company_name, row.email, row.phone].filter(Boolean).join(" ");
 }
@@ -527,6 +554,7 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
   if (found.kind === "none") return { introuvable: true };
   if (found.kind === "many") return { choix: found.customers.map(customerLine) };
   const customer = found.customer;
+  const offAgency = await offAgencyStayAmounts(admin, customer.id);
   const [{ data: balances }, { data: docs }] = await Promise.all([
     admin.from("crm_customer_balances").select("currency, balance").eq("customer_id", customer.id),
     admin
@@ -539,12 +567,16 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
       .order("expires_on")
       .limit(20),
   ]);
-  const wallets = ((balances || []) as { currency: string; balance: number | string }[]).map((row) => ({
-    devise: row.currency || "EUR",
-    solde: formatMoney(Number(row.balance), row.currency || "EUR"),
-    solde_valeur: Number(row.balance),
-    sens: Number(row.balance) > 0 ? "avoir" : Number(row.balance) < 0 ? "reste à payer" : "soldé",
-  }));
+  const wallets = ((balances || []) as { currency: string; balance: number | string }[]).map((row) => {
+    const currency = row.currency || "EUR";
+    const value = Number(row.balance) + (offAgency.get(currency.toUpperCase()) || 0);
+    return {
+      devise: currency,
+      solde: formatMoney(value, currency),
+      solde_valeur: value,
+      sens: value > 0 ? "avoir" : value < 0 ? "reste à payer" : "soldé",
+    };
+  });
   const pieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]);
   return {
     ...customerLine(customer),
