@@ -152,6 +152,31 @@ describe("préparer la facture MB3M", () => {
     assert.match(result.erreur || "", /2005/);
   });
 
+  it("montre l’avertissement Amadeus sans le compter comme une erreur", async () => {
+    const result = await statutFactureMb3m(
+      { reference: "TB-2026-0044" },
+      deps({
+        loadInvoices: async () => [
+          {
+            piece_number: "2157",
+            lines: [line],
+            amount: 561.19,
+            printed_at: null,
+            attempt_status: null,
+            attempt_error: null,
+            warning: "La facture Amadeus n° 2005 n’a pas été déplacée dans MB3M : facture fournisseur soldée.",
+            attempt_started_at: null,
+            attempt_started_by: null,
+            updated_at: "2026-11-03T10:40:00.000Z",
+          },
+        ],
+      })
+    );
+    assert.equal(result.erreur, null);
+    assert.match(result.avertissement || "", /2005/);
+    assert.match(result.avertissement || "", /soldée/);
+  });
+
   it("refuse un dossier sans identifiant", async () => {
     await assert.rejects(() => preparerFactureMb3m({}), (error: unknown) => {
       assert.ok(error instanceof McpWriteError);
