@@ -42,6 +42,7 @@ export type GdsRemoteInvoice = {
   travelers: { firstName: string; lastName: string }[];
   /** Émise dans MB3M (DatePrint). Une pro forma ne s’affiche pas au client. */
   printed?: boolean;
+  uid?: string | null;
 };
 
 export type GdsCoverage = {
@@ -56,6 +57,7 @@ export type GdsCoverage = {
   /** move : pas de dossier. here : déjà celui du séjour. other : un autre dossier. */
   placement: "move" | "here" | "other";
   printed: boolean;
+  pieceUid: string | null;
 };
 
 export type GdsSuggestion = {
@@ -152,6 +154,7 @@ export function planGdsFlights(input: {
         folderId: invoice.folderId,
         placement: placement(invoice.folderId, input.dossierFolderId),
         printed: invoice.printed === true,
+        pieceUid: invoice.uid?.trim() || null,
       });
       continue;
     }
@@ -329,6 +332,7 @@ function summaryInvoice(piece: {
   cancelled: boolean;
   amount: number | null;
   printed: boolean;
+  uid: string | null;
 }): Mb3mRemoteInvoice {
   return {
     number: piece.number,
@@ -340,6 +344,7 @@ function summaryInvoice(piece: {
     activityIds: [],
     travelers: [],
     printed: piece.printed,
+    uid: piece.uid,
   };
 }
 
@@ -390,7 +395,12 @@ export async function readMb3mGdsPlan(
     if (!needsDetail) continue;
     try {
       const detail = await mb3mGetInvoice(piece.number);
-      byNumber.set(piece.number, { ...detail, printed: detail.printed || piece.printed, amount: detail.amount ?? piece.amount });
+      byNumber.set(piece.number, {
+        ...detail,
+        printed: detail.printed || piece.printed,
+        amount: detail.amount ?? piece.amount,
+        uid: detail.uid || piece.uid,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "lecture";
       throw new Mb3mError(`La facture MB3M n° ${piece.number} n’a pas pu être lue. ${message}`, -1);
@@ -463,9 +473,11 @@ export async function finishMb3mGds(
     dateEnd: string | null;
     destination: string | null;
     destinationIso: string | null;
+    folderUid?: string | null;
   }
 ) {
   let folderId = input.folderId || input.plan.folderId;
+  let folderUid = input.folderUid || null;
   const needsFolder = input.plan.covered.some((row) => row.placement === "move");
   if (needsFolder && !folderId && input.plan.customerUid && input.dateStart && input.dateEnd) {
     const folder = await mb3mSaveFolder({
@@ -480,7 +492,20 @@ export async function finishMb3mGds(
       agencyUid: await mb3mSingleAgencyUid().catch(() => null),
     });
     folderId = folder.id;
+    folderUid = folder.uid || folderUid;
     input.plan.folderId = folder.id;
+  }
+  if (folderId && !folderUid) {
+    const known = await supabase
+      .from("crm_mb3m_pieces")
+      .select("folder_uid")
+      .eq("booking_id", input.bookingId)
+      .eq("realm", mb3mRealm())
+      .eq("folder_id", folderId)
+      .not("folder_uid", "is", null)
+      .limit(1);
+    if (known.error) throw new Mb3mError("Le dossier MB3M n’a pas pu être lu.", -1);
+    folderUid = ((known.data || []) as { folder_uid?: string | null }[])[0]?.folder_uid || null;
   }
   const groups = new Map<string, GdsCoverage[]>();
   for (const row of input.plan.covered) {
@@ -492,7 +517,12 @@ export async function finishMb3mGds(
     const row = rows[0];
     if (row.placement === "move" && folderId) {
       try {
-        await mb3mChangeFolder({ number, folderId });
+        await mb3mChangeFolder({
+          number,
+          folderId,
+          folderUid,
+          pieceUid: row.pieceUid,
+        });
         for (const item of rows) {
           item.placement = "here";
           item.folderId = folderId;

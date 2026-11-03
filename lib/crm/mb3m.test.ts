@@ -873,12 +873,28 @@ describe("règlements MB3M", () => {
     assert.equal(invoice.date, "2026-11-02");
     assert.deepEqual(invoice.travelers, [{ firstName: "Ada", lastName: "Lovelace" }]);
     let body = "";
-    await mb3mChangeFolder({ number: "3001", folderId: "01-0002007" }, async (_url, init) => {
-      body = String(init?.body);
-      assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IPieceService/ChangeFolder"');
-      return new Response(`<ChangeFolderResponse><ResultCode>1</ResultCode></ChangeFolderResponse>`);
-    });
-    assert.ok(body.indexOf("<FolderId>01-0002007</FolderId>") < body.indexOf("<Number>3001</Number>"));
+    await mb3mChangeFolder(
+      {
+        number: "2005",
+        folderId: "01-0002007",
+        folderUid: "b127ebaa-8fcd-4399-99c2-202611021224",
+        pieceUid: "314042fe-f472-46cc-bbc3-202611031018",
+      },
+      async (_url, init) => {
+        body = String(init?.body);
+        assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IFolderService/ChangeFolder"');
+        return new Response(`<ChangeFolderResponse><ResultCode>1</ResultCode></ChangeFolderResponse>`);
+      }
+    );
+    const request = body.slice(
+      body.indexOf("<FolderChangeFolderRequest"),
+      body.indexOf("</FolderChangeFolderRequest>") + "</FolderChangeFolderRequest>".length
+    );
+    assert.equal(
+      request,
+      `<FolderChangeFolderRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>01-0002007</FolderId><FolderIdentity><Id>01-0002007</Id><Uid>b127ebaa-8fcd-4399-99c2-202611021224</Uid></FolderIdentity><Number>2005</Number><PieceIdentity><Number>2005</Number><Uid>314042fe-f472-46cc-bbc3-202611031018</Uid></PieceIdentity></FolderChangeFolderRequest>`
+    );
+    assert.equal(body.includes("PieceChangeFolderRequest"), false);
   });
 
   it("lit la facture Amadeus 2005 par son PNR, même préfixée", async () => {

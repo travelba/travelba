@@ -129,6 +129,29 @@ describe("préparer la facture MB3M", () => {
     assert.equal(result.pieces[0]?.numero_mb3m, "4542");
   });
 
+  it("montre la dernière erreur même quand la pro forma 2157 est déjà numérotée", async () => {
+    const result = await statutFactureMb3m(
+      { reference: "TB-2026-0044" },
+      deps({
+        loadInvoices: async () => [
+          {
+            piece_number: "2157",
+            lines: [line],
+            amount: 561.19,
+            printed_at: null,
+            attempt_status: "failed",
+            attempt_error: "La facture Amadeus n° 2005 n’a pas pu être rangée dans le dossier.",
+            attempt_started_at: "2026-11-03T09:18:00.000Z",
+            attempt_started_by: "mcp",
+            updated_at: "2026-11-03T09:18:00.000Z",
+          },
+        ],
+      })
+    );
+    assert.equal(result.numero_mb3m, "2157");
+    assert.match(result.erreur || "", /2005/);
+  });
+
   it("refuse un dossier sans identifiant", async () => {
     await assert.rejects(() => preparerFactureMb3m({}), (error: unknown) => {
       assert.ok(error instanceof McpWriteError);

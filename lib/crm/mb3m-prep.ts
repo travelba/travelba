@@ -63,11 +63,20 @@ export function mb3mPreparationLockMessage(piece: Pick<Mb3mAttemptPiece, "attemp
 }
 
 export function mb3mPreparationView(piece: Mb3mAttemptPiece | null, now: number): Mb3mPreparationView {
-  if (!piece || (piece.pieceNumber || "").trim()) return { state: null, message: null, resume: false };
+  if (!piece) return { state: null, message: null, resume: false };
+  const numbered = Boolean((piece.pieceNumber || "").trim());
+  const error = (piece.attemptError || "").replace(/\s+/g, " ").trim();
+  if (numbered && piece.attemptStatus !== "failed" && !error) return { state: null, message: null, resume: false };
+  if (numbered) {
+    return {
+      state: "failed",
+      message: error || "La préparation MB3M n’a pas abouti.",
+      resume: true,
+    };
+  }
   if (mb3mPrepInProgress(piece, now)) {
     return { state: "running", message: mb3mPreparationLockMessage(piece, now), resume: false };
   }
-  const error = (piece.attemptError || "").replace(/\s+/g, " ").trim();
   const interrupted = piece.attemptStatus === "preparing" && !error;
   return {
     state: "failed",

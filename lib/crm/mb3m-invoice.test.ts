@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { mb3mLineSignature } from "./mb3m-account";
 import { Mb3mError } from "./mb3m";
 import {
   buildMb3mInvoiceContext,
@@ -516,7 +517,7 @@ describe("facture MB3M", () => {
         ),
       (error: unknown) => error instanceof Mb3mError && error.resultCode === -504
     );
-    assert.deepEqual(calls, ["add"]);
+    assert.deepEqual(calls, ["add", "save"]);
 
     calls.length = 0;
     const failing = deps(async () => {
@@ -531,7 +532,48 @@ describe("facture MB3M", () => {
       () => runMb3mInvoice(context(), failing),
       (error: unknown) => error instanceof Mb3mError && /4531/.test(error.message)
     );
-    assert.deepEqual(calls, ["add", "cancel 4531", "cancel 4533"]);
+    assert.deepEqual(calls, ["add", "cancel 4531", "cancel 4533", "save"]);
+  });
+
+  it("reprend la pro forma 2157 sans nouvelle pièce ni annulation", async () => {
+    const lines = context().lines;
+    const open = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002007",
+      folderUid: "b127ebaa-8fcd-4399-99c2-202611021224",
+      pieceNumber: "2157",
+      amount: 561.19,
+      signature: mb3mLineSignature(lines),
+      transactionIds: lines.map((line) => line.transactionId),
+    });
+    let added = 0;
+    let cancelled = 0;
+    const result = await runMb3mInvoice(context(), {
+      now: () => Date.now(),
+      claim: async () => ({ piece: { ...open }, created: false, owned: true }),
+      save: async () => undefined,
+      remove: async () => undefined,
+      savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => ({ id: "01-0002007", uid: open.folderUid || "" }),
+      addInvoice: async () => {
+        added += 1;
+        return { number: "2158", uid: "new" };
+      },
+      findPiece: async () => "open",
+      cancelInvoice: async () => {
+        cancelled += 1;
+      },
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+    });
+    assert.equal(result.number, "2157");
+    assert.equal(result.created, false);
+    assert.equal(result.replaced, false);
+    assert.equal(added, 0);
+    assert.equal(cancelled, 0);
   });
 
   it("verrouille une préparation en cours, puis reprend quand elle est périmée ou en échec", async () => {
@@ -708,6 +750,31 @@ describe("facture MB3M", () => {
     );
     assert.equal(failed.state, "failed");
     assert.equal(failed.message, "Code interne -22 : commission");
+    const numbered = mb3mPreparationView(
+      {
+        pieceNumber: "2157",
+        attemptStatus: "failed",
+        attemptError: "La facture Amadeus n° 2005 n’a pas pu être rangée dans le dossier.",
+        attemptStartedAt: new Date(started).toISOString(),
+        attemptStartedBy: "mcp",
+      },
+      now
+    );
+    assert.equal(numbered.state, "failed");
+    assert.match(numbered.message || "", /2005/);
+    assert.equal(
+      mb3mPreparationView(
+        {
+          pieceNumber: "2157",
+          attemptStatus: null,
+          attemptError: null,
+          attemptStartedAt: null,
+          attemptStartedBy: null,
+        },
+        now
+      ).state,
+      null
+    );
     const legacy = mb3mPreparationView(
       {
         pieceNumber: null,

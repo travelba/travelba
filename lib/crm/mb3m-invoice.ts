@@ -548,7 +548,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
   if (claimed.busy || (!mine && mb3mPrepInProgress(piece, deps.now()))) {
     throw new Mb3mError(mb3mPreparationLockMessage(piece, deps.now()), 0);
   }
-  let trackFailure = !(piece.pieceNumber || "").trim();
+  let rememberFailure = true;
   try {
     if (!ctx.lines.length) {
       if (piece.pieceNumber && !piece.printedAt) {
@@ -556,7 +556,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
         if (state === "open" && piece.folderId) await deps.cancelInvoice(piece.folderId, piece.pieceNumber);
         if (state !== "printed") await deps.remove(piece.id);
       } else if (created) {
-        trackFailure = false;
+        rememberFailure = false;
         await deps.remove(piece.id);
       }
       throw new Mb3mError(mb3mInvoiceBlocker(ctx) || "Aucune dépense de ce séjour n’est au grand livre.", 0);
@@ -617,14 +617,14 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     const blocker = mb3mInvoiceBlocker(ctx);
     if (blocker && !piece.customerUid) {
       if (created) {
-        trackFailure = false;
+        rememberFailure = false;
         await deps.remove(piece.id);
       }
       throw new Mb3mError(blocker, 0);
     }
     if (blocker && !piece.pieceNumber) {
       if (created) {
-        trackFailure = false;
+        rememberFailure = false;
         await deps.remove(piece.id);
       }
       throw new Mb3mError(blocker, 0);
@@ -707,7 +707,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
       savedPiece.customerUid
     );
   } catch (error) {
-    if (trackFailure) {
+    if (rememberFailure) {
       const message = (error instanceof Error ? error.message : "La facture MB3M n’a pas abouti.")
         .replace(/\s+/g, " ")
         .trim()
