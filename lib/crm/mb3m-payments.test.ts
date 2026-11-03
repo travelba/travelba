@@ -73,6 +73,30 @@ describe("plan des règlements MB3M", () => {
     assert.equal(rows.length, 0);
   });
 
+  it("lettre le reste du règlement 2149 même si un autre séjour est ouvert", () => {
+    const [row] = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2156",
+      invoiceAmount: 561.19,
+      credits: [credit({ amount: 5330.29, date: "2026-10-15" })],
+      otherOpenBookings: 1,
+      remote: [
+        {
+          number: "2149",
+          reference: "OZB",
+          amount: 5330.29,
+          date: "2026-10-15",
+          invoiceNumber: "2148",
+          unmatched: 561.19,
+        },
+      ],
+    });
+    assert.equal(row?.existingNumber, "2149");
+    assert.equal(row?.matched, 561.19);
+    assert.equal(row?.alreadyMatched, false);
+    assert.equal(row?.attributeBooking, false);
+  });
+
   it("prend le crédit déjà posé sur ce séjour", () => {
     const [row] = plan({
       bookingId: BOOKING,

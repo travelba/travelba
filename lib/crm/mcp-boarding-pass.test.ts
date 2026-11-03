@@ -317,8 +317,14 @@ test("un PDF Transavia part une fois par passager, puis plus", async () => {
     assert.equal(crm.sends[0].variables?.["3"], "TO 3004");
     assert.equal(crm.sends[0].variables?.["4"], "Paris (Orly) → Agadir");
     assert.match(crm.sends[0].variables?.["5"] || "", /07h55/);
-    assert.equal(JSON.stringify(crm.sends).includes("Noah"), false);
-    assert.equal(JSON.stringify(crm.sends).includes("9Z"), false);
+    // La variable 1 est un jeton signé : « 9Z » y apparaît au hasard, ce n’est pas le siège.
+    const spoken = crm.sends.map((row) => {
+      const fields = { ...(row.variables || {}) };
+      delete fields["1"];
+      return fields;
+    });
+    assert.equal(JSON.stringify(spoken).includes("Noah"), false);
+    assert.equal(JSON.stringify(spoken).includes("9Z"), false);
     assert.deepEqual(
       crm.tables.crm_whatsapp_messages.map((row) => row.dedupe_key),
       [boardingPassSendKey(DOC, 1, 3), boardingPassSendKey(DOC, 2, 3), boardingPassSendKey(DOC, 3, 3)]

@@ -107,13 +107,23 @@ export function planMb3mPayments(input: {
     const known = linked.get(credit.id);
     if (known?.invoiceNumber || (known && known.matchedAmount > 0)) continue;
     if (credit.bookingId && credit.bookingId !== input.bookingId) continue;
-    if (!credit.bookingId && input.otherOpenBookings > 0) continue;
     if (remaining <= CENT) continue;
     const matched = cents(Math.min(credit.amount, remaining));
     if (matched <= CENT) continue;
     const reference = mb3mPaymentReference(credit.id);
     const account = mb3mPaymentAccount(credit.source, credit.label);
     const base = { credit, bank: account.bank, mode: account.mode, reference };
+    const remote = input.remoteReady
+      ? input.remote.find((payment) => payment.reference.trim() === reference) ||
+        input.remote.find(
+          (payment) =>
+            !taken.has(payment.number) &&
+            payment.date.slice(0, 10) === credit.date &&
+            sameMoney(payment.amount, credit.amount)
+        ) ||
+        null
+      : null;
+    if (!credit.bookingId && input.otherOpenBookings > 0 && !remote && !known?.paymentNumber) continue;
     if (!input.remoteReady && !known?.paymentNumber) {
       plans.push({
         ...base,
@@ -127,16 +137,6 @@ export function planMb3mPayments(input: {
       });
       continue;
     }
-    const remote = input.remoteReady
-      ? input.remote.find((payment) => payment.reference.trim() === reference) ||
-        input.remote.find(
-          (payment) =>
-            !taken.has(payment.number) &&
-            payment.date.slice(0, 10) === credit.date &&
-            sameMoney(payment.amount, credit.amount)
-        ) ||
-        null
-      : null;
     if (remote) {
       taken.add(remote.number);
       const cap = remote.unmatched == null ? (remote.invoiceNumber ? 0 : remote.amount) : remote.unmatched;
@@ -159,7 +159,11 @@ export function planMb3mPayments(input: {
       plans.push({
         ...base,
         matched: use,
-        attributeBooking: !credit.bookingId && credit.amount <= remaining + CENT && sameMoney(use, credit.amount),
+        attributeBooking:
+          input.otherOpenBookings === 0 &&
+          !credit.bookingId &&
+          credit.amount <= remaining + CENT &&
+          sameMoney(use, credit.amount),
         existingNumber: remote.number,
         alreadyMatched: false,
         lockedInvoice: null,
@@ -412,15 +416,16 @@ export async function recordMb3mInvoicePayments(
   const seen = new Set<string>();
   const unique = credits.filter((credit) => (seen.has(credit.id) ? false : (seen.add(credit.id), true)));
   let remote: Mb3mRemotePayment[] = [];
-  let remoteReady = Boolean(input.customerUid.trim());
+  const remoteReady = Boolean(input.customerUid.trim());
   if (remoteReady) {
     try {
       remote = await mb3mFindCustomerPayments(input.customerUid);
     } catch (err) {
-      console.error("[mb3m] lecture des règlements", err instanceof Error ? err.message : err);
-      remote = [];
-      remoteReady = false;
+      const message = err instanceof Error ? err.message : "lecture";
+      throw new Mb3mError(`Les règlements MB3M n’ont pas pu être lus. ${message}`, -1);
     }
+  } else if (unique.length) {
+    throw new Mb3mError("Les règlements MB3M n’ont pas pu être lus. La fiche client n’est pas connue.", -1);
   }
   const stored = ((links.data || []) as {
     id?: string;
@@ -482,7 +487,7 @@ export async function recordMb3mInvoicePayments(
     gdsInvoices: input.gdsInvoices || [],
     otherOpenBookings: ((peers.data || []) as { id: string }[]).length,
   });
-  return applyMb3mPaymentPlans(
+  const reglements = await applyMb3mPaymentPlans(
     { folderId: input.folderId, invoiceNumber: input.invoiceNumber, plans: [...plans, ...gdsPlans] },
     {
       savePayment: (plan) =>
@@ -569,4 +574,7 @@ export async function recordMb3mInvoicePayments(
       },
     }
   );
+  const failed = reglements.find((row) => row.statut === "erreur");
+  if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
+  return reglements;
 }

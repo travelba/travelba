@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { mb3mAmadeusSentence } from "./mb3m-prep";
-import { chargesWithoutGdsFlights, gdsFlightsFromStay, planGdsFlights, type GdsFlight, type GdsRemoteInvoice } from "./mb3m-gds";
+import { chargesWithoutGdsFlights, gdsFlightsFromStay, mb3mKnownCustomerUid, planGdsFlights, type GdsFlight, type GdsRemoteInvoice } from "./mb3m-gds";
 
 function flight(patch: Partial<GdsFlight> = {}): GdsFlight {
   return {
@@ -99,6 +99,44 @@ describe("vols déjà dans MB3M via Amadeus", () => {
       planGdsFlights({ flights: [flight()], invoices: [invoice()], dossierFolderId: null }).covered
     );
     assert.equal(own.length, 0);
+  });
+
+  it("retire le vol Air France déjà facturé sous le PNR Y2FYWL", () => {
+    const plan = planGdsFlights({
+      flights: [
+        flight({
+          label: "Air France Paris Charles-de-Gaulle à Marrakech Ménara",
+          pnrs: ["Y2FYWL"],
+          amount: 1197.44,
+          transactionId: "tx-af",
+        }),
+      ],
+      invoices: [
+        invoice({
+          number: "2005",
+          refCommand: "Y2FYWL",
+          folderId: null,
+          amount: 1197.44,
+          printed: true,
+        }),
+      ],
+      dossierFolderId: "01-0002007",
+    });
+    assert.equal(plan.error, null);
+    assert.equal(plan.covered[0]?.invoiceNumber, "2005");
+    assert.equal(plan.covered[0]?.pnr, "Y2FYWL");
+    assert.equal(plan.covered[0]?.placement, "move");
+    const charges = chargesWithoutGdsFlights(
+      [
+        { id: "tx-af", external_id: "booking:1:item:item-1", amount: 1197.44, kind: "booking", direction: "debit" },
+        { id: "fees", external_id: "booking:1:item:fees", amount: 561.19, kind: "booking", direction: "debit" },
+      ],
+      plan.covered
+    );
+    assert.deepEqual(charges.map((row) => row.id), ["fees"]);
+    assert.equal(charges[0]?.amount, 561.19);
+    assert.equal(mb3mKnownCustomerUid(null, ["92c5a491-b764-4c07-9a08-ebf0e56a21a4"]), "92c5a491-b764-4c07-9a08-ebf0e56a21a4");
+    assert.equal(mb3mKnownCustomerUid("party-uid", ["autre"]), "party-uid");
   });
 
   it("lit le PNR de la carte", () => {
