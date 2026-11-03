@@ -28,7 +28,6 @@ import {
   mb3mGetInvoice,
   MB3M_PAYMENT_MODES,
   mb3mPaymentAccount,
-  mb3mPaymentMode,
   mb3mPaymentReference,
   mb3mSavePayment,
   mb3mSavePerson,
@@ -738,17 +737,55 @@ describe("état d’une pièce MB3M", () => {
 });
 
 describe("règlements MB3M", () => {
-  it("choisit le compte selon la source", () => {
-    assert.deepEqual(mb3mPaymentAccount("revolut", "Virement"), { mode: "BankTransfer", bank: "REVOLUT" });
-    assert.deepEqual(mb3mPaymentAccount("stripe", "Règlement"), { mode: "CreditCard", bank: "STRIPE" });
-    assert.deepEqual(mb3mPaymentAccount("pliant", "Carte virtuelle"), { mode: "CreditCard", bank: "PLIANT" });
-    assert.deepEqual(mb3mPaymentAccount("manual", "Virement Qonto"), { mode: "BankTransfer", bank: "QONTO" });
-    assert.deepEqual(mb3mPaymentAccount("manual", "Chèque"), { mode: "Cheque", bank: "VIREMENT" });
-    assert.equal(mb3mPaymentMode("manual", "Prélèvement SEPA"), "DirectDebit");
-    assert.equal(mb3mPaymentMode("manual", "Espèces"), "Cash");
-    assert.equal(mb3mPaymentMode(null, null), "Unknown");
-    assert.ok(MB3M_PAYMENT_MODES.includes(mb3mPaymentMode("revolut", "Virement")));
-    assert.equal((MB3M_PAYMENT_MODES as readonly string[]).includes("Virement"), false);
+  it("choisit le PaymentMode du schéma Partners", () => {
+    const emitted = [
+      mb3mPaymentAccount("revolut", "Virement"),
+      mb3mPaymentAccount("manual", "Virement Qonto"),
+      mb3mPaymentAccount("stripe", "Paiement en ligne"),
+      mb3mPaymentAccount("manual", "Carte physique"),
+      mb3mPaymentAccount("manual", "Chèque"),
+      mb3mPaymentAccount("manual", "Espèces"),
+      mb3mPaymentAccount("manual", "Prélèvement SEPA"),
+      mb3mPaymentAccount("manual", "Ordre de prélèvement"),
+      mb3mPaymentAccount("pliant", "Carte virtuelle Pliant"),
+      mb3mPaymentAccount("pliant", "Carte virtuelle Pliant", 12),
+      mb3mPaymentAccount(null, null),
+      mb3mPaymentAccount("manual", "libellé inconnu"),
+    ];
+    assert.deepEqual([...MB3M_PAYMENT_MODES], [
+      "None",
+      "BankTransfer",
+      "BankOrder",
+      "OnlinePaymentCard",
+      "PaymentCard",
+      "Check",
+      "Cash",
+      "Custom",
+    ]);
+    for (const account of emitted) {
+      assert.equal(MB3M_PAYMENT_MODES.includes(account.mode), true);
+    }
+    for (const rejected of ["Virement", "Carte", "CreditCard", "Cheque", "Unknown", "DirectDebit", "Other"]) {
+      assert.equal((MB3M_PAYMENT_MODES as readonly string[]).includes(rejected), false);
+    }
+    assert.equal(emitted[0]?.mode, "BankTransfer");
+    assert.equal(emitted[0]?.bank, "REVOLUT");
+    assert.equal(emitted[1]?.mode, "BankTransfer");
+    assert.equal(emitted[1]?.bank, "QONTO");
+    assert.equal(emitted[2]?.mode, "OnlinePaymentCard");
+    assert.equal(emitted[3]?.mode, "PaymentCard");
+    assert.equal(emitted[4]?.mode, "Check");
+    assert.equal(emitted[5]?.mode, "Cash");
+    assert.equal(emitted[6]?.mode, "BankOrder");
+    assert.equal(emitted[7]?.mode, "BankOrder");
+    assert.equal(emitted[8]?.mode, "PaymentCard");
+    assert.equal(emitted[8]?.customModeId, null);
+    assert.equal(emitted[9]?.mode, "Custom");
+    assert.equal(emitted[9]?.customModeId, 12);
+    assert.equal(emitted[10]?.mode, "None");
+    assert.match(emitted[10]?.warning || "", /None/);
+    assert.equal(emitted[11]?.mode, "None");
+    assert.match(emitted[11]?.warning || "", /non reconnu/);
     assert.equal(mb3mPaymentReference("0173733f-95a6-4115-8e49-e81cb3e875c5"), "CRM 0173733f-95a6-4115-8e49-e81cb3e875c5");
   });
 

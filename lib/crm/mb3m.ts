@@ -479,40 +479,99 @@ function travelersXml(travelers: Mb3mTraveler[] | undefined) {
 }
 
 /**
- * mB3M.PartnersApi.Schema.PaymentMode (DataContract).
- * `Virement` et `Carte` sont refusés à la désérialisation.
- * Le WSDL (`FolderService.svc?singleWsdl`) et les XSD répondent 401 sans le login agence,
- * qui n’est pas dans cet environnement. Les noms envoyés sont ceux du type :
- * Unknown, Cash, Cheque, CreditCard, BankTransfer, DirectDebit, Other.
+ * PaymentMode du WSDL Partners (FolderService singleWsdl).
+ * None, BankTransfer, BankOrder, OnlinePaymentCard, PaymentCard, Check, Cash, Custom.
+ * Custom vaut 99. Il exige CustomModeId.
  */
-export const MB3M_PAYMENT_MODES = ["Unknown", "Cash", "Cheque", "CreditCard", "BankTransfer", "DirectDebit", "Other"] as const;
+export const MB3M_PAYMENT_MODES = [
+  "None",
+  "BankTransfer",
+  "BankOrder",
+  "OnlinePaymentCard",
+  "PaymentCard",
+  "Check",
+  "Cash",
+  "Custom",
+] as const;
 
 export type Mb3mPaymentMode = (typeof MB3M_PAYMENT_MODES)[number];
 
-/** Mode CRM → valeur du schéma. Un virement Revolut ou Qonto est BankTransfer, une carte (Stripe, Pliant) est CreditCard. */
-export function mb3mPaymentMode(source: string | null | undefined, label: string | null | undefined): Mb3mPaymentMode {
-  const text = `${source || ""} ${label || ""}`
+export type Mb3mPaymentAccount = {
+  mode: Mb3mPaymentMode;
+  bank: string;
+  customModeId: number | null;
+  warning: string | null;
+};
+
+const PAYMENT_MODE_UNKNOWN = "Mode de règlement non reconnu. MB3M reçoit None.";
+
+function paymentText(source: string | null | undefined, label: string | null | undefined) {
+  return `${source || ""} ${label || ""}`
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (/\bcheque\b/.test(text)) return "Cheque";
-  if (text.includes("prelevement") || text.includes("sepa")) return "DirectDebit";
-  if (text.includes("espece") || text.includes("cash")) return "Cash";
-  if (source === "stripe" || source === "pliant" || /stripe|pliant|carte|card|visa|mastercard|amex/.test(text)) return "CreditCard";
-  if (source === "revolut" || source === "manual" || /revolut|qonto|virement|transfer|wire/.test(text)) return "BankTransfer";
-  if (!text.trim()) return "Unknown";
-  return "Other";
+}
+
+function isPliantVirtualCard(text: string) {
+  return text.includes("carte virtuelle pliant");
+}
+
+/**
+ * Mode CRM → PaymentMode du schéma.
+ * Carte virtuelle Pliant : Custom si un CustomModeId est déjà configuré, sinon PaymentCard.
+ */
+export function mb3mPaymentMode(
+  source: string | null | undefined,
+  label: string | null | undefined,
+  pliantCustomModeId?: number | null
+): Mb3mPaymentMode {
+  return mb3mPaymentAccount(source, label, pliantCustomModeId).mode;
 }
 
 /** Compte bancaire MB3M d’un crédit CRM, et le PaymentMode du schéma. */
-export function mb3mPaymentAccount(source: string | null | undefined, label: string | null | undefined) {
-  const text = `${source || ""} ${label || ""}`.toLowerCase();
-  const mode = mb3mPaymentMode(source, label);
-  if (source === "revolut" || text.includes("revolut")) return { mode, bank: "REVOLUT" };
-  if (source === "stripe" || text.includes("stripe")) return { mode, bank: "STRIPE" };
-  if (source === "pliant" || text.includes("pliant")) return { mode, bank: "PLIANT" };
-  if (text.includes("qonto")) return { mode, bank: "QONTO" };
-  return { mode, bank: "VIREMENT" };
+export function mb3mPaymentAccount(
+  source: string | null | undefined,
+  label: string | null | undefined,
+  pliantCustomModeId?: number | null
+): Mb3mPaymentAccount {
+  const text = paymentText(source, label);
+  const raw = `${source || ""} ${label || ""}`.toLowerCase();
+  const bank = source === "revolut" || raw.includes("revolut")
+    ? "REVOLUT"
+    : source === "stripe" || raw.includes("stripe")
+      ? "STRIPE"
+      : source === "pliant" || raw.includes("pliant")
+        ? "PLIANT"
+        : raw.includes("qonto")
+          ? "QONTO"
+          : "VIREMENT";
+  const customId = Number.isInteger(pliantCustomModeId) && (pliantCustomModeId as number) > 0 ? (pliantCustomModeId as number) : null;
+  const none = (warning: string | null = PAYMENT_MODE_UNKNOWN): Mb3mPaymentAccount => ({
+    mode: "None",
+    bank,
+    customModeId: null,
+    warning,
+  });
+  if (/\bcheque\b/.test(text)) return { mode: "Check", bank, customModeId: null, warning: null };
+  if (text.includes("prelevement") || text.includes("sepa") || /\bordre\b/.test(text)) {
+    return { mode: "BankOrder", bank, customModeId: null, warning: null };
+  }
+  if (text.includes("espece") || /\bcash\b/.test(text)) return { mode: "Cash", bank, customModeId: null, warning: null };
+  if (isPliantVirtualCard(text)) {
+    if (customId) return { mode: "Custom", bank, customModeId: customId, warning: null };
+    return { mode: "PaymentCard", bank, customModeId: null, warning: null };
+  }
+  if (source === "stripe" || text.includes("stripe") || text.includes("paiement en ligne") || text.includes("en ligne")) {
+    return { mode: "OnlinePaymentCard", bank, customModeId: null, warning: null };
+  }
+  if (source === "pliant" || /carte|card|visa|mastercard|amex/.test(text)) {
+    return { mode: "PaymentCard", bank, customModeId: null, warning: null };
+  }
+  if (source === "revolut" || /revolut|qonto|virement|transfer|wire/.test(text)) {
+    return { mode: "BankTransfer", bank, customModeId: null, warning: null };
+  }
+  if (!text.trim()) return none();
+  return none();
 }
 
 export function mb3mPaymentReference(transactionId: string) {
@@ -531,10 +590,12 @@ export async function mb3mSavePayment(
     reference: string;
     bank: string;
     mode: string;
+    customModeId?: number | null;
   },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Payment>${tag("Amount", money(input.amount))}${tag("BankAccount", input.bank.trim())}${tag("Date", `${dayStamp(input.date)}T00:00:00`)}${tag("FolderId", input.folderId.trim())}${tag("Mode", input.mode.trim())}${tag("Reference", input.reference.trim())}</Payment></FolderSavePaymentRequest>`;
+  const custom = input.mode === "Custom" && input.customModeId ? tag("CustomModeId", input.customModeId) : "";
+  const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Payment>${tag("Amount", money(input.amount))}${tag("BankAccount", input.bank.trim())}${custom}${tag("Date", `${dayStamp(input.date)}T00:00:00`)}${tag("FolderId", input.folderId.trim())}${tag("Mode", input.mode.trim())}${tag("Reference", input.reference.trim())}</Payment></FolderSavePaymentRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "SavePayment", inner, fetchImpl);
   assertOperation(xml);
   const number = mb3mXmlText(xml, "Number");

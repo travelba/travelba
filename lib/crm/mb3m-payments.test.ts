@@ -411,6 +411,7 @@ describe("envoi des règlements", () => {
       targetInvoice: null,
       bank: "REVOLUT",
       mode: "BankTransfer",
+      customModeId: null,
       reference: `CRM ${CREDIT_ID}`,
       notice: null,
       ...patch,

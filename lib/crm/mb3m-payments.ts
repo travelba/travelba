@@ -48,6 +48,7 @@ export type Mb3mPlannedPayment = {
   targetInvoice: string | null;
   bank: string;
   mode: string;
+  customModeId: number | null;
   reference: string;
   /** Rapprochement par le montant, sans lien CRM : à montrer, sans échec. */
   notice: string | null;
@@ -172,7 +173,14 @@ export function planMb3mPayments(input: {
     if (matched <= CENT) continue;
     const reference = mb3mPaymentReference(credit.id);
     const account = mb3mPaymentAccount(credit.source, credit.label);
-    const base = { credit, bank: account.bank, mode: account.mode, reference, notice: null as string | null };
+    const base = {
+      credit,
+      bank: account.bank,
+      mode: account.mode,
+      customModeId: account.customModeId,
+      reference,
+      notice: account.warning,
+    };
     const hit = input.remoteReady
       ? matchMb3mRemotePayment({
           credit,
@@ -194,13 +202,17 @@ export function planMb3mPayments(input: {
           lockedInvoice: null,
           hold: null,
           targetInvoice: null,
-          notice: `Le règlement MB3M n° ${known.paymentNumber} identifié pour ce crédit n’a pas été retrouvé.`,
+          notice: [account.warning, `Le règlement MB3M n° ${known.paymentNumber} identifié pour ce crédit n’a pas été retrouvé.`]
+            .filter(Boolean)
+            .join(" "),
         });
       }
       continue;
     }
     const remote = hit?.payment || null;
-    const notice = remote && hit && !hit.identified ? mb3mPaymentSourceWarning(remote) : null;
+    const notice = [account.warning, remote && hit && !hit.identified ? mb3mPaymentSourceWarning(remote) : null]
+      .filter(Boolean)
+      .join(" ") || null;
     const remoteLeft = Boolean(remote && remote.unmatched > CENT);
     const coveredHere = input.links
       .filter((link) => link.transactionId === credit.id && link.invoiceNumber?.trim() === invoiceNumber)
@@ -218,7 +230,7 @@ export function planMb3mPayments(input: {
         lockedInvoice: null,
         hold: MB3M_PAYMENT_LOOKUP_HOLD,
         targetInvoice: null,
-        notice: null,
+        notice: account.warning,
       });
       continue;
     }
@@ -269,7 +281,7 @@ export function planMb3mPayments(input: {
       lockedInvoice: null,
       hold: null,
       targetInvoice: null,
-      notice: null,
+      notice: account.warning,
     });
     remaining = cents(remaining - matched);
   }
@@ -437,8 +449,9 @@ export function planMb3mGdsMatchings(input: {
         targetInvoice: invoice.number,
         bank: account.bank,
         mode: account.mode,
+        customModeId: account.customModeId,
         reference: mb3mPaymentReference(credit.id),
-        notice: null,
+        notice: account.warning,
       });
       used.set(credit.id, cents((used.get(credit.id) || 0) + matched));
       remaining = cents(remaining - matched);
@@ -606,6 +619,7 @@ export async function recordMb3mInvoicePayments(
           reference: plan.reference,
           bank: plan.bank,
           mode: plan.mode,
+          customModeId: plan.customModeId,
         }),
       writeMatching: (plan, paymentNumber) =>
         mb3mWriteMatching({
