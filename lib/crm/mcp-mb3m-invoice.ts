@@ -18,6 +18,7 @@ type InvoiceRow = {
   printed_at: string | null;
   attempt_status: string | null;
   attempt_error: string | null;
+  warning?: string | null;
   attempt_started_at: string | null;
   attempt_started_by: string | null;
   updated_at: string | null;
@@ -58,7 +59,7 @@ async function loadInvoices(admin: SupabaseClient, bookingId: string): Promise<I
   const { data, error } = await admin
     .from("crm_mb3m_pieces")
     .select(
-      "piece_number, lines, amount, printed_at, attempt_status, attempt_error, attempt_started_at, attempt_started_by, updated_at"
+      "piece_number, lines, amount, printed_at, attempt_status, attempt_error, warning, attempt_started_at, attempt_started_by, updated_at"
     )
     .eq("booking_id", bookingId)
     .eq("kind", "invoice")
@@ -102,7 +103,7 @@ function statutOf(result: Mb3mInvoiceResult) {
 }
 
 function readStatut(row: InvoiceRow | null) {
-  if (!row) return { statut: "a_preparer", libelle: "À préparer", erreur: null as string | null };
+  if (!row) return { statut: "a_preparer", libelle: "À préparer", erreur: null as string | null, avertissement: null as string | null };
   const preparation = mb3mPreparationFromRow(row);
   const chip = mb3mInvoiceChip({
     marginStale: false,
@@ -121,10 +122,12 @@ function readStatut(row: InvoiceRow | null) {
             ? "pro_forma"
             : "a_preparer";
   const stored = (row.attempt_error || "").replace(/\s+/g, " ").trim();
+  const warning = (row.warning || "").replace(/\s+/g, " ").trim();
   return {
     statut,
     libelle: chip.label,
     erreur: stored || (preparation.state === "failed" ? preparation.message : null),
+    avertissement: warning || null,
   };
 }
 
@@ -178,13 +181,16 @@ export async function preparerFactureMb3m(input: Record<string, unknown>, deps: 
         pnr: row.pnr,
         numero_mb3m: row.invoiceNumber,
         placement: row.placement,
-        texte: `${row.label} : déjà dans MB3M via Amadeus (facture n°${row.invoiceNumber}).`,
+        texte: row.moveWarning
+          ? `${row.label} : déjà dans MB3M via Amadeus (facture n°${row.invoiceNumber}). ${row.moveWarning}`
+          : `${row.label} : déjà dans MB3M via Amadeus (facture n°${row.invoiceNumber}).`,
       })),
       suggestions_amadeus: (result.suggestionsAmadeus || []).map((row) => ({
         libelle: row.label,
         numero_mb3m: row.invoiceNumber,
       })),
       erreur: null,
+      avertissement: result.avertissement || null,
       auteur,
     };
   } catch (err) {
@@ -215,6 +221,7 @@ export async function preparerFactureMb3m(input: Record<string, unknown>, deps: 
       vols_amadeus: [],
       suggestions_amadeus: [],
       erreur: err.message,
+      avertissement: null,
       auteur,
     };
   }
@@ -240,6 +247,7 @@ export async function statutFactureMb3m(input: Record<string, unknown>, deps: Mb
     lignes: view.lignes,
     montant: view.montant,
     erreur: read.erreur,
+    avertissement: read.avertissement,
     auteur: mb3mActorLabel(current?.attempt_started_by),
     pieces: pieces
       .filter((row) => (row.piece_number || "").trim())

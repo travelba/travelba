@@ -144,11 +144,23 @@ export function mb3mInvoiceActionLabel(input: {
   return "Préparer la facture";
 }
 
-export function mb3mAmadeusSentence(row: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }) {
+export function mb3mAmadeusSentence(row: {
+  label: string;
+  invoiceNumber: string;
+  placement: "move" | "here" | "other";
+  moveWarning?: string | null;
+}) {
   const base = `${row.label} : déjà dans MB3M via Amadeus (facture n°${row.invoiceNumber}).`;
+  if (row.moveWarning) return `${base} ${row.moveWarning}`;
   if (row.placement === "other") return `${base} Elle est dans un autre dossier, elle n’a pas été déplacée.`;
   if (row.placement === "move") return `${base} Elle est rangée dans ce dossier.`;
   return base;
+}
+
+/** Avertissement : la facture Amadeus reste liée au séjour, sans échec de la préparation. */
+export function gdsMoveWarning(number: string, message: string) {
+  const detail = message.replace(/\s+/g, " ").trim();
+  return `La facture Amadeus n° ${number} n’a pas été déplacée dans MB3M : ${detail}`;
 }
 
 export function mb3mAmadeusSuggestionSentence(row: { label: string; invoiceNumber: string }) {

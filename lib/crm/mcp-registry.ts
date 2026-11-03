@@ -1381,7 +1381,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "statut_facture_mb3m",
     description:
-      "Lit la facture MB3M déjà enregistrée sur le dossier. dossier_id ou reference. statut : a_preparer, en_cours, echouee, pro_forma ou imprimee. numero_mb3m, lignes, erreur de la dernière préparation, auteur. Ne prépare rien et n’appelle pas MB3M.",
+      "Lit la facture MB3M déjà enregistrée sur le dossier. dossier_id ou reference. statut : a_preparer, en_cours, echouee, pro_forma ou imprimee. numero_mb3m, lignes, erreur de la dernière préparation, avertissement (facture Amadeus non déplacée), auteur. Ne prépare rien et n’appelle pas MB3M.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence TB-…"),

@@ -15,6 +15,7 @@ import {
   type Mb3mRemoteInvoice,
 } from "@/lib/crm/mb3m";
 import { mb3mPieceUnchanged } from "@/lib/crm/sync-delta";
+import { gdsMoveWarning } from "@/lib/crm/mb3m-prep";
 import { isActiveItem } from "@/lib/crm/types";
 
 /** Vol déjà facturé par l’import Amadeus de MB3M. */
@@ -58,6 +59,8 @@ export type GdsCoverage = {
   placement: "move" | "here" | "other";
   printed: boolean;
   pieceUid: string | null;
+  /** ChangeFolder a refusé. La pièce reste liée au séjour dans le CRM. */
+  moveWarning: string | null;
 };
 
 export type GdsSuggestion = {
@@ -155,6 +158,7 @@ export function planGdsFlights(input: {
         placement: placement(invoice.folderId, input.dossierFolderId),
         printed: invoice.printed === true,
         pieceUid: invoice.uid?.trim() || null,
+        moveWarning: null,
       });
       continue;
     }
@@ -270,6 +274,7 @@ export type Mb3mGdsPlan = {
   invoices: { number: string; amount: number }[];
   customerUid: string | null;
   folderId: string | null;
+  warnings: string[];
 };
 
 /** Uid déjà connu : la fiche, sinon une pièce du séjour (la société n’est pas toujours dans crm_mb3m_parties). */
@@ -367,6 +372,7 @@ export async function readMb3mGdsPlan(
     invoices: [],
     customerUid: null,
     folderId: input.folderId,
+    warnings: [],
   };
   if (!flights.length) return empty;
   const customerUid = await payerMb3mUid(supabase, input.payerId, input.billingCompanyId, input.bookingId);
@@ -428,22 +434,38 @@ export async function readMb3mGdsPlan(
     }),
     customerUid,
     folderId: input.folderId,
+    warnings: [],
   };
 }
 
 /** PDF de la facture émise, visible au client comme les autres factures du dossier. */
-async function fileGdsInvoicePdf(supabase: SupabaseClient, bookingId: string, number: string) {
+async function fileGdsInvoicePdf(
+  supabase: SupabaseClient,
+  bookingId: string,
+  number: string,
+  itemId: string | null,
+  render: typeof mb3mRenderPiece = mb3mRenderPiece
+) {
+  const fileName = `Facture n° ${number}.pdf`;
   try {
-    const pdf = await mb3mRenderPiece({ number });
+    const existing = await supabase
+      .from("crm_booking_documents")
+      .select("id")
+      .eq("booking_id", bookingId)
+      .eq("file_name", fileName)
+      .limit(1);
+    const known = ((existing.data || []) as { id?: string }[])[0]?.id;
+    if (known) return String(known);
+    const pdf = await render({ number });
     const path = `bookings/${bookingId}/${Date.now()}-${safeFileName(`Facture MB3M n° ${number}.pdf`)}`;
     await uploadCrmFile(path, pdf.bytes, "application/pdf");
     const { data, error } = await supabase
       .from("crm_booking_documents")
       .insert({
         booking_id: bookingId,
-        booking_item_id: null,
+        booking_item_id: /^[0-9a-f-]{36}$/i.test(itemId || "") ? itemId : null,
         kind: "invoice",
-        file_name: `Facture n° ${number}.pdf`,
+        file_name: fileName,
         mime_type: "application/pdf",
         storage_path: path,
         visible_to_client: true,
@@ -474,6 +496,10 @@ export async function finishMb3mGds(
     destination: string | null;
     destinationIso: string | null;
     folderUid?: string | null;
+  },
+  deps?: {
+    changeFolder?: typeof mb3mChangeFolder;
+    renderPiece?: typeof mb3mRenderPiece;
   }
 ) {
   let folderId = input.folderId || input.plan.folderId;
@@ -517,7 +543,7 @@ export async function finishMb3mGds(
     const row = rows[0];
     if (row.placement === "move" && folderId) {
       try {
-        await mb3mChangeFolder({
+        await (deps?.changeFolder || mb3mChangeFolder)({
           number,
           folderId,
           folderUid,
@@ -529,7 +555,9 @@ export async function finishMb3mGds(
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "déplacement";
-        throw new Mb3mError(`La facture Amadeus n° ${number} n’a pas pu être rangée dans le dossier. ${message}`, -1);
+        const warning = gdsMoveWarning(number, message);
+        for (const item of rows) item.moveWarning = warning;
+        input.plan.warnings.push(warning);
       }
     }
     const lines = rows.map((item) => ({
@@ -562,7 +590,7 @@ export async function finishMb3mGds(
     let documentId = stored?.document_id || null;
     let printedAt = stored?.printed_at || null;
     if (row.printed && !documentId) {
-      const filed = await fileGdsInvoicePdf(supabase, input.bookingId, number);
+      const filed = await fileGdsInvoicePdf(supabase, input.bookingId, number, row.itemId, deps?.renderPiece);
       if (filed) {
         documentId = filed;
         printedAt = new Date().toISOString();
@@ -590,5 +618,19 @@ export async function finishMb3mGds(
         });
     if (saved.error) throw new Mb3mError("La facture Amadeus n’a pas pu être notée sur le séjour.", -1);
   }
+  const warning = input.plan.warnings.filter(Boolean).join(" ") || null;
+  const noted = await supabase
+    .from("crm_mb3m_pieces")
+    .update({
+      warning,
+      attempt_status: null,
+      attempt_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("booking_id", input.bookingId)
+    .eq("kind", "invoice")
+    .eq("realm", mb3mRealm())
+    .is("printed_at", null);
+  if (noted.error) throw new Mb3mError("L’avertissement Amadeus n’a pas pu être enregistré.", -1);
   return folderId;
 }
