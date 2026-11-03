@@ -10,6 +10,7 @@ import {
   mb3mCivilityFromSex,
   mb3mConfigured,
   mb3mDefaultProviderId,
+  mb3mEntityUid,
   mb3mFaultDetail,
   mb3mOperationMessage,
   mb3mFindPersons,
@@ -911,6 +912,19 @@ describe("règlements MB3M", () => {
     assert.equal(pieces[0]?.printed, true);
     assert.equal(pieces[0]?.amount, 1197.44);
     assert.equal(pieces[0]?.cancelled, false);
+    const listed = await mb3mFindCustomerPieces("92c5a491-b764-4c07-9a08-ebf0e56a21a4", async () => {
+      return new Response(
+        `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Invoice><Customer><Uid>92c5a491-b764-4c07-9a08-ebf0e56a21a4</Uid></Customer><Folder><Id>01-0002007</Id><Uid>b127ebaa-8fcd-4399-99c2-202611021224</Uid></Folder><Identity><Number>2005</Number><Uid>b0ffa2ce-0adb-4ba9-8214-202609141014</Uid></Identity><RefCommand>Y2FYWL</RefCommand></Invoice></FindAllPiecesResponse>`
+      );
+    });
+    assert.equal(listed[0]?.number, "2005");
+    assert.equal(listed[0]?.uid, "b0ffa2ce-0adb-4ba9-8214-202609141014");
+    assert.equal(
+      mb3mEntityUid(
+        `<Invoice><CustomerIdentity><Uid>92c5a491-b764-4c07-9a08-ebf0e56a21a4</Uid></CustomerIdentity><FolderIdentity><Uid>b127ebaa-8fcd-4399-99c2-202611021224</Uid></FolderIdentity><Identity><Uid>b0ffa2ce-0adb-4ba9-8214-202609141014</Uid></Identity></Invoice>`
+      ),
+      "b0ffa2ce-0adb-4ba9-8214-202609141014"
+    );
     let calls = 0;
     const detail = await mb3mGetInvoice("2005", async (_url, init) => {
       calls += 1;
