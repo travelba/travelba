@@ -355,6 +355,38 @@ export type Mb3mCreditRow = {
   currency: string | null;
 };
 
+export type Mb3mCreditParty = {
+  id: string;
+  companyRole: "admin" | "member" | null;
+  billingParentId: string | null;
+};
+
+/**
+ * Clients dont les crédits peuvent payer ce dossier.
+ * Le lien collaborateur → société est `billing_parent_id` (company_role member).
+ * On prend le voyageur, le compte société, et les autres collaborateurs de cette société.
+ */
+export function mb3mCreditCustomerIds(input: {
+  dossierCustomerId: string;
+  billingCustomerId: string | null;
+  parties: Mb3mCreditParty[];
+}): string[] {
+  const byId = new Map(input.parties.map((party) => [party.id, party]));
+  const dossier = byId.get(input.dossierCustomerId);
+  const companyId =
+    (dossier?.companyRole === "member" && dossier.billingParentId) ||
+    (dossier?.companyRole === "admin" ? dossier.id : null) ||
+    input.billingCustomerId ||
+    input.dossierCustomerId;
+  const ids = new Set<string>([input.dossierCustomerId, companyId]);
+  if (input.billingCustomerId) ids.add(input.billingCustomerId);
+  for (const party of input.parties) {
+    if (party.id === companyId) ids.add(party.id);
+    if (party.companyRole === "member" && party.billingParentId === companyId) ids.add(party.id);
+  }
+  return [...ids];
+}
+
 /** Crédit du wallet : même société que le séjour, ou particulier si le séjour l’est. */
 export function mb3mWalletCreditRows(billingCompanyId: string | null, rows: Mb3mCreditRow[]) {
   return rows.filter((row) => {
@@ -485,6 +517,40 @@ export async function recordMb3mInvoicePayments(
     status: string | null;
   };
   const payerId = stay.billing_customer_id || stay.customer_id;
+  const dossierCustomer = await supabase
+    .from("crm_customers")
+    .select("id, company_role, billing_parent_id")
+    .eq("id", stay.customer_id)
+    .maybeSingle();
+  if (dossierCustomer.error) throw new Mb3mError("Les règlements du dossier n’ont pas pu être lus.", -1);
+  const traveler = (dossierCustomer.data || null) as {
+    id: string;
+    company_role: "admin" | "member" | null;
+    billing_parent_id: string | null;
+  } | null;
+  const companyId =
+    (traveler?.company_role === "member" && traveler.billing_parent_id) ||
+    (traveler?.company_role === "admin" ? traveler.id : null) ||
+    payerId;
+  const members = await supabase
+    .from("crm_customers")
+    .select("id, company_role, billing_parent_id")
+    .eq("billing_parent_id", companyId)
+    .eq("company_role", "member");
+  if (members.error) throw new Mb3mError("Les règlements du dossier n’ont pas pu être lus.", -1);
+  const creditCustomerIds = mb3mCreditCustomerIds({
+    dossierCustomerId: stay.customer_id,
+    billingCustomerId: payerId,
+    parties: [
+      ...(traveler
+        ? [{ id: traveler.id, companyRole: traveler.company_role, billingParentId: traveler.billing_parent_id }]
+        : []),
+      { id: companyId, companyRole: companyId === traveler?.id ? traveler.company_role : "admin", billingParentId: null },
+      ...((members.data || []) as { id: string; company_role: "admin" | "member" | null; billing_parent_id: string | null }[]).map(
+        (row) => ({ id: row.id, companyRole: row.company_role, billingParentId: row.billing_parent_id })
+      ),
+    ],
+  });
   const [direct, wallet, peers, links] = await Promise.all([
     supabase
       .from("crm_transactions")
@@ -495,7 +561,7 @@ export async function recordMb3mInvoicePayments(
     supabase
       .from("crm_transactions")
       .select("id, booking_id, customer_id, billing_company_id, amount, occurred_on, source, label, status, direction, currency")
-      .eq("customer_id", payerId)
+      .in("customer_id", creditCustomerIds)
       .is("booking_id", null)
       .eq("direction", "credit")
       .eq("status", "posted"),

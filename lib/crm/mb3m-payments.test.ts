@@ -7,6 +7,7 @@ import {
   applyMb3mPaymentPlans,
   mb3mIsPaymentGap,
   mb3mPaymentGapMessage,
+  mb3mCreditCustomerIds,
   mb3mWalletCreditRows,
   planMb3mGdsMatchings,
   planMb3mPayments,
@@ -331,6 +332,67 @@ describe("plan des règlements MB3M", () => {
     });
     assert.equal(retry[0]?.hold, null);
     assert.equal(retry[0]?.existingNumber, "2154");
+  });
+
+  it("prend les crédits de la société qui paie le collaborateur, pas ceux d’un autre dossier", () => {
+    const ids = mb3mCreditCustomerIds({
+      dossierCustomerId: "77b1ddfe-ac74-471a-a84a-5f841dae9837",
+      billingCustomerId: "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      parties: [
+        {
+          id: "77b1ddfe-ac74-471a-a84a-5f841dae9837",
+          companyRole: "member",
+          billingParentId: "6aa27baa-644a-4ba8-94fe-e8283436969c",
+        },
+        {
+          id: "6aa27baa-644a-4ba8-94fe-e8283436969c",
+          companyRole: "admin",
+          billingParentId: null,
+        },
+        {
+          id: "colleague",
+          companyRole: "member",
+          billingParentId: "6aa27baa-644a-4ba8-94fe-e8283436969c",
+        },
+      ],
+    });
+    assert.deepEqual(ids.sort(), [
+      "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      "77b1ddfe-ac74-471a-a84a-5f841dae9837",
+      "colleague",
+    ]);
+    const rows = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2157",
+      invoiceAmount: 561.19,
+      folderId: "01-0002007",
+      otherOpenBookings: 1,
+      credits: [
+        credit({
+          id: "c47f41ef-f8fe-4072-b610-1640aacf0dd2",
+          amount: 5330.29,
+          date: "2026-10-15",
+          customerId: "6aa27baa-644a-4ba8-94fe-e8283436969c",
+        }),
+        credit({ id: "autre-dossier", amount: 100, bookingId: "11111111-2222-4333-8444-555555555555", date: "2026-10-01" }),
+      ],
+      remote: [
+        {
+          number: "2149",
+          reference: "OZB",
+          amount: 5330.29,
+          date: "2026-10-15",
+          folderId: "01-0002000",
+          invoiceNumber: "2148",
+          unmatched: 561.19,
+        },
+      ],
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.credit.id, "c47f41ef-f8fe-4072-b610-1640aacf0dd2");
+    assert.equal(rows[0]?.existingNumber, "2149");
+    assert.equal(rows[0]?.matched, 561.19);
+    assert.equal(rows[0]?.alreadyMatched, false);
   });
 
   it("garde un crédit sans société sur un séjour société", () => {
