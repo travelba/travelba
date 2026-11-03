@@ -4,8 +4,8 @@
  * Les alertes hôtel restent en arrière-plan : un écran verrouillé doit encore les voir.
  */
 export const PAGE_POLL_MS = {
-  whatsappInbox: 45_000,
-  whatsappDock: 30_000,
+  whatsappInbox: 60_000,
+  whatsappDock: 60_000,
   visaJourney: 20_000,
   etaIl: 8_000,
   ratehawk: 15_000,

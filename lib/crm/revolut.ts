@@ -3,7 +3,7 @@ import { secretEquals } from "./secret-equals";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { repairRevolutDebitQueue } from "@/lib/crm/revolut-debit";
-import { revolutInboxDraft, revolutSyncPayload } from "@/lib/crm/revolut-inbox";
+import { revolutInboxDraft, revolutInboxMatches, revolutSyncPayload } from "@/lib/crm/revolut-inbox";
 import { revolutBalancePockets } from "@/lib/crm/account-balances";
 import {
   collectHiddenRevolutAccounts,
@@ -242,23 +242,35 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
     const draft = revolutInboxDraft(tx);
     if (!draft || !tx.id) continue;
     const payload = revolutSyncPayload(tx.id, draft);
-    const { error, data } = await supabase
+    const { data: existing, error: readError } = await supabase
       .from("crm_revolut_transactions")
-      .upsert(
-        { ...payload.insert, raw: tx },
-        { onConflict: "revolut_transaction_id", ignoreDuplicates: true }
-      )
-      .select("id");
-    if (!error && data?.length) inserted += data.length;
-    else {
-      // Ne pas retourner un crédit déjà rangé en débit, ni l’inverse.
-      // Le statut (rapproché, refusé) reste celui du clic : la synchro ne l’écrase pas.
-      await supabase
-        .from("crm_revolut_transactions")
-        .update({ ...payload.update, raw: tx })
-        .eq("revolut_transaction_id", tx.id)
-        .eq("direction", draft.direction);
+      .select("id, amount, currency, direction, counterparty_name, counterparty_iban, reference, booked_at")
+      .eq("revolut_transaction_id", tx.id)
+      .eq("direction", draft.direction)
+      .maybeSingle();
+    if (readError) {
+      console.error("[revolut] lecture", readError.message);
+      continue;
     }
+    if (!existing) {
+      const { error, data } = await supabase
+        .from("crm_revolut_transactions")
+        .upsert(
+          { ...payload.insert, raw: tx },
+          { onConflict: "revolut_transaction_id", ignoreDuplicates: true }
+        )
+        .select("id");
+      if (!error && data?.length) inserted += data.length;
+      continue;
+    }
+    if (revolutInboxMatches(existing, payload.update)) continue;
+    // Ne pas retourner un crédit déjà rangé en débit, ni l’inverse.
+    // Le statut (rapproché, refusé) reste celui du clic : la synchro ne l’écrase pas.
+    const { error: updateError } = await supabase
+      .from("crm_revolut_transactions")
+      .update({ ...payload.update, raw: tx })
+      .eq("id", existing.id);
+    if (updateError) console.error("[revolut] mise à jour", updateError.message);
   }
   return inserted;
 }

@@ -130,7 +130,10 @@ async function writeAppMetadata(
 
 export async function listColleagues(): Promise<Colleague[]> {
   const admin = createServiceClient();
-  const { data, error } = await admin.from("crm_staff").select("*").order("full_name");
+  const { data, error } = await admin
+    .from("crm_staff")
+    .select("id, auth_user_id, role, full_name, active, email, created_at, updated_at")
+    .order("full_name");
   if (error) throw new StaffTeamError("Impossible de lire l’équipe.", 500);
   const rows = (data || []) as CrmStaff[];
   const colleagues = await Promise.all(

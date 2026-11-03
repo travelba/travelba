@@ -269,6 +269,48 @@ export function revolutDebitLine(row: {
   };
 }
 
+function sameInstant(left: string | null | undefined, right: string | null | undefined) {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  const a = Date.parse(left);
+  const b = Date.parse(right);
+  if (Number.isFinite(a) && Number.isFinite(b)) return a === b;
+  return left === right;
+}
+
+/** Vrai quand la ligne en base porte déjà le mouvement : la synchro n’a rien à réécrire. */
+export function revolutInboxMatches(
+  existing: {
+    amount: number | string | null;
+    currency: string | null;
+    direction: string | null;
+    counterparty_name: string | null;
+    counterparty_iban: string | null;
+    reference: string | null;
+    booked_at: string | null;
+  },
+  update: {
+    amount: number;
+    currency: string;
+    direction: string;
+    counterparty_name: string | null;
+    counterparty_iban: string | null;
+    reference: string | null;
+    booked_at: string | null;
+  }
+) {
+  const text = (value: string | null | undefined) => value || null;
+  return (
+    Number(existing.amount) === update.amount &&
+    (existing.currency || "EUR") === update.currency &&
+    existing.direction === update.direction &&
+    text(existing.counterparty_name) === text(update.counterparty_name) &&
+    text(existing.counterparty_iban) === text(update.counterparty_iban) &&
+    text(existing.reference) === text(update.reference) &&
+    sameInstant(existing.booked_at, update.booked_at)
+  );
+}
+
 /** Insert pose le statut. L’update d’une ligne déjà connue ne le réécrit pas. */
 export function revolutSyncPayload(txId: string, draft: RevolutInboxDraft) {
   const fields = {
