@@ -631,7 +631,14 @@ export type Mb3mRemotePiece = {
   printed: boolean;
   /** Total TTC quand la liste le porte déjà (sinon le détail). */
   amount: number | null;
+  /** Uid de la pièce, pas celui du client. */
+  uid: string | null;
 };
+
+function pieceOwnUid(block: string) {
+  const head = block.split(/<CustomerIdentity[\s>]/)[0] || "";
+  return mb3mXmlText(head, "Uid") || null;
+}
 
 function pieceBlocks(xml: string) {
   const local = mb3mLocalNames(xml);
@@ -682,6 +689,7 @@ function piecesOf(xml: string): Mb3mRemotePiece[] {
         cancelled: blockCancelled(block),
         printed: blockPrinted(block),
         amount: blockAmount(block),
+        uid: pieceOwnUid(block),
       },
     ];
   });
@@ -728,6 +736,7 @@ export type Mb3mRemoteInvoice = {
   activityIds: number[];
   travelers: { firstName: string; lastName: string }[];
   printed: boolean;
+  uid: string | null;
 };
 
 /** Détail d’une facture : PNR (`RefCommand`), billets (`RefPiece`), activité, voyageurs. */
@@ -791,13 +800,34 @@ export async function mb3mGetInvoice(number: string, fetchImpl?: FetchImpl): Pro
     activityIds,
     travelers,
     printed: blockPrinted(invoice),
+    uid: pieceOwnUid(invoice),
   };
 }
 
+/**
+ * Corps de IFolderService/ChangeFolder.
+ * PieceService/ChangeFolder avec seulement FolderId et Number répond -1
+ * « Object reference not set » : le dossier et la pièce doivent être des identités (Id, Uid).
+ */
+export function mb3mChangeFolderBody(input: {
+  number: string;
+  folderId: string;
+  folderUid?: string | null;
+  pieceUid?: string | null;
+}) {
+  const folderId = input.folderId.trim();
+  const number = input.number.trim();
+  const folder = `<FolderIdentity><Id>${escapeMb3mXml(folderId)}</Id>${tag("Uid", input.folderUid?.trim())}</FolderIdentity>`;
+  const piece = `<PieceIdentity><Number>${escapeMb3mXml(number)}</Number>${tag("Uid", input.pieceUid?.trim())}</PieceIdentity>`;
+  return `<FolderChangeFolderRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(folderId)}</FolderId>${folder}<Number>${escapeMb3mXml(number)}</Number>${piece}</FolderChangeFolderRequest>`;
+}
+
 /** Range une facture sans dossier dans le dossier du séjour. */
-export async function mb3mChangeFolder(input: { number: string; folderId: string }, fetchImpl?: FetchImpl) {
-  const inner = `<PieceChangeFolderRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("FolderId", input.folderId.trim())}${tag("Number", input.number.trim())}</PieceChangeFolderRequest>`;
-  const xml = await mb3mSoap("PieceService", "IPieceService", "ChangeFolder", inner, fetchImpl);
+export async function mb3mChangeFolder(
+  input: { number: string; folderId: string; folderUid?: string | null; pieceUid?: string | null },
+  fetchImpl?: FetchImpl
+) {
+  const xml = await mb3mSoap("FolderService", "IFolderService", "ChangeFolder", mb3mChangeFolderBody(input), fetchImpl);
   assertOperation(xml);
   return { number: input.number.trim(), folderId: input.folderId.trim() };
 }
