@@ -148,7 +148,7 @@ Deux dossiers au même score → les deux restent candidats. Réfs fournisseur /
 | 1 | Réf. dossier ou `confirmation_ref` item / chambres | `suggestBookingByReference` |
 | 2 | Nom titulaire / voyageur **+** destination **+** dates (exactes ou chevauchement) | `suggestBookingByTripSignals` |
 
-Nom : égalité, distance d’édition ≤ 1, ou radical commun (`Albilla` / `Albilila`).
+Nom : égalité, distance d’édition ≤ 1, radical commun (`Albilla` / `Albilila`), ou prénom et nom inversés (`Benamara Yannick` = `Yannick Benamara`).
 Prénom aligné (`Simon` = `Simon, Iony`). Destination : ville / pays, casse,
 accents, inclusion (`Dan Tel Aviv Hotel` ⊃ `Tel Aviv`). `cancelled` exclus.
 Document `identity` : pas de proposition de voyage. Prix document manquant : pas de blocage du rattachement manuel. On n’invente pas le montant.

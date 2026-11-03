@@ -296,16 +296,27 @@ export function extractDestinationsOverlap(extract: BookingExtract, booking: Tri
   return fromExtract.some((left) => fromBooking.some((right) => destinationsOverlap(left, right)));
 }
 
-function personMatchesCustomer(person: ExtractPerson, customer: CustomerLite) {
+function orientedCustomerMatch(firstName: string, lastName: string, customer: CustomerLite) {
   const lastHit =
-    lastNamesClose(person.last_name, customer.last_name) ||
-    lastNamesClose(person.last_name, customer.usage_name);
-  if (!lastHit) return { last: false, first: false, exactLast: false };
+    lastNamesClose(lastName, customer.last_name) || lastNamesClose(lastName, customer.usage_name);
+  if (!lastHit) return null;
   const exactLast =
-    compactName(person.last_name) === compactName(customer.last_name) ||
-    compactName(person.last_name) === compactName(customer.usage_name);
-  const first = firstNamesAlign(person.first_name, customer.first_name);
-  return { last: true, first, exactLast };
+    compactName(lastName) === compactName(customer.last_name) ||
+    compactName(lastName) === compactName(customer.usage_name);
+  return { last: true as const, first: firstNamesAlign(firstName, customer.first_name), exactLast };
+}
+
+/** « Benamara Yannick » et « Yannick Benamara » sont la même personne. */
+function personMatchesCustomer(person: ExtractPerson, customer: CustomerLite) {
+  const direct = orientedCustomerMatch(person.first_name, person.last_name, customer);
+  const swapped =
+    person.first_name.trim() && person.last_name.trim()
+      ? orientedCustomerMatch(person.last_name, person.first_name, customer)
+      : null;
+  if (direct?.first) return { ...direct, inverted: false };
+  if (swapped?.last && swapped.first) return { ...swapped, inverted: true };
+  if (direct) return { ...direct, inverted: false };
+  return { last: false, first: false, exactLast: false, inverted: false };
 }
 
 export type CustomerSuggestion = {
@@ -363,7 +374,7 @@ export function suggestCustomerFromExtract(
       let reason = "Nom de famille";
       if (match.exactLast && match.first) {
         score = uniqueLast ? 92 : 85;
-        reason = "Nom et prénom";
+        reason = match.inverted ? "Prénom et nom inversés" : "Nom et prénom";
       } else if (match.first) {
         score = uniqueLast ? 86 : 80;
         reason = "Nom approchant et prénom";
@@ -564,18 +575,29 @@ function cardGuests(card: HotelStayCard): ExtractPerson[] {
   return people;
 }
 
-/** Nom et prénom exacts. Le nom de famille seul, ou un nom approchant, ne suffit pas. */
+function orderedTravelerMatch(
+  incomingFirst: string,
+  incomingLast: string,
+  first: string | null | undefined,
+  last: string | null | undefined,
+  usage?: string | null
+) {
+  if (!incomingFirst.trim() || !incomingLast.trim()) return false;
+  const incoming = compactName(incomingLast);
+  const lasts = [compactName(last), compactName(usage)].filter(Boolean);
+  if (!incoming || !lasts.includes(incoming)) return false;
+  return firstNamesAlign(incomingFirst, first);
+}
+
+/** Nom et prénom exacts, dans un sens ou l’autre. Le nom de famille seul ne suffit pas. */
 function travelerNameMatches(
   person: ExtractPerson,
   first: string | null | undefined,
   last: string | null | undefined,
   usage?: string | null
 ) {
-  if (!person.first_name.trim() || !person.last_name.trim()) return false;
-  const incoming = compactName(person.last_name);
-  const lasts = [compactName(last), compactName(usage)].filter(Boolean);
-  if (!incoming || !lasts.includes(incoming)) return false;
-  return firstNamesAlign(person.first_name, first);
+  if (orderedTravelerMatch(person.first_name, person.last_name, first, last, usage)) return true;
+  return orderedTravelerMatch(person.last_name, person.first_name, first, last, usage);
 }
 
 /**

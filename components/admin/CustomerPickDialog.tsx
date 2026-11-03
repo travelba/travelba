@@ -17,6 +17,7 @@ export function CustomerPickDialog({
   selectedId = "",
   title = "Choisir un client",
   onSelect,
+  onCreate,
   onClose,
 }: {
   open: boolean;
@@ -25,6 +26,8 @@ export function CustomerPickDialog({
   selectedId?: string;
   title?: string;
   onSelect: (customer: PickableCustomer) => void;
+  /** Fiche sans e-mail. Aucune invitation. */
+  onCreate?: () => void;
   onClose: () => void;
 }) {
   const titleId = useId();
@@ -167,6 +170,18 @@ export function CustomerPickDialog({
             </>
           )}
         </div>
+        {onCreate ? (
+          <div className="border-t border-[#e8e4dc] bg-[#faf9f6] px-5 py-3">
+            <button
+              type="button"
+              onClick={onCreate}
+              className="rounded-md border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+            >
+              Nouveau client
+            </button>
+            <p className="mt-1 text-xs text-[#44474c]">Sans e-mail. Aucune invitation. L’adresse peut être ajoutée plus tard.</p>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body

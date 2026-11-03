@@ -624,7 +624,41 @@ describe("little emperors staging client", () => {
     assert.equal(littleEmperorsActionAllowed("ratehawk_cert", "attach"), false);
     assert.equal(littleEmperorsActionAllowed("ratehawk_cert", "cancel"), false);
     assert.equal(littleEmperorsActionAllowed("agent", "attach"), true);
+    assert.equal(littleEmperorsActionAllowed("agent", "import"), true);
+    assert.equal(littleEmperorsActionAllowed("partner", "import"), false);
     assert.equal(littleEmperorsActionAllowed("admin", "cancel"), true);
+  });
+
+  it("un prénom et un nom inversés désignent la fiche", () => {
+    const booking = {
+      id: 1,
+      hotel_id: 9,
+      hotel_name: "La Mamounia",
+      city: "Marrakech",
+      address: null,
+      website: null,
+      check_in: "2026-12-01",
+      check_out: "2026-12-04",
+      state: "booked",
+      confirmation_number: "LEBENA",
+      total_cost: "1000",
+      currency: "EUR",
+      is_cancellable: true,
+      cancellation_deadline: null,
+      guest_names: ["Benamara Yannick"],
+      cancellation_policies: [],
+      room_types: ["Suite"],
+      benefits: [],
+    };
+    const customers = [
+      { id: "y", first_name: "Yannick", last_name: "Benamara", company_name: null, email: "y@example.com" },
+    ];
+    const decision = decideLittleEmperorsAuto({
+      booking,
+      suggestion: { autoBookingId: null, candidates: [] },
+      customers,
+    });
+    assert.deepEqual(decision, { kind: "create", customerId: "y" });
   });
 
   it("lit le webhook d’annulation sans inventer de contact", () => {

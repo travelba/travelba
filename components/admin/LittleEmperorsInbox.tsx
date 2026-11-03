@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BookingPickDialog, type RevolutBookingChoice } from "@/components/admin/BookingPickDialog";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
@@ -16,6 +17,11 @@ import type { CrmLeBooking } from "@/lib/crm/types";
 function isCancelledState(state: string | null) {
   const value = (state || "").trim().toLowerCase();
   return value === "cancelled" || value === "canceled";
+}
+
+function isBlockedState(state: string | null) {
+  const value = (state || "").trim().toLowerCase();
+  return isCancelledState(state) || value === "failed" || value === "failure" || value === "booking_failed";
 }
 
 function formatWhen(value: string | null | undefined, partner: boolean) {
@@ -77,14 +83,21 @@ export function LittleEmperorsInbox({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [attachId, setAttachId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [panel, setPanel] = useState<{ intent: "create" | "attach"; ids: string[]; force: boolean } | null>(null);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [newClient, setNewClient] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [voyageurs, setVoyageurs] = useState("");
+  const [bookCustomer, setBookCustomer] = useState<string | null>(null);
   const [newestFirst, setNewestFirst] = useState(true);
   const ordered = useMemo(
     () => sortByLeMadeAt(rows, newestFirst),
     [rows, newestFirst]
   );
 
-  async function post(body: Record<string, string>) {
+  async function post(body: Record<string, unknown>) {
     setError(null);
     const response = await fetch("/api/admin/little-emperors", {
       method: "POST",
@@ -116,14 +129,77 @@ export function LittleEmperorsInbox({
     return undefined;
   }
 
-  async function attach(customer: PickableCustomer) {
-    if (!attachId) return;
-    const id = attachId;
-    setAttachId(null);
-    setBusy(id);
-    const json = await post({ action: "attach", id, customer_id: customer.id });
+  function idsFor(rowId: string) {
+    if (selected.includes(rowId) && selected.length > 1) return selected;
+    return [rowId];
+  }
+
+  function openImport(rowId: string, intent: "create" | "attach", force = false) {
+    setError(null);
+    setNewClient(false);
+    setFirstName("");
+    setLastName("");
+    setPanel({ intent, ids: idsFor(rowId), force });
+  }
+
+  async function runImport(customerId: string, dossierId?: string) {
+    if (!panel) return;
+    setBusy(panel.ids[0] || "import");
+    const json = await post({
+      action: "import",
+      ids: panel.ids,
+      customer_id: customerId,
+      ...(dossierId ? { dossier_id: dossierId } : {}),
+      ...(voyageurs.trim() ? { voyageurs: voyageurs.trim() } : {}),
+      ...(panel.force ? { forcer: true } : {}),
+    });
     setBusy(null);
-    if (json?.bookingId) router.push(`/admin/reservations/${json.bookingId}`);
+    if (json?.bookingId) {
+      setPanel(null);
+      setSelected([]);
+      router.push(`/admin/reservations/${json.bookingId}`);
+    }
+  }
+
+  async function chooseCustomer(customer: PickableCustomer) {
+    setPickOpen(false);
+    if (!panel) return;
+    if (panel.intent === "attach") {
+      setBookCustomer(customer.id);
+      return;
+    }
+    await runImport(customer.id);
+  }
+
+  async function createCustomer(event: FormEvent) {
+    event.preventDefault();
+    if (!panel) return;
+    setBusy("client");
+    setError(null);
+    const response = await fetch("/api/admin/clients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ first_name: firstName.trim(), last_name: lastName.trim() }),
+    });
+    const json = await response.json().catch(() => ({}));
+    setBusy(null);
+    if (!response.ok || !json.customer?.id) {
+      setError(json.error || "Création impossible. Réessayez.");
+      return;
+    }
+    setNewClient(false);
+    if (panel.intent === "attach") {
+      setBookCustomer(json.customer.id);
+      return;
+    }
+    await runImport(json.customer.id);
+  }
+
+  function chooseBooking(booking: RevolutBookingChoice) {
+    const customerId = bookCustomer;
+    setBookCustomer(null);
+    if (!customerId) return;
+    void runImport(customerId, booking.id);
   }
 
   return (
@@ -304,7 +380,21 @@ export function LittleEmperorsInbox({
               ) : null}
               {row.last_error ? <p className="mt-2 text-sm text-[#8a5a2a]">{row.last_error}</p> : null}
               {agency ? (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {!row.crm_booking_id && !isBlockedState(row.state) ? (
+                  <label className="inline-flex items-center gap-2 text-sm text-[var(--admin-navy)]">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(row.id)}
+                      onChange={() =>
+                        setSelected((current) =>
+                          current.includes(row.id) ? current.filter((id) => id !== row.id) : [...current, row.id]
+                        )
+                      }
+                    />
+                    Regrouper
+                  </label>
+                ) : null}
                 {row.crm_booking_id ? (
                   <Link
                     href={`/admin/reservations/${row.crm_booking_id}`}
@@ -312,15 +402,34 @@ export function LittleEmperorsInbox({
                   >
                     Ouvrir le dossier
                   </Link>
-                ) : !cancelled ? (
+                ) : !isBlockedState(row.state) ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openImport(row.id, "create")}
+                      className="rounded-md border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold"
+                    >
+                      Créer le dossier
+                      {selected.includes(row.id) && selected.length > 1 ? ` (${selected.length})` : ""}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openImport(row.id, "attach")}
+                      className="rounded-md border border-[#e5e3dc] px-3 py-2 text-sm font-semibold"
+                    >
+                      Rattacher à un dossier
+                      {selected.includes(row.id) && selected.length > 1 ? ` (${selected.length})` : ""}
+                    </button>
+                  </>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => setAttachId(row.id)}
-                    className="rounded-md border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold"
+                    onClick={() => openImport(row.id, "create", true)}
+                    className="rounded-md border border-[#e5e3dc] px-3 py-2 text-sm font-semibold"
                   >
-                    Créer un dossier
+                    Importer quand même
                   </button>
-                ) : null}
+                )}
                 {!cancelled && row.is_cancellable === true ? (
                   <ConfirmAction
                     label="Annuler chez Little Emperors"
@@ -339,14 +448,100 @@ export function LittleEmperorsInbox({
         })}
       </ul>
 
+      {agency && panel ? (
+        <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
+          <p className="font-semibold text-[var(--admin-navy)]">
+            {panel.intent === "attach" ? "Rattacher à un dossier" : "Créer le dossier"}
+            {panel.ids.length > 1 ? ` · ${panel.ids.length} réservations` : ""}
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            {panel.force
+              ? "Cette réservation est annulée ou en échec. L’import reste caché au client."
+              : "Le client ne reçoit aucun message. Une réservation déjà réservée ouvre un dossier confirmé, caché."}
+          </p>
+          <label className="mt-3 flex flex-col gap-1 text-xs font-semibold text-muted">
+            Voyageurs à ajouter (facultatif)
+            <input
+              value={voyageurs}
+              onChange={(event) => setVoyageurs(event.target.value)}
+              placeholder="Prénom Nom, Prénom Nom"
+              className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-normal text-[var(--admin-navy)]"
+            />
+          </label>
+          {newClient ? (
+            <form onSubmit={createCustomer} className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+                Prénom(s)
+                <input
+                  required
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-normal text-[var(--admin-navy)]"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+                Nom
+                <input
+                  required
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                  className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-normal text-[var(--admin-navy)]"
+                />
+              </label>
+              <p className="text-xs text-muted sm:col-span-2">Sans e-mail. Aucune invitation. L’adresse peut être ajoutée plus tard.</p>
+              <div className="flex flex-wrap gap-2 sm:col-span-2">
+                <button type="submit" disabled={Boolean(busy)} className="admin-af-btn rounded-md px-3 py-2 text-sm">
+                  Créer la fiche
+                </button>
+                <button type="button" onClick={() => setNewClient(false)} className="rounded-md border border-[#e5e3dc] px-3 py-2 text-sm">
+                  Annuler
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPickOpen(true)}
+                className="rounded-md border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold"
+              >
+                Choisir un client
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewClient(true)}
+                className="rounded-md border border-[#e5e3dc] px-3 py-2 text-sm font-semibold"
+              >
+                Nouveau client
+              </button>
+              <button type="button" onClick={() => setPanel(null)} className="rounded-md px-3 py-2 text-sm text-muted">
+                Fermer
+              </button>
+            </div>
+          )}
+        </section>
+      ) : null}
+
       {agency ? (
       <CustomerPickDialog
-        open={Boolean(attachId)}
+        open={pickOpen}
         customers={customers}
         title="Client du dossier"
-        onClose={() => setAttachId(null)}
-        onSelect={attach}
+        onClose={() => setPickOpen(false)}
+        onSelect={chooseCustomer}
+        onCreate={() => {
+          setPickOpen(false);
+          setNewClient(true);
+        }}
       />
+      ) : null}
+      {agency && bookCustomer ? (
+        <BookingPickDialog
+          open
+          customerId={bookCustomer}
+          onClose={() => setBookCustomer(null)}
+          onSelect={chooseBooking}
+        />
       ) : null}
     </div>
   );

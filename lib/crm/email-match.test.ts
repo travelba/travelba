@@ -65,6 +65,16 @@ describe("suggestCustomerFromExtract", () => {
     assert.deepEqual(ids, ["c2", "c3"]);
   });
 
+  it("rapproche un prénom et un nom inversés", () => {
+    const res = suggestCustomerFromExtract(
+      [{ id: "y", first_name: "Yannick", last_name: "Benamara", company_name: null, email: "yannick@example.com" }],
+      extractWith({ customer_first_name: "Benamara", customer_last_name: "Yannick" })
+    );
+    assert.equal(res.autoCustomerId, "y");
+    assert.equal(res.candidates[0]?.reason, "Prénom et nom inversés");
+    assert.ok((res.candidates[0]?.score || 0) >= 85);
+  });
+
   it("renvoie null sans indice d'identification", () => {
     const res = suggestCustomerFromExtract(customers, extractWith({}));
     assert.equal(res.autoCustomerId, null);

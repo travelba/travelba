@@ -93,7 +93,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Restaurants du catalogue et tables du soir | `list_restaurants`, `create_restaurant`, `update_restaurant`, `tables_restaurant`, `choix_restaurant`, `sejours_restaurants` — couvert |
 | Envoyer le WhatsApp 16 h, modèles | `create_restaurant_whatsapp_templates`, `get_restaurant_whatsapp_templates_status` — le dépôt des modèles est couvert ; l’envoi du soir reste le cron |
 | Déposer espace_client_lien, option_hotel_activee, facture_paiement | `deposer_modeles_whatsapp`, `statut_modeles_whatsapp` — ajouté. Administrateurs. Le SID est dans `crm_whatsapp_content_sids`, repli sur la variable |
-| Little Emperors | `reservation_little_emperors`, `little_emperors_en_attente` — couvert |
+| Little Emperors | `reservation_little_emperors`, `little_emperors_en_attente` — couvert. `importer_reservation_little_emperors` crée ou rattache le dossier (`client_id`, `reference` ou `regroupement`, `dossier_id` ou `dossier_reference`, `voyageurs`, `forcer`). Réservée : confirmé, caché, carte hôtel, aucun message. Annulée ou en échec : refus, sauf `forcer`. Déjà liée ailleurs : refus, avec le dossier |
 | Cartes Pliant du dossier | `creer_carte_pliant`, `lire_carte_pliant`, `bloquer_carte_pliant` — jeton carte pour le numéro |
 | Formalités (lecture) | `formalites` — couvert |
 | Lancer, remplir ou payer une formalité (ESTA, ETA, visa) | `lancer_formalite` — lancer couvert. `statut_formalite` lit le parcours. Le remplissage du portail et le paiement restent à l’écran |

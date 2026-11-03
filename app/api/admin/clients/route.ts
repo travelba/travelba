@@ -6,6 +6,7 @@ import {
   CUSTOMER_PICK_SELECT,
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
+import { CUSTOMER_EMAIL_COPY, customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CrmCustomer } from "@/lib/crm/types";
 
@@ -45,13 +46,22 @@ export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => null);
-  const email = String(body?.email || "")
-    .trim()
-    .toLowerCase();
+  const rawEmail = String(body?.email || "").trim();
+  const email = rawEmail ? normalizeCustomerEmail(rawEmail) : null;
   const firstName = String(body?.first_name || "").trim();
   const lastName = String(body?.last_name || "").trim();
-  if (!email) return jsonError("Email requis");
   if (!firstName || !lastName) return jsonError("Prénom et nom requis");
+  if (email) {
+    const invalid = customerEmailError(email);
+    if (invalid) return jsonError(invalid);
+    const { data: taken, error: takenError } = await auth.supabase
+      .from("crm_customers")
+      .select("id")
+      .eq("email", email)
+      .limit(1);
+    if (takenError) return dbError(takenError, 400);
+    if (taken?.length) return jsonError(CUSTOMER_EMAIL_COPY.taken);
+  }
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .insert({
@@ -65,7 +75,7 @@ export async function POST(request: Request) {
     .single();
   if (error) return dbError(error, 400);
   const customer = data as CrmCustomer;
-  if (!body?.invite) {
+  if (!body?.invite || !customer.email) {
     return NextResponse.json({ customer, invited: false });
   }
   try {

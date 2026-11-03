@@ -388,9 +388,13 @@ export function prepareEmailAction(input: Record<string, unknown>) {
 }
 
 export function prepareClientCreate(input: Record<string, unknown>) {
-  const email = normalizeCustomerEmail(String(input.email || ""));
-  const emailErr = customerEmailError(email);
-  if (emailErr) throw new McpWriteError(emailErr);
+  const raw = String(input.email ?? "").trim();
+  let email: string | null = null;
+  if (raw) {
+    email = normalizeCustomerEmail(raw);
+    const emailErr = customerEmailError(email);
+    if (emailErr) throw new McpWriteError(emailErr);
+  }
   const firstName = text(input.prenom, "Prénom", 80);
   const lastName = text(input.nom, "Nom", 80);
   if (!firstName || !lastName) throw new McpWriteError("Prénom et nom requis");
@@ -1035,6 +1039,11 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
 export async function createClient(input: Record<string, unknown>, admin?: McpAdmin) {
   const draft = prepareClientCreate(input);
   const db = client(admin);
+  if (draft.email) {
+    const { data: taken, error: takenError } = await db.from("crm_customers").select("id").eq("email", draft.email);
+    if (takenError) failDb(takenError, "Client non créé.");
+    if ((taken || []).length) throw new McpWriteError(CUSTOMER_EMAIL_COPY.taken);
+  }
   const { data, error } = await db
     .from("crm_customers")
     .insert({
