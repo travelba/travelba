@@ -159,8 +159,13 @@ function decodeMb3mXml(value: string) {
     .replaceAll("&amp;", "&");
 }
 
+/** Retire les préfixes de namespace (`a:Invoice` → `Invoice`) avant les lectures. */
+export function mb3mLocalNames(xml: string) {
+  return xml.replace(/<(\/?)[A-Za-z_][\w.-]*:/g, "<$1");
+}
+
 export function mb3mXmlText(xml: string, name: string) {
-  const match = xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([^<]*)</${name}>`));
+  const match = mb3mLocalNames(xml).match(new RegExp(`<${name}(?:\\s[^>]*)?>([^<]*)</${name}>`));
   return match ? decodeMb3mXml(match[1]).trim() : "";
 }
 
@@ -531,34 +536,59 @@ export type Mb3mRemotePayment = {
 };
 
 /**
- * Règlements déjà saisis chez MB3M pour ce client, pour ne pas les recréer.
- * Le corps reste FolderFindPaymentsRequest : le WSDL Partners répond 401, et
- * seule FindAllPieces a fauté (elle attend FolderFindPiecesQuery). SavePayment,
- * WriteMatching, GetInvoice et ChangeFolder gardent leur *Request, comme
- * AddPieces et CancelInvoice. Render garde RenderPieceRequest, déjà accepté.
+ * Règlements du client. FolderService n’a pas d’opération FindPayments
+ * (ContractFilter). La même recherche que les factures, avec IncludePayments.
  */
-export async function mb3mFindCustomerPayments(customerUid: string, fetchImpl?: FetchImpl): Promise<Mb3mRemotePayment[]> {
-  const inner = `<FolderFindPaymentsRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><CustomerIdentity><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></CustomerIdentity></FolderFindPaymentsRequest>`;
-  const xml = await mb3mSoap("FolderService", "IFolderService", "FindPayments", inner, fetchImpl);
-  assertOperation(xml);
-  const blocks = xml.match(/<Payment>[\s\S]*?<\/Payment>/g) || [];
-  return blocks.flatMap((block) => {
-    const number = mb3mXmlText(block, "Number");
-    const amount = Number(mb3mXmlText(block, "Amount"));
-    const date = mb3mXmlText(block, "Date").slice(0, 10);
-    if (!number || !Number.isFinite(amount) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
-    const invoiceNumber = mb3mXmlText(block, "PieceNumber") || null;
-    return [
-      {
-        number,
-        reference: mb3mXmlText(block, "Reference"),
-        amount,
-        date,
-        invoiceNumber,
-        unmatched: paymentUnmatched(block, amount, Boolean(invoiceNumber)),
-      },
-    ];
-  });
+export function mb3mFindPaymentsQuery(customerUid: string, pageIndex: number, pageSize = PIECE_PAGE_SIZE) {
+  return `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><Customer><Uid>${escapeMb3mXml(customerUid.trim())}</Uid></Customer><IncludeInvoices>true</IncludeInvoices><IncludePayments>true</IncludePayments><PageIndex>${pageIndex}</PageIndex><PageSize>${pageSize}</PageSize></FolderFindPiecesQuery>`;
+}
+
+function paymentBlocks(xml: string) {
+  const local = mb3mLocalNames(xml);
+  return local.match(/<(?:PaymentSummary|Payment)(?:\s[^>]*)?>[\s\S]*?<\/(?:PaymentSummary|Payment)>/g) || [];
+}
+
+function paymentFromBlock(block: string): Mb3mRemotePayment | null {
+  const number = mb3mXmlText(block, "Number");
+  const amount = Number(mb3mXmlText(block, "Amount") || mb3mXmlText(block, "Total"));
+  const date = (mb3mXmlText(block, "Date") || mb3mXmlText(block, "CreationDate")).slice(0, 10);
+  if (!number || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const invoiceNumber = mb3mXmlText(block, "PieceNumber") || mb3mXmlText(block, "InvoiceNumber") || null;
+  return {
+    number,
+    reference: mb3mXmlText(block, "Reference"),
+    amount,
+    date,
+    invoiceNumber,
+    unmatched: paymentUnmatched(block, amount, Boolean(invoiceNumber)),
+  };
+}
+
+export async function mb3mFindCustomerPayments(customerUid: string, fetchImpl?: FetchImpl, pageSize = PIECE_PAGE_SIZE): Promise<Mb3mRemotePayment[]> {
+  const seen = new Set<string>();
+  const payments: Mb3mRemotePayment[] = [];
+  for (let page = 0; page < 40; page += 1) {
+    const xml = await mb3mSoap(
+      "FolderService",
+      "IFolderService",
+      "FindAllPieces",
+      mb3mFindPaymentsQuery(customerUid, page, pageSize),
+      fetchImpl
+    );
+    assertOperation(xml);
+    const local = mb3mLocalNames(xml);
+    const batch = paymentBlocks(local);
+    for (const block of batch) {
+      const payment = paymentFromBlock(block);
+      if (!payment || seen.has(payment.number)) continue;
+      seen.add(payment.number);
+      payments.push(payment);
+    }
+    const reported = Number(mb3mXmlText(local, "TotalCount"));
+    if (!batch.length || batch.length < pageSize) break;
+    if (Number.isFinite(reported) && reported >= 0 && (page + 1) * pageSize >= reported) break;
+  }
+  return payments;
 }
 
 function paymentUnmatched(block: string, amount: number, lettered: boolean) {
@@ -567,6 +597,9 @@ function paymentUnmatched(block: string, amount: number, lettered: boolean) {
     "RemainingAmount",
     "AmountToMatch",
     "LeftAmount",
+    "LeftToPay",
+    "AmountLeft",
+    "Balance",
     "Solde",
   ]);
   if (named != null) return Math.max(0, named);
@@ -596,10 +629,30 @@ export type Mb3mRemotePiece = {
   folderId: string | null;
   cancelled: boolean;
   printed: boolean;
+  /** Total TTC quand la liste le porte déjà (sinon le détail). */
+  amount: number | null;
 };
 
 function pieceBlocks(xml: string) {
-  return xml.match(/<(?:PieceSummary|InvoiceSummary|Piece)(?:\s[^>]*)?>[\s\S]*?<\/(?:PieceSummary|InvoiceSummary|Piece)>/g) || [];
+  const local = mb3mLocalNames(xml);
+  return (
+    local.match(
+      /<(?:PieceSummary|InvoiceSummary|Piece|Invoice)(?:\s[^>]*)?>[\s\S]*?<\/(?:PieceSummary|InvoiceSummary|Piece|Invoice)>/g
+    ) || []
+  ).filter((block) => !/^<InvoiceLine[\s>]/.test(block));
+}
+
+function blockAmount(block: string) {
+  const head = block.split(/<Lines>/)[0] || block;
+  const headAmount = Number(mb3mXmlText(head, "Total") || mb3mXmlText(head, "Amount") || mb3mXmlText(head, "TotalPrice"));
+  if (Number.isFinite(headAmount) && headAmount > 0) return Math.round(headAmount * 100) / 100;
+  const lines = block.match(/<InvoiceLine(?:\s[^>]*)?>[\s\S]*?<\/InvoiceLine>/g) || [];
+  const sum = lines.reduce((total, line) => {
+    const net = Number(mb3mXmlText(line, "NetPriceTotal"));
+    const margin = Number(mb3mXmlText(line, "MarginUnit"));
+    return total + (Number.isFinite(net) ? net : 0) + (Number.isFinite(margin) ? margin : 0);
+  }, 0);
+  return sum > 0 ? Math.round(sum * 100) / 100 : null;
 }
 
 function blockCancelled(block: string) {
@@ -628,6 +681,7 @@ function piecesOf(xml: string): Mb3mRemotePiece[] {
         folderId: mb3mXmlText(block, "FolderId") || null,
         cancelled: blockCancelled(block),
         printed: blockPrinted(block),
+        amount: blockAmount(block),
       },
     ];
   });
@@ -676,12 +730,36 @@ export type Mb3mRemoteInvoice = {
   printed: boolean;
 };
 
-/** Détail d’une facture : PNR (`RefCommand`), billets, activité, voyageurs. */
+/** Détail d’une facture : PNR (`RefCommand`), billets (`RefPiece`), activité, voyageurs. */
 export async function mb3mGetInvoice(number: string, fetchImpl?: FetchImpl): Promise<Mb3mRemoteInvoice> {
-  const inner = `<PieceGetInvoiceRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("Number", number.trim())}</PieceGetInvoiceRequest>`;
-  const xml = await mb3mSoap("PieceService", "IPieceService", "GetInvoice", inner, fetchImpl);
+  const pieceNumber = number.trim();
+  const attempts = [
+    {
+      action: "Get",
+      inner: `<PieceGetRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("Number", pieceNumber)}</PieceGetRequest>`,
+    },
+    {
+      action: "GetInvoice",
+      inner: `<PieceGetInvoiceRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("Number", pieceNumber)}</PieceGetInvoiceRequest>`,
+    },
+  ];
+  let xml = "";
+  let last: unknown;
+  for (const attempt of attempts) {
+    try {
+      xml = await mb3mSoap("PieceService", "IPieceService", attempt.action, attempt.inner, fetchImpl);
+      last = null;
+      break;
+    } catch (err) {
+      last = err;
+      const message = err instanceof Error ? err.message : "";
+      if (!/ContractFilter|deserializ/i.test(message)) throw err;
+    }
+  }
+  if (last) throw last;
   assertOperation(xml);
-  const invoice = xml.match(/<Invoice(?:\s[^>]*)?>[\s\S]*?<\/Invoice>/)?.[0] || xml;
+  const local = mb3mLocalNames(xml);
+  const invoice = local.match(/<Invoice(?:\s[^>]*)?>[\s\S]*?<\/Invoice>/)?.[0] || local;
   const head = invoice.split("<Lines>")[0] || invoice;
   const lineBlocks = invoice.match(/<InvoiceLine(?:\s[^>]*)?>[\s\S]*?<\/InvoiceLine>/g) || [];
   const activityIds = lineBlocks.flatMap((block) => {
@@ -705,7 +783,7 @@ export async function mb3mGetInvoice(number: string, fetchImpl?: FetchImpl): Pro
   });
   return {
     number: mb3mXmlText(head, "Number") || number.trim(),
-    refCommand: mb3mXmlText(head, "RefCommand"),
+    refCommand: mb3mXmlText(head, "RefCommand") || mb3mXmlText(invoice, "RefCommand"),
     folderId: mb3mXmlText(head, "FolderId") || null,
     cancelled: blockCancelled(invoice),
     amount,

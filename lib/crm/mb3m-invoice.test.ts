@@ -443,16 +443,14 @@ describe("facture MB3M", () => {
         return [{ date: "2026-10-30", montant: 10, numero_mb3m: "1", statut: "envoye" }];
       },
     };
-    const first = await runMb3mInvoice(context(), deps);
+    await assert.rejects(() => runMb3mInvoice(context(), deps), (error: unknown) => {
+      assert.ok(error instanceof Mb3mError);
+      assert.equal(error.message, "coupure");
+      return true;
+    });
     const second = await runMb3mInvoice(context({ amount: 20, visibleToClient: true }), deps);
-    assert.deepEqual(Object.keys(first).sort(), ["created", "documentId", "number", "printed", "reglements", "replaced", "visibleToClient"]);
-    assert.equal(first.reglements[0]?.statut, "erreur");
     assert.equal(second.reglements[0]?.numero_mb3m, "1");
     assert.equal(payments, 2);
-    assert.equal(first.created, true);
-    assert.equal(first.printed, false);
-    assert.equal(first.documentId, null);
-    assert.equal(first.number, "4531");
     assert.equal(second.created, false);
     assert.equal(second.replaced, false);
     assert.equal(second.number, "4531");
@@ -519,6 +517,21 @@ describe("facture MB3M", () => {
       (error: unknown) => error instanceof Mb3mError && error.resultCode === -504
     );
     assert.deepEqual(calls, ["add"]);
+
+    calls.length = 0;
+    const failing = deps(async () => {
+      calls.push("add");
+      return { number: "4533", uid: "piece-uid-2" };
+    });
+    failing.cancelInvoice = async (_folder, number) => {
+      calls.push(`cancel ${number}`);
+      if (number === "4531") throw new Error("refus");
+    };
+    await assert.rejects(
+      () => runMb3mInvoice(context(), failing),
+      (error: unknown) => error instanceof Mb3mError && /4531/.test(error.message)
+    );
+    assert.deepEqual(calls, ["add", "cancel 4531", "cancel 4533"]);
   });
 
   it("verrouille une préparation en cours, puis reprend quand elle est périmée ou en échec", async () => {

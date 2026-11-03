@@ -7,7 +7,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
  * Revolut, Stripe, Pliant et Twilio s’en servent.
  * Little Emperors : l’API ne filtre pas par date ; le cron ne réécrit que les séjours changés.
  *   La liste complète reste celle de l’outil MCP.
- * MB3M : FindAllPieces et FindPayments ne prennent pas de date (le contrat Partners).
+ * MB3M : FindAllPieces (factures et règlements, IncludePayments) ne prend pas de date. FindPayments n’existe pas.
  *   On ne réécrit une pièce ou un règlement que s’il a changé.
  * Qonto : pas de synchro de mouvements dans le CRM. Le nom sert au mode de règlement
  *   et aux virements internes. Rien à paginer.

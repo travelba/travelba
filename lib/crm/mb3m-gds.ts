@@ -269,17 +269,78 @@ export type Mb3mGdsPlan = {
   folderId: string | null;
 };
 
+/** Uid déjà connu : la fiche, sinon une pièce du séjour (la société n’est pas toujours dans crm_mb3m_parties). */
+export function mb3mKnownCustomerUid(partyUid: string | null | undefined, pieceUids: (string | null | undefined)[]) {
+  const party = (partyUid || "").trim();
+  if (party) return party;
+  return pieceUids.map((uid) => (uid || "").trim()).find(Boolean) || null;
+}
+
 async function payerMb3mUid(
   supabase: SupabaseClient,
   payerId: string,
-  billingCompanyId: string | null
+  billingCompanyId: string | null,
+  bookingId: string
 ) {
   let query = supabase.from("crm_mb3m_parties").select("mb3m_uid").eq("customer_id", payerId).eq("realm", mb3mRealm());
   query = billingCompanyId ? query.eq("billing_company_id", billingCompanyId) : query.is("billing_company_id", null);
   const { data, error } = await query.maybeSingle();
   if (error) throw new Mb3mError("La fiche MB3M du client n’a pas pu être lue.", -1);
-  const uid = (data as { mb3m_uid?: string } | null)?.mb3m_uid?.trim() || "";
-  return uid || null;
+  const party = (data as { mb3m_uid?: string } | null)?.mb3m_uid?.trim() || "";
+  const own = await supabase
+    .from("crm_mb3m_pieces")
+    .select("customer_uid")
+    .eq("booking_id", bookingId)
+    .eq("realm", mb3mRealm())
+    .not("customer_uid", "is", null)
+    .limit(1);
+  if (own.error) throw new Mb3mError("La fiche MB3M du client n’a pas pu être lue.", -1);
+  const onStay = ((own.data || []) as { customer_uid?: string | null }[]).map((row) => row.customer_uid);
+  const known = mb3mKnownCustomerUid(party, onStay);
+  if (known) return known;
+  let stays = supabase
+    .from("crm_bookings")
+    .select("id")
+    .or(`customer_id.eq.${payerId},billing_customer_id.eq.${payerId}`)
+    .neq("id", bookingId);
+  stays = billingCompanyId ? stays.eq("billing_company_id", billingCompanyId) : stays.is("billing_company_id", null);
+  const { data: bookingRows, error: bookingError } = await stays;
+  if (bookingError) throw new Mb3mError("La fiche MB3M du client n’a pas pu être lue.", -1);
+  const ids = ((bookingRows || []) as { id?: string }[]).map((row) => row.id).filter((id): id is string => Boolean(id));
+  if (!ids.length) return null;
+  const shared = await supabase
+    .from("crm_mb3m_pieces")
+    .select("customer_uid")
+    .in("booking_id", ids)
+    .eq("realm", mb3mRealm())
+    .not("customer_uid", "is", null)
+    .limit(1);
+  if (shared.error) throw new Mb3mError("La fiche MB3M du client n’a pas pu être lue.", -1);
+  return mb3mKnownCustomerUid(
+    null,
+    ((shared.data || []) as { customer_uid?: string | null }[]).map((row) => row.customer_uid)
+  );
+}
+
+function summaryInvoice(piece: {
+  number: string;
+  refCommand: string;
+  folderId: string | null;
+  cancelled: boolean;
+  amount: number | null;
+  printed: boolean;
+}): Mb3mRemoteInvoice {
+  return {
+    number: piece.number,
+    refCommand: piece.refCommand,
+    folderId: piece.folderId,
+    cancelled: piece.cancelled,
+    amount: piece.amount,
+    date: null,
+    activityIds: [],
+    travelers: [],
+    printed: piece.printed,
+  };
 }
 
 /** Factures Amadeus du client, et les vols du séjour qu’elles couvrent déjà. */
@@ -303,8 +364,15 @@ export async function readMb3mGdsPlan(
     folderId: input.folderId,
   };
   if (!flights.length) return empty;
-  const customerUid = await payerMb3mUid(supabase, input.payerId, input.billingCompanyId);
-  if (!customerUid) return empty;
+  const customerUid = await payerMb3mUid(supabase, input.payerId, input.billingCompanyId, input.bookingId);
+  const pnrs = [...new Set(flights.flatMap((flight) => flight.pnrs))];
+  if (!customerUid) {
+    console.info(`[mb3m] Amadeus séjour ${input.bookingId} : fiche inconnue, PNR ${pnrs.join(", ") || "aucun"}`);
+    if (pnrs.length) {
+      throw new Mb3mError("La fiche MB3M du client n’est pas connue : les factures Amadeus n’ont pas pu être cherchées.", -1);
+    }
+    return empty;
+  }
   let summaries;
   try {
     summaries = await mb3mFindCustomerPieces(customerUid);
@@ -313,21 +381,28 @@ export async function readMb3mGdsPlan(
     throw new Mb3mError(`Les factures MB3M du client n’ont pas pu être lues. ${message}`, -1);
   }
   const open = summaries.filter((piece) => !piece.cancelled);
-  const wanted = new Set(flights.flatMap((flight) => flight.pnrs));
-  const details: Mb3mRemoteInvoice[] = [];
+  const wanted = new Set(pnrs);
+  const byNumber = new Map(open.map((piece) => [piece.number, summaryInvoice(piece)]));
   for (const piece of open) {
     const ref = gdsPnr(piece.refCommand);
-    const needsDetail = !ref || wanted.has(ref) || !piece.folderId;
+    const matched = Boolean(ref) && wanted.has(ref);
+    const needsDetail = !matched && !ref && !piece.folderId && wanted.size > 0;
     if (!needsDetail) continue;
     try {
       const detail = await mb3mGetInvoice(piece.number);
-      details.push({ ...detail, printed: detail.printed || piece.printed });
+      byNumber.set(piece.number, { ...detail, printed: detail.printed || piece.printed, amount: detail.amount ?? piece.amount });
     } catch (err) {
       const message = err instanceof Error ? err.message : "lecture";
       throw new Mb3mError(`La facture MB3M n° ${piece.number} n’a pas pu être lue. ${message}`, -1);
     }
   }
+  const details = [...byNumber.values()];
   const plan = planGdsFlights({ flights, invoices: details, dossierFolderId: input.folderId });
+  console.info(
+    `[mb3m] Amadeus client ${customerUid} : ${open.length} pièce(s), PNR ${pnrs.join(", ") || "aucun"}, factures ${open
+      .map((piece) => `${piece.number}:${gdsPnr(piece.refCommand) || "?"}`)
+      .join(", ") || "aucune"}, couvert ${plan.covered.map((row) => row.invoiceNumber).join(", ") || "rien"}`
+  );
   if (plan.error) throw new Mb3mError(plan.error, 0);
   const numbers = [...new Set(plan.covered.map((row) => row.invoiceNumber))];
   return {
@@ -423,7 +498,8 @@ export async function finishMb3mGds(
           item.folderId = folderId;
         }
       } catch (err) {
-        console.error("[mb3m] dossier Amadeus", number, err instanceof Error ? err.message : err);
+        const message = err instanceof Error ? err.message : "déplacement";
+        throw new Mb3mError(`La facture Amadeus n° ${number} n’a pas pu être rangée dans le dossier. ${message}`, -1);
       }
     }
     const lines = rows.map((item) => ({
@@ -443,10 +519,7 @@ export async function finishMb3mGds(
       .eq("realm", mb3mRealm())
       .eq("piece_number", number)
       .maybeSingle();
-    if (existing.error) {
-      console.error("[mb3m] mémoire Amadeus", existing.error.message);
-      continue;
-    }
+    if (existing.error) throw new Mb3mError("La facture Amadeus n’a pas pu être notée sur le séjour.", -1);
     const stored = existing.data as {
       id: string;
       document_id: string | null;
@@ -485,7 +558,7 @@ export async function finishMb3mGds(
           currency: "EUR",
           ...payload,
         });
-    if (saved.error) console.error("[mb3m] mémoire Amadeus", saved.error.message);
+    if (saved.error) throw new Mb3mError("La facture Amadeus n’a pas pu être notée sur le séjour.", -1);
   }
   return folderId;
 }

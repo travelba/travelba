@@ -519,13 +519,7 @@ async function attachReglements(
   customerUid: string | null
 ): Promise<Mb3mInvoiceResult> {
   let folder = folderId || "";
-  if (deps.finishGds) {
-    try {
-      folder = (await deps.finishGds(folderId)) || folder;
-    } catch (err) {
-      console.error("[mb3m] Amadeus", err instanceof Error ? err.message : err);
-    }
-  }
+  if (deps.finishGds) folder = (await deps.finishGds(folderId)) || folder;
   if (!deps.recordPayments) return { ...result, reglements: [] };
   try {
     const reglements = await deps.recordPayments({
@@ -536,21 +530,12 @@ async function attachReglements(
       invoiceAmount,
       gdsInvoices: ctx.gdsPlan?.invoices,
     });
+    const failed = reglements.find((row) => row.statut === "erreur");
+    if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
     return { ...result, reglements };
   } catch (err) {
-    console.error("[mb3m] règlements", err instanceof Error ? err.message : err);
-    return {
-      ...result,
-      reglements: [
-        {
-          date: "",
-          montant: 0,
-          numero_mb3m: null,
-          statut: "erreur",
-          erreur: "Les règlements n’ont pas pu être enregistrés.",
-        },
-      ],
-    };
+    if (err instanceof Mb3mError) throw err;
+    throw new Mb3mError(err instanceof Error ? err.message : "Les règlements n’ont pas pu être enregistrés.", -1);
   }
 }
 
@@ -681,7 +666,16 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
       try {
         await deps.cancelInvoice(previous.folderId, previous.number);
       } catch (err) {
-        console.error(`[mb3m] annulation de la pro forma n° ${previous.number}`, err instanceof Error ? err.message : err);
+        const message = err instanceof Error ? err.message : "annulation";
+        try {
+          await deps.cancelInvoice(savedPiece.folderId || previous.folderId, invoice.number);
+        } catch (undo) {
+          console.error(
+            `[mb3m] la nouvelle pro forma n° ${invoice.number} n’a pas pu être retirée`,
+            undo instanceof Error ? undo.message : undo
+          );
+        }
+        throw new Mb3mError(`La pro forma n° ${previous.number} n’a pas pu être annulée. ${message}`, -1);
       }
     }
     await deps.save(savedPiece.id, {
@@ -953,20 +947,17 @@ export async function emitMb3mInvoice(
     if (!(plan?.covered.length && err instanceof Mb3mError && /dépense/.test(err.message))) throw err;
     const folderId = deps.finishGds ? await deps.finishGds(plan.folderId) : plan.folderId;
     const reglements = deps.recordPayments
-      ? await deps
-          .recordPayments({
-            bookingId,
-            folderId: folderId || "",
-            customerUid: plan.customerUid || "",
-            invoiceNumber: plan.covered[0]?.invoiceNumber || "",
-            invoiceAmount: 0,
-            gdsInvoices: plan.invoices,
-          })
-          .catch((payErr: unknown) => {
-            console.error("[mb3m] règlements", payErr instanceof Error ? payErr.message : payErr);
-            return [];
-          })
+      ? await deps.recordPayments({
+          bookingId,
+          folderId: folderId || "",
+          customerUid: plan.customerUid || "",
+          invoiceNumber: plan.covered[0]?.invoiceNumber || "",
+          invoiceAmount: 0,
+          gdsInvoices: plan.invoices,
+        })
       : [];
+    const failed = reglements.find((row) => row.statut === "erreur");
+    if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
     return {
       number: plan.covered[0]?.invoiceNumber || "",
       documentId: null,
