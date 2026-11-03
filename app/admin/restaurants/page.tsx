@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { RestaurantEveningDesk } from "@/components/admin/RestaurantEveningDesk";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { restrictedRoleHome } from "@/lib/crm/session";
 import { eveningBanner } from "@/lib/crm/restaurant-desk";
 import { loadRestaurantBoard } from "@/lib/crm/restaurant-board";
 import { RESTAURANT_ALLOWED_BOOKINGS_ENV, restaurantAllowlist } from "@/lib/crm/restaurant-allowlist";
@@ -15,7 +16,8 @@ export const metadata = { title: "Restaurants du soir" };
 
 export default async function AdminRestaurantsPage() {
   const { supabase, user, staff } = await requireStaffPage();
-  if (staff.role === "partner") redirect("/admin/little-emperors");
+  const home = restrictedRoleHome(staff.role);
+  if (home) redirect(home);
   const allowed = restaurantTestOperator(user.email);
   const jar = await cookies();
   const testOn = allowed && jar.get(RESTAURANT_TEST_COOKIE)?.value === "1";

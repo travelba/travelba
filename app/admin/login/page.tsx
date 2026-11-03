@@ -116,9 +116,11 @@ function LoginForm() {
     const destination =
       staff.role === "partner"
         ? "/admin/little-emperors"
-        : next && next.startsWith("/admin") && !next.startsWith("/admin/login")
-          ? next
-          : "/admin";
+        : staff.role === "ratehawk_cert"
+          ? "/admin/ratehawk"
+          : next && next.startsWith("/admin") && !next.startsWith("/admin/login")
+            ? next
+            : "/admin";
     router.push(destination);
     router.refresh();
   }

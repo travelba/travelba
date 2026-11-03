@@ -111,6 +111,11 @@ export function loadRatehawkConfig(env: Record<string, string | undefined> = pro
   };
 }
 
+/** Le relecteur de certification n’appelle Emerging Travel que dans le bac à sable. */
+export function certificationEnvironmentAllowed(environment: string | null | undefined) {
+  return environment === "sandbox";
+}
+
 export function ratehawkConfigured(config = safeConfig()): boolean {
   return Boolean(config?.keyId && config?.apiKey);
 }

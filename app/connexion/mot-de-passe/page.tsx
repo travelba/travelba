@@ -7,6 +7,7 @@ import {
   PASSWORD_SETUP_COOKIE,
   hasChosenPassword,
   mayShowPasswordSetup,
+  restrictedRoleHome,
   mustSetPassword,
   needsClientOnboarding,
   withoutMustSetPassword,
@@ -29,7 +30,8 @@ export default async function SetPasswordPage() {
     setupCookie: jar.get(PASSWORD_SETUP_COOKIE)?.value === "1",
   });
   if (!allowed) {
-    if (staff?.role === "partner") redirect("/admin/little-emperors");
+    const home = restrictedRoleHome(staff?.role);
+    if (home) redirect(home);
     if (staff) redirect("/admin");
     if (!mustSetPassword(user) || hasChosenPassword(user)) {
       redirect(needsClientOnboarding(user) ? ONBOARDING_PATH : "/mon-compte");

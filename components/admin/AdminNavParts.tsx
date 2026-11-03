@@ -189,11 +189,11 @@ export function UserMenu({
         >
           <div className="border-b border-[var(--border)] px-4 py-3">
             <p className="truncate font-display text-sm font-bold">
-              {name || (role === "partner" ? "MyLER partner" : "Agent connecté")}
+              {name || (role === "partner" ? "MyLER partner" : role === "ratehawk_cert" ? "Certification Ratehawk" : "Agent connecté")}
             </p>
             {role ? <p className="text-xs text-muted">{role === "partner" ? "MyLER partner" : staffRoleLabel(role)}</p> : null}
           </div>
-          {role === "partner" ? null : (
+          {role === "partner" || role === "ratehawk_cert" ? null : (
             <>
               <Link
                 ref={(node) => {
@@ -224,7 +224,7 @@ export function UserMenu({
             type="button"
             role="menuitem"
             ref={
-              role === "partner"
+              role === "partner" || role === "ratehawk_cert"
                 ? (node) => {
                     firstItemRef.current = node;
                   }

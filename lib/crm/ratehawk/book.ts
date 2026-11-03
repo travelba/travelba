@@ -270,7 +270,12 @@ type BookingRow = {
   environment: string;
 };
 
-export async function pollBooking(partnerOrderId: string, supabase = ratehawkDb(), config = requireConfig()) {
+export async function pollBooking(
+  partnerOrderId: string,
+  supabase = ratehawkDb(),
+  config = requireConfig(),
+  options: { linkCrm?: boolean } = {}
+) {
   const { data, error } = await supabase.from("crm_ratehawk_bookings").select("*").eq("partner_order_id", partnerOrderId).maybeSingle();
   if (error) return { ok: false as const, error: error.message };
   const row = data as BookingRow | null;
@@ -307,7 +312,7 @@ export async function pollBooking(partnerOrderId: string, supabase = ratehawkDb(
     patch.status_reason = decision.reason;
   }
   await supabase.from("crm_ratehawk_bookings").update(patch).eq("id", row.id);
-  if (decision.action === "success") await linkDossier(supabase, { ...row, status: "success" });
+  if (decision.action === "success" && options.linkCrm !== false) await linkDossier(supabase, { ...row, status: "success" });
   return {
     ok: true as const,
     status: decision.action === "pending" ? ("in_progress" as const) : decision.action === "success" ? ("success" as const) : ("failed" as const),
@@ -340,7 +345,12 @@ export async function fetchOrderInfoIfDue(partnerOrderId: string, supabase = rat
   return { skipped: false as const, error: call.error };
 }
 
-export async function cancelBooking(partnerOrderId: string, supabase = ratehawkDb(), config = requireConfig()) {
+export async function cancelBooking(
+  partnerOrderId: string,
+  supabase = ratehawkDb(),
+  config = requireConfig(),
+  options: { touchCrm?: boolean } = {}
+) {
   const { data } = await supabase.from("crm_ratehawk_bookings").select("id, status, environment, crm_booking_item_id").eq("partner_order_id", partnerOrderId).maybeSingle();
   const row = data as { id: string; status: string; environment: string; crm_booking_item_id: string | null } | null;
   if (!row) return { ok: false as const, error: "Réservation introuvable." };
@@ -352,7 +362,7 @@ export async function cancelBooking(partnerOrderId: string, supabase = ratehawkD
     const decision = decideCancel(httpOf(call), attempt);
     if (decision === "ok") {
       await supabase.from("crm_ratehawk_bookings").update({ status: "cancelled", status_reason: null }).eq("id", row.id);
-      if (row.crm_booking_item_id) {
+      if (row.crm_booking_item_id && options.touchCrm !== false) {
         await supabase.from("crm_booking_items").update({ lifecycle: "cancelled" }).eq("id", row.crm_booking_item_id);
       }
       return { ok: true as const, status: "cancelled" as const, partner_order_id: partnerOrderId };

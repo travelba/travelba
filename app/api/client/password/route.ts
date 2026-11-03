@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     .eq("auth_user_id", user.id)
     .maybeSingle();
   const partner = staffEarly?.role === "partner" || user.app_metadata?.crm_role === "partner";
+  const ratehawkCert = staffEarly?.role === "ratehawk_cert" || user.app_metadata?.crm_role === "ratehawk_cert";
   const admin = createServiceClient({ allowPreview: true });
   if (password.length < MIN_PASSWORD_LENGTH) {
     return jsonError(
@@ -118,7 +119,10 @@ export async function POST(request: Request) {
       console.error("[client/password] whatsapp:", message.replace(/https?:\/\/\S+/g, ""));
     }
   }
-  const home = pathAfterPassword(customer?.phone, partner ? "partner" : staff ? "staff" : "client");
+  const home = pathAfterPassword(
+    customer?.phone,
+    partner ? "partner" : ratehawkCert ? "ratehawk" : staff ? "staff" : "client"
+  );
   const next = staff ? home : destinationAfterPassword(appMeta, customer?.phone);
   const response = NextResponse.json({
     ok: true,

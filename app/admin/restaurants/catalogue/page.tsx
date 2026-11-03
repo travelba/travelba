@@ -3,13 +3,15 @@ import { redirect } from "next/navigation";
 import { RestaurantCatalog } from "@/components/admin/RestaurantCatalog";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { restrictedRoleHome } from "@/lib/crm/session";
 import { listRestaurants } from "@/lib/crm/restaurants-db";
 
 export const metadata = { title: "Catalogue restaurants" };
 
 export default async function RestaurantCatalogPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { supabase, staff } = await requireStaffPage();
-  if (staff.role === "partner") redirect("/admin/little-emperors");
+  const home = restrictedRoleHome(staff.role);
+  if (home) redirect(home);
   const { q } = await searchParams;
   const query = (q || "").slice(0, 40);
   const catalog = await listRestaurants(supabase, query);

@@ -124,6 +124,7 @@ export type McpStaffGate = {
 export function mcpStaffDenial(tool: string, staff: McpStaffGate | null | undefined): string | null {
   if (!staff) return null;
   if (staff.role === "partner") return MCP_PARTNER_DENIAL;
+  if (staff.role === "ratehawk_cert") return MCP_ROLE_DENIAL;
   const gate = MCP_TOOL_GATES[tool];
   if (!gate) return MCP_ROLE_DENIAL;
   if (gate === "agency") return null;
