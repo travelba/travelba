@@ -386,7 +386,8 @@ export async function mb3mSaveFolder(
   assertOperation(xml);
   const id = mb3mXmlTexts(xml, "Id")[0] || "";
   const known = new Set([input.customerUid.trim(), (input.agencyUid || "").trim()].filter(Boolean));
-  const uid = mb3mXmlTexts(xml, "Uid").find((value) => !known.has(value)) || "";
+  const own = mb3mEntityUid(xml);
+  const uid = (own && !known.has(own) ? own : "") || mb3mXmlTexts(withoutNestedIdentities(xml), "Uid").find((value) => !known.has(value)) || "";
   if (!id) throw new Mb3mError("MB3M n’a pas renvoyé de dossier.", -1);
   return { id, uid };
 }
@@ -456,8 +457,7 @@ function pieceIdentity(xml: string, kind: "Invoice" | "CreditNote") {
   const scope = blocks.at(-1) || xml;
   const number = mb3mXmlTexts(scope, "Number").filter(Boolean).at(-1) || "";
   if (!number) throw new Mb3mError("MB3M n’a pas renvoyé de numéro de pièce.", -1);
-  const head = scope.split("<CustomerIdentity>")[0] || "";
-  return { number, uid: mb3mXmlText(head, "Uid") };
+  return { number, uid: mb3mEntityUid(scope) || "" };
 }
 
 function pieceNumber(xml: string, kind: "Invoice" | "CreditNote") {
@@ -635,9 +635,32 @@ export type Mb3mRemotePiece = {
   uid: string | null;
 };
 
+/** Client, dossier imbriqué et agence : leur Uid n’est pas celui de la pièce. */
+function withoutNestedIdentities(xml: string) {
+  return mb3mLocalNames(xml)
+    .replace(/<CustomerIdentity(?:\s[^>]*)?>[\s\S]*?<\/CustomerIdentity>/g, "")
+    .replace(/<FolderIdentity(?:\s[^>]*)?>[\s\S]*?<\/FolderIdentity>/g, "")
+    .replace(/<Agency(?:\s[^>]*)?>[\s\S]*?<\/Agency>/g, "")
+    .replace(/<Customer(?:\s[^>]*)?>[\s\S]*?<\/Customer>/g, "")
+    .replace(/<Folder(?:\s[^>]*)?>[\s\S]*?<\/Folder>/g, "");
+}
+
+/**
+ * Uid de la pièce elle-même. D’abord le bloc Identity, jamais le client ni le dossier
+ * qui précèdent dans FindAllPieces.
+ */
+export function mb3mEntityUid(block: string) {
+  const stripped = withoutNestedIdentities(block);
+  const identity = stripped.match(/<Identity(?:\s[^>]*)?>[\s\S]*?<\/Identity>/)?.[0];
+  if (identity) {
+    const uid = mb3mXmlText(identity, "Uid");
+    if (uid) return uid;
+  }
+  return mb3mXmlText(stripped, "Uid") || null;
+}
+
 function pieceOwnUid(block: string) {
-  const head = block.split(/<CustomerIdentity[\s>]/)[0] || "";
-  return mb3mXmlText(head, "Uid") || null;
+  return mb3mEntityUid(block);
 }
 
 function pieceBlocks(xml: string) {
