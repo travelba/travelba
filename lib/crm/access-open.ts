@@ -153,8 +153,8 @@ export async function openAccessToken(request: Request, rawToken: string, opts?:
   const jar = await cookies();
   let existing: User | null = null;
   if (hasAuthSessionCookie(jar.getAll().map((cookie) => cookie.name))) {
-    const found = await supabase.auth.getUser().catch(() => null);
-    existing = found?.data.user ?? null;
+    const { readVerifiedUser } = await import("@/lib/crm/verified-user");
+    existing = await readVerifiedUser(supabase);
   }
   const gate = accessLinkGate({
     tokenOk: true,

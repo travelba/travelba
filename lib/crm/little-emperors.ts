@@ -477,6 +477,7 @@ export async function cancelLittleEmperorsBooking(bookingId: number, fetchImpl?:
 
 /** Actualiser : agence et partenaire. Rattacher et annuler : agence seulement. */
 export function littleEmperorsActionAllowed(role: string, action: string) {
+  if (role === "ratehawk_cert") return false;
   if (action === "sync") return true;
   if (role === "partner" || role === "lecture" || role === "comptable") return false;
   return action === "attach" || action === "cancel";

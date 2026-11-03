@@ -145,7 +145,7 @@ export { AGENCY_FEE_LABEL } from "./agency-fee-rate";
 export type CrmStaff = {
   id: string;
   auth_user_id: string;
-  role: "admin" | "manager" | "agent" | "comptable" | "lecture" | "partner";
+  role: "admin" | "manager" | "agent" | "comptable" | "lecture" | "partner" | "ratehawk_cert";
   full_name: string;
   /** Faux : accès coupé, la ligne reste. Absent : accès ouvert (avant la migration). */
   active?: boolean;

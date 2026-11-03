@@ -3,6 +3,7 @@ import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { pliantConfigured } from "@/lib/crm/pliant";
 import { syncPliantAccount } from "@/lib/crm/pliant-sync";
 
+/** Toutes les 30 minutes, minute 12. Dépenses carte, pas un encaissement. Fenêtre de 10 jours après le premier passage. */
 export const runtime = "nodejs";
 export const maxDuration = 300;
 

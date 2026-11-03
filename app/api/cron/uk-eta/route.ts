@@ -3,6 +3,7 @@ import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { runUkEtaCron } from "@/lib/crm/uk-eta-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 
+/** Une fois par heure, minute 33, à l’écart du passage ESTA. */
 export const runtime = "nodejs";
 export const maxDuration = 120;
 

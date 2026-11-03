@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 
 export default async function CarnetIndexPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");

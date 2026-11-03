@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { retryStillDue, shouldCloseCard } from "@/lib/crm/visa-desk";
 import { raisePliantLimit } from "@/lib/crm/pliant";
 
+/** Trois passages le matin, 6 h 23, 8 h 23 et 10 h 23 UTC. */
 export const runtime = "nodejs";
 
 function authorized(request: Request) {

@@ -222,6 +222,8 @@ async function journalPersonalWrite(name: string, args: ToolArgs) {
 
 const q = z.string().trim().max(80).optional().describe("Nom, société, e-mail, téléphone ou référence");
 const id = z.string().trim().max(80).optional().describe("Identifiant du client ou du dossier");
+const listPage = z.number().int().min(1).optional().describe("Page, à partir de 1. page_suivante donne la suivante. Aucun plafond sur le total.");
+const listLimit = z.number().int().min(1).max(100).optional().describe("Taille de page, 100 au plus. Défaut selon l’outil.");
 
 type ToolArgs = Record<string, unknown>;
 
@@ -265,6 +267,15 @@ export function previewMcpTool(name: string, value: unknown) {
   return text(value, keepPieceNumber(tool), keepSignedUrl(tool), keepCardSecrets(tool));
 }
 
+function pageOf(args: ToolArgs) {
+  const page = args.page;
+  const limite = args.limite;
+  return {
+    page: typeof page === "number" ? page : undefined,
+    limite: typeof limite === "number" ? limite : undefined,
+  };
+}
+
 function str(args: ToolArgs, key: string) {
   const value = args[key];
   return typeof value === "string" ? value : undefined;
@@ -292,8 +303,11 @@ export const MCP_TOOLS: ToolDef[] = [
     input: {
       q,
       echeance: z.boolean().optional().describe("Pièces à échéance, sans numéro de pièce"),
+      page: listPage,
+      limite: listLimit,
     },
-    run: (args: ToolArgs) => readChercherClients({ q: str(args, "q"), echeance: flag(args, "echeance") }),
+    run: (args: ToolArgs) =>
+      readChercherClients({ q: str(args, "q"), echeance: flag(args, "echeance"), ...pageOf(args) }),
   },
   {
     name: "fiche_client",
@@ -312,11 +326,14 @@ export const MCP_TOOLS: ToolDef[] = [
         .enum(["a-venir", "preparation", "montre", "archive"])
         .optional()
         .describe("a-venir, preparation, montre ou archive"),
+      page: listPage,
+      limite: listLimit,
     },
     run: (args: ToolArgs) =>
       readChercherDossiers({
         q: str(args, "q"),
         etat: (str(args, "etat") as BookingStateFilter | undefined) ?? null,
+        ...pageOf(args),
       }),
   },
   {
@@ -371,37 +388,43 @@ export const MCP_TOOLS: ToolDef[] = [
     input: {
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      page: listPage,
+      limite: listLimit,
     },
     run: (args: ToolArgs) =>
       readFormalites({
         reference: str(args, "reference"),
         dossier_id: str(args, "dossier_id"),
+        ...pageOf(args),
       }),
   },
   {
     name: "services_a_confirmer",
     description:
-      "Chauffeur, accueil VIP et enregistrement encore à confirmer. dossier_id et carte_id servent à confirmer_service.",
-    run: () => readServicesAConfirmer(),
+      "Chauffeur, accueil VIP et enregistrement encore à confirmer. dossier_id et carte_id servent à confirmer_service. page et limite parcourent tous les séjours.",
+    input: { page: listPage, limite: listLimit },
+    run: (args) => readServicesAConfirmer(pageOf(args)),
   },
   {
     name: "grand_livre",
     description:
       "Encours et derniers mouvements d’un client. Positif = avoir, négatif = reste à payer. credits liste les crédits Revolut, Stripe et virements saisis encore rattachés (id, montant, paiement_id) pour remettre_non_rattache. id ou q. Lecture seule.",
-    input: { id, q },
-    run: (args: ToolArgs) => readGrandLivre({ id: str(args, "id"), q: str(args, "q") }),
+    input: { id, q, page: listPage, limite: listLimit },
+    run: (args: ToolArgs) => readGrandLivre({ id: str(args, "id"), q: str(args, "q"), ...pageOf(args) }),
   },
   {
     name: "revolut_en_attente",
     description:
-      "Virements Revolut reçus, pas encore rapprochés. L’identifiant sert à crediter_revolut, avec le client désigné.",
-    run: () => readRevolutEnAttente(),
+      "Virements Revolut reçus, pas encore rapprochés. L’identifiant sert à crediter_revolut, avec le client désigné. page et limite parcourent toute la file.",
+    input: { page: listPage, limite: listLimit },
+    run: (args) => readRevolutEnAttente(pageOf(args)),
   },
   {
     name: "revolut_debits",
     description:
-      "Sorties du compte Revolut. Celles à rapprocher ont un id pour rapprocher_depense_revolut. Ne crédite pas un client.",
-    run: () => readRevolutDebits(),
+      "Sorties du compte Revolut. Celles à rapprocher ont un id pour rapprocher_depense_revolut. Ne crédite pas un client. page et limite parcourent toute la file.",
+    input: { page: listPage, limite: listLimit },
+    run: (args) => readRevolutDebits(pageOf(args)),
   },
   {
     name: "comptabilite_voyage",
@@ -416,14 +439,16 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "stripe_en_attente",
     description:
-      "Paiements Stripe reçus, pas encore rapprochés. L’identifiant sert à crediter_stripe, avec le client désigné.",
-    run: () => readStripeEnAttente(),
+      "Paiements Stripe reçus, pas encore rapprochés. L’identifiant sert à crediter_stripe, avec le client désigné. page et limite parcourent toute la file.",
+    input: { page: listPage, limite: listLimit },
+    run: (args) => readStripeEnAttente(pageOf(args)),
   },
   {
     name: "emails_en_attente",
     description:
-      "Mails fournisseurs en attente. L’identifiant sert à lire_email, puis à traiter_email : refuser, rattacher, mettre_a_jour (pièces sur la carte qui correspond, aucune carte créée) ou creer_dossier. Une annulation a alerte true seulement si son numéro est celui d’une carte active. suivi « remplacée » ou « historique » : pas d’alerte.",
-    run: () => readEmailsEnAttente(),
+      "Mails fournisseurs en attente. L’identifiant sert à lire_email, puis à traiter_email : refuser, rattacher, mettre_a_jour (pièces sur la carte qui correspond, aucune carte créée) ou creer_dossier. Une annulation a alerte true seulement si son numéro est celui d’une carte active. suivi « remplacée » ou « historique » : pas d’alerte. page et limite parcourent toute la file.",
+    input: { page: listPage, limite: listLimit },
+    run: (args) => readEmailsEnAttente(pageOf(args)),
   },
   {
     name: "lire_email",
@@ -450,8 +475,9 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "little_emperors_en_attente",
     description:
-      "Séjours Little Emperors sans dossier, date de réservation la plus récente d’abord (création Little Emperors, sinon e-mail de confirmation, sinon l’enregistrement). Chaque ligne porte reservee_le. Une annulation n’a alerte true que si son numéro est celui d’une carte active. suivi « remplacée » ou « historique », alerte false : la routine ne la signale pas. Ne crée rien.",
-    run: () => readLittleEmperorsEnAttente(),
+      "Séjours Little Emperors sans dossier, date de réservation la plus récente d’abord (création Little Emperors, sinon e-mail de confirmation, sinon l’enregistrement). Chaque ligne porte reservee_le. Une annulation n’a alerte true que si son numéro est celui d’une carte active. suivi « remplacée » ou « historique », alerte false : la routine ne la signale pas. Ne crée rien. page et limite parcourent toute la file.",
+    input: { page: listPage, limite: listLimit },
+    run: (args) => readLittleEmperorsEnAttente(undefined, pageOf(args)),
   },
   {
     name: "crediter_virement",
@@ -1395,6 +1421,8 @@ export const MCP_TOOLS: ToolDef[] = [
       restaurant_id: z.string().trim().max(80).optional().describe("Identifiant : lit une fiche"),
       q: z.string().trim().max(80).optional().describe("Recherche sur le nom ou la ville"),
       statut: z.string().trim().max(20).optional().describe("actif, a_valider ou exclu"),
+      page: listPage,
+      limite: listLimit,
     },
     run: (args) => listRestaurantsTool(args),
   },
@@ -1856,7 +1884,8 @@ export const MCP_TOOLS: ToolDef[] = [
       nom: z.string().trim().max(80).optional().describe("Nom ou prénom"),
       du: z.string().trim().max(10).optional().describe("Début, aaaa-mm-jj"),
       au: z.string().trim().max(10).optional().describe("Fin, aaaa-mm-jj"),
-      limite: z.number().int().min(1).max(80).optional(),
+      page: listPage,
+      limite: listLimit,
     },
     run: (args) => lireRecherchesHotels(args),
   },

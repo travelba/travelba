@@ -14,6 +14,7 @@ import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-e
 import { formatDateFr } from "@/lib/crm/money";
 import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest, type EmailIngestAttachment } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { MCP_EMAIL_COLUMNS } from "@/lib/crm/mcp-columns";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BODY_CAP = 24_000;
@@ -240,7 +241,7 @@ async function storedPdfText(attachment: EmailIngestAttachment) {
 export async function readLireEmail(input: { id?: string }, admin?: Admin, deps?: EmailReadDeps) {
   const id = readUuid(input.id);
   const client = db(admin);
-  const { data, error } = await client.from("crm_email_ingest").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await client.from("crm_email_ingest").select(MCP_EMAIL_COLUMNS).eq("id", id).maybeSingle();
   if (error) {
     console.error("[mcp] email", error.code ?? "?");
     throw new McpReadError("Lecture impossible.");
@@ -412,7 +413,7 @@ async function defaultPersist(opts: {
 export async function createDossierFromEmail(input: Record<string, unknown>, admin?: Admin, deps?: EmailDossierDeps) {
   const id = uuid(input.id, "E-mail");
   const client = db(admin);
-  const { data, error } = await client.from("crm_email_ingest").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await client.from("crm_email_ingest").select(MCP_EMAIL_COLUMNS).eq("id", id).maybeSingle();
   if (error) throw new McpWriteError("E-mail introuvable.");
   const row = data as CrmEmailIngest | null;
   if (!row) throw new McpWriteError("E-mail introuvable.");

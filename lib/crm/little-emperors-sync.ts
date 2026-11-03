@@ -28,6 +28,7 @@ import {
   LittleEmperorsError,
   type LeBooking,
 } from "@/lib/crm/little-emperors";
+import { leBookingNeedsWork, lePayloadMatches, type LeSnap } from "@/lib/crm/sync-delta";
 import type { LeHotelCatalog } from "@/lib/crm/hotel-contact";
 import { countsAsCarnetCard, isActiveItem, type CrmBookingItem, type CrmCustomer } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -420,11 +421,41 @@ async function reflectCancellation(
   return "cancelled";
 }
 
+const LE_STORED_COLUMNS =
+  "id, le_booking_id, crm_booking_id, status, state, confirmation_number, hotel_id, hotel_name, address, city, website, check_in, check_out, currency, total_cost, is_cancellable, cancellation_deadline, guest_names, cancellation_policies, room_types, country, raw, last_error, candidates";
+
+type StoredLe = LeSnap & { id: string; le_booking_id: number; raw?: unknown };
+
+function leSnap(row: StoredLe | undefined, booking?: LeBooking): LeSnap | null {
+  if (!row) return null;
+  const raw = row.raw && typeof row.raw === "object" ? (row.raw as LeBooking) : null;
+  return {
+    ...row,
+    benefits: benefitsFromLeRaw(row.raw),
+    rooms: booking?.rooms !== undefined ? raw?.rooms : undefined,
+  };
+}
+
+/** Une lecture, pas une requête par séjour. L’API ne filtre pas : on s’arrête avant l’écriture. */
+async function loadStoredLe(admin: SupabaseClient) {
+  const map = new Map<number, StoredLe>();
+  for (let from = 0; from < 20_000; from += 1000) {
+    const { data, error } = await admin.from("crm_le_bookings").select(LE_STORED_COLUMNS).range(from, from + 999);
+    if (error) throw new Error(error.message);
+    for (const row of data || []) {
+      const id = Number((row as { le_booking_id?: unknown }).le_booking_id);
+      if (Number.isFinite(id)) map.set(id, row as StoredLe);
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return map;
+}
+
 export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Promise<LeSyncResult> {
   const admin = leAdmin();
-  let fetched: LeBooking[];
+  let listed: LeBooking[];
   try {
-    fetched = await enrich(await listLittleEmperorsBookings(fetchImpl), fetchImpl);
+    listed = await listLittleEmperorsBookings(fetchImpl);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Lecture Little Emperors impossible.";
     const status = err instanceof LittleEmperorsError ? err.status : 502;
@@ -433,17 +464,24 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
     return { ok: false, fetched: 0, linked: 0, created: 0, cancelled: 0, message, status, code };
   }
 
-  const context = await loadMatchContext(admin);
+  let storedById: Map<number, StoredLe>;
+  try {
+    storedById = await loadStoredLe(admin);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Lecture des séjours enregistrés impossible.";
+    await rememberProbe(admin, { last_status: 500, last_error: message, last_ok_at: null });
+    return { ok: false, fetched: listed.length, linked: 0, created: 0, cancelled: 0, message, status: 500, code: "stored" };
+  }
+  const pending = listed.filter((booking) => leBookingNeedsWork(leSnap(storedById.get(booking.id), booking), booking));
+  const fetched = await enrich(pending, fetchImpl);
+  const context = fetched.length ? await loadMatchContext(admin) : null;
   const rememberHotel = hotelCatalogCache(admin, fetchImpl);
   let linked = 0;
   let created = 0;
   let cancelled = 0;
   for (const booking of fetched) {
-    const { data: existing } = await admin
-      .from("crm_le_bookings")
-      .select("id, crm_booking_id, status")
-      .eq("le_booking_id", booking.id)
-      .maybeSingle();
+    if (!context) break;
+    const existing = storedById.get(booking.id) || null;
     const suggestion = suggestLittleEmperorsBooking(
       booking,
       context.bookings,
@@ -492,7 +530,11 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
       ...(catalog?.country ? { country: catalog.country } : {}),
       ...(catalog?.website && !booking.website ? { website: catalog.website } : {}),
     });
-    const saved = await saveLeRow(admin, booking.id, existing?.id, payload);
+    const snap = existing ? leSnap(existing, booking) : null;
+    const saved =
+      existing?.id && snap && lePayloadMatches(snap, payload as LeSnap)
+        ? { id: existing.id, crmBookingId: (existing.crm_booking_id as string | null) || null }
+        : await saveLeRow(admin, booking.id, existing?.id, payload);
     const rowId = saved.id;
     if (saved.crmBookingId && !crmBookingId) crmBookingId = saved.crmBookingId;
     if (decision.kind === "create" && rowId && !crmBookingId) {
@@ -523,7 +565,7 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
     last_error: null,
     last_ok_at: new Date().toISOString(),
   });
-  return { ok: true, fetched: fetched.length, linked, created, cancelled };
+  return { ok: true, fetched: listed.length, linked, created, cancelled };
 }
 
 export async function upsertLittleEmperorsWebhook(event: string, booking: LeBooking) {

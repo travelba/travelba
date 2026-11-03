@@ -13,6 +13,7 @@ import { McpWriteError } from "@/lib/crm/mcp-write";
 import type { StaffRole } from "@/lib/crm/staff-team";
 import { BOOKING_ITEM_KINDS, customerFullName, type BookingItemKind, type CrmBooking } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { MCP_BOOKING_COLUMNS } from "@/lib/crm/mcp-columns";
 import { attachBookingDocument, removeBookingDocument } from "@/lib/crm/booking-document-write";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -414,7 +415,7 @@ export async function cacherCarnet(input: Record<string, unknown>, deps: DeskDep
     if (deps.syncLedger) await deps.syncLedger(admin, booking.id);
     else {
       await syncBookingTotalFromItems(admin, booking.id);
-      const { data } = await admin.from("crm_bookings").select("*").eq("id", booking.id).maybeSingle();
+      const { data } = await admin.from("crm_bookings").select(MCP_BOOKING_COLUMNS).eq("id", booking.id).maybeSingle();
       if (data) await syncBookingLedger(admin, data as CrmBooking);
     }
   } catch (err) {

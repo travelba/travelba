@@ -139,6 +139,7 @@ export async function createMcpApiKey(input: {
   if (!staff) throw new McpKeyError("Membre introuvable.", 404);
   const role = parseStaffRole(staff.role);
   if (!role || role === "partner") throw new McpKeyError("Un partenaire MyLER n’a pas de clé CRM.", 400);
+  if (role === "ratehawk_cert") throw new McpKeyError("La certification Ratehawk n’a pas de clé CRM.", 400);
   if (staff.active === false) throw new McpKeyError("L’accès de ce membre est coupé.", 400);
 
   const issued = issueMcpApiKey();
@@ -218,7 +219,7 @@ export async function findPersonalMcpAccess(token: string) {
   if (!mcpApiKeyHashEquals(token, row.key_hash)) return null;
   const staff = await loadStaff(row.staff_id);
   const role = staff ? parseStaffRole(staff.role) : null;
-  const active = Boolean(staff) && staff?.active !== false && role !== null && role !== "partner";
+  const active = Boolean(staff) && staff?.active !== false && role !== null && role !== "partner" && role !== "ratehawk_cert";
   if (!apiKeyUsable({ revokedAt: row.revoked_at, expiresAt: row.expires_at, staffActive: active })) return null;
   const matrix = await readMatrix(admin);
   const name = staffKeyName(staff?.full_name, staff?.email);

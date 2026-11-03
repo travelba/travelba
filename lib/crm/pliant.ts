@@ -19,6 +19,7 @@ import {
   pliantControlsAreOpen,
   pliantIssuePayload,
 } from "./pliant-controls";
+import { pliantRowsWithinSince } from "./sync-delta";
 import {
   annotatePliantPayload,
   pliantAvailableLimit,
@@ -494,19 +495,27 @@ export async function setPliantCardLimit(
 const TX_PAGE = 100;
 const TX_PAGES = 40;
 
-/** Mouvements de chaque organisation active : commerçant, carte, porteur. */
-export async function fetchPliantTransactions() {
+/**
+ * Mouvements de chaque organisation active : commerçant, carte, porteur.
+ * `sinceMs` arrête la pagination dès que la page sort de la fenêtre.
+ * Sans date, l’historique entier (premier passage). Le parc de cartes n’est relu que dans ce cas.
+ */
+export async function fetchPliantTransactions(options?: { sinceMs?: number | null }) {
   if (!pliantConfigured()) throw new Error("Pliant n’est pas branché.");
   const organizationIds = await pliantOrganizationIds();
   if (!organizationIds.length) throw new Error("Pliant n’est pas branché.");
+  const sinceMs = options?.sinceMs ?? null;
   const seen = new Set<string>();
   const rows: unknown[] = [];
   for (const organizationId of organizationIds) {
-    const [transactions, cards, holders] = await Promise.all([
-      fetchOrganizationTransactions(organizationId),
-      fetchOrganizationDirectory(organizationId, "cards"),
-      fetchOrganizationDirectory(organizationId, "cardholders"),
-    ]);
+    const transactions = await fetchOrganizationTransactions(organizationId, sinceMs);
+    const [cards, holders] =
+      sinceMs == null
+        ? await Promise.all([
+            fetchOrganizationDirectory(organizationId, "cards"),
+            fetchOrganizationDirectory(organizationId, "cardholders"),
+          ])
+        : [[], []];
     const cardsById = new Map<string, unknown>();
     for (const card of cards) {
       const id = pliantCardFace(card).id;
@@ -552,17 +561,19 @@ function organizationIds(payload: unknown) {
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
-async function fetchOrganizationTransactions(organizationId: string) {
+async function fetchOrganizationTransactions(organizationId: string, sinceMs: number | null) {
   try {
-    const detailed = await fetchPages((page) =>
-      pliantPost("/transactions/details", {
-        organizationIds: [organizationId],
-        pagination: {
-          page,
-          limit: TX_PAGE,
-          sortBy: { field: "createdAt", direction: "DESC" },
-        },
-      })
+    const detailed = await fetchPages(
+      (page) =>
+        pliantPost("/transactions/details", {
+          organizationIds: [organizationId],
+          pagination: {
+            page,
+            limit: TX_PAGE,
+            sortBy: { field: "createdAt", direction: "DESC" },
+          },
+        }),
+      sinceMs
     );
     if (detailed.length) return detailed;
   } catch (err) {
@@ -578,7 +589,7 @@ async function fetchOrganizationTransactions(organizationId: string) {
       sortDirection: "DESC",
     });
     return pliantGet(`/transactions?${query.toString()}`);
-  });
+  }, sinceMs);
 }
 
 async function fetchOrganizationDirectory(organizationId: string, kind: "cards" | "cardholders") {
@@ -637,12 +648,18 @@ async function pool<T>(items: T[], size: number, run: (item: T) => Promise<void>
   }
 }
 
-async function fetchPages(load: (page: number) => Promise<unknown>) {
+async function fetchPages(load: (page: number) => Promise<unknown>, sinceMs: number | null = null) {
   const rows: unknown[] = [];
   for (let page = 0; page < TX_PAGES; page += 1) {
     const batch = pliantTransactionPage(await load(page), TX_PAGE);
-    rows.push(...batch.rows);
-    if (batch.done) break;
+    if (sinceMs == null) {
+      rows.push(...batch.rows);
+      if (batch.done) break;
+      continue;
+    }
+    const within = pliantRowsWithinSince(batch.rows, sinceMs);
+    rows.push(...within.kept);
+    if (batch.done || within.done) break;
   }
   return rows;
 }

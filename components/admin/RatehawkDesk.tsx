@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PAGE_POLL_MS, pollRunsWhileVisible } from "@/lib/crm/page-poll";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { fieldControlClass, Field } from "@/components/crm/fields";
 import { CERTIFICATION_HOTELS } from "@/lib/crm/ratehawk/catalog";
@@ -79,6 +80,7 @@ export function RatehawkDesk({
   marginPercent,
   orders,
   mappedHotels,
+  linkDossier = true,
 }: {
   configured: boolean;
   bookingReady: boolean;
@@ -88,6 +90,8 @@ export function RatehawkDesk({
   marginPercent: number;
   orders: RatehawkOrder[];
   mappedHotels: number[];
+  /** Le relecteur de certification ne rattache pas un dossier du CRM. */
+  linkDossier?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [choices, setChoices] = useState<Destination[]>([]);
@@ -121,7 +125,8 @@ export function RatehawkDesk({
   useEffect(() => {
     if (!orderId || orderStatus !== "in_progress") return;
     let stop = false;
-    const timer = setInterval(async () => {
+    const pull = async () => {
+      if (!pollRunsWhileVisible(document.visibilityState)) return;
       const response = await fetch("/api/admin/ratehawk/status", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -136,10 +141,16 @@ export function RatehawkDesk({
         const body = (await fresh.json()) as { orders?: RatehawkOrder[] };
         if (body.orders) setList(body.orders);
       }
-    }, 5000);
+    };
+    const timer = setInterval(() => void pull(), PAGE_POLL_MS.ratehawk);
+    const onVisible = () => {
+      if (pollRunsWhileVisible(document.visibilityState)) void pull();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       stop = true;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [orderId, orderStatus]);
 
@@ -304,7 +315,7 @@ export function RatehawkDesk({
         price_accepted: priceAccepted || !priceNote,
         accept_form_price: acceptForm,
         scenario: scenario === "none" ? null : scenario,
-        dossier: dossier || null,
+        dossier: linkDossier ? dossier || null : null,
         partner_order_id: acceptForm ? orderId : null,
       }),
     });
@@ -603,9 +614,11 @@ export function RatehawkDesk({
             ))}
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <Field label="Dossier Travel BA" hint="Référence ou identifiant, si le séjour existe déjà.">
-              <input className={fieldControlClass} value={dossier} onChange={(event) => setDossier(event.target.value)} />
-            </Field>
+            {linkDossier ? (
+              <Field label="Dossier Travel BA" hint="Référence ou identifiant, si le séjour existe déjà.">
+                <input className={fieldControlClass} value={dossier} onChange={(event) => setDossier(event.target.value)} />
+              </Field>
+            ) : null}
             <Field label="Scénario bac à sable">
               <select className={fieldControlClass} value={scenario} onChange={(event) => setScenario(event.target.value)}>
                 <option value="none">Réservation normale</option>

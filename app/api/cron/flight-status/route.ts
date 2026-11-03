@@ -3,6 +3,7 @@ import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { runFlightWatch } from "@/lib/crm/flight-watch-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 
+/** Une fois par heure, minute 8. */
 export const runtime = "nodejs";
 export const maxDuration = 120;
 

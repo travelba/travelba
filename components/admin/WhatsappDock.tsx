@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { WhatsappHoldButton } from "@/components/admin/WhatsappHoldButton";
 import { Icon } from "@/components/crm/icons";
 import { browserAlert } from "@/lib/crm/browser-alert";
+import { PAGE_POLL_MS, pollRunsWhileVisible } from "@/lib/crm/page-poll";
 import { createClient } from "@/lib/supabase/client";
 import {
   applyDockMessage,
@@ -210,7 +211,8 @@ export function WhatsappDock({
         });
       })
       .subscribe();
-    const timer = window.setInterval(() => {
+    const pull = () => {
+      if (!pollRunsWhileVisible(document.visibilityState)) return;
       void fetch("/api/admin/whatsapp")
         .then((response) => (response.ok ? response.json() : null))
         .then((body: { threads?: InboxThread[] } | null) => {
@@ -228,9 +230,15 @@ export function WhatsappDock({
           }
         })
         .catch(() => undefined);
-    }, 60_000);
+    };
+    const timer = window.setInterval(pull, PAGE_POLL_MS.whatsappDock);
+    const onVisible = () => {
+      if (pollRunsWhileVisible(document.visibilityState)) pull();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       if (supabase && channel) void supabase.removeChannel(channel);
     };
   }, [live]);

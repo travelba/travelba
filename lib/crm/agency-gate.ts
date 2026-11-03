@@ -8,7 +8,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   accessTokenClaims,
-  isAgencyRole,
+  isStaffRoleValue,
   matrixFromRows,
   roleAllows,
   type PermissionMatrix,
@@ -18,6 +18,7 @@ import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { agencyGateDecision, classifyAgencyRoute, entityIdFromPath } from "@/lib/crm/agency-routes";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 function clientIp(request: NextRequest) {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -46,9 +47,7 @@ export async function gateAgencyApi(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
   const gate = await loadGate(supabase, user);
@@ -135,7 +134,7 @@ async function readStaff(
     : first.data;
   if (!data?.role) return null;
   const role = data.role as string;
-  if (role !== "partner" && !isAgencyRole(role)) return null;
+  if (!isStaffRoleValue(role)) return null;
   return {
     id: data.id as string,
     role: role as StaffRole,

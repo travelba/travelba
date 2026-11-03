@@ -10,6 +10,7 @@ import {
 import { setEmailWatch } from "@/lib/crm/email-ingest";
 import { createServiceClient } from "@/lib/supabase/admin";
 
+/** Une fois par jour à 5 h 17 UTC. Le watch Gmail dure plusieurs jours. */
 export const runtime = "nodejs";
 export const maxDuration = 60;
 

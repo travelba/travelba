@@ -9,6 +9,7 @@ import { stampClientSession } from "@/lib/crm/client-session-cookie";
 import { PASSWORD_SETUP_COOKIE, needsClientOnboarding, withoutMustSetPassword } from "@/lib/crm/session";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 export const runtime = "nodejs";
 
@@ -19,9 +20,7 @@ export const runtime = "nodejs";
  */
 export async function POST() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) return jsonError("Non authentifié", 401);
 
   const staff = await readActiveStaff(user.id);

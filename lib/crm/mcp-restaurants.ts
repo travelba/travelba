@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { cityPlaceKey, foldCityName } from "./city-names";
+import { MCP_RESTAURANT_COLUMNS } from "./mcp-columns";
+import { mcpPageMeta, mcpSlice, mcpWindow } from "./mcp-page";
 import { McpWriteError } from "./mcp-write";
 import { ficheGaps } from "./restaurant-desk";
 import {
@@ -95,7 +97,7 @@ export function presentRestaurant(row: RestaurantRecord) {
 
 async function readRestaurant(db: SupabaseClient, id: string) {
   if (!UUID.test(id)) throw new McpWriteError("Restaurant invalide.");
-  const { data, error } = await db.from("crm_restaurants").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await db.from("crm_restaurants").select(MCP_RESTAURANT_COLUMNS).eq("id", id).maybeSingle();
   if (error || !data) throw new McpWriteError("Restaurant introuvable.");
   return mapRestaurant(data as Record<string, unknown>);
 }
@@ -108,12 +110,24 @@ function sameHouse(row: RestaurantRecord, name: string, cityKey: string) {
 async function cityRows(db: SupabaseClient, city: string) {
   const key = cityPlaceKey(city);
   if (!key) return [] as RestaurantRecord[];
-  const { data, error } = await db.from("crm_restaurants").select("*").eq("city_key", key).order("name").limit(400);
-  if (error) {
-    if (!restaurantsReady(error)) throw new McpWriteError("Le module restaurants n’est pas encore en place.");
-    throw new McpWriteError("Lecture impossible.");
+  const pageSize = 200;
+  const all: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db
+      .from("crm_restaurants")
+      .select(MCP_RESTAURANT_COLUMNS)
+      .eq("city_key", key)
+      .order("name")
+      .range(from, from + pageSize - 1);
+    if (error) {
+      if (!restaurantsReady(error)) throw new McpWriteError("Le module restaurants n’est pas encore en place.");
+      throw new McpWriteError("Lecture impossible.");
+    }
+    const batch = (data || []) as Record<string, unknown>[];
+    all.push(...batch);
+    if (batch.length < pageSize) break;
   }
-  return ((data || []) as Record<string, unknown>[]).map(mapRestaurant);
+  return all.map(mapRestaurant);
 }
 
 /**
@@ -127,22 +141,37 @@ export async function listRestaurantsTool(input: Record<string, unknown>, admin?
   const ville = typeof input.ville === "string" ? input.ville.trim() : "";
   const statut = typeof input.statut === "string" ? parseRestaurantStatus(input.statut) : null;
   if (statut && typeof statut === "object") throw new McpWriteError(statut.error);
+  const window = mcpWindow(
+    {
+      page: typeof input.page === "number" ? input.page : undefined,
+      limite: typeof input.limite === "number" ? input.limite : undefined,
+    },
+    30
+  );
   let rows: RestaurantRecord[];
   if (ville) {
     rows = await cityRows(db, ville);
+    if (statut) rows = rows.filter((row) => row.status === statut);
   } else {
-    const listed = await listRestaurants(db, typeof input.q === "string" ? input.q : "");
+    const listed = await listRestaurants(db, typeof input.q === "string" ? input.q : "", {
+      from: window.from,
+      to: window.from + window.limite,
+    });
     if (!listed.ready && "error" in listed && listed.error) throw new McpWriteError(listed.error);
     if (!listed.ready) throw new McpWriteError("Le module restaurants n’est pas encore en place.");
-    rows = listed.rows;
+    rows = statut ? listed.rows.filter((row) => row.status === statut) : listed.rows;
   }
-  if (statut) rows = rows.filter((row) => row.status === statut);
-  const restaurants = rows.map(presentRestaurant);
+  const page = ville ? mcpSlice(rows, window) : mcpPageMeta(rows, window);
+  const restaurants = page.rows.map(presentRestaurant);
   return {
     ville: ville || null,
     total: restaurants.length,
     completes: restaurants.filter((row) => row.fiche_complete).length,
     a_valider: restaurants.filter((row) => row.statut === "a_valider").length,
+    page: page.page,
+    limite: page.limite,
+    suite: page.suite,
+    page_suivante: page.page_suivante,
     restaurants,
   };
 }

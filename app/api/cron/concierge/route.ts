@@ -5,6 +5,7 @@ import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { sendCatalogSamples } from "@/lib/crm/whatsapp-samples";
 
+/** Quart d’heure, minute 4. La file WhatsApp ne ralentit pas. */
 export const runtime = "nodejs";
 export const maxDuration = 120;
 

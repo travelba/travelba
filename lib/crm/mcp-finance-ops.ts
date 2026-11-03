@@ -12,6 +12,7 @@ import type { TripCost, TripCostSource } from "@/lib/crm/trip-costs";
 import { TripCostError } from "@/lib/crm/trip-costs-db";
 import type { CrmRevolutTransaction, CrmStripeTransaction } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { MCP_REVOLUT_COLUMNS, MCP_STRIPE_COLUMNS } from "@/lib/crm/mcp-columns";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CONFIRM = "Confirmation requise : confirmer true.";
@@ -236,7 +237,7 @@ export async function refuserEncaissement(input: Record<string, unknown>, deps: 
     const load =
       deps.loadRevolut ??
       (async (rowId: string) => {
-        const { data } = await admin.from("crm_revolut_transactions").select("*").eq("id", rowId).maybeSingle();
+        const { data } = await admin.from("crm_revolut_transactions").select(MCP_REVOLUT_COLUMNS).eq("id", rowId).maybeSingle();
         return (data as CrmRevolutTransaction | null) ?? null;
       });
     const row = await load(id);
@@ -252,7 +253,7 @@ export async function refuserEncaissement(input: Record<string, unknown>, deps: 
     const load =
       deps.loadStripe ??
       (async (rowId: string) => {
-        const { data } = await admin.from("crm_stripe_transactions").select("*").eq("id", rowId).maybeSingle();
+        const { data } = await admin.from("crm_stripe_transactions").select(MCP_STRIPE_COLUMNS).eq("id", rowId).maybeSingle();
         return (data as CrmStripeTransaction | null) ?? null;
       });
     const row = await load(id);

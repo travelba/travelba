@@ -105,6 +105,7 @@ function memoryAdmin(seed: Record<string, Row[]>) {
   function from(table: string) {
     if (!tables[table]) tables[table] = [];
     const filters: ((row: Row) => boolean)[] = [];
+    let span: { from: number; to: number } | null = null;
     const api = {
       select() {
         return api;
@@ -138,12 +139,20 @@ function memoryAdmin(seed: Record<string, Row[]>) {
       limit() {
         return api;
       },
+      order() {
+        return api;
+      },
+      range(from: number, to: number) {
+        span = { from, to };
+        return api;
+      },
       maybeSingle() {
         const rows = tables[table].filter((row) => filters.every((filter) => filter(row)));
         return Promise.resolve({ data: rows[0] || null, error: rows.length > 1 ? { code: "PGRST116" } : null });
       },
       then(resolve: (value: { data: Row[]; error: null }) => void) {
-        const rows = tables[table].filter((row) => filters.every((filter) => filter(row)));
+        let rows = tables[table].filter((row) => filters.every((filter) => filter(row)));
+        if (span) rows = rows.slice(span.from, span.to + 1);
         return Promise.resolve({ data: rows, error: null }).then(resolve);
       },
     };

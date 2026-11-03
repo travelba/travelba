@@ -3,6 +3,7 @@ import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { runEstaCron } from "@/lib/crm/esta-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 
+/** Une fois par heure, minute 18. Le statut ESTA ne change pas au quart d’heure. */
 export const runtime = "nodejs";
 export const maxDuration = 120;
 

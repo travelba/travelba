@@ -30,6 +30,7 @@ import {
   type Mb3mAddress,
 } from "@/lib/crm/mb3m";
 import { isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
+import { mb3mBalanceUnchanged } from "@/lib/crm/sync-delta";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 type InvoiceRow = {
@@ -427,6 +428,8 @@ async function replaceLines(admin: SupabaseClient, invoiceId: string, lines: Mb3
 }
 
 async function touchBalance(admin: SupabaseClient, invoiceId: string, balance: number) {
+  const current = await admin.from("crm_mb3m_account_invoices").select("balance").eq("id", invoiceId).maybeSingle();
+  if (!current.error && mb3mBalanceUnchanged((current.data as { balance?: unknown } | null)?.balance, balance)) return;
   const { error } = await admin
     .from("crm_mb3m_account_invoices")
     .update({ balance, updated_at: new Date().toISOString() })

@@ -4,63 +4,63 @@
   "crons": [
     {
       "path": "/api/cron/revolut-sync",
-      "schedule": "*/15 * * * *"
+      "schedule": "2,17,32,47 * * * *"
     },
     {
       "path": "/api/cron/stripe-sync",
-      "schedule": "*/15 * * * *"
+      "schedule": "7,22,37,52 * * * *"
     },
     {
       "path": "/api/cron/pliant-sync",
-      "schedule": "*/15 * * * *"
+      "schedule": "12,42 * * * *"
     },
     {
       "path": "/api/cron/gmail-ingest",
-      "schedule": "*/5 * * * *"
+      "schedule": "1,6,11,16,21,26,31,36,41,46,51,56 * * * *"
     },
     {
       "path": "/api/cron/gmail-watch-renew",
-      "schedule": "0 6 * * *"
+      "schedule": "17 5 * * *"
     },
     {
       "path": "/api/cron/visa-desk",
-      "schedule": "0 7,8,9 * * *"
+      "schedule": "23 6,8,10 * * *"
     },
     {
       "path": "/api/cron/little-emperors-sync",
-      "schedule": "*/30 * * * *"
+      "schedule": "14,44 * * * *"
     },
     {
       "path": "/api/cron/concierge",
-      "schedule": "*/15 * * * *"
+      "schedule": "4,19,34,49 * * * *"
     },
     {
       "path": "/api/cron/whatsapp-handoff",
-      "schedule": "* * * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/cron/hotel-arrival",
-      "schedule": "*/15 * * * *"
+      "schedule": "11,41 * * * *"
     },
     {
       "path": "/api/cron/flight-status",
-      "schedule": "15 * * * *"
+      "schedule": "8 * * * *"
     },
     {
       "path": "/api/cron/esta",
-      "schedule": "*/15 * * * *"
+      "schedule": "18 * * * *"
     },
     {
       "path": "/api/cron/uk-eta",
-      "schedule": "*/15 * * * *"
+      "schedule": "33 * * * *"
     },
     {
       "path": "/api/cron/restaurants",
-      "schedule": "*/15 * * * *"
+      "schedule": "3,18,33,48 * * * *"
     },
     {
       "path": "/api/cron/ratehawk-content",
-      "schedule": "10 4 * * *"
+      "schedule": "10 3 * * *"
     }
   ]
 }

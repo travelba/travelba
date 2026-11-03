@@ -357,13 +357,8 @@ function finishEntrySessionCookies(response: NextResponse, staff: boolean) {
 
 /** Session déjà ouverte sur ce navigateur, ou null. */
 async function currentUser(supabase: SupabaseClient) {
-  try {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) return null;
-    return data.user ?? null;
-  } catch {
-    return null;
-  }
+  const { readVerifiedUser } = await import("@/lib/crm/verified-user");
+  return readVerifiedUser(supabase);
 }
 
 async function verifyOn(supabase: SupabaseClient, tokenHash: string, type: string) {
@@ -374,8 +369,8 @@ async function verifyOn(supabase: SupabaseClient, tokenHash: string, type: strin
   if (verified.error) return null;
   if (verified.data.user) return verified.data.user;
   if (!verified.data.session) return null;
-  const { data } = await supabase.auth.getUser();
-  return data.user ?? null;
+  const { readVerifiedUser } = await import("@/lib/crm/verified-user");
+  return readVerifiedUser(supabase);
 }
 
 /** Une ouverture de plus, et la première date. Sans la migration, les colonnes manquent : on continue. */

@@ -7,8 +7,8 @@ import type { Permission, StaffRole } from "./agency-access";
 import { auditSummary, type JournalAction, type JournalEntity } from "./agency-journal";
 
 export type AgencyRouteClass = {
-  /** public : mot de passe oublié, sans session. partner : Little Emperors, partenaire compris. */
-  audience: "public" | "partner" | "staff";
+  /** public : mot de passe oublié, sans session. partner : Little Emperors. ratehawk : bac à sable Ratehawk. */
+  audience: "public" | "partner" | "ratehawk" | "staff";
   permission: Permission | null;
   action: JournalAction;
   entity: JournalEntity;
@@ -138,6 +138,17 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
       action,
       entity: "dossier",
       journal: mutation,
+    });
+  }
+
+  if (path.startsWith("/api/admin/ratehawk")) {
+    return classify({
+      audience: "ratehawk",
+      permission: mutation ? "edit_dossiers" : null,
+      action,
+      entity: "dossier",
+      journal: mutation,
+      summary: mutation ? "Ratehawk : recherche, pré-réservation, réservation ou annulation." : undefined,
     });
   }
 
@@ -309,6 +320,10 @@ export function agencyGateDecision(input: {
   if (input.role === "partner") {
     if (input.audience === "partner") return { allow: true, status: 200, reason: "" };
     return { allow: false, status: 403, reason: "Accès réservé à l’agence." };
+  }
+  if (input.role === "ratehawk_cert") {
+    if (input.audience === "ratehawk") return { allow: true, status: 200, reason: "" };
+    return { allow: false, status: 403, reason: "Accès réservé à la certification Ratehawk." };
   }
   const legacy = !input.matrixReady && (input.role === "admin" || input.role === "agent");
   if (!legacy && input.permission && !input.allows) {

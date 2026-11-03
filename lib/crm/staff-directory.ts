@@ -47,6 +47,12 @@ function isAlreadyRegistered(message: string) {
   return /already been registered|already registered|email_exists|user already exists/i.test(message);
 }
 
+function colleagueNextPath(role: StaffRole) {
+  if (role === "partner") return "/admin/little-emperors";
+  if (role === "ratehawk_cert") return "/admin/ratehawk";
+  return "/admin";
+}
+
 function givenName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || "";
 }
@@ -149,7 +155,7 @@ export async function listColleagues(): Promise<Colleague[]> {
       } satisfies Colleague;
     })
   );
-  const rank: Record<string, number> = { admin: 0, manager: 1, agent: 2, comptable: 3, lecture: 4, partner: 5 };
+  const rank: Record<string, number> = { admin: 0, manager: 1, agent: 2, comptable: 3, lecture: 4, partner: 5, ratehawk_cert: 6 };
   colleagues.sort((a, b) => {
     const byRole = (rank[a.role] ?? 9) - (rank[b.role] ?? 9);
     if (byRole !== 0) return byRole;
@@ -263,7 +269,7 @@ export async function addColleague(
     link = await createEntryLink(admin, origin, {
       tokenHash: hashedToken,
       otpType: linkType,
-      nextPath: role === "partner" ? "/admin/little-emperors" : "/admin",
+      nextPath: colleagueNextPath(role),
       email,
       channel: "email",
     });
@@ -325,7 +331,7 @@ export async function resendColleagueAccess(staffId: string, origin: string) {
     await createEntryLink(admin, origin, {
       tokenHash: generated.data.properties.hashed_token,
       otpType: "recovery",
-      nextPath: role === "partner" ? "/admin/little-emperors" : "/admin",
+      nextPath: colleagueNextPath(role),
       email,
       channel: "email",
     }),

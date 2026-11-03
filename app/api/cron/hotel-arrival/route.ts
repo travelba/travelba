@@ -6,6 +6,7 @@ import { runHotelArrivals } from "@/lib/crm/hotel-arrival-run";
 import { refreshHotelDesk } from "@/lib/crm/hotel-desk-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 
+/** Toutes les 30 minutes. Les fils d’hôtel sont déjà relus par l’ingestion Gmail. */
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {

@@ -25,12 +25,15 @@ import {
   hasChosenPassword,
   isStaffRole,
   partnerAdminDestination,
+  RATEHAWK_ADMIN_HOME,
+  ratehawkAdminDestination,
   mayShowPasswordSetup,
   mustSetPassword,
   isOnboardingReplay,
   needsClientOnboarding,
 } from "@/lib/crm/session";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -84,9 +87,7 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
 
   const pathname = request.nextUrl.pathname;
   const isAdmin = pathname.startsWith("/admin");
@@ -99,15 +100,16 @@ export async function updateSession(request: NextRequest) {
   const setupCookie = request.cookies.get(PASSWORD_SETUP_COOKIE)?.value === "1";
   const deskAccess = user
     ? await userDeskAccess(supabase, user)
-    : { staff: false, partner: false, inactive: false };
+    : { staff: false, partner: false, ratehawk: false, inactive: false };
   const access = accessWhileDesk({
     desk,
     mustSetPassword: user ? mustSetPassword(user) : false,
     needsOnboarding: user ? needsClientOnboarding(user) : false,
-    staff: deskAccess.staff || deskAccess.partner,
+    staff: deskAccess.staff || deskAccess.partner || deskAccess.ratehawk,
   });
   const staff = access.staff;
   const partner = Boolean(deskAccess.partner && staff);
+  const ratehawk = Boolean(deskAccess.ratehawk && staff);
   const showPasswordSetup = mayShowPasswordSetup({
     mustSetPassword: access.mustSetPassword,
     hasPassword,
@@ -142,6 +144,15 @@ export async function updateSession(request: NextRequest) {
   if (isAdmin) {
     if (user && partner) {
       const dest = partnerAdminDestination(pathname);
+      if (dest) {
+        const url = request.nextUrl.clone();
+        url.pathname = dest;
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+    }
+    if (user && ratehawk) {
+      const dest = ratehawkAdminDestination(pathname);
       if (dest) {
         const url = request.nextUrl.clone();
         url.pathname = dest;
@@ -194,6 +205,8 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = partner
         ? partnerAdminDestination("/admin") || "/admin/little-emperors"
+        : ratehawk
+        ? RATEHAWK_ADMIN_HOME
         : staff
         ? "/admin"
         : desk
@@ -207,6 +220,13 @@ export async function updateSession(request: NextRequest) {
       return seal(NextResponse.redirect(url));
     }
     return seal(supabaseResponse);
+  }
+
+  if (user && ratehawk && (isClient || (isConnexion && !isSetPassword))) {
+    const url = request.nextUrl.clone();
+    url.pathname = RATEHAWK_ADMIN_HOME;
+    url.search = "";
+    return seal(NextResponse.redirect(url));
   }
 
   if (isClient) {
@@ -277,16 +297,18 @@ async function readDeskAccess(
   if (first.error) {
     const second = await supabase.from("crm_staff").select("role").eq("auth_user_id", user.id).maybeSingle();
     if (second.error) {
-      if (jwt === "partner") return { staff: false, partner: true, inactive: false };
-      if (isStaffRole(user)) return { staff: true, partner: false, inactive: false };
-      return { staff: false, partner: false, inactive: false };
+      if (jwt === "partner") return { staff: false, partner: true, ratehawk: false, inactive: false };
+      if (jwt === "ratehawk_cert") return { staff: false, partner: false, ratehawk: true, inactive: false };
+      if (isStaffRole(user)) return { staff: true, partner: false, ratehawk: false, inactive: false };
+      return { staff: false, partner: false, ratehawk: false, inactive: false };
     }
     role = second.data?.role as string | undefined;
     active = true;
   }
-  if (!role) return { staff: false, partner: false, inactive: false };
-  if (active === false) return { staff: false, partner: false, inactive: true };
-  if (role === "partner") return { staff: false, partner: true, inactive: false };
-  if (isAgencyRole(role)) return { staff: true, partner: false, inactive: false };
-  return { staff: false, partner: false, inactive: false };
+  if (!role) return { staff: false, partner: false, ratehawk: false, inactive: false };
+  if (active === false) return { staff: false, partner: false, ratehawk: false, inactive: true };
+  if (role === "partner") return { staff: false, partner: true, ratehawk: false, inactive: false };
+  if (role === "ratehawk_cert") return { staff: false, partner: false, ratehawk: true, inactive: false };
+  if (isAgencyRole(role)) return { staff: true, partner: false, ratehawk: false, inactive: false };
+  return { staff: false, partner: false, ratehawk: false, inactive: false };
 }

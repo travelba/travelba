@@ -4,6 +4,8 @@ import Link from "next/link";
 import { whatsappThreadHref } from "@/lib/crm/boite-tabs";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useVisiblePoll } from "@/components/crm/useVisiblePoll";
+import { PAGE_POLL_MS } from "@/lib/crm/page-poll";
 import { ConciergeProposalDesk } from "@/components/admin/ConciergeProposalDesk";
 import { WhatsappHoldButton, type HandoffResult } from "@/components/admin/WhatsappHoldButton";
 import {
@@ -79,11 +81,7 @@ export function WhatsappInbox({
     ...notes.filter((note) => !messages.some((row) => row.templateKey === "systeme" && row.body === note.body)),
   ]);
 
-  useEffect(() => {
-    if (embedded) return;
-    const timer = window.setInterval(() => router.refresh(), 60_000);
-    return () => window.clearInterval(timer);
-  }, [embedded, router]);
+  useVisiblePoll(() => router.refresh(), PAGE_POLL_MS.whatsappInbox, !embedded);
 
   useEffect(() => {
     if (embedded || typeof Notification === "undefined") return;

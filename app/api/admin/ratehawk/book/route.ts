@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       priceAccepted: Boolean(body.price_accepted),
       acceptFormPrice: Boolean(body.accept_form_price),
       scenario: body.scenario || null,
-      dossier: body.dossier || null,
+      dossier: auth.staff.role === "ratehawk_cert" ? null : body.dossier || null,
       userIp: requestIp(request),
       partnerOrderId: body.partner_order_id || null,
     });

@@ -38,6 +38,7 @@ import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { cloneTravelDocument, insertTravelDocument } from "@/lib/crm/travel-document-write";
 import { countsAsCarnetCard, isActiveItem, isLedgerExpenseKind, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { MCP_BOOKING_COLUMNS, MCP_ITEM_COLUMNS } from "@/lib/crm/mcp-columns";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -566,7 +567,7 @@ export function buildHotelCard(input: {
 }
 
 async function loadBooking(db: Admin, target: { id: string; reference: string }) {
-  let query = db.from("crm_bookings").select("*");
+  let query = db.from("crm_bookings").select(MCP_BOOKING_COLUMNS);
   query = target.id ? query.eq("id", target.id) : query.eq("reference", target.reference);
   const { data, error } = await query.limit(2);
   if (error) throw new McpWriteError("Dossier introuvable.");
@@ -1067,7 +1068,7 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
   const booking = await loadBooking(db, target);
   const { data, error } = await db
     .from("crm_booking_items")
-    .select("*")
+    .select(MCP_ITEM_COLUMNS)
     .eq("id", carteId)
     .eq("booking_id", booking.id)
     .maybeSingle();
@@ -1418,7 +1419,7 @@ export async function updateHotel(input: Record<string, unknown>, admin?: Admin)
   const booking = await loadBooking(db, target);
   const { data, error } = await db
     .from("crm_booking_items")
-    .select("*")
+    .select(MCP_ITEM_COLUMNS)
     .eq("id", carteId)
     .eq("booking_id", booking.id)
     .maybeSingle();

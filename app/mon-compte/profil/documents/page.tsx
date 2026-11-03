@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { DocumentsManager } from "@/components/account/DocumentsManager";
 import { AccountPage } from "@/components/account/AccountPage";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 
 export default async function DocumentsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await readVerifiedUser(supabase);
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
