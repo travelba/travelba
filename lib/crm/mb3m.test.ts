@@ -882,19 +882,19 @@ describe("règlements MB3M", () => {
       },
       async (_url, init) => {
         body = String(init?.body);
-        assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IFolderService/ChangeFolder"');
+        assert.equal(new Headers(init?.headers).get("SOAPAction"), '"http://schemas.mb3m.fr/Partners/IPieceService/ChangeFolder"');
         return new Response(`<ChangeFolderResponse><ResultCode>1</ResultCode></ChangeFolderResponse>`);
       }
     );
     const request = body.slice(
-      body.indexOf("<FolderChangeFolderRequest"),
-      body.indexOf("</FolderChangeFolderRequest>") + "</FolderChangeFolderRequest>".length
+      body.indexOf("<PieceChangeFolderRequest"),
+      body.indexOf("</PieceChangeFolderRequest>") + "</PieceChangeFolderRequest>".length
     );
     assert.equal(
       request,
-      `<FolderChangeFolderRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>01-0002007</FolderId><FolderIdentity><Id>01-0002007</Id><Uid>b127ebaa-8fcd-4399-99c2-202611021224</Uid></FolderIdentity><Number>2005</Number><PieceIdentity><Number>2005</Number><Uid>314042fe-f472-46cc-bbc3-202611031018</Uid></PieceIdentity></FolderChangeFolderRequest>`
+      `<PieceChangeFolderRequest xmlns="http://schemas.mb3m.fr/Partners"><Uid>314042fe-f472-46cc-bbc3-202611031018</Uid><Number>2005</Number><NewFolder><Id>01-0002007</Id><Uid>b127ebaa-8fcd-4399-99c2-202611021224</Uid></NewFolder></PieceChangeFolderRequest>`
     );
-    assert.equal(body.includes("PieceChangeFolderRequest"), false);
+    assert.equal(body.includes("IFolderService"), false);
   });
 
   it("lit la facture Amadeus 2005 par son PNR, même préfixée", async () => {

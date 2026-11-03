@@ -66,13 +66,21 @@ export function mb3mPreparationView(piece: Mb3mAttemptPiece | null, now: number)
   if (!piece) return { state: null, message: null, resume: false };
   const numbered = Boolean((piece.pieceNumber || "").trim());
   const error = (piece.attemptError || "").replace(/\s+/g, " ").trim();
-  if (numbered && piece.attemptStatus !== "failed" && !error) return { state: null, message: null, resume: false };
   if (numbered) {
-    return {
-      state: "failed",
-      message: error || "La préparation MB3M n’a pas abouti.",
-      resume: true,
-    };
+    if (error || piece.attemptStatus === "failed") {
+      return {
+        state: "failed",
+        message: error || "La préparation MB3M n’a pas abouti.",
+        resume: true,
+      };
+    }
+    if (piece.attemptStatus === "preparing") {
+      if (mb3mPrepInProgress(piece, now)) {
+        return { state: "running", message: mb3mPreparationLockMessage(piece, now), resume: false };
+      }
+      return { state: "failed", message: "La préparation a été interrompue. Reprends.", resume: true };
+    }
+    return { state: null, message: null, resume: false };
   }
   if (mb3mPrepInProgress(piece, now)) {
     return { state: "running", message: mb3mPreparationLockMessage(piece, now), resume: false };

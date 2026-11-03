@@ -576,6 +576,48 @@ describe("facture MB3M", () => {
     assert.equal(cancelled, 0);
   });
 
+  it("écrit l’erreur quand la reprise de 2157 échoue au rangement", async () => {
+    const lines = context().lines;
+    const open = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002007",
+      folderUid: "b127ebaa-8fcd-4399-99c2-202611021224",
+      pieceNumber: "2157",
+      amount: 561.19,
+      signature: mb3mLineSignature(lines),
+      transactionIds: lines.map((line) => line.transactionId),
+    });
+    const noted = { attemptStatus: null as string | null, attemptError: null as string | null };
+    await assert.rejects(
+      () =>
+        runMb3mInvoice(context(), {
+          now: () => Date.now(),
+          claim: async () => ({ piece: { ...open }, created: false, owned: true }),
+          save: async (_id, patch) => {
+            noted.attemptStatus = patch.attemptStatus ?? null;
+            noted.attemptError = patch.attemptError ?? null;
+          },
+          remove: async () => undefined,
+          savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+          saveCompany: async () => {
+            throw new Error("fiche société");
+          },
+          saveFolder: async () => ({ id: "01-0002007", uid: open.folderUid || "" }),
+          addInvoice: async () => ({ number: "2158", uid: "new" }),
+          findPiece: async () => "open",
+          cancelInvoice: async () => undefined,
+          renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+          putPdf: async () => "doc-1",
+          finishGds: async () => {
+            throw new Mb3mError("La facture Amadeus n° 2005 n’a pas pu être rangée dans le dossier.", -1);
+          },
+        }),
+      (error: unknown) => error instanceof Mb3mError && /2005/.test(error.message)
+    );
+    assert.equal(noted.attemptStatus, "failed");
+    assert.match(noted.attemptError || "", /2005/);
+  });
+
   it("verrouille une préparation en cours, puis reprend quand elle est périmée ou en échec", async () => {
     const started = Date.parse("2026-11-02T13:05:00.000Z");
     const running = blankPiece({
