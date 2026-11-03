@@ -173,6 +173,45 @@ describe("préparer la facture MB3M", () => {
       })
     );
     assert.equal(result.erreur, null);
+    assert.equal(result.statut, "avertissement");
+    assert.match(result.avertissement || "", /2005/);
+    assert.match(result.avertissement || "", /soldée/);
+  });
+
+  it("renvoie l’avertissement déjà enregistré quand la pièce est déjà en place", async () => {
+    const warning = "La facture Amadeus n° 2005 n’a pas été déplacée dans MB3M : facture fournisseur soldée.";
+    const result = await preparerFactureMb3m(
+      { reference: "TB-2026-0044" },
+      deps({
+        loadInvoices: async () => [
+          {
+            piece_number: "2157",
+            lines: [line],
+            amount: 561.19,
+            printed_at: null,
+            attempt_status: null,
+            attempt_error: null,
+            warning,
+            attempt_started_at: null,
+            attempt_started_by: "mcp",
+            updated_at: "2026-11-03T12:00:00.000Z",
+          },
+        ],
+        emit: async () => ({
+          number: "2157",
+          documentId: null,
+          created: false,
+          replaced: false,
+          printed: false,
+          visibleToClient: false,
+          reglements: [],
+          avertissement: null,
+        }),
+      })
+    );
+    assert.equal(result.statut, "avertissement");
+    assert.equal(result.cree, false);
+    assert.equal(result.erreur, null);
     assert.match(result.avertissement || "", /2005/);
     assert.match(result.avertissement || "", /soldée/);
   });

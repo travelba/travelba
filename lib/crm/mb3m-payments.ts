@@ -9,6 +9,7 @@ import {
   mb3mWriteMatching,
   type Mb3mRemotePayment,
 } from "@/lib/crm/mb3m";
+import { formatMoney } from "@/lib/crm/money";
 import { mb3mPaymentUnchanged } from "@/lib/crm/sync-delta";
 
 export type Mb3mCredit = {
@@ -60,6 +61,24 @@ export type Mb3mReglement = {
 
 const CENT = 0.005;
 
+const PAYMENT_GAP_PREFIX = "Aucun règlement à lettrer n’a été trouvé pour la facture n°";
+
+/** Rien à pointer alors qu’il reste un montant dû. Visible, sans faire échouer la préparation. */
+export function mb3mPaymentGapMessage(invoiceNumber: string, amount: number) {
+  return `${PAYMENT_GAP_PREFIX} ${invoiceNumber.trim()} (${formatMoney(amount)} encore dus).`;
+}
+
+export function mb3mIsPaymentGap(message: string | null | undefined) {
+  return (message || "").includes(PAYMENT_GAP_PREFIX);
+}
+
+export function withoutPaymentGap(warning: string | null | undefined) {
+  return (warning || "")
+    .replace(/Aucun règlement à lettrer n’a été trouvé pour la facture n° [^.]+\./g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export const MB3M_PAYMENT_LOOKUP_HOLD =
   "Les règlements déjà saisis chez MB3M n’ont pas pu être lus. Aucun envoi.";
 
@@ -105,7 +124,6 @@ export function planMb3mPayments(input: {
   );
   for (const credit of credits) {
     const known = linked.get(credit.id);
-    if (known?.invoiceNumber || (known && known.matchedAmount > 0)) continue;
     if (credit.bookingId && credit.bookingId !== input.bookingId) continue;
     if (remaining <= CENT) continue;
     const matched = cents(Math.min(credit.amount, remaining));
@@ -114,7 +132,8 @@ export function planMb3mPayments(input: {
     const account = mb3mPaymentAccount(credit.source, credit.label);
     const base = { credit, bank: account.bank, mode: account.mode, reference };
     const remote = input.remoteReady
-      ? input.remote.find((payment) => payment.reference.trim() === reference) ||
+      ? input.remote.find((payment) => known?.paymentNumber && payment.number === known.paymentNumber) ||
+        input.remote.find((payment) => payment.reference.trim() === reference) ||
         input.remote.find(
           (payment) =>
             !taken.has(payment.number) &&
@@ -123,6 +142,12 @@ export function planMb3mPayments(input: {
         ) ||
         null
       : null;
+    const remoteLeft = Boolean(remote && remote.unmatched > CENT);
+    const coveredHere = input.links
+      .filter((link) => link.transactionId === credit.id && link.invoiceNumber?.trim() === invoiceNumber)
+      .reduce((sum, link) => sum + link.matchedAmount, 0);
+    if (remoteLeft && remote && coveredHere + CENT >= Math.min(remote.unmatched, remaining)) continue;
+    if (!remoteLeft && (known?.invoiceNumber || (known && known.matchedAmount > CENT))) continue;
     if (!credit.bookingId && input.otherOpenBookings > 0 && !remote && !known?.paymentNumber) continue;
     if (!input.remoteReady && !known?.paymentNumber) {
       plans.push({
@@ -574,7 +599,47 @@ export async function recordMb3mInvoicePayments(
       },
     }
   );
-  const failed = reglements.find((row) => row.statut === "erreur");
+  const already = cents(
+    linkRows
+      .filter((link) => link.invoiceNumber?.trim() === input.invoiceNumber.trim())
+      .reduce((sum, link) => sum + (Number(link.matchedAmount) || 0), 0)
+  );
+  const due = cents(Math.max(0, input.invoiceAmount - already));
+  const lettered = reglements.some((row) => row.statut !== "erreur" && row.montant > CENT);
+  if (due > CENT && !lettered) {
+    const erreur = mb3mPaymentGapMessage(input.invoiceNumber, due);
+    reglements.push({ date: "", montant: due, numero_mb3m: null, statut: "erreur", erreur });
+    await rememberPaymentGap(supabase, input.bookingId, input.invoiceNumber, erreur);
+  } else if (lettered) {
+    await rememberPaymentGap(supabase, input.bookingId, input.invoiceNumber, null);
+  }
+  const failed = reglements.find((row) => row.statut === "erreur" && !mb3mIsPaymentGap(row.erreur));
   if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
   return reglements;
+}
+
+async function rememberPaymentGap(
+  supabase: SupabaseClient,
+  bookingId: string,
+  invoiceNumber: string,
+  gap: string | null
+) {
+  const found = await supabase
+    .from("crm_mb3m_pieces")
+    .select("id, warning")
+    .eq("booking_id", bookingId)
+    .eq("kind", "invoice")
+    .eq("realm", mb3mRealm())
+    .eq("piece_number", invoiceNumber.trim())
+    .maybeSingle();
+  if (found.error || !found.data) return;
+  const row = found.data as { id: string; warning?: string | null };
+  const base = withoutPaymentGap(row.warning);
+  const next = gap ? [base, gap].filter(Boolean).join(" ") : base;
+  if (next === (row.warning || "").replace(/\s+/g, " ").trim()) return;
+  const saved = await supabase
+    .from("crm_mb3m_pieces")
+    .update({ warning: next || null, updated_at: new Date().toISOString() })
+    .eq("id", row.id);
+  if (saved.error) console.error("[mb3m] avertissement règlement", saved.error.message);
 }

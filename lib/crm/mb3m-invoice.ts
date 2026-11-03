@@ -36,7 +36,7 @@ import {
   type Mb3mLedgerRow,
 } from "@/lib/crm/mb3m-account";
 import { chargesWithoutGdsFlights, finishMb3mGds, readMb3mGdsPlan, type Mb3mGdsPlan } from "@/lib/crm/mb3m-gds";
-import { recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
+import { mb3mIsPaymentGap, recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
 import {
   mb3mActorLabel,
   mb3mPrepInProgress,
@@ -527,8 +527,8 @@ async function attachReglements(
 ): Promise<Mb3mInvoiceResult> {
   let folder = folderId || "";
   if (deps.finishGds) folder = (await deps.finishGds(folderId)) || folder;
-  const avertissement = (ctx.gdsPlan?.warnings || []).filter(Boolean).join(" ") || null;
-  if (!deps.recordPayments) return { ...result, reglements: [], avertissement };
+  const gdsWarning = (ctx.gdsPlan?.warnings || []).filter(Boolean).join(" ") || null;
+  if (!deps.recordPayments) return { ...result, reglements: [], avertissement: gdsWarning };
   try {
     const reglements = await deps.recordPayments({
       bookingId: ctx.bookingId,
@@ -538,8 +538,10 @@ async function attachReglements(
       invoiceAmount,
       gdsInvoices: ctx.gdsPlan?.invoices,
     });
-    const failed = reglements.find((row) => row.statut === "erreur");
+    const failed = reglements.find((row) => row.statut === "erreur" && !mb3mIsPaymentGap(row.erreur));
     if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
+    const gap = reglements.find((row) => mb3mIsPaymentGap(row.erreur));
+    const avertissement = [gdsWarning, gap?.erreur].filter(Boolean).join(" ") || null;
     return { ...result, reglements, avertissement };
   } catch (err) {
     if (err instanceof Mb3mError) throw err;
@@ -966,8 +968,9 @@ export async function emitMb3mInvoice(
           gdsInvoices: plan.invoices,
         })
       : [];
-    const failed = reglements.find((row) => row.statut === "erreur");
+    const failed = reglements.find((row) => row.statut === "erreur" && !mb3mIsPaymentGap(row.erreur));
     if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
+    const gap = reglements.find((row) => mb3mIsPaymentGap(row.erreur));
     return {
       number: plan.covered[0]?.invoiceNumber || "",
       documentId: null,
@@ -978,7 +981,7 @@ export async function emitMb3mInvoice(
       reglements,
       amadeus: amadeusOf(),
       suggestionsAmadeus,
-      avertissement: (plan?.warnings || []).filter(Boolean).join(" ") || null,
+      avertissement: [(plan?.warnings || []).filter(Boolean).join(" "), gap?.erreur].filter(Boolean).join(" ") || null,
     };
   }
 }

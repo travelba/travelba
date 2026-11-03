@@ -1371,7 +1371,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. Les crédits postés du client partent en règlements MB3M (reglements : date, montant, numero_mb3m, statut envoye, deja_dans_mb3m ou erreur), d’abord sur la facture CRM puis sur les factures Amadeus. Un vol dont le PNR est déjà une facture MB3M (RefCommand) n’est pas refacturé : vols_amadeus dit « déjà dans MB3M via Amadeus (facture n°…) ». Sans PNR identique, la ligne reste ; suggestions_amadeus ne fait que signaler. La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), reglements, erreur et auteur (le jeton). Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M.",
+      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. Les crédits postés du client partent en règlements MB3M (reglements : date, montant, numero_mb3m, statut envoye, deja_dans_mb3m ou erreur), d’abord sur la facture CRM puis sur les factures Amadeus. Un vol dont le PNR est déjà une facture MB3M (RefCommand) n’est pas refacturé : vols_amadeus dit « déjà dans MB3M via Amadeus (facture n°…) ». Sans PNR identique, la ligne reste ; suggestions_amadeus ne fait que signaler. La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, avertissement, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), reglements, erreur, avertissement et auteur (le jeton). Un avertissement déjà enregistré (facture Amadeus non déplacée) donne statut avertissement, y compris quand la pièce est déjà en place. Un règlement introuvable alors qu’il reste un montant dû n’est pas une liste vide : reglements porte l’erreur et avertissement la reprend. Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
@@ -1381,7 +1381,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "statut_facture_mb3m",
     description:
-      "Lit la facture MB3M déjà enregistrée sur le dossier. dossier_id ou reference. statut : a_preparer, en_cours, echouee, pro_forma ou imprimee. numero_mb3m, lignes, erreur de la dernière préparation, avertissement (facture Amadeus non déplacée), auteur. Ne prépare rien et n’appelle pas MB3M.",
+      "Lit la facture MB3M déjà enregistrée sur le dossier. dossier_id ou reference. statut : a_preparer, en_cours, echouee, pro_forma, imprimee ou avertissement quand la pièce porte un avertissement (facture Amadeus non déplacée), y compris si elle est déjà en place. numero_mb3m, lignes, erreur de la dernière préparation, avertissement, auteur. Ne prépare rien et n’appelle pas MB3M.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence TB-…"),

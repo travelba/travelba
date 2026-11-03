@@ -163,6 +163,13 @@ export function gdsMoveWarning(number: string, message: string) {
   return `La facture Amadeus n° ${number} n’a pas été déplacée dans MB3M : ${detail}`;
 }
 
+/** L’API n’a pas rendu le PDF. La préparation continue, l’avertissement le dit. */
+export function gdsPdfWarning(number: string, message: string, printed: boolean) {
+  const detail = message.replace(/\s+/g, " ").trim().replace(/\.+$/, "");
+  const missing = printed ? "" : " La pièce n’a pas de date d’impression dans MB3M.";
+  return `Le PDF de la facture Amadeus n° ${number} n’a pas pu être récupéré : ${detail}.${missing}`;
+}
+
 export function mb3mAmadeusSuggestionSentence(row: { label: string; invoiceNumber: string }) {
   return `${row.label} : une facture Amadeus sans dossier pourrait correspondre (facture n°${row.invoiceNumber}). Elle reste sur la facture du CRM.`;
 }

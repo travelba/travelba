@@ -15,7 +15,7 @@ import {
   type Mb3mRemoteInvoice,
 } from "@/lib/crm/mb3m";
 import { mb3mPieceUnchanged } from "@/lib/crm/sync-delta";
-import { gdsMoveWarning } from "@/lib/crm/mb3m-prep";
+import { gdsMoveWarning, gdsPdfWarning } from "@/lib/crm/mb3m-prep";
 import { isActiveItem } from "@/lib/crm/types";
 
 /** Vol déjà facturé par l’import Amadeus de MB3M. */
@@ -438,14 +438,15 @@ export async function readMb3mGdsPlan(
   };
 }
 
-/** PDF de la facture émise, visible au client comme les autres factures du dossier. */
+/** PDF demandé à MB3M, visible au client, même sans date d’impression. */
 async function fileGdsInvoicePdf(
   supabase: SupabaseClient,
   bookingId: string,
   number: string,
   itemId: string | null,
-  render: typeof mb3mRenderPiece = mb3mRenderPiece
-) {
+  render: typeof mb3mRenderPiece = mb3mRenderPiece,
+  upload: (path: string, bytes: Buffer, contentType: string) => Promise<unknown> = uploadCrmFile
+): Promise<{ id: string | null; error: string | null }> {
   const fileName = `Facture n° ${number}.pdf`;
   try {
     const existing = await supabase
@@ -455,10 +456,10 @@ async function fileGdsInvoicePdf(
       .eq("file_name", fileName)
       .limit(1);
     const known = ((existing.data || []) as { id?: string }[])[0]?.id;
-    if (known) return String(known);
+    if (known) return { id: String(known), error: null };
     const pdf = await render({ number });
     const path = `bookings/${bookingId}/${Date.now()}-${safeFileName(`Facture MB3M n° ${number}.pdf`)}`;
-    await uploadCrmFile(path, pdf.bytes, "application/pdf");
+    await upload(path, pdf.bytes, "application/pdf");
     const { data, error } = await supabase
       .from("crm_booking_documents")
       .insert({
@@ -473,13 +474,15 @@ async function fileGdsInvoicePdf(
       .select("id")
       .single();
     if (error || !data?.id) {
-      console.error("[mb3m] PDF Amadeus", error?.message || "insert");
-      return null;
+      const message = error?.message || "Le document n’a pas pu être enregistré.";
+      console.error("[mb3m] PDF Amadeus", message);
+      return { id: null, error: message };
     }
-    return String(data.id);
+    return { id: String(data.id), error: null };
   } catch (err) {
-    console.error("[mb3m] PDF Amadeus", number, err instanceof Error ? err.message : err);
-    return null;
+    const message = err instanceof Error ? err.message : "MB3M n’a pas renvoyé le PDF.";
+    console.error("[mb3m] PDF Amadeus", number, message);
+    return { id: null, error: message };
   }
 }
 
@@ -500,6 +503,7 @@ export async function finishMb3mGds(
   deps?: {
     changeFolder?: typeof mb3mChangeFolder;
     renderPiece?: typeof mb3mRenderPiece;
+    upload?: (path: string, bytes: Buffer, contentType: string) => Promise<unknown>;
   }
 ) {
   let folderId = input.folderId || input.plan.folderId;
@@ -589,11 +593,20 @@ export async function finishMb3mGds(
     } | null;
     let documentId = stored?.document_id || null;
     let printedAt = stored?.printed_at || null;
-    if (row.printed && !documentId) {
-      const filed = await fileGdsInvoicePdf(supabase, input.bookingId, number, row.itemId, deps?.renderPiece);
-      if (filed) {
-        documentId = filed;
-        printedAt = new Date().toISOString();
+    if (!documentId) {
+      const filed = await fileGdsInvoicePdf(
+        supabase,
+        input.bookingId,
+        number,
+        row.itemId,
+        deps?.renderPiece,
+        deps?.upload
+      );
+      if (filed.id) {
+        documentId = filed.id;
+        printedAt = printedAt || new Date().toISOString();
+      } else if (filed.error) {
+        input.plan.warnings.push(gdsPdfWarning(number, filed.error, Boolean(row.printed)));
       }
     }
     const payload = {
@@ -618,11 +631,11 @@ export async function finishMb3mGds(
         });
     if (saved.error) throw new Mb3mError("La facture Amadeus n’a pas pu être notée sur le séjour.", -1);
   }
-  const warning = input.plan.warnings.filter(Boolean).join(" ") || null;
+  const warning = input.plan.warnings.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
   const noted = await supabase
     .from("crm_mb3m_pieces")
     .update({
-      warning,
+      ...(warning ? { warning } : {}),
       attempt_status: null,
       attempt_error: null,
       updated_at: new Date().toISOString(),
