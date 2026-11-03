@@ -272,7 +272,10 @@ export async function updateSession(request: NextRequest) {
   return seal(supabaseResponse);
 }
 
-const deskAccessCache = new Map<string, { at: number; access: { staff: boolean; partner: boolean; inactive: boolean } }>();
+const deskAccessCache = new Map<
+  string,
+  { at: number; access: { staff: boolean; partner: boolean; ratehawk: boolean; inactive: boolean } }
+>();
 const DESK_ACCESS_TTL_MS = 60_000;
 
 async function userDeskAccess(
