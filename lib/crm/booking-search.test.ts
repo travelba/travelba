@@ -8,7 +8,7 @@ test("le texte de liste retrouve la ville, le client, la date, le montant et le 
     reference: "TB-2026-0042",
     title: "Lamego",
     destination: "Portugal",
-    status: "confirmed",
+    status: "draft",
     start_date: "2027-03-27",
     end_date: "2027-03-29",
     visible_to_client: false,
@@ -27,7 +27,7 @@ test("le texte de liste retrouve la ville, le client, la date, le montant et le 
   assert.equal(smartSearchMatch("alexandre@example", text), true);
   assert.equal(smartSearchMatch("061234", text), true);
   assert.equal(smartSearchMatch("mars 2027", text), true);
-  assert.equal(smartSearchMatch("préparation", text), true);
-  assert.equal(smartSearchMatch("préparation", text), true);
+  assert.equal(smartSearchMatch("non visible", text), true);
+  assert.equal(smartSearchMatch("non visible", text), true);
   assert.equal(smartSearchMatch("avoriaz", text), false);
 });

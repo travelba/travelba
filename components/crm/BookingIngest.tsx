@@ -835,7 +835,7 @@ export function BookingIngest({
             <CheckCircle2 className="h-4 w-4" />
             {mode === "append"
               ? "Relisez chaque étape. Ajouter au dossier les enregistre ; le client ne les voit qu’après Mettre à jour le carnet."
-              : "Relisez chaque étape. Créer le dossier le laisse En préparation : le client ne voit rien."}
+              : "Relisez chaque étape. Créer le dossier le laisse Non visible : le client ne voit rien."}
           </p>
           {noCards ? (
             <p className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">

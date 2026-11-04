@@ -329,7 +329,7 @@ test("creer_dossier reste en préparation, sans invitation ni débit", async () 
     client
   );
   assert.equal(created.reference, "TB-2026-0108");
-  assert.equal(created.statut, "En préparation · Brouillon");
+  assert.equal(created.statut, "non_visible");
   assert.equal(created.visible, false);
   assert.equal(created.notifie, false);
   assert.equal(created.paye_par, "particulier");

@@ -45,7 +45,8 @@ import { splitPendingStripePayouts } from "@/lib/crm/stripe-payout-sync";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
 import { MCP_LE_LIST_COLUMNS } from "@/lib/crm/mcp-columns";
 import { queryWithOptionalColumn } from "@/lib/crm/optional-column";
-import { staffLedgerCaption, staffRealStatusLabel, staffStayLabel } from "@/lib/crm/staff-stay";
+import { dossierFace, dossierFaceLabel } from "@/lib/crm/dossier-status";
+import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { buildTripAccountingView, loadDossierAccountingInputs } from "@/lib/crm/trip-accounting-view";
 import { TRIP_ACCOUNTING_LABELS, type TripCost } from "@/lib/crm/trip-costs";
@@ -156,8 +157,10 @@ function bookingLine(
     destination: row.destination,
     dates: [row.start_date, row.end_date].filter(Boolean).join(" → ") || null,
     etat: staffStayLabel(row),
-    statut: staffStayLabel(row),
-    statut_reel: staffRealStatusLabel(row.status),
+    statut: dossierFace(row),
+    statut_libelle: dossierFaceLabel(row),
+    statut_reel: dossierFace(row),
+    archivee: Boolean(row.archived_at),
     client: names.get(row.customer_id) || null,
     ...dossierPayerLine(row, row.billing_company_id ? companies.get(row.billing_company_id) : null),
     montant: amount == null ? null : formatMoney(amount, row.currency || "EUR"),
@@ -592,8 +595,13 @@ function applyBookingFilters(query: FilterableQuery, input: { etat: BookingState
   let next = query;
   if (input.etat === "archive") next = next.not("archived_at", "is", null);
   else next = next.is("archived_at", null);
-  if (input.etat === "preparation") next = next.eq("visible_to_client", false);
-  if (input.etat === "montre") next = next.eq("visible_to_client", true);
+  if (input.etat === "preparation") {
+    next = next.eq("visible_to_client", false).neq("status", "cancelled");
+  }
+  if (input.etat === "montre") {
+    next = next.eq("visible_to_client", true).neq("status", "cancelled");
+  }
+  if (input.etat === "annule") next = next.eq("status", "cancelled");
   if (input.etat === "a-venir") next = next.gte("start_date", input.today).neq("status", "cancelled");
   return next;
 }

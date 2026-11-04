@@ -15,8 +15,9 @@ import { smartSearchMatch } from "@/lib/crm/smart-search";
 
 const STATE_LABELS: Record<BookingStateFilter, string> = {
   "a-venir": "À venir",
-  preparation: "En préparation",
+  preparation: "Non visible",
   montre: "Visible",
+  annule: "Annulé",
   archive: "Archivée",
 };
 

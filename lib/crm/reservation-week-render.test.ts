@@ -45,7 +45,7 @@ test("un jour sans séjour se replie, les autres restent des cartes du projet", 
     [
       booking({ id: "back", reference: "TB-RETOUR", start_date: "2026-10-01", end_date: "2026-10-07" }),
       booking({ id: "away", reference: "TB-VOYAGE", start_date: "2026-10-02", end_date: "2026-10-10" }),
-      booking({ id: "soon", reference: "TB-DEMAIN", start_date: "2026-10-08", visible_to_client: false }),
+      booking({ id: "soon", reference: "TB-DEMAIN", start_date: "2026-10-08", status: "draft", visible_to_client: false }),
       booking({ id: "later", reference: "TB-PLUS", start_date: "2026-10-20", end_date: "2026-10-22" }),
     ],
     "2026-10-07"
@@ -59,7 +59,7 @@ test("un jour sans séjour se replie, les autres restent des cartes du projet", 
   assert.match(html, /Retour/);
   assert.match(html, /En voyage/);
   assert.match(html, /TB-DEMAIN/);
-  assert.match(html, /En préparation/);
+  assert.match(html, /Non visible/);
   assert.match(html, /border-l-\[var\(--admin-gold\)\]/);
   assert.match(html, /Camille Martin/);
   assert.match(html, /Vendredi, aucun séjour/);

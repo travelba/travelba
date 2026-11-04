@@ -467,6 +467,7 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
   const statut = dossierStatusOf(pending.map((row) => row.booking));
   const persist = deps.persist ?? defaultPersist;
   const apply = deps.apply ?? defaultApply;
+  const show = statut === "confirmed";
   let cree = false;
   let dossierId = target?.id || "";
   let reference = target?.reference || null;
@@ -475,19 +476,19 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
     const saved = await persist({
       customerId: holder.id,
       extract: merged,
-      status: statut,
-      visibleToClient: false,
+      status: show ? "confirmed" : "draft",
+      visibleToClient: show,
     });
     cree = true;
     dossierId = saved.id;
     reference = saved.reference;
-    visible = false;
+    visible = show;
     const { error } = await admin
       .from("crm_bookings")
       .update({
         notes_internal: "Réservation importée depuis Little Emperors.",
-        status: statut,
-        visible_to_client: false,
+        status: show ? "confirmed" : "draft",
+        visible_to_client: show,
       })
       .eq("id", dossierId);
     if (error) fail("Dossier non enregistré.", 500, "dossier");
@@ -499,9 +500,15 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
       visibleToClient: false,
       keepSellingPrice: true,
     });
-    if (statut === "confirmed" && target.status === "draft") {
-      const { error } = await admin.from("crm_bookings").update({ status: "confirmed" }).eq("id", target.id).eq("status", "draft");
-      if (error) fail("Dossier non enregistré.", 500, "dossier");
+    if (show && target.status !== "cancelled") {
+      if (target.status !== "confirmed" || !target.visible_to_client) {
+        const { error } = await admin
+          .from("crm_bookings")
+          .update({ status: "confirmed", visible_to_client: true })
+          .eq("id", target.id);
+        if (error) fail("Dossier non enregistré.", 500, "dossier");
+      }
+      visible = true;
     }
   }
   try {
@@ -534,7 +541,7 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
     bookingId: dossierId,
     cree,
     deja: false,
-    statut: !target || target.status === "draft" ? statut : target.status,
+    statut: !visible && target?.status === "cancelled" ? "annule" : visible ? "visible" : "non_visible",
     visible_client: visible,
     cartes: hotel.map((item) => ({
       hotel: item.title,
