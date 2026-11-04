@@ -5,7 +5,7 @@ import { getStripe } from "@/lib/crm/stripe";
 import { stripeCreditFromIntent } from "@/lib/crm/stripe-pay";
 import { paymentCreditReleased } from "@/lib/crm/unmatch-credit";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
-import { snapshotFromPaymentIntent, upsertStripeInbox } from "@/lib/crm/stripe-sync";
+import { enrichStripeIntents, snapshotFromPaymentIntent, upsertStripeInbox } from "@/lib/crm/stripe-sync";
 
 export const runtime = "nodejs";
 
@@ -81,7 +81,8 @@ export async function POST(request: Request) {
       }
     }
     try {
-      await upsertStripeInbox(admin, [snapshotFromPaymentIntent(intent)]);
+      const [enriched] = await enrichStripeIntents([intent]);
+      await upsertStripeInbox(admin, [enriched || snapshotFromPaymentIntent(intent)]);
       await autoMatchUnmatchedStripe();
     } catch (err) {
       console.error("[stripe] file", err instanceof Error ? err.message : "file");

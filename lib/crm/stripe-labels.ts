@@ -37,6 +37,10 @@ export function matchStripeReasonLabel(reason: string) {
       return "Compte Stripe";
     case "email":
       return "E-mail";
+    case "stripe_history":
+      return "Paiement déjà rapproché";
+    case "piece":
+      return "Facture";
     case "full_name":
       return "Nom complet";
     case "company_name":

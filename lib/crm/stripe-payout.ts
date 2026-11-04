@@ -1,3 +1,5 @@
+import { pieceDigits, suggestStripePayers, type PayerHistory, type PayerPiece } from "@/lib/crm/stripe-payer";
+
 /**
  * Un versement Stripe sur Revolut devient une ligne par paiement client,
  * plus une ligne de frais d’agence. La somme des lignes vaut le versement.
@@ -27,6 +29,8 @@ export type BalanceLineSnapshot = {
   chargeId: string | null;
   name: string | null;
   email: string | null;
+  /** Identifiant client Stripe (cus_…), pas l'identifiant CRM. */
+  customerId?: string | null;
   metadata: Record<string, string>;
 };
 
@@ -39,6 +43,8 @@ export type StripeLineDetail = {
   payment_intent_id: string | null;
   email: string | null;
   name: string | null;
+  stripe_customer_id?: string | null;
+  suggestion_reason?: string | null;
   dossier_ref: string | null;
   customer_id: string | null;
   booking_id: string | null;
@@ -70,6 +76,8 @@ export type StripeLinkIndex = {
   customers: Array<{ id: string; email: string | null; stripe_customer_id: string | null }>;
   bookings: Array<{ id: string; reference: string; customer_id: string | null }>;
   posted: Array<{ id: string; customer_id: string; external_id: string }>;
+  history?: PayerHistory[];
+  pieces?: PayerPiece[];
 };
 
 const DAY_SECONDS = 86_400;
@@ -152,24 +160,64 @@ function linkPayment(line: BalanceLineSnapshot, links: StripeLinkIndex) {
     (ref ? links.bookings.find((item) => item.reference.toUpperCase() === ref) : null) ||
     null;
   let customerId = UUID.test(metaCustomer) ? metaCustomer : "";
-  if (customerId && !links.customers.some((item) => item.id === customerId)) customerId = "";
+  let suggestionReason: string | null = customerId ? "metadata" : null;
+  if (customerId && !links.customers.some((item) => item.id === customerId)) {
+    customerId = "";
+    suggestionReason = null;
+  }
   if (!customerId && line.email) {
     const hits = links.customers.filter((item) => emailKey(item.email) === emailKey(line.email));
-    if (hits.length === 1) customerId = hits[0].id;
+    if (hits.length === 1) {
+      customerId = hits[0].id;
+      suggestionReason = "email";
+    }
   }
-  const stripeCustomer = (metadata.stripe_customer_id || "").trim();
+  const stripeCustomer = (metadata.stripe_customer_id || line.customerId || "").trim();
   if (!customerId && stripeCustomer) {
     const hits = links.customers.filter((item) => (item.stripe_customer_id || "") === stripeCustomer);
-    if (hits.length === 1) customerId = hits[0].id;
+    if (hits.length === 1) {
+      customerId = hits[0].id;
+      suggestionReason = "stripe_customer";
+    }
   }
-  if (!customerId && booking?.customer_id) customerId = booking.customer_id;
+  const suggestions = suggestStripePayers({
+    email: customerId ? null : line.email,
+    stripeCustomerId: customerId ? null : stripeCustomer,
+    designation: pieceDigits(line.description) || pieceDigits(metadata.reference) || line.description,
+    customers: links.customers,
+    history: links.history,
+    pieces: links.pieces,
+  });
+  const piece = suggestions.find((item) => item.reason === "piece");
+  const other = suggestions.find((item) => item.reason !== "piece");
+  if (!customerId && other) {
+    customerId = other.customerId;
+    suggestionReason = other.reason;
+  }
+  let linkedBooking = booking;
+  if (piece && (!customerId || piece.customerId === customerId)) {
+    if (!customerId) {
+      customerId = piece.customerId;
+      suggestionReason = "piece";
+    }
+    if (!linkedBooking && piece.bookingId) {
+      linkedBooking = links.bookings.find((item) => item.id === piece.bookingId) || {
+        id: piece.bookingId,
+        reference: piece.reference || "",
+        customer_id: piece.customerId,
+      };
+    }
+  }
+  if (!customerId && linkedBooking?.customer_id) customerId = linkedBooking.customer_id;
   const externalIds = [line.paymentIntentId, line.chargeId, line.sourceId].filter((id): id is string => Boolean(id));
   const posted = links.posted.find((item) => externalIds.includes(item.external_id));
   return {
     customerId: customerId || posted?.customer_id || null,
-    bookingId: booking?.id || null,
-    dossierRef: booking?.reference || ref,
+    bookingId: linkedBooking?.id || null,
+    dossierRef: linkedBooking?.reference || ref,
     posted: posted || null,
+    suggestionReason,
+    stripeCustomerId: stripeCustomer || null,
   };
 }
 
@@ -233,6 +281,8 @@ export function buildStripeSplit(input: {
         payment_intent_id: line.paymentIntentId,
         email: (line.email || "").trim() || null,
         name: (line.name || "").trim() || null,
+        stripe_customer_id: linked.stripeCustomerId,
+        suggestion_reason: linked.suggestionReason,
         dossier_ref: linked.dossierRef,
         customer_id: linked.customerId,
         booking_id: linked.bookingId,

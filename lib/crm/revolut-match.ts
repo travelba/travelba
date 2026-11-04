@@ -11,7 +11,12 @@ export type RevolutMatchReason =
   | "unique_last_name"
   | "company_name"
   | "partial"
-  | "stripe";
+  | "stripe"
+  | "email"
+  | "stripe_history"
+  | "piece"
+  | "metadata"
+  | "stripe_customer";
 
 export type RevolutMatchCandidate = {
   customer_id: string;
@@ -447,6 +452,16 @@ export function matchReasonLabel(reason: RevolutMatchReason) {
       return "Société";
     case "stripe":
       return "Paiement Stripe";
+    case "email":
+      return "E-mail";
+    case "stripe_history":
+      return "Paiement déjà rapproché";
+    case "piece":
+      return "Facture";
+    case "metadata":
+      return "Client du paiement";
+    case "stripe_customer":
+      return "Compte Stripe";
     default:
       return "Correspondance partielle";
   }
