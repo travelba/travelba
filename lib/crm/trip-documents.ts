@@ -1,5 +1,6 @@
 import { greetingGivenName, shownPersonName } from "./identity";
 import {
+  foldName,
   holderMatchesAddedTraveler,
   isPlaceholderTraveler,
   namesReferToSamePerson,
@@ -25,6 +26,9 @@ export function samePerson(doc: CrmTravelDocument, traveler: CrmBookingTraveler)
     return namesReferToSamePerson(traveler, doc);
   }
   if (traveler.is_account_holder) {
+    // Coffre du titulaire : companion_id vide, dans tous les dossiers.
+    // Le nom de famille peut manquer sur la pièce (prénom seul). Un autre nom de famille reste une autre personne.
+    if (!doc.companion_id && !foldName(doc.last_name)) return true;
     if (doc.first_name || doc.last_name) return namesReferToSamePerson(traveler, doc);
     return !doc.companion_id;
   }
@@ -206,8 +210,11 @@ function actsAsHolder(
 
 /**
  * Passeport du coffre ou du séjour : le nom du voyageur, celui du titulaire,
- * ou celui d’un compagnon qui est cette personne. Un livret sans nom au coffre
- * du titulaire est le sien.
+ * ou celui d’un compagnon qui est cette personne.
+ * Le coffre du titulaire (companion_id vide, même sans traveler_id ni booking_id,
+ * même si le nom de famille n’est pas sur la pièce) est le sien, dans tous ses dossiers.
+ * Le coffre d’un compagnon (companion_id, traveler_id vide) est le sien.
+ * Un livret sans nom au coffre du titulaire est le sien.
  */
 export function passportMatchesTraveler(
   doc: CrmTravelDocument,

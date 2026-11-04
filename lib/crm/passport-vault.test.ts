@@ -45,6 +45,61 @@ function doc(partial: Partial<CrmTravelDocument>): CrmTravelDocument {
   };
 }
 
+test("le coffre du titulaire sans nom de famille est à jour sur le dossier", () => {
+  const holder = { first_name: "Stéphane Elie", last_name: "Martin", birth_date: "1983-12-09" };
+  const trip = { start_date: "2027-02-16", end_date: "2027-02-22" };
+  const rows = passportVaultRows(
+    [
+      traveler({
+        id: "holder",
+        first_name: "Stéphane Elie",
+        last_name: "Martin",
+        is_account_holder: true,
+        companion_id: null,
+      }),
+      traveler({
+        id: "child",
+        first_name: "Emmy",
+        last_name: "Martin",
+        is_account_holder: false,
+        companion_id: "emmy",
+      }),
+    ],
+    [
+      doc({
+        id: "holder-vault",
+        first_name: "Stéphane Elie",
+        last_name: null,
+        companion_id: null,
+        traveler_id: null,
+        booking_id: null,
+        expires_on: "2035-09-02",
+        number: "HIDDEN",
+        storage_path: "customers/c1/documents/holder.jpg",
+      }),
+      doc({
+        id: "child-fiche",
+        first_name: "Emmy",
+        last_name: "Martin",
+        companion_id: "emmy",
+        traveler_id: null,
+        booking_id: null,
+        expires_on: "2030-09-02",
+        number: "HIDDEN-E",
+      }),
+    ],
+    "2026-11-04",
+    holder,
+    trip,
+    [{ id: "emmy", first_name: "Emmy", last_name: "Martin" }]
+  );
+  assert.deepEqual(
+    rows.map((row) => `${row.name}:${row.label}`),
+    ["Stéphane Martin:Passeport à jour", "Emmy Martin:Passeport à jour"]
+  );
+  assert.equal(JSON.stringify(rows).includes("HIDDEN"), false);
+});
+
 test("le passeport sans nom du titulaire, non relié au voyageur, est à jour", () => {
   const rows = passportVaultRows(
     [
