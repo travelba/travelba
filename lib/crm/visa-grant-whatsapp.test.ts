@@ -66,7 +66,9 @@ test("deux modèles, un par en-tête, et rien ne part sans approbation", () => {
   });
   assert.match(block || "", /autorisation_validee_document/);
   assert.match(block || "", /n’est pas encore approuvé/);
-  assert.match(block || "", /arm-whatsapp-concierge/);
+  assert.match(block || "", /deposer_modeles_autorisation_whatsapp/);
+  assert.match(drafts[0].create.types["twilio/media"].media[0], /^https:\/\/travelba\.fr\/api\/whatsapp\/autorisations\/\{\{1\}\}$/);
+  assert.match(drafts[1].create.types["twilio/media"].media[0], /^https:\/\/travelba\.fr\/api\/whatsapp\/autorisations\/\{\{1\}\}$/);
   assert.equal(
     visaGrantSendBlock({ phone: "+33601020304", optInAt: "2026-01-01", file: null }),
     "Le document du visa n’est pas dans l’espace."

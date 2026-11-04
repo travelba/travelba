@@ -166,7 +166,7 @@ Le badge envoie le cas connu par WhatsApp, au clic « Envoyer au client ». `EST
 
 Sans téléphone, sans acceptation WhatsApp, sans le fichier, ou sans SID approuvé, le badge dit pourquoi. Le cas approuvé joint le document. Les autres cas gardent la photo `/whatsapp/visa.jpg` et le bouton vers le séjour.
 
-Soumettre à Meta : `npx tsx scripts/arm-whatsapp-concierge.ts` (compte Twilio déjà configuré). Coller chaque SID dans la variable ci-dessus sur Vercel Production, puis redéployer. Ne pas commiter les SID.
+Le cas approuvé se dépose avec `deposer_modeles_autorisation_whatsapp` (administrateurs). Le SID est écrit dans `crm_whatsapp_content_sids`. `statut_modeles_autorisation_whatsapp` lit le statut Meta. L’envoi lit ce réglage, puis la variable. Pas de redéploiement.
 
 ## RLS
 

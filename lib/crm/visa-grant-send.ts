@@ -1,7 +1,8 @@
 import "server-only";
+import { resolveAgencyContentSid } from "./agency-templates-arm";
 import { visaGrantSignedPath } from "./visa-grant-link";
-import { resolveContentSid } from "./twilio-content-sid";
 import { sendContentTemplate } from "./whatsapp";
+import { serviceContentSidStore, type ContentSidStore } from "./whatsapp-content-sid-store";
 import {
   VISA_GRANT_TEMPLATE_ENV,
   VISA_GRANT_UNSUPPORTED,
@@ -13,8 +14,32 @@ import {
   visaGrantPendingMessage,
   visaGrantPreview,
   visaGrantTemplateForHeader,
+  type VisaGrantHeader,
   type VisaGrantTemplate,
 } from "./visa-grant-whatsapp";
+
+export type AuthorizationGrantSids = { document: string; image: string };
+
+/** Les deux SID, réglage puis variable. Une lecture en échec vaut « pas de SID ». */
+export async function loadAuthorizationGrantSids(
+  fetchImpl: typeof fetch = fetch,
+  store: ContentSidStore = serviceContentSidStore()
+): Promise<AuthorizationGrantSids> {
+  const [document, image] = await Promise.all([
+    resolveVisaGrantContentSid("document", fetchImpl, store).catch(() => ""),
+    resolveVisaGrantContentSid("image", fetchImpl, store).catch(() => ""),
+  ]);
+  return { document, image };
+}
+
+/** Réglage crm_whatsapp_content_sids, puis la variable TWILIO_CONTENT_AUTORISATION_VALIDEE_*. */
+export async function resolveVisaGrantContentSid(
+  header: VisaGrantHeader,
+  fetchImpl: typeof fetch = fetch,
+  store: ContentSidStore = serviceContentSidStore()
+) {
+  return resolveAgencyContentSid(VISA_GRANT_TEMPLATE_ENV[visaGrantTemplateForHeader(header)], fetchImpl, store);
+}
 
 export async function sendVisaGrantWhatsapp(input: {
   phone: string | null;
@@ -26,11 +51,11 @@ export async function sendVisaGrantWhatsapp(input: {
   greetingName: string | null;
   country: string | null;
   docType: string | null;
-}): Promise<{ ok: true; sid: string; template: VisaGrantTemplate; body: string } | { ok: false; error: string }> {
+}, deps?: { fetchImpl?: typeof fetch; store?: ContentSidStore }): Promise<{ ok: true; sid: string; template: VisaGrantTemplate; body: string } | { ok: false; error: string }> {
   const header = visaGrantHeader(input.mime, input.storedName);
   if (!header) return { ok: false, error: VISA_GRANT_UNSUPPORTED };
   const template = visaGrantTemplateForHeader(header);
-  const sid = await resolveContentSid(VISA_GRANT_TEMPLATE_ENV[template]);
+  const sid = await resolveVisaGrantContentSid(header, deps?.fetchImpl, deps?.store);
   if (!sid) return { ok: false, error: visaGrantPendingMessage(header) };
   const label = visaGrantLabel({ country: input.country, docType: input.docType });
   const filename = visaGrantFileName({

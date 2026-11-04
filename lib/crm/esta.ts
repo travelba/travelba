@@ -623,6 +623,7 @@ export function estaTravelerLine(input: {
     boundDocumentId?: string | null;
   } | null;
   grantFile?: { mime_type?: string | null; file_name?: string | null; storage_path?: string | null } | null;
+  grantSid?: string | null;
 }): EstaTravelerLine {
   const alerts = estaAlerts({
     status: input.status,
@@ -692,6 +693,7 @@ export function estaTravelerLine(input: {
       grant: input.grantFile?.storage_path
         ? { mime: input.grantFile.mime_type || null, fileName: input.grantFile.file_name || null }
         : null,
+      grantSid: input.grantSid,
     });
     if (client) {
       line.preview = client.preview;

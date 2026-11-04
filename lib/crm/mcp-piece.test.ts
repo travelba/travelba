@@ -585,7 +585,7 @@ test("a traveller with another number is not blocked by the client's already sen
   assert.equal(result.notifie, false);
   assert.deepEqual(
     result.destinataires.map((row) => `${row.qui}:${row.raison}`),
-    ["client:Déjà envoyé.", "voyageur:Le modèle WhatsApp « autorisation_validee_document » n’est pas encore approuvé par Meta. Le document ne part pas sans ce modèle. En-tête Document (PDF). À soumettre : npx tsx scripts/arm-whatsapp-concierge.ts, puis TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT."]
+    ["client:Déjà envoyé.", "voyageur:Le modèle WhatsApp « autorisation_validee_document » n’est pas encore approuvé par Meta. Le document ne part pas sans ce modèle. En-tête Document (PDF). À déposer : deposer_modeles_autorisation_whatsapp. Le SID est écrit dans crm_whatsapp_content_sids, sinon TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT."]
   );
   assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
 
