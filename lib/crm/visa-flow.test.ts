@@ -77,6 +77,9 @@ test("le client suit les grandes étapes, jusqu’à la pièce", () => {
   assert.match(clientVisaStepCopy("remplissage"), /formulaire officiel/);
   assert.match(clientVisaStepCopy("preparation"), /pièces du voyage/);
   assert.match(clientVisaStepCopy("piece"), /autorisation est prête/);
+  assert.equal(clientVisaStepNote("piece", { authorization: "ESTA" }), "Votre autorisation ESTA est prête.");
+  assert.equal(clientVisaStepNote("piece", { authorization: "eTA Canada" }), "Votre autorisation eTA Canada est prête.");
+  assert.match(clientVisaStepNote("piece") || "", /Votre autorisation est prête/);
 });
 
 test("une demande déjà ouverte peut être confirmée", () => {

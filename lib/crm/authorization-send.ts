@@ -20,7 +20,13 @@ import {
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { sendContentTemplate } from "./whatsapp";
 import { sendVisaGrantWhatsapp } from "./visa-grant-send";
-import { isVisaGrantTemplate, visaGrantDedupeKey, visaGrantPreview, visaGrantSendBlock } from "./visa-grant-whatsapp";
+import {
+  isVisaGrantTemplate,
+  visaGrantAuthorizationName,
+  visaGrantDedupeKey,
+  visaGrantPreview,
+  visaGrantSendBlock,
+} from "./visa-grant-whatsapp";
 
 type Admin = SupabaseClient;
 
@@ -203,7 +209,13 @@ async function sendApprovedGrant(
     optOutAt?: string | null;
   }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const preview = visaGrantPreview(input.name);
+  const preview = visaGrantPreview(
+    input.name,
+    visaGrantAuthorizationName({
+      country: input.grant?.country || (input.kind === "esta" ? "US" : "GB"),
+      docType: input.grant?.docType,
+    })
+  );
   if (!preview) return { ok: false, error: "Le message n’a pas pu être préparé." };
   const block = visaGrantSendBlock({
     phone: input.phone,

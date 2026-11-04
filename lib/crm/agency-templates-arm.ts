@@ -211,7 +211,7 @@ export async function ensureAgencyTemplates(
   return ensureTemplateDrafts(agencyTemplateDrafts(), fetchImpl, store);
 }
 
-/** Dépose autorisation_validee_document et autorisation_validee_image. Aucun message. */
+/** Dépose les v2 (nom de l’autorisation) et conserve les v1. Aucun message. */
 export async function ensureAuthorizationTemplates(
   fetchImpl: typeof fetch = fetch,
   store: ContentSidStore = serviceContentSidStore()

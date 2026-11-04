@@ -121,7 +121,7 @@ test("l’aperçu remplit le modèle et ne cite pas le passeport", () => {
     reference: "TB-2026-0040",
     validUntil: "2028-03-26",
   });
-  assert.match(approved || "", /Bonne nouvelle ! Votre ESTA ou ETA a été validé\. Vous le trouverez ci-joint\./);
+  assert.match(approved || "", /Bonne nouvelle ! Votre autorisation ETA a été validée\. Vous la trouverez ci-jointe\./);
   assert.match(approved || "", /Bonjour Camille,/);
   assert.match(approved || "", /Le Concierge/);
   assert.equal(approved?.includes("http"), false);
@@ -219,7 +219,7 @@ test("le catalogue montre les cas et le document joint", () => {
     assert.doesNotMatch(message.bubble.body, /\d{6,}/);
     if (grants.has(message.id)) {
       assert.equal(message.fallback, null);
-      assert.match(message.bubble.body, /Bonne nouvelle ! Votre ESTA ou ETA a été validé/);
+      assert.match(message.bubble.body, /Bonne nouvelle ! Votre autorisation ESTA a été validée/);
       continue;
     }
     assert.match(message.bubble.image || "", /\/whatsapp\/visa\.jpg$/);

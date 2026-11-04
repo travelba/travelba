@@ -39,6 +39,14 @@ function present(row: AgencyTemplateReport) {
 const NOTE =
   "Aucun WhatsApp n’est envoyé. Le SID est enregistré dans le réglage crm_whatsapp_content_sids. L’envoi le lit sans redéploiement, et retombe sur la variable du même nom si le réglage est vide.";
 
+const AUTORISATION_NOTE =
+  "Aucun WhatsApp n’est envoyé. Les SID v1 et v2 sont dans crm_whatsapp_content_sids. L’envoi utilise autorisation_validee_document_v2 et autorisation_validee_image_v2 dès que Meta les a approuvés, sinon les modèles v1. Un envoi v1 ou v2 compte comme déjà envoyé.";
+
+function authorizationReady(rows: AgencyTemplateReport[]) {
+  const next = rows.filter((row) => row.nom.endsWith("_v2"));
+  return next.length > 0 && next.every((row) => row.statut === "approved");
+}
+
 /** Dépose espace_client_lien, option_hotel_activee et facture_paiement. Réservé aux administrateurs. */
 export async function deposerModelesWhatsapp(input: Record<string, unknown>, fetchImpl?: typeof fetch) {
   void input;
@@ -56,7 +64,7 @@ function presentAuthorization(row: AgencyTemplateReport) {
   return { ...present(row), pret: row.statut === "approved" };
 }
 
-/** Dépose autorisation_validee_document et autorisation_validee_image. Réservé aux administrateurs. */
+/** Dépose les modèles v2, et garde les v1. Réservé aux administrateurs. */
 export async function deposerModelesAutorisationWhatsapp(
   input: Record<string, unknown>,
   fetchImpl?: typeof fetch,
@@ -69,12 +77,12 @@ export async function deposerModelesAutorisationWhatsapp(
     ok: result.ok,
     categorie: AGENCY_TEMPLATE_CATEGORY,
     modeles: result.modeles.map(presentAuthorization),
-    pret: result.modeles.length > 0 && result.modeles.every((row) => row.statut === "approved"),
-    note: NOTE,
+    pret: authorizationReady(result.modeles),
+    note: AUTORISATION_NOTE,
   };
 }
 
-/** Statut Meta des deux modèles d’autorisation. Lecture. Réservé aux administrateurs. */
+/** Statut Meta des modèles d’autorisation, v2 puis v1. Lecture. Réservé aux administrateurs. */
 export async function statutModelesAutorisationWhatsapp(
   input: Record<string, unknown>,
   fetchImpl?: typeof fetch,
@@ -85,9 +93,9 @@ export async function statutModelesAutorisationWhatsapp(
   return {
     ok: result.ok,
     modeles: result.modeles.map(presentAuthorization),
-    pret: result.modeles.length > 0 && result.modeles.every((row) => row.statut === "approved"),
+    pret: authorizationReady(result.modeles),
     ...(result.message ? { message: result.message } : {}),
-    note: NOTE,
+    note: AUTORISATION_NOTE,
   };
 }
 
