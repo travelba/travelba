@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { BrandMark } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
@@ -57,7 +57,6 @@ export function AccountChrome({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const tabs = tabsFor(basePath, hotels);
   const activeIndex = tabs.findIndex((tab) =>
     tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
@@ -90,9 +89,7 @@ export function AccountChrome({
       }).catch(() => {});
     }
     // Cet appareil seulement : « Se déconnecter de tous les appareils » vit dans Mon compte › Sécurité.
-    await signOutAccount("local");
-    router.push("/connexion");
-    router.refresh();
+    await signOutAccount("local", "/connexion");
   }
 
   const mark =

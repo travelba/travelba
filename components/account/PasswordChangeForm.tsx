@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
@@ -15,7 +14,6 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
  * et fermeture de toutes les sessions. Replié par défaut, comme les autres plis du profil.
  */
 export function PasswordChangeForm() {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -56,10 +54,8 @@ export function PasswordChangeForm() {
   }
 
   async function signOutEverywhere() {
-    const result = await signOutAccount("global");
+    const result = await signOutAccount("global", "/connexion");
     if (!result.ok) return { ok: false, error: "La déconnexion n’a pas abouti. Réessayez." };
-    router.push("/connexion");
-    router.refresh();
     return { ok: true };
   }
 

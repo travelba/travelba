@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { useMirror } from "@/lib/crm/use-mirror";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { AgencyLogo } from "@/components/AgencyLogo";
 import { AdminOmnibar } from "@/components/admin/AdminOmnibar";
 import { HotelReplyToasts } from "@/components/admin/HotelReplyToasts";
@@ -105,10 +105,9 @@ export function AdminNav({
   }
 
   async function signOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push(partner ? "/admin/login?espace=myler" : "/admin/login");
-    router.refresh();
+    // Route serveur : le signOut du navigateur attend Auth avant de naviguer.
+    // S’il ne répond pas, le clic ne fait rien et le proxy renvoie vers /admin.
+    await signOutAccount("local", partner ? "/admin/login?espace=myler" : "/admin/login");
   }
 
   function goSearch(q: string) {
