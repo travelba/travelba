@@ -11,7 +11,7 @@ import {
 
 test("l’état du dossier est Non visible, Visible, Annulé, ou Archivée", () => {
   assert.equal(staffStayLabel({ visible_to_client: false, archived_at: null }), "Non visible");
-  assert.equal(staffStayLabel({ visible_to_client: false, status: "confirmed" }), "Visible");
+  assert.equal(staffStayLabel({ visible_to_client: false, status: "confirmed" }), "Non visible");
   assert.equal(staffStayLabel({ visible_to_client: true }), "Visible");
   assert.equal(staffStayLabel({ visible_to_client: true, status: "draft" }), "Visible");
   assert.equal(staffStayLabel({ visible_to_client: false, status: "draft" }), "Non visible");

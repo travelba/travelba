@@ -2,10 +2,12 @@
 -- Les colonnes status et visible_to_client restent. Elles ne divergent plus
 -- sur un dossier actif. L’archive (archived_at, archived_was_visible) n’est pas touchée.
 -- Aucune écriture de paiement, de facture, de client ou de réservation hors ces deux colonnes.
--- Relevé du 2026-11-04 (97 dossiers) : Visible 58 (21 confirmés cachés + 18 déjà montrés
--- + 16 brouillons montrés + 3 devis montrés), Non visible 30, Annulé 1, archivés laissés 8.
--- Le déclencheur de débit est suspendu le temps de l’alignement : un changement de
--- status ne doit pas poster ni annuler une écriture.
+-- Relevé du 2026-11-04 (97 dossiers) : Visible 37 (18 confirmés montrés + 16 brouillons
+-- montrés + 3 devis montrés), Non visible 51 (21 confirmés cachés + 30 brouillons cachés),
+-- Annulé 1, archivés laissés 8.
+-- Un confirmé caché devient Non visible : il reste caché. On ne montre pas ces dossiers,
+-- on n’envoie aucun message, et on ne touche ni aux cartes Pliant ni au grand livre.
+-- Le déclencheur de débit est suspendu : changer status ne doit ni poster ni annuler une écriture.
 
 do $$
 begin
@@ -14,14 +16,23 @@ begin
   end if;
 end $$;
 
--- Confirmé, ou déjà montré : Visible.
+-- Déjà montré : Visible. Un confirmé encore caché n’entre pas ici.
 update public.crm_bookings
 set status = 'confirmed',
     visible_to_client = true
 where archived_at is null
   and status is distinct from 'cancelled'
-  and (status = 'confirmed' or visible_to_client = true)
-  and (status is distinct from 'confirmed' or visible_to_client is distinct from true);
+  and visible_to_client = true
+  and status is distinct from 'confirmed';
+
+-- Confirmé mais caché : Non visible. visible_to_client reste faux.
+-- Aucune carte, aucun mouvement, aucun message : seulement ces deux colonnes.
+update public.crm_bookings
+set status = 'draft',
+    visible_to_client = false
+where archived_at is null
+  and status = 'confirmed'
+  and coalesce(visible_to_client, false) = false;
 
 -- Brouillon ou devis non montré : Non visible.
 update public.crm_bookings

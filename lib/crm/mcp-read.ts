@@ -594,10 +594,10 @@ function applyBookingFilters(query: FilterableQuery, input: { etat: BookingState
   if (input.etat === "archive") next = next.not("archived_at", "is", null);
   else next = next.is("archived_at", null);
   if (input.etat === "preparation") {
-    next = next.eq("visible_to_client", false).in("status", ["draft", "quoted"]);
+    next = next.eq("visible_to_client", false).neq("status", "cancelled");
   }
   if (input.etat === "montre") {
-    next = next.neq("status", "cancelled").or("visible_to_client.eq.true,status.eq.confirmed");
+    next = next.eq("visible_to_client", true).neq("status", "cancelled");
   }
   if (input.etat === "annule") next = next.eq("status", "cancelled");
   if (input.etat === "a-venir") next = next.gte("start_date", input.today).neq("status", "cancelled");

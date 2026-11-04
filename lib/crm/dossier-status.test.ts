@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   columnsForFace,
@@ -8,11 +9,11 @@ import {
   hotelCardBookingStatus,
 } from "./dossier-status";
 
-test("trois états, et un confirmé caché est déjà Visible", () => {
+test("trois états : un confirmé caché reste Non visible", () => {
   assert.equal(dossierFace({ status: "draft", visible_to_client: false }), "non_visible");
   assert.equal(dossierFace({ status: "quoted", visible_to_client: false }), "non_visible");
   assert.equal(dossierFace({ status: "draft", visible_to_client: true }), "visible");
-  assert.equal(dossierFace({ status: "confirmed", visible_to_client: false }), "visible");
+  assert.equal(dossierFace({ status: "confirmed", visible_to_client: false }), "non_visible");
   assert.equal(dossierFace({ status: "confirmed", visible_to_client: true }), "visible");
   assert.equal(dossierFace({ status: "cancelled", visible_to_client: true }), "annule");
   assert.equal(dossierFaceLabel({ status: "draft" }), "Non visible");
@@ -44,9 +45,22 @@ test("les anciens mots restent acceptés", () => {
   assert.equal(dossierFaceFromWord("en voyage"), null);
 });
 
-test("la carte hôtel suit Visible", () => {
+test("la carte hôtel suit Visible, un confirmé caché n’est pas annulé", () => {
   assert.equal(hotelCardBookingStatus({ status: "confirmed", visible_to_client: false }), "confirmed");
+  assert.notEqual(hotelCardBookingStatus({ status: "confirmed", visible_to_client: false }), "cancelled");
   assert.equal(hotelCardBookingStatus({ status: "draft", visible_to_client: true }), "confirmed");
   assert.equal(hotelCardBookingStatus({ status: "draft", visible_to_client: false }), "draft");
   assert.equal(hotelCardBookingStatus({ status: "cancelled", visible_to_client: false }), "cancelled");
+});
+
+test("la migration laisse les confirmés cachés en Non visible, sans livre ni carte", () => {
+  const sql = readFileSync(new URL("../../supabase/migrations/20261104140000_dossier_trois_statuts.sql", import.meta.url), "utf8");
+  assert.match(sql, /status = 'confirmed'[\s\S]*coalesce\(visible_to_client, false\) = false/);
+  assert.match(sql, /set status = 'draft',\s*visible_to_client = false/);
+  assert.match(sql, /disable trigger trg_crm_booking_debit/);
+  assert.match(sql, /enable trigger trg_crm_booking_debit/);
+  assert.doesNotMatch(sql, /crm_transactions|crm_pliant|crm_hotel_arrivals|whatsapp|notify/i);
+  const hidden = sql.slice(sql.indexOf("Confirmé mais caché"), sql.indexOf("Brouillon ou devis"));
+  assert.match(hidden, /status = 'draft'/);
+  assert.doesNotMatch(hidden, /visible_to_client = true/);
 });

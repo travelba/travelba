@@ -208,10 +208,10 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     else next = next.is("archived_at", null);
     if (mine) next = next.eq("owner_staff_id", staff.id);
     if (!archivedOnly && state === "preparation") {
-      next = next.eq("visible_to_client", false).in("status", ["draft", "quoted"]);
+      next = next.eq("visible_to_client", false).neq("status", "cancelled");
     }
     if (!archivedOnly && state === "montre") {
-      next = next.neq("status", "cancelled").or("visible_to_client.eq.true,status.eq.confirmed");
+      next = next.eq("visible_to_client", true).neq("status", "cancelled");
     }
     if (!archivedOnly && state === "annule") next = next.eq("status", "cancelled");
     if (!archivedOnly && state === "a-venir") {

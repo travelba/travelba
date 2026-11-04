@@ -16,14 +16,14 @@ type StayFaceSource = {
 };
 
 /**
- * Visible = montré au client = confirmé.
- * Un confirmé encore caché, ou un brouillon déjà publié, compte déjà comme Visible :
- * la migration aligne les deux colonnes, l’écran ne les sépare plus.
+ * Visible = montré au client. Un confirmé encore caché reste Non visible :
+ * la migration le laisse caché, elle ne le publie pas.
+ * Un brouillon déjà montré est Visible : la migration aligne le statut.
  */
 export function dossierFace(booking: StayFaceSource): DossierFace {
   const status = (booking.status || "").trim().toLowerCase();
   if (status === "cancelled" || status === "canceled") return "annule";
-  if (booking.visible_to_client || status === "confirmed") return "visible";
+  if (booking.visible_to_client) return "visible";
   return "non_visible";
 }
 
@@ -72,9 +72,15 @@ export function dossierFaceFromWord(value: unknown): DossierFace | null {
   return FACE_WORDS[key] || null;
 }
 
-/** La carte hôtel part pour un séjour Visible. Archivé ou non, le confirmé d’aujourd’hui le reste. */
+/**
+ * La carte hôtel part pour un séjour Visible.
+ * Un confirmé encore caché garde son statut brut : le passage en Non visible
+ * ne le marque pas annulé, donc une carte déjà émise n’est ni gelée ni fermée.
+ */
 export function hotelCardBookingStatus(booking: StayFaceSource) {
   if (dossierFace(booking) === "visible") return "confirmed";
   const status = (booking.status || "").trim().toLowerCase();
+  if (status === "cancelled" || status === "canceled") return "cancelled";
+  if (status === "confirmed") return "confirmed";
   return status || "draft";
 }
