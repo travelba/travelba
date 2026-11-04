@@ -68,7 +68,12 @@ import {
   updateRestaurantTool,
 } from "@/lib/crm/mcp-restaurants";
 import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus } from "@/lib/crm/mcp-restaurant-templates";
-import { deposerModelesWhatsapp, statutModelesWhatsapp } from "@/lib/crm/mcp-agency-templates";
+import {
+  deposerModelesAutorisationWhatsapp,
+  deposerModelesWhatsapp,
+  statutModelesAutorisationWhatsapp,
+  statutModelesWhatsapp,
+} from "@/lib/crm/mcp-agency-templates";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
@@ -112,7 +117,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 101;
+export const MCP_TOOL_CAP = 103;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1553,6 +1558,21 @@ export const MCP_TOOLS: ToolDef[] = [
     description:
       "Statut d’approbation Meta de espace_client_lien, option_hotel_activee et facture_paiement : nom, content_sid, statut, source (reglage, env ou retrouvé par son nom). pret vrai quand les trois sont approuvés. Lecture seule. N’envoie aucun message. Réservé aux administrateurs.",
     run: (args) => statutModelesWhatsapp(args),
+  },
+  {
+    name: "deposer_modeles_autorisation_whatsapp",
+    write: true,
+    openWorld: true,
+    description:
+      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les modèles autorisation_validee_document (PDF) et autorisation_validee_image (JPEG ou PNG). Un nom déjà refusé n’est pas repris. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent par nom. Les exemples de média sont https://travelba.fr/api/whatsapp/autorisations/exemple/esta-exemple.pdf et esta-exemple.jpg. Le content_sid est écrit dans le réglage crm_whatsapp_content_sids : l’envoi de l’autorisation le lit sans redéploiement, et retombe sur TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT ou _IMAGE si le réglage est vide. Renvoie nom, content_sid, statut et pret. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Réservé aux administrateurs.",
+    run: (args) => deposerModelesAutorisationWhatsapp(args),
+  },
+  {
+    name: "statut_modeles_autorisation_whatsapp",
+    openWorld: true,
+    description:
+      "Statut d’approbation Meta de autorisation_validee_document et autorisation_validee_image : nom, content_sid, statut, pret. pret vrai quand les deux sont approuvés. Lecture seule. N’envoie aucun message. Ne renvoie aucun secret. Réservé aux administrateurs.",
+    run: (args) => statutModelesAutorisationWhatsapp(args),
   },
   {
     name: "lister_membres",

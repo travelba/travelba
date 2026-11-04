@@ -11,12 +11,11 @@ import { frenchPassportRequired, frenchPassportTrip } from "./visa-trip";
 import { toE164 } from "./phone";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { sendContentTemplate, type WhatsappSendResult } from "./whatsapp";
-import { sendVisaGrantWhatsapp } from "./visa-grant-send";
+import { resolveVisaGrantContentSid, sendVisaGrantWhatsapp } from "./visa-grant-send";
 import {
   VISA_GRANT_MISSING,
   VISA_GRANT_UNSUPPORTED,
   pickVisaGrantFile,
-  visaGrantContentSid,
   visaGrantHeader,
   visaGrantPendingMessage,
   visaGrantPreview,
@@ -428,7 +427,7 @@ async function deliverGrant(admin: Admin, row: QueueRow, booking: CrmBooking, ph
     await admin.from("crm_whatsapp_messages").update({ status: "failed", error: VISA_GRANT_UNSUPPORTED }).eq("id", row.id);
     return VISA_GRANT_UNSUPPORTED;
   }
-  if (!visaGrantContentSid(header)) {
+  if (!(await resolveVisaGrantContentSid(header))) {
     const pending = visaGrantPendingMessage(header);
     await admin.from("crm_whatsapp_messages").update({ status: "failed", error: pending }).eq("id", row.id);
     return pending;
@@ -978,7 +977,7 @@ async function sendPlainTraveller(
   const header = file ? visaGrantHeader(file.mime_type, file.file_name) : null;
   if (!file) return { qui: "voyageur", notifie: false, raison: VISA_GRANT_MISSING };
   if (!header) return { qui: "voyageur", notifie: false, raison: VISA_GRANT_UNSUPPORTED };
-  if (!visaGrantContentSid(header)) {
+  if (!(await resolveVisaGrantContentSid(header))) {
     return { qui: "voyageur", notifie: false, raison: visaGrantPendingMessage(header) };
   }
   const body = visaGrantPreview(input.firstName);

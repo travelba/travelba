@@ -3,10 +3,14 @@ import test from "node:test";
 import {
   agencyTemplateDrafts,
   agencyTemplatesStatus,
+  authorizationTemplateDrafts,
   ensureAgencyTemplates,
+  ensureAuthorizationTemplates,
   quietAgencyTwilioError,
   resolveAgencyContentSid,
 } from "./agency-templates-arm";
+import { deposerModelesAutorisationWhatsapp, statutModelesAutorisationWhatsapp } from "./mcp-agency-templates";
+import { resolveVisaGrantContentSid, sendVisaGrantWhatsapp } from "./visa-grant-send";
 import { memoryContentSidStore } from "./whatsapp-content-sid-store";
 import { clearContentApprovalCache } from "./twilio-content-sid";
 
@@ -20,6 +24,8 @@ function armTwilio() {
   delete process.env.TWILIO_CONTENT_ACCES_CLIENT;
   delete process.env.TWILIO_CONTENT_OPTION_HOTEL;
   delete process.env.TWILIO_CONTENT_FACTURE;
+  delete process.env.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT;
+  delete process.env.TWILIO_CONTENT_AUTORISATION_VALIDEE_IMAGE;
   clearContentApprovalCache();
 }
 
@@ -160,4 +166,118 @@ test("le statut lit Meta, et sans Twilio rien n’est créé", async () => {
   const unread = await agencyTemplatesStatus(twilio.fetchImpl, memoryContentSidStore());
   assert.equal(unread.ok, false);
   assert.equal(JSON.stringify(unread).includes(TOKEN), false);
+});
+
+test("les deux brouillons d’autorisation pointent vers les exemples de production", () => {
+  assert.deepEqual(
+    authorizationTemplateDrafts().map((draft) => draft.friendlyName),
+    ["autorisation_validee_document", "autorisation_validee_image"]
+  );
+  const [pdf, image] = authorizationTemplateDrafts();
+  const pdfMedia = (pdf.create.types as { "twilio/media": { media: string[] } })["twilio/media"].media[0];
+  const imageMedia = (image.create.types as { "twilio/media": { media: string[] } })["twilio/media"].media[0];
+  assert.equal(pdfMedia, "https://travelba.fr/api/whatsapp/autorisations/{{1}}");
+  assert.equal(imageMedia, "https://travelba.fr/api/whatsapp/autorisations/{{1}}");
+  assert.equal(pdf.create.variables && (pdf.create.variables as Record<string, string>)["1"], "exemple/esta-exemple.pdf");
+  assert.equal(image.create.variables && (image.create.variables as Record<string, string>)["1"], "exemple/esta-exemple.jpg");
+});
+
+test("dépose les deux modèles d’autorisation, sans reprendre un nom refusé", async () => {
+  armTwilio();
+  const store = memoryContentSidStore();
+  const twilio = fakeTwilio();
+  const result = await ensureAuthorizationTemplates(twilio.fetchImpl, store);
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.modeles.map((row) => [row.nom, row.variable, row.soumis, row.statut]),
+    [
+      ["autorisation_validee_document", "TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT", true, "pending"],
+      ["autorisation_validee_image", "TWILIO_CONTENT_AUTORISATION_VALIDEE_IMAGE", true, "pending"],
+    ]
+  );
+  assert.equal(store.rows.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT, result.modeles[0].content_sid);
+  assert.equal(JSON.stringify(result).includes(TOKEN), false);
+  const again = await ensureAuthorizationTemplates(twilio.fetchImpl, store);
+  assert.equal(again.modeles.every((row) => row.cree === false), true);
+  assert.equal(twilio.calls.filter((call) => call.method === "POST" && call.url.endsWith("/Content")).length, 2);
+
+  const refused = "HXeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+  const refusedStore = memoryContentSidStore({ TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT: refused });
+  refusedStore.names.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT = "ancien_visa";
+  const refusedTwilio = fakeTwilio({
+    contents: [{ sid: refused, friendly_name: "ancien_visa" }],
+    approvals: { [refused]: "rejected" },
+  });
+  const fresh = await ensureAuthorizationTemplates(refusedTwilio.fetchImpl, refusedStore);
+  assert.notEqual(fresh.modeles[0].content_sid, refused);
+  assert.equal(fresh.modeles[0].cree, true);
+  assert.equal(refusedTwilio.calls.some((call) => call.url.includes(refused)), false);
+});
+
+test("le statut d’autorisation donne nom, sid, statut et pret", async () => {
+  armTwilio();
+  const store = memoryContentSidStore();
+  const twilio = fakeTwilio();
+  const deposited = await deposerModelesAutorisationWhatsapp({}, twilio.fetchImpl, store);
+  assert.equal(deposited.pret, false);
+  assert.equal(deposited.categorie, "UTILITY");
+  assert.equal(JSON.stringify(deposited).includes(TOKEN), false);
+  assert.equal(JSON.stringify(deposited).includes(ACCOUNT), false);
+  for (const row of deposited.modeles) {
+    assert.equal(typeof row.nom, "string");
+    assert.match(row.content_sid || "", /^HX/);
+    assert.equal(row.statut, "pending");
+    assert.equal(row.pret, false);
+    twilio.approvals[row.content_sid || ""] = "approved";
+  }
+  const status = await statutModelesAutorisationWhatsapp({}, twilio.fetchImpl, store);
+  assert.equal(status.pret, true);
+  assert.deepEqual(
+    status.modeles.map((row) => [row.nom, row.statut, row.pret]),
+    [
+      ["autorisation_validee_document", "approved", true],
+      ["autorisation_validee_image", "approved", true],
+    ]
+  );
+});
+
+test("l’envoi lit le réglage avant la variable", async () => {
+  delete process.env.TWILIO_ACCOUNT_SID;
+  delete process.env.TWILIO_AUTH_TOKEN;
+  delete process.env.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT;
+  const file = {
+    phone: "+33601020304",
+    documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    mime: "application/pdf",
+    storedName: "esta.pdf",
+    firstName: "Camille",
+    lastName: "Martin",
+    greetingName: "Camille",
+    country: "US",
+    docType: "eta",
+  };
+  const missing = await sendVisaGrantWhatsapp(file, { store: memoryContentSidStore() });
+  assert.equal(missing.ok, false);
+  if (!missing.ok) assert.match(missing.error, /pas encore approuvé/);
+
+  const stored = "HXdddddddddddddddddddddddddddddddd";
+  const fromStore = await resolveVisaGrantContentSid("document", fetch, memoryContentSidStore({
+    TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT: stored,
+  }));
+  assert.equal(fromStore, stored);
+  process.env.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT = "HXaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const prefersStore = await resolveVisaGrantContentSid(
+    "document",
+    fetch,
+    memoryContentSidStore({ TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT: stored })
+  );
+  assert.equal(prefersStore, stored);
+  const fromEnv = await resolveVisaGrantContentSid("document", fetch, memoryContentSidStore());
+  assert.equal(fromEnv, "HXaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  const ready = await sendVisaGrantWhatsapp(file, {
+    store: memoryContentSidStore({ TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT: stored }),
+  });
+  assert.equal(ready.ok, false);
+  if (!ready.ok) assert.doesNotMatch(ready.error, /pas encore approuvé/);
+  delete process.env.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT;
 });

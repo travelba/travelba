@@ -135,7 +135,7 @@ export function visaGrantPendingMessage(header: VisaGrantHeader) {
   const template = visaGrantTemplateForHeader(header);
   const env = VISA_GRANT_TEMPLATE_ENV[template];
   const kind = header === "image" ? "Image (JPEG ou PNG)" : "Document (PDF)";
-  return `Le modèle WhatsApp « ${template} » n’est pas encore approuvé par Meta. Le document ne part pas sans ce modèle. En-tête ${kind}. À soumettre : npx tsx scripts/arm-whatsapp-concierge.ts, puis ${env}.`;
+  return `Le modèle WhatsApp « ${template} » n’est pas encore approuvé par Meta. Le document ne part pas sans ce modèle. En-tête ${kind}. À déposer : deposer_modeles_autorisation_whatsapp. Le SID est écrit dans crm_whatsapp_content_sids, sinon ${env}.`;
 }
 
 export const VISA_GRANT_MISSING = "Le document du visa n’est pas dans l’espace.";
@@ -146,6 +146,8 @@ export function visaGrantSendBlock(input: {
   optInAt?: string | null;
   optOutAt?: string | null;
   file?: { mime: string | null; fileName: string | null } | null;
+  /** SID déjà lu (réglage, puis variable). Omis : seule la variable est regardée. */
+  contentSid?: string | null;
 }) {
   if (!whatsappAddress(input.phone)) return "Pas de téléphone pour WhatsApp.";
   if (!proactiveWhatsappAllowed({ whatsapp_opt_in_at: input.optInAt, whatsapp_opt_out_at: input.optOutAt })) {
@@ -154,7 +156,8 @@ export function visaGrantSendBlock(input: {
   if (!input.file) return VISA_GRANT_MISSING;
   const header = visaGrantHeader(input.file.mime, input.file.fileName);
   if (!header) return VISA_GRANT_UNSUPPORTED;
-  if (!visaGrantContentSid(header)) return visaGrantPendingMessage(header);
+  const sid = input.contentSid !== undefined ? input.contentSid : visaGrantContentSid(header);
+  if (!sid) return visaGrantPendingMessage(header);
   return null;
 }
 
@@ -162,6 +165,18 @@ export function visaGrantSendBlock(input: {
  * Pièce du voyageur pour ce pays. La plus récente si plusieurs.
  * Un voyageur nommé l’emporte sur une pièce sans voyageur.
  */
+/** SID déjà résolu pour le type du fichier. Vide si le modèle n’est pas là. */
+export function visaGrantSidFor(
+  file: { mime_type?: string | null; file_name?: string | null; storage_path?: string | null } | null | undefined,
+  sids: { document: string; image: string } | null | undefined
+) {
+  if (!sids || !file?.storage_path) return undefined;
+  const header = visaGrantHeader(file.mime_type, file.file_name);
+  if (header === "image") return sids.image;
+  if (header === "document") return sids.document;
+  return "";
+}
+
 export function visaGrantPayload(file: VisaGrantCandidate | null | undefined) {
   if (!file?.id || !file.storage_path) return null;
   return {

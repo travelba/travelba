@@ -1,8 +1,11 @@
 import { McpWriteError } from "./mcp-write";
+import type { ContentSidStore } from "./whatsapp-content-sid-store";
 import {
   AGENCY_TEMPLATE_CATEGORY,
   agencyTemplatesStatus,
+  authorizationTemplatesStatus,
   ensureAgencyTemplates,
+  ensureAuthorizationTemplates,
   type AgencyTemplateReport,
 } from "./agency-templates-arm";
 
@@ -45,6 +48,45 @@ export async function deposerModelesWhatsapp(input: Record<string, unknown>, fet
     ok: result.ok,
     categorie: AGENCY_TEMPLATE_CATEGORY,
     modeles: result.modeles.map(present),
+    note: NOTE,
+  };
+}
+
+function presentAuthorization(row: AgencyTemplateReport) {
+  return { ...present(row), pret: row.statut === "approved" };
+}
+
+/** Dépose autorisation_validee_document et autorisation_validee_image. Réservé aux administrateurs. */
+export async function deposerModelesAutorisationWhatsapp(
+  input: Record<string, unknown>,
+  fetchImpl?: typeof fetch,
+  store?: ContentSidStore
+) {
+  void input;
+  const result = await ensureAuthorizationTemplates(fetchImpl, store);
+  if (!result.ok && result.message) throw new McpWriteError(result.message);
+  return {
+    ok: result.ok,
+    categorie: AGENCY_TEMPLATE_CATEGORY,
+    modeles: result.modeles.map(presentAuthorization),
+    pret: result.modeles.length > 0 && result.modeles.every((row) => row.statut === "approved"),
+    note: NOTE,
+  };
+}
+
+/** Statut Meta des deux modèles d’autorisation. Lecture. Réservé aux administrateurs. */
+export async function statutModelesAutorisationWhatsapp(
+  input: Record<string, unknown>,
+  fetchImpl?: typeof fetch,
+  store?: ContentSidStore
+) {
+  void input;
+  const result = await authorizationTemplatesStatus(fetchImpl, store);
+  return {
+    ok: result.ok,
+    modeles: result.modeles.map(presentAuthorization),
+    pret: result.modeles.length > 0 && result.modeles.every((row) => row.statut === "approved"),
+    ...(result.message ? { message: result.message } : {}),
     note: NOTE,
   };
 }

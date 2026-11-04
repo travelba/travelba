@@ -86,6 +86,8 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   get_restaurant_whatsapp_templates_status: "agency",
   deposer_modeles_whatsapp: "admin",
   statut_modeles_whatsapp: "admin",
+  deposer_modeles_autorisation_whatsapp: "admin",
+  statut_modeles_autorisation_whatsapp: "admin",
   lister_membres: "admin",
   ajouter_membre: "admin",
   changer_role_membre: "admin",

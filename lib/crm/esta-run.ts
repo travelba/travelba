@@ -24,7 +24,8 @@ import {
   authorizationTravelerName,
 } from "@/lib/crm/authorization-notice";
 import { sendAuthorizationWhatsapp } from "@/lib/crm/authorization-send";
-import { pickVisaGrantFile, visaGrantPayload } from "@/lib/crm/visa-grant-whatsapp";
+import { pickVisaGrantFile, visaGrantPayload, visaGrantSidFor } from "@/lib/crm/visa-grant-whatsapp";
+import { loadAuthorizationGrantSids, type AuthorizationGrantSids } from "@/lib/crm/visa-grant-send";
 import { deliverEstaMail, estaAgencyMail, estaClientMail } from "@/lib/crm/esta-mail";
 import { stayPlaceName } from "@/lib/crm/concierge-notices";
 import { parisIsoDate } from "@/lib/crm/hotel-arrival";
@@ -97,6 +98,7 @@ function composeEstaLines(input: {
   optInAt?: string | null;
   optOutAt?: string | null;
   bookingId?: string | null;
+  grantSids?: AuthorizationGrantSids | null;
   rows: CheckRow[];
 }) {
   const byTraveler = new Map(input.rows.map((row) => [row.traveler_id, row]));
@@ -136,6 +138,7 @@ function composeEstaLines(input: {
           boundDocumentId: row.travel_document_id,
         },
         grantFile: grant,
+        grantSid: visaGrantSidFor(grant, input.grantSids),
       })
     );
   }
@@ -332,6 +335,7 @@ export async function syncEstaForBooking(
     optInAt: input.optInAt,
     optOutAt: input.optOutAt,
     bookingId: input.booking.id,
+    grantSids: await loadAuthorizationGrantSids(),
     rows: fresh || [...byTraveler.values()],
   });
 }
@@ -410,6 +414,7 @@ export async function loadEstaForBookingId(admin: Admin, bookingId: string) {
     optInAt: bundle.optInAt,
     optOutAt: bundle.optOutAt,
     bookingId,
+    grantSids: await loadAuthorizationGrantSids(),
     rows,
   });
 }

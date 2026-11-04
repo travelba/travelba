@@ -90,6 +90,7 @@ const PHRASES: Record<string, string> = {
   tables_restaurant: "Table de restaurant mise à jour",
   create_restaurant_whatsapp_templates: "Modèles WhatsApp restaurants déposés",
   deposer_modeles_whatsapp: "Modèles WhatsApp accès et facture déposés",
+  deposer_modeles_autorisation_whatsapp: "Modèles WhatsApp d’autorisation déposés",
   supprimer_client: "Client supprimé",
   annuler_mouvement: "Mouvement annulé",
   fusionner_clients: "Clients fusionnés",

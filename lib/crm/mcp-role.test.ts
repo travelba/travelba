@@ -28,6 +28,8 @@ test("chaque outil a un droit, les outils d’équipe sont administrateur", () =
     "annoncer_option_hotel",
     "deposer_modeles_whatsapp",
     "statut_modeles_whatsapp",
+    "deposer_modeles_autorisation_whatsapp",
+    "statut_modeles_autorisation_whatsapp",
     "reactiver_membre",
     "fusionner_clients",
   ]) {

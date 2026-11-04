@@ -3,6 +3,7 @@ import { hotelOptionContentDrafts } from "./hotel-option-whatsapp";
 import { invoiceContentDraft } from "./invoice-document";
 import { productionOnlySecret } from "./preview-secrets";
 import { resolveContentSid } from "./twilio-content-sid";
+import { visaGrantContentDrafts } from "./visa-grant-whatsapp";
 import { isContentSid, serviceContentSidStore, type ContentSidStore } from "./whatsapp-content-sid-store";
 
 /**
@@ -41,12 +42,21 @@ export type AgencyTemplateReport = {
 
 type Draft = { env: string; friendlyName: string; create: Record<string, unknown> };
 
-export function agencyTemplateDrafts(): Draft[] {
-  return [...accessContentDrafts(), ...hotelOptionContentDrafts(), invoiceContentDraft()].map((draft) => ({
+function asDrafts(rows: { env: string; friendlyName: string; create: object }[]): Draft[] {
+  return rows.map((draft) => ({
     env: draft.env,
     friendlyName: draft.friendlyName,
-    create: draft.create,
+    create: draft.create as Record<string, unknown>,
   }));
+}
+
+export function agencyTemplateDrafts(): Draft[] {
+  return asDrafts([...accessContentDrafts(), ...hotelOptionContentDrafts(), invoiceContentDraft()]);
+}
+
+/** PDF et image de l’autorisation validée. Les exemples sont les URL de production. */
+export function authorizationTemplateDrafts(): Draft[] {
+  return asDrafts(visaGrantContentDrafts());
 }
 
 function twilioAccount() {
@@ -197,8 +207,23 @@ export async function resolveAgencyContentSid(
 export async function ensureAgencyTemplates(
   fetchImpl: typeof fetch = fetch,
   store: ContentSidStore = serviceContentSidStore()
+) {
+  return ensureTemplateDrafts(agencyTemplateDrafts(), fetchImpl, store);
+}
+
+/** Dépose autorisation_validee_document et autorisation_validee_image. Aucun message. */
+export async function ensureAuthorizationTemplates(
+  fetchImpl: typeof fetch = fetch,
+  store: ContentSidStore = serviceContentSidStore()
+) {
+  return ensureTemplateDrafts(authorizationTemplateDrafts(), fetchImpl, store);
+}
+
+async function ensureTemplateDrafts(
+  drafts: Draft[],
+  fetchImpl: typeof fetch,
+  store: ContentSidStore
 ): Promise<{ ok: boolean; modeles: AgencyTemplateReport[]; message?: string }> {
-  const drafts = agencyTemplateDrafts();
   if (!agencyTemplatesTwilioReady()) {
     return {
       ok: false,
@@ -252,8 +277,22 @@ export async function ensureAgencyTemplates(
 export async function agencyTemplatesStatus(
   fetchImpl: typeof fetch = fetch,
   store: ContentSidStore = serviceContentSidStore()
+) {
+  return templateDraftsStatus(agencyTemplateDrafts(), fetchImpl, store);
+}
+
+export async function authorizationTemplatesStatus(
+  fetchImpl: typeof fetch = fetch,
+  store: ContentSidStore = serviceContentSidStore()
+) {
+  return templateDraftsStatus(authorizationTemplateDrafts(), fetchImpl, store);
+}
+
+async function templateDraftsStatus(
+  drafts: Draft[],
+  fetchImpl: typeof fetch,
+  store: ContentSidStore
 ): Promise<{ ok: boolean; modeles: AgencyTemplateReport[]; message?: string }> {
-  const drafts = agencyTemplateDrafts();
   if (!agencyTemplatesTwilioReady()) {
     const modeles: AgencyTemplateReport[] = [];
     for (const draft of drafts) {

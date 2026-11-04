@@ -199,6 +199,8 @@ export function authorizationClientFields(input: {
   optOutAt?: string | null;
   /** Fichier visa ou ETA du voyageur. Absent : le cas approuvé ne part pas. */
   grant?: { mime: string | null; fileName: string | null } | null;
+  /** SID du modèle qui correspond au fichier. Omis : la variable d’environnement. */
+  grantSid?: string | null;
 }) {
   const notice = authorizationNoticeCase(input);
   if (!notice) return null;
@@ -209,6 +211,7 @@ export function authorizationClientFields(input: {
       optInAt: input.optInAt,
       optOutAt: input.optOutAt,
       file: input.grant || null,
+      contentSid: input.grantSid,
     });
     const open = Boolean(preview) && !sendBlock;
     return {

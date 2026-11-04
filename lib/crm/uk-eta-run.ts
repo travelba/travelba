@@ -26,7 +26,8 @@ import {
   authorizationTravelerName,
 } from "@/lib/crm/authorization-notice";
 import { sendAuthorizationWhatsapp } from "@/lib/crm/authorization-send";
-import { pickVisaGrantFile, visaGrantPayload } from "@/lib/crm/visa-grant-whatsapp";
+import { pickVisaGrantFile, visaGrantPayload, visaGrantSidFor } from "@/lib/crm/visa-grant-whatsapp";
+import { loadAuthorizationGrantSids, type AuthorizationGrantSids } from "@/lib/crm/visa-grant-send";
 import { stayPlaceName } from "@/lib/crm/concierge-notices";
 import { deliverUkEtaMail, ukEtaAgencyMail, ukEtaClientMail } from "@/lib/crm/uk-eta-mail";
 import { parisIsoDate } from "@/lib/crm/hotel-arrival";
@@ -147,7 +148,8 @@ function linesFor(
     whatsapp_opt_in_at?: string | null;
     whatsapp_opt_out_at?: string | null;
   }) | null,
-  byTraveler: Map<string, CheckRow>
+  byTraveler: Map<string, CheckRow>,
+  grantSids: AuthorizationGrantSids | null = null
 ) {
   const dates = tripUkEtaDates(items, booking);
   if (!dates.needsUkEta) return [];
@@ -183,6 +185,7 @@ function linesFor(
           boundDocumentId: row.travel_document_id,
         },
         grantFile: grant,
+        grantSid: visaGrantSidFor(grant, grantSids),
       })
     );
   }
@@ -271,7 +274,15 @@ export async function syncUkEtaForBooking(
     if (plan.status === "a_verifier") await dispatchCheck(admin, row, plan.dispatchKey, dates.departure);
   }
 
-  return linesFor(input.booking, input.items, input.travelers, input.documents, input.holder || null, byTraveler);
+  return linesFor(
+    input.booking,
+    input.items,
+    input.travelers,
+    input.documents,
+    input.holder || null,
+    byTraveler,
+    await loadAuthorizationGrantSids()
+  );
 }
 
 async function loadStay(admin: Admin, bookingId: string) {
@@ -333,7 +344,15 @@ export async function readUkEtaLines(admin: Admin, bookingId: string) {
     return [];
   }
   const byTraveler = new Map(((data as CheckRow[] | null) || []).map((row) => [row.traveler_id, row]));
-  return linesFor(stay.booking, stay.items, stay.travelers, stay.documents, stay.holder, byTraveler);
+  return linesFor(
+    stay.booking,
+    stay.items,
+    stay.travelers,
+    stay.documents,
+    stay.holder,
+    byTraveler,
+    await loadAuthorizationGrantSids()
+  );
 }
 
 export async function syncUkEtaForCustomer(customerId: string, admin: Admin) {
