@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   // L’échange du code OAuth ne passe que par GET /api/admin/revolut/oauth, avec le state.
   if (body?.action === "sync") {
     try {
-      const synced = await syncRevolutWindow(REVOLUT_MANUAL_LOOKBACK_MS);
+      const synced = await syncRevolutWindow(REVOLUT_MANUAL_LOOKBACK_MS, { stripeRefresh: true });
       const auto = await autoMatchUnmatchedRevolut();
       return NextResponse.json({
         fetched: synced.fetched,

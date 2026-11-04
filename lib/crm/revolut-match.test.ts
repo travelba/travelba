@@ -41,7 +41,10 @@ function row(
     counterparty_iban: partial.counterparty_iban ?? null,
     reference: partial.reference ?? null,
     booked_at: partial.booked_at ?? "2026-09-01T10:00:00Z",
-    raw: {},
+    raw: partial.raw ?? {},
+    category: partial.category,
+    stripe_line: partial.stripe_line,
+    parent_id: partial.parent_id,
     matched_customer_id: null,
     matched_transaction_id: null,
     status: partial.status || "unmatched",
@@ -422,7 +425,8 @@ describe("revolut-match", () => {
     for (const partial of rows) {
       const scored = scoreRevolutMatches(partial, people);
       assert.equal(scored.autoCustomerId, null);
-      assert.ok(scored.candidates.length >= 1);
+      const stripe = partial.counterparty_name === "Stripe";
+      assert.equal(scored.candidates.length >= 1, !stripe);
       if (scored.autoCustomerId) {
         await applyRevolutToCustomer(admin, row({ id: "inbox", ...partial }), scored.autoCustomerId);
       }
@@ -432,5 +436,82 @@ describe("revolut-match", () => {
     const auto = await autoMatchUnmatchedRevolut();
     assert.equal(auto.matched, 0);
     assert.equal(auto.scanned, 0);
+  });
+
+  it("ne crédite pas un intérêt et crédite le brut d’une ligne Stripe", async () => {
+    let writes = 0;
+    const blocked = await applyRevolutToCustomer(
+      {
+        from() {
+          return {
+            insert() {
+              writes += 1;
+              throw new Error("interdit");
+            },
+          };
+        },
+      },
+      row({ id: "interet", amount: 2.13, category: "interet" }),
+      "customer-1"
+    );
+    assert.equal(blocked.ok, false);
+    if (!blocked.ok) assert.equal(blocked.error, "not_collectable");
+    assert.equal(writes, 0);
+
+    const inserts: Record<string, unknown>[] = [];
+    const admin = {
+      from(table: string) {
+        const api = {
+          select() {
+            return api;
+          },
+          eq() {
+            return api;
+          },
+          update() {
+            return api;
+          },
+          insert(payload: Record<string, unknown>) {
+            inserts.push({ table, ...payload });
+            return {
+              select() {
+                return { single: async () => ({ data: { id: "tx-brut", ...payload }, error: null }) };
+              },
+            };
+          },
+          maybeSingle: async () => ({ data: null, error: null }),
+          then(resolve: (value: { data: unknown; error: null }) => void) {
+            resolve({ data: [], error: null });
+          },
+        };
+        return api;
+      },
+    };
+    const credited = await applyRevolutToCustomer(
+      admin,
+      row({
+        id: "ligne",
+        amount: 600,
+        category: "stripe_paiement",
+        counterparty_name: "Camille Martin",
+        stripe_line: {
+          kind: "paiement",
+          payment_intent_id: "pi_test",
+          name: "Camille Martin",
+          gross: 600,
+          fee: 15,
+          net: 585,
+          customer_id: "customer-1",
+          booking_id: "22222222-2222-4222-8222-222222222222",
+        },
+      }),
+      "customer-1"
+    );
+    assert.equal(credited.ok, true);
+    assert.equal(inserts[0]?.amount, 600);
+    assert.equal(inserts[0]?.source, "stripe");
+    assert.equal(inserts[0]?.external_id, "pi_test");
+    assert.equal(inserts[0]?.booking_id, "22222222-2222-4222-8222-222222222222");
+    assert.equal(inserts.some((row) => row.direction === "debit"), false);
   });
 });

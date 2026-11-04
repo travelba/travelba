@@ -1,5 +1,7 @@
 import { resolveWireAccount } from "./funding-wallet";
+import { classifyStoredRevolut, revolutRowCollectable } from "./revolut-classify";
 import { isRevolutCredit, revolutSenderName } from "./revolut-inbox";
+import { stripePaymentExternalId } from "./stripe-payout";
 import { shownPersonName } from "./identity";
 import type { CrmCustomer, CrmRevolutTransaction } from "./types";
 
@@ -8,7 +10,8 @@ export type RevolutMatchReason =
   | "full_name"
   | "unique_last_name"
   | "company_name"
-  | "partial";
+  | "partial"
+  | "stripe";
 
 export type RevolutMatchCandidate = {
   customer_id: string;
@@ -106,6 +109,10 @@ function customerLabel(c: Pick<CrmCustomer, "first_name" | "last_name" | "compan
  * (candidats, présélection) attend le clic Valider.
  */
 export function scoreRevolutMatches(row: RevolutMatchRow, customers: RevolutMatchCustomer[]): RevolutMatchResult {
+  const klass = classifyStoredRevolut(row);
+  if (klass.category !== "client" && klass.category !== "stripe_paiement") {
+    return { autoCustomerId: null, candidates: [] };
+  }
   const tokens = haystackTokens(row);
   const rowIban = ibanMatchKey(row.counterparty_iban);
   if ((!tokens.length && !rowIban) || !customers.length) {
@@ -234,6 +241,107 @@ export async function refuseRevolutInbox(admin: RevolutAdmin, row: CrmRevolutTra
   return { ok: true as const };
 }
 
+async function linkStripeSplit(
+  admin: RevolutAdmin,
+  row: CrmRevolutTransaction,
+  customerId: string,
+  transactionId: string
+) {
+  const line = row.stripe_line ? { ...row.stripe_line, deja_encaisse: true, customer_id: row.stripe_line.customer_id || customerId } : row.stripe_line;
+  await admin
+    .from("crm_revolut_transactions")
+    .update({
+      status: "matched",
+      matched_customer_id: customerId,
+      matched_transaction_id: transactionId,
+      stripe_line: line,
+    })
+    .eq("id", row.id);
+  const externalId = stripePaymentExternalId(row.stripe_line);
+  if (!externalId) return;
+  await admin
+    .from("crm_stripe_transactions")
+    .update({
+      status: "matched",
+      matched_customer_id: customerId,
+      matched_transaction_id: transactionId,
+    })
+    .eq("stripe_payment_intent_id", externalId)
+    .eq("status", "unmatched");
+}
+
+/**
+ * Crédit du brut payé chez Stripe. Les frais restent la ligne d’agence :
+ * aucun débit client, sinon l’encours recevrait le net.
+ */
+async function creditStripeSplitLine(
+  admin: RevolutAdmin,
+  row: CrmRevolutTransaction,
+  customerId: string,
+  billingCompanyId?: string | null
+) {
+  if (row.status === "ignored" || row.category === "frais") {
+    return { ok: false as const, error: "not_collectable" };
+  }
+  const externalId = stripePaymentExternalId(row.stripe_line);
+  if (!externalId) return { ok: false as const, error: "not_collectable" };
+  const account = resolveWireAccount(await customerFundingCompanies(admin, customerId), billingCompanyId);
+  if ("error" in account) return { ok: false as const, error: "account_required" as const };
+  const { data: existing } = await admin
+    .from("crm_transactions")
+    .select("*")
+    .eq("source", "stripe")
+    .eq("external_id", externalId)
+    .eq("status", "posted")
+    .maybeSingle();
+  if (existing?.id) {
+    if (existing.customer_id && existing.customer_id !== customerId) {
+      return { ok: false as const, error: "already_credited" };
+    }
+    await linkStripeSplit(admin, row, customerId, existing.id);
+    return { ok: true as const, already: true as const, transaction: existing };
+  }
+  const name = (row.stripe_line?.name || row.counterparty_name || "Payeur").replace(/^Stripe ·\s*/, "");
+  const payload = {
+    customer_id: customerId,
+    booking_id: row.stripe_line?.customer_id === customerId ? row.stripe_line.booking_id || null : null,
+    direction: "credit" as const,
+    kind: "card_payment" as const,
+    amount: Math.abs(Number(row.amount)),
+    currency: row.currency,
+    occurred_on: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
+    label: `Règlement Stripe · ${name}`.trim(),
+    source: "stripe" as const,
+    external_id: externalId,
+    status: "posted" as const,
+    ...(account.billingCompanyId
+      ? { billing_company_id: account.billingCompanyId, payer_kind: "company" as const }
+      : {}),
+  };
+  const { data: tx, error } = await admin.from("crm_transactions").insert(payload).select("*").single();
+  let posted = tx;
+  if (error) {
+    if (!/duplicate|unique/i.test(String(error.message || ""))) {
+      return { ok: false as const, error: error.message as string };
+    }
+    const { data: raced } = await admin
+      .from("crm_transactions")
+      .select("*")
+      .eq("source", "stripe")
+      .eq("external_id", externalId)
+      .eq("status", "posted")
+      .maybeSingle();
+    if (!raced) return { ok: false as const, error: error.message as string };
+    if (raced.customer_id && raced.customer_id !== customerId) {
+      return { ok: false as const, error: "already_credited" };
+    }
+    posted = raced;
+  }
+  if (!posted?.id) return { ok: false as const, error: "insert_failed" };
+  await linkStripeSplit(admin, row, customerId, posted.id);
+  return { ok: true as const, already: Boolean(error), transaction: posted };
+}
+
 export async function applyRevolutToCustomer(
   admin: RevolutAdmin,
   row: CrmRevolutTransaction,
@@ -242,6 +350,13 @@ export async function applyRevolutToCustomer(
 ) {
   if (row.status === "matched") {
     return { ok: false as const, error: "already_matched" };
+  }
+  const category = row.category || classifyStoredRevolut(row).category;
+  if (category === "stripe_paiement") {
+    return creditStripeSplitLine(admin, row, customerId, billingCompanyId);
+  }
+  if (!revolutRowCollectable({ ...row, category })) {
+    return { ok: false as const, error: "not_collectable" };
   }
   if (!isRevolutCredit(row.direction)) {
     return { ok: false as const, error: "not_a_credit" };
@@ -330,6 +445,8 @@ export function matchReasonLabel(reason: RevolutMatchReason) {
       return "Nom de famille unique";
     case "company_name":
       return "Société";
+    case "stripe":
+      return "Paiement Stripe";
     default:
       return "Correspondance partielle";
   }

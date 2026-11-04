@@ -41,7 +41,10 @@ export async function changedRevolutTransactions(txs: RevolutTx[]) {
 }
 
 /** Depuis le curseur, avec deux jours de recouvrement. Sans curseur : la fenêtre demandée (14 ou 30 jours). */
-export async function syncRevolutWindow(firstLookbackMs = REVOLUT_FIRST_LOOKBACK_MS) {
+export async function syncRevolutWindow(
+  firstLookbackMs = REVOLUT_FIRST_LOOKBACK_MS,
+  opts?: { stripeRefresh?: boolean }
+) {
   const now = Date.now();
   const cursor = await readSyncWatermark(SYNC_WATERMARK.revolut);
   const from = syncSinceIso({
@@ -52,7 +55,7 @@ export async function syncRevolutWindow(firstLookbackMs = REVOLUT_FIRST_LOOKBACK
   });
   const txs = await fetchRevolutTransactions(from);
   const fresh = await changedRevolutTransactions(txs);
-  const inserted = await upsertRevolutInbox(fresh);
+  const inserted = await upsertRevolutInbox(fresh, opts);
   await writeSyncWatermark(SYNC_WATERMARK.revolut, new Date(now).toISOString());
   return { fetched: txs.length, inserted, from, written: fresh.length };
 }

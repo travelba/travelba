@@ -652,6 +652,33 @@ export type CrmRevolutTransaction = {
   matched_booking_id?: string | null;
   /** Clic Valider ou Refuser. Null tant que la sortie n’a pas été traitée. */
   settled_at?: string | null;
+  /**
+   * client, interet, interne, remboursement, frais, stripe (versement entier),
+   * stripe_paiement (une ligne du versement).
+   */
+  category?: "client" | "interet" | "interne" | "remboursement" | "frais" | "stripe" | "stripe_paiement" | null;
+  /** Ligne découpée d’un versement Stripe. */
+  parent_id?: string | null;
+  /** Paiement Stripe ou cache du versement. Pas de PAN. */
+  stripe_line?: {
+    kind?: "paiement" | "remboursement" | "frais" | "cache";
+    payout_id?: string | null;
+    payment_id?: string | null;
+    payment_intent_id?: string | null;
+    email?: string | null;
+    name?: string | null;
+    dossier_ref?: string | null;
+    customer_id?: string | null;
+    booking_id?: string | null;
+    gross?: number;
+    fee?: number;
+    net?: number;
+    currency?: string;
+    deja_encaisse?: boolean;
+    complete?: boolean;
+    fetched_at?: string;
+    introuvable?: boolean;
+  } | null;
   status: "unmatched" | "matched" | "ignored";
   created_at: string;
   updated_at: string;

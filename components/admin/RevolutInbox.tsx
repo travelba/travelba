@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
-import { revolutInboxCopy } from "@/lib/crm/revolut-inbox";
+import { revolutInboxCopy, revolutInboxVisible } from "@/lib/crm/revolut-inbox";
+import { revolutRowCollectable } from "@/lib/crm/revolut-classify";
 import { StatusChip } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
@@ -17,8 +19,7 @@ import {
 } from "@/lib/crm/customer-search";
 import {
   possibleClientsLabel,
-  revolutStatusLabel,
-  revolutStatusTone,
+  revolutInboxStatus,
   revolutSyncSummary,
 } from "@/lib/crm/revolut-labels";
 import {
@@ -58,7 +59,18 @@ export function RevolutInbox({
   const [accountFor, setAccountFor] = useState<Record<string, string>>({});
   const [pickerRow, setPickerRow] = useState<string | null>(null);
   const [scope, setScope] = useState<"unmatched" | "all">("unmatched");
-  const shown = scope === "unmatched" ? rows.filter((row) => row.status === "unmatched") : rows;
+  const shown = useMemo(() => {
+    const visible = rows.filter((row) => revolutInboxVisible(row, rows, scope));
+    const rank = (row: CrmRevolutTransaction) =>
+      row.category === "frais" ? 3 : row.parent_id && row.category === "remboursement" ? 2 : row.category === "stripe_paiement" ? 1 : 0;
+    return [...visible].sort((left, right) => {
+      const time = String(right.booked_at || "").localeCompare(String(left.booked_at || ""));
+      if (time !== 0) return time;
+      const group = String(left.parent_id || left.id).localeCompare(String(right.parent_id || right.id));
+      if (group !== 0) return group;
+      return rank(left) - rank(right);
+    });
+  }, [rows, scope]);
 
   const byId = useMemo(
     () => new Map(customers.map((c) => [c.id, c])),
@@ -114,15 +126,16 @@ export function RevolutInbox({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = await res.json().catch(() => ({}));
+      const json = (await res.json().catch(() => ({}))) as { error?: string; deja?: boolean };
       if (!res.ok) {
         setError(json.error || failure);
-        return false;
+        return null;
       }
       router.refresh();
-      return true;
+      return json;
     } catch {
       setError("Connexion interrompue. Réessayez.");
+      return null;
     } finally {
       setRowBusy(null);
     }
@@ -141,12 +154,16 @@ export function RevolutInbox({
       setError("Choisissez le compte : crédit ou Pro.");
       return "Choisissez le compte : crédit ou Pro.";
     }
-    const ok = await post(
+    const json = await post(
       id,
       { customer_id: customerId, billing_company_id: billingCompanyId || null },
       "Crédit impossible. Réessayez."
     );
-    if (!ok) return "Crédit impossible. Réessayez.";
+    if (!json) return "Crédit impossible. Réessayez.";
+    if (json.deja) {
+      setMessage("Virement Stripe (déjà encaissé via Stripe). Aucun second crédit.");
+      return null;
+    }
     setMessage(`Crédit enregistré : ${formatMoney(gross, currency)}.`);
     return null;
   }
@@ -205,8 +222,11 @@ export function RevolutInbox({
           const top = suggestedId ? candidates.find((c) => c.customer_id === suggestedId) : undefined;
           const chosenId = chosenFor(r.id);
           const chosen = chosenId ? byId.get(chosenId) : undefined;
-          const signed = `+${formatMoney(Number(r.amount), r.currency)}`;
+          const amount = Number(r.amount);
+          const signed = `${amount < 0 ? "−" : "+"}${formatMoney(Math.abs(amount), r.currency)}`;
           const { sender, designation } = revolutInboxCopy(r);
+          const tone = revolutInboxStatus(r);
+          const collect = revolutRowCollectable(r);
           return (
             <li key={r.id} className="px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -219,9 +239,15 @@ export function RevolutInbox({
                     {designation ? ` · ${designation}` : ""}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusChip tone={revolutStatusTone(r.status)}>
-                      {revolutStatusLabel(r.status)}
-                    </StatusChip>
+                    <StatusChip tone={tone.tone}>{tone.label}</StatusChip>
+                    {r.stripe_line?.booking_id ? (
+                      <Link
+                        href={`/admin/reservations/${r.stripe_line.booking_id}`}
+                        className="text-xs font-semibold text-[var(--admin-navy)] underline"
+                      >
+                        Dossier {r.stripe_line.dossier_ref || ""}
+                      </Link>
+                    ) : null}
                     {r.status === "unmatched" && top ? (
                       <span className="text-xs font-semibold text-[#9e7e51]">
                         Proposition : {top.label} ({matchReasonLabel(top.reason)})
@@ -229,7 +255,7 @@ export function RevolutInbox({
                     ) : null}
                   </div>
                 </div>
-                {r.status === "unmatched" ? (
+                {collect ? (
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                     <div className="w-full">
                       <BusyBar active={rowBusy === r.id} label="Crédit…" />
@@ -304,7 +330,9 @@ export function RevolutInbox({
                       disabled={rowBusy === r.id}
                       className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
                       onConfirm={async () =>
-                        (await post(r.id, { action: "refuse" }, "Impossible de refuser ce mouvement.")) ? null : "Impossible de refuser ce mouvement."
+                        (await post(r.id, { action: "refuse" }, "Impossible de refuser ce mouvement."))
+                          ? null
+                          : "Impossible de refuser ce mouvement."
                       }
                     />
                   </div>

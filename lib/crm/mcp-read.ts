@@ -39,7 +39,9 @@ import { formatDateTimeFr } from "@/lib/crm/dates";
 import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation-mail";
 import { compareLeMadeAt, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
-import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
+import { revolutDebitLine, revolutInboxCopy, revolutInboxVisible } from "@/lib/crm/revolut-inbox";
+import { revolutRowCollectable } from "@/lib/crm/revolut-classify";
+import { splitPendingStripePayouts } from "@/lib/crm/stripe-payout-sync";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
 import { MCP_LE_LIST_COLUMNS } from "@/lib/crm/mcp-columns";
 import { queryWithOptionalColumn } from "@/lib/crm/optional-column";
@@ -1016,21 +1018,35 @@ async function postedClientCredits(admin: ReturnType<typeof db>, customerId: str
 
 export async function readRevolutEnAttente(input: { page?: number; limite?: number } = {}) {
   const admin = db();
+  try {
+    await splitPendingStripePayouts(admin);
+  } catch (err) {
+    logRead("revolut-stripe", err as { message?: string });
+  }
   const window = mcpWindow(input, INBOX_LIMIT);
   const { data, error } = await admin
     .from("crm_revolut_transactions")
-    .select("id, amount, currency, counterparty_name, reference, booked_at, status, direction")
-    .eq("status", "unmatched")
+    .select("id, amount, currency, counterparty_name, reference, booked_at, status, direction, category, parent_id, stripe_line, raw")
     .eq("direction", "credit")
+    .or("status.eq.unmatched,category.eq.frais,category.eq.remboursement,category.eq.stripe_paiement")
     .order("booked_at", { ascending: false, nullsFirst: false })
-    .limit(window.from + window.limite + 1);
+    .limit(200);
   if (error) {
     logRead("revolut", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = mcpSlice(
-    (data || []) as Pick<CrmRevolutTransaction, "id" | "amount" | "currency" | "counterparty_name" | "reference" | "booked_at">[],
-    window
+  const loaded = (data || []) as CrmRevolutTransaction[];
+  const visible = loaded.filter((row) => revolutInboxVisible(row, loaded, "unmatched"));
+  const rows = mcpSlice(visible, window);
+  const parentIds = [...new Set(rows.rows.map((row) => row.parent_id).filter((id): id is string => Boolean(id)))];
+  const parents = parentIds.length
+    ? await admin.from("crm_revolut_transactions").select("id, amount, currency").in("id", parentIds)
+    : { data: [] as { id: string; amount: number; currency: string }[] };
+  const payoutAmount = new Map(
+    ((parents.data || []) as { id: string; amount: number; currency: string }[]).map((row) => [
+      row.id,
+      formatMoney(Number(row.amount), row.currency || "EUR"),
+    ])
   );
   return {
     lien: "/admin/argent?onglet=a-encaisser",
@@ -1038,13 +1054,36 @@ export async function readRevolutEnAttente(input: { page?: number; limite?: numb
     limite: rows.limite,
     suite: rows.suite,
     page_suivante: rows.page_suivante,
-    virements: rows.rows.map((row) => ({
-      id: row.id,
-      montant: formatMoney(Number(row.amount), row.currency || "EUR"),
-      expediteur: row.counterparty_name,
-      libelle: row.reference,
-      date: row.booked_at ? formatDateFr(row.booked_at) : null,
-    })),
+    virements: rows.rows.map((row) => {
+      const copy = revolutInboxCopy(row);
+      const amount = Number(row.amount);
+      const line = row.stripe_line;
+      return {
+        id: row.id,
+        montant: `${amount < 0 ? "−" : "+"}${formatMoney(Math.abs(amount), row.currency || "EUR")}`,
+        expediteur: copy.sender,
+        libelle: copy.designation || row.reference,
+        date: row.booked_at ? formatDateFr(row.booked_at) : null,
+        categorie: row.category || "client",
+        crediter: revolutRowCollectable(row),
+        stripe:
+          line && line.kind && line.kind !== "cache"
+            ? {
+                reference: line.payment_intent_id || line.payment_id || null,
+                nom: line.name || null,
+                email: line.email || null,
+                brut: formatMoney(Number(line.gross || 0), line.currency || row.currency || "EUR"),
+                frais: formatMoney(Number(line.fee || 0), line.currency || row.currency || "EUR"),
+                net: formatMoney(Number(line.net || 0), line.currency || row.currency || "EUR"),
+                dossier: line.dossier_ref || null,
+                client_id: line.customer_id || null,
+                dossier_id: line.booking_id || null,
+                deja_encaisse: Boolean(line.deja_encaisse || row.status === "matched"),
+                versement: row.parent_id ? payoutAmount.get(row.parent_id) || null : null,
+              }
+            : null,
+      };
+    }),
   };
 }
 

@@ -568,18 +568,25 @@ export async function creditRevolutTransfer(input: Record<string, unknown>, admi
     if (result.error === "not_a_credit") {
       throw new McpWriteError("Le rapprochement ne porte que sur les crédits reçus.");
     }
+    if (result.error === "not_collectable") {
+      throw new McpWriteError("Ce mouvement ne se crédite pas à un client.");
+    }
+    if (result.error === "already_credited") {
+      throw new McpWriteError("Déjà encaissé via Stripe.");
+    }
     console.error("[mcp] revolut");
     throw new McpWriteError("Rapprochement impossible.");
   }
   const posted = result.transaction as { id?: string; amount?: number; currency?: string };
   return {
+    deja_encaisse: "already" in result && result.already === true,
     mouvement: {
       id: posted.id ?? null,
       client_id: clientId,
       virement_id: virementId,
       montant: posted.amount ?? null,
       devise: posted.currency ?? movement.currency,
-      source: "revolut",
+      source: movement.category === "stripe_paiement" ? "stripe" : "revolut",
     },
   };
 }

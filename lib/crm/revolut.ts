@@ -3,7 +3,9 @@ import { secretEquals } from "./secret-equals";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { repairRevolutDebitQueue } from "@/lib/crm/revolut-debit";
+import { revolutPendingReclass } from "@/lib/crm/revolut-classify";
 import { revolutInboxDraft, revolutInboxMatches, revolutSyncPayload } from "@/lib/crm/revolut-inbox";
+import { splitPendingStripePayouts } from "@/lib/crm/stripe-payout-sync";
 import { revolutBalancePockets } from "@/lib/crm/account-balances";
 import {
   collectHiddenRevolutAccounts,
@@ -230,7 +232,24 @@ export async function fetchRevolutTransactions(fromIso: string) {
   return out;
 }
 
-export async function upsertRevolutInbox(txs: RevolutTx[]) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function reclassifyPendingRevolutCredits(admin: { from: (table: string) => any }) {
+  const { data, error } = await admin
+    .from("crm_revolut_transactions")
+    .select("id, status, direction, category, matched_transaction_id, parent_id, raw, counterparty_name, reference")
+    .eq("direction", "credit")
+    .is("parent_id", null)
+    .in("status", ["unmatched", "ignored"])
+    .limit(400);
+  if (error) throw new Error(error.message);
+  for (const row of data || []) {
+    const patch = revolutPendingReclass(row);
+    if (!patch) continue;
+    await admin.from("crm_revolut_transactions").update(patch).eq("id", row.id).eq("status", row.status);
+  }
+}
+
+export async function upsertRevolutInbox(txs: RevolutTx[], opts?: { stripeRefresh?: boolean }) {
   const supabase = createServiceClient();
   try {
     await repairRevolutDebitQueue(supabase);
@@ -244,7 +263,7 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
     const payload = revolutSyncPayload(tx.id, draft);
     const { data: existing, error: readError } = await supabase
       .from("crm_revolut_transactions")
-      .select("id, amount, currency, direction, counterparty_name, counterparty_iban, reference, booked_at")
+      .select("id, amount, currency, direction, counterparty_name, counterparty_iban, reference, booked_at, category")
       .eq("revolut_transaction_id", tx.id)
       .eq("direction", draft.direction)
       .maybeSingle();
@@ -271,6 +290,16 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
       .update({ ...payload.update, raw: tx })
       .eq("id", existing.id);
     if (updateError) console.error("[revolut] mise à jour", updateError.message);
+  }
+  try {
+    await reclassifyPendingRevolutCredits(supabase);
+  } catch (err) {
+    console.error("[revolut] classement", err instanceof Error ? err.message : "échec");
+  }
+  try {
+    await splitPendingStripePayouts(supabase, { refresh: opts?.stripeRefresh === true });
+  } catch (err) {
+    console.error("[revolut] stripe", err instanceof Error ? err.message : "échec");
   }
   return inserted;
 }

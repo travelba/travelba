@@ -75,7 +75,16 @@ export async function POST(request: Request, ctx: Ctx) {
     if (result.error === "account_required") {
       return jsonError("Choisissez le compte : crédit ou Pro.");
     }
+    if (result.error === "not_collectable") {
+      return jsonError("Ce mouvement ne se crédite pas à un client.");
+    }
+    if (result.error === "already_credited") {
+      return jsonError("Déjà encaissé via Stripe.");
+    }
     return jsonError(result.error || "Rapprochement impossible", 400);
+  }
+  if ("already" in result && result.already) {
+    return NextResponse.json({ transaction: result.transaction, deja: true });
   }
 
   return NextResponse.json({ transaction: result.transaction });
