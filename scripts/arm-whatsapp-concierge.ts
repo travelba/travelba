@@ -7,6 +7,7 @@
 import { accessContentDrafts } from "../lib/crm/access-resend";
 import { hotelOptionContentDrafts } from "../lib/crm/hotel-option-whatsapp";
 import { boardingPassContentDrafts } from "../lib/crm/boarding-pass-whatsapp";
+import { visaGrantContentDrafts } from "../lib/crm/visa-grant-whatsapp";
 import { conciergeContentDrafts } from "../lib/crm/concierge-notices";
 import { flightNoticeDrafts } from "../lib/crm/flight-watch";
 import { invoiceContentDraft } from "../lib/crm/invoice-document";
@@ -87,6 +88,7 @@ async function main() {
     ...conciergeContentDrafts(),
     ...flightNoticeDrafts(),
     ...boardingPassContentDrafts(),
+    ...visaGrantContentDrafts(),
     ...statementContentDrafts(),
     invoiceContentDraft(),
     ...tripShareContentDrafts(),

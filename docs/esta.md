@@ -162,9 +162,9 @@ Le badge envoie le cas connu par WhatsApp, au clic « Envoyer au client ». `EST
 | Introuvable | `TWILIO_CONTENT_ESTA_MANQUANT_CARTE_PHOTO` | `TWILIO_CONTENT_ESTA_MANQUANT_CARTE` |
 | Expire avant le retour ou le départ | `TWILIO_CONTENT_ESTA_EXPIRE_CARTE_PHOTO` | `TWILIO_CONTENT_ESTA_EXPIRE_CARTE` |
 | Ancien passeport | `TWILIO_CONTENT_ESTA_ANCIEN_PASSEPORT_CARTE_PHOTO` | `TWILIO_CONTENT_ESTA_ANCIEN_PASSEPORT_CARTE` |
-| Approuvé pour tout le séjour | `TWILIO_CONTENT_ESTA_APPROUVE_CARTE_PHOTO` | `TWILIO_CONTENT_ESTA_APPROUVE_CARTE` |
+| Approuvé pour tout le séjour | `TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT` (PDF) ou `TWILIO_CONTENT_AUTORISATION_VALIDEE_IMAGE` (JPEG, PNG) | aucun : sans le modèle, rien ne part |
 
-Sans téléphone, sans acceptation WhatsApp, ou sans SID approuvé, le badge dit pourquoi. La photo est `/whatsapp/visa.jpg`. Le bouton ouvre le séjour.
+Sans téléphone, sans acceptation WhatsApp, sans le fichier, ou sans SID approuvé, le badge dit pourquoi. Le cas approuvé joint le document. Les autres cas gardent la photo `/whatsapp/visa.jpg` et le bouton vers le séjour.
 
 Soumettre à Meta : `npx tsx scripts/arm-whatsapp-concierge.ts` (compte Twilio déjà configuré). Coller chaque SID dans la variable ci-dessus sur Vercel Production, puis redéployer. Ne pas commiter les SID.
 

@@ -493,7 +493,8 @@ test("a visible formality queues the ready WhatsApp when the client has not opte
   assert.equal(result.raison, "Le client n’a pas activé WhatsApp.");
   const queued = writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
   assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL`);
-  assert.equal(queued?.payload.template_key, "formalite_prete");
+  assert.equal(queued?.payload.template_key, "autorisation_validee_document");
+  assert.match(String(queued?.payload.body), /Vous le trouverez ci-joint/);
 });
 
 test("a formality already sent is not sent again", async () => {
@@ -528,7 +529,18 @@ test("notifier_piece resends for an existing formality without a new file", asyn
   const docId = "55555555-5555-4555-8555-555555555555";
   const { admin, writes, uploads } = fakeCrm({
     visible: true,
-    documents: [{ id: docId, booking_id: BOOKING, doc_type: "visa", issuing_country: "IL", customer_id: CLIENT }],
+    documents: [
+      {
+        id: docId,
+        booking_id: BOOKING,
+        doc_type: "visa",
+        issuing_country: "IL",
+        customer_id: CLIENT,
+        storage_path: `customers/${CLIENT}/documents/visa.pdf`,
+        mime_type: "application/pdf",
+        file_name: "visa.pdf",
+      },
+    ],
   });
   const result = await notifyTravelPiece({ document_id: docId }, admin);
   assert.equal(uploads.length, 0);
@@ -573,11 +585,11 @@ test("a traveller with another number is not blocked by the client's already sen
   assert.equal(result.notifie, false);
   assert.deepEqual(
     result.destinataires.map((row) => `${row.qui}:${row.raison}`),
-    ["client:Déjà envoyé.", "voyageur:Modèle WhatsApp voyageur pas encore approuvé."]
+    ["client:Déjà envoyé.", "voyageur:Le modèle WhatsApp « autorisation_validee_document » n’est pas encore approuvé par Meta. Le document ne part pas sans ce modèle. En-tête Document (PDF). À soumettre : npx tsx scripts/arm-whatsapp-concierge.ts, puis TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT."]
   );
   assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
 
-  process.env.TWILIO_CONTENT_FORMALITE_PRETE_VOYAGEUR = "HXvoyageur";
+  process.env.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT = "HXdocument";
   try {
     const armed = fakeCrm(otherTraveler("+33601020304"));
     const sent = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta", voyageur_id: TRAVELER }), armed.admin, {
@@ -585,19 +597,18 @@ test("a traveller with another number is not blocked by the client's already sen
       reconcile: async () => {},
     });
     const queued = armed.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
-    assert.equal(queued?.payload.template_key, "formalite_prete_voyageur");
+    assert.equal(queued?.payload.template_key, "autorisation_validee_document");
     assert.equal(queued?.payload.customer_id, CLIENT);
     assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL:voyageur:${TRAVELER}`);
     assert.equal(JSON.stringify(queued?.payload).includes("+33601020304"), false);
     assert.equal(JSON.stringify(queued?.payload).includes("http"), false);
     assert.match(String(queued?.payload.body), /Léa/);
-    assert.match(String(queued?.payload.body), /ETA-IL/);
-    assert.match(String(queued?.payload.body), /TB-2026-0082/);
-    assert.match(String(queued?.payload.body), /Travel Business Agency/);
-    assert.equal(sent.destinataires.find((row) => row.qui === "voyageur")?.raison, "Message non parti.");
+    assert.match(String(queued?.payload.body), /Bonne nouvelle ! Votre ESTA ou ETA a été validé/);
+    assert.match(String(queued?.payload.body), /Le Concierge/);
+    assert.match(String(sent.destinataires.find((row) => row.qui === "voyageur")?.raison), /configuré|signée/);
     assert.equal(sent.destinataires.find((row) => row.qui === "client")?.raison, "Déjà envoyé.");
   } finally {
-    delete process.env.TWILIO_CONTENT_FORMALITE_PRETE_VOYAGEUR;
+    delete process.env.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT;
   }
 });
 
@@ -642,6 +653,9 @@ test("notifier_piece can target only the traveller", async () => {
         doc_type: "eta",
         issuing_country: "IL",
         customer_id: CLIENT,
+        storage_path: `customers/${CLIENT}/documents/eta-il.pdf`,
+        mime_type: "application/pdf",
+        file_name: "eta-il.pdf",
       },
     ],
     customers: [
@@ -664,7 +678,7 @@ test("notifier_piece can target only the traveller", async () => {
   const sent = await notifyTravelPiece({ document_id: docId, destinataires: "voyageur" }, opted.admin);
   const queued = opted.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
   assert.equal(queued?.payload.customer_id, OTHER_CLIENT);
-  assert.equal(queued?.payload.template_key, "formalite_prete");
+  assert.equal(queued?.payload.template_key, "autorisation_validee_document");
   assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL:voyageur:${TRAVELER}`);
   assert.equal(sent.destinataires.some((row) => row.qui === "client"), false);
   await assert.rejects(

@@ -24,6 +24,7 @@ import {
   authorizationTravelerName,
 } from "@/lib/crm/authorization-notice";
 import { sendAuthorizationWhatsapp } from "@/lib/crm/authorization-send";
+import { pickVisaGrantFile, visaGrantPayload } from "@/lib/crm/visa-grant-whatsapp";
 import { deliverEstaMail, estaAgencyMail, estaClientMail } from "@/lib/crm/esta-mail";
 import { stayPlaceName } from "@/lib/crm/concierge-notices";
 import { parisIsoDate } from "@/lib/crm/hotel-arrival";
@@ -95,6 +96,7 @@ function composeEstaLines(input: {
   email?: string | null;
   optInAt?: string | null;
   optOutAt?: string | null;
+  bookingId?: string | null;
   rows: CheckRow[];
 }) {
   const byTraveler = new Map(input.rows.map((row) => [row.traveler_id, row]));
@@ -104,6 +106,11 @@ function composeEstaLines(input: {
     const row = byTraveler.get(traveler.id);
     if (!row || !isEstaStatus(row.status)) continue;
     const passport = passportForEsta(traveler, input.documents, input.holder);
+    const grant = pickVisaGrantFile(input.documents, {
+      country: "US",
+      travelerId: traveler.id,
+      bookingId: input.bookingId,
+    });
     lines.push(
       estaTravelerLine({
         traveler,
@@ -128,6 +135,7 @@ function composeEstaLines(input: {
           optOutAt: input.optOutAt,
           boundDocumentId: row.travel_document_id,
         },
+        grantFile: grant,
       })
     );
   }
@@ -323,6 +331,7 @@ export async function syncEstaForBooking(
     email: input.email,
     optInAt: input.optInAt,
     optOutAt: input.optOutAt,
+    bookingId: input.booking.id,
     rows: fresh || [...byTraveler.values()],
   });
 }
@@ -400,6 +409,7 @@ export async function loadEstaForBookingId(admin: Admin, bookingId: string) {
     email: bundle.email,
     optInAt: bundle.optInAt,
     optOutAt: bundle.optOutAt,
+    bookingId,
     rows,
   });
 }
@@ -562,6 +572,13 @@ export async function sendEstaToClient(
       optInAt: account?.whatsapp_opt_in_at,
       optOutAt: account?.whatsapp_opt_out_at,
       again: options?.again,
+      grant: visaGrantPayload(
+        pickVisaGrantFile((documents || []) as CrmTravelDocument[], {
+          country: "US",
+          travelerId,
+          bookingId,
+        })
+      ),
     });
     if (!sent.ok) return sent;
     await admin.from("crm_esta_checks").update({ client_message_sent_at: new Date().toISOString() }).eq("id", row.id);

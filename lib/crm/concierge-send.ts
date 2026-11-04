@@ -11,20 +11,28 @@ import { frenchPassportRequired, frenchPassportTrip } from "./visa-trip";
 import { toE164 } from "./phone";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { sendContentTemplate, type WhatsappSendResult } from "./whatsapp";
+import { sendVisaGrantWhatsapp } from "./visa-grant-send";
+import {
+  VISA_GRANT_MISSING,
+  VISA_GRANT_UNSUPPORTED,
+  pickVisaGrantFile,
+  visaGrantContentSid,
+  visaGrantHeader,
+  visaGrantPendingMessage,
+  visaGrantPreview,
+  visaGrantTemplateForHeader,
+  type VisaGrantCandidate,
+} from "./visa-grant-whatsapp";
 import { isTravelAuthorization, type CrmBooking, type CrmBookingItem, type CrmBookingTraveler, type CrmTravelDocument } from "./types";
 import type { TripStep } from "./layover";
 import {
-  conciergeContentSid,
   conciergeContentVariables,
   conciergePhotoTemplate,
   conciergeTemplateImage,
   normalizePieceKind,
   PIECES_WINDOW_MS,
-  planFormalityReady,
-  safeFormalityName,
-  travellerFormalityMessage,
-  travellerFormalityVariables,
   planMissingPieceNotices,
+  safeFormalityName,
   planPiecesNotices,
   generatedStayPhotoId,
   liveConciergeImage,
@@ -59,6 +67,7 @@ type QueuePayload = {
   pieces?: PieceStamp[];
   iso?: string;
   travelerId?: string;
+  documentId?: string;
   /** Essais du cron pendant que la photo ou le modèle illustré manque. */
   coverWaits?: number;
 };
@@ -71,6 +80,7 @@ type QueueRow = {
   template_key: string | null;
   body: string;
   status: string;
+  error?: string | null;
   payload: QueuePayload | null;
 };
 
@@ -118,7 +128,7 @@ async function loadCustomer(admin: Admin, customerId: string) {
 async function findByDedupe(admin: Admin, dedupeKey: string) {
   const { data } = await admin
     .from("crm_whatsapp_messages")
-    .select("id, customer_id, booking_id, dedupe_key, template_key, body, status, payload")
+    .select("id, customer_id, booking_id, dedupe_key, template_key, body, status, error, payload")
     .eq("dedupe_key", dedupeKey)
     .maybeSingle();
   return (data as QueueRow | null) || null;
@@ -381,43 +391,79 @@ function stayPlace(
   return stayPlaceName(booking.destination, booking.title, steps, homeCity);
 }
 
-/** Modèle sans bouton. Le numéro vient du compagnon, jamais du client du séjour. */
+const GRANT_COLUMNS =
+  "id, doc_type, issuing_country, traveler_id, booking_id, storage_path, mime_type, file_name, first_name, last_name";
+
+async function loadGrantDocument(admin: Admin, booking: CrmBooking, payload: QueuePayload | null) {
+  if (payload?.documentId) {
+    const { data } = await admin
+      .from("crm_travel_documents")
+      .select(GRANT_COLUMNS)
+      .eq("id", payload.documentId)
+      .maybeSingle();
+    const row = data as VisaGrantCandidate | null;
+    if (row?.storage_path && isTravelAuthorization(row.doc_type)) return row;
+  }
+  const { data } = await admin
+    .from("crm_travel_documents")
+    .select(GRANT_COLUMNS)
+    .eq("customer_id", booking.customer_id)
+    .in("doc_type", ["visa", "eta"]);
+  return pickVisaGrantFile((data || []) as VisaGrantCandidate[], {
+    country: payload?.iso || "",
+    travelerId: payload?.travelerId,
+    bookingId: booking.id,
+  });
+}
+
+/** Envoie le fichier. Sans modèle approuvé, la ligne échoue et l’ancien texte ne part pas. */
+async function deliverGrant(admin: Admin, row: QueueRow, booking: CrmBooking, phone: string | null, greetingName: string) {
+  const file = await loadGrantDocument(admin, booking, row.payload);
+  if (!file) {
+    await admin.from("crm_whatsapp_messages").update({ status: "failed", error: VISA_GRANT_MISSING }).eq("id", row.id);
+    return VISA_GRANT_MISSING;
+  }
+  const header = visaGrantHeader(file.mime_type, file.file_name);
+  if (!header) {
+    await admin.from("crm_whatsapp_messages").update({ status: "failed", error: VISA_GRANT_UNSUPPORTED }).eq("id", row.id);
+    return VISA_GRANT_UNSUPPORTED;
+  }
+  if (!visaGrantContentSid(header)) {
+    const pending = visaGrantPendingMessage(header);
+    await admin.from("crm_whatsapp_messages").update({ status: "failed", error: pending }).eq("id", row.id);
+    return pending;
+  }
+  const sent = await sendVisaGrantWhatsapp({
+    phone,
+    documentId: file.id,
+    mime: file.mime_type || null,
+    storedName: file.file_name || null,
+    firstName: file.first_name || greetingName,
+    lastName: file.last_name || "Voyageur",
+    greetingName,
+    country: file.issuing_country || null,
+    docType: file.doc_type || null,
+  });
+  if (sent.ok) {
+    await admin
+      .from("crm_whatsapp_messages")
+      .update({ status: "sent", twilio_sid: sent.sid, error: null, template_key: sent.template, body: sent.body })
+      .eq("id", row.id);
+    return null;
+  }
+  await admin.from("crm_whatsapp_messages").update({ status: "failed", error: sent.error }).eq("id", row.id);
+  return sent.error;
+}
+
+/** Le voyageur sans fiche reçoit le même fichier, sur son numéro. */
 async function deliverTravellerPlain(admin: Admin, row: QueueRow, booking: CrmBooking) {
-  const sid = await resolveConciergeContentSid("formalite_prete_voyageur");
-  if (!sid || !row.payload?.travelerId) return;
+  if (!row.payload?.travelerId) return;
   const handset = await loadTravellerHandset(admin, booking.id, row.payload.travelerId);
-  if (!handset) {
+  if (!handset?.phone) {
     await markResult(admin, row.id, { ok: false, reason: "no_phone" });
     return;
   }
-  const formality = safeFormalityName(entryForFrenchPassport(row.payload.iso).formality);
-  const variables = formality
-    ? travellerFormalityVariables({
-        firstName: handset.firstName,
-        formality,
-        reference: booking.reference,
-        startDate: booking.start_date,
-        endDate: booking.end_date,
-      })
-    : null;
-  if (!variables) {
-    await markResult(admin, row.id, { ok: false, reason: "rejected", detail: "variables absentes" });
-    return;
-  }
-  const body = travellerFormalityMessage(variables);
-  if (body !== row.body) {
-    await admin
-      .from("crm_whatsapp_messages")
-      .update({ body, template_key: "formalite_prete_voyageur" })
-      .eq("id", row.id);
-  }
-  const result = await sendContentTemplate({ phone: handset.phone, contentSid: sid, variables });
-  await markResult(
-    admin,
-    row.id,
-    result,
-    result.ok ? { templateKey: "formalite_prete_voyageur" } : undefined
-  );
+  await deliverGrant(admin, row, booking, handset.phone, handset.firstName);
 }
 
 async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
@@ -562,29 +608,17 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
     return;
   }
 
-  if (row.template_key === "formalite_prete_voyageur") {
-    await deliverTravellerPlain(admin, row, booking);
-    return;
-  }
-
-  if (key.startsWith("formalite-prete:")) {
-    const name = entryForFrenchPassport(row.payload?.iso).formality;
-    const plan = planFormalityReady({ published: true, formality: name });
-    if (!plan) {
-      await dropQueue(admin, row.id);
+  if (
+    row.template_key === "formalite_prete_voyageur" ||
+    row.template_key?.startsWith("autorisation_validee") ||
+    key.startsWith("formalite-prete:")
+  ) {
+    if (row.payload?.travelerId) {
+      await deliverTravellerPlain(admin, row, booking);
       return;
     }
-    await deliverTemplate(admin, {
-      row,
-      customer,
-      template: plan.template,
-      path: plan.path,
-      body: plan.body,
-      variable: plan.variable,
-      place: stayPlace(booking, steps, homeCity),
-      reference: booking.reference,
-      card: noticeCardTemplate(plan.template),
-    });
+    if (!customer.email || !customer.phone || !proactiveWhatsappAllowed(customer)) return;
+    await deliverGrant(admin, row, booking, customer.phone, customer.first_name || "");
   }
 }
 
@@ -900,7 +934,7 @@ async function travelerTarget(admin: Admin, booking: CrmBooking, client: Custome
 async function sendFormalityRecipient(
   admin: Admin,
   booking: CrmBooking,
-  plan: { template: "formalite_prete"; body: string },
+  plan: { template: string; body: string; documentId?: string },
   input: { qui: "client" | "voyageur"; dedupeKey: string; customerId: string; iso: string; travelerId?: string }
 ): Promise<FormalityRecipient> {
   const previous = await findByDedupe(admin, input.dedupeKey);
@@ -911,7 +945,11 @@ async function sendFormalityRecipient(
     bookingId: booking.id,
     templateKey: plan.template,
     body: plan.body,
-    payload: { iso: input.iso, ...(input.travelerId ? { travelerId: input.travelerId } : {}) },
+    payload: {
+      iso: input.iso,
+      ...(input.travelerId ? { travelerId: input.travelerId } : {}),
+      ...(plan.documentId ? { documentId: plan.documentId } : {}),
+    },
   });
   if (row.status === "sent") return { qui: input.qui, notifie: false, raison: "Déjà envoyé." };
   await deliverRow(admin, row, new Date());
@@ -924,46 +962,39 @@ async function sendFormalityRecipient(
   if (!customer?.email || !customer.phone || !proactiveWhatsappAllowed(customer)) {
     return { qui: input.qui, notifie: false, raison: quiet };
   }
+  if (after?.error) return { qui: input.qui, notifie: false, raison: after.error };
   return { qui: input.qui, notifie: false, raison: "Message non parti." };
 }
 
-const TRAVELLER_TEMPLATE_PENDING = "Modèle WhatsApp voyageur pas encore approuvé.";
-
-/** Numéro d’agence, sans fiche : modèle Utility sans bouton. Rien n’est mis en file si le SID manque. */
+/** Numéro du voyageur, sans fiche : le même fichier. Rien n’est mis en file si le modèle manque. */
 async function sendPlainTraveller(
   admin: Admin,
   booking: CrmBooking,
-  input: { dedupeKey: string; iso: string; travelerId: string; firstName: string }
+  input: { dedupeKey: string; iso: string; travelerId: string; firstName: string; documentId?: string }
 ): Promise<FormalityRecipient> {
   const previous = await findByDedupe(admin, input.dedupeKey);
   if (previous?.status === "sent") return { qui: "voyageur", notifie: false, raison: "Déjà envoyé." };
-  if (!conciergeContentSid("formalite_prete_voyageur")) {
-    return { qui: "voyageur", notifie: false, raison: TRAVELLER_TEMPLATE_PENDING };
+  const file = await loadGrantDocument(admin, booking, { iso: input.iso, travelerId: input.travelerId, documentId: input.documentId });
+  const header = file ? visaGrantHeader(file.mime_type, file.file_name) : null;
+  if (!file) return { qui: "voyageur", notifie: false, raison: VISA_GRANT_MISSING };
+  if (!header) return { qui: "voyageur", notifie: false, raison: VISA_GRANT_UNSUPPORTED };
+  if (!visaGrantContentSid(header)) {
+    return { qui: "voyageur", notifie: false, raison: visaGrantPendingMessage(header) };
   }
-  const formality = safeFormalityName(entryForFrenchPassport(input.iso).formality);
-  const variables = formality
-    ? travellerFormalityVariables({
-        firstName: input.firstName,
-        formality,
-        reference: booking.reference,
-        startDate: booking.start_date,
-        endDate: booking.end_date,
-      })
-    : null;
-  if (!variables) return { qui: "voyageur", notifie: false, raison: "Message non parti." };
+  const body = visaGrantPreview(input.firstName);
+  if (!body) return { qui: "voyageur", notifie: false, raison: "Message non parti." };
   const row = await saveQueue(admin, {
     dedupeKey: input.dedupeKey,
     customerId: booking.customer_id,
     bookingId: booking.id,
-    templateKey: "formalite_prete_voyageur",
-    body: travellerFormalityMessage(variables),
-    payload: { iso: input.iso, travelerId: input.travelerId },
+    templateKey: visaGrantTemplateForHeader(header),
+    body,
+    payload: { iso: input.iso, travelerId: input.travelerId, documentId: file.id },
   });
   if (row.status === "sent") return { qui: "voyageur", notifie: false, raison: "Déjà envoyé." };
-  await deliverRow(admin, row, new Date());
-  const after = await findByDedupe(admin, input.dedupeKey);
-  if (after?.status === "sent") return { qui: "voyageur", notifie: true, raison: null };
-  return { qui: "voyageur", notifie: false, raison: "Message non parti." };
+  const failure = await deliverGrant(admin, row, booking, (await loadTravellerHandset(admin, booking.id, input.travelerId))?.phone || null, input.firstName);
+  if (!failure) return { qui: "voyageur", notifie: true, raison: null };
+  return { qui: "voyageur", notifie: false, raison: failure };
 }
 
 /** WhatsApp « formalité prête ». Client et voyageur ont chacun leur envoi et leur dédoublonnage. */
@@ -980,19 +1011,15 @@ export async function notifyFormalitiesReady(
   if (!booking.visible_to_client) {
     return countries.map((iso) => blockedNotice(iso.trim().toUpperCase(), "Le séjour n’est pas visible.", options));
   }
-  const { data: papers } = await admin
+  const { data: paperRows } = await admin
     .from("crm_travel_documents")
-    .select("doc_type, issuing_country, booking_id")
+    .select(GRANT_COLUMNS)
     .eq("customer_id", booking.customer_id)
     .in("doc_type", ["visa", "eta"]);
+  const papers = (paperRows || []) as VisaGrantCandidate[];
   const filed = new Set(
-    ((papers || []) as { doc_type?: string | null; issuing_country?: string | null; booking_id?: string | null }[])
-      .filter(
-        (row) =>
-          isTravelAuthorization(row.doc_type) &&
-          row.issuing_country &&
-          (!row.booking_id || row.booking_id === booking.id)
-      )
+    papers
+      .filter((row) => row.issuing_country && (!row.booking_id || row.booking_id === booking.id))
       .map((row) => String(row.issuing_country).toUpperCase())
   );
   const audience = options.audience ?? "tous";
@@ -1009,30 +1036,43 @@ export async function notifyFormalitiesReady(
         results.push(blockedNotice(code, "La pièce n’est pas dans l’espace.", options));
         continue;
       }
-      const plan = planFormalityReady({
-        published: true,
-        formality: entryForFrenchPassport(code).formality,
-      });
-      if (!plan) {
+      if (!safeFormalityName(entryForFrenchPassport(code).formality)) {
         results.push(blockedNotice(code, "Formalité inconnue pour ce pays.", options));
         continue;
       }
       const client = await loadCustomer(admin, booking.customer_id);
+      const planFor = (
+        travelerId?: string,
+        greeting?: string | null
+      ): { error: string } | { template: string; body: string; documentId: string } => {
+        const file = pickVisaGrantFile(papers, { country: code, travelerId, bookingId: booking.id });
+        const header = file ? visaGrantHeader(file.mime_type, file.file_name) : null;
+        const body = header ? visaGrantPreview(greeting) : null;
+        if (!file || !header || !body) {
+          return { error: !file ? VISA_GRANT_MISSING : !header ? VISA_GRANT_UNSUPPORTED : "Message non parti." };
+        }
+        return { template: visaGrantTemplateForHeader(header), body, documentId: file.id };
+      };
+      const clientPlan = planFor(travelerIds.length === 1 ? travelerIds[0] : undefined, client?.first_name);
       const destinataires: FormalityRecipient[] = [];
       const clientKey = `formalite-prete:${booking.id}:${code}`;
       if (audience !== "voyageur") {
-        try {
-          destinataires.push(
-            await sendFormalityRecipient(admin, booking, plan, {
-              qui: "client",
-              dedupeKey: clientKey,
-              customerId: booking.customer_id,
-              iso: code,
-            })
-          );
-        } catch (err) {
-          console.error("[concierge] formalité", err instanceof Error ? err.message : "error");
-          destinataires.push({ qui: "client", notifie: false, raison: "Message non parti." });
+        if ("error" in clientPlan) {
+          destinataires.push({ qui: "client", notifie: false, raison: clientPlan.error });
+        } else {
+          try {
+            destinataires.push(
+              await sendFormalityRecipient(admin, booking, clientPlan, {
+                qui: "client",
+                dedupeKey: clientKey,
+                customerId: booking.customer_id,
+                iso: code,
+              })
+            );
+          } catch (err) {
+            console.error("[concierge] formalité", err instanceof Error ? err.message : "error");
+            destinataires.push({ qui: "client", notifie: false, raison: "Message non parti." });
+          }
         }
       }
       if (audience !== "client") {
@@ -1042,17 +1082,22 @@ export async function notifyFormalitiesReady(
         for (const travelerId of travelerIds) {
           try {
             const target = await travelerTarget(admin, booking, client, travelerId);
+            const travelerPlan = planFor(travelerId, target.kind === "plain" ? target.firstName : client?.first_name);
             if (target.kind === "same") {
               if (audience === "voyageur") {
-                destinataires.push(
-                  await sendFormalityRecipient(admin, booking, plan, {
-                    qui: "voyageur",
-                    dedupeKey: clientKey,
-                    customerId: booking.customer_id,
-                    iso: code,
-                    travelerId,
-                  })
-                );
+                if ("error" in travelerPlan) {
+                  destinataires.push({ qui: "voyageur", notifie: false, raison: travelerPlan.error });
+                } else {
+                  destinataires.push(
+                    await sendFormalityRecipient(admin, booking, travelerPlan, {
+                      qui: "voyageur",
+                      dedupeKey: clientKey,
+                      customerId: booking.customer_id,
+                      iso: code,
+                      travelerId,
+                    })
+                  );
+                }
               } else {
                 destinataires.push({ qui: "voyageur", notifie: false, raison: "Même numéro que le client." });
               }
@@ -1069,12 +1114,17 @@ export async function notifyFormalitiesReady(
                   iso: code,
                   travelerId,
                   firstName: target.firstName,
+                  documentId: "error" in travelerPlan ? undefined : travelerPlan.documentId,
                 })
               );
               continue;
             }
+            if ("error" in travelerPlan) {
+              destinataires.push({ qui: "voyageur", notifie: false, raison: travelerPlan.error });
+              continue;
+            }
             destinataires.push(
-              await sendFormalityRecipient(admin, booking, plan, {
+              await sendFormalityRecipient(admin, booking, travelerPlan, {
                 qui: "voyageur",
                 dedupeKey: `formalite-prete:${booking.id}:${code}:voyageur:${travelerId}`,
                 customerId: target.customerId,

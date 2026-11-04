@@ -26,7 +26,7 @@ Deux gestes, pour Israël, les États-Unis et le Royaume-Uni, même règle clien
 - **Après confirmation** — le parcours et le remplissage en arrière-plan (ETA-IL) partent ensemble. Le lien officiel disparaît. Le client n’a pas de retour arrière. L’agence a **Recommencer** : la demande repart de zéro, et le client revoit la carte de départ. Sans Pliant, le parcours s’arrête au paiement. Pendant le clic, le bouton dit « Demande en cours… ».
 - **Déjà valable** — si le visa est encore valable, ou si l’ESTA / l’ETA couvre tout le séjour, on ne propose pas de le faire : pas de carte « L’agence s’en charge », pas de lien officiel comme appel à déposer, pas de bouton « Faire l’ESTA » ou « Faire l’ETA » dans l’e-mail. Un ESTA ou une ETA qui expire avant le retour, ou lié à un ancien passeport, reste à refaire.
 
-WhatsApp seulement quand la pièce est dans l’espace, pas à la validation.
+WhatsApp seulement quand la pièce est dans l’espace, pas à la validation. Le message joint le fichier (PDF ou image) : « Bonne nouvelle ! Votre ESTA ou ETA a été validé. Vous le trouverez ci-joint. » Modèles `autorisation_validee_document` et `autorisation_validee_image`. Sans approbation Meta, rien ne part.
 
 Les autres pays : nom, formalité si elle est connue, lien officiel, dépôt du PDF. Pas de parcours Astra.
 
