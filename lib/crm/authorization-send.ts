@@ -19,6 +19,8 @@ import {
 } from "./concierge-notices";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { sendContentTemplate } from "./whatsapp";
+import { sendVisaGrantWhatsapp } from "./visa-grant-send";
+import { visaGrantPreview, visaGrantSendBlock } from "./visa-grant-whatsapp";
 
 type Admin = SupabaseClient;
 
@@ -65,8 +67,18 @@ export async function sendAuthorizationWhatsapp(
     optInAt?: string | null;
     optOutAt?: string | null;
     again?: boolean;
+    grant?: {
+      documentId: string;
+      mime: string | null;
+      fileName: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      country: string | null;
+      docType: string | null;
+    } | null;
   }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (input.notice === "approuve") return sendApprovedGrant(admin, input);
   const ready = authorizationTemplateReady(input.kind, input.notice);
   const preview = authorizationPreview({
     kind: input.kind,
@@ -164,4 +176,99 @@ export async function sendAuthorizationWhatsapp(
   }
   await admin.from("crm_whatsapp_messages").update({ status: "failed", error: lastError }).eq("id", rowId);
   return { ok: false, error: lastError };
+}
+
+/** Cas approuvé : le fichier du visa part dans le message. Sans modèle, rien ne part. */
+async function sendApprovedGrant(
+  admin: Admin,
+  input: {
+    kind: AuthorizationKind;
+    notice: AuthorizationCase;
+    customerId: string;
+    bookingId: string;
+    travelerId: string;
+    phone: string | null;
+    name: string;
+    again?: boolean;
+    grant?: {
+      documentId: string;
+      mime: string | null;
+      fileName: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      country: string | null;
+      docType: string | null;
+    } | null;
+    optInAt?: string | null;
+    optOutAt?: string | null;
+  }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const preview = visaGrantPreview(input.name);
+  if (!preview) return { ok: false, error: "Le message n’a pas pu être préparé." };
+  const block = visaGrantSendBlock({
+    phone: input.phone,
+    optInAt: input.optInAt,
+    optOutAt: input.optOutAt,
+    file: input.grant ? { mime: input.grant.mime, fileName: input.grant.fileName } : null,
+  });
+  if (block) return { ok: false, error: block };
+  const grant = input.grant;
+  if (!grant) return { ok: false, error: "Le document du visa n’est pas dans l’espace." };
+
+  const base = authorizationDedupeKey(input.kind, input.bookingId, input.travelerId, input.notice);
+  const { data: prior } = await admin
+    .from("crm_whatsapp_messages")
+    .select("id, status")
+    .eq("dedupe_key", base)
+    .maybeSingle();
+  const previous = prior as { id: string; status: string } | null;
+  if (previous?.status === "sent" && !input.again) return { ok: true };
+
+  const dedupe = previous?.status === "sent" && input.again ? `${base}:${Date.now()}` : base;
+  let rowId = previous && previous.status !== "sent" ? previous.id : "";
+  if (!rowId) {
+    const inserted = await admin
+      .from("crm_whatsapp_messages")
+      .insert({
+        customer_id: input.customerId,
+        booking_id: input.bookingId,
+        dedupe_key: dedupe,
+        direction: "outbound",
+        template_key: "autorisation_validee",
+        body: preview,
+        status: "queued",
+      })
+      .select("id")
+      .maybeSingle();
+    if (inserted.error || !inserted.data) {
+      const raced = await admin.from("crm_whatsapp_messages").select("id, status").eq("dedupe_key", dedupe).maybeSingle();
+      const winner = raced.data as { id: string; status: string } | null;
+      if (winner?.status === "sent" && !input.again) return { ok: true };
+      if (!winner) return { ok: false, error: "Le message n’a pas pu être enregistré." };
+      rowId = winner.id;
+    } else {
+      rowId = (inserted.data as { id: string }).id;
+    }
+  }
+
+  const sent = await sendVisaGrantWhatsapp({
+    phone: input.phone,
+    documentId: grant.documentId,
+    mime: grant.mime,
+    storedName: grant.fileName,
+    firstName: grant.firstName,
+    lastName: grant.lastName,
+    greetingName: input.name,
+    country: grant.country,
+    docType: grant.docType,
+  });
+  if (sent.ok) {
+    await admin
+      .from("crm_whatsapp_messages")
+      .update({ status: "sent", twilio_sid: sent.sid, error: null, template_key: sent.template, body: sent.body })
+      .eq("id", rowId);
+    return { ok: true };
+  }
+  await admin.from("crm_whatsapp_messages").update({ status: "failed", error: sent.error }).eq("id", rowId);
+  return { ok: false, error: sent.error };
 }

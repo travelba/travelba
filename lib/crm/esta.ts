@@ -622,6 +622,7 @@ export function estaTravelerLine(input: {
     optOutAt?: string | null;
     boundDocumentId?: string | null;
   } | null;
+  grantFile?: { mime_type?: string | null; file_name?: string | null; storage_path?: string | null } | null;
 }): EstaTravelerLine {
   const alerts = estaAlerts({
     status: input.status,
@@ -688,6 +689,9 @@ export function estaTravelerLine(input: {
       email: input.stay.email,
       optInAt: input.stay.optInAt,
       optOutAt: input.stay.optOutAt,
+      grant: input.grantFile?.storage_path
+        ? { mime: input.grantFile.mime_type || null, fileName: input.grantFile.file_name || null }
+        : null,
     });
     if (client) {
       line.preview = client.preview;

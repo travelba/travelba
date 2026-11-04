@@ -1,4 +1,5 @@
 import { boardingPassContentDrafts, type BoardingPassTemplate } from "./boarding-pass-whatsapp";
+import { visaGrantPreview } from "./visa-grant-whatsapp";
 import { statementContentDrafts } from "./statement-whatsapp";
 import { siteConfig } from "../site";
 import {
@@ -869,7 +870,7 @@ function authorizationGroup(): WhatsappCatalogGroup {
     id: "esta-eta",
     title: "ESTA et ETA Royaume-Uni",
     intro:
-      "Ces messages partent depuis le badge du voyageur, après un résultat, si le client a accepté WhatsApp. Un clic montre le texte puis l’envoie. Rien ne part seul. L’image est celle du visa. Sans le modèle illustré, le même texte part sans photo.",
+      "Ces messages partent depuis le badge du voyageur, après un résultat, si le client a accepté WhatsApp. Un clic montre le texte puis l’envoie. Rien ne part seul. Quand l’autorisation est approuvée, le fichier lui-même part (PDF ou image). Sans ce modèle, rien n’est envoyé. Les autres cas gardent la carte et le bouton vers le séjour.",
     messages: [
       authorizationMessage({
         id: "esta-manquant",
@@ -898,7 +899,7 @@ function authorizationGroup(): WhatsappCatalogGroup {
       authorizationMessage({
         id: "esta-approuve",
         title: "ESTA approuvé",
-        when: "L’ESTA est valable pour tout le séjour. La date de fin est dans le message.",
+        when: "L’ESTA est valable pour tout le séjour. L’envoi joint le fichier, il n’utilise plus cette carte.",
         photo: "esta_approuve_carte_photo",
         text: "esta_approuve_carte",
         dated: true,
@@ -930,11 +931,45 @@ function authorizationGroup(): WhatsappCatalogGroup {
       authorizationMessage({
         id: "eta-approuve",
         title: "ETA Royaume-Uni approuvée",
-        when: "L’ETA est valable pour tout le séjour. La date de fin est dans le message.",
+        when: "L’ETA est valable pour tout le séjour. L’envoi joint le fichier, il n’utilise plus cette carte.",
         photo: "eta_uk_approuve_carte_photo",
         text: "eta_uk_approuve_carte",
         dated: true,
       }),
+      {
+        id: "autorisation-validee-document",
+        title: "Autorisation validée, PDF",
+        when: "L’ESTA, l’ETA ou le visa est approuvé et le fichier est un PDF. Le bouton Envoyer au client et le dépôt de la pièce utilisent ce modèle.",
+        kind: "modele",
+        wired: true,
+        bubble: {
+          body: visaGrantPreview(FIRST_NAME) || "",
+          button: null,
+          photo: false,
+          image: null,
+          imageAlt: null,
+          modelName: "autorisation_validee_document",
+        },
+        fallback: null,
+        earlier: null,
+      },
+      {
+        id: "autorisation-validee-image",
+        title: "Autorisation validée, image",
+        when: "Le fichier approuvé est un JPEG ou un PNG. Le même texte part, avec l’image en en-tête.",
+        kind: "modele",
+        wired: true,
+        bubble: {
+          body: visaGrantPreview(FIRST_NAME) || "",
+          button: null,
+          photo: true,
+          image: "/whatsapp/visa.jpg",
+          imageAlt: "TBA Visa",
+          modelName: "autorisation_validee_image",
+        },
+        fallback: null,
+        earlier: null,
+      },
     ],
   };
 }

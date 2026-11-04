@@ -121,9 +121,11 @@ test("l’aperçu remplit le modèle et ne cite pas le passeport", () => {
     reference: "TB-2026-0040",
     validUntil: "2028-03-26",
   });
-  assert.match(approved || "", /valable jusqu’au 26\/03\/2028/);
-  assert.match(approved || "", /couvre tout le séjour/);
+  assert.match(approved || "", /Bonne nouvelle ! Votre ESTA ou ETA a été validé\. Vous le trouverez ci-joint\./);
+  assert.match(approved || "", /Bonjour Camille,/);
+  assert.match(approved || "", /Le Concierge/);
   assert.equal(approved?.includes("http"), false);
+  assert.doesNotMatch(approved || "", /valable jusqu’au/);
 
   const fields = authorizationClientFields({
     kind: "esta",
@@ -205,21 +207,31 @@ test("le bouton exige le téléphone, l’accord et un modèle", () => {
   );
 });
 
-test("le catalogue montre les huit messages, photo puis repli", () => {
+test("le catalogue montre les cas et le document joint", () => {
   const group = whatsappCatalog().find((row) => row.id === "esta-eta");
   assert.ok(group);
   assert.equal(group?.title, "ESTA et ETA Royaume-Uni");
-  assert.equal(group?.messages.length, 8);
+  assert.equal(group?.messages.length, 10);
+  const grants = new Set(["autorisation-validee-document", "autorisation-validee-image"]);
   for (const message of group?.messages || []) {
     assert.equal(message.wired, true);
-    assert.match(message.bubble.image || "", /\/whatsapp\/visa\.jpg$/);
-    assert.equal(message.fallback?.photo, false);
-    assert.match(message.when, /séjour|passeport|retour|valable|cours/i);
     assert.equal(message.bubble.body.includes("{{"), false);
     assert.doesNotMatch(message.bubble.body, /\d{6,}/);
+    if (grants.has(message.id)) {
+      assert.equal(message.fallback, null);
+      assert.match(message.bubble.body, /Bonne nouvelle ! Votre ESTA ou ETA a été validé/);
+      continue;
+    }
+    assert.match(message.bubble.image || "", /\/whatsapp\/visa\.jpg$/);
+    assert.equal(message.fallback?.photo, false);
+    assert.match(message.when, /séjour|passeport|retour|valable|fichier|cours/i);
   }
   const names = new Set(conciergeContentDrafts().map((draft) => draft.friendlyName));
   for (const message of group?.messages || []) {
+    if (grants.has(message.id)) {
+      assert.match(message.bubble.modelName || "", /^autorisation_validee_/);
+      continue;
+    }
     assert.equal(names.has(message.bubble.modelName || ""), true);
     assert.equal(names.has(message.fallback?.modelName || ""), true);
   }

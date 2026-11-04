@@ -26,6 +26,7 @@ import {
   authorizationTravelerName,
 } from "@/lib/crm/authorization-notice";
 import { sendAuthorizationWhatsapp } from "@/lib/crm/authorization-send";
+import { pickVisaGrantFile, visaGrantPayload } from "@/lib/crm/visa-grant-whatsapp";
 import { stayPlaceName } from "@/lib/crm/concierge-notices";
 import { deliverUkEtaMail, ukEtaAgencyMail, ukEtaClientMail } from "@/lib/crm/uk-eta-mail";
 import { parisIsoDate } from "@/lib/crm/hotel-arrival";
@@ -156,6 +157,7 @@ function linesFor(
     const row = byTraveler.get(traveler.id);
     if (!row || !isUkEtaStatus(row.status)) continue;
     const passport = passportForEsta(traveler, documents, holder);
+    const grant = pickVisaGrantFile(documents, { country: "GB", travelerId: traveler.id, bookingId: booking.id });
     lines.push(
       ukEtaTravelerLine({
         traveler,
@@ -180,6 +182,7 @@ function linesFor(
           optOutAt: holder?.whatsapp_opt_out_at,
           boundDocumentId: row.travel_document_id,
         },
+        grantFile: grant,
       })
     );
   }
@@ -456,6 +459,9 @@ export async function sendUkEtaToClient(
       optInAt: account?.whatsapp_opt_in_at,
       optOutAt: account?.whatsapp_opt_out_at,
       again: options?.again,
+      grant: visaGrantPayload(
+        pickVisaGrantFile(loaded.documents || [], { country: "GB", travelerId, bookingId })
+      ),
     });
     if (!sent.ok) return sent;
     await admin.from("crm_uk_eta_checks").update({ client_message_sent_at: new Date().toISOString() }).eq("id", row.id);
