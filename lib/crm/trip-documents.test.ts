@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   missingPassportCount,
+  travelersMissingPassport,
   travelersPassportExpiresBeforeReturn,
   primaryIdentityDoc,
   reusableDocumentsForTraveler,
@@ -356,6 +357,120 @@ test("un passeport déposé qui expire avant le retour n’est pas manquant", ()
     0
   );
   assert.equal(travelersPassportExpiresBeforeReturn([jonas], papers, {}).length, 0);
+});
+
+test("le coffre du titulaire compte dans chaque dossier, même sans nom de famille ni lien de séjour", () => {
+  const holder = { first_name: "Stéphane Elie", last_name: "Martin", birth_date: "1983-12-09" };
+  const stephane = traveler({
+    id: "holder-trip",
+    booking_id: "paris",
+    first_name: "Stéphane Elie",
+    last_name: "Martin",
+    is_account_holder: true,
+    companion_id: null,
+  });
+  const laterStay = traveler({
+    id: "holder-later",
+    booking_id: "rome",
+    first_name: "Stéphane Elie",
+    last_name: "Martin",
+    is_account_holder: true,
+    companion_id: null,
+  });
+  const jennifer = traveler({
+    id: "jennifer",
+    booking_id: "paris",
+    first_name: "Jennifer Nina",
+    last_name: "Cohen",
+    is_account_holder: false,
+    companion_id: "jennifer-c",
+  });
+  const emmy = traveler({
+    id: "emmy",
+    booking_id: "paris",
+    first_name: "Emmy",
+    last_name: "Martin",
+    is_account_holder: false,
+    companion_id: "emmy-c",
+  });
+  const stranger = traveler({
+    id: "stranger",
+    booking_id: "paris",
+    first_name: "Noé",
+    last_name: "Bernard",
+    is_account_holder: false,
+    companion_id: null,
+  });
+  const docs = [
+    doc({
+      id: "holder-vault",
+      first_name: "Stéphane Elie",
+      last_name: null,
+      companion_id: null,
+      traveler_id: null,
+      booking_id: null,
+      expires_on: "2035-09-02",
+      storage_path: "customers/c1/documents/holder.jpg",
+      number: "HIDDEN",
+    }),
+    doc({
+      id: "jennifer-fiche",
+      first_name: "Jennifer Nina",
+      last_name: "Cohen",
+      companion_id: "jennifer-c",
+      traveler_id: null,
+      booking_id: null,
+      expires_on: "2035-09-02",
+      number: "HIDDEN-J",
+    }),
+    doc({
+      id: "emmy-fiche",
+      first_name: "Emmy",
+      last_name: "Martin",
+      companion_id: "emmy-c",
+      traveler_id: null,
+      booking_id: null,
+      expires_on: "2030-09-02",
+      number: "HIDDEN-E",
+    }),
+    doc({
+      id: "other-vault",
+      first_name: "Léa",
+      last_name: "Bernard",
+      companion_id: null,
+      traveler_id: null,
+      booking_id: null,
+      expires_on: "2034-01-01",
+      number: "HIDDEN-L",
+    }),
+  ];
+  const companions = [
+    { id: "jennifer-c", first_name: "Jennifer Nina", last_name: "Cohen" },
+    { id: "emmy-c", first_name: "Emmy", last_name: "Martin" },
+  ];
+  const options = { holder, companions, returnOn: "2027-02-22" };
+  assert.equal(missingPassportCount([stephane, jennifer, emmy], docs, options), 0);
+  assert.equal(missingPassportCount([laterStay], docs, options), 0);
+  assert.deepEqual(
+    travelersMissingPassport([stephane, jennifer, emmy, stranger], docs, options).map((row) => row.id),
+    ["stranger"]
+  );
+  assert.equal(reusableDocumentsForTraveler(docs, stephane, holder)[0]?.id, "holder-vault");
+  assert.equal(
+    reusableDocumentsForTraveler(docs, stephane, holder).some((item) => item.id === "other-vault"),
+    false
+  );
+  assert.equal(reusableDocumentsForTraveler(docs, jennifer, holder)[0]?.id, "jennifer-fiche");
+  assert.equal(vaultDocumentsForTraveler(docs, stephane).some((item) => item.id === "holder-vault"), true);
+  assert.equal(
+    missingPassportCount(
+      [stephane],
+      [doc({ id: "expired", first_name: "Stéphane Elie", last_name: null, expires_on: "2027-02-22", number: "HIDDEN" })],
+      options
+    ),
+    0
+  );
+  assert.equal(JSON.stringify(docs).includes("12AB"), false);
 });
 
 test("la validation ne répète pas le passeport copié sur chaque séjour", () => {

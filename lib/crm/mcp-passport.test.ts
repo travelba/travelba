@@ -143,6 +143,62 @@ test("a household keeps each passport and the name written on it", () => {
   assert.equal(JSON.stringify(voyageurs).includes("T000"), false);
 });
 
+test("the holder vault passport counts on a dossier without a trip link", () => {
+  const voyageurs = dossierVoyageurs(
+    [traveler({ first_name: "Stéphane Elie", last_name: "Martin" })],
+    { ...holder, first_name: "Stéphane Elie", last_name: "Martin" },
+    [],
+    [
+      doc({
+        id: "vault",
+        first_name: "Stéphane Elie",
+        last_name: null,
+        companion_id: null,
+        traveler_id: null,
+        booking_id: null,
+        expires_on: "2035-09-02",
+        number: NUMBER,
+        storage_path: `customers/${CLIENT}/documents/holder.jpg`,
+      }),
+    ]
+  );
+  assert.equal(voyageurs.length, 1);
+  assert.equal(voyageurs[0].pieces.length, 1);
+  assert.equal(voyageurs[0].pieces[0].expire_le, "2035-09-02");
+  assert.equal(voyageurs[0].pieces[0].prenoms, "Stéphane Elie");
+  assert.equal(voyageurs[0].pieces[0].a_un_scan, true);
+});
+
+test("a companion fiche passport counts without a trip copy", () => {
+  const voyageurs = dossierVoyageurs(
+    [
+      traveler({
+        id: COMPANION_TRAVELER,
+        companion_id: COMPANION,
+        is_account_holder: false,
+        first_name: "Léa",
+        last_name: "Martin",
+      }),
+    ],
+    holder,
+    [{ id: COMPANION, first_name: "Léa", last_name: "Martin" }],
+    [
+      doc({
+        id: "fiche",
+        companion_id: COMPANION,
+        traveler_id: null,
+        booking_id: null,
+        first_name: "Léa",
+        last_name: "Martin",
+        number: OTHER_NUMBER,
+        expires_on: "2030-09-02",
+      }),
+    ]
+  );
+  assert.equal(voyageurs[0].pieces[0].numero_piece, OTHER_NUMBER);
+  assert.equal(voyageurs[0].pieces[0].expire_le, "2030-09-02");
+});
+
 test("a newer scan does not hide the identity of the same passport", () => {
   const voyageurs = dossierVoyageurs(
     [traveler({})],
