@@ -17,7 +17,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Inviter / renvoyer l’invitation | `inviter_client` — couvert |
 | Renvoyer ses accès par WhatsApp | `renvoyer_acces_whatsapp` (`confirmer: true`) — ajouté. Un bouton, Ouvrir mon espace : lien personnel 30 jours (empreinte seulement), aucun mot de passe, le lien n’est pas renvoyé |
 | Annoncer l’accès Hôtels | `annoncer_option_hotel` (`confirmer: true`) — ajouté. Même lien, vers la rubrique Hôtels. Réservé aux administrateurs. L’option doit déjà être activée |
-| Accès Hôtels, mode réel, accepter ou refuser une demande | `regler_acces_hotels` — ajouté |
+| Accès Hôtels, mode réel, réservation directe par l’API, accepter ou refuser une demande | `regler_acces_hotels` — ajouté |
 | Relevé WhatsApp | `envoyer_releve` — couvert |
 | Créer la fiche dans MB3M | `creer_fiche_mb3m` — ajouté |
 | Ouvrir l’espace à la place du client | hors API |

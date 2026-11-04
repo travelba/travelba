@@ -1733,11 +1733,12 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "regler_acces_hotels",
     write: true,
     description:
-      "Réglage Accès Hôtels de la fiche. actif ouvre ou ferme l’option. mode_reel passe en mode réel (sinon démonstration). demande accepter ou refuser traite la demande en attente. Réservé aux administrateurs. Aucun message au client.",
+      "Réglage Accès Hôtels de la fiche. actif ouvre ou ferme l’option. mode_reel passe en mode réel (sinon démonstration). reservation_api ouvre la réservation directe par l’API : elle reste fermée sans le mode réel. demande accepter ou refuser traite la demande en attente. Réservé aux administrateurs. Aucun message au client.",
     input: {
       client_id: z.string().trim().max(80).describe("Identifiant du client"),
       actif: z.boolean().optional().describe("true ouvre l’accès hôtels"),
       mode_reel: z.boolean().optional().describe("true : mode réel. Sinon démonstration"),
+      reservation_api: z.boolean().optional().describe("true : réservation directe par l’API. Fermé sans le mode réel"),
       demande: z.enum(["accepter", "refuser"]).optional().describe("Traite la demande d’accès en attente"),
     },
     run: (args) => reglerAccesHotels(args),

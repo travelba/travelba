@@ -355,6 +355,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         enabled={c.hotel_booking_enabled === true}
         demo={c.hotel_demo === true}
         live={c.hotel_direct_live === true}
+        leApi={c.hotel_le_api_booking === true}
         pendingAt={hotelRequest?.created_at || null}
         admin={staff.role === "admin"}
       />

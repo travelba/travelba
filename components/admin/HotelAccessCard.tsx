@@ -11,6 +11,7 @@ export function HotelAccessCard({
   enabled,
   demo,
   live,
+  leApi = false,
   pendingAt,
   admin,
   preview = false,
@@ -19,6 +20,7 @@ export function HotelAccessCard({
   enabled: boolean;
   demo: boolean;
   live: boolean;
+  leApi?: boolean;
   pendingAt: string | null;
   admin: boolean;
   preview?: boolean;
@@ -64,6 +66,7 @@ export function HotelAccessCard({
             {enabled ? "Activé" : "Désactivé"}
             {demo ? " · compte de démonstration, mode test" : ""}
             {live ? " · mode réel" : ""}
+            {leApi ? " · réservation directe par l’API" : ""}
           </p>
         </div>
         {admin ? (
@@ -73,7 +76,7 @@ export function HotelAccessCard({
             aria-checked={enabled}
             aria-label="Accès Hôtels"
             disabled={busy}
-            onClick={() => void post({ enabled: !enabled, live: enabled ? false : live })}
+            onClick={() => void post({ enabled: !enabled, live: enabled ? false : live, leApi: enabled ? false : leApi })}
             className={`relative h-7 w-12 shrink-0 rounded-full ${enabled ? "bg-[var(--admin-navy)]" : "bg-[#e5e3dc]"}`}
           >
             <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white ${enabled ? "left-5" : "left-0.5"}`} />
@@ -101,9 +104,21 @@ export function HotelAccessCard({
             type="checkbox"
             checked={live}
             disabled={busy}
-            onChange={(event) => void post({ enabled: true, live: event.target.checked })}
+            onChange={(event) => void post({ enabled: true, live: event.target.checked, leApi: event.target.checked ? leApi : false })}
           />
           Mode réel
+        </label>
+      ) : null}
+      {admin && enabled && !demo ? (
+        <label className="mt-2 flex items-center gap-2 text-sm text-[var(--admin-navy)]">
+          <input
+            type="checkbox"
+            checked={leApi}
+            disabled={busy || !live}
+            aria-label="Réservation directe par l’API"
+            onChange={(event) => void post({ enabled: true, live: true, leApi: event.target.checked })}
+          />
+          Réservation directe par l’API
         </label>
       ) : null}
       {pendingAt ? (

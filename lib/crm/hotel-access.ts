@@ -72,6 +72,12 @@ export function hotelLeApiBooking(customer: HotelAccessCustomer | null | undefin
   return hotelDirectLive(customer) && customer?.hotel_le_api_booking === true;
 }
 
+/** Fermé sans accès, sans mode réel, ou sur un compte de démonstration. */
+export function decideHotelLeApi(input: { enabled: boolean; demo: boolean; live: boolean; requested: boolean }) {
+  if (input.demo || !input.enabled || !input.live) return false;
+  return input.requested === true;
+}
+
 export type AccessActor = "admin" | "agent" | "client";
 
 export function decideHotelAccessToggle(input: {

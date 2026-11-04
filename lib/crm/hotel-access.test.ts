@@ -12,6 +12,7 @@ import {
   decideAccessRequest,
   decideButtonVisibility,
   decideHotelAccessToggle,
+  decideHotelLeApi,
   decideRequestReview,
   hotelBookingEnabled,
   hotelDirectLive,
@@ -74,6 +75,10 @@ test("le réglage du bouton est réservé à l’admin et part sur les clients a
     false
   );
   assert.equal(hotelLeApiBooking({ hotel_booking_enabled: true, hotel_direct_live: true, hotel_le_api_booking: true }), true);
+  assert.equal(decideHotelLeApi({ enabled: true, demo: false, live: true, requested: true }), true);
+  assert.equal(decideHotelLeApi({ enabled: true, demo: false, live: false, requested: true }), false);
+  assert.equal(decideHotelLeApi({ enabled: false, demo: false, live: true, requested: true }), false);
+  assert.equal(decideHotelLeApi({ enabled: true, demo: true, live: true, requested: true }), false);
   const flag = readFileSync(join(root, "supabase/migrations/20261104180000_hotel_le_api_booking.sql"), "utf8");
   assert.match(flag, /hotel_le_api_booking boolean not null default false/);
   assert.doesNotMatch(flag, /set hotel_le_api_booking = true/);
@@ -88,6 +93,9 @@ test("le libellé Platinum n’est écrit qu’une fois, l’écran le reprend",
   assert.doesNotMatch(ui.replaceAll("HotelPlatinum", "").replaceAll("data-hotel-platinum", ""), /Platinum/);
   assert.match(ui, /data-hotel-platinum/);
   assert.match(ui, /data-hotel-access-sent/);
+  const accessCard = readFileSync(join(root, "components/admin/HotelAccessCard.tsx"), "utf8");
+  assert.match(accessCard, /Réservation directe par l’API/);
+  assert.doesNotMatch(accessCard, /mon-compte/);
   const migration = readFileSync(join(root, "supabase/migrations/20261023143000_hotel_booking_access.sql"), "utf8");
   assert.match(migration, /hotel_booking_enabled boolean not null default false/);
   assert.match(migration, /hotel_button_visibility/);
