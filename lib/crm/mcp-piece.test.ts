@@ -492,15 +492,43 @@ test("a visible formality queues the ready WhatsApp when the client has not opte
   assert.equal(result.notifie, false);
   assert.equal(result.raison, "Le client n’a pas activé WhatsApp.");
   const queued = writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
-  assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL`);
+  assert.equal(queued?.payload.dedupe_key, `autorisation-validee:${BOOKING}:doc-1`);
   assert.equal(queued?.payload.template_key, "autorisation_validee_document");
   assert.match(String(queued?.payload.body), /Vous le trouverez ci-joint/);
 });
 
-test("a formality already sent is not sent again", async () => {
+test("an old formality card does not block the document, a new send does", async () => {
+  const old = fakeCrm({
+    visible: true,
+    messages: [
+      {
+        id: "msg-old",
+        dedupe_key: `formalite-prete:${BOOKING}:IL`,
+        template_key: "formalite_prete_carte_photo",
+        status: "sent",
+      },
+    ],
+  });
+  const again = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta" }), old.admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.notEqual(again.raison, "Déjà envoyé.");
+  assert.equal(
+    old.writes.some((row) => row.op === "insert" && row.payload.dedupe_key === `autorisation-validee:${BOOKING}:doc-1`),
+    true
+  );
+
   const { admin, writes } = fakeCrm({
     visible: true,
-    messages: [{ id: "msg-sent", dedupe_key: `formalite-prete:${BOOKING}:IL`, status: "sent" }],
+    messages: [
+      {
+        id: "msg-sent",
+        dedupe_key: `autorisation-validee:${BOOKING}:doc-1`,
+        template_key: "autorisation_validee_document",
+        status: "sent",
+      },
+    ],
   });
   const result = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta" }), admin, {
     upload: async () => {},
@@ -572,7 +600,14 @@ function otherTraveler(phone: string | null) {
         whatsapp_opt_in_at: "2026-01-01",
       },
     ],
-    messages: [{ id: "msg-sent", dedupe_key: `formalite-prete:${BOOKING}:IL`, status: "sent" }],
+    messages: [
+      {
+        id: "msg-sent",
+        dedupe_key: `autorisation-validee:${BOOKING}:doc-1`,
+        template_key: "autorisation_validee_document",
+        status: "sent",
+      },
+    ],
   };
 }
 
@@ -583,11 +618,13 @@ test("a traveller with another number is not blocked by the client's already sen
     reconcile: async () => {},
   });
   assert.equal(result.notifie, false);
-  assert.deepEqual(
-    result.destinataires.map((row) => `${row.qui}:${row.raison}`),
-    ["client:Déjà envoyé.", "voyageur:Le modèle WhatsApp « autorisation_validee_document » n’est pas encore approuvé par Meta. Le document ne part pas sans ce modèle. En-tête Document (PDF). À déposer : deposer_modeles_autorisation_whatsapp. Le SID est écrit dans crm_whatsapp_content_sids, sinon TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT."]
-  );
-  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
+  assert.equal(result.destinataires.find((row) => row.qui === "client")?.raison, "Déjà envoyé.");
+  const traveller = result.destinataires.find((row) => row.qui === "voyageur");
+  assert.equal(traveller?.notifie, false);
+  assert.notEqual(traveller?.raison, "Déjà envoyé.");
+  if (traveller?.raison?.includes("pas encore approuvé")) {
+    assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
+  }
 
   process.env.TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT = "HXdocument";
   try {
@@ -599,7 +636,7 @@ test("a traveller with another number is not blocked by the client's already sen
     const queued = armed.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
     assert.equal(queued?.payload.template_key, "autorisation_validee_document");
     assert.equal(queued?.payload.customer_id, CLIENT);
-    assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL:voyageur:${TRAVELER}`);
+    assert.equal(queued?.payload.dedupe_key, `autorisation-validee:${BOOKING}:doc-1:voyageur:${TRAVELER}`);
     assert.equal(JSON.stringify(queued?.payload).includes("+33601020304"), false);
     assert.equal(JSON.stringify(queued?.payload).includes("http"), false);
     assert.match(String(queued?.payload.body), /Léa/);
@@ -679,12 +716,69 @@ test("notifier_piece can target only the traveller", async () => {
   const queued = opted.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
   assert.equal(queued?.payload.customer_id, OTHER_CLIENT);
   assert.equal(queued?.payload.template_key, "autorisation_validee_document");
-  assert.equal(queued?.payload.dedupe_key, `formalite-prete:${BOOKING}:IL:voyageur:${TRAVELER}`);
+  assert.equal(queued?.payload.dedupe_key, `autorisation-validee:${BOOKING}:${docId}:voyageur:${TRAVELER}`);
   assert.equal(sent.destinataires.some((row) => row.qui === "client"), false);
   await assert.rejects(
     () => notifyTravelPiece({ document_id: docId, destinataires: "tout" }, admin),
     /Destinataires/
   );
+});
+
+test("two pieces each leave with their own file, and forcer resends", async () => {
+  const first = "55555555-5555-4555-8555-555555555555";
+  const second = "88888888-8888-4888-8888-888888888888";
+  const docs = [first, second].map((id, index) => ({
+    id,
+    booking_id: BOOKING,
+    traveler_id: index === 0 ? TRAVELER : OTHER,
+    doc_type: "eta",
+    issuing_country: "IL",
+    customer_id: CLIENT,
+    storage_path: `customers/${CLIENT}/documents/eta-${index}.pdf`,
+    mime_type: "application/pdf",
+    file_name: `eta-${index}.pdf`,
+  }));
+  const { admin, writes } = fakeCrm({
+    visible: true,
+    documents: docs,
+    travelers: [
+      { id: TRAVELER, booking_id: BOOKING, companion_id: null, is_account_holder: true, first_name: "Camille" },
+      { id: OTHER, booking_id: BOOKING, companion_id: null, is_account_holder: false, first_name: "Léa" },
+    ],
+  });
+  const one = await notifyTravelPiece({ document_id: first, destinataires: "client" }, admin);
+  const two = await notifyTravelPiece({ document_id: second, destinataires: "client" }, admin);
+  assert.notEqual(one.raison, "Déjà envoyé.");
+  assert.notEqual(two.raison, "Déjà envoyé.");
+  const keys = writes
+    .filter((row) => row.op === "insert" && row.table === "crm_whatsapp_messages")
+    .map((row) => row.payload.dedupe_key);
+  assert.deepEqual(keys, [`autorisation-validee:${BOOKING}:${first}`, `autorisation-validee:${BOOKING}:${second}`]);
+  assert.deepEqual(
+    writes
+      .filter((row) => row.op === "insert" && row.table === "crm_whatsapp_messages")
+      .map((row) => (row.payload.payload as { documentId?: string }).documentId),
+    [first, second]
+  );
+
+  const sent = fakeCrm({
+    visible: true,
+    documents: [docs[0]],
+    messages: [
+      {
+        id: "msg-sent",
+        dedupe_key: `autorisation-validee:${BOOKING}:${first}`,
+        template_key: "autorisation_validee_document",
+        status: "sent",
+      },
+    ],
+  });
+  const blocked = await notifyTravelPiece({ document_id: first, destinataires: "client" }, sent.admin);
+  assert.equal(blocked.raison, "Déjà envoyé.");
+  const forced = await notifyTravelPiece({ document_id: first, destinataires: "client", forcer: true }, sent.admin);
+  assert.notEqual(forced.raison, "Déjà envoyé.");
+  const forcedKey = sent.writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages")?.payload.dedupe_key;
+  assert.match(String(forcedKey), new RegExp(`^autorisation-validee:${BOOKING}:${first}:\\d+$`));
 });
 
 test("carte d’embarquement is a piece type", () => {

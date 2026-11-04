@@ -65,7 +65,7 @@ export type PieceNotify = (
   bookingId: string,
   countries: string[],
   admin: SupabaseClient,
-  options?: { travelerIds?: string[]; audience?: FormalityAudience }
+  options?: { travelerIds?: string[]; audience?: FormalityAudience; documentId?: string; forcer?: boolean }
 ) => Promise<FormalityNotice[]>;
 
 export type PreparedPiece = {
@@ -555,6 +555,7 @@ export async function addTravelPiece(
       docType: document.doc_type,
       issuingCountry: document.issuing_country,
       travelerId: document.traveler_id,
+      documentId: document.id,
       audience: "tous",
     },
     deps?.notify ?? notifyFormalitiesReady
@@ -784,6 +785,8 @@ export async function notifyTravelPiece(
       docType: doc.doc_type,
       issuingCountry: doc.issuing_country,
       travelerId: doc.traveler_id,
+      documentId: doc.id,
+      forcer: input.forcer === true,
       audience: audienceOf(input.destinataires),
     },
     deps?.notify ?? notifyFormalitiesReady
@@ -812,6 +815,8 @@ async function notifyLinkedPiece(
     docType: string;
     issuingCountry: string | null;
     travelerId: string | null;
+    documentId?: string;
+    forcer?: boolean;
     audience: FormalityAudience;
   },
   notify: PieceNotify
@@ -826,6 +831,8 @@ async function notifyLinkedPiece(
     const [row] = await notify(input.bookingId, [iso], admin, {
       travelerIds: input.travelerId ? [input.travelerId] : [],
       audience: input.audience,
+      documentId: input.documentId,
+      forcer: input.forcer,
     });
     if (!row) return quiet("Message non parti.");
     return {

@@ -189,7 +189,7 @@ export function EstaOnBooking({ bookingId, rows: initialRows }: { bookingId: str
                   align="end"
                   label="Renvoyer"
                   confirmLabel="Renvoyer"
-                  question={`Renvoyer l’ESTA de ${row.name} au client ?`}
+                  question={`Renvoyer le document de l’ESTA de ${row.name} au client ?`}
                   busyLabel="Envoi…"
                   disabled={busy !== null}
                   className="admin-tap rounded-full border border-[#0B192C] px-3 py-1 text-xs font-semibold text-[#0B192C] disabled:opacity-50"

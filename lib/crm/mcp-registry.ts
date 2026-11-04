@@ -987,13 +987,17 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Renvoie le document du visa ou de l’ETA déjà déposé, joint au WhatsApp. document_id. destinataires : tous (défaut), client ou voyageur. Le modèle est autorisation_validee_document ou autorisation_validee_image, le même que le dépôt. Sans modèle approuvé, rien ne part. Le client déjà prévenu n’est pas renvoyé. Ne redépose pas le fichier.",
+      "Renvoie le document du visa ou de l’ETA déjà déposé, joint au WhatsApp. document_id. destinataires : tous (défaut), client ou voyageur. Le modèle est autorisation_validee_document ou autorisation_validee_image. Sans modèle approuvé, rien ne part. Déjà envoyé ne compte que si ce fichier est déjà parti avec l’un de ces deux modèles : une ancienne carte sans pièce jointe ne bloque pas. Deux pièces du même client partent chacune avec son fichier. forcer true renvoie même si le nouveau modèle est déjà parti. Ne redépose pas le fichier.",
     input: {
       document_id: z.string().trim().max(80).describe("Identifiant de la pièce déjà dans l’espace"),
       destinataires: z
         .enum(["tous", "client", "voyageur"])
         .optional()
         .describe("tous par défaut. voyageur : seulement le voyageur de la pièce, sans renvoyer le client"),
+      forcer: z
+        .boolean()
+        .optional()
+        .describe("true pour renvoyer même si ce fichier est déjà parti avec le nouveau modèle. Faux si omis"),
     },
     run: (args) => notifyTravelPiece(args),
   },

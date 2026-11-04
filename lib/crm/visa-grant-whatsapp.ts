@@ -50,6 +50,17 @@ export function visaGrantTemplateForHeader(header: VisaGrantHeader): VisaGrantTe
   return header === "image" ? "autorisation_validee_image" : "autorisation_validee_document";
 }
 
+/** Seul un envoi du fichier compte comme « déjà envoyé ». L’ancienne carte ne compte pas. */
+export function isVisaGrantTemplate(template: string | null | undefined) {
+  return template === "autorisation_validee_document" || template === "autorisation_validee_image";
+}
+
+/** Une pièce, un envoi. Le voyageur d’un autre numéro a sa propre clé. */
+export function visaGrantDedupeKey(bookingId: string, documentId: string, travelerId?: string | null) {
+  const base = `autorisation-validee:${bookingId}:${documentId}`;
+  return travelerId ? `${base}:voyageur:${travelerId}` : base;
+}
+
 export function visaGrantContentSid(header: VisaGrantHeader) {
   return productionOnlySecret(process.env[VISA_GRANT_TEMPLATE_ENV[visaGrantTemplateForHeader(header)]]) || "";
 }
