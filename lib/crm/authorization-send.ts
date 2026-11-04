@@ -20,7 +20,7 @@ import {
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { sendContentTemplate } from "./whatsapp";
 import { sendVisaGrantWhatsapp } from "./visa-grant-send";
-import { visaGrantPreview, visaGrantSendBlock } from "./visa-grant-whatsapp";
+import { isVisaGrantTemplate, visaGrantDedupeKey, visaGrantPreview, visaGrantSendBlock } from "./visa-grant-whatsapp";
 
 type Admin = SupabaseClient;
 
@@ -215,17 +215,18 @@ async function sendApprovedGrant(
   const grant = input.grant;
   if (!grant) return { ok: false, error: "Le document du visa n’est pas dans l’espace." };
 
-  const base = authorizationDedupeKey(input.kind, input.bookingId, input.travelerId, input.notice);
+  const base = visaGrantDedupeKey(input.bookingId, grant.documentId);
   const { data: prior } = await admin
     .from("crm_whatsapp_messages")
-    .select("id, status")
+    .select("id, status, template_key")
     .eq("dedupe_key", base)
     .maybeSingle();
-  const previous = prior as { id: string; status: string } | null;
-  if (previous?.status === "sent" && !input.again) return { ok: true };
+  const previous = prior as { id: string; status: string; template_key?: string | null } | null;
+  const sentGrant = previous?.status === "sent" && isVisaGrantTemplate(previous.template_key);
+  if (sentGrant && !input.again) return { ok: true };
 
-  const dedupe = previous?.status === "sent" && input.again ? `${base}:${Date.now()}` : base;
-  let rowId = previous && previous.status !== "sent" ? previous.id : "";
+  const dedupe = sentGrant && input.again ? `${base}:${Date.now()}` : base;
+  let rowId = previous && !sentGrant ? previous.id : "";
   if (!rowId) {
     const inserted = await admin
       .from("crm_whatsapp_messages")
@@ -241,9 +242,9 @@ async function sendApprovedGrant(
       .select("id")
       .maybeSingle();
     if (inserted.error || !inserted.data) {
-      const raced = await admin.from("crm_whatsapp_messages").select("id, status").eq("dedupe_key", dedupe).maybeSingle();
-      const winner = raced.data as { id: string; status: string } | null;
-      if (winner?.status === "sent" && !input.again) return { ok: true };
+      const raced = await admin.from("crm_whatsapp_messages").select("id, status, template_key").eq("dedupe_key", dedupe).maybeSingle();
+      const winner = raced.data as { id: string; status: string; template_key?: string | null } | null;
+      if (winner?.status === "sent" && isVisaGrantTemplate(winner.template_key) && !input.again) return { ok: true };
       if (!winner) return { ok: false, error: "Le message n’a pas pu être enregistré." };
       rowId = winner.id;
     } else {

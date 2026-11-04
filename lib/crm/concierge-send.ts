@@ -15,7 +15,9 @@ import { resolveVisaGrantContentSid, sendVisaGrantWhatsapp } from "./visa-grant-
 import {
   VISA_GRANT_MISSING,
   VISA_GRANT_UNSUPPORTED,
+  isVisaGrantTemplate,
   pickVisaGrantFile,
+  visaGrantDedupeKey,
   visaGrantHeader,
   visaGrantPendingMessage,
   visaGrantPreview,
@@ -610,7 +612,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
   if (
     row.template_key === "formalite_prete_voyageur" ||
     row.template_key?.startsWith("autorisation_validee") ||
-    key.startsWith("formalite-prete:")
+    key.startsWith("formalite-prete:") ||
+    key.startsWith("autorisation-validee:")
   ) {
     if (row.payload?.travelerId) {
       await deliverTravellerPlain(admin, row, booking);
@@ -832,7 +835,20 @@ export type FormalityNotifyOptions = {
   /** Voyageurs concernés par la pièce. Vide : le client seulement, sauf audience voyageur. */
   travelerIds?: string[];
   audience?: FormalityAudience;
+  /** Pièce précise. Deux enfants : deux identifiants, deux fichiers. */
+  documentId?: string;
+  /** Renvoie même si ce fichier est déjà parti avec le nouveau modèle. */
+  forcer?: boolean;
 };
+
+function grantAlreadySent(row: { status?: string | null; template_key?: string | null } | null) {
+  return row?.status === "sent" && isVisaGrantTemplate(row.template_key);
+}
+
+function forcedGrantKey(base: string, previous: { status?: string | null; template_key?: string | null } | null, forcer: boolean) {
+  if (grantAlreadySent(previous) && forcer) return `${base}:${Date.now()}`;
+  return base;
+}
 
 function handset(value: string | null | undefined) {
   const text = (value || "").trim();
@@ -934,12 +950,20 @@ async function sendFormalityRecipient(
   admin: Admin,
   booking: CrmBooking,
   plan: { template: string; body: string; documentId?: string },
-  input: { qui: "client" | "voyageur"; dedupeKey: string; customerId: string; iso: string; travelerId?: string }
+  input: {
+    qui: "client" | "voyageur";
+    dedupeKey: string;
+    customerId: string;
+    iso: string;
+    travelerId?: string;
+    forcer?: boolean;
+  }
 ): Promise<FormalityRecipient> {
   const previous = await findByDedupe(admin, input.dedupeKey);
-  if (previous?.status === "sent") return { qui: input.qui, notifie: false, raison: "Déjà envoyé." };
+  if (grantAlreadySent(previous) && !input.forcer) return { qui: input.qui, notifie: false, raison: "Déjà envoyé." };
+  const dedupeKey = forcedGrantKey(input.dedupeKey, previous, Boolean(input.forcer));
   const row = await saveQueue(admin, {
-    dedupeKey: input.dedupeKey,
+    dedupeKey,
     customerId: input.customerId,
     bookingId: booking.id,
     templateKey: plan.template,
@@ -950,9 +974,9 @@ async function sendFormalityRecipient(
       ...(plan.documentId ? { documentId: plan.documentId } : {}),
     },
   });
-  if (row.status === "sent") return { qui: input.qui, notifie: false, raison: "Déjà envoyé." };
+  if (grantAlreadySent(row) && !input.forcer) return { qui: input.qui, notifie: false, raison: "Déjà envoyé." };
   await deliverRow(admin, row, new Date());
-  const after = await findByDedupe(admin, input.dedupeKey);
+  const after = await findByDedupe(admin, dedupeKey);
   if (after?.status === "sent") return { qui: input.qui, notifie: true, raison: null };
   const fresh = await loadBooking(admin, booking.id);
   if (!fresh?.visible_to_client) return { qui: input.qui, notifie: false, raison: "Le séjour n’est pas visible." };
@@ -969,10 +993,11 @@ async function sendFormalityRecipient(
 async function sendPlainTraveller(
   admin: Admin,
   booking: CrmBooking,
-  input: { dedupeKey: string; iso: string; travelerId: string; firstName: string; documentId?: string }
+  input: { dedupeKey: string; iso: string; travelerId: string; firstName: string; documentId?: string; forcer?: boolean }
 ): Promise<FormalityRecipient> {
   const previous = await findByDedupe(admin, input.dedupeKey);
-  if (previous?.status === "sent") return { qui: "voyageur", notifie: false, raison: "Déjà envoyé." };
+  if (grantAlreadySent(previous) && !input.forcer) return { qui: "voyageur", notifie: false, raison: "Déjà envoyé." };
+  const dedupeKey = forcedGrantKey(input.dedupeKey, previous, Boolean(input.forcer));
   const file = await loadGrantDocument(admin, booking, { iso: input.iso, travelerId: input.travelerId, documentId: input.documentId });
   const header = file ? visaGrantHeader(file.mime_type, file.file_name) : null;
   if (!file) return { qui: "voyageur", notifie: false, raison: VISA_GRANT_MISSING };
@@ -983,14 +1008,14 @@ async function sendPlainTraveller(
   const body = visaGrantPreview(input.firstName);
   if (!body) return { qui: "voyageur", notifie: false, raison: "Message non parti." };
   const row = await saveQueue(admin, {
-    dedupeKey: input.dedupeKey,
+    dedupeKey,
     customerId: booking.customer_id,
     bookingId: booking.id,
     templateKey: visaGrantTemplateForHeader(header),
     body,
     payload: { iso: input.iso, travelerId: input.travelerId, documentId: file.id },
   });
-  if (row.status === "sent") return { qui: "voyageur", notifie: false, raison: "Déjà envoyé." };
+  if (grantAlreadySent(row) && !input.forcer) return { qui: "voyageur", notifie: false, raison: "Déjà envoyé." };
   const failure = await deliverGrant(admin, row, booking, (await loadTravellerHandset(admin, booking.id, input.travelerId))?.phone || null, input.firstName);
   if (!failure) return { qui: "voyageur", notifie: true, raison: null };
   return { qui: "voyageur", notifie: false, raison: failure };
@@ -1040,32 +1065,55 @@ export async function notifyFormalitiesReady(
         continue;
       }
       const client = await loadCustomer(admin, booking.customer_id);
-      const planFor = (
-        travelerId?: string,
+      const planForFile = (
+        file: VisaGrantCandidate | null | undefined,
         greeting?: string | null
       ): { error: string } | { template: string; body: string; documentId: string } => {
-        const file = pickVisaGrantFile(papers, { country: code, travelerId, bookingId: booking.id });
         const header = file ? visaGrantHeader(file.mime_type, file.file_name) : null;
         const body = header ? visaGrantPreview(greeting) : null;
-        if (!file || !header || !body) {
+        if (!file?.id || !header || !body) {
           return { error: !file ? VISA_GRANT_MISSING : !header ? VISA_GRANT_UNSUPPORTED : "Message non parti." };
         }
         return { template: visaGrantTemplateForHeader(header), body, documentId: file.id };
       };
-      const clientPlan = planFor(travelerIds.length === 1 ? travelerIds[0] : undefined, client?.first_name);
+      const filesFor = (travelerId?: string) => {
+        if (options.documentId) {
+          const one = papers.find((row) => row.id === options.documentId);
+          return one ? [one] : [];
+        }
+        if (travelerId) {
+          const file = pickVisaGrantFile(papers, { country: code, travelerId, bookingId: booking.id });
+          return file ? [file] : [];
+        }
+        if (travelerIds.length) {
+          const chosen = travelerIds
+            .map((id) => pickVisaGrantFile(papers, { country: code, travelerId: id, bookingId: booking.id }))
+            .filter((row): row is VisaGrantCandidate => Boolean(row));
+          return [...new Map(chosen.map((row) => [row.id, row])).values()];
+        }
+        const file = pickVisaGrantFile(papers, { country: code, bookingId: booking.id });
+        return file ? [file] : [];
+      };
       const destinataires: FormalityRecipient[] = [];
-      const clientKey = `formalite-prete:${booking.id}:${code}`;
       if (audience !== "voyageur") {
-        if ("error" in clientPlan) {
-          destinataires.push({ qui: "client", notifie: false, raison: clientPlan.error });
-        } else {
+        const clientFiles = filesFor();
+        if (!clientFiles.length) {
+          destinataires.push({ qui: "client", notifie: false, raison: VISA_GRANT_MISSING });
+        }
+        for (const file of clientFiles) {
+          const plan = planForFile(file, client?.first_name);
+          if ("error" in plan) {
+            destinataires.push({ qui: "client", notifie: false, raison: plan.error });
+            continue;
+          }
           try {
             destinataires.push(
-              await sendFormalityRecipient(admin, booking, clientPlan, {
+              await sendFormalityRecipient(admin, booking, plan, {
                 qui: "client",
-                dedupeKey: clientKey,
+                dedupeKey: visaGrantDedupeKey(booking.id, file.id),
                 customerId: booking.customer_id,
                 iso: code,
+                forcer: options.forcer,
               })
             );
           } catch (err) {
@@ -1081,19 +1129,21 @@ export async function notifyFormalitiesReady(
         for (const travelerId of travelerIds) {
           try {
             const target = await travelerTarget(admin, booking, client, travelerId);
-            const travelerPlan = planFor(travelerId, target.kind === "plain" ? target.firstName : client?.first_name);
+            const travelerFile = filesFor(travelerId)[0];
+            const travelerPlan = planForFile(travelerFile, target.kind === "plain" ? target.firstName : client?.first_name);
             if (target.kind === "same") {
               if (audience === "voyageur") {
-                if ("error" in travelerPlan) {
-                  destinataires.push({ qui: "voyageur", notifie: false, raison: travelerPlan.error });
+                if ("error" in travelerPlan || !travelerFile) {
+                  destinataires.push({ qui: "voyageur", notifie: false, raison: "error" in travelerPlan ? travelerPlan.error : VISA_GRANT_MISSING });
                 } else {
                   destinataires.push(
                     await sendFormalityRecipient(admin, booking, travelerPlan, {
                       qui: "voyageur",
-                      dedupeKey: clientKey,
+                      dedupeKey: visaGrantDedupeKey(booking.id, travelerFile.id),
                       customerId: booking.customer_id,
                       iso: code,
                       travelerId,
+                      forcer: options.forcer,
                     })
                   );
                 }
@@ -1107,15 +1157,20 @@ export async function notifyFormalitiesReady(
               continue;
             }
             if (target.kind === "plain") {
-              destinataires.push(
-                await sendPlainTraveller(admin, booking, {
-                  dedupeKey: `formalite-prete:${booking.id}:${code}:voyageur:${travelerId}`,
-                  iso: code,
-                  travelerId,
-                  firstName: target.firstName,
-                  documentId: "error" in travelerPlan ? undefined : travelerPlan.documentId,
-                })
-              );
+              if ("error" in travelerPlan || !travelerFile) {
+                destinataires.push({ qui: "voyageur", notifie: false, raison: "error" in travelerPlan ? travelerPlan.error : VISA_GRANT_MISSING });
+              } else {
+                destinataires.push(
+                  await sendPlainTraveller(admin, booking, {
+                    dedupeKey: visaGrantDedupeKey(booking.id, travelerPlan.documentId, travelerId),
+                    iso: code,
+                    travelerId,
+                    firstName: target.firstName,
+                    documentId: travelerPlan.documentId,
+                    forcer: options.forcer,
+                  })
+                );
+              }
               continue;
             }
             if ("error" in travelerPlan) {
@@ -1125,10 +1180,11 @@ export async function notifyFormalitiesReady(
             destinataires.push(
               await sendFormalityRecipient(admin, booking, travelerPlan, {
                 qui: "voyageur",
-                dedupeKey: `formalite-prete:${booking.id}:${code}:voyageur:${travelerId}`,
+                dedupeKey: visaGrantDedupeKey(booking.id, travelerPlan.documentId, travelerId),
                 customerId: target.customerId,
                 iso: code,
                 travelerId,
+                forcer: options.forcer,
               })
             );
           } catch (err) {
