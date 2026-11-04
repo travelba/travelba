@@ -21,6 +21,7 @@ export type Recheck =
 
 export type BookOutcome =
   | { status: "requested"; channel: "email" }
+  | { status: "place"; channel: "api" }
   | { status: "confirmed"; channel: "api"; confirmationNumber: string }
   | { status: "unavailable"; reason: "not_contracted" | "refused" | "error" };
 
@@ -63,8 +64,8 @@ export function directEmailPort(): HotelBookPort {
 }
 
 /**
- * Port Little Emperors. Tant que `endpointConfigured` est faux, rien n’est créé :
- * le parcours reste sur l’e-mail. Aucun POST n’est inventé.
+ * Port Little Emperors. `place` demande à l’orchestrateur d’appeler POST /hotels/bookings.
+ * Ce port ne confirme rien tout seul : le numéro vient de la réponse.
  */
 export function littleEmperorsPort(endpointConfigured: boolean): HotelBookPort {
   return {
@@ -77,7 +78,7 @@ export function littleEmperorsPort(endpointConfigured: boolean): HotelBookPort {
     },
     book() {
       if (!endpointConfigured) return { status: "unavailable", reason: "not_contracted" };
-      return { status: "unavailable", reason: "not_contracted" };
+      return { status: "place", channel: "api" };
     },
     cancel() {
       if (!endpointConfigured) return { status: "unavailable", reason: "not_contracted" };

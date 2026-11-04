@@ -181,7 +181,7 @@ export async function cancelClientLeHotel(input: {
 }) {
   const { createServiceClient } = await import("@/lib/supabase/admin");
   const admin = createServiceClient();
-  return runClientLeCancel(
+  const result = await runClientLeCancel(
     { item: input.item, hotels: input.hotels },
     {
       now: input.now || new Date(),
@@ -276,4 +276,9 @@ export async function cancelClientLeHotel(input: {
         }),
     }
   );
+  if (result.sent) {
+    const { refundStayForBooking } = await import("@/lib/crm/hotel-direct-run");
+    await refundStayForBooking(input.bookingId).catch(() => undefined);
+  }
+  return result;
 }

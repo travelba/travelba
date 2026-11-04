@@ -79,6 +79,12 @@ export type HotelOffer = {
   roomArea?: string;
   roomBed?: string;
   roomOutlook?: string;
+  /** Session et tarif fournisseur. Absents de la réponse client. */
+  sessionId?: string | null;
+  rateIndex?: string | null;
+  cancellationDeadline?: string | null;
+  requiresCvc?: boolean | null;
+  paymentDescription?: string | null;
 };
 
 export type PricedStay = {
@@ -106,6 +112,12 @@ export type PricedStay = {
   roomArea: string;
   roomBed: string;
   roomOutlook: string;
+  sessionId: string | null;
+  rateIndex: string | null;
+  cancellationDeadline: string | null;
+  requiresCvc: boolean | null;
+  /** Serveur seulement. toClientHotel ne le recopie pas. */
+  paymentDescription: string | null;
 };
 
 export type ClientHotel = {
@@ -193,6 +205,24 @@ export function hotelSearchCacheKey(query: HotelSearchQuery) {
 }
 
 /** Même occupation pour chaque compte fournisseur. Little Emperors lit `children[].age`. */
+/** Une réservation : chambres identiques, une seule chambre dès qu’un enfant est présent. */
+export function leRoomPartyOk(rooms: HotelRoomOccupancy[]): { ok: true } | { ok: false; message: string } {
+  if (rooms.length < 1) return { ok: false, message: "Indiquez une chambre." };
+  if (rooms.some((room) => room.children.length > 0) && rooms.length > 1) {
+    return { ok: false, message: "Avec un enfant, une seule chambre peut être réservée." };
+  }
+  if (rooms.length > 1) {
+    const first = occupancyKey([rooms[0]]);
+    if (rooms.some((room) => occupancyKey([room]) !== first)) {
+      return { ok: false, message: "Plusieurs chambres doivent avoir la même composition." };
+    }
+  }
+  if (rooms.some((room) => room.children.some((child) => !Number.isInteger(child.age) || child.age < 0 || child.age > 17))) {
+    return { ok: false, message: "Indiquez l’âge de chaque enfant." };
+  }
+  return { ok: true };
+}
+
 export function supplierRoomOccupancy(rooms: HotelRoomOccupancy[]) {
   return rooms.map((room) => ({
     adults: room.adults,
@@ -315,6 +345,8 @@ export function parseHotelSearchQuery(
   if (nights < 1) return { ok: false, message: "Le départ suit l’arrivée." };
   if (nights > 30) return { ok: false, message: "La recherche couvre trente nuits au plus." };
   if (!rooms) return { ok: false, message: "Indiquez les chambres, les adultes et l’âge de chaque enfant." };
+  const party = leRoomPartyOk(rooms);
+  if (!party.ok) return party;
   return { ok: true, query: { destination, city, checkIn, checkOut, rooms, target: parseSearchTarget(body.target) }, nights };
 }
 
@@ -596,6 +628,11 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
     roomArea: offer.roomArea || spec.area,
     roomBed: offer.roomBed || spec.bed,
     roomOutlook: offer.roomOutlook || spec.outlook,
+    sessionId: offer.sessionId || null,
+    rateIndex: (offer.rateIndex || "").slice(0, 200) || null,
+    cancellationDeadline: offer.cancellationDeadline || null,
+    requiresCvc: typeof offer.requiresCvc === "boolean" ? offer.requiresCvc : null,
+    paymentDescription: (offer.paymentDescription || "").slice(0, 500) || null,
   };
 }
 
@@ -620,6 +657,11 @@ function fillStay(base: PricedStay, extra: PricedStay): PricedStay {
     roomBed: base.roomBed || extra.roomBed,
     roomOutlook: base.roomOutlook || extra.roomOutlook,
     cancellation: base.cancellation || extra.cancellation,
+    sessionId: base.sessionId || extra.sessionId || null,
+    rateIndex: base.rateIndex || extra.rateIndex || null,
+    cancellationDeadline: base.cancellationDeadline || extra.cancellationDeadline || null,
+    requiresCvc: typeof base.requiresCvc === "boolean" ? base.requiresCvc : extra.requiresCvc ?? null,
+    paymentDescription: base.paymentDescription || extra.paymentDescription || null,
   };
 }
 

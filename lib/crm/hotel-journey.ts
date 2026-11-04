@@ -16,6 +16,8 @@ export type ClientRate = {
   perNightCents: number;
   currency: string;
   images: string[];
+  /** Conditions de règlement, sans nom de fournisseur. */
+  terms?: string;
 };
 
 export type ClientRoom = {

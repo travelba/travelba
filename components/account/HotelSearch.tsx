@@ -13,6 +13,7 @@ import { HOTEL_RESULT_PAGE } from "@/lib/crm/hotel-activity";
 import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
 import {
   hotelSearchDraft,
+  leRoomPartyOk,
   nightsBetween,
   occupancyKey,
   parseHotelSearchDraft,
@@ -244,7 +245,7 @@ function seedFromSnapshot(today: string, raw: string) {
   }
 }
 
-export function HotelSearch({ trial = true }: { trial?: boolean }) {
+export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; leApi?: boolean }) {
   const today = useDeviceToday();
   const storedDraft = useSyncExternalStore(subscribeHotelDraft, readHotelDraftSnapshot, emptyHotelDraftSnapshot);
   const seed = useMemo(() => seedFromSnapshot(today, storedDraft), [today, storedDraft]);
@@ -438,12 +439,23 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
     setCursor({ year: date.getUTCFullYear(), month: date.getUTCMonth() });
   }
 
+  function noteParty(next: DraftRoom[]) {
+    const ready = completeRooms(next);
+    if (!ready) return;
+    const party = leRoomPartyOk(ready);
+    setNote(party.ok ? "" : party.message);
+  }
+
   function updateRoom(index: number, next: DraftRoom) {
-    setRooms(rooms.map((room, at) => (at === index ? next : room)));
+    const roomsNext = rooms.map((room, at) => (at === index ? next : room));
+    setRooms(roomsNext);
+    noteParty(roomsNext);
   }
 
   function resizeRooms(count: number) {
-    setRooms(count > rooms.length ? [...rooms, { adults: 1, children: [] }] : rooms.slice(0, count));
+    const roomsNext = count > rooms.length ? [...rooms, { adults: 1, children: [] }] : rooms.slice(0, count);
+    setRooms(roomsNext);
+    noteParty(roomsNext);
   }
 
   function applyFilters(next: (keyof HotelPerks)[]) {
@@ -496,6 +508,12 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(searchBody),
       }).catch(() => {});
+      return;
+    }
+    const partyOk = leRoomPartyOk(stayRooms);
+    if (!partyOk.ok) {
+      setNote(partyOk.message);
+      setPanel("who");
       return;
     }
     if (override) {
@@ -625,6 +643,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
           others={shown.filter((item) => item.hotelKey !== openedLive.hotelKey).slice(0, 8)}
           onOpenOther={openHotel}
           trial={trial}
+          leApi={leApi}
         />
       ) : null}
       {openedLive ? null : <>

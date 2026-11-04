@@ -14,6 +14,7 @@ import {
   LITTLE_EMPERORS_STAGING_ORIGIN,
   applyHotelPublicFields,
   canRemoteCancel,
+  createLittleEmperorsBooking,
   hotelPublicFields,
   isLeCancelled,
   leCreatedDossierStatus,
@@ -136,6 +137,33 @@ describe("little emperors staging client", () => {
     assert.equal(called, "https://api.littleemperors.com/v2/hotels/bookings");
     assert.equal(method, "GET");
     assert.equal(auth, "Bearer prod-key");
+    if (previousBase === undefined) delete process.env.LITTLE_EMPERORS_API_BASE;
+    else process.env.LITTLE_EMPERORS_API_BASE = previousBase;
+    if (previousEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousEnv;
+    if (previousKey === undefined) delete process.env.LITTLE_EMPERORS_API_KEY;
+    else process.env.LITTLE_EMPERORS_API_KEY = previousKey;
+  });
+
+  it("la création est un POST et un numéro dans l’erreur est retiré", async () => {
+    const previousEnv = process.env.VERCEL_ENV;
+    const previousKey = process.env.LITTLE_EMPERORS_API_KEY;
+    const previousBase = process.env.LITTLE_EMPERORS_API_BASE;
+    delete process.env.VERCEL_ENV;
+    process.env.LITTLE_EMPERORS_API_KEY = "test-key";
+    process.env.LITTLE_EMPERORS_API_BASE = "https://api-staging.littleemperors.com";
+    let method = "";
+    let path = "";
+    const fetchImpl: typeof fetch = async (input, init) => {
+      path = String(input);
+      method = init?.method || "";
+      return new Response(JSON.stringify({ message: "refused 4242424242424242" }), { status: 422 });
+    };
+    await assert.rejects(() => createLittleEmperorsBooking({ session_id: "S", rooms: [] }, fetchImpl), (err: unknown) => {
+      return err instanceof LittleEmperorsError && !err.message.includes("4242") && err.message.includes("••••");
+    });
+    assert.equal(method, "POST");
+    assert.equal(path, "https://api-staging.littleemperors.com/v2/hotels/bookings");
     if (previousBase === undefined) delete process.env.LITTLE_EMPERORS_API_BASE;
     else process.env.LITTLE_EMPERORS_API_BASE = previousBase;
     if (previousEnv === undefined) delete process.env.VERCEL_ENV;

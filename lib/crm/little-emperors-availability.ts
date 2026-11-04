@@ -228,6 +228,11 @@ function pushOffer(
     roomArea?: string;
     roomBed?: string;
     roomOutlook?: string;
+    sessionId?: string | null;
+    rateIndex?: string | null;
+    cancellationDeadline?: string | null;
+    requiresCvc?: boolean | null;
+    paymentDescription?: string | null;
   }
 ) {
   const price = littleEmperorsProposedPrice(input.rate);
@@ -258,6 +263,11 @@ function pushOffer(
     roomArea: input.roomArea || "",
     roomBed: input.roomBed || "",
     roomOutlook: input.roomOutlook || "",
+    sessionId: input.sessionId || null,
+    rateIndex: input.rateIndex || null,
+    cancellationDeadline: input.cancellationDeadline || null,
+    requiresCvc: typeof input.requiresCvc === "boolean" ? input.requiresCvc : null,
+    paymentDescription: input.paymentDescription || null,
   });
 }
 
@@ -284,6 +294,7 @@ export function offersFromLeAvailability(payload: unknown, cityHint = ""): Hotel
       images: gallery,
       coords: coordsOf(info?.coords),
       footnotes: benefitLines(stringList(info?.benefits_footnotes)),
+      sessionId: text(hotel.session_id) || null,
     };
     const rooms = Array.isArray(hotel.room_types) ? hotel.room_types : [];
     let emitted = false;
@@ -327,6 +338,10 @@ export function offersFromLeAvailability(payload: unknown, cityHint = ""): Hotel
           rateKey: text(rate.rate_index).slice(0, 80) || keyPart(`${title}-${priceKey(rate)}`),
           rateTitle: title,
           cancellation: text(rate.cancellation_policy),
+          rateIndex: text(rate.rate_index) || null,
+          cancellationDeadline: text(rate.cancellation_deadline) || null,
+          requiresCvc: typeof rate.requires_cvc === "boolean" ? rate.requires_cvc : null,
+          paymentDescription: text(rate.payment_description) || null,
           roomArea: spec.area,
           roomBed: spec.bed,
           roomOutlook: spec.outlook,

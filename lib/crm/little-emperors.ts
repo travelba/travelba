@@ -71,7 +71,7 @@ export type LeHotelPublic = {
 
 /**
  * Le blocage de production est levé : Little Emperors a émis la clé le 15 octobre 2026.
- * L’écran reste interne. Les appels restent des lectures.
+ * L’écran reste interne. La création part du parcours client déjà autorisé.
  */
 export function littleEmperorsProductionBlocked() {
   return false;
@@ -252,7 +252,8 @@ export function splitGuestName(value: string): { first_name: string; last_name: 
 
 function redact(message: string) {
   const key = littleEmperorsApiKey();
-  return key ? message.split(key).join("[redacted]") : message;
+  const stripped = key ? message.split(key).join("[redacted]") : message;
+  return stripped.replace(/\b(?:\d[ -]?){12,18}\d\b/g, "••••");
 }
 
 function mapUpstream(status: number, message: string) {
@@ -483,6 +484,20 @@ export async function fetchLittleEmperorsHotel(hotelId: number, fetchImpl?: type
 
 export async function cancelLittleEmperorsBooking(bookingId: number, fetchImpl?: typeof fetch) {
   await leJson(`/v2/hotels/bookings/${bookingId}`, { method: "DELETE" }, fetchImpl);
+}
+
+/** Crée la réservation. Le corps peut contenir une carte : il n’est pas journalisé. */
+export async function createLittleEmperorsBooking(body: unknown, fetchImpl?: typeof fetch) {
+  const payload = await leJson(
+    "/v2/hotels/bookings",
+    { method: "POST", body: JSON.stringify(body), signal: AbortSignal.timeout(25_000) },
+    fetchImpl
+  );
+  const parsed = parseLeBooking(payload);
+  if (!parsed) {
+    throw new LittleEmperorsError("Little Emperors n’a pas renvoyé la réservation.", 502, "unexpected_shape");
+  }
+  return parsed;
 }
 
 /** Actualiser : agence et partenaire. Rattacher et annuler : agence seulement. */

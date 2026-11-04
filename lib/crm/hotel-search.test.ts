@@ -345,8 +345,8 @@ test("les chambres portent les adultes et l’âge de chaque enfant, un hôtel c
       checkIn: "2026-11-12",
       checkOut: "2026-11-14",
       rooms: [
-        { adults: 2, children: [{ age: 5 }] },
-        { adults: 1, children: [] },
+        { adults: 2, children: [] },
+        { adults: 2, children: [] },
       ],
       target: { kind: "hotel", id: 15 },
     },
@@ -357,17 +357,37 @@ test("les chambres portent les adultes et l’âge de chaque enfant, un hôtel c
   assert.equal(parsed.query.target?.kind, "hotel");
   assert.equal(parsed.query.target?.id, 15);
   assert.deepEqual(supplierRoomOccupancy(parsed.query.rooms), [
-    { adults: 2, children: [{ age: 5 }] },
-    { adults: 1, children: [] },
+    { adults: 2, children: [] },
+    { adults: 2, children: [] },
   ]);
-  assert.equal(stayPartyLabel(parsed.query.rooms), "2 chambres, 3 adultes, 1 enfant");
+  assert.equal(stayPartyLabel(parsed.query.rooms), "2 chambres, 4 adultes");
   const otherAge = {
     ...parsed.query,
-    rooms: [
-      { adults: 2, children: [{ age: 7 }] },
-      { adults: 1, children: [] },
-    ],
+    rooms: [{ adults: 2, children: [{ age: 7 }] }],
   };
+  const withChild = parseHotelSearchQuery(
+    {
+      destination: "Ritz",
+      checkIn: "2026-11-12",
+      checkOut: "2026-11-14",
+      rooms: [{ adults: 2, children: [{ age: 5 }] }],
+    },
+    today
+  );
+  assert.equal(withChild.ok, true);
+  const mixed = parseHotelSearchQuery(
+    {
+      destination: "Ritz",
+      checkIn: "2026-11-12",
+      checkOut: "2026-11-14",
+      rooms: [
+        { adults: 2, children: [{ age: 5 }] },
+        { adults: 1, children: [] },
+      ],
+    },
+    today
+  );
+  assert.equal(mixed.ok, false);
   assert.notEqual(hotelSearchCacheKey(parsed.query), hotelSearchCacheKey(otherAge));
   assert.equal(
     parseHotelSearchQuery(

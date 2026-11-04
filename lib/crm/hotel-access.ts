@@ -35,6 +35,8 @@ export type HotelAccessCustomer = {
   hotel_booking_enabled?: boolean | null;
   hotel_demo?: boolean | null;
   hotel_direct_live?: boolean | null;
+  /** Réservation par l’API. Faux par défaut, même si le mode réel est ouvert. */
+  hotel_le_api_booking?: boolean | null;
 };
 
 export function hotelButtonVisibilityOf(value: unknown): HotelButtonVisibility {
@@ -63,6 +65,11 @@ export function clientNavHasHotel(showButton: boolean) {
 
 export function hotelDirectLive(customer: HotelAccessCustomer | null | undefined) {
   return hotelBookingEnabled(customer) && customer?.hotel_demo !== true && customer?.hotel_direct_live === true;
+}
+
+/** API de réservation, en plus du mode réel et hors compte de démonstration. Défaut faux. */
+export function hotelLeApiBooking(customer: HotelAccessCustomer | null | undefined) {
+  return hotelDirectLive(customer) && customer?.hotel_le_api_booking === true;
 }
 
 export type AccessActor = "admin" | "agent" | "client";
