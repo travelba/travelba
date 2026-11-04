@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { BookingStateFilter } from "@/lib/crm/admin-list";
+import { parseBookingState, type BookingStateFilter } from "@/lib/crm/admin-list";
 import {
   readChercherClients,
   readChercherDossiers,
@@ -325,27 +325,27 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "chercher_dossiers",
     description:
-      "Dossiers. q retrouve la référence, le titre, la destination, le prénom, le nom, la société du client, la société facturée et les voyageurs, sans accent et dans n’importe quel ordre. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Visible, ou Archivée. Un brouillon l’affiche à côté (Visible · Brouillon). statut_reel : Brouillon, Devis, Confirmé ou Annulé. À côté du contact : societe et paye_par (société ou particulier).",
+      "Dossiers. q retrouve la référence, le titre, la destination, le prénom, le nom, la société du client, la société facturée et les voyageurs, sans accent et dans n’importe quel ordre. etat : a-venir, non_visible (ou preparation), visible (ou montre), annule, archive. Sans filtre : les prochains départs. statut : non_visible, visible ou annule. statut_libelle : Non visible, Visible ou Annulé. Un dossier archivé garde etat Archivée et archivee true. À côté du contact : societe et paye_par (société ou particulier).",
     input: {
       q,
       etat: z
-        .enum(["a-venir", "preparation", "montre", "archive"])
+        .enum(["a-venir", "preparation", "montre", "archive", "non_visible", "visible", "annule"])
         .optional()
-        .describe("a-venir, preparation, montre ou archive"),
+        .describe("a-venir, non_visible, visible, annule ou archive"),
       page: listPage,
       limite: listLimit,
     },
     run: (args: ToolArgs) =>
       readChercherDossiers({
         q: str(args, "q"),
-        etat: (str(args, "etat") as BookingStateFilter | undefined) ?? null,
+        etat: parseBookingState(str(args, "etat")) as BookingStateFilter | null,
         ...pageOf(args),
       }),
   },
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), état (En préparation, Visible ou Archivée ; un brouillon l’affiche à côté), statut_reel (Brouillon, Devis, Confirmé ou Annulé), société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee), qui s’en occupe (en_charge, null = à prendre ; cree_par ; intervenants). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), statut non_visible, visible ou annule (statut_libelle : Non visible, Visible, Annulé). Un dossier archivé a etat Archivée. Société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee), qui s’en occupe (en_charge, null = à prendre ; cree_par ; intervenants). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -489,7 +489,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "importer_reservation_little_emperors",
     write: true,
     description:
-      "Importe une réservation Little Emperors sans dossier. reference : référence Little Emperors ou confirmation hôtel. client_id obligatoire. dossier_id ou dossier_reference rattache à un dossier déjà ouvert ; sans dossier, un dossier est créé. regroupement : plusieurs références dans le même dossier. voyageurs : prénom et nom, ajoutés comme voyageurs ou compagnons. La carte hôtel reprend l’hôtel, la ville, les dates, les chambres, le régime, les voyageurs, le coût net, les conditions d’annulation et les confirmations. Réservée ou confirmée : statut confirmé, caché au client. Annulée ou en échec : refus, sauf forcer true. Déjà liée à un autre dossier : refus, en nommant ce dossier. Aucun message, aucune invitation.",
+      "Importe une réservation Little Emperors sans dossier. reference : référence Little Emperors ou confirmation hôtel. client_id obligatoire. dossier_id ou dossier_reference rattache à un dossier déjà ouvert ; sans dossier, un dossier est créé. regroupement : plusieurs références dans le même dossier. voyageurs : prénom et nom, ajoutés comme voyageurs ou compagnons. La carte hôtel reprend l’hôtel, la ville, les dates, les chambres, le régime, les voyageurs, le coût net, les conditions d’annulation et les confirmations. Réservée ou confirmée : statut visible (confirmé et montré), pour que la carte hôtel puisse partir. Annulée ou en échec : refus, sauf forcer true. Déjà liée à un autre dossier : refus, en nommant ce dossier. Aucun message, aucune invitation.",
     input: {
       reference: z
         .string()
@@ -688,7 +688,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "publier_carnet",
     write: true,
     description:
-      "Montre le carnet au client. Il faut au moins une carte. Un dossier archivé reste caché. Un carnet déjà montré n’est pas renvoyé.",
+      "Passe le dossier en Visible : le client le voit, le séjour est confirmé, la carte hôtel peut partir. Il faut au moins une carte. Un dossier archivé reste caché. Un carnet déjà montré n’est pas renvoyé.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -699,7 +699,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : brouillon, devis, confirme ou annule, comme le dossier agence. Un séjour confirmé peut recevoir la carte hôtel. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. L’état visible reste En préparation, Visible ou Archivée ; un brouillon l’affiche à côté.",
+      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : non_visible, visible ou annule. Les anciens mots restent acceptés : brouillon et devis deviennent non_visible, confirme devient visible. visible montre le séjour et le confirme : un séjour visible peut recevoir la carte hôtel. non_visible le cache. annule l’annule ; non_visible le rouvre, caché. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. La réponse renvoie statut non_visible, visible ou annule.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -729,7 +729,7 @@ export const MCP_TOOLS: ToolDef[] = [
         .trim()
         .max(40)
         .optional()
-        .describe("Statut du dossier : brouillon, devis, confirme ou annule"),
+        .describe("non_visible, visible ou annule. brouillon, devis et confirme restent acceptés"),
       couverture: z
         .string()
         .trim()
@@ -1036,7 +1036,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "creer_dossier",
     write: true,
     description:
-      "Crée un dossier pour un client déjà en fiche. Destination, dates, notes. titre est facultatif : sans titre, le nom du séjour est la destination (la ville, pas le nom de l’hôtel). Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. La société de la fiche est facturée par défaut : l’unique société, ou la première s’il y en a plusieurs. societe_id en choisit une autre. particulier : true laisse le séjour particulier. Sans société sur la fiche, le séjour reste particulier. facturer_societe sans société est une erreur. L’état est En préparation : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
+      "Crée un dossier pour un client déjà en fiche. Destination, dates, notes. titre est facultatif : sans titre, le nom du séjour est la destination (la ville, pas le nom de l’hôtel). Une correspondance aérienne (moins de 24 h, sans hôtel) n’est pas la destination. Le titre et la destination ne citent pas le domicile (ville de départ, retour d’un aller-retour, ville de la fiche). Un aller simple vers une ville où l’on reste garde cette ville. Aller-retour = ville où l’on fait demi-tour. La société de la fiche est facturée par défaut : l’unique société, ou la première s’il y en a plusieurs. societe_id en choisit une autre. particulier : true laisse le séjour particulier. Sans société sur la fiche, le séjour reste particulier. facturer_societe sans société est une erreur. Le statut est non_visible : le client ne le voit pas. Aucune invitation, aucun message. Renvoie l’identifiant et la référence TB-AAAA-NNNN.",
     input: {
       client_id: z.string().trim().describe("Identifiant du client"),
       titre: z
@@ -1749,7 +1749,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "cacher_carnet",
     write: true,
     description:
-      "Cache le carnet au client, l’inverse de publier_carnet. Le débit ouvert est retiré. confirmer true. Aucun message. Pour le montrer à nouveau : publier_carnet.",
+      "Passe le dossier en Non visible, l’inverse de publier_carnet. Le client ne le voit plus et le débit ouvert est retiré. confirmer true. Aucun message. Pour le montrer à nouveau : publier_carnet (Visible).",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),

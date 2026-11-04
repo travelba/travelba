@@ -1,3 +1,4 @@
+import { dossierFace, dossierFaceLabel } from "@/lib/crm/dossier-status";
 import { greetingGivenName } from "@/lib/crm/identity";
 import { stepChronoKey } from "@/lib/crm/item-order";
 import { countsAsCarnetCard, isActiveItem, type BookingStatus } from "@/lib/crm/types";
@@ -15,32 +16,25 @@ import { formatDateRangeShort } from "@/lib/crm/money";
 export type StaffStayVisibility = "preparing" | "shown" | "archived";
 
 const LABELS: Record<StaffStayVisibility, string> = {
-  preparing: "En préparation",
+  preparing: "Non visible",
   shown: "Visible",
   archived: "Archivée",
 };
 
-/** Un seul état : en préparation, visible, ou archivée. */
+/** Archive, sinon Non visible / Visible. L’annulation a son propre libellé. */
 export function staffStayVisibility(booking: {
   archived_at?: string | null;
   visible_to_client?: boolean | null;
+  status?: string | null;
 }): StaffStayVisibility {
   if (booking.archived_at) return "archived";
-  if (booking.visible_to_client) return "shown";
+  if (dossierFace(booking) === "visible") return "shown";
   return "preparing";
 }
 
-const REAL_STATUS: Record<string, string> = {
-  draft: "Brouillon",
-  quoted: "Devis",
-  confirmed: "Confirmé",
-  cancelled: "Annulé",
-};
-
-/** Statut enregistré du dossier. Distinct de En préparation / Visible / Archivée. */
+/** Libellé des trois états. Brouillon, devis et confirmé n’ont plus d’écran à eux. */
 export function staffRealStatusLabel(status: string | null | undefined) {
-  const key = (status || "").trim().toLowerCase();
-  return REAL_STATUS[key] || null;
+  return dossierFaceLabel({ status, visible_to_client: status === "confirmed" });
 }
 
 export function staffStayLabel(booking: {
@@ -48,9 +42,8 @@ export function staffStayLabel(booking: {
   visible_to_client?: boolean | null;
   status?: string | null;
 }) {
-  const visibility = LABELS[staffStayVisibility(booking)];
-  if (!booking.archived_at && booking.status === "draft") return `${visibility} · Brouillon`;
-  return visibility;
+  if (booking.archived_at) return LABELS.archived;
+  return dossierFaceLabel(booking);
 }
 
 /** Onglet que la pastille ouvre : À faire par défaut, Argent pour l’argent. */

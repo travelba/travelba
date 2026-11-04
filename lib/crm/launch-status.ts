@@ -28,7 +28,7 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
     carnetDescription = "Au moins un carnet est visible côté client.";
   } else if (snapshot.bookingCount > 0) {
     carnetDescription =
-      "Des dossiers existent En préparation. Montrer au client rend le carnet visible. Enregistrer ne le montre pas.";
+      "Des dossiers sont Non visible. Montrer au client les passe en Visible. Enregistrer ne les montre pas.";
   } else {
     carnetDescription =
       "Ouvrez un client, importez les PDF, Enregistrer, puis Montrer au client. Tant que le dossier n’est pas montré, le client n’a rien à ouvrir. Pas de séjour fictif.";

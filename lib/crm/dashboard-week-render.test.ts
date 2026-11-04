@@ -45,7 +45,7 @@ test("la semaine montre les trois groupes, le retour et le départ pas encore vi
     createElement(DashboardWeek, {
       groups: {
         travelling: [entry(booking({ id: "back", reference: "TB-RETOUR", start_date: "2026-10-01", end_date: "2026-10-07" }), { group: "travelling", mark: "retour" })],
-        soon: [entry(booking({ id: "soon", reference: "TB-DEMAIN", start_date: "2026-10-08", visible_to_client: false }), { unseen: true })],
+        soon: [entry(booking({ id: "soon", reference: "TB-DEMAIN", start_date: "2026-10-08", status: "draft", visible_to_client: false }), { unseen: true })],
         week: [],
       },
       names: new Map([["client-1", "Camille Martin"]]),
@@ -59,7 +59,7 @@ test("la semaine montre les trois groupes, le retour et le départ pas encore vi
   assert.match(html, /TB-RETOUR/);
   assert.match(html, /Retour/);
   assert.match(html, /TB-DEMAIN/);
-  assert.match(html, /En préparation/);
+  assert.match(html, /Non visible/);
   assert.match(html, /border-l-\[var\(--admin-gold\)\]/);
   assert.match(html, /Camille Martin/);
   assert.match(html, /Tout voir/);

@@ -521,7 +521,7 @@ export function BookingEditor({
   const [flash, setFlash] = useState<string | null>(null);
   const [invoicePiece, setInvoicePiece] = useState(mb3m.piece);
   const [invoiceNote, setInvoiceNote] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
+  const [confirm, setConfirm] = useState<null | "publish" | "unpublish" | "cancel">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [partyBusy, setPartyBusy] = useState(false);
   const [partyIssues, setPartyIssues] = useState<BookingIssue[]>([]);
@@ -764,6 +764,26 @@ export function BookingEditor({
     } finally {
       setBusy("idle");
     }
+  }
+
+  async function setFace(status: "draft" | "cancelled") {
+    setBusy("publish");
+    setFlash(null);
+    setIssues([]);
+    const res = await fetch(`/api/admin/bookings/${booking.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy("idle");
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      setFlash(null);
+      return;
+    }
+    setFlash(status === "cancelled" ? "Séjour annulé." : "Séjour rouvert. Le client ne le voit pas encore.");
+    router.refresh();
   }
 
   async function setPublished(visible: boolean) {
@@ -1095,6 +1115,15 @@ export function BookingEditor({
   // quelque chose est caché, sinon Cacher au client. Chacun passe par la confirmation.
   const primaryAction = booking.archived_at ? (
     <RestoreBookingButton bookingId={booking.id} />
+  ) : booking.status === "cancelled" ? (
+    <button
+      type="button"
+      disabled={busy !== "idle"}
+      onClick={() => void setFace("draft")}
+      className="admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50"
+    >
+      Rouvrir
+    </button>
   ) : !booking.visible_to_client || updatesPending ? (
     <button
       type="button"
@@ -1211,6 +1240,19 @@ export function BookingEditor({
             Voir comme le client
           </a>
         ) : null}
+        {booking.archived_at || booking.status === "cancelled" ? null : (
+          <button
+            type="button"
+            className={menuItem}
+            disabled={busy !== "idle"}
+            onClick={() => {
+              setMore(false);
+              setConfirm("cancel");
+            }}
+          >
+            Annuler le dossier
+          </button>
+        )}
       </div>
       {booking.archived_at ? null : (
         <ArchiveBookingButton
@@ -1452,9 +1494,13 @@ export function BookingEditor({
       {confirm ? (
         <section className="admin-af-card space-y-3 rounded-3xl border border-[var(--admin-gold)]/50 p-5">
           <p className="font-display text-lg font-bold text-[var(--admin-navy)]">
-            {confirm === "publish" ? "Montrer au client" : "Cacher au client"}
+            {confirm === "publish" ? "Montrer au client" : confirm === "cancel" ? "Annuler le dossier" : "Cacher au client"}
           </p>
-          {confirm === "publish" ? (
+          {confirm === "cancel" ? (
+            <p className="text-sm text-muted">
+              Le séjour passe en Annulé. Le client ne le voit plus. Rouvrir le remet en Non visible.
+            </p>
+          ) : confirm === "publish" ? (
             <>
               <p className="text-sm text-muted">Le client verra ces éléments.</p>
               <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
@@ -1486,13 +1532,17 @@ export function BookingEditor({
               disabled={busy !== "idle" || (confirm === "publish" && !publishReady)}
               title={confirm === "publish" && publishHold ? publishHold : undefined}
               onClick={() => {
-                const next = confirm === "publish";
+                const mode = confirm;
                 setConfirm(null);
-                void setPublished(next);
+                if (mode === "cancel") {
+                  void setFace("cancelled");
+                  return;
+                }
+                void setPublished(mode === "publish");
               }}
               className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
             >
-              {confirm === "publish" ? "Confirmer" : "Cacher"}
+              {confirm === "publish" ? "Confirmer" : confirm === "cancel" ? "Annuler le dossier" : "Cacher"}
             </button>
             <button
               type="button"

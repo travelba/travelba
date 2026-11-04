@@ -88,7 +88,7 @@ test("la formalité ouvre le séjour sans les prix, révèle cartes et pièces, 
   assert.equal(result.newlyPublished, true);
 
   const publish = writes.find((w) => w.table === "crm_bookings" && w.op === "update");
-  assert.deepEqual(publish?.payload, { visible_to_client: true, prices_visible: false });
+  assert.deepEqual(publish?.payload, { visible_to_client: true, prices_visible: false, status: "confirmed" });
 
   const revealItems = writes.find((w) => w.table === "crm_booking_items" && w.op === "update");
   assert.deepEqual(revealItems?.payload, { visible_to_client: true });
@@ -112,7 +112,7 @@ test("un séjour déjà montré avec ses prix les garde", async () => {
   const result = await openStayForVisa(client, shown);
   assert.equal(result.newlyPublished, false);
   const publish = writes.find((w) => w.table === "crm_bookings" && w.op === "update");
-  assert.deepEqual(publish?.payload, { visible_to_client: true, prices_visible: true });
+  assert.deepEqual(publish?.payload, { visible_to_client: true, prices_visible: true, status: "confirmed" });
 });
 
 test("sans carte, la formalité ne publie pas", async () => {
@@ -126,8 +126,8 @@ test("cacher le carnet masque aussi les prix ; montrer suit l’option", async (
   const shown = booking({ visible_to_client: true });
   const hide = fakeSupabase({ booking: { ...shown }, items: cards, documents });
   await setCarnetPublished(hide.client, "b1", false, { prices: true });
-  assert.deepEqual(hide.writes[0]?.payload, { visible_to_client: false, prices_visible: false });
+  assert.deepEqual(hide.writes[0]?.payload, { visible_to_client: false, prices_visible: false, status: "draft" });
   const show = fakeSupabase({ booking: { ...shown }, items: cards, documents });
   await setCarnetPublished(show.client, "b1", true);
-  assert.deepEqual(show.writes[0]?.payload, { visible_to_client: true, prices_visible: true });
+  assert.deepEqual(show.writes[0]?.payload, { visible_to_client: true, prices_visible: true, status: "confirmed" });
 });

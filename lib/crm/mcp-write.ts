@@ -45,7 +45,8 @@ import {
   type CrmRevolutTransaction,
   type CrmStripeTransaction,
 } from "@/lib/crm/types";
-import { staffRealStatusLabel, staffStayLabel } from "@/lib/crm/staff-stay";
+import { columnsForFace, dossierFace, dossierFaceFromWord, dossierFaceLabel } from "@/lib/crm/dossier-status";
+import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { attachOutgoing, TripCostError } from "@/lib/crm/trip-costs-db";
 import { patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { readExpensePricing } from "@/lib/crm/expense-pricing";
@@ -175,30 +176,10 @@ export function publishBlock(
   return { deja_montre: false as const };
 }
 
-const BOOKING_STATUS_WORDS: Record<string, BookingStatus> = {
-  draft: "draft",
-  brouillon: "draft",
-  quoted: "quoted",
-  devis: "quoted",
-  confirmed: "confirmed",
-  confirme: "confirmed",
-  confirmee: "confirmed",
-  cancelled: "cancelled",
-  canceled: "cancelled",
-  annule: "cancelled",
-  annulee: "cancelled",
-};
-
-/** brouillon, devis, confirme, annule — avec ou sans accent, comme le dossier agence. */
+/** non_visible, visible, annule — et les anciens mots brouillon, devis, confirme. */
 export function bookingStatusFromWord(value: unknown): BookingStatus | null {
-  if (typeof value !== "string") return null;
-  const key = value
-    .trim()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z]/g, "");
-  return BOOKING_STATUS_WORDS[key] || null;
+  const face = dossierFaceFromWord(value);
+  return face ? columnsForFace(face).status : null;
 }
 
 export function prepareBookingUpdate(input: Record<string, unknown>) {
@@ -226,12 +207,21 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     if (!title) throw new McpWriteError("Le titre est vide.");
     body.title = title;
   }
+  let face: ReturnType<typeof dossierFaceFromWord> = null;
   if ("statut" in input && input.statut != null && String(input.statut).trim() !== "") {
-    const status = bookingStatusFromWord(input.statut);
-    if (!status) throw new McpWriteError("Statut inconnu. brouillon, devis, confirme ou annule.");
-    body.status = status;
+    face = dossierFaceFromWord(input.statut);
+    if (!face) throw new McpWriteError("Statut inconnu. non_visible, visible ou annule.");
+    const columns = columnsForFace(face);
+    body.status = columns.status;
+    body.visible_to_client = columns.visible_to_client;
   }
   const patch = bookingMetaPatch(body);
+  if (face) {
+    const columns = columnsForFace(face);
+    patch.status = columns.status;
+    patch.visible_to_client = columns.visible_to_client;
+    if (face !== "visible") patch.prices_visible = false;
+  }
   let cover: { clear: true } | { photo: string } | { image: ProvidedCoverImage; credit: string } | null = null;
   if ("couverture" in input && input.couverture != null) {
     if (typeof input.couverture !== "string") throw new McpWriteError("Couverture invalide.");
@@ -828,14 +818,50 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     nextPatch.payer_kind = "company";
     nextPatch.billing_company_id = billing.societeId;
   }
-  const { data, error } = await db
-    .from("crm_bookings")
-    .update(nextPatch)
-    .eq("id", prev.id)
-    .select(MCP_BOOKING_COLUMNS)
-    .single();
-  if (error || !data) failDb(error, "Dossier non enregistré.");
-  const booking = data as CrmBooking;
+  const faceVisible = nextPatch.visible_to_client === true || nextPatch.status === "confirmed";
+  const faceHidden = nextPatch.status === "draft";
+  if ((faceVisible || faceHidden) && prev.archived_at) {
+    throw new McpWriteError("Réactivez le dossier avant de changer sa visibilité.");
+  }
+  if (faceVisible) {
+    const { data: itemRows, error: itemsError } = await db
+      .from("crm_booking_items")
+      .select("kind, lifecycle")
+      .eq("booking_id", prev.id);
+    if (itemsError) failDb(itemsError, "Dossier non enregistré.");
+    publishBlock({ archived_at: null, visible_to_client: false }, (itemRows || []) as { kind: string; lifecycle?: string | null }[]);
+    try {
+      await setCarnetPublished(db, prev.id, true);
+    } catch (err) {
+      throw new McpWriteError(err instanceof Error ? err.message : "Publication impossible.");
+    }
+    delete nextPatch.status;
+    delete nextPatch.visible_to_client;
+  } else if (faceHidden) {
+    try {
+      await setCarnetPublished(db, prev.id, false);
+    } catch (err) {
+      throw new McpWriteError(err instanceof Error ? err.message : "Le carnet n’a pas pu être caché.");
+    }
+    delete nextPatch.status;
+    delete nextPatch.visible_to_client;
+    delete nextPatch.prices_visible;
+  }
+  let booking = prev;
+  if (Object.keys(nextPatch).length) {
+    const { data, error } = await db
+      .from("crm_bookings")
+      .update(nextPatch)
+      .eq("id", prev.id)
+      .select(MCP_BOOKING_COLUMNS)
+      .single();
+    if (error || !data) failDb(error, "Dossier non enregistré.");
+    booking = data as CrmBooking;
+  } else {
+    const { data, error } = await db.from("crm_bookings").select(MCP_BOOKING_COLUMNS).eq("id", prev.id).maybeSingle();
+    if (error || !data) failDb(error, "Dossier non enregistré.");
+    booking = data as CrmBooking;
+  }
   try {
     await syncBookingTotalFromItems(db, booking.id);
     const { data: priced } = await db.from("crm_bookings").select(MCP_BOOKING_COLUMNS).eq("id", booking.id).maybeSingle();
@@ -918,8 +944,10 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     titre: row.title,
     couverture: row.cover_image_path ? null : shownPhoto,
     credit: row.cover_credit,
-    statut: staffStayLabel(row),
-    statut_reel: staffRealStatusLabel(row.status),
+    statut: dossierFace(row),
+    statut_libelle: dossierFaceLabel(row),
+    statut_reel: dossierFace(row),
+    etat: staffStayLabel(row),
     date_depart: row.start_date,
     date_retour: row.end_date,
     notes_client: row.notes_client,

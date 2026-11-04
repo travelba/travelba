@@ -1,5 +1,6 @@
 import "server-only";
 
+import { hotelCardBookingStatus } from "./dossier-status";
 import { pliantCardCaption, pliantCardNomination, pliantDesignation } from "./eta-il-fee";
 import { gmailConfigured, searchInbox } from "./gmail";
 import { hotelContact, leHotelIdFromItem } from "./hotel-contact";
@@ -655,7 +656,7 @@ export async function runHotelArrivals(admin: Admin, deps: ArrivalDeps = {}, onl
   const arrivals = new Map(open.map((row) => [row.booking_item_id, row]));
   for (const item of items.values()) {
     const booking = embeddedBooking(item);
-    if (!booking || booking.status !== "confirmed" || !stayDatesOpen(booking.end_date, parisToday)) continue;
+    if (!booking || hotelCardBookingStatus(booking) !== "confirmed" || !stayDatesOpen(booking.end_date, parisToday)) continue;
     if (arrivals.has(item.id)) continue;
     const channel = channelOf(item);
     const { data: inserted } = await admin
@@ -785,7 +786,7 @@ async function stepArrival(input: {
     admin: input.admin,
     row: input.arrival,
     item: input.item,
-    bookingStatus: input.booking.status,
+    bookingStatus: hotelCardBookingStatus(input.booking),
     bookingEndDate: input.booking.end_date || null,
     bookingCurrency: input.booking.currency,
     travelers: input.travelers,
@@ -848,7 +849,7 @@ async function stepArrival(input: {
       relanceCount: row.relance_count || 0,
       lastRelanceAtMs: row.last_relance_at ? Date.parse(row.last_relance_at) : null,
       paymentUrl: row.payment_url,
-      bookingStatus: input.booking.status,
+      bookingStatus: hotelCardBookingStatus(input.booking),
       bookingEndDate: input.booking.end_date || null,
       cardId: row.pliant_card_id,
       cardClosed: Boolean(row.card_closed_at),

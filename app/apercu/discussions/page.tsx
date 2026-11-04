@@ -148,7 +148,7 @@ export default async function DiscussionsPreviewPage({
             <main className="px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:px-8 lg:py-8">
               <p className="text-xs uppercase tracking-[0.14em] text-[#8a7350]">Réservations</p>
               <h1 className="mt-1 font-display text-3xl text-[#0B192C]">Tel Aviv et les Seychelles</h1>
-              <p className="mt-2 text-sm text-[#5c5346]">TB-EXEMPLE · 24 oct. — 4 nov. 2026 · En préparation</p>
+              <p className="mt-2 text-sm text-[#5c5346]">TB-EXEMPLE · 24 oct. — 4 nov. 2026 · Non visible</p>
               <div className="mt-6 grid gap-3">
                 <article className="rounded-3xl border border-[var(--border)] bg-white p-4">
                   <p className="text-sm font-medium">Paris → Tel Aviv</p>

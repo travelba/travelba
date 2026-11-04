@@ -59,6 +59,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const rateError = bookingMetaError(body);
   if (rateError) return jsonError(rateError);
   const patch = bookingMetaPatch(body);
+  if (patch.status === "quoted") patch.status = "draft";
+  if (patch.status === "cancelled" || patch.status === "draft") {
+    patch.visible_to_client = false;
+    patch.prices_visible = false;
+  } else if (patch.status === "confirmed") {
+    patch.visible_to_client = true;
+    body.visible_to_client = true;
+  }
   if ("title" in patch && !patch.title) return jsonError("Le titre du voyage est obligatoire.");
 
   if ("customer_id" in patch && !("billing_customer_id" in patch)) {

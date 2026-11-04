@@ -84,12 +84,20 @@ export function joinOrFilters(...parts: string[]) {
 }
 
 /** `a-venir` : départ aujourd’hui ou plus tard, ni archivé ni annulé (liens « départs » du tableau de bord). */
-export const BOOKING_STATE_FILTERS = ["a-venir", "preparation", "montre", "archive"] as const;
+export const BOOKING_STATE_FILTERS = ["a-venir", "preparation", "montre", "annule", "archive"] as const;
 export type BookingStateFilter = (typeof BOOKING_STATE_FILTERS)[number];
 
+const BOOKING_STATE_ALIASES: Record<string, BookingStateFilter> = {
+  non_visible: "preparation",
+  nonvisible: "preparation",
+  visible: "montre",
+  annule: "annule",
+};
+
 export function parseBookingState(value: SearchParamValue): BookingStateFilter | null {
-  const raw = firstParam(value);
-  return (BOOKING_STATE_FILTERS as readonly string[]).includes(raw || "") ? (raw as BookingStateFilter) : null;
+  const raw = firstParam(value) || "";
+  if ((BOOKING_STATE_FILTERS as readonly string[]).includes(raw)) return raw as BookingStateFilter;
+  return BOOKING_STATE_ALIASES[raw] || null;
 }
 
 export function parseBookingStatus(value: SearchParamValue): BookingStatus | null {

@@ -66,6 +66,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261029140000_le_booked_at.sql` | `crm_le_bookings.booked_at` : date de réservation Little Emperors. Additive. À jouer à la main. Les lectures MCP réessaient sans la colonne (42703) |
 | `20261103070000_log_retention.sql` | purge pg_cron : audit 12 mois, corps des e-mails terminés 6 mois (ligne gardée), activité 12 mois, suivi Hôtels 24 mois. Pas de donnée métier. À jouer à la main |
 | `20261103071000_hotels_index_slim.sql` | retire les GIN jsonb de `hotels` jamais lus, ajoute les filtres ville / nom / fil hôtel. Pas de déplacement de colonne. À jouer à la main |
+| `20261104140000_dossier_trois_statuts.sql` | aligne `status` et `visible_to_client` : Visible, Non visible, Annulé. N’écrit pas les paiements. L’archive reste. À jouer à la main |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

@@ -620,7 +620,16 @@ export async function persistNewBookingFromExtract(opts: {
   const stayDates = stayDatesFromExtract(extract);
   const title = dossierTitleFromImport(extract);
   const totalAmount = sellingTotalFromExtract(extract);
-  const status = bookingStatusFromExtract(extract, opts.status);
+  const extracted = bookingStatusFromExtract(extract, opts.status);
+  // Une confirmation PDF ne publie pas le dossier. Visible reste un geste à part.
+  // Seul un appel qui demande déjà Visible (Little Emperors) pose confirmé et montré.
+  const status = opts.visibleToClient
+    ? extracted === "cancelled"
+      ? "cancelled"
+      : "confirmed"
+    : extracted === "cancelled"
+      ? "cancelled"
+      : "draft";
   const notes = bookingNotesFromImport(
     extract,
     extract.document_status === "quote"
@@ -646,7 +655,7 @@ export async function persistNewBookingFromExtract(opts: {
       total_amount: totalAmount,
       notes_client: notes.notes_client,
       notes_internal: notes.notes_internal,
-      visible_to_client: false,
+      visible_to_client: status === "confirmed",
     })
     .select("*")
     .single();
@@ -705,7 +714,7 @@ export async function applyExtractToBooking(opts: {
   /** Le montant du mail ne remplace pas le prix vendu. */
   keepSellingPrice?: boolean;
   replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
-  /** Un dossier annulé redevient confirmé, sans être montré. */
+  /** Un dossier annulé revient Non visible : le client ne le voit pas tant qu’on ne le montre pas. */
   reopenIfCancelled?: boolean;
 }) {
   const admin = createServiceClient();
@@ -730,10 +739,10 @@ export async function applyExtractToBooking(opts: {
   if (opts.reopenIfCancelled && booking.status === "cancelled") {
     const { error } = await admin
       .from("crm_bookings")
-      .update({ status: "confirmed", visible_to_client: false })
+      .update({ status: "draft", visible_to_client: false })
       .eq("id", opts.bookingId);
     if (error) throw dbFailure(error, "Séjour non rouvert.");
-    booking.status = "confirmed";
+    booking.status = "draft";
     booking.visible_to_client = false;
   }
   const routed = opts.importTasks
@@ -787,9 +796,6 @@ export async function applyExtractToBooking(opts: {
     const fromExtract = stayDatesFromExtract(extract);
     if (!booking.start_date && fromExtract.start) patch.start_date = fromExtract.start;
     if (!booking.end_date && fromExtract.end) patch.end_date = fromExtract.end;
-  }
-  if (booking.status === "draft" && extract.document_status === "confirmed") {
-    patch.status = "confirmed";
   }
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);

@@ -53,7 +53,7 @@ describe("revolut debit match", () => {
       archived_at: null,
     });
     assert.match(label, /^TB-2026-0004 · Rome · /);
-    assert.match(label, /En préparation$/);
+    assert.match(label, /Non visible$/);
   });
 
   it("rattache la sortie sans écrire au grand livre", async () => {

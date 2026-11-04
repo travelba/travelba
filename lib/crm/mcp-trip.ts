@@ -32,7 +32,8 @@ import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
 import { addedTravelerNames, holderMatchesAddedTraveler, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
-import { staffStayLabel, withoutHomeCity } from "@/lib/crm/staff-stay";
+import { dossierFace } from "@/lib/crm/dossier-status";
+import { withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { cloneTravelDocument, insertTravelDocument } from "@/lib/crm/travel-document-write";
@@ -694,7 +695,7 @@ export async function createDossier(input: Record<string, unknown>, admin?: Admi
     return {
       id: created.booking.id,
       reference: created.booking.reference,
-      statut: staffStayLabel(created.booking),
+      statut: dossierFace(created.booking),
       visible: false,
       notifie: false,
       paye_par: created.booking.payer_kind === "company" ? "société" : "particulier",
