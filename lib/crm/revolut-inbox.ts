@@ -1,3 +1,20 @@
+import {
+  classifyRevolutCredit,
+  revolutCreditInboxStatus,
+  type RevolutCreditCategory,
+} from "./revolut-classify";
+
+type InboxStripeLine = {
+  kind?: string | null;
+  name?: string | null;
+  email?: string | null;
+  dossier_ref?: string | null;
+  payment_intent_id?: string | null;
+  fee?: number | null;
+  net?: number | null;
+  booking_id?: string | null;
+};
+
 /** Un crédit client se rapproche au grand livre. Une sortie se rattache à un dossier, sans crédit. */
 export function isRevolutCredit(direction: string | null | undefined) {
   return direction !== "debit";
@@ -38,6 +55,14 @@ export type RevolutSenderSource = {
   counterparty_name?: string | null;
   reference?: string | null;
   raw?: unknown;
+  category?: string | null;
+  stripe_line?: InboxStripeLine | null;
+  parent_id?: string | null;
+  status?: string | null;
+  id?: string;
+  booked_at?: string | null;
+  amount?: number | string | null;
+  currency?: string | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -95,13 +120,86 @@ export function revolutDesignation(row: Pick<RevolutSenderSource, "reference">) 
   return (row.reference || "").trim();
 }
 
+function stripePaymentDesignation(line: InboxStripeLine | null | undefined) {
+  if (!line || line.kind === "cache") return "";
+  const parts = [
+    (line.email || "").trim(),
+    (line.dossier_ref || "").trim(),
+    (line.payment_intent_id || "").trim(),
+  ].filter(Boolean);
+  if (line.fee) parts.push(`frais ${line.fee.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € à la charge de l’agence`);
+  const net = line.net;
+  if (line.kind === "paiement" && typeof net === "number" && Number.isFinite(net)) {
+    parts.push(`net ${net.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`);
+  }
+  return parts.join(" · ");
+}
+
 export function revolutInboxCopy(row: RevolutSenderSource) {
+  const category =
+    row.category ||
+    (row.raw || row.counterparty_name || row.reference
+      ? classifyRevolutCredit({
+          type: typeof (row.raw as { type?: string } | null)?.type === "string" ? (row.raw as { type: string }).type : null,
+          reference: row.reference,
+          description:
+            typeof (row.raw as { legs?: Array<{ description?: string }> } | null)?.legs?.[0]?.description === "string"
+              ? (row.raw as { legs: Array<{ description?: string }> }).legs[0].description
+              : null,
+          counterpartyName: row.counterparty_name,
+        }).category
+      : null);
+  if (category === "interet") return { sender: "Intérêts Revolut", designation: "" };
+  if (category === "interne") return { sender: "Virement interne", designation: "" };
+  if (category === "frais") {
+    if (row.parent_id || row.stripe_line?.kind === "frais") {
+      return { sender: "Frais Stripe", designation: "Frais d’agence, non crédités au client" };
+    }
+    return { sender: "Frais Revolut", designation: "" };
+  }
+  if (category === "stripe") return { sender: "Stripe", designation: "Versement en attente du détail" };
+  if (category === "stripe_paiement") {
+    const name = (row.stripe_line?.name || "").trim() || revolutSenderName(row) || "Client Stripe";
+    const detail = stripePaymentDesignation(row.stripe_line);
+    const ref = revolutDesignation(row);
+    return {
+      sender: `Stripe · ${name}`,
+      designation: [detail, ref && !detail.includes(ref) ? ref : ""].filter(Boolean).join(" · "),
+    };
+  }
+  if (category === "remboursement") {
+    const sender = revolutSenderName(row) || "Remboursement";
+    return { sender, designation: revolutDesignation(row) };
+  }
   const sender = revolutSenderName(row) || "Expéditeur inconnu";
   const designation = revolutDesignation(row);
   return {
     sender,
     designation: designation && !sameLabel(designation, sender) ? designation : "",
   };
+}
+
+/** File « à encaisser » : les lignes d’un versement ouvert restent groupées, le bloc entier non. */
+export function revolutInboxVisible(
+  row: RevolutSenderSource,
+  rows: RevolutSenderSource[],
+  scope: "unmatched" | "all"
+) {
+  const category = row.category || null;
+  const children = rows.some((other) => other.parent_id && row.id && other.parent_id === row.id);
+  if (category === "stripe" && !row.parent_id && children) return false;
+  if (scope === "all") return true;
+  if (row.parent_id && (category === "stripe_paiement" || category === "frais" || category === "remboursement")) {
+    return rows.some(
+      (other) =>
+        other.parent_id === row.parent_id && other.category === "stripe_paiement" && other.status === "unmatched"
+    );
+  }
+  if (category === "interet" || category === "interne" || category === "remboursement" || category === "frais") {
+    return false;
+  }
+  if (category === "stripe") return row.status === "unmatched";
+  return row.status === "unmatched";
 }
 
 /** Bénéficiaire d’une sortie : commerçant, contrepartie, ou « To … » dans la description. */
@@ -176,6 +274,8 @@ export type RevolutInboxDraft = {
   direction: "credit" | "debit";
   /** Une sortie neuve attend le clic. Refuser la pose ensuite en ignored. */
   status: "unmatched" | "ignored";
+  /** Null pour une sortie. Un crédit non client est classé tout de suite. */
+  category: RevolutCreditCategory | null;
   amount: number;
   currency: string;
   counterparty_name: string | null;
@@ -190,11 +290,21 @@ export function revolutInboxDraft(tx: RevolutIngestInput): RevolutInboxDraft | n
   if (!tx.id || !leg) return null;
   const signed = Number(leg.amount || 0);
   const reference = (tx.reference || "").trim();
-  const credit = shouldIngestRevolutForRapprochement({
+  const klass = classifyRevolutCredit({
     type: tx.type,
-    signedAmount: signed,
     reference,
+    description: leg.description,
+    counterpartyName: leg.counterparty?.name,
+    legs: tx.legs,
   });
+  const stripeCredit = klass.category === "stripe" && signed > 0;
+  const credit =
+    stripeCredit ||
+    shouldIngestRevolutForRapprochement({
+      type: tx.type,
+      signedAmount: signed,
+      reference,
+    });
   const debitLeg = credit ? null : (tx.legs || []).find((item) => Number(item.amount) < 0) || null;
   const movement = credit ? leg : debitLeg;
   if (!movement) return null;
@@ -214,7 +324,8 @@ export function revolutInboxDraft(tx: RevolutIngestInput): RevolutInboxDraft | n
       });
   return {
     direction: credit ? "credit" : "debit",
-    status: "unmatched",
+    status: credit ? revolutCreditInboxStatus(klass.category) : "unmatched",
+    category: credit ? klass.category : null,
     amount: Math.abs(movementSigned),
     currency: movement.currency || "EUR",
     counterparty_name: counterpartyName,
@@ -288,6 +399,7 @@ export function revolutInboxMatches(
     counterparty_iban: string | null;
     reference: string | null;
     booked_at: string | null;
+    category?: string | null;
   },
   update: {
     amount: number;
@@ -297,9 +409,11 @@ export function revolutInboxMatches(
     counterparty_iban: string | null;
     reference: string | null;
     booked_at: string | null;
+    category?: string | null;
   }
 ) {
   const text = (value: string | null | undefined) => value || null;
+  const categoryOk = update.category == null || (existing.category || null) === update.category;
   return (
     Number(existing.amount) === update.amount &&
     (existing.currency || "EUR") === update.currency &&
@@ -307,7 +421,8 @@ export function revolutInboxMatches(
     text(existing.counterparty_name) === text(update.counterparty_name) &&
     text(existing.counterparty_iban) === text(update.counterparty_iban) &&
     text(existing.reference) === text(update.reference) &&
-    sameInstant(existing.booked_at, update.booked_at)
+    sameInstant(existing.booked_at, update.booked_at) &&
+    categoryOk
   );
 }
 
@@ -321,6 +436,7 @@ export function revolutSyncPayload(txId: string, draft: RevolutInboxDraft) {
     counterparty_iban: draft.counterparty_iban,
     reference: draft.reference,
     booked_at: draft.booked_at,
+    category: draft.category,
   };
   return {
     insert: { revolut_transaction_id: txId, ...fields, status: draft.status },

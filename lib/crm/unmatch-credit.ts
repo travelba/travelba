@@ -363,6 +363,47 @@ async function invoiceLockFor(admin: UnmatchAdmin, transactionId: string, now: n
   );
 }
 
+/** Rouvre la ligne Stripe découpée et la file Stripe qui pointaient le même crédit. */
+async function releaseStripeSplitLines(admin: UnmatchAdmin, transactionId: string) {
+  try {
+    const loaded = await many(
+      admin
+        .from("crm_revolut_transactions")
+        .select("id, stripe_line")
+        .eq("matched_transaction_id", transactionId)
+        .eq("category", "stripe_paiement")
+    );
+    if (!loaded.error) {
+      for (const row of loaded.rows) {
+        const current = row.stripe_line;
+        const line =
+          current && typeof current === "object"
+            ? { ...(current as Record<string, unknown>), deja_encaisse: false }
+            : current;
+        await admin
+          .from("crm_revolut_transactions")
+          .update({
+            status: "unmatched",
+            matched_customer_id: null,
+            matched_transaction_id: null,
+            stripe_line: line,
+          })
+          .eq("id", row.id);
+      }
+    }
+    await admin
+      .from("crm_stripe_transactions")
+      .update({
+        status: "unmatched",
+        matched_customer_id: null,
+        matched_transaction_id: null,
+      })
+      .eq("matched_transaction_id", transactionId);
+  } catch (err) {
+    console.error("[unmatch] ligne stripe", err instanceof Error ? err.message : "échec");
+  }
+}
+
 async function releaseInbox(admin: UnmatchAdmin, inbox: InboxRow) {
   const { error } = await admin
     .from(inbox.table)
@@ -445,6 +486,7 @@ export async function unmatchClientCredit(
       if (!released) return { ok: false, error: "Le crédit est annulé, mais le paiement n’est pas revenu dans la file. Réessayez." };
       inbox = { ...inbox, status: "unmatched", matched_customer_id: null, matched_transaction_id: null };
       const name = await customerName(admin, credit.customer_id);
+      await releaseStripeSplitLines(admin, credit.id);
       return okResult(credit, inbox, name, motif, true);
     }
     return { ok: false, error: ALREADY };
@@ -482,6 +524,7 @@ export async function unmatchClientCredit(
         }
       }
       const name = await customerName(admin, fresh.customer_id);
+      await releaseStripeSplitLines(admin, fresh.id);
       return okResult(fresh, inbox && inboxBelongs(inbox, fresh) ? { ...inbox, status: "unmatched" } : inbox, name, motif, true);
     }
     return { ok: false, error: "Annulation impossible." };
@@ -496,6 +539,7 @@ export async function unmatchClientCredit(
   }
 
   const name = await customerName(admin, credit.customer_id);
+  await releaseStripeSplitLines(admin, credit.id);
   const result = okResult({ ...credit, external_id: nextExternal, status: "void" }, inbox, name, motif, false);
   const actor = deps?.actor ?? { staffId: null, label: "agence" };
   const money = formatMoney(result.montant, result.devise);

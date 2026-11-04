@@ -5,6 +5,7 @@ import {
   revolutDebitLine,
   revolutInboxCopy,
   revolutInboxDraft,
+  revolutInboxVisible,
   revolutSyncPayload,
   senderFromRevolutPayload,
   shouldIngestRevolutDebit,
@@ -161,5 +162,35 @@ describe("revolut-inbox", () => {
     });
     assert.equal(copy.sender, "Boukris SAS");
     assert.equal(copy.designation, "Acompte stage");
+  });
+
+  it("sort les intérêts de la file et garde les lignes d’un versement Stripe", () => {
+    const interest = revolutInboxDraft({
+      id: "tx-int",
+      type: "interest",
+      state: "completed",
+      legs: [{ amount: 2.13, currency: "EUR", description: "Interest earned - treso" }],
+    });
+    assert.equal(interest?.category, "interet");
+    assert.equal(interest?.status, "ignored");
+    assert.equal(revolutInboxCopy({ category: "interet" }).sender, "Intérêts Revolut");
+    const parent = { id: "p", category: "stripe", status: "ignored", parent_id: null };
+    const pay = { id: "a", category: "stripe_paiement", status: "unmatched", parent_id: "p" };
+    const fee = { id: "f", category: "frais", status: "ignored", parent_id: "p" };
+    const rows = [parent, pay, fee];
+    assert.equal(revolutInboxVisible(parent, rows, "unmatched"), false);
+    assert.equal(revolutInboxVisible(pay, rows, "unmatched"), true);
+    assert.equal(revolutInboxVisible(fee, rows, "unmatched"), true);
+    assert.equal(revolutInboxVisible({ id: "i", category: "interet", status: "ignored" }, rows, "unmatched"), false);
+    const stripe = revolutInboxDraft({
+      id: "tx-stripe",
+      type: "topup",
+      state: "completed",
+      reference: "ENCAISSEMENT CLIENT",
+      legs: [{ amount: 1053.49, currency: "EUR", description: "Payment from Stripe" }],
+    });
+    assert.equal(stripe?.category, "stripe");
+    assert.equal(stripe?.status, "unmatched");
+    assert.equal(stripe?.counterparty_name, "Stripe");
   });
 });

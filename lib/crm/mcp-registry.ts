@@ -421,7 +421,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "revolut_en_attente",
     description:
-      "Virements Revolut reçus, pas encore rapprochés. L’identifiant sert à crediter_revolut, avec le client désigné. page et limite parcourent toute la file.",
+      "Virements Revolut à encaisser. categorie : client, stripe_paiement, frais, remboursement. Un versement Stripe est découpé : une ligne par paiement (brut, frais, net, client, e-mail, dossier) et une ligne de frais d’agence non créditable. crediter est faux pour les frais, les intérêts et un paiement déjà encaissé via Stripe. L’identifiant sert à crediter_revolut ou refuser_encaissement. page et limite parcourent la file.",
     input: { page: listPage, limite: listLimit },
     run: (args) => readRevolutEnAttente(pageOf(args)),
   },
@@ -538,7 +538,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "crediter_revolut",
     write: true,
     description:
-      "Crédite un virement Revolut en attente au client désigné. Les deux identifiants sont obligatoires. Ne choisit pas un client à la place de l’agence.",
+      "Crédite un virement Revolut, ou une ligne d’un versement Stripe, au client désigné. Le montant crédité est le brut payé. Les frais Stripe restent à l’agence. Intérêts, virement interne, remboursement et frais ne se créditent pas. Un paiement déjà au grand livre via Stripe n’est pas crédité une seconde fois. Les deux identifiants sont obligatoires. Ne choisit pas un client à la place de l’agence.",
     input: {
       virement_id: z.string().trim().describe("Identifiant du virement Revolut en attente"),
       client_id: z.string().trim().describe("Identifiant du client à créditer"),
@@ -1920,7 +1920,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     destructive: true,
     description:
-      "Refuse un crédit Revolut ou Stripe encore dans la file, comme Refuser. source revolut ou stripe, id du mouvement. confirmer true. Un mouvement déjà rapproché est refusé : remettre_non_rattache le remet en file.",
+      "Refuse un crédit Revolut, une ligne d’un versement Stripe, ou un paiement Stripe encore dans la file, comme Refuser. source revolut ou stripe, id du mouvement. confirmer true. Les frais Stripe et les intérêts ne se créditent pas. Un mouvement déjà rapproché est refusé : remettre_non_rattache le remet en file.",
     input: {
       source: z.enum(["revolut", "stripe"]),
       id: z.string().trim().max(80).describe("Identifiant du mouvement"),

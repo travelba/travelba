@@ -12,7 +12,7 @@ export const MCP_EMAIL_COLUMNS =
   "id, gmail_message_id, gmail_thread_id, label, from_email, subject, received_at, body_text, body_html, status, extract, candidates, attachments, warnings, suggested_customer_id, suggested_booking_id, created_booking_id, error, ignore_reason, crm_reply, grouped_into, confirmation_refs, match_tier, field_confidence, field_quotes, created_at, updated_at";
 
 export const MCP_REVOLUT_COLUMNS =
-  "id, revolut_transaction_id, amount, currency, direction, counterparty_name, counterparty_iban, reference, booked_at, raw, matched_customer_id, matched_transaction_id, matched_booking_id, settled_at, status, created_at, updated_at";
+  "id, revolut_transaction_id, amount, currency, direction, counterparty_name, counterparty_iban, reference, booked_at, raw, matched_customer_id, matched_transaction_id, matched_booking_id, settled_at, status, category, parent_id, stripe_line, created_at, updated_at";
 
 export const MCP_STRIPE_COLUMNS =
   "id, stripe_payment_intent_id, amount, currency, direction, payer_name, payer_email, reference, method, last4, booked_at, raw, matched_customer_id, matched_transaction_id, status, created_at, updated_at";

@@ -5,7 +5,8 @@ import { argentHref } from "@/lib/crm/argent-tabs";
 import type { CrmRevolutTransaction, CrmStripeTransaction } from "@/lib/crm/types";
 import { companiesByCustomer, customerPickLabel, type PickableCustomer } from "@/lib/crm/customer-search";
 import { wireAccountChoices } from "@/lib/crm/funding-wallet";
-import { revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
+import { reclassifyPendingRevolutCredits, revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
+import { splitPendingStripePayouts } from "@/lib/crm/stripe-payout-sync";
 import {
   REVOLUT_MATCH_SELECT,
   scoreRevolutMatches,
@@ -59,6 +60,8 @@ export async function EncaisserPanel({ clientId = null, connectedParam = null, e
   let stripeRows: CrmStripeTransaction[] = [];
   try {
     await repairRevolutDebitQueue(admin);
+    await reclassifyPendingRevolutCredits(admin);
+    await splitPendingStripePayouts(admin);
     const [credits, payments] = await Promise.all([
       admin
         .from("crm_revolut_transactions")
@@ -83,6 +86,15 @@ export async function EncaisserPanel({ clientId = null, connectedParam = null, e
   const revolutSuggestions: Record<string, RevolutMatchCandidate[]> = {};
   for (const row of revolutRows) {
     if (row.status !== "unmatched") continue;
+    if (row.category && row.category !== "client" && row.category !== "stripe_paiement") continue;
+    const suggested = row.category === "stripe_paiement" ? row.stripe_line?.customer_id : "";
+    const person = suggested ? index.find((item) => item.id === suggested) : undefined;
+    if (person) {
+      revolutSuggestions[row.id] = [
+        { customer_id: person.id, score: 100, reason: "stripe", label: customerPickLabel(person) },
+      ];
+      continue;
+    }
     revolutSuggestions[row.id] = scoreRevolutMatches(row, index).candidates;
   }
   const stripeSuggestions: Record<string, StripeMatchCandidate[]> = {};

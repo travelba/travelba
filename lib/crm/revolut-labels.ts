@@ -9,6 +9,23 @@ export function revolutStatusLabel(status: string) {
   return REVOLUT_STATUS_LABELS[status] ?? status;
 }
 
+/** Pastille de la file : un intérêt n’est pas un refus, un paiement Stripe déjà au livre non plus. */
+export function revolutInboxStatus(row: {
+  status: string;
+  category?: string | null;
+  stripe_line?: { deja_encaisse?: boolean } | null;
+}): { label: string; tone: "amber" | "gold" | "navy" } {
+  if (row.category === "interet") return { label: "Hors encaissement", tone: "navy" };
+  if (row.category === "interne") return { label: "Virement interne", tone: "navy" };
+  if (row.category === "frais") return { label: "Frais d’agence", tone: "navy" };
+  if (row.category === "remboursement") return { label: "Remboursement", tone: "navy" };
+  if (row.category === "stripe") return { label: "Versement Stripe", tone: "navy" };
+  if (row.category === "stripe_paiement" && (row.status === "matched" || row.stripe_line?.deja_encaisse)) {
+    return { label: "Virement Stripe (déjà encaissé via Stripe)", tone: "gold" };
+  }
+  return { label: revolutStatusLabel(row.status), tone: revolutStatusTone(row.status) };
+}
+
 export function revolutStatusTone(status: string): "amber" | "gold" | "navy" {
   if (status === "unmatched") return "amber";
   if (status === "matched") return "gold";
