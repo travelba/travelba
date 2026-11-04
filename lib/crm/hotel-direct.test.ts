@@ -9,6 +9,8 @@ import {
   cancelOffer,
   clientStayLabel,
   directCardCeilingCents,
+  LE_PAY_COPY,
+  openLeConfirmed,
   openStay,
   PAY_COPY,
   readHotelReply,
@@ -250,8 +252,55 @@ test("le journal retire un numéro, le port membre ne crée rien, le message cli
   const journey = readFileSync(join(import.meta.dirname, "../../components/account/HotelJourney.tsx"), "utf8");
   assert.equal(PAY_COPY.cardTitle, "Payer par carte");
   assert.equal(PAY_COPY.agencyTitle, "Payé par l’agence");
+  assert.equal(LE_PAY_COPY.clientTitle, "Le client paie lui-même");
+  assert.equal(LE_PAY_COPY.agencyTitle, "Payé par l’agence");
+  assert.doesNotMatch(`${LE_PAY_COPY.client} ${LE_PAY_COPY.agency}`, /Little Emperors|commission/i);
   assert.match(journey, /PAY_COPY\.cardTitle/);
-  assert.match(journey, /PAY_COPY\.agencyTitle/);
+  assert.match(journey, /LE_PAY_COPY\.clientTitle/);
+  const clientStay = openLeConfirmed({
+    payMethod: "card",
+    sellCents: 10000,
+    currency: "EUR",
+    confirmation: "HTL1",
+    leBookingId: 4,
+    freeCancellation: true,
+    cancelDeadline: "2026-11-01T16:00:00",
+    conditions: "",
+    guests: ["Camille Martin"],
+    arrival: null,
+    now: NOW,
+    pliantCardId: null,
+  });
+  assert.equal(clientStay.stay.stripe, "none");
+  assert.equal(clientStay.effects.some((effect) => effect.type === "capture" || effect.type === "debit"), false);
+  const agencyStay = openLeConfirmed({
+    payMethod: "agency",
+    sellCents: 10000,
+    currency: "EUR",
+    confirmation: "HTL1",
+    leBookingId: 4,
+    freeCancellation: true,
+    cancelDeadline: "2026-11-01T16:00:00",
+    conditions: "",
+    guests: ["Camille Martin"],
+    arrival: null,
+    now: NOW,
+    pliantCardId: "card_1",
+  });
+  assert.equal(agencyStay.effects.some((effect) => effect.type === "debit"), true);
+  assert.equal(agencyStay.effects.some((effect) => effect.type === "capture"), false);
+  const cancelled = applyStay(agencyStay.stay, { type: "supplier_cancelled" }, NOW);
+  assert.ok(!("error" in cancelled));
+  if (!("error" in cancelled)) {
+    assert.equal(cancelled.stay.pliant, "locked");
+    assert.equal(cancelled.effects.some((effect) => effect.type === "refund_client"), false);
+    assert.equal(cancelled.effects.some((effect) => effect.type === "void_debit"), true);
+  }
+  const clientCancel = applyStay(clientStay.stay, { type: "supplier_cancelled" }, NOW);
+  assert.ok(!("error" in clientCancel));
+  if (!("error" in clientCancel)) {
+    assert.equal(clientCancel.effects.some((effect) => effect.type === "refund_client" || effect.type === "lock_card"), false);
+  }
   assert.doesNotMatch(journey, /hotel-direct-mail/);
   assert.match(readFileSync(join(import.meta.dirname, "../../app/apercu/membres/layout.tsx"), "utf8"), /exampleSessionEnabled/);
 });

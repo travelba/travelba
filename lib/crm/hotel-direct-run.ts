@@ -18,12 +18,20 @@ import {
 import { clientConfirmationDraft, hotelRequestLetter, outboundHotelRecipient, HOTEL_DIRECT_FROM } from "@/lib/crm/hotel-direct-mail";
 import { leRoomPartyOk, roomsFromStored } from "@/lib/crm/hotel-search";
 import { guestNameOk } from "@/lib/crm/hotel-journey";
-import { adoptLeBooking, claimLeBooking, leDeadlineParisLabel, pricesDiffer } from "@/lib/crm/le-self-book";
+import {
+  adoptLeBooking,
+  claimLeBooking,
+  clientPaymentTerms,
+  leCardWidgetUrl,
+  leDeadlineParisLabel,
+  pricesDiffer,
+} from "@/lib/crm/le-self-book";
 import { refreshLeOfferQuote, submitLeBooking, type LeFreshQuote } from "@/lib/crm/le-direct-book";
 import {
   cancelLittleEmperorsBooking,
   listLittleEmperorsBookings,
   littleEmperorsConfigured,
+  littleEmperorsOrigin,
   type LeBooking,
 } from "@/lib/crm/little-emperors";
 import { portForBooking, type BookQuote } from "@/lib/crm/hotel-supplier";
@@ -138,6 +146,15 @@ function clientConditions(stay: DirectStay) {
 
 function priceChangedMessage(cents: number, currency: string) {
   return `Le tarif a changé : ${formatMoney(centsToAmount(cents), currency)}. Confirmez pour continuer.`;
+}
+
+function termsFor(quote: LeFreshQuote) {
+  return clientPaymentTerms({
+    paymentDescription: quote.paymentDescription,
+    requiresCvc: quote.requiresCvc,
+    deadlineLabel: leDeadlineParisLabel(quote.deadline),
+    free: quote.free,
+  });
 }
 
 async function issueStayCard(input: {
@@ -479,11 +496,11 @@ async function placeLeStay(input: {
   offer: Offer;
   guests: string[];
   arrival: string | null;
-  stripeIntent: string;
+  payMethod: "card" | "agency";
   now: string;
 }): Promise<
   | { ok: true; view: ClientStayView }
-  | { ok: false; message: string; code?: "price_changed"; sellCents?: number; currency?: string }
+  | { ok: false; message: string; code?: "price_changed" | "card_again"; sellCents?: number; currency?: string; widgetUrl?: string; terms?: string }
 > {
   const rooms = roomsFromStored(input.offer.rooms, input.offer.adults || input.guests.length || 2);
   const party = leRoomPartyOk(rooms);
@@ -527,11 +544,12 @@ async function placeLeStay(input: {
       return { ok: true, view: viewOf(row.id, current, input.offer, input.now.slice(0, 10)) };
     }
     if (current.leBookingId && !current.confirmation) current.confirmation = String(current.leBookingId);
-    if (current.leBookingId && current.confirmation && current.stripe === "captured") {
+    if (current.leBookingId && current.confirmation && current.phase === "confirmed" && current.draft && current.draft !== "ready") {
       return { ok: true, view: viewOf(row.id, current, input.offer, input.now.slice(0, 10)) };
     }
     if (current.leBookingId && current.confirmation) {
       const step = openLeConfirmed({
+        payMethod: current.payMethod,
         sellCents: current.sellCents,
         currency: current.currency,
         confirmation: current.confirmation,
@@ -542,15 +560,11 @@ async function placeLeStay(input: {
         guests: current.guests,
         arrival: current.arrival,
         now: input.now,
-        stripeIntent: current.stripeIntent || input.stripeIntent,
         pliantCardId: current.pliantCardId,
       });
       step.stay.reference = current.reference;
       step.stay.hotelName = input.offer.hotel_name;
-      if (current.stripe === "captured") {
-        step.stay.stripe = "captured";
-        step.effects = step.effects.filter((effect) => effect.type !== "capture");
-      }
+      if (current.keys.includes("debit:agency")) step.effects = step.effects.filter((effect) => effect.type !== "debit");
       if (current.draft && current.draft !== "ready") {
         step.stay.draft = current.draft;
         step.effects = step.effects.filter((effect) => effect.type !== "draft");
@@ -577,12 +591,9 @@ async function placeLeStay(input: {
     }
   }
 
-  const held = await cardHoldMatches(input.customer.id, input.offer, input.stripeIntent);
-  if (!held) return { ok: false, message: "L’autorisation de la carte n’est pas confirmée." };
-
   let stay = current || {
     ...openStay({
-      payMethod: "card",
+      payMethod: input.payMethod,
       sellCents: input.offer.sell_cents,
       currency: input.offer.currency,
       partnerRate: true,
@@ -594,16 +605,19 @@ async function placeLeStay(input: {
       arrival: input.arrival,
       now: input.now,
     }).stay,
-    keys: ["stripe:auth"],
+    keys: [] as string[],
     mail: "none" as const,
     mailSentAt: null,
+    stripe: "none" as const,
+    authorizedAt: null,
   };
   stay = {
     ...stay,
+    payMethod: input.payMethod,
     supplier: "api",
     placingAt: input.now,
-    stripe: "authorized",
-    stripeIntent: input.stripeIntent,
+    stripe: "none",
+    stripeIntent: null,
     sellCents: input.offer.sell_cents,
     hotelCents: input.offer.sell_cents,
     currency: input.offer.currency,
@@ -620,7 +634,7 @@ async function placeLeStay(input: {
         offer_id: input.offer.id,
         idempotency_key: key,
         phase: "placing",
-        pay_method: "card",
+        pay_method: input.payMethod,
         supplier: "little_emperors",
         trial: false,
         state: stay,
@@ -642,13 +656,65 @@ async function placeLeStay(input: {
   const release = (reason: string) =>
     rollbackLe({ admin: input.admin, stayId, stay, offer: input.offer, bookingId, reason });
 
-  if (input.offer.currency.toUpperCase() !== "EUR") {
+  const agency = input.payMethod === "agency";
+  if (!agency && !input.offer.le_session_id) {
+    await release("Session");
+    return { ok: false, message: "La saisie de la carte a expiré. Recommencez." };
+  }
+  if (agency && input.offer.currency.toUpperCase() !== "EUR") {
     await release("Devise");
     return { ok: false, message: "Ce tarif n’est pas en euros. Écrivez à votre conseiller." };
   }
 
-  const holder = await readPliantCardholderName(process.env.PLIANT_CARDHOLDER_ID || "");
-  if (!stay.pliantCardId) {
+  const refresh = () =>
+    refreshLeOfferQuote({
+      hotelId,
+      checkIn: input.offer.check_in,
+      checkOut: input.offer.check_out,
+      rooms,
+      rateKey: input.offer.rate_key || "",
+      rateIndex: input.offer.le_rate_index || null,
+      roomKey: input.offer.room_key || "",
+    });
+  let fresh: LeFreshQuote | null = agency
+    ? null
+    : {
+        sellCents: input.offer.sell_cents,
+        currency: input.offer.currency.toUpperCase(),
+        sessionId: input.offer.le_session_id || "",
+        rateIndex: input.offer.le_rate_index || input.offer.rate_key || "",
+        deadline: input.offer.cancellation_deadline || null,
+        requiresCvc: input.offer.requires_cvc ?? null,
+        paymentDescription: input.offer.payment_description || null,
+        cancellation: input.offer.cancellation_policy || "",
+        free: input.offer.free_cancellation === true,
+      };
+  if (agency) {
+    try {
+      fresh = await refresh();
+    } catch {
+      fresh = null;
+    }
+  }
+  if (!fresh || !fresh.sessionId || !fresh.rateIndex) {
+    await release("Offre");
+    return { ok: false, message: "Cette offre n’est plus disponible." };
+  }
+  if (agency && (pricesDiffer(input.offer.sell_cents, fresh.sellCents) || fresh.currency !== input.offer.currency.toUpperCase())) {
+    await storeFreshQuote(input.admin, input.offer.id, fresh);
+    await release("Prix");
+    return {
+      ok: false,
+      code: "price_changed",
+      message: priceChangedMessage(fresh.sellCents, fresh.currency),
+      sellCents: fresh.sellCents,
+      currency: fresh.currency,
+    };
+  }
+  if (agency) await storeFreshQuote(input.admin, input.offer.id, fresh);
+
+  const holder = agency ? await readPliantCardholderName(process.env.PLIANT_CARDHOLDER_ID || "") : null;
+  if (agency && !stay.pliantCardId) {
     await issueStayCard({
       stay,
       offer: input.offer,
@@ -662,41 +728,9 @@ async function placeLeStay(input: {
     if (stay.pliantCardId) stay = { ...stay, pliant: "issued", pliantCardId: stay.pliantCardId };
     await saveStay(input.admin, stayId, stay);
   }
-  if (!stay.pliantCardId || !holder) {
+  if (agency && (!stay.pliantCardId || !holder)) {
     await release("Carte");
     return { ok: false, message: NOT_CHARGED };
-  }
-
-  const refresh = () =>
-    refreshLeOfferQuote({
-      hotelId,
-      checkIn: input.offer.check_in,
-      checkOut: input.offer.check_out,
-      rooms,
-      rateKey: input.offer.rate_key || "",
-      rateIndex: input.offer.le_rate_index || null,
-      roomKey: input.offer.room_key || "",
-    });
-  let fresh: LeFreshQuote | null = null;
-  try {
-    fresh = await refresh();
-  } catch {
-    fresh = null;
-  }
-  if (!fresh) {
-    await release("Offre");
-    return { ok: false, message: "Cette offre n’est plus disponible." };
-  }
-  if (pricesDiffer(input.offer.sell_cents, fresh.sellCents) || fresh.currency !== input.offer.currency.toUpperCase()) {
-    await storeFreshQuote(input.admin, input.offer.id, fresh);
-    await release("Prix");
-    return {
-      ok: false,
-      code: "price_changed",
-      message: priceChangedMessage(fresh.sellCents, fresh.currency),
-      sellCents: fresh.sellCents,
-      currency: fresh.currency,
-    };
   }
 
   let booking: LeBooking | null = null;
@@ -715,9 +749,9 @@ async function placeLeStay(input: {
     }
     if (adopted) booking = { id: adopted.id, confirmation_number: adopted.confirmation } as LeBooking;
   }
-  const cardName = [holder.firstName, holder.lastName].filter(Boolean).join(" ");
+  const cardName = holder ? [holder.firstName, holder.lastName].filter(Boolean).join(" ") : "";
   const post = async (quote: LeFreshQuote) => {
-    const secrets = await readPliantCardSecrets(stay.pliantCardId || "");
+    const secrets = agency && stay.pliantCardId ? await readPliantCardSecrets(stay.pliantCardId) : null;
     return submitLeBooking({
       quote,
       checkIn: input.offer.check_in,
@@ -731,12 +765,45 @@ async function placeLeStay(input: {
         adults: room.adults,
         children: room.children,
       })),
-      card: cardFromSecrets(secrets, cardName),
+      card: secrets ? cardFromSecrets(secrets, cardName) : null,
       fetchImpl: fetch,
     });
   };
   if (!booking) {
     let posted = await post(fresh).catch(() => ({ ok: false as const, expired: false }));
+    if (!posted.ok && posted.expired && !agency) {
+      const again = await refresh().catch(() => null);
+      if (again && !pricesDiffer(fresh.sellCents, again.sellCents) && again.currency === fresh.currency) {
+        await storeFreshQuote(input.admin, input.offer.id, again);
+        let widgetUrl: string | null = null;
+        try {
+          widgetUrl = leCardWidgetUrl(littleEmperorsOrigin(), again.sessionId);
+        } catch {
+          widgetUrl = null;
+        }
+        await release("Session");
+        return {
+          ok: false,
+          code: "card_again",
+          message: "La saisie de la carte a expiré. Recommencez.",
+          widgetUrl: widgetUrl || undefined,
+          terms: termsFor(again),
+        };
+      }
+      if (again && pricesDiffer(fresh.sellCents, again.sellCents)) {
+        await storeFreshQuote(input.admin, input.offer.id, again);
+        await release("Prix");
+        return {
+          ok: false,
+          code: "price_changed",
+          message: priceChangedMessage(again.sellCents, again.currency),
+          sellCents: again.sellCents,
+          currency: again.currency,
+        };
+      }
+      await release("Session");
+      return { ok: false, message: "La saisie de la carte a expiré. Recommencez." };
+    }
     if (!posted.ok && posted.expired) {
       const listed = await listLittleEmperorsBookings().catch(() => null);
       const adopted = listed
@@ -869,6 +936,7 @@ async function placeLeStay(input: {
   );
 
   const step = openLeConfirmed({
+    payMethod: input.payMethod,
     sellCents: input.offer.sell_cents,
     currency: input.offer.currency,
     confirmation,
@@ -879,7 +947,6 @@ async function placeLeStay(input: {
     guests: input.guests,
     arrival: input.arrival,
     now: input.now,
-    stripeIntent: input.stripeIntent,
     pliantCardId: stay.pliantCardId,
   });
   step.stay.reference = reference;
@@ -912,6 +979,7 @@ export async function openDirectStay(input: {
   arrival?: string | null;
   payMethod: "card" | "agency";
   stripeIntent?: string | null;
+  cardReady?: boolean;
 }) {
   const admin = db();
   const { data: offerRow, error } = await admin
@@ -942,14 +1010,14 @@ export async function openDirectStay(input: {
   if (!checked.ok) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
   const booked = port.book(quote);
   if (booked.status === "place") {
-    if (input.payMethod !== "card") return { ok: false as const, message: "Ce séjour se règle par carte." };
+    if (input.payMethod === "card" && !input.cardReady) return prepareLeClientCard(admin, input.customer.id, offer);
     return placeLeStay({
       admin,
       customer: input.customer,
       offer,
       guests: input.guests,
       arrival: input.arrival || null,
-      stripeIntent: input.stripeIntent || "",
+      payMethod: input.payMethod,
       now,
     });
   }
@@ -1156,6 +1224,85 @@ async function cardHoldMatches(customerId: string, offer: Offer, intentId: strin
   );
 }
 
+async function freshQuote(offer: Offer): Promise<
+  | { ok: true; fresh: LeFreshQuote }
+  | { ok: false; message: string; code?: "price_changed"; sellCents?: number; currency?: string }
+> {
+  const rooms = roomsFromStored(offer.rooms, offer.adults || 2);
+  const party = leRoomPartyOk(rooms);
+  if (!party.ok) return { ok: false, message: party.message };
+  const hotelId = Number(offer.le_hotel_id);
+  if (!Number.isInteger(hotelId) || hotelId < 1) return { ok: false, message: "Cette offre n’est plus disponible." };
+  let fresh: LeFreshQuote | null = null;
+  try {
+    fresh = await refreshLeOfferQuote({
+      hotelId,
+      checkIn: offer.check_in,
+      checkOut: offer.check_out,
+      rooms,
+      rateKey: offer.rate_key || "",
+      rateIndex: offer.le_rate_index || null,
+      roomKey: offer.room_key || "",
+    });
+  } catch {
+    return { ok: false, message: "La vérification du tarif n’a pas abouti. Réessayez." };
+  }
+  if (!fresh) return { ok: false, message: "Cette offre n’est plus disponible." };
+  return { ok: true, fresh };
+}
+
+export async function prepareLeClientCard(admin: Admin, customerId: string, offer: Offer) {
+  const quoted = await freshQuote(offer);
+  if (!quoted.ok) return quoted;
+  const previous = offer.sell_cents;
+  const previousCurrency = offer.currency.toUpperCase();
+  await storeFreshQuote(admin, offer.id, quoted.fresh);
+  if (pricesDiffer(previous, quoted.fresh.sellCents) || quoted.fresh.currency !== previousCurrency) {
+    return {
+      ok: false as const,
+      code: "price_changed" as const,
+      message: priceChangedMessage(quoted.fresh.sellCents, quoted.fresh.currency),
+      sellCents: quoted.fresh.sellCents,
+      currency: quoted.fresh.currency,
+    };
+  }
+  let origin = "";
+  try {
+    origin = littleEmperorsOrigin();
+  } catch {
+    return { ok: false as const, message: "La réservation n’est pas ouverte." };
+  }
+  const widgetUrl = leCardWidgetUrl(origin, quoted.fresh.sessionId);
+  if (!widgetUrl) return { ok: false as const, message: "La saisie de la carte n’est pas ouverte." };
+  return {
+    ok: true as const,
+    widgetUrl,
+    widgetOrigin: new URL(widgetUrl).origin,
+    terms: termsFor(quoted.fresh),
+    customerId,
+  };
+}
+
+export async function prepareDirectPayment(input: {
+  customer: HotelAccessCustomer & {
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    stripe_customer_id: string | null;
+  };
+  offerId: string;
+}) {
+  const admin = db();
+  const { data } = await admin.from("crm_hotel_search_offers").select(OFFER_COLUMNS).eq("id", input.offerId).eq("customer_id", input.customer.id).maybeSingle();
+  const offer = data as Offer | null;
+  if (!offer || Date.parse(offer.expires_at) <= Date.now()) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
+  if (offer.account === "little_emperors" && littleEmperorsConfigured() && hotelDirectLive(input.customer)) {
+    return prepareLeClientCard(admin, input.customer.id, offer);
+  }
+  return beginDirectCard(input);
+}
+
 export async function beginDirectCard(input: {
   customer: HotelAccessCustomer & {
     id: string;
@@ -1175,40 +1322,7 @@ export async function beginDirectCard(input: {
   const offer = data as Offer | null;
   if (!offer || Date.parse(offer.expires_at) <= Date.now()) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
   if (offer.account === "little_emperors" && littleEmperorsConfigured()) {
-    const rooms = roomsFromStored(offer.rooms, offer.adults || 2);
-    const party = leRoomPartyOk(rooms);
-    if (!party.ok) return { ok: false as const, message: party.message };
-    const hotelId = Number(offer.le_hotel_id);
-    if (!Number.isInteger(hotelId) || hotelId < 1) return { ok: false as const, message: "Cette offre n’est plus disponible." };
-    let fresh: LeFreshQuote | null = null;
-    try {
-      fresh = await refreshLeOfferQuote({
-        hotelId,
-        checkIn: offer.check_in,
-        checkOut: offer.check_out,
-        rooms,
-        rateKey: offer.rate_key || "",
-        rateIndex: offer.le_rate_index || null,
-        roomKey: offer.room_key || "",
-      });
-    } catch {
-      return { ok: false as const, message: "La vérification du tarif n’a pas abouti. Réessayez." };
-    }
-    if (!fresh) return { ok: false as const, message: "Cette offre n’est plus disponible." };
-    const quotedCents = offer.sell_cents;
-    const quotedCurrency = offer.currency.toUpperCase();
-    await storeFreshQuote(admin, offer.id, fresh);
-    offer.sell_cents = fresh.sellCents;
-    offer.currency = fresh.currency;
-    if (pricesDiffer(quotedCents, fresh.sellCents) || fresh.currency !== quotedCurrency) {
-      return {
-        ok: false as const,
-        code: "price_changed" as const,
-        message: priceChangedMessage(fresh.sellCents, fresh.currency),
-        sellCents: fresh.sellCents,
-        currency: fresh.currency,
-      };
-    }
+    return { ok: false as const, message: "Ce séjour se règle auprès de l’hôtel, ou par l’agence." };
   }
   try {
     const stripeCustomerId = await ensureStripeCustomer(stripe, admin, input.customer);
@@ -1241,7 +1355,9 @@ export async function refundStayForBooking(bookingId: string) {
   if (!data) return;
   const row = data as { id: string; customer_id: string; offer_id: string | null; booking_id: string | null; state: DirectStay };
   const stay = readStay(row.state);
-  if (!stay.leBookingId || stay.clientRefunded || stay.stripe !== "captured" || !stay.stripeIntent) return;
+  if (!stay.leBookingId) return;
+  if (stay.payMethod === "card" && stay.stripe !== "captured") return;
+  if (stay.payMethod === "agency" && stay.pliant !== "issued" && stay.pliant !== "charged" && stay.stripe !== "captured") return;
   const now = new Date().toISOString();
   const step = applyStay(stay, { type: "supplier_cancelled" }, now);
   if ("error" in step) return;

@@ -8,10 +8,14 @@ import {
   claimLeBooking,
   deadlineStillOpen,
   instantInParis,
+  clientPaymentTerms,
   leBookingRequest,
   leBookingRequestWithoutCard,
   leCardBrand,
+  leCardWidgetUrl,
   leCreditCard,
+  leWidgetSignal,
+  safeCardWidgetUrl,
   leDeadlineParisLabel,
   leSessionExpired,
   redactCardText,
@@ -107,6 +111,44 @@ test("la limite s’affiche à l’heure de Paris et ferme le geste après cet i
   assert.equal(deadlineStillOpen("2026-10-01", "2026-10-23"), false);
   assert.equal(deadlineStillOpen("2026-07-01T16:00:00", "2026-07-01T13:59:00.000Z"), true);
   assert.equal(deadlineStillOpen("2026-07-01T16:00:00", "2026-07-01T14:00:00.000Z"), false);
+});
+
+test("le cadre de carte reste sur l’hôte du widget et les conditions ne nomment personne", () => {
+  const url = leCardWidgetUrl("https://api-staging.littleemperors.com", "SESS10N");
+  assert.equal(url, "https://api-staging.littleemperors.com/widgets/credit-card?session_id=SESS10N");
+  assert.equal(leCardWidgetUrl("https://evil.example", "SESS10N"), null);
+  assert.equal(safeCardWidgetUrl("https://api.littleemperors.com/widgets/credit-card?session_id=SESS10N"), url?.replace("api-staging", "api") || null);
+  assert.equal(
+    leWidgetSignal({ origin: "https://api-staging.littleemperors.com", allowedOrigin: "https://api-staging.littleemperors.com", data: { success: true } }),
+    "ready"
+  );
+  assert.equal(
+    leWidgetSignal({ origin: "https://evil.example", allowedOrigin: "https://api-staging.littleemperors.com", data: { success: true } }),
+    "ignore"
+  );
+  const terms = clientPaymentTerms({
+    paymentDescription: "No deposit required at time of booking. Little Emperors",
+    requiresCvc: true,
+    deadlineLabel: "18 octobre 2026 à 16:00",
+    free: true,
+  });
+  assert.match(terms, /garantit/);
+  assert.match(terms, /cryptogramme/);
+  assert.match(terms, /18 octobre 2026/);
+  assert.doesNotMatch(terms, /Little Emperors/);
+  const bare = leBookingRequest({
+    start: "2026-11-06",
+    end: "2026-11-08",
+    sessionId: "SESS",
+    rateIndex: "RATE",
+    hotelId: 15,
+    guestName: "Camille Martin",
+    guestEmail: "camille@example.com",
+    eta: null,
+    rooms: [{ guestName: "Camille Martin", adults: 2, children: [] }],
+    card: null,
+  });
+  assert.equal("credit_card" in bare, false);
 });
 
 test("le client ne reçoit ni session, ni description de paiement", () => {

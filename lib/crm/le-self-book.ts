@@ -234,3 +234,62 @@ export function deadlineStillOpen(deadline: string | null | undefined, nowIso: s
 export function pricesDiffer(quotedCents: number, freshCents: number) {
   return quotedCents !== freshCents;
 }
+
+const WIDGET_HOSTS = new Set(["api-staging.littleemperors.com", "api.littleemperors.com"]);
+
+/** Iframe de saisie. L’adresse reste sur l’hôte du widget ; la carte n’arrive pas ici. */
+export function leCardWidgetUrl(origin: string, sessionId: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || !WIDGET_HOSTS.has(url.hostname)) return null;
+  const session = sessionId.trim();
+  if (!session || session.length > 120 || /[^A-Za-z0-9._-]/.test(session)) return null;
+  return `${url.origin}/widgets/credit-card?session_id=${encodeURIComponent(session)}`;
+}
+
+export function safeCardWidgetUrl(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || !WIDGET_HOSTS.has(url.hostname) || url.pathname !== "/widgets/credit-card") return null;
+  const session = url.searchParams.get("session_id") || "";
+  if (!session || /[^A-Za-z0-9._-]/.test(session)) return null;
+  return leCardWidgetUrl(url.origin, session);
+}
+
+/** Message du cadre. Une autre origine est ignorée. */
+export function leWidgetSignal(input: { origin: string; allowedOrigin: string; data: unknown }): "ready" | "error" | "ignore" {
+  if (!input.allowedOrigin || input.origin !== input.allowedOrigin) return "ignore";
+  if (!input.data || typeof input.data !== "object") return "ignore";
+  const success = (input.data as { success?: unknown }).success;
+  if (success === true) return "ready";
+  if (success === false) return "error";
+  return "ignore";
+}
+
+/** Conditions montrées avant la confirmation. Aucun nom de fournisseur. */
+export function clientPaymentTerms(input: {
+  paymentDescription: string | null;
+  requiresCvc: boolean | null;
+  deadlineLabel: string | null;
+  free: boolean;
+}): string {
+  const raw = (input.paymentDescription || "").replace(/little\s*emperors/gi, "");
+  const deposit = /deposit|acompte|prélev|prelev/i.test(raw) && !/no deposit/i.test(raw);
+  const lines = [
+    deposit
+      ? "L’hôtel peut prélever un acompte sur cette carte."
+      : "La carte garantit la réservation. L’hôtel prélève selon les conditions du tarif.",
+  ];
+  if (input.requiresCvc) lines.push("Le cryptogramme est demandé.");
+  if (input.free && input.deadlineLabel) lines.push(`Annulation gratuite jusqu’au ${input.deadlineLabel} (heure de Paris).`);
+  else lines.push("Ce tarif ne prévoit pas d’annulation gratuite.");
+  return lines.join(" ");
+}

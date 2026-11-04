@@ -228,8 +228,12 @@ export function openStay(input: {
   return { stay, effects, audit };
 }
 
-/** Séjour confirmé par l’API. L’encaissement et le message partent avec les effets. Aucun courrier hôtel. */
+/**
+ * Séjour confirmé par l’API. Le client qui paie l’hôtel n’a ni encaissement ni débit.
+ * L’agence qui avance inscrit le montant aux transactions, comme les autres séjours avancés.
+ */
 export function openLeConfirmed(input: {
+  payMethod: "card" | "agency";
   sellCents: number;
   currency: string;
   confirmation: string;
@@ -240,12 +244,11 @@ export function openLeConfirmed(input: {
   guests: string[];
   arrival: string | null;
   now: string;
-  stripeIntent: string;
   pliantCardId: string | null;
 }): StayStep {
   const effects: DirectEffect[] = [];
   let stay = blank({
-    payMethod: "card",
+    payMethod: input.payMethod,
     sellCents: input.sellCents,
     currency: input.currency,
     partnerRate: true,
@@ -255,29 +258,25 @@ export function openLeConfirmed(input: {
     guests: input.guests,
     arrival: input.arrival,
   });
+  const agencyCard = input.payMethod === "agency" ? input.pliantCardId : null;
   stay = {
     ...stay,
     phase: "confirmed",
-    stripe: "authorized",
-    authorizedAt: input.now,
-    pliant: input.pliantCardId ? "issued" : "none",
+    stripe: "none",
+    pliant: agencyCard ? "issued" : "none",
     priceState: "confirmed",
     confirmation: input.confirmation,
     leBookingId: input.leBookingId,
     supplier: "api",
-    stripeIntent: input.stripeIntent,
-    pliantCardId: input.pliantCardId,
+    pliantCardId: agencyCard,
     hotelCents: input.sellCents,
   };
-  stay = withKey(stay, "stripe:auth");
-  stay = pushEffect(stay, effects, { type: "capture", key: "stripe:capture" });
+  if (input.payMethod === "agency") {
+    stay = pushEffect(stay, effects, { type: "debit", key: "debit:agency" });
+  }
   stay = { ...stay, draft: "ready" };
   stay = pushEffect(stay, effects, { type: "draft", key: "draft:client" });
-  return {
-    stay: { ...stay, stripe: "captured" },
-    effects,
-    audit: [{ action: "confirmation", detail: input.confirmation }],
-  };
+  return { stay, effects, audit: [{ action: "confirmation", detail: input.confirmation }] };
 }
 
 /** Échec avant encaissement : libère l’autorisation et gèle la carte déjà émise. */
@@ -475,16 +474,29 @@ export function applyStay(stay: DirectStay, event: StayEvent, now: string): Stay
   }
 
   if (event.type === "supplier_cancelled") {
-    if (next.phase === "cancelled" && next.clientRefunded) return { stay: next, effects, audit };
-    if (next.stripe === "captured") {
-      next = { ...next, phase: "cancelled", reason: "Client · annulation" };
-      next = refundClient(next, effects, next.sellCents);
-    } else {
-      next = releaseMoney({ ...next, phase: "cancelled", reason: "Client · annulation" }, effects);
+    if (next.phase === "cancelled" && (next.clientRefunded || next.stripe !== "captured") && next.pliant !== "issued" && next.pliant !== "charged") {
+      return { stay: next, effects, audit };
     }
-    if (next.pliant === "issued" || next.pliant === "charged") {
+    const charged = next.pliant === "charged";
+    next = { ...next, phase: charged ? "refunding" : "cancelled", reason: "Client · annulation" };
+    if (next.stripe === "captured") next = refundClient(next, effects, next.sellCents);
+    else if (next.stripe === "authorized") {
+      next = { ...next, stripe: "released" };
+      next = pushEffect(next, effects, { type: "release", key: "stripe:release" });
+    }
+    if (next.payMethod === "agency" && !charged) {
+      next = pushEffect(next, effects, { type: "void_debit", key: "debit:void" });
+    }
+    if (next.pliant === "issued" || charged) {
       next = { ...next, pliant: "locked" };
       next = pushEffect(next, effects, { type: "lock_card", key: "card:lock" });
+    }
+    if (charged) {
+      next = pushEffect(next, effects, {
+        type: "task",
+        key: "task:refund-agency",
+        label: "Carte gelée. Le remboursement client se confirme à la main.",
+      });
     }
     audit.push({ action: "annulation", detail: "Client" });
     return { stay: next, effects, audit };
@@ -558,6 +570,14 @@ export const PAY_COPY = {
   agencyTitle: "Payé par l’agence",
   agency: "L’agence avance le séjour. Le montant rejoint vos transactions.",
   trial: "Essai : aucun encaissement, aucun e-mail à l’hôtel.",
+} as const;
+
+/** Mode réel : le client paie l’hôtel, ou l’agence avance et l’inscrit aux transactions. */
+export const LE_PAY_COPY = {
+  clientTitle: "Le client paie lui-même",
+  client: "La carte garantit la réservation. L’hôtel prélève selon les conditions du tarif. Aucun encaissement par l’agence.",
+  agencyTitle: "Payé par l’agence",
+  agency: "L’agence avance le séjour. Le montant rejoint vos transactions.",
 } as const;
 
 export function clientStayLabel(stay: Pick<DirectStay, "phase" | "confirmation">) {

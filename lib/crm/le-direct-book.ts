@@ -108,11 +108,11 @@ export async function submitLeBooking(input: {
   guestEmail: string;
   arrival: string | null;
   rooms: { guestName: string; adults: number; children: { age: number }[] }[];
-  card: { pan: string; cvc: string; expMonth: number; expYear: number; name: string };
+  card: { pan: string; cvc: string; expMonth: number; expYear: number; name: string } | null;
   fetchImpl?: typeof fetch;
 }): Promise<{ ok: true; booking: LeBooking } | { ok: false; expired: boolean }> {
-  const credit = leCreditCard({ ...input.card, requiresCvc: input.quote.requiresCvc });
-  if (!credit) return { ok: false, expired: false };
+  const credit = input.card ? leCreditCard({ ...input.card, requiresCvc: input.quote.requiresCvc }) : null;
+  if (input.card && !credit) return { ok: false, expired: false };
   const body = leBookingRequest({
     start: input.checkIn,
     end: input.checkOut,

@@ -7,7 +7,8 @@ import { Icon } from "@/components/crm/icons";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
 import { HotelCardHold } from "@/components/account/HotelCardHold";
-import { PAY_COPY } from "@/lib/crm/hotel-direct";
+import { LE_PAY_COPY, PAY_COPY } from "@/lib/crm/hotel-direct";
+import { leWidgetSignal, safeCardWidgetUrl } from "@/lib/crm/le-self-book";
 import { collapseRooms, guestNameOk, travelPrivileges, type ClientHotelFile, type ClientRate, type ClientRoom, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
 import { composeRoomGuests, roomOccupancyLabel } from "@/lib/crm/hotel-party";
 import type { ClientHotel, HotelPerks, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
@@ -429,7 +430,12 @@ export function HotelJourney({
   const [stayCancel, setStayCancel] = useState<"cancel" | "ask" | "none">("none");
   const [stayConditions, setStayConditions] = useState("");
   const [cardSecret, setCardSecret] = useState<{ clientSecret: string; intentId: string } | null>(null);
+  const [widget, setWidget] = useState<{ url: string; origin: string; terms: string } | null>(null);
+  const payCopy = trial
+    ? { cardTitle: PAY_COPY.cardTitle, card: PAY_COPY.card, agencyTitle: PAY_COPY.agencyTitle, agency: PAY_COPY.agency }
+    : { cardTitle: LE_PAY_COPY.clientTitle, card: LE_PAY_COPY.client, agencyTitle: LE_PAY_COPY.agencyTitle, agency: LE_PAY_COPY.agency };
   const roomsRef = useRef<HTMLDivElement>(null);
+  const sendCard = useRef<(ready: boolean) => void>(() => {});
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -562,7 +568,18 @@ export function HotelJourney({
     else onStep("back");
   }
 
-  async function send(intentId?: string) {
+  useEffect(() => {
+    if (!widget) return;
+    const onMessage = (event: MessageEvent) => {
+      const signal = leWidgetSignal({ origin: event.origin, allowedOrigin: widget.origin, data: event.data });
+      if (signal === "ready") sendCard.current(true);
+      if (signal === "error") setNote("La carte n’a pas été acceptée. Vérifiez les informations.");
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [widget]);
+
+  async function send(intentId?: string, cardReady?: boolean) {
     if (!rate?.offerId || !payMethod) return;
     const guests = guestLines();
     if (!guestsReady()) {
@@ -575,20 +592,32 @@ export function HotelJourney({
       const response = await fetch("/api/client/hotels/reserver", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ offerId: rate.offerId, guests, payMethod, arrival, intentId }),
+        body: JSON.stringify({ offerId: rate.offerId, guests, payMethod, arrival, intentId, cardReady: cardReady === true }),
       });
       const json = (await response.json().catch(() => null)) as {
         error?: string;
         code?: string;
         sellCents?: number;
+        terms?: string;
+        widgetUrl?: string;
+        widgetOrigin?: string;
         clientSecret?: string;
         intentId?: string;
         view?: { id: string; label: string; cancel: "cancel" | "ask" | "none"; conditions: string };
       } | null;
+      const widgetUrl = json?.widgetUrl ? safeCardWidgetUrl(json.widgetUrl) : null;
+      if (widgetUrl && json?.widgetOrigin) {
+        setWidget({ url: widgetUrl, origin: json.widgetOrigin, terms: json.terms || rate.terms || "" });
+        if (json.terms) setRate({ ...rate, terms: json.terms });
+        setCardSecret(null);
+        if (!response.ok) setNote(json?.error || "La saisie de la carte a expiré. Recommencez.");
+        return;
+      }
       if (!response.ok) {
         if (json?.code === "price_changed" && typeof json.sellCents === "number" && rate) {
-          setRate({ ...rate, sellCents: json.sellCents });
+          setRate({ ...rate, sellCents: json.sellCents, terms: json.terms || rate.terms });
           setCardSecret(null);
+          setWidget(null);
         }
         setNote(json?.error || "La demande n’a pas pu être envoyée.");
         return;
@@ -608,6 +637,12 @@ export function HotelJourney({
       setSending(false);
     }
   }
+
+  useEffect(() => {
+    sendCard.current = (ready) => {
+      void send(undefined, ready);
+    };
+  });
 
   async function actStay(action: "cancel" | "ask") {
     if (!stayId) return;
@@ -962,25 +997,32 @@ export function HotelJourney({
                 ))}
               </ul>
               <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
+              {rate.terms ? <p className="text-[15px] leading-relaxed h-ink">{rate.terms}</p> : null}
             </article>
             <div className="space-y-2" data-hotel-pay="1">
               <button
                 type="button"
                 aria-pressed={payMethod === "card"}
                 className={`h-recap w-full px-4 py-3 text-left ${payMethod === "card" ? "ring-1 ring-[#C5A880]" : ""}`}
-                onClick={() => setPayMethod("card")}
+                onClick={() => {
+                  setPayMethod("card");
+                  setWidget(null);
+                }}
               >
-                <span className="block text-sm font-semibold h-ink">{PAY_COPY.cardTitle}</span>
-                <span className="mt-1 block text-sm h-muted">{PAY_COPY.card}</span>
+                <span className="block text-sm font-semibold h-ink">{payCopy.cardTitle}</span>
+                <span className="mt-1 block text-sm h-muted">{payCopy.card}</span>
               </button>
               <button
                 type="button"
                 aria-pressed={payMethod === "agency"}
                 className={`h-recap w-full px-4 py-3 text-left ${payMethod === "agency" ? "ring-1 ring-[#C5A880]" : ""}`}
-                onClick={() => setPayMethod("agency")}
+                onClick={() => {
+                  setPayMethod("agency");
+                  setWidget(null);
+                }}
               >
-                <span className="block text-sm font-semibold h-ink">{PAY_COPY.agencyTitle}</span>
-                <span className="mt-1 block text-sm h-muted">{PAY_COPY.agency}</span>
+                <span className="block text-sm font-semibold h-ink">{payCopy.agencyTitle}</span>
+                <span className="mt-1 block text-sm h-muted">{payCopy.agency}</span>
               </button>
               <label className="block px-1 text-sm h-muted">
                 Heure d’arrivée
@@ -993,6 +1035,14 @@ export function HotelJourney({
               </label>
               {trial ? <p className="px-1 text-sm h-muted">{PAY_COPY.trial}</p> : null}
             </div>
+            {widget ? (
+              <iframe
+                title="Carte bancaire"
+                src={widget.url}
+                referrerPolicy="no-referrer"
+                className="h-[450px] w-full rounded-2xl border border-[#efeae3] bg-white"
+              />
+            ) : null}
             {cardSecret ? (
               <HotelCardHold
                 clientSecret={cardSecret.clientSecret}
@@ -1032,11 +1082,11 @@ export function HotelJourney({
           onAction={() => (guestsReady() ? onStep("confirm") : setNote("Indiquez le prénom et le nom du voyageur principal de chaque chambre."))}
         />
       ) : null}
-      {view === "confirm" && rate && !done && !cardSecret ? (
+      {view === "confirm" && rate && !done && !cardSecret && !widget ? (
         <Dock
           label="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          action={sending ? "Envoi…" : "Transmettre à l’hôtel"}
+          action={sending ? "Envoi…" : trial ? "Transmettre à l’hôtel" : "Confirmer"}
           disabled={sending || !rate.offerId || !payMethod}
           onAction={() => void send()}
         />

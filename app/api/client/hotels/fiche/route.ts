@@ -22,6 +22,7 @@ import {
 import { warmHotelFrench } from "@/lib/crm/hotel-fr-translate";
 import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
 import { loadLittleEmperorsHotelFile } from "@/lib/crm/little-emperors-search";
+import { clientPaymentTerms, leDeadlineParisLabel } from "@/lib/crm/le-self-book";
 import { collapseRooms, type ClientHotelFile, type ClientRate, type ClientRoom } from "@/lib/crm/hotel-journey";
 
 export const runtime = "nodejs";
@@ -117,6 +118,12 @@ export async function POST(request: Request) {
       perNightCents: perNightCents(stay.sellCents, parsed.nights),
       currency: stay.currency,
       images: stay.images,
+      terms: clientPaymentTerms({
+        paymentDescription: stay.paymentDescription,
+        requiresCvc: stay.requiresCvc,
+        deadlineLabel: leDeadlineParisLabel(stay.cancellationDeadline),
+        free: stay.perks.freeCancellation,
+      }),
     };
     const current = groups.get(key) || {
       name: roomName,
