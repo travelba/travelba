@@ -27,6 +27,7 @@ import {
   type ClientVisaStep,
   type EstaAnswers,
 } from "@/lib/crm/visa-flow";
+import { authorizationDisplayName } from "@/lib/crm/visa-fr";
 import type { FormalityEntry, FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { isTravelAuthorization, type CrmBookingTraveler, type CrmTravelDocument } from "@/lib/crm/types";
 
@@ -304,7 +305,14 @@ export function VisaJourney({
               <h2 className="font-display mt-1 text-base leading-none font-semibold">{entry.name}</h2>
               {step ? (
                 <>
-                  <JourneyBody step={step} paid={paid} paymentHeld={paymentHeld} pieces={pieces} pliantReady={pliantReady} />
+                  <JourneyBody
+                    step={step}
+                    paid={paid}
+                    paymentHeld={paymentHeld}
+                    pieces={pieces}
+                    pliantReady={pliantReady}
+                    authorization={authorizationDisplayName({ country })}
+                  />
                   {variant === "admin" && request?.launched_by_name ? (
                     <p className="mt-3 text-xs text-[#C5A880]">Lancée pour le client par {request.launched_by_name}.</p>
                   ) : null}
@@ -610,15 +618,17 @@ function JourneyBody({
   paymentHeld,
   pieces,
   pliantReady,
+  authorization,
 }: {
   step: ClientVisaStep;
   paid: boolean;
   paymentHeld: boolean;
   pieces: CrmTravelDocument[];
   pliantReady: boolean;
+  authorization: string;
 }) {
   const percent = clientVisaProgress(step);
-  const headline = clientVisaStepNote(step, { paid, paymentHeld: !pliantReady });
+  const headline = clientVisaStepNote(step, { paid, paymentHeld: !pliantReady, authorization });
   const held = paymentHeld && !pliantReady;
   return (
     <div className="mt-3">

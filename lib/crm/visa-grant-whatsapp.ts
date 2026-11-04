@@ -4,6 +4,7 @@ import { CONCIERGE_SIGNATURE, whatsappAddress } from "./whatsapp";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { isTravelAuthorization } from "./types";
 import { productionOnlySecret } from "./preview-secrets";
+import { authorizationDisplayName } from "./visa-fr";
 
 /**
  * Meta n’accepte qu’un type d’en-tête par modèle.
@@ -12,10 +13,13 @@ import { productionOnlySecret } from "./preview-secrets";
 export const VISA_GRANT_TEMPLATE_ENV = {
   autorisation_validee_document: "TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT",
   autorisation_validee_image: "TWILIO_CONTENT_AUTORISATION_VALIDEE_IMAGE",
+  autorisation_validee_document_v2: "TWILIO_CONTENT_AUTORISATION_VALIDEE_DOCUMENT_V2",
+  autorisation_validee_image_v2: "TWILIO_CONTENT_AUTORISATION_VALIDEE_IMAGE_V2",
 } as const;
 
 export type VisaGrantTemplate = keyof typeof VISA_GRANT_TEMPLATE_ENV;
 export type VisaGrantHeader = "document" | "image";
+export type VisaGrantVersion = "v1" | "v2";
 
 export const VISA_GRANT_URL_TTL_SECONDS = 60 * 60;
 
@@ -26,10 +30,17 @@ export const VISA_GRANT_SAMPLE_IMAGE_PATH = `exemple/${VISA_GRANT_SAMPLE_IMAGE}`
 
 const MEDIA_BASE = `${siteConfig.url}/api/whatsapp/autorisations/`;
 
-/** Phrase demandée, avec la salutation et la signature des autres modèles. */
+/** Phrase v1, encore envoyée tant que Meta n’a pas approuvé la v2. */
 export const VISA_GRANT_SENTENCE = "Bonne nouvelle ! Votre ESTA ou ETA a été validé. Vous le trouverez ci-joint.";
 
-const BODY = ["Bonjour {{2}},", "", VISA_GRANT_SENTENCE, "", CONCIERGE_SIGNATURE].join("\n");
+/** Phrase v2. {{3}} est le nom de l’autorisation (ESTA, ETA, ETA-IL…). */
+export const VISA_GRANT_SENTENCE_V2 =
+  "Bonne nouvelle ! Votre autorisation {{3}} a été validée. Vous la trouverez ci-jointe.";
+
+export const VISA_GRANT_SAMPLE_AUTHORIZATION = "ESTA";
+
+const BODY_V1 = ["Bonjour {{2}},", "", VISA_GRANT_SENTENCE, "", CONCIERGE_SIGNATURE].join("\n");
+const BODY_V2 = ["Bonjour {{2}},", "", VISA_GRANT_SENTENCE_V2, "", CONCIERGE_SIGNATURE].join("\n");
 
 const PASSPORT = /\b[A-Z]{1,2}\d{6,9}\b/i;
 
@@ -46,13 +57,20 @@ export type VisaGrantCandidate = {
   last_name?: string | null;
 };
 
-export function visaGrantTemplateForHeader(header: VisaGrantHeader): VisaGrantTemplate {
+export function visaGrantTemplateForHeader(header: VisaGrantHeader, version: VisaGrantVersion = "v1"): VisaGrantTemplate {
+  if (version === "v2") return header === "image" ? "autorisation_validee_image_v2" : "autorisation_validee_document_v2";
   return header === "image" ? "autorisation_validee_image" : "autorisation_validee_document";
 }
 
-/** Seul un envoi du fichier compte comme « déjà envoyé ». L’ancienne carte ne compte pas. */
+export function visaGrantTemplateVersion(template: string | null | undefined): VisaGrantVersion | null {
+  if (template === "autorisation_validee_document_v2" || template === "autorisation_validee_image_v2") return "v2";
+  if (template === "autorisation_validee_document" || template === "autorisation_validee_image") return "v1";
+  return null;
+}
+
+/** Un envoi v1 ou v2 compte. L’ancienne carte sans ce fichier ne compte pas. */
 export function isVisaGrantTemplate(template: string | null | undefined) {
-  return template === "autorisation_validee_document" || template === "autorisation_validee_image";
+  return visaGrantTemplateVersion(template) !== null;
 }
 
 /** Une pièce, un envoi. Le voyageur d’un autre numéro a sa propre clé. */
@@ -80,6 +98,19 @@ export function visaGrantLabel(input: { country?: string | null; docType?: strin
   if (country === "US") return "ESTA";
   if (input.docType === "eta" || country === "GB" || country === "IL") return "ETA";
   return "Visa";
+}
+
+/** Nom mis dans {{3}} et dans les textes hors modèle Meta. */
+export function visaGrantAuthorizationName(input?: { country?: string | null; docType?: string | null }) {
+  return authorizationDisplayName(input);
+}
+
+export function visaGrantAuthorizationToken(value: string | null | undefined) {
+  const name = (value || "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!name || name.length > 40) return null;
+  if (/[{}%]|https?:|travelba\.fr/i.test(name) || name.includes("{{")) return null;
+  if (PASSPORT.test(name)) return null;
+  return name;
 }
 
 export function visaGrantGivenName(value: string | null | undefined) {
@@ -121,32 +152,50 @@ export function visaGrantMediaVariable(token: string, filename: string) {
   return `${token}/${encodeURIComponent(filename)}`;
 }
 
-export function visaGrantContentVariables(mediaPath: string, givenName: string) {
+export function visaGrantContentVariables(
+  mediaPath: string,
+  givenName: string,
+  authorization?: string | null
+) {
   if (!mediaPath || mediaPath.includes("..") || mediaPath.includes("\\") || /^https?:/i.test(mediaPath)) return null;
   if (!/\.(pdf|png|jpe?g)$/i.test(mediaPath)) return null;
-  return { "1": mediaPath, "2": visaGrantGivenName(givenName) };
+  const variables: Record<string, string> = { "1": mediaPath, "2": visaGrantGivenName(givenName) };
+  if (authorization === undefined) return variables;
+  variables["3"] = visaGrantAuthorizationToken(authorization) || visaGrantAuthorizationName();
+  return variables;
 }
 
 function applyVars(body: string, variables: Record<string, string>) {
   return body.replace(/\{\{(\d+)\}\}/g, (_, key: string) => variables[key] ?? "");
 }
 
-export function visaGrantPreview(givenName: string | null | undefined) {
-  const text = applyVars(BODY, { "2": visaGrantGivenName(givenName) });
+/** Texte avec le vrai nom. C’est celui de la v2, et celui des avis hors WhatsApp Meta. */
+export function visaGrantPreview(givenName: string | null | undefined, authorization?: string | null) {
+  const label = visaGrantAuthorizationToken(authorization || "") || visaGrantAuthorizationName();
+  const text = applyVars(BODY_V2, { "2": visaGrantGivenName(givenName), "3": label });
   if (/\{\{\d+\}\}/.test(text)) return null;
   return text;
 }
 
-export function visaGrantBody() {
-  return BODY;
+/** Texte du modèle v1, sans variable de nom. */
+export function visaGrantLegacyPreview(givenName: string | null | undefined) {
+  const text = applyVars(BODY_V1, { "2": visaGrantGivenName(givenName) });
+  if (/\{\{\d+\}\}/.test(text)) return null;
+  return text;
+}
+
+export function visaGrantBody(version: VisaGrantVersion = "v2") {
+  return version === "v1" ? BODY_V1 : BODY_V2;
 }
 
 /** Le badge et l’outil refusent : rien ne part sans la pièce. */
 export function visaGrantPendingMessage(header: VisaGrantHeader) {
-  const template = visaGrantTemplateForHeader(header);
-  const env = VISA_GRANT_TEMPLATE_ENV[template];
+  const current = visaGrantTemplateForHeader(header, "v2");
+  const previous = visaGrantTemplateForHeader(header, "v1");
+  const env = VISA_GRANT_TEMPLATE_ENV[current];
+  const fallback = VISA_GRANT_TEMPLATE_ENV[previous];
   const kind = header === "image" ? "Image (JPEG ou PNG)" : "Document (PDF)";
-  return `Le modèle WhatsApp « ${template} » n’est pas encore approuvé par Meta. Le document ne part pas sans ce modèle. En-tête ${kind}. À déposer : deposer_modeles_autorisation_whatsapp. Le SID est écrit dans crm_whatsapp_content_sids, sinon ${env}.`;
+  return `Le modèle WhatsApp « ${current} » n’est pas encore approuvé par Meta, et « ${previous} » n’a pas de SID. Le document ne part pas sans un modèle approuvé. En-tête ${kind}. À déposer : deposer_modeles_autorisation_whatsapp. Le SID est écrit dans crm_whatsapp_content_sids, sinon ${env} (repli ${fallback}).`;
 }
 
 export const VISA_GRANT_MISSING = "Le document du visa n’est pas dans l’espace.";
@@ -221,14 +270,17 @@ export function pickVisaGrantFile<T extends VisaGrantCandidate>(
   return loose.length ? loose[loose.length - 1] : null;
 }
 
-function mediaTemplate(samplePath: string) {
+function mediaTemplate(samplePath: string, version: VisaGrantVersion) {
   return {
     friendly_name: "",
     language: "fr" as const,
-    variables: { "1": samplePath, "2": "Camille" },
+    variables:
+      version === "v2"
+        ? { "1": samplePath, "2": "Camille", "3": VISA_GRANT_SAMPLE_AUTHORIZATION }
+        : { "1": samplePath, "2": "Camille" },
     types: {
       "twilio/media": {
-        body: BODY,
+        body: version === "v2" ? BODY_V2 : BODY_V1,
         media: [`${MEDIA_BASE}{{1}}`],
       },
     },
@@ -261,24 +313,29 @@ export function visaGrantSamplePdf() {
   return Buffer.from(body, "latin1");
 }
 
-/** Brouillons soumis par `scripts/arm-whatsapp-concierge.ts`. Le SID n’est pas ici. */
+/** Brouillons soumis par `scripts/arm-whatsapp-concierge.ts`. Le SID n’est pas ici. La v2 passe devant. */
 export function visaGrantContentDrafts() {
-  const document = mediaTemplate(VISA_GRANT_SAMPLE_PDF_PATH);
-  document.friendly_name = "autorisation_validee_document";
-  const image = mediaTemplate(VISA_GRANT_SAMPLE_IMAGE_PATH);
-  image.friendly_name = "autorisation_validee_image";
-  return [
-    {
-      template: "autorisation_validee_document" as const,
-      env: VISA_GRANT_TEMPLATE_ENV.autorisation_validee_document,
-      friendlyName: "autorisation_validee_document",
-      create: document,
-    },
-    {
-      template: "autorisation_validee_image" as const,
-      env: VISA_GRANT_TEMPLATE_ENV.autorisation_validee_image,
-      friendlyName: "autorisation_validee_image",
-      create: image,
-    },
-  ];
+  const versions = ["v2", "v1"] as const;
+  return versions.flatMap((version) => {
+    const documentName = visaGrantTemplateForHeader("document", version);
+    const imageName = visaGrantTemplateForHeader("image", version);
+    const document = mediaTemplate(VISA_GRANT_SAMPLE_PDF_PATH, version);
+    document.friendly_name = documentName;
+    const image = mediaTemplate(VISA_GRANT_SAMPLE_IMAGE_PATH, version);
+    image.friendly_name = imageName;
+    return [
+      {
+        template: documentName,
+        env: VISA_GRANT_TEMPLATE_ENV[documentName],
+        friendlyName: documentName,
+        create: document,
+      },
+      {
+        template: imageName,
+        env: VISA_GRANT_TEMPLATE_ENV[imageName],
+        friendlyName: imageName,
+        create: image,
+      },
+    ];
+  });
 }

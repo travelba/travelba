@@ -17,6 +17,7 @@ import {
   VISA_GRANT_UNSUPPORTED,
   isVisaGrantTemplate,
   pickVisaGrantFile,
+  visaGrantAuthorizationName,
   visaGrantDedupeKey,
   visaGrantHeader,
   visaGrantPendingMessage,
@@ -1005,7 +1006,10 @@ async function sendPlainTraveller(
   if (!(await resolveVisaGrantContentSid(header))) {
     return { qui: "voyageur", notifie: false, raison: visaGrantPendingMessage(header) };
   }
-  const body = visaGrantPreview(input.firstName);
+  const body = visaGrantPreview(
+    input.firstName,
+    visaGrantAuthorizationName({ country: file.issuing_country, docType: file.doc_type })
+  );
   if (!body) return { qui: "voyageur", notifie: false, raison: "Message non parti." };
   const row = await saveQueue(admin, {
     dedupeKey,
@@ -1070,7 +1074,9 @@ export async function notifyFormalitiesReady(
         greeting?: string | null
       ): { error: string } | { template: string; body: string; documentId: string } => {
         const header = file ? visaGrantHeader(file.mime_type, file.file_name) : null;
-        const body = header ? visaGrantPreview(greeting) : null;
+        const body = header
+          ? visaGrantPreview(greeting, visaGrantAuthorizationName({ country: file?.issuing_country, docType: file?.doc_type }))
+          : null;
         if (!file?.id || !header || !body) {
           return { error: !file ? VISA_GRANT_MISSING : !header ? VISA_GRANT_UNSUPPORTED : "Message non parti." };
         }

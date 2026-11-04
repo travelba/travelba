@@ -494,7 +494,8 @@ test("a visible formality queues the ready WhatsApp when the client has not opte
   const queued = writes.find((row) => row.op === "insert" && row.table === "crm_whatsapp_messages");
   assert.equal(queued?.payload.dedupe_key, `autorisation-validee:${BOOKING}:doc-1`);
   assert.equal(queued?.payload.template_key, "autorisation_validee_document");
-  assert.match(String(queued?.payload.body), /Vous le trouverez ci-joint/);
+  assert.match(String(queued?.payload.body), /Vous la trouverez ci-jointe/);
+  assert.match(String(queued?.payload.body), /autorisation ETA-IL a été validée/);
 });
 
 test("an old formality card does not block the document, a new send does", async () => {
@@ -537,6 +538,23 @@ test("an old formality card does not block the document, a new send does", async
   assert.equal(result.notifie, false);
   assert.equal(result.raison, "Déjà envoyé.");
   assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.op === "insert"), false);
+
+  const v2 = fakeCrm({
+    visible: true,
+    messages: [
+      {
+        id: "msg-v2",
+        dedupe_key: `autorisation-validee:${BOOKING}:doc-1`,
+        template_key: "autorisation_validee_document_v2",
+        status: "sent",
+      },
+    ],
+  });
+  const blockedByV2 = await addTravelPiece(piece({ dossier_id: BOOKING, type: "eta" }), v2.admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+  });
+  assert.equal(blockedByV2.raison, "Déjà envoyé.");
 });
 
 test("a failed notice still keeps the uploaded piece", async () => {
@@ -640,7 +658,7 @@ test("a traveller with another number is not blocked by the client's already sen
     assert.equal(JSON.stringify(queued?.payload).includes("+33601020304"), false);
     assert.equal(JSON.stringify(queued?.payload).includes("http"), false);
     assert.match(String(queued?.payload.body), /Léa/);
-    assert.match(String(queued?.payload.body), /Bonne nouvelle ! Votre ESTA ou ETA a été validé/);
+    assert.match(String(queued?.payload.body), /Bonne nouvelle ! Votre autorisation ETA-IL a été validée/);
     assert.match(String(queued?.payload.body), /Le Concierge/);
     assert.match(String(sent.destinataires.find((row) => row.qui === "voyageur")?.raison), /configuré|signée/);
     assert.equal(sent.destinataires.find((row) => row.qui === "client")?.raison, "Déjà envoyé.");
