@@ -182,15 +182,15 @@ test("une réservation réservée ouvre un dossier confirmé et la carte hôtel"
     deps
   );
   assert.equal(result.cree, true);
-  assert.equal(result.statut, "confirmed");
-  assert.equal(result.visible_client, false);
+  assert.equal(result.statut, "visible");
+  assert.equal(result.visible_client, true);
   assert.equal(result.message, false);
   assert.equal(result.invite, false);
   assert.equal(result.dossier_id, "dossier-nouveau");
   assert.equal(calls.persist.length, 1);
   assert.equal(calls.apply.length, 0);
   assert.equal(calls.persist[0].status, "confirmed");
-  assert.equal(calls.persist[0].visibleToClient, false);
+  assert.equal(calls.persist[0].visibleToClient, true);
   const card = calls.persist[0].extract.items[0];
   assert.equal(card?.kind, "hotel");
   assert.equal(card?.title, "La Mamounia");
@@ -214,7 +214,7 @@ test("une réservation réservée ouvre un dossier confirmé et la carte hôtel"
   assert.equal(db.tables.crm_le_bookings[0].crm_booking_id, "dossier-nouveau");
   assert.equal(db.tables.crm_le_bookings[0].status, "linked");
   assert.equal(db.tables.crm_bookings[0].status, "confirmed");
-  assert.equal(db.tables.crm_bookings[0].visible_to_client, false);
+  assert.equal(db.tables.crm_bookings[0].visible_to_client, true);
   assert.deepEqual(calls.refresh, ["dossier-nouveau"]);
   assert.deepEqual(calls.hotels, [50]);
   assert.equal(db.tables.crm_travel_companions.length, 1);
@@ -241,7 +241,7 @@ test("rattacher ajoute la carte au dossier déjà ouvert", async () => {
   );
   assert.equal(result.cree, false);
   assert.equal(result.dossier_id, DOSSIER);
-  assert.equal(result.statut, "confirmed");
+  assert.equal(result.statut, "visible");
   assert.equal(calls.persist.length, 0);
   assert.equal(calls.apply.length, 1);
   assert.equal(calls.apply[0].bookingId, DOSSIER);

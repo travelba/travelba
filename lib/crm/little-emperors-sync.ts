@@ -709,11 +709,12 @@ export async function attachLittleEmperorsBooking(opts: {
     throw new LittleEmperorsError("Little Emperors n’a pas indiqué le nom de l’hôtel.", 422, "hotel_name");
   }
   const dossierStatus = leCreatedDossierStatus(booking.state);
+  const visibleToClient = dossierStatus === "confirmed";
   const created = await persistNewBookingFromExtract({
     customerId: opts.customerId,
     extract: leBookingExtract(booking),
     status: dossierStatus,
-    visibleToClient: false,
+    visibleToClient,
     referenceClient: opts.referenceClient,
   });
   await admin
@@ -721,7 +722,7 @@ export async function attachLittleEmperorsBooking(opts: {
     .update({
       notes_internal: "Réservation importée depuis Little Emperors.",
       status: dossierStatus,
-      visible_to_client: false,
+      visible_to_client: visibleToClient,
     })
     .eq("id", created.id);
   if (booking.website || booking.hotel_id != null) {

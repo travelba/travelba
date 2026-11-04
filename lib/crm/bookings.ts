@@ -964,7 +964,12 @@ export async function setCarnetPublished(
   }
   const { error: bookingError } = await supabase
     .from("crm_bookings")
-    .update({ visible_to_client: visible, prices_visible: pricesVisible })
+    .update({
+      visible_to_client: visible,
+      prices_visible: pricesVisible,
+      // Visible = confirmé. Cacher revient à Non visible. Les deux colonnes partent ensemble.
+      status: visible ? "confirmed" : "draft",
+    })
     .eq("id", bookingId);
   if (bookingError) throw new Error(bookingError.message);
   if (!visible) return;

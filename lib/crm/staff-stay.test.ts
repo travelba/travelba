@@ -9,15 +9,13 @@ import {
   stayTitleFromItems,
 } from "./staff-stay";
 
-test("l’état visible est préparation, visible ou archivée", () => {
-  assert.equal(staffStayLabel({ visible_to_client: false, archived_at: null }), "En préparation");
-  assert.equal(
-    staffStayLabel({ visible_to_client: false, status: "confirmed" } as { visible_to_client: boolean }),
-    "En préparation"
-  );
+test("l’état du dossier est Non visible, Visible, Annulé, ou Archivée", () => {
+  assert.equal(staffStayLabel({ visible_to_client: false, archived_at: null }), "Non visible");
+  assert.equal(staffStayLabel({ visible_to_client: false, status: "confirmed" }), "Non visible");
   assert.equal(staffStayLabel({ visible_to_client: true }), "Visible");
-  assert.equal(staffStayLabel({ visible_to_client: true, status: "draft" }), "Visible · Brouillon");
-  assert.equal(staffStayLabel({ visible_to_client: false, status: "draft" }), "En préparation · Brouillon");
+  assert.equal(staffStayLabel({ visible_to_client: true, status: "draft" }), "Visible");
+  assert.equal(staffStayLabel({ visible_to_client: false, status: "draft" }), "Non visible");
+  assert.equal(staffStayLabel({ visible_to_client: false, status: "cancelled" }), "Annulé");
   assert.equal(
     staffStayLabel({ visible_to_client: true, status: "draft", archived_at: "2026-10-01T00:00:00.000Z" }),
     "Archivée"
@@ -26,9 +24,9 @@ test("l’état visible est préparation, visible ou archivée", () => {
     staffStayLabel({ visible_to_client: true, archived_at: "2026-10-01T00:00:00.000Z" }),
     "Archivée"
   );
-  assert.equal(staffRealStatusLabel("draft"), "Brouillon");
-  assert.equal(staffRealStatusLabel("confirmed"), "Confirmé");
-  assert.equal(staffRealStatusLabel("quoted"), "Devis");
+  assert.equal(staffRealStatusLabel("draft"), "Non visible");
+  assert.equal(staffRealStatusLabel("confirmed"), "Visible");
+  assert.equal(staffRealStatusLabel("quoted"), "Non visible");
   assert.equal(staffRealStatusLabel("cancelled"), "Annulé");
 });
 

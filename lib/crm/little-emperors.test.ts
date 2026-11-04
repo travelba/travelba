@@ -693,7 +693,8 @@ describe("dossier créé depuis Little Emperors", () => {
     const end = src.indexOf("export async function cancelLittleEmperorsFromCrm");
     const fn = src.slice(start, end);
     assert.match(fn, /leCreatedDossierStatus\(booking\.state\)/);
-    assert.match(fn, /visibleToClient: false/);
+    assert.match(fn, /const visibleToClient = dossierStatus === "confirmed"/);
+    assert.match(fn, /visible_to_client: visibleToClient/);
     assert.doesNotMatch(fn, /status:\s*"draft"/);
   });
 });

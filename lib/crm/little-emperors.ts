@@ -231,8 +231,8 @@ export function isLeCancelled(state: string | null | undefined, event?: string |
 }
 
 /**
- * Un séjour déjà réservé chez Little Emperors ouvre un dossier confirmé.
- * Le client ne le voit pas : `visible_to_client` reste faux. Les autres états restent brouillon.
+ * Un séjour déjà réservé chez Little Emperors ouvre un dossier Visible (confirmé et montré),
+ * pour que la carte hôtel puisse partir. Les autres états restent Non visible.
  */
 export function leCreatedDossierStatus(state: string | null | undefined): "draft" | "confirmed" {
   const value = String(state || "").trim().toLowerCase();
