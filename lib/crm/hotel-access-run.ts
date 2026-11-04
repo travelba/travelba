@@ -6,6 +6,7 @@ import {
   decideAccessRequest,
   decideButtonVisibility,
   decideHotelAccessToggle,
+  decideHotelLeApi,
   decideRequestReview,
   hotelButtonVisibilityOf,
   type AccessActor,
@@ -76,13 +77,30 @@ export async function writeHotelAccess(input: {
   enabled: boolean;
   demo: boolean;
   live: boolean;
+  /** Absent : on garde la valeur actuelle, puis on la ferme si le mode réel s’éteint. */
+  leApi?: boolean;
 }) {
   const decision = decideHotelAccessToggle(input);
   if (!decision.ok) return decision;
   const db = admin();
+  let requested = input.leApi;
+  if (typeof requested !== "boolean") {
+    const { data } = await db.from("crm_customers").select("hotel_le_api_booking").eq("id", input.customerId).maybeSingle();
+    requested = (data as { hotel_le_api_booking?: boolean } | null)?.hotel_le_api_booking === true;
+  }
+  const leApi = decideHotelLeApi({
+    enabled: decision.enabled,
+    demo: input.demo,
+    live: decision.live,
+    requested,
+  });
   const { error } = await db
     .from("crm_customers")
-    .update({ hotel_booking_enabled: decision.enabled, hotel_direct_live: decision.live })
+    .update({
+      hotel_booking_enabled: decision.enabled,
+      hotel_direct_live: decision.live,
+      hotel_le_api_booking: leApi,
+    })
     .eq("id", input.customerId);
   if (error) return { ok: false as const, error: "L’accès n’a pas été enregistré." };
   await db.from("crm_hotel_access_events").insert({
@@ -91,7 +109,7 @@ export async function writeHotelAccess(input: {
     enabled: decision.enabled,
     live_mode: decision.live,
   });
-  return { ok: true as const, enabled: decision.enabled, live: decision.live };
+  return { ok: true as const, enabled: decision.enabled, live: decision.live, leApi };
 }
 
 export async function reviewHotelAccess(input: {

@@ -11,7 +11,12 @@ export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireAdmin();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
-  const body = (await request.json().catch(() => null)) as { enabled?: unknown; live?: unknown; request?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as {
+    enabled?: unknown;
+    live?: unknown;
+    leApi?: unknown;
+    request?: unknown;
+  } | null;
   const { data } = await createServiceClient()
     .from("crm_customers")
     .select("id, hotel_demo")
@@ -39,9 +44,10 @@ export async function POST(request: Request, ctx: Ctx) {
       enabled: body.enabled,
       demo,
       live: body.live === true,
+      leApi: typeof body.leApi === "boolean" ? body.leApi : undefined,
     });
     if (!saved.ok) return jsonError(saved.error, 400);
-    return NextResponse.json({ ok: true, enabled: saved.enabled, live: saved.live });
+    return NextResponse.json({ ok: true, enabled: saved.enabled, live: saved.live, leApi: saved.leApi });
   } catch {
     return jsonError("L’accès n’a pas été enregistré.", 500);
   }

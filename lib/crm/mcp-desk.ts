@@ -68,7 +68,8 @@ export type DeskDeps = {
     enabled: boolean;
     demo: boolean;
     live: boolean;
-  }) => Promise<{ ok: true; enabled: boolean; live: boolean } | { ok: false; error: string }>;
+    leApi?: boolean;
+  }) => Promise<{ ok: true; enabled: boolean; live: boolean; leApi?: boolean } | { ok: false; error: string }>;
   reviewHotelAccess?: (input: {
     actor: "admin";
     staffId: string | null;
@@ -322,9 +323,10 @@ export async function reglerAccesHotels(input: Record<string, unknown>, deps: De
     enabled: input.actif,
     demo: false,
     live: input.mode_reel === true,
+    leApi: typeof input.reservation_api === "boolean" ? input.reservation_api : undefined,
   });
   if (!result.ok) throw new McpWriteError(result.error);
-  return { client_id: id, actif: result.enabled, mode_reel: result.live };
+  return { client_id: id, actif: result.enabled, mode_reel: result.live, reservation_api: result.leApi === true };
 }
 
 export async function archiverDossier(input: Record<string, unknown>, deps: DeskDeps = {}) {

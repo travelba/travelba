@@ -112,18 +112,20 @@ test("les sociétés remplacent la liste seulement avec confirmer", async () => 
 test("l’accès hôtels passe par le même geste que la fiche", async () => {
   let seen: unknown = null;
   const opened = await reglerAccesHotels(
-    { client_id: CLIENT, actif: true, mode_reel: true },
+    { client_id: CLIENT, actif: true, mode_reel: true, reservation_api: true },
     {
       admin: fakeAdmin(),
       writeHotelAccess: async (input) => {
         seen = input;
-        return { ok: true, enabled: true, live: true };
+        return { ok: true, enabled: true, live: true, leApi: input.leApi === true };
       },
     }
   );
   assert.equal((seen as { actor: string }).actor, "admin");
   assert.equal((seen as { live: boolean }).live, true);
+  assert.equal((seen as { leApi?: boolean }).leApi, true);
   assert.equal(opened.mode_reel, true);
+  assert.equal(opened.reservation_api, true);
   const refused = await reglerAccesHotels(
     { client_id: CLIENT, demande: "refuser" },
     {
