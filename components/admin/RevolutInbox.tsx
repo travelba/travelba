@@ -219,7 +219,13 @@ export function RevolutInbox({
         {shown.map((r) => {
           const candidates = suggestions.get(r.id) || [];
           const suggestedId = suggestedCustomerId(candidates);
-          const top = suggestedId ? candidates.find((c) => c.customer_id === suggestedId) : undefined;
+          const certain = suggestedId ? candidates.find((c) => c.customer_id === suggestedId) : undefined;
+          const top =
+            r.category === "stripe_paiement"
+              ? candidates.find((candidate) =>
+                  ["email", "stripe_history", "piece", "metadata", "stripe_customer", "stripe"].includes(candidate.reason)
+                ) || certain
+              : certain;
           const chosenId = chosenFor(r.id);
           const chosen = chosenId ? byId.get(chosenId) : undefined;
           const amount = Number(r.amount);
@@ -237,6 +243,7 @@ export function RevolutInbox({
                   <p className="text-xs text-muted">
                     {formatDateFr(r.booked_at)}
                     {designation ? ` · ${designation}` : ""}
+                    {r.stripe_line?.email ? ` · ${r.stripe_line.email}` : ""}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusChip tone={tone.tone}>{tone.label}</StatusChip>

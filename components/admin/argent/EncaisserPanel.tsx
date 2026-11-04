@@ -15,6 +15,8 @@ import {
 } from "@/lib/crm/revolut-match";
 import { repairRevolutDebitQueue } from "@/lib/crm/revolut-debit";
 import { stripeConfigured } from "@/lib/crm/stripe";
+import { pieceDigits, type PayerHistory, type PayerPiece } from "@/lib/crm/stripe-payer";
+import { loadStripeSuggestHints } from "@/lib/crm/stripe-suggest-load";
 import { scoreStripeMatches, type StripeMatchCandidate, type StripeMatchCustomer } from "@/lib/crm/stripe-match";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -23,10 +25,16 @@ type Props = {
   clientId?: string | null;
   connectedParam?: string | null;
   errorParam?: string | null;
+  canBackfill?: boolean;
 };
 
 /** À encaisser : virements Revolut puis paiements Stripe. Le score se calcule ici, l’IBAN reste sur le serveur. */
-export async function EncaisserPanel({ clientId = null, connectedParam = null, errorParam = null }: Props) {
+export async function EncaisserPanel({
+  clientId = null,
+  connectedParam = null,
+  errorParam = null,
+  canBackfill = false,
+}: Props) {
   const admin = createServiceClient();
   const initialMessage =
     errorParam === "oauth"
@@ -83,16 +91,65 @@ export async function EncaisserPanel({ clientId = null, connectedParam = null, e
     stripeRows = [];
   }
 
+  const stripeCustomerIds = [
+    ...stripeRows.map((row) => {
+      const id = row.raw && typeof row.raw === "object" ? (row.raw as { stripe_customer_id?: unknown }).stripe_customer_id : null;
+      return typeof id === "string" ? id : "";
+    }),
+    ...revolutRows.map((row) => row.stripe_line?.stripe_customer_id || ""),
+  ];
+  const numbers = [
+    ...stripeRows.map((row) => row.reference || ""),
+    ...revolutRows.map((row) => row.reference || row.stripe_line?.dossier_ref || ""),
+  ];
+  let hints: { history: PayerHistory[]; pieces: PayerPiece[] } = { history: [], pieces: [] };
+  try {
+    hints = await loadStripeSuggestHints(admin, { stripeCustomerIds, numbers });
+  } catch {
+    hints = { history: [], pieces: [] };
+  }
+  const inboxByIntent = new Map(stripeRows.map((row) => [row.stripe_payment_intent_id, row]));
+
   const revolutSuggestions: Record<string, RevolutMatchCandidate[]> = {};
   for (const row of revolutRows) {
     if (row.status !== "unmatched") continue;
     if (row.category && row.category !== "client" && row.category !== "stripe_paiement") continue;
-    const suggested = row.category === "stripe_paiement" ? row.stripe_line?.customer_id : "";
-    const person = suggested ? index.find((item) => item.id === suggested) : undefined;
-    if (person) {
-      revolutSuggestions[row.id] = [
-        { customer_id: person.id, score: 100, reason: "stripe", label: customerPickLabel(person) },
-      ];
+    if (row.category === "stripe_paiement" && row.stripe_line) {
+      const line = row.stripe_line;
+      const inbox = line.payment_intent_id ? inboxByIntent.get(line.payment_intent_id) : undefined;
+      const email = line.email || inbox?.payer_email || null;
+      const name = line.name || inbox?.payer_name || null;
+      const stripeCustomer =
+        line.stripe_customer_id ||
+        (inbox?.raw && typeof inbox.raw === "object" ? String((inbox.raw as { stripe_customer_id?: unknown }).stripe_customer_id || "") : "");
+      const designation = pieceDigits(row.reference) || pieceDigits(inbox?.reference) || pieceDigits(line.dossier_ref) || row.reference;
+      const scored = scoreStripeMatches(
+        { payer_name: name, payer_email: email, reference: designation, raw: { stripe_customer_id: stripeCustomer || null } },
+        index,
+        hints
+      );
+      const mapped: RevolutMatchCandidate[] = scored.candidates.map((candidate) => ({
+        customer_id: candidate.customer_id,
+        score: candidate.score,
+        reason: candidate.reason as RevolutMatchCandidate["reason"],
+        label: candidate.label,
+      }));
+      if (line.customer_id && !mapped.some((candidate) => candidate.customer_id === line.customer_id)) {
+        const person = index.find((item) => item.id === line.customer_id);
+        if (person) {
+          const reason = (line.suggestion_reason || "stripe") as RevolutMatchCandidate["reason"];
+          mapped.unshift({
+            customer_id: person.id,
+            score: reason === "metadata" || reason === "stripe_customer" ? 100 : 80,
+            reason,
+            label: customerPickLabel(person),
+          });
+        }
+      }
+      revolutSuggestions[row.id] = mapped;
+      if (email || name) {
+        row.stripe_line = { ...line, email: email || line.email, name: name || line.name };
+      }
       continue;
     }
     revolutSuggestions[row.id] = scoreRevolutMatches(row, index).candidates;
@@ -100,7 +157,7 @@ export async function EncaisserPanel({ clientId = null, connectedParam = null, e
   const stripeSuggestions: Record<string, StripeMatchCandidate[]> = {};
   for (const row of stripeRows) {
     if (row.status !== "unmatched") continue;
-    stripeSuggestions[row.id] = scoreStripeMatches(row, index).candidates;
+    stripeSuggestions[row.id] = scoreStripeMatches(row, index, hints).candidates;
   }
 
   const client = clientId ? index.find((person) => person.id === clientId) || null : null;
@@ -160,10 +217,11 @@ export async function EncaisserPanel({ clientId = null, connectedParam = null, e
           Paiements Stripe
         </h2>
         <StripeInbox
-          rows={stripeRows.map((row) => ({ ...row, payer_email: null, raw: {} }))}
+          rows={stripeRows.map((row) => ({ ...row, raw: {} }))}
           customers={customers}
           suggestions={stripeSuggestions}
           configured={stripeConfigured()}
+          canBackfill={canBackfill}
         />
       </section>
     </div>

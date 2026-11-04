@@ -1,6 +1,8 @@
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/crm/stripe";
-import { stripeInboxFromIntent, type StripeChargeHint, type StripeInboxDraft, type StripeIntentInput } from "@/lib/crm/stripe-inbox";
+import { stripeInboxFromIntent, type StripeInboxDraft, type StripeIntentInput } from "@/lib/crm/stripe-inbox";
+import { createStripeCustomerCache, lookupStripePayer } from "@/lib/crm/stripe-payer-fetch";
+import { snapshotFromPaymentIntent } from "@/lib/crm/stripe-snapshot";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
 import {
   STRIPE_FIRST_LOOKBACK_MS,
@@ -11,37 +13,56 @@ import {
 } from "@/lib/crm/sync-delta";
 import { SYNC_WATERMARK, readSyncWatermark, writeSyncWatermark } from "@/lib/crm/sync-watermark";
 
+export { snapshotFromPaymentIntent } from "@/lib/crm/stripe-snapshot";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type StripeAdmin = { from: (table: string) => any };
 
-export function snapshotFromPaymentIntent(intent: Stripe.PaymentIntent): StripeIntentInput {
-  const charge = intent.latest_charge;
-  const details =
-    charge && typeof charge !== "string" ? charge.payment_method_details : null;
-  const card = details && details.type === "card" ? details.card : null;
-  const hint: StripeChargeHint | null =
-    charge && typeof charge !== "string"
-      ? {
-          name: charge.billing_details?.name ?? null,
-          email: charge.billing_details?.email ?? null,
-          type: details?.type ?? null,
-          last4: card?.last4 ?? null,
-          wallet: card?.wallet?.type ?? null,
-        }
-      : null;
-  const customer = intent.customer;
-  return {
-    id: intent.id,
-    status: intent.status,
-    amount: intent.amount,
-    currency: intent.currency,
-    description: intent.description,
-    receiptEmail: intent.receipt_email,
-    created: intent.created,
-    customerId: !customer ? null : typeof customer === "string" ? customer : customer.id,
-    metadata: intent.metadata,
-    charge: hint,
-  };
+async function pool<T>(items: T[], limit: number, run: (item: T, index: number) => Promise<void>) {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      await run(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+}
+
+/** Relit le client Stripe et la session quand le paiement n'a pas d'e-mail ou de nom. */
+export async function enrichStripeIntents(intents: Stripe.PaymentIntent[]): Promise<StripeIntentInput[]> {
+  const stripe = getStripe();
+  const cache = createStripeCustomerCache();
+  const out: StripeIntentInput[] = new Array(intents.length);
+  await pool(intents, 4, async (intent, index) => {
+    const base = snapshotFromPaymentIntent(intent);
+    if (!stripe) {
+      out[index] = base;
+      return;
+    }
+    try {
+      const payer = await lookupStripePayer(
+        stripe,
+        {
+          intentId: intent.id,
+          customerId: base.customerId,
+          invoiceId: null,
+          billingEmail: base.charge?.email,
+          billingName: base.charge?.name,
+          receiptEmail: base.receiptEmail,
+          description: base.description,
+          metadata: base.metadata,
+        },
+        cache
+      );
+      out[index] = { ...base, description: payer.designation || base.description, payer };
+    } catch (err) {
+      console.error("[stripe] payeur", err instanceof Error ? err.message : "lecture");
+      out[index] = base;
+    }
+  });
+  return out;
 }
 
 export async function fetchSucceededPaymentIntents(sinceUnix: number) {
@@ -167,7 +188,7 @@ export async function syncStripeInbox(admin: StripeAdmin, now = Date.now()) {
     firstLookbackMs: STRIPE_FIRST_LOOKBACK_MS,
   });
   const intents = await fetchSucceededPaymentIntents(since);
-  const inserted = await upsertStripeInbox(admin, intents.map(snapshotFromPaymentIntent));
+  const inserted = await upsertStripeInbox(admin, await enrichStripeIntents(intents));
   await writeSyncWatermark(SYNC_WATERMARK.stripe, new Date(now).toISOString());
   const auto = await autoMatchUnmatchedStripe();
   return { fetched: intents.length, inserted, auto_matched: auto.matched, since };

@@ -13,12 +13,15 @@ import {
   type StripeInboxMethod,
 } from "@/lib/crm/stripe-inbox";
 import { shownPersonName } from "@/lib/crm/identity";
+import { suggestStripePayers, type PayerHistory, type PayerPiece } from "@/lib/crm/stripe-payer";
 import type { CrmCustomer, CrmStripeTransaction } from "@/lib/crm/types";
 
 export type StripeMatchReason =
   | "metadata"
   | "stripe_customer"
   | "email"
+  | "stripe_history"
+  | "piece"
   | "full_name"
   | "company_name"
   | "partial";
@@ -43,6 +46,11 @@ export const STRIPE_MATCH_SELECT =
 
 export type StripeMatchRow = Pick<CrmStripeTransaction, "payer_name" | "payer_email" | "reference"> & {
   raw?: unknown;
+};
+
+export type StripeMatchHints = {
+  history?: PayerHistory[];
+  pieces?: PayerPiece[];
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,10 +90,15 @@ function emailKey(value: string | null | undefined) {
 }
 
 /**
- * Auto seulement sur un hit unique et certain : metadata, customer Stripe, ou e-mail.
- * Le nom et la société restent des propositions (score < 90).
+ * Auto seulement sur un hit unique et certain : metadata ou customer Stripe de la fiche.
+ * L'e-mail, un client déjà vu sur un paiement rapproché, et une pièce à quatre chiffres
+ * restent des propositions (score < 90). Rien n'est crédité pour elles.
  */
-export function scoreStripeMatches(row: StripeMatchRow, customers: StripeMatchCustomer[]): StripeMatchResult {
+export function scoreStripeMatches(
+  row: StripeMatchRow,
+  customers: StripeMatchCustomer[],
+  hints: StripeMatchHints = {}
+): StripeMatchResult {
   if (!customers.length) return { autoCustomerId: null, candidates: [] };
 
   const metadata = stripeMetadata(row.raw);
@@ -118,10 +131,22 @@ export function scoreStripeMatches(row: StripeMatchRow, customers: StripeMatchCu
     else for (const hit of hits) upsert(hit, 70, "partial");
   }
 
-  if (email) {
-    const hits = customers.filter((customer) => emailKey(customer.email) === email);
-    if (hits.length === 1) upsert(hits[0], 100, "email");
-    else for (const hit of hits) upsert(hit, 70, "partial");
+  const suggestions = suggestStripePayers({
+    email: row.payer_email,
+    stripeCustomerId: stripeCustomer,
+    designation: row.reference,
+    customers,
+    history: hints.history,
+    pieces: hints.pieces,
+  });
+  if (email && !suggestions.some((item) => item.reason === "email")) {
+    for (const hit of customers.filter((customer) => emailKey(customer.email) === email)) {
+      upsert(hit, 70, "partial");
+    }
+  }
+  for (const suggestion of suggestions) {
+    const customer = customers.find((item) => item.id === suggestion.customerId);
+    if (customer) upsert(customer, suggestion.score, suggestion.reason);
   }
 
   const lastNameCounts = new Map<string, number>();
@@ -158,7 +183,16 @@ export function scoreStripeMatches(row: StripeMatchRow, customers: StripeMatchCu
   const candidates = [...byId.values()].sort(
     (a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr")
   );
-  return { autoCustomerId: suggestedCustomerId(candidates) || null, candidates };
+  return { autoCustomerId: autoStripeCustomerId(candidates), candidates };
+}
+
+/** Un e-mail qui désigne un autre client empêche le crédit automatique. */
+function autoStripeCustomerId(candidates: StripeMatchCandidate[]) {
+  const auto = suggestedCustomerId(candidates);
+  if (!auto) return null;
+  const email = candidates.filter((candidate) => candidate.reason === "email");
+  if (email.length === 1 && email[0].customer_id !== auto) return null;
+  return auto;
 }
 
 export function suggestionsForStripeCustomer(

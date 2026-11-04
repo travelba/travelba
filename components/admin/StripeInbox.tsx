@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmStripeTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { stripeInboxEmptyMessage } from "@/lib/crm/launch-status";
-import { stripeInboxCopy, stripeSuggestedCustomerId } from "@/lib/crm/stripe-inbox";
+import { stripeInboxCopy, stripeShownCandidate, stripeSuggestedCustomerId } from "@/lib/crm/stripe-inbox";
 import { StatusChip } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
@@ -33,11 +33,13 @@ export function StripeInbox({
   customers,
   suggestions: suggestionsById,
   configured,
+  canBackfill = false,
 }: {
   rows: CrmStripeTransaction[];
   customers: PickableCustomer[];
   suggestions: Record<string, StripeSuggestion[]>;
   configured: boolean;
+  canBackfill?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -47,6 +49,7 @@ export function StripeInbox({
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [pickerRow, setPickerRow] = useState<string | null>(null);
   const [scope, setScope] = useState<"unmatched" | "all">("unmatched");
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
   const shown = scope === "unmatched" ? rows.filter((row) => row.status === "unmatched") : rows;
 
   const byId = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
@@ -81,6 +84,42 @@ export function StripeInbox({
       router.refresh();
     } catch {
       setError("Connexion interrompue. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function backfill(confirm: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/stripe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "backfill", confirmer: confirm }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "La relecture Stripe n’a pas abouti. Réessayez.");
+        return null;
+      }
+      const count = Array.isArray(json.lignes) ? json.lignes.length : 0;
+      setPreviewCount(count);
+      if (!confirm) {
+        setMessage(
+          count
+            ? `${count} paiement${count > 1 ? "s" : ""} peuvent recevoir un nom ou un e-mail. Rien n’est crédité.`
+            : "Chaque paiement en attente a déjà un nom et un e-mail."
+        );
+        return null;
+      }
+      setPreviewCount(null);
+      setMessage(`${Number(json.ecrit || 0)} paiement${Number(json.ecrit || 0) > 1 ? "s" : ""} complété${Number(json.ecrit || 0) > 1 ? "s" : ""}. Aucun crédit.`);
+      router.refresh();
+      return null;
+    } catch {
+      setError("Connexion interrompue. Réessayez.");
+      return "Connexion interrompue. Réessayez.";
     } finally {
       setBusy(false);
     }
@@ -135,7 +174,29 @@ export function StripeInbox({
           {busy ? "Synchronisation…" : "Synchroniser Stripe"}
         </button>
         {configured ? (
-          <p className="text-sm text-muted">Paiements reçus : Créditer ou Refuser. Un paiement dont le payeur est certain est crédité tout seul.</p>
+          <p className="text-sm text-muted">Paiements reçus : Créditer ou Refuser. Un paiement dont le client est dans la fiche est crédité tout seul. L’e-mail reste une proposition.</p>
+        ) : null}
+        {canBackfill && configured ? (
+          <button
+            type="button"
+            onClick={() => void backfill(false)}
+            disabled={busy}
+            className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Compléter les payeurs
+          </button>
+        ) : null}
+        {canBackfill && previewCount ? (
+          <ConfirmAction
+            size="sm"
+            label="Écrire les noms et les e-mails"
+            confirmLabel="Compléter"
+            question="Compléter le nom et l’e-mail des paiements encore ouverts ? Aucun montant n’est crédité."
+            busyLabel="Relecture…"
+            disabled={busy}
+            className="admin-af-btn rounded-full px-4 py-2 text-sm"
+            onConfirm={() => backfill(true)}
+          />
         ) : null}
         <button
           type="button"
@@ -150,8 +211,7 @@ export function StripeInbox({
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
         {shown.map((row) => {
           const candidates = suggestions.get(row.id) || [];
-          const suggestedId = stripeSuggestedCustomerId(candidates);
-          const top = suggestedId ? candidates.find((candidate) => candidate.customer_id === suggestedId) : undefined;
+          const top = stripeShownCandidate(candidates);
           const chosenId = chosenFor(row.id);
           const chosen = chosenId ? byId.get(chosenId) : undefined;
           const signed = `+${formatMoney(Number(row.amount), row.currency)}`;
@@ -167,6 +227,7 @@ export function StripeInbox({
                   <p className="text-xs text-muted">
                     {formatDateFr(row.booked_at)} · {method}
                     {designation ? ` · ${designation}` : ""}
+                    {row.payer_email ? ` · ${row.payer_email}` : ""}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusChip tone={stripeStatusTone(row.status)}>{stripeStatusLabel(row.status)}</StatusChip>

@@ -667,6 +667,8 @@ export type CrmRevolutTransaction = {
     payment_intent_id?: string | null;
     email?: string | null;
     name?: string | null;
+    stripe_customer_id?: string | null;
+    suggestion_reason?: string | null;
     dossier_ref?: string | null;
     customer_id?: string | null;
     booking_id?: string | null;

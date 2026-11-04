@@ -67,6 +67,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | --- | --- |
 | Grand livre, encours, comptabilité voyage | `grand_livre`, `comptabilite_voyage` — couvert |
 | Créditer Revolut, Stripe, virement | `crediter_revolut` (aussi une ligne de versement Stripe, brut ; frais non crédités), `crediter_stripe`, `crediter_virement` — couvert |
+| Compléter le nom et l’e-mail Stripe | `completer_payeurs_stripe` — ajouté. Sans `confirmer`, aperçu. Écrit seulement le nom et l’e-mail, sans crédit. Réservé aux administrateurs |
 | Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
 | Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
 | Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert |

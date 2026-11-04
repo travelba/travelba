@@ -1,5 +1,7 @@
 /** File Stripe : uniquement les paiements réussis, jamais un virement Revolut ni un PAN. */
 
+import type { StripePayerIdentity } from "@/lib/crm/stripe-payer";
+
 export const STRIPE_INBOX_METHODS = ["card", "apple_pay", "sepa", "other"] as const;
 
 export type StripeInboxMethod = (typeof STRIPE_INBOX_METHODS)[number];
@@ -25,6 +27,8 @@ export type StripeIntentInput = {
   customerId?: string | null;
   metadata?: Record<string, string> | null;
   charge?: StripeChargeHint | null;
+  /** Identité déjà relue (session, client, facture). */
+  payer?: StripePayerIdentity | null;
 };
 
 export type StripeInboxDraft = {
@@ -132,9 +136,10 @@ export function stripeInboxFromIntent(input: StripeIntentInput): StripeInboxDraf
     wallet: input.charge?.wallet,
   });
   const last4 = last4Of(input.charge?.last4);
-  const payerName = clean(input.charge?.name);
-  const payerEmail = clean(input.charge?.email) || clean(input.receiptEmail);
-  const reference = clean(input.description);
+  const payer = input.payer;
+  const payerName = clean(payer?.name) || clean(input.charge?.name);
+  const payerEmail = clean(payer?.email) || clean(input.charge?.email) || clean(input.receiptEmail);
+  const reference = clean(payer?.designation) || clean(input.description);
   const cents = Math.round(Number(input.amount));
   const created = Number(input.created);
   return {
@@ -159,8 +164,21 @@ export function stripeInboxFromIntent(input: StripeIntentInput): StripeInboxDraf
       metadata,
       method,
       last4,
+      customer_email: payer?.raw.customer_email ?? null,
+      customer_name: payer?.raw.customer_name ?? null,
+      checkout_session_id: payer?.raw.checkout_session_id ?? null,
+      payment_link_id: payer?.raw.payment_link_id ?? null,
+      custom_fields: payer?.raw.custom_fields ?? [],
+      invoice_id: payer?.raw.invoice_id ?? null,
     },
   };
+}
+
+const SHOWN_REASONS = new Set(["metadata", "stripe_customer", "email", "stripe_history", "piece"]);
+
+/** Proposition affichée, y compris sous le seuil de crédit automatique. */
+export function stripeShownCandidate<T extends { reason: string; score: number }>(candidates: T[]) {
+  return candidates.find((candidate) => SHOWN_REASONS.has(candidate.reason) || candidate.score >= 90) || null;
 }
 
 /** Présélection : un seul candidat certain (≥ 90). */

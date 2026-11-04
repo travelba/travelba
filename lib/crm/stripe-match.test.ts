@@ -48,7 +48,7 @@ function row(patch: Partial<CrmStripeTransaction> = {}): CrmStripeTransaction {
   };
 }
 
-test("metadata, customer Stripe ou e-mail unique créditent seuls", () => {
+test("metadata ou customer Stripe de la fiche créditent seuls, l'e-mail reste une proposition", () => {
   const meta = scoreStripeMatches(
     row({ raw: { metadata: { crm_customer_id: ADA.id }, stripe_customer_id: null } }),
     [ADA, LEO]
@@ -61,7 +61,9 @@ test("metadata, customer Stripe ou e-mail unique créditent seuls", () => {
   assert.equal(stripe.candidates.find((c) => c.customer_id === LEO.id)?.reason, "stripe_customer");
 
   const email = scoreStripeMatches(row({ payer_email: "Ada@Exemple.fr" }), [ADA, LEO]);
-  assert.equal(email.autoCustomerId, ADA.id);
+  assert.equal(email.autoCustomerId, null);
+  assert.equal(email.candidates.find((c) => c.customer_id === ADA.id)?.reason, "email");
+  assert.ok((email.candidates.find((c) => c.customer_id === ADA.id)?.score || 0) < 90);
 });
 
 test("deux e-mails ou deux comptes Stripe n’auto-créditent pas", () => {
@@ -85,7 +87,7 @@ test("le nom et la société restent des propositions", () => {
   assert.equal(company.candidates.find((c) => c.customer_id === LEO.id)?.reason, "company_name");
 });
 
-test("deux hits certains ne choisissent pas à la place de l’agence", () => {
+test("un e-mail qui contredit la fiche ne choisit pas à la place de l'agence", () => {
   const scored = scoreStripeMatches(
     row({
       payer_email: LEO.email,
@@ -94,7 +96,8 @@ test("deux hits certains ne choisissent pas à la place de l’agence", () => {
     [ADA, LEO]
   );
   assert.equal(scored.autoCustomerId, null);
-  assert.equal(scored.candidates.filter((c) => c.score >= 90).length, 2);
+  assert.equal(scored.candidates.find((c) => c.customer_id === LEO.id)?.reason, "email");
+  assert.equal(scored.candidates.find((c) => c.customer_id === ADA.id)?.reason, "metadata");
 });
 
 type Write = { table: string; op: string; payload: Record<string, unknown> };

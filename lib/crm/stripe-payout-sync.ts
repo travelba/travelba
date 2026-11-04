@@ -2,6 +2,9 @@ import "server-only";
 
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/crm/stripe";
+import { createStripeCustomerCache, lookupStripePayer } from "@/lib/crm/stripe-payer-fetch";
+import { pieceDigits } from "@/lib/crm/stripe-payer";
+import { loadStripeSuggestHints } from "@/lib/crm/stripe-suggest-load";
 import { classifyStoredRevolut } from "@/lib/crm/revolut-classify";
 import {
   buildStripeSplit,
@@ -71,6 +74,7 @@ function snapshotBalance(tx: Stripe.BalanceTransaction): BalanceLineSnapshot {
   let chargeId: string | null = null;
   let name: string | null = null;
   let email: string | null = null;
+  let customerId: string | null = null;
   let metadata: Record<string, string> = {};
   if (sourceObj && "object" in sourceObj && sourceObj.object === "charge") {
     const charge = sourceObj as Stripe.Charge;
@@ -83,6 +87,8 @@ function snapshotBalance(tx: Stripe.BalanceTransaction): BalanceLineSnapshot {
     name = charge.billing_details?.name || null;
     email = charge.billing_details?.email || charge.receipt_email || null;
     metadata = stringMeta(charge.metadata);
+    const customer = charge.customer;
+    customerId = !customer ? null : typeof customer === "string" ? customer : customer.id;
   } else if (sourceObj && "object" in sourceObj && sourceObj.object === "refund") {
     const refund = sourceObj as Stripe.Refund;
     chargeId = !refund.charge ? null : typeof refund.charge === "string" ? refund.charge : refund.charge.id;
@@ -104,6 +110,7 @@ function snapshotBalance(tx: Stripe.BalanceTransaction): BalanceLineSnapshot {
     chargeId,
     name,
     email,
+    customerId,
     metadata,
   };
 }
@@ -280,6 +287,10 @@ async function loadLinks(admin: Admin, lines: BalanceLineSnapshot[]): Promise<St
       });
     }
   }
+  const hints = await loadStripeSuggestHints(admin, {
+    stripeCustomerIds: lines.map((line) => line.customerId || line.metadata.stripe_customer_id || "").filter(Boolean),
+    numbers: lines.flatMap((line) => [pieceDigits(line.description), pieceDigits(line.metadata.reference)].filter((value): value is string => Boolean(value))),
+  }).catch(() => ({ history: [], pieces: [] }));
   return {
     customers: [...customers.values()],
     bookings: [...bookings.values()],
@@ -288,7 +299,38 @@ async function loadLinks(admin: Admin, lines: BalanceLineSnapshot[]): Promise<St
         ? [{ id: String(row.id), customer_id: String(row.customer_id), external_id: String(row.external_id) }]
         : []
     ),
+    history: hints.history,
+    pieces: hints.pieces,
   };
+}
+
+async function fillMissingPayers(lines: BalanceLineSnapshot[]) {
+  const stripe = getStripe();
+  if (!stripe) return;
+  const cache = createStripeCustomerCache();
+  for (const line of lines) {
+    if (line.type !== "charge" && line.type !== "payment") continue;
+    if (line.email && line.name && line.description) continue;
+    try {
+      const payer = await lookupStripePayer(
+        stripe,
+        {
+          intentId: line.paymentIntentId,
+          customerId: line.customerId || line.metadata.stripe_customer_id || null,
+          billingEmail: line.email,
+          billingName: line.name,
+          description: line.description,
+          metadata: line.metadata,
+        },
+        cache
+      );
+      if (!line.email && payer.email) line.email = payer.email;
+      if (!line.name && payer.name) line.name = payer.name;
+      if (!line.description && payer.designation) line.description = payer.designation;
+    } catch (err) {
+      console.error("[revolut] payeur stripe", err instanceof Error ? err.message : "lecture");
+    }
+  }
 }
 
 async function rememberParent(admin: Admin, parent: ParentRow, line: StripeLineDetail, ignore: boolean) {
@@ -480,6 +522,7 @@ export async function splitPendingStripePayouts(admin: Admin, opts?: { refresh?:
         )
       );
       balance = listed.rows.map(snapshotBalance);
+      await fillMissingPayers(balance);
       complete = listed.complete;
     } catch (err) {
       console.error("[revolut] détail Stripe", err instanceof Error ? err.message : "échec");

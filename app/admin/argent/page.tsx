@@ -13,7 +13,11 @@ export const metadata = { title: "Argent" };
 
 /** Argent : À encaisser, À pointer, Grand livre, Comptes. Un onglet par geste ; les anciennes pages redirigent ici. */
 export default async function ArgentPage({ searchParams }: { searchParams: Promise<Record<string, SearchParamValue>> }) {
-  const [{ supabase }, params, badges] = await Promise.all([requirePermissionPage("view_finances"), searchParams, adminBadges()]);
+  const [{ supabase, staff }, params, badges] = await Promise.all([
+    requirePermissionPage("view_finances"),
+    searchParams,
+    adminBadges(),
+  ]);
   const tab = argentTabFromParam(params.onglet);
 
   return (
@@ -28,6 +32,7 @@ export default async function ArgentPage({ searchParams }: { searchParams: Promi
             clientId={firstParam(params.client) || null}
             connectedParam={firstParam(params.connected) || null}
             errorParam={firstParam(params.error) || null}
+            canBackfill={staff.role === "admin"}
           />
         ) : tab === "a-pointer" ? (
           <PointerPanel params={params} />

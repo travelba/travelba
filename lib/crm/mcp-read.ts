@@ -36,6 +36,11 @@ import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { loadDossierPeople, type DossierPeople } from "@/lib/crm/dossier-responsables";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
 import { formatDateTimeFr } from "@/lib/crm/dates";
+import { pieceDigits } from "@/lib/crm/stripe-payer";
+import { loadStripeSuggestHints } from "@/lib/crm/stripe-suggest-load";
+import { scoreStripeMatches, STRIPE_MATCH_SELECT, type StripeMatchCustomer } from "@/lib/crm/stripe-match";
+import { matchStripeReasonLabel } from "@/lib/crm/stripe-labels";
+import { stripeShownCandidate } from "@/lib/crm/stripe-inbox";
 import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation-mail";
 import { compareLeMadeAt, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
@@ -1056,6 +1061,30 @@ export async function readRevolutEnAttente(input: { page?: number; limite?: numb
       formatMoney(Number(row.amount), row.currency || "EUR"),
     ])
   );
+  const stripeLines = rows.rows.filter((row) => row.stripe_line && row.stripe_line.kind === "paiement");
+  const intentIds = stripeLines
+    .map((row) => row.stripe_line?.payment_intent_id)
+    .filter((id): id is string => Boolean(id));
+  const inbox = intentIds.length
+    ? await admin
+        .from("crm_stripe_transactions")
+        .select("stripe_payment_intent_id, payer_name, payer_email, reference, raw")
+        .in("stripe_payment_intent_id", intentIds.slice(0, 80))
+    : { data: [] as { stripe_payment_intent_id?: string; payer_name?: string | null; payer_email?: string | null; reference?: string | null; raw?: unknown }[] };
+  const inboxByIntent = new Map(
+    ((inbox.data || []) as { stripe_payment_intent_id?: string; payer_name?: string | null; payer_email?: string | null; reference?: string | null; raw?: unknown }[])
+      .filter((row) => row.stripe_payment_intent_id)
+      .map((row) => [String(row.stripe_payment_intent_id), row])
+  );
+  const people = stripeLines.length
+    ? (((await admin.from("crm_customers").select(STRIPE_MATCH_SELECT)).data || []) as StripeMatchCustomer[])
+    : [];
+  const hints = stripeLines.length
+    ? await loadStripeSuggestHints(admin, {
+        stripeCustomerIds: stripeLines.map((row) => row.stripe_line?.stripe_customer_id || ""),
+        numbers: stripeLines.map((row) => row.reference || row.stripe_line?.dossier_ref || ""),
+      }).catch(() => ({ history: [], pieces: [] }))
+    : { history: [], pieces: [] };
   return {
     lien: "/admin/argent?onglet=a-encaisser",
     page: rows.page,
@@ -1066,6 +1095,23 @@ export async function readRevolutEnAttente(input: { page?: number; limite?: numb
       const copy = revolutInboxCopy(row);
       const amount = Number(row.amount);
       const line = row.stripe_line;
+      const known = line?.payment_intent_id ? inboxByIntent.get(line.payment_intent_id) : undefined;
+      const email = line?.email || known?.payer_email || null;
+      const nom = line?.name || known?.payer_name || null;
+      const stripeCustomer =
+        line?.stripe_customer_id ||
+        (known?.raw && typeof known.raw === "object" ? String((known.raw as { stripe_customer_id?: unknown }).stripe_customer_id || "") : "");
+      const designation = pieceDigits(row.reference) || pieceDigits(known?.reference) || pieceDigits(line?.dossier_ref) || row.reference;
+      const shown =
+        line && line.kind === "paiement"
+          ? stripeShownCandidate(
+              scoreStripeMatches(
+                { payer_name: nom, payer_email: email, reference: designation, raw: { stripe_customer_id: stripeCustomer || null } },
+                people,
+                hints
+              ).candidates
+            )
+          : null;
       return {
         id: row.id,
         montant: `${amount < 0 ? "−" : "+"}${formatMoney(Math.abs(amount), row.currency || "EUR")}`,
@@ -1078,8 +1124,11 @@ export async function readRevolutEnAttente(input: { page?: number; limite?: numb
           line && line.kind && line.kind !== "cache"
             ? {
                 reference: line.payment_intent_id || line.payment_id || null,
-                nom: line.name || null,
-                email: line.email || null,
+                nom,
+                email,
+                suggestion: shown
+                  ? { client_id: shown.customer_id, libelle: shown.label, raison: matchStripeReasonLabel(shown.reason) }
+                  : null,
                 brut: formatMoney(Number(line.gross || 0), line.currency || row.currency || "EUR"),
                 frais: formatMoney(Number(line.fee || 0), line.currency || row.currency || "EUR"),
                 net: formatMoney(Number(line.net || 0), line.currency || row.currency || "EUR"),
@@ -1275,7 +1324,7 @@ export async function readStripeEnAttente(input: { page?: number; limite?: numbe
   const window = mcpWindow(input, INBOX_LIMIT);
   const { data, error } = await admin
     .from("crm_stripe_transactions")
-    .select("id, amount, currency, payer_name, reference, method, booked_at, status, direction")
+    .select("id, amount, currency, payer_name, payer_email, reference, method, booked_at, status, direction, raw")
     .eq("status", "unmatched")
     .eq("direction", "credit")
     .order("booked_at", { ascending: false, nullsFirst: false })
@@ -1285,23 +1334,48 @@ export async function readStripeEnAttente(input: { page?: number; limite?: numbe
     throw new Error("Lecture impossible.");
   }
   const rows = mcpSlice(
-    (data || []) as Pick<CrmStripeTransaction, "id" | "amount" | "currency" | "payer_name" | "reference" | "method" | "booked_at">[],
+    (data || []) as Pick<
+      CrmStripeTransaction,
+      "id" | "amount" | "currency" | "payer_name" | "payer_email" | "reference" | "method" | "booked_at" | "raw"
+    >[],
     window
   );
+  const people = rows.rows.length
+    ? ((
+        await admin.from("crm_customers").select(STRIPE_MATCH_SELECT)
+      ).data || []) as StripeMatchCustomer[]
+    : [];
+  const hints = rows.rows.length
+    ? await loadStripeSuggestHints(admin, {
+        stripeCustomerIds: rows.rows.map((row) => {
+          const id = row.raw && typeof row.raw === "object" ? (row.raw as { stripe_customer_id?: unknown }).stripe_customer_id : null;
+          return typeof id === "string" ? id : "";
+        }),
+        numbers: rows.rows.map((row) => row.reference || ""),
+      }).catch(() => ({ history: [], pieces: [] }))
+    : { history: [], pieces: [] };
   return {
     lien: "/admin/argent?onglet=a-encaisser",
     page: rows.page,
     limite: rows.limite,
     suite: rows.suite,
     page_suivante: rows.page_suivante,
-    paiements: rows.rows.map((row) => ({
-      id: row.id,
-      montant: formatMoney(Number(row.amount), row.currency || "EUR"),
-      payeur: row.payer_name,
-      libelle: row.reference,
-      moyen: row.method,
-      date: row.booked_at ? formatDateFr(row.booked_at) : null,
-    })),
+    paiements: rows.rows.map((row) => {
+      const shown = stripeShownCandidate(scoreStripeMatches(row, people, hints).candidates);
+      return {
+        id: row.id,
+        montant: formatMoney(Number(row.amount), row.currency || "EUR"),
+        payeur: row.payer_name,
+        nom: row.payer_name,
+        email: row.payer_email,
+        libelle: row.reference,
+        moyen: row.method,
+        date: row.booked_at ? formatDateFr(row.booked_at) : null,
+        suggestion: shown
+          ? { client_id: shown.customer_id, libelle: shown.label, raison: matchStripeReasonLabel(shown.reason) }
+          : null,
+      };
+    }),
   };
 }
 

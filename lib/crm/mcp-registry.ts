@@ -117,7 +117,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 103;
+export const MCP_TOOL_CAP = 104;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -421,7 +421,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "revolut_en_attente",
     description:
-      "Virements Revolut à encaisser. categorie : client, stripe_paiement, frais, remboursement. Un versement Stripe est découpé : une ligne par paiement (brut, frais, net, client, e-mail, dossier) et une ligne de frais d’agence non créditable. crediter est faux pour les frais, les intérêts et un paiement déjà encaissé via Stripe. L’identifiant sert à crediter_revolut ou refuser_encaissement. page et limite parcourent la file.",
+      "Virements Revolut à encaisser. categorie : client, stripe_paiement, frais, remboursement. Un versement Stripe est découpé : une ligne par paiement (brut, frais, net, nom, e-mail, dossier, proposition) et une ligne de frais d’agence non créditable. La proposition ne crédite pas. crediter est faux pour les frais, les intérêts et un paiement déjà encaissé via Stripe. L’identifiant sert à crediter_revolut ou refuser_encaissement. page et limite parcourent la file.",
     input: { page: listPage, limite: listLimit },
     run: (args) => readRevolutEnAttente(pageOf(args)),
   },
@@ -445,7 +445,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "stripe_en_attente",
     description:
-      "Paiements Stripe reçus, pas encore rapprochés. L’identifiant sert à crediter_stripe, avec le client désigné. page et limite parcourent toute la file.",
+      "Paiements Stripe reçus, pas encore rapprochés. Chaque ligne donne le nom, l’e-mail et la proposition (client, raison). La proposition ne crédite pas. L’identifiant sert à crediter_stripe, avec le client désigné. page et limite parcourent toute la file.",
     input: { page: listPage, limite: listLimit },
     run: (args) => readStripeEnAttente(pageOf(args)),
   },
@@ -567,6 +567,38 @@ export const MCP_TOOLS: ToolDef[] = [
       client_id: z.string().trim().describe("Identifiant du client à créditer"),
     },
     run: (args) => creditStripePayment(args),
+  },
+  {
+    name: "completer_payeurs_stripe",
+    write: true,
+    selfJournal: true,
+    description:
+      "Relit Stripe pour les paiements encore ouverts sans nom ou sans e-mail. Réservé aux administrateurs. Sans confirmer, aperçu seulement : ce qui serait écrit (nom, e-mail), rien n’est modifié. confirmer true écrit payer_name et payer_email, sans changer le statut, le montant, ni créditer.",
+    input: {
+      confirmer: z.boolean().optional().describe("true pour écrire. Sans cela, aperçu seulement"),
+    },
+    run: async (args) => {
+      const { getStripe } = await import("@/lib/crm/stripe");
+      const stripe = getStripe();
+      if (!stripe) throw new McpWriteError("Stripe n’est pas ouvert.");
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const { backfillStripePayers } = await import("@/lib/crm/stripe-backfill");
+      const result = await backfillStripePayers(createServiceClient(), stripe, args.confirmer === true);
+      if (args.confirmer === true) {
+        const staff = currentMcpAccess().staff;
+        if (staff) {
+          await recordAgencyJournal({
+            staffId: staff.id,
+            action: "update",
+            entityType: "finance",
+            entityId: null,
+            summary: `Payeurs Stripe complétés (${result.ecrit}) par ${staff.name}.`.slice(0, 500),
+            path: "/api/mcp",
+          });
+        }
+      }
+      return result;
+    },
   },
   {
     name: "remettre_non_rattache",
