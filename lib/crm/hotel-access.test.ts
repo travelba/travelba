@@ -15,6 +15,7 @@ import {
   decideRequestReview,
   hotelBookingEnabled,
   hotelDirectLive,
+  hotelLeApiBooking,
   showHotelButton,
   showPlatinumScreen,
 } from "./hotel-access";
@@ -65,6 +66,17 @@ test("le réglage du bouton est réservé à l’admin et part sur les clients a
   assert.equal(hotelDirectLive({ hotel_booking_enabled: true, hotel_demo: true, hotel_direct_live: true }), false);
   assert.equal(hotelDirectLive({ hotel_booking_enabled: true, hotel_direct_live: false }), false);
   assert.equal(hotelDirectLive({ hotel_booking_enabled: true, hotel_direct_live: true }), true);
+  assert.equal(hotelLeApiBooking({ hotel_booking_enabled: true, hotel_direct_live: true }), false);
+  assert.equal(hotelLeApiBooking({ hotel_booking_enabled: true, hotel_direct_live: true, hotel_le_api_booking: false }), false);
+  assert.equal(hotelLeApiBooking({ hotel_booking_enabled: true, hotel_direct_live: false, hotel_le_api_booking: true }), false);
+  assert.equal(
+    hotelLeApiBooking({ hotel_booking_enabled: true, hotel_demo: true, hotel_direct_live: true, hotel_le_api_booking: true }),
+    false
+  );
+  assert.equal(hotelLeApiBooking({ hotel_booking_enabled: true, hotel_direct_live: true, hotel_le_api_booking: true }), true);
+  const flag = readFileSync(join(root, "supabase/migrations/20261104180000_hotel_le_api_booking.sql"), "utf8");
+  assert.match(flag, /hotel_le_api_booking boolean not null default false/);
+  assert.doesNotMatch(flag, /set hotel_le_api_booking = true/);
 });
 
 test("le libellé Platinum n’est écrit qu’une fois, l’écran le reprend", () => {

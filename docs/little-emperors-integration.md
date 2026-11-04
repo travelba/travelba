@@ -21,7 +21,7 @@ Hotel search results are cached in memory for about ten minutes. Empty results e
 `HotelBookPort` remains the booking interface (`recheck`, `book`, `cancel`).
 
 - Without live access (`hotel_direct_live`), or when the offer is not a partner rate, or when the API key is absent: `direct_email`. The agency emails the hotel. Nothing is created upstream.
-- With live access, a partner rate and a configured key: `book()` returns `place`. The orchestrator then runs the create call. The port itself does not invent a confirmation number.
+- With live access, `hotel_le_api_booking` on that client, a partner rate and a configured key: `book()` returns `place`. The orchestrator then runs the create call. The port itself does not invent a confirmation number. The flag defaults to false. A client who only has live access stays on the email path.
 
 The price shown is `total_to_book` (requested currency, then the supplier total). This path does not add the 12% margin used for net accounts. The agency does not add a Stripe charge on top.
 
@@ -40,6 +40,8 @@ Client screens, the confirmation email and the dossier do not name the supplier 
 
 ## Security
 
-Columns added by migration `20261104161000_hotel_le_booking`: `le_hotel_id`, `le_session_id`, `le_rate_index`, `cancellation_deadline`, `requires_cvc`, `payment_description` on `crm_hotel_search_offers`, and `le_booking_id` on `crm_hotel_direct_stays`. Apply that migration before this code. No production environment variable changes.
+Migration `20261104161000_hotel_le_booking` adds `le_hotel_id`, `le_session_id`, `le_rate_index`, `cancellation_deadline`, `requires_cvc`, `payment_description` on `crm_hotel_search_offers`, and `le_booking_id` on `crm_hotel_direct_stays`.
+
+Migration `20261104180000_hotel_le_api_booking` adds `crm_customers.hotel_le_api_booking`, default false. It does not turn the flag on for any client. No production environment variable changes.
 
 Access is `hotel_booking_enabled` on the customer, default false, changed only by an administrator. The gold button follows the separate agency setting `hotel_button_visibility` (`authorized` by default). Search, price, booking, and payment routes refuse a client without access. New tables are `service_role` only, with row level security enabled. Stripe webhooks stay signed. Idempotency keys block a second stay, email, card, or debit. Card numbers are not stored or logged. The demo account cannot turn live mode on.

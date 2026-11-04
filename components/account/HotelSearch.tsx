@@ -245,7 +245,7 @@ function seedFromSnapshot(today: string, raw: string) {
   }
 }
 
-export function HotelSearch({ trial = true }: { trial?: boolean }) {
+export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; leApi?: boolean }) {
   const today = useDeviceToday();
   const storedDraft = useSyncExternalStore(subscribeHotelDraft, readHotelDraftSnapshot, emptyHotelDraftSnapshot);
   const seed = useMemo(() => seedFromSnapshot(today, storedDraft), [today, storedDraft]);
@@ -643,6 +643,7 @@ export function HotelSearch({ trial = true }: { trial?: boolean }) {
           others={shown.filter((item) => item.hotelKey !== openedLive.hotelKey).slice(0, 8)}
           onOpenOther={openHotel}
           trial={trial}
+          leApi={leApi}
         />
       ) : null}
       {openedLive ? null : <>

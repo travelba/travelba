@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createStaffBooking } from "@/lib/crm/booking-create";
-import { hotelDirectLive, type HotelAccessCustomer } from "@/lib/crm/hotel-access";
+import { hotelDirectLive, hotelLeApiBooking, type HotelAccessCustomer } from "@/lib/crm/hotel-access";
 import {
   applyStay,
   cancelOffer,
@@ -1004,7 +1004,7 @@ export async function openDirectStay(input: {
   const live = hotelDirectLive(input.customer);
   const port = portForBooking({
     partnerRate: quote.partnerRate,
-    leEndpoint: live && quote.partnerRate && littleEmperorsConfigured(),
+    leEndpoint: hotelLeApiBooking(input.customer) && quote.partnerRate && littleEmperorsConfigured(),
   });
   const checked = port.recheck(quote, now);
   if (!checked.ok) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
@@ -1297,7 +1297,7 @@ export async function prepareDirectPayment(input: {
   const { data } = await admin.from("crm_hotel_search_offers").select(OFFER_COLUMNS).eq("id", input.offerId).eq("customer_id", input.customer.id).maybeSingle();
   const offer = data as Offer | null;
   if (!offer || Date.parse(offer.expires_at) <= Date.now()) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
-  if (offer.account === "little_emperors" && littleEmperorsConfigured() && hotelDirectLive(input.customer)) {
+  if (offer.account === "little_emperors" && littleEmperorsConfigured() && hotelLeApiBooking(input.customer)) {
     return prepareLeClientCard(admin, input.customer.id, offer);
   }
   return beginDirectCard(input);
@@ -1321,7 +1321,7 @@ export async function beginDirectCard(input: {
   const { data } = await admin.from("crm_hotel_search_offers").select(OFFER_COLUMNS).eq("id", input.offerId).eq("customer_id", input.customer.id).maybeSingle();
   const offer = data as Offer | null;
   if (!offer || Date.parse(offer.expires_at) <= Date.now()) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
-  if (offer.account === "little_emperors" && littleEmperorsConfigured()) {
+  if (offer.account === "little_emperors" && littleEmperorsConfigured() && hotelLeApiBooking(input.customer)) {
     return { ok: false as const, message: "Ce séjour se règle auprès de l’hôtel, ou par l’agence." };
   }
   try {

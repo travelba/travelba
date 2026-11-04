@@ -395,6 +395,7 @@ export function HotelJourney({
   others = [],
   onOpenOther,
   trial = true,
+  leApi = false,
 }: {
   hotel: ClientHotel;
   stayRooms: HotelRoomOccupancy[];
@@ -407,6 +408,8 @@ export function HotelJourney({
   others?: ClientHotel[];
   onOpenOther?: (hotel: ClientHotel) => void;
   trial?: boolean;
+  /** Réservation par l’API. Les autres clients gardent le parcours e-mail. */
+  leApi?: boolean;
 }) {
   const [file, setFile] = useState<ClientHotelFile | null>(hotel.hotelId ? null : fileFromCard(hotel));
   const [note, setNote] = useState("");
@@ -431,9 +434,9 @@ export function HotelJourney({
   const [stayConditions, setStayConditions] = useState("");
   const [cardSecret, setCardSecret] = useState<{ clientSecret: string; intentId: string } | null>(null);
   const [widget, setWidget] = useState<{ url: string; origin: string; terms: string } | null>(null);
-  const payCopy = trial
-    ? { cardTitle: PAY_COPY.cardTitle, card: PAY_COPY.card, agencyTitle: PAY_COPY.agencyTitle, agency: PAY_COPY.agency }
-    : { cardTitle: LE_PAY_COPY.clientTitle, card: LE_PAY_COPY.client, agencyTitle: LE_PAY_COPY.agencyTitle, agency: LE_PAY_COPY.agency };
+  const payCopy = leApi
+    ? { cardTitle: LE_PAY_COPY.clientTitle, card: LE_PAY_COPY.client, agencyTitle: LE_PAY_COPY.agencyTitle, agency: LE_PAY_COPY.agency }
+    : { cardTitle: PAY_COPY.cardTitle, card: PAY_COPY.card, agencyTitle: PAY_COPY.agencyTitle, agency: PAY_COPY.agency };
   const roomsRef = useRef<HTMLDivElement>(null);
   const sendCard = useRef<(ready: boolean) => void>(() => {});
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -1086,7 +1089,7 @@ export function HotelJourney({
         <Dock
           label="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          action={sending ? "Envoi…" : trial ? "Transmettre à l’hôtel" : "Confirmer"}
+          action={sending ? "Envoi…" : leApi ? "Confirmer" : "Transmettre à l’hôtel"}
           disabled={sending || !rate.offerId || !payMethod}
           onAction={() => void send()}
         />
