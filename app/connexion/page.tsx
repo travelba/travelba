@@ -307,7 +307,6 @@ function LoginForm() {
 /** Bandeau d’erreur d’URL. Le formulaire lui-même n’attend pas les paramètres : la carte ne grandit pas. */
 function ConnexionQueryNotice() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const error = searchParams.get("error");
   if (error !== "auth" && error !== "no-account") return null;
   return (
@@ -327,10 +326,8 @@ function ConnexionQueryNotice() {
         <button
           type="button"
           className="w-full text-center text-sm font-semibold text-[var(--admin-navy)]"
-          onClick={async () => {
-            await signOutAccount("local");
-            router.replace("/connexion");
-            router.refresh();
+          onClick={() => {
+            void signOutAccount("local", "/connexion");
           }}
         >
           Se déconnecter

@@ -1,16 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
 
 export function SignOutButton() {
-  const router = useRouter();
-
   async function signOut() {
     // Cet appareil seulement. Les autres appareils se ferment depuis Sécurité.
-    await signOutAccount("local");
-    router.push("/connexion");
-    router.refresh();
+    await signOutAccount("local", "/connexion");
   }
 
   return (

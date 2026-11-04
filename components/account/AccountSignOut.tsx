@@ -1,16 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { Icon } from "@/components/crm/icons";
 
 export function AccountSignOut({ className }: { className?: string }) {
-  const router = useRouter();
-
   async function signOut() {
-    await signOutAccount("global");
-    router.push("/connexion");
-    router.refresh();
+    await signOutAccount("global", "/connexion");
   }
 
   return (
