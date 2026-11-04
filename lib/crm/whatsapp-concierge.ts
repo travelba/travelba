@@ -39,7 +39,8 @@ import {
   type TransactionKind,
   type TravelDocType,
 } from "./types";
-import { clientVisaStepCopy, type ClientVisaStep } from "./visa-flow";
+import { clientVisaStepCopy, clientVisaStepNote, type ClientVisaStep } from "./visa-flow";
+import { authorizationDisplayName } from "./visa-fr";
 import { stayCoverUrl, whatsappTypeImageUrl, type WhatsappImageKind } from "./concierge-notices";
 import { packBubbles, conciergeOpening, type BubbleHistory } from "../concierge/bubbles";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
@@ -489,7 +490,12 @@ function itemTimezone(kind: string, fromCode: string, card: CrmBookingItem) {
 function formalityCopy(row: RawVisa): string {
   if (row.status === "refuse") return "La formalité a été refusée.";
   const step = row.step && VISA_STEPS.has(row.step as ClientVisaStep) ? (row.step as ClientVisaStep) : null;
-  if (row.status === "piece") return clientVisaStepCopy("piece");
+  if (row.status === "piece") {
+    return (
+      clientVisaStepNote("piece", { authorization: authorizationDisplayName({ country: row.country }) }) ||
+      "Votre autorisation est prête."
+    );
+  }
   if (step) return clientVisaStepCopy(step);
   if (row.status === "paye") return "Le frais d’État est enregistré.";
   if (row.status === "en_cours") return "La formalité est en cours.";

@@ -8,7 +8,7 @@ import {
 import { greetingGivenName } from "./identity";
 import { whatsappAddress } from "./whatsapp";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
-import { visaGrantPreview, visaGrantSendBlock } from "./visa-grant-whatsapp";
+import { visaGrantAuthorizationName, visaGrantPreview, visaGrantSendBlock } from "./visa-grant-whatsapp";
 
 /** Les quatre cas, pour l’ESTA et pour l’ETA Royaume-Uni. */
 export const AUTHORIZATION_CASES = ["manquant", "expire", "ancien_passeport", "approuve"] as const;
@@ -155,7 +155,9 @@ export function authorizationPreview(input: {
   reference: string | null;
   validUntil?: string | null;
 }) {
-  if (input.notice === "approuve") return visaGrantPreview(input.name);
+  if (input.notice === "approuve") {
+    return visaGrantPreview(input.name, visaGrantAuthorizationName({ country: input.kind === "esta" ? "US" : "GB" }));
+  }
   const template = authorizationTextTemplate(input.kind, input.notice);
   const date = formatAuthorizationDate(input.validUntil);
   const variables = conciergeContentVariables({
@@ -205,7 +207,7 @@ export function authorizationClientFields(input: {
   const notice = authorizationNoticeCase(input);
   if (!notice) return null;
   if (notice === "approuve") {
-    const preview = visaGrantPreview(input.name);
+    const preview = visaGrantPreview(input.name, visaGrantAuthorizationName({ country: input.kind === "esta" ? "US" : "GB" }));
     const sendBlock = visaGrantSendBlock({
       phone: input.phone,
       optInAt: input.optInAt,

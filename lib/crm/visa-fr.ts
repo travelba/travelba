@@ -66,6 +66,41 @@ export function frenchEntryNeedsFormality(rule: FrenchEntryRule) {
   return rule.status === "authorization" || rule.status === "visa";
 }
 
+/** Le Canada s’affiche eTA, pas l’abréviation française AVE du tableau. */
+const DISPLAY_BY_COUNTRY: Record<string, string> = {
+  CA: "eTA Canada",
+};
+
+function authorizationToken(value: string) {
+  const name = value.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!name || name.length > 40) return null;
+  if (/[{}%]|https?:|travelba\.fr/i.test(name)) return null;
+  return name;
+}
+
+/**
+ * Nom lu dans le message : ESTA, ETA, ETA-IL, eTA Canada, NZeTA, ETIAS, e-Visa et le pays.
+ * Sans formalité connue, le libellé français du type : Visa, ou ETA.
+ */
+export function authorizationDisplayName(input?: { country?: string | null; docType?: string | null }) {
+  const iso = String(input?.country || "").trim().toUpperCase();
+  const forced = DISPLAY_BY_COUNTRY[iso];
+  if (forced) return forced;
+  if (/^[A-Z]{2}$/.test(iso)) {
+    const formality = String(entryForFrenchPassport(iso).formality || "").replace(/\s+/g, " ").trim();
+    if (/^e-?visa$/i.test(formality)) {
+      const place = destinationCountryName(iso);
+      const label = place && place !== iso ? `e-Visa ${place}` : "e-Visa";
+      return authorizationToken(label) || "e-Visa";
+    }
+    if (/^etias$/i.test(formality)) return "ETIAS";
+    const token = authorizationToken(formality);
+    if (token) return token;
+  }
+  if (input?.docType === "eta") return "ETA";
+  return "Visa";
+}
+
 /**
  * Portail d’État vérifié pour déposer la demande.
  * Pas d’URL si le site officiel n’est pas unique et confirmé.

@@ -144,9 +144,16 @@ export function depositAdvancesToPiece(status: string | null | undefined) {
   return status === "paye";
 }
 
-export function clientVisaStepNote(step: ClientVisaStep, input?: { paid?: boolean; paymentHeld?: boolean }) {
+export function clientVisaStepNote(
+  step: ClientVisaStep,
+  input?: { paid?: boolean; paymentHeld?: boolean; authorization?: string | null }
+) {
   if (step === "paiement" && input?.paymentHeld && !input.paid) return paymentHold(false);
   if (step === "paiement" && input?.paid) return "Le frais d’État est enregistré. La pièce arrive au coffre.";
+  const authorization = (input?.authorization || "").replace(/[\r\n]+/g, " ").trim();
+  if (step === "piece" && authorization && authorization.length <= 40 && !/[{}%]|https?:/i.test(authorization)) {
+    return `Votre autorisation ${authorization} est prête.`;
+  }
   return clientVisaStepCopy(step);
 }
 

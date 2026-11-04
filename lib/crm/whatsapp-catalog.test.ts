@@ -48,7 +48,8 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
   assert.equal(byId.get("vol-retard")?.bubble.image, null);
   assert.match(byId.get("formalite-prete")?.bubble.image || "", /\/whatsapp\/visa\.jpg$/);
   assert.match(byId.get("esta-approuve")?.bubble.body || "", /valable jusqu’au 29\/08\/2027/);
-  assert.match(byId.get("autorisation-validee-document")?.bubble.body || "", /Vous le trouverez ci-joint/);
+  assert.match(byId.get("autorisation-validee-document")?.bubble.body || "", /Vous la trouverez ci-jointe/);
+  assert.match(byId.get("autorisation-validee-document")?.bubble.body || "", /autorisation ESTA a été validée/);
   assert.equal(byId.get("autorisation-validee-document")?.fallback, null);
   assert.match(byId.get("autorisation-validee-image")?.bubble.image || "", /\/whatsapp\/visa\.jpg$/);
   assert.equal(byId.get("esta-manquant")?.fallback?.photo, false);
