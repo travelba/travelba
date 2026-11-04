@@ -601,11 +601,20 @@ export async function upsertLittleEmperorsWebhook(event: string, booking: LeBook
     context.itemsByBooking,
     context.customers
   );
+  const { data: directStay } = await admin
+    .from("crm_hotel_direct_stays")
+    .select("booking_id")
+    .eq("le_booking_id", booking.id)
+    .maybeSingle();
+  const directBookingId =
+    directStay && typeof (directStay as { booking_id?: unknown }).booking_id === "string"
+      ? (directStay as { booking_id: string }).booking_id
+      : null;
   const decision = decideLittleEmperorsAuto({
     booking: merged,
     suggestion,
     customers: context.customers,
-    linkedBookingId: existing?.crm_booking_id,
+    linkedBookingId: existing?.crm_booking_id || directBookingId,
     ignored: existing?.status === "ignored",
   });
   let crmBookingId = decision.kind === "link" ? decision.bookingId : null;

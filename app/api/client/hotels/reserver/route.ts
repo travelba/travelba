@@ -48,7 +48,10 @@ export async function POST(request: Request) {
       const hold = await beginDirectCard({ customer: auth.customer, offerId });
       if (!hold.ok) {
         await noteError(auth.customer.id, auth.user.id, mode, hold.message);
-        return jsonError(hold.message, 400);
+        return NextResponse.json(
+          { error: hold.message, code: hold.code, sellCents: hold.sellCents, currency: hold.currency },
+          { status: hold.code === "price_changed" ? 409 : 400 }
+        );
       }
       return NextResponse.json({ ok: true, clientSecret: hold.clientSecret, intentId: hold.intentId });
     }
@@ -62,7 +65,10 @@ export async function POST(request: Request) {
     });
     if (!opened.ok) {
       await noteError(auth.customer.id, auth.user.id, mode, opened.message);
-      return jsonError(opened.message, 400);
+      return NextResponse.json(
+        { error: opened.message, code: opened.code, sellCents: opened.sellCents, currency: opened.currency },
+        { status: opened.code === "price_changed" ? 409 : 400 }
+      );
     }
     await recordHotelClientActivity({
       customerId: auth.customer.id,

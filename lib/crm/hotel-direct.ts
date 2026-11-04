@@ -1,3 +1,5 @@
+import { deadlineStillOpen } from "./le-self-book";
+
 /**
  * Réservation directe auprès de l’hôtel. Machine pure : statuts, effets, idempotence.
  * Aucun secret, aucun numéro de carte. Le client ne voit que le libellé français.
@@ -46,6 +48,9 @@ export type DirectStay = {
   pliantCardId: string | null;
   reference: string;
   hotelName: string;
+  leBookingId: number | null;
+  supplier: "email" | "api";
+  placingAt: string | null;
 };
 
 export type DirectEffect =
@@ -163,6 +168,9 @@ function blank(input: {
     pliantCardId: null,
     reference: "",
     hotelName: "",
+    leBookingId: null,
+    supplier: "email",
+    placingAt: null,
   };
 }
 
@@ -218,6 +226,65 @@ export function openStay(input: {
     });
   }
   return { stay, effects, audit };
+}
+
+/** Séjour confirmé par l’API. L’encaissement et le message partent avec les effets. Aucun courrier hôtel. */
+export function openLeConfirmed(input: {
+  sellCents: number;
+  currency: string;
+  confirmation: string;
+  leBookingId: number;
+  freeCancellation: boolean;
+  cancelDeadline: string | null;
+  conditions: string;
+  guests: string[];
+  arrival: string | null;
+  now: string;
+  stripeIntent: string;
+  pliantCardId: string | null;
+}): StayStep {
+  const effects: DirectEffect[] = [];
+  let stay = blank({
+    payMethod: "card",
+    sellCents: input.sellCents,
+    currency: input.currency,
+    partnerRate: true,
+    freeCancellation: input.freeCancellation,
+    cancelDeadline: input.cancelDeadline,
+    conditions: input.conditions,
+    guests: input.guests,
+    arrival: input.arrival,
+  });
+  stay = {
+    ...stay,
+    phase: "confirmed",
+    stripe: "authorized",
+    authorizedAt: input.now,
+    pliant: input.pliantCardId ? "issued" : "none",
+    priceState: "confirmed",
+    confirmation: input.confirmation,
+    leBookingId: input.leBookingId,
+    supplier: "api",
+    stripeIntent: input.stripeIntent,
+    pliantCardId: input.pliantCardId,
+    hotelCents: input.sellCents,
+  };
+  stay = withKey(stay, "stripe:auth");
+  stay = pushEffect(stay, effects, { type: "capture", key: "stripe:capture" });
+  stay = { ...stay, draft: "ready" };
+  stay = pushEffect(stay, effects, { type: "draft", key: "draft:client" });
+  return {
+    stay: { ...stay, stripe: "captured" },
+    effects,
+    audit: [{ action: "confirmation", detail: input.confirmation }],
+  };
+}
+
+/** Échec avant encaissement : libère l’autorisation et gèle la carte déjà émise. */
+export function failLeBooking(stay: DirectStay, reason: string): StayStep {
+  const effects: DirectEffect[] = [];
+  const next = releaseMoney({ ...stay, phase: "cancelled", reason }, effects);
+  return { stay: next, effects, audit: [{ action: "refus", detail: reason.slice(0, 180) }] };
 }
 
 function releaseMoney(stay: DirectStay, effects: DirectEffect[]) {
@@ -407,11 +474,27 @@ export function applyStay(stay: DirectStay, event: StayEvent, now: string): Stay
     return { stay: next, effects, audit };
   }
 
+  if (event.type === "supplier_cancelled") {
+    if (next.phase === "cancelled" && next.clientRefunded) return { stay: next, effects, audit };
+    if (next.stripe === "captured") {
+      next = { ...next, phase: "cancelled", reason: "Client · annulation" };
+      next = refundClient(next, effects, next.sellCents);
+    } else {
+      next = releaseMoney({ ...next, phase: "cancelled", reason: "Client · annulation" }, effects);
+    }
+    if (next.pliant === "issued" || next.pliant === "charged") {
+      next = { ...next, pliant: "locked" };
+      next = pushEffect(next, effects, { type: "lock_card", key: "card:lock" });
+    }
+    audit.push({ action: "annulation", detail: "Client" });
+    return { stay: next, effects, audit };
+  }
+
   if (event.type === "cancel_client" || event.type === "cancel_agency" || event.type === "cancel_hotel") {
     if (next.phase === "cancelled") return { stay: next, effects, audit };
     const who = event.type === "cancel_hotel" ? "Hôtel" : event.type === "cancel_agency" ? "Agence" : "Client";
     if (event.type === "cancel_client") {
-      const offer = cancelOffer(next, now.slice(0, 10));
+      const offer = cancelOffer(next, now);
       if (offer.mode !== "cancel") return { error: "Annulation à demander à l’agence." };
     }
     if (paidByAgency(next) || next.hotelPay === "paid") {
@@ -456,14 +539,16 @@ export type StayEvent =
   | { type: "cancel_agency" }
   | { type: "cancel_hotel" }
   | { type: "ask_agency" }
-  | { type: "refund_now" };
+  | { type: "refund_now" }
+  | { type: "supplier_cancelled" };
 
 export function cancelOffer(stay: DirectStay, today: string): { mode: "cancel" | "ask" | "none"; conditions: string } {
   if (stay.phase === "cancelled" || stay.phase === "refunding") return { mode: "none", conditions: stay.conditions };
   const open = stay.phase === "transmitted" || stay.phase === "confirming" || stay.phase === "confirmed";
   if (!open) return { mode: "none", conditions: stay.conditions };
-  const before = Boolean(stay.cancelDeadline && today < stay.cancelDeadline);
-  if (stay.freeCancellation && before) return { mode: "cancel", conditions: stay.conditions };
+  if (stay.freeCancellation && deadlineStillOpen(stay.cancelDeadline, today)) {
+    return { mode: "cancel", conditions: stay.conditions };
+  }
   return { mode: "ask", conditions: stay.conditions || "Ce tarif ne prévoit pas d’annulation gratuite." };
 }
 

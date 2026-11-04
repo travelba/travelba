@@ -299,6 +299,7 @@ function RoomParty({
       </div>
       <label className="block">
         <span className="h-kicker">Voyageur principal</span>
+        <span className="mt-1 block text-sm h-muted">Prénom puis nom, le nom en entier.</span>
         <input
           value={principal}
           onChange={(event) => onPrincipal(event.target.value)}
@@ -578,11 +579,17 @@ export function HotelJourney({
       });
       const json = (await response.json().catch(() => null)) as {
         error?: string;
+        code?: string;
+        sellCents?: number;
         clientSecret?: string;
         intentId?: string;
         view?: { id: string; label: string; cancel: "cancel" | "ask" | "none"; conditions: string };
       } | null;
       if (!response.ok) {
+        if (json?.code === "price_changed" && typeof json.sellCents === "number" && rate) {
+          setRate({ ...rate, sellCents: json.sellCents });
+          setCardSecret(null);
+        }
         setNote(json?.error || "La demande n’a pas pu être envoyée.");
         return;
       }

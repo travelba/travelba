@@ -229,7 +229,7 @@ test("le journal retire un numéro, le port membre ne crée rien, le message cli
   const port = portForBooking({ partnerRate: true, leEndpoint: false });
   assert.equal(port.kind, "direct_email");
   const closed = portForBooking({ partnerRate: true, leEndpoint: true });
-  assert.equal(closed.book({
+  const placed = closed.book({
     idempotencyKey: "k",
     hotelName: "Ritz",
     checkIn: "2026-11-06",
@@ -238,7 +238,10 @@ test("le journal retire un numéro, le port membre ne crée rien, le message cli
     currency: "EUR",
     expiresAt: "2026-11-01T00:00:00.000Z",
     partnerRate: true,
-  }).status, "unavailable");
+  });
+  assert.equal(placed.status, "place");
+  assert.equal(placed.channel, "api");
+  assert.equal("confirmationNumber" in placed, false);
   const draft = clientConfirmationDraft({ firstName: "Benjamin", hotel: "Ritz", confirmation: "HTL1", dates: "6–8 novembre" });
   assert.match(draft, /HTL1/);
   assert.doesNotMatch(draft, /Little Emperors|net|commission/i);

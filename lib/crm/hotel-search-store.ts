@@ -49,6 +49,12 @@ export async function saveHotelOffer(
           rate_key: stay.rateKey || "",
           rate_title: stay.rateTitle || null,
           cancellation_policy: stay.cancellation || null,
+          le_hotel_id: stay.hotelId,
+          le_session_id: stay.sessionId ? clip(stay.sessionId, 120) : null,
+          le_rate_index: stay.rateIndex ? clip(stay.rateIndex, 200) : null,
+          cancellation_deadline: stay.cancellationDeadline ? clip(stay.cancellationDeadline, 40) : null,
+          requires_cvc: stay.requiresCvc,
+          payment_description: stay.paymentDescription ? clip(stay.paymentDescription, 500) : null,
           expires_at: expires,
         },
         { onConflict: "customer_id,hotel_key,check_in,check_out,occupancy_key,room_key,rate_key" }
