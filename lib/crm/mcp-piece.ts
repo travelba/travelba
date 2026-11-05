@@ -68,6 +68,9 @@ export type PieceNotify = (
   options?: { travelerIds?: string[]; audience?: FormalityAudience; documentId?: string; forcer?: boolean }
 ) => Promise<FormalityNotice[]>;
 
+/** Date de délivrance lue sur le fichier. Null si rien n’est lu. Jamais de numéro dans un journal. */
+export type PieceIssueExtract = (bytes: Uint8Array, type: string, name: string) => Promise<string | null>;
+
 export type PreparedPiece = {
   clientId: string;
   dossierId: string;
@@ -77,10 +80,14 @@ export type PreparedPiece = {
   issuingCountry: string | null;
   number: string | null;
   expiresOn: string | null;
+  issuedOn: string | null;
   fileName: string;
   mimeType: string;
   bytes: Buffer;
 };
+
+/** Un fichier de test minuscule n’est pas un scan. Un vrai passeport l’est. */
+const MIN_ISSUE_SCAN_BYTES = 2048;
 
 function client(admin?: SupabaseClient) {
   if (admin) return admin;
@@ -159,6 +166,8 @@ export function prepareTravelPiece(input: Record<string, unknown>): PreparedPiec
   const mimeType = optionalText(input.type_mime, "Type mime", 120) || "";
   const expiresOn = optionalText(input.expiration, "Date d’expiration", 40);
   if (expiresOn && !isIsoDate(expiresOn)) throw new McpWriteError("Date d’expiration invalide (AAAA-MM-JJ).");
+  const issuedOn = optionalText(input.delivrance, "Date de délivrance", 40);
+  if (issuedOn && !isIsoDate(issuedOn)) throw new McpWriteError("Date de délivrance invalide (AAAA-MM-JJ).");
   const bytes = decodeUploadedBytes(input.contenu);
   try {
     assertUpload({ size: bytes.length, type: mimeType, name: fileName });
@@ -175,6 +184,7 @@ export function prepareTravelPiece(input: Record<string, unknown>): PreparedPiec
     issuingCountry: optionalText(input.pays, "Pays", 80),
     number: optionalText(input.numero, "Numéro", 40),
     expiresOn,
+    issuedOn,
     fileName,
     mimeType,
     bytes,
@@ -410,13 +420,38 @@ async function loadPassports(db: SupabaseClient, customerId: string) {
   return ((data || []) as Record<string, unknown>[]).map(asPassport);
 }
 
+async function scanPassportIssueDate(bytes: Uint8Array, type: string, name: string): Promise<string | null> {
+  const { scanPassportBytes } = await import("@/lib/crm/passport-scan");
+  const rows = await scanPassportBytes(bytes, type, name);
+  for (const row of rows) {
+    const issued = typeof row.issued_on === "string" ? row.issued_on.trim() : "";
+    if (issued && isIsoDate(issued)) return issued;
+  }
+  return null;
+}
+
+/** Délivrance fournie, sinon celle lue sur un vrai scan. Pas de numéro. */
+export async function resolvePassportIssueDate(draft: PreparedPiece, extract?: PieceIssueExtract | null): Promise<string | null> {
+  if (draft.docType !== "passport") return null;
+  if (draft.issuedOn) return draft.issuedOn;
+  if (!extract && draft.bytes.length < MIN_ISSUE_SCAN_BYTES) return null;
+  try {
+    const found = await (extract ?? scanPassportIssueDate)(draft.bytes, draft.mimeType, draft.fileName);
+    if (typeof found === "string" && isIsoDate(found.trim())) return found.trim();
+  } catch (err) {
+    console.error("[mcp] piece delivrance", err instanceof Error ? err.name : "error");
+  }
+  return null;
+}
+
 async function updatePassport(
   db: SupabaseClient,
   row: StoredPassport,
   extras: StoredPassport[],
   draft: PreparedPiece,
   customerId: string,
-  upload?: PieceUpload
+  upload?: PieceUpload,
+  issuedOn?: string | null
 ): Promise<SavedPiece> {
   const storagePath = customerDocumentStoragePath(customerId, draft.fileName);
   await (upload ?? uploadCrmFile)(storagePath, draft.bytes, draft.mimeType || "application/octet-stream");
@@ -427,6 +462,7 @@ async function updatePassport(
   };
   if (draft.number) patch.number = draft.number;
   if (draft.expiresOn) patch.expires_on = draft.expiresOn;
+  if (issuedOn) patch.issued_on = issuedOn;
   if (draft.issuingCountry) patch.issuing_country = resolveNationality(draft.issuingCountry) || draft.issuingCountry;
   const updated = await db.from("crm_travel_documents").update(patch).eq("id", row.id).eq("customer_id", customerId);
   if (updated.error) failDb(updated.error, "Enregistrement impossible.");
@@ -445,19 +481,22 @@ async function updatePassport(
 
 /**
  * Passeport déjà là : on écrit le fichier et les champs fournis.
- * Délivrance, autorité, noms, naissance, nationalité, sexe et lieu restent.
+ * La délivrance est écrite quand elle est fournie ou lue sur le fichier.
+ * Autorité, noms, naissance, nationalité, sexe et lieu restent.
  * Pas de synchro ESTA / ETA : aucun message.
  */
 async function storePassport(
   db: SupabaseClient,
   target: PieceTarget,
   draft: PreparedPiece,
-  upload?: PieceUpload
+  upload?: PieceUpload,
+  extract?: PieceIssueExtract | null
 ): Promise<SavedPiece> {
+  const issuedOn = await resolvePassportIssueDate(draft, extract);
   const rows = await loadPassports(db, target.customerId);
   const country = draft.issuingCountry ? resolveNationality(draft.issuingCountry) : null;
   const chosen = choosePassport(rows.filter((row) => inScope(row, target)), country);
-  if (chosen) return updatePassport(db, chosen.row, chosen.extras, draft, target.customerId, upload);
+  if (chosen) return updatePassport(db, chosen.row, chosen.extras, draft, target.customerId, upload, issuedOn);
   const donor = donorPassport(
     rows.filter((row) => sameVaultPerson(row, target)),
     country
@@ -472,7 +511,7 @@ async function storePassport(
       docType: "passport",
       number: draft.number ?? donor?.number ?? null,
       issuingCountry: draft.issuingCountry ?? donor?.issuing_country ?? null,
-      issuedOn: donor?.issued_on ?? null,
+      issuedOn: issuedOn ?? donor?.issued_on ?? null,
       expiresOn: draft.expiresOn ?? donor?.expires_on ?? null,
       placeOfBirth: donor?.place_of_birth ?? null,
       authority: donor?.authority ?? null,
@@ -499,7 +538,7 @@ async function storePassport(
 export async function addTravelPiece(
   input: Record<string, unknown>,
   admin?: SupabaseClient,
-  deps?: { upload?: PieceUpload; reconcile?: PieceReconcile; notify?: PieceNotify }
+  deps?: { upload?: PieceUpload; reconcile?: PieceReconcile; notify?: PieceNotify; extractIssueDate?: PieceIssueExtract }
 ) {
   const draft = prepareTravelPiece(input);
   const db = client(admin);
@@ -523,7 +562,7 @@ export async function addTravelPiece(
   try {
     await assertBookingForCustomer(db, target.customerId, target.booking?.id ?? null);
     if (draft.docType === "passport") {
-      document = await storePassport(db, target, draft, deps?.upload);
+      document = await storePassport(db, target, draft, deps?.upload, deps?.extractIssueDate);
     } else {
       document = await saveUploadedTravelDocument(
         db,

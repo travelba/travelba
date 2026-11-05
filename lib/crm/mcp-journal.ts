@@ -62,6 +62,7 @@ const PHRASES: Record<string, string> = {
   importer_reservation_little_emperors: "Réservation Little Emperors importée",
   mettre_a_jour_client: "Fiche client modifiée",
   modifier_titulaire: "Titulaire modifié",
+  mettre_a_jour_accompagnant: "Accompagnateur modifié",
   definir_role_societe: "Rôle de société modifié",
   inviter_client: "Invitation envoyée",
   renvoyer_acces_whatsapp: "Accès renvoyés par WhatsApp",
