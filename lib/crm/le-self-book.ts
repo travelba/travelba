@@ -235,6 +235,55 @@ export function pricesDiffer(quotedCents: number, freshCents: number) {
   return quotedCents !== freshCents;
 }
 
+/** Voyageur principal envoyé au fournisseur : prénom puis nom, sans liste. */
+export function lePrimaryGuest(value: string): string | null {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (!clean || clean.length > 80 || /[,;]/.test(clean)) return null;
+  const parts = clean.split(" ").filter(Boolean);
+  if (parts.length < 2 || parts[parts.length - 1].length < 2) return null;
+  return clean;
+}
+
+export const PARTY_MISMATCH = "Ce tarif n’est plus disponible pour ce nombre de voyageurs. Choisissez une autre chambre.";
+
+/**
+ * Le nombre d’adultes est le plus grand entre la recherche et les personnes nommées
+ * (le principal, plus chaque accompagnant). Un second passage ne les compte pas deux fois.
+ * Les enfants déjà saisis restent des enfants.
+ */
+export function partyWithCompanions<T extends { adults: number; children: { age: number }[] }>(
+  stored: T[],
+  companionsPerRoom: number[]
+): T[] {
+  return stored.map((room, index) => ({
+    ...room,
+    adults: Math.max(room.adults, 1 + Math.max(0, companionsPerRoom[index] || 0)),
+  }));
+}
+
+export function partyChanged<T extends { adults: number; children: { age: number }[] }>(stored: T[], next: T[]) {
+  if (stored.length !== next.length) return true;
+  return stored.some((room, index) => {
+    const other = next[index];
+    if (room.adults !== other.adults || room.children.length !== other.children.length) return true;
+    return room.children.some((child, at) => child.age !== other.children[at]?.age);
+  });
+}
+
+/** Message client. Le texte amont n’est pas recopié s’il peut nommer le fournisseur. */
+export function leClientRefusal(status: number, upstream: string): string {
+  const text = upstream.toLowerCase();
+  if (/session/.test(text) && /expir|invalid|unknown|not found|mismatch/.test(text)) {
+    return "La saisie de la carte a expiré. Recommencez.";
+  }
+  if (/guest.?name|surname|first.?name/.test(text)) {
+    return "Indiquez le prénom et le nom du voyageur principal, une personne par ligne.";
+  }
+  if (/adult|child|occupan|room/.test(text)) return PARTY_MISMATCH;
+  if (status === 422) return "La réservation a été refusée. Vérifiez les voyageurs, puis réessayez.";
+  return "La réservation n’a pas abouti. Réessayez dans un instant.";
+}
+
 const WIDGET_HOSTS = new Set(["api-staging.littleemperors.com", "api.littleemperors.com"]);
 
 /** Iframe de saisie. L’adresse reste sur l’hôte du widget ; la carte n’arrive pas ici. */

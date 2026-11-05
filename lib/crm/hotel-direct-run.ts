@@ -16,14 +16,17 @@ import {
   type StayEvent,
 } from "@/lib/crm/hotel-direct";
 import { clientConfirmationDraft, hotelRequestLetter, outboundHotelRecipient, HOTEL_DIRECT_FROM } from "@/lib/crm/hotel-direct-mail";
-import { leRoomPartyOk, roomsFromStored } from "@/lib/crm/hotel-search";
-import { guestNameOk } from "@/lib/crm/hotel-journey";
+import { leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import {
   adoptLeBooking,
   claimLeBooking,
   clientPaymentTerms,
   leCardWidgetUrl,
   leDeadlineParisLabel,
+  lePrimaryGuest,
+  PARTY_MISMATCH,
+  partyChanged,
+  partyWithCompanions,
   pricesDiffer,
 } from "@/lib/crm/le-self-book";
 import { refreshLeOfferQuote, submitLeBooking, type LeFreshQuote } from "@/lib/crm/le-direct-book";
@@ -430,7 +433,7 @@ async function saveStay(admin: Admin, stayId: string, stay: DirectStay) {
     .eq("id", stayId);
 }
 
-async function storeFreshQuote(admin: Admin, offerId: string, fresh: LeFreshQuote) {
+async function storeFreshQuote(admin: Admin, offerId: string, fresh: LeFreshQuote, rooms?: HotelRoomOccupancy[]) {
   await admin
     .from("crm_hotel_search_offers")
     .update({
@@ -444,6 +447,7 @@ async function storeFreshQuote(admin: Admin, offerId: string, fresh: LeFreshQuot
       cancellation_policy: fresh.cancellation || null,
       free_cancellation: fresh.free,
       expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+      ...(rooms ? { rooms, adults: rooms.reduce((sum, room) => sum + room.adults, 0) } : {}),
     })
     .eq("id", offerId);
 }
@@ -497,17 +501,22 @@ async function placeLeStay(input: {
   guests: string[];
   arrival: string | null;
   payMethod: "card" | "agency";
+  companions: string[][];
   now: string;
 }): Promise<
   | { ok: true; view: ClientStayView }
   | { ok: false; message: string; code?: "price_changed" | "card_again"; sellCents?: number; currency?: string; widgetUrl?: string; terms?: string }
 > {
-  const rooms = roomsFromStored(input.offer.rooms, input.offer.adults || input.guests.length || 2);
+  const storedRooms = roomsFromStored(input.offer.rooms, input.offer.adults || input.guests.length || 2);
+  const companions = input.companions.length === storedRooms.length ? input.companions : storedRooms.map((_, index) => input.companions[index] || []);
+  if (input.guests.length !== storedRooms.length || input.guests.some((name) => !lePrimaryGuest(name)) || companions.some((room) => room.some((name) => !lePrimaryGuest(name)))) {
+    return { ok: false, message: "Indiquez le prénom et le nom de chaque voyageur, une personne par ligne." };
+  }
+  const principals = input.guests.map((name) => lePrimaryGuest(name) || "");
+  const rooms = partyWithCompanions(storedRooms, companions.map((room) => room.length));
   const party = leRoomPartyOk(rooms);
   if (!party.ok) return { ok: false, message: party.message };
-  if (input.guests.length !== rooms.length || input.guests.some((name) => !guestNameOk(name))) {
-    return { ok: false, message: "Indiquez le prénom et le nom de chaque chambre." };
-  }
+  if (rooms.some((room) => room.adults > 6)) return { ok: false, message: "Six adultes au plus par chambre." };
   const guestEmail = (input.customer.email || "").trim();
   if (!guestEmail.includes("@")) return { ok: false, message: "Indiquez un e-mail sur votre fiche." };
   const hotelId = Number(input.offer.le_hotel_id);
@@ -601,10 +610,10 @@ async function placeLeStay(input: {
       cancelDeadline: input.offer.cancellation_deadline || deadlineOf(input.offer.cancellation_policy, input.offer.free_cancellation === true),
       conditions: input.offer.cancellation_policy || "",
       hotelEmail: null,
-      guests: input.guests,
-      arrival: input.arrival,
-      now: input.now,
-    }).stay,
+    guests: input.guests.flatMap((name, index) => [name, ...companions[index]]),
+    arrival: input.arrival,
+    now: input.now,
+  }).stay,
     keys: [] as string[],
     mail: "none" as const,
     mailSentAt: null,
@@ -621,7 +630,7 @@ async function placeLeStay(input: {
     sellCents: input.offer.sell_cents,
     hotelCents: input.offer.sell_cents,
     currency: input.offer.currency,
-    guests: input.guests,
+    guests: input.guests.flatMap((name, index) => [name, ...companions[index]]),
     arrival: input.arrival,
   };
   let stayId = row?.id || "";
@@ -666,16 +675,49 @@ async function placeLeStay(input: {
     return { ok: false, message: "Ce tarif n’est pas en euros. Écrivez à votre conseiller." };
   }
 
-  const refresh = () =>
+  const refresh = (partyRooms: HotelRoomOccupancy[] = rooms) =>
     refreshLeOfferQuote({
       hotelId,
       checkIn: input.offer.check_in,
       checkOut: input.offer.check_out,
-      rooms,
+      rooms: partyRooms,
       rateKey: input.offer.rate_key || "",
       rateIndex: input.offer.le_rate_index || null,
       roomKey: input.offer.room_key || "",
     });
+  if (!agency && partyChanged(storedRooms, rooms)) {
+    const again = await refresh(rooms).catch(() => null);
+    if (!again) {
+      await release("Voyageurs");
+      return { ok: false, message: PARTY_MISMATCH };
+    }
+    await storeFreshQuote(input.admin, input.offer.id, again, rooms);
+    let widgetUrl: string | null = null;
+    try {
+      widgetUrl = leCardWidgetUrl(littleEmperorsOrigin(), again.sessionId);
+    } catch {
+      widgetUrl = null;
+    }
+    await release("Prix");
+    if (pricesDiffer(input.offer.sell_cents, again.sellCents) || again.currency !== input.offer.currency.toUpperCase()) {
+      return {
+        ok: false,
+        code: "price_changed",
+        message: priceChangedMessage(again.sellCents, again.currency),
+        sellCents: again.sellCents,
+        currency: again.currency,
+        widgetUrl: widgetUrl || undefined,
+        terms: termsFor(again),
+      };
+    }
+    return {
+      ok: false,
+      code: "card_again",
+      message: "Le nombre de voyageurs a changé. Saisissez à nouveau la carte.",
+      widgetUrl: widgetUrl || undefined,
+      terms: termsFor(again),
+    };
+  }
   let fresh: LeFreshQuote | null = agency
     ? null
     : {
@@ -691,17 +733,21 @@ async function placeLeStay(input: {
       };
   if (agency) {
     try {
-      fresh = await refresh();
+      fresh = await refresh(rooms);
     } catch {
       fresh = null;
     }
+  }
+  if (agency && !fresh) {
+    await release("Voyageurs");
+    return { ok: false, message: partyChanged(storedRooms, rooms) ? PARTY_MISMATCH : "Cette offre n’est plus disponible." };
   }
   if (!fresh || !fresh.sessionId || !fresh.rateIndex) {
     await release("Offre");
     return { ok: false, message: "Cette offre n’est plus disponible." };
   }
   if (agency && (pricesDiffer(input.offer.sell_cents, fresh.sellCents) || fresh.currency !== input.offer.currency.toUpperCase())) {
-    await storeFreshQuote(input.admin, input.offer.id, fresh);
+    await storeFreshQuote(input.admin, input.offer.id, fresh, partyChanged(storedRooms, rooms) ? rooms : undefined);
     await release("Prix");
     return {
       ok: false,
@@ -711,7 +757,7 @@ async function placeLeStay(input: {
       currency: fresh.currency,
     };
   }
-  if (agency) await storeFreshQuote(input.admin, input.offer.id, fresh);
+  if (agency) await storeFreshQuote(input.admin, input.offer.id, fresh, partyChanged(storedRooms, rooms) ? rooms : undefined);
 
   const holder = agency ? await readPliantCardholderName(process.env.PLIANT_CARDHOLDER_ID || "") : null;
   if (agency && !stay.pliantCardId) {
@@ -741,7 +787,7 @@ async function placeLeStay(input: {
           hotelId,
           checkIn: input.offer.check_in,
           checkOut: input.offer.check_out,
-          guest: input.guests[0],
+          guest: principals[0],
         })
       : null;
     if (adopted === "ambiguous") {
@@ -757,11 +803,11 @@ async function placeLeStay(input: {
       checkIn: input.offer.check_in,
       checkOut: input.offer.check_out,
       hotelId,
-      guestName: input.guests[0],
+      guestName: principals[0],
       guestEmail,
       arrival: input.arrival,
       rooms: rooms.map((room, index) => ({
-        guestName: input.guests[index] || input.guests[0],
+        guestName: principals[index],
         adults: room.adults,
         children: room.children,
       })),
@@ -770,7 +816,7 @@ async function placeLeStay(input: {
     });
   };
   if (!booking) {
-    let posted = await post(fresh).catch(() => ({ ok: false as const, expired: false }));
+    let posted = await post(fresh).catch(() => ({ ok: false as const, expired: false, message: "" }));
     if (!posted.ok && posted.expired && !agency) {
       const again = await refresh().catch(() => null);
       if (again && !pricesDiffer(fresh.sellCents, again.sellCents) && again.currency === fresh.currency) {
@@ -834,11 +880,11 @@ async function placeLeStay(input: {
         return { ok: false, message: "Cette recherche a expiré. Relancez-la." };
       }
       fresh = again;
-      posted = await post(again).catch(() => ({ ok: false as const, expired: true }));
+      posted = await post(again).catch(() => ({ ok: false as const, expired: true, message: "" }));
     }
     if (!booking && (!posted.ok || !("booking" in posted))) {
       await release("Refus");
-      return { ok: false, message: posted.expired ? "Cette recherche a expiré. Relancez-la." : NOT_CHARGED };
+      return { ok: false, message: posted.message || (posted.expired ? "La saisie de la carte a expiré. Recommencez." : NOT_CHARGED) };
     }
     if (!booking && posted.ok && "booking" in posted) booking = posted.booking;
   }
@@ -893,7 +939,7 @@ async function placeLeStay(input: {
             hotel_name: input.offer.hotel_name,
             city: input.offer.city,
             room: input.offer.room_label,
-            guests: input.guests.join(", "),
+            guests: input.guests.flatMap((name, index) => [name, ...(companions[index] || [])]).join(", "),
             direct_stay_id: stayId,
             le_hotel_id: hotelId,
             le_booking_id: booking.id,
@@ -944,7 +990,7 @@ async function placeLeStay(input: {
     freeCancellation: stay.freeCancellation,
     cancelDeadline: deadline,
     conditions: stay.conditions,
-    guests: input.guests,
+    guests: input.guests.flatMap((name, index) => [name, ...(companions[index] || [])]),
     arrival: input.arrival,
     now: input.now,
     pliantCardId: stay.pliantCardId,
@@ -980,6 +1026,7 @@ export async function openDirectStay(input: {
   payMethod: "card" | "agency";
   stripeIntent?: string | null;
   cardReady?: boolean;
+  companions?: string[][];
 }) {
   const admin = db();
   const { data: offerRow, error } = await admin
@@ -1010,7 +1057,7 @@ export async function openDirectStay(input: {
   if (!checked.ok) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
   const booked = port.book(quote);
   if (booked.status === "place") {
-    if (input.payMethod === "card" && !input.cardReady) return prepareLeClientCard(admin, input.customer.id, offer);
+    if (input.payMethod === "card" && !input.cardReady) return prepareLeClientCard(admin, input.customer.id, offer, input.companions || []);
     return placeLeStay({
       admin,
       customer: input.customer,
@@ -1018,6 +1065,7 @@ export async function openDirectStay(input: {
       guests: input.guests,
       arrival: input.arrival || null,
       payMethod: input.payMethod,
+      companions: input.companions || [],
       now,
     });
   }
@@ -1043,7 +1091,7 @@ export async function openDirectStay(input: {
     cancelDeadline: offer.cancellation_deadline || deadlineOf(offer.cancellation_policy, offer.free_cancellation === true),
     conditions: offer.cancellation_policy || "",
     hotelEmail: email,
-    guests: input.guests,
+    guests: input.guests.flatMap((name, index) => [name, ...((input.companions || [])[index] || [])]),
     arrival: input.arrival || null,
     now,
   });
@@ -1103,7 +1151,7 @@ export async function openDirectStay(input: {
           hotel_name: offer.hotel_name,
           city: offer.city,
           room: offer.room_label,
-          guests: input.guests.join(", "),
+          guests: input.guests.flatMap((name, index) => [name, ...((input.companions || [])[index] || [])]).join(", "),
           direct_stay_id: stayId,
         },
       })
@@ -1224,12 +1272,13 @@ async function cardHoldMatches(customerId: string, offer: Offer, intentId: strin
   );
 }
 
-async function freshQuote(offer: Offer): Promise<
-  | { ok: true; fresh: LeFreshQuote }
+async function freshQuote(offer: Offer, rooms?: HotelRoomOccupancy[]): Promise<
+  | { ok: true; fresh: LeFreshQuote; rooms: HotelRoomOccupancy[] }
   | { ok: false; message: string; code?: "price_changed"; sellCents?: number; currency?: string }
 > {
-  const rooms = roomsFromStored(offer.rooms, offer.adults || 2);
-  const party = leRoomPartyOk(rooms);
+  const stored = roomsFromStored(offer.rooms, offer.adults || 2);
+  const partyRooms = rooms || stored;
+  const party = leRoomPartyOk(partyRooms);
   if (!party.ok) return { ok: false, message: party.message };
   const hotelId = Number(offer.le_hotel_id);
   if (!Number.isInteger(hotelId) || hotelId < 1) return { ok: false, message: "Cette offre n’est plus disponible." };
@@ -1239,7 +1288,7 @@ async function freshQuote(offer: Offer): Promise<
       hotelId,
       checkIn: offer.check_in,
       checkOut: offer.check_out,
-      rooms,
+      rooms: partyRooms,
       rateKey: offer.rate_key || "",
       rateIndex: offer.le_rate_index || null,
       roomKey: offer.room_key || "",
@@ -1247,16 +1296,18 @@ async function freshQuote(offer: Offer): Promise<
   } catch {
     return { ok: false, message: "La vérification du tarif n’a pas abouti. Réessayez." };
   }
-  if (!fresh) return { ok: false, message: "Cette offre n’est plus disponible." };
-  return { ok: true, fresh };
+  if (!fresh) return { ok: false, message: partyChanged(stored, partyRooms) ? PARTY_MISMATCH : "Cette offre n’est plus disponible." };
+  return { ok: true, fresh, rooms: partyRooms };
 }
 
-export async function prepareLeClientCard(admin: Admin, customerId: string, offer: Offer) {
-  const quoted = await freshQuote(offer);
+export async function prepareLeClientCard(admin: Admin, customerId: string, offer: Offer, companions: string[][] = []) {
+  const stored = roomsFromStored(offer.rooms, offer.adults || 2);
+  const wanted = partyWithCompanions(stored, stored.map((_, index) => companions[index]?.length || 0));
+  const quoted = await freshQuote(offer, wanted);
   if (!quoted.ok) return quoted;
   const previous = offer.sell_cents;
   const previousCurrency = offer.currency.toUpperCase();
-  await storeFreshQuote(admin, offer.id, quoted.fresh);
+  await storeFreshQuote(admin, offer.id, quoted.fresh, partyChanged(stored, wanted) ? wanted : undefined);
   if (pricesDiffer(previous, quoted.fresh.sellCents) || quoted.fresh.currency !== previousCurrency) {
     return {
       ok: false as const,
@@ -1292,13 +1343,14 @@ export async function prepareDirectPayment(input: {
     stripe_customer_id: string | null;
   };
   offerId: string;
+  companions?: string[][];
 }) {
   const admin = db();
   const { data } = await admin.from("crm_hotel_search_offers").select(OFFER_COLUMNS).eq("id", input.offerId).eq("customer_id", input.customer.id).maybeSingle();
   const offer = data as Offer | null;
   if (!offer || Date.parse(offer.expires_at) <= Date.now()) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
   if (offer.account === "little_emperors" && littleEmperorsConfigured() && hotelLeApiBooking(input.customer)) {
-    return prepareLeClientCard(admin, input.customer.id, offer);
+    return prepareLeClientCard(admin, input.customer.id, offer, input.companions || []);
   }
   return beginDirectCard(input);
 }

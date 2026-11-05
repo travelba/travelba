@@ -5,6 +5,7 @@ import { amountToCents } from "@/lib/crm/money";
 import {
   etaHour,
   leBookingRequest,
+  leClientRefusal,
   leCreditCard,
   leSessionExpired,
   redactCardText,
@@ -110,9 +111,9 @@ export async function submitLeBooking(input: {
   rooms: { guestName: string; adults: number; children: { age: number }[] }[];
   card: { pan: string; cvc: string; expMonth: number; expYear: number; name: string } | null;
   fetchImpl?: typeof fetch;
-}): Promise<{ ok: true; booking: LeBooking } | { ok: false; expired: boolean }> {
+}): Promise<{ ok: true; booking: LeBooking } | { ok: false; expired: boolean; message: string }> {
   const credit = input.card ? leCreditCard({ ...input.card, requiresCvc: input.quote.requiresCvc }) : null;
-  if (input.card && !credit) return { ok: false, expired: false };
+  if (input.card && !credit) return { ok: false, expired: false, message: "La réservation n’a pas abouti. Réessayez dans un instant." };
   const body = leBookingRequest({
     start: input.checkIn,
     end: input.checkOut,
@@ -129,9 +130,9 @@ export async function submitLeBooking(input: {
     const booking = await createLittleEmperorsBooking(body, input.fetchImpl);
     return { ok: true, booking };
   } catch (err) {
-    const message = err instanceof Error ? redactCardText(err.message) : "";
-    const code = err instanceof LittleEmperorsError ? err.code : "error";
-    console.error("[hotels] réservation", code);
-    return { ok: false, expired: leSessionExpired(message) };
+    const status = err instanceof LittleEmperorsError ? err.status : 0;
+    const upstream = redactCardText(err instanceof Error ? err.message : "").slice(0, 400);
+    console.error("[hotels] réservation", status, upstream);
+    return { ok: false, expired: leSessionExpired(upstream), message: leClientRefusal(status, upstream) };
   }
 }

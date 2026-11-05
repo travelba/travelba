@@ -162,6 +162,11 @@ describe("little emperors staging client", () => {
     await assert.rejects(() => createLittleEmperorsBooking({ session_id: "S", rooms: [] }, fetchImpl), (err: unknown) => {
       return err instanceof LittleEmperorsError && !err.message.includes("4242") && err.message.includes("••••");
     });
+    const detailed: typeof fetch = async () =>
+      new Response(JSON.stringify({ message: "The given data was invalid.", errors: { guest_name: ["The surname must be at least 2 characters."] } }), { status: 422 });
+    await assert.rejects(() => createLittleEmperorsBooking({ session_id: "S", rooms: [] }, detailed), (err: unknown) => {
+      return err instanceof LittleEmperorsError && err.status === 422 && err.message.includes("guest_name") && err.message.includes("surname");
+    });
     assert.equal(method, "POST");
     assert.equal(path, "https://api-staging.littleemperors.com/v2/hotels/bookings");
     if (previousBase === undefined) delete process.env.LITTLE_EMPERORS_API_BASE;

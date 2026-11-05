@@ -8,9 +8,9 @@ import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
 import { HotelCardHold } from "@/components/account/HotelCardHold";
 import { LE_PAY_COPY, PAY_COPY } from "@/lib/crm/hotel-direct";
-import { leWidgetSignal, safeCardWidgetUrl } from "@/lib/crm/le-self-book";
+import { lePrimaryGuest, leWidgetSignal, safeCardWidgetUrl } from "@/lib/crm/le-self-book";
 import { collapseRooms, guestNameOk, travelPrivileges, type ClientHotelFile, type ClientRate, type ClientRoom, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
-import { composeRoomGuests, roomOccupancyLabel } from "@/lib/crm/hotel-party";
+import { roomOccupancyLabel } from "@/lib/crm/hotel-party";
 import type { ClientHotel, HotelPerks, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import { formatMoney } from "@/lib/crm/money";
 import { siteConfig } from "@/lib/site";
@@ -434,6 +434,7 @@ export function HotelJourney({
   const [stayConditions, setStayConditions] = useState("");
   const [cardSecret, setCardSecret] = useState<{ clientSecret: string; intentId: string } | null>(null);
   const [widget, setWidget] = useState<{ url: string; origin: string; terms: string } | null>(null);
+  const [cardFrame, setCardFrame] = useState<"idle" | "loading" | "ready" | "saved">("idle");
   const payCopy = leApi
     ? { cardTitle: LE_PAY_COPY.clientTitle, card: LE_PAY_COPY.client, agencyTitle: LE_PAY_COPY.agencyTitle, agency: LE_PAY_COPY.agency }
     : { cardTitle: PAY_COPY.cardTitle, card: PAY_COPY.card, agencyTitle: PAY_COPY.agencyTitle, agency: PAY_COPY.agency };
@@ -525,14 +526,14 @@ export function HotelJourney({
     onStep("guests");
   }
 
-  function guestLines() {
-    return stayRooms.map((_, index) => composeRoomGuests(principalAt(index), more[index] || []));
+  function roomPeople(index: number) {
+    return [principalAt(index), ...(more[index] || [])].map((name) => name.replace(/\s+/g, " ").trim()).filter(Boolean);
   }
 
   function guestsReady() {
     return stayRooms.every((_, index) => {
-      if (!guestNameOk(principalAt(index))) return false;
-      return (more[index] || []).every((name) => !name.trim() || guestNameOk(name));
+      if (!lePrimaryGuest(principalAt(index))) return false;
+      return (more[index] || []).every((name) => !name.trim() || Boolean(lePrimaryGuest(name)));
     });
   }
 
@@ -575,7 +576,10 @@ export function HotelJourney({
     if (!widget) return;
     const onMessage = (event: MessageEvent) => {
       const signal = leWidgetSignal({ origin: event.origin, allowedOrigin: widget.origin, data: event.data });
-      if (signal === "ready") sendCard.current(true);
+      if (signal === "ready") {
+        setCardFrame("saved");
+        sendCard.current(true);
+      }
       if (signal === "error") setNote("La carte n’a pas été acceptée. Vérifiez les informations.");
     };
     window.addEventListener("message", onMessage);
@@ -584,9 +588,12 @@ export function HotelJourney({
 
   async function send(intentId?: string, cardReady?: boolean) {
     if (!rate?.offerId || !payMethod) return;
-    const guests = guestLines();
+    const guests = stayRooms.map((_, index) => principalAt(index).replace(/\s+/g, " ").trim());
+    const companions = stayRooms.map((_, index) =>
+      (more[index] || []).map((name) => name.replace(/\s+/g, " ").trim()).filter(Boolean)
+    );
     if (!guestsReady()) {
-      setNote("Indiquez le prénom et le nom du voyageur principal de chaque chambre.");
+      setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne.");
       return;
     }
     setSending(true);
@@ -595,7 +602,7 @@ export function HotelJourney({
       const response = await fetch("/api/client/hotels/reserver", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ offerId: rate.offerId, guests, payMethod, arrival, intentId, cardReady: cardReady === true }),
+        body: JSON.stringify({ offerId: rate.offerId, guests, companions, payMethod, arrival, intentId, cardReady: cardReady === true }),
       });
       const json = (await response.json().catch(() => null)) as {
         error?: string;
@@ -610,6 +617,7 @@ export function HotelJourney({
       } | null;
       const widgetUrl = json?.widgetUrl ? safeCardWidgetUrl(json.widgetUrl) : null;
       if (widgetUrl && json?.widgetOrigin) {
+        setCardFrame("loading");
         setWidget({ url: widgetUrl, origin: json.widgetOrigin, terms: json.terms || rate.terms || "" });
         if (json.terms) setRate({ ...rate, terms: json.terms });
         setCardSecret(null);
@@ -619,9 +627,10 @@ export function HotelJourney({
       if (!response.ok) {
         if (json?.code === "price_changed" && typeof json.sellCents === "number" && rate) {
           setRate({ ...rate, sellCents: json.sellCents, terms: json.terms || rate.terms });
-          setCardSecret(null);
-          setWidget(null);
         }
+        setCardSecret(null);
+        setCardFrame("idle");
+        setWidget(null);
         setNote(json?.error || "La demande n’a pas pu être envoyée.");
         return;
       }
@@ -995,8 +1004,13 @@ export function HotelJourney({
               <p className="h-ink"><span className="h-muted">Annulation · </span>{reading.cancellation}</p>
               {discreetPerk(rate.perks) ? <p className="text-[#9a7b4f]">{discreetPerk(rate.perks)}</p> : null}
               <ul className="space-y-1 h-ink">
-                {guestLines().map((name, index) => (
-                  <li key={`${name}-${index}`}>Chambre {index + 1} · {name}</li>
+                {stayRooms.map((_, index) => (
+                  <li key={index}>
+                    Chambre {index + 1}
+                    {roomPeople(index).map((name) => (
+                      <span key={name} className="block">{name}</span>
+                    ))}
+                  </li>
                 ))}
               </ul>
               <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
@@ -1009,6 +1023,7 @@ export function HotelJourney({
                 className={`h-recap w-full px-4 py-3 text-left ${payMethod === "card" ? "ring-1 ring-[#C5A880]" : ""}`}
                 onClick={() => {
                   setPayMethod("card");
+                  setCardFrame("idle");
                   setWidget(null);
                 }}
               >
@@ -1021,6 +1036,7 @@ export function HotelJourney({
                 className={`h-recap w-full px-4 py-3 text-left ${payMethod === "agency" ? "ring-1 ring-[#C5A880]" : ""}`}
                 onClick={() => {
                   setPayMethod("agency");
+                  setCardFrame("idle");
                   setWidget(null);
                 }}
               >
@@ -1039,12 +1055,27 @@ export function HotelJourney({
               {trial ? <p className="px-1 text-sm h-muted">{PAY_COPY.trial}</p> : null}
             </div>
             {widget ? (
-              <iframe
-                title="Carte bancaire"
-                src={widget.url}
-                referrerPolicy="no-referrer"
-                className="h-[450px] w-full rounded-2xl border border-[#efeae3] bg-white"
-              />
+              <section className="space-y-3 rounded-2xl border border-[#efeae3] bg-white px-4 py-4" data-hotel-card="1">
+                <div className="space-y-1">
+                  <p className="h-serif text-[1.05rem] font-semibold h-ink">Garantie de la réservation</p>
+                  <p className="text-sm leading-relaxed h-muted">
+                    Votre carte sert uniquement de garantie. Elle est conservée par un partenaire de paiement sécurisé.
+                  </p>
+                </div>
+                {cardFrame === "loading" ? (
+                  <p className="text-sm h-muted" data-hotel-card-state="loading">Le formulaire sécurisé se charge…</p>
+                ) : null}
+                {cardFrame === "saved" ? (
+                  <p className="text-sm h-ink" data-hotel-card-state="saved">Carte enregistrée. Confirmation en cours…</p>
+                ) : null}
+                <iframe
+                  title="Garantie de la réservation"
+                  src={widget.url}
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setCardFrame((current) => (current === "saved" ? current : "ready"))}
+                  className="block h-[580px] w-full rounded-xl border-0 bg-white"
+                />
+              </section>
             ) : null}
             {cardSecret ? (
               <HotelCardHold
@@ -1082,7 +1113,7 @@ export function HotelJourney({
           label="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
           action="Récapitulatif"
-          onAction={() => (guestsReady() ? onStep("confirm") : setNote("Indiquez le prénom et le nom du voyageur principal de chaque chambre."))}
+          onAction={() => (guestsReady() ? onStep("confirm") : setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne."))}
         />
       ) : null}
       {view === "confirm" && rate && !done && !cardSecret && !widget ? (

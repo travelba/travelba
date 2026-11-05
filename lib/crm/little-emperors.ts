@@ -256,6 +256,25 @@ function redact(message: string) {
   return stripped.replace(/\b(?:\d[ -]?){12,18}\d\b/g, "••••");
 }
 
+function upstreamText(body: string): string {
+  try {
+    const json = JSON.parse(body) as { message?: unknown; error?: unknown; errors?: unknown };
+    const bits: string[] = [];
+    if (typeof json.message === "string") bits.push(json.message);
+    else if (typeof json.error === "string") bits.push(json.error);
+    if (json.errors && typeof json.errors === "object" && !Array.isArray(json.errors)) {
+      for (const [key, value] of Object.entries(json.errors as Record<string, unknown>)) {
+        const lines = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+        if (lines.length) bits.push(`${key}: ${lines.join(" ")}`);
+      }
+    }
+    if (bits.length) return bits.join(" · ");
+  } catch {
+    /* corps brut */
+  }
+  return body.slice(0, 500);
+}
+
 function mapUpstream(status: number, message: string) {
   const clean = redact(message).slice(0, 400);
   if (clean.includes("bookings() on null")) {
@@ -293,14 +312,7 @@ async function leJson(path: string, init: RequestInit = {}, fetchImpl: typeof fe
   });
   const body = await response.text();
   if (!response.ok) {
-    let message = body;
-    try {
-      const json = JSON.parse(body) as { message?: unknown };
-      if (typeof json.message === "string") message = json.message;
-    } catch {
-      message = body;
-    }
-    throw mapUpstream(response.status, message);
+    throw mapUpstream(response.status, upstreamText(body));
   }
   if (!body.trim()) return null;
   try {
