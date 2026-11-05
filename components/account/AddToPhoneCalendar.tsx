@@ -1,23 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { calendarClickPlan, showGoogleCalendarFallback } from "@/lib/crm/calendar-open";
-
-function openOutside(href: string) {
-  const url = new URL(href, window.location.href).href;
-  const opened = window.open(url, "_blank");
-  if (opened) {
-    opened.opener = null;
-    return;
-  }
-  const link = document.createElement("a");
-  link.href = url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-}
+import { calendarClickPlan, calendarDownloadCookie, showGoogleCalendarFallback } from "@/lib/crm/calendar-open";
 
 export function AddToPhoneCalendar({
   href,
@@ -47,13 +31,15 @@ export function AddToPhoneCalendar({
       navigatorStandalone: nav.standalone === true,
       displayModeStandalone: window.matchMedia("(display-mode: standalone)").matches,
     });
-    if (plan.action === "navigate") return;
-    event.preventDefault();
     if (plan.action === "google") {
+      event.preventDefault();
       window.location.assign(plan.url);
       return;
     }
-    openOutside(plan.url);
+    // Navigation du lien (pas de nouvelle fenêtre) : iOS ouvre Calendrier. Le cookie demande le téléchargement sur l’écran d’accueil.
+    if (plan.forceDownload) {
+      document.cookie = calendarDownloadCookie(window.location.protocol === "https:");
+    }
   }
 
   return (

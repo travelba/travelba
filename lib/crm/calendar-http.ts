@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   buildBookingIcs,
+  calendarClearDownloadCookie,
+  calendarDownloadRequested,
   calendarResponsePlan,
   googleCalendarHref,
   icsFileName,
@@ -8,7 +10,7 @@ import {
 } from "@/lib/crm/calendar-ics";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 
-/** Android (une carte) : Google Agenda crée l’événement. iPhone et bureau : fichier .ics, un ou plusieurs événements, sans flux. Le nom de fichier est toujours là : sans lui, iOS affiche le texte brut. */
+/** Android (une carte) : Google Agenda crée l’événement. iPhone et bureau : fichier .ics, un ou plusieurs événements, sans flux. Le nom de fichier est toujours là : sans lui, iOS affiche le texte brut. L’écran d’accueil iOS pose `tb_ics_dl` pour recevoir le fichier en pièce jointe. */
 export function calendarHttpResponse(opts: {
   request: Request;
   booking: CrmBooking;
@@ -34,7 +36,15 @@ export function calendarHttpResponse(opts: {
       },
     });
   }
-  return new NextResponse(body, {
-    headers: icsHttpHeaders(icsFileName(opts.booking, itemId), { disposition: plan.disposition }),
+  const forced = calendarDownloadRequested(opts.request.headers.get("cookie"));
+  const response = new NextResponse(body, {
+    headers: icsHttpHeaders(icsFileName(opts.booking, itemId), {
+      disposition: forced ? "attachment" : plan.disposition,
+    }),
   });
+  if (forced) {
+    const secure = new URL(opts.request.url).protocol === "https:";
+    response.headers.append("Set-Cookie", calendarClearDownloadCookie(secure));
+  }
+  return response;
 }

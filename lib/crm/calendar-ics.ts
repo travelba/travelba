@@ -6,7 +6,11 @@ import { civilClock, timezoneForIata, zoneOffsetMinutes } from "@/lib/crm/airpor
 import { addIsoDays } from "./dates";
 
 export {
+  CALENDAR_DOWNLOAD_COOKIE,
+  calendarClearDownloadCookie,
   calendarClickPlan,
+  calendarDownloadCookie,
+  calendarDownloadRequested,
   calendarFileDisposition,
   calendarItemIdFromSegment,
   calendarOpenTarget,
@@ -363,6 +367,7 @@ export function icsHttpHeaders(fileName: string, opts?: { disposition?: "inline"
     "Content-Type": "text/calendar; charset=utf-8",
     "Content-Disposition": `${disposition}; filename="${safe}"`,
     "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
   };
 }
 

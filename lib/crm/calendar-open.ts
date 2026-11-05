@@ -7,8 +7,10 @@ export type PhoneCalendarLinks = {
 
 export type CalendarClickPlan =
   | { action: "google"; url: string }
-  | { action: "external"; url: string }
-  | { action: "navigate"; url: string };
+  | { action: "navigate"; url: string; forceDownload: boolean };
+
+/** Posé au clic, seulement depuis l’écran d’accueil iOS, pour que la route envoie le fichier en téléchargement. */
+export const CALENDAR_DOWNLOAD_COOKIE = "tb_ics_dl";
 
 export function isAndroidUa(ua: string) {
   return /Android/i.test(ua);
@@ -59,8 +61,9 @@ export function calendarResponsePlan(opts: {
 }
 
 /**
- * Écran d’accueil iOS : le webview affiche le .ics comme du texte.
- * On ouvre l’URL https hors de l’app pour que Safari propose Calendrier.
+ * Écran d’accueil iOS : une navigation normale vers le .ics.
+ * `window.open`, `target=_blank`, `blob:` et `data:` ouvrent une vue travelba.fr blanche.
+ * Le cookie demande `Content-Disposition: attachment` : le webview affiche sinon le texte brut.
  * Pas de webcal : ce serait un abonnement, pas un événement.
  */
 export function calendarClickPlan(opts: {
@@ -72,8 +75,26 @@ export function calendarClickPlan(opts: {
 }): CalendarClickPlan {
   const google = calendarOpenTarget({ ua: opts.ua, googleHref: opts.googleHref });
   if (google && google !== opts.href) return { action: "google", url: google };
-  if (leaveIosStandalone(opts)) return { action: "external", url: opts.href };
-  return { action: "navigate", url: opts.href };
+  return {
+    action: "navigate",
+    url: opts.href,
+    forceDownload: leaveIosStandalone(opts),
+  };
+}
+
+export function calendarDownloadCookie(secure: boolean) {
+  const base = `${CALENDAR_DOWNLOAD_COOKIE}=1; Path=/; Max-Age=120; SameSite=Lax`;
+  return secure ? `${base}; Secure` : base;
+}
+
+export function calendarClearDownloadCookie(secure: boolean) {
+  const base = `${CALENDAR_DOWNLOAD_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+  return secure ? `${base}; Secure` : base;
+}
+
+export function calendarDownloadRequested(cookieHeader: string | null | undefined) {
+  if (!cookieHeader) return false;
+  return cookieHeader.split(";").some((part) => part.trim() === `${CALENDAR_DOWNLOAD_COOKIE}=1`);
 }
 
 function leaveIosStandalone(opts: {

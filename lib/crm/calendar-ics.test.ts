@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildBookingIcs,
+  calendarClearDownloadCookie,
   calendarClickPlan,
+  calendarDownloadCookie,
+  calendarDownloadRequested,
   calendarOpenTarget,
   calendarResponsePlan,
   chosenCalendarHref,
@@ -293,22 +296,24 @@ test("transfert horodaté et activité sans fuseau", () => {
   assert.equal((activity || "").includes("VALUE=DATE"), false);
 });
 
-test("écran d’accueil iOS : le .ics s’ouvre hors de l’app, sans webcal", () => {
+test("écran d’accueil iOS : navigation vers le .ics, sans nouvelle fenêtre", () => {
   const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)";
   const android = "Mozilla/5.0 (Linux; Android 14; Pixel)";
   const href = "/mon-compte/reservations/TB-2026-0075/agenda/e3.ics";
   const google = "https://calendar.google.com/calendar/render?action=TEMPLATE";
-  assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: iphone, navigatorStandalone: true }), {
-    action: "external",
-    url: href,
-  });
+  const home = calendarClickPlan({ href, googleHref: google, ua: iphone, navigatorStandalone: true });
+  assert.deepEqual(home, { action: "navigate", url: href, forceDownload: true });
+  assert.equal(home.action === "navigate" && /^(blob|data|webcal):/.test(home.url), false);
+  assert.equal(href.endsWith(".ics"), true);
   assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: iphone, displayModeStandalone: true }), {
-    action: "external",
+    action: "navigate",
     url: href,
+    forceDownload: true,
   });
   assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: iphone }), {
     action: "navigate",
     url: href,
+    forceDownload: false,
   });
   assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: android, displayModeStandalone: true }), {
     action: "google",
@@ -316,15 +321,20 @@ test("écran d’accueil iOS : le .ics s’ouvre hors de l’app, sans webcal", 
   });
   assert.equal(showGoogleCalendarFallback({ href, googleHref: google, ua: iphone }), true);
   assert.equal(showGoogleCalendarFallback({ href, googleHref: google, ua: android }), false);
-  assert.equal(JSON.stringify(calendarClickPlan({ href, ua: iphone, navigatorStandalone: true })).includes("webcal"), false);
-  assert.equal(
-    calendarClickPlan({
-      href,
-      ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.6 Safari/605.1.15",
-      navigatorStandalone: true,
-    }).action,
-    "external"
-  );
+  assert.equal(JSON.stringify(home).includes("webcal"), false);
+  assert.equal(calendarDownloadRequested("theme=light; tb_ics_dl=1"), true);
+  assert.equal(calendarDownloadRequested("tb_ics_dl=0"), false);
+  assert.equal(calendarDownloadRequested(null), false);
+  assert.match(calendarDownloadCookie(true), /^tb_ics_dl=1; Path=\/; Max-Age=120; SameSite=Lax; Secure$/);
+  assert.equal(calendarDownloadCookie(false).includes("Secure"), false);
+  assert.match(calendarClearDownloadCookie(true), /Max-Age=0/);
+  const macHome = calendarClickPlan({
+    href,
+    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.6 Safari/605.1.15",
+    navigatorStandalone: true,
+  });
+  assert.equal(macHome.action, "navigate");
+  assert.equal(macHome.action === "navigate" && macHome.forceDownload, true);
   const safari = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15";
   assert.deepEqual(calendarResponsePlan({ ua: safari, googleHref: google }), { kind: "file", disposition: "inline" });
   assert.deepEqual(calendarResponsePlan({ ua: "Mozilla/5.0 (Windows NT 10.0) Chrome/120.0.0.0", googleHref: null }), {
