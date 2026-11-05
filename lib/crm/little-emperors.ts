@@ -340,7 +340,15 @@ export function hotelPublicFields(payload: unknown): LeHotelPublic {
 
 export function benefitsFromLeRaw(raw: unknown): string[] {
   if (!raw || typeof raw !== "object") return [];
-  return stringList((raw as { benefits?: unknown }).benefits);
+  const row = raw as { benefits?: unknown; rooms?: unknown };
+  const lines = [...stringList(row.benefits)];
+  if (Array.isArray(row.rooms)) {
+    for (const room of row.rooms) {
+      if (!room || typeof room !== "object") continue;
+      lines.push(...stringList((room as { benefits?: unknown }).benefits));
+    }
+  }
+  return [...new Set(lines)];
 }
 
 const BOARD_KEYS = ["board", "board_type", "meal_plan", "meal_basis", "rate_plan", "pension"];
@@ -402,7 +410,7 @@ export function parseLeBooking(payload: unknown): LeBooking | null {
   const guestNames: string[] = [];
   const policies: string[] = [];
   const roomTypes: string[] = [];
-  const benefits: string[] = [];
+  const benefits: string[] = [...stringList(row.benefits)];
   const boards: string[] = [];
   const hotelConfirmations: string[] = [];
   const parsedRooms: LeRoom[] = [];
@@ -457,7 +465,7 @@ export function parseLeBooking(payload: unknown): LeBooking | null {
     guest_names: guestNames,
     cancellation_policies: policies,
     room_types: roomTypes,
-    benefits,
+    benefits: unique(benefits),
     rooms: parsedRooms,
     booked_at: leBookedAtFromPayload(row),
   };

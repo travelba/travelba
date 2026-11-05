@@ -10,6 +10,7 @@ import {
 } from "@/lib/crm/hotel-contact";
 import { peopleFromContactRows, type HotelContactRow } from "@/lib/crm/hotel-contact";
 import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
+import { leIncludedLines } from "@/lib/crm/le-included";
 import { benefitsFromLeRaw } from "@/lib/crm/little-emperors";
 import type { CrmBookingItem } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -35,7 +36,7 @@ function stayFromRow(row: Record<string, unknown>): LeStayFacts {
     room_types: textList(row.room_types),
     conditions: textList(row.cancellation_policies),
     guest_names: textList(row.guest_names),
-    benefits: benefitsFromLeRaw(row.raw).map((line) => frenchLeBenefitLine(line)).filter(Boolean),
+    benefits: leIncludedLines(benefitsFromLeRaw(row.raw), textList(row.room_types)),
   };
 }
 
