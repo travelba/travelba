@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, test } from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { openDirectStay } from "./hotel-direct-run";
 import { emptyPliantCardControls } from "./pliant-controls";
@@ -336,6 +336,7 @@ function customer() {
   };
 }
 
+describe("parcours agence simulé", { concurrency: 1 }, () => {
 test("l’agence avance le séjour : carte, publication, messages, un seul passage", async () => {
   await withEnv(async () => {
     const { client, tables } = memory();
@@ -439,4 +440,5 @@ test("un refus amont gèle la carte et n’ouvre pas le dossier", async () => {
       http.restore();
     }
   });
+});
 });
