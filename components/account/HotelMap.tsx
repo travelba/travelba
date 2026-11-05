@@ -1,25 +1,19 @@
 "use client";
 
-import { formatMoney } from "@/lib/crm/money";
+import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
+import { HotelMapPreview } from "@/components/account/HotelMapPreview";
+import { HotelOsmMap } from "@/components/account/HotelOsmMap";
+import { publicMapboxStyle, publicMapboxToken } from "@/lib/crm/hotel-map";
 import type { ClientHotel } from "@/lib/crm/hotel-search";
 
-function project(lat: number, lng: number, zoom: number) {
-  const n = 2 ** zoom;
-  const x = ((lng + 180) / 360) * n;
-  const rad = (lat * Math.PI) / 180;
-  const y = ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n;
-  return { x, y };
-}
-
-function zoomFor(points: { lat: number; lng: number }[]) {
-  const lats = points.map((point) => point.lat);
-  const lngs = points.map((point) => point.lng);
-  const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lngs) - Math.min(...lngs));
-  if (span < 0.04) return 13;
-  if (span < 0.15) return 12;
-  if (span < 0.6) return 10;
-  return 7;
-}
+const HotelMapboxView = dynamic(
+  () => import("@/components/account/HotelMapboxView").then((mod) => mod.HotelMapboxView),
+  {
+    ssr: false,
+    loading: () => <div className="h-field h-80 animate-pulse h-skel" aria-hidden />,
+  }
+);
 
 export function HotelMap({
   hotels,
@@ -29,59 +23,59 @@ export function HotelMap({
   onOpen?: (hotel: ClientHotel) => void;
 }) {
   const placed = hotels.filter((hotel) => hotel.coords);
+  const token = publicMapboxToken(process.env.NEXT_PUBLIC_MAPBOX_TOKEN);
+  const styleUrl = publicMapboxStyle(process.env.NEXT_PUBLIC_MAPBOX_STYLE);
+  const [failed, setFailed] = useState(false);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const useMapbox = Boolean(token) && !failed;
+  const selected = onOpen ? placed.find((hotel) => hotel.hotelKey === selectedKey) ?? null : null;
+
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedKey(null);
+    };
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-hotel-map-preview]")) return;
+      if (target.closest(".hotel-map-pin")) return;
+      setSelectedKey(null);
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [selected]);
+
+  function choose(hotelKey: string) {
+    setSelectedKey((current) => (hotelKey && current !== hotelKey ? hotelKey : null));
+  }
+
   if (!placed.length) return null;
-  const zoom = zoomFor(placed.map((hotel) => hotel.coords!));
-  const center = placed.reduce(
-    (sum, hotel) => ({ lat: sum.lat + hotel.coords!.lat / placed.length, lng: sum.lng + hotel.coords!.lng / placed.length }),
-    { lat: 0, lng: 0 }
-  );
-  const origin = project(center.lat, center.lng, zoom);
-  const x0 = Math.floor(origin.x) - 1;
-  const y0 = Math.floor(origin.y) - 1;
-  const tiles = [0, 1, 2].flatMap((row) => [0, 1, 2].map((col) => ({ x: x0 + col, y: y0 + row, col, row })));
+
   return (
-    <div className="h-field relative h-80 overflow-hidden" data-hotel-map="1">
-      <div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
-        {tiles.map((tile) => (
-          // eslint-disable-next-line @next/next/no-img-element -- tuile de carte, hors next/image
-          <img
-            key={`${tile.x}-${tile.y}`}
-            src={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`}
-            alt=""
-            width={256}
-            height={256}
-            className="h-full w-full object-cover"
-            referrerPolicy="no-referrer"
+    <div className="relative" data-hotel-map={useMapbox ? "mapbox" : "osm"}>
+      {useMapbox && token ? (
+        <div className="h-field relative h-80 overflow-hidden">
+          <HotelMapboxView
+            key={styleUrl}
+            hotels={placed}
+            token={token}
+            styleUrl={styleUrl}
+            selectedKey={selected?.hotelKey ?? null}
+            onSelect={onOpen ? choose : undefined}
+            onFail={() => setFailed(true)}
           />
-        ))}
-      </div>
-      {placed.map((hotel) => {
-        const point = project(hotel.coords!.lat, hotel.coords!.lng, zoom);
-        const left = ((point.x - x0) / 3) * 100;
-        const top = ((point.y - y0) / 3) * 100;
-        if (left < -5 || left > 105 || top < -5 || top > 105) return null;
-        return (
-          onOpen ? (
-            <button
-              key={hotel.hotelKey}
-              type="button"
-              onClick={() => onOpen(hotel)}
-              className="h-pin h-hit absolute -translate-x-1/2 -translate-y-full"
-              style={{ left: `${left}%`, top: `${top}%` }}
-            >
-              {formatMoney(hotel.sellCents / 100, hotel.currency)}
-            </button>
-          ) : (
-            <span
-              key={hotel.hotelKey}
-              className="h-pin absolute -translate-x-1/2 -translate-y-full"
-              style={{ left: `${left}%`, top: `${top}%` }}
-            >
-              {formatMoney(hotel.sellCents / 100, hotel.currency)}
-            </span>
-          )
-        );
-      })}
+        </div>
+      ) : (
+        <HotelOsmMap hotels={placed} selectedKey={selected?.hotelKey ?? null} onSelect={onOpen ? choose : undefined} />
+      )}
+      {selected && onOpen ? (
+        <HotelMapPreview hotel={selected} onOpen={onOpen} onClose={() => setSelectedKey(null)} />
+      ) : null}
     </div>
   );
 }

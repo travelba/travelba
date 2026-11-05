@@ -1,5 +1,6 @@
 import { priceAccommodation } from "./concierge-pricing";
 import { foldHotelLabel } from "./hotel-catalog";
+import { hotelStars } from "./hotel-map";
 import { addIsoDays, isValidIsoDate } from "./dates";
 import { frenchCancellation, frenchCity, frenchHotelLine, frenchHotelProse, roomSpec } from "./hotel-fr";
 import { frenchLeBenefitLine } from "./ingest-parse";
@@ -85,6 +86,8 @@ export type HotelOffer = {
   cancellationDeadline?: string | null;
   requiresCvc?: boolean | null;
   paymentDescription?: string | null;
+  /** 1 à 5 quand le fournisseur l’envoie. Jamais inventé. */
+  stars?: number | null;
 };
 
 export type PricedStay = {
@@ -118,6 +121,7 @@ export type PricedStay = {
   requiresCvc: boolean | null;
   /** Serveur seulement. toClientHotel ne le recopie pas. */
   paymentDescription: string | null;
+  stars: number | null;
 };
 
 export type ClientHotel = {
@@ -139,6 +143,7 @@ export type ClientHotel = {
   images: string[];
   coords: { lat: number; lng: number } | null;
   footnotes: string[];
+  stars: number | null;
 };
 
 export type HotelChild = { age: number };
@@ -633,6 +638,7 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
     cancellationDeadline: offer.cancellationDeadline || null,
     requiresCvc: typeof offer.requiresCvc === "boolean" ? offer.requiresCvc : null,
     paymentDescription: (offer.paymentDescription || "").slice(0, 500) || null,
+    stars: hotelStars(offer.stars),
   };
 }
 
@@ -662,6 +668,7 @@ function fillStay(base: PricedStay, extra: PricedStay): PricedStay {
     cancellationDeadline: base.cancellationDeadline || extra.cancellationDeadline || null,
     requiresCvc: typeof base.requiresCvc === "boolean" ? base.requiresCvc : extra.requiresCvc ?? null,
     paymentDescription: base.paymentDescription || extra.paymentDescription || null,
+    stars: base.stars ?? extra.stars,
   };
 }
 
@@ -696,7 +703,10 @@ export function mergeOffers(state: Map<string, PricedStay>, offers: HotelOffer[]
     }
     if (!replaces(current, priced)) {
       const filled = fillStay(current, priced);
-      if (filled !== current && (filled.hotelId !== current.hotelId || filled.coords !== current.coords || filled.images !== current.images)) {
+      if (
+        filled !== current &&
+        (filled.hotelId !== current.hotelId || filled.coords !== current.coords || filled.images !== current.images || filled.stars !== current.stars)
+      ) {
         state.set(priced.hotelKey, filled);
         changes.push({ stay: filled, replaced: true });
       }
@@ -729,6 +739,7 @@ export function toClientHotel(stay: PricedStay, nights: number, offerId: string 
     images: stay.images,
     coords: stay.coords,
     footnotes: stay.footnotes,
+    stars: stay.stars,
   };
 }
 
