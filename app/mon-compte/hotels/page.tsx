@@ -6,6 +6,7 @@ import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { hotelBookingEnabled, hotelDirectLive, hotelLeApiBooking, showHotelButton, showPlatinumScreen } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility, readPendingAccess } from "@/lib/crm/hotel-access-run";
 import { clientPathSummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
+import { loadFeaturedHotels } from "@/lib/crm/hotel-search-home-run";
 
 export default async function HotelsPage() {
   const { user } = await getSessionUser();
@@ -29,7 +30,12 @@ export default async function HotelsPage() {
 
   return (
     <Suspense fallback={<div className="h-40 animate-pulse bg-[#0B192C]/10" aria-hidden />}>
-      <HotelSearch trial={!hotelDirectLive(customer)} leApi={hotelLeApiBooking(customer)} />
+      <HotelSearch
+        trial={!hotelDirectLive(customer)}
+        leApi={hotelLeApiBooking(customer)}
+        customerId={customer.id}
+        highlights={await loadFeaturedHotels()}
+      />
     </Suspense>
   );
 }
