@@ -46,17 +46,7 @@ export function HotelGuaranteeNight({
           />
         </div>
       )}
-      <div className="space-y-2">
-        <button
-          type="button"
-          className="h-press h-12 w-full rounded-xl bg-[#C5A880] text-sm font-semibold text-[#0B192C] disabled:bg-[#C5A880] disabled:text-[#0B192C] disabled:opacity-100"
-          disabled
-          aria-disabled="true"
-        >
-          Confirmer le séjour
-        </button>
-        <p className="text-center text-[13px] text-[#f7f4ee]/70">Le bouton s’active une fois la carte enregistrée.</p>
-      </div>
+      <p className="pb-24 text-center text-[13px] text-[#f7f4ee]/80">Validez dans le formulaire.</p>
     </div>
   );
 }

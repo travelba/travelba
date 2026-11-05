@@ -37,6 +37,25 @@ export function staffRealStatusLabel(status: string | null | undefined) {
   return dossierFaceLabel({ status, visible_to_client: status === "confirmed" });
 }
 
+export type ClientStayAction = "restaurer" | "rouvrir" | "montrer" | "cacher";
+
+/**
+ * Bouton du dossier. Il suit la visibilité réelle : Non visible → Montrer au client,
+ * Visible → Cacher au client. Un confirmé encore caché reste à montrer.
+ * Les cartes déjà visibles ne décident pas du bouton.
+ */
+export function clientStayAction(booking: {
+  archived_at?: string | null;
+  status?: string | null;
+  visible_to_client?: boolean | null;
+}): ClientStayAction {
+  if (booking.archived_at) return "restaurer";
+  const face = dossierFace(booking);
+  if (face === "annule") return "rouvrir";
+  if (face === "visible") return "cacher";
+  return "montrer";
+}
+
 export function staffStayLabel(booking: {
   archived_at?: string | null;
   visible_to_client?: boolean | null;

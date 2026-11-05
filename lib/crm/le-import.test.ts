@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BookingExtract } from "./ingest-types";
@@ -175,22 +176,29 @@ function harness(rows: Row[], extra: Record<string, Row[]> = {}) {
   return { db, calls, deps };
 }
 
-test("une réservation réservée ouvre un dossier confirmé et la carte hôtel", async () => {
+test("l’import Little Emperors ne prévient pas le client", () => {
+  const src = readFileSync(new URL("./le-import.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /notifyStayPublished/);
+  assert.match(src, /visibleToClient:\s*false/);
+  assert.match(src, /visible_to_client:\s*false/);
+});
+
+test("une réservation réservée ouvre un dossier Non visible et la carte hôtel", async () => {
   const { db, calls, deps } = harness([stay()]);
   const result = await importLittleEmperorsReservations(
     { ids: ["le-1"], customerId: CLIENT, voyageurs: ["Camille Martin"] },
     deps
   );
   assert.equal(result.cree, true);
-  assert.equal(result.statut, "visible");
-  assert.equal(result.visible_client, true);
+  assert.equal(result.statut, "non_visible");
+  assert.equal(result.visible_client, false);
   assert.equal(result.message, false);
   assert.equal(result.invite, false);
   assert.equal(result.dossier_id, "dossier-nouveau");
   assert.equal(calls.persist.length, 1);
   assert.equal(calls.apply.length, 0);
-  assert.equal(calls.persist[0].status, "confirmed");
-  assert.equal(calls.persist[0].visibleToClient, true);
+  assert.equal(calls.persist[0].status, "draft");
+  assert.equal(calls.persist[0].visibleToClient, false);
   const card = calls.persist[0].extract.items[0];
   assert.equal(card?.kind, "hotel");
   assert.equal(card?.title, "La Mamounia");
@@ -214,8 +222,8 @@ test("une réservation réservée ouvre un dossier confirmé et la carte hôtel"
   assert.ok(names.some((name) => name === "Camille Martin"));
   assert.equal(db.tables.crm_le_bookings[0].crm_booking_id, "dossier-nouveau");
   assert.equal(db.tables.crm_le_bookings[0].status, "linked");
-  assert.equal(db.tables.crm_bookings[0].status, "confirmed");
-  assert.equal(db.tables.crm_bookings[0].visible_to_client, true);
+  assert.equal(db.tables.crm_bookings[0].status, "draft");
+  assert.equal(db.tables.crm_bookings[0].visible_to_client, false);
   assert.deepEqual(calls.refresh, ["dossier-nouveau"]);
   assert.deepEqual(calls.hotels, [50]);
   assert.equal(db.tables.crm_travel_companions.length, 1);
@@ -242,7 +250,9 @@ test("rattacher ajoute la carte au dossier déjà ouvert", async () => {
   );
   assert.equal(result.cree, false);
   assert.equal(result.dossier_id, DOSSIER);
-  assert.equal(result.statut, "visible");
+  assert.equal(result.statut, "non_visible");
+  assert.equal(result.visible_client, false);
+  assert.equal(result.message, false);
   assert.equal(calls.persist.length, 0);
   assert.equal(calls.apply.length, 1);
   assert.equal(calls.apply[0].bookingId, DOSSIER);
@@ -250,8 +260,29 @@ test("rattacher ajoute la carte au dossier déjà ouvert", async () => {
   assert.equal(calls.apply[0].visibleToClient, false);
   assert.equal(calls.apply[0].extract.items[0]?.title, "La Mamounia");
   assert.equal(db.tables.crm_le_bookings[0].crm_booking_id, DOSSIER);
-  assert.equal(db.tables.crm_bookings.find((row) => row.id === DOSSIER)?.status, "confirmed");
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === DOSSIER)?.status, "draft");
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === DOSSIER)?.visible_to_client, false);
   assert.deepEqual(calls.refresh, [DOSSIER]);
+});
+
+test("rattacher à un dossier déjà Visible ne le recache pas", async () => {
+  const { db, calls, deps } = harness([stay()], {
+    crm_bookings: [
+      { id: DOSSIER, reference: "TB-2026-0004", customer_id: CLIENT, status: "confirmed", visible_to_client: true },
+    ],
+  });
+  const result = await importLittleEmperorsReservations(
+    { ids: ["le-1"], customerId: CLIENT, dossierId: DOSSIER },
+    deps
+  );
+  assert.equal(result.cree, false);
+  assert.equal(result.statut, "visible");
+  assert.equal(result.visible_client, true);
+  assert.equal(result.message, false);
+  assert.equal(calls.persist.length, 0);
+  const dossier = db.tables.crm_bookings.find((row) => row.id === DOSSIER);
+  assert.equal(dossier?.status, "confirmed");
+  assert.equal(dossier?.visible_to_client, true);
 });
 
 test("trois références Little Emperors tiennent dans un seul dossier", async () => {

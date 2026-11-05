@@ -277,10 +277,6 @@ function mergeExtracts(parts: BookingExtract[]): BookingExtract {
   };
 }
 
-function dossierStatusOf(bookings: LeBooking[]): "draft" | "confirmed" {
-  return bookings.some((booking) => leCreatedDossierStatus(booking.state) === "confirmed") ? "confirmed" : "draft";
-}
-
 function parsePeople(names: string[]): Person[] {
   return names.map((name) => {
     const person = splitGuestName(name);
@@ -415,8 +411,9 @@ async function defaultDelete(bookingId: string) {
 }
 
 /**
- * Crée un dossier, ou rattache les réservations à un dossier déjà ouvert.
- * Aucune invitation, aucun message au client. Les cartes neuves restent cachées.
+ * Crée un dossier Non visible, ou rattache les réservations à un dossier déjà ouvert.
+ * Aucune invitation, aucun message. Un dossier déjà Visible n’est pas recaché.
+ * Les cartes neuves restent cachées jusqu’à Montrer au client.
  */
 export async function importLittleEmperorsReservations(input: LeImportInput, deps: LeImportDeps = {}) {
   const admin = deps.admin ?? (await defaultAdmin());
@@ -470,10 +467,9 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
   ]);
   const extracts = pending.map((row, index) => leImportExtract(row.booking, index === 0 ? extras : [], input.force));
   const merged = mergeExtracts(extracts);
-  const statut = dossierStatusOf(pending.map((row) => row.booking));
   const persist = deps.persist ?? defaultPersist;
   const apply = deps.apply ?? defaultApply;
-  const show = statut === "confirmed";
+  const createdStatus = leCreatedDossierStatus(pending[0]?.booking.state);
   let cree = false;
   let dossierId = target?.id || "";
   let reference = target?.reference || null;
@@ -482,19 +478,19 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
     const saved = await persist({
       customerId: holder.id,
       extract: merged,
-      status: show ? "confirmed" : "draft",
-      visibleToClient: show,
+      status: createdStatus,
+      visibleToClient: false,
     });
     cree = true;
     dossierId = saved.id;
     reference = saved.reference;
-    visible = show;
+    visible = false;
     const { error } = await admin
       .from("crm_bookings")
       .update({
         notes_internal: "Réservation importée depuis Little Emperors.",
-        status: show ? "confirmed" : "draft",
-        visible_to_client: show,
+        status: createdStatus,
+        visible_to_client: false,
       })
       .eq("id", dossierId);
     if (error) fail("Dossier non enregistré.", 500, "dossier");
@@ -506,16 +502,6 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
       visibleToClient: false,
       keepSellingPrice: true,
     });
-    if (show && target.status !== "cancelled") {
-      if (target.status !== "confirmed" || !target.visible_to_client) {
-        const { error } = await admin
-          .from("crm_bookings")
-          .update({ status: "confirmed", visible_to_client: true })
-          .eq("id", target.id);
-        if (error) fail("Dossier non enregistré.", 500, "dossier");
-      }
-      visible = true;
-    }
   }
   try {
     for (const row of pending) {

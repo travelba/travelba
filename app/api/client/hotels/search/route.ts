@@ -14,7 +14,7 @@ import {
   type PricedStay,
 } from "@/lib/crm/hotel-search";
 import { foldHotelLabel } from "@/lib/crm/hotel-catalog";
-import { loadKnownHotelOffers, loadLittleEmperorsOffers } from "@/lib/crm/little-emperors-search";
+import { attachHotelCover, loadKnownHotelOffers, loadLittleEmperorsOffers } from "@/lib/crm/little-emperors-search";
 import { saveHotelOffer } from "@/lib/crm/hotel-search-store";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -69,6 +69,7 @@ export async function POST(request: Request) {
       };
       const stays: PricedStay[] = [];
       const links: Promise<void>[] = [];
+      const covers: Promise<void>[] = [];
       let supplierFailed = false;
       let noted = false;
       try {
@@ -120,6 +121,16 @@ export async function POST(request: Request) {
                 if (id) send({ type: "link", hotelKey: event.stay.hotelKey, offerId: id });
               })
             );
+            covers.push(
+              attachHotelCover(event.stay, fetch).then((covered) => {
+                if (!covered.photoUrl || covered.photoUrl === event.stay.photoUrl) return;
+                send({
+                  type: "hotel",
+                  replaced: true,
+                  hotel: toClientHotel(covered, parsed.nights, null),
+                });
+              })
+            );
             continue;
           }
           await Promise.all(links);
@@ -162,6 +173,7 @@ export async function POST(request: Request) {
             cached: event.cached,
             count: event.count,
           });
+          await Promise.all(covers);
         }
       } catch {
         if (noted) return;
