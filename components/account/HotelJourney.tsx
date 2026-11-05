@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { HotelBookingWait } from "@/components/account/HotelBookingWait";
+import { HotelGuaranteeNight } from "@/components/account/HotelGuaranteeNight";
 import { HotelMap } from "@/components/account/HotelMap";
 import { Icon } from "@/components/crm/icons";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
@@ -572,6 +573,11 @@ export function HotelJourney({
   }
 
   function back() {
+    if (widget && !placing && !done) {
+      setWidget(null);
+      setCardFrame("idle");
+      return;
+    }
     if (done) onBack();
     else onStep("back");
   }
@@ -710,18 +716,27 @@ export function HotelJourney({
 
   const panel = (
     <div className="hotel-theme">
-    <div className="h-journey h-bg" data-hotel-journey="1">
-      <header className="shrink-0 bg-white" data-hotel-steps="1">
+    <div
+      className="h-journey h-bg"
+      data-hotel-journey="1"
+      style={widget && !placing ? { background: "#0B192C", color: "#f7f4ee" } : undefined}
+    >
+      <header
+        className="shrink-0"
+        data-hotel-steps="1"
+        style={widget && !placing ? { background: "#0B192C", color: "#f7f4ee" } : { background: "#fff" }}
+      >
         <div className="grid grid-cols-[2.75rem_1fr_2.75rem] items-center">
           <button
             type="button"
             aria-label="Retour"
             onClick={back}
-            className="h-hit h-press grid w-11 place-items-center text-[#1a1a1a]"
+            className="h-hit h-press grid w-11 place-items-center"
+            style={{ color: widget && !placing ? "#C5A880" : "#1a1a1a" }}
           >
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          <p className="h-serif truncate text-center text-[17px] font-semibold leading-none h-ink">{placing ? "Réservation" : done && view === "confirm" ? "Confirmée" : STEPS.find((item) => item.id === view)?.label}</p>
+          <p className={`h-serif truncate text-center text-[17px] font-semibold leading-none ${widget && !placing ? "" : "h-ink"}`}>{placing ? "Réservation" : done && view === "confirm" ? "Confirmée" : STEPS.find((item) => item.id === view)?.label}</p>
           <span />
         </div>
         {view === "hotel" ? (
@@ -1021,7 +1036,14 @@ export function HotelJourney({
             <a href={whatsapp} className="flex h-12 items-center justify-center text-sm font-semibold h-ink">Écrire sur WhatsApp</a>
           </div>
         ) : null}
-        {!placing && view === "confirm" && rate && reading && !done ? (
+        {!placing && view === "confirm" && rate && reading && !done && widget ? (
+          <HotelGuaranteeNight
+            widgetUrl={widget.url}
+            state={cardFrame === "saved" ? "saved" : cardFrame === "ready" ? "ready" : "loading"}
+            onLoad={() => setCardFrame((current) => (current === "saved" ? current : "ready"))}
+          />
+        ) : null}
+        {!placing && view === "confirm" && rate && reading && !done && !widget ? (
           <div data-hotel-confirm="1" className="h-paper space-y-4 px-4 py-4">
             <article className="h-recap space-y-3 text-[15px]">
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
@@ -1081,29 +1103,6 @@ export function HotelJourney({
               </label>
               {trial ? <p className="px-1 text-sm h-muted">{PAY_COPY.trial}</p> : null}
             </div>
-            {widget ? (
-              <section className="space-y-3 rounded-2xl border border-[#efeae3] bg-white px-4 py-4" data-hotel-card="1">
-                <div className="space-y-1">
-                  <p className="h-serif text-[1.05rem] font-semibold h-ink">Garantie de la réservation</p>
-                  <p className="text-sm leading-relaxed h-muted">
-                    Votre carte sert uniquement de garantie. Elle est conservée par un partenaire de paiement sécurisé.
-                  </p>
-                </div>
-                {cardFrame === "loading" ? (
-                  <p className="text-sm h-muted" data-hotel-card-state="loading">Le formulaire sécurisé se charge…</p>
-                ) : null}
-                {cardFrame === "saved" ? (
-                  <p className="text-sm h-ink" data-hotel-card-state="saved">Carte enregistrée. Confirmation en cours…</p>
-                ) : null}
-                <iframe
-                  title="Garantie de la réservation"
-                  src={widget.url}
-                  referrerPolicy="no-referrer"
-                  onLoad={() => setCardFrame((current) => (current === "saved" ? current : "ready"))}
-                  className="block h-[580px] w-full rounded-xl border-0 bg-white"
-                />
-              </section>
-            ) : null}
             {cardSecret ? (
               <HotelCardHold
                 clientSecret={cardSecret.clientSecret}
