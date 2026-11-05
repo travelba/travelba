@@ -36,7 +36,7 @@ export function AccountNightTabs({
 }) {
   const ordered = ORDER.map((icon) => tabs.find((tab) => tab.icon === icon)).filter((tab) => tab != null);
   return (
-    <nav className="account-tabbar account-tabbar-night md:hidden" style={{ viewTransitionName: "account-tabbar" }} aria-label="Navigation compte">
+    <nav data-account-tabs="1" className="account-tabbar account-tabbar-night md:hidden" style={{ viewTransitionName: "account-tabbar" }} aria-label="Navigation compte">
       <div className="account-tabbar-plate" aria-hidden />
       <div className="relative mx-auto flex w-full max-w-[480px] items-end pb-[env(safe-area-inset-bottom,0px)]">
         {ordered.map((tab) =>

@@ -1,5 +1,5 @@
 import { foldHotelLabel } from "./hotel-catalog";
-import { HOTEL_PERK_WEIGHTS, offerBeats, type ClientHotel, type HotelPerks } from "./hotel-search";
+import { HOTEL_PERK_WEIGHTS, type ClientHotel, type HotelPerks } from "./hotel-search";
 
 export type HotelSort = "prix" | "avantages";
 
@@ -67,7 +67,7 @@ export function perkScore(hotel: Pick<ClientHotel, "perks" | "benefits">) {
   return flags * 10 + hotel.benefits.length;
 }
 
-/** Une chambre, une offre : la moins chère au prix client ; à l’arrondi près, la plus avantagée. */
+/** Une chambre regroupe ses tarifs réellement reçus, du moins cher au plus cher. Aucun tarif n’est inventé ni retiré. */
 export function collapseRooms(rooms: ClientRoom[]): ClientRoom[] {
   const groups = new Map<string, ClientRoom>();
   for (const room of rooms) {
@@ -85,20 +85,9 @@ export function collapseRooms(rooms: ClientRoom[]): ClientRoom[] {
   }
   const out: ClientRoom[] = [];
   for (const room of groups.values()) {
-    const rate = room.rates.reduce<ClientRate | null>((best, next) => {
-      if (
-        !best ||
-        offerBeats(
-          { sellCents: best.sellCents, currency: best.currency, score: perkScore(best), benefits: best.benefits },
-          { sellCents: next.sellCents, currency: next.currency, score: perkScore(next), benefits: next.benefits },
-        )
-      ) {
-        return next;
-      }
-      return best;
-    }, null);
-    if (!rate) continue;
-    out.push({ ...room, images: room.images.length ? room.images : rate.images, rates: [rate] });
+    const rates = room.rates.slice().sort((a, b) => a.sellCents - b.sellCents || a.title.localeCompare(b.title, "fr"));
+    if (!rates.length) continue;
+    out.push({ ...room, images: room.images.length ? room.images : rates[0].images, rates });
   }
   return out;
 }

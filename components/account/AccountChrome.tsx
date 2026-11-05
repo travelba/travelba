@@ -130,7 +130,7 @@ export function AccountChrome({
           </div>
         </header>
         <div className="mx-auto hidden max-w-[480px] items-center gap-5 px-4 pb-3 sm:px-6 md:flex">
-          <nav className={`flex min-w-0 items-center overflow-x-auto ${hotels ? "gap-3" : "gap-5"}`} aria-label="Sections">
+          <nav data-account-tabs="1" className={`flex min-w-0 items-center overflow-x-auto ${hotels ? "gap-3" : "gap-5"}`} aria-label="Sections">
             {(hotels
               ? [...tabs].sort((a, b) => ["home", "stay", "hotel", "ledger", "account"].indexOf(a.night) - ["home", "stay", "hotel", "ledger", "account"].indexOf(b.night))
               : tabs

@@ -274,8 +274,9 @@ test("une offre : le moins cher, à l’arrondi près celle qui a le plus d’av
   ]);
   assert.equal(rooms.length, 2);
   const deluxe = rooms.find((room) => room.name === "Chambre deluxe");
-  assert.equal(deluxe?.rates.length, 1);
+  assert.equal(deluxe?.rates.length, 3);
   assert.equal(deluxe?.rates[0].sellCents, 18000);
+  assert.equal(deluxe?.rates[2].sellCents, 20040);
   assert.equal(rooms.find((room) => room.name === "Suite")?.rates.length, 1);
   assert.equal(hotelJourneyStep("chambre"), "room");
   assert.equal(hotelJourneyStep("voyageurs"), "guests");
@@ -642,7 +643,8 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.doesNotMatch(ui, /little emperors|expedia|ratehawk|amadeus|\btaap\b/i);
   assert.match(ui, /data-t-client/);
   assert.match(ui, /data-t-server/);
-  assert.match(ui, /loading=\{first \? "eager" : "lazy"\}/);
+  assert.match(ui, /eager=\{first\}/);
+  assert.match(readFileSync(join(root, "components/account/HotelPhotoStrip.tsx"), "utf8"), /loading=\{eager \? "eager" : "lazy"\}/);
   assert.match(ui, /animate-pulse/);
   assert.match(ui, /Destinations/);
   assert.match(ui, /Hôtels/);
@@ -763,6 +765,11 @@ test("chaque résultat de recherche est une carte distincte", () => {
   const ui = readFileSync(join(root, "components/account/HotelSearch.tsx"), "utf8");
   const css = readFileSync(join(root, "app/globals.css"), "utf8");
   assert.match(ui, /<article className="hotel-rise h-result" data-hotel-card="1">/);
+  assert.match(ui, /HotelPhotoStrip/);
+  const strip = readFileSync(join(root, "components/account/HotelPhotoStrip.tsx"), "utf8");
+  assert.match(strip, /data-hotel-strip="1"/);
+  assert.match(strip, /stopPropagation/);
+  assert.match(css, /touch-action: pan-y/);
   assert.match(ui, /<div className="space-y-5" aria-live="polite">/);
   assert.doesNotMatch(ui, /article className="hotel-rise -mx-4"/);
   assert.match(css, /\.hotel-theme \.h-result \{[^}]*border: 1px solid var\(--h-line\)/);

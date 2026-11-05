@@ -25,7 +25,14 @@ export default async function ReservationPreviewPage({
     return (
       <main className="account-app mx-auto min-h-screen w-full max-w-[480px] px-4 py-6">
         <div className="space-y-4">
-          <StayConfirmedNote />
+          <StayConfirmedNote
+            reference="TB-2026-0142"
+            confirmation="48538736"
+            summary="Hotel Indigo Bordeaux Centre Chartrons · 27 novembre 2026 — 28 novembre 2026"
+            price={formatMoney(142.74, "EUR")}
+            calendarHref="/mon-compte/reservations/TB-2026-0142/agenda.ics"
+            manageHref="#sejour"
+          />
           <p className="text-sm font-semibold text-[var(--admin-navy)]">← Réservations</p>
           <article className="space-y-3 rounded-2xl bg-[#0B192C] px-5 py-6 text-[#f7f4ee]">
             <p className="text-[13px] font-semibold text-[#C5A880]">Séjour</p>
@@ -49,7 +56,7 @@ export default async function ReservationPreviewPage({
         <p className="h-serif text-center text-[17px] font-semibold">Réservation</p>
         <span />
       </header>
-      <HotelBookingWait />
+      <HotelBookingWait phase={etat === "sejour" ? "stay" : "hotel"} />
     </main>
   );
 }

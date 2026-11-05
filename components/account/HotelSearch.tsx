@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { HotelJourney } from "@/components/account/HotelJourney";
+import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
@@ -268,6 +269,8 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
   const cursor = cursorPick ?? monthCursor(checkIn);
   const [hotels, setHotels] = useState<ClientHotel[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchLine, setSearchLine] = useState("Nous interrogeons les hôtels disponibles…");
+  const searchLock = useRef(false);
   const [searched, setSearched] = useState(false);
   const [note, setNote] = useState("");
   const [serverFirst, setServerFirst] = useState<number | null>(null);
@@ -464,6 +467,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
   }
 
   async function onSearch(override?: RecentStay) {
+    if (searchLock.current) return;
     const nextDestination = (override?.destination ?? destination).trim();
     const nextCity = override?.city ?? city;
     const nextCheckIn = override?.checkIn ?? checkIn;
@@ -528,6 +532,8 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
     setNote("");
     setSheet(false);
     setSearched(true);
+    searchLock.current = true;
+    setSearchLine("Nous interrogeons les hôtels disponibles…");
     setPage(1);
     setPending(null);
     if (hotelToken) router.replace("/mon-compte/hotels");
@@ -591,6 +597,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
             latest = upsertHotel(latest, event.hotel);
             if (!sawHotel) {
               sawHotel = true;
+              setSearchLine("Les tarifs arrivent…");
               setClientFirst(since(started));
             }
           } else if (event.type === "link") {
@@ -609,6 +616,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
     } catch (err) {
       if ((err as { name?: string }).name !== "AbortError") setNote("La recherche n’a pas abouti. Réessayez.");
     } finally {
+      searchLock.current = false;
       if (searchAbort.current === controller) setSearching(false);
     }
   }
@@ -841,7 +849,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
           <div className="shrink-0 bg-[#f4efe6] pt-3">
-            <button type="submit" data-hotel-search-cta="1" className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold">
+            <button type="submit" data-hotel-search-cta="1" disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold disabled:opacity-60">
               Rechercher
             </button>
           </div>
@@ -855,7 +863,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
       ) : null}
       {searching ? (
         <div className="h-ink">
-          <BusyBar label="Nous préparons les tarifs" />
+          <BusyBar label={searchLine} />
         </div>
       ) : null}
 
@@ -1116,7 +1124,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
           <footer className="bg-white px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_28px_rgba(11,25,44,0.06)]">
-            <button type="button" onClick={() => void onSearch()} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold">
+            <button type="button" onClick={() => void onSearch()} disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold disabled:opacity-60">
               Rechercher
             </button>
           </footer>
@@ -1294,49 +1302,34 @@ function Stepper({
  * Sans avantage lu, une seule ligne discrète (annulation gratuite) reste à cette place.
  */
 function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolean; onOpen: () => void }) {
-  const [photoFailed, setPhotoFailed] = useState(false);
-  const photo = !photoFailed ? hotel.photo || hotel.thumb || hotel.images?.[0] : null;
   const hasBenefits = hotel.benefits.length > 0;
   const perk = hasBenefits ? "" : PERK_LABEL.find((item) => hotel.perks[item.key])?.label || "";
   return (
     <article className="hotel-rise h-result" data-hotel-card="1">
-      <button type="button" onClick={onOpen} className="block w-full text-left">
-        <div className="h-cover" data-hotel-cover="1">
-          {photo ? (
-            // eslint-disable-next-line @next/next/no-img-element -- photo fournisseur https, hors next/image
-            <img
-              src={photo}
-              alt=""
-              width={800}
-              height={560}
-              sizes="(max-width: 480px) 100vw, 480px"
-              loading={first ? "eager" : "lazy"}
-              decoding="async"
-              fetchPriority={first ? "high" : "auto"}
-              referrerPolicy="no-referrer"
-              className="h-fade absolute inset-0 h-full w-full object-cover"
-              onError={() => setPhotoFailed(true)}
-            />
-          ) : (
-            <div className="grid h-full place-items-center text-[#C5A880]">
-              <Icon name="hotel" className="h-8 w-8" />
-            </div>
-          )}
-          <div className="h-cover-fade" aria-hidden />
-          <div className="h-cover-copy" data-hotel-title="1">
-            <h3 className="h-serif line-clamp-2 text-[1.2rem] font-semibold leading-tight">{hotel.name}</h3>
-            {hotel.city ? <p className="mt-0.5 text-sm text-white/80">{hotel.city}</p> : null}
-          </div>
+      <div className="h-cover" data-hotel-cover="1">
+        <HotelPhotoStrip photo={hotel.photo} images={hotel.images} alt="" eager={first} onActivate={onOpen} />
+        <div className="h-cover-fade" aria-hidden />
+        <div className="h-cover-copy pointer-events-none z-[3]" data-hotel-title="1">
+          <h3 className="h-serif line-clamp-2 text-[1.2rem] font-semibold leading-tight">{hotel.name}</h3>
+          {hotel.city ? <p className="mt-0.5 text-sm text-white/80">{hotel.city}</p> : null}
         </div>
+      </div>
+      <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="flex items-end justify-between gap-3 px-4 py-3" data-hotel-price="1">
           <p className="min-w-0 text-lg font-medium leading-tight h-ink">
-            {euros(hotel.sellCents, hotel.currency)}
+            {euros(hotel.sellCents, hotel.currency)} TTC
             <span className="mt-0.5 block text-sm font-normal h-muted">{euros(hotel.perNightCents, hotel.currency)} / nuit</span>
           </p>
           <span className="mb-0.5 shrink-0 rounded-full border border-[#C5A880] px-3 py-1.5 text-sm font-semibold text-[#8c7352]">
             Voir l’hôtel
           </span>
         </div>
+        {hotel.perks.freeCancellation || hotel.perks.breakfast ? (
+          <div className="flex flex-wrap gap-2 px-4 pb-2">
+            {hotel.perks.freeCancellation ? <span className="rounded-full bg-[#f4efe6] px-2.5 py-1 text-[12px] font-semibold text-[#8c7352]">Annulation gratuite</span> : null}
+            {hotel.perks.breakfast ? <span className="rounded-full bg-[#f4efe6] px-2.5 py-1 text-[12px] font-semibold text-[#8c7352]">Petit-déjeuner inclus</span> : null}
+          </div>
+        ) : null}
         {hasBenefits ? (
           <div className="px-4 pb-4" data-hotel-benefits="1">
             <HotelBenefits lines={hotel.benefits} />

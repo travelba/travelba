@@ -520,6 +520,7 @@ async function placeLeStay(input: {
   now: string;
   fetchImpl?: typeof fetch;
   sendMail?: (input: { to: string; subject: string; text: string }) => Promise<boolean>;
+  onPhase?: (phase: "hotel" | "stay") => void;
 }): Promise<
   | { ok: true; view: ClientStayView }
   | { ok: false; message: string; code?: "price_changed" | "card_again"; sellCents?: number; currency?: string; widgetUrl?: string; terms?: string }
@@ -913,6 +914,7 @@ async function placeLeStay(input: {
   }
   if (!booking) return { ok: false, message: NOT_CHARGED };
 
+  input.onPhase?.("stay");
   const confirmation = booking.confirmation_number || String(booking.id);
   const deadline = booking.cancellation_deadline || fresh.deadline;
   stay = {
@@ -1105,6 +1107,7 @@ export async function openDirectStay(input: {
     fetchImpl?: typeof fetch;
     sendMail?: (input: { to: string; subject: string; text: string }) => Promise<boolean>;
   };
+  onPhase?: (phase: "hotel" | "stay") => void;
 }) {
   const admin = input.deps?.admin || db();
   const { data: offerRow, error } = await admin
@@ -1147,6 +1150,7 @@ export async function openDirectStay(input: {
       now,
       fetchImpl: input.deps?.fetchImpl,
       sendMail: input.deps?.sendMail,
+      onPhase: input.onPhase,
     });
   }
   if (booked.status === "unavailable") return { ok: false as const, message: "La réservation directe n’est pas ouverte." };
