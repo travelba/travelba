@@ -352,3 +352,33 @@ function scrub(value: unknown): unknown {
   }
   return out;
 }
+
+const PLIANT_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** Chemin Pliant journalisable : identifiants remplacés, requête conservée. */
+export function maskPliantPath(path: string) {
+  const [pathname, query = ""] = path.split("?");
+  const maskedPath = pathname.replace(PLIANT_UUID, ":id").replace(/\/(cardholders|cards|organizations|transactions)\/[^/]+/gi, "/$1/:id");
+  const maskedQuery = query
+    .split("&")
+    .filter(Boolean)
+    .map((part) => {
+      const eq = part.indexOf("=");
+      if (eq < 0) return part;
+      const key = part.slice(0, eq);
+      if (/id$/i.test(key) || key === "organizationId" || key === "cardholderId" || key === "cardId") return `${key}=:id`;
+      return part;
+    })
+    .join("&");
+  return maskedQuery ? `${maskedPath}?${maskedQuery}` : maskedPath;
+}
+
+/** Corps d’erreur Pliant, sans PAN ni cryptogramme, coupé pour le journal. */
+export function scrubPliantLog(text: string, max = 300) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const scrubbed = flat
+    .replace(/"(pan|cvv|cvc|csc|cardNumber|card_number|securityCode)"\s*:\s*"[^"]*"/gi, (_match, key: string) => `"${key}":"••••"`)
+    .replace(/\b(?:\d[ -]?){12,18}\d\b/g, "••••")
+    .replace(/\b(cvc|cvv|csc|pan)\s*[:=]?\s*\d{3,4}\b/gi, "$1 •••");
+  return scrubbed.length <= max ? scrubbed : scrubbed.slice(0, max);
+}
