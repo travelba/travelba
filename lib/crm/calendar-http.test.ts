@@ -67,6 +67,7 @@ test("iPhone : un événement .ics, pas un flux", async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "text/calendar; charset=utf-8");
   assert.equal(response.headers.get("content-disposition"), 'inline; filename="travelba-TBA-1001-etape.ics"');
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("location"), null);
   const body = await response.text();
   assert.equal((body.match(/BEGIN:VEVENT/g) || []).length, 1);
@@ -93,6 +94,55 @@ test("bureau : le fichier se télécharge", async () => {
   const body = await response.text();
   assert.equal(body.endsWith("\r\n"), true);
   assert.match(body, /BEGIN:VTIMEZONE/);
+});
+
+test("iPhone écran d’accueil : le .ics part en téléchargement", async () => {
+  const response = calendarHttpResponse({
+    request: new Request("https://travelba.fr/mon-compte/reservations/TBA-1001/agenda/vol.ics", {
+      headers: { "user-agent": IPHONE, cookie: "theme=light; tb_ics_dl=1" },
+    }),
+    booking: booking(),
+    items: [flight()],
+    itemId: flight().id,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/calendar; charset=utf-8");
+  assert.equal(
+    response.headers.get("content-disposition"),
+    'attachment; filename="travelba-TBA-1001-etape.ics"'
+  );
+  assert.match(response.headers.get("set-cookie") || "", /tb_ics_dl=;/);
+  assert.match(response.headers.get("set-cookie") || "", /Max-Age=0/);
+  const body = await response.text();
+  assert.match(body, /BEGIN:VCALENDAR/);
+  assert.equal((body.match(/BEGIN:VEVENT/g) || []).length, 1);
+  assert.match(body, /UID:11111111-1111-1111-1111-111111111111@travelba\.fr/);
+  assert.match(body, /DTSTAMP:\d{8}T\d{6}Z/);
+  assert.equal(body.endsWith("\r\n"), true);
+  assert.equal(body.includes("\n") && body.replace(/\r\n/g, "").includes("\n"), false);
+});
+
+test("hôtel : journée entière, même en-têtes", async () => {
+  const hotel: CrmBookingItem = {
+    ...flight(),
+    id: "22222222-2222-2222-2222-222222222222",
+    kind: "hotel",
+    title: "Anantara Plaza Nice Hotel",
+    start_at: "2026-11-11",
+    end_at: "2026-11-15",
+    details: { hotel_name: "Anantara Plaza Nice Hotel", city: "Nice" },
+  };
+  const response = calendarHttpResponse({
+    request: request(IPHONE),
+    booking: booking(),
+    items: [hotel],
+    itemId: hotel.id,
+  });
+  assert.equal(response.headers.get("content-disposition"), 'inline; filename="travelba-TBA-1001-etape.ics"');
+  const body = await response.text();
+  assert.match(body, /DTSTART;VALUE=DATE:20261111/);
+  assert.match(body, /DTEND;VALUE=DATE:20261115/);
+  assert.equal((body.match(/BEGIN:VEVENT/g) || []).length, 1);
 });
 
 test("Android : Google Agenda crée l’événement", () => {
