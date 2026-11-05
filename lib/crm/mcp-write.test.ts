@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registerTravelbaTools } from "./mcp-registry";
@@ -65,6 +66,28 @@ test("revolut credit names the transfer and the client", () => {
     dossierId: BOOKING,
   });
   assert.throws(() => prepareRevolutExpense({ depense_id: WIRE, client_id: CLIENT }), /Dossier invalide/);
+});
+
+test("créer ou mettre à jour un dossier ne l’ouvre pas et ne prévient pas", () => {
+  const write = readFileSync(new URL("./mcp-write.ts", import.meta.url), "utf8");
+  const publish = write.slice(write.indexOf("export async function publishCarnet("), write.indexOf("export async function updateBooking("));
+  const update = write.slice(write.indexOf("export async function updateBooking("), write.indexOf("export async function confirmService("));
+  assert.match(publish, /notifyStayPublished/);
+  assert.match(publish, /remindMissingPieces/);
+  assert.doesNotMatch(update, /notifyStayPublished/);
+  const notes = prepareBookingUpdate({ id: BOOKING, notes_internes: "Ne pas notifier" });
+  assert.equal(Object.prototype.hasOwnProperty.call(notes.patch, "visible_to_client"), false);
+  assert.equal(notes.patch.status, undefined);
+  const trip = readFileSync(new URL("./mcp-trip.ts", import.meta.url), "utf8");
+  const create = trip.slice(trip.indexOf("export async function createDossier"), trip.indexOf("type CompanionRow"));
+  assert.match(create, /visible:\s*false/);
+  assert.match(create, /notifie:\s*false/);
+  assert.doesNotMatch(create, /notifyStayPublished/);
+  const mail = readFileSync(new URL("./mcp-email.ts", import.meta.url), "utf8");
+  const mailCreate = mail.slice(mail.indexOf("async function defaultPersist"), mail.indexOf("export async function createDossierFromEmail"));
+  assert.match(mailCreate, /visibleToClient:\s*false/);
+  assert.match(mailCreate, /status:\s*"draft"/);
+  assert.doesNotMatch(mailCreate, /notifyStayPublished/);
 });
 
 test("showing a carnet keeps the agency guards", () => {

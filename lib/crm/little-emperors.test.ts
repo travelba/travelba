@@ -715,10 +715,10 @@ describe("little emperors staging client", () => {
 });
 
 describe("dossier créé depuis Little Emperors", () => {
-  it("réservé ou confirmé ouvre un dossier confirmé, les autres restent brouillon", () => {
-    assert.equal(leCreatedDossierStatus("booked"), "confirmed");
-    assert.equal(leCreatedDossierStatus("confirmed"), "confirmed");
-    assert.equal(leCreatedDossierStatus("BOOKED"), "confirmed");
+  it("réservé ou confirmé ouvre un dossier Non visible, sans message", () => {
+    assert.equal(leCreatedDossierStatus("booked"), "draft");
+    assert.equal(leCreatedDossierStatus("confirmed"), "draft");
+    assert.equal(leCreatedDossierStatus("BOOKED"), "draft");
     assert.equal(leCreatedDossierStatus("pending"), "draft");
     assert.equal(leCreatedDossierStatus(null), "draft");
     const src = readFileSync(new URL("./little-emperors-sync.ts", import.meta.url), "utf8");
@@ -726,8 +726,9 @@ describe("dossier créé depuis Little Emperors", () => {
     const end = src.indexOf("export async function cancelLittleEmperorsFromCrm");
     const fn = src.slice(start, end);
     assert.match(fn, /leCreatedDossierStatus\(booking\.state\)/);
-    assert.match(fn, /const visibleToClient = dossierStatus === "confirmed"/);
-    assert.match(fn, /visible_to_client: visibleToClient/);
-    assert.doesNotMatch(fn, /status:\s*"draft"/);
+    assert.match(fn, /visibleToClient:\s*false/);
+    assert.match(fn, /visible_to_client:\s*false/);
+    assert.doesNotMatch(fn, /notifyStayPublished/);
+    assert.doesNotMatch(fn, /visibleToClient = dossierStatus === "confirmed"/);
   });
 });

@@ -32,10 +32,13 @@ test("le fil WhatsApp vit dans l’onglet Client", () => {
 
 test("le geste principal du dossier ne disparaît jamais", () => {
   const editor = readFileSync(join(root, "components/admin/BookingEditor.tsx"), "utf8");
-  const primary = editor.slice(editor.indexOf("const primaryAction ="), editor.indexOf("const passesButton ="));
+  const primary = editor.slice(editor.indexOf("const stayAction = clientStayAction(booking)"), editor.indexOf("const passesButton ="));
+  assert.match(primary, /clientStayAction\(booking\)/);
+  assert.match(primary, /stayAction === "montrer"/);
   assert.match(primary, /Montrer au client/);
-  assert.match(primary, /Mettre à jour le carnet/);
+  assert.match(primary, /stayAction === "cacher"/);
   assert.match(primary, /Cacher au client/);
+  assert.match(primary, /Mettre à jour le carnet/);
   assert.equal(/\) : null;\s*$/.test(primary.trim()), false);
   assert.match(editor, /← Dossiers/);
   assert.equal(editor.includes("← Réservations"), false);

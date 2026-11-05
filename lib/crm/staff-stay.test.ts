@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  clientStayAction,
   staffBlockingChips,
   staffLedgerCaption,
   staffStayFacts,
@@ -28,6 +29,20 @@ test("l’état du dossier est Non visible, Visible, Annulé, ou Archivée", () 
   assert.equal(staffRealStatusLabel("confirmed"), "Visible");
   assert.equal(staffRealStatusLabel("quoted"), "Non visible");
   assert.equal(staffRealStatusLabel("cancelled"), "Annulé");
+});
+
+test("le bouton suit la visibilité réelle, pas le statut stocké seul", () => {
+  assert.equal(clientStayAction({ visible_to_client: false, status: "draft" }), "montrer");
+  assert.equal(clientStayAction({ visible_to_client: false, status: "confirmed" }), "montrer");
+  assert.equal(clientStayAction({ visible_to_client: false, status: "quoted" }), "montrer");
+  assert.equal(clientStayAction({ visible_to_client: true, status: "draft" }), "cacher");
+  assert.equal(clientStayAction({ visible_to_client: true, status: "confirmed" }), "cacher");
+  assert.equal(clientStayAction({ visible_to_client: true, status: "cancelled" }), "rouvrir");
+  assert.equal(clientStayAction({ visible_to_client: false, status: "cancelled" }), "rouvrir");
+  assert.equal(
+    clientStayAction({ visible_to_client: true, archived_at: "2026-10-01T00:00:00.000Z" }),
+    "restaurer"
+  );
 });
 
 test("un enregistrement ouvert compte dans À faire", () => {
