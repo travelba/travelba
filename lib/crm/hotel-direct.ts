@@ -567,16 +567,16 @@ export function cancelOffer(stay: DirectStay, today: string): { mode: "cancel" |
 export const PAY_COPY = {
   cardTitle: "Payer par carte",
   card: "Autorisation maintenant. L’encaissement n’a lieu que si l’hôtel confirme.",
-  agencyTitle: "Payé par l’agence",
+  agencyTitle: "L’agence s’occupe du paiement",
   agency: "L’agence avance le séjour. Le montant rejoint vos transactions.",
   trial: "Essai : aucun encaissement, aucun e-mail à l’hôtel.",
 } as const;
 
 /** Mode réel : le client paie l’hôtel, ou l’agence avance et l’inscrit aux transactions. */
 export const LE_PAY_COPY = {
-  clientTitle: "Le client paie lui-même",
+  clientTitle: "Je paie ma réservation",
   client: "La carte garantit la réservation. L’hôtel prélève selon les conditions du tarif. Aucun encaissement par l’agence.",
-  agencyTitle: "Payé par l’agence",
+  agencyTitle: "L’agence s’occupe du paiement",
   agency: "L’agence avance le séjour. Le montant rejoint vos transactions.",
 } as const;
 
