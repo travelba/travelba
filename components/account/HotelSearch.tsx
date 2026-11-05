@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { HotelJourney } from "@/components/account/HotelJourney";
+import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
@@ -1301,40 +1302,19 @@ function Stepper({
  * Sans avantage lu, une seule ligne discrète (annulation gratuite) reste à cette place.
  */
 function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolean; onOpen: () => void }) {
-  const [photoFailed, setPhotoFailed] = useState(false);
-  const photo = !photoFailed ? hotel.photo || hotel.thumb || hotel.images?.[0] : null;
   const hasBenefits = hotel.benefits.length > 0;
   const perk = hasBenefits ? "" : PERK_LABEL.find((item) => hotel.perks[item.key])?.label || "";
   return (
     <article className="hotel-rise h-result" data-hotel-card="1">
-      <button type="button" onClick={onOpen} className="block w-full text-left">
-        <div className="h-cover" data-hotel-cover="1">
-          {photo ? (
-            // eslint-disable-next-line @next/next/no-img-element -- photo fournisseur https, hors next/image
-            <img
-              src={photo}
-              alt=""
-              width={800}
-              height={560}
-              sizes="(max-width: 480px) 100vw, 480px"
-              loading={first ? "eager" : "lazy"}
-              decoding="async"
-              fetchPriority={first ? "high" : "auto"}
-              referrerPolicy="no-referrer"
-              className="h-fade absolute inset-0 h-full w-full object-cover"
-              onError={() => setPhotoFailed(true)}
-            />
-          ) : (
-            <div className="grid h-full place-items-center text-[#C5A880]">
-              <Icon name="hotel" className="h-8 w-8" />
-            </div>
-          )}
-          <div className="h-cover-fade" aria-hidden />
-          <div className="h-cover-copy" data-hotel-title="1">
-            <h3 className="h-serif line-clamp-2 text-[1.2rem] font-semibold leading-tight">{hotel.name}</h3>
-            {hotel.city ? <p className="mt-0.5 text-sm text-white/80">{hotel.city}</p> : null}
-          </div>
+      <div className="h-cover" data-hotel-cover="1">
+        <HotelPhotoStrip photo={hotel.photo} images={hotel.images} alt="" eager={first} onActivate={onOpen} />
+        <div className="h-cover-fade" aria-hidden />
+        <div className="h-cover-copy pointer-events-none z-[3]" data-hotel-title="1">
+          <h3 className="h-serif line-clamp-2 text-[1.2rem] font-semibold leading-tight">{hotel.name}</h3>
+          {hotel.city ? <p className="mt-0.5 text-sm text-white/80">{hotel.city}</p> : null}
         </div>
+      </div>
+      <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="flex items-end justify-between gap-3 px-4 py-3" data-hotel-price="1">
           <p className="min-w-0 text-lg font-medium leading-tight h-ink">
             {euros(hotel.sellCents, hotel.currency)} TTC

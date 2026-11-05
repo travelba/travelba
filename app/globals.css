@@ -307,9 +307,60 @@
 }
 .hotel-theme .h-cover {
   position: relative;
-  height: 13.5rem;
+  aspect-ratio: 16 / 10;
+  width: 100%;
   overflow: hidden;
   background: #0b192c;
+}
+.hotel-theme .h-photo-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+.hotel-theme .h-strip {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overflow-anchor: none;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+.hotel-theme .h-strip::-webkit-scrollbar {
+  display: none;
+}
+.hotel-theme .h-strip-slide {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.hotel-theme .h-strip-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  display: grid;
+  height: 2.25rem;
+  width: 2.25rem;
+  place-items: center;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: rgba(11, 25, 44, 0.72);
+  color: #f7f4ee;
+  opacity: 0;
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hotel-theme .h-photo-frame:hover .h-strip-arrow {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .hotel-theme .h-cover-fade {
   position: absolute;

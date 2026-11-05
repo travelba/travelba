@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { HotelBookingWait } from "@/components/account/HotelBookingWait";
+import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelGuaranteeNight } from "@/components/account/HotelGuaranteeNight";
 import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -105,133 +106,10 @@ function Photo({ src, alt, eager }: { src: string; alt: string; eager?: boolean 
 }
 
 function Gallery({ images, alt }: { images: string[]; alt: string }) {
-  const scroller = useRef<HTMLDivElement>(null);
-  const [at, setAt] = useState(0);
-  const [open, setOpen] = useState(false);
-  const start = useRef<{ x: number; y: number } | null>(null);
-  const index = images.length ? Math.min(at, images.length - 1) : 0;
-
-  function shift(delta: number) {
-    if (images.length < 2) return;
-    const next = (index + delta + images.length) % images.length;
-    setAt(next);
-    const node = scroller.current;
-    if (node) node.scrollTo({ left: next * node.clientWidth, behavior: smoothScroll() ? "smooth" : "auto" });
-  }
-
-  function onScroll() {
-    const node = scroller.current;
-    if (!node || node.clientWidth < 1) return;
-    setAt(Math.max(0, Math.min(images.length - 1, Math.round(node.scrollLeft / node.clientWidth))));
-  }
-
-  function onPointerDown(event: ReactPointerEvent) {
-    start.current = { x: event.clientX, y: event.clientY };
-  }
-
-  function onPointerUp(event: ReactPointerEvent) {
-    if (!start.current) return;
-    const dx = event.clientX - start.current.x;
-    const dy = event.clientY - start.current.y;
-    start.current = null;
-    if (Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy)) shift(dx > 0 ? -1 : 1);
-  }
-
   return (
-    <div data-hotel-gallery="1" className="relative">
-      <div ref={scroller} onScroll={onScroll} className="h-gallery h-stage flex snap-x snap-mandatory overflow-x-auto bg-[#eceae6]">
-        {images.length ? (
-          images.map((src, imageIndex) => (
-            <button
-              key={`${src}-${imageIndex}`}
-              type="button"
-              onClick={() => {
-                setAt(imageIndex);
-                setOpen(true);
-              }}
-              className="h-full w-full shrink-0 snap-start"
-              aria-label={images.length > 1 ? `Photo ${imageIndex + 1} sur ${images.length}` : "Ouvrir la photo"}
-            >
-              <Photo src={src} alt={imageIndex === 0 ? alt : ""} eager={imageIndex === 0} />
-            </button>
-          ))
-        ) : (
-          <div className="h-skel h-full w-full shrink-0" />
-        )}
-      </div>
-      {images.length > 1 ? <p className="h-pin absolute bottom-3 right-3">{index + 1}/{images.length}</p> : null}
-      {open && images[index] ? (
-        <Lightbox
-          images={images}
-          alt={alt}
-          index={index}
-          onShift={shift}
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-          onClose={() => setOpen(false)}
-        />
-      ) : null}
+    <div data-hotel-gallery="1" className="relative aspect-[16/10] w-full bg-[#0B192C]">
+      <HotelPhotoStrip images={images} alt={alt} eager fullscreen />
     </div>
-  );
-}
-
-function Lightbox({
-  images,
-  alt,
-  index,
-  onShift,
-  onPointerDown,
-  onPointerUp,
-  onClose,
-}: {
-  images: string[];
-  alt: string;
-  index: number;
-  onShift: (delta: number) => void;
-  onPointerDown: (event: ReactPointerEvent) => void;
-  onPointerUp: (event: ReactPointerEvent) => void;
-  onClose: () => void;
-}) {
-  const onCloseRef = useRef(onClose);
-  const onShiftRef = useRef(onShift);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-    onShiftRef.current = onShift;
-  }, [onClose, onShift]);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
-      if (event.key === "ArrowRight") onShiftRef.current(1);
-      if (event.key === "ArrowLeft") onShiftRef.current(-1);
-    };
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, []);
-
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <div className="hotel-theme fixed inset-0 z-[80] flex flex-col bg-[var(--h-header)] text-[var(--h-header-ink)]" role="dialog" aria-modal="true" aria-label="Galerie">
-      <header className="flex items-center justify-between px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
-        <p className="px-2 text-sm">{index + 1} / {images.length}</p>
-        <button type="button" aria-label="Fermer la galerie" onClick={onClose} className="h-hit h-press grid h-11 w-11 place-items-center">
-          <Icon name="close" className="h-5 w-5 text-[#c5a880]" />
-        </button>
-      </header>
-      <div
-        className="relative min-h-0 flex-1"
-        style={{ touchAction: "none" }}
-        onPointerDown={onPointerDown}
-        onPointerUp={onPointerUp}
-      >
-        <Photo src={images[index]} alt={alt} eager />
-      </div>
-    </div>,
-    document.body
   );
 }
 
