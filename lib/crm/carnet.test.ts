@@ -120,6 +120,18 @@ describe("carnet", () => {
       ]),
       false
     );
+    assert.equal(
+      carnetVisible({ visible_to_client: true }, [
+        item({ kind: "hotel", visible_to_client: false, title: "Indigo" }),
+      ]),
+      false
+    );
+    assert.equal(
+      carnetVisible({ visible_to_client: true }, [
+        item({ kind: "hotel", visible_to_client: true, title: "Indigo" }),
+      ]),
+      true
+    );
   });
 
   it("saute les jours sans prestation", () => {

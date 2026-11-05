@@ -949,7 +949,7 @@ async function placeLeStay(input: {
           end_at: input.offer.check_out,
           amount: sale,
           include_in_ledger: !clientPays,
-          visible_to_client: false,
+          visible_to_client: true,
           supplier: null,
           details: {
             hotel_name: input.offer.hotel_name,
@@ -961,8 +961,6 @@ async function placeLeStay(input: {
             le_booking_id: booking.id,
             cancellation_deadline: deadline,
             conditions: [clientConditions(stay)],
-            supplier_net: sale,
-            supplier_currency: input.offer.currency.toUpperCase(),
           },
         })
         .select("id")
@@ -971,15 +969,21 @@ async function placeLeStay(input: {
         .from("crm_hotel_direct_stays")
         .update({ booking_id: created.booking.id, booking_item_id: (item as { id?: string } | null)?.id || null })
         .eq("id", stayId);
+      await input.admin
+        .from("crm_bookings")
+        .update({ visible_to_client: true, prices_visible: true, status: "confirmed" })
+        .eq("id", created.booking.id);
       await setCarnetPublished(input.admin, created.booking.id, true);
       await syncBookingTotalFromItems(input.admin, created.booking.id);
       const { data: priced } = await input.admin.from("crm_bookings").select("*").eq("id", created.booking.id).maybeSingle();
       if (priced) await syncBookingLedger(input.admin, priced as CrmBooking, created.booking.status);
-      await safeConcierge(() => notifyStayPublished(created.booking.id));
-      await safeConcierge(() => remindMissingPieces(created.booking.id));
     } catch {
       console.error("[hotels] dossier", "refus");
     }
+  }
+  if (bookingId) {
+    await safeConcierge(() => notifyStayPublished(bookingId as string));
+    await safeConcierge(() => remindMissingPieces(bookingId as string));
   }
   await input.admin.from("crm_le_bookings").upsert(
     {
