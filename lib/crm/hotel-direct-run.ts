@@ -46,6 +46,7 @@ import {
 } from "@/lib/crm/little-emperors";
 import { portForBooking, type BookQuote } from "@/lib/crm/hotel-supplier";
 import { formatDateFr } from "@/lib/crm/dates";
+import { stayBookingCardInsert } from "@/lib/crm/le-stay-card";
 import { bookingCardValidity, manualStayCardBody } from "@/lib/crm/manual-stay-card";
 import { centsToAmount, formatMoney } from "@/lib/crm/money";
 import { issuePliantCard, lockPliantCard, pliantConfigured, readPliantCardholderName, readPliantCardSecrets } from "@/lib/crm/pliant";
@@ -157,6 +158,58 @@ async function sendMail(input: { to: string; subject: string; text: string }) {
 
 function parisToday() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+/** Inscrit la carte du séjour sur le dossier. Idempotent : une carte déjà liée n’est pas recréée. */
+async function linkStayPliantCard(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    pliantCardId: string;
+    hotelName: string;
+    sellCents: number;
+    endDate: string | null;
+    firstName: string;
+    lastName: string;
+    last4: string | null;
+    customerId: string;
+  }
+) {
+  const draft = stayBookingCardInsert({
+    bookingId: input.bookingId,
+    pliantCardId: input.pliantCardId,
+    hotelName: input.hotelName,
+    sellCents: input.sellCents,
+    endDate: input.endDate,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    last4: input.last4,
+    today: parisToday(),
+  });
+  if (!draft) return;
+  const { data: existing } = await admin
+    .from("crm_booking_cards")
+    .select("id")
+    .eq("pliant_card_id", draft.pliant_card_id)
+    .maybeSingle();
+  if (!existing) {
+    const { error } = await admin.from("crm_booking_cards").insert(draft);
+    if (error && error.code !== "23505") console.error("[hotels] carte dossier", error.code ?? "?");
+  }
+  const { rememberPliantCard } = await import("@/lib/crm/pliant-card-run");
+  await rememberPliantCard(admin, {
+    pliant_card_id: draft.pliant_card_id,
+    booking_id: input.bookingId,
+    customer_id: input.customerId,
+    label: draft.label,
+    last4: draft.last4,
+    limit_cents: draft.limit_cents,
+    currency: "EUR",
+    status: "active",
+    limit_manual: true,
+    transaction_limit_cents: draft.transaction_limit_cents,
+    max_transaction_count: null,
+  });
 }
 
 function readStay(value: DirectStay): DirectStay {
@@ -1087,36 +1140,6 @@ async function placeLeStay(input: {
         .from("crm_bookings")
         .update({ visible_to_client: true, prices_visible: true, status: "confirmed" })
         .eq("id", created.booking.id);
-      if (agency && stay.pliantCardId) {
-        const cents = input.offer.sell_cents;
-        await input.admin.from("crm_booking_cards").insert({
-          booking_id: created.booking.id,
-          pliant_card_id: stay.pliantCardId,
-          label: `${input.offer.hotel_name}`.slice(0, 40),
-          first_name: holder?.firstName || "",
-          last_name: holder?.lastName || "",
-          limit_cents: cents,
-          transaction_limit_cents: cents,
-          max_transaction_count: null,
-          currency: "EUR",
-          status: "active",
-          last4: cardLast4,
-        });
-        const { rememberPliantCard } = await import("@/lib/crm/pliant-card-run");
-        await rememberPliantCard(input.admin, {
-          pliant_card_id: stay.pliantCardId,
-          booking_id: created.booking.id,
-          customer_id: input.customer.id,
-          label: input.offer.hotel_name.slice(0, 40),
-          last4: cardLast4,
-          limit_cents: cents,
-          currency: "EUR",
-          status: "active",
-          limit_manual: true,
-          transaction_limit_cents: cents,
-          max_transaction_count: null,
-        });
-      }
       await setCarnetPublished(input.admin, created.booking.id, true);
       await syncBookingTotalFromItems(input.admin, created.booking.id);
       const { data: priced } = await input.admin.from("crm_bookings").select("*").eq("id", created.booking.id).maybeSingle();
@@ -1124,6 +1147,19 @@ async function placeLeStay(input: {
     } catch {
       console.error("[hotels] dossier", "refus");
     }
+  }
+  if (bookingId && stay.pliantCardId) {
+    await linkStayPliantCard(input.admin, {
+      bookingId,
+      pliantCardId: stay.pliantCardId,
+      hotelName: input.offer.hotel_name,
+      sellCents: input.offer.sell_cents,
+      endDate: input.offer.check_out,
+      firstName: holder?.firstName || "",
+      lastName: holder?.lastName || "",
+      last4: cardLast4,
+      customerId: input.customer.id,
+    });
   }
   if (bookingId) {
     await safeConcierge(() => notifyStayPublished(bookingId as string, input.admin));

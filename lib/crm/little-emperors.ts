@@ -226,8 +226,12 @@ export function leDateOnly(value: string | null | undefined): string | null {
 
 export function isLeCancelled(state: string | null | undefined, event?: string | null) {
   if (event === "hotel_booking_cancel") return true;
-  const normalized = String(state || "").trim().toLowerCase();
-  return normalized === "cancelled" || normalized === "canceled";
+  const normalized = String(state || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  return normalized === "cancelled" || normalized === "canceled" || normalized === "annulee" || normalized === "annule";
 }
 
 /**
@@ -495,6 +499,15 @@ export async function listLittleEmperorsBookings(fetchImpl?: typeof fetch) {
     if (parsed) bookings.push(parsed);
   }
   return bookings;
+}
+
+export async function fetchLittleEmperorsBooking(bookingId: number, fetchImpl?: typeof fetch) {
+  const payload = await leJson(`/v2/hotels/bookings/${bookingId}`, { method: "GET" }, fetchImpl);
+  const parsed = parseLeBooking(payload);
+  if (!parsed) {
+    throw new LittleEmperorsError("Little Emperors n’a pas renvoyé la réservation.", 502, "unexpected_shape");
+  }
+  return parsed;
 }
 
 export async function fetchLittleEmperorsHotel(hotelId: number, fetchImpl?: typeof fetch) {

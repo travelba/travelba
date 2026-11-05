@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { BookingPickDialog, type RevolutBookingChoice } from "@/components/admin/BookingPickDialog";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { LeCancelNotice } from "@/components/admin/LittleEmperorsCancel";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
@@ -442,7 +443,19 @@ export function LittleEmperorsInbox({
                 ) : null}
               </div>
               ) : null}
-              {!cancelled && row.is_cancellable === false ? <p className="mt-2 text-sm text-muted">{copy.lateCancel}</p> : null}
+              {!cancelled && row.is_cancellable !== true ? (
+                agency ? (
+                  <LeCancelNotice
+                    isCancellable={row.is_cancellable}
+                    deadline={row.cancellation_deadline}
+                    policies={row.cancellation_policies || []}
+                    bookedAt={row.booked_on}
+                    hotelName={row.hotel_name}
+                  />
+                ) : row.is_cancellable === false ? (
+                  <p className="mt-2 text-sm text-muted">{copy.lateCancel}</p>
+                ) : null
+              ) : null}
             </li>
           );
         })}

@@ -4,6 +4,7 @@
  */
 
 export const CLIENT_CANCEL_ADVISOR = "Contactez votre conseiller.";
+export const CLIENT_CANCEL_NON_REFUNDABLE = "Ce tarif n’est pas remboursable. Contactez votre conseiller.";
 export const CLIENT_CANCEL_REFUSED = "Cette annulation n’est plus gratuite. Contactez votre conseiller.";
 export const CLIENT_CANCEL_NOT_SENT = "Rien n’a été annulé. Contactez votre conseiller.";
 export const CLIENT_CANCEL_CARD_LAG =
@@ -17,7 +18,11 @@ export type ClientHotelCancelOffer =
       stayLabel: string;
       untilLabel: string;
     }
-  | { itemId: string; mode: "advisor" };
+  | { itemId: string; mode: "advisor"; tone?: "non_refundable" };
+
+export function clientCancelFreeLine(untilLabel: string) {
+  return `Annulation gratuite possible jusqu’au ${untilLabel.replace(/\s+/g, " ").trim()}.`;
+}
 
 export function clientCancelQuestion(offer: { hotelName: string; stayLabel: string; untilLabel: string }) {
   return `Annuler ${offer.hotelName}, ${offer.stayLabel} ? Annulation gratuite jusqu’au ${offer.untilLabel}.`;

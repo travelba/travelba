@@ -146,6 +146,8 @@ test("la limite s’affiche à l’heure de Paris et ferme le geste après cet i
   assert.equal(deadlineStillOpen("2026-10-01", "2026-10-23"), false);
   assert.equal(deadlineStillOpen("2026-07-01T16:00:00", "2026-07-01T13:59:00.000Z"), true);
   assert.equal(deadlineStillOpen("2026-07-01T16:00:00", "2026-07-01T14:00:00.000Z"), false);
+  assert.equal(deadlineStillOpen("2026-11-05T00:00:00.000000Z", "2026-11-05T17:29:00.000Z"), true);
+  assert.equal(deadlineStillOpen("2026-11-05T00:00:00.000000Z", "2026-11-06T00:30:00.000Z"), false);
 });
 
 test("le cadre de carte reste sur l’hôte du widget et les conditions ne nomment personne", () => {

@@ -97,6 +97,7 @@ import {
 import {
   ajouterCarte,
   archiverDossier,
+  supprimerDossier,
   cacherCarnet,
   deposerPieceDossier,
   dupliquerDossier,
@@ -118,7 +119,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 108;
+export const MCP_TOOL_CAP = 109;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1798,6 +1799,19 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: z.boolean().describe("true pour archiver"),
     },
     run: (args) => archiverDossier(args),
+  },
+  {
+    name: "supprimer_dossier",
+    write: true,
+    destructive: true,
+    description:
+      "Supprime un dossier créé par erreur. Retire le relevé (débits du séjour), le séjour d’hôtel direct et la réservation Little Emperors. Refus si une carte Pliant liée n’est pas gelée : bloquer_carte_pliant d’abord. confirmer true. Réservé aux administrateurs. Ce n’est pas archiver_dossier.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+      confirmer: z.boolean().describe("true pour supprimer"),
+    },
+    run: (args) => supprimerDossier(args),
   },
   {
     name: "restaurer_dossier",

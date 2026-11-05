@@ -24,6 +24,7 @@ test("chaque outil a un droit, les outils d’équipe sont administrateur", () =
     "creer_cle_api",
     "revoquer_cle_api",
     "supprimer_client",
+    "supprimer_dossier",
     "supprimer_compagnon",
     "supprimer_piece_client",
     "regler_acces_hotels",

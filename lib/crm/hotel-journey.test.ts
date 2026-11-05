@@ -12,6 +12,7 @@ import {
   payActionLabel,
   payStepAction,
   rateBoardLine,
+  rateCancelBadge,
   rateChips,
   stayBenefits,
 } from "./hotel-journey";
@@ -142,6 +143,13 @@ test("le bouton attend un mode, puis la carte, et ne dit Réessayer qu’après 
   );
   assert.deepEqual(payStepAction({ ...base, method: "card", sending: true }), { label: "Vérification…", disabled: true });
   assert.equal(payStepAction({ ...base, method: "agency", offerReady: false }).disabled, true);
+  assert.equal(payStepAction({ ...base, method: "agency", nonRefundableAck: false }).disabled, true);
+  assert.equal(payStepAction({ ...base, method: "agency", nonRefundableAck: true }).disabled, false);
+  assert.equal(rateCancelBadge({ free: false }), "Non remboursable");
+  assert.equal(
+    rateCancelBadge({ free: true, deadlineLabel: "9 février 2027 à 18:00" }),
+    "Annulation gratuite jusqu’au 9 février 2027 à 18:00"
+  );
 });
 
 test("choisir un mode ne lance pas la réservation", () => {
@@ -158,5 +166,7 @@ test("choisir un mode ne lance pas la réservation", () => {
   assert.match(choose, /setPayMethod\(next\)/);
   assert.doesNotMatch(choose, /send\(/);
   assert.match(journey, /StayBenefits/);
+  assert.match(journey, /J’ai compris que ce tarif n’est pas remboursable/);
+  assert.match(journey, /data-hotel-cancel-badge/);
   assert.match(journey, /data-hotel-pay-choice/);
 });

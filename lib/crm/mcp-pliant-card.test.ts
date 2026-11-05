@@ -20,6 +20,7 @@ type State = {
   customers: Row[];
   travelers: Row[];
   cards: Row[];
+  stays: Row[];
   items: Row[];
   audits: Row[];
   registry: Row[];
@@ -47,6 +48,7 @@ function baseState(): State {
     customers: [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }],
     travelers: [],
     cards: [],
+    stays: [],
     items: [],
     audits: [],
     registry: [],
@@ -77,6 +79,8 @@ function fakeAdmin(state: State) {
                   ? state.items
                 : table === "crm_pliant_cards"
                   ? state.registry
+                  : table === "crm_hotel_direct_stays"
+                    ? state.stays
                   : table === "crm_mcp_card_events"
                     ? state.audits
                     : [];
@@ -669,4 +673,37 @@ test("sans le jeton carte, ou si Pliant refuse, la carte reste active", async ()
   assert.deepEqual(stale.locks, ["pliant-visa-1"]);
   assert.equal(stale.cards[0]?.status, "active");
   assert.equal(stale.registry.length, 0);
+});
+
+test("bloquer_carte_pliant accepte la carte connue seulement par le séjour", async () => {
+  const state = baseState();
+  state.stays.push({
+    id: "stay-le",
+    booking_id: BOOKING,
+    phase: "confirmed",
+    state: {
+      pliantCardId: "5057d8a7-02d1-4afd-b792-f936f4e7c3bc",
+      hotelName: "Sofitel Biarritz",
+      sellCents: 18636,
+      pliant: "issued",
+    },
+  });
+  const missing = await runWithMcpAccess(CARDS, () =>
+    blockPliantCard({ reference: "TB-2026-0082" }, fakeAdmin(state), deps(state))
+  );
+  assert.equal("introuvable" in missing, false);
+  assert.equal("bloquee" in missing && missing.bloquee, true);
+  assert.deepEqual(state.locks, ["5057d8a7-02d1-4afd-b792-f936f4e7c3bc"]);
+
+  const again = baseState();
+  again.stays.push(state.stays[0]);
+  const byId = await runWithMcpAccess(CARDS, () =>
+    blockPliantCard(
+      { reference: "TB-2026-0082", carte_id: "5057d8a7-02d1-4afd-b792-f936f4e7c3bc" },
+      fakeAdmin(again),
+      deps(again)
+    )
+  );
+  assert.equal("introuvable" in byId, false);
+  assert.deepEqual(again.locks, ["5057d8a7-02d1-4afd-b792-f936f4e7c3bc"]);
 });

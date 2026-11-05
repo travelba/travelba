@@ -249,6 +249,7 @@ function CardBody({
           hotelName={cancelOffer.mode === "free" ? cancelOffer.hotelName : ""}
           stayLabel={cancelOffer.mode === "free" ? cancelOffer.stayLabel : ""}
           untilLabel={cancelOffer.mode === "free" ? cancelOffer.untilLabel : ""}
+          tone={cancelOffer.mode === "advisor" ? cancelOffer.tone : undefined}
         />
       ) : null}
       <div className="flex flex-wrap items-end gap-3">

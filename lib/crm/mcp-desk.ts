@@ -78,6 +78,7 @@ export type DeskDeps = {
   }) => Promise<{ ok: true; enabled: boolean; status: string } | { ok: false; error: string }>;
   findBooking?: (target: { id: string; reference: string }) => Promise<BookingHit>;
   archive?: (id: string) => Promise<{ reference?: string | null }>;
+  removeMistaken?: (id: string) => Promise<{ reference: string; sejours: number; reservations_le: number }>;
   restore?: (id: string) => Promise<{ booking: { id: string; reference: string } }>;
   duplicate?: (id: string) => Promise<{ booking: { id: string; reference: string } }>;
   stampCreator?: (bookingId: string, staffId: string) => Promise<void>;
@@ -343,6 +344,29 @@ export async function archiverDossier(input: Record<string, unknown>, deps: Desk
     return { archive: true, dossier_id: booking.id, reference: result.reference || booking.reference };
   } catch (err) {
     throw new McpWriteError(err instanceof McpWriteError ? err.message : err instanceof Error ? err.message : "Archivage impossible.");
+  }
+}
+
+export async function supprimerDossier(input: Record<string, unknown>, deps: DeskDeps = {}) {
+  confirmed(input);
+  const booking = await bookingOf(input, deps);
+  const remove =
+    deps.removeMistaken ??
+    (async (id: string) => {
+      const { deleteMistakenBooking } = await import("@/lib/crm/delete-booking");
+      return deleteMistakenBooking(id, db(deps.admin));
+    });
+  try {
+    const result = await remove(booking.id);
+    return {
+      supprime: true as const,
+      dossier_id: booking.id,
+      reference: result.reference || booking.reference,
+      sejours: result.sejours,
+      reservations_le: result.reservations_le,
+    };
+  } catch (err) {
+    throw new McpWriteError(err instanceof Error ? err.message : "Suppression impossible.");
   }
 }
 

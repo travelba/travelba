@@ -25,6 +25,7 @@ import {
   benefitsFromLeRaw,
   isLeCancelled,
   leCreatedDossierStatus,
+  fetchLittleEmperorsBooking,
   listLittleEmperorsBookings,
   LittleEmperorsError,
   type LeBooking,
@@ -32,6 +33,9 @@ import {
 import { leBookingNeedsWork, lePayloadMatches, type LeSnap } from "@/lib/crm/sync-delta";
 import type { LeHotelCatalog } from "@/lib/crm/hotel-contact";
 import { countsAsCarnetCard, isActiveItem, type CrmBookingItem, type CrmCustomer } from "@/lib/crm/types";
+import { recordPliantAlert } from "@/lib/crm/agency-log";
+import { lockPliantCard } from "@/lib/crm/pliant";
+import { pliantIdFromStayState } from "@/lib/crm/le-stay-card";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -422,6 +426,55 @@ async function reflectCancellation(
   return "cancelled";
 }
 
+/** Gèle la carte du séjour et prévient l’agence. Le dossier n’est annulé que s’il ne reste plus de carte. */
+async function freezeCancelledLeStay(admin: SupabaseClient, booking: LeBooking, crmBookingId: string | null) {
+  const { data } = await admin
+    .from("crm_hotel_direct_stays")
+    .select("id, state, phase, booking_id")
+    .eq("le_booking_id", booking.id)
+    .maybeSingle();
+  const row = data as { id: string; state: unknown; phase: string | null; booking_id: string | null } | null;
+  const cardId = pliantIdFromStayState(row?.state);
+  if (row && row.phase !== "cancelled") {
+    const state =
+      row.state && typeof row.state === "object" ? { ...(row.state as Record<string, unknown>) } : {};
+    state.phase = "cancelled";
+    state.reason = "Annulée chez Little Emperors.";
+    if (cardId) state.pliant = "locked";
+    await admin
+      .from("crm_hotel_direct_stays")
+      .update({ state, phase: "cancelled", updated_at: new Date().toISOString() })
+      .eq("id", row.id);
+  }
+  if (cardId) {
+    try {
+      await lockPliantCard(cardId);
+    } catch {
+      console.error("[little-emperors] carte", "gel");
+    }
+    await admin.from("crm_booking_cards").update({ status: "locked" }).eq("pliant_card_id", cardId);
+    await admin.from("crm_pliant_cards").update({ status: "locked", updated_at: new Date().toISOString() }).eq("pliant_card_id", cardId);
+  }
+  const dossierId = crmBookingId || row?.booking_id || null;
+  if (dossierId) {
+    const { data: items } = await admin.from("crm_booking_items").select("id, kind, lifecycle").eq("booking_id", dossierId);
+    const active = ((items || []) as { kind: string; lifecycle: string | null }[]).filter(
+      (item) => countsAsCarnetCard(item.kind) && isActiveItem(item)
+    );
+    if (!active.length) {
+      await admin.from("crm_bookings").update({ status: "cancelled", visible_to_client: false }).eq("id", dossierId).neq("status", "cancelled");
+    }
+  }
+  const ref = (booking.confirmation_number || String(booking.id)).slice(0, 40);
+  await recordPliantAlert(
+    cardId
+      ? `Little Emperors a annulé le séjour ${ref}. La carte a été gelée.`
+      : `Little Emperors a annulé le séjour ${ref}.`,
+    dossierId,
+    admin
+  );
+}
+
 const LE_STORED_COLUMNS =
   "id, le_booking_id, crm_booking_id, status, state, confirmation_number, hotel_id, hotel_name, address, city, website, check_in, check_out, currency, total_cost, is_cancellable, cancellation_deadline, guest_names, cancellation_policies, room_types, country, raw, last_error, candidates";
 
@@ -473,6 +526,21 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
     await rememberProbe(admin, { last_status: 500, last_error: message, last_ok_at: null });
     return { ok: false, fetched: listed.length, linked: 0, created: 0, cancelled: 0, message, status: 500, code: "stored" };
   }
+  const listedIds = new Set(listed.map((booking) => booking.id));
+  const absent = [...storedById.values()]
+    .filter((row) => row.crm_booking_id && !isLeCancelled(row.state) && !listedIds.has(Number(row.le_booking_id)))
+    .slice(0, 25);
+  for (const row of absent) {
+    try {
+      const fresh = await fetchLittleEmperorsBooking(Number(row.le_booking_id), fetchImpl);
+      if (fresh && !listedIds.has(fresh.id)) {
+        listed.push(fresh);
+        listedIds.add(fresh.id);
+      }
+    } catch {
+      /* Une réservation absente de la liste reste en place si la lecture unitaire échoue. */
+    }
+  }
   const pending = listed.filter((booking) => leBookingNeedsWork(leSnap(storedById.get(booking.id), booking), booking));
   const fetched = await enrich(pending, fetchImpl);
   const context = fetched.length ? await loadMatchContext(admin) : null;
@@ -514,6 +582,10 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
       if (result === "unmatched_card") {
         lastError = "Annulation Little Emperors reçue, sans carte hôtel correspondante sur le dossier.";
       }
+      await freezeCancelledLeStay(admin, booking, crmBookingId);
+      if (!lastError) lastError = "Annulée chez Little Emperors. La carte du séjour a été gelée.";
+    } else if (cancelledRemote) {
+      await freezeCancelledLeStay(admin, booking, null);
     }
     let status: "linked" | "unmatched" | "ignored" = crmBookingId
       ? "linked"
@@ -626,8 +698,11 @@ export async function upsertLittleEmperorsWebhook(event: string, booking: LeBook
     if (result === "unmatched_card") {
       lastError = "Annulation Little Emperors reçue, sans carte hôtel correspondante sur le dossier.";
     }
+    await freezeCancelledLeStay(admin, merged, crmBookingId);
+    if (!lastError) lastError = "Annulée chez Little Emperors. La carte du séjour a été gelée.";
   } else if (cancelledRemote && !crmBookingId) {
-    lastError = null;
+    await freezeCancelledLeStay(admin, merged, null);
+    lastError = "Annulée chez Little Emperors. La carte du séjour a été gelée.";
   }
   const candidates = suggestion.candidates
     .filter((row) => row.customer_id)

@@ -427,6 +427,7 @@ export function BookingEditor({
     cancellation_deadline: string | null;
     cancellation_policies: string[] | null;
     state: string | null;
+    created_at?: string | null;
   } | null;
   leStays?: { hotel_name: string | null; check_in: string | null; total_cost: string | null; currency: string | null }[];
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
@@ -2492,7 +2493,7 @@ export function BookingEditor({
               </ul>
             </section>
           ) : null}
-          {leOpen && littleEmperors?.cancellation_deadline ? (
+          {leOpen && littleEmperors ? (
             <LittleEmperorsCancel
               id={littleEmperors.id}
               hotelName={littleEmperors.hotel_name}
@@ -2500,6 +2501,7 @@ export function BookingEditor({
               deadline={littleEmperors.cancellation_deadline}
               policies={littleEmperors.cancellation_policies || []}
               state={littleEmperors.state}
+              bookedAt={littleEmperors.created_at}
             />
           ) : null}
           <OnlineCheckinChecklist bookingId={booking.id} lines={checkinLines} />

@@ -340,6 +340,8 @@ describe("little emperors staging client", () => {
     const cancelled = parseLeBooking({ ...sample, state: "cancelled" });
     assert.ok(cancelled);
     assert.equal(isLeCancelled(cancelled.state), true);
+    assert.equal(isLeCancelled("Annulée"), true);
+    assert.equal(isLeCancelled("annulee"), true);
     assert.equal(isLeCancelled("booked", "hotel_booking_cancel"), true);
     assert.equal(leBookingExtract(cancelled).document_status, "cancelled");
     const withSite = leBookingExtract({ ...cancelled, website: "https://www.maison-test.example/hotel" });

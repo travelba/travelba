@@ -102,6 +102,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   enregistrer_societes: "edit_dossiers",
   regler_acces_hotels: "admin",
   archiver_dossier: "delete_archive",
+  supprimer_dossier: "admin",
   restaurer_dossier: "delete_archive",
   dupliquer_dossier: "create_dossiers",
   cacher_carnet: "message_client",
