@@ -105,10 +105,58 @@ export const BOOKING_STEPS = [
 
 export type BookingStep = (typeof BOOKING_STEPS)[number]["id"];
 
+export type PayMethod = "card" | "agency";
+
 /** Carte : on paie. Agence, ou essai sans encaissement : on valide la réservation. */
-export function payActionLabel(input: { method: "card" | "agency" | ""; trial: boolean }) {
+export function payActionLabel(input: { method: PayMethod | ""; trial: boolean }) {
   if (input.method === "agency" || input.trial) return "Valider la réservation";
   return "Valider et payer";
+}
+
+/**
+ * L’agence n’avance pas un tarif hors euros quand la réservation part par l’API.
+ * Hors API, les deux modes restent proposés, quelle que soit la devise.
+ */
+export function agencyPayOffered(input: { api: boolean; currency: string }) {
+  if (!input.api) return true;
+  return input.currency.toUpperCase() === "EUR";
+}
+
+/** Modes réellement proposés. La carte reste ouverte. L’agence suit la règle déjà appliquée à l’envoi. */
+export function offeredPayMethods(input: { api: boolean; currency: string }): PayMethod[] {
+  const methods: PayMethod[] = ["card"];
+  if (agencyPayOffered(input)) methods.push("agency");
+  return methods;
+}
+
+/**
+ * Libellé et disponibilité du bouton bas.
+ * Rien n’est envoyé tant qu’il est éteint : un mode doit être choisi, et la carte complète si son formulaire est ouvert.
+ * « Réessayer » seulement après un échec. Sans mode, le libellé ne désigne ni la carte ni l’agence.
+ */
+export function payStepAction(input: {
+  method: PayMethod | "";
+  trial: boolean;
+  failed: boolean;
+  sending: boolean;
+  cardOpen: boolean;
+  cardComplete: boolean;
+  offerReady: boolean;
+}) {
+  const label = input.sending
+    ? "Vérification…"
+    : input.failed
+      ? "Réessayer"
+      : input.method
+        ? payActionLabel({ method: input.method, trial: input.trial })
+        : input.trial
+          ? "Valider la réservation"
+          : "Valider";
+  const waitingForCard = input.method === "card" && input.cardOpen && !input.cardComplete;
+  return {
+    label,
+    disabled: input.sending || !input.offerReady || !input.method || waitingForCard,
+  };
 }
 
 export function perkScore(hotel: Pick<ClientHotel, "perks" | "benefits">) {

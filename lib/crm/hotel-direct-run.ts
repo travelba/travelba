@@ -19,6 +19,7 @@ import {
   type StayEvent,
 } from "@/lib/crm/hotel-direct";
 import { clientConfirmationDraft, hotelRequestLetter, outboundHotelRecipient, HOTEL_DIRECT_FROM } from "@/lib/crm/hotel-direct-mail";
+import { agencyPayOffered } from "@/lib/crm/hotel-journey";
 import { clientBenefits, leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import {
   adoptLeBooking,
@@ -760,7 +761,7 @@ async function placeLeStay(input: {
     await release("Session");
     return { ok: false, message: "La saisie de la carte a expiré. Recommencez." };
   }
-  if (agency && input.offer.currency.toUpperCase() !== "EUR") {
+  if (agency && !agencyPayOffered({ api: true, currency: input.offer.currency })) {
     await release("Devise");
     return { ok: false, message: "Ce tarif n’est pas en euros. Écrivez à votre conseiller." };
   }

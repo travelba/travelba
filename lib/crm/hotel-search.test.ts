@@ -690,13 +690,15 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(journey, /Précédent/);
   assert.match(journey, /Suivant/);
   assert.match(journey, /La réservation n’a pas abouti/);
-  assert.match(journey, /Réessayer/);
+  assert.match(journey, /payStepAction\(/);
+  assert.match(journey, /failed: Boolean\(fareBlock\)/);
   assert.match(journey, /data-hotel-recap/);
   assert.match(journey, /data-hotel-prev/);
   const steps = readFileSync(join(root, "lib/crm/hotel-journey.ts"), "utf8");
   assert.match(steps, /label: "Récapitulatif"/);
   assert.match(steps, /return "Valider et payer"/);
   assert.match(steps, /return "Valider la réservation"/);
+  assert.match(steps, /"Réessayer"/);
   assert.doesNotMatch(journey, /Privilèges Travel BA/);
   assert.doesNotMatch(journey, /Sélectionner/);
   assert.match(journey, /h-serif/);
