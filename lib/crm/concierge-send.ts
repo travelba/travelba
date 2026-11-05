@@ -724,8 +724,7 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
   });
 }
 
-export async function notifyStayPublished(bookingId: string) {
-  const admin = createServiceClient();
+export async function notifyStayPublished(bookingId: string, admin: Admin = createServiceClient()) {
   const booking = await loadBooking(admin, bookingId);
   if (!booking?.visible_to_client) return;
   const [steps, customer] = await Promise.all([
@@ -1208,8 +1207,7 @@ export async function notifyFormalitiesReady(
   return results;
 }
 
-export async function remindMissingPieces(bookingId: string, now = new Date()) {
-  const admin = createServiceClient();
+export async function remindMissingPieces(bookingId: string, now = new Date(), admin: Admin = createServiceClient()) {
   const booking = await loadBooking(admin, bookingId);
   if (!booking?.visible_to_client) return;
   const plans = await missingPlans(admin, booking, now);
