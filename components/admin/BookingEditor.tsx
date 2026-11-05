@@ -104,6 +104,7 @@ import { type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { travelersMissingPassport, travelersPassportExpiresBeforeReturn } from "@/lib/crm/trip-documents";
 import type { ShareCompanion } from "@/lib/crm/trip-share-types";
+import { ChangeBookingClient } from "@/components/admin/ChangeBookingClient";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import {
   customerBillingPickLabel,
@@ -575,7 +576,6 @@ export function BookingEditor({
   const [notesClient, setNotesClient] = useMirror(booking.notes_client || "");
   const datesInverted = Boolean(startDraft && endDraft && endDraft < startDraft);
   const serverPayerPick: PickableCustomer | null = billingCustomer || customer;
-  const [clientPick, setClientPick] = useMirror<PickableCustomer | null>(customer);
   const [payerPick, setPayerPick] = useMirror<PickableCustomer | null>(serverPayerPick);
   const serverPayerPickId = serverPayerPick?.id || null;
   const [stepsPending, setStepsPending] = useState(false);
@@ -593,7 +593,6 @@ export function BookingEditor({
     notesInternal !== (booking.notes_internal || "") ||
     notesClient !== (booking.notes_client || "") ||
     feeChoice !== serverFeeChoice ||
-    (clientPick?.id || null) !== (customer?.id || null) ||
     (payerPick?.id || null) !== serverPayerPickId;
   const unsaved = dirty || stepsPending;
   // `replaceState(null, …)` : Next recopie lui-même ses internes et prévient le routeur, donc
@@ -1602,24 +1601,24 @@ export function BookingEditor({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <CoverMark>Le client</CoverMark>
               <Link
-                href={`/admin/clients/${clientPick?.id || booking.customer_id}`}
+                href={`/admin/clients/${booking.customer_id}`}
                 className="shrink-0 text-sm font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
               >
                 Ouvrir la fiche
               </Link>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <CustomerPickField
-                name="customer_id"
-                label="Client"
-                selected={account}
-                title="Client du dossier"
-                formatLabel={customerTravelerPickLabel}
-                onPick={setClientPick}
-                controlClass={coverField}
-              />
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Client</p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="min-w-0 text-sm font-semibold text-[var(--admin-navy)]">
+                    {customer ? customerTravelerPickLabel(customer) : "Aucun client"}
+                  </p>
+                  <ChangeBookingClient bookingId={booking.id} onChanged={() => router.refresh()} />
+                </div>
+              </div>
               <p className="self-end pb-3 text-sm text-muted">
-                {clientPick && payerPick && clientPick.id !== payerPick.id
+                {customer && payerPick && customer.id !== payerPick.id
                   ? `Réglé par ${shownPersonName(payerPick)}`
                   : "Règle lui-même ce séjour"}
                 {" · "}
@@ -1796,9 +1795,9 @@ export function BookingEditor({
               onPick={setPayerPick}
               controlClass={coverField}
             />
-            {clientPick && payerPick && clientPick.id !== payerPick.id ? (
+            {customer && payerPick && customer.id !== payerPick.id ? (
               <p className="-mt-3 text-xs text-muted">
-                Le compte de {shownPersonName(payerPick)} porte les débits ; {shownPersonName(clientPick)} voyage.
+                Le compte de {shownPersonName(payerPick)} porte les débits ; {shownPersonName(customer)} voyage.
               </p>
             ) : null}
             <input type="hidden" name="payer_kind" value={payerKind} />

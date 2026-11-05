@@ -32,7 +32,13 @@ import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
 import { ledgerTravelerLabel } from "@/lib/crm/ledger-travelers";
-import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
+import {
+  countDossiersByCustomer,
+  CUSTOMER_LIST_SELECT,
+  CUSTOMER_NAME_SELECT,
+  type CustomerListRow,
+  type CustomerNameRow,
+} from "@/lib/crm/customer-search";
 import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { loadDossierPeople, type DossierPeople } from "@/lib/crm/dossier-responsables";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
@@ -133,8 +139,23 @@ function customerLine(row: CustomerListRow | CustomerNameRow) {
     societe: "company_name" in row ? row.company_name || null : null,
     email: "email" in row ? row.email || null : null,
     telephone: "phone" in row ? row.phone || null : null,
+    naissance: "birth_date" in row ? row.birth_date || null : null,
     lien: `/admin/clients/${row.id}`,
   };
+}
+
+async function withDossierCounts(admin: SupabaseClient, rows: CustomerListRow[]) {
+  if (!rows.length) return rows.map((row) => ({ ...customerLine(row), dossiers: 0 }));
+  const { data, error } = await admin
+    .from("crm_bookings")
+    .select("customer_id")
+    .in(
+      "customer_id",
+      rows.map((row) => row.id)
+    );
+  if (error) logRead("dossiers", error);
+  const counts = countDossiersByCustomer((data || []) as { customer_id: string | null }[]);
+  return rows.map((row) => ({ ...customerLine(row), dossiers: counts.get(row.id) || 0 }));
 }
 
 /** Société facturée, à côté du contact. Particulier si le séjour n’est pas à la société. */
@@ -514,7 +535,7 @@ export async function readChercherClients(input: { q?: string; echeance?: boolea
   const q = (input.q || "").trim();
   const window = mcpWindow(input, LIST_LIMIT);
   const listed = await searchCustomers(admin, q, window.limite, window.page);
-  const clients = listed.rows.map(customerLine);
+  const clients = await withDossierCounts(admin, listed.rows);
   if (!q) {
     const { count, error } = await admin.from("crm_customers").select("id", { count: "exact", head: true });
     if (error) logRead("clients", error);
@@ -563,7 +584,7 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
     return { message: "Indiquez l’identifiant ou le nom du client." };
   }
   if (found.kind === "none") return { introuvable: true };
-  if (found.kind === "many") return { choix: found.customers.map(customerLine) };
+  if (found.kind === "many") return { choix: await withDossierCounts(admin, found.customers) };
   const customer = found.customer;
   const offAgency = await offAgencyStayAmounts(admin, customer.id);
   const [{ data: balances }, { data: docs }] = await Promise.all([
@@ -961,7 +982,7 @@ export async function readGrandLivre(input: { id?: string; q?: string; page?: nu
     return { message: "Indiquez l’identifiant ou le nom du client." };
   }
   if (found.kind === "none") return { introuvable: true };
-  if (found.kind === "many") return { choix: found.customers.map(customerLine) };
+  if (found.kind === "many") return { choix: await withDossierCounts(admin, found.customers) };
   const customer = found.customer as CustomerListRow & Pick<CrmCustomer, "company_role">;
   const { data: roleRow } = await admin
     .from("crm_customers")

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import {
   companiesByCustomer,
+  countDossiersByCustomer,
   CUSTOMER_PICK_LIMIT,
   CUSTOMER_PICK_SELECT,
   type PickableCustomer,
@@ -30,8 +31,16 @@ export async function GET(request: Request) {
       ? await auth.supabase.from("crm_billing_companies").select("customer_id, company_name").in("customer_id", ids)
       : { data: [] };
     const byCustomer = companiesByCustomer((companyRows.data || []) as { customer_id: string; company_name: string | null }[]);
+    const stayRows = ids.length
+      ? await auth.supabase.from("crm_bookings").select("customer_id").in("customer_id", ids)
+      : { data: [] };
+    const dossiers = countDossiersByCustomer((stayRows.data || []) as { customer_id: string | null }[]);
     return NextResponse.json({
-      customers: customers.map((row) => ({ ...row, companies: byCustomer.get(row.id) || [] })),
+      customers: customers.map((row) => ({
+        ...row,
+        companies: byCustomer.get(row.id) || [],
+        dossier_count: dossiers.get(row.id) || 0,
+      })),
     });
   }
   const { data, error } = await auth.supabase

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/crm/icons";
 import { useIsClient } from "@/lib/crm/use-is-client";
 import {
+  customerPickDetail,
   customerPickLabel,
   filterCustomersForPick,
   type PickableCustomer,
@@ -18,6 +19,7 @@ export function CustomerPickDialog({
   title = "Choisir un client",
   onSelect,
   onCreate,
+  createLabel = "Nouveau client",
   onClose,
 }: {
   open: boolean;
@@ -26,8 +28,9 @@ export function CustomerPickDialog({
   selectedId?: string;
   title?: string;
   onSelect: (customer: PickableCustomer) => void;
-  /** Fiche sans e-mail. Aucune invitation. */
-  onCreate?: () => void;
+  /** Fiche sans invitation. Reçoit le texte déjà saisi. */
+  onCreate?: (query: string) => void;
+  createLabel?: string;
   onClose: () => void;
 }) {
   const titleId = useId();
@@ -174,12 +177,12 @@ export function CustomerPickDialog({
           <div className="border-t border-[#e8e4dc] bg-[#faf9f6] px-5 py-3">
             <button
               type="button"
-              onClick={onCreate}
+              onClick={() => onCreate(query)}
               className="rounded-md border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]"
             >
-              Nouveau client
+              {createLabel}
             </button>
-            <p className="mt-1 text-xs text-[#44474c]">Sans e-mail. Aucune invitation. L’adresse peut être ajoutée plus tard.</p>
+            <p className="mt-1 text-xs text-[#44474c]">Sans invitation. L’adresse peut être ajoutée plus tard.</p>
           </div>
         ) : null}
       </div>
@@ -242,8 +245,8 @@ function CustomerRow({
               </span>
             ) : null}
           </span>
-          <span className="mt-0.5 block truncate text-[13px] leading-snug text-[#44474c]">
-            {[customer.email, customer.phone].filter(Boolean).join(" · ") || "—"}
+          <span className="mt-0.5 block text-[13px] leading-snug text-[#44474c]">
+            {customerPickDetail(customer)}
           </span>
         </span>
       </button>

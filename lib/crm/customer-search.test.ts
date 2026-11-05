@@ -5,6 +5,7 @@ import {
   customerDirectoryName,
   companiesByCustomer,
   customerMatchesQuery,
+  customerPickDetail,
   customerPickLabel,
   customerTravelerPickLabel,
   filterCustomersForPick,
@@ -99,6 +100,26 @@ describe("customer-search", () => {
       email: "dir@tba.fr",
     });
     assert.equal(customerTravelerPickLabel(peer), "Marie Dupont — dir@tba.fr · admin société");
+  });
+
+  it("sépare deux homonymes par l’e-mail, la société, la naissance et les dossiers", () => {
+    const detail = customerPickDetail(
+      customer({
+        email: "john@johndalia.com",
+        phone: "+33610330020",
+        company_name: "JOHN DALIA",
+        company_role: "admin",
+        birth_date: "1980-03-04",
+        dossier_count: 2,
+      })
+    );
+    assert.match(detail, /john@johndalia.com/);
+    assert.match(detail, /\+33610330020/);
+    assert.match(detail, /JOHN DALIA/);
+    assert.match(detail, /né\(e\) le/);
+    assert.match(detail, /2 dossiers/);
+    assert.match(detail, /admin société/);
+    assert.equal(customerPickDetail(customer({ email: "", phone: null, birth_date: null })), "—");
   });
 
   it("place les propositions en tête de liste", () => {

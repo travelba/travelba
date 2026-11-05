@@ -39,6 +39,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Cacher le carnet | `cacher_carnet` — ajouté |
 | Archiver / rouvrir / dupliquer | `archiver_dossier`, `restaurer_dossier`, `dupliquer_dossier` — ajouté |
 | Voyageurs du dossier | `ajouter_voyageur`, `modifier_voyageur`, `retirer_voyageur`, `fusionner_compagnon` — couvert |
+| Changer le client du dossier | `changer_client_dossier` — ajouté. Sans `confirmer`, aperçu. Crée la fiche si besoin, sans invitation. Voyageurs qui sont l’ancien client, grand livre, paiements et payeur de ce dossier suivent. Aucun message. |
 | Vol, hôtel, accueil VIP | `ajouter_vol`, `modifier_vol`, `ajouter_hotel`, `modifier_hotel`, `ajouter_accueil_vip` — couvert |
 | Train, transfert, activité, frais, dépense, autres types | `ajouter_carte`, `modifier_carte` — ajouté |
 | Visibilité d’une carte, inclusion au grand livre | `definir_visibilite_carte` — couvert |

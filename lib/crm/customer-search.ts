@@ -1,4 +1,5 @@
 import { attachSearchFold, attachSearchMatches } from "./attach-search";
+import { formatDateFr } from "./dates";
 import { greetingGivenName } from "./identity";
 import { customerFullName, type CrmCustomer } from "./types";
 
@@ -6,14 +7,16 @@ export type PickableCustomer = Pick<
   CrmCustomer,
   "id" | "first_name" | "last_name" | "company_name" | "email" | "phone"
 > &
-  Partial<Pick<CrmCustomer, "usage_name" | "company_role" | "billing_parent_id">> & {
+  Partial<Pick<CrmCustomer, "usage_name" | "company_role" | "billing_parent_id" | "birth_date">> & {
     /** Autres sociétés de la fiche, en plus de `company_name`. */
     companies?: string[] | null;
+    /** Dossiers dont cette fiche est le client. Absent : pas encore compté. */
+    dossier_count?: number | null;
   };
 
 /** Colonnes du sélecteur — pas de `select("*")` (IBAN, adresse, etc.). */
 export const CUSTOMER_PICK_SELECT =
-  "id, first_name, last_name, usage_name, company_name, email, phone, company_role, billing_parent_id";
+  "id, first_name, last_name, usage_name, company_name, email, phone, birth_date, company_role, billing_parent_id";
 
 /** Ligne de la liste Clients : ce que la table affiche, rien de plus (A-06). */
 export type CustomerListRow = PickableCustomer & Pick<CrmCustomer, "on_hold" | "created_at">;
@@ -67,6 +70,36 @@ export function companiesByCustomer(rows: { customer_id: string; company_name: s
     map.set(row.customer_id, list);
   }
   return map;
+}
+
+export function countDossiersByCustomer(rows: { customer_id?: string | null }[]) {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const id = row.customer_id;
+    if (!id) continue;
+    counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  return counts;
+}
+
+export function dossierCountLabel(count: number) {
+  return `${count} dossier${count > 1 ? "s" : ""}`;
+}
+
+/** E-mail, téléphone, société, naissance et nombre de dossiers : deux homonymes ne se confondent pas. */
+export function customerPickDetail(c: PickableCustomer) {
+  const companies = [c.company_name, ...(c.companies || [])]
+    .map((name) => (name || "").trim())
+    .filter(Boolean);
+  const unique: string[] = [];
+  for (const name of companies) {
+    if (unique.some((item) => attachSearchFold(item) === attachSearchFold(name))) continue;
+    unique.push(name);
+  }
+  const birth = c.birth_date ? `né(e) le ${formatDateFr(c.birth_date)}` : "";
+  const dossiers = typeof c.dossier_count === "number" ? dossierCountLabel(c.dossier_count) : "";
+  const role = c.company_role === "admin" ? "admin société" : c.company_role === "member" ? "rattaché" : "";
+  return [c.email, c.phone, unique.join(", "), birth, dossiers, role].filter(Boolean).join(" · ") || "—";
 }
 
 export function customerRoleSuffix(c: PickableCustomer) {
