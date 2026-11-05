@@ -74,7 +74,11 @@ export function leCardBrand(pan: string): "VISA" | "MASTERCARD" | "AMEX" | null 
   return null;
 }
 
-/** Carte d’agence, en mémoire le temps de l’appel. `requiresCvc` faux : le cryptogramme n’est pas envoyé. */
+/**
+ * Carte d’agence, en mémoire le temps de l’appel.
+ * Le cryptogramme part dès qu’une carte est envoyée : le fournisseur l’exige
+ * dès que `credit_card` est présent. `requiresCvc` ne change que le texte montré au client.
+ */
 export function leCreditCard(input: {
   pan: string;
   cvc: string;
@@ -88,19 +92,16 @@ export function leCreditCard(input: {
   const name = input.name.replace(/\s+/g, " ").trim();
   if (!brand || number.length < 14 || number.length > 19 || name.length < 3) return null;
   if (input.expMonth < 1 || input.expMonth > 12 || input.expYear < 2000) return null;
-  const card: Record<string, unknown> = {
+  const cvc = input.cvc.replace(/\D/g, "");
+  if ((brand === "AMEX" && cvc.length !== 4) || (brand !== "AMEX" && cvc.length !== 3)) return null;
+  return {
     number,
     name,
     brand_name: brand,
     exp_month: input.expMonth,
     exp_year: input.expYear,
+    cvc,
   };
-  if (input.requiresCvc !== false) {
-    const cvc = input.cvc.replace(/\D/g, "");
-    if ((brand === "AMEX" && cvc.length !== 4) || (brand !== "AMEX" && cvc.length !== 3)) return null;
-    card.cvc = cvc;
-  }
-  return card;
 }
 
 export function redactCardText(value: string) {
@@ -354,6 +355,14 @@ export function partyChanged<T extends { adults: number; children: { age: number
     if (room.adults !== other.adults || room.children.length !== other.children.length) return true;
     return room.children.some((child, at) => child.age !== other.children[at]?.age);
   });
+}
+
+/** Motif interne d’un refus 4xx. Le numéro de carte et le cryptogramme n’y entrent pas. */
+export function leRefusalReason(status: number, upstream: string): string | null {
+  if (status < 400 || status >= 500) return null;
+  const text = redactCardText(upstream).replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.slice(0, 240);
 }
 
 /** Message client. Le texte amont n’est pas recopié s’il peut nommer le fournisseur. */

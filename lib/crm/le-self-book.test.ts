@@ -22,6 +22,7 @@ import {
   clientDeadlineInstant,
   leClientRefusal,
   lePrimaryGuest,
+  leRefusalReason,
   leSessionExpired,
   PARTY_MISMATCH,
   partyChanged,
@@ -69,11 +70,37 @@ test("la carte d’agence part dans le corps, et le journal n’a ni numéro ni 
     card,
   });
   assert.equal(body.rooms[0].send_email_to_guest, false);
-  assert.equal((body.credit_card as { number?: string }).number, "4242424242424242");
+  assert.equal((body.credit_card as { number?: string; cvc?: string }).number, "4242424242424242");
+  assert.equal((body.credit_card as { cvc?: string }).cvc, "123");
   const logged = JSON.stringify(leBookingRequestWithoutCard(body));
   assert.doesNotMatch(logged, /4242|123/);
   assert.equal(redactCardText("refused 4242424242424242 cvc 123"), "refused •••• cvc •••");
-  assert.equal(leCreditCard({ pan: "4242424242424242", cvc: "123", expMonth: 12, expYear: 2030, name: "Andrea Martin", requiresCvc: false })?.cvc, undefined);
+  const withoutFlag = leCreditCard({
+    pan: "4242424242424242",
+    cvc: "123",
+    expMonth: 12,
+    expYear: 2030,
+    name: "Andrea Martin",
+    requiresCvc: false,
+  });
+  assert.equal(withoutFlag?.cvc, "123");
+  assert.equal(
+    leCreditCard({ pan: "4242424242424242", cvc: "1234", expMonth: 12, expYear: 2030, name: "Andrea Martin", requiresCvc: false }),
+    null
+  );
+  const amex = leCreditCard({
+    pan: "378282246310005",
+    cvc: "1234",
+    expMonth: 12,
+    expYear: 2030,
+    name: "Andrea Martin",
+    requiresCvc: null,
+  });
+  assert.equal(amex?.cvc, "1234");
+  assert.equal(
+    leCreditCard({ pan: "378282246310005", cvc: "123", expMonth: 12, expYear: 2030, name: "Andrea Martin", requiresCvc: false }),
+    null
+  );
 });
 
 test("une session expirée se reconnaît, un second passage ne repose pas la réservation", () => {
@@ -240,6 +267,10 @@ test("un accompagnant augmente les adultes, le nom envoyé reste le principal", 
   assert.match(sentence, /162,74/);
   assert.equal(leClientRefusal(422, "guest_name: The surname must be at least 2 characters."), "Indiquez le prénom et le nom du voyageur principal, une personne par ligne.");
   assert.equal(leClientRefusal(422, "adults: The adults count does not match the rate."), PARTY_MISMATCH);
+  const refused = "The given data was invalid. · credit_card.cvc: The credit card.cvc field is required when credit card is present.";
+  assert.equal(leRefusalReason(422, `${refused} 4242424242424242 cvc: 123`), `${refused} •••• cvc •••`);
+  assert.equal(leRefusalReason(500, refused), null);
+  assert.equal(leRefusalReason(422, "   "), null);
   const logged = redactCardText("refused 4242424242424242 cvc 123 key sk_live_secret");
   assert.doesNotMatch(logged, /4242|123/);
 });

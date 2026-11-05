@@ -184,7 +184,7 @@ function availability() {
               currency_code: "EUR",
               requested_currency_code: "EUR",
               cancellation_deadline: "2026-11-26T18:00:00.000000Z",
-              requires_cvc: true,
+              requires_cvc: false,
               payment_description: "No deposit",
               can_cancel: true,
               cancellation_policy: "Free cancellation before 18:00 on 26 November 2026",
@@ -368,9 +368,10 @@ describe("carte d’agence Little Emperors", { concurrency: 1 }, () => {
         assert.equal(opened.ok, true, opened.ok ? "" : opened.message);
         const bookings = http.calls.filter((call) => call.url.includes("/v2/hotels/bookings") && call.method === "POST");
         assert.equal(bookings.length, 1);
-        const posted = bookings[0]?.body as { credit_card?: { name?: string; number?: string } };
+        const posted = bookings[0]?.body as { credit_card?: { name?: string; number?: string; cvc?: string } };
         assert.equal(posted.credit_card?.name, "Travelba");
         assert.equal(posted.credit_card?.number, PAN);
+        assert.equal(posted.credit_card?.cvc, "123");
         const issued = http.calls.find((call) => call.url.includes("/cards/holder-1") && call.method === "POST");
         assert.equal((issued?.body as { customFirstName?: string } | null)?.customFirstName, undefined);
         const stay = tables.crm_hotel_direct_stays[0];
