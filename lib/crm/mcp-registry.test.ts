@@ -110,6 +110,7 @@ const EXPECTED = [
   "lancer_formalite",
   "annuler_mouvement",
   "fusionner_clients",
+  "changer_client_dossier",
 ];
 
 const WRITE_TOOLS = [
@@ -189,6 +190,7 @@ const WRITE_TOOLS = [
   "lancer_formalite",
   "annuler_mouvement",
   "fusionner_clients",
+  "changer_client_dossier",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {

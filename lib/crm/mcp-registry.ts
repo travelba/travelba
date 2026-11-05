@@ -118,7 +118,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 107;
+export const MCP_TOOL_CAP = 108;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2116,6 +2116,55 @@ export const MCP_TOOLS: ToolDef[] = [
         });
       } catch (err) {
         if (err instanceof MergeCustomersError) throw new McpWriteError(err.message);
+        throw err;
+      }
+    },
+  },
+  {
+    name: "changer_client_dossier",
+    write: true,
+    selfJournal: true,
+    description:
+      "Rattache un dossier à un autre client, comme Changer de client sur l’onglet Client. dossier_id ou reference. client_id choisit une fiche déjà là : pour un homonyme, prendre l’identifiant après chercher_clients (e-mail, téléphone, société, naissance, dossiers). Sans client_id, prenom et nom créent la fiche (e-mail, téléphone et société facultatifs), sans invitation. Sans confirmer, aperçu seulement : ce qui bouge, et les homonymes si une fiche est créée. confirmer true écrit. Le client du dossier change. Un voyageur coché qui était l’ancien client lui-même prend le nom du nouveau. Les écritures du grand livre et du relevé, et les paiements de ce dossier, suivent. Le payeur et la société suivent seulement s’ils venaient de l’ancien client. Le séjour Visible disparaît de l’ancien espace et apparaît dans le nouveau. Aucun e-mail, aucun WhatsApp.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+      client_id: z.string().trim().max(80).optional().describe("Fiche déjà choisie. Pour un homonyme, l’identifiant, pas seulement le nom"),
+      prenom: z.string().trim().max(80).optional().describe("Prénom, si la fiche est créée"),
+      nom: z.string().trim().max(80).optional().describe("Nom, si la fiche est créée"),
+      email: z.string().trim().max(254).optional().describe("E-mail facultatif. Aucune invitation"),
+      telephone: z.string().trim().max(40).optional().describe("Téléphone facultatif"),
+      societe: z.string().trim().max(200).optional().describe("Raison sociale facultative"),
+      confirmer: z.boolean().optional().describe("Vrai : rattache. Omis ou faux : aperçu seulement"),
+    },
+    run: async (args) => {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const { ReassignClientError, changeBookingClient } = await import("@/lib/crm/reassign-booking-client");
+      const prenom = str(args, "prenom");
+      const nom = str(args, "nom");
+      try {
+        const result = await changeBookingClient(createServiceClient(), {
+          bookingId: str(args, "dossier_id") || "",
+          reference: str(args, "reference") || "",
+          customerId: str(args, "client_id") || "",
+          create: prenom || nom ? { firstName: prenom || "", lastName: nom || "", email: str(args, "email"), phone: str(args, "telephone"), companyName: str(args, "societe") } : null,
+          confirmer: args.confirmer === true,
+        });
+        if (result.applique) {
+          const staff = currentMcpAccess().staff;
+          await recordAgencyJournal({
+            staffId: staff?.id || null,
+            action: "update",
+            entityType: "dossier",
+            entityId: result.dossier_id,
+            summary: result.journal.summary,
+            diff: result.journal.diff,
+            path: "/api/mcp",
+          });
+        }
+        return result;
+      } catch (err) {
+        if (err instanceof ReassignClientError) throw new McpWriteError(err.message);
         throw err;
       }
     },

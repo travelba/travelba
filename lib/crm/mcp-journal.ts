@@ -99,6 +99,7 @@ const PHRASES: Record<string, string> = {
   supprimer_client: "Client supprimé",
   annuler_mouvement: "Mouvement annulé",
   fusionner_clients: "Clients fusionnés",
+  changer_client_dossier: "Client du dossier changé",
   enregistrer_societes: "Sociétés de facturation enregistrées",
   regler_acces_hotels: "Accès hôtels modifié",
   archiver_dossier: "Dossier archivé",
