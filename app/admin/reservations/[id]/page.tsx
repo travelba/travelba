@@ -129,7 +129,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     supabase.from("crm_visa_requests").select("country, step, status, answers, accepted_at, launched_by_name").eq("booking_id", id),
     supabase
       .from("crm_le_bookings")
-      .select("id, hotel_name, check_in, total_cost, currency, is_cancellable, cancellation_deadline, cancellation_policies, state")
+      .select("id, hotel_name, check_in, total_cost, currency, is_cancellable, cancellation_deadline, cancellation_policies, state, created_at")
       .eq("crm_booking_id", id)
       .limit(20),
     supabase
@@ -317,6 +317,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     cancellation_deadline: string | null;
     cancellation_policies: string[] | null;
     state: string | null;
+    created_at: string | null;
   }[];
   const le = leList[0] || null;
 

@@ -18,6 +18,8 @@ export type ClientRate = {
   images: string[];
   /** Conditions de règlement, sans nom de fournisseur. */
   terms?: string;
+  /** Limite d’annulation déjà en heure de Paris, si Little Emperors l’a donnée. */
+  deadlineLabel?: string | null;
 };
 
 export type ClientRoom = {
@@ -76,6 +78,17 @@ export function stayBenefits(lines: string[], perks?: HotelPerks) {
 
 const BENEFIT_BREAKFAST = /petit-d[eé]jeuner|breakfast/i;
 const BENEFIT_CANCEL = /annulation gratuite|non remboursable/i;
+
+/** Badge du tarif. Une date mal lue ne transforme pas un tarif gratuit en « non remboursable ». */
+export function rateCancelBadge(input: { free: boolean; deadlineLabel?: string | null; cancellation?: string | null }) {
+  if (!input.free) return "Non remboursable";
+  const until = (input.deadlineLabel || "").replace(/\s+/g, " ").trim();
+  if (until) return `Annulation gratuite jusqu’au ${until}`;
+  const phrase = (input.cancellation || "").replace(/\s+/g, " ").trim();
+  if (/^gratuite jusqu/i.test(phrase)) return `Annulation ${phrase.charAt(0).toLocaleLowerCase("fr")}${phrase.slice(1)}`;
+  if (/^annulation gratuite jusqu/i.test(phrase)) return phrase;
+  return "Annulation gratuite";
+}
 
 /** Pastilles du tarif. Elles ne répètent pas un avantage déjà écrit, et ne le contredisent pas. */
 export function rateChips(input: { breakfast: boolean; freeCancellation: boolean; benefits: string[] }) {
@@ -142,6 +155,8 @@ export function payStepAction(input: {
   cardOpen: boolean;
   cardComplete: boolean;
   offerReady: boolean;
+  /** Faux tant que le client n’a pas coché un tarif non remboursable. Omis : rien à cocher. */
+  nonRefundableAck?: boolean;
 }) {
   const label = input.sending
     ? "Vérification…"
@@ -155,7 +170,7 @@ export function payStepAction(input: {
   const waitingForCard = input.method === "card" && input.cardOpen && !input.cardComplete;
   return {
     label,
-    disabled: input.sending || !input.offerReady || !input.method || waitingForCard,
+    disabled: input.sending || !input.offerReady || !input.method || waitingForCard || input.nonRefundableAck === false,
   };
 }
 

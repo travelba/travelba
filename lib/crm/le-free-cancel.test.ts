@@ -166,6 +166,23 @@ describe("annulation gratuite Little Emperors", () => {
     assert.equal("leBookingId" in offer, false);
   });
 
+  it("dit qu’un tarif full cost n’est pas remboursable", () => {
+    const [offer] = clientHotelCancelOffers(
+      [hotel()],
+      [
+        row({
+          is_cancellable: false,
+          cancellation_deadline: "2026-11-05T00:00:00.000000Z",
+          cancellation_policies: [
+            "Once booked, you will not be able to cancel the room without incurring the full cost of the booking.",
+          ],
+        }),
+      ],
+      before
+    );
+    assert.deepEqual(offer, { itemId: "item-1", mode: "advisor", tone: "non_refundable" });
+  });
+
   it("demande le conseiller quand la fenêtre est fermée", () => {
     const [offer] = clientHotelCancelOffers([hotel()], [row()], atLimit);
     assert.deepEqual(offer, { itemId: "item-1", mode: "advisor" });

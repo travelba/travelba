@@ -38,6 +38,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Montrer au client | `publier_carnet` — couvert |
 | Cacher le carnet | `cacher_carnet` — ajouté |
 | Archiver / rouvrir / dupliquer | `archiver_dossier`, `restaurer_dossier`, `dupliquer_dossier` — ajouté |
+| Supprimer un dossier créé par erreur | `supprimer_dossier` — ajouté. `dossier_id` ou `reference`, `confirmer` true. Retire le relevé, `crm_hotel_direct_stays` et `crm_le_bookings`. Refus si la carte Pliant n’est pas gelée. |
 | Voyageurs du dossier | `ajouter_voyageur`, `modifier_voyageur`, `retirer_voyageur`, `fusionner_compagnon` — couvert |
 | Changer le client du dossier | `changer_client_dossier` — ajouté. Sans `confirmer`, aperçu. Crée la fiche si besoin, sans invitation. Voyageurs qui sont l’ancien client, grand livre, paiements et payeur de ce dossier suivent. Aucun message. |
 | Vol, hôtel, accueil VIP | `ajouter_vol`, `modifier_vol`, `ajouter_hotel`, `modifier_hotel`, `ajouter_accueil_vip` — couvert |

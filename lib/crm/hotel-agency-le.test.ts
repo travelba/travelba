@@ -422,6 +422,8 @@ test("l’agence avance le séjour : carte, publication, messages, un seul passa
       const card = tables.crm_booking_cards[0];
       assert.equal(card?.pliant_card_id, "card-agency-1");
       assert.equal(card?.limit_cents, 14274);
+      assert.match(String(card?.valid_from || ""), /^\d{4}-\d{2}-\d{2}$/);
+      assert.match(String(card?.valid_to || ""), /^\d{4}-\d{2}-\d{2}$/);
       assert.equal(card?.currency, "EUR");
       const remembered = tables.crm_pliant_cards[0];
       assert.equal(remembered?.ceiling_cents, 14274);

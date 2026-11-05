@@ -22,6 +22,7 @@ import {
   offeredPayMethods,
   payStepAction,
   rateBoardLine,
+  rateCancelBadge,
   rateChips,
   stayBenefits,
   type PayMethod,
@@ -396,6 +397,7 @@ export function HotelJourney({
   const [note, setNote] = useState("");
   const [room, setRoom] = useState<ClientRoom | null>(null);
   const [rate, setRate] = useState<ClientRate | null>(null);
+  const [ackNonRefundable, setAckNonRefundable] = useState(false);
   const [selfName, setSelfName] = useState("");
   const [known, setKnown] = useState<string[]>([]);
   const [skipSelf, setSkipSelf] = useState(false);
@@ -495,7 +497,8 @@ export function HotelJourney({
 
   const images = file?.images.length ? file.images : hotel.photo ? [hotel.photo] : [];
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
-  const reading = rate ? readStayRate(rate) : null;
+  const reading = rate ? readStayRate({ ...rate, freeCancellation: rate.perks.freeCancellation }) : null;
+  const nonRefundable = Boolean(rate && rate.perks.freeCancellation !== true);
   const programme = stayBenefits(hotel.benefits, hotel.perks);
   const boardLine = reading ? rateBoardLine(reading.board, programme.lines) : "";
   const view: Step = done && rate
@@ -533,6 +536,7 @@ export function HotelJourney({
     if (!next.offerId) return;
     const same = rate?.offerId === next.offerId && rate.title === next.title && rate.sellCents === next.sellCents;
     setRate(next);
+    setAckNonRefundable(false);
     if (!same) {
       setSkipSelf(false);
       setLead(stayRooms.map((_, index) => (index === 0 && selfName ? selfName : "")));
@@ -781,6 +785,7 @@ export function HotelJourney({
     cardOpen: selectedPay === "card" && (Boolean(widget) || Boolean(cardSecret)),
     cardComplete: Boolean(widget) ? cardFrame === "saved" : Boolean(cardSecret) && stripeReady,
     offerReady: Boolean(rate?.offerId),
+    nonRefundableAck: !nonRefundable || ackNonRefundable,
   });
 
   const panel = (
@@ -1012,9 +1017,14 @@ export function HotelJourney({
               ) : null}
               <div className="space-y-3" role="radiogroup" aria-label="Tarifs" data-hotel-rates="1">
                 {room.rates.map((item) => {
-                  const line = readStayRate(item);
+                  const line = readStayRate({ ...item, freeCancellation: item.perks.freeCancellation });
                   const selected = rate.offerId === item.offerId && rate.title === item.title && rate.sellCents === item.sellCents;
-                  const chips = rateChips({ breakfast: item.perks.breakfast, freeCancellation: item.perks.freeCancellation, benefits: programme.lines });
+                  const chips = rateChips({ breakfast: item.perks.breakfast, freeCancellation: false, benefits: programme.lines });
+                  const badge = rateCancelBadge({
+                    free: item.perks.freeCancellation,
+                    deadlineLabel: item.deadlineLabel,
+                    cancellation: line.cancellation,
+                  });
                   return (
                     <button
                       key={`${item.offerId || ""}-${item.title}-${item.sellCents}`}
@@ -1026,6 +1036,9 @@ export function HotelJourney({
                       className={`h-recap w-full space-y-2 text-left disabled:opacity-40 ${selected ? "ring-2 ring-[#C5A880]" : ""}`}
                     >
                       <span className="h-serif block text-[1.05rem] font-semibold h-ink">{clientRateTitle(item.title)}</span>
+                      <span className={`h-pill inline-block text-[12px] font-semibold ${item.perks.freeCancellation ? "text-[#8c7352]" : "bg-[#0B192C] text-white"}`} data-hotel-cancel-badge="1">
+                        {badge}
+                      </span>
                       {chips.length ? (
                         <span className="flex flex-wrap gap-2">
                           {chips.map((chip) => (
@@ -1131,6 +1144,12 @@ export function HotelJourney({
               <p className="h-ink">{reading.title}</p>
               {boardLine ? <p className="h-ink"><span className="h-muted">Pension · </span>{boardLine}</p> : null}
               <p className="h-ink"><span className="h-muted">Annulation · </span>{reading.cancellation}</p>
+              {nonRefundable ? (
+                <div role="status" data-hotel-non-refundable="1" className="rounded-2xl border border-[#C5A880] bg-[#f4efe6] px-4 py-3">
+                  <p className="text-sm font-semibold h-ink">Tarif non remboursable</p>
+                  <p className="mt-1 text-sm leading-relaxed h-ink">{reading.cancellation}</p>
+                </div>
+              ) : null}
               <StayBenefits lines={programme.lines} discreet={programme.discreet} />
               <ul className="space-y-1 h-ink">
                 {stayRooms.map((_, index) => (
@@ -1199,6 +1218,12 @@ export function HotelJourney({
               <p className="h-ink">{reading.title}</p>
               <StayBenefits lines={programme.lines} discreet={programme.discreet} />
               <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)} TTC</p>
+              {nonRefundable ? (
+                <div role="status" data-hotel-non-refundable="1" className="rounded-2xl border border-[#C5A880] bg-[#f4efe6] px-4 py-3">
+                  <p className="text-sm font-semibold h-ink">Tarif non remboursable</p>
+                  <p className="mt-1 text-sm leading-relaxed h-ink">{reading.cancellation}</p>
+                </div>
+              ) : null}
               {rate.terms ? <p className="text-[15px] leading-relaxed h-ink">{rate.terms}</p> : null}
             </article>
             {fareBlock ? (
@@ -1255,6 +1280,18 @@ export function HotelJourney({
                 />
               </label>
               {trial ? <p className="px-1 text-sm h-muted">{PAY_COPY.trial}</p> : null}
+              {nonRefundable ? (
+                <label className="flex items-start gap-3 px-1 text-sm h-ink">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={ackNonRefundable}
+                    onChange={(event) => setAckNonRefundable(event.target.checked)}
+                    data-hotel-non-refundable-ack="1"
+                  />
+                  <span>J’ai compris que ce tarif n’est pas remboursable</span>
+                </label>
+              ) : null}
             </div>
             {cardSecret ? (
               <HotelCardHold

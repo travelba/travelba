@@ -25,6 +25,10 @@ test("chambre, pension et annulation se lisent en français", () => {
   assert.equal(frenchHotelLine("Saver Rate"), "Tarif économique");
   assert.equal(frenchCancellation("Free cancellation until 18:00 on 12 Mar 2026"), "Gratuite jusqu’au 12 mars 2026, 18 h");
   assert.equal(frenchCancellation("Non-refundable"), "Non remboursable");
+  assert.equal(
+    frenchCancellation("Once booked, you will not be able to cancel the room without incurring the full cost of the booking."),
+    "Non remboursable"
+  );
   assert.equal(frenchCancellation("Room"), "Confirmée par l’agence avant tout paiement");
   assert.equal(frenchHotelLine("Room"), "Room");
   assert.equal(frenchHotelLine("Executive Room"), "Chambre executive");
@@ -34,8 +38,16 @@ test("chambre, pension et annulation se lisent en français", () => {
   assert.equal(frenchHotelLine("Ocean Deluxe Balcony"), "Chambre deluxe, balcon");
   assert.equal(frenchHotelLine("Ocean Family Club"), "Chambre club familiale");
   assert.equal(frenchHotelLine("One Bedroom Suite"), "Suite");
-  const saver = readStayRate({ title: "Saver", cancellation: "Room", benefits: [] });
+  const saver = readStayRate({ title: "Saver", cancellation: "Room", benefits: [], freeCancellation: false });
   assert.equal(saver.title, "Tarif économique");
+  assert.equal(saver.cancellation, "Non remboursable");
+  const reassuring = readStayRate({
+    title: "Saver",
+    cancellation: "Confirmée par l’agence avant tout paiement",
+    benefits: [],
+    freeCancellation: false,
+  });
+  assert.equal(reassuring.cancellation, "Non remboursable");
   assert.equal(frenchCity("London, United Kingdom"), "Londres");
   assert.equal(frenchHotelLine("Chambre deluxe, lit king"), "Chambre deluxe, lit king");
   const read = readStayRate({

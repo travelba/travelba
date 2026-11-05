@@ -197,10 +197,43 @@ export function instantInParis(wall: string): Date | null {
   return again === offset ? instant : new Date(utcGuess - again);
 }
 
+const FR_MONTHS = [
+  "janvier",
+  "février",
+  "mars",
+  "avril",
+  "mai",
+  "juin",
+  "juillet",
+  "août",
+  "septembre",
+  "octobre",
+  "novembre",
+  "décembre",
+];
+
+/**
+ * Minuit pile, avec ou sans Z, est une date sans heure.
+ * Little Emperors l’écrit `2026-11-05T00:00:00.000000Z` pour le jour, pas pour 1 h à Paris.
+ */
+export function leDeadlineIsDateOnly(value: string | null | undefined): boolean {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return true;
+  return /^\d{4}-\d{2}-\d{2}[T ]00:00:00(?:\.0+)?(?:Z|[+-]00:?00)?$/i.test(raw);
+}
+
+function frenchCalendarDay(value: string): string | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const month = FR_MONTHS[Number(match[2]) - 1];
+  if (!month) return null;
+  return `${Number(match[3])} ${month} ${match[1]}`;
+}
+
 /** Instant exact. Une heure sans fuseau est l’heure de Paris. Une date seule n’invente pas d’heure. */
 export function leDeadlineInstantParis(value: string | null | undefined): Date | null {
   const raw = String(value || "").trim();
-  if (!raw || /^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  if (!raw || leDeadlineIsDateOnly(raw)) return null;
   if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw)) {
     const dated = new Date(raw);
     return Number.isNaN(dated.getTime()) ? null : dated;
@@ -209,6 +242,7 @@ export function leDeadlineInstantParis(value: string | null | undefined): Date |
 }
 
 export function leDeadlineParisLabel(value: string | null | undefined): string | null {
+  if (leDeadlineIsDateOnly(value)) return frenchCalendarDay(String(value || ""));
   const instant = leDeadlineInstantParis(value);
   if (!instant) return null;
   return new Intl.DateTimeFormat("fr-FR", {
@@ -307,11 +341,26 @@ export function clientCancellationSentence(input: { deadline?: string | null; po
   return "Pour annuler, écrivez à votre conseiller.";
 }
 
-/** Encore avant la limite. Une date seule se compare au jour. Une heure se compare à l’instant. */
+function parisDay(nowIso: string): string | null {
+  const now = new Date(nowIso.length === 10 ? `${nowIso}T12:00:00Z` : nowIso);
+  if (Number.isNaN(now.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+/** Encore avant la limite. Une date seule, ou minuit pile, reste ouverte jusqu’à la fin de ce jour à Paris. */
 export function deadlineStillOpen(deadline: string | null | undefined, nowIso: string): boolean {
   const raw = String(deadline || "").trim();
   if (!raw) return false;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return nowIso.slice(0, 10) < raw;
+  if (leDeadlineIsDateOnly(raw)) {
+    const today = parisDay(nowIso);
+    const day = raw.slice(0, 10);
+    return Boolean(today && today <= day);
+  }
   const instant = leDeadlineInstantParis(raw);
   if (!instant) return false;
   const now = Date.parse(nowIso.length === 10 ? `${nowIso}T00:00:00Z` : nowIso);

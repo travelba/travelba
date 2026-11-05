@@ -3,7 +3,13 @@
 import { useRouter } from "next/navigation";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { postJson } from "@/lib/crm/client-fetch";
-import { CLIENT_CANCEL_ADVISOR, CLIENT_CANCEL_REFUSED, clientCancelQuestion } from "@/lib/crm/le-cancel-copy";
+import {
+  CLIENT_CANCEL_ADVISOR,
+  CLIENT_CANCEL_NON_REFUNDABLE,
+  CLIENT_CANCEL_REFUSED,
+  clientCancelFreeLine,
+  clientCancelQuestion,
+} from "@/lib/crm/le-cancel-copy";
 
 /** Bouton d’annulation gratuite, ou la phrase conseiller. `free` vient du serveur. */
 export function HotelFreeCancel({
@@ -13,6 +19,7 @@ export function HotelFreeCancel({
   hotelName,
   stayLabel,
   untilLabel,
+  tone,
 }: {
   reference: string;
   free: boolean;
@@ -20,13 +27,20 @@ export function HotelFreeCancel({
   hotelName: string;
   stayLabel: string;
   untilLabel: string;
+  tone?: "non_refundable";
 }) {
   const router = useRouter();
   if (!free) {
-    return <p className="text-sm text-muted">{CLIENT_CANCEL_ADVISOR}</p>;
+    return (
+      <p className="text-sm text-muted">
+        {tone === "non_refundable" ? CLIENT_CANCEL_NON_REFUNDABLE : CLIENT_CANCEL_ADVISOR}
+      </p>
+    );
   }
   const question = clientCancelQuestion({ hotelName, stayLabel, untilLabel });
   return (
+    <div className="space-y-2">
+    <p className="text-sm text-muted">{clientCancelFreeLine(untilLabel)}</p>
     <ConfirmAction
       label="Annuler cette réservation"
       confirmLabel="Confirmer l’annulation"
@@ -45,5 +59,6 @@ export function HotelFreeCancel({
         router.refresh();
       }}
     />
+    </div>
   );
 }

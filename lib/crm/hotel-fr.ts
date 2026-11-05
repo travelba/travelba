@@ -319,7 +319,9 @@ export function frenchCancellation(value: string): string {
   if (/^gratuite\b/i.test(line) || /^non remboursable$/i.test(line) || /^annulation gratuite\b/i.test(line)) {
     return line;
   }
-  if (/non[-\s]?refundable|non remboursable/i.test(line)) return "Non remboursable";
+  if (/non[-\s]?refundable|non remboursable|full cost of the booking|incurring the full cost|will not be able to cancel/i.test(line)) {
+    return "Non remboursable";
+  }
   if (/free\s+cancellation|annulation gratuite|fully\s+refundable/i.test(line)) {
     const date = frenchDate(line);
     const time = frenchClock(line);
@@ -504,11 +506,14 @@ export function hotelTextNeedsModel(value: string) {
   return shown.length > 48 && needsFrench(shown);
 }
 
-export function readStayRate(input: { title: string; cancellation: string; benefits: string[] }) {
+export function readStayRate(input: { title: string; cancellation: string; benefits: string[]; freeCancellation?: boolean }) {
   const rawTitle = input.title.replace(/\s+/g, " ").trim();
   const title = rawTitle ? clientRateTitle(rawTitle) : "Séjour";
   const fromPolicy = frenchCancellation(input.cancellation);
-  const cancellation = (fromPolicy && fromPolicy !== AGENCY_CANCELLATION ? fromPolicy : "") || statedCancellation(input.title) || statedCancellation(title) || AGENCY_CANCELLATION;
+  let cancellation = (fromPolicy && fromPolicy !== AGENCY_CANCELLATION ? fromPolicy : "") || statedCancellation(input.title) || statedCancellation(title) || AGENCY_CANCELLATION;
+  if (input.freeCancellation === false && (!cancellation || cancellation === AGENCY_CANCELLATION || /annulation gratuite|^gratuite\b|avant tout paiement/i.test(cancellation))) {
+    cancellation = "Non remboursable";
+  }
   const blob = `${title} ${input.benefits.join(" ")} ${input.cancellation}`;
   let board = "";
   for (const [pattern, label] of BOARDS) {

@@ -27,7 +27,7 @@ const CREATE = new Set([
   "deposer_piece_dossier",
 ]);
 
-const REMOVE = new Set(["retirer_carte", "retirer_voyageur", "supprimer_client", "supprimer_compagnon", "supprimer_piece_client", "archiver_dossier", "retirer_piece_dossier", "annuler_mouvement", "fusionner_clients"]);
+const REMOVE = new Set(["retirer_carte", "retirer_voyageur", "supprimer_client", "supprimer_compagnon", "supprimer_piece_client", "archiver_dossier", "supprimer_dossier", "retirer_piece_dossier", "annuler_mouvement", "fusionner_clients"]);
 
 const FINANCE = new Set([
   "crediter_virement",
@@ -103,6 +103,7 @@ const PHRASES: Record<string, string> = {
   enregistrer_societes: "Sociétés de facturation enregistrées",
   regler_acces_hotels: "Accès hôtels modifié",
   archiver_dossier: "Dossier archivé",
+  supprimer_dossier: "Dossier supprimé",
   restaurer_dossier: "Dossier rouvert",
   dupliquer_dossier: "Dossier dupliqué",
   cacher_carnet: "Carnet caché",

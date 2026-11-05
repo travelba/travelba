@@ -273,6 +273,26 @@ test("une offre : le moins cher, à l’arrondi près celle qui a le plus d’av
     },
   ]);
   assert.equal(rooms.length, 2);
+  const classic = collapseRooms([
+    {
+      name: "Chambre classique",
+      detail: "",
+      images: [],
+      rates: [
+        roomRate("Chambre classique", 18636, { title: "Saver", cancellation: "Non remboursable", perks: { ...perks, freeCancellation: false } }),
+        roomRate("Chambre classique", 21836, {
+          title: "Meilleur tarif disponible",
+          cancellation: "Gratuite jusqu’au 9 février 2027, 18 h",
+          perks: { ...perks, freeCancellation: true },
+        }),
+      ],
+    },
+  ]);
+  assert.equal(classic.length, 1);
+  assert.equal(classic[0]?.rates.length, 2);
+  assert.equal(classic[0]?.rates[0]?.sellCents, 18636);
+  assert.equal(classic[0]?.rates[1]?.sellCents, 21836);
+  assert.equal(classic[0]?.rates[1]?.perks.freeCancellation, true);
   const deluxe = rooms.find((room) => room.name === "Chambre deluxe");
   assert.equal(deluxe?.rates.length, 3);
   assert.equal(deluxe?.rates[0].sellCents, 18000);

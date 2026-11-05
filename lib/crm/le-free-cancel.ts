@@ -2,14 +2,17 @@ import { hotelDisplayName, hotelStayLabel } from "@/lib/crm/carnet";
 import { confirmationRefsAlign } from "@/lib/crm/email-match";
 import { catalogNameAgrees } from "@/lib/crm/hotel-gallery";
 import type { ClientHotelCancelOffer } from "@/lib/crm/le-cancel-copy";
+import { leHiddenCancel } from "@/lib/crm/le-cancel-reason";
 import { isLeCancelled, type LeBooking } from "@/lib/crm/little-emperors";
 import { isActiveItem, type CrmBookingItem } from "@/lib/crm/types";
 
 export {
   CLIENT_CANCEL_ADVISOR,
   CLIENT_CANCEL_CARD_LAG,
+  CLIENT_CANCEL_NON_REFUNDABLE,
   CLIENT_CANCEL_NOT_SENT,
   CLIENT_CANCEL_REFUSED,
+  clientCancelFreeLine,
   clientCancelQuestion,
   type ClientHotelCancelOffer,
 } from "@/lib/crm/le-cancel-copy";
@@ -267,7 +270,13 @@ export function clientHotelCancelOffers(
     }
     const verdict = freeLeCancellation(matches[0], now);
     if (!verdict.ok) {
-      offers.push(advisor());
+      const hidden = leHiddenCancel({
+        isCancellable: matches[0].is_cancellable,
+        deadline: matches[0].cancellation_deadline,
+        policies: matches[0].cancellation_policies,
+        now,
+      });
+      offers.push(hidden.kind === "non_refundable" ? { itemId: item.id, mode: "advisor", tone: "non_refundable" } : advisor());
       continue;
     }
     offers.push({

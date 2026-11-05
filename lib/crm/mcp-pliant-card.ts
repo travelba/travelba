@@ -11,6 +11,7 @@ import { McpReadError, journalReference } from "./mcp-passport";
 import { McpWriteError } from "./mcp-write";
 import { pliantDesignation } from "./eta-il-fee";
 import { hotelDisplayName } from "./carnet";
+import { pliantIdFromStayState } from "./le-stay-card";
 import { rememberPliantCard } from "./pliant-card-run";
 import { issuePliantCard, lockPliantCard, pliantConfigured, readPliantCardFace, readPliantCardSecrets, unlockPliantCard } from "./pliant";
 import { isActiveItem, type CrmBookingItem } from "./types";
@@ -46,6 +47,8 @@ type CardRow = {
   last4: string | null;
   valid_from?: string | null;
   valid_to?: string | null;
+  /** Carte connue seulement par le séjour hôtel, pas encore sur crm_booking_cards. */
+  fromStay?: boolean;
 };
 
 export type CardSecrets = { pan: string; expiry: string; cvc: string };
@@ -178,6 +181,50 @@ async function writeCardAudit(
   if (!error) return true;
   console.error("[mcp] carte journal", error.code ?? "?");
   return false;
+}
+
+function stayCards(rows: { id?: string; phase?: string | null; state?: unknown }[]): CardRow[] {
+  const out: CardRow[] = [];
+  for (const stay of rows) {
+    const pliant = pliantIdFromStayState(stay.state);
+    if (!pliant || !stay.id) continue;
+    const state = stay.state && typeof stay.state === "object" ? (stay.state as Record<string, unknown>) : {};
+    const cents = typeof state.sellCents === "number" && state.sellCents > 0 ? Math.round(state.sellCents) : null;
+    const hotel = typeof state.hotelName === "string" ? state.hotelName.replace(/\s+/g, " ").trim().slice(0, 40) : "Hôtel";
+    const locked = stay.phase === "cancelled" || state.pliant === "locked";
+    out.push({
+      id: stay.id,
+      pliant_card_id: pliant,
+      label: hotel || "Hôtel",
+      first_name: "",
+      last_name: "",
+      limit_cents: cents,
+      transaction_limit_cents: cents,
+      max_transaction_count: null,
+      currency: "EUR",
+      status: locked ? "locked" : "active",
+      last4: null,
+      fromStay: true,
+    });
+  }
+  return out;
+}
+
+const CARD_COLUMNS =
+  "id, pliant_card_id, label, first_name, last_name, limit_cents, transaction_limit_cents, max_transaction_count, currency, status, last4";
+
+async function loadDossierCards(admin: Admin, bookingId: string) {
+  const { data, error } = await admin.from("crm_booking_cards").select(CARD_COLUMNS).eq("booking_id", bookingId);
+  if (error) return { error: true as const, rows: [] as CardRow[] };
+  const rows = (data || []) as CardRow[];
+  const known = new Set(rows.map((row) => row.pliant_card_id));
+  const stays = await admin.from("crm_hotel_direct_stays").select("id, state, phase").eq("booking_id", bookingId);
+  if (!stays.error) {
+    for (const extra of stayCards((stays.data || []) as { id?: string; phase?: string | null; state?: unknown }[])) {
+      if (!known.has(extra.pliant_card_id)) rows.push(extra);
+    }
+  }
+  return { error: false as const, rows };
 }
 
 async function loadBooking(admin: Admin, query: { dossierId: string | null; reference: string | null }) {
@@ -538,18 +585,13 @@ export async function readPliantCard(
     bookingId: booking.id,
     reference: booking.reference,
   };
-  const { data, error } = await admin
-    .from("crm_booking_cards")
-    .select(
-      "id, pliant_card_id, label, first_name, last_name, limit_cents, transaction_limit_cents, max_transaction_count, currency, status, last4"
-    )
-    .eq("booking_id", booking.id);
-  if (error) {
-    console.error("[mcp] carte", error.code ?? "?");
+  const loadedCards = await loadDossierCards(admin, booking.id);
+  if (loadedCards.error) {
+    console.error("[mcp] carte", "lecture");
     await writeCardAudit(admin, { ...auditBase, ...noted, outcome: "erreur" });
     throw new McpReadError("Lecture impossible.");
   }
-  const rows = (data || []) as CardRow[];
+  const rows = loadedCards.rows;
   const chosen = carteId ? rows.find((row) => sameId(row.id, carteId) || sameId(row.pliant_card_id, carteId)) || null : null;
   if (carteId && !chosen) {
     await writeCardAudit(admin, { ...auditBase, ...noted, outcome: "introuvable" });
@@ -696,18 +738,13 @@ export async function blockPliantCard(
     bookingId: booking.id,
     reference: booking.reference,
   };
-  const { data, error } = await admin
-    .from("crm_booking_cards")
-    .select(
-      "id, pliant_card_id, label, first_name, last_name, limit_cents, transaction_limit_cents, max_transaction_count, currency, status, last4"
-    )
-    .eq("booking_id", booking.id);
-  if (error) {
-    console.error("[mcp] carte", error.code ?? "?");
+  const loadedCards = await loadDossierCards(admin, booking.id);
+  if (loadedCards.error) {
+    console.error("[mcp] carte", "lecture");
     await writeCardAudit(admin, { ...auditBase, ...noted, outcome: "erreur" });
     throw new McpWriteError("Écriture impossible.");
   }
-  const rows = ((data || []) as CardRow[]).filter((row) => row.status !== "terminated");
+  const rows = loadedCards.rows.filter((row) => row.status !== "terminated");
   const chosen = carteId ? rows.find((row) => sameId(row.id, carteId) || sameId(row.pliant_card_id, carteId)) || null : null;
   if (carteId && !chosen) {
     await writeCardAudit(admin, { ...auditBase, ...noted, outcome: "introuvable" });
@@ -743,11 +780,10 @@ export async function blockPliantCard(
   }
 
   const status = unlock ? "active" : "locked";
-  const { error: saved } = await admin
-    .from("crm_booking_cards")
-    .update({ status })
-    .eq("id", card.id)
-    .eq("booking_id", booking.id);
+  const bookingUpdate = admin.from("crm_booking_cards").update({ status }).eq("booking_id", booking.id);
+  const { error: saved } = card.fromStay
+    ? await bookingUpdate.eq("pliant_card_id", card.pliant_card_id)
+    : await bookingUpdate.eq("id", card.id);
   if (saved) {
     console.error("[mcp] carte dossier", saved.code ?? "?");
     await writeCardAudit(admin, { ...journal, outcome: "erreur" });

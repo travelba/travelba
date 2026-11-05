@@ -118,6 +118,7 @@ export async function POST(request: Request) {
       perNightCents: perNightCents(stay.sellCents, parsed.nights),
       currency: stay.currency,
       images: stay.images,
+      deadlineLabel: leDeadlineParisLabel(stay.cancellationDeadline),
       terms: clientPaymentTerms({
         paymentDescription: stay.paymentDescription,
         requiresCvc: stay.requiresCvc,
