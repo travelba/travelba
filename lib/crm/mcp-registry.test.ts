@@ -204,6 +204,7 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.write, undefined);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.description || "", /credits/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.description || "", /voyageurs/);
   const unmatch = MCP_TOOLS.find((tool) => tool.name === "remettre_non_rattache");
   assert.equal(unmatch?.write, true);
   assert.match(unmatch?.description || "", /motif/);

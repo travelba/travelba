@@ -349,9 +349,17 @@ export function exampleSession() {
   };
 }
 
-export function exampleLedgerView(rows: CrmTransaction[] = []) {
+export function exampleLedgerView(
+  rows: CrmTransaction[] = [],
+  live?: {
+    items?: { id: string; booking_id: string; details?: Record<string, unknown> | null }[];
+    travelers?: CrmBookingTraveler[];
+  }
+) {
   const session = exampleSession();
   const total = rows.reduce((sum, row) => sum + row.amount, 0);
+  const cards = live?.items || session.items;
+  const people = live?.travelers || session.travelers;
   const view = shapeClientLedger({
     companyRole: null,
     travelerBookingIds: [session.booking.id],
@@ -360,6 +368,10 @@ export function exampleLedgerView(rows: CrmTransaction[] = []) {
     currency: "EUR",
     bookings: [session.booking],
     audience: "client",
+    parties: {
+      cards: cards.map((item) => ({ id: item.id, booking_id: item.booking_id, details: item.details })),
+      travelers: people,
+    },
   });
   return {
     ...view,

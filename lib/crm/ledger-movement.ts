@@ -23,4 +23,6 @@ export type LedgerMovementRow = {
   cancellable?: boolean;
   /** Raison sociale, seulement si le compte a plusieurs sociétés. */
   companyLabel?: string | null;
+  /** Voyageurs du débit. Vide : la carte et le dossier n’en nomment aucun. */
+  travelerNames?: string[];
 };
