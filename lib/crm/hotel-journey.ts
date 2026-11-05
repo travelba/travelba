@@ -1,5 +1,5 @@
 import { foldHotelLabel } from "./hotel-catalog";
-import { HOTEL_PERK_WEIGHTS, type ClientHotel, type HotelPerks } from "./hotel-search";
+import { clientBenefits, HOTEL_PERK_WEIGHTS, type ClientHotel, type HotelPerks } from "./hotel-search";
 
 export type HotelSort = "prix" | "avantages";
 
@@ -50,16 +50,65 @@ export type ClientHotelFile = {
 
 const PERK_KEYS = Object.keys(HOTEL_PERK_WEIGHTS).filter((key) => key !== "other") as (keyof HotelPerks)[];
 
-/** Les privilèges réellement lus. Aucun avantage n’est ajouté. */
-export function travelPrivileges(perks: HotelPerks, benefits: string[]) {
-  const blob = benefits.join(" ");
-  const lines: string[] = [];
-  if (perks.breakfast) lines.push(/pour deux|for two/i.test(blob) ? "Petit-déjeuner pour deux" : "Petit-déjeuner offert");
-  if (perks.upgrade) lines.push("Surclassement prioritaire selon disponibilité");
-  if (perks.earlyCheckIn && perks.lateCheckOut) lines.push("Arrivée anticipée / départ tardif selon disponibilité");
-  else if (perks.earlyCheckIn) lines.push("Arrivée anticipée selon disponibilité");
-  else if (perks.lateCheckOut) lines.push("Départ tardif selon disponibilité");
-  return lines;
+/** Même ordre que la pastille discrète de la carte de recherche, quand aucun avantage n’est lu. */
+export const SEARCH_PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
+  { key: "breakfast", label: "Petit-déjeuner" },
+  { key: "freeCancellation", label: "Annulation gratuite" },
+  { key: "upgrade", label: "Surclassement" },
+  { key: "credit", label: "Crédit hôtel" },
+  { key: "earlyCheckIn", label: "Arrivée anticipée" },
+  { key: "lateCheckOut", label: "Départ tardif" },
+];
+
+export function discreetSearchPerk(perks: HotelPerks) {
+  return SEARCH_PERK_LABEL.find((perk) => perks[perk.key])?.label || "";
+}
+
+/**
+ * Les avantages de la carte de recherche, inchangés.
+ * Le modèle générique ne les remplace pas. Sans ligne, le seul repli est la pastille que la recherche a montrée.
+ */
+export function stayBenefits(lines: string[], perks?: HotelPerks) {
+  const shown = clientBenefits(lines);
+  if (shown.length) return { lines: shown, discreet: "" };
+  return { lines: shown, discreet: perks ? discreetSearchPerk(perks) : "" };
+}
+
+const BENEFIT_BREAKFAST = /petit-d[eé]jeuner|breakfast/i;
+const BENEFIT_CANCEL = /annulation gratuite|non remboursable/i;
+
+/** Pastilles du tarif. Elles ne répètent pas un avantage déjà écrit, et ne le contredisent pas. */
+export function rateChips(input: { breakfast: boolean; freeCancellation: boolean; benefits: string[] }) {
+  const chips: string[] = [];
+  if (input.freeCancellation && !input.benefits.some((line) => BENEFIT_CANCEL.test(line))) chips.push("Annulation gratuite");
+  if (input.breakfast && !input.benefits.some((line) => BENEFIT_BREAKFAST.test(line))) chips.push("Petit-déjeuner inclus");
+  return chips;
+}
+
+const BOARD_TOPIC = /petit-d[eé]jeuner|demi-pension|pension compl[eè]te|tout compris|chambre seule/i;
+
+/** La pension du tarif, omise quand les avantages la disent déjà. */
+export function rateBoardLine(board: string, benefits: string[]) {
+  const line = board.replace(/\s+/g, " ").trim();
+  if (!line || line === "Précisée à la confirmation") return "";
+  if (BOARD_TOPIC.test(line) && benefits.some((benefit) => BOARD_TOPIC.test(benefit))) return "";
+  return line;
+}
+
+export const BOOKING_STEPS = [
+  { id: "room", label: "Chambre" },
+  { id: "guests", label: "Voyageurs" },
+  { id: "recap", label: "Récapitulatif" },
+  { id: "pay", label: "Paiement" },
+  { id: "confirm", label: "Confirmation" },
+] as const;
+
+export type BookingStep = (typeof BOOKING_STEPS)[number]["id"];
+
+/** Carte : on paie. Agence, ou essai sans encaissement : on valide la réservation. */
+export function payActionLabel(input: { method: "card" | "agency" | ""; trial: boolean }) {
+  if (input.method === "agency" || input.trial) return "Valider la réservation";
+  return "Valider et payer";
 }
 
 export function perkScore(hotel: Pick<ClientHotel, "perks" | "benefits">) {
@@ -96,7 +145,9 @@ const JOURNEY_QUERY = {
   hotel: "",
   room: "chambre",
   guests: "voyageurs",
-  confirm: "demande",
+  recap: "recapitulatif",
+  pay: "paiement",
+  confirm: "confirmation",
 } as const;
 
 export type HotelJourneyStep = keyof typeof JOURNEY_QUERY;
@@ -104,7 +155,9 @@ export type HotelJourneyStep = keyof typeof JOURNEY_QUERY;
 export function hotelJourneyStep(value: string | null | undefined): HotelJourneyStep {
   if (value === "chambre") return "room";
   if (value === "voyageurs") return "guests";
-  if (value === "demande") return "confirm";
+  if (value === "recapitulatif") return "recap";
+  if (value === "paiement") return "pay";
+  if (value === "confirmation" || value === "demande") return "confirm";
   return "hotel";
 }
 

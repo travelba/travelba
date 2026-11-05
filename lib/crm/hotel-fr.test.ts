@@ -13,7 +13,6 @@ import {
   rememberHotelFrench,
   roomFacts,
 } from "./hotel-fr";
-import { travelPrivileges } from "./hotel-journey";
 
 test("chambre, pension et annulation se lisent en français", () => {
   assert.equal(frenchHotelLine("Deluxe King Room with City View"), "Chambre deluxe, lit king, vue ville");
@@ -92,20 +91,6 @@ test("la chambre et le tarif se lisent sans programme fournisseur", () => {
     "Annulation gratuite jusqu’au 26 octobre 2026, 23h59"
   );
   assert.equal(cancellationPhrase("Non remboursable"), "Non remboursable");
-  assert.deepEqual(
-    travelPrivileges(
-      { breakfast: true, freeCancellation: true, upgrade: true, credit: true, earlyCheckIn: true, lateCheckOut: true },
-      ["Breakfast for two", "Hotel credit"]
-    ),
-    ["Petit-déjeuner pour deux", "Surclassement prioritaire selon disponibilité", "Arrivée anticipée / départ tardif selon disponibilité"]
-  );
-  assert.deepEqual(
-    travelPrivileges(
-      { breakfast: true, freeCancellation: false, upgrade: false, credit: false, earlyCheckIn: false, lateCheckOut: false },
-      ["Breakfast"]
-    ),
-    ["Petit-déjeuner offert"]
-  );
 });
 
 test("une description encore anglaise ne s’affiche pas", () => {

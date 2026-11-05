@@ -683,9 +683,22 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(journey, /data-hotel-rate/);
   assert.match(journey, /data-hotel-guests/);
   assert.match(journey, /data-hotel-confirm/);
-  assert.match(journey, /Sélectionner/);
   assert.match(journey, /data-hotel-rooms/);
-  assert.match(journey, /Privilèges Travel BA/);
+  assert.match(journey, /stayBenefits\(hotel\.benefits/);
+  assert.match(journey, /<HotelBenefits /);
+  assert.match(journey, /BOOKING_STEPS/);
+  assert.match(journey, /Précédent/);
+  assert.match(journey, /Suivant/);
+  assert.match(journey, /La réservation n’a pas abouti/);
+  assert.match(journey, /Réessayer/);
+  assert.match(journey, /data-hotel-recap/);
+  assert.match(journey, /data-hotel-prev/);
+  const steps = readFileSync(join(root, "lib/crm/hotel-journey.ts"), "utf8");
+  assert.match(steps, /label: "Récapitulatif"/);
+  assert.match(steps, /return "Valider et payer"/);
+  assert.match(steps, /return "Valider la réservation"/);
+  assert.doesNotMatch(journey, /Privilèges Travel BA/);
+  assert.doesNotMatch(journey, /Sélectionner/);
   assert.match(journey, /h-serif/);
   assert.doesNotMatch(journey, /little emperors|luminous|virtuoso|marriott/i);
   assert.match(journey, /data-hotel-dock/);
@@ -737,6 +750,14 @@ test("les avantages des résultats reprennent le bloc des réservations, dès la
   assert.match(desk, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);
   assert.match(ui, /<HotelBenefits lines=\{hotel\.benefits\} \/>/);
   assert.match(desk, /<HotelBenefits lines=\{row\.benefits\} \/>/);
+  const journey = readFileSync(join(root, "components/account/HotelJourney.tsx"), "utf8");
+  assert.match(journey, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);
+  assert.match(journey, /<HotelBenefits lines=\{lines\} \/>/);
+  assert.match(journey, /stayBenefits\(hotel\.benefits, hotel\.perks\)/);
+  const booked = readFileSync(join(root, "lib/crm/hotel-direct-run.ts"), "utf8");
+  assert.match(booked, /clientBenefits\(raw\)/);
+  assert.match(booked, /assignLeIncluded\(/);
+  assert.match(booked, /source_family: "little_emperors"/);
   assert.doesNotMatch(desk, /benefits\.slice\(0, 4\)\.join/);
   assert.match(block, /bg-\[#0B192C\]/);
   assert.match(block, /text-\[#C5A880\]/);
@@ -758,7 +779,7 @@ test("les avantages des résultats reprennent le bloc des réservations, dès la
   }
   assert.equal(desk.split("{row.hotelName}").length - 1, 1);
   // Sans avantage lu, la ligne discrète reste ; avec, elle s’efface au profit du bloc.
-  assert.match(ui, /const perk = hasBenefits \? "" : PERK_LABEL\.find/);
+  assert.match(ui, /const perk = hasBenefits \? "" : discreetSearchPerk\(hotel\.perks\)/);
 });
 
 test("chaque résultat de recherche est une carte distincte", () => {

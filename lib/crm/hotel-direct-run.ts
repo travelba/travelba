@@ -19,7 +19,7 @@ import {
   type StayEvent,
 } from "@/lib/crm/hotel-direct";
 import { clientConfirmationDraft, hotelRequestLetter, outboundHotelRecipient, HOTEL_DIRECT_FROM } from "@/lib/crm/hotel-direct-mail";
-import { leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
+import { clientBenefits, leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import {
   adoptLeBooking,
   claimLeBooking,
@@ -103,7 +103,26 @@ function db() {
 }
 
 function benefitsOf(value: unknown) {
-  return Array.isArray(value) ? value.filter((line): line is string => typeof line === "string").slice(0, 12) : [];
+  const raw = Array.isArray(value) ? value.filter((line): line is string => typeof line === "string") : [];
+  return clientBenefits(raw).slice(0, 12);
+}
+
+function cardDetails(
+  offer: { hotel_name: string; city: string; room_label: string | null; benefits: unknown; account: string },
+  guests: string,
+  extra: Record<string, unknown> = {}
+) {
+  const details: Record<string, unknown> = {
+    hotel_name: offer.hotel_name,
+    city: offer.city,
+    room: offer.room_label,
+    guests,
+    ...extra,
+  };
+  if (offer.account === "little_emperors") details.source_family = "little_emperors";
+  const raw = Array.isArray(offer.benefits) ? offer.benefits.filter((line): line is string => typeof line === "string") : [];
+  assignLeIncluded(details, raw, leRoomLabels({ room: offer.room_label }));
+  return details;
 }
 
 function deadlineOf(policy: string | null, free: boolean) {
@@ -1245,13 +1264,11 @@ export async function openDirectStay(input: {
         amount,
         include_in_ledger: false,
         visible_to_client: false,
-        details: {
-          hotel_name: offer.hotel_name,
-          city: offer.city,
-          room: offer.room_label,
-          guests: input.guests.flatMap((name, index) => [name, ...((input.companions || [])[index] || [])]).join(", "),
-          direct_stay_id: stayId,
-        },
+        details: cardDetails(
+          offer,
+          input.guests.flatMap((name, index) => [name, ...((input.companions || [])[index] || [])]).join(", "),
+          { direct_stay_id: stayId }
+        ),
       })
       .select("id")
       .single();

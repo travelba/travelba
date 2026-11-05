@@ -11,7 +11,7 @@ import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { HOTEL_RESULT_PAGE } from "@/lib/crm/hotel-activity";
-import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
+import { discreetSearchPerk, hotelJourneySearch, hotelJourneyStep, presentHotels, SEARCH_PERK_LABEL, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
 import {
   hotelSearchDraft,
   leRoomPartyOk,
@@ -41,14 +41,7 @@ type DraftRoom = { adults: number; children: (number | null)[] };
 type Panel = "where" | "when" | "who";
 const LAST_SEARCH_KEY = "hotel-search-last";
 
-const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
-  { key: "breakfast", label: "Petit-déjeuner" },
-  { key: "freeCancellation", label: "Annulation gratuite" },
-  { key: "upgrade", label: "Surclassement" },
-  { key: "credit", label: "Crédit hôtel" },
-  { key: "earlyCheckIn", label: "Arrivée anticipée" },
-  { key: "lateCheckOut", label: "Départ tardif" },
-];
+const PERK_LABEL = SEARCH_PERK_LABEL;
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
 const RECENT_KEY = "hotel-recent-list";
@@ -1303,7 +1296,7 @@ function Stepper({
  */
 function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolean; onOpen: () => void }) {
   const hasBenefits = hotel.benefits.length > 0;
-  const perk = hasBenefits ? "" : PERK_LABEL.find((item) => hotel.perks[item.key])?.label || "";
+  const perk = hasBenefits ? "" : discreetSearchPerk(hotel.perks);
   return (
     <article className="hotel-rise h-result" data-hotel-card="1">
       <div className="h-cover" data-hotel-cover="1">
