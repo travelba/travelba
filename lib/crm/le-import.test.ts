@@ -206,6 +206,7 @@ test("une réservation réservée ouvre un dossier Non visible et la carte hôte
   assert.equal(card?.start_at, "2026-12-01");
   assert.equal(card?.end_at, "2026-12-04");
   assert.equal(card?.details?.board, "Petit-déjeuner");
+  assert.deepEqual(card?.details?.included, ["Petit-déjeuner", "Départ tardif"]);
   assert.equal(card?.details?.supplier_net, 1200);
   assert.equal(card?.details?.supplier_currency, "EUR");
   assert.equal(card?.amount, null);

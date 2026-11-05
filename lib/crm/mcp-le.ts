@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { isIsoDate } from "@/lib/crm/admin-schemas";
 import { confirmationRefsAlign, firstNamesAlign, lastNamesClose, referenceTokens } from "@/lib/crm/email-match";
-import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
+import { leIncludedLines, leRoomLabels } from "@/lib/crm/le-included";
 import { hotelBookingStem, joinConfirmationRefs } from "@/lib/crm/item-match";
 import {
   cancellationStatut,
@@ -252,7 +252,10 @@ function viewRooms(booking: LeBooking): LeRoom[] {
 }
 
 function benefitsOf(booking: LeBooking) {
-  return unique((booking.benefits || []).map((line) => frenchLeBenefitLine(line)));
+  return leIncludedLines(
+    booking.benefits || [],
+    leRoomLabels({ room_types: booking.room_types, rooms: booking.rooms })
+  );
 }
 
 function moneyOf(value: string | null | undefined) {
