@@ -621,8 +621,8 @@ export async function persistNewBookingFromExtract(opts: {
   const title = dossierTitleFromImport(extract);
   const totalAmount = sellingTotalFromExtract(extract);
   const extracted = bookingStatusFromExtract(extract, opts.status);
-  // Une confirmation PDF ne publie pas le dossier. Visible reste un geste à part.
-  // Seul un appel qui demande déjà Visible (Little Emperors) pose confirmé et montré.
+  // Une confirmation PDF, un devis ou Little Emperors ne publient pas le dossier.
+  // Visible reste le geste Montrer au client, ou publier_carnet.
   const status = opts.visibleToClient
     ? extracted === "cancelled"
       ? "cancelled"

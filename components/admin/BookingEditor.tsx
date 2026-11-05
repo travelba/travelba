@@ -93,6 +93,7 @@ import { householdMembers } from "@/lib/crm/household";
 import { bookingHasFlight, findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import {
+  clientStayAction,
   staffBlockingChips,
   staffLedgerCaption,
   staffStayFacts,
@@ -1012,7 +1013,6 @@ export function BookingEditor({
   });
 
   const updatesPending = revealItems.length > 0 || revealDocs.length > 0;
-  const showPrimaryPublish = !booking.visible_to_client || updatesPending;
   const passportParty = {
     holder: holderProfile,
     companions,
@@ -1111,38 +1111,42 @@ export function BookingEditor({
     tabRefs.current[next]?.focus();
   }
 
-  // Le geste principal ne disparaît jamais : Montrer au client, puis Mettre à jour le carnet quand
-  // quelque chose est caché, sinon Cacher au client. Chacun passe par la confirmation.
-  const primaryAction = booking.archived_at ? (
-    <RestoreBookingButton bookingId={booking.id} />
-  ) : booking.status === "cancelled" ? (
-    <button
-      type="button"
-      disabled={busy !== "idle"}
-      onClick={() => void setFace("draft")}
-      className="admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50"
-    >
-      Rouvrir
-    </button>
-  ) : !booking.visible_to_client || updatesPending ? (
-    <button
-      type="button"
-      disabled={busy !== "idle"}
-      onClick={() => setConfirm(showPrimaryPublish ? "publish" : "unpublish")}
-      className="admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50"
-    >
-      {!booking.visible_to_client ? "Montrer au client" : "Mettre à jour le carnet"}
-    </button>
-  ) : (
-    <button
-      type="button"
-      disabled={busy !== "idle"}
-      onClick={() => setConfirm("unpublish")}
-      className="admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-    >
-      Cacher au client
-    </button>
-  );
+  // Le geste suit la visibilité réelle : Montrer au client, ou Cacher au client.
+  // Mettre à jour le carnet s’ajoute seulement si une étape est encore cachée sur un séjour déjà montré.
+  const stayAction = clientStayAction(booking);
+  const hideButtonClass =
+    "admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50";
+  const showButtonClass = "admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50";
+  const primaryAction =
+    stayAction === "restaurer" ? (
+      <RestoreBookingButton bookingId={booking.id} />
+    ) : stayAction === "rouvrir" ? (
+      <button
+        type="button"
+        disabled={busy !== "idle"}
+        onClick={() => void setFace("draft")}
+        className={showButtonClass}
+      >
+        Rouvrir
+      </button>
+    ) : (
+      <>
+        {stayAction === "montrer" ? (
+          <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("publish")} className={showButtonClass}>
+            Montrer au client
+          </button>
+        ) : (
+          <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("unpublish")} className={hideButtonClass}>
+            Cacher au client
+          </button>
+        )}
+        {stayAction === "cacher" && updatesPending ? (
+          <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("publish")} className={showButtonClass}>
+            Mettre à jour le carnet
+          </button>
+        ) : null}
+      </>
+    );
   const passesButton = (compactBar: boolean) => (
     <button
       type="button"

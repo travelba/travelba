@@ -17,7 +17,7 @@ Code : `lib/crm/carnet.ts`, `lib/crm/bookings.ts`, `components/admin/BookingEdit
 
 ## Enregistrer ≠ Montrer au client
 
-Trois statuts : **Non visible** (`status=draft`, `visible_to_client=false`), **Visible** (`status=confirmed` et montré : c’est le confirmé), **Annulé**. L’archive reste **Archivée**. Pas de pastille À l’étude, Devis, Confirmée, En voyage, Terminée, ni « Visible · Brouillon ». Le bouton dit **Montrer au client** ou **Mettre à jour**, pas Publier. **Annuler le dossier** et **Rouvrir** sont dans le menu. Archiver dit **Archiver**.
+Trois statuts : **Non visible** (`status=draft`, `visible_to_client=false`), **Visible** (`status=confirmed` et montré : c’est le confirmé), **Annulé**. L’archive reste **Archivée**. Pas de pastille À l’étude, Devis, Confirmée, En voyage, Terminée, ni « Visible · Brouillon ». Le bouton dit **Montrer au client** quand le séjour est Non visible, et **Cacher au client** quand il est Visible. Il suit `visible_to_client`, pas le fait que les cartes soient déjà montrées. **Mettre à jour le carnet** s’ajoute seulement si une étape est encore cachée sur un séjour déjà montré. Pas Publier. **Annuler le dossier** et **Rouvrir** sont dans le menu. Archiver dit **Archiver**.
 
 | Geste | Effet |
 |-------|--------|
