@@ -13,6 +13,7 @@ import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
+import { StayConfirmedNote } from "@/components/account/StayConfirmedNote";
 import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 import {
@@ -26,7 +27,8 @@ import {
 import { Icon } from "@/components/crm/icons";
 import { greetingGivenName } from "@/lib/crm/identity";
 
-export default async function AccountHomePage() {
+export default async function AccountHomePage({ searchParams }: { searchParams: Promise<{ confirme?: string }> }) {
+  const { confirme } = await searchParams;
   const { user } = await getSessionUser();
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
@@ -41,6 +43,7 @@ export default async function AccountHomePage() {
   return (
     <AccountPage>
       <div className="space-y-3">
+        {confirme === "1" ? <StayConfirmedNote /> : null}
         <section className="flex flex-col gap-1 pt-1">
           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
             Travel Business Agency · Espace membre

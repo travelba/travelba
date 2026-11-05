@@ -1,3 +1,5 @@
+import { formatMoney } from "@/lib/crm/money";
+
 /**
  * Réservation client chez le fournisseur : règles, corps d’appel, délais.
  * Aucun numéro de carte n’est journalisé. Le nom du fournisseur ne sort pas d’ici.
@@ -218,6 +220,90 @@ export function leDeadlineParisLabel(value: string | null | undefined): string |
   })
     .format(instant)
     .replace(/[\u202f\u00a0]/g, " ");
+}
+
+const EN_MONTHS: Record<string, number> = {
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
+};
+
+/** Heure citée dans la phrase du tarif, lue comme l’heure de l’hôtel (Paris pour Bordeaux). */
+export function policyClockInstant(text: string | null | undefined): Date | null {
+  const match = String(text || "").match(/\b(\d{1,2}):(\d{2})\b[^.]{0,48}?(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-zéû]+)\s+(\d{4})/i);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const day = Number(match[3]);
+  const month = EN_MONTHS[match[4].toLowerCase()];
+  const year = Number(match[5]);
+  if (!month || hour > 23 || minute > 59 || day < 1 || day > 31) return null;
+  const stamp = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
+  return instantInParis(stamp);
+}
+
+function stampClock(value: string) {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}` : null;
+}
+
+function parisClock(instant: Date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const read = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${read("year")}-${read("month")}-${read("day")} ${read("hour")}:${read("minute")}`;
+}
+
+/**
+ * Limite montrée au client. Un horodatage en Z dont l’horloge est la même que la phrase
+ * du tarif est ambigu : on garde l’heure la plus tôt (l’horloge de la phrase, à Paris).
+ */
+export function clientDeadlineInstant(deadline: string | null | undefined, policy: string | null | undefined): Date | null {
+  const raw = String(deadline || "").trim();
+  const prose = policyClockInstant(policy);
+  const zoned = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw);
+  const absolute = leDeadlineInstantParis(raw);
+  const clock = stampClock(raw);
+  if (zoned && prose && clock && parisClock(prose) === clock) return prose;
+  if (absolute && prose) return absolute.getTime() <= prose.getTime() ? absolute : prose;
+  return absolute || prose;
+}
+
+export function cancellationFee(policy: string | null | undefined): { amount: number; currency: string } | null {
+  const match = String(policy || "").match(/\b([A-Z]{3})\s+(\d+(?:\.\d{1,2})?)\b/);
+  if (!match) return null;
+  const amount = Number(match[2]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return { amount, currency: match[1] };
+}
+
+/** Une seule phrase française. Le texte brut du fournisseur ne passe pas. */
+export function clientCancellationSentence(input: { deadline?: string | null; policy?: string | null; free: boolean }) {
+  const instant = clientDeadlineInstant(input.deadline, input.policy);
+  const when = instant ? leDeadlineParisLabel(instant.toISOString()) : null;
+  const fee = cancellationFee(input.policy);
+  if (input.free && when && fee) {
+    return `Annulation gratuite jusqu’au ${when} (heure de Paris), puis des frais de ${formatMoney(fee.amount, fee.currency)}.`;
+  }
+  if (input.free && when) return `Annulation gratuite jusqu’au ${when} (heure de Paris).`;
+  if (input.free) return "Annulation gratuite.";
+  return "Pour annuler, écrivez à votre conseiller.";
 }
 
 /** Encore avant la limite. Une date seule se compare au jour. Une heure se compare à l’instant. */

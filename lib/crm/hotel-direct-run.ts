@@ -1,6 +1,9 @@
 import "server-only";
 
 import { createStaffBooking } from "@/lib/crm/booking-create";
+import { setCarnetPublished, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
+import type { CrmBooking } from "@/lib/crm/types";
+import { notifyStayPublished, remindMissingPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { hotelDirectLive, hotelLeApiBooking, type HotelAccessCustomer } from "@/lib/crm/hotel-access";
 import {
   applyStay,
@@ -20,6 +23,7 @@ import { leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/c
 import {
   adoptLeBooking,
   claimLeBooking,
+  clientCancellationSentence,
   clientPaymentTerms,
   leCardWidgetUrl,
   leDeadlineParisLabel,
@@ -59,6 +63,7 @@ export type ClientStayView = {
   cancel: "cancel" | "ask" | "none";
   conditions: string;
   reason: string;
+  dossier: string | null;
 };
 
 type Offer = {
@@ -140,11 +145,11 @@ function readStay(value: DirectStay): DirectStay {
 }
 
 function clientConditions(stay: DirectStay) {
-  const when = stay.freeCancellation ? leDeadlineParisLabel(stay.cancelDeadline) : null;
-  if (!when) return stay.conditions;
-  const line = `Annulation gratuite jusqu’au ${when} (heure de Paris).`;
-  if (stay.conditions.includes(when)) return stay.conditions;
-  return [stay.conditions, line].filter(Boolean).join(" ");
+  return clientCancellationSentence({
+    deadline: stay.cancelDeadline,
+    policy: stay.conditions,
+    free: stay.freeCancellation,
+  });
 }
 
 function priceChangedMessage(cents: number, currency: string) {
@@ -258,6 +263,7 @@ function viewOf(id: string, stay: DirectStay, offer: { hotel_name: string; city:
     cancel: offerCancel.mode,
     conditions: clientConditions(stay),
     reason: stay.reason,
+    dossier: null,
   };
 }
 
@@ -341,6 +347,10 @@ async function runEffects(input: {
       }
       await remember(input.admin, input.stayId, "system", "autorisation", "Libérée", effect.key);
     } else if (effect.type === "debit") {
+      if (input.bookingId) {
+        await remember(input.admin, input.stayId, "system", "débit", "Porté par le dossier", effect.key);
+        continue;
+      }
       if (!input.live) {
         await remember(input.admin, input.stayId, "system", "débit", "Essai, aucun débit", effect.key);
         continue;
@@ -396,6 +406,7 @@ async function runEffects(input: {
         hotel: input.offer.hotel_name,
         confirmation: input.stay.confirmation || "",
         dates: `${formatDateFr(input.offer.check_in)} – ${formatDateFr(input.offer.check_out)}`,
+        amount: formatMoney(centsToAmount(input.stay.sellCents), input.stay.currency),
       });
       input.stay.draft = draft;
       const subject = `Votre séjour à ${input.offer.hotel_name} est confirmé`.slice(0, 180);
@@ -897,6 +908,8 @@ async function placeLeStay(input: {
     leBookingId: booking.id,
     confirmation,
     cancelDeadline: deadline,
+    sellCents: input.offer.sell_cents,
+    hotelCents: input.offer.sell_cents,
     freeCancellation: booking.is_cancellable === true || fresh.free,
     conditions: fresh.cancellation || stay.conditions,
     hotelName: input.offer.hotel_name,
@@ -909,6 +922,8 @@ async function placeLeStay(input: {
   let reference = stay.reference || `HS-${stayId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
   if (!bookingId) {
     try {
+      const clientPays = input.payMethod === "card";
+      const sale = centsToAmount(input.offer.sell_cents);
       const created = await createStaffBooking(input.admin, {
         customer_id: input.customer.id,
         title: input.offer.hotel_name,
@@ -917,7 +932,8 @@ async function placeLeStay(input: {
         end_date: input.offer.check_out,
         currency: input.offer.currency,
         status: "confirmed",
-        include_in_ledger: true,
+        include_in_ledger: !clientPays,
+        client_settles_stay: clientPays,
         notes_internal: "Réservation d’hôtel confirmée.",
       });
       reference = created.booking.reference;
@@ -931,8 +947,8 @@ async function placeLeStay(input: {
           confirmation_ref: confirmation,
           start_at: input.offer.check_in,
           end_at: input.offer.check_out,
-          amount: centsToAmount(input.offer.sell_cents),
-          include_in_ledger: false,
+          amount: sale,
+          include_in_ledger: !clientPays,
           visible_to_client: false,
           supplier: null,
           details: {
@@ -944,6 +960,9 @@ async function placeLeStay(input: {
             le_hotel_id: hotelId,
             le_booking_id: booking.id,
             cancellation_deadline: deadline,
+            conditions: [clientConditions(stay)],
+            supplier_net: sale,
+            supplier_currency: input.offer.currency.toUpperCase(),
           },
         })
         .select("id")
@@ -952,6 +971,12 @@ async function placeLeStay(input: {
         .from("crm_hotel_direct_stays")
         .update({ booking_id: created.booking.id, booking_item_id: (item as { id?: string } | null)?.id || null })
         .eq("id", stayId);
+      await setCarnetPublished(input.admin, created.booking.id, true);
+      await syncBookingTotalFromItems(input.admin, created.booking.id);
+      const { data: priced } = await input.admin.from("crm_bookings").select("*").eq("id", created.booking.id).maybeSingle();
+      if (priced) await syncBookingLedger(input.admin, priced as CrmBooking, created.booking.status);
+      await safeConcierge(() => notifyStayPublished(created.booking.id));
+      await safeConcierge(() => remindMissingPieces(created.booking.id));
     } catch {
       console.error("[hotels] dossier", "refus");
     }
@@ -1015,7 +1040,8 @@ async function placeLeStay(input: {
     .from("crm_hotel_direct_stays")
     .update({ state: step.stay, phase: step.stay.phase, le_booking_id: booking.id, updated_at: input.now })
     .eq("id", stayId);
-  return { ok: true, view: viewOf(stayId, step.stay, input.offer, input.now.slice(0, 10)) };
+  const view = viewOf(stayId, step.stay, input.offer, input.now.slice(0, 10));
+  return { ok: true, view: { ...view, dossier: /^TB-/.test(reference) ? reference : null } };
 }
 
 export async function openDirectStay(input: {

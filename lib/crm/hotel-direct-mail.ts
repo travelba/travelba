@@ -82,7 +82,8 @@ export function hotelRequestLetter(input: {
   return { subject: `${prefix}${subjectCore}`.slice(0, 180), text };
 }
 
-export function clientConfirmationDraft(input: { firstName: string; hotel: string; confirmation: string; dates: string }) {
+export function clientConfirmationDraft(input: { firstName: string; hotel: string; confirmation: string; dates: string; amount?: string }) {
   const name = input.firstName.trim() || "Bonjour";
-  return `Bonjour ${name},\n\nVotre séjour à ${input.hotel} est confirmé.\nNuméro de confirmation : ${input.confirmation}.\n${input.dates}\n\nVotre conseiller reste à votre disposition.\n\nTravel Business Agency`;
+  const price = input.amount ? `\nMontant : ${input.amount}.` : "";
+  return `Bonjour ${name},\n\nVotre séjour à ${input.hotel} est confirmé.${price}\nNuméro de confirmation : ${input.confirmation}.\n${input.dates}\n\nVotre conseiller reste à votre disposition.\n\nTravel Business Agency`;
 }

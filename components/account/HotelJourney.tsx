@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
+import { HotelBookingWait } from "@/components/account/HotelBookingWait";
 import { HotelMap } from "@/components/account/HotelMap";
 import { Icon } from "@/components/crm/icons";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
@@ -421,6 +423,8 @@ export function HotelJourney({
   const [lead, setLead] = useState<string[]>(() => stayRooms.map(() => ""));
   const [more, setMore] = useState<string[][]>(() => stayRooms.map(() => []));
   const [sending, setSending] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const router = useRouter();
   const portal = useSyncExternalStore(
     () => () => {},
     () => document.body,
@@ -596,8 +600,14 @@ export function HotelJourney({
       setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne.");
       return;
     }
+    const books = cardReady === true || Boolean(intentId) || payMethod === "agency";
+    if (books) {
+      setPlacing(true);
+      scrollerRef.current?.scrollTo({ top: 0 });
+    }
     setSending(true);
     setNote("");
+    let leaving = false;
     try {
       const response = await fetch("/api/client/hotels/reserver", {
         method: "POST",
@@ -613,7 +623,7 @@ export function HotelJourney({
         widgetOrigin?: string;
         clientSecret?: string;
         intentId?: string;
-        view?: { id: string; label: string; cancel: "cancel" | "ask" | "none"; conditions: string };
+        view?: { id: string; label: string; cancel: "cancel" | "ask" | "none"; conditions: string; dossier?: string | null; confirmation?: string | null };
       } | null;
       const widgetUrl = json?.widgetUrl ? safeCardWidgetUrl(json.widgetUrl) : null;
       if (widgetUrl && json?.widgetOrigin) {
@@ -639,14 +649,30 @@ export function HotelJourney({
         return;
       }
       if (json?.view) {
+        if (json.view.dossier) {
+          leaving = true;
+          router.push(`/mon-compte/reservations/${json.view.dossier}?confirme=1`);
+          return;
+        }
+        if (leApi && json.view.confirmation) {
+          leaving = true;
+          router.push("/mon-compte?confirme=1");
+          return;
+        }
         setStayId(json.view.id);
         setStayCancel(json.view.cancel);
         setStayConditions(json.view.conditions);
         setDone(json.view.label);
         setCardSecret(null);
+        setCardFrame("idle");
+        setWidget(null);
+        scrollerRef.current?.scrollTo({ top: 0 });
       }
     } finally {
-      setSending(false);
+      if (!leaving) {
+        setSending(false);
+        setPlacing(false);
+      }
     }
   }
 
@@ -695,7 +721,7 @@ export function HotelJourney({
           >
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          <p className="h-serif truncate text-center text-[17px] font-semibold leading-none h-ink">{done && view === "confirm" ? "Demande" : STEPS.find((item) => item.id === view)?.label}</p>
+          <p className="h-serif truncate text-center text-[17px] font-semibold leading-none h-ink">{placing ? "Réservation" : done && view === "confirm" ? "Confirmée" : STEPS.find((item) => item.id === view)?.label}</p>
           <span />
         </div>
         {view === "hotel" ? (
@@ -714,6 +740,7 @@ export function HotelJourney({
 
       <div ref={scrollerRef} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div key={view} className="hotel-step min-w-0 pb-4">
+        {placing ? <HotelBookingWait /> : null}
         {view === "hotel" ? (
           <div data-hotel-detail="1" className="h-paper pb-8">
             <div className="px-4 pb-3 pt-3">
@@ -970,7 +997,7 @@ export function HotelJourney({
           </div>
         ) : null}
 
-        {view === "confirm" && rate && reading && done ? (
+        {!placing && view === "confirm" && rate && reading && done ? (
           <div data-hotel-confirm="1" data-hotel-done="1" className="h-paper space-y-4 px-4 py-6">
             <article className="h-recap space-y-3 text-[15px]">
               <p className="h-ink" data-hotel-status="1">{done}</p>
@@ -994,7 +1021,7 @@ export function HotelJourney({
             <a href={whatsapp} className="flex h-12 items-center justify-center text-sm font-semibold h-ink">Écrire sur WhatsApp</a>
           </div>
         ) : null}
-        {view === "confirm" && rate && reading && !done ? (
+        {!placing && view === "confirm" && rate && reading && !done ? (
           <div data-hotel-confirm="1" className="h-paper space-y-4 px-4 py-4">
             <article className="h-recap space-y-3 text-[15px]">
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
@@ -1116,7 +1143,7 @@ export function HotelJourney({
           onAction={() => (guestsReady() ? onStep("confirm") : setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne."))}
         />
       ) : null}
-      {view === "confirm" && rate && !done && !cardSecret && !widget ? (
+      {view === "confirm" && rate && !done && !cardSecret && !widget && !placing ? (
         <Dock
           label="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
