@@ -7,7 +7,7 @@ import { emptyPliantCardControls } from "./pliant-controls";
 const CUSTOMER = "07b9dde3-de59-4b1a-88b7-03a6e23e98a6";
 const OFFER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PAN = "4242424242424242";
-const NOT_CHARGED = "La réservation n’a pas abouti. Aucun montant n’a été encaissé.";
+const NOT_CHARGED = "La réservation n’a pas abouti. Aucun montant n’a été encaissé. Vous pouvez réessayer.";
 
 type Row = Record<string, unknown>;
 
