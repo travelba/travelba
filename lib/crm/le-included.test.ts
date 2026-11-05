@@ -18,18 +18,18 @@ const VIU = [
 const VIU_ROOM = [
   "Surclassement prioritaire à l'enregistrement (selon disponibilité)",
   "Petit-déjeuner quotidien pour deux personnes",
-  "Aperitif for two people on the terrace",
-  "10% discount at BULK Restaurant",
+  "Apéritif pour deux en terrasse",
+  "10 % de remise au restaurant BULK",
   "Enregistrement anticipé et départ tardif (selon disponibilité)",
 ];
 
 const VIU_SUITE = [
   "Surclassement prioritaire à l'enregistrement (selon disponibilité)",
   "Petit-déjeuner quotidien pour deux personnes",
-  "Aperitif for two people on the terrace",
+  "Apéritif pour deux en terrasse",
   "Bottle of Prosecco and fruit",
-  "10% discount at BULK Restaurant",
-  "Complimentary parking",
+  "10 % de remise au restaurant BULK",
+  "Parking offert",
   "Enregistrement anticipé et départ tardif (selon disponibilité)",
 ];
 
@@ -63,6 +63,60 @@ test("Viu Milan : avantages traduits, astérisque et suites écartées hors suit
   ]);
   assert.deepEqual(leIncludedLines(["Complimentary breakfast"], ["Superior Double-Double"]), ["Petit-déjeuner offert"]);
   assert.deepEqual(leIncludedLines([], ["Suite"]), []);
+  assert.deepEqual(leIncludedLines(["Bottle of Prosecco and fruit"]), ["Bottle of Prosecco and fruit"]);
+});
+
+test("les motifs d’avantages se lisent en français, une phrase inconnue reste", () => {
+  assert.deepEqual(
+    leIncludedLines([
+      "Aperitif for two people on the terrace",
+      "Cocktail for two at the bar",
+      "Glass of champagne for two on the terrace",
+      "Drink for two at the bar",
+      "10% discount at BULK Restaurant",
+      "15% discount at Calm Spa",
+      "20% off at Sky Bar",
+      "USD 100 hotel credit",
+      "EUR 50 food and beverage credit",
+      "complimentary Wi-Fi",
+      "room upgrade",
+      "welcome amenity",
+      "welcome gift",
+      "early check-in",
+      "late check-out",
+      "VIP welcome",
+      "spa access",
+      "airport transfer",
+      "breakfast for two guests",
+      "continental breakfast",
+      "breakfast included",
+      "A private note about the garden roses",
+    ]),
+    [
+      "Apéritif pour deux en terrasse",
+      "Cocktail pour deux au bar",
+      "Coupe de champagne pour deux en terrasse",
+      "Boisson pour deux au bar",
+      "10 % de remise au restaurant BULK",
+      "15 % de remise au spa Calm",
+      "20 % de remise au bar Sky",
+      "Crédit hôtel de 100 USD",
+      "Crédit restauration de 50 €",
+      "Wifi offert",
+      "Surclassement",
+      "Attention de bienvenue",
+      "Cadeau de bienvenue",
+      "Enregistrement anticipé",
+      "Départ tardif",
+      "Accueil VIP",
+      "Accès au spa",
+      "Transfert aéroport",
+      "Petit-déjeuner pour deux",
+      "Petit-déjeuner continental",
+      "Petit-déjeuner inclus",
+      "A private note about the garden roses",
+    ]
+  );
 });
 
 test("une liste d’inclus déjà écrite n’est pas remplacée", () => {
