@@ -571,7 +571,8 @@ export function visibleBenefits(lines: string[]) {
   return out;
 }
 
-function clientBenefits(lines: string[]) {
+/** Avantages montrés au client : français du bloc Little Emperors, même ordre, sans marque. */
+export function clientBenefits(lines: string[]) {
   return visibleBenefits(visibleBenefits(lines).map((line) => frenchHotelLine(frenchLeBenefitLine(line))));
 }
 

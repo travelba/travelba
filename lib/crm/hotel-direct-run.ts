@@ -19,7 +19,7 @@ import {
   type StayEvent,
 } from "@/lib/crm/hotel-direct";
 import { clientConfirmationDraft, hotelRequestLetter, outboundHotelRecipient, HOTEL_DIRECT_FROM } from "@/lib/crm/hotel-direct-mail";
-import { leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
+import { clientBenefits, leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import {
   adoptLeBooking,
   claimLeBooking,
@@ -102,7 +102,26 @@ function db() {
 }
 
 function benefitsOf(value: unknown) {
-  return Array.isArray(value) ? value.filter((line): line is string => typeof line === "string").slice(0, 12) : [];
+  const raw = Array.isArray(value) ? value.filter((line): line is string => typeof line === "string") : [];
+  return clientBenefits(raw).slice(0, 12);
+}
+
+function cardDetails(
+  offer: { hotel_name: string; city: string; room_label: string | null; benefits: unknown; account: string },
+  guests: string,
+  extra: Record<string, unknown> = {}
+) {
+  const included = benefitsOf(offer.benefits);
+  return {
+    hotel_name: offer.hotel_name,
+    city: offer.city,
+    room: offer.room_label,
+    guests,
+    ...extra,
+    ...(included.length
+      ? { included, ...(offer.account === "little_emperors" ? { source_family: "little_emperors" } : {}) }
+      : {}),
+  };
 }
 
 function deadlineOf(policy: string | null, free: boolean) {
@@ -965,17 +984,17 @@ async function placeLeStay(input: {
           include_in_ledger: !clientPays,
           visible_to_client: true,
           supplier: null,
-          details: {
-            hotel_name: input.offer.hotel_name,
-            city: input.offer.city,
-            room: input.offer.room_label,
-            guests: input.guests.flatMap((name, index) => [name, ...(companions[index] || [])]).join(", "),
-            direct_stay_id: stayId,
-            le_hotel_id: hotelId,
-            le_booking_id: booking.id,
-            cancellation_deadline: deadline,
-            conditions: [clientConditions(stay)],
-          },
+          details: cardDetails(
+            input.offer,
+            input.guests.flatMap((name, index) => [name, ...(companions[index] || [])]).join(", "),
+            {
+              direct_stay_id: stayId,
+              le_hotel_id: hotelId,
+              le_booking_id: booking.id,
+              cancellation_deadline: deadline,
+              conditions: [clientConditions(stay)],
+            }
+          ),
         })
         .select("id")
         .single();
@@ -1231,13 +1250,11 @@ export async function openDirectStay(input: {
         amount,
         include_in_ledger: false,
         visible_to_client: false,
-        details: {
-          hotel_name: offer.hotel_name,
-          city: offer.city,
-          room: offer.room_label,
-          guests: input.guests.flatMap((name, index) => [name, ...((input.companions || [])[index] || [])]).join(", "),
-          direct_stay_id: stayId,
-        },
+        details: cardDetails(
+          offer,
+          input.guests.flatMap((name, index) => [name, ...((input.companions || [])[index] || [])]).join(", "),
+          { direct_stay_id: stayId }
+        ),
       })
       .select("id")
       .single();
