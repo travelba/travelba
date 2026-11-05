@@ -6,6 +6,7 @@ import { HotelMapPreview } from "@/components/account/HotelMapPreview";
 import { HotelOsmMap } from "@/components/account/HotelOsmMap";
 import { publicMapboxStyle, publicMapboxToken } from "@/lib/crm/hotel-map";
 import type { ClientHotel } from "@/lib/crm/hotel-search";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 const HotelMapboxView = dynamic(
   () => import("@/components/account/HotelMapboxView").then((mod) => mod.HotelMapboxView),
@@ -25,9 +26,9 @@ export function HotelMap({
   const placed = hotels.filter((hotel) => hotel.coords);
   const token = publicMapboxToken(process.env.NEXT_PUBLIC_MAPBOX_TOKEN);
   const styleUrl = publicMapboxStyle(process.env.NEXT_PUBLIC_MAPBOX_STYLE);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const useMapbox = Boolean(token) && !failed;
+  const useMapbox = Boolean(token) && !failure;
   const selected = onOpen ? placed.find((hotel) => hotel.hotelKey === selectedKey) ?? null : null;
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function HotelMap({
   if (!placed.length) return null;
 
   return (
-    <div className="relative" data-hotel-map={useMapbox ? "mapbox" : "osm"}>
+    <div className="relative" data-hotel-map={useMapbox ? "mapbox" : "osm"} data-hotel-map-error={failure || undefined}>
       {useMapbox && token ? (
         <div className="h-field relative h-80 overflow-hidden">
           <HotelMapboxView
@@ -67,7 +68,7 @@ export function HotelMap({
             styleUrl={styleUrl}
             selectedKey={selected?.hotelKey ?? null}
             onSelect={onOpen ? choose : undefined}
-            onFail={() => setFailed(true)}
+            onFail={setFailure}
           />
         </div>
       ) : (
