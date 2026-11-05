@@ -290,6 +290,7 @@ async function runEffects(input: {
   lastName: string;
   bookingId: string | null;
   clientEmail?: string | null;
+  sendMail?: (input: { to: string; subject: string; text: string }) => Promise<boolean>;
 }) {
   for (const effect of input.effects) {
     if (effect.type === "mail") {
@@ -331,7 +332,10 @@ async function runEffects(input: {
       const issued = await issueStayCard(input);
       await remember(input.admin, input.stayId, "system", "carte", issued, effect.key);
     } else if (effect.type === "lock_card") {
-      if (input.live && input.stay.pliantCardId) await lockPliantCard(input.stay.pliantCardId).catch(() => false);
+      if (input.live && input.stay.pliantCardId) {
+        await lockPliantCard(input.stay.pliantCardId).catch(() => false);
+        await input.admin.from("crm_booking_cards").update({ status: "locked" }).eq("pliant_card_id", input.stay.pliantCardId);
+      }
       await remember(input.admin, input.stayId, "system", "carte", "Gelée", effect.key);
     } else if (effect.type === "capture") {
       const captured = await captureStay(input);
@@ -411,7 +415,7 @@ async function runEffects(input: {
       input.stay.draft = draft;
       const subject = `Votre séjour à ${input.offer.hotel_name} est confirmé`.slice(0, 180);
       if (input.live && input.clientEmail) {
-        const sent = await sendMail({ to: input.clientEmail, subject, text: draft }).catch(() => false);
+        const sent = await (input.sendMail || sendMail)({ to: input.clientEmail, subject, text: draft }).catch(() => false);
         if (!sent) input.stay.keys = input.stay.keys.filter((key) => key !== effect.key);
         await remember(input.admin, input.stayId, "system", "message", sent ? "Envoyé au client" : "Envoi non abouti", sent ? effect.key : null);
       } else {
@@ -514,6 +518,8 @@ async function placeLeStay(input: {
   payMethod: "card" | "agency";
   companions: string[][];
   now: string;
+  fetchImpl?: typeof fetch;
+  sendMail?: (input: { to: string; subject: string; text: string }) => Promise<boolean>;
 }): Promise<
   | { ok: true; view: ClientStayView }
   | { ok: false; message: string; code?: "price_changed" | "card_again"; sellCents?: number; currency?: string; widgetUrl?: string; terms?: string }
@@ -695,6 +701,7 @@ async function placeLeStay(input: {
       rateKey: input.offer.rate_key || "",
       rateIndex: input.offer.le_rate_index || null,
       roomKey: input.offer.room_key || "",
+      fetchImpl: input.fetchImpl,
     });
   if (!agency && partyChanged(storedRooms, rooms)) {
     const again = await refresh(rooms).catch(() => null);
@@ -768,7 +775,10 @@ async function placeLeStay(input: {
       currency: fresh.currency,
     };
   }
-  if (agency) await storeFreshQuote(input.admin, input.offer.id, fresh, partyChanged(storedRooms, rooms) ? rooms : undefined);
+  if (agency) {
+    stay = { ...stay, sellCents: fresh.sellCents, hotelCents: fresh.sellCents, currency: fresh.currency };
+    await storeFreshQuote(input.admin, input.offer.id, fresh, partyChanged(storedRooms, rooms) ? rooms : undefined);
+  }
 
   const holder = agency ? await readPliantCardholderName(process.env.PLIANT_CARDHOLDER_ID || "") : null;
   if (agency && !stay.pliantCardId) {
@@ -792,7 +802,7 @@ async function placeLeStay(input: {
 
   let booking: LeBooking | null = null;
   if (current?.placingAt && !current.leBookingId) {
-    const listed = await listLittleEmperorsBookings().catch(() => null);
+    const listed = await listLittleEmperorsBookings(input.fetchImpl).catch(() => null);
     const adopted = listed
       ? adoptLeBooking(listed, {
           hotelId,
@@ -807,8 +817,10 @@ async function placeLeStay(input: {
     if (adopted) booking = { id: adopted.id, confirmation_number: adopted.confirmation } as LeBooking;
   }
   const cardName = holder ? [holder.firstName, holder.lastName].filter(Boolean).join(" ") : "";
+  let cardLast4: string | null = null;
   const post = async (quote: LeFreshQuote) => {
     const secrets = agency && stay.pliantCardId ? await readPliantCardSecrets(stay.pliantCardId) : null;
+    if (secrets?.pan) cardLast4 = secrets.pan.replace(/\D/g, "").slice(-4) || null;
     return submitLeBooking({
       quote,
       checkIn: input.offer.check_in,
@@ -823,7 +835,7 @@ async function placeLeStay(input: {
         children: room.children,
       })),
       card: secrets ? cardFromSecrets(secrets, cardName) : null,
-      fetchImpl: fetch,
+      fetchImpl: input.fetchImpl,
     });
   };
   if (!booking) {
@@ -862,7 +874,7 @@ async function placeLeStay(input: {
       return { ok: false, message: "La saisie de la carte a expiré. Recommencez." };
     }
     if (!posted.ok && posted.expired) {
-      const listed = await listLittleEmperorsBookings().catch(() => null);
+      const listed = await listLittleEmperorsBookings(input.fetchImpl).catch(() => null);
       const adopted = listed
         ? adoptLeBooking(listed, { hotelId, checkIn: input.offer.check_in, checkOut: input.offer.check_out, guest: input.guests[0] })
         : null;
@@ -973,6 +985,36 @@ async function placeLeStay(input: {
         .from("crm_bookings")
         .update({ visible_to_client: true, prices_visible: true, status: "confirmed" })
         .eq("id", created.booking.id);
+      if (agency && stay.pliantCardId) {
+        const cents = input.offer.sell_cents;
+        await input.admin.from("crm_booking_cards").insert({
+          booking_id: created.booking.id,
+          pliant_card_id: stay.pliantCardId,
+          label: `${input.offer.hotel_name}`.slice(0, 40),
+          first_name: holder?.firstName || "",
+          last_name: holder?.lastName || "",
+          limit_cents: cents,
+          transaction_limit_cents: cents,
+          max_transaction_count: null,
+          currency: "EUR",
+          status: "active",
+          last4: cardLast4,
+        });
+        const { rememberPliantCard } = await import("@/lib/crm/pliant-card-run");
+        await rememberPliantCard(input.admin, {
+          pliant_card_id: stay.pliantCardId,
+          booking_id: created.booking.id,
+          customer_id: input.customer.id,
+          label: input.offer.hotel_name.slice(0, 40),
+          last4: cardLast4,
+          limit_cents: cents,
+          currency: "EUR",
+          status: "active",
+          limit_manual: true,
+          transaction_limit_cents: cents,
+          max_transaction_count: null,
+        });
+      }
       await setCarnetPublished(input.admin, created.booking.id, true);
       await syncBookingTotalFromItems(input.admin, created.booking.id);
       const { data: priced } = await input.admin.from("crm_bookings").select("*").eq("id", created.booking.id).maybeSingle();
@@ -982,8 +1024,8 @@ async function placeLeStay(input: {
     }
   }
   if (bookingId) {
-    await safeConcierge(() => notifyStayPublished(bookingId as string));
-    await safeConcierge(() => remindMissingPieces(bookingId as string));
+    await safeConcierge(() => notifyStayPublished(bookingId as string, input.admin));
+    await safeConcierge(() => remindMissingPieces(bookingId as string, new Date(), input.admin));
   }
   await input.admin.from("crm_le_bookings").upsert(
     {
@@ -1039,6 +1081,7 @@ async function placeLeStay(input: {
     lastName: input.customer.last_name || "",
     bookingId,
     clientEmail: guestEmail,
+    sendMail: input.sendMail,
   });
   await input.admin
     .from("crm_hotel_direct_stays")
@@ -1057,8 +1100,13 @@ export async function openDirectStay(input: {
   stripeIntent?: string | null;
   cardReady?: boolean;
   companions?: string[][];
+  deps?: {
+    admin?: Admin;
+    fetchImpl?: typeof fetch;
+    sendMail?: (input: { to: string; subject: string; text: string }) => Promise<boolean>;
+  };
 }) {
-  const admin = db();
+  const admin = input.deps?.admin || db();
   const { data: offerRow, error } = await admin
     .from("crm_hotel_search_offers")
     .select(OFFER_COLUMNS)
@@ -1097,6 +1145,8 @@ export async function openDirectStay(input: {
       payMethod: input.payMethod,
       companions: input.companions || [],
       now,
+      fetchImpl: input.deps?.fetchImpl,
+      sendMail: input.deps?.sendMail,
     });
   }
   if (booked.status === "unavailable") return { ok: false as const, message: "La réservation directe n’est pas ouverte." };

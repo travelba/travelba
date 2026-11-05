@@ -251,9 +251,9 @@ test("le journal retire un numéro, le port membre ne crée rien, le message cli
   assert.equal(stay.draft, null);
   const journey = readFileSync(join(import.meta.dirname, "../../components/account/HotelJourney.tsx"), "utf8");
   assert.equal(PAY_COPY.cardTitle, "Payer par carte");
-  assert.equal(PAY_COPY.agencyTitle, "Payé par l’agence");
-  assert.equal(LE_PAY_COPY.clientTitle, "Le client paie lui-même");
-  assert.equal(LE_PAY_COPY.agencyTitle, "Payé par l’agence");
+  assert.equal(PAY_COPY.agencyTitle, "L’agence s’occupe du paiement");
+  assert.equal(LE_PAY_COPY.clientTitle, "Je paie ma réservation");
+  assert.equal(LE_PAY_COPY.agencyTitle, "L’agence s’occupe du paiement");
   assert.doesNotMatch(`${LE_PAY_COPY.client} ${LE_PAY_COPY.agency}`, /Little Emperors|commission/i);
   assert.match(journey, /PAY_COPY\.cardTitle/);
   assert.match(journey, /LE_PAY_COPY\.clientTitle/);
