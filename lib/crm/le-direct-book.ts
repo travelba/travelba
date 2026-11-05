@@ -111,9 +111,11 @@ export async function submitLeBooking(input: {
   rooms: { guestName: string; adults: number; children: { age: number }[] }[];
   card: { pan: string; cvc: string; expMonth: number; expYear: number; name: string } | null;
   fetchImpl?: typeof fetch;
-}): Promise<{ ok: true; booking: LeBooking } | { ok: false; expired: boolean; message: string }> {
+}): Promise<{ ok: true; booking: LeBooking } | { ok: false; expired: boolean; message: string; status: number; upstream: string }> {
   const credit = input.card ? leCreditCard({ ...input.card, requiresCvc: input.quote.requiresCvc }) : null;
-  if (input.card && !credit) return { ok: false, expired: false, message: "La réservation n’a pas abouti. Réessayez dans un instant." };
+  if (input.card && !credit) {
+    return { ok: false, expired: false, message: "La réservation n’a pas abouti. Réessayez dans un instant.", status: 0, upstream: "" };
+  }
   const body = leBookingRequest({
     start: input.checkIn,
     end: input.checkOut,
@@ -133,6 +135,6 @@ export async function submitLeBooking(input: {
     const status = err instanceof LittleEmperorsError ? err.status : 0;
     const upstream = redactCardText(err instanceof Error ? err.message : "").slice(0, 400);
     console.error("[hotels] réservation", status, upstream);
-    return { ok: false, expired: leSessionExpired(upstream), message: leClientRefusal(status, upstream) };
+    return { ok: false, expired: leSessionExpired(upstream), message: leClientRefusal(status, upstream), status, upstream };
   }
 }

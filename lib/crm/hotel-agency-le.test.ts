@@ -198,7 +198,7 @@ function availability(adults: number) {
               currency_code: "EUR",
               requested_currency_code: "EUR",
               cancellation_deadline: "2026-11-26T18:00:00.000000Z",
-              requires_cvc: true,
+              requires_cvc: false,
               payment_description: "No deposit",
               can_cancel: true,
               cancellation_policy: "Free cancellation before 18:00 on 26 November 2026 after which a charge of EUR 162.74 will be incurred.",
@@ -276,7 +276,15 @@ function installFetch(mode: "ok" | "refuse") {
     if (url.includes("/cards/card-agency-1/lock")) return new Response(null, { status: 200 });
     if (url.includes("/v2/hotels/availability")) return Response.json(availability(2));
     if (url.includes("/v2/hotels/bookings") && method === "POST") {
-      if (mode === "refuse") return Response.json({ message: "The given data was invalid.", errors: { guest_name: ["refused"] } }, { status: 422 });
+      if (mode === "refuse") {
+        return Response.json(
+          {
+            message: `The given data was invalid. ${PAN}`,
+            errors: { "credit_card.cvc": ["The credit card.cvc field is required when credit card is present. cvc: 123"] },
+          },
+          { status: 422 }
+        );
+      }
       return Response.json(bookingPayload());
     }
     if (url.includes("/v2/hotels/bookings") && method === "GET") return Response.json([]);
@@ -386,13 +394,14 @@ test("l’agence avance le séjour : carte, publication, messages, un seul passa
       assert.equal(bookings.length, 1);
       const posted = bookings[0].body as {
         guest_name?: string;
-        credit_card?: { number?: string; name?: string };
+        credit_card?: { number?: string; name?: string; cvc?: string };
         rooms?: { guest_name?: string; adults?: number }[];
       };
       assert.equal(posted.guest_name, "Benjamin Boukris");
       assert.equal(posted.rooms?.[0]?.guest_name, "Benjamin Boukris");
       assert.equal(posted.rooms?.[0]?.adults, 2);
       assert.equal(posted.credit_card?.number, PAN);
+      assert.equal(posted.credit_card?.cvc, "123");
       assert.equal(posted.credit_card?.name, "Andrea Martin");
       assert.doesNotMatch(JSON.stringify({ guest: posted.guest_name, rooms: posted.rooms }), /Victoria/);
 
@@ -446,9 +455,25 @@ test("un refus amont gèle la carte et n’ouvre pas le dossier", async () => {
       assert.equal(opened.ok, false);
       if (opened.ok) return;
       assert.match(opened.message, /n’a pas abouti|refusée|voyageur/i);
-      assert.doesNotMatch(opened.message, /Little Emperors|4242/);
+      assert.doesNotMatch(opened.message, /Little Emperors|4242|cvc/i);
+      const posted = http.calls.find((call) => call.url.includes("/v2/hotels/bookings") && call.method === "POST");
+      assert.equal((posted?.body as { credit_card?: { cvc?: string } } | undefined)?.credit_card?.cvc, "123");
       assert.equal(tables.crm_bookings.length, 0);
+      assert.equal(tables.crm_transactions.length, 0);
       assert.ok(http.calls.some((call) => call.url.includes("/lock")));
+      const stay = tables.crm_hotel_direct_stays[0];
+      assert.equal(stay?.phase, "cancelled");
+      const state = stay?.state as { reason?: string; pliant?: string } | undefined;
+      assert.equal(state?.pliant, "locked");
+      assert.match(String(state?.reason || ""), /credit_card\.cvc/);
+      assert.equal(state?.reason === "Refus", false);
+      assert.equal(String(state?.reason || "").includes(PAN), false);
+      assert.doesNotMatch(String(state?.reason || ""), /\b123\b/);
+      const alert = tables.crm_agency_alerts?.[0];
+      assert.equal(alert?.kind, "pliant");
+      assert.match(String(alert?.summary || ""), /credit_card\.cvc/);
+      assert.equal(String(alert?.summary || "").includes(PAN), false);
+      assert.doesNotMatch(String(alert?.summary || ""), /\b123\b/);
       assert.equal(tables.crm_whatsapp_messages.length, 0);
     } finally {
       http.restore();

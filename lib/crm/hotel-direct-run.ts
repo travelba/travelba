@@ -29,6 +29,7 @@ import {
   leCardWidgetUrl,
   leDeadlineParisLabel,
   lePrimaryGuest,
+  leRefusalReason,
   PARTY_MISMATCH,
   partyChanged,
   partyWithCompanions,
@@ -923,7 +924,7 @@ async function placeLeStay(input: {
     });
   };
   if (!booking) {
-    let posted = await post(fresh).catch(() => ({ ok: false as const, expired: false, message: "" }));
+    let posted = await post(fresh).catch(() => ({ ok: false as const, expired: false, message: "", status: 0, upstream: "" }));
     if (!posted.ok && posted.expired && !agency) {
       const again = await refresh().catch(() => null);
       if (again && !pricesDiffer(fresh.sellCents, again.sellCents) && again.currency === fresh.currency) {
@@ -987,10 +988,13 @@ async function placeLeStay(input: {
         return { ok: false, message: "Cette recherche a expiré. Relancez-la." };
       }
       fresh = again;
-      posted = await post(again).catch(() => ({ ok: false as const, expired: true, message: "" }));
+      posted = await post(again).catch(() => ({ ok: false as const, expired: true, message: "", status: 0, upstream: "" }));
     }
-    if (!booking && (!posted.ok || !("booking" in posted))) {
-      await release("Refus");
+    if (!booking && !posted.ok) {
+      const upstream = leRefusalReason(posted.status, posted.upstream);
+      const cleaned = upstream ? scrubPliantLog(upstream, 240) : "";
+      await release(cleaned || "Refus");
+      if (cleaned) await recordPliantAlert(cleaned, stayId, input.admin);
       return { ok: false, message: posted.message || (posted.expired ? "La saisie de la carte a expiré. Recommencez." : NOT_CHARGED) };
     }
     if (!booking && posted.ok && "booking" in posted) booking = posted.booking;
