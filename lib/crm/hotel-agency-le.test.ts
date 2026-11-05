@@ -236,8 +236,9 @@ function bookingPayload() {
   };
 }
 
-function installFetch(mode: "ok" | "refuse") {
+function installFetch(mode: "ok" | "refuse" | "emit-once") {
   const calls: { url: string; method: string; body: unknown }[] = [];
+  let cardPosts = 0;
   const previous = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -266,8 +267,19 @@ function installFetch(mode: "ok" | "refuse") {
     if (url.includes("/cards/available-cards")) {
       return Response.json({ cardConfigs: [{ cardConfig: "PLIANT_SINGLE_USE", canBeIssued: true, type: "SINGLE_USE" }] });
     }
-    if (url.includes("/cardholders/holder-1") && method === "GET") return Response.json({ firstName: "Andrea", lastName: "Martin" });
-    if (url.includes("/cards/holder-1") && method === "POST") return Response.json({ cardId: "card-agency-1", status: "ACTIVE" });
+    if (url.includes("/cardholders/holder-1") && method === "GET") {
+      if (new URL(url).searchParams.get("organizationId") !== "org-1") {
+        return Response.json({ errorCode: "MISSING_PARAMETER", message: "organizationId is required" }, { status: 400 });
+      }
+      return Response.json({ firstName: "Andrea", lastName: "Martin" });
+    }
+    if (url.includes("/cards/holder-1") && method === "POST") {
+      cardPosts += 1;
+      if (mode === "emit-once" && cardPosts === 1) {
+        return Response.json({ errorCode: "VALIDATION", message: "card request rejected" }, { status: 400 });
+      }
+      return Response.json({ cardId: "card-agency-1", status: "ACTIVE" });
+    }
     if (url.includes("/card-controls") && method === "PUT") return new Response(null, { status: 200 });
     if (url.includes("/card-controls") && method === "GET") return Response.json(emptyPliantCardControls());
     if (url.includes("/card-details/")) {
@@ -396,11 +408,32 @@ test("l’agence avance le séjour : carte, publication, messages, un seul passa
       assert.equal(posted.credit_card?.name, "Andrea Martin");
       assert.doesNotMatch(JSON.stringify({ guest: posted.guest_name, rooms: posted.rooms }), /Victoria/);
 
+      const holderGet = http.calls.find((call) => call.url.includes("/cardholders/holder-1") && call.method === "GET");
+      assert.match(holderGet?.url || "", /organizationId=org-1/);
       const issued = http.calls.find((call) => call.url.includes("/cards/holder-1") && call.method === "POST");
-      const limit = (issued?.body as { limit?: { value?: number; currency?: string }; cardConfig?: string } | null)?.limit;
-      assert.equal(limit?.value, 14274);
-      assert.equal(limit?.currency, "EUR");
-      assert.equal((issued?.body as { cardConfig?: string } | null)?.cardConfig, "PLIANT_SINGLE_USE");
+      const issuedBody = issued?.body as {
+        limit?: { value?: number; currency?: string };
+        cardConfig?: string;
+        organizationId?: string;
+        purpose?: string;
+        validFrom?: string;
+        validTo?: string;
+        validTimezone?: string;
+        maxTransactionCount?: number;
+        cardControls?: { dates?: unknown; times?: unknown };
+      } | null;
+      assert.equal(issuedBody?.limit?.value, 14274);
+      assert.equal(issuedBody?.limit?.currency, "EUR");
+      assert.equal(issuedBody?.cardConfig, "PLIANT_SINGLE_USE");
+      assert.equal(issuedBody?.organizationId, "org-1");
+      assert.equal(typeof issuedBody?.purpose, "string");
+      assert.ok((issuedBody?.purpose || "").length > 0 && (issuedBody?.purpose || "").length <= 200);
+      assert.match(issuedBody?.validFrom || "", /^\d{4}-\d{2}-\d{2}$/);
+      assert.match(issuedBody?.validTo || "", /^\d{4}-\d{2}-\d{2}$/);
+      assert.equal(issuedBody?.validTimezone, "Europe/Paris");
+      assert.equal(issuedBody?.maxTransactionCount, undefined);
+      assert.equal(issuedBody?.cardControls?.dates, null);
+      assert.equal(issuedBody?.cardControls?.times, null);
 
       const booking = tables.crm_bookings[0];
       const item = tables.crm_booking_items[0];
@@ -446,10 +479,53 @@ test("un refus amont gèle la carte et n’ouvre pas le dossier", async () => {
       assert.equal(opened.ok, false);
       if (opened.ok) return;
       assert.match(opened.message, /n’a pas abouti|refusée|voyageur/i);
-      assert.doesNotMatch(opened.message, /Little Emperors|4242/);
+      assert.doesNotMatch(opened.message, /Little Emperors|Pliant|4242/i);
       assert.equal(tables.crm_bookings.length, 0);
       assert.ok(http.calls.some((call) => call.url.includes("/lock")));
       assert.equal(tables.crm_whatsapp_messages.length, 0);
+    } finally {
+      http.restore();
+    }
+  });
+});
+
+test("une émission refusée laisse réessayer, même si le séjour était marqué bloqué sans carte", async () => {
+  await withEnv(async () => {
+    const { client, tables } = memory();
+    const http = installFetch("emit-once");
+    try {
+      const input = {
+        customer: customer(),
+        offerId: OFFER,
+        guests: ["Benjamin Boukris"],
+        companions: [[]],
+        payMethod: "agency" as const,
+        deps: { admin: client, fetchImpl: globalThis.fetch, sendMail: async () => false },
+      };
+      const failed = await openDirectStay(input);
+      assert.equal(failed.ok, false);
+      if (failed.ok) return;
+      assert.equal(failed.message, "La réservation n’a pas abouti. Aucun montant n’a été encaissé. Vous pouvez réessayer.");
+      assert.doesNotMatch(failed.message, /Little Emperors|Pliant/i);
+      assert.equal(http.calls.filter((call) => call.url.includes("/v2/hotels/bookings") && call.method === "POST").length, 0);
+      assert.equal(http.calls.filter((call) => call.url.includes("/lock")).length, 0);
+      const stay = tables.crm_hotel_direct_stays[0];
+      const state = stay?.state as { pliant?: string; pliantCardId?: string | null } | undefined;
+      assert.equal(stay?.phase, "cancelled");
+      assert.equal(state?.pliant, "none");
+      assert.equal(state?.pliantCardId ?? null, null);
+      state!.pliant = "locked";
+
+      const again = await openDirectStay(input);
+      assert.equal(again.ok, true, again.ok ? "" : again.message);
+      const posts = http.calls.filter((call) => call.url.includes("/cards/holder-1") && call.method === "POST");
+      assert.equal(posts.length, 2);
+      const holderGets = http.calls.filter((call) => call.url.includes("/cardholders/holder-1") && call.method === "GET");
+      assert.ok(holderGets.every((call) => call.url.includes("organizationId=org-1")));
+      assert.equal(http.calls.filter((call) => call.url.includes("/v2/hotels/bookings") && call.method === "POST").length, 1);
+      const saved = tables.crm_hotel_direct_stays[0]?.state as { pliant?: string; pliantCardId?: string | null };
+      assert.equal(saved.pliant, "issued");
+      assert.equal(saved.pliantCardId, "card-agency-1");
     } finally {
       http.restore();
     }

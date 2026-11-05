@@ -500,7 +500,7 @@ async function runEffects(input: {
   }
 }
 
-const NOT_CHARGED = "La réservation n’a pas abouti. Aucun montant n’a été encaissé.";
+const NOT_CHARGED = "La réservation n’a pas abouti. Aucun montant n’a été encaissé. Vous pouvez réessayer.";
 
 type StayCustomer = HotelAccessCustomer & {
   id: string;
@@ -857,6 +857,9 @@ async function placeLeStay(input: {
   const holderRead = agency ? await readPliantCardholderName(process.env.PLIANT_CARDHOLDER_ID || "") : null;
   let holder = holderRead?.ok ? { firstName: holderRead.firstName, lastName: holderRead.lastName } : null;
   const nameReason = holderRead && !holderRead.ok ? holderRead.reason : null;
+  if (agency && !stay.pliantCardId && (stay.pliant === "locked" || stay.pliant === "issued")) {
+    stay = { ...stay, pliant: "none" };
+  }
   if (agency && !stay.pliantCardId) {
     const issued = await issueStayCard({
       stay,
