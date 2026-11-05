@@ -33,7 +33,7 @@ Reprendre `.env.example`. Toutes **sauf** `NEXT_PUBLIC_*` sont server-only.
 | Variable | Prod |
 |----------|------|
 | `NEXT_PUBLIC_SITE_URL` | `https://travelba.fr` (sans slash) |
-| `NEXT_PUBLIC_MAPBOX_TOKEN` | Jeton public `pk.` de la carte Hôtels, restreint à `https://travelba.fr`, `https://www.travelba.fr` et `http://localhost:3000`. Jamais un `sk.`. Sans elle, la carte reste sur les tuiles OpenStreetMap. Figé au build : redéployer après l’ajout |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Jeton public `pk.` de la carte Hôtels, restreint à `https://travelba.fr`, `https://www.travelba.fr` et `http://localhost:3000`. Jamais un `sk.`. Lu en littéral `process.env.NEXT_PUBLIC_MAPBOX_TOKEN` (figé au build : redéployer après l’ajout). Les tuiles passent par `/api/mapbox`, qui pose ce Referer : l’écran d’accueil iPhone ne l’envoie pas. Sans jeton, ou si WebGL échoue, la carte revient aux tuiles OpenStreetMap. Pas de changement dans le tableau Mapbox |
 | `NEXT_PUBLIC_MAPBOX_STYLE` | Facultatif. Défaut `mapbox://styles/mapbox/light-v11`. Sinon `mapbox://styles/<compte>/<style>` |
 | `NEXT_PUBLIC_SUPABASE_URL` | URL projet `fsmfozxgujskluxakeoq` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon / publishable |
