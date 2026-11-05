@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { confirmationRefsAlign } from "@/lib/crm/email-match";
+import { assignLeIncluded, leRoomLabels } from "@/lib/crm/le-included";
 import { leBookingExtract } from "@/lib/crm/little-emperors-match";
 import { joinConfirmationRefs } from "@/lib/crm/item-match";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
@@ -228,6 +229,11 @@ export function leImportExtract(booking: LeBooking, extra: Person[] = [], force 
         ...(room.board ? { board: room.board } : {}),
       }));
     }
+    assignLeIncluded(
+      details,
+      booking.benefits || [],
+      leRoomLabels({ room_types: booking.room_types, rooms: booking.rooms })
+    );
     item.details = details;
   }
   const seen = new Set(

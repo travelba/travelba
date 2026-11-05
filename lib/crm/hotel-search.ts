@@ -3,7 +3,7 @@ import { foldHotelLabel } from "./hotel-catalog";
 import { hotelStars } from "./hotel-map";
 import { addIsoDays, isValidIsoDate } from "./dates";
 import { frenchCancellation, frenchCity, frenchHotelLine, frenchHotelProse, roomSpec } from "./hotel-fr";
-import { frenchLeBenefitLine } from "./ingest-parse";
+import { leIncludedLines } from "./le-included";
 import { amountToCents } from "./money";
 
 /**
@@ -571,9 +571,9 @@ export function visibleBenefits(lines: string[]) {
   return out;
 }
 
-/** Avantages montrés au client : français du bloc Little Emperors, même ordre, sans marque. */
-export function clientBenefits(lines: string[]) {
-  return visibleBenefits(visibleBenefits(lines).map((line) => frenchHotelLine(frenchLeBenefitLine(line))));
+/** Avantages montrés au client : le français Little Emperors, même ordre, sans marque. */
+export function clientBenefits(lines: string[], rooms: string[] = []) {
+  return visibleBenefits(leIncludedLines(lines, rooms));
 }
 
 function sellCentsFor(offer: HotelOffer): { sellCents: number; currency: string } | null {
@@ -603,7 +603,8 @@ export function priceStayOffer(offer: HotelOffer): PricedStay | null {
   const money = sellCentsFor(offer);
   if (!money) return null;
   const city = frenchCity(offer.city);
-  const benefits = clientBenefits(offer.benefits || []).slice(0, 8);
+  const benefitRooms = offer.roomLabel ? [offer.roomLabel] : [];
+  const benefits = clientBenefits(offer.benefits || [], benefitRooms).slice(0, 8);
   const { score, perks } = scoreStay({ benefits, freeCancellation: Boolean(offer.freeCancellation) });
   const spec = roomSpec([offer.roomLabel || "", offer.roomArea || "", offer.roomBed || "", offer.roomOutlook || ""].join(". "));
   const room = frenchHotelLine(publicHotelText(offer.roomLabel || ""));

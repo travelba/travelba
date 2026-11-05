@@ -756,7 +756,7 @@ test("les avantages des résultats reprennent le bloc des réservations, dès la
   assert.match(journey, /stayBenefits\(hotel\.benefits, hotel\.perks\)/);
   const booked = readFileSync(join(root, "lib/crm/hotel-direct-run.ts"), "utf8");
   assert.match(booked, /clientBenefits\(raw\)/);
-  assert.match(booked, /included,/);
+  assert.match(booked, /assignLeIncluded\(/);
   assert.match(booked, /source_family: "little_emperors"/);
   assert.doesNotMatch(desk, /benefits\.slice\(0, 4\)\.join/);
   assert.match(block, /bg-\[#0B192C\]/);

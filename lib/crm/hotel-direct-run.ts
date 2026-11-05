@@ -34,6 +34,7 @@ import {
   pricesDiffer,
 } from "@/lib/crm/le-self-book";
 import { refreshLeOfferQuote, submitLeBooking, type LeFreshQuote } from "@/lib/crm/le-direct-book";
+import { assignLeIncluded, leRoomLabels } from "@/lib/crm/le-included";
 import {
   cancelLittleEmperorsBooking,
   listLittleEmperorsBookings,
@@ -111,17 +112,17 @@ function cardDetails(
   guests: string,
   extra: Record<string, unknown> = {}
 ) {
-  const included = benefitsOf(offer.benefits);
-  return {
+  const details: Record<string, unknown> = {
     hotel_name: offer.hotel_name,
     city: offer.city,
     room: offer.room_label,
     guests,
     ...extra,
-    ...(included.length
-      ? { included, ...(offer.account === "little_emperors" ? { source_family: "little_emperors" } : {}) }
-      : {}),
   };
+  if (offer.account === "little_emperors") details.source_family = "little_emperors";
+  const raw = Array.isArray(offer.benefits) ? offer.benefits.filter((line): line is string => typeof line === "string") : [];
+  assignLeIncluded(details, raw, leRoomLabels({ room: offer.room_label }));
+  return details;
 }
 
 function deadlineOf(policy: string | null, free: boolean) {
@@ -971,6 +972,29 @@ async function placeLeStay(input: {
       });
       reference = created.booking.reference;
       bookingId = created.booking.id;
+      const hotelDetails: Record<string, unknown> = {
+        hotel_name: input.offer.hotel_name,
+        city: input.offer.city,
+        room: input.offer.room_label,
+        guests: input.guests.flatMap((name, index) => [name, ...(companions[index] || [])]).join(", "),
+        direct_stay_id: stayId,
+        le_hotel_id: hotelId,
+        le_booking_id: booking.id,
+        source_family: "little_emperors",
+        cancellation_deadline: deadline,
+        conditions: [clientConditions(stay)],
+      };
+      if (booking.board) hotelDetails.board = booking.board;
+      const benefitSource = booking.benefits?.length ? booking.benefits : benefitsOf(input.offer.benefits);
+      assignLeIncluded(
+        hotelDetails,
+        benefitSource,
+        leRoomLabels({
+          room_types: booking.room_types,
+          rooms: booking.rooms,
+          room: input.offer.room_label,
+        })
+      );
       const { data: item } = await input.admin
         .from("crm_booking_items")
         .insert({
@@ -984,17 +1008,7 @@ async function placeLeStay(input: {
           include_in_ledger: !clientPays,
           visible_to_client: true,
           supplier: null,
-          details: cardDetails(
-            input.offer,
-            input.guests.flatMap((name, index) => [name, ...(companions[index] || [])]).join(", "),
-            {
-              direct_stay_id: stayId,
-              le_hotel_id: hotelId,
-              le_booking_id: booking.id,
-              cancellation_deadline: deadline,
-              conditions: [clientConditions(stay)],
-            }
-          ),
+          details: hotelDetails,
         })
         .select("id")
         .single();

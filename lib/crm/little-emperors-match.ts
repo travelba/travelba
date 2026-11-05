@@ -11,7 +11,7 @@ import {
 } from "@/lib/crm/email-match";
 import { joinConfirmationRefs } from "@/lib/crm/item-match";
 import { catalogNameAgrees, roomsFromStay } from "@/lib/crm/hotel-gallery";
-import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
+import { leIncludedLines, leRoomLabels } from "@/lib/crm/le-included";
 import { emptyBookingExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import {
   isLeCancelled,
@@ -42,8 +42,11 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
   }
   extract.travelers = people;
   extract.document_status = isLeCancelled(booking.state) ? "cancelled" : null;
-  const benefits = [...new Set(booking.benefits.map((line) => frenchLeBenefitLine(line)).filter(Boolean))];
   const roomTypes = booking.room_types.map((type) => type.trim()).filter(Boolean);
+  const included = leIncludedLines(
+    booking.benefits || [],
+    leRoomLabels({ room_types: roomTypes, rooms: booking.rooms })
+  );
   const guestNames = [...new Set(booking.guest_names.map((name) => name.trim()).filter(Boolean))];
   const conditions = [...new Set(booking.cancellation_policies.map((line) => line.trim()).filter(Boolean))];
   const rooms = roomsFromStay(roomTypes, guestNames, booking.confirmation_number);
@@ -64,7 +67,7 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
         website: booking.website,
         le_hotel_id: booking.hotel_id,
         source_family: "little_emperors",
-        included: benefits,
+        ...(included.length ? { included } : {}),
         ...(conditions.length ? { conditions } : {}),
         ...(guestNames.length && guestNames.length !== roomTypes.length
           ? { guests: guestNames.join(", ") }

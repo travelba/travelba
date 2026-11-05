@@ -91,7 +91,7 @@ export function readExample() {
   const state = box();
   return {
     ...state,
-    ledger: exampleLedgerView(state.transactions),
+    ledger: exampleLedgerView(state.transactions, { items: state.items, travelers: state.travelers }),
   };
 }
 

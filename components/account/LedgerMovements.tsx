@@ -6,6 +6,7 @@ import { Icon } from "@/components/crm/icons";
 import { UnmatchCreditButton } from "@/components/admin/UnmatchCreditButton";
 import { VoidMovementButton } from "@/components/admin/VoidMovementButton";
 import type { LedgerMovementRow } from "@/lib/crm/ledger-movement";
+import { ledgerTravelerLabel } from "@/lib/crm/ledger-travelers";
 
 export type { LedgerMovementRow };
 
@@ -16,6 +17,8 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
     <ul className="m-0 list-none space-y-2 p-0 marker:content-none">
       {rows.map((row) => {
         const open = openId === row.id;
+        const travelers = ledgerTravelerLabel(row.travelerNames);
+        const travelersFull = ledgerTravelerLabel(row.travelerNames, 0);
         return (
           <li
             key={row.id}
@@ -49,6 +52,9 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                   </span>
                   {row.whenWhere ? (
                     <span className="mt-0.5 block text-[13px] leading-snug text-muted">{row.whenWhere}</span>
+                  ) : null}
+                  {travelers ? (
+                    <span className="mt-0.5 block break-words text-[13px] leading-snug text-muted">{travelers}</span>
                   ) : null}
                   {row.reference && !row.title.includes(row.reference) ? (
                     <span className="mt-0.5 block text-[13px] leading-snug text-muted">{row.reference}</span>
@@ -102,6 +108,7 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                     {row.occurredLabel}
                   </p>
                 ) : null}
+                {travelersFull ? <p className="break-words">{travelersFull}</p> : null}
                 <p>
                   <span className="text-muted">Type · </span>
                   {row.kindLabel}

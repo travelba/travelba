@@ -1,5 +1,6 @@
 import type { ClientLedgerView, ClientLedgerWallet } from "./client-ledger";
 import type { LedgerMovementRow } from "./ledger-movement";
+import { ledgerTravelerLabel } from "./ledger-travelers";
 import { encoursCaption } from "./money";
 import type { SpendingCard } from "./spending-desk";
 
@@ -145,7 +146,8 @@ function roundMoney(amount: number) {
 
 function movementRow(row: LedgerMovementRow): StatementRow {
   const amount = statementAmountLabel(row.amountLabel);
-  const meta = [row.whenWhere, row.reference, row.companyLabel].filter(Boolean).join(" · ") || null;
+  const travelers = ledgerTravelerLabel(row.travelerNames, 0);
+  const meta = [row.whenWhere, travelers, row.reference, row.companyLabel].filter(Boolean).join(" · ") || null;
   return {
     date: row.occurredLabel === "—" ? "" : row.occurredLabel,
     title: row.title,
