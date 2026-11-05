@@ -44,7 +44,7 @@ export function HotelOsmMap({
   const y0 = Math.floor(origin.y) - 1;
   const tiles = [0, 1, 2].flatMap((row) => [0, 1, 2].map((col) => ({ x: x0 + col, y: y0 + row, col, row })));
   return (
-    <div className="h-field relative h-80 overflow-hidden">
+    <div className="h-field relative h-80 overflow-hidden" data-hotel-map-frame="1">
       <div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
         {tiles.map((tile) => (
           // eslint-disable-next-line @next/next/no-img-element -- tuile de carte, hors next/image

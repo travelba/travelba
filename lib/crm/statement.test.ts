@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { shapeClientLedger } from "./client-ledger";
+import { ledgerTravelerLabel } from "./ledger-travelers";
 import { pdfPlainText } from "./pdf-raster";
 import {
   buildStatement,
@@ -94,6 +95,61 @@ test("le relevé reprend l’encours signé et les mouvements visibles", () => {
   assert.equal(rows.some((row) => row.title === "Séjour" && row.debit.includes("500,00")), true);
   assert.equal(rows.some((row) => row.title === "Virement" && row.credit.includes("200,00")), true);
   assert.match(rows.map((row) => row.meta).join(" "), /TB-2026-0038/);
+});
+
+test("le relevé imprime les voyageurs du débit", async () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: -2190,
+    currency: "EUR",
+    audience: "client",
+    bookings: [
+      {
+        id: "b1",
+        title: "Milan",
+        destination: "Milan",
+        reference: "TB-2026-0145",
+        start_date: "2027-02-03",
+        end_date: "2027-02-08",
+        visible_to_client: true,
+      },
+    ],
+    parties: {
+      cards: [
+        {
+          id: "viu",
+          booking_id: "b1",
+          details: { rooms: [{ guests: "Sid Ahmed Badsi" }] },
+        },
+      ],
+    },
+    rows: [
+      tx({
+        id: "hotel",
+        direction: "debit",
+        kind: "booking",
+        amount: 2190,
+        booking_id: "b1",
+        external_id: "booking:b1:item:viu",
+        label: "Hôtel · VIU Milan",
+      }),
+    ],
+  });
+  const model = buildStatement({
+    view,
+    holderName: "Benjamin Amar",
+    holderLines: [],
+    issuedAt: ISSUED,
+  });
+  const row = model.sections.flatMap((section) => section.rows)[0];
+  assert.equal(ledgerTravelerLabel(view.movements[0]?.travelerNames, 0), "Voyageur : Sid Ahmed Badsi");
+  assert.match(row?.meta || "", /Voyageur : Sid Ahmed Badsi/);
+  assert.match(row?.meta || "", /TB-2026-0145/);
+  const bytes = await renderStatementPdf(model);
+  const { text } = await pdfPlainText(bytes);
+  assert.match(text, /Sid Ahmed Badsi/);
+  assert.match(text, /VIU Milan|Hôtel/);
 });
 
 test("un collaborateur reçoit un relevé de frais, pas l’encours société", () => {

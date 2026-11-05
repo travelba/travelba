@@ -4,6 +4,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ClientTransactionsPanel } from "../../components/account/ClientTransactionsPanel";
+import { LedgerMovements } from "../../components/account/LedgerMovements";
 import { EncoursPayment } from "../../components/account/EncoursPayment";
 import { applyExpenseLedgerChange, shapeClientLedger } from "./client-ledger";
 import { formatMoney } from "./money";
@@ -528,4 +529,102 @@ test("seul l’écran agence peut remettre un crédit en non rattaché", () => {
     rows,
   });
   assert.equal(client.movements.find((row) => row.id === "wire")?.unmatchable, false);
+});
+
+test("un débit d’hôtel nomme le voyageur coché, pas tout le dossier", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: ["b1"],
+    walletBalance: -2190,
+    currency: "EUR",
+    audience: "client",
+    bookings: [{ ...booking, visible_to_client: true, reference: "TB-2026-0145", destination: "Milan" }],
+    parties: {
+      cards: [
+        {
+          id: "viu",
+          booking_id: "b1",
+          details: { rooms: [{ party_keys: ["companion:c-sid"], guests: "Sid Ahmed Badsi" }] },
+        },
+      ],
+      travelers: [
+        {
+          id: "t-holder",
+          booking_id: "b1",
+          first_name: "Benjamin",
+          last_name: "Amar",
+          is_account_holder: true,
+          companion_id: null,
+        },
+        {
+          id: "t-sid",
+          booking_id: "b1",
+          first_name: "Sid Ahmed",
+          last_name: "Badsi",
+          is_account_holder: false,
+          companion_id: "c-sid",
+        },
+      ],
+    },
+    rows: [
+      tx({
+        id: "hotel",
+        direction: "debit",
+        kind: "booking",
+        amount: 2190,
+        booking_id: "b1",
+        external_id: "booking:b1:item:viu",
+        label: "Hôtel · VIU Milan",
+        occurred_on: "2026-11-05",
+      }),
+      tx({
+        id: "wire",
+        direction: "credit",
+        kind: "transfer",
+        amount: 100,
+        booking_id: "b1",
+        label: "Virement",
+      }),
+    ],
+  });
+
+  assert.deepEqual(view.movements.find((row) => row.id === "hotel")?.travelerNames, ["Sid Ahmed Badsi"]);
+  assert.deepEqual(view.movements.find((row) => row.id === "wire")?.travelerNames, []);
+  const html = renderToStaticMarkup(createElement(LedgerMovements, { rows: view.movements }));
+  assert.match(html, /Voyageur : Sid Ahmed Badsi/);
+  assert.equal(html.includes("Benjamin Amar"), false);
+  assert.equal(html.includes("Voyageurs :"), false);
+});
+
+test("sans case cochée, le débit reprend les voyageurs du dossier", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: ["b1"],
+    walletBalance: -80,
+    currency: "EUR",
+    audience: "staff",
+    bookings: [{ ...booking, visible_to_client: true }],
+    parties: {
+      travelers: [
+        { booking_id: "b1", first_name: "Amina", last_name: "Diop", is_account_holder: true },
+        { booking_id: "b1", first_name: "Lina", last_name: "Martin", is_account_holder: false, companion_id: "c2" },
+        { booking_id: "b1", first_name: "Nora", last_name: "Benali", is_account_holder: false, companion_id: "c3" },
+        { booking_id: "b2", first_name: "Yan", last_name: "Cohen", is_account_holder: true },
+      ],
+    },
+    rows: [
+      tx({
+        id: "stay",
+        direction: "debit",
+        kind: "booking",
+        amount: 80,
+        booking_id: "b1",
+        label: "Séjour",
+      }),
+    ],
+  });
+  assert.deepEqual(view.movements[0].travelerNames, ["Amina Diop", "Lina Martin", "Nora Benali"]);
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
+  assert.match(html, /Voyageurs : Amina Diop, Lina Martin \+1/);
+  assert.equal(html.includes("Yan Cohen"), false);
 });

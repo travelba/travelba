@@ -31,6 +31,7 @@ import {
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
+import { ledgerTravelerLabel } from "@/lib/crm/ledger-travelers";
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
 import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { loadDossierPeople, type DossierPeople } from "@/lib/crm/dossier-responsables";
@@ -1000,6 +1001,7 @@ export async function readGrandLivre(input: { id?: string; q?: string; page?: nu
       date: row.occurredLabel,
       reference: row.reference,
       lieu: row.whenWhere,
+      voyageurs: ledgerTravelerLabel(row.travelerNames, 0),
       lien: row.bookingId ? `/admin/reservations/${row.bookingId}` : null,
     })),
     credits: mcpSlice(await creditsPromise, ledgerWindow).rows,

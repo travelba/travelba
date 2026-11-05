@@ -4,7 +4,9 @@
  * Si la table n’est pas encore là, l’action métier continue.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { scrubPliantLog } from "@/lib/crm/pliant-tx";
 import {
   DEFAULT_FAILED_LOGIN_ALERTS,
   DEFAULT_PAYMENT_ALERT_CENTS,
@@ -119,6 +121,38 @@ export async function recordAgencyJournal(entry: AgencyJournalInput) {
     });
   } catch {
     /* Table absente ou secret de preview : l’action métier n’est pas bloquée. */
+  }
+}
+
+const PLIANT_ALERT_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+/** Alerte interne. Le client n’est pas prévenu. Une même phrase n’est pas répétée pendant six heures. */
+export async function recordPliantAlert(summary: string, entityId?: string | null, admin?: SupabaseClient) {
+  const text = scrubPliantLog(summary, 240);
+  if (!text) return;
+  try {
+    const db = admin ?? createServiceClient({ allowPreview: true });
+    const existing = await db.from("crm_agency_alerts").select("summary, created_at").eq("kind", "pliant").limit(20);
+    if (existing.error) {
+      console.error("[pliant] alerte", "non écrite");
+      return;
+    }
+    const fresh = ((existing.data || []) as { summary?: string; created_at?: string }[]).some((row) => {
+      const at = Date.parse(row.created_at || "");
+      return row.summary === text && Number.isFinite(at) && Date.now() - at < PLIANT_ALERT_WINDOW_MS;
+    });
+    if (fresh) return;
+    const inserted = await db.from("crm_agency_alerts").insert({
+      kind: "pliant",
+      summary: text,
+      staff_id: null,
+      entity_type: "card",
+      entity_id: entityId ?? null,
+      created_at: new Date().toISOString(),
+    });
+    if (inserted.error) console.error("[pliant] alerte", "non écrite");
+  } catch {
+    console.error("[pliant] alerte", "non écrite");
   }
 }
 

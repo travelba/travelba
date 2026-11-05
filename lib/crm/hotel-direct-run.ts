@@ -19,7 +19,7 @@ import {
   type StayEvent,
 } from "@/lib/crm/hotel-direct";
 import { clientConfirmationDraft, hotelRequestLetter, outboundHotelRecipient, HOTEL_DIRECT_FROM } from "@/lib/crm/hotel-direct-mail";
-import { leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
+import { clientBenefits, leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import {
   adoptLeBooking,
   claimLeBooking,
@@ -47,6 +47,8 @@ import { formatDateFr } from "@/lib/crm/dates";
 import { bookingCardValidity, manualStayCardBody } from "@/lib/crm/manual-stay-card";
 import { centsToAmount, formatMoney } from "@/lib/crm/money";
 import { issuePliantCard, lockPliantCard, pliantConfigured, readPliantCardholderName, readPliantCardSecrets } from "@/lib/crm/pliant";
+import { scrubPliantLog } from "@/lib/crm/pliant-tx";
+import { recordPliantAlert } from "@/lib/crm/agency-log";
 import { ensureStripeCustomer, getStripe, stripeConfigured } from "@/lib/crm/stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -103,7 +105,26 @@ function db() {
 }
 
 function benefitsOf(value: unknown) {
-  return Array.isArray(value) ? value.filter((line): line is string => typeof line === "string").slice(0, 12) : [];
+  const raw = Array.isArray(value) ? value.filter((line): line is string => typeof line === "string") : [];
+  return clientBenefits(raw).slice(0, 12);
+}
+
+function cardDetails(
+  offer: { hotel_name: string; city: string; room_label: string | null; benefits: unknown; account: string },
+  guests: string,
+  extra: Record<string, unknown> = {}
+) {
+  const details: Record<string, unknown> = {
+    hotel_name: offer.hotel_name,
+    city: offer.city,
+    room: offer.room_label,
+    guests,
+    ...extra,
+  };
+  if (offer.account === "little_emperors") details.source_family = "little_emperors";
+  const raw = Array.isArray(offer.benefits) ? offer.benefits.filter((line): line is string => typeof line === "string") : [];
+  assignLeIncluded(details, raw, leRoomLabels({ room: offer.room_label }));
+  return details;
 }
 
 function deadlineOf(policy: string | null, free: boolean) {
@@ -166,6 +187,24 @@ function termsFor(quote: LeFreshQuote) {
   });
 }
 
+type StayCardIssue = {
+  detail: string;
+  cardId: string | null;
+  holder: { firstName: string; lastName: string } | null;
+  failure: "porteur" | "emission" | null;
+  reason: string | null;
+  nameReason: string | null;
+};
+
+function agencyCardStop(issued: StayCardIssue) {
+  if (issued.failure === "porteur") return "Carte: porteur illisible";
+  const parts = ["émission refusée"];
+  if (issued.nameReason) parts.push("porteur illisible");
+  const detail = (issued.reason || "").replace(/\s+/g, " ").trim();
+  if (detail) parts.push(detail);
+  return scrubPliantLog(`Carte: ${parts.join(" · ")}`, 180);
+}
+
 async function issueStayCard(input: {
   stay: DirectStay;
   offer: Offer;
@@ -175,37 +214,69 @@ async function issueStayCard(input: {
   lastName: string;
   exact?: boolean;
   holder?: { firstName: string; lastName: string } | null;
-}) {
+  nameChecked?: boolean;
+  nameReason?: string | null;
+}): Promise<StayCardIssue> {
   const ceiling = input.exact ? input.stay.hotelCents : directCardCeilingCents(input.stay.hotelCents);
-  if (!input.live) return "Carte d’essai, aucun numéro";
-  if (!pliantConfigured() || input.stay.currency !== "EUR" || ceiling == null) return "Plafond préparé, émission en attente";
-  const holderId = process.env.PLIANT_CARDHOLDER_ID || "";
-  const holder = input.holder || (await readPliantCardholderName(holderId));
-  if (!holder) return "Porteur introuvable, carte non émise";
+  const empty = (detail: string, failure: StayCardIssue["failure"], reason: string | null, nameReason: string | null): StayCardIssue => ({
+    detail,
+    cardId: null,
+    holder: null,
+    failure,
+    reason,
+    nameReason,
+  });
+  if (!input.live) return empty("Carte d’essai, aucun numéro", null, null, null);
+  if (!pliantConfigured() || input.stay.currency !== "EUR" || ceiling == null) {
+    return empty("Plafond préparé, émission en attente", "emission", "Plafond préparé, émission en attente", input.nameReason || null);
+  }
+  const holderId = (process.env.PLIANT_CARDHOLDER_ID || "").trim();
+  let named = input.holder?.firstName && input.holder.lastName ? input.holder : null;
+  let nameReason = input.nameReason || null;
+  if (!named && !input.nameChecked && holderId) {
+    const read = await readPliantCardholderName(holderId);
+    if (read.ok) named = { firstName: read.firstName, lastName: read.lastName };
+    else nameReason = read.reason;
+  }
+  if (!holderId) return empty("Porteur introuvable, carte non émise", "porteur", nameReason || "Porteur non configuré", nameReason);
   const window = bookingCardValidity(parisToday(), input.offer.check_out);
   const client = [input.firstName, input.lastName].filter(Boolean).join(" ") || "Client";
+  const drafted = manualStayCardBody({
+    firstName: named?.firstName || "Porteur",
+    lastName: named?.lastName || "Agence",
+    limitCents: ceiling,
+    validFrom: window.validFrom,
+    validTo: window.validTo,
+    organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
+    client,
+    place: input.offer.hotel_name,
+    hotels: [input.offer.hotel_name],
+    reference: input.reference,
+    transactionLimitCents: ceiling,
+    currency: "EUR",
+  });
+  const body = named ? drafted : (({ customFirstName, customLastName, ...rest }) => {
+    void customFirstName;
+    void customLastName;
+    return rest;
+  })(drafted);
   try {
-    const issued = await issuePliantCard(
-      holderId,
-      manualStayCardBody({
-        firstName: holder.firstName,
-        lastName: holder.lastName,
-        limitCents: ceiling,
-        validFrom: window.validFrom,
-        validTo: window.validTo,
-        organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
-        client,
-        place: input.offer.hotel_name,
-        hotels: [input.offer.hotel_name],
-        reference: input.reference,
-        transactionLimitCents: ceiling,
-        currency: "EUR",
-      })
-    );
+    const issued = await issuePliantCard(holderId, body);
     input.stay.pliantCardId = issued.cardId;
-    return issued.cardId ? "Carte émise" : "Émission non aboutie";
-  } catch {
-    return "Émission non aboutie";
+    if (!issued.cardId) {
+      return { detail: "Émission non aboutie", cardId: null, holder: named, failure: "emission", reason: "Aucun identifiant de carte", nameReason };
+    }
+    return {
+      detail: named ? "Carte émise" : "Carte émise, porteur illisible",
+      cardId: issued.cardId,
+      holder: named,
+      failure: null,
+      reason: null,
+      nameReason,
+    };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Émission non aboutie";
+    return { detail: "Émission non aboutie", cardId: null, holder: named, failure: "emission", reason, nameReason };
   }
 }
 
@@ -331,7 +402,7 @@ async function runEffects(input: {
       );
     } else if (effect.type === "card") {
       const issued = await issueStayCard(input);
-      await remember(input.admin, input.stayId, "system", "carte", issued, effect.key);
+      await remember(input.admin, input.stayId, "system", "carte", issued.detail, effect.key);
     } else if (effect.type === "lock_card") {
       if (input.live && input.stay.pliantCardId) {
         await lockPliantCard(input.stay.pliantCardId).catch(() => false);
@@ -782,9 +853,11 @@ async function placeLeStay(input: {
     await storeFreshQuote(input.admin, input.offer.id, fresh, partyChanged(storedRooms, rooms) ? rooms : undefined);
   }
 
-  const holder = agency ? await readPliantCardholderName(process.env.PLIANT_CARDHOLDER_ID || "") : null;
+  const holderRead = agency ? await readPliantCardholderName(process.env.PLIANT_CARDHOLDER_ID || "") : null;
+  let holder = holderRead?.ok ? { firstName: holderRead.firstName, lastName: holderRead.lastName } : null;
+  const nameReason = holderRead && !holderRead.ok ? holderRead.reason : null;
   if (agency && !stay.pliantCardId) {
-    await issueStayCard({
+    const issued = await issueStayCard({
       stay,
       offer: input.offer,
       live: true,
@@ -793,13 +866,21 @@ async function placeLeStay(input: {
       lastName: input.customer.last_name || "",
       exact: true,
       holder,
+      nameChecked: true,
+      nameReason,
     });
-    if (stay.pliantCardId) stay = { ...stay, pliant: "issued", pliantCardId: stay.pliantCardId };
+    if (!issued.cardId) {
+      const reason = agencyCardStop(issued);
+      console.error("[hotels] carte", reason);
+      await remember(input.admin, stayId, "system", "carte", reason, null);
+      await recordPliantAlert(reason, stayId, input.admin);
+      await release(reason);
+      return { ok: false, message: NOT_CHARGED };
+    }
+    if (issued.holder) holder = issued.holder;
+    stay = { ...stay, pliant: "issued", pliantCardId: issued.cardId };
     await saveStay(input.admin, stayId, stay);
-  }
-  if (agency && (!stay.pliantCardId || !holder)) {
-    await release("Carte");
-    return { ok: false, message: NOT_CHARGED };
+    if (issued.nameReason) console.error("[hotels] carte", scrubPliantLog(`porteur illisible : ${issued.nameReason}`, 180));
   }
 
   let booking: LeBooking | null = null;
@@ -818,7 +899,7 @@ async function placeLeStay(input: {
     }
     if (adopted) booking = { id: adopted.id, confirmation_number: adopted.confirmation } as LeBooking;
   }
-  const cardName = holder ? [holder.firstName, holder.lastName].filter(Boolean).join(" ") : "";
+  const cardName = holder ? [holder.firstName, holder.lastName].filter(Boolean).join(" ") : "Travelba";
   let cardLast4: string | null = null;
   const post = async (quote: LeFreshQuote) => {
     const secrets = agency && stay.pliantCardId ? await readPliantCardSecrets(stay.pliantCardId) : null;
@@ -1245,13 +1326,11 @@ export async function openDirectStay(input: {
         amount,
         include_in_ledger: false,
         visible_to_client: false,
-        details: {
-          hotel_name: offer.hotel_name,
-          city: offer.city,
-          room: offer.room_label,
-          guests: input.guests.flatMap((name, index) => [name, ...((input.companions || [])[index] || [])]).join(", "),
-          direct_stay_id: stayId,
-        },
+        details: cardDetails(
+          offer,
+          input.guests.flatMap((name, index) => [name, ...((input.companions || [])[index] || [])]).join(", "),
+          { direct_stay_id: stayId }
+        ),
       })
       .select("id")
       .single();

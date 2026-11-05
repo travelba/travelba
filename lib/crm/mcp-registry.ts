@@ -48,7 +48,7 @@ import {
   updateHotel,
   updateVol,
 } from "@/lib/crm/mcp-trip";
-import { inviteClientAccess, setCompanyRole, updateHolderProfile } from "@/lib/crm/mcp-account";
+import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { importLittleEmperorsFromMcp } from "@/lib/crm/le-import";
@@ -118,7 +118,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 106;
+export const MCP_TOOL_CAP = 107;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -415,7 +415,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "grand_livre",
     description:
-      "Encours et derniers mouvements d’un client. Positif = avoir, négatif = reste à payer. credits liste les crédits Revolut, Stripe et virements saisis encore rattachés (id, montant, paiement_id) pour remettre_non_rattache. id ou q. Lecture seule.",
+      "Encours et derniers mouvements d’un client. Positif = avoir, négatif = reste à payer. Un débit de séjour porte voyageurs : les noms cochés sur la carte, sinon les voyageurs du dossier. credits liste les crédits Revolut, Stripe et virements saisis encore rattachés (id, montant, paiement_id) pour remettre_non_rattache. id ou q. Lecture seule.",
     input: { id, q, page: listPage, limite: listLimit },
     run: (args: ToolArgs) => readGrandLivre({ id: str(args, "id"), q: str(args, "q"), ...pageOf(args) }),
   },
@@ -897,9 +897,15 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_titulaire",
     write: true,
     description:
-      "Met à jour la fiche du titulaire et son passeport : prénoms, nom, nom de passeport, nom d’usage, date de naissance, lieu de naissance, sexe, nationalité, date de délivrance, adresse personnelle. Mêmes champs d’identité que l’accompagnateur. Le nom de passeport peut différer du nom de la fiche. L’adresse (adresse, code_postal, ville, pays) est le domicile, pas la facturation. pays_passeport choisit le livret (FR, IL) et n’est pas recopié dans la nationalité. Plusieurs livrets : la délivrance, le lieu ou le nom de passeport exigent pays_passeport. L’autre nationalité reste. Le numéro n’est ni lu ni renvoyé. Aucun message.",
+      "Met à jour la fiche du titulaire et son passeport, ou le passeport d’un accompagnateur si compagnon_id est indiqué. Prénoms, nom, nom de passeport, nom d’usage, date de naissance, lieu de naissance, sexe, nationalité, date de délivrance, expiration, numéro. Mêmes champs d’identité que l’accompagnateur. Le nom de passeport peut différer du nom de la fiche. L’adresse personnelle (adresse, code_postal, ville, pays) est le domicile du titulaire, pas la facturation, et ne s’applique pas à un accompagnateur. pays_passeport choisit le livret (FR, IL) et n’est pas recopié dans la nationalité. Plusieurs livrets : la délivrance, l’expiration, le numéro, le lieu ou le nom de passeport exigent pays_passeport. L’autre nationalité reste. Le numéro peut être corrigé. Il n’est ni lu ni renvoyé. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client, le titulaire"),
+      compagnon_id: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Accompagnateur de cette fiche. Sans lui, le passeport du titulaire"),
       prenoms: z.string().trim().max(120).optional().describe("Prénoms, dans l’ordre du passeport"),
       nom: z.string().trim().max(80).optional().describe("Nom de la fiche"),
       nom_passeport: z.string().trim().max(80).optional().describe("Nom imprimé sur le passeport, s’il diffère"),
@@ -909,13 +915,31 @@ export const MCP_TOOLS: ToolDef[] = [
       sexe: z.string().trim().max(20).optional().describe("M, F ou X"),
       nationalite: z.string().trim().max(80).optional().describe("Nationalité, code ou nom. Pas le pays du passeport"),
       delivrance: z.string().trim().max(40).optional().describe("Délivrance du passeport, AAAA-MM-JJ"),
-      adresse: z.string().trim().max(300).optional().describe("Adresse personnelle, pas la facturation"),
+      expiration: z.string().trim().max(40).optional().describe("Expiration du passeport, AAAA-MM-JJ"),
+      numero: z.string().trim().max(40).optional().describe("Numéro du passeport. Il n’est ni lu ni renvoyé"),
+      adresse: z.string().trim().max(300).optional().describe("Adresse personnelle du titulaire, pas la facturation"),
       code_postal: z.string().trim().max(20).optional().describe("Code postal du domicile"),
       ville: z.string().trim().max(80).optional().describe("Ville du domicile"),
       pays: z.string().trim().max(80).optional().describe("Pays du domicile"),
       pays_passeport: z.string().trim().max(80).optional().describe("Pays émetteur du livret à modifier. Pas la nationalité"),
     },
     run: (args) => updateHolderProfile(args),
+  },
+  {
+    name: "mettre_a_jour_accompagnant",
+    write: true,
+    description:
+      "Modifie un accompagnateur déjà sur la fiche : prénoms, nom, nom d’usage, date de naissance, sexe. compagnon_id est celui de la fiche (pas voyageur_id). Le nom, les prénoms, le nom d’usage, la naissance et le sexe sont recopiés sur son passeport et sur les séjours. Le numéro, la délivrance et l’expiration ne changent pas. Le numéro n’est ni lu ni renvoyé. Aucun message.",
+    input: {
+      compagnon_id: z.string().trim().max(80).describe("Identifiant de l’accompagnateur"),
+      client_id: z.string().trim().max(80).optional().describe("Fiche du titulaire, pour vérifier le rattachement"),
+      prenoms: z.string().trim().max(120).optional().describe("Prénoms, dans l’ordre du passeport"),
+      nom: z.string().trim().max(80).optional().describe("Nom"),
+      nom_usage: z.string().trim().max(80).optional().describe("Nom d’usage ou nom d’épouse. Vide pour l’effacer"),
+      date_naissance: z.string().trim().max(40).optional().describe("Naissance, AAAA-MM-JJ. Vide pour l’effacer"),
+      sexe: z.string().trim().max(20).optional().describe("M, F ou X"),
+    },
+    run: (args) => updateCompanionIdentity(args),
   },
   {
     name: "definir_role_societe",
@@ -975,7 +999,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays) sont écrits ; délivrance, autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le fichier du visa par WhatsApp au client et au voyageur concerné s’il a un autre numéro. Le modèle est autorisation_validee_document_v2 (PDF) ou autorisation_validee_image_v2 (JPEG ou PNG) dès qu’il est approuvé, sinon la v1. Le texte v2 est « Bonne nouvelle ! Votre autorisation {{3}} a été validée. Vous la trouverez ci-jointe. » {{3}} est le nom réel : ESTA, ETA, ETA-IL, eTA Canada, NZeTA, ETIAS, e-Visa et le pays, sinon Visa ou ETA. Sans modèle approuvé, rien ne part et la raison le dit. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. carte_embarquement dépose un PDF sur le dossier, type carte d’embarquement, le même que le bouton Cartes d’embarquement : aucun WhatsApp. Le numéro n’est pas renvoyé.",
+      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays, délivrance) sont écrits. La délivrance est aussi posée quand elle est lue sur le fichier. Autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le fichier du visa par WhatsApp au client et au voyageur concerné s’il a un autre numéro. Le modèle est autorisation_validee_document_v2 (PDF) ou autorisation_validee_image_v2 (JPEG ou PNG) dès qu’il est approuvé, sinon la v1. Le texte v2 est « Bonne nouvelle ! Votre autorisation {{3}} a été validée. Vous la trouverez ci-jointe. » {{3}} est le nom réel : ESTA, ETA, ETA-IL, eTA Canada, NZeTA, ETIAS, e-Visa et le pays, sinon Visa ou ETA. Sans modèle approuvé, rien ne part et la raison le dit. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. carte_embarquement dépose un PDF sur le dossier, type carte d’embarquement, le même que le bouton Cartes d’embarquement : aucun WhatsApp. Le numéro n’est pas renvoyé.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
@@ -990,6 +1014,7 @@ export const MCP_TOOLS: ToolDef[] = [
       pays: z.string().trim().max(80).optional().describe("Pays émetteur, code ou nom. Pas la nationalité"),
       numero: z.string().trim().max(40).optional().describe("Numéro de la pièce. Il n’est pas renvoyé"),
       expiration: z.string().trim().max(40).optional().describe("Expiration, AAAA-MM-JJ"),
+      delivrance: z.string().trim().max(40).optional().describe("Délivrance du passeport, AAAA-MM-JJ. Écrite aussi si elle est lue sur le fichier"),
       nom_fichier: z.string().trim().max(180).describe("Nom du fichier, ex. eta-il.pdf"),
       type_mime: z.string().trim().max(120).optional().describe("Type mime, ex. application/pdf"),
       contenu: z.string().trim().max(36_000_000).describe("Fichier en base64, 25 Mo maximum"),

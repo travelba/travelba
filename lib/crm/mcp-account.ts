@@ -38,7 +38,8 @@ type PassportRow = {
 
 export type HolderResult = {
   id: string;
-  titulaire: true;
+  titulaire: boolean;
+  compagnon_id?: string;
   champs: string[];
   passeport: boolean;
   notifie: false;
@@ -51,6 +52,7 @@ export type HolderResult = {
   sexe?: string | null;
   nationalite?: string | null;
   delivrance?: string | null;
+  expiration?: string | null;
   adresse?: string | null;
   code_postal?: string | null;
   ville?: string | null;
@@ -60,11 +62,23 @@ export type HolderResult = {
 
 export type HolderDraft = {
   id: string;
+  /** Accompagnateur : le passeport de cette personne, pas celui du titulaire. */
+  compagnonId: string | null;
   customer: Record<string, unknown>;
   passport: Record<string, unknown>;
-  /** Délivrance, lieu ou nom de passeport : un livret précis. */
+  /** Délivrance, expiration, numéro, lieu ou nom de passeport : un livret précis. */
   documentSpecific: boolean;
   paysPasseport: string | null;
+  champs: string[];
+  echo: Record<string, unknown>;
+};
+
+export type CompanionDraft = {
+  compagnonId: string;
+  clientId: string;
+  companion: Record<string, unknown>;
+  passport: Record<string, unknown>;
+  traveler: Record<string, unknown>;
   champs: string[];
   echo: Record<string, unknown>;
 };
@@ -149,6 +163,19 @@ function nationalityOf(value: unknown) {
   return code;
 }
 
+/** Numéro de livret. Jamais renvoyé, jamais journalisé en clair. */
+function passportNumber(value: unknown) {
+  if (typeof value !== "string") throw new McpWriteError("Numéro invalide.");
+  const compact = value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  if (compact.length < 4 || compact.length > 20) throw new McpWriteError("Numéro invalide.");
+  return compact;
+}
+
+function requiredDay(value: unknown, label: string) {
+  if (typeof value !== "string" || !isIsoDate(value.trim())) throw new McpWriteError(`${label} : AAAA-MM-JJ.`);
+  return value.trim();
+}
+
 function countryOf(value: unknown, label: string) {
   if (value == null || value === "") return null;
   if (typeof value !== "string") throw new McpWriteError(`${label} invalide.`);
@@ -158,12 +185,22 @@ function countryOf(value: unknown, label: string) {
 }
 
 /**
- * Fiche du titulaire et passeport. Mêmes champs d’identité que l’accompagnateur,
- * plus le livret (nom de passeport, lieu, délivrance) et l’adresse personnelle.
- * Le numéro n’entre pas. Le pays du passeport n’est pas la nationalité.
+ * Fiche du titulaire et passeport, ou passeport d’un accompagnateur (`compagnon_id`).
+ * L’adresse reste celle du titulaire. Le numéro peut être corrigé : il n’est pas renvoyé.
+ * Le pays du passeport n’est pas la nationalité.
  */
 export function prepareHolderProfile(input: Record<string, unknown>): HolderDraft {
   const id = clientId(input);
+  const compagnonId = "compagnon_id" in input && input.compagnon_id != null && input.compagnon_id !== ""
+    ? uuid(input.compagnon_id, "Accompagnateur")
+    : null;
+  if (compagnonId) {
+    for (const key of ["adresse", "code_postal", "ville", "pays"] as const) {
+      if (key in input && input[key] != null && String(input[key]).trim() !== "") {
+        throw new McpWriteError("L’adresse est celle du titulaire.");
+      }
+    }
+  }
   const customer: Record<string, unknown> = {};
   const passport: Record<string, unknown> = {};
   const echo: Record<string, unknown> = {};
@@ -233,22 +270,34 @@ export function prepareHolderProfile(input: Record<string, unknown>): HolderDraf
     champs.push("delivrance");
     documentSpecific = true;
   }
-  if ("adresse" in input) {
+  if ("expiration" in input) {
+    const expires = requiredDay(input.expiration, "Date d’expiration");
+    passport.expires_on = expires;
+    echo.expiration = expires;
+    champs.push("expiration");
+    documentSpecific = true;
+  }
+  if ("numero" in input) {
+    passport.number = passportNumber(input.numero);
+    champs.push("numero");
+    documentSpecific = true;
+  }
+  if (!compagnonId && "adresse" in input) {
     customer.address_line = optionalClear(input.adresse, "Adresse", 300);
     echo.adresse = customer.address_line;
     champs.push("adresse");
   }
-  if ("code_postal" in input) {
+  if (!compagnonId && "code_postal" in input) {
     customer.postal_code = optionalClear(input.code_postal, "Code postal", 20);
     echo.code_postal = customer.postal_code;
     champs.push("code_postal");
   }
-  if ("ville" in input) {
+  if (!compagnonId && "ville" in input) {
     customer.city = optionalClear(input.ville, "Ville", 80);
     echo.ville = customer.city;
     champs.push("ville");
   }
-  if ("pays" in input) {
+  if (!compagnonId && "pays" in input) {
     customer.country = countryOf(input.pays, "Pays");
     echo.pays = customer.country;
     champs.push("pays");
@@ -262,7 +311,64 @@ export function prepareHolderProfile(input: Record<string, unknown>): HolderDraf
   if (champs.length === 1 && champs[0] === "pays_passeport") {
     throw new McpWriteError("Indiquez ce qu’il faut modifier.");
   }
-  return { id, customer, passport, documentSpecific, paysPasseport, champs, echo };
+  return { id, compagnonId, customer, passport, documentSpecific, paysPasseport, champs, echo };
+}
+
+/**
+ * Identité d’un accompagnateur : prénoms, nom, nom d’usage, naissance, sexe.
+ * Pas le numéro de passeport. Pas l’adresse du titulaire.
+ */
+export function prepareCompanionIdentity(input: Record<string, unknown>): CompanionDraft {
+  const compagnonId = uuid(input.compagnon_id, "Accompagnateur");
+  const clientId = "client_id" in input && input.client_id != null && input.client_id !== ""
+    ? uuid(input.client_id, "Client")
+    : "id" in input && input.id != null && input.id !== "" && input.id !== compagnonId
+      ? uuid(input.id, "Client")
+      : "";
+  const companion: Record<string, unknown> = {};
+  const passport: Record<string, unknown> = {};
+  const traveler: Record<string, unknown> = {};
+  const echo: Record<string, unknown> = {};
+  const champs: string[] = [];
+  if ("prenoms" in input) {
+    const prenoms = text(input.prenoms, "Prénoms", 120);
+    companion.first_name = prenoms;
+    passport.first_name = prenoms;
+    traveler.first_name = prenoms;
+    echo.prenoms = prenoms;
+    champs.push("prenoms");
+  }
+  if ("nom" in input) {
+    const nom = text(input.nom, "Nom", 80);
+    companion.last_name = nom;
+    passport.last_name = nom;
+    traveler.last_name = nom;
+    echo.nom = nom;
+    champs.push("nom");
+  }
+  if ("nom_usage" in input) {
+    const usage = optionalClear(input.nom_usage, "Nom d’usage", 80);
+    companion.usage_name = usage;
+    passport.usage_name = usage;
+    echo.nom_usage = usage;
+    champs.push("nom_usage");
+  }
+  if ("date_naissance" in input) {
+    const birth = day(input.date_naissance, "Date de naissance");
+    companion.birth_date = birth;
+    passport.birth_date = birth;
+    echo.date_naissance = birth;
+    champs.push("date_naissance");
+  }
+  if ("sexe" in input) {
+    const sex = sexOf(input.sexe);
+    companion.sex = sex;
+    passport.sex = sex;
+    echo.sexe = sex;
+    champs.push("sexe");
+  }
+  if (!champs.length) throw new McpWriteError("Indiquez ce qu’il faut modifier.");
+  return { compagnonId, clientId, companion, passport, traveler, champs, echo };
 }
 
 /** Même modèle que la fiche agence : admin, membre (payeur admin), particulier. */
@@ -309,7 +415,29 @@ async function loadHolder(db: Admin, id: string) {
   return (data as CrmCustomer | null) ?? null;
 }
 
-async function loadPassports(db: Admin, customerId: string) {
+type CompanionIdentity = {
+  id: string;
+  customer_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  usage_name: string | null;
+  birth_date: string | null;
+  sex: string | null;
+  nationality: string | null;
+};
+
+async function loadCompanion(db: Admin, companionId: string, customerId: string) {
+  const { data, error } = await db
+    .from("crm_travel_companions")
+    .select("id, customer_id, first_name, last_name, usage_name, birth_date, sex, nationality")
+    .eq("id", companionId)
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  if (error) throw new McpWriteError("Accompagnateur introuvable.");
+  return (data as CompanionIdentity | null) ?? null;
+}
+
+async function loadPassports(db: Admin, customerId: string, companionId: string | null) {
   const { data, error } = await db
     .from("crm_travel_documents")
     .select(
@@ -319,7 +447,7 @@ async function loadPassports(db: Admin, customerId: string) {
     .eq("doc_type", "passport")
     .limit(80);
   if (error) throw new McpWriteError("Passeport non enregistré.");
-  return ((data || []) as PassportRow[]).filter((row) => row.companion_id == null);
+  return ((data || []) as PassportRow[]).filter((row) => (row.companion_id || null) === companionId);
 }
 
 async function journal(db: Admin, action: string, customerId: string, summary: string, detail: Record<string, unknown>) {
@@ -366,21 +494,24 @@ async function portalStatus(customer: CrmCustomer, db: Admin, deps?: AccountDeps
 }
 
 /**
- * Met à jour la fiche du titulaire et son passeport. Pas un accompagnateur.
- * Aucun message, aucun numéro.
+ * Met à jour la fiche du titulaire et son passeport, ou le passeport d’un
+ * accompagnateur quand `compagnon_id` est indiqué. Aucun message.
+ * Le numéro peut être écrit. Il n’est ni renvoyé ni journalisé.
  */
 export async function updateHolderProfile(input: Record<string, unknown>, admin?: Admin): Promise<HolderResult> {
   const draft = prepareHolderProfile(input);
   const db = client(admin);
   const holder = await loadHolder(db, draft.id);
   if (!holder) throw new McpWriteError("Client introuvable.");
+  const companion = draft.compagnonId ? await loadCompanion(db, draft.compagnonId, draft.id) : null;
+  if (draft.compagnonId && !companion) throw new McpWriteError("Accompagnateur introuvable.");
 
   const passportPatch = draft.passport;
   const wantsPassport = draft.documentSpecific || Object.keys(passportPatch).length > 0;
   let targets: PassportRow[] = [];
   let create = false;
   if (wantsPassport) {
-    const rows = await loadPassports(db, draft.id);
+    const rows = await loadPassports(db, draft.id, draft.compagnonId);
     const countries = new Set(rows.map((row) => row.issuing_country || ""));
     if (draft.paysPasseport) {
       targets = rows.filter((row) => (row.issuing_country || "") === draft.paysPasseport);
@@ -396,7 +527,17 @@ export async function updateHolderProfile(input: Record<string, unknown>, admin?
     }
   }
 
-  if (Object.keys(draft.customer).length) {
+  const person = companion || holder;
+  if (draft.compagnonId) {
+    if (Object.keys(draft.customer).length) {
+      const { error } = await db
+        .from("crm_travel_companions")
+        .update(draft.customer)
+        .eq("id", draft.compagnonId)
+        .eq("customer_id", draft.id);
+      if (error) throw new McpWriteError("Fiche non enregistrée.");
+    }
+  } else if (Object.keys(draft.customer).length) {
     const { error } = await db.from("crm_customers").update(draft.customer).eq("id", draft.id);
     if (error) throw new McpWriteError("Fiche non enregistrée.");
   }
@@ -404,16 +545,21 @@ export async function updateHolderProfile(input: Record<string, unknown>, admin?
     const name: Record<string, unknown> = {};
     if ("prenoms" in input) name.first_name = draft.customer.first_name;
     if ("nom" in input) name.last_name = draft.customer.last_name;
-    const { data: bookings, error: bookingError } = await db.from("crm_bookings").select("id").eq("customer_id", draft.id);
-    if (bookingError) throw new McpWriteError("Fiche non enregistrée.");
-    const ids = ((bookings || []) as { id: string }[]).map((row) => row.id);
-    if (ids.length) {
-      const { error } = await db
-        .from("crm_booking_travelers")
-        .update(name)
-        .in("booking_id", ids)
-        .eq("is_account_holder", true);
+    if (draft.compagnonId) {
+      const { error } = await db.from("crm_booking_travelers").update(name).eq("companion_id", draft.compagnonId);
       if (error) throw new McpWriteError("Fiche non enregistrée.");
+    } else {
+      const { data: bookings, error: bookingError } = await db.from("crm_bookings").select("id").eq("customer_id", draft.id);
+      if (bookingError) throw new McpWriteError("Fiche non enregistrée.");
+      const ids = ((bookings || []) as { id: string }[]).map((row) => row.id);
+      if (ids.length) {
+        const { error } = await db
+          .from("crm_booking_travelers")
+          .update(name)
+          .in("booking_id", ids)
+          .eq("is_account_holder", true);
+        if (error) throw new McpWriteError("Fiche non enregistrée.");
+      }
     }
   }
   if (Object.keys(passportPatch).length) {
@@ -423,35 +569,100 @@ export async function updateHolderProfile(input: Record<string, unknown>, admin?
     }
   }
   if (create) {
+    const sex = passportPatch.sex === "M" || passportPatch.sex === "F" || passportPatch.sex === "X"
+      ? passportPatch.sex
+      : person.sex === "M" || person.sex === "F" || person.sex === "X"
+        ? person.sex
+        : null;
     try {
       await insertTravelDocument(db, {
         customerId: draft.id,
-        companionId: null,
+        companionId: draft.compagnonId,
         docType: "passport",
+        number: (passportPatch.number as string | null) ?? null,
         issuingCountry: draft.paysPasseport,
         issuedOn: (passportPatch.issued_on as string | null) ?? null,
+        expiresOn: (passportPatch.expires_on as string | null) ?? null,
         placeOfBirth: (passportPatch.place_of_birth as string | null) ?? null,
-        first_name: (passportPatch.first_name as string | null) ?? holder.first_name,
-        last_name: (passportPatch.last_name as string | null) ?? holder.last_name,
-        usage_name: (passportPatch.usage_name as string | null) ?? holder.usage_name ?? null,
-        birth_date: (passportPatch.birth_date as string | null) ?? holder.birth_date,
-        nationality: (passportPatch.nationality as string | null) ?? holder.nationality,
-        sex: passportPatch.sex === "M" || passportPatch.sex === "F" || passportPatch.sex === "X" ? passportPatch.sex : holder.sex === "M" || holder.sex === "F" || holder.sex === "X" ? holder.sex : null,
+        first_name: (passportPatch.first_name as string | null) ?? person.first_name,
+        last_name: (passportPatch.last_name as string | null) ?? person.last_name,
+        usage_name: (passportPatch.usage_name as string | null) ?? person.usage_name ?? null,
+        birth_date: (passportPatch.birth_date as string | null) ?? person.birth_date,
+        nationality: (passportPatch.nationality as string | null) ?? person.nationality ?? null,
+        sex,
         formalities: false,
         replacePrevious: false,
       });
     } catch (err) {
-      console.error("[mcp]", err instanceof Error ? err.message : "error");
+      console.error("[mcp] passeport", err instanceof Error ? err.name : "error");
       throw new McpWriteError("Passeport non enregistré.");
     }
   }
-  await journal(db, "fiche_titulaire", draft.id, "Fiche du titulaire mise à jour", { champs: draft.champs });
+  await journal(
+    db,
+    draft.compagnonId ? "passeport_accompagnant" : "fiche_titulaire",
+    draft.id,
+    draft.compagnonId ? "Passeport de l’accompagnateur mis à jour" : "Fiche du titulaire mise à jour",
+    { champs: draft.champs, ...(draft.compagnonId ? { compagnon_id: draft.compagnonId } : {}) }
+  );
   return {
     ...(draft.echo as HolderResult),
     id: draft.id,
-    titulaire: true,
+    titulaire: !draft.compagnonId,
+    ...(draft.compagnonId ? { compagnon_id: draft.compagnonId } : {}),
     champs: draft.champs,
     passeport: targets.length > 0 || create,
+    notifie: false,
+  };
+}
+
+/**
+ * Renomme un accompagnateur et aligne son passeport (noms, naissance, sexe).
+ * Le numéro, la délivrance et l’expiration ne changent pas. Aucun message.
+ */
+export async function updateCompanionIdentity(input: Record<string, unknown>, admin?: Admin) {
+  const draft = prepareCompanionIdentity(input);
+  const db = client(admin);
+  let query = db
+    .from("crm_travel_companions")
+    .select("id, customer_id, first_name, last_name")
+    .eq("id", draft.compagnonId);
+  if (draft.clientId) query = query.eq("customer_id", draft.clientId);
+  const { data, error } = await query.maybeSingle();
+  if (error || !data) throw new McpWriteError("Accompagnateur introuvable.");
+  const companion = data as { id: string; customer_id: string };
+  if (draft.clientId && companion.customer_id !== draft.clientId) {
+    throw new McpWriteError("Cet accompagnateur n’est pas sur cette fiche.");
+  }
+  const { error: updateError } = await db
+    .from("crm_travel_companions")
+    .update(draft.companion)
+    .eq("id", companion.id)
+    .eq("customer_id", companion.customer_id);
+  if (updateError) throw new McpWriteError("Accompagnateur non enregistré.");
+  if (Object.keys(draft.traveler).length) {
+    const { error: stayError } = await db.from("crm_booking_travelers").update(draft.traveler).eq("companion_id", companion.id);
+    if (stayError) throw new McpWriteError("Accompagnateur non enregistré.");
+  }
+  if (Object.keys(draft.passport).length) {
+    const { error: passportError } = await db
+      .from("crm_travel_documents")
+      .update(draft.passport)
+      .eq("customer_id", companion.customer_id)
+      .eq("companion_id", companion.id)
+      .eq("doc_type", "passport");
+    if (passportError) throw new McpWriteError("Accompagnateur non enregistré.");
+  }
+  await journal(db, "fiche_accompagnant", companion.customer_id, "Accompagnateur mis à jour", {
+    champs: draft.champs,
+    compagnon_id: companion.id,
+  });
+  return {
+    ...(draft.echo as Record<string, unknown>),
+    id: companion.customer_id,
+    compagnon_id: companion.id,
+    titulaire: false,
+    champs: draft.champs,
     notifie: false,
   };
 }

@@ -39,6 +39,7 @@ const EXPECTED = [
   "creer_client",
   "mettre_a_jour_client",
   "modifier_titulaire",
+  "mettre_a_jour_accompagnant",
   "definir_role_societe",
   "inviter_client",
   "renvoyer_acces_whatsapp",
@@ -129,6 +130,7 @@ const WRITE_TOOLS = [
   "creer_client",
   "mettre_a_jour_client",
   "modifier_titulaire",
+  "mettre_a_jour_accompagnant",
   "definir_role_societe",
   "inviter_client",
   "renvoyer_acces_whatsapp",
@@ -204,6 +206,7 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.write, undefined);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.description || "", /credits/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.description || "", /voyageurs/);
   const unmatch = MCP_TOOLS.find((tool) => tool.name === "remettre_non_rattache");
   assert.equal(unmatch?.write, true);
   assert.match(unmatch?.description || "", /motif/);
@@ -257,6 +260,15 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(titulaire?.description || "", /adresse personnelle/);
   assert.match(titulaire?.description || "", /n’est ni lu ni renvoyé/);
   assert.match(titulaire?.description || "", /pays_passeport/);
+  assert.match(titulaire?.description || "", /compagnon_id/);
+  assert.match(titulaire?.description || "", /expiration/);
+  const accompagnant = MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_accompagnant");
+  assert.equal(accompagnant?.write, true);
+  assert.equal(accompagnant?.openWorld, undefined);
+  assert.equal(accompagnant?.pieceNumbers, undefined);
+  assert.match(accompagnant?.description || "", /nom d’usage/);
+  assert.match(accompagnant?.description || "", /n’est ni lu ni renvoyé/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.description || "", /délivrance/);
   const role = MCP_TOOLS.find((tool) => tool.name === "definir_role_societe");
   assert.equal(role?.write, true);
   assert.equal(role?.openWorld, undefined);
@@ -392,7 +404,8 @@ test("passport tools name the travelba-passeports namespace and stay off the gen
   }
   const piece = MCP_TOOLS.find((tool) => tool.name === "ajouter_piece")?.description || "";
   assert.match(piece, /accompagnateur déjà lié/);
-  assert.match(piece, /délivrance, autorité, noms/);
+  assert.match(piece, /délivrance est aussi posée/);
+  assert.match(piece, /Autorité, noms, naissance/);
   assert.match(piece, /n’envoie rien/);
 });
 

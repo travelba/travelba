@@ -51,6 +51,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   creer_client: "create_dossiers",
   mettre_a_jour_client: "edit_dossiers",
   modifier_titulaire: "edit_dossiers",
+  mettre_a_jour_accompagnant: "edit_dossiers",
   definir_role_societe: "edit_dossiers",
   inviter_client: "message_client",
   renvoyer_acces_whatsapp: "message_client",

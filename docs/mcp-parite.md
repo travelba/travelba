@@ -10,6 +10,8 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | --- | --- |
 | Créer la fiche | `creer_client` — couvert |
 | Modifier la fiche (identité, e-mail, téléphone, commission) | `mettre_a_jour_client`, `modifier_titulaire` — couvert |
+| Passeport d’un accompagnateur (numéro, délivrance, expiration, nationalité, naissance, lieu, sexe) | `modifier_titulaire` avec `compagnon_id` — couvert. Le numéro n’est ni renvoyé ni journalisé |
+| Renommer un accompagnateur (prénoms, nom, nom d’usage, naissance, sexe) | `mettre_a_jour_accompagnant` — ajouté. Le passeport et les séjours suivent. Le numéro, la délivrance et l’expiration restent |
 | Rôle société | `definir_role_societe` — couvert |
 | Une société, ou retirer une société vide | `mettre_a_jour_client` — couvert |
 | Liste complète des sociétés (ajout, modification, retrait) | `enregistrer_societes` — ajouté |
@@ -54,7 +56,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 
 | Action admin | Outil MCP |
 | --- | --- |
-| Pièce du coffre client (visa, ETA, passeport, assurance) | `ajouter_piece`, `requalifier_piece`, `notifier_piece` — couvert |
+| Pièce du coffre client (visa, ETA, passeport, assurance) | `ajouter_piece`, `requalifier_piece`, `notifier_piece` — couvert. Un passeport écrit la délivrance quand elle est fournie ou lue sur le fichier |
 | Carte d’embarquement déjà déposée | `notifier_carte_embarquement` — couvert |
 | Fichier sur le dossier ou sur une carte | `deposer_piece_dossier` — ajouté |
 | Retirer cette pièce | `retirer_piece_dossier` — ajouté |

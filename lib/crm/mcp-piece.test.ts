@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { previewMcpTool } from "./mcp-registry";
-import { addTravelPiece, notifyTravelPiece, prepareTravelPiece, requalifyPiece } from "./mcp-piece";
+import { addTravelPiece, notifyTravelPiece, prepareTravelPiece, requalifyPiece, resolvePassportIssueDate } from "./mcp-piece";
 import { McpWriteError } from "./mcp-write";
 import { customerDocumentStoragePath } from "./travel-document-write";
 
@@ -48,6 +48,8 @@ test("a piece names the client or the dossier and keeps a readable file", () => 
   assert.throws(() => prepareTravelPiece(piece({ type: "contrat" })), /Type de pièce inconnu/);
   assert.throws(() => prepareTravelPiece(piece({ type: "" })), /Type de pièce requis/);
   assert.throws(() => prepareTravelPiece(piece({ expiration: "01/04/2027" })), /Date d’expiration/);
+  assert.throws(() => prepareTravelPiece(piece({ delivrance: "12/03/2018" })), /Date de délivrance/);
+  assert.equal(prepareTravelPiece(piece({ type: "passeport", delivrance: "2018-03-12" })).issuedOn, "2018-03-12");
   assert.throws(() => prepareTravelPiece(piece({ nom_fichier: "  " })), /Nom de fichier/);
   assert.throws(() => prepareTravelPiece(piece({ contenu: "@@@" })), /illisible/);
   assert.throws(() => prepareTravelPiece(piece({ contenu: "" })), /Fichier vide/);
@@ -224,6 +226,91 @@ test("a passport scan keeps the identity already on file and writes the file", a
   assert.equal(JSON.stringify(result).includes("12AB34567"), false);
   assert.equal(JSON.stringify(result).includes("PN-1"), false);
   assert.equal(JSON.stringify(result).includes("Préfecture"), false);
+});
+
+test("a passport deposit writes the issue date when it is provided or read", async () => {
+  const provided = prepareTravelPiece(passportScan({ delivrance: "2019-04-01" }));
+  let reads = 0;
+  assert.equal(
+    await resolvePassportIssueDate(provided, async () => {
+      reads += 1;
+      return "2024-01-01";
+    }),
+    "2019-04-01"
+  );
+  assert.equal(reads, 0);
+  const plain = prepareTravelPiece(passportScan());
+  assert.equal(await resolvePassportIssueDate(plain), null);
+  assert.equal(
+    await resolvePassportIssueDate(plain, async () => {
+      reads += 1;
+      return "2024-01-01";
+    }),
+    "2024-01-01"
+  );
+  assert.equal(reads, 1);
+  assert.equal(await resolvePassportIssueDate(plain, async () => "12/03/2018"), null);
+  assert.equal(await resolvePassportIssueDate(prepareTravelPiece(piece({ type: "visa" }))), null);
+
+  const { admin, writes } = fakeCrm({ documents: [{ ...PASSPORT }] });
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    await addTravelPiece(passportScan({ delivrance: "2024-05-06", numero: "99ZZ00001" }), admin, {
+      upload: async () => {},
+      reconcile: async () => {},
+      extractIssueDate: async () => "2020-01-01",
+    });
+  } finally {
+    console.error = original;
+  }
+  const patch = writes.find((row) => row.op === "update");
+  assert.equal(patch?.payload.issued_on, "2024-05-06");
+  assert.equal(patch?.payload.number, "99ZZ00001");
+  assert.equal("authority" in (patch?.payload || {}), false);
+  assert.equal("first_name" in (patch?.payload || {}), false);
+  assert.equal(logs.some((line) => line.includes("99ZZ00001")), false);
+
+  const extracted = fakeCrm({ documents: [{ ...PASSPORT }] });
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    await addTravelPiece(passportScan({ numero: undefined }), extracted.admin, {
+      upload: async () => {},
+      reconcile: async () => {},
+      extractIssueDate: async () => {
+        throw new Error("MRZ 12AB34567");
+      },
+    });
+    await addTravelPiece(passportScan({ numero: undefined, pays: "Israël" }), extracted.admin, {
+      upload: async () => {},
+      reconcile: async () => {},
+      extractIssueDate: async () => "2023-07-08",
+    });
+  } finally {
+    console.error = original;
+  }
+  const failed = extracted.writes.find((row) => row.op === "update");
+  assert.equal("issued_on" in (failed?.payload || {}), false);
+  const inserted = extracted.writes.find((row) => row.op === "insert" && row.table === "crm_travel_documents");
+  assert.equal(inserted?.payload.issued_on, "2023-07-08");
+  assert.equal(logs.join("\n").includes("12AB34567"), false);
+  assert.equal(logs.join("\n").includes("MRZ"), false);
+
+  const stay = fakeCrm({ documents: [{ ...PASSPORT }] });
+  await addTravelPiece(passportScan({ dossier_id: BOOKING, voyageur_id: TRAVELER, numero: "99ZZ00001" }), stay.admin, {
+    upload: async () => {},
+    reconcile: async () => {},
+    extractIssueDate: async () => "2024-08-09",
+  });
+  const stayRow = stay.writes.find((row) => row.op === "insert" && row.table === "crm_travel_documents");
+  assert.equal(stayRow?.payload.issued_on, "2024-08-09");
+  assert.equal(stayRow?.payload.authority, "Préfecture de Paris");
+  assert.equal(stayRow?.payload.first_name, "Maëlle Louise");
 });
 
 test("a second nationality does not replace the passport already on file", async () => {

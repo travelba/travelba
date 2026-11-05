@@ -4,9 +4,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   inviteAgain,
   inviteClientAccess,
+  prepareCompanionIdentity,
   prepareCompanyRole,
   prepareHolderProfile,
   setCompanyRole,
+  updateCompanionIdentity,
   updateHolderProfile,
 } from "./mcp-account";
 import { McpWriteError } from "./mcp-write";
@@ -18,6 +20,7 @@ const BOOKING = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const HOLDER_DOC = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const OTHER_DOC = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const COMPANION_DOC = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const COMPANION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TRAVELER = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const COMPANION_TRAVELER = "abababab-abab-4aba-8aba-abababababab";
 const AUTH = "99999999-9999-4999-8999-999999999999";
@@ -166,7 +169,7 @@ function seed(extra: Record<string, Row[]> = {}) {
       {
         id: COMPANION_DOC,
         customer_id: CLIENT,
-        companion_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        companion_id: COMPANION,
         booking_id: null,
         doc_type: "passport",
         issuing_country: "FR",
@@ -478,4 +481,265 @@ test("sans e-mail, ou pour un compte agence, l’invitation ne part pas", async 
     /client/
   );
   assert.equal(called, false);
+});
+
+test("le passeport d’un accompagnateur prend le numéro, la délivrance et l’expiration", async () => {
+  const draft = prepareHolderProfile({
+    id: CLIENT,
+    compagnon_id: COMPANION,
+    numero: "24 cd 67890",
+    delivrance: "2024-05-06",
+    expiration: "2034-05-05",
+    nationalite: "Française",
+    date_naissance: "2018-02-02",
+    lieu_naissance: "Lyon",
+    sexe: "homme",
+  });
+  assert.equal(draft.compagnonId, COMPANION);
+  assert.equal(draft.passport.number, "24CD67890");
+  assert.equal(draft.passport.issued_on, "2024-05-06");
+  assert.equal(draft.passport.expires_on, "2034-05-05");
+  assert.equal(draft.passport.nationality, "FR");
+  assert.equal(draft.passport.place_of_birth, "Lyon");
+  assert.equal(draft.customer.sex, "M");
+  assert.equal("numero" in draft.echo, false);
+  assert.equal("number" in draft.echo, false);
+  assert.equal(draft.documentSpecific, true);
+  assert.throws(() => prepareHolderProfile({ id: CLIENT, compagnon_id: COMPANION, adresse: "12 rue du Bois" }), /adresse/);
+  assert.throws(() => prepareHolderProfile({ id: CLIENT, compagnon_id: COMPANION, numero: "AB" }), /Numéro/);
+  assert.throws(() => prepareHolderProfile({ id: CLIENT, numero: "A-1" }), /Numéro/);
+
+  const db = seed({
+    crm_travel_companions: [
+      {
+        id: COMPANION,
+        customer_id: CLIENT,
+        first_name: "Louis",
+        last_name: "Martin",
+        usage_name: null,
+        birth_date: "2018-02-02",
+        sex: "M",
+        nationality: "FR",
+      },
+    ],
+  });
+  const traveler = db.tables.crm_booking_travelers.find((row) => row.id === COMPANION_TRAVELER);
+  if (traveler) traveler.companion_id = COMPANION;
+  const number = "24CD67890";
+  const result = await updateHolderProfile(
+    {
+      id: CLIENT,
+      compagnon_id: COMPANION,
+      numero: number,
+      delivrance: "2024-05-06",
+      expiration: "2034-05-05",
+      lieu_naissance: "Lyon",
+      sexe: "M",
+    },
+    asAdmin(db)
+  );
+  const companionDoc = db.tables.crm_travel_documents.find((row) => row.id === COMPANION_DOC);
+  const holderDoc = db.tables.crm_travel_documents.find((row) => row.id === HOLDER_DOC);
+  const companion = db.tables.crm_travel_companions.find((row) => row.id === COMPANION);
+  assert.equal(companionDoc?.number, number);
+  assert.equal(companionDoc?.issued_on, "2024-05-06");
+  assert.equal(companionDoc?.expires_on, "2034-05-05");
+  assert.equal(companionDoc?.place_of_birth, "Lyon");
+  assert.equal(companionDoc?.sex, "M");
+  assert.equal(holderDoc?.number, "12AB34567");
+  assert.equal(holderDoc?.issued_on, "2018-03-12");
+  assert.equal(companion?.sex, "M");
+  assert.equal("place_of_birth" in (companion || {}), false);
+  assert.equal(result.titulaire, false);
+  assert.equal(result.compagnon_id, COMPANION);
+  assert.equal(result.passeport, true);
+  assert.equal(result.notifie, false);
+  assert.equal(JSON.stringify(result).includes(number), false);
+  assert.equal(JSON.stringify(db.tables.crm_audit_events).includes(number), false);
+  assert.equal(JSON.stringify(db.tables.crm_audit_events).includes("99ZZ00000"), false);
+  assert.equal(db.tables.crm_audit_events[0]?.action, "passeport_accompagnant");
+
+  db.tables.crm_travel_documents.push({
+    id: OTHER_DOC,
+    customer_id: CLIENT,
+    companion_id: COMPANION,
+    booking_id: null,
+    doc_type: "passport",
+    issuing_country: "IL",
+    number: "IL998877",
+    issued_on: "2019-04-01",
+  });
+  await assert.rejects(
+    () => updateHolderProfile({ id: CLIENT, compagnon_id: COMPANION, delivrance: "2025-01-01" }, asAdmin(db)),
+    /pays_passeport/
+  );
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === OTHER_DOC)?.issued_on, "2019-04-01");
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === COMPANION_DOC)?.issued_on, "2024-05-06");
+  await updateHolderProfile(
+    { id: CLIENT, compagnon_id: COMPANION, delivrance: "2025-01-01", pays_passeport: "Israël" },
+    asAdmin(db)
+  );
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === OTHER_DOC)?.issued_on, "2025-01-01");
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === OTHER_DOC)?.number, "IL998877");
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === COMPANION_DOC)?.issued_on, "2024-05-06");
+});
+
+test("sans livret, la délivrance crée le passeport de l’accompagnateur", async () => {
+  const db = seed({
+    crm_travel_documents: [
+      {
+        id: HOLDER_DOC,
+        customer_id: CLIENT,
+        companion_id: null,
+        booking_id: null,
+        doc_type: "passport",
+        issuing_country: "FR",
+        number: "12AB34567",
+        issued_on: "2018-03-12",
+      },
+    ],
+    crm_travel_companions: [
+      {
+        id: COMPANION,
+        customer_id: CLIENT,
+        first_name: "Louis",
+        last_name: "Martin",
+        usage_name: null,
+        birth_date: "2018-02-02",
+        sex: "M",
+        nationality: "FR",
+      },
+    ],
+  });
+  const result = await updateHolderProfile(
+    { id: CLIENT, compagnon_id: COMPANION, delivrance: "2022-03-04", expiration: "2032-03-03", numero: "55EE11111", pays_passeport: "FR" },
+    asAdmin(db)
+  );
+  const created = db.tables.crm_travel_documents.find((row) => row.companion_id === COMPANION);
+  assert.equal(created?.doc_type, "passport");
+  assert.equal(created?.issued_on, "2022-03-04");
+  assert.equal(created?.expires_on, "2032-03-03");
+  assert.equal(created?.number, "55EE11111");
+  assert.equal(created?.first_name, "Louis");
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === HOLDER_DOC)?.number, "12AB34567");
+  assert.equal(result.passeport, true);
+  assert.equal(JSON.stringify(result).includes("55EE11111"), false);
+  assert.equal(JSON.stringify(db.tables.crm_audit_events).includes("55EE11111"), false);
+  await assert.rejects(
+    () =>
+      updateHolderProfile(
+        { id: CLIENT, compagnon_id: "abababab-abab-4aba-8aba-ababababab99", delivrance: "2022-03-04" },
+        asAdmin(db)
+      ),
+    /introuvable/
+  );
+});
+
+test("mettre_a_jour_accompagnant renomme la fiche, le séjour et le passeport, sans le numéro", async () => {
+  assert.equal(prepareCompanionIdentity({ compagnon_id: COMPANION, prenoms: "Louis Paul" }).companion.first_name, "Louis Paul");
+  assert.throws(() => prepareCompanionIdentity({ compagnon_id: COMPANION }), /modifier/);
+  assert.throws(() => prepareCompanionIdentity({ compagnon_id: COMPANION, sexe: "oui" }), /Sexe/);
+  assert.throws(() => prepareCompanionIdentity({ compagnon_id: COMPANION, date_naissance: "02/02/2018" }), /AAAA-MM-JJ/);
+  assert.throws(() => prepareCompanionIdentity({ compagnon_id: COMPANION, prenoms: " " }), /Prénoms/);
+
+  const db = seed({
+    crm_travel_companions: [
+      {
+        id: COMPANION,
+        customer_id: CLIENT,
+        first_name: "Louis",
+        last_name: "Martin",
+        usage_name: "Durand",
+        birth_date: "2018-02-02",
+        sex: "M",
+        nationality: "FR",
+      },
+    ],
+    crm_travel_documents: [
+      {
+        id: HOLDER_DOC,
+        customer_id: CLIENT,
+        companion_id: null,
+        doc_type: "passport",
+        number: "12AB34567",
+        first_name: "Camille",
+        last_name: "Martin",
+        issued_on: "2018-03-12",
+      },
+      {
+        id: COMPANION_DOC,
+        customer_id: CLIENT,
+        companion_id: COMPANION,
+        doc_type: "passport",
+        number: "99ZZ00000",
+        first_name: "Louis",
+        last_name: "Martin",
+        usage_name: "Durand",
+        birth_date: "2018-02-02",
+        sex: "M",
+        issued_on: "2020-01-01",
+        expires_on: "2030-01-01",
+      },
+      {
+        id: OTHER_DOC,
+        customer_id: CLIENT,
+        companion_id: COMPANION,
+        doc_type: "visa",
+        number: "V-1",
+        first_name: "Louis",
+        last_name: "Martin",
+      },
+    ],
+  });
+  const traveler = db.tables.crm_booking_travelers.find((row) => row.id === COMPANION_TRAVELER);
+  if (traveler) traveler.companion_id = COMPANION;
+  const result = await updateCompanionIdentity(
+    {
+      compagnon_id: COMPANION,
+      client_id: CLIENT,
+      prenoms: "Louis Paul",
+      nom: "Bernard",
+      nom_usage: "",
+      date_naissance: "2018-03-03",
+      sexe: "homme",
+    },
+    asAdmin(db)
+  );
+  const companion = db.tables.crm_travel_companions.find((row) => row.id === COMPANION);
+  const passport = db.tables.crm_travel_documents.find((row) => row.id === COMPANION_DOC);
+  const visa = db.tables.crm_travel_documents.find((row) => row.id === OTHER_DOC);
+  const holderDoc = db.tables.crm_travel_documents.find((row) => row.id === HOLDER_DOC);
+  const stay = db.tables.crm_booking_travelers.find((row) => row.id === COMPANION_TRAVELER);
+  const holderStay = db.tables.crm_booking_travelers.find((row) => row.id === TRAVELER);
+  assert.equal(companion?.first_name, "Louis Paul");
+  assert.equal(companion?.last_name, "Bernard");
+  assert.equal(companion?.usage_name, null);
+  assert.equal(companion?.birth_date, "2018-03-03");
+  assert.equal(companion?.sex, "M");
+  assert.equal(passport?.first_name, "Louis Paul");
+  assert.equal(passport?.last_name, "Bernard");
+  assert.equal(passport?.usage_name, null);
+  assert.equal(passport?.birth_date, "2018-03-03");
+  assert.equal(passport?.sex, "M");
+  assert.equal(passport?.number, "99ZZ00000");
+  assert.equal(passport?.issued_on, "2020-01-01");
+  assert.equal(passport?.expires_on, "2030-01-01");
+  assert.equal(visa?.first_name, "Louis");
+  assert.equal(holderDoc?.last_name, "Martin");
+  assert.equal(stay?.first_name, "Louis Paul");
+  assert.equal(stay?.last_name, "Bernard");
+  assert.equal(holderStay?.last_name, "Martin");
+  assert.equal(db.tables.crm_customers.find((row) => row.id === CLIENT)?.last_name, "Martin");
+  assert.equal(result.notifie, false);
+  assert.equal(result.titulaire, false);
+  assert.deepEqual(result.champs, ["prenoms", "nom", "nom_usage", "date_naissance", "sexe"]);
+  assert.equal(JSON.stringify(result).includes("99ZZ00000"), false);
+  assert.equal(JSON.stringify(db.tables.crm_audit_events).includes("99ZZ00000"), false);
+  assert.equal(db.tables.crm_audit_events[0]?.action, "fiche_accompagnant");
+
+  await assert.rejects(
+    () => updateCompanionIdentity({ compagnon_id: COMPANION, client_id: ADMIN, prenoms: "Louis" }, asAdmin(db)),
+    /introuvable/
+  );
+  assert.equal(db.tables.crm_travel_companions.find((row) => row.id === COMPANION)?.first_name, "Louis Paul");
 });

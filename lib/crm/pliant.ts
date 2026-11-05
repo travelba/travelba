@@ -22,11 +22,13 @@ import {
 import { pliantRowsWithinSince } from "./sync-delta";
 import {
   annotatePliantPayload,
+  maskPliantPath,
   pliantAvailableLimit,
   pliantCardFace,
   pliantHolderId,
   pliantHolderName,
   pliantTransactionPage,
+  scrubPliantLog,
 } from "./pliant-tx";
 
 const PROD = {
@@ -223,7 +225,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
   });
   const text = await res.text();
   if (!res.ok) {
-    console.error("[pliant] emission", res.status);
+    console.error("[pliant] emission", "POST", maskPliantPath(`/cards/${resolved.cardholderId}`), res.status, scrubPliantLog(text));
     throw new Error(pliantRefusal(res.status, text));
   }
   const json = JSON.parse(text) as { cardId?: string; id?: string; status?: string };
@@ -266,9 +268,8 @@ async function resolvePliantIssue(preferred: { organizationId: string; cardholde
   const organizationId = organizations ? pickListedId(preferred.organizationId, orgIds) : preferred.organizationId;
   if (!organizationId) throw new Error("Pliant : l’organisation configurée est introuvable.");
 
-  const holders = await pliantJson(
-    `/cardholders?organizationId=${encodeURIComponent(organizationId)}&status=ACTIVE&limit=100`
-  );
+  warnPliantId("organizationId", organizationId);
+  const holders = await pliantJson(cardholdersListPath(organizationId, { status: "ACTIVE", limit: 100, page: 0 }));
   const holderIds = rows(holders, "cardholderId");
   const cardholderId = holders ? pickListedId(preferred.cardholderId, holderIds) : preferred.cardholderId;
   if (!cardholderId) throw new Error("Pliant : le porteur configuré est introuvable.");
@@ -295,16 +296,43 @@ function rows(payload: { data?: unknown } | null, key: "organizationId" | "cardh
 
 async function pliantJson(path: string): Promise<{ data?: unknown; cardConfigs?: unknown } | null> {
   try {
-    const token = await accessToken();
-    const res = await fetch(`${endpoints().api}${path}`, {
-      headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
-      signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as { data?: unknown; cardConfigs?: unknown };
-  } catch {
+    return (await pliantSend(path)) as { data?: unknown; cardConfigs?: unknown };
+  } catch (err) {
+    rethrowTokenFailure(err);
     return null;
   }
+}
+
+const PLIANT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function warnPliantId(kind: "organizationId" | "cardholderId", value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    console.error("[pliant]", kind, "absent");
+    return;
+  }
+  if (!PLIANT_UUID.test(trimmed)) console.error("[pliant]", kind, "pas un uuid");
+}
+
+/** Liste 2.1.0 : organizationId obligatoire, page depuis 0, status ACTIVE autorisé. */
+function cardholdersListPath(organizationId: string, options?: { status?: string; limit?: number; page?: number }) {
+  const params = new URLSearchParams();
+  params.set("organizationId", organizationId);
+  if (options?.status) params.set("status", options.status);
+  params.set("limit", String(options?.limit ?? 100));
+  params.set("page", String(options?.page ?? 0));
+  return `/cardholders?${params.toString()}`;
+}
+
+/** Détail 2.1.0 : organizationId est un paramètre de requête obligatoire. Sans lui, Pliant répond 400. */
+function cardholderDetailsPath(cardholderId: string) {
+  const organizationId = (process.env.PLIANT_ORGANIZATION_ID || "").trim();
+  warnPliantId("organizationId", organizationId);
+  warnPliantId("cardholderId", cardholderId);
+  const params = new URLSearchParams();
+  if (organizationId) params.set("organizationId", organizationId);
+  const query = params.toString();
+  return `/cardholders/${encodeURIComponent(cardholderId)}${query ? `?${query}` : ""}`;
 }
 
 const PCI = {
@@ -440,22 +468,80 @@ async function pliantCardAction(cardId: string, action: "lock" | "unlock") {
   return res.ok;
 }
 
-/** Nom du porteur configuré. Jamais le client, jamais l’hôtel. */
-export async function readPliantCardholderName(cardholderId: string) {
+export type PliantCardholderRead =
+  | { ok: true; firstName: string; lastName: string }
+  | { ok: false; reason: string };
+
+export class PliantRequestError extends Error {
+  readonly status: number;
+  readonly body: string;
+  readonly method: string;
+  readonly path: string;
+
+  constructor(input: { method: string; path: string; status: number; body: string }) {
+    super(`Pliant ${input.method} ${input.status}`);
+    this.name = "PliantRequestError";
+    this.status = input.status;
+    this.body = input.body;
+    this.method = input.method;
+    this.path = input.path;
+  }
+}
+
+function holderReadReason(err: unknown) {
+  if (err instanceof PliantRequestError) {
+    return scrubPliantLog(err.body ? `Pliant ${err.status} ${err.body}` : `Pliant ${err.status}`, 180);
+  }
+  if (err instanceof Error && err.message) return scrubPliantLog(err.message, 180);
+  return "Porteur illisible";
+}
+
+/** Nom du porteur configuré. Jamais le client, jamais l’hôtel. Un échec de lecture est renvoyé, pas avalé. */
+export async function readPliantCardholderName(cardholderId: string): Promise<PliantCardholderRead> {
   const id = cardholderId.trim();
-  if (!id) return null;
+  if (!id) {
+    const reason = "Porteur non configuré";
+    console.error("[pliant] porteur", reason);
+    return { ok: false, reason };
+  }
   try {
-    const row = unwrapRecord(await pliantGet(`/cardholders/${encodeURIComponent(id)}`)) as {
+    const row = unwrapRecord(await pliantGet(cardholderDetailsPath(id))) as {
       firstName?: unknown;
       lastName?: unknown;
     } | null;
     const firstName = typeof row?.firstName === "string" ? row.firstName.trim() : "";
     const lastName = typeof row?.lastName === "string" ? row.lastName.trim() : "";
-    if (!firstName || !lastName) return null;
-    return { firstName, lastName };
-  } catch {
-    return null;
+    if (!firstName || !lastName) {
+      const reason = "Nom du porteur incomplet";
+      console.error("[pliant] porteur", reason);
+      return { ok: false, reason };
+    }
+    return { ok: true, firstName, lastName };
+  } catch (err) {
+    const reason = holderReadReason(err);
+    console.error("[pliant] porteur", reason);
+    return { ok: false, reason };
   }
+}
+
+/** Organisation et porteur configurés lisibles. N’écrit pas d’alerte. */
+export async function readPliantHealth(): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const organizationId = (process.env.PLIANT_ORGANIZATION_ID || "").trim();
+  const cardholderId = (process.env.PLIANT_CARDHOLDER_ID || "").trim();
+  if (!organizationId || !cardholderId) return { ok: false, reason: "Organisation ou porteur absent" };
+  try {
+    await pliantGet(`/organizations/${encodeURIComponent(organizationId)}`);
+  } catch (err) {
+    rethrowTokenFailure(err);
+    const reason =
+      err instanceof PliantRequestError
+        ? scrubPliantLog(err.body ? `Organisation illisible : Pliant ${err.status} ${err.body}` : `Organisation illisible : Pliant ${err.status}`, 180)
+        : "Organisation illisible";
+    return { ok: false, reason };
+  }
+  const holder = await readPliantCardholderName(cardholderId);
+  if (!holder.ok) return { ok: false, reason: `Porteur illisible : ${holder.reason}` };
+  return { ok: true };
 }
 
 export async function readPliantCardFace(cardId: string) {
@@ -628,7 +714,7 @@ async function hydrateMissingFaces(
   });
   await pool([...holderIds], 8, async (holderId) => {
     try {
-      holdersById.set(holderId, unwrapRecord(await pliantGet(`/cardholders/${encodeURIComponent(holderId)}`)) || { cardholderId: holderId });
+      holdersById.set(holderId, unwrapRecord(await pliantGet(cardholderDetailsPath(holderId))) || { cardholderId: holderId });
     } catch (err) {
       console.error("[pliant] cardholder", err instanceof Error ? err.message : "échec");
     }
@@ -673,9 +759,10 @@ async function pliantPost(path: string, body: unknown) {
 }
 
 async function pliantSend(path: string, body?: unknown) {
+  const method = body === undefined ? "GET" : "POST";
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}${path}`, {
-    method: body === undefined ? "GET" : "POST",
+    method,
     signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: {
       authorization: `Bearer ${token}`,
@@ -685,8 +772,10 @@ async function pliantSend(path: string, body?: unknown) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
-    console.error("[pliant] transactions", res.status);
-    throw new Error("Pliant n’a pas renvoyé les transactions.");
+    const loggedBody = scrubPliantLog(await res.text());
+    const safePath = maskPliantPath(path);
+    console.error("[pliant]", method, safePath, res.status, loggedBody);
+    throw new PliantRequestError({ method, path: safePath, status: res.status, body: loggedBody });
   }
   return (await res.json()) as unknown;
 }

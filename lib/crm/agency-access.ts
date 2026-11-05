@@ -202,6 +202,7 @@ export const ALERT_KINDS = [
   "refund",
   "failed_login",
   "role_change",
+  "pliant",
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -213,6 +214,7 @@ export const ALERT_LABELS: Record<AlertKind, string> = {
   refund: "Remboursement",
   failed_login: "Connexions refusées",
   role_change: "Rôle modifié",
+  pliant: "Pliant",
 };
 
 export function paymentAlert(amountCents: number | null | undefined, threshold = DEFAULT_PAYMENT_ALERT_CENTS) {

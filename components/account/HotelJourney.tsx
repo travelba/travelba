@@ -8,28 +8,35 @@ import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelGuaranteeNight } from "@/components/account/HotelGuaranteeNight";
 import { HotelMap } from "@/components/account/HotelMap";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
 import { HotelCardHold } from "@/components/account/HotelCardHold";
 import { LE_PAY_COPY, PAY_COPY } from "@/lib/crm/hotel-direct";
 import { lePrimaryGuest, leWidgetSignal, safeCardWidgetUrl } from "@/lib/crm/le-self-book";
-import { collapseRooms, guestNameOk, travelPrivileges, type ClientHotelFile, type ClientRate, type ClientRoom, type HotelJourneyStep } from "@/lib/crm/hotel-journey";
+import {
+  BOOKING_STEPS,
+  collapseRooms,
+  guestNameOk,
+  payActionLabel,
+  rateBoardLine,
+  rateChips,
+  stayBenefits,
+  type BookingStep,
+  type ClientHotelFile,
+  type ClientRate,
+  type ClientRoom,
+  type HotelJourneyStep,
+} from "@/lib/crm/hotel-journey";
 import { roomOccupancyLabel } from "@/lib/crm/hotel-party";
-import type { ClientHotel, HotelPerks, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
+import type { ClientHotel, HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import { formatMoney } from "@/lib/crm/money";
 import { siteConfig } from "@/lib/site";
 
-type Step = "hotel" | "room" | "guests" | "confirm";
+type Step = "hotel" | BookingStep;
 
-const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
-  { key: "breakfast", label: "Petit-déjeuner" },
-  { key: "freeCancellation", label: "Annulation gratuite" },
-  { key: "upgrade", label: "Surclassement" },
-  { key: "credit", label: "Crédit hôtel" },
-  { key: "earlyCheckIn", label: "Arrivée anticipée" },
-  { key: "lateCheckOut", label: "Départ tardif" },
-];
+const BOOKING_FAILED = "La réservation n’a pas abouti.";
 
 function euros(cents: number, currency: string) {
   return formatMoney(cents / 100, currency);
@@ -139,8 +146,66 @@ function Fact({ icon, label, value }: { icon: string; label: string; value: stri
   );
 }
 
-function discreetPerk(perks: HotelPerks) {
-  return PERK_LABEL.find((perk) => perks[perk.key])?.label || "";
+function StayBenefits({ lines, discreet }: { lines: string[]; discreet: string }) {
+  if (lines.length) {
+    return (
+      <div data-hotel-benefits="1">
+        <HotelBenefits lines={lines} />
+      </div>
+    );
+  }
+  if (!discreet) return null;
+  return (
+    <p className="text-[12px] text-[#9a7b4f]" data-hotel-benefits="1">
+      {discreet}
+    </p>
+  );
+}
+
+function StepNav({
+  priceLabel,
+  price,
+  onPrevious,
+  onNext,
+  nextLabel,
+  nextDisabled,
+  marker,
+}: {
+  priceLabel?: string;
+  price?: string;
+  onPrevious: () => void;
+  onNext: () => void;
+  nextLabel: string;
+  nextDisabled?: boolean;
+  marker?: boolean;
+}) {
+  return (
+    <div className="h-dock shrink-0" data-hotel-dock="1">
+      <div className="px-4 pt-2 pb-9 md:pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {price ? (
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <p className="h-kicker">{priceLabel}</p>
+            <p className="truncate text-lg font-semibold h-ink">{price}</p>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={onPrevious} className="h-press h-btn-line h-11 text-sm font-semibold" data-hotel-prev="1">
+            Précédent
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={nextDisabled}
+            data-hotel-next="1"
+            data-hotel-rate-cta={marker ? "1" : undefined}
+            className="h-press h-btn h-11 text-sm font-semibold disabled:opacity-40"
+          >
+            {nextLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function fileFromCard(hotel: ClientHotel): ClientHotelFile {
@@ -421,7 +486,21 @@ export function HotelJourney({
   const images = file?.images.length ? file.images : hotel.photo ? [hotel.photo] : [];
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const reading = rate ? readStayRate(rate) : null;
-  const view: Step = step === "confirm" && rate ? "confirm" : step === "guests" && rate ? "guests" : step === "room" && room ? "room" : "hotel";
+  const programme = stayBenefits(hotel.benefits, hotel.perks);
+  const boardLine = reading ? rateBoardLine(reading.board, programme.lines) : "";
+  const view: Step = done && rate
+    ? "confirm"
+    : step === "pay" && rate
+      ? "pay"
+      : step === "confirm" && rate
+        ? "pay"
+        : step === "recap" && rate
+          ? "recap"
+          : step === "guests" && rate
+            ? "guests"
+            : step === "room" && room
+              ? "room"
+              : "hotel";
   const fromOffer = file?.rooms
     .map((item) => item.rates[0])
     .filter((item): item is ClientRate => Boolean(item))
@@ -442,13 +521,16 @@ export function HotelJourney({
 
   function chooseRate(next: ClientRate) {
     if (!next.offerId) return;
-    postHotelActivity({ kind: "room", hotel: file?.name || hotel.name, room: next.room, rate: next.title });
+    const same = rate?.offerId === next.offerId && rate.title === next.title && rate.sellCents === next.sellCents;
     setRate(next);
-    setSkipSelf(false);
-    setLead(stayRooms.map((_, index) => (index === 0 && selfName ? selfName : "")));
-    setMore(stayRooms.map(() => []));
-    setNote("");
-    onStep("guests");
+    if (!same) {
+      setSkipSelf(false);
+      setLead(stayRooms.map((_, index) => (index === 0 && selfName ? selfName : "")));
+      setMore(stayRooms.map(() => []));
+      setNote("");
+      setFareBlock(null);
+    }
+    postHotelActivity({ kind: "room", hotel: file?.name || hotel.name, room: next.room, rate: next.title });
   }
 
   function roomPeople(index: number) {
@@ -492,13 +574,20 @@ export function HotelJourney({
     });
   }
 
-  function back() {
+  function goPrevious() {
     if (widget && !placing && !done) {
       setWidget(null);
       setCardFrame("idle");
       return;
     }
-    if (done) onBack();
+    if (done || view === "confirm") {
+      onBack();
+      return;
+    }
+    if (view === "room") onStep("hotel");
+    else if (view === "guests") onStep("room");
+    else if (view === "recap") onStep("guests");
+    else if (view === "pay") onStep("recap");
     else onStep("back");
   }
 
@@ -510,7 +599,11 @@ export function HotelJourney({
         setCardFrame("saved");
         sendCard.current(true);
       }
-      if (signal === "error") setNote("La carte n’a pas été acceptée. Vérifiez les informations.");
+      if (signal === "error") {
+        setWidget(null);
+        setCardFrame("idle");
+        setFareBlock("La carte n’a pas été acceptée. Vérifiez les informations.");
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -559,7 +652,7 @@ export function HotelJourney({
         setCardSecret(null);
         setCardFrame("idle");
         setWidget(null);
-        setFareBlock(json?.error || "La demande n’a pas pu être envoyée.");
+        setFareBlock(json?.error || BOOKING_FAILED);
         setNote("");
         return;
       }
@@ -585,6 +678,8 @@ export function HotelJourney({
         setCardSecret(null);
         setCardFrame("idle");
         setWidget(null);
+        setFareBlock(null);
+        onStep("confirm");
         scrollerRef.current?.scrollTo({ top: 0 });
       }
     } finally {
@@ -643,27 +738,26 @@ export function HotelJourney({
           <button
             type="button"
             aria-label="Retour"
-            onClick={back}
+            onClick={goPrevious}
             className="h-hit h-press grid w-11 place-items-center"
             style={{ color: widget && !placing ? "#C5A880" : "#1a1a1a" }}
           >
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          <p className={`h-serif truncate text-center text-[17px] font-semibold leading-none ${widget && !placing ? "" : "h-ink"}`}>{placing ? "Réservation" : done && view === "confirm" ? "Confirmation" : view === "confirm" ? "Paiement" : view === "guests" ? "Voyageurs" : "Chambre"}</p>
+          <p className={`h-serif truncate text-center text-[17px] font-semibold leading-none ${widget && !placing ? "" : "h-ink"}`}>
+            {placing ? "Réservation" : view === "hotel" ? file?.name || hotel.name : BOOKING_STEPS.find((item) => item.id === view)?.label}
+          </p>
           <span />
         </div>
-        {placing ? null : (
-          <ol data-hotel-stepper="1" className="flex items-center justify-between gap-1 px-3 pb-2 text-[10px] font-semibold">
-            {(
-              [
-                ["1", "Chambre", view === "hotel" || view === "room"],
-                ["2", "Voyageurs", view === "guests"],
-                ["3", "Paiement", view === "confirm" && !done],
-                ["4", "Confirmation", Boolean(done)],
-              ] as const
-            ).map(([n, label, on]) => (
-              <li key={label} className={on ? "text-[#8c7352]" : widget ? "text-[#f7f4ee]/45" : "text-[#1a1a1a]/40"}>
-                {n} {label}
+        {placing || view === "hotel" ? null : (
+          <ol data-hotel-stepper="1" className="flex items-center justify-between gap-1 overflow-x-auto px-3 pb-2 text-[10px] font-semibold">
+            {BOOKING_STEPS.map((item, index) => (
+              <li
+                key={item.id}
+                aria-current={item.id === view ? "step" : undefined}
+                className={`shrink-0 ${item.id === view ? "text-[#8c7352]" : widget ? "text-[#f7f4ee]/45" : "text-[#1a1a1a]/40"}`}
+              >
+                {index + 1} {item.label}
               </li>
             ))}
           </ol>
@@ -699,6 +793,7 @@ export function HotelJourney({
               <p className="text-sm h-muted">{file?.city || hotel.city}</p>
               {file?.address ? <p className="text-sm h-ink">{file.address}</p> : null}
               {frenchClientProse(file?.description || "") ? <p className="text-[15px] leading-relaxed h-ink">{frenchClientProse(file?.description || "")}</p> : null}
+              <StayBenefits lines={programme.lines} discreet={programme.discreet} />
               {!file ? (
                 <div data-hotel-check="1" className="space-y-3 pt-2">
                   <p className="h-serif text-[1.15rem] font-semibold h-ink">Nous vérifions le tarif en temps réel…</p>
@@ -718,7 +813,7 @@ export function HotelJourney({
                     {file.rooms.map((item) => {
                       const offer = item.rates[0];
                       const photo = item.images[0];
-                      const perk = offer ? travelPrivileges(offer.perks, offer.benefits)[0] : "";
+                      const perk = programme.lines.length ? "" : programme.discreet;
                       const outlook = splitOutlook(item.outlook || "");
                       return (
                         <button
@@ -854,22 +949,32 @@ export function HotelJourney({
                   {room.bed ? <Fact icon="bed" label="Couchage" value={room.bed} /> : null}
                 </div>
               ) : null}
-              <div className="space-y-3" data-hotel-rates="1">
+              <div className="space-y-3" role="radiogroup" aria-label="Tarifs" data-hotel-rates="1">
                 {room.rates.map((item) => {
                   const line = readStayRate(item);
+                  const selected = rate.offerId === item.offerId && rate.title === item.title && rate.sellCents === item.sellCents;
+                  const chips = rateChips({ breakfast: item.perks.breakfast, freeCancellation: item.perks.freeCancellation, benefits: programme.lines });
                   return (
-                    <article key={`${item.offerId || ""}-${item.title}-${item.sellCents}`} className="h-recap space-y-2">
-                      <h3 className="h-serif text-[1.05rem] font-semibold h-ink">{clientRateTitle(item.title)}</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {item.perks.freeCancellation ? <span className="h-pill">Annulation gratuite</span> : null}
-                        {item.perks.breakfast ? <span className="h-pill">Petit-déjeuner inclus</span> : null}
-                      </div>
-                      <p className="text-sm h-muted">{line.cancellation}</p>
-                      <p className="text-lg font-semibold h-ink">{euros(item.sellCents, item.currency)} TTC</p>
-                      <button type="button" className="h-btn h-press h-11 w-full text-sm font-semibold" disabled={!item.offerId} onClick={() => chooseRate(item)}>
-                        Sélectionner
-                      </button>
-                    </article>
+                    <button
+                      key={`${item.offerId || ""}-${item.title}-${item.sellCents}`}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={!item.offerId}
+                      onClick={() => chooseRate(item)}
+                      className={`h-recap w-full space-y-2 text-left disabled:opacity-40 ${selected ? "ring-2 ring-[#C5A880]" : ""}`}
+                    >
+                      <span className="h-serif block text-[1.05rem] font-semibold h-ink">{clientRateTitle(item.title)}</span>
+                      {chips.length ? (
+                        <span className="flex flex-wrap gap-2">
+                          {chips.map((chip) => (
+                            <span key={chip} className="h-pill">{chip}</span>
+                          ))}
+                        </span>
+                      ) : null}
+                      <span className="block text-sm h-muted">{line.cancellation}</span>
+                      <span className="block text-lg font-semibold h-ink">{euros(item.sellCents, item.currency)} TTC</span>
+                    </button>
                   );
                 })}
               </div>
@@ -889,23 +994,9 @@ export function HotelJourney({
                     ) : null}
                   </div>
                 ) : null}
-                <h3 className="h-serif mt-5 text-[1.15rem] font-semibold leading-tight h-ink">{clientRateTitle(rate.title)}</h3>
-                {reading?.board && reading.board !== "Précisée à la confirmation" && !travelPrivileges(rate.perks, rate.benefits).some((line) => /petit-déjeuner/i.test(line) && /petit-déjeuner/i.test(reading.board)) ? (
-                  <p className="mt-1 text-[15px] h-muted">{reading.board}</p>
-                ) : null}
-                {travelPrivileges(rate.perks, rate.benefits).length ? (
-                  <div className="mt-5">
-                    <p className="h-section">Privilèges Travel BA</p>
-                    <ul className="mt-3 space-y-2">
-                      {travelPrivileges(rate.perks, rate.benefits).map((line) => (
-                        <li key={line} className="flex items-start gap-2.5 text-[15px] leading-snug h-ink">
-                          <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-[#9a7b4f]" strokeWidth={1.5} />
-                          {line}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
+                <div className="mt-5">
+                  <StayBenefits lines={programme.lines} discreet={programme.discreet} />
+                </div>
               </div>
             </div>
           </div>
@@ -916,10 +1007,13 @@ export function HotelJourney({
             <article className="h-recap min-w-0">
               <p className="truncate text-sm h-muted">{[file?.name || hotel.name, rate.room].filter(Boolean).join(" · ")}</p>
               <h2 className="h-serif mt-1 text-[1.2rem] font-semibold leading-tight h-ink">{reading.title}</h2>
-              <p className="mt-3 text-[15px] leading-relaxed h-ink">{reading.board}</p>
+              {boardLine ? <p className="mt-3 text-[15px] leading-relaxed h-ink">{boardLine}</p> : null}
               <p className="mt-1 text-[15px] leading-relaxed h-muted">{reading.cancellation}</p>
               <p className="mt-4 text-2xl font-semibold tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
               <p className="mt-1 text-sm h-muted">{datesLabel}</p>
+              <div className="mt-4">
+                <StayBenefits lines={programme.lines} discreet={programme.discreet} />
+              </div>
             </article>
             {known.length ? (
               <div className="min-w-0">
@@ -967,6 +1061,31 @@ export function HotelJourney({
           </div>
         ) : null}
 
+        {view === "recap" && rate && reading ? (
+          <div data-hotel-recap="1" className="h-paper space-y-4 px-4 py-4">
+            <article className="h-recap space-y-3 text-[15px]">
+              <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
+              <p className="h-muted">{[file?.city || hotel.city, datesLabel].filter(Boolean).join(" · ")}</p>
+              <p className="h-ink">{rate.room}</p>
+              <p className="h-ink">{reading.title}</p>
+              {boardLine ? <p className="h-ink"><span className="h-muted">Pension · </span>{boardLine}</p> : null}
+              <p className="h-ink"><span className="h-muted">Annulation · </span>{reading.cancellation}</p>
+              <StayBenefits lines={programme.lines} discreet={programme.discreet} />
+              <ul className="space-y-1 h-ink">
+                {stayRooms.map((_, index) => (
+                  <li key={index}>
+                    Chambre {index + 1}
+                    {roomPeople(index).map((name) => (
+                      <span key={name} className="block">{name}</span>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+              <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)} TTC</p>
+            </article>
+          </div>
+        ) : null}
+
         {!placing && view === "confirm" && rate && reading && done ? (
           <div data-hotel-confirm="1" data-hotel-done="1" className="h-paper space-y-4 px-4 py-6">
             <article className="h-recap space-y-3 text-[15px]">
@@ -974,6 +1093,7 @@ export function HotelJourney({
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
               <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
               <p className="h-ink">{rate.room}</p>
+              <StayBenefits lines={programme.lines} discreet={programme.discreet} />
               <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
               {stayConditions ? <p className="h-muted">{stayConditions}</p> : null}
             </article>
@@ -991,14 +1111,14 @@ export function HotelJourney({
             <a href={whatsapp} className="flex h-12 items-center justify-center text-sm font-semibold h-ink">Écrire sur WhatsApp</a>
           </div>
         ) : null}
-        {!placing && view === "confirm" && rate && reading && !done && widget ? (
+        {!placing && view === "pay" && rate && reading && widget ? (
           <HotelGuaranteeNight
             widgetUrl={widget.url}
             state={cardFrame === "saved" ? "saved" : cardFrame === "ready" ? "ready" : "loading"}
             onLoad={() => setCardFrame((current) => (current === "saved" ? current : "ready"))}
           />
         ) : null}
-        {!placing && view === "confirm" && sending && !widget ? (
+        {!placing && view === "pay" && sending && !widget ? (
           <div data-hotel-check="1" className="flex min-h-[70vh] flex-col items-center px-8 pt-16 text-center">
             <p className="h-serif text-[1.35rem] leading-snug h-ink">Nous vérifions le tarif en temps réel…</p>
             <div className="mt-6 w-full max-w-[16rem]">
@@ -1010,28 +1130,22 @@ export function HotelJourney({
             </div>
           </div>
         ) : null}
-        {!placing && view === "confirm" && rate && reading && !done && !widget && !sending ? (
-          <div data-hotel-confirm="1" className="h-paper space-y-4 px-4 py-4">
+        {!placing && view === "pay" && rate && reading && !widget && !sending ? (
+          <div data-hotel-pay-step="1" className="h-paper space-y-4 px-4 py-4">
             <article className="h-recap space-y-3 text-[15px]">
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
-              <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
-              <p className="h-ink">{rate.room}</p>
-              <p className="h-ink"><span className="h-muted">Pension · </span>{reading.board}</p>
-              <p className="h-ink"><span className="h-muted">Annulation · </span>{reading.cancellation}</p>
-              {discreetPerk(rate.perks) ? <p className="text-[#9a7b4f]">{discreetPerk(rate.perks)}</p> : null}
-              <ul className="space-y-1 h-ink">
-                {stayRooms.map((_, index) => (
-                  <li key={index}>
-                    Chambre {index + 1}
-                    {roomPeople(index).map((name) => (
-                      <span key={name} className="block">{name}</span>
-                    ))}
-                  </li>
-                ))}
-              </ul>
-              <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
+              <p className="h-muted">{[file?.city || hotel.city, datesLabel].filter(Boolean).join(" · ")}</p>
+              <p className="h-ink">{reading.title}</p>
+              <StayBenefits lines={programme.lines} discreet={programme.discreet} />
+              <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)} TTC</p>
               {rate.terms ? <p className="text-[15px] leading-relaxed h-ink">{rate.terms}</p> : null}
             </article>
+            {fareBlock ? (
+              <div role="alert" data-hotel-error="1" className="h-recap space-y-1">
+                <p className="h-serif text-[1.05rem] font-semibold h-ink">{BOOKING_FAILED}</p>
+                {fareBlock !== BOOKING_FAILED ? <p className="text-sm leading-relaxed h-muted">{fareBlock}</p> : null}
+              </div>
+            ) : null}
             <div className="space-y-2" data-hotel-pay="1">
               <button
                 type="button"
@@ -1074,7 +1188,11 @@ export function HotelJourney({
               <HotelCardHold
                 clientSecret={cardSecret.clientSecret}
                 onDone={() => void send(cardSecret.intentId)}
-                onFail={(message) => setNote(message)}
+                onFail={(message) => {
+                  setCardSecret(null);
+                  setCardFrame("idle");
+                  setFareBlock(message || BOOKING_FAILED);
+                }}
               />
             ) : null}
             {note ? <p className="px-1 text-sm h-gold">{note}</p> : null}
@@ -1092,38 +1210,44 @@ export function HotelJourney({
         />
       ) : null}
       {view === "room" && rate ? (
-        <Dock
-          label="Séjour"
+        <StepNav
+          priceLabel="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          action={rate.offerId ? "Sélectionner" : "Tarif en préparation"}
-          disabled={!rate.offerId}
+          onPrevious={() => onStep("hotel")}
+          onNext={() => {
+            if (rate.offerId) onStep("guests");
+          }}
+          nextLabel="Suivant"
+          nextDisabled={!rate.offerId}
           marker
-          onAction={() => chooseRate(rate)}
         />
       ) : null}
       {view === "guests" && rate ? (
-        <Dock
-          label="Séjour"
+        <StepNav
+          priceLabel="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          action="Récapitulatif"
-          onAction={() => (guestsReady() ? onStep("confirm") : setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne."))}
+          onPrevious={() => onStep("room")}
+          onNext={() => (guestsReady() ? onStep("recap") : setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne."))}
+          nextLabel="Suivant"
         />
       ) : null}
-      {view === "confirm" && rate && !done && !cardSecret && !widget && !placing && fareBlock ? (
-        <div className="h-dock shrink-0 px-4 pb-28 pt-3" data-hotel-fare="1">
-          <p role="alert" className="text-sm leading-relaxed h-ink">{fareBlock}</p>
-          <button type="button" className="h-btn h-press mt-3 h-12 w-full text-sm font-semibold" onClick={() => { setFareBlock(null); setWidget(null); onStep("room"); }}>
-            Revenir au tarif
-          </button>
-        </div>
-      ) : null}
-      {view === "confirm" && rate && !done && !cardSecret && !widget && !placing && !fareBlock ? (
-        <Dock
-          label="Séjour"
+      {view === "recap" && rate ? (
+        <StepNav
+          priceLabel="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          action={sending ? "Vérification…" : leApi ? "Confirmer" : "Transmettre à l’hôtel"}
-          disabled={sending || !rate.offerId || !payMethod}
-          onAction={() => void send()}
+          onPrevious={() => onStep("guests")}
+          onNext={() => onStep("pay")}
+          nextLabel="Suivant"
+        />
+      ) : null}
+      {view === "pay" && rate && !cardSecret && !widget && !placing ? (
+        <StepNav
+          priceLabel="Séjour"
+          price={`${euros(rate.sellCents, rate.currency)} TTC`}
+          onPrevious={goPrevious}
+          onNext={() => void send()}
+          nextLabel={fareBlock ? "Réessayer" : sending ? "Vérification…" : payActionLabel({ method: payMethod, trial })}
+          nextDisabled={sending || !rate.offerId || (!fareBlock && !payMethod)}
         />
       ) : null}
     </div>
