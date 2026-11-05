@@ -1,4 +1,5 @@
 import { foldHotelLabel } from "./hotel-catalog";
+import { hotelStars } from "./hotel-map";
 import { roomFacts } from "./hotel-fr";
 import { frenchLeBenefitLine } from "./ingest-parse";
 import type { HotelOffer } from "./hotel-search";
@@ -233,6 +234,7 @@ function pushOffer(
     cancellationDeadline?: string | null;
     requiresCvc?: boolean | null;
     paymentDescription?: string | null;
+    stars?: number | null;
   }
 ) {
   const price = littleEmperorsProposedPrice(input.rate);
@@ -268,6 +270,7 @@ function pushOffer(
     cancellationDeadline: input.cancellationDeadline || null,
     requiresCvc: typeof input.requiresCvc === "boolean" ? input.requiresCvc : null,
     paymentDescription: input.paymentDescription || null,
+    stars: hotelStars(input.stars),
   });
 }
 
@@ -295,6 +298,7 @@ export function offersFromLeAvailability(payload: unknown, cityHint = ""): Hotel
       coords: coordsOf(info?.coords),
       footnotes: benefitLines(stringList(info?.benefits_footnotes)),
       sessionId: text(hotel.session_id) || null,
+      stars: hotelStars(info?.star_rating ?? info?.stars ?? hotel.star_rating ?? hotel.stars),
     };
     const rooms = Array.isArray(hotel.room_types) ? hotel.room_types : [];
     let emitted = false;

@@ -32,6 +32,7 @@
     "framer-motion": "^12.41.0",
     "libphonenumber-js": "^1.13.13",
     "lucide-react": "^1.21.0",
+    "mapbox-gl": "^3.34.2",
     "mrz": "^5.0.2",
     "next": "16.3.8",
     "next-intl": "^4.13.0",
