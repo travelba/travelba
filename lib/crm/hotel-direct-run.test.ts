@@ -197,7 +197,7 @@ function availability() {
   ];
 }
 
-function installFetch(mode: "card-refused" | "name-unread") {
+function installFetch(mode: "card-refused" | "name-unread" | "secrets-unread" | "secrets-unusable") {
   const calls: { url: string; method: string; body: unknown }[] = [];
   const previous = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -236,7 +236,12 @@ function installFetch(mode: "card-refused" | "name-unread") {
     }
     if (url.includes("/card-controls") && method === "PUT") return new Response(null, { status: 200 });
     if (url.includes("/card-controls") && method === "GET") return Response.json(emptyPliantCardControls());
-    if (url.includes("/card-details/")) return Response.json({ pan: PAN, cvv: "123", expiryMonth: 12, expiryYear: 2030 });
+    if (url.includes("/lock")) return new Response(null, { status: 200 });
+    if (url.includes("/card-details/")) {
+      if (mode === "secrets-unread") return Response.json({ message: "not ready", pan: PAN, cvv: "123" }, { status: 404 });
+      if (mode === "secrets-unusable") return Response.json({ pan: "9999999999999999", cvv: "123", expiryMonth: 12, expiryYear: 2030 });
+      return Response.json({ pan: PAN, cvv: "123", expiryMonth: 12, expiryYear: 2030 });
+    }
     if (url.includes("/v2/hotels/availability")) return Response.json(availability());
     if (url.includes("/v2/hotels/bookings") && method === "POST") {
       return Response.json({
@@ -377,6 +382,89 @@ describe("carte d’agence Little Emperors", { concurrency: 1 }, () => {
         const stay = tables.crm_hotel_direct_stays[0];
         assert.notEqual(stay?.phase, "cancelled");
         assert.equal(String((stay?.state as { reason?: string } | undefined)?.reason || "").startsWith("Carte:"), false);
+      } finally {
+        http.restore();
+      }
+    });
+  });
+
+  test("une lecture PCI en 404 se relit, puis le refus nomme la carte et ne poste pas", async () => {
+    await withEnv(async () => {
+      const { client, tables } = memory();
+      const http = installFetch("secrets-unread");
+      const logs: unknown[][] = [];
+      const original = console.error;
+      console.error = (...args: unknown[]) => {
+        logs.push(args);
+      };
+      try {
+        const opened = await openDirectStay({
+          customer: customer(),
+          offerId: OFFER,
+          guests: ["Benjamin Boukris"],
+          companions: [[]],
+          payMethod: "agency",
+          deps: { admin: client, fetchImpl: globalThis.fetch, sendMail: async () => false, secretsSleep: async () => {} },
+        });
+        assert.equal(opened.ok, false);
+        if (opened.ok) return;
+        assert.match(opened.message, /carte de règlement/);
+        assert.match(opened.message, /encaissé/);
+        assert.equal(opened.message.includes(PAN), false);
+        assert.doesNotMatch(opened.message, /\b123\b/);
+        const bookings = http.calls.filter((call) => call.url.includes("/v2/hotels/bookings") && call.method === "POST");
+        assert.equal(bookings.length, 0);
+        const reads = http.calls.filter((call) => call.url.includes("/card-details/"));
+        assert.equal(reads.length, 4);
+        assert.ok(http.calls.some((call) => call.url.includes("/lock")));
+        const stay = tables.crm_hotel_direct_stays[0];
+        assert.equal(stay?.phase, "cancelled");
+        const state = stay?.state as { reason?: string; pliant?: string } | undefined;
+        assert.equal(state?.pliant, "locked");
+        assert.equal(state?.reason, "Carte: lecture refusée (404)");
+        assert.equal(String(state?.reason || "").includes(PAN), false);
+        const alert = tables.crm_agency_alerts[0];
+        assert.equal(alert?.kind, "pliant");
+        assert.equal(alert?.summary, "Carte: lecture refusée (404)");
+        assert.equal(JSON.stringify(tables.crm_agency_alerts).includes(PAN), false);
+        const secretLogs = logs.filter((entry) => entry[0] === "[pliant]" && entry[1] === "secrets");
+        assert.equal(secretLogs.length, 4);
+        assert.deepEqual(secretLogs[0], ["[pliant]", "secrets", 404, "/card-details/:id"]);
+        assert.equal(JSON.stringify(logs).includes(PAN), false);
+        assert.equal(JSON.stringify(logs).includes("123"), false);
+      } finally {
+        console.error = original;
+        http.restore();
+      }
+    });
+  });
+
+  test("une carte illisible n’est pas envoyée sans cryptogramme", async () => {
+    await withEnv(async () => {
+      const { client, tables } = memory();
+      const http = installFetch("secrets-unusable");
+      try {
+        const opened = await openDirectStay({
+          customer: customer(),
+          offerId: OFFER,
+          guests: ["Benjamin Boukris"],
+          companions: [[]],
+          payMethod: "agency",
+          deps: { admin: client, fetchImpl: globalThis.fetch, sendMail: async () => false },
+        });
+        assert.equal(opened.ok, false);
+        if (opened.ok) return;
+        assert.match(opened.message, /carte de règlement/);
+        const bookings = http.calls.filter((call) => call.url.includes("/v2/hotels/bookings") && call.method === "POST");
+        assert.equal(bookings.length, 0);
+        assert.equal(http.calls.filter((call) => call.url.includes("/card-details/")).length, 1);
+        const stay = tables.crm_hotel_direct_stays[0];
+        assert.equal(stay?.phase, "cancelled");
+        assert.equal((stay?.state as { pliant?: string; reason?: string } | undefined)?.pliant, "locked");
+        assert.equal((stay?.state as { reason?: string } | undefined)?.reason, "Carte: cryptogramme ou échéance illisible");
+        assert.equal(tables.crm_agency_alerts[0]?.kind, "pliant");
+        assert.equal(tables.crm_transactions.length, 0);
+        assert.ok(http.calls.some((call) => call.url.includes("/lock")));
       } finally {
         http.restore();
       }

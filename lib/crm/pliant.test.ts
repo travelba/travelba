@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 import { emptyPliantCardControls } from "./pliant-controls";
-import { issuePliantCard, readPliantCardholderName, readPliantHealth } from "./pliant";
+import { issuePliantCard, PliantSecretsError, readIssuedPliantCardSecrets, readPliantCardholderName, readPliantCardSecrets, readPliantHealth } from "./pliant";
 import { maskPliantPath, scrubPliantLog } from "./pliant-tx";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -13,6 +13,8 @@ test("le chemin masque les identifiants et le corps retire PAN et cryptogramme",
     maskPliantPath(`/cardholders/${ORG}?organizationId=${ORG}&status=ACTIVE`),
     "/cardholders/:id?organizationId=:id&status=ACTIVE"
   );
+  assert.equal(maskPliantPath(`/card-details/${ORG}`), "/card-details/:id");
+  assert.equal(maskPliantPath("/card-details/card-agency-1"), "/card-details/:id");
   const body = scrubPliantLog(
     `{"errorCode":"VALIDATION","message":"organizationId is required","pan":"${PAN}","cvc":"123"} ${"x".repeat(400)}`
   );
@@ -172,5 +174,117 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
     assert.match(health.reason, /400/);
     assert.equal(health.reason.includes(PAN), false);
     assert.equal(health.reason.includes(ORG), false);
+  });
+
+  const CARD = "33333333-3333-4333-8333-333333333333";
+  const pciLogs: unknown[][] = [];
+
+  function pciArm(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+    pciLogs.length = 0;
+    delete process.env.VERCEL_ENV;
+    process.env.PLIANT_SANDBOX = "1";
+    process.env.PLIANT_CLIENT_ID = "pliant-test";
+    process.env.PLIANT_CLIENT_SECRET = "pliant-secret";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://pliant-test.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+    const prior = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("pliant-test.supabase.co")) {
+        if (url.includes("/rpc/crm_claim_integration_refresh")) return Response.json(true);
+        if (url.includes("/crm_integrations") && (init?.method || "GET") === "GET") return Response.json([]);
+        return Response.json(null, { status: 201 });
+      }
+      if (url.includes("/oauth/token")) return Response.json({ access_token: "test-token", expires_in: 3600 });
+      if (url.includes("getpliant.com") && !url.includes("sandbox")) throw new Error("production Pliant");
+      return handler(url, init);
+    }) as typeof fetch;
+    console.error = (...args: unknown[]) => {
+      pciLogs.push(args);
+    };
+    return () => {
+      globalThis.fetch = prior;
+      console.error = originalError;
+    };
+  }
+
+  test("GET /card-details n’envoie pas organizationId et journalise statut et chemin", async () => {
+    const seen: { url: string; headers: Headers }[] = [];
+    const restore = pciArm((url, init) => {
+      seen.push({ url, headers: new Headers(init?.headers) });
+      return Response.json({ message: "not ready", pan: PAN, cvv: "123" }, { status: 404 });
+    });
+    try {
+      await assert.rejects(() => readPliantCardSecrets(CARD), (err: unknown) => err instanceof PliantSecretsError && err.status === 404 && err.incomplete === false);
+      assert.equal(seen.length, 1);
+      const asked = new URL(seen[0].url);
+      assert.equal(asked.origin, "https://pci-sandbox.partner-api.getpliant.com");
+      assert.equal(asked.pathname, `/card-details/${CARD}`);
+      assert.equal(asked.search, "");
+      assert.equal(seen[0].headers.get("accept"), "application/json");
+      assert.equal(seen[0].headers.get("Pliant-API-Version"), "2.1.0");
+      assert.match(seen[0].headers.get("authorization") || "", /^Bearer /);
+      assert.equal(seen[0].headers.get("organizationId"), null);
+      const line = pciLogs.find((entry) => entry[0] === "[pliant]" && entry[1] === "secrets");
+      assert.deepEqual(line, ["[pliant]", "secrets", 404, "/card-details/:id"]);
+      assert.equal(JSON.stringify(pciLogs).includes(PAN), false);
+      assert.equal(JSON.stringify(pciLogs).includes(CARD), false);
+      assert.equal(JSON.stringify(pciLogs).includes("123"), false);
+    } finally {
+      restore();
+    }
+  });
+
+  test("404, 409 et un corps incomplet se relisent", async () => {
+    const waits: number[] = [];
+    const steps = ["404", "409", "incomplete", "ok"] as const;
+    let reads = 0;
+    const restore = pciArm(() => {
+      const step = steps[reads] ?? "ok";
+      reads += 1;
+      if (step === "incomplete") return Response.json({ pan: "12" });
+      if (step === "ok") return Response.json({ pan: PAN, cvv: "123", expiryMonth: 12, expiryYear: 2030 });
+      return Response.json({ message: "not ready", pan: PAN, cvv: "123" }, { status: Number(step) });
+    });
+    try {
+      const secrets = await readIssuedPliantCardSecrets(CARD, {
+        sleep: async (ms) => {
+          waits.push(ms);
+        },
+        read: readPliantCardSecrets,
+      });
+      assert.equal(secrets.pan, PAN);
+      assert.equal(secrets.cvc, "123");
+      assert.deepEqual(waits, [1000, 2000, 4000]);
+      assert.equal(reads, 4);
+      const secretLogs = pciLogs.filter((entry) => entry[0] === "[pliant]" && entry[1] === "secrets");
+      assert.equal(secretLogs.length, 3);
+      assert.equal(JSON.stringify(secretLogs).includes(PAN), false);
+      assert.equal(JSON.stringify(secretLogs).includes("123"), false);
+      assert.equal(JSON.stringify(secretLogs).includes(CARD), false);
+    } finally {
+      restore();
+    }
+  });
+
+  test("un 400 n’est pas relancé", async () => {
+    let reads = 0;
+    const waits: number[] = [];
+    const restore = pciArm(() => {
+      reads += 1;
+      return Response.json({ message: "bad", pan: PAN }, { status: 400 });
+    });
+    try {
+      await assert.rejects(
+        () => readIssuedPliantCardSecrets(CARD, { sleep: async (ms) => { waits.push(ms); } }),
+        (err: unknown) => err instanceof PliantSecretsError && err.status === 400
+      );
+      assert.equal(reads, 1);
+      assert.deepEqual(waits, []);
+      assert.equal(JSON.stringify(pciLogs).includes(PAN), false);
+      assert.ok(pciLogs.some((entry) => entry[1] === "secrets" && entry[2] === 400));
+    } finally {
+      restore();
+    }
   });
 });

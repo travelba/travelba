@@ -340,24 +340,105 @@ const PCI = {
   sandbox: "https://pci-sandbox.partner-api.getpliant.com",
 };
 
-/** Lecture éphémère. La réponse n'est pas journalisée. */
+/**
+ * PCI 2.1.0 : GET /card-details/{cardId} sur l’hôte PCI, sans organizationId.
+ * Ce paramètre est obligatoire sur le détail porteur, pas sur cette lecture.
+ * Une carte vient d’être émise : 404, 409, 5xx ou un corps incomplet se relisent.
+ */
+const SECRETS_BACKOFF_MS = [1_000, 2_000, 4_000];
+
+export class PliantSecretsError extends Error {
+  readonly status: number;
+  readonly incomplete: boolean;
+
+  constructor(status: number, incomplete = false) {
+    super("Pliant n’a pas renvoyé la carte.");
+    this.name = "PliantSecretsError";
+    this.status = status;
+    this.incomplete = incomplete;
+  }
+}
+
+export function pliantSecretsRetryable(err: unknown) {
+  if (!(err instanceof PliantSecretsError)) return false;
+  if (err.incomplete) return true;
+  return err.status === 0 || err.status === 404 || err.status === 409 || err.status >= 500;
+}
+
+/** Motif interne. Aucun numéro, aucun cryptogramme. */
+export function cardReadStopReason(err: unknown) {
+  if (err instanceof PliantSecretsError) {
+    if (err.incomplete) return "Carte: réponse incomplète";
+    if (!err.status) return "Carte: lecture interrompue";
+    return `Carte: lecture refusée (${err.status})`;
+  }
+  const message = err instanceof Error ? err.message : "";
+  const clean = scrubPliantLog(message, 160);
+  if (!clean) return "Carte: lecture impossible";
+  return clean.startsWith("Carte:") ? clean : `Carte: ${clean}`;
+}
+
+function secretsPath(cardId: string) {
+  return maskPliantPath(`/card-details/${cardId}`);
+}
+
+/** Lecture éphémère. Le journal ne garde que le statut et le chemin masqué. */
 export async function readPliantCardSecrets(cardId: string) {
   const token = await accessToken();
   const host = process.env.PLIANT_SANDBOX === "1" ? PCI.sandbox : PCI.prod;
-  const res = await fetch(`${host}/card-details/${encodeURIComponent(cardId)}`, {
-    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: "application/json",
-      "Pliant-API-Version": "2.1.0",
-    },
-  });
-  if (!res.ok) throw new Error("Pliant n’a pas renvoyé la carte.");
-  const json = (await res.json()) as unknown;
+  const safePath = secretsPath(cardId);
+  let res: Response;
+  try {
+    res = await fetch(`${host}/card-details/${encodeURIComponent(cardId)}`, {
+      signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/json",
+        "Pliant-API-Version": "2.1.0",
+      },
+    });
+  } catch {
+    console.error("[pliant]", "secrets", 0, safePath);
+    throw new PliantSecretsError(0, false);
+  }
+  if (!res.ok) {
+    await res.text().catch(() => "");
+    console.error("[pliant]", "secrets", res.status, safePath);
+    throw new PliantSecretsError(res.status, false);
+  }
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
   const { cardSecretsFromPayload } = await import("./hotel-arrival");
   const secrets = cardSecretsFromPayload(json);
-  if (!secrets) throw new Error("Pliant n’a pas renvoyé la carte.");
+  if (!secrets) {
+    console.error("[pliant]", "secrets", res.status, safePath, "incomplet");
+    throw new PliantSecretsError(res.status, true);
+  }
   return secrets;
+}
+
+/** Relit la carte juste après l’émission. Quatre essais, puis 1 s, 2 s et 4 s. */
+export async function readIssuedPliantCardSecrets(
+  cardId: string,
+  options?: { sleep?: (ms: number) => Promise<void>; read?: (cardId: string) => Promise<Awaited<ReturnType<typeof readPliantCardSecrets>>> }
+) {
+  const sleep = options?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const read = options?.read ?? readPliantCardSecrets;
+  let last: unknown;
+  for (let attempt = 0; attempt <= SECRETS_BACKOFF_MS.length; attempt++) {
+    if (attempt > 0) await sleep(SECRETS_BACKOFF_MS[attempt - 1]);
+    try {
+      return await read(cardId);
+    } catch (err) {
+      last = err;
+      if (attempt === SECRETS_BACKOFF_MS.length || !pliantSecretsRetryable(err)) throw err;
+    }
+  }
+  throw last;
 }
 
 /** Cadre PCI. Le numéro est dessiné par Pliant, pas par nos serveurs. */
