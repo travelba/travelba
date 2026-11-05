@@ -375,7 +375,8 @@ async function applyHolderAddress(
  */
 export async function deleteTravelDocuments(
   supabase: SupabaseClient,
-  filter: Record<string, string>
+  filter: Record<string, string>,
+  removeFiles: (paths: string[]) => Promise<void> = removeCrmFiles
 ) {
   let query = supabase.from("crm_travel_documents").delete();
   for (const [column, value] of Object.entries(filter)) query = query.eq(column, value);
@@ -398,7 +399,7 @@ export async function deleteTravelDocuments(
         .filter((path): path is string => Boolean(path))
     );
     toRemove = paths.filter((path) => !stillUsed.has(path));
-    if (toRemove.length) await removeCrmFiles(toRemove);
+    if (toRemove.length) await removeFiles(toRemove);
   }
   return { error: null, paths: toRemove };
 }

@@ -4,7 +4,7 @@ import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { loyaltyPatchFromBody } from "@/lib/crm/loyalty";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
-import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
+import { deleteCompanionDocuments, deleteCompanionRow } from "@/lib/crm/remove-companion";
 
 function companionPatch(body: Record<string, unknown>) {
   const sex = emptyToNull(body.sex);
@@ -86,12 +86,9 @@ export async function DELETE(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
-  const docs = await deleteTravelDocuments(auth.supabase, { companion_id: id });
+  const docs = await deleteCompanionDocuments(auth.supabase, id);
   if (docs.error) return dbError(docs.error, 400);
-  const { error } = await auth.supabase
-    .from("crm_travel_companions")
-    .delete()
-    .eq("id", id);
-  if (error) return dbError(error, 400);
+  const row = await deleteCompanionRow(auth.supabase, id);
+  if (row.error) return dbError(row.error, 400);
   return NextResponse.json({ ok: true });
 }

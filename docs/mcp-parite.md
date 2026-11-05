@@ -23,7 +23,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Ouvrir l’espace à la place du client | hors API |
 | Lien d’accès magique 24 h (mot de passe déjà posé) | hors API — le bouton « Envoyer un lien d’accès » reste à l’écran |
 | Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
-| Accompagnateur de la fiche (hors dossier) | hors API — `ajouter_voyageur` porte sur un dossier |
+| Retirer un accompagnateur de la fiche | `supprimer_compagnon` (`confirmer` = nom complet) — ajouté. Réservé aux administrateurs. Pièces d’identité et fichiers compris. S’il est voyageur, refus en listant les dossiers, sauf `retirer_des_dossiers` true (lignes voyageur seulement). Réservations, paiements, factures et grand livre inchangés |
 
 ## Dossiers et cartes
 
@@ -58,6 +58,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Carte d’embarquement déjà déposée | `notifier_carte_embarquement` — couvert |
 | Fichier sur le dossier ou sur une carte | `deposer_piece_dossier` — ajouté |
 | Retirer cette pièce | `retirer_piece_dossier` — ajouté |
+| Retirer une pièce d’identité de la fiche (titulaire ou compagnon) | `supprimer_piece_client` (`confirmer` true) — ajouté. Réservé aux administrateurs. Le fichier part avec la ligne. Jamais le numéro, au plus les trois derniers caractères (`fin`) |
 | Lecture du numéro ou du scan de passeport | `passeport_voyageur`, `scan_passeport` — jeton passeport seulement |
 | OCR « Mal lu » sur la fiche | hors API |
 

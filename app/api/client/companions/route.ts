@@ -3,7 +3,7 @@ import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
-import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
+import { deleteCompanionDocuments, deleteCompanionRow } from "@/lib/crm/remove-companion";
 import { companionActivityDetail, companionActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { loyaltyPatchFromBody, normalizeLoyaltyMap } from "@/lib/crm/loyalty";
@@ -137,17 +137,10 @@ export async function DELETE(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
-  const docs = await deleteTravelDocuments(auth.supabase, {
-    companion_id: id,
-    customer_id: auth.customer.id,
-  });
+  const docs = await deleteCompanionDocuments(auth.supabase, id, auth.customer.id);
   if (docs.error) return dbError(docs.error, 400);
-  const { error } = await auth.supabase
-    .from("crm_travel_companions")
-    .delete()
-    .eq("id", id)
-    .eq("customer_id", auth.customer.id);
-  if (error) return dbError(error, 400);
+  const row = await deleteCompanionRow(auth.supabase, id, auth.customer.id);
+  if (row.error) return dbError(row.error, 400);
   await recordCustomerActivity({
     customerId: auth.customer.id,
     authUserId: auth.user.id,

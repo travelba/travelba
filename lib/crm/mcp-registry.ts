@@ -109,6 +109,7 @@ import {
   retirerPieceDossier,
   supprimerClient,
 } from "@/lib/crm/mcp-desk";
+import { supprimerCompagnon, supprimerPieceClient } from "@/lib/crm/remove-companion";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
@@ -117,7 +118,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 104;
+export const MCP_TOOL_CAP = 106;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1176,6 +1177,23 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => mergeCompagnon(args),
   },
   {
+    name: "supprimer_compagnon",
+    write: true,
+    destructive: true,
+    description:
+      "Supprime un accompagnateur de la fiche et ses pièces d’identité, fichiers compris, comme le bouton Retirer. Réservé aux administrateurs. confirmer est le nom complet (prénoms et nom, casse et accents indifférents). S’il est voyageur sur un dossier, refus en listant les dossiers. retirer_des_dossiers true retire d’abord les lignes voyageur. Les réservations, les paiements, les factures et le grand livre ne sont pas modifiés. Aucun numéro de pièce, aucun message.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      compagnon_id: z.string().trim().max(80).describe("Identifiant de l’accompagnateur"),
+      confirmer: z.string().trim().max(200).describe("Nom complet de l’accompagnateur, pour confirmer"),
+      retirer_des_dossiers: z
+        .boolean()
+        .optional()
+        .describe("true : le retire d’abord des dossiers où il est voyageur. Sinon, refus si un dossier le cite"),
+    },
+    run: (args) => supprimerCompagnon(args),
+  },
+  {
     name: "ajouter_vol",
     write: true,
     description:
@@ -1870,6 +1888,19 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: z.boolean().describe("true pour retirer"),
     },
     run: (args) => retirerPieceDossier(args),
+  },
+  {
+    name: "supprimer_piece_client",
+    write: true,
+    destructive: true,
+    description:
+      "Retire une pièce d’identité de la fiche client (titulaire ou compagnon) et son fichier, comme Retirer cette pièce. Réservé aux administrateurs. document_id et client_id. confirmer true. Ne retire pas une pièce de dossier (retirer_piece_dossier). Le numéro n’est pas renvoyé : au plus les trois derniers caractères (fin). Aucun message.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      document_id: z.string().trim().max(80).describe("Identifiant de la pièce du coffre"),
+      confirmer: z.boolean().describe("true pour retirer"),
+    },
+    run: (args) => supprimerPieceClient(args),
   },
   {
     name: "lire_journal",
