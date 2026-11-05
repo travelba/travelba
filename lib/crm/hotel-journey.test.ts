@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   BOOKING_STEPS,
+  agencyPayOffered,
   discreetSearchPerk,
   hotelJourneySearch,
   hotelJourneyStep,
+  offeredPayMethods,
   payActionLabel,
+  payStepAction,
   rateBoardLine,
   rateChips,
   stayBenefits,
@@ -87,4 +92,71 @@ test("le parcours nomme chaque étape, et le paiement distingue l’encaissement
   assert.equal(payActionLabel({ method: "card", trial: false }), "Valider et payer");
   assert.equal(payActionLabel({ method: "agency", trial: false }), "Valider la réservation");
   assert.equal(payActionLabel({ method: "card", trial: true }), "Valider la réservation");
+});
+
+test("le règlement ne propose que les modes permis, sans choix par défaut", () => {
+  assert.deepEqual(offeredPayMethods({ api: true, currency: "EUR" }), ["card", "agency"]);
+  assert.deepEqual(offeredPayMethods({ api: true, currency: "eur" }), ["card", "agency"]);
+  assert.deepEqual(offeredPayMethods({ api: true, currency: "USD" }), ["card"]);
+  assert.deepEqual(offeredPayMethods({ api: false, currency: "USD" }), ["card", "agency"]);
+  assert.equal(agencyPayOffered({ api: true, currency: "" }), false);
+  assert.equal(agencyPayOffered({ api: false, currency: "" }), true);
+});
+
+test("le bouton attend un mode, puis la carte, et ne dit Réessayer qu’après l’échec", () => {
+  const base = {
+    trial: false,
+    failed: false,
+    sending: false,
+    cardOpen: false,
+    cardComplete: false,
+    offerReady: true,
+  };
+  assert.deepEqual(payStepAction({ ...base, method: "" }), { label: "Valider", disabled: true });
+  assert.deepEqual(payStepAction({ ...base, method: "card" }), { label: "Valider et payer", disabled: false });
+  assert.deepEqual(payStepAction({ ...base, method: "agency" }), { label: "Valider la réservation", disabled: false });
+  assert.deepEqual(payStepAction({ ...base, method: "card", trial: true }), { label: "Valider la réservation", disabled: false });
+  assert.deepEqual(payStepAction({ ...base, method: "", trial: true }), { label: "Valider la réservation", disabled: true });
+  assert.deepEqual(
+    payStepAction({ ...base, method: "card", cardOpen: true, cardComplete: false }),
+    { label: "Valider et payer", disabled: true }
+  );
+  assert.deepEqual(
+    payStepAction({ ...base, method: "card", cardOpen: true, cardComplete: true }),
+    { label: "Valider et payer", disabled: false }
+  );
+  assert.deepEqual(payStepAction({ ...base, method: "agency", cardOpen: true, cardComplete: false }), {
+    label: "Valider la réservation",
+    disabled: false,
+  });
+  assert.deepEqual(payStepAction({ ...base, method: "agency", failed: true }), { label: "Réessayer", disabled: false });
+  assert.deepEqual(payStepAction({ ...base, method: "card", failed: true }), { label: "Réessayer", disabled: false });
+  assert.deepEqual(payStepAction({ ...base, method: "", failed: true }), { label: "Réessayer", disabled: true });
+  assert.deepEqual(
+    payStepAction({ ...base, method: "card", failed: true, cardOpen: true, cardComplete: false }),
+    { label: "Réessayer", disabled: true }
+  );
+  assert.deepEqual(
+    payStepAction({ ...base, method: "card", failed: true, cardOpen: true, cardComplete: true }),
+    { label: "Réessayer", disabled: false }
+  );
+  assert.deepEqual(payStepAction({ ...base, method: "card", sending: true }), { label: "Vérification…", disabled: true });
+  assert.equal(payStepAction({ ...base, method: "agency", offerReady: false }).disabled, true);
+});
+
+test("choisir un mode ne lance pas la réservation", () => {
+  const journey = readFileSync(join(import.meta.dirname, "../../components/account/HotelJourney.tsx"), "utf8");
+  assert.match(journey, /role="radiogroup"/);
+  assert.match(journey, /aria-label="Règlement"/);
+  assert.match(journey, /role="radio"/);
+  assert.match(journey, /aria-checked=\{selected\}/);
+  assert.match(journey, /onClick=\{\(\) => choosePay\(method\)\}/);
+  assert.match(journey, /useState<PayMethod \| "">\(""\)/);
+  assert.doesNotMatch(journey, /sendCard\.current/);
+  assert.doesNotMatch(journey, /Autoriser la carte/);
+  const choose = journey.slice(journey.indexOf("function choosePay"), journey.indexOf("function movePay"));
+  assert.match(choose, /setPayMethod\(next\)/);
+  assert.doesNotMatch(choose, /send\(/);
+  assert.match(journey, /StayBenefits/);
+  assert.match(journey, /data-hotel-pay-choice/);
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { HotelBookingWait } from "@/components/account/HotelBookingWait";
@@ -19,10 +19,12 @@ import {
   BOOKING_STEPS,
   collapseRooms,
   guestNameOk,
-  payActionLabel,
+  offeredPayMethods,
+  payStepAction,
   rateBoardLine,
   rateChips,
   stayBenefits,
+  type PayMethod,
   type BookingStep,
   type ClientHotelFile,
   type ClientRate,
@@ -410,7 +412,9 @@ export function HotelJourney({
     () => null,
   );
   const [done, setDone] = useState("");
-  const [payMethod, setPayMethod] = useState<"card" | "agency" | "">("");
+  const [payMethod, setPayMethod] = useState<PayMethod | "">("");
+  const [stripeReady, setStripeReady] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
   const [arrival, setArrival] = useState("");
   const [stayId, setStayId] = useState("");
   const [stayCancel, setStayCancel] = useState<"cancel" | "ask" | "none">("none");
@@ -422,8 +426,14 @@ export function HotelJourney({
     ? { cardTitle: LE_PAY_COPY.clientTitle, card: LE_PAY_COPY.client, agencyTitle: LE_PAY_COPY.agencyTitle, agency: LE_PAY_COPY.agency }
     : { cardTitle: PAY_COPY.cardTitle, card: PAY_COPY.card, agencyTitle: PAY_COPY.agencyTitle, agency: PAY_COPY.agency };
   const roomsRef = useRef<HTMLDivElement>(null);
-  const sendCard = useRef<(ready: boolean) => void>(() => {});
+  const confirmCard = useRef<(() => Promise<boolean>) | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const payCurrency = rate?.currency || "";
+  const payMethods = useMemo(
+    () => offeredPayMethods({ api: Boolean(leApi), currency: payCurrency }),
+    [leApi, payCurrency]
+  );
+  const selectedPay: PayMethod | "" = payMethod && payMethods.includes(payMethod) ? payMethod : "";
 
   useEffect(() => {
     const lock = placing || Boolean(widget) || (sending && !widget);
@@ -595,13 +605,11 @@ export function HotelJourney({
     if (!widget) return;
     const onMessage = (event: MessageEvent) => {
       const signal = leWidgetSignal({ origin: event.origin, allowedOrigin: widget.origin, data: event.data });
-      if (signal === "ready") {
-        setCardFrame("saved");
-        sendCard.current(true);
-      }
+      if (signal === "ready") setCardFrame("saved");
       if (signal === "error") {
         setWidget(null);
         setCardFrame("idle");
+        setStripeReady(false);
         setFareBlock("La carte n’a pas été acceptée. Vérifiez les informations.");
       }
     };
@@ -610,7 +618,7 @@ export function HotelJourney({
   }, [widget]);
 
   async function send(intentId?: string, cardReady?: boolean) {
-    if (!rate?.offerId || !payMethod) return;
+    if (!rate?.offerId || !selectedPay) return;
     const guests = stayRooms.map((_, index) => principalAt(index).replace(/\s+/g, " ").trim());
     const companions = stayRooms.map((_, index) =>
       (more[index] || []).map((name) => name.replace(/\s+/g, " ").trim()).filter(Boolean)
@@ -619,7 +627,7 @@ export function HotelJourney({
       setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne.");
       return;
     }
-    const books = cardReady === true || Boolean(intentId) || payMethod === "agency";
+    const books = cardReady === true || Boolean(intentId) || selectedPay === "agency";
     if (books) {
       setWaitPhase("hotel");
       setPlacing(true);
@@ -633,7 +641,7 @@ export function HotelJourney({
       const response = await fetch("/api/client/hotels/reserver", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ offerId: rate.offerId, guests, companions, payMethod, arrival, intentId, cardReady: cardReady === true }),
+        body: JSON.stringify({ offerId: rate.offerId, guests, companions, payMethod: selectedPay, arrival, intentId, cardReady: cardReady === true }),
       });
       const json = await readBookingResponse(response, (phase) => setWaitPhase(phase));
       const widgetUrl = json?.widgetUrl ? safeCardWidgetUrl(json.widgetUrl) : null;
@@ -642,6 +650,7 @@ export function HotelJourney({
         setWidget({ url: widgetUrl, origin: json.widgetOrigin, terms: json.terms || rate.terms || "" });
         if (json.terms) setRate({ ...rate, terms: json.terms });
         setCardSecret(null);
+        setStripeReady(false);
         if (!response.ok) setNote(json?.error || "La saisie de la carte a expiré. Recommencez.");
         return;
       }
@@ -650,6 +659,7 @@ export function HotelJourney({
           setRate({ ...rate, sellCents: json.sellCents, terms: json.terms || rate.terms });
         }
         setCardSecret(null);
+        setStripeReady(false);
         setCardFrame("idle");
         setWidget(null);
         setFareBlock(json?.error || BOOKING_FAILED);
@@ -657,6 +667,7 @@ export function HotelJourney({
         return;
       }
       if (json?.clientSecret && json.intentId) {
+        setStripeReady(false);
         setCardSecret({ clientSecret: json.clientSecret, intentId: json.intentId });
         return;
       }
@@ -676,6 +687,7 @@ export function HotelJourney({
         setStayConditions(json.view.conditions);
         setDone(json.view.label);
         setCardSecret(null);
+        setStripeReady(false);
         setCardFrame("idle");
         setWidget(null);
         setFareBlock(null);
@@ -690,11 +702,50 @@ export function HotelJourney({
     }
   }
 
-  useEffect(() => {
-    sendCard.current = (ready) => {
-      void send(undefined, ready);
-    };
-  });
+  function choosePay(next: PayMethod) {
+    if (next === selectedPay) return;
+    setPayMethod(next);
+    setCardFrame("idle");
+    setWidget(null);
+    setCardSecret(null);
+    setStripeReady(false);
+    confirmCard.current = null;
+  }
+
+  function movePay(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const index = payMethods.indexOf(selectedPay as PayMethod);
+    const forward = event.key === "ArrowDown" || event.key === "ArrowRight";
+    const nextIndex = index < 0 ? (forward ? 0 : payMethods.length - 1) : (index + (forward ? 1 : -1) + payMethods.length) % payMethods.length;
+    const next = payMethods[nextIndex];
+    if (!next) return;
+    choosePay(next);
+    event.currentTarget.querySelector<HTMLButtonElement>(`[data-hotel-pay-choice="${next}"]`)?.focus();
+  }
+
+  async function confirmPay() {
+    if (!rate?.offerId || !selectedPay || sending || authorizing) return;
+    if (selectedPay === "card" && widget) {
+      if (cardFrame !== "saved") return;
+      await send(undefined, true);
+      return;
+    }
+    if (selectedPay === "card" && cardSecret) {
+      if (!stripeReady || !confirmCard.current) return;
+      setAuthorizing(true);
+      let accepted = false;
+      try {
+        accepted = await confirmCard.current();
+      } finally {
+        setAuthorizing(false);
+      }
+      if (!accepted) return;
+      await send(cardSecret.intentId);
+      return;
+    }
+    await send();
+  }
 
   async function actStay(action: "cancel" | "ask") {
     if (!stayId) return;
@@ -721,6 +772,16 @@ export function HotelJourney({
       setSending(false);
     }
   }
+
+  const payAction = payStepAction({
+    method: selectedPay,
+    trial: Boolean(trial),
+    failed: Boolean(fareBlock),
+    sending: sending || authorizing,
+    cardOpen: selectedPay === "card" && (Boolean(widget) || Boolean(cardSecret)),
+    cardComplete: Boolean(widget) ? cardFrame === "saved" : Boolean(cardSecret) && stripeReady,
+    offerReady: Boolean(rate?.offerId),
+  });
 
   const panel = (
     <div className="hotel-theme">
@@ -1146,33 +1207,44 @@ export function HotelJourney({
                 {fareBlock !== BOOKING_FAILED ? <p className="text-sm leading-relaxed h-muted">{fareBlock}</p> : null}
               </div>
             ) : null}
-            <div className="space-y-2" data-hotel-pay="1">
-              <button
-                type="button"
-                aria-pressed={payMethod === "card"}
-                className={`h-recap w-full px-4 py-3 text-left ${payMethod === "card" ? "ring-1 ring-[#C5A880]" : ""}`}
-                onClick={() => {
-                  setPayMethod("card");
-                  setCardFrame("idle");
-                  setWidget(null);
-                }}
-              >
-                <span className="block text-sm font-semibold h-ink">{payCopy.cardTitle}</span>
-                <span className="mt-1 block text-sm h-muted">{payCopy.card}</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={payMethod === "agency"}
-                className={`h-recap w-full px-4 py-3 text-left ${payMethod === "agency" ? "ring-1 ring-[#C5A880]" : ""}`}
-                onClick={() => {
-                  setPayMethod("agency");
-                  setCardFrame("idle");
-                  setWidget(null);
-                }}
-              >
-                <span className="block text-sm font-semibold h-ink">{payCopy.agencyTitle}</span>
-                <span className="mt-1 block text-sm h-muted">{payCopy.agency}</span>
-              </button>
+            <div
+              className="space-y-2"
+              role="radiogroup"
+              aria-label="Règlement"
+              data-hotel-pay="1"
+              onKeyDown={movePay}
+            >
+              {payMethods.map((method, index) => {
+                const selected = selectedPay === method;
+                const title = method === "card" ? payCopy.cardTitle : payCopy.agencyTitle;
+                const body = method === "card" ? payCopy.card : payCopy.agency;
+                return (
+                  <button
+                    key={method}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    data-hotel-pay-choice={method}
+                    tabIndex={selectedPay ? (selected ? 0 : -1) : index === 0 ? 0 : -1}
+                    disabled={authorizing}
+                    className={`h-recap flex w-full items-start gap-3 px-4 py-3 text-left border-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C5A880] disabled:opacity-60 ${selected ? "border-[#C5A880]" : "border-[#e7e1d6]"}`}
+                    onClick={() => choosePay(method)}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[10px] border ${selected ? "border-[#C5A880] bg-[#C5A880] text-[#0B192C]" : "border-[#1a1a1a]/30 bg-white"}`}
+                    >
+                      {selected ? <Icon name="check" className="h-3 w-3" strokeWidth={3} /> : null}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold h-ink">{title}</span>
+                      <span className="mt-1 block text-sm h-muted">{body}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="space-y-2">
               <label className="block px-1 text-sm h-muted">
                 Heure d’arrivée
                 <input
@@ -1187,9 +1259,11 @@ export function HotelJourney({
             {cardSecret ? (
               <HotelCardHold
                 clientSecret={cardSecret.clientSecret}
-                onDone={() => void send(cardSecret.intentId)}
+                confirmRef={confirmCard}
+                onComplete={setStripeReady}
                 onFail={(message) => {
                   setCardSecret(null);
+                  setStripeReady(false);
                   setCardFrame("idle");
                   setFareBlock(message || BOOKING_FAILED);
                 }}
@@ -1240,14 +1314,14 @@ export function HotelJourney({
           nextLabel="Suivant"
         />
       ) : null}
-      {view === "pay" && rate && !cardSecret && !widget && !placing ? (
+      {view === "pay" && rate && !placing ? (
         <StepNav
           priceLabel="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
           onPrevious={goPrevious}
-          onNext={() => void send()}
-          nextLabel={fareBlock ? "Réessayer" : sending ? "Vérification…" : payActionLabel({ method: payMethod, trial })}
-          nextDisabled={sending || !rate.offerId || (!fareBlock && !payMethod)}
+          onNext={() => void confirmPay()}
+          nextLabel={payAction.label}
+          nextDisabled={payAction.disabled}
         />
       ) : null}
     </div>

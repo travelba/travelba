@@ -33,7 +33,7 @@ export function HotelGuaranteeNight({
       ) : null}
       {state === "saved" ? (
         <p className="h-serif text-[1.15rem] leading-snug" data-hotel-card-state="saved">
-          Carte enregistrée. Confirmation en cours…
+          Carte enregistrée.
         </p>
       ) : (
         <div className="rounded-2xl bg-[#f7f4ee] p-1.5">
