@@ -4,7 +4,7 @@ import { hotelBookingEnabled, hotelDirectLive } from "@/lib/crm/hotel-access";
 import { hotelActivityMode } from "@/lib/crm/hotel-activity";
 import { recordHotelClientActivity } from "@/lib/crm/hotel-activity-run";
 import { openDirectStay, prepareDirectPayment } from "@/lib/crm/hotel-direct-run";
-import { guestNameOk } from "@/lib/crm/hotel-journey";
+import { lePrimaryGuest } from "@/lib/crm/le-self-book";
 
 export const runtime = "nodejs";
 
@@ -22,10 +22,13 @@ export async function POST(request: Request) {
     arrival?: unknown;
     intentId?: unknown;
     cardReady?: unknown;
+    companions?: unknown;
   } | null;
   const offerId = typeof body?.offerId === "string" ? body.offerId : "";
-  const guests = Array.isArray(body?.guests)
-    ? body.guests.map((entry) => (typeof entry === "string" ? entry.replace(/\s+/g, " ").trim() : "")).filter(Boolean)
+  const cleanName = (entry: unknown) => (typeof entry === "string" ? entry.replace(/\s+/g, " ").trim().slice(0, 80) : "");
+  const guests = Array.isArray(body?.guests) ? body.guests.map(cleanName).filter(Boolean) : [];
+  const companions = Array.isArray(body?.companions)
+    ? body.companions.slice(0, 8).map((room) => (Array.isArray(room) ? room.map(cleanName).filter(Boolean).slice(0, 5) : []))
     : [];
   const payMethod = body?.payMethod === "agency" ? "agency" : body?.payMethod === "card" ? "card" : null;
   const arrival = typeof body?.arrival === "string" ? body.arrival.replace(/[^\d:h ]/g, "").trim().slice(0, 12) : null;
@@ -36,9 +39,13 @@ export async function POST(request: Request) {
     await noteError(auth.customer.id, auth.user.id, mode, "Cette offre n’est plus disponible.");
     return jsonError("Cette offre n’est plus disponible.", 400);
   }
-  if (!guests.length || guests.some((name) => !guestNameOk(name))) {
-    await noteError(auth.customer.id, auth.user.id, mode, "Indiquez le prénom et le nom de chaque chambre.");
-    return jsonError("Indiquez le prénom et le nom de chaque chambre.", 400);
+  if (
+    !guests.length ||
+    guests.some((name) => !lePrimaryGuest(name)) ||
+    companions.some((room) => room.some((name) => !lePrimaryGuest(name)))
+  ) {
+    await noteError(auth.customer.id, auth.user.id, mode, "Indiquez le prénom et le nom de chaque voyageur, une personne par ligne.");
+    return jsonError("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne.", 400);
   }
   if (!payMethod) {
     await noteError(auth.customer.id, auth.user.id, mode, "Choisissez un règlement.");
@@ -47,7 +54,7 @@ export async function POST(request: Request) {
   const live = hotelDirectLive(auth.customer);
   try {
     if (payMethod === "card" && live && !intentId && !cardReady) {
-      const prep = await prepareDirectPayment({ customer: auth.customer, offerId });
+      const prep = await prepareDirectPayment({ customer: auth.customer, offerId, companions });
       if (!prep.ok) {
         await noteError(auth.customer.id, auth.user.id, mode, prep.message);
         return NextResponse.json(
@@ -67,6 +74,7 @@ export async function POST(request: Request) {
       customer: auth.customer,
       offerId,
       guests,
+      companions,
       arrival,
       payMethod,
       stripeIntent: intentId,

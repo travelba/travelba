@@ -17,7 +17,12 @@ import {
   leWidgetSignal,
   safeCardWidgetUrl,
   leDeadlineParisLabel,
+  leClientRefusal,
+  lePrimaryGuest,
   leSessionExpired,
+  PARTY_MISMATCH,
+  partyChanged,
+  partyWithCompanions,
   redactCardText,
 } from "./le-self-book";
 
@@ -190,4 +195,39 @@ test("le client ne reçoit ni session, ni description de paiement", () => {
   const client = JSON.stringify(toClientHotel(stay, 2, "offer"));
   assert.doesNotMatch(client, /SESS10N|Deposit required|paymentDescription|sessionId/);
   assert.equal(stay.sellCents, 20000);
+});
+
+test("un accompagnant augmente les adultes, le nom envoyé reste le principal", () => {
+  const searched = [{ adults: 1, children: [{ age: 4 }] }];
+  const first = partyWithCompanions(searched, [1]);
+  assert.deepEqual(first, [{ adults: 2, children: [{ age: 4 }] }]);
+  assert.equal(partyChanged(searched, first), true);
+  const again = partyWithCompanions(first, [1]);
+  assert.deepEqual(again, [{ adults: 2, children: [{ age: 4 }] }]);
+  assert.equal(partyChanged(first, again), false);
+  assert.deepEqual(partyWithCompanions([{ adults: 2, children: [] }], [0]), [{ adults: 2, children: [] }]);
+  assert.deepEqual(partyWithCompanions([{ adults: 2, children: [] }], [2]), [{ adults: 3, children: [] }]);
+  assert.equal(lePrimaryGuest("Benjamin Boukris, Victoria Boukris"), null);
+  assert.equal(lePrimaryGuest("Benjamin Boukris"), "Benjamin Boukris");
+  const body = leBookingRequest({
+    start: "2026-11-27",
+    end: "2026-11-28",
+    sessionId: "SESS",
+    rateIndex: "RATE",
+    hotelId: 15,
+    guestName: "Benjamin Boukris",
+    guestEmail: "benjamin@example.com",
+    eta: null,
+    rooms: [{ guestName: "Benjamin Boukris", adults: 2, children: [] }],
+    card: null,
+  });
+  assert.equal(body.guest_name, "Benjamin Boukris");
+  assert.equal(body.rooms[0].guest_name, "Benjamin Boukris");
+  assert.equal(body.rooms[0].adults, 2);
+  assert.equal("credit_card" in body, false);
+  assert.doesNotMatch(JSON.stringify(body), /Victoria/);
+  assert.equal(leClientRefusal(422, "guest_name: The surname must be at least 2 characters."), "Indiquez le prénom et le nom du voyageur principal, une personne par ligne.");
+  assert.equal(leClientRefusal(422, "adults: The adults count does not match the rate."), PARTY_MISMATCH);
+  const logged = redactCardText("refused 4242424242424242 cvc 123 key sk_live_secret");
+  assert.doesNotMatch(logged, /4242|123/);
 });

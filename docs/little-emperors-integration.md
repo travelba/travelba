@@ -27,7 +27,7 @@ The price shown is `total_to_book` (requested currency, then the supplier total)
 
 Two ways to pay, chosen on each stay:
 
-- **Le client paie lui-même.** No Stripe authorization and no agency card. The rate is refreshed, the payment terms (guarantee or deposit, cryptogram when required, cancellation deadline in Europe/Paris) are shown, then the supplier card frame is embedded. The card is attached to the availability `session_id` inside that frame. `POST /v2/hotels/bookings` is sent without `credit_card`. The same session is used for that call. If it has expired, the frame is shown again; a new price is shown before any new card entry.
+- **Le client paie lui-même.** No Stripe authorization and no agency card. Each named companion counts as one more adult when that exceeds the searched party; children already on the search stay children. Availability is run again with that party before the card frame. A missing rate stops the booking. A new price is shown before any card entry. The payment terms (guarantee or deposit, cryptogram when required, cancellation deadline in Europe/Paris) are shown, then the supplier card frame is embedded. The card is attached to the availability `session_id` inside that frame. `POST /v2/hotels/bookings` is sent without `credit_card`. `guest_name` is the primary traveller only (`First Last`). Companions stay on the CRM stay. The same session is used for that call. If it has expired, the frame is shown again.
 - **Payé par l’agence.** Same as an agency-advanced dossier: one single-use Pliant card for the exact amount is sent in `credit_card`, and the amount is added to the client’s transactions. There is no Stripe charge. The rate is refreshed before the card is issued. A price change stops the booking.
 
 A second click reuses the same stay. If the upstream id is already stored, the call is not repeated.
@@ -36,7 +36,7 @@ Cancellation uses the supplier’s `cancellation_deadline`, shown in Europe/Pari
 
 Webhooks still accept `X-Access-Key` or `Authorization: Bearer`. A direct stay is linked by the stored booking id. Fuzzy matching remains the fallback for stays that were not created here.
 
-Client screens, the confirmation email and the dossier do not name the supplier and do not show cost or commission. Card numbers and cryptograms are not stored or logged.
+Client screens, the confirmation email and the dossier do not name the supplier and do not show cost or commission. Card numbers and cryptograms are not stored or logged. A refused booking logs the upstream status and a redacted message (no card data, no API key). The client sees a French explanation.
 
 ## Security
 
