@@ -251,6 +251,12 @@ function installFetch(mode: "ok" | "refuse") {
       }
     }
     calls.push({ url, method, body });
+    if (url.includes("pliant-test.supabase.co")) {
+      if (url.includes("/rpc/crm_claim_integration_refresh")) return Response.json(true);
+      if (url.includes("/crm_integrations") && method === "GET") return Response.json(null);
+      if (url.includes("/crm_integrations")) return Response.json(null, { status: 201 });
+      return Response.json(null);
+    }
     if (url.includes("supabase.co")) return previous(input, init);
     if (url.includes("api.littleemperors.com") && !url.includes("api-staging")) throw new Error("production LE");
     if (url.includes("getpliant.com") && !url.includes("sandbox")) throw new Error("production Pliant");
@@ -295,7 +301,13 @@ function withEnv(run: () => Promise<void>) {
     org: process.env.PLIANT_ORGANIZATION_ID,
     holder: process.env.PLIANT_CARDHOLDER_ID,
     resend: process.env.RESEND_API_KEY,
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    serviceRole: process.env.SUPABASE_SERVICE_ROLE_KEY,
   };
+  if (!previous.supabaseUrl || !previous.serviceRole) {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://pliant-test.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+  }
   process.env.LITTLE_EMPERORS_API_BASE = "https://api-staging.littleemperors.com";
   process.env.LITTLE_EMPERORS_API_KEY = "test-key";
   delete process.env.VERCEL_ENV;
@@ -319,6 +331,8 @@ function withEnv(run: () => Promise<void>) {
     restore("PLIANT_ORGANIZATION_ID", previous.org);
     restore("PLIANT_CARDHOLDER_ID", previous.holder);
     restore("RESEND_API_KEY", previous.resend);
+    restore("NEXT_PUBLIC_SUPABASE_URL", previous.supabaseUrl);
+    restore("SUPABASE_SERVICE_ROLE_KEY", previous.serviceRole);
   });
 }
 
