@@ -1,3 +1,4 @@
+import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { ReglagesTabs } from "@/components/admin/ReglagesTabs";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
@@ -15,6 +16,7 @@ export default async function ReglagesLayout({ children }: { children: React.Rea
       />
       <ReglagesTabs admin={staff.role === "admin"} showExample={exampleSessionEnabled()} />
       {children}
+      <AdminSignOutButton />
     </div>
   );
 }
