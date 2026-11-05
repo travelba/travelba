@@ -27,6 +27,7 @@ import {
   clientCancellationSentence,
   clientPaymentTerms,
   leCardWidgetUrl,
+  leCreditCard,
   leDeadlineParisLabel,
   lePrimaryGuest,
   leRefusalReason,
@@ -48,7 +49,7 @@ import { portForBooking, type BookQuote } from "@/lib/crm/hotel-supplier";
 import { formatDateFr } from "@/lib/crm/dates";
 import { bookingCardValidity, manualStayCardBody } from "@/lib/crm/manual-stay-card";
 import { centsToAmount, formatMoney } from "@/lib/crm/money";
-import { issuePliantCard, lockPliantCard, pliantConfigured, readPliantCardholderName, readPliantCardSecrets } from "@/lib/crm/pliant";
+import { cardReadStopReason, issuePliantCard, lockPliantCard, pliantConfigured, readIssuedPliantCardSecrets, readPliantCardholderName } from "@/lib/crm/pliant";
 import { scrubPliantLog } from "@/lib/crm/pliant-tx";
 import { recordPliantAlert } from "@/lib/crm/agency-log";
 import { ensureStripeCustomer, getStripe, stripeConfigured } from "@/lib/crm/stripe";
@@ -594,6 +595,7 @@ async function placeLeStay(input: {
   now: string;
   fetchImpl?: typeof fetch;
   sendMail?: (input: { to: string; subject: string; text: string }) => Promise<boolean>;
+  secretsSleep?: (ms: number) => Promise<void>;
   onPhase?: (phase: "hotel" | "stay") => void;
 }): Promise<
   | { ok: true; view: ClientStayView }
@@ -903,9 +905,27 @@ async function placeLeStay(input: {
   }
   const cardName = holder ? [holder.firstName, holder.lastName].filter(Boolean).join(" ") : "Travelba";
   let cardLast4: string | null = null;
+  const CARD_UNREAD = "La carte de règlement n’a pas pu être lue. Aucun montant n’a été encaissé.";
+  const stopUnread = async (err: unknown) => {
+    const reason = cardReadStopReason(err);
+    console.error("[hotels] carte", reason);
+    await remember(input.admin, stayId, "system", "carte", reason, null);
+    await recordPliantAlert(reason, stayId, input.admin);
+    await release(reason);
+    return { ok: false as const, message: agency ? CARD_UNREAD : NOT_CHARGED };
+  };
   const post = async (quote: LeFreshQuote) => {
-    const secrets = agency && stay.pliantCardId ? await readPliantCardSecrets(stay.pliantCardId) : null;
-    if (secrets?.pan) cardLast4 = secrets.pan.replace(/\D/g, "").slice(-4) || null;
+    let card: ReturnType<typeof cardFromSecrets> | null = null;
+    if (agency) {
+      if (!stay.pliantCardId) throw new Error("Carte: aucune carte émise");
+      const secrets = await readIssuedPliantCardSecrets(
+        stay.pliantCardId,
+        input.secretsSleep ? { sleep: input.secretsSleep } : undefined
+      );
+      cardLast4 = secrets.pan.replace(/\D/g, "").slice(-4) || null;
+      card = cardFromSecrets(secrets, cardName);
+      if (!leCreditCard({ ...card, requiresCvc: quote.requiresCvc })) throw new Error("Carte: cryptogramme ou échéance illisible");
+    }
     return submitLeBooking({
       quote,
       checkIn: input.offer.check_in,
@@ -919,12 +939,17 @@ async function placeLeStay(input: {
         adults: room.adults,
         children: room.children,
       })),
-      card: secrets ? cardFromSecrets(secrets, cardName) : null,
+      card,
       fetchImpl: input.fetchImpl,
     });
   };
   if (!booking) {
-    let posted = await post(fresh).catch(() => ({ ok: false as const, expired: false, message: "", status: 0, upstream: "" }));
+    let posted: Awaited<ReturnType<typeof post>>;
+    try {
+      posted = await post(fresh);
+    } catch (err) {
+      return stopUnread(err);
+    }
     if (!posted.ok && posted.expired && !agency) {
       const again = await refresh().catch(() => null);
       if (again && !pricesDiffer(fresh.sellCents, again.sellCents) && again.currency === fresh.currency) {
@@ -988,7 +1013,11 @@ async function placeLeStay(input: {
         return { ok: false, message: "Cette recherche a expiré. Relancez-la." };
       }
       fresh = again;
-      posted = await post(again).catch(() => ({ ok: false as const, expired: true, message: "", status: 0, upstream: "" }));
+      try {
+        posted = await post(again);
+      } catch (err) {
+        return stopUnread(err);
+      }
     }
     if (!booking && !posted.ok) {
       const upstream = leRefusalReason(posted.status, posted.upstream);
@@ -1206,6 +1235,7 @@ export async function openDirectStay(input: {
     admin?: Admin;
     fetchImpl?: typeof fetch;
     sendMail?: (input: { to: string; subject: string; text: string }) => Promise<boolean>;
+    secretsSleep?: (ms: number) => Promise<void>;
   };
   onPhase?: (phase: "hotel" | "stay") => void;
 }) {
@@ -1250,6 +1280,7 @@ export async function openDirectStay(input: {
       now,
       fetchImpl: input.deps?.fetchImpl,
       sendMail: input.deps?.sendMail,
+      secretsSleep: input.deps?.secretsSleep,
       onPhase: input.onPhase,
     });
   }

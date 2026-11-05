@@ -358,7 +358,9 @@ const PLIANT_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 /** Chemin Pliant journalisable : identifiants remplacés, requête conservée. */
 export function maskPliantPath(path: string) {
   const [pathname, query = ""] = path.split("?");
-  const maskedPath = pathname.replace(PLIANT_UUID, ":id").replace(/\/(cardholders|cards|organizations|transactions)\/[^/]+/gi, "/$1/:id");
+  const maskedPath = pathname
+    .replace(PLIANT_UUID, ":id")
+    .replace(/\/(cardholders|cards|organizations|transactions|card-details)\/[^/]+/gi, "/$1/:id");
   const maskedQuery = query
     .split("&")
     .filter(Boolean)
