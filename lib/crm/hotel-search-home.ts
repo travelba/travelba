@@ -1,6 +1,7 @@
 import { cityCoverPhoto } from "@/lib/crm/cover-catalog";
 import { catalogCoverUrl, coverDisplayUrl, placeKey } from "@/lib/crm/covers";
 import { foldHotelLabel } from "@/lib/crm/hotel-catalog";
+import { SEARCH_PERK_LABEL } from "@/lib/crm/hotel-journey";
 import { safeHotelPhoto } from "@/lib/crm/hotel-search";
 
 /**
@@ -12,16 +13,15 @@ export const HOTEL_SEARCH_HERO_FALLBACK = "/whatsapp/hotel.jpg";
 /** Puces sous la carte. Une seule liste, à modifier ici. */
 export const HOTEL_SEARCH_CITY_CHIPS = ["Paris", "Milan", "Courchevel", "Bordeaux"] as const;
 
+const HOME_ADVANTAGE_KEYS = ["breakfast", "upgrade", "earlyCheckIn", "lateCheckOut"] as const;
+
 /**
- * Même formulation que le parcours de réservation quand ces privilèges sont lus
- * (petit-déjeuner pour deux, surclassement, arrivée anticipée / départ tardif).
- * Écran d’accueil seulement : elles ne remplacent pas les avantages d’un hôtel.
+ * Pastilles de la recherche, dans le même ordre que la carte.
+ * Elles ne remplacent pas les avantages lus d’un hôtel.
  */
-export const TRAVEL_BA_SEARCH_ADVANTAGES = [
-  "Petit-déjeuner pour deux",
-  "Surclassement prioritaire selon disponibilité",
-  "Arrivée anticipée / départ tardif selon disponibilité",
-] as const;
+export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
+  (key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label || ""
+).filter((label) => label.length > 0);
 
 export type FeaturedHotel = {
   name: string;

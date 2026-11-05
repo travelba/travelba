@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { travelPrivileges } from "./hotel-journey";
+import { SEARCH_PERK_LABEL, stayBenefits } from "./hotel-journey";
+import type { HotelPerks } from "./hotel-search";
 import {
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
@@ -29,24 +30,35 @@ test("les puces et le stockage local sont par personne", () => {
   assert.notEqual(hotelRecentStorageKey("aaa"), hotelRecentStorageKey("bbb"));
 });
 
-test("les avantages de l’accueil reprennent le parcours, sans coller un modèle à un hôtel", () => {
+test("les avantages de l’accueil sont ceux de la recherche, pas un modèle générique", () => {
+  const keys = ["breakfast", "upgrade", "earlyCheckIn", "lateCheckOut"] as const;
   assert.deepEqual(
     [...TRAVEL_BA_SEARCH_ADVANTAGES],
-    travelPrivileges(
-      {
-        breakfast: true,
-        freeCancellation: true,
-        upgrade: true,
-        credit: true,
-        earlyCheckIn: true,
-        lateCheckOut: true,
-      },
-      ["Breakfast for two"]
-    )
+    keys.map((key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label)
   );
-  assert.match(TRAVEL_BA_SEARCH_ADVANTAGES.join(" "), /Petit-déjeuner pour deux/);
-  assert.match(TRAVEL_BA_SEARCH_ADVANTAGES.join(" "), /Surclassement prioritaire selon disponibilité/);
-  assert.match(TRAVEL_BA_SEARCH_ADVANTAGES.join(" "), /Arrivée anticipée \/ départ tardif selon disponibilité/);
+  assert.deepEqual([...TRAVEL_BA_SEARCH_ADVANTAGES], [
+    "Petit-déjeuner",
+    "Surclassement",
+    "Arrivée anticipée",
+    "Départ tardif",
+  ]);
+  const perks: HotelPerks = {
+    breakfast: true,
+    freeCancellation: true,
+    upgrade: true,
+    credit: true,
+    earlyCheckIn: true,
+    lateCheckOut: true,
+  };
+  const read = [
+    "Petit-déjeuner quotidien pour deux personnes",
+    "Surclassement prioritaire à l'enregistrement",
+    "Enregistrement anticipé et départ tardif",
+  ];
+  const shown = stayBenefits(read, perks);
+  assert.deepEqual(shown.lines, read);
+  assert.equal(shown.discreet, "");
+  assert.notDeepEqual(shown.lines, [...TRAVEL_BA_SEARCH_ADVANTAGES]);
 });
 
 test("les coups de cœur gardent les hôtels les plus réservés qui ont une photo", () => {
