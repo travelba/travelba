@@ -1,6 +1,9 @@
 /** La suppression d’un client exige la saisie de son nom complet (casse, espaces et accents indifférents). */
 export const DELETE_CUSTOMER_CONFIRM_ERROR = "Saisissez le nom du client pour confirmer";
 
+/** Même garde pour un accompagnateur : prénoms et nom, pas un simple oui. */
+export const DELETE_COMPANION_CONFIRM_ERROR = "Saisissez le nom du compagnon pour confirmer";
+
 function foldName(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
