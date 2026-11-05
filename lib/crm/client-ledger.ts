@@ -26,6 +26,11 @@ import {
 import { createServiceClient } from "@/lib/supabase/admin";
 import { mb3mPieceLinksFor } from "@/lib/crm/mb3m-invoice";
 import { isReleasableCredit } from "@/lib/crm/releasable-credit";
+import {
+  movementTravelerNames,
+  type LedgerPartyCard,
+  type LedgerPartyTraveler,
+} from "@/lib/crm/ledger-travelers";
 import { fundingPockets, payingCompanyLabels, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
 import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
@@ -138,6 +143,8 @@ export function shapeClientLedger(input: {
   /** Collaborateurs dont le carnet s’ouvre. Un autre admin reste fermé. */
   openCarnetOwnerIds?: string[];
   mb3mByTransaction?: Map<string, { text: string; href: string | null }>;
+  /** Cartes et voyageurs des séjours du livre. Absent : aucun nom. */
+  parties?: { cards?: LedgerPartyCard[]; travelers?: LedgerPartyTraveler[] };
 }): ClientLedgerView {
   const member = isCompanyMember({ company_role: input.companyRole ?? null });
   const offAgency = new Set(
@@ -180,6 +187,13 @@ export function shapeClientLedger(input: {
       input.openCarnetOwnerIds
     );
     const companyName = row.billing_company_id ? companyLabels.get(row.billing_company_id) : null;
+    const travelerNames = movementTravelerNames({
+      direction: row.direction,
+      bookingId: row.booking_id,
+      externalId: row.external_id,
+      cards: input.parties?.cards || [],
+      travelers: input.parties?.travelers || [],
+    });
     return {
       id: row.id,
       credit,
@@ -199,6 +213,7 @@ export function shapeClientLedger(input: {
       unmatchable: input.audience === "staff" && isReleasableCredit(row),
       mb3mLabel: credit ? null : input.mb3mByTransaction?.get(row.id)?.text || null,
       mb3mHref: credit ? null : input.mb3mByTransaction?.get(row.id)?.href || null,
+      travelerNames,
     };
   });
 
@@ -320,6 +335,33 @@ function serviceClientOrNull() {
   }
 }
 
+/** Cases cochées et voyageurs des séjours déjà visibles dans ce livre. */
+async function loadLedgerParties(reader: SupabaseClient, bookingIds: string[]) {
+  const empty = { cards: [] as LedgerPartyCard[], travelers: [] as LedgerPartyTraveler[] };
+  if (!bookingIds.length) return empty;
+  try {
+    const [{ data: items, error: itemsError }, { data: travelers, error: travelersError }] = await Promise.all([
+      reader.from("crm_booking_items").select("id, booking_id, details").in("booking_id", bookingIds),
+      reader
+        .from("crm_booking_travelers")
+        .select("id, booking_id, first_name, last_name, companion_id, is_account_holder")
+        .in("booking_id", bookingIds)
+        .order("created_at"),
+    ]);
+    if (itemsError || travelersError) {
+      console.error("ledger-voyageurs", (itemsError || travelersError)?.code ?? "lecture");
+      return empty;
+    }
+    return {
+      cards: (items || []) as LedgerPartyCard[],
+      travelers: (travelers || []) as LedgerPartyTraveler[],
+    };
+  } catch (error) {
+    console.error("ledger-voyageurs", error instanceof Error ? error.message : "lecture");
+    return empty;
+  }
+}
+
 const SPEND_BOOKING_SELECT =
   "id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind, customer_id, billing_company_id, status, total_amount, agency_commission, fee_mode, client_settles_stay";
 
@@ -426,7 +468,11 @@ async function loadClientLedgerRows(
     bookings = (linked || []) as ClientLedgerBooking[];
   }
 
-  const spend = await loadSpendAccounts(supabase, customer, bookings, contextIds);
+  const reader = serviceClientOrNull() || supabase;
+  const [spend, parties] = await Promise.all([
+    loadSpendAccounts(supabase, customer, bookings, contextIds),
+    loadLedgerParties(reader, contextIds),
+  ]);
   bookings = spend.bookings;
   const shared = {
     companyRole: customer.company_role,
@@ -442,6 +488,7 @@ async function loadClientLedgerRows(
     viewerId: customer.id,
     spendAccounts: spend.accounts,
     openCarnetOwnerIds: spend.openCarnetOwnerIds,
+    parties,
   };
   const unique = [...new Set(audiences)];
   const links = await Promise.all(unique.map((audience) => mb3mLinksForLedger(customer.id, rows, audience)));
