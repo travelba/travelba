@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, type CSSProperties, type Ref } from "react";
+import { createPortal } from "react-dom";
 import { AdminOmnibar } from "@/components/admin/AdminOmnibar";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
+import { useFixedMenu } from "@/lib/crm/use-fixed-menu";
+import { SIGN_OUT_LABEL } from "@/lib/crm/user-menu";
 import { staffRoleLabel, type StaffRole } from "@/lib/crm/staff-team";
 import {
   ADMIN_MOBILE_TABS,
@@ -121,7 +124,81 @@ export function SidebarGroups({
   );
 }
 
-/** Avatar qui ouvre le menu utilisateur : nom, rôle, WhatsApp agence, Déconnexion (D-25). */
+const userMenuPanelClass =
+  "fixed z-[80] w-64 overflow-y-auto rounded-2xl border border-[var(--border)] bg-white text-[var(--admin-navy)] shadow-[0_18px_50px_rgba(11,25,44,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1rem)]";
+
+/** Panneau du menu avatar : nom, Réglages, WhatsApp agence, Se déconnecter. */
+export function UserMenuPanel({
+  id,
+  name,
+  role,
+  onClose,
+  onSignOut,
+  menuRef,
+  onFirstItem,
+  style,
+}: {
+  id: string;
+  name: string;
+  role?: StaffRole | "";
+  onClose: () => void;
+  onSignOut: () => void | Promise<void>;
+  menuRef?: Ref<HTMLDivElement>;
+  onFirstItem?: (node: HTMLElement | null) => void;
+  style?: CSSProperties;
+}) {
+  const narrow = role === "partner" || role === "ratehawk_cert";
+  return (
+    <div ref={menuRef} id={id} role="menu" aria-label="Menu utilisateur" style={style} className={userMenuPanelClass}>
+      <div className="border-b border-[var(--border)] px-4 py-3">
+        <p className="truncate font-display text-sm font-bold">
+          {name || (role === "partner" ? "MyLER partner" : role === "ratehawk_cert" ? "Certification Ratehawk" : "Agent connecté")}
+        </p>
+        {role ? <p className="text-xs text-muted">{role === "partner" ? "MyLER partner" : staffRoleLabel(role)}</p> : null}
+      </div>
+      {narrow ? null : (
+        <>
+          <Link
+            ref={onFirstItem}
+            role="menuitem"
+            href={role === "admin" ? ADMIN_ROUTES.reglages : `${ADMIN_ROUTES.reglages}/whatsapp`}
+            onClick={onClose}
+            className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
+          >
+            <Icon name="build" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+            Réglages
+          </Link>
+          <a
+            role="menuitem"
+            href={`https://wa.me/${siteConfig.whatsappNumber}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={onClose}
+            className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
+          >
+            <Icon name="support_agent" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+            WhatsApp agence
+          </a>
+        </>
+      )}
+      <button
+        type="button"
+        role="menuitem"
+        ref={narrow ? onFirstItem : undefined}
+        onClick={() => {
+          onClose();
+          void onSignOut();
+        }}
+        className="admin-tap flex w-full items-center gap-2 border-t border-[var(--border)] px-4 py-3 text-left text-sm font-medium hover:bg-[var(--surface-2)]"
+      >
+        <Icon name="logout" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+        {role === "partner" ? "Sign out" : SIGN_OUT_LABEL}
+      </button>
+    </div>
+  );
+}
+
+/** Avatar qui ouvre le menu utilisateur : nom, rôle, Réglages, WhatsApp agence, Se déconnecter. */
 export function UserMenu({
   name,
   role,
@@ -136,40 +213,29 @@ export function UserMenu({
   align?: "left" | "right";
 }) {
   const id = useId();
-  const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menu = useFixedMenu(align, buttonRef, rootRef, menuRef);
   const firstItemRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    function onPointer(event: MouseEvent | TouchEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("touchstart", onPointer);
+    if (!menu.open) return;
     const timer = window.setTimeout(() => firstItemRef.current?.focus(), 10);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("touchstart", onPointer);
-      window.clearTimeout(timer);
-    };
-  }, [open]);
+    return () => window.clearTimeout(timer);
+  }, [menu.open]);
 
   const dark = variant === "dark";
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         aria-haspopup="menu"
-        aria-expanded={open}
+        aria-expanded={menu.open}
         aria-controls={`${id}-menu`}
         aria-label={name ? `Menu de ${name}` : "Menu utilisateur"}
-        onClick={() => setOpen((value) => !value)}
+        onClick={menu.toggle}
         className={`admin-tap inline-flex h-10 w-10 items-center justify-center rounded-full text-[11px] font-bold ${
           dark
             ? "bg-white/10 text-[var(--admin-gold)] ring-1 ring-[var(--admin-gold)]/40"
@@ -178,69 +244,23 @@ export function UserMenu({
       >
         {staffInitials(name)}
       </button>
-      {open ? (
-        <div
-          id={`${id}-menu`}
-          role="menu"
-          aria-label="Menu utilisateur"
-          className={`absolute top-12 z-[60] w-64 overflow-hidden rounded-2xl border border-[var(--border)] bg-white text-[var(--admin-navy)] shadow-[0_18px_50px_rgba(11,25,44,0.18)] ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
-        >
-          <div className="border-b border-[var(--border)] px-4 py-3">
-            <p className="truncate font-display text-sm font-bold">
-              {name || (role === "partner" ? "MyLER partner" : role === "ratehawk_cert" ? "Certification Ratehawk" : "Agent connecté")}
-            </p>
-            {role ? <p className="text-xs text-muted">{role === "partner" ? "MyLER partner" : staffRoleLabel(role)}</p> : null}
-          </div>
-          {role === "partner" || role === "ratehawk_cert" ? null : (
-            <>
-              <Link
-                ref={(node) => {
-                  firstItemRef.current = node;
-                }}
-                role="menuitem"
-                href={role === "admin" ? ADMIN_ROUTES.reglages : `${ADMIN_ROUTES.reglages}/whatsapp`}
-                onClick={() => setOpen(false)}
-                className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
-              >
-                <Icon name="build" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
-                Réglages
-              </Link>
-              <a
-                role="menuitem"
-                href={`https://wa.me/${siteConfig.whatsappNumber}`}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => setOpen(false)}
-                className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
-              >
-                <Icon name="support_agent" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
-                WhatsApp agence
-              </a>
-            </>
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            ref={
-              role === "partner" || role === "ratehawk_cert"
-                ? (node) => {
-                    firstItemRef.current = node;
-                  }
-                : undefined
-            }
-            onClick={() => {
-              setOpen(false);
-              void onSignOut();
-            }}
-            className="admin-tap flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:bg-[var(--surface-2)]"
-          >
-            <Icon name="logout" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
-            {role === "partner" ? "Sign out" : "Déconnexion"}
-          </button>
-        </div>
-      ) : null}
+      {menu.open && menu.mounted && menu.box
+        ? createPortal(
+            <UserMenuPanel
+              id={`${id}-menu`}
+              name={name}
+              role={role}
+              onClose={() => menu.setOpen(false)}
+              onSignOut={onSignOut}
+              menuRef={menuRef}
+              onFirstItem={(node) => {
+                firstItemRef.current = node;
+              }}
+              style={{ top: menu.box.top, left: menu.box.left, width: menu.box.width }}
+            />,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

@@ -137,7 +137,7 @@ export function AdminNav({
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden">
+      <header className="sticky top-0 z-50 w-full max-w-full overflow-x-clip bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden">
         <div className="flex h-14 items-center justify-between gap-2 px-3">
           <div className="flex min-w-0 items-center gap-2">
             <Link href={home} aria-label={partner ? "Little Emperors" : ratehawkCert ? "Ratehawk" : "Accueil"} className="shrink-0">

@@ -10,6 +10,8 @@ import { siteConfig } from "@/lib/site";
 import { ONBOARDING_PATH } from "@/lib/crm/session";
 import { accountTabDirection } from "@/lib/crm/account-motion";
 import { AccountNightTabs, type NightTabIcon } from "@/components/account/AccountNightTabs";
+import { AccountUserMenu } from "@/components/account/AccountUserMenu";
+import { SIGN_OUT_LABEL } from "@/lib/crm/user-menu";
 
 const TAB_DEFS = [
   { suffix: "", label: "Accueil", exact: true, icon: "explore", night: "home" },
@@ -116,15 +118,14 @@ export function AccountChrome({
               >
                 <Icon name="chat" className="h-[22px] w-[22px]" />
               </a>
-              <Link
+              <AccountUserMenu
+                customerName={customerName}
+                initials={initials}
                 href={`${basePath}/profil`}
-                transitionTypes={[accountTabDirection(pathname, `${basePath}/profil`, basePath)]}
-                className="account-press relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-white ring-1 ring-[var(--admin-gold)]/40"
-                aria-label={`Compte ${customerName}`}
-              >
-                {initials}
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-[var(--admin-gold)] ring-2 ring-[var(--background)]" />
-              </Link>
+                basePath={basePath}
+                preview={preview}
+                onSignOut={signOut}
+              />
             </div>
           </div>
         </header>
@@ -169,7 +170,7 @@ export function AccountChrome({
               onClick={signOut}
               className="account-press ml-auto text-xs font-semibold text-muted hover:text-[var(--admin-navy)]"
             >
-              Déconnexion
+              {SIGN_OUT_LABEL}
             </button>
           )}
         </div>
