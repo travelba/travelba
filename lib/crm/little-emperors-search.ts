@@ -12,42 +12,6 @@ import { supplierRoomOccupancy, type HotelOffer, type HotelRoomOccupancy, type H
 
 const SEARCH_TIMEOUT_MS = 25_000;
 const SUGGEST_TIMEOUT_MS = 8_000;
-/** La couverture catalogue ne retarde pas toute la ville : le reste garde la photo déjà reçue. */
-const COVER_BUDGET_MS = 8_000;
-
-async function withCatalogCovers(offers: HotelOffer[], fetchImpl?: typeof fetch) {
-  const ids = [...new Set(offers.map((offer) => offer.hotelId).filter((id): id is number => typeof id === "number" && id > 0))];
-  const covers = new Map<number, string>();
-  let cursor = 0;
-  async function worker() {
-    while (cursor < ids.length) {
-      const id = ids[cursor];
-      cursor += 1;
-      const urls = await publicHotelGallery(id, fetchImpl);
-      if (urls[0]) covers.set(id, urls[0]);
-    }
-  }
-  const work = Promise.all([worker(), worker(), worker(), worker()]);
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, COVER_BUDGET_MS);
-    work.then(
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      () => {
-        clearTimeout(timer);
-        resolve();
-      }
-    );
-  });
-  if (!covers.size) return offers;
-  return offers.map((offer) => {
-    const cover = offer.hotelId ? covers.get(offer.hotelId) : "";
-    if (!cover) return offer;
-    return { ...offer, photoUrl: cover, thumbUrl: cover };
-  });
-}
 
 function failureCode(err: unknown) {
   if (err instanceof LittleEmperorsError) return err.code;
@@ -87,6 +51,19 @@ export async function loadLittleEmperorsSuggestions(
   }
 }
 
+/** Photo de catalogue, après le tarif. Le premier affichage n’attend pas cette lecture. */
+export async function attachHotelCover<T extends { hotelId?: number | null; photoUrl?: string | null; thumbUrl?: string | null }>(
+  offer: T,
+  fetchImpl?: typeof fetch
+): Promise<T> {
+  const id = offer.hotelId;
+  if (typeof id !== "number" || id <= 0) return offer;
+  const urls = await publicHotelGallery(id, fetchImpl);
+  const cover = urls[0];
+  if (!cover || offer.photoUrl === cover) return offer;
+  return { ...offer, photoUrl: cover, thumbUrl: cover };
+}
+
 export async function loadLittleEmperorsOffers(input: {
   destination: string;
   city?: string;
@@ -121,7 +98,7 @@ export async function loadLittleEmperorsOffers(input: {
       },
       input.fetchImpl
     );
-    return withCatalogCovers(offersFromLeAvailability(payload, input.city || input.destination), input.fetchImpl);
+    return offersFromLeAvailability(payload, input.city || input.destination);
   } catch (err) {
     console.error("[hotels] disponibilités", failureCode(err));
     throw new Error("supplier");

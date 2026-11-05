@@ -274,8 +274,9 @@ test("une offre : le moins cher, à l’arrondi près celle qui a le plus d’av
   ]);
   assert.equal(rooms.length, 2);
   const deluxe = rooms.find((room) => room.name === "Chambre deluxe");
-  assert.equal(deluxe?.rates.length, 1);
+  assert.equal(deluxe?.rates.length, 3);
   assert.equal(deluxe?.rates[0].sellCents, 18000);
+  assert.equal(deluxe?.rates[2].sellCents, 20040);
   assert.equal(rooms.find((room) => room.name === "Suite")?.rates.length, 1);
   assert.equal(hotelJourneyStep("chambre"), "room");
   assert.equal(hotelJourneyStep("voyageurs"), "guests");

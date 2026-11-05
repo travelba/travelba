@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
-import { formatDateFr } from "@/lib/crm/money";
+import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { carnetVisible, clientVisibleItems, tripPlaceLine } from "@/lib/crm/carnet";
 import { HiddenStayNotice } from "@/components/account/HiddenStayNotice";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
@@ -97,7 +97,16 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   return (
     <AccountPage>
       <div className="space-y-5">
-        {confirme === "1" ? <StayConfirmedNote /> : null}
+        {confirme === "1" ? (
+          <StayConfirmedNote
+            reference={b.reference}
+            confirmation={rawItems.find((item) => item.kind === "hotel")?.confirmation_ref}
+            summary={`${headline} · ${formatDateFr(b.start_date)} — ${formatDateFr(b.end_date)}`}
+            price={formatMoney(Number(b.total_amount) || 0, b.currency || "EUR")}
+            calendarHref={`/mon-compte/reservations/${b.reference}/agenda.ics`}
+            manageHref="#sejour"
+          />
+        ) : null}
         <Link
           href="/mon-compte/reservations"
           transitionTypes={["nav-back"]}
@@ -136,6 +145,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
         ) : null}
 
         <Suspense fallback={<StayRestSkeleton />}>
+          <div id="sejour">
           <ClientStayRest
             supabase={supabase}
             customer={customer}
@@ -149,6 +159,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
             refusals={refusals}
             visaRows={(visaRows || []) as { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null }[]}
           />
+          </div>
         </Suspense>
       </div>
     </AccountPage>

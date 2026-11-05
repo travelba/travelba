@@ -268,6 +268,8 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
   const cursor = cursorPick ?? monthCursor(checkIn);
   const [hotels, setHotels] = useState<ClientHotel[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchLine, setSearchLine] = useState("Nous interrogeons les hôtels disponibles…");
+  const searchLock = useRef(false);
   const [searched, setSearched] = useState(false);
   const [note, setNote] = useState("");
   const [serverFirst, setServerFirst] = useState<number | null>(null);
@@ -464,6 +466,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
   }
 
   async function onSearch(override?: RecentStay) {
+    if (searchLock.current) return;
     const nextDestination = (override?.destination ?? destination).trim();
     const nextCity = override?.city ?? city;
     const nextCheckIn = override?.checkIn ?? checkIn;
@@ -528,6 +531,8 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
     setNote("");
     setSheet(false);
     setSearched(true);
+    searchLock.current = true;
+    setSearchLine("Nous interrogeons les hôtels disponibles…");
     setPage(1);
     setPending(null);
     if (hotelToken) router.replace("/mon-compte/hotels");
@@ -591,6 +596,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
             latest = upsertHotel(latest, event.hotel);
             if (!sawHotel) {
               sawHotel = true;
+              setSearchLine("Les tarifs arrivent…");
               setClientFirst(since(started));
             }
           } else if (event.type === "link") {
@@ -609,6 +615,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
     } catch (err) {
       if ((err as { name?: string }).name !== "AbortError") setNote("La recherche n’a pas abouti. Réessayez.");
     } finally {
+      searchLock.current = false;
       if (searchAbort.current === controller) setSearching(false);
     }
   }
@@ -841,7 +848,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
           <div className="shrink-0 bg-[#f4efe6] pt-3">
-            <button type="submit" data-hotel-search-cta="1" className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold">
+            <button type="submit" data-hotel-search-cta="1" disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold disabled:opacity-60">
               Rechercher
             </button>
           </div>
@@ -855,7 +862,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
       ) : null}
       {searching ? (
         <div className="h-ink">
-          <BusyBar label="Nous préparons les tarifs" />
+          <BusyBar label={searchLine} />
         </div>
       ) : null}
 
@@ -1116,7 +1123,7 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
           <footer className="bg-white px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_28px_rgba(11,25,44,0.06)]">
-            <button type="button" onClick={() => void onSearch()} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold">
+            <button type="button" onClick={() => void onSearch()} disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold disabled:opacity-60">
               Rechercher
             </button>
           </footer>
@@ -1330,13 +1337,19 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
         </div>
         <div className="flex items-end justify-between gap-3 px-4 py-3" data-hotel-price="1">
           <p className="min-w-0 text-lg font-medium leading-tight h-ink">
-            {euros(hotel.sellCents, hotel.currency)}
+            {euros(hotel.sellCents, hotel.currency)} TTC
             <span className="mt-0.5 block text-sm font-normal h-muted">{euros(hotel.perNightCents, hotel.currency)} / nuit</span>
           </p>
           <span className="mb-0.5 shrink-0 rounded-full border border-[#C5A880] px-3 py-1.5 text-sm font-semibold text-[#8c7352]">
             Voir l’hôtel
           </span>
         </div>
+        {hotel.perks.freeCancellation || hotel.perks.breakfast ? (
+          <div className="flex flex-wrap gap-2 px-4 pb-2">
+            {hotel.perks.freeCancellation ? <span className="rounded-full bg-[#f4efe6] px-2.5 py-1 text-[12px] font-semibold text-[#8c7352]">Annulation gratuite</span> : null}
+            {hotel.perks.breakfast ? <span className="rounded-full bg-[#f4efe6] px-2.5 py-1 text-[12px] font-semibold text-[#8c7352]">Petit-déjeuner inclus</span> : null}
+          </div>
+        ) : null}
         {hasBenefits ? (
           <div className="px-4 pb-4" data-hotel-benefits="1">
             <HotelBenefits lines={hotel.benefits} />

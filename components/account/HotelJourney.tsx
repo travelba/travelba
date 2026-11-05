@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { HotelBookingWait } from "@/components/account/HotelBookingWait";
 import { HotelGuaranteeNight } from "@/components/account/HotelGuaranteeNight";
 import { HotelMap } from "@/components/account/HotelMap";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
@@ -20,13 +21,6 @@ import { siteConfig } from "@/lib/site";
 
 type Step = "hotel" | "room" | "guests" | "confirm";
 
-const STEPS: { id: Step; label: string }[] = [
-  { id: "hotel", label: "L’hôtel" },
-  { id: "room", label: "La chambre" },
-  { id: "guests", label: "Voyageurs" },
-  { id: "confirm", label: "Récapitulatif" },
-];
-
 const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
   { key: "breakfast", label: "Petit-déjeuner" },
   { key: "freeCancellation", label: "Annulation gratuite" },
@@ -38,6 +32,45 @@ const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
 
 function euros(cents: number, currency: string) {
   return formatMoney(cents / 100, currency);
+}
+
+type BookingReply = {
+  ok?: boolean;
+  error?: string;
+  code?: string;
+  sellCents?: number;
+  terms?: string;
+  widgetUrl?: string;
+  widgetOrigin?: string;
+  clientSecret?: string;
+  intentId?: string;
+  phase?: string;
+  view?: { id: string; label: string; cancel: "cancel" | "ask" | "none"; conditions: string; dossier?: string | null; confirmation?: string | null };
+};
+
+async function readBookingResponse(response: Response, onPhase: (phase: "hotel" | "stay") => void): Promise<BookingReply | null> {
+  const type = response.headers.get("content-type") || "";
+  if (!type.includes("ndjson") || !response.body) {
+    return (await response.json().catch(() => null)) as BookingReply | null;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let last: BookingReply | null = null;
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as BookingReply;
+      if (event.phase === "hotel" || event.phase === "stay") onPhase(event.phase);
+      if (event.ok != null || event.error || event.view || event.widgetUrl) last = event;
+    }
+  }
+  return last;
 }
 
 function clockFr(value: string) {
@@ -425,6 +458,8 @@ export function HotelJourney({
   const [more, setMore] = useState<string[][]>(() => stayRooms.map(() => []));
   const [sending, setSending] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const [waitPhase, setWaitPhase] = useState<"hotel" | "stay">("hotel");
+  const [fareBlock, setFareBlock] = useState<string | null>(null);
   const router = useRouter();
   const portal = useSyncExternalStore(
     () => () => {},
@@ -446,6 +481,13 @@ export function HotelJourney({
   const roomsRef = useRef<HTMLDivElement>(null);
   const sendCard = useRef<(ready: boolean) => void>(() => {});
   const scrollerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const lock = placing || Boolean(widget) || (sending && !widget);
+    if (!lock) return;
+    document.body.setAttribute("data-hotel-lock", "1");
+    return () => document.body.removeAttribute("data-hotel-lock");
+  }, [placing, widget, sending]);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -608,9 +650,11 @@ export function HotelJourney({
     }
     const books = cardReady === true || Boolean(intentId) || payMethod === "agency";
     if (books) {
+      setWaitPhase("hotel");
       setPlacing(true);
       scrollerRef.current?.scrollTo({ top: 0 });
     }
+    setFareBlock(null);
     setSending(true);
     setNote("");
     let leaving = false;
@@ -620,17 +664,7 @@ export function HotelJourney({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ offerId: rate.offerId, guests, companions, payMethod, arrival, intentId, cardReady: cardReady === true }),
       });
-      const json = (await response.json().catch(() => null)) as {
-        error?: string;
-        code?: string;
-        sellCents?: number;
-        terms?: string;
-        widgetUrl?: string;
-        widgetOrigin?: string;
-        clientSecret?: string;
-        intentId?: string;
-        view?: { id: string; label: string; cancel: "cancel" | "ask" | "none"; conditions: string; dossier?: string | null; confirmation?: string | null };
-      } | null;
+      const json = await readBookingResponse(response, (phase) => setWaitPhase(phase));
       const widgetUrl = json?.widgetUrl ? safeCardWidgetUrl(json.widgetUrl) : null;
       if (widgetUrl && json?.widgetOrigin) {
         setCardFrame("loading");
@@ -640,14 +674,15 @@ export function HotelJourney({
         if (!response.ok) setNote(json?.error || "La saisie de la carte a expiré. Recommencez.");
         return;
       }
-      if (!response.ok) {
+      if (json?.error || !response.ok) {
         if (json?.code === "price_changed" && typeof json.sellCents === "number" && rate) {
           setRate({ ...rate, sellCents: json.sellCents, terms: json.terms || rate.terms });
         }
         setCardSecret(null);
         setCardFrame("idle");
         setWidget(null);
-        setNote(json?.error || "La demande n’a pas pu être envoyée.");
+        setFareBlock(json?.error || "La demande n’a pas pu être envoyée.");
+        setNote("");
         return;
       }
       if (json?.clientSecret && json.intentId) {
@@ -736,9 +771,25 @@ export function HotelJourney({
           >
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
-          <p className={`h-serif truncate text-center text-[17px] font-semibold leading-none ${widget && !placing ? "" : "h-ink"}`}>{placing ? "Réservation" : done && view === "confirm" ? "Confirmée" : STEPS.find((item) => item.id === view)?.label}</p>
+          <p className={`h-serif truncate text-center text-[17px] font-semibold leading-none ${widget && !placing ? "" : "h-ink"}`}>{placing ? "Réservation" : done && view === "confirm" ? "Confirmation" : view === "confirm" ? "Paiement" : view === "guests" ? "Voyageurs" : "Chambre"}</p>
           <span />
         </div>
+        {placing ? null : (
+          <ol data-hotel-stepper="1" className="flex items-center justify-between gap-1 px-3 pb-2 text-[10px] font-semibold">
+            {(
+              [
+                ["1", "Chambre", view === "hotel" || view === "room"],
+                ["2", "Voyageurs", view === "guests"],
+                ["3", "Paiement", view === "confirm" && !done],
+                ["4", "Confirmation", Boolean(done)],
+              ] as const
+            ).map(([n, label, on]) => (
+              <li key={label} className={on ? "text-[#8c7352]" : widget ? "text-[#f7f4ee]/45" : "text-[#1a1a1a]/40"}>
+                {n} {label}
+              </li>
+            ))}
+          </ol>
+        )}
         {view === "hotel" ? (
           <div className="flex gap-2 overflow-x-auto px-4 pb-3">
             <button
@@ -755,7 +806,7 @@ export function HotelJourney({
 
       <div ref={scrollerRef} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div key={view} className="hotel-step min-w-0 pb-4">
-        {placing ? <HotelBookingWait /> : null}
+        {placing ? <HotelBookingWait phase={waitPhase} /> : null}
         {view === "hotel" ? (
           <div data-hotel-detail="1" className="h-paper pb-8">
             <div className="px-4 pb-3 pt-3">
@@ -770,7 +821,14 @@ export function HotelJourney({
               <p className="text-sm h-muted">{file?.city || hotel.city}</p>
               {file?.address ? <p className="text-sm h-ink">{file.address}</p> : null}
               {frenchClientProse(file?.description || "") ? <p className="text-[15px] leading-relaxed h-ink">{frenchClientProse(file?.description || "")}</p> : null}
-              {!file ? <div className="h-4 w-1/2 animate-pulse h-skel" aria-hidden /> : null}
+              {!file ? (
+                <div data-hotel-check="1" className="space-y-3 pt-2">
+                  <p className="h-serif text-[1.15rem] font-semibold h-ink">Nous vérifions le tarif en temps réel…</p>
+                  <BusyBar label="Nous vérifions le tarif en temps réel…" />
+                  <div className="h-24 animate-pulse rounded-2xl h-skel" />
+                  <div className="h-24 animate-pulse rounded-2xl h-skel" />
+                </div>
+              ) : null}
             </div>
             <div className="space-y-8 px-5 pt-6">
               {file?.rooms.length ? (
@@ -874,7 +932,7 @@ export function HotelJourney({
                   {file.address ? <p className="mt-2 text-sm leading-relaxed h-ink">{file.address}</p> : null}
                 </div>
               ) : null}
-              {others.length ? (
+              {file?.rooms.length && others.length ? (
                 <div data-hotel-others="1">
                   <p className="h-section">Autres hôtels à {file?.city || hotel.city}</p>
                   <div className="mt-4 -mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2">
@@ -918,6 +976,25 @@ export function HotelJourney({
                   {room.bed ? <Fact icon="bed" label="Couchage" value={room.bed} /> : null}
                 </div>
               ) : null}
+              <div className="space-y-3" data-hotel-rates="1">
+                {room.rates.map((item) => {
+                  const line = readStayRate(item);
+                  return (
+                    <article key={`${item.offerId || ""}-${item.title}-${item.sellCents}`} className="h-recap space-y-2">
+                      <h3 className="h-serif text-[1.05rem] font-semibold h-ink">{clientRateTitle(item.title)}</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {item.perks.freeCancellation ? <span className="h-pill">Annulation gratuite</span> : null}
+                        {item.perks.breakfast ? <span className="h-pill">Petit-déjeuner inclus</span> : null}
+                      </div>
+                      <p className="text-sm h-muted">{line.cancellation}</p>
+                      <p className="text-lg font-semibold h-ink">{euros(item.sellCents, item.currency)} TTC</p>
+                      <button type="button" className="h-btn h-press h-11 w-full text-sm font-semibold" disabled={!item.offerId} onClick={() => chooseRate(item)}>
+                        Sélectionner
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
               <div>
                 {cancellationPhrase(rate.cancellation) ? (
                   <div>
@@ -1043,7 +1120,19 @@ export function HotelJourney({
             onLoad={() => setCardFrame((current) => (current === "saved" ? current : "ready"))}
           />
         ) : null}
-        {!placing && view === "confirm" && rate && reading && !done && !widget ? (
+        {!placing && view === "confirm" && sending && !widget ? (
+          <div data-hotel-check="1" className="flex min-h-[70vh] flex-col items-center px-8 pt-16 text-center">
+            <p className="h-serif text-[1.35rem] leading-snug h-ink">Nous vérifions le tarif en temps réel…</p>
+            <div className="mt-6 w-full max-w-[16rem]">
+              <BusyBar active label="Nous vérifions le tarif en temps réel…" />
+            </div>
+            <div className="mt-8 w-full space-y-3">
+              <div className="h-24 animate-pulse rounded-2xl h-skel" />
+              <div className="h-24 animate-pulse rounded-2xl h-skel" />
+            </div>
+          </div>
+        ) : null}
+        {!placing && view === "confirm" && rate && reading && !done && !widget && !sending ? (
           <div data-hotel-confirm="1" className="h-paper space-y-4 px-4 py-4">
             <article className="h-recap space-y-3 text-[15px]">
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
@@ -1142,11 +1231,19 @@ export function HotelJourney({
           onAction={() => (guestsReady() ? onStep("confirm") : setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne."))}
         />
       ) : null}
-      {view === "confirm" && rate && !done && !cardSecret && !widget && !placing ? (
+      {view === "confirm" && rate && !done && !cardSecret && !widget && !placing && fareBlock ? (
+        <div className="h-dock shrink-0 px-4 pb-28 pt-3" data-hotel-fare="1">
+          <p role="alert" className="text-sm leading-relaxed h-ink">{fareBlock}</p>
+          <button type="button" className="h-btn h-press mt-3 h-12 w-full text-sm font-semibold" onClick={() => { setFareBlock(null); setWidget(null); onStep("room"); }}>
+            Revenir au tarif
+          </button>
+        </div>
+      ) : null}
+      {view === "confirm" && rate && !done && !cardSecret && !widget && !placing && !fareBlock ? (
         <Dock
           label="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          action={sending ? "Envoi…" : leApi ? "Confirmer" : "Transmettre à l’hôtel"}
+          action={sending ? "Vérification…" : leApi ? "Confirmer" : "Transmettre à l’hôtel"}
           disabled={sending || !rate.offerId || !payMethod}
           onAction={() => void send()}
         />

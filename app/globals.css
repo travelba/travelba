@@ -487,6 +487,11 @@
   }
 }
 
+body[data-hotel-lock] [data-account-tabs] {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
 .account-tabbar {
   position: fixed;
   /* Collée au bord : 56 px de barre, puis la zone système (encoche basse) sous le même fond. */

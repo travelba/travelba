@@ -70,47 +70,67 @@ export async function POST(request: Request) {
       }
       return jsonError("La réservation n’a pas pu être ouverte.", 400);
     }
-    const opened = await openDirectStay({
-      customer: auth.customer,
-      offerId,
-      guests,
-      companions,
-      arrival,
-      payMethod,
-      stripeIntent: intentId,
-      cardReady,
-    });
-    if (opened.ok && "widgetUrl" in opened) {
-      return NextResponse.json({ ok: true, widgetUrl: opened.widgetUrl, widgetOrigin: opened.widgetOrigin, terms: opened.terms });
-    }
-    if (!opened.ok) {
-      await noteError(auth.customer.id, auth.user.id, mode, opened.message);
-      return NextResponse.json(
-        {
-          error: opened.message,
-          code: opened.code,
-          sellCents: opened.sellCents,
-          currency: opened.currency,
-          widgetUrl: "widgetUrl" in opened ? opened.widgetUrl : undefined,
-          terms: "terms" in opened ? opened.terms : undefined,
-          widgetOrigin: "widgetUrl" in opened && opened.widgetUrl ? new URL(opened.widgetUrl).origin : undefined,
-        },
-        { status: opened.code === "price_changed" ? 409 : opened.code === "card_again" ? 409 : 400 }
-      );
-    }
-    await recordHotelClientActivity({
-      customerId: auth.customer.id,
-      authUserId: auth.user.id,
-      mode,
-      gesture: {
-        kind: "request",
-        via: "offre",
-        hotel: opened.view.hotelName,
-        room: opened.view.room || undefined,
-        pay: payMethod === "card" ? "carte" : "agence",
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (event: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        send({ phase: "hotel" });
+        try {
+          const opened = await openDirectStay({
+            customer: auth.customer,
+            offerId,
+            guests,
+            companions,
+            arrival,
+            payMethod,
+            stripeIntent: intentId,
+            cardReady,
+            onPhase: (phase) => send({ phase }),
+          });
+          if (opened.ok && "widgetUrl" in opened) {
+            send({ ok: true, widgetUrl: opened.widgetUrl, widgetOrigin: opened.widgetOrigin, terms: opened.terms });
+          } else if (!opened.ok) {
+            await noteError(auth.customer.id, auth.user.id, mode, opened.message);
+            send({
+              ok: false,
+              error: opened.message,
+              code: opened.code,
+              sellCents: opened.sellCents,
+              currency: opened.currency,
+              widgetUrl: "widgetUrl" in opened ? opened.widgetUrl : undefined,
+              terms: "terms" in opened ? opened.terms : undefined,
+              widgetOrigin: "widgetUrl" in opened && opened.widgetUrl ? new URL(opened.widgetUrl).origin : undefined,
+            });
+          } else {
+            await recordHotelClientActivity({
+              customerId: auth.customer.id,
+              authUserId: auth.user.id,
+              mode,
+              gesture: {
+                kind: "request",
+                via: "offre",
+                hotel: opened.view.hotelName,
+                room: opened.view.room || undefined,
+                pay: payMethod === "card" ? "carte" : "agence",
+              },
+            });
+            send({ ok: true, view: opened.view, trial: !live });
+          }
+        } catch {
+          await noteError(auth.customer.id, auth.user.id, mode, "La demande n’a pas pu être envoyée.");
+          send({ ok: false, error: "La demande n’a pas pu être envoyée." });
+        } finally {
+          controller.close();
+        }
       },
     });
-    return NextResponse.json({ ok: true, view: opened.view, trial: !live });
+    return new Response(stream, {
+      headers: {
+        "content-type": "application/x-ndjson; charset=utf-8",
+        "cache-control": "no-store",
+        "x-accel-buffering": "no",
+      },
+    });
   } catch {
     await noteError(auth.customer.id, auth.user.id, mode, "La demande n’a pas pu être envoyée.");
     return jsonError("La demande n’a pas pu être envoyée.", 500);
