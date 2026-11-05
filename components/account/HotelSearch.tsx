@@ -9,6 +9,15 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
+import {
+  HOTEL_SEARCH_CITY_CHIPS,
+  HOTEL_SEARCH_HERO_FALLBACK,
+  TRAVEL_BA_SEARCH_ADVANTAGES,
+  hotelDraftStorageKey,
+  hotelRecentStorageKey,
+  hotelSearchHeroSrc,
+  type FeaturedHotel,
+} from "@/lib/crm/hotel-search-home";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { HOTEL_RESULT_PAGE } from "@/lib/crm/hotel-activity";
 import { hotelJourneySearch, hotelJourneyStep, presentHotels, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
@@ -40,6 +49,8 @@ type SearchEvent =
 type DraftRoom = { adults: number; children: (number | null)[] };
 type Panel = "where" | "when" | "who";
 const LAST_SEARCH_KEY = "hotel-search-last";
+let draftOwner = LAST_SEARCH_KEY;
+let recentOwner = "hotel-recent-list";
 
 const PERK_LABEL: { key: keyof HotelPerks; label: string }[] = [
   { key: "breakfast", label: "Petit-déjeuner" },
@@ -165,7 +176,11 @@ function parseRecent(raw: string): RecentStay[] {
 function readRecentSnapshot() {
   if (recentFresh) return recentSnapshot;
   try {
-    recentSnapshot = localStorage.getItem(RECENT_KEY) || sessionStorage.getItem("hotel-recent") || EMPTY_RECENT;
+    recentSnapshot =
+      localStorage.getItem(recentOwner) ||
+      sessionStorage.getItem(recentOwner) ||
+      (recentOwner === RECENT_KEY ? sessionStorage.getItem("hotel-recent") : "") ||
+      EMPTY_RECENT;
   } catch {
     recentSnapshot = EMPTY_RECENT;
   }
@@ -193,8 +208,8 @@ function subscribeRecent(onChange: () => void) {
 function writeRecent(entry: RecentStay) {
   const next = [entry, ...parseRecent(readRecentSnapshot()).filter((row) => recentKey(row) !== recentKey(entry))].slice(0, 5);
   const raw = JSON.stringify(next);
-  localStorage.setItem(RECENT_KEY, raw);
-  sessionStorage.setItem("hotel-recent", raw);
+  localStorage.setItem(recentOwner, raw);
+  sessionStorage.setItem(recentOwner, raw);
   recentSnapshot = raw;
   recentFresh = true;
   recentListeners.forEach((listener) => listener());
@@ -212,10 +227,21 @@ function emptyHotelDraftSnapshot() {
 
 function readHotelDraftSnapshot() {
   try {
-    return localStorage.getItem(LAST_SEARCH_KEY) || sessionStorage.getItem(LAST_SEARCH_KEY) || sessionStorage.getItem("hotel-recent") || "";
+    return localStorage.getItem(draftOwner) || sessionStorage.getItem(draftOwner) || (draftOwner === LAST_SEARCH_KEY ? sessionStorage.getItem("hotel-recent") || "" : "");
   } catch {
     return "";
   }
+}
+
+function adoptHotelStorage(customerId: string) {
+  const nextRecent = hotelRecentStorageKey(customerId);
+  const nextDraft = hotelDraftStorageKey(customerId);
+  if (recentOwner === nextRecent && draftOwner === nextDraft) return;
+  recentOwner = nextRecent;
+  draftOwner = nextDraft;
+  recentFresh = false;
+  recentListeners.forEach((listener) => listener());
+  window.dispatchEvent(new Event("storage"));
 }
 
 function subscribeHotelDraft(onChange: () => void) {
@@ -246,7 +272,19 @@ function seedFromSnapshot(today: string, raw: string) {
   }
 }
 
-export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; leApi?: boolean }) {
+export function HotelSearch({
+  trial = true,
+  leApi = false,
+  customerId = "",
+  highlights = [],
+}: {
+  trial?: boolean;
+  leApi?: boolean;
+  /** Isole les recherches récentes de cet appareil pour cette personne. */
+  customerId?: string;
+  /** Hôtels déjà réservés, avec photo. Vide : la section reste cachée. */
+  highlights?: FeaturedHotel[];
+}) {
   const today = useDeviceToday();
   const storedDraft = useSyncExternalStore(subscribeHotelDraft, readHotelDraftSnapshot, emptyHotelDraftSnapshot);
   const seed = useMemo(() => seedFromSnapshot(today, storedDraft), [today, storedDraft]);
@@ -280,6 +318,8 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
+  const [heroBroken, setHeroBroken] = useState(false);
+  const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
   const params = useSearchParams();
   const hotelToken = params.get("hotel");
@@ -324,6 +364,10 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
   const searchAbort = useRef<AbortController | null>(null);
   const destinationRef = useRef<HTMLInputElement>(null);
   const focusReady = useRef(false);
+
+  useEffect(() => {
+    adoptHotelStorage(customerId);
+  }, [customerId]);
 
   useEffect(() => {
     if (focusReady.current) return;
@@ -550,8 +594,8 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
       };
       writeRecent(entry);
       const stored = JSON.stringify(entry);
-      sessionStorage.setItem(LAST_SEARCH_KEY, stored);
-      localStorage.setItem(LAST_SEARCH_KEY, stored);
+      sessionStorage.setItem(draftOwner, stored);
+      localStorage.setItem(draftOwner, stored);
     } catch {
       /* la session du navigateur peut refuser l’écriture */
     }
@@ -621,10 +665,29 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
     }
   }
 
+  const heroCandidate = hotelSearchHeroSrc((city || destination).trim());
+  if (heroSeen !== heroCandidate) {
+    setHeroSeen(heroCandidate);
+    setHeroBroken(false);
+  }
+  const heroSrc = heroBroken ? HOTEL_SEARCH_HERO_FALLBACK : heroCandidate;
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
   const nightLabel = nightCount > 0 ? `${nightCount} nuit${nightCount > 1 ? "s" : ""}` : "";
+  const showIdeas = panel !== "when" && panel !== "who" && destinations.length === 0 && hotelNames.length === 0;
+
+  function openPlace(destinationName: string, cityName = "", hotelId: number | null = null) {
+    void onSearch({
+      destination: destinationName,
+      city: cityName,
+      checkIn,
+      checkOut,
+      rooms,
+      target: hotelId ? { kind: "hotel", id: hotelId } : null,
+      party,
+    });
+  }
 
   const shown = presentHotels(hotels, sort, needs);
   const visible = shown.slice(0, page * HOTEL_RESULT_PAGE);
@@ -674,183 +737,249 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
             void onSearch();
           }}
         >
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
-            <p className="h-serif px-1 text-[1.35rem] font-semibold h-ink">Hôtels</p>
-            <label className="block">
-              <span className="h-field flex min-h-14 items-center gap-3 px-1">
-                <Icon name="search" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-                <input
-                  ref={destinationRef}
-                  value={destination}
-                  data-hotel-destination="1"
-                  onChange={(event) => {
-                    setDestination(event.target.value);
-                    setTarget(null);
-                    setCity("");
-                    setPanel("where");
-                  }}
-                  className="min-h-12 w-full bg-transparent text-[15px] h-ink outline-none"
-                  placeholder="Destination ou hôtel"
-                  autoComplete="off"
-                  enterKeyHint="search"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-label="Destination ou hôtel"
-                  onFocus={() => setPanel("where")}
-                  aria-expanded={panel === "where" && (destinations.length > 0 || hotelNames.length > 0)}
-                  aria-controls="hotel-suggest-list"
-                />
-              </span>
-            </label>
-            {panel !== "when" && panel !== "who" && destinations.length === 0 && hotelNames.length === 0 ? (
-              <div data-hotel-recent="1" className="pt-1">
-                <p className="h-section">Dernières recherches</p>
-                {recent.length ? (
-                  recent.map((item) => {
-                    const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
-                    return (
-                      <button
-                        key={recentKey(item)}
-                        type="button"
-                        onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
-                        className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
-                      >
-                        <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-                        <span className="min-w-0">
-                          <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{frenchCity(item.destination)}</span>
-                          <span className="block truncate text-xs h-muted">
-                            {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <p className="mt-2 text-sm h-muted">Aucune recherche pour le moment.</p>
-                )}
-              </div>
-            ) : null}
-            {panel === "where" && (destinations.length > 0 || hotelNames.length > 0) ? (
-              <div id="hotel-suggest-list" role="listbox" className="py-1">
-                <SuggestGroup title="Destinations" items={destinations} onPick={pickPlace} />
-                <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
-              </div>
-            ) : null}
-            <button
-              type="button"
-              data-hotel-dates="1"
-              onClick={() => (panel === "when" ? setPanel(null) : openDates())}
-              className="h-field h-press flex min-h-14 w-full items-center gap-3 px-1 text-left"
-            >
-              <Icon name="event" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-              <span className="text-[15px] h-ink">{nightLabel ? `${summaryDates} · ${nightLabel}` : summaryDates}</span>
-            </button>
-            {panel === "when" ? (
-              <div className="px-1 py-2">
-                <div className="flex items-center justify-between">
-                  <button type="button" aria-label="Mois précédent" onClick={() => shiftMonth(-1)} className="grid h-11 w-11 place-items-center h-ink">
-                    <Icon name="chevron_left" className="h-5 w-5" />
-                  </button>
-                  <p className="text-base font-semibold h-ink">{monthTitle(cursor.year, cursor.month)}</p>
-                  <button type="button" aria-label="Mois suivant" onClick={() => shiftMonth(1)} className="grid h-11 w-11 place-items-center h-ink">
-                    <Icon name="chevron_right" className="h-5 w-5" />
-                  </button>
+          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+            <div className="relative -mx-4 -mt-5 h-64 overflow-hidden bg-[#0B192C]" data-hotel-hero="1">
+              {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+              <img
+                src={heroSrc}
+                alt=""
+                width={960}
+                height={540}
+                fetchPriority="high"
+                decoding="async"
+                onError={() => setHeroBroken(true)}
+                className="h-full w-full object-cover"
+              />
+              <div className="h-cover-fade" aria-hidden />
+              <h1 className="h-cover-copy h-serif !pb-16 text-[1.45rem] font-semibold leading-tight">Où souhaitez-vous séjourner ?</h1>
+            </div>
+            <div className="relative z-10 -mt-8 overflow-hidden rounded-2xl bg-white shadow-[0_16px_36px_rgba(11,25,44,0.14)]" data-hotel-fields="1">
+              <label className="block">
+                <span className="flex min-h-14 items-center gap-3 px-4">
+                  <Icon name="search" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+                  <input
+                    ref={destinationRef}
+                    value={destination}
+                    data-hotel-destination="1"
+                    onChange={(event) => {
+                      setDestination(event.target.value);
+                      setTarget(null);
+                      setCity("");
+                      setPanel("where");
+                    }}
+                    className="min-h-12 w-full bg-transparent text-[15px] h-ink outline-none"
+                    placeholder="Destination ou hôtel"
+                    autoComplete="off"
+                    enterKeyHint="search"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-label="Destination ou hôtel"
+                    onFocus={() => setPanel("where")}
+                    aria-expanded={panel === "where" && (destinations.length > 0 || hotelNames.length > 0)}
+                    aria-controls="hotel-suggest-list"
+                  />
+                </span>
+              </label>
+              {panel === "where" && (destinations.length > 0 || hotelNames.length > 0) ? (
+                <div id="hotel-suggest-list" role="listbox" className="border-t border-[#e6e0d6] px-1 py-1">
+                  <SuggestGroup title="Destinations" items={destinations} onPick={pickPlace} />
+                  <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
                 </div>
-                <div className="mt-2 grid grid-cols-7 text-center text-[11px] h-muted">
-                  {WEEKDAYS.map((day, index) => (
-                    <span key={`${day}-${index}`}>{day}</span>
-                  ))}
-                </div>
-                <div className="mt-1 grid grid-cols-7">
-                  {monthCells(cursor.year, cursor.month).map((iso, index) => {
-                    if (!iso) return <span key={`empty-${index}`} />;
-                    const endpoint = iso === checkIn || iso === checkOut;
-                    const inside = Boolean(checkIn && checkOut && iso > checkIn && iso < checkOut);
-                    const past = iso < today;
-                    return (
-                      <button
-                        key={iso}
-                        type="button"
-                        data-date={iso}
-                        disabled={past}
-                        onClick={() => pickDay(iso)}
-                        className={`grid h-11 place-items-center text-sm ${
-                          endpoint ? "h-day-on" : inside ? "h-range" : past ? "h-faint" : "h-ink"
-                        }`}
-                      >
-                        {Number(iso.slice(-2))}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              data-hotel-party="1"
-              onClick={() => setPanel(panel === "who" ? null : "who")}
-              className="h-field h-press flex min-h-14 w-full items-center gap-3 px-1 text-left"
-            >
-              <Icon name="person" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-              <span className="text-[15px] h-ink">{party}</span>
-              <Icon name="bed" className="ml-auto h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-            </button>
-            {panel === "who" ? (
-              <div className="space-y-4 px-1 py-2">
-                <Stepper
-                  label="Chambres"
-                  value={rooms.length}
-                  min={1}
-                  max={4}
-                  onChange={resizeRooms}
-                />
-                {rooms.map((room, index) => (
-                  <div key={index} className="space-y-3 pt-1">
-                    <p className="text-sm h-muted">Chambre {index + 1}</p>
-                    <Stepper label="Adultes" value={room.adults} min={1} max={6} onChange={(adults) => updateRoom(index, { ...room, adults })} />
-                    <Stepper
-                      label="Enfants"
-                      value={room.children.length}
-                      min={0}
-                      max={4}
-                      onChange={(count) =>
-                        updateRoom(index, {
-                          ...room,
-                          children: count > room.children.length ? [...room.children, null] : room.children.slice(0, count),
-                        })
-                      }
-                    />
-                    {room.children.map((age, childIndex) => (
-                      <label key={childIndex} className="flex min-h-11 items-center justify-between gap-3 text-sm h-ink">
-                        <span>Âge, enfant {childIndex + 1}</span>
-                        <select
-                          value={age ?? ""}
-                          aria-label={`Âge, enfant ${childIndex + 1}, chambre ${index + 1}`}
-                          onChange={(event) => {
-                            const next = room.children.slice();
-                            next[childIndex] = Number(event.target.value);
-                            updateRoom(index, { ...room, children: next });
-                          }}
-                          className="h-field min-h-11 px-3 py-2 text-base h-ink"
-                        >
-                          <option value="">Âge</option>
-                          {Array.from({ length: 18 }, (_, value) => (
-                            <option key={value} value={value}>
-                              {value === 0 ? "Moins d’un an" : `${value} ans`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+              ) : null}
+              <div className="mx-4 h-px bg-[#e6e0d6]" />
+              <button
+                type="button"
+                data-hotel-dates="1"
+                onClick={() => (panel === "when" ? setPanel(null) : openDates())}
+                className="h-press flex min-h-14 w-full items-center gap-3 px-4 text-left"
+              >
+                <Icon name="event" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+                <span className="text-[15px] h-ink">{nightLabel ? `${summaryDates} · ${nightLabel}` : summaryDates}</span>
+              </button>
+              {panel === "when" ? (
+                <div className="border-t border-[#e6e0d6] px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <button type="button" aria-label="Mois précédent" onClick={() => shiftMonth(-1)} className="grid h-11 w-11 place-items-center h-ink">
+                      <Icon name="chevron_left" className="h-5 w-5" />
+                    </button>
+                    <p className="text-base font-semibold h-ink">{monthTitle(cursor.year, cursor.month)}</p>
+                    <button type="button" aria-label="Mois suivant" onClick={() => shiftMonth(1)} className="grid h-11 w-11 place-items-center h-ink">
+                      <Icon name="chevron_right" className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-7 text-center text-[11px] h-muted">
+                    {WEEKDAYS.map((day, index) => (
+                      <span key={`${day}-${index}`}>{day}</span>
                     ))}
                   </div>
-                ))}
+                  <div className="mt-1 grid grid-cols-7">
+                    {monthCells(cursor.year, cursor.month).map((iso, index) => {
+                      if (!iso) return <span key={`empty-${index}`} />;
+                      const endpoint = iso === checkIn || iso === checkOut;
+                      const inside = Boolean(checkIn && checkOut && iso > checkIn && iso < checkOut);
+                      const past = iso < today;
+                      return (
+                        <button
+                          key={iso}
+                          type="button"
+                          data-date={iso}
+                          disabled={past}
+                          onClick={() => pickDay(iso)}
+                          className={`grid h-11 place-items-center text-sm ${
+                            endpoint ? "h-day-on" : inside ? "h-range" : past ? "h-faint" : "h-ink"
+                          }`}
+                        >
+                          {Number(iso.slice(-2))}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              <div className="mx-4 h-px bg-[#e6e0d6]" />
+              <button
+                type="button"
+                data-hotel-party="1"
+                onClick={() => setPanel(panel === "who" ? null : "who")}
+                className="h-press flex min-h-14 w-full items-center gap-3 px-4 text-left"
+              >
+                <Icon name="person" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+                <span className="text-[15px] h-ink">{party}</span>
+                <Icon name="bed" className="ml-auto h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+              </button>
+              {panel === "who" ? (
+                <div className="space-y-4 border-t border-[#e6e0d6] px-4 py-3">
+                  <Stepper
+                    label="Chambres"
+                    value={rooms.length}
+                    min={1}
+                    max={4}
+                    onChange={resizeRooms}
+                  />
+                  {rooms.map((room, index) => (
+                    <div key={index} className="space-y-3 pt-1">
+                      <p className="text-sm h-muted">Chambre {index + 1}</p>
+                      <Stepper label="Adultes" value={room.adults} min={1} max={6} onChange={(adults) => updateRoom(index, { ...room, adults })} />
+                      <Stepper
+                        label="Enfants"
+                        value={room.children.length}
+                        min={0}
+                        max={4}
+                        onChange={(count) =>
+                          updateRoom(index, {
+                            ...room,
+                            children: count > room.children.length ? [...room.children, null] : room.children.slice(0, count),
+                          })
+                        }
+                      />
+                      {room.children.map((age, childIndex) => (
+                        <label key={childIndex} className="flex min-h-11 items-center justify-between gap-3 text-sm h-ink">
+                          <span>Âge, enfant {childIndex + 1}</span>
+                          <select
+                            value={age ?? ""}
+                            aria-label={`Âge, enfant ${childIndex + 1}, chambre ${index + 1}`}
+                            onChange={(event) => {
+                              const next = room.children.slice();
+                              next[childIndex] = Number(event.target.value);
+                              updateRoom(index, { ...room, children: next });
+                            }}
+                            className="h-field min-h-11 px-3 py-2 text-base h-ink"
+                          >
+                            <option value="">Âge</option>
+                            {Array.from({ length: 18 }, (_, value) => (
+                              <option key={value} value={value}>
+                                {value === 0 ? "Moins d’un an" : `${value} ans`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            {note ? <p className="mt-3 px-1 text-sm h-gold">{note}</p> : null}
+            {showIdeas ? (
+              <div className="mt-5 space-y-4">
+                <div data-hotel-recent="1">
+                  <p className="h-section px-1">Dernières recherches</p>
+                  {recent.length ? (
+                    recent.map((item) => {
+                      const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
+                      return (
+                        <button
+                          key={recentKey(item)}
+                          type="button"
+                          onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
+                          className="flex min-h-11 w-full items-center gap-3 px-1 py-2 text-left"
+                        >
+                          <Icon name="history_edu" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+                          <span className="min-w-0">
+                            <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{frenchCity(item.destination)}</span>
+                            <span className="block truncate text-xs h-muted">
+                              {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="mt-2 px-1 text-sm h-muted">Aucune recherche pour le moment.</p>
+                  )}
+                </div>
+                <div data-hotel-suggestions="1">
+                  <ul className="flex gap-2 overflow-x-auto px-1 pb-1" aria-label="Destinations suggérées">
+                    {HOTEL_SEARCH_CITY_CHIPS.map((cityName) => (
+                      <li key={cityName}>
+                        <button type="button" className="h-pill h-press" onClick={() => openPlace(cityName)}>
+                          {cityName}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div data-hotel-agency-benefits="1">
+                  <HotelBenefits lines={[...TRAVEL_BA_SEARCH_ADVANTAGES]} title="Vos avantages Travel BA" layout="row" />
+                  <p className="mt-2 px-1 text-[11px] leading-snug h-muted">Selon l’hôtel et les disponibilités. Le détail est celui de chaque hôtel.</p>
+                </div>
+                {highlights.length ? (
+                  <section aria-label="Hôtels coups de cœur" data-hotel-highlights="1">
+                    <h2 className="h-section px-1">Hôtels coups de cœur</h2>
+                    <ul className="h-gallery mt-3 flex gap-3 overflow-x-auto px-1 pb-1">
+                      {highlights.map((pick) => (
+                        <li key={`${pick.hotelId || ""}-${pick.name}`} className="w-44 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openPlace(pick.name, pick.city, pick.hotelId)}
+                            className="h-press w-full text-left"
+                            aria-label={`Rechercher ${pick.name}${pick.city ? `, ${pick.city}` : ""}`}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element -- photo déjà enregistrée sur un séjour */}
+                            <img
+                              src={pick.photo}
+                              alt=""
+                              width={288}
+                              height={192}
+                              loading="lazy"
+                              decoding="async"
+                              className="h-24 w-full rounded-xl bg-[#0B192C] object-cover"
+                            />
+                            <span className="mt-1.5 block truncate text-sm font-semibold h-ink">{pick.name}</span>
+                            {pick.city ? <span className="block truncate text-xs h-muted">{pick.city}</span> : null}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
               </div>
             ) : null}
-            {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
-          <div className="shrink-0 bg-[#f4efe6] pt-3">
-            <button type="submit" data-hotel-search-cta="1" disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold disabled:opacity-60">
-              Rechercher
+          <div className="h-search-dock shrink-0" data-hotel-search-dock="1">
+            <button type="submit" data-hotel-search-cta="1" disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center gap-2 text-sm font-semibold shadow-[0_10px_24px_rgba(11,25,44,0.18)] disabled:opacity-60">
+              <Icon name="search" className="h-4 w-4 text-[#C5A880]" strokeWidth={1.75} />
+              <span>Rechercher</span>
             </button>
           </div>
         </form>
@@ -1124,8 +1253,9 @@ export function HotelSearch({ trial = true, leApi = false }: { trial?: boolean; 
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
           <footer className="bg-white px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_28px_rgba(11,25,44,0.06)]">
-            <button type="button" onClick={() => void onSearch()} disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center text-sm font-semibold disabled:opacity-60">
-              Rechercher
+            <button type="button" onClick={() => void onSearch()} disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center gap-2 text-sm font-semibold disabled:opacity-60">
+              <Icon name="search" className="h-4 w-4 text-[#C5A880]" strokeWidth={1.75} />
+              <span>Rechercher</span>
             </button>
           </footer>
         </div>

@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
-import { AccountChrome } from "@/components/account/AccountChrome";
+import { ExampleChrome } from "@/components/account/ExampleChrome";
 import { ExampleFetchBridge } from "@/components/account/ExampleFetchBridge";
 import { ExampleNotice } from "@/components/account/ExampleNotice";
-import { exampleSessionEnabled, EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
 import { siteConfig } from "@/lib/site";
 
@@ -19,16 +19,10 @@ export default function ExampleLayout({ children }: { children: React.ReactNode 
 
   return (
     <ExampleFetchBridge>
-      <AccountChrome
-        customerName={session.name}
-        initials={session.initials}
-        needsPhone={false}
-        basePath={EXAMPLE_BASE}
-        preview
-      >
+      <ExampleChrome customerName={session.name} initials={session.initials}>
         <ExampleNotice />
         {children}
-      </AccountChrome>
+      </ExampleChrome>
     </ExampleFetchBridge>
   );
 }

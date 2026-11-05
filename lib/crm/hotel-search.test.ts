@@ -702,6 +702,17 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(journey, /collapseRooms/);
   assert.match(readFileSync(join(root, "app/api/client/hotels/fiche/route.ts"), "utf8"), /collapseRooms/);
   assert.match(ui, /Où souhaitez-vous séjourner/);
+  assert.match(ui, /data-hotel-hero/);
+  assert.match(ui, /data-hotel-fields/);
+  assert.match(ui, /data-hotel-suggestions/);
+  assert.match(ui, /data-hotel-agency-benefits/);
+  assert.match(ui, /Hôtels coups de cœur/);
+  assert.match(ui, /Vos avantages Travel BA/);
+  assert.match(ui, /Selon l’hôtel et les disponibilités/);
+  assert.match(ui, /layout="row"/);
+  assert.match(ui, /<HotelBenefits lines=\{\[\.\.\.TRAVEL_BA_SEARCH_ADVANTAGES\]\}/);
+  assert.match(ui, /data-hotel-search-dock/);
+  assert.match(ui, /hotelRecentStorageKey/);
   assert.match(ui, /data-hotel-ask/);
   assert.match(ui, /data-hotel-destination/);
   assert.match(ui, /data-hotel-dates/);

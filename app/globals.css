@@ -486,6 +486,15 @@
   }
 }
 .hotel-theme .h-search { background: var(--h-bg); }
+.hotel-theme .h-search-dock {
+  background: #f4efe6;
+  padding-top: 0.75rem;
+}
+@media (min-width: 768px) {
+  .hotel-theme .h-search-dock {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  }
+}
 .hotel-theme .h-ask {
   position: fixed;
   z-index: 30;
