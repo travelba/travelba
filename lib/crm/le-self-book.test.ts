@@ -17,6 +17,9 @@ import {
   leWidgetSignal,
   safeCardWidgetUrl,
   leDeadlineParisLabel,
+  cancellationFee,
+  clientCancellationSentence,
+  clientDeadlineInstant,
   leClientRefusal,
   lePrimaryGuest,
   leSessionExpired,
@@ -226,6 +229,15 @@ test("un accompagnant augmente les adultes, le nom envoyé reste le principal", 
   assert.equal(body.rooms[0].adults, 2);
   assert.equal("credit_card" in body, false);
   assert.doesNotMatch(JSON.stringify(body), /Victoria/);
+  const deadline = "2026-11-26T18:00:00.000000Z";
+  const policy = "Free cancellation before 18:00 on 26 November 2026 after which a charge of EUR 162.74 will be incurred.";
+  const instant = clientDeadlineInstant(deadline, policy);
+  assert.equal(instant?.toISOString(), "2026-11-26T17:00:00.000Z");
+  const sentence = clientCancellationSentence({ deadline, policy, free: true });
+  assert.match(sentence, /18:00/);
+  assert.doesNotMatch(sentence, /19:00|Free cancellation|Little Emperors/);
+  assert.equal(cancellationFee(policy)?.amount, 162.74);
+  assert.match(sentence, /162,74/);
   assert.equal(leClientRefusal(422, "guest_name: The surname must be at least 2 characters."), "Indiquez le prénom et le nom du voyageur principal, une personne par ligne.");
   assert.equal(leClientRefusal(422, "adults: The adults count does not match the rate."), PARTY_MISMATCH);
   const logged = redactCardText("refused 4242424242424242 cvc 123 key sk_live_secret");

@@ -10,6 +10,7 @@ import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
+import { StayConfirmedNote } from "@/components/account/StayConfirmedNote";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -25,7 +26,7 @@ import {
 } from "@/lib/crm/types";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 
-type Props = { params: Promise<{ reference: string }> };
+type Props = { params: Promise<{ reference: string }>; searchParams: Promise<{ confirme?: string }> };
 
 /**
  * Titre d’onglet : « {titre du séjour} · {référence} — TBA », seulement pour un dossier du client,
@@ -56,8 +57,9 @@ async function stayExistsForCustomer(customerId: string, reference: string) {
   }
 }
 
-export default async function ReservationDetailPage({ params }: Props) {
+export default async function ReservationDetailPage({ params, searchParams }: Props) {
   const { reference } = await params;
+  const { confirme } = await searchParams;
   const { supabase, user, customer, booking } = await loadClientStay(reference);
   if (!user) redirect("/connexion");
   if (!customer) redirect("/connexion");
@@ -95,6 +97,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   return (
     <AccountPage>
       <div className="space-y-5">
+        {confirme === "1" ? <StayConfirmedNote /> : null}
         <Link
           href="/mon-compte/reservations"
           transitionTypes={["nav-back"]}

@@ -32,7 +32,7 @@ Two ways to pay, chosen on each stay:
 
 A second click reuses the same stay. If the upstream id is already stored, the call is not repeated.
 
-Cancellation uses the supplier’s `cancellation_deadline`, shown in Europe/Paris. After that instant the client cannot cancel alone. A successful `DELETE` does not refund Stripe unless a Stripe charge exists. When the client paid the hotel, cancellation is only that delete. When the agency paid, the Pliant card is frozen; an uncharged debit is removed from the client’s transactions; a card already charged waits for a manual client refund.
+Cancellation uses the supplier’s `cancellation_deadline`. The client sees one French sentence. If that timestamp is UTC but its clock matches the rate’s own sentence, the earlier clock is shown in Europe/Paris. A self-service booking is published like a staff publish: the stay and the hotel card are visible, the sale price is the accepted total, WhatsApp notifies, and the confirmation email quotes that same amount. After that instant the client cannot cancel alone. A successful `DELETE` does not refund Stripe unless a Stripe charge exists. When the client paid the hotel, cancellation is only that delete. When the agency paid, the Pliant card is frozen; an uncharged debit is removed from the client’s transactions; a card already charged waits for a manual client refund.
 
 Webhooks still accept `X-Access-Key` or `Authorization: Bearer`. A direct stay is linked by the stored booking id. Fuzzy matching remains the fallback for stays that were not created here.
 
