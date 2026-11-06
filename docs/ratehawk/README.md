@@ -15,7 +15,7 @@ Environment variables are listed in `.env.example` (`RATEHAWK_*`). No key is sto
 ## Still required before ETG can certify
 
 - Sandbox `RATEHAWK_KEY_ID` and `RATEHAWK_API_KEY` on Vercel (production environment for the live admin, or a protected preview). Do not set production ETG on preview.
-- `RATEHAWK_AGENCY_EMAIL` (and optional `RATEHAWK_AGENCY_PHONE`) — corporate address sent as `user.email`.
+- `RATEHAWK_AGENCY_EMAIL` — corporate address sent as `user.email`. `user.phone` is the phone typed on the guest step (optional `RATEHAWK_AGENCY_PHONE` only prefills it).
 - Apply `supabase/migrations/20261021150000_ratehawk.sql`. Bookings and the content catalogue cannot be stored before that.
 - Static egress: Vercel Static IPs or `RATEHAWK_HTTPS_PROXY`, then send the address list to ETG.
 - `CRON_SECRET` already gates `/api/cron/ratehawk-content`.
