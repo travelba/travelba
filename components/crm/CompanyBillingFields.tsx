@@ -89,6 +89,25 @@ export function billingSameAsProfile(
   );
 }
 
+/** Une frappe sur l’adresse de facturation la détache du domicile, dans le même état. */
+export function billingAddressEdit(
+  values: CompanyBillingValues,
+  displayed: ProfileAddress,
+  partial: Partial<ProfileAddress>
+): { values: CompanyBillingValues; sameAsProfile: false } {
+  const next = { ...displayed, ...partial };
+  return {
+    sameAsProfile: false,
+    values: {
+      ...values,
+      billingCountry: next.country,
+      billingLine: next.line,
+      billingPostal: next.postal,
+      billingCity: next.city,
+    },
+  };
+}
+
 export function billingJson(
   values: CompanyBillingValues,
   profile: { country: string; line: string; postal: string; city: string },
@@ -129,14 +148,12 @@ export function CompanyBillingFields({
   values,
   onChange,
   sameAsProfile,
-  onSameAsProfileChange,
   profileAddress,
   heading = true,
 }: {
   values: CompanyBillingValues;
-  onChange: (next: CompanyBillingValues) => void;
+  onChange: (next: CompanyBillingValues, patch?: { sameAsProfile?: boolean }) => void;
   sameAsProfile: boolean;
-  onSameAsProfileChange: (same: boolean) => void;
   profileAddress: { country: string; line: string; postal: string; city: string };
   heading?: boolean;
 }) {
@@ -144,23 +161,25 @@ export function CompanyBillingFields({
   const siretHint = siretFieldError(siretDigits);
   const [lookup, setLookup] = useState<string | null>(null);
 
-  function update(partial: Partial<CompanyBillingValues>) {
-    onChange({ ...values, ...partial });
+  function update(partial: Partial<CompanyBillingValues>, patch?: { sameAsProfile?: boolean }) {
+    onChange({ ...values, ...partial }, patch);
   }
 
   function pickCompany(company: OfficialCompany) {
     setLookup(null);
-    onSameAsProfileChange(false);
-    onChange({
-      ...values,
-      companyName: company.legalName,
-      siret: formatSiretInput(company.siret),
-      vatNumber: company.vat || vatFromSiret(company.siret) || "",
-      billingCountry: "FR",
-      billingLine: company.addressLine,
-      billingPostal: company.postalCode,
-      billingCity: company.city,
-    });
+    onChange(
+      {
+        ...values,
+        companyName: company.legalName,
+        siret: formatSiretInput(company.siret),
+        vatNumber: company.vat || vatFromSiret(company.siret) || "",
+        billingCountry: "FR",
+        billingLine: company.addressLine,
+        billingPostal: company.postalCode,
+        billingCity: company.city,
+      },
+      { sameAsProfile: false }
+    );
   }
 
   const suggest = useCompanySuggest({ query: lookup ?? "", onPick: pickCompany });
@@ -168,14 +187,8 @@ export function CompanyBillingFields({
   const address = billingAddressDisplay(values, profileAddress, sameAsProfile);
 
   function editAddress(partial: Partial<ProfileAddress>) {
-    const next = { ...address, ...partial };
-    if (sameAsProfile) onSameAsProfileChange(false);
-    update({
-      billingCountry: next.country,
-      billingLine: next.line,
-      billingPostal: next.postal,
-      billingCity: next.city,
-    });
+    const next = billingAddressEdit(values, address, partial);
+    onChange(next.values, { sameAsProfile: next.sameAsProfile });
   }
 
   function onSiret(raw: string) {
@@ -260,6 +273,7 @@ export function CompanyBillingFields({
         </Field>
       </div>
       <AddressFields
+        lineLabel="Adresse de facturation"
         country={address.country}
         onCountryChange={(country) => editAddress({ country })}
         line={address.line}
@@ -268,22 +282,30 @@ export function CompanyBillingFields({
         onLineChange={(line) => editAddress({ line })}
         onPostalChange={(postal) => editAddress({ postal })}
         onCityChange={(city) => editAddress({ city })}
+        onCommit={(next) => {
+          const edited = billingAddressEdit(values, address, next);
+          onChange(edited.values, { sameAsProfile: edited.sameAsProfile });
+        }}
       />
       <label className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
         <input
           type="checkbox"
           checked={sameAsProfile}
           onChange={(event) => {
-            const same = event.target.checked;
-            onSameAsProfileChange(same);
-            if (same) {
-              update({
-                billingCountry: profileAddress.country || "FR",
-                billingLine: profileAddress.line,
-                billingPostal: profileAddress.postal,
-                billingCity: profileAddress.city,
-              });
+            if (event.target.checked) {
+              update(
+                {
+                  billingCountry: profileAddress.country || "FR",
+                  billingLine: profileAddress.line,
+                  billingPostal: profileAddress.postal,
+                  billingCity: profileAddress.city,
+                },
+                { sameAsProfile: true }
+              );
+              return;
             }
+            const kept = billingAddressEdit(values, address, {});
+            onChange(kept.values, { sameAsProfile: false });
           }}
         />
         Adresse de facturation identique à l’adresse du voyageur

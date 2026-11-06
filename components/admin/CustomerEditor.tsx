@@ -452,7 +452,11 @@ export function CustomerEditor({
             open={openAddress}
             onToggle={() => setOpenAddress((value) => !value)}
           >
+            <p className="text-sm text-muted">
+              Domicile. L’adresse de facturation se règle avec la société, plus bas.
+            </p>
             <AddressFields
+              lineLabel="Adresse personnelle"
               country={country}
               onCountryChange={setCountry}
               line={addressLine}

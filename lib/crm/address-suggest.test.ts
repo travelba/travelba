@@ -5,6 +5,7 @@ import {
   formatBanFeature,
   formatPhotonFeature,
   mergeAddressHits,
+  resolveAddressEntry,
   searchAddresses,
 } from "./address-suggest";
 
@@ -87,4 +88,67 @@ test("la recherche classe près de la ville et interroge les deux sources", asyn
   assert.equal(hits[1]?.title, "Terminal 2E");
   assert.equal(calls.some((url) => url.includes("type=municipality")), true);
   assert.equal(calls.some((url) => url.includes("photon")), true);
+});
+
+test("hors France, Dubaï n’est pas recouvert par une rue française, et le vide laisse la saisie", async () => {
+  const calls: string[] = [];
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("photon")) {
+      return Response.json({
+        features: [
+          {
+            properties: {
+              housenumber: "1204",
+              street: "Marina Gate",
+              city: "Dubai",
+              country: "Émirats arabes unis",
+              countrycode: "AE",
+            },
+          },
+          { properties: { housenumber: "12", street: "Rue de Rivoli", city: "Paris", country: "France", countrycode: "FR" } },
+        ],
+      });
+    }
+    return Response.json({
+      features: [{ properties: { housenumber: "12", street: "Rue de Rivoli", postcode: "75004", city: "Paris" } }],
+    });
+  }) as typeof fetch;
+  const hits = await searchAddresses("marina gate", "Dubaï", fetchImpl, "AE");
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]?.city, "Dubai");
+  assert.equal(hits[0]?.country, "AE");
+  assert.equal(hits[0]?.postal, "");
+  assert.equal(calls.some((url) => url.includes("api-adresse.data.gouv.fr")), false);
+  const none = await searchAddresses(
+    "marina gate",
+    null,
+    (async () => Response.json({ features: [] })) as typeof fetch,
+    "Émirats arabes unis"
+  );
+  assert.deepEqual(none, []);
+  const kept = resolveAddressEntry({
+    typedLine: "Apartment 1204, Marina Gate",
+    typedPostal: "PO Box 2431",
+    typedCity: "Dubaï",
+    typedCountry: "AE",
+    picked: null,
+  });
+  assert.equal(kept.fromSuggestion, false);
+  assert.equal(kept.line, "Apartment 1204, Marina Gate");
+  assert.equal(kept.postal, "PO Box 2431");
+  assert.equal(kept.city, "Dubaï");
+  assert.equal(kept.country, "AE");
+  const picked = resolveAddressEntry({
+    typedLine: "marina",
+    typedPostal: "75017",
+    typedCity: "Paris",
+    typedCountry: "FR",
+    picked: hits[0],
+  });
+  assert.equal(picked.fromSuggestion, true);
+  assert.equal(picked.country, "AE");
+  assert.equal(picked.postal, "");
+  assert.equal(picked.city, "Dubai");
 });
