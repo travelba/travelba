@@ -231,6 +231,22 @@ test("la fiche du titulaire reprend les champs de l’accompagnateur, le livret 
   assert.throws(() => prepareHolderProfile({ id: CLIENT, pays_passeport: "FR" }), /modifier/);
 });
 
+test("le domicile à Dubaï s’enregistre sans code postal français", () => {
+  const draft = prepareHolderProfile({
+    id: CLIENT,
+    adresse: "Apartment 1204, Marina Gate",
+    code_postal: "",
+    ville: "Dubaï",
+    pays: "United Arab Emirates",
+  });
+  assert.equal(draft.customer.address_line, "Apartment 1204, Marina Gate");
+  assert.equal(draft.customer.postal_code, null);
+  assert.equal(draft.customer.city, "Dubaï");
+  assert.equal(draft.customer.country, "AE");
+  assert.equal("billing_address_line" in draft.customer, false);
+  assert.doesNotThrow(() => prepareHolderProfile({ id: CLIENT, pays: "UAE", ville: "Dubaï" }));
+});
+
 test("le nom de la fiche et le nom du passeport restent distincts", async () => {
   const db = seed();
   const result = await updateHolderProfile(

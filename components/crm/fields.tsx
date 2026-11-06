@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { FrCalendar } from "@/components/crm/FrCalendar";
 import { Phone, Plus } from "lucide-react";
 import type { CountryCode } from "libphonenumber-js";
+import type { AddressHit } from "@/lib/crm/address-suggest";
 import { countriesForSelect, countryName, flagImageUrl, resolveCountryCode } from "@/lib/crm/countries";
 import {
   formatAsYouType,
@@ -647,15 +648,11 @@ export function RelationshipSelect({
   );
 }
 
-type BanFeature = {
-  properties: {
-    label: string;
-    name: string;
-    postcode: string;
-    city: string;
-    housenumber?: string;
-    street?: string;
-  };
+type AddressValue = {
+  country: string;
+  line: string;
+  postal: string;
+  city: string;
 };
 
 export function AddressFields({
@@ -667,6 +664,8 @@ export function AddressFields({
   onLineChange,
   onPostalChange,
   onCityChange,
+  onCommit,
+  lineLabel = "Adresse",
 }: {
   country: string;
   onCountryChange: (iso2: string) => void;
@@ -676,96 +675,177 @@ export function AddressFields({
   onLineChange: (value: string) => void;
   onPostalChange: (value: string) => void;
   onCityChange: (value: string) => void;
+  /** Une seule mise à jour. Indispensable quand l’adresse de facturation se détache du domicile. */
+  onCommit?: (next: AddressValue) => void;
+  lineLabel?: string;
 }) {
-  const [hints, setHints] = useState<BanFeature[]>([]);
+  const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const timer = useRef<number | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  const [hints, setHints] = useState<AddressHit[]>([]);
+  const [open, setOpen] = useState(false);
+  const [empty, setEmpty] = useState(false);
   const isFrance = (resolveCountryCode(country) || country) === "FR";
 
-  async function search(query: string) {
-    onLineChange(query);
-    if (!isFrance || query.trim().length < 3) {
-      setHints([]);
+  useEffect(() => {
+    function onPointer(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) window.clearTimeout(timer.current);
+      abort.current?.abort();
+    };
+  }, []);
+
+  function publish(partial: Partial<AddressValue>) {
+    const next = { country, line, postal, city, ...partial };
+    if (onCommit) {
+      onCommit(next);
       return;
     }
-    try {
-      const res = await fetch(
-        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`
-      );
-      const json = (await res.json()) as { features?: BanFeature[] };
-      setHints(json.features || []);
-    } catch {
+    if (next.country !== country) onCountryChange(next.country);
+    if (next.line !== line) onLineChange(next.line);
+    if (next.postal !== postal) onPostalChange(next.postal);
+    if (next.city !== city) onCityChange(next.city);
+  }
+
+  function search(query: string) {
+    publish({ line: query });
+    if (timer.current) window.clearTimeout(timer.current);
+    abort.current?.abort();
+    const q = query.trim();
+    if (q.length < 3) {
       setHints([]);
+      setEmpty(false);
+      setOpen(false);
+      return;
     }
+    timer.current = window.setTimeout(() => {
+      const controller = new AbortController();
+      abort.current = controller;
+      const params = new URLSearchParams({ q });
+      const iso = resolveCountryCode(country);
+      if (iso) params.set("country", iso);
+      if (city.trim()) params.set("near", city.trim());
+      void fetch(`/api/addresses?${params}`, { signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : { hits: [] }))
+        .then((json: { hits?: AddressHit[] }) => {
+          if (controller.signal.aborted) return;
+          const rows = Array.isArray(json.hits) ? json.hits : [];
+          setHints(rows);
+          setEmpty(rows.length === 0);
+          setOpen(fieldRef.current === document.activeElement);
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setHints([]);
+          setEmpty(true);
+          setOpen(fieldRef.current === document.activeElement);
+        });
+    }, 160);
   }
 
   async function fillCityFromPostal(code: string) {
-    onPostalChange(code);
+    publish({ postal: code });
     if (!isFrance || code.replace(/\D/g, "").length !== 5) return;
     try {
       const res = await fetch(
-        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(code)}&postcode=${encodeURIComponent(code)}&type=municipality&limit=1`
+        `/api/addresses?${new URLSearchParams({ q: code, country: "FR", near: code })}`
       );
-      const json = (await res.json()) as { features?: BanFeature[] };
-      const nextCity = json.features?.[0]?.properties.city;
-      if (nextCity) onCityChange(nextCity);
+      const json = (await res.json()) as { hits?: AddressHit[] };
+      const nextCity = json.hits?.find((hit) => hit.city)?.city;
+      if (nextCity) publish({ postal: code, city: nextCity });
     } catch {
-      /* ignore */
+      /* La ville reste celle qui est saisie. */
     }
   }
 
-  function pick(feature: BanFeature) {
-    const street = [feature.properties.housenumber, feature.properties.street || feature.properties.name]
-      .filter(Boolean)
-      .join(" ");
-    onLineChange(street || feature.properties.label);
-    onPostalChange(feature.properties.postcode || "");
-    onCityChange(feature.properties.city || "");
+  function pick(hit: AddressHit) {
+    const abroad = Boolean(hit.country) && hit.country !== "FR";
+    publish({
+      line: hit.line || hit.title,
+      postal: abroad ? hit.postal : hit.postal || postal,
+      city: hit.city || city,
+      country: hit.country || country,
+    });
     setHints([]);
+    setEmpty(false);
+    setOpen(false);
   }
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="Pays" className="sm:col-span-2">
-        <CountrySelect name="country" value={country} onChange={onCountryChange} allowEmpty={false} />
+        <CountrySelect name="country" value={country} onChange={(iso2) => publish({ country: iso2 })} allowEmpty={false} />
       </Field>
       <Field
-        label="Adresse"
-        hint={isFrance ? "Saisie assistée (adresse française)" : undefined}
+        label={lineLabel}
+        hint="Saisie libre, même sans suggestion."
         className="sm:col-span-2"
       >
-        <div className="relative">
+        <div ref={rootRef} className="relative">
           <input
+            ref={fieldRef}
             name="address_line"
             autoComplete="street-address"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={open && (hints.length > 0 || empty)}
+            aria-controls={listId}
             value={line}
             onChange={(event) => search(event.target.value)}
+            onFocus={() => {
+              if (hints.length || empty) setOpen(true);
+            }}
+            onBlur={() => {
+              window.setTimeout(() => setOpen(false), 120);
+            }}
             className={fieldControlClass}
             placeholder={isFrance ? "N° et rue" : "Adresse"}
           />
-          {hints.length > 0 ? (
-            <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-border bg-white py-1 shadow-lg">
+          {open && (hints.length > 0 || empty) ? (
+            <ul
+              id={listId}
+              role="listbox"
+              className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-border bg-white py-1 shadow-lg"
+            >
               {hints.map((hint) => (
-                <li key={hint.properties.label}>
+                <li key={hint.id || hint.label} role="option" aria-selected={false}>
                   <button
                     type="button"
                     className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--admin-sky)]"
-                    onClick={() => pick(hint)}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      pick(hint);
+                    }}
                   >
-                    {hint.properties.label}
+                    {hint.label}
                   </button>
                 </li>
               ))}
+              {empty ? (
+                <li className="px-3 py-2.5 text-sm text-muted">Aucune adresse. Votre saisie est conservée.</li>
+              ) : null}
             </ul>
           ) : null}
         </div>
       </Field>
-      <Field label="Code postal">
+      <Field label="Code postal" hint={isFrance ? "5 chiffres" : "Facultatif. Boîte postale acceptée."}>
         <input
           name="postal_code"
           autoComplete="postal-code"
           inputMode={isFrance ? "numeric" : "text"}
-          maxLength={isFrance ? 5 : 12}
+          maxLength={isFrance ? 5 : 32}
           value={postal}
           onChange={(event) => fillCityFromPostal(event.target.value)}
+          placeholder={isFrance ? "75017" : "Facultatif"}
           className={fieldControlClass}
         />
       </Field>
@@ -774,7 +854,7 @@ export function AddressFields({
           name="city"
           autoComplete="address-level2"
           value={city}
-          onChange={(event) => onCityChange(event.target.value)}
+          onChange={(event) => publish({ city: event.target.value })}
           className={fieldControlClass}
         />
       </Field>

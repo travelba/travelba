@@ -192,6 +192,18 @@ test("a client is created with an email and a name, and updated by id", () => {
   assert.throws(() => prepareClientUpdate({ id: CLIENT, commission_agence: "8" }), /7,5/);
   assert.equal(prepareClientUpdate({ id: CLIENT, supprimer_societe_id: BOOKING }).removeCompanyId, BOOKING);
   assert.throws(() => prepareClientUpdate({ id: CLIENT }), /Rien à modifier/);
+  const dubai = prepareClientUpdate({
+    id: CLIENT,
+    adresse: "Apartment 1204, Marina Gate",
+    code_postal: "",
+    ville: "Dubaï",
+    pays: "Émirats arabes unis",
+  });
+  assert.equal(dubai.company?.billing_address_line, "Apartment 1204, Marina Gate");
+  assert.equal(dubai.company?.billing_postal_code, "");
+  assert.equal(dubai.company?.billing_city, "Dubaï");
+  assert.equal(dubai.company?.billing_country, "Émirats arabes unis");
+  assert.equal("address_line" in dubai.patch, false);
   assert.throws(() => prepareClientUpdate({ id: "nom", prenom: "Ada" }), /Client invalide/);
 });
 

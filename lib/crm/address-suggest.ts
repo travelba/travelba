@@ -1,8 +1,24 @@
+import { resolveCountryCode } from "./countries";
+
 export type AddressHit = {
   id: string;
   title: string;
   subtitle: string;
   label: string;
+  /** Voie, sans ville. La saisie libre reprend ce champ, ou le texte tapé. */
+  line: string;
+  postal: string;
+  city: string;
+  /** ISO2. Vide si la source ne le donne pas. */
+  country: string;
+};
+
+export type AddressEntry = {
+  line: string;
+  postal: string;
+  city: string;
+  country: string;
+  fromSuggestion: boolean;
 };
 
 type BanProps = {
@@ -15,6 +31,7 @@ type BanProps = {
 
 type PhotonProps = BanProps & {
   country?: string;
+  countrycode?: string;
 };
 
 const cityCache = new Map<string, { lat: number; lon: number } | null>();
@@ -42,12 +59,57 @@ export function addressCity(value: string | null | undefined) {
   return last.replace(/^\d{4,5}\s+/, "").trim();
 }
 
-function toHit(title: string, subtitle: string): AddressHit | null {
+function toHit(
+  title: string,
+  subtitle: string,
+  extra?: Partial<Pick<AddressHit, "line" | "postal" | "city" | "country">>
+): AddressHit | null {
   const name = title.trim();
   const place = subtitle.trim();
   if (!name) return null;
   const label = place ? `${name}, ${place}` : name;
-  return { id: label.toLocaleLowerCase("fr"), title: name, subtitle: place, label };
+  return {
+    id: label.toLocaleLowerCase("fr"),
+    title: name,
+    subtitle: place,
+    label,
+    line: extra?.line?.trim() || name,
+    postal: extra?.postal?.trim() || "",
+    city: extra?.city?.trim() || "",
+    country: extra?.country?.trim() || "",
+  };
+}
+
+/**
+ * Une suggestion remplit les champs. Sans suggestion, le texte tapé reste :
+ * l’enregistrement n’attend pas un choix dans la liste.
+ */
+export function resolveAddressEntry(input: {
+  typedLine: string;
+  typedPostal: string;
+  typedCity: string;
+  typedCountry: string;
+  picked: AddressHit | null;
+}): AddressEntry {
+  const country = resolveCountryCode(input.typedCountry) || input.typedCountry.trim();
+  if (!input.picked) {
+    return {
+      line: input.typedLine,
+      postal: input.typedPostal.trim(),
+      city: input.typedCity.trim(),
+      country,
+      fromSuggestion: false,
+    };
+  }
+  const pickedCountry = input.picked.country || country;
+  const abroad = Boolean(pickedCountry) && pickedCountry !== "FR";
+  return {
+    line: input.picked.line || input.typedLine,
+    postal: abroad ? input.picked.postal.trim() : input.picked.postal.trim() || input.typedPostal.trim(),
+    city: input.picked.city || input.typedCity.trim(),
+    country: pickedCountry,
+    fromSuggestion: true,
+  };
 }
 
 export function formatBanFeature(properties: BanProps | null | undefined) {
@@ -55,17 +117,33 @@ export function formatBanFeature(properties: BanProps | null | undefined) {
   const title =
     [text(properties.housenumber), text(properties.street)].filter(Boolean).join(" ") || text(properties.name);
   const subtitle = [text(properties.postcode), text(properties.city)].filter(Boolean).join(" ");
-  return toHit(title, subtitle);
+  return toHit(title, subtitle, {
+    line: title,
+    postal: text(properties.postcode),
+    city: text(properties.city),
+    country: "FR",
+  });
 }
 
 export function formatPhotonFeature(properties: PhotonProps | null | undefined) {
   if (!properties) return null;
   const street = [text(properties.housenumber), text(properties.street)].filter(Boolean).join(" ");
   const title = street || text(properties.name);
-  const country = text(properties.country);
-  const city = [text(properties.postcode), text(properties.city)].filter(Boolean).join(" ");
-  const abroad = country && country.toLocaleLowerCase("fr") !== "france" ? country : "";
-  return toHit(title, [city, abroad].filter(Boolean).join(", "));
+  const countryName = text(properties.country);
+  const cityName = text(properties.city);
+  const postal = text(properties.postcode);
+  const city = [postal, cityName].filter(Boolean).join(" ");
+  const abroad = countryName && countryName.toLocaleLowerCase("fr") !== "france" ? countryName : "";
+  const iso =
+    resolveCountryCode(text(properties.countrycode)) ||
+    resolveCountryCode(countryName) ||
+    (countryName.toLocaleLowerCase("fr") === "france" ? "FR" : "");
+  return toHit(title, [city, abroad].filter(Boolean).join(", "), {
+    line: title,
+    postal,
+    city: cityName,
+    country: iso,
+  });
 }
 
 export function mergeAddressHits(primary: AddressHit[], extra: AddressHit[], limit = 5) {
@@ -119,11 +197,22 @@ async function cityPoint(city: string, fetchImpl: typeof fetch) {
   }
 }
 
-/** Adresses françaises d’abord, puis les lieux ailleurs (terminal, hôtel). Classées près de `near`. */
-export async function searchAddresses(query: string, near?: string | null, fetchImpl: typeof fetch = fetch) {
+/**
+ * Adresses françaises d’abord, puis les lieux ailleurs (terminal, hôtel). Classées près de `near`.
+ * Hors France, la base française n’est pas interrogée : une saisie à Dubaï ne se noie pas sous des rues de Paris.
+ * Une liste vide n’invalide pas le texte tapé.
+ */
+export async function searchAddresses(
+  query: string,
+  near?: string | null,
+  fetchImpl: typeof fetch = fetch,
+  country?: string | null
+) {
   const q = query.trim().replace(/\s+/g, " ");
   if (q.length < 2 || q.length > 80) return [] as AddressHit[];
-  const bias = near ? await cityPoint(near, fetchImpl) : null;
+  const iso = country ? resolveCountryCode(country) : null;
+  const france = !iso || iso === "FR";
+  const bias = france && near ? await cityPoint(near, fetchImpl) : null;
   const ban = new URL("https://api-adresse.data.gouv.fr/search/");
   ban.searchParams.set("q", q);
   ban.searchParams.set("limit", "5");
@@ -139,18 +228,26 @@ export async function searchAddresses(query: string, near?: string | null, fetch
     photon.searchParams.set("lon", String(bias.lon));
   }
   const init = { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(2500) };
-  const [banRes, photonRes] = await Promise.allSettled([fetchImpl(ban, init), fetchImpl(photon, init)]);
+  const [banRes, photonRes] = await Promise.allSettled([
+    france ? fetchImpl(ban, init) : Promise.resolve(new Response(null, { status: 204 })),
+    fetchImpl(photon, init),
+  ]);
   const read = async (result: PromiseSettledResult<Response>) => {
     if (result.status !== "fulfilled" || !result.value.ok) return [];
     return featuresOf(await result.value.json().catch(() => null));
   };
   const [banRows, photonRows] = await Promise.all([read(banRes), read(photonRes)]);
+  const photonHits = photonRows
+    .map((row) => formatPhotonFeature((row as { properties?: PhotonProps }).properties))
+    .filter((row): row is AddressHit => Boolean(row));
+  if (!france && iso) {
+    const matching = photonHits.filter((hit) => !hit.country || hit.country === iso);
+    return mergeAddressHits(matching, []);
+  }
   return mergeAddressHits(
     banRows
       .map((row) => formatBanFeature((row as { properties?: BanProps }).properties))
       .filter((row): row is AddressHit => Boolean(row)),
-    photonRows
-      .map((row) => formatPhotonFeature((row as { properties?: PhotonProps }).properties))
-      .filter((row): row is AddressHit => Boolean(row))
+    photonHits
   );
 }

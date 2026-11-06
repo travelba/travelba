@@ -193,7 +193,11 @@ export function ProfileForm({
         open={openAddress}
         onToggle={() => setOpenAddress((value) => !value)}
       >
+        <p className="text-sm text-muted">
+          Domicile. L’adresse de facturation, si elle est différente, se modifie dans Facturation.
+        </p>
         <AddressFields
+          lineLabel="Adresse personnelle"
           country={country}
           onCountryChange={setCountry}
           line={addressLine}
