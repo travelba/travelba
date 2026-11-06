@@ -6,6 +6,8 @@ import { isCompanyMember } from "@/lib/crm/company-role";
 import { customerFullName, type CrmBillingCompany, type CrmCustomer } from "@/lib/crm/types";
 import { BillingForm } from "@/components/account/BillingForm";
 import { AccountPage } from "@/components/account/AccountPage";
+import { SepaInFlight } from "@/components/account/SepaInFlight";
+import { loadCustomerSepaState } from "@/lib/crm/sepa-ledger";
 
 export default async function FacturationPage() {
   const supabase = await createClient();
@@ -20,6 +22,7 @@ export default async function FacturationPage() {
     .eq("customer_id", customer.id)
     .order("sort_order");
   const companies = (companyRows || []) as CrmBillingCompany[];
+  const sepa = isCompanyMember(customer) ? { holds: [], failures: [] } : await loadCustomerSepaState(customer);
 
   let billingParent: CrmCustomer | null = null;
   if (isCompanyMember(customer) && customer.billing_parent_id) {
@@ -57,7 +60,10 @@ export default async function FacturationPage() {
           </p>
         </section>
       ) : (
-        <BillingForm customer={customer} companies={companies} />
+        <>
+          <SepaInFlight holds={sepa.holds} failures={sepa.failures} />
+          <BillingForm customer={customer} companies={companies} />
+        </>
       )}
     </div>
     </AccountPage>

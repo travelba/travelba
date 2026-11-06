@@ -81,6 +81,8 @@ export type ClientPayPart = {
   canPay: boolean;
   methods: StayPayMethod[];
   companyName: string | null;
+  /** Prélèvement déjà parti : le bouton reste visible, fermé, avec la raison. */
+  sepaLock?: string | null;
 };
 
 function partKey(part: ClientPayPart) {
@@ -304,7 +306,22 @@ export function StayPayment({
               </p>
             ) : null}
 
-            {open && method === "sepa_debit" && !clientSecret && !settled ? (
+            {open && method === "sepa_debit" && part.sepaLock && !settled ? (
+              <p className="rounded-xl bg-[#fbf7ec] px-3 py-2 text-sm text-[var(--admin-navy)]" role="status">
+                {part.sepaLock}
+              </p>
+            ) : null}
+            {open && method === "sepa_debit" && part.sepaLock ? (
+              <button
+                type="button"
+                disabled
+                className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white opacity-60"
+              >
+                Lancer le prélèvement
+              </button>
+            ) : null}
+
+            {open && method === "sepa_debit" && !part.sepaLock && !clientSecret && !settled ? (
               <SepaLaunch
                 last4={shownLast4(ibanLast4)}
                 amountLabel={part.amountLabel}

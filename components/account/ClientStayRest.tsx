@@ -12,6 +12,7 @@ import { todayIsoDate } from "@/lib/crm/money";
 import { insuranceLineLabel, itemPriceLabel, unlinkedDocuments, whatsappModifyHref } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { EncoursPayment } from "@/components/account/EncoursPayment";
+import { SepaInFlight } from "@/components/account/SepaInFlight";
 import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { missingPassportCount } from "@/lib/crm/trip-documents";
@@ -30,7 +31,7 @@ import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
-import { loadClientLedger } from "@/lib/crm/client-ledger";
+import { loadClientLedger } from "@/lib/crm/client-ledger-load";
 import { ibanLast4 } from "@/lib/crm/billing";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { StayExpenses } from "@/components/account/StayExpenses";
@@ -174,6 +175,7 @@ export async function ClientStayRest({
   const encoursPay =
     ledger.member || (ledger.owed.total <= 0 && !ledger.pockets?.some((pocket) => pocket.due >= 0.5)) ? null : (
       <section id="reglement" className="rounded-xl border border-[#e9e8e5]/60 bg-white p-4 shadow-sm">
+        <SepaInFlight holds={ledger.sepaHolds || []} failures={ledger.sepaFailures || []} />
         <EncoursPayment
           company={ledger.owed.company}
           personal={ledger.owed.personal}
@@ -183,6 +185,7 @@ export async function ClientStayRest({
           pockets={ledger.pockets}
           ibanLast4={ibanLast4(customer.iban)}
           billingHref="/mon-compte/profil/facturation"
+          holds={ledger.sepaHolds}
         />
       </section>
     );

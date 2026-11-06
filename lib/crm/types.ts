@@ -131,7 +131,8 @@ export function filterCreditTransfers<T extends { direction: string; kind: strin
 /** Encaissements agence : virement Revolut, règlement Stripe (carte ou prélèvement), saisie manuelle. */
 const AGENCY_RECEIPT_KINDS = new Set(["transfer", "card_payment"]);
 
-export function isAgencyReceipt(row: { direction: string; kind: string }) {
+export function isAgencyReceipt(row: { direction: string; kind: string; status?: string | null }) {
+  if (row.status && row.status !== "posted") return false;
   return row.direction === "credit" && AGENCY_RECEIPT_KINDS.has(row.kind);
 }
 

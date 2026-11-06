@@ -148,6 +148,24 @@ function movementRow(row: LedgerMovementRow): StatementRow {
   const amount = statementAmountLabel(row.amountLabel);
   const travelers = ledgerTravelerLabel(row.travelerNames, 0);
   const meta = [row.whenWhere, travelers, row.reference, row.companyLabel].filter(Boolean).join(" · ") || null;
+  if (row.badge === "En cours") {
+    return {
+      date: row.occurredLabel === "—" ? "" : row.occurredLabel,
+      title: row.title,
+      meta: [meta, "Pas encore encaissé"].filter(Boolean).join(" · "),
+      debit: "",
+      credit: amount,
+    };
+  }
+  if (row.badge === "Refusé") {
+    return {
+      date: row.occurredLabel === "—" ? "" : row.occurredLabel,
+      title: row.title,
+      meta,
+      debit: "",
+      credit: "",
+    };
+  }
   return {
     date: row.occurredLabel === "—" ? "" : row.occurredLabel,
     title: row.title,
@@ -158,6 +176,7 @@ function movementRow(row: LedgerMovementRow): StatementRow {
 }
 
 function encoursHint(wallet: ClientLedgerWallet) {
+  if (wallet.held && wallet.held >= 0.5) return `${formatStatementMoney(wallet.held, wallet.currency)} en cours de prélèvement SEPA`;
   if (wallet.debits > 0 && wallet.remaining <= 0) return "Soldé";
   const caption = encoursCaption(wallet.balanceValue);
   if (wallet.balanceValue < 0 && wallet.remainingPct != null && wallet.remaining > 0) {
@@ -184,7 +203,10 @@ function walletSummaries(wallets: ClientLedgerWallet[], several: boolean): State
       },
       {
         label: `Règlements${mark}`,
-        value: formatStatementMoney(roundMoney(wallet.balanceValue + wallet.debits), currency),
+        value: formatStatementMoney(
+          roundMoney((wallet.postedBalance ?? wallet.balanceValue) + wallet.debits),
+          currency
+        ),
         hint: null,
       },
     ];

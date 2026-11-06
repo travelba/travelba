@@ -6,6 +6,8 @@ import { stripeCreditFromIntent } from "@/lib/crm/stripe-pay";
 import { paymentCreditReleased } from "@/lib/crm/unmatch-credit";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
 import { enrichStripeIntents, snapshotFromPaymentIntent, upsertStripeInbox } from "@/lib/crm/stripe-sync";
+import { alertMandateRevoked, alertSepaReturned, cancelOrphanSepaIntents, syncSepaIntent, viewFromStripeIntent } from "@/lib/crm/sepa-ledger";
+import { readSepaIntent } from "@/lib/crm/sepa-hold";
 
 export const runtime = "nodejs";
 
@@ -64,15 +66,44 @@ export async function POST(request: Request) {
     );
   }
 
+  if (
+    event.type === "payment_intent.processing" ||
+    event.type === "payment_intent.payment_failed" ||
+    event.type === "payment_intent.canceled"
+  ) {
+    const intent = event.data.object as Stripe.PaymentIntent;
+    const synced = await syncSepaIntent(admin, intent);
+    if (!synced.ok) return NextResponse.json({ error: "prélèvement" }, { status: 500 });
+    if (event.type === "payment_intent.processing" && readSepaIntent(viewFromStripeIntent(intent)).kind === "flight") {
+      const customer = intent.customer;
+      const customerId = !customer ? "" : typeof customer === "string" ? customer : customer.id;
+      if (customerId) {
+        try {
+          const listed = await stripe.paymentIntents.list({ customer: customerId, limit: 20 });
+          await cancelOrphanSepaIntents(stripe, listed.data);
+        } catch (err) {
+          console.error("[sepa] formulaire", err instanceof Error ? err.message : "annulation");
+        }
+      }
+    }
+  }
+
   if (event.type === "payment_intent.succeeded") {
     const intent = event.data.object as Stripe.PaymentIntent;
-    const credit = stripeCreditFromIntent({
-      id: intent.id,
-      status: intent.status,
-      amount: intent.amount,
-      currency: intent.currency,
-      metadata: intent.metadata,
-    });
+    const sepa = readSepaIntent(viewFromStripeIntent(intent)).kind === "succeeded";
+    if (sepa) {
+      const synced = await syncSepaIntent(admin, intent);
+      if (!synced.ok) return NextResponse.json({ error: "prélèvement" }, { status: 500 });
+    }
+    const credit = sepa
+      ? null
+      : stripeCreditFromIntent({
+          id: intent.id,
+          status: intent.status,
+          amount: intent.amount,
+          currency: intent.currency,
+          metadata: intent.metadata,
+        });
     if (credit && !(await paymentCreditReleased(admin, "stripe", intent.id))) {
       const { error } = await admin.from("crm_transactions").insert(credit);
       if (error && !/duplicate|unique/i.test(String(error.message || ""))) {
@@ -96,6 +127,59 @@ export async function POST(request: Request) {
       .from("crm_payment_methods")
       .delete()
       .eq("stripe_payment_method_id", pm.id);
+  }
+
+  if (event.type === "charge.pending" || event.type === "charge.succeeded" || event.type === "charge.failed") {
+    const charge = event.data.object as Stripe.Charge;
+    const intentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+    if (intentId && charge.payment_method_details?.type === "sepa_debit") {
+      try {
+        const intent = await stripe.paymentIntents.retrieve(intentId, { expand: ["latest_charge"] });
+        const reading = readSepaIntent(viewFromStripeIntent(intent));
+        if (reading.kind !== "ignore" && reading.kind !== "orphan") {
+          const synced = await syncSepaIntent(admin, intent);
+          if (!synced.ok) return NextResponse.json({ error: "prélèvement" }, { status: 500 });
+        }
+      } catch (err) {
+        console.error("[sepa] charge", err instanceof Error ? err.message : "lecture");
+        return NextResponse.json({ error: "prélèvement" }, { status: 500 });
+      }
+    }
+  }
+
+  if (event.type === "charge.refunded" || event.type === "charge.dispute.created") {
+    const object = event.data.object as Stripe.Charge | Stripe.Dispute;
+    const intentId =
+      "payment_intent" in object && object.payment_intent
+        ? typeof object.payment_intent === "string"
+          ? object.payment_intent
+          : object.payment_intent.id
+        : "";
+    if (intentId) {
+      try {
+        const intent = await stripe.paymentIntents.retrieve(intentId);
+        if (intent.metadata?.pay_method === "sepa_debit" && intent.metadata.crm_customer_id) {
+          await alertSepaReturned({
+            customerId: intent.metadata.crm_customer_id,
+            amountCents: intent.amount,
+            currency: intent.currency,
+            paymentIntentId: intent.id,
+            kind: event.type === "charge.dispute.created" ? "dispute" : "refund",
+          });
+        }
+      } catch (err) {
+        console.error("[sepa] retour", err instanceof Error ? err.message : "lecture");
+      }
+    }
+  }
+
+  if (event.type === "mandate.updated") {
+    const mandate = event.data.object as Stripe.Mandate;
+    if (mandate.status === "inactive") {
+      const method = mandate.payment_method;
+      const methodId = !method ? "" : typeof method === "string" ? method : method.id;
+      if (methodId) await alertMandateRevoked(admin, methodId);
+    }
   }
 
   return NextResponse.json({ received: true });

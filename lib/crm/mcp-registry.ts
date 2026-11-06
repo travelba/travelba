@@ -416,7 +416,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "grand_livre",
     description:
-      "Encours et derniers mouvements d’un client. Positif = avoir, négatif = reste à payer. Un débit de séjour porte voyageurs : les noms cochés sur la carte, sinon les voyageurs du dossier. credits liste les crédits Revolut, Stripe et virements saisis encore rattachés (id, montant, paiement_id) pour remettre_non_rattache. id ou q. Lecture seule.",
+      "Encours et derniers mouvements d’un client. Positif = avoir, négatif = reste à payer. prelevements_sepa liste un prélèvement déjà à la banque : le solde affiché est réduit de ce montant, ce n’est pas un encaissement. Un débit de séjour porte voyageurs : les noms cochés sur la carte, sinon les voyageurs du dossier. credits liste les crédits Revolut, Stripe et virements saisis encore rattachés (id, montant, paiement_id) pour remettre_non_rattache. id ou q. Lecture seule.",
     input: { id, q, page: listPage, limite: listLimit },
     run: (args: ToolArgs) => readGrandLivre({ id: str(args, "id"), q: str(args, "q"), ...pageOf(args) }),
   },

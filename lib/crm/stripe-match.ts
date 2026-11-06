@@ -5,6 +5,7 @@ import {
   suggestedCustomerId,
   tokensSpell,
 } from "@/lib/crm/revolut-match";
+import { paidSepaLabel } from "@/lib/crm/sepa-hold";
 import { stripeCreditFromIntent } from "@/lib/crm/stripe-pay";
 import { paymentCreditReleased } from "@/lib/crm/unmatch-credit";
 import {
@@ -287,13 +288,24 @@ export async function applyStripeToCustomer(
       .select("*")
       .eq("source", "stripe")
       .eq("external_id", row.stripe_payment_intent_id)
-      .eq("status", "posted")
       .maybeSingle();
     if (!existing) return { ok: false as const, error: error.message as string };
     if (existing.customer_id && existing.customer_id !== customerId) {
       return { ok: false as const, error: "already_credited" };
     }
-    posted = existing;
+    if (existing.status === "pending" || existing.status === "void") {
+      const label = row.method === "sepa" ? paidSepaLabel(row.booked_at || new Date().toISOString()) : payload.label;
+      const { data: promoted, error: promoteError } = await admin
+        .from("crm_transactions")
+        .update({ status: "posted", label, amount: payload.amount, payer_kind: payload.payer_kind, billing_company_id: payload.billing_company_id })
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      if (promoteError || !promoted) return { ok: false as const, error: promoteError?.message || error.message };
+      posted = promoted;
+    } else {
+      posted = existing;
+    }
   }
   if (!posted) return { ok: false as const, error: "insert_failed" };
 

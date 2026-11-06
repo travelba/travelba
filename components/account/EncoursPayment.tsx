@@ -2,6 +2,7 @@ import { StayPayment } from "@/components/account/StayPayment";
 import type { FundingPocket } from "@/lib/crm/funding-wallet";
 import { formatMoney } from "@/lib/crm/money";
 import { encoursPartLabel, type PayerKind } from "@/lib/crm/payer";
+import { holdsForPart, sepaSurplusLock, type SepaHoldView } from "@/lib/crm/sepa-hold";
 import { pocketPayMethods, stayPayMethods } from "@/lib/crm/stripe-pay";
 
 /** Même règlement d’encours : carte, Apple Pay, prélèvement SEPA, virement. */
@@ -15,6 +16,7 @@ export function EncoursPayment({
   pockets = null,
   ibanLast4,
   billingHref = "/mon-compte/profil/facturation",
+  holds = [],
 }: {
   company: number;
   personal: number;
@@ -27,6 +29,8 @@ export function EncoursPayment({
   /** Null : pas d’IBAN. Omis : on n’en parle pas. */
   ibanLast4?: string | null;
   billingHref?: string;
+  /** Prélèvements déjà à la banque. La même part ne peut pas en lancer un second. */
+  holds?: SepaHoldView[];
 }) {
   if (pockets?.length) {
     const parts = pockets
@@ -79,6 +83,13 @@ export function EncoursPayment({
     );
   }
 
+  function lockFor(kind: PayerKind, companyId?: string | null) {
+    const matched = holdsForPart(holds || [], kind, companyId);
+    if (!matched.length) return null;
+    const amount = matched.reduce((sum, hold) => sum + hold.amount, 0);
+    return sepaSurplusLock(formatMoney(amount, currency));
+  }
+
   function part(kind: PayerKind, named: boolean) {
     const amount = kind === "company" ? company : personal;
     if (amount < 0.5) return null;
@@ -99,6 +110,7 @@ export function EncoursPayment({
             canPay: true,
             methods: stayPayMethods(kind, currency),
             companyName: kind === "company" ? soleCompanyName : null,
+            sepaLock: lockFor(kind, null),
           },
         ]}
       />

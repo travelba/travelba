@@ -218,7 +218,7 @@ export function agencyPayFollowUp(input: {
   if (/lancé un prélèvement/i.test(summary)) {
     return {
       title: "Prélèvement lancé",
-      next: `${live ? `Le solde dû est ${live}. ` : ""}La banque peut prendre quelques jours. Le crédit arrivera par Stripe. Rien à rapprocher à la main avant. S’il n’arrive pas, le client relance le prélèvement ou paie par carte ou virement.`,
+      next: `${live ? `Le solde dû est ${live}. ` : ""}La banque confirme en général sous 6 jours ouvrés. Ce n’est pas un impayé : ne pas relancer le prélèvement tant qu’il est en cours. Le crédit arrivera par Stripe. Rien à rapprocher à la main avant.`,
       href: null,
     };
   }

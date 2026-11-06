@@ -68,6 +68,9 @@ import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
+import { displayedEncours } from "@/lib/crm/sepa-hold";
+import { loadCustomerSepaState } from "@/lib/crm/sepa-ledger";
+import { SepaInFlight } from "@/components/account/SepaInFlight";
 import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 import { WhatsappThread } from "@/components/admin/WhatsappThread";
 import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
@@ -262,10 +265,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
     : "Aucune pièce au coffre.";
   const receipts = filterAgencyReceipts((txs || []) as CrmTransaction[]);
   const balanceRows = (balances || []) as CrmBalance[];
-  const stillOwes = balanceRows.some((row) => Number(row.balance) < -0.5);
+  const sepa = await loadCustomerSepaState(c);
+  const sepaHeld = sepa.holds.reduce((sum, hold) => sum + (hold.currency === "EUR" ? hold.amount : 0), 0);
+  const stillOwes = balanceRows.some((row) => displayedEncours(Number(row.balance), row.currency === "EUR" ? sepaHeld : 0) < -0.5);
   const latestPay = activity.find((row) => row.action === "pay");
   const payFollowUp =
-    stillOwes && latestPay
+    stillOwes && !sepa.holds.length && latestPay
       ? agencyPayFollowUp({
           summary: latestPay.summary,
           detail: latestPay.detail,
@@ -331,7 +336,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
               {balanceRows.length
                 ? balanceRows
                     .map((row) => {
-                      const value = Number(row.balance);
+                      const held = row.currency === "EUR" ? sepaHeld : 0;
+                      const value = displayedEncours(Number(row.balance), held);
                       return value > 0
                         ? formatCreditDisponible(value, row.currency)
                         : formatMoney(value, row.currency);
@@ -339,6 +345,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     .join(" · ")
                 : "—"}
             </p>
+            {sepaHeld >= 0.5 ? (
+              <p className="mt-1 text-xs text-white/80">
+                {formatMoney(sepaHeld, "EUR")} en cours de prélèvement SEPA
+              </p>
+            ) : null}
           </Link>
           <div className="border-l border-white/10 px-6 py-4 sm:border-0 sm:px-8">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Dossiers</p>
@@ -473,6 +484,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </div>
         ) : null}
       </section>
+      <SepaInFlight holds={sepa.holds} failures={sepa.failures} tone="admin" />
       {payFollowUp ? (
         <ClientPayFollowUp
           title={payFollowUp.title}

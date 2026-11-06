@@ -127,6 +127,12 @@ export async function buildCustomerStatementPdf(
   audience: StatementAudience,
   now: Date
 ): Promise<StatementPdfBuilt> {
+  try {
+    const { reconcileLedgerSepa } = await import("@/lib/crm/client-ledger-load");
+    await reconcileLedgerSepa(customer);
+  } catch (error) {
+    console.error("[sepa]", error instanceof Error ? error.message : "rapprochement");
+  }
   const view = await loadClientLedger(supabase, customer, audience);
   const pdf = await renderStatementPdf(
     buildStatement({
