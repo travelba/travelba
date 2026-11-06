@@ -256,16 +256,37 @@ function countsTowardOwed(row: OwedRow, currency?: string) {
   return rowAmount(row) != null;
 }
 
-/** Société si la ligne ou le dossier l’indique. Un débit sans marque est particulier. Un crédit sans marque reste libre. */
+/** Part d’un débit : la société de la ligne, puis le dossier, puis la marque. Un débit société ne devient pas particulier. */
+export function ledgerDebitPayer(input: {
+  payerKind?: string | null;
+  billingCompanyId?: string | null;
+}): PayerKind {
+  if (input.billingCompanyId) return "company";
+  if (input.payerKind === "company") return "company";
+  return "personal";
+}
+
+/**
+ * Société si la ligne ou le dossier l’indique.
+ * Un débit suit d’abord la société facturée, puis le dossier : une marque « particulier » ne l’emporte pas.
+ * Un crédit suit sa marque, pour ne pas mélanger les parts. Sans marque, il reste libre.
+ */
 export function owedSide(
   row: OwedRow,
   bookingPayer: Map<string, PayerKind | null>
 ): "company" | "personal" | "open" {
-  if (row.payer_kind === "company" || row.payer_kind === "personal") return row.payer_kind;
-  if (row.billing_company_id) return "company";
+  const marked = row.payer_kind === "company" || row.payer_kind === "personal" ? row.payer_kind : null;
   const fromBooking = row.booking_id ? bookingPayer.get(row.booking_id) : null;
-  if (fromBooking === "company" || fromBooking === "personal") return fromBooking;
-  if (row.direction === "debit") return "personal";
+  const bookingSide = fromBooking === "company" || fromBooking === "personal" ? fromBooking : null;
+  if (row.direction === "debit") {
+    if (row.billing_company_id) return "company";
+    if (bookingSide) return bookingSide;
+    if (marked) return marked;
+    return "personal";
+  }
+  if (marked) return marked;
+  if (row.billing_company_id) return "company";
+  if (bookingSide) return bookingSide;
   return "open";
 }
 

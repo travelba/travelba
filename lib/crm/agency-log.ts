@@ -156,6 +156,40 @@ export async function recordPliantAlert(summary: string, entityId?: string | nul
   }
 }
 
+const PAY_ALERT_WINDOW_MS = 30 * 60 * 1000;
+
+/** Alerte journal : un règlement client qui ne s’encaisse pas seul, ou un prélèvement qui n’a pas démarré. */
+export async function recordClientPayAlert(input: { customerId: string; summary: string }) {
+  const text = input.summary.replace(/\s+/g, " ").trim().slice(0, 240);
+  if (!text || !input.customerId) return false;
+  if (/\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/i.test(text)) return false;
+  try {
+    const db = createServiceClient({ allowPreview: true });
+    const since = new Date(Date.now() - PAY_ALERT_WINDOW_MS).toISOString();
+    const existing = await db
+      .from("crm_agency_alerts")
+      .select("summary, created_at")
+      .eq("kind", "payment")
+      .eq("entity_id", input.customerId)
+      .gte("created_at", since)
+      .limit(10);
+    if (!existing.error) {
+      const duplicate = ((existing.data || []) as { summary?: string }[]).some((row) => row.summary === text);
+      if (duplicate) return true;
+    }
+    const inserted = await db.from("crm_agency_alerts").insert({
+      kind: "payment",
+      summary: text,
+      staff_id: null,
+      entity_type: "client",
+      entity_id: input.customerId,
+    });
+    return !inserted.error;
+  } catch {
+    return false;
+  }
+}
+
 export async function loadAgencySettings(): Promise<Settings> {
   const fallback = {
     paymentAlertCents: DEFAULT_PAYMENT_ALERT_CENTS,

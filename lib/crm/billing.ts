@@ -72,6 +72,13 @@ export function formatIbanInput(value: string) {
   return normalizeIban(value)?.replace(/(.{4})/g, "$1 ").trim() || "";
 }
 
+/** Quatre derniers caractères, seulement si l’IBAN français est complet. Jamais le numéro entier. */
+export function ibanLast4(value: unknown) {
+  const iban = normalizeIban(value);
+  if (!iban || ibanError(iban)) return null;
+  return iban.slice(-4);
+}
+
 export function ibanError(iban: string | null) {
   if (!iban) return null;
   if (!iban.startsWith("FR")) return "Indiquez un IBAN français (commence par FR).";

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
+import { ibanLast4 } from "@/lib/crm/billing";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { siteConfig } from "@/lib/site";
 
@@ -44,6 +45,8 @@ export default async function TransactionsPage() {
               soleCompanyName={view.soleCompanyName}
               stripeKey={stripePublishableKey()}
               pockets={view.pockets}
+              ibanLast4={ibanLast4(customer.iban)}
+              billingHref="/mon-compte/profil/facturation"
             />
           )
         }

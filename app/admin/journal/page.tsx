@@ -80,7 +80,7 @@ export default async function JournalPage({
   if (!error) {
     const { data: alertRows } = await admin
       .from("crm_agency_alerts")
-      .select("id, created_at, summary, kind")
+      .select("id, created_at, summary, kind, entity_type, entity_id")
       .is("read_at", null)
       .order("created_at", { ascending: false })
       .limit(20);

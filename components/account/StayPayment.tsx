@@ -13,6 +13,7 @@ import {
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { WireInstructions } from "@/components/account/WireInstructions";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { PAY_COPY } from "@/lib/crm/client-pay";
 import { postJson } from "@/lib/crm/client-fetch";
 import type { FundingKind } from "@/lib/crm/funding-wallet";
 import type { PayerKind } from "@/lib/crm/payer";
@@ -51,7 +52,21 @@ type TransferView = {
   reference: string;
   currency: string;
   partLabel?: string;
+  amountLabel?: string | null;
 };
+
+type PayResponse = {
+  alreadyPaid?: boolean;
+  transfer?: TransferView;
+  clientSecret?: string | null;
+  message?: string;
+  amountLabel?: string;
+  sepa?: { status?: string; message?: string; amountLabel?: string };
+};
+
+function shownLast4(value: string | null | undefined) {
+  return value && /^[A-Z0-9]{4}$/.test(value) ? value : null;
+}
 
 export type ClientPayPart = {
   /** Distingue deux parts société (crédit et Pro). */
@@ -77,6 +92,8 @@ export function StayPayment({
   stripeKey,
   compact = false,
   named = false,
+  ibanLast4 = undefined,
+  billingHref = "/mon-compte/profil/facturation",
 }: {
   parts: ClientPayPart[];
   stripeKey: string | null;
@@ -84,6 +101,9 @@ export function StayPayment({
   compact?: boolean;
   /** Deux parts dues : chaque bloc nomme la sienne, pour ne pas confondre les virements. */
   named?: boolean;
+  /** Null : IBAN absent. Absent du tout : on ne l’affiche pas. Quatre caractères, jamais le numéro. */
+  ibanLast4?: string | null;
+  billingHref?: string;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [method, setMethod] = useState<StayPayMethod | null>(null);
@@ -94,6 +114,7 @@ export function StayPayment({
   const [paid, setPaid] = useState(false);
   /** Règlement parti chez Stripe : l’encours se recharge, le message attend la banque. */
   const [settled, setSettled] = useState<string | null>(null);
+  const [wireNote, setWireNote] = useState<string | null>(null);
   /** Un nonce par (part, moyen) : rouvrir la même pastille réutilise le même PaymentIntent. */
   const nonce = useRef<{ key: string; value: string } | null>(null);
   const preview = useClientPreview();
@@ -101,6 +122,59 @@ export function StayPayment({
   function nonceFor(key: string) {
     if (!nonce.current || nonce.current.key !== key) nonce.current = { key, value: freshNonce() };
     return nonce.current.value;
+  }
+
+  async function start(part: ClientPayPart, next: StayPayMethod) {
+    if (!part.canPay || !part.payable || !part.amountLabel) {
+      setError("Ce montant n’est plus à régler. Rechargez la page pour voir le solde.");
+      return;
+    }
+    if (preview) {
+      setError(CLIENT_PREVIEW_NOTE);
+      return;
+    }
+    setError(null);
+    if (next !== "revolut" && next !== "sepa_debit" && !stripeKey) {
+      setError(PAY_COPY.methodClosed);
+      return;
+    }
+    const currentNonce = nonceFor(`${partKey(part)}:${next}`);
+    setBusy(true);
+    try {
+      const result = await postJson<PayResponse>("/api/client/ledger/pay", {
+        method: next,
+        payerKind: part.kind,
+        funding: part.funding || null,
+        companyId: part.companyId || null,
+        nonce: currentNonce,
+      });
+      const json = result.data || {};
+      if (!result.ok) {
+        nonce.current = null;
+        setError(result.error || "Le règlement n’a pas pu démarrer. Réessayez, ou choisissez un autre moyen.");
+        return;
+      }
+      if (json.alreadyPaid) {
+        nonce.current = null;
+        setPaid(true);
+        return;
+      }
+      if (json.sepa?.message) {
+        nonce.current = null;
+        setSettled(json.sepa.message);
+        if (typeof json.clientSecret === "string") setClientSecret(json.clientSecret);
+        return;
+      }
+      if (json.transfer) {
+        setTransfer(json.transfer);
+        setWireNote(json.message || null);
+        return;
+      }
+      if (typeof json.clientSecret === "string") setClientSecret(json.clientSecret);
+      else setError("Le règlement n’a pas pu démarrer. Réessayez, ou choisissez un autre moyen.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function choose(part: ClientPayPart, next: StayPayMethod) {
@@ -112,45 +186,12 @@ export function StayPayment({
     setTransfer(null);
     setPaid(false);
     setSettled(null);
-    if (!part.canPay || !part.payable || !part.amountLabel) return;
-    if (preview) {
-      setError(CLIENT_PREVIEW_NOTE);
+    setWireNote(null);
+    if (next === "sepa_debit") {
+      if (preview) setError(CLIENT_PREVIEW_NOTE);
       return;
     }
-    if (next !== "revolut" && !stripeKey) return;
-    // Le nonce entre dans la clé d’idempotence côté serveur ; il ne change qu’avec la pastille ou après un règlement.
-    const currentNonce = nonceFor(`${partKey(part)}:${next}`);
-    setBusy(true);
-    try {
-      const result = await postJson<{ alreadyPaid?: boolean; transfer?: TransferView; clientSecret?: string }>(
-        "/api/client/ledger/pay",
-        {
-          method: next,
-          payerKind: part.kind,
-          funding: part.funding || null,
-          companyId: part.companyId || null,
-          nonce: currentNonce,
-        }
-      );
-      const json = result.data || {};
-      if (!result.ok) {
-        setError(result.error || "Le règlement n’a pas pu démarrer.");
-        return;
-      }
-      if (json.alreadyPaid) {
-        nonce.current = null;
-        setPaid(true);
-        return;
-      }
-      if (json.transfer) {
-        setTransfer(json.transfer);
-        return;
-      }
-      if (typeof json.clientSecret === "string") setClientSecret(json.clientSecret);
-      else setError("Le règlement n’a pas pu démarrer.");
-    } finally {
-      setBusy(false);
-    }
+    await start(part, next);
   }
 
   function onPaid(message: string) {
@@ -178,7 +219,7 @@ export function StayPayment({
                     }`
             }
           >
-            {named ? (
+            {named || compact ? (
               <div className="space-y-1">
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9c7c4e]">{part.mention}</p>
@@ -194,7 +235,7 @@ export function StayPayment({
                       : "À régler par carte, Apple Pay ou virement."}
                 </p>
               </div>
-            ) : compact ? null : (
+            ) : (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
                   {part.mention}
@@ -236,8 +277,17 @@ export function StayPayment({
                 })}
               </div>
             ) : null}
-            {open && method && method !== "revolut" && !stripeKey ? (
-              <p className="text-xs text-muted">Ce moyen n’est pas encore ouvert.</p>
+            {part.methods.includes("sepa_debit") && shownLast4(ibanLast4) ? (
+              <p className="text-xs text-[#3d4654]">Prélèvement sur le compte ····{shownLast4(ibanLast4)}.</p>
+            ) : null}
+            {part.methods.includes("sepa_debit") && ibanLast4 === null ? (
+              <p className="text-xs text-[#3d4654]">
+                Pour le prélèvement, enregistrez d’abord l’IBAN dans{" "}
+                <a href={billingHref} className="font-semibold underline">
+                  Facturation
+                </a>
+                .
+              </p>
             ) : null}
 
             {open ? <BusyBar active={busy} label="Préparation du règlement…" /> : null}
@@ -248,7 +298,27 @@ export function StayPayment({
               </p>
             ) : null}
             {open && settled ? <RefreshOnSettle /> : null}
-            {open && error ? <p className="text-sm text-accent">{error}</p> : null}
+            {open && error ? (
+              <p className="text-sm text-accent" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            {open && method === "sepa_debit" && !clientSecret && !settled ? (
+              <SepaLaunch
+                last4={shownLast4(ibanLast4)}
+                amountLabel={part.amountLabel}
+                billingHref={billingHref}
+                busy={busy}
+                onLaunch={() => void start(part, "sepa_debit")}
+              />
+            ) : null}
+
+            {open && wireNote ? (
+              <p className="rounded-xl bg-[#fbf7ec] px-3 py-2 text-sm text-[var(--admin-navy)]" role="status">
+                {wireNote}
+              </p>
+            ) : null}
 
             {open && transfer ? (
               <WireInstructions
@@ -256,7 +326,7 @@ export function StayPayment({
                 bic={transfer.bic}
                 accountHolder={transfer.accountHolder}
                 reference={transfer.reference}
-                amountLabel={part.amountLabel}
+                amountLabel={transfer.amountLabel || part.amountLabel}
                 partLabel={transfer.partLabel || part.mention}
               />
             ) : null}
@@ -336,7 +406,16 @@ function CardPayForm({ sepa, onPaid }: { sepa: boolean; onPaid: (message: string
         }}
       />
       <BusyBar active={busy} label={sepa ? "Prélèvement…" : "Règlement…"} />
-      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      {!stripe ? (
+        <p className="text-sm text-accent" role="alert">
+          Le formulaire bancaire se charge. S’il ne s’ouvre pas, rechargez la page ou choisissez un autre moyen.
+        </p>
+      ) : null}
+      {error ? (
+        <p className="text-sm text-accent" role="alert">
+          {error}
+        </p>
+      ) : null}
       <button
         type="button"
         onClick={() => void pay()}
@@ -383,7 +462,55 @@ function ApplePayForm({ onPaid }: { onPaid: (message: string) => void }) {
         }}
       />
       {ready === false ? <p className="text-sm text-muted">Apple Pay s’ouvre sur iPhone, iPad ou Safari.</p> : null}
-      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      {error ? (
+        <p className="text-sm text-accent" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function SepaLaunch({
+  last4,
+  amountLabel,
+  billingHref,
+  busy,
+  onLaunch,
+}: {
+  last4: string | null;
+  amountLabel: string | null;
+  billingHref: string;
+  busy: boolean;
+  onLaunch: () => void;
+}) {
+  const safe = last4 && /^[A-Z0-9]{4}$/.test(last4) ? last4 : null;
+  if (!safe) {
+    return (
+      <p className="text-sm text-accent" role="alert">
+        {PAY_COPY.sepaMissingIban}{" "}
+        <a href={billingHref} className="font-semibold underline">
+          Ouvrir la facturation
+        </a>
+        .
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-[var(--admin-navy)]">
+        Prélèvement de {amountLabel || "l’encours"} sur le compte ····{safe}. Le montant confirmé est celui du solde au moment du clic.
+      </p>
+      <p className="text-xs leading-snug text-[#3d4654]">{PAY_COPY.sepaMandate}</p>
+      <BusyBar active={busy} label="Prélèvement…" />
+      <button
+        type="button"
+        onClick={onLaunch}
+        disabled={busy}
+        className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white disabled:opacity-60"
+      >
+        Lancer le prélèvement
+      </button>
     </div>
   );
 }

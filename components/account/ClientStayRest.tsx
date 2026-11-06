@@ -31,6 +31,7 @@ import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
+import { ibanLast4 } from "@/lib/crm/billing";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import {
@@ -180,6 +181,8 @@ export async function ClientStayRest({
           soleCompanyName={ledger.soleCompanyName}
           stripeKey={stripePublishableKey()}
           pockets={ledger.pockets}
+          ibanLast4={ibanLast4(customer.iban)}
+          billingHref="/mon-compte/profil/facturation"
         />
       </section>
     );

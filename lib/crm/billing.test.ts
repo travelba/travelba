@@ -6,6 +6,7 @@ import {
   normalizeIban,
   formatIbanInput,
   ibanError,
+  ibanLast4,
   normalizeSiret,
   normalizeVat,
   siretError,
@@ -49,6 +50,9 @@ test("IBAN FR is 27 characters", () => {
   assert.equal(ibanError("FR7630006000011234567890189"), null);
   assert.equal(ibanError("DE89370400440532013000"), "Indiquez un IBAN français (commence par FR).");
   assert.equal(ibanError("FR76"), "L’IBAN français doit contenir 27 caractères.");
+  assert.equal(ibanLast4("fr76 3000 6000 0112 3456 7890 189"), "0189");
+  assert.equal(ibanLast4("FR76"), null);
+  assert.equal((ibanLast4("FR7630006000011234567890189") || "").length, 4);
 });
 
 test("customer patch maps loyalty and IBAN", () => {
