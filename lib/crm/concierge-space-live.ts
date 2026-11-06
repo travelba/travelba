@@ -82,7 +82,7 @@ async function sendStatement(customerId: string) {
   });
   if (!allowed) return { ok: false, message: RATE_LIMITED_MESSAGE };
   const { createServiceClient } = await import("@/lib/supabase/admin");
-  const { loadClientLedger } = await import("@/lib/crm/client-ledger");
+  const { loadClientLedger } = await import("@/lib/crm/client-ledger-load");
   const { buildStatement, statementHolderLines } = await import("@/lib/crm/statement");
   const { renderStatementPdf } = await import("@/lib/crm/statement-pdf");
   const { deliverStatementWhatsapp } = await import("@/lib/crm/statement-send");

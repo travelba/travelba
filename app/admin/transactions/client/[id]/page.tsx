@@ -5,7 +5,7 @@ import { ClientTransactionsPanel } from "@/components/account/ClientTransactions
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { agencyPayFollowUp } from "@/lib/crm/client-pay";
-import { loadClientLedger } from "@/lib/crm/client-ledger";
+import { loadClientLedger } from "@/lib/crm/client-ledger-load";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ id: string }> };

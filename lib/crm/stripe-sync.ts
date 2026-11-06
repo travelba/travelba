@@ -4,6 +4,7 @@ import { stripeInboxFromIntent, type StripeInboxDraft, type StripeIntentInput } 
 import { createStripeCustomerCache, lookupStripePayer } from "@/lib/crm/stripe-payer-fetch";
 import { snapshotFromPaymentIntent } from "@/lib/crm/stripe-snapshot";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
+import { syncSepaIntents } from "@/lib/crm/sepa-ledger";
 import {
   STRIPE_FIRST_LOOKBACK_MS,
   STRIPE_OVERLAP_MS,
@@ -65,7 +66,7 @@ export async function enrichStripeIntents(intents: Stripe.PaymentIntent[]): Prom
   return out;
 }
 
-export async function fetchSucceededPaymentIntents(sinceUnix: number) {
+export async function fetchStripePaymentIntents(sinceUnix: number) {
   const stripe = getStripe();
   if (!stripe) throw new Error("Stripe n’est pas configuré");
   const out: Stripe.PaymentIntent[] = [];
@@ -77,12 +78,17 @@ export async function fetchSucceededPaymentIntents(sinceUnix: number) {
       starting_after: startingAfter,
       expand: ["data.latest_charge"],
     });
-    out.push(...list.data.filter((intent) => intent.status === "succeeded"));
+    out.push(...list.data);
     if (!list.has_more) break;
     startingAfter = list.data.at(-1)?.id;
     if (!startingAfter) break;
   }
   return out;
+}
+
+export async function fetchSucceededPaymentIntents(sinceUnix: number) {
+  const intents = await fetchStripePaymentIntents(sinceUnix);
+  return intents.filter((intent) => intent.status === "succeeded");
 }
 
 async function ledgerByIntent(admin: StripeAdmin, ids: string[]) {
@@ -187,8 +193,11 @@ export async function syncStripeInbox(admin: StripeAdmin, now = Date.now()) {
     overlapMs: STRIPE_OVERLAP_MS,
     firstLookbackMs: STRIPE_FIRST_LOOKBACK_MS,
   });
-  const intents = await fetchSucceededPaymentIntents(since);
-  const inserted = await upsertStripeInbox(admin, await enrichStripeIntents(intents));
+  const intents = await fetchStripePaymentIntents(since);
+  const sepa = await syncSepaIntents(admin, intents);
+  if (!sepa.ok) throw new Error("prélèvement");
+  const succeeded = intents.filter((intent) => intent.status === "succeeded");
+  const inserted = await upsertStripeInbox(admin, await enrichStripeIntents(succeeded));
   await writeSyncWatermark(SYNC_WATERMARK.stripe, new Date(now).toISOString());
   const auto = await autoMatchUnmatchedStripe();
   return { fetched: intents.length, inserted, auto_matched: auto.matched, since };

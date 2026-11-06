@@ -25,4 +25,6 @@ export type LedgerMovementRow = {
   companyLabel?: string | null;
   /** Voyageurs du débit. Vide : la carte et le dossier n’en nomment aucun. */
   travelerNames?: string[];
+  /** Pastille à la place de Encaissé / Posté. « En cours » n’est pas un paiement reçu. */
+  badge?: string | null;
 };

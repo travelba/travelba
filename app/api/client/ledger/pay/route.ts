@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { isCompanyMember } from "@/lib/crm/company-role";
-import { loadClientLedger } from "@/lib/crm/client-ledger";
+import { loadClientLedger } from "@/lib/crm/client-ledger-load";
 import { customerFullName, type CrmTransaction } from "@/lib/crm/types";
 import { ibanLast4 } from "@/lib/crm/billing";
 import { amountToCents, anchorBillingCompanyId, encoursPartLabel, payerKindOf } from "@/lib/crm/payer";
@@ -26,6 +26,9 @@ import {
   stripeFailureCode,
   wireClientMessage,
 } from "@/lib/crm/client-pay";
+import { formatMoney } from "@/lib/crm/money";
+import { holdMatchesPart, holdsForPart, sameIbanBlocked, sepaCoversMessage, sepaIntentBlocksPart } from "@/lib/crm/sepa-hold";
+import { cancelOrphanSepaIntents, claimSepaLock, releaseSepaLock, syncSepaIntent } from "@/lib/crm/sepa-ledger";
 import type { PayerKind } from "@/lib/crm/payer";
 import type { StayPayMethod } from "@/lib/crm/stripe-pay";
 import type Stripe from "stripe";
@@ -101,7 +104,13 @@ export async function POST(request: Request) {
     amount = pocket.due;
     companyId = pocket.companyId;
     mention = pocket.label;
-    if (amount < 0.5) return jsonError(PAY_COPY.pocketEmpty);
+    if (amount < 0.5) {
+      const held = holdsForPart(view.sepaHolds || [], "company", pocket.companyId);
+      if (held.length) {
+        return jsonError(sepaCoversMessage(formatMoney(held.reduce((sum, hold) => sum + hold.amount, 0), view.currency)), 409);
+      }
+      return jsonError(PAY_COPY.pocketEmpty);
+    }
   } else {
     const blocked = ledgerPayBlock({
       payer,
@@ -109,7 +118,13 @@ export async function POST(request: Request) {
       owed: view.owed,
       currency: view.currency,
     });
-    if ("error" in blocked) return jsonError(blocked.error);
+    if ("error" in blocked) {
+      const held = holdsForPart(view.sepaHolds || [], payer, requestedCompany || null);
+      if (held.length && blocked.error === PAY_COPY.nothingDue) {
+        return jsonError(sepaCoversMessage(formatMoney(held.reduce((sum, hold) => sum + hold.amount, 0), view.currency)), 409);
+      }
+      return jsonError(blocked.error);
+    }
     amount = blocked.amount;
   }
 
@@ -127,6 +142,15 @@ export async function POST(request: Request) {
   const cents = amountToCents(amount);
   const amountLabel = payActivityDetail(amount, view.currency) || "";
   const savedLast4 = ibanLast4(auth.customer.iban);
+  const partHolds = holdsForPart(view.sepaHolds || [], payer, companyId);
+  if (method === "sepa_debit" && partHolds.length) {
+    const reserved = formatMoney(partHolds.reduce((sum, hold) => sum + hold.amount, 0), view.currency);
+    return jsonError(sepaAlreadyMessage(reserved), 409);
+  }
+  const partFailure = (view.sepaFailures || []).find((failure) => holdMatchesPart(failure, payer, companyId));
+  if (method === "sepa_debit" && partFailure && sameIbanBlocked(partFailure, savedLast4)) {
+    return jsonError(partFailure.message);
+  }
 
   if (method === "revolut") {
     try {
@@ -256,6 +280,14 @@ export async function POST(request: Request) {
     }
     const holder =
       (payer === "company" ? view.soleCompanyName : null) || customerFullName(auth.customer) || "Client";
+    const locked = await claimSepaLock(admin, {
+      customerId: ledgerCustomerId,
+      payer,
+      companyId: companyId || "",
+      amount,
+      currency: view.currency,
+    });
+    if (!locked) return jsonError(sepaAlreadyMessage(amountLabel), 409);
     try {
       const outcome = await confirmSepaDebit({
         stripe,
@@ -280,6 +312,17 @@ export async function POST(request: Request) {
       const action = outcome.status === "requires_action" && Boolean(outcome.clientSecret);
       if (!started && !already && !action) {
         throw Object.assign(new Error("sepa"), { code: outcome.status || "sepa" });
+      }
+      if (outcome.paymentIntentId && (started || already)) {
+        try {
+          const intent = await stripe.paymentIntents.retrieve(outcome.paymentIntentId, { expand: ["latest_charge"] });
+          const synced = await syncSepaIntent(admin, intent, { customerId: ledgerCustomerId });
+          if (!synced.ok) console.error("[sepa] réserve", outcome.paymentIntentId);
+          const listed = await stripe.paymentIntents.list({ customer: stripeCustomerId, limit: 20 });
+          await cancelOrphanSepaIntents(stripe, listed.data);
+        } catch (err) {
+          console.error("[sepa]", stripeFailureCode(err));
+        }
       }
       if (outcome.paymentMethodId) {
         await admin.from("crm_payment_methods").upsert(
@@ -351,6 +394,8 @@ export async function POST(request: Request) {
         })
       );
       return jsonError(message, 502);
+    } finally {
+      await releaseSepaLock(admin, { customerId: ledgerCustomerId, payer, companyId: companyId || "" });
     }
   }
 
@@ -424,7 +469,7 @@ async function confirmSepaDebit(input: {
   ip: string;
   userAgent: string;
   returnUrl: string;
-}): Promise<{ status: string; clientSecret: string | null; paymentMethodId: string | null }> {
+}): Promise<{ status: string; clientSecret: string | null; paymentMethodId: string | null; paymentIntentId: string | null }> {
   const expected = {
     cents: input.cents,
     customerId: input.customerId,
@@ -433,12 +478,17 @@ async function confirmSepaDebit(input: {
   };
   try {
     const existing = await input.stripe.paymentIntents.list({ customer: input.stripeCustomerId, limit: 20 });
-    const open = existing.data.find((intent) => sepaIntentMatches(intent, expected));
-    if (open && (open.status === "processing" || open.status === "succeeded")) {
-      return { status: "already", clientSecret: null, paymentMethodId: null };
-    }
-    if (open?.status === "requires_action" && open.client_secret) {
-      return { status: "requires_action", clientSecret: open.client_secret, paymentMethodId: null };
+    const open = existing.data.find(
+      (intent) => sepaIntentMatches(intent, expected) || sepaIntentBlocksPart(intent, expected)
+    );
+    if (open && (open.status === "processing" || open.status === "succeeded" || open.status === "requires_action")) {
+      const action = open.status === "requires_action";
+      return {
+        status: action ? "requires_action" : "already",
+        clientSecret: action ? open.client_secret : null,
+        paymentMethodId: null,
+        paymentIntentId: open.id,
+      };
     }
   } catch (err) {
     console.error("[stripe-pay]", stripeFailureCode(err));
@@ -483,5 +533,6 @@ async function confirmSepaDebit(input: {
     status: intent.status,
     clientSecret: intent.client_secret,
     paymentMethodId: paymentMethod.id,
+    paymentIntentId: intent.id,
   };
 }

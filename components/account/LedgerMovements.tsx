@@ -72,12 +72,16 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                 </span>
                 <span
                   className={`mt-1 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
-                    row.credit
-                      ? "border-[var(--admin-gold)]/30 bg-[var(--admin-gold)]/15 text-[var(--admin-navy)]"
-                      : "border-[#e5e3dc] bg-[#efeeeb] text-[#44474c]"
+                    row.badge === "En cours"
+                      ? "border-[#e5d3b3] bg-[#fbf7ec] text-[#7a6240]"
+                      : row.badge === "Refusé"
+                        ? "border-[#e7c8c4] bg-[#fdf6f5] text-[#7a3b36]"
+                        : row.credit
+                          ? "border-[var(--admin-gold)]/30 bg-[var(--admin-gold)]/15 text-[var(--admin-navy)]"
+                          : "border-[#e5e3dc] bg-[#efeeeb] text-[#44474c]"
                   }`}
                 >
-                  {row.credit ? "Encaissé" : "Posté"}
+                  {row.badge || (row.credit ? "Encaissé" : "Posté")}
                 </span>
                 <Icon
                   name="expand_more"

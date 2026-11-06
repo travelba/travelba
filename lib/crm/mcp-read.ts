@@ -986,11 +986,22 @@ export async function readGrandLivre(input: { id?: string; q?: string; page?: nu
   const customer = found.customer as CustomerListRow & Pick<CrmCustomer, "company_role">;
   const { data: roleRow } = await admin
     .from("crm_customers")
-    .select("company_role, spending_allowance")
+    .select("company_role, spending_allowance, stripe_customer_id")
     .eq("id", customer.id)
     .maybeSingle();
   const ledgerWindow = mcpWindow(input, 15);
   const creditsPromise = postedClientCredits(admin, customer.id, ledgerWindow.from + ledgerWindow.limite + 1);
+  const role = roleRow as { company_role?: CrmCustomer["company_role"]; stripe_customer_id?: string | null } | null;
+  try {
+    const { reconcileLedgerSepa } = await import("@/lib/crm/client-ledger-load");
+    await reconcileLedgerSepa({
+      id: customer.id,
+      company_role: role?.company_role ?? null,
+      stripe_customer_id: role?.stripe_customer_id ?? null,
+    });
+  } catch (error) {
+    console.error("[sepa]", error instanceof Error ? error.message : "rapprochement");
+  }
   const ledger = await loadClientLedger(
     admin,
     {
@@ -1007,7 +1018,22 @@ export async function readGrandLivre(input: { id?: string; q?: string; page?: nu
     lien: clientLedgerAdminHref(customer.id),
     solde: formatMoney(ledger.balanceValue, ledger.currency),
     solde_valeur: ledger.balanceValue,
-    sens: ledger.balanceValue > 0 ? "avoir" : ledger.balanceValue < 0 ? "reste à payer" : "soldé",
+    sens:
+      ledger.sepaHolds.length && ledger.balanceValue >= 0
+        ? "prélèvement SEPA en cours"
+        : ledger.balanceValue > 0
+          ? "avoir"
+          : ledger.balanceValue < 0
+            ? "reste à payer"
+            : "soldé",
+    prelevements_sepa: ledger.sepaHolds.map((hold) => ({
+      statut: "en cours",
+      montant: formatMoney(hold.amount, hold.currency),
+      part: hold.partLabel,
+      rib: hold.last4 ? `••••${hold.last4}` : null,
+      lance_le: hold.launchedAt,
+      reference: hold.paymentIntentId,
+    })),
     devises: ledger.wallets.map((wallet) => ({
       devise: wallet.currency,
       solde: formatMoney(wallet.balanceValue, wallet.currency),

@@ -34,6 +34,19 @@ import {
 import { fundingPockets, payingCompanyLabels, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
 import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
+  coverOwed,
+  displayedEncours,
+  isPendingSepaRow,
+  isSepaLockId,
+  pendingSepaTitle,
+  roundSepaMoney,
+  sepaFailureFromLabel,
+  sepaFailuresFromRows,
+  sepaHoldsFromRows,
+  type SepaFailureView,
+  type SepaHoldView,
+} from "@/lib/crm/sepa-hold";
+import {
   TX_KIND_LABELS,
   customerFullName,
   visibleServiceCopy,
@@ -75,6 +88,10 @@ export type ClientLedgerWallet = {
   remaining: number;
   remainingPct: number | null;
   creditCount: number;
+  /** Solde des lignes postées, avant réservation SEPA. */
+  postedBalance?: number;
+  /** Montant réservé par un prélèvement encore à la banque. */
+  held?: number;
 };
 
 export type ClientLedgerView = {
@@ -96,6 +113,10 @@ export type ClientLedgerView = {
   movements: LedgerMovementRow[];
   /** Null tant qu’aucun droit de dépense n’est fixé : le grand livre actuel reste. */
   spending: SpendingDesk | null;
+  /** Prélèvements envoyés à la banque, pas encore encaissés. */
+  sepaHolds: SepaHoldView[];
+  /** Dernier refus par part. Vide quand le prélèvement est de nouveau en cours. */
+  sepaFailures: SepaFailureView[];
 };
 
 function walletView(
@@ -155,8 +176,22 @@ export function shapeClientLedger(input: {
   const scoped = filterClientLedgerRows(keptRows, {
     companyRole: input.companyRole,
     travelerBookingIds: input.travelerBookingIds,
+  }).filter((row) => !isSepaLockId(row.external_id));
+  const accounting = scoped.filter((row) => !row.status || row.status === "posted");
+  const sepaHolds = member ? [] : sepaHoldsFromRows(scoped, input.companyNames);
+  const sepaFailures = member
+    ? []
+    : sepaFailuresFromRows(scoped).filter(
+        (failure) =>
+          !sepaHolds.some(
+            (hold) => hold.payer === failure.payer && (hold.companyId || "") === (failure.companyId || "")
+          )
+      );
+  const shown = visibleLedgerRows(scoped).filter((row) => {
+    if (row.status !== "void") return true;
+    if (!sepaFailureFromLabel(row.label)) return false;
+    return sepaFailures.some((failure) => failure.paymentIntentId && failure.paymentIntentId === row.external_id);
   });
-  const shown = visibleLedgerRows(scoped);
   const bookingById = new Map(input.bookings.map((booking) => [booking.id, booking]));
   const fundingLabels = payingCompanyLabels(input.fundingCompanies || []);
   const companyLabels = fundingLabels.size
@@ -179,7 +214,13 @@ export function shapeClientLedger(input: {
         : null;
     const place = ledgerPlace(visibleBooking);
     const reference = visibleBooking?.reference || null;
-    const rawTitle = ledgerMovementTitle(row, TX_KIND_LABELS[row.kind] || row.kind);
+    const pending = isPendingSepaRow(row);
+    const refused = !pending && row.status === "void" && Boolean(sepaFailureFromLabel(row.label));
+    const rawTitle = pending
+      ? pendingSepaTitle(row.label)
+      : refused
+        ? "Prélèvement SEPA refusé"
+        : ledgerMovementTitle(row, TX_KIND_LABELS[row.kind] || row.kind);
     const carnet = carnetLink(
       booking,
       input.audience,
@@ -196,9 +237,13 @@ export function shapeClientLedger(input: {
     });
     return {
       id: row.id,
-      credit,
-      title: ledgerSubjectTitle(rawTitle, reference),
-      amountLabel: `${credit ? "+" : "−"}${formatMoney(Number(row.amount), row.currency)}`,
+      credit: refused ? false : credit,
+      title: pending || refused ? rawTitle : ledgerSubjectTitle(rawTitle, reference),
+      amountLabel:
+        pending || refused
+          ? formatMoney(Number(row.amount), row.currency)
+          : `${credit ? "+" : "−"}${formatMoney(Number(row.amount), row.currency)}`,
+      badge: pending ? "En cours" : refused ? "Refusé" : null,
       occurredLabel: formatDateFr(row.occurred_on),
       kindLabel: TX_KIND_LABELS[row.kind] || row.kind,
       whenWhere: ledgerWhenWhere(tripDates, place),
@@ -217,8 +262,8 @@ export function shapeClientLedger(input: {
     };
   });
 
-  // Le pourcentage suit le wallet (séjour compris), pas la liste qui masque le montant global.
-  const { debits, settledPct } = postedLedgerTotals(scoped);
+  // Le pourcentage suit les lignes postées. Une réservation SEPA n’est pas un encaissement.
+  const { debits, settledPct } = postedLedgerTotals(accounting);
   const restored = (currency: string) =>
     dropped.reduce((sum, row) => {
       if ((row.currency || "EUR").toUpperCase() !== currency.toUpperCase()) return sum;
@@ -235,11 +280,19 @@ export function shapeClientLedger(input: {
   const payerByBooking = new Map(
     input.bookings.map((booking) => [booking.id, booking.payer_kind ?? null] as const)
   );
-  const split = owedByPayer(scoped, payerByBooking, currency);
-  const owed = fitPayerOwed(split.company, split.personal, remaining);
-  const pockets = member
-    ? null
-    : fundingPockets(input.fundingCompanies || [], scoped, currency);
+  const split = owedByPayer(accounting, payerByBooking, currency);
+  const fitted = fitPayerOwed(split.company, split.personal, remaining);
+  const owed = member ? fitted : coverOwed(fitted, sepaHolds, currency);
+  const rawPockets = member ? null : fundingPockets(input.fundingCompanies || [], accounting, currency);
+  const pockets = rawPockets
+    ? rawPockets.map((pocket) => {
+        const held = sepaHolds
+          .filter((hold) => hold.companyId && hold.companyId === pocket.companyId)
+          .reduce((sum, hold) => sum + hold.amount, 0);
+        const balance = displayedEncours(pocket.balance, held);
+        return { ...pocket, balance, due: Math.max(0, roundSepaMoney(-balance)) };
+      })
+    : null;
   const soleCompanyName =
     (input.billingCompanyCount || 0) === 1
       ? [...(input.companyNames?.values() || [])][0] || null
@@ -252,16 +305,33 @@ export function shapeClientLedger(input: {
           balance: (Number(wallet.balance) || 0) + restored(wallet.currency || "EUR"),
         }))
       : [{ currency, balance: balanceValue }];
-  const wallets = walletRows.map((wallet) => walletView(wallet.currency, wallet.balance, scoped));
+  const wallets = walletRows.map((wallet) => {
+    const view = walletView(wallet.currency, wallet.balance, accounting);
+    if (member) return view;
+    const held = sepaHolds
+      .filter((hold) => hold.currency.toUpperCase() === view.currency.toUpperCase())
+      .reduce((sum, hold) => sum + hold.amount, 0);
+    const postedBalance = view.balanceValue;
+    const shownBalance = displayedEncours(postedBalance, held);
+    return {
+      ...view,
+      postedBalance,
+      held,
+      balanceValue: shownBalance,
+      remaining: Math.max(0, roundSepaMoney(-shownBalance)),
+    };
+  });
+  const primaryHeld = wallets.find((wallet) => wallet.currency.toUpperCase() === currency.toUpperCase())?.held || 0;
+  const shownBalance = member ? balanceValue : displayedEncours(balanceValue, primaryHeld);
 
   return {
     member,
     currency,
-    balanceValue,
+    balanceValue: shownBalance,
     debits,
-    remaining,
+    remaining: Math.max(0, roundSepaMoney(-shownBalance)),
     remainingPct: settledPct == null ? null : Math.max(0, 100 - settledPct),
-    creditCount: shown.filter((row) => row.direction === "credit").length,
+    creditCount: accounting.filter((row) => row.direction === "credit").length,
     wallets,
     owed,
     pockets,
@@ -275,7 +345,7 @@ export function shapeClientLedger(input: {
           accounts: input.spendAccounts,
           bookings: input.bookings,
           movements,
-          rows: shown.map((row) => ({
+          rows: accounting.map((row) => ({
             booking_id: row.booking_id,
             direction: row.direction,
             amount: row.amount,
@@ -288,6 +358,8 @@ export function shapeClientLedger(input: {
           companyLabels,
         })
       : null,
+    sepaHolds,
+    sepaFailures,
   };
 }
 
@@ -398,10 +470,28 @@ async function enrichSpendBookings(
   });
 }
 
+async function loadSepaLedgerRows(customerId: string): Promise<CrmTransaction[]> {
+  const admin = serviceClientOrNull();
+  if (!admin) return [];
+  try {
+    const { data, error } = await admin
+      .from("crm_transactions")
+      .select("*")
+      .eq("customer_id", customerId)
+      .eq("source", "stripe")
+      .eq("direction", "credit")
+      .in("status", ["pending", "void"]);
+    if (error) return [];
+    return ((data || []) as CrmTransaction[]).filter((row) => !isSepaLockId(row.external_id));
+  } catch {
+    return [];
+  }
+}
+
 async function loadClientLedgerRows(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
-    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id">>,
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
   audiences: ClientLedgerAudience[]
 ): Promise<ClientLedgerView[]> {
   const member = isCompanyMember(customer);
@@ -428,7 +518,7 @@ async function loadClientLedgerRows(
       rows = (txs || []) as CrmTransaction[];
     }
   } else {
-    const [{ data: txs }, { data: balances }] = await Promise.all([
+    const [{ data: txs }, { data: balances }, sepaRows] = await Promise.all([
       supabase
         .from("crm_transactions")
         .select("*")
@@ -436,8 +526,9 @@ async function loadClientLedgerRows(
         .eq("status", "posted")
         .order("occurred_on", { ascending: false }),
       supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
+      loadSepaLedgerRows(customer.id),
     ]);
-    rows = (txs || []) as CrmTransaction[];
+    rows = [...sepaRows, ...((txs || []) as CrmTransaction[])];
     // Un solde par devise : l’euro reste la devise principale (règlement), les autres ont leur bloc.
     wallets = ((balances || []) as CrmBalance[]).map((row) => ({
       currency: row.currency || "EUR",
@@ -504,7 +595,7 @@ async function loadClientLedgerRows(
 export async function loadClientLedger(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
-    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id">>,
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
   audience: ClientLedgerAudience
 ): Promise<ClientLedgerView> {
   const [view] = await loadClientLedgerRows(supabase, customer, [audience]);
@@ -515,7 +606,7 @@ export async function loadClientLedger(
 export async function loadClientLedgerViews(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
-    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id">>,
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
   audiences: ClientLedgerAudience[]
 ) {
   if (!audiences.length) return [] as ClientLedgerView[];

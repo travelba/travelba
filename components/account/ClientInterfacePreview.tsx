@@ -335,6 +335,7 @@ function ClientScreen({
         soleCompanyName={ledger.soleCompanyName}
         stripeKey={stripePublishableKey()}
         pockets={ledger.pockets}
+        holds={ledger.sepaHolds}
       />
     ) : null;
   const title = screen === "transactions" ? "Transactions" : "Réservations";

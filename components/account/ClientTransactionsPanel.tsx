@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { LedgerMovements } from "@/components/account/LedgerMovements";
+import { SepaInFlight } from "@/components/account/SepaInFlight";
 import { SpendingBookings } from "@/components/account/SpendingBookings";
 import { EmptyState } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
@@ -54,6 +55,14 @@ function SpendingRights({ spending }: { spending: SpendingDesk | null }) {
   );
 }
 
+function pocketHoldCaption(view: ClientLedgerView, companyId: string, currency: string) {
+  const held = (view.sepaHolds || [])
+    .filter((hold) => hold.companyId === companyId)
+    .reduce((sum, hold) => sum + hold.amount, 0);
+  if (held < 0.5) return null;
+  return `${formatMoney(held, currency)} en cours de prélèvement SEPA`;
+}
+
 function WalletBlock({
   wallet,
   label,
@@ -69,8 +78,8 @@ function WalletBlock({
       <p className="font-display text-[1.75rem] font-bold tracking-tight text-[var(--admin-navy)]">
         {formatMoney(wallet.balanceValue, wallet.currency)}
       </p>
-      {caption ? <p className="mt-1.5 text-[12px] text-muted">{caption}</p> : null}
-      {!caption && wallet.remainingPct != null ? (
+      {caption ? <p className="mt-1.5 text-[13px] font-semibold text-[var(--admin-navy)]">{caption}</p> : null}
+      {wallet.remaining > 0 && wallet.remainingPct != null ? (
         <div className="mt-3">
           <div className="h-2.5 overflow-hidden rounded-full bg-[#e9e8e5]">
             <div
@@ -109,6 +118,13 @@ export function ClientTransactionsPanel({
 
   return (
     <div className="space-y-5">
+      {member ? null : (
+        <SepaInFlight
+          holds={view.sepaHolds || []}
+          failures={view.sepaFailures || []}
+          tone={statementAudience === "staff" ? "admin" : "client"}
+        />
+      )}
       <section className="rounded-xl border border-[#e9e8e5]/60 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
@@ -160,7 +176,10 @@ export function ClientTransactionsPanel({
                         creditCount: pocket.creditCount,
                       }}
                       label={pocket.label}
-                      caption={pocket.funding === "advance" && pocket.balance > 0 ? "Crédit à dépenser" : null}
+                      caption={
+                        pocketHoldCaption(view, pocket.companyId, currency) ||
+                        (pocket.funding === "advance" && pocket.balance > 0 ? "Crédit à dépenser" : null)
+                      }
                     />
                     {pocket.funding === "advance" ? <SpendingRights spending={spending} /> : null}
                   </div>
@@ -170,6 +189,11 @@ export function ClientTransactionsPanel({
                     key={wallet.currency}
                     wallet={wallet}
                     label={several ? `Encours ${wallet.currency.toUpperCase()}` : "Encours"}
+                    caption={
+                      wallet.held && wallet.held >= 0.5
+                        ? `${formatMoney(wallet.held, wallet.currency)} en cours de prélèvement SEPA`
+                        : null
+                    }
                   />
                 ))}
             {payments ? <div className="mt-3">{payments}</div> : null}
