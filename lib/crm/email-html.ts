@@ -67,10 +67,10 @@ export function agencyEmailHtml(opts: {
           <td style="background:${NAVY};padding:22px 28px;">
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
-                <td style="width:36px;height:36px;line-height:0;font-size:0;">
-                  <img src="${logo}" width="36" height="36" alt="TBA" style="display:block;width:36px;height:36px;border:0;" />
+                <td style="width:64px;height:64px;line-height:0;font-size:0;" valign="middle">
+                  <img src="${logo}" width="64" height="64" alt="TBA" style="display:block;width:64px;height:64px;border:0;" />
                 </td>
-                <td style="padding-left:12px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">Travel Business Agency</td>
+                <td valign="middle" style="padding-left:12px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">Travel Business Agency</td>
               </tr>
             </table>
           </td>

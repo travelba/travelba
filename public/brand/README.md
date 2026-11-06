@@ -1,32 +1,22 @@
-# Travel BA — marque validée (2026-10-07)
+# Travel BA — médaillon
 
-Badge circulaire **TBA · TRAVEL BUSINESS AGENCY**. Remplace le cercle « TBA seul » (2026-09-24) et l’ancienne variante « LUXURY TRAVEL ».
+Badge circulaire **TBA · TRAVEL BUSINESS AGENCY**.
 
-## Mark
+Source : `logo-tba.png` (1280×1280, RGBA). Les coins hors du cercle sont transparents. Les autres fichiers en sont le redimensionnement : cercle intact, sans étirement, sans fond blanc.
 
-- Disque marine `#0B192C`, coins transparents (le badge est un cercle)
-- Filet champagne fin `#C5A880`
-- Monogramme **TBA** champagne, géométrique, interlettré
-- Filet séparateur fin, puis le sous-titre **TRAVEL BUSINESS AGENCY** en capitales interlettrées
+Les aperçus que les réseaux aplatissent (`tba-mark.png`, `og-concierge.png`, `og-concierge.jpg`) posent ce même médaillon sur un carré ou un bandeau marine `#0B192C`, pas sur du blanc.
 
-Source vectorielle : `logo-tba.svg` (texte vectorisé, aucune police requise). Toutes les tailles PNG en sont tirées.
+## Fichiers
 
-## Monogramme seul
-
-Sous ~200 px le sous-titre n’est plus lisible : les favicons (16, 32, 48) et l’icône iOS (180) portent le **monogramme seul** (disque, filet, TBA), même style. Source : `logo-tba-mark.svg`. Les favicons ont un filet plus épais et des lettres plus grandes pour rester nets après réduction.
-
-## Files
-
-| Path | Use |
-|------|-----|
-| `logo-tba.svg` | Source vectorielle du badge complet |
-| `logo-tba.png` | UI (1280 master, `siteConfig.logoSrc`, e-mails) |
-| `logo-tba-256.png` | En-tête des PDF (`lib/crm/brand-logo.ts`, copie base64 `lib/crm/brand-logo.b64`) |
-| `travelba-whatsapp-badge-only.png` | WhatsApp profile crop (640, même badge) |
-| `logo-tba-mark.svg` | Source vectorielle du monogramme seul |
-| `/tba-mark.png` `/og-concierge.png` | 512 opaque sur carré marine (WhatsApp / réseaux aplatissent la transparence) |
-| `/og-concierge.jpg` | Image sociale 1200×630, badge centré sur marine |
-| `/favicon.ico` | Favicon du domaine, lu par WhatsApp (`public/` + `app/`). ICO 32, 16 et 48 : monogramme opaque sur marine, pas de fond transparent |
-| `/favicon-16.png` `/favicon-32.png` `/favicon-48.png` | Mêmes tailles en PNG opaque |
-| `/favicon.png` | 512 badge complet (also `app/icon.png`) |
-| `/apple-touch-icon.png` | iOS home screen (180, monogramme seul, also `app/apple-icon.png`) |
+| Chemin | Usage |
+|--------|--------|
+| `logo-tba.png` | Master 1280. E-mails (`siteConfig.logoSrc`) |
+| `logo-tba-256.png` | En-tête des PDF (`lib/crm/brand-logo.ts`, copie `lib/crm/brand-logo.b64`) |
+| `travelba-whatsapp-badge-only.png` | 640, même médaillon |
+| `/favicon-16.png` `/favicon-32.png` `/favicon-48.png` | Favicon, médaillon réduit, coins transparents |
+| `/favicon.ico` | 16, 32 et 48 (`public/` et `app/`) |
+| `/favicon.png` `/icon-512.png` `app/icon.png` | 512 |
+| `/icon-192.png` | Icône PWA 192 |
+| `/apple-touch-icon.png` `app/apple-icon.png` | Écran d’accueil iOS, 180 |
+| `/tba-mark.png` `/og-concierge.png` | 512 sur carré marine |
+| `/og-concierge.jpg` | Image sociale 1200×630, médaillon centré sur marine |
