@@ -99,7 +99,11 @@ export function BillingForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <Field label="IBAN" hint="Compte français, 27 caractères" error={ibanHint}>
+      <Field
+        label="IBAN"
+        hint="Compte français, 27 caractères. Il sert au prélèvement de l’encours société : enregistrez-le, puis lancez le prélèvement dans Transactions."
+        error={ibanHint}
+      >
         <input
           value={iban}
           onChange={(event) => setIban(formatIbanInput(event.target.value))}

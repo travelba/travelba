@@ -7,6 +7,7 @@ import {
   defaultPayer,
   encoursPartLabel,
   fitPayerOwed,
+  ledgerDebitPayer,
   owedByPayer,
   payerBadge,
   paymentSlips,
@@ -267,6 +268,54 @@ test("l’encours dû se répartit entre société et particulier", () => {
     ]),
     "a"
   );
+});
+
+test("un débit société reste société, même marqué particulier, et le total suit le livre", () => {
+  const payers = new Map<string, "company" | "personal" | null>([
+    ["bkk", "company"],
+    ["par", "company"],
+    ["draft", "personal"],
+  ]);
+  const split = owedByPayer(
+    [
+      { direction: "debit", amount: 710, billing_company_id: "co", booking_id: "bkk", payer_kind: "personal", status: "posted", currency: "EUR" },
+      { direction: "debit", amount: 25, billing_company_id: "co", booking_id: "bkk", status: "posted", currency: "EUR" },
+      { direction: "debit", amount: 3110, billing_company_id: "co", booking_id: "bkk", status: "posted", currency: "EUR" },
+      { direction: "debit", amount: 3253, billing_company_id: "co", booking_id: "par", status: "posted", currency: "EUR" },
+      { direction: "debit", amount: 100, billing_company_id: "co", booking_id: "par", status: "posted", currency: "EUR" },
+    ],
+    payers,
+    "EUR"
+  );
+  const owed = fitPayerOwed(split.company, split.personal, 7198);
+  assert.equal(owed.total, 7198);
+  assert.equal(owed.company, 7198);
+  assert.equal(owed.personal, 0);
+  assert.equal(ledgerDebitPayer({ payerKind: "personal", billingCompanyId: "co" }), "company");
+});
+
+test("un débit sans société suit le dossier plutôt qu’une marque particulier", () => {
+  const split = owedByPayer(
+    [{ direction: "debit", amount: 7198, booking_id: "b1", payer_kind: "personal", status: "posted", currency: "EUR" }],
+    new Map([["b1", "company"]]),
+    "EUR"
+  );
+  assert.equal(split.company, 7198);
+  assert.equal(split.personal, 0);
+});
+
+test("un crédit marqué particulier ne change pas de part à cause de la société", () => {
+  const split = owedByPayer(
+    [
+      { direction: "debit", amount: 100, billing_company_id: "co", status: "posted", currency: "EUR" },
+      { direction: "debit", amount: 50, booking_id: "p", status: "posted", currency: "EUR" },
+      { direction: "credit", amount: 40, payer_kind: "personal", billing_company_id: "co", status: "posted", currency: "EUR" },
+    ],
+    new Map([["p", "personal"]]),
+    "EUR"
+  );
+  assert.equal(split.company, 100);
+  assert.equal(split.personal, 10);
 });
 
 test("un règlement d’encours sans dossier devient un crédit de la bonne part", () => {

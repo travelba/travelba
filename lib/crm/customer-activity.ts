@@ -280,12 +280,24 @@ function serviceName(kind: string, leg?: string | null) {
 export function payActivitySummary(method: string, payer: "company" | "personal") {
   const part = payer === "company" ? "société" : "particulier";
   if (method === "revolut") return `A demandé un virement pour l’encours ${part}`;
+  if (method === "sepa_debit") return `A lancé un prélèvement pour l’encours ${part}`;
+  if (method === "apple_pay") return `A commencé un règlement par Apple Pay de l’encours ${part}`;
   return `A commencé un règlement par carte de l’encours ${part}`;
 }
 
-export function payActivityDetail(amount: number, currency: string) {
-  if (!Number.isFinite(amount)) return null;
-  return formatMoney(amount, currency);
+export function payFailureSummary(method: string, payer: "company" | "personal") {
+  const part = payer === "company" ? "société" : "particulier";
+  if (method === "sepa_debit") return `Le prélèvement de l’encours ${part} n’a pas démarré`;
+  if (method === "revolut") return `La demande de virement de l’encours ${part} n’a pas abouti`;
+  return `Le règlement de l’encours ${part} n’a pas démarré`;
+}
+
+export function payActivityDetail(amount: number, currency: string, next?: string | null) {
+  const step = (next || "").replace(/\s+/g, " ").trim();
+  if (!Number.isFinite(amount)) return step ? step.slice(0, 400) : null;
+  const money = formatMoney(amount, currency);
+  if (!step) return money;
+  return `${money} · ${step}`.slice(0, 400);
 }
 
 export function visaActivitySummary(

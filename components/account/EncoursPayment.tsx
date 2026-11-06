@@ -13,6 +13,8 @@ export function EncoursPayment({
   stripeKey,
   compact = false,
   pockets = null,
+  ibanLast4,
+  billingHref = "/mon-compte/profil/facturation",
 }: {
   company: number;
   personal: number;
@@ -22,6 +24,9 @@ export function EncoursPayment({
   compact?: boolean;
   /** Crédit et Pro : chacun se règle à part. */
   pockets?: FundingPocket[] | null;
+  /** Null : pas d’IBAN. Omis : on n’en parle pas. */
+  ibanLast4?: string | null;
+  billingHref?: string;
 }) {
   if (pockets?.length) {
     const parts = pockets
@@ -62,7 +67,14 @@ export function EncoursPayment({
     return (
       <div className="space-y-4" aria-label="Régler">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">Régler</p>
-        <StayPayment compact={compact} named stripeKey={stripeKey} parts={all} />
+        <StayPayment
+          compact={compact}
+          named
+          stripeKey={stripeKey}
+          parts={all}
+          ibanLast4={ibanLast4}
+          billingHref={billingHref}
+        />
       </div>
     );
   }
@@ -76,6 +88,8 @@ export function EncoursPayment({
         compact={compact}
         named={named}
         stripeKey={stripeKey}
+        ibanLast4={ibanLast4}
+        billingHref={billingHref}
         parts={[
           {
             kind,

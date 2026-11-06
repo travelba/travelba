@@ -32,12 +32,20 @@ import {
 } from "@/lib/crm/ticketing-fee";
 import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
 import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
+import { ledgerDebitPayer } from "@/lib/crm/payer";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { agencyFeeForBooking, agencyFeeRateColumn, agencyFeeRateField } from "@/lib/crm/agency-fee-rate";
 import { agencyFeeBaseAmount, agencyFeeFromGross } from "@/lib/crm/money";
 import { must } from "@/lib/crm/must";
 import { visibilityOnRequest } from "@/lib/crm/visa-flow";
+
+function debitParty(booking: { payer_kind?: string | null }, companyId: string | null) {
+  return {
+    billing_company_id: companyId,
+    payer_kind: ledgerDebitPayer({ payerKind: booking.payer_kind, billingCompanyId: companyId }),
+  };
+}
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
@@ -498,7 +506,7 @@ export async function syncBookingDebit(
       await supabase.from("crm_transactions").insert({
         customer_id: booking.billing_customer_id || booking.customer_id,
         booking_id: booking.id,
-        billing_company_id: companyId,
+        ...debitParty(booking, companyId),
         direction: "debit",
         kind: "booking",
         amount,
@@ -520,6 +528,7 @@ export async function syncBookingDebit(
   const payerChanged = debit.customer_id !== payerId;
   const labelChanged = (debit.label || "") !== label;
   const companyChanged = (debit.billing_company_id || null) !== companyId;
+  const payerKindChanged = (debit.payer_kind || null) !== debitParty(booking, companyId).payer_kind;
   const currencyChanged = (debit.currency || "EUR") !== (booking.currency || "EUR");
   if (
     amountChanged ||
@@ -527,6 +536,7 @@ export async function syncBookingDebit(
     payerChanged ||
     labelChanged ||
     companyChanged ||
+    payerKindChanged ||
     currencyChanged ||
     debit.status !== "posted"
   ) {
@@ -535,7 +545,7 @@ export async function syncBookingDebit(
         .from("crm_transactions")
         .update({
           customer_id: payerId,
-          billing_company_id: companyId,
+          ...debitParty(booking, companyId),
           amount,
           currency: booking.currency || "EUR",
           label,
@@ -689,7 +699,7 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
       await supabase.from("crm_transactions").insert({
         customer_id: payerId,
         booking_id: booking.id,
-        billing_company_id: companyId,
+        ...debitParty(booking, companyId),
         direction: "debit",
         kind: "adjustment",
         amount,
@@ -709,7 +719,7 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
       .from("crm_transactions")
       .update({
         customer_id: payerId,
-        billing_company_id: companyId,
+        ...debitParty(booking, companyId),
         amount,
         currency: booking.currency || "EUR",
         label: AGENCY_FEE_LABEL,
@@ -806,7 +816,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
         await supabase.from("crm_transactions").insert({
           customer_id: payerId,
           booking_id: booking.id,
-          billing_company_id: companyId,
+          ...debitParty(booking, companyId),
           direction: "debit",
           kind: "booking",
           amount,
@@ -826,7 +836,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
         .from("crm_transactions")
         .update({
           customer_id: payerId,
-          billing_company_id: companyId,
+          ...debitParty(booking, companyId),
           amount,
           currency: booking.currency || "EUR",
           label,

@@ -62,6 +62,37 @@ test("Régler sépare la part société et la part particulier en deux blocs", (
   assert.match(html, /Carte bancaire/);
 });
 
+test("en compact, la part société reste nommée avec son montant", () => {
+  const html = renderToStaticMarkup(
+    createElement(EncoursPayment, {
+      compact: true,
+      company: 7198,
+      personal: 0,
+      currency: "EUR",
+      soleCompanyName: "Maison Dupont",
+      stripeKey: "pk_test_preview",
+      ibanLast4: null,
+    })
+  );
+  assert.match(html, /Société · Maison Dupont/);
+  assert.match(html, /7[\s\u00a0\u202f]198,00/);
+  assert.match(html, /Facturation/);
+  assert.doesNotMatch(html, /Particulier/);
+  const withIban = renderToStaticMarkup(
+    createElement(EncoursPayment, {
+      compact: true,
+      company: 7198,
+      personal: 0,
+      currency: "EUR",
+      soleCompanyName: null,
+      stripeKey: "pk_test_preview",
+      ibanLast4: "0189",
+    })
+  );
+  assert.match(withIban, /····0189/);
+  assert.doesNotMatch(withIban, /FR76/);
+});
+
 test("Régler ne rend rien sous 0,50", () => {
   const html = renderToStaticMarkup(
     createElement(EncoursPayment, {

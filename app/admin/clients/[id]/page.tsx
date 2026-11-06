@@ -19,7 +19,9 @@ import { MergeCustomersButton } from "@/components/admin/MergeCustomersButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { StatementRequest } from "@/components/account/StatementRequest";
+import { ClientPayFollowUp } from "@/components/admin/ClientPayFollowUp";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
+import { agencyPayFollowUp } from "@/lib/crm/client-pay";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { getPortalAccess } from "@/lib/crm/invite";
@@ -260,6 +262,16 @@ export default async function AdminClientDetailPage({ params }: Props) {
     : "Aucune pièce au coffre.";
   const receipts = filterAgencyReceipts((txs || []) as CrmTransaction[]);
   const balanceRows = (balances || []) as CrmBalance[];
+  const stillOwes = balanceRows.some((row) => Number(row.balance) < -0.5);
+  const latestPay = activity.find((row) => row.action === "pay");
+  const payFollowUp =
+    stillOwes && latestPay
+      ? agencyPayFollowUp({
+          summary: latestPay.summary,
+          detail: latestPay.detail,
+          createdAt: latestPay.created_at,
+        })
+      : null;
   const travelerCount = 1 + ((companions || []) as CrmCompanion[]).length;
   const lastVisit = formatCustomerLoginAt(logins[0]?.created_at || portal.lastSignInAt) || "Jamais";
   const contactLine = [c.email, c.phone].filter(Boolean).join(" · ");
@@ -461,6 +473,16 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </div>
         ) : null}
       </section>
+      {payFollowUp ? (
+        <ClientPayFollowUp
+          title={payFollowUp.title}
+          next={payFollowUp.next}
+          links={[
+            { href: `/admin/transactions/client/${c.id}`, label: "Voir le solde dû" },
+            ...(payFollowUp.href ? [{ href: payFollowUp.href, label: "Ouvrir À encaisser" }] : []),
+          ]}
+        />
+      ) : null}
       <CustomerLoginLog logins={logins} activity={activity} />
       <WhatsappThread
         messages={threadMessages}

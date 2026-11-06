@@ -129,11 +129,18 @@ export async function GET(request: Request) {
   }
 
   const chainIntact = rows.length ? await journalRowsMatch([...rows].reverse()) : null;
-  let alerts: { id: string; created_at: string; summary: string; kind: string }[] = [];
+  let alerts: {
+    id: string;
+    created_at: string;
+    summary: string;
+    kind: string;
+    entity_type?: string | null;
+    entity_id?: string | null;
+  }[] = [];
   if (!scoped && (await staffAllows(auth.staff, "view_journal"))) {
     const { data: alertRows } = await admin
       .from("crm_agency_alerts")
-      .select("id, created_at, summary, kind")
+      .select("id, created_at, summary, kind, entity_type, entity_id")
       .is("read_at", null)
       .order("created_at", { ascending: false })
       .limit(20);

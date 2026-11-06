@@ -20,7 +20,14 @@ export type JournalRow = {
   summary: string;
 };
 
-export type JournalAlert = { id: string; created_at: string; summary: string; kind: string };
+export type JournalAlert = {
+  id: string;
+  created_at: string;
+  summary: string;
+  kind: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+};
 
 const field = "admin-af-input text-sm";
 
@@ -59,6 +66,14 @@ export function JournalDesk({
               <li key={alert.id}>
                 {formatDateTimeFr(alert.created_at)} —{" "}
                 <span className="font-semibold">{ALERT_LABELS[alert.kind as AlertKind] || alert.kind}</span> · {alert.summary}
+                {alert.entity_type === "client" && alert.entity_id ? (
+                  <>
+                    {" "}
+                    <Link href={`/admin/transactions/client/${alert.entity_id}`} className="font-semibold underline">
+                      Transactions du client
+                    </Link>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>

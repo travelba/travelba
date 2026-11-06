@@ -11,6 +11,7 @@ import {
   documentActivitySummary,
   formalitiesActivitySummary,
   payActivitySummary,
+  payFailureSummary,
   openedStaySummary,
   pieceActivityDetail,
   profileActivityDetail,
@@ -88,6 +89,8 @@ test("un service, un règlement et une formalité nomment le séjour", () => {
   );
   assert.equal(payActivitySummary("revolut", "personal"), "A demandé un virement pour l’encours particulier");
   assert.equal(payActivitySummary("card", "company"), "A commencé un règlement par carte de l’encours société");
+  assert.equal(payActivitySummary("sepa_debit", "company"), "A lancé un prélèvement pour l’encours société");
+  assert.equal(payFailureSummary("sepa_debit", "company"), "Le prélèvement de l’encours société n’a pas démarré");
   assert.equal(visaActivitySummary("TB-1", "IL"), "A validé la formalité pour Israël sur le séjour TB-1");
   assert.equal(formalitiesActivitySummary("TB-1"), "A envoyé des pièces de formalité pour le séjour TB-1");
   assert.equal(shareActivitySummary("Léa"), "A envoyé le lien du séjour à Léa");
