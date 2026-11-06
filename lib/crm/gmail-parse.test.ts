@@ -140,7 +140,30 @@ describe("parseGmailMessage", () => {
     assert.match(parsed.text, /97620170/);
     assert.equal(parsed.attachments.length, 1);
     assert.equal(parsed.attachments[0].filename, "confirmation.pdf");
+    assert.deepEqual(parsed.inlineMails, []);
     assert.ok(parsed.receivedAt);
+  });
+});
+
+describe("message imbriqué", () => {
+  it("garde un .eml sans nom de fichier", () => {
+    const parsed = parseGmailMessage({
+      id: "wrap",
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [{ name: "Subject", value: "" }],
+        parts: [
+          {
+            mimeType: "message/rfc822",
+            body: { attachmentId: "eml-1", size: 400 },
+          },
+        ],
+      },
+    });
+    assert.equal(parsed.subject, "");
+    assert.equal(parsed.attachments.length, 1);
+    assert.equal(parsed.attachments[0].filename, "message.eml");
+    assert.equal(parsed.attachments[0].mimeType, "message/rfc822");
   });
 });
 

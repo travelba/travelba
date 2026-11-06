@@ -5,7 +5,7 @@ export const SIGNATURE_IMAGE_BYTES = 20 * 1024;
 const SIGNATURE_NAME =
   /(?:^|[/\\])(?:image\d+|app\s*store|google\s*play|logo|signature|facebook|linkedin|twitter|instagram|spacer|pixel|icon)/i;
 
-const BOOKING_LABEL = /little-emperors|expedia|billet|cancellation|reservations-tba|cdsgroupe/i;
+const BOOKING_LABEL = /little-emperors|expedia|billet|cancellation|reservations-tba|cdsgroupe|(?:^|[^a-z])crm(?:[^a-z]|$)/i;
 
 export function dropInboundImage(file: {
   filename?: string | null;

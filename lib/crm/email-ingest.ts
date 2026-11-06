@@ -29,6 +29,7 @@ import {
 } from "@/lib/crm/ingest-file";
 import { clipEmailBody } from "@/lib/crm/email-source";
 import { classifyInboundMail, dropInboundImage } from "@/lib/crm/email-prefilter";
+import { isNestedMailFile, unfoldMail } from "@/lib/crm/nested-mail";
 import { isAgencySender, shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
 import { loadSentMailIndex, rememberSentMail } from "@/lib/crm/sent-mail";
 import { openThreadParent, sharesInboxGroup, type ThreadRow } from "@/lib/crm/email-thread";
@@ -634,17 +635,35 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
 
   const prepared: PreparedIngestFile[] = [];
   const stored: EmailIngestAttachment[] = [];
+  const mailNotes: IngestWarning[] = [];
   let count = 0;
+  const pushUnfolded = (name: string, raw: string | Uint8Array) => {
+    const unfolded = unfoldMail(raw);
+    if (!unfolded.texts.length && !unfolded.files.length) {
+      mailNotes.push({ file: name || "message.eml", message: "Le billet électronique n’a pas pu être lu." });
+      return;
+    }
+    if (unfolded.texts.length) {
+      prepared.push({ name: name || "billet.eml", type: "text/plain", text: unfolded.texts.join("\n\n") });
+    }
+    for (const file of unfolded.files) {
+      if (!isAllowedIngestType(file.mime, file.name)) continue;
+      prepared.push({ name: file.name, type: file.mime, bytes: file.bytes });
+    }
+  };
+  for (const raw of message.inlineMails || []) pushUnfolded("message.eml", raw);
   for (const att of message.attachments) {
     if (dropInboundImage(att)) continue;
     if (count >= MAX_INGEST_FILES) break;
-    if (!isAllowedIngestType(att.mimeType, att.filename)) continue;
+    const nested = isNestedMailFile(att.mimeType, att.filename);
+    if (!nested && !isAllowedIngestType(att.mimeType, att.filename)) continue;
     if (att.size && att.size > MAX_INGEST_BYTES) continue;
     const bytes = await getAttachmentBytes(row.gmail_message_id, att.attachmentId);
     if (!bytes.byteLength) continue;
     const saved = await storeAttachment(row.id, att.filename, att.mimeType, bytes);
     stored.push(saved);
-    prepared.push({ name: att.filename, type: att.mimeType, bytes });
+    if (nested) pushUnfolded(att.filename, bytes);
+    else prepared.push({ name: att.filename, type: att.mimeType, bytes });
     count += 1;
   }
 
@@ -672,13 +691,16 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
       .update({
         ...basePatch,
         status: "parsed",
-        warnings: [{ file: "email", message: "Aucun contenu exploitable." }],
+        warnings: mailNotes.length ? mailNotes : [{ file: "email", message: "Aucun contenu exploitable." }],
       })
       .eq("id", row.id);
+    const { organizeInboundMail } = await import("@/lib/crm/inbox-organize-run");
+    await organizeInboundMail(row.id);
     return;
   }
 
   const { extract, warnings } = await extractBookingFromPrepared(prepared);
+  warnings.push(...mailNotes);
   if (
     extract.document_status !== "identity" &&
     (isBookingCancellationLabel(row.label) ||
@@ -709,16 +731,19 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     });
     if (proposalError) console.error("[import] proposition non enregistrée");
   }
-  await foldParsedConfirmation(admin, row.id);
+  const { organizeInboundMail } = await import("@/lib/crm/inbox-organize-run");
+  await organizeInboundMail(row.id);
+  const { data: organized } = await admin.from("crm_email_ingest").select("status").eq("id", row.id).maybeSingle();
+  if (organized?.status !== "attached") await foldParsedConfirmation(admin, row.id);
 }
 
 async function foldParsedConfirmation(admin: Admin, rowId: string) {
   const { data: current } = await admin
     .from("crm_email_ingest")
-    .select("id, gmail_thread_id, confirmation_refs, grouped_into, received_at, extract")
+    .select("id, gmail_thread_id, confirmation_refs, grouped_into, received_at, extract, status")
     .eq("id", rowId)
     .maybeSingle();
-  if (!current) return false;
+  if (!current || current.status === "attached") return false;
   const { data: openRows } = await admin
     .from("crm_email_ingest")
     .select("id, gmail_thread_id, confirmation_refs, grouped_into, received_at, extract")

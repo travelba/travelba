@@ -5,9 +5,9 @@ description: >-
   parse → suggestions. La file garde tous ces mails. La notification ne part que pour une réponse à un envoi du CRM.
   Déposer les pièces et Mettre à jour, sur un dossier déjà ouvert, copient les
   fichiers sur la carte qui correspond (PNR, puis compagnie et trajet, puis
-  fournisseur) ou sur le dossier. Aucune carte n’est créée ni modifiée. Seul
-  Créer un dossier crée des cartes. Le parse ne crée
-  plus de dossier et n’applique plus le séjour. Use when touching Gmail webhook, cron
+  fournisseur) ou sur le dossier. Le parse, lui, constitue le séjour : fiche
+  s’il le faut (sans invitation), un seul dossier pour le même voyage, et les
+  cartes. Un .eml imbriqué ou un objet vide est lu. Use when touching Gmail webhook, cron
   gmail-ingest / gmail-watch-renew, email-match, cancellation mail, or a booking
   confirmation. Dropzone PDF/photos (relecture humaine) : travelba-document-ingest.
   Identity / MRZ : travelba-identity.
@@ -28,16 +28,9 @@ Le mail reste lié au dossier (`attached`).
 est le même geste que **Déposer les pièces** : les fichiers vont sur la carte
 qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le
 dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Il ne part
-jamais tout seul. **Créer un dossier** reste le seul clic qui crée des cartes
-(brouillon caché, sans invitation). Le connecteur fait ce clic avec
-`traiter_email` `creer_dossier` : la fiche est trouvée ou créée (sans e-mail
-si le billet n’en a pas ; sinon `client_id` ou `email`), le dossier reste caché,
-les cartes viennent du billet (aller-retour au même PNR : une carte à l’écran,
-une ligne par trajet) et les fichiers sont déposés. `rattacher` et
+jamais tout seul. **Créer un dossier** reste le clic manuel (brouillon caché, sans invitation). Le parse le fait aussi, tout seul, pour une confirmation lisible : fiche trouvée ou créée (sans e-mail si le billet n’en a pas), dossier caché, cartes du document (vol, hôtel, transfert, train, voiture). Un aller-retour au même PNR s’affiche en une carte, une ligne par trajet. Le même voyage (mêmes voyageurs, dates qui se chevauchent ou se suivent, y compris deux hôtels Hô Chi Minh puis Con Dao) rejoint le dossier déjà ouvert. Deux dossiers du même voyage sont réunis. Un dossier supprimé volontairement n’est pas recréé. Une annulation, un devis ou une pièce d’identité ne crée pas de dossier : la file le dit en français. Un billet illisible aussi. Aucun message, aucun prix de vente inventé. `traiter_email` `creer_dossier` reste le même clic. `rattacher` et
 `mettre_a_jour` ne créent toujours pas de carte. `lire_email` donne le corps,
 le texte des PDF et le billet déjà lu, sans numéro de passeport ni de carte.
-Le parse ne crée plus de fiche ni de
-dossier, et n’applique plus le séjour.
 
 Deux séjours vers la même ville, deux cartes du même type, une annulation sans
 référence, un devis ou une pièce d’identité restent dans la Boîte de réception
@@ -189,7 +182,7 @@ n’est pas la destination : le titre ne garde que la ville du séjour, pas le d
 
 Le clic **Créer un dossier** reste disponible (`persistNewBookingFromExtract`).
 
-Ne jamais créer depuis `matchAndStoreExtract`, le parse ou le rematch. E-mail
+Le parse constitue le séjour après `matchAndStoreExtract`. Le rematch ne le refait pas. E-mail
 extract seulement s’il n’est **pas** une boîte agence (`contact@travelba.fr`,
 `crm@travelba.fr`, `agence@`, `hello@`, `info@`, `CONTACT_FROM_EMAIL`), **pas** l’expéditeur du
 mail, **pas** un domaine fournisseur (Little Emperors, Expedia, Amadeus).
@@ -322,7 +315,7 @@ Contacts de l’hôtel : catalogue Little Emperors à l’affichage, pas l’adr
 
 Plusieurs références sur une carte : elle reste active dès qu’une est réservée. Le sync (cron, webhook) n’annule pas la carte parce qu’une référence est annulée, ne change pas la visibilité d’une carte réservée, et n’écrit ni le grand livre ni les coûts hôtel. Chaque statut ou visibilité qu’il change va dans `crm_audit_events` (source, avant, après). Une confirmation annulée ne s’ajoute pas à une carte qui a déjà une autre référence. Le geste agence qui annule vraiment la réservation chez Little Emperors retire le débit seulement si aucune référence de la carte n’est réservée.
 
-L’API (cron toutes les 30 minutes et webhook) crée le dossier quand aucun séjour n’est proposé et que le nom du voyageur désigne une seule fiche (`suggestCustomerFromExtract`, score ≥ 85). Visible si la réservation est réservée ou confirmée (la carte hôtel peut partir), sinon Non visible, sans invitation, carte avec `le_hotel_id` et les photos du catalogue. Le montant net n’est pas copié. Aucune fiche, homonymes, ex æquo, ligne ignorée ou réservation annulée : la file `/admin/little-emperors` attend, et aucune fiche n’est créée. Le clic Déposer les pièces dépose le PDF sur le dossier reconnu par la confirmation (`64570` = `64570SH046795`), sans toucher la carte. L’API, dans l’autre sens, relie le dossier né du mail et y pose `le_hotel_id`. Avant de créer, l’API rapproche aussi par l’hôtel (ou `le_hotel_id`), les dates exactes et le nom du voyageur, même si le numéro du mail n’est pas celui de l’API : les deux numéros restent sur la carte au clic Mettre à jour les cartes. Deux séjours possibles : rien n’est créé, la file attend. Un second passage ne recrée pas le dossier.
+L’API (cron toutes les 30 minutes et webhook) crée le dossier, ou l’ajoute au séjour déjà ouvert du même voyage (dates qui se suivent, même client), quand le nom du voyageur désigne une seule fiche (`suggestCustomerFromExtract`, score ≥ 85). La ville du nom d’hôtel prime sur une ville Little Emperors trop large (Con Dao, pas Vung Tau). Une réservation annulée ou en échec n’est pas importée sans forcer. Un dossier supprimé (`crm_booking_suppressions`) n’est pas recréé. Le dossier créé reste Non visible, même si la réservation est réservée ou confirmée, sans invitation, carte avec `le_hotel_id` et les photos du catalogue. Le montant net n’est pas copié. Aucune fiche, homonymes, ex æquo, ligne ignorée ou réservation annulée : la file `/admin/little-emperors` attend, et aucune fiche n’est créée. Le clic Déposer les pièces dépose le PDF sur le dossier reconnu par la confirmation (`64570` = `64570SH046795`), sans toucher la carte. L’API, dans l’autre sens, relie le dossier né du mail et y pose `le_hotel_id`. Avant de créer, l’API rapproche aussi par l’hôtel (ou `le_hotel_id`), les dates exactes et le nom du voyageur, même si le numéro du mail n’est pas celui de l’API : les deux numéros restent sur la carte au clic Mettre à jour les cartes. Deux séjours possibles : rien n’est créé, la file attend. Un second passage ne recrée pas le dossier.
 
 ## Interdits
 

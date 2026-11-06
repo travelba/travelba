@@ -48,6 +48,8 @@ export type ParsedGmailMessage = {
   text: string;
   html: string;
   attachments: GmailAttachmentRef[];
+  /** Corps des messages imbriqués déjà présents dans le payload (pas un attachmentId). */
+  inlineMails: string[];
   /** En-tête Auto-Submitted présent et différent de « no ». */
   autoSubmitted: boolean;
   /** Identifiant RFC du message, avec chevrons quand il est présent. */
@@ -175,17 +177,33 @@ export function collectAttachments(
   const consider = (p: GmailPart) => {
     const attachmentId = p.body?.attachmentId;
     const filename = (p.filename || "").trim();
-    if (!attachmentId || !filename) return;
+    const nested = (p.mimeType || "").toLowerCase().includes("message/rfc822") || filename.toLowerCase().endsWith(".eml");
+    if (!attachmentId || (!filename && !nested)) return;
     if (seen.has(attachmentId)) return;
     seen.add(attachmentId);
     out.push({
-      filename,
-      mimeType: p.mimeType || "application/octet-stream",
+      filename: filename || "message.eml",
+      mimeType: p.mimeType || (nested ? "message/rfc822" : "application/octet-stream"),
       attachmentId,
       size: p.body?.size || 0,
     });
   };
   walkParts(payload, consider);
+  return out;
+}
+
+/** message/rfc822 déjà décodable dans le payload, sans second appel Gmail. */
+export function collectInlineRfc822(payload: GmailMessagePayload | undefined): string[] {
+  const out: string[] = [];
+  const consider = (mime?: string, filename?: string, data?: string, attachmentId?: string) => {
+    if (attachmentId || !data) return;
+    const nested = (mime || "").toLowerCase().includes("message/rfc822") || (filename || "").toLowerCase().endsWith(".eml");
+    if (!nested) return;
+    const text = decodeBase64Url(data).trim();
+    if (text) out.push(text);
+  };
+  consider(payload?.mimeType, payload?.filename, payload?.body?.data, payload?.body?.attachmentId);
+  walkParts(payload, (part) => consider(part.mimeType, part.filename, part.body?.data, part.body?.attachmentId));
   return out;
 }
 
@@ -210,6 +228,7 @@ export function parseGmailMessage(raw: RawGmailMessage): ParsedGmailMessage {
     text: collectBodyText(payload),
     html: collectBodyHtml(payload),
     attachments: collectAttachments(payload),
+    inlineMails: collectInlineRfc822(payload),
     autoSubmitted: autoSubmittedHeader(payload?.headers),
     messageId: headerValue(payload?.headers, "Message-ID"),
     inReplyTo: headerValue(payload?.headers, "In-Reply-To"),

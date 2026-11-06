@@ -341,6 +341,62 @@ test("une réservation annulée ou en échec, ou déjà liée, est refusée", as
   assert.equal(leImportBlocked("booked"), null);
 });
 
+test("deux hôtels qui se suivent restent sur un seul dossier, Con Dao et non Vung Tau", async () => {
+  const { calls, deps } = harness(
+    [
+      stay({
+        id: "le-con-dao",
+        le_booking_id: 22,
+        confirmation_number: "24829335",
+        hotel_name: "Six Senses Con Dao",
+        city: "Vung Tau",
+        check_in: "2026-12-21",
+        check_out: "2026-12-24",
+        hotel_id: 88,
+      }),
+    ],
+    {
+      crm_bookings: [
+        {
+          id: DOSSIER,
+          reference: "TB-2026-0148",
+          customer_id: CLIENT,
+          status: "draft",
+          visible_to_client: false,
+          start_date: "2026-12-18",
+          end_date: "2026-12-21",
+          title: "Hô Chi Minh",
+          destination: "Hô Chi Minh",
+        },
+      ],
+    }
+  );
+  const result = await importLittleEmperorsReservations({ ids: ["le-con-dao"], customerId: CLIENT }, deps);
+  assert.equal(result.cree, false);
+  assert.equal(result.dossier_id, DOSSIER);
+  assert.equal(result.visible_client, false);
+  assert.equal(result.message, false);
+  assert.equal(calls.persist.length, 0);
+  assert.equal(calls.apply.length, 1);
+  assert.equal(calls.apply[0].bookingId, DOSSIER);
+  assert.equal(calls.apply[0].visibleToClient, false);
+  assert.equal(calls.apply[0].extract.items[0]?.details?.city, "Con Dao");
+  assert.equal(calls.apply[0].extract.items[0]?.amount, null);
+  assert.doesNotMatch(calls.apply[0].extract.title || "", /Vung Tau/i);
+});
+
+test("une réservation supprimée volontairement n’est pas recréée", async () => {
+  const { calls, deps } = harness([stay()], {
+    crm_booking_suppressions: [{ reference: "TB-2026-0147", confirmation_refs: ["LE100"], le_booking_ids: [] }],
+  });
+  await assert.rejects(
+    () => importLittleEmperorsReservations({ ids: ["le-1"], customerId: CLIENT }, deps),
+    (err: unknown) => err instanceof LittleEmperorsError && /supprimé/.test(err.message)
+  );
+  assert.equal(calls.persist.length, 0);
+  assert.equal(calls.apply.length, 0);
+});
+
 test("forcer importe une annulation, et le même dossier ne recrée pas la carte", async () => {
   const forced = harness([stay({ state: "cancelled" })]);
   const created = await importLittleEmperorsReservations(

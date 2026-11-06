@@ -10,11 +10,13 @@ import {
   type TripBooking,
 } from "@/lib/crm/email-match";
 import { joinConfirmationRefs } from "@/lib/crm/item-match";
+import { stayCityFromHotel } from "@/lib/crm/city-names";
 import { catalogNameAgrees, roomsFromStay } from "@/lib/crm/hotel-gallery";
 import { leIncludedLines, leRoomLabels } from "@/lib/crm/le-included";
 import { emptyBookingExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import {
   isLeCancelled,
+  isLeFailed,
   splitGuestName,
   type LeBooking,
 } from "@/lib/crm/little-emperors";
@@ -27,12 +29,13 @@ type CustomerLite = Pick<CrmCustomer, "id" | "first_name" | "last_name" | "compa
 /** Extract minimal pour réutiliser le rapprochement e-mail. Pas de prix vendu, pas de téléphone. */
 export function leBookingExtract(booking: LeBooking): BookingExtract {
   const extract = emptyBookingExtract();
-  extract.destination = booking.city || "";
+  const city = stayCityFromHotel(booking.hotel_name, booking.city);
+  extract.destination = city;
   extract.start_date = booking.check_in || "";
   extract.end_date = booking.check_out || "";
   extract.currency = booking.currency || "EUR";
   extract.total_amount = null;
-  extract.title = booking.city || "";
+  extract.title = city;
   const people = booking.guest_names
     .map(splitGuestName)
     .filter((person): person is { first_name: string; last_name: string } => Boolean(person));
@@ -62,7 +65,7 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
       include_in_ledger: false,
       details: {
         hotel_name: booking.hotel_name,
-        city: booking.city,
+        city,
         address: booking.address,
         website: booking.website,
         le_hotel_id: booking.hotel_id,
@@ -97,7 +100,7 @@ export function decideLittleEmperorsAuto(input: {
   ignored?: boolean;
 }): LeAutoDecision {
   if (input.linkedBookingId) return { kind: "link", bookingId: input.linkedBookingId };
-  if (input.ignored || isLeCancelled(input.booking.state)) return { kind: "wait" };
+  if (input.ignored || isLeCancelled(input.booking.state) || isLeFailed(input.booking.state)) return { kind: "wait" };
   if (input.suggestion.autoBookingId) return { kind: "link", bookingId: input.suggestion.autoBookingId };
   if (input.suggestion.candidates.length) return { kind: "wait" };
   const customer = suggestCustomerFromExtract(input.customers, leBookingExtract(input.booking));

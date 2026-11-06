@@ -3,6 +3,7 @@ import { clearBookingCharges } from "@/lib/crm/bookings";
 import { listCrmFiles, removeCrmFiles } from "@/lib/crm/files";
 import { bookingFilePrefixes, exclusiveStoragePaths, isUuid } from "@/lib/crm/ids";
 import { pliantIdFromStayState } from "@/lib/crm/le-stay-card";
+import { recordBookingSuppression } from "@/lib/crm/booking-suppression";
 
 export class BookingDeleteError extends Error {
   status: number;
@@ -67,6 +68,27 @@ export async function deleteMistakenBooking(bookingId: string, admin = createSer
     .maybeSingle();
   if (loadError) throw new BookingDeleteError(loadError.message, 500);
   if (!booking) throw new BookingDeleteError("Réservation introuvable", 404);
+
+  const [{ data: itemRefs }, { data: leRows }] = await Promise.all([
+    admin.from("crm_booking_items").select("confirmation_ref").eq("booking_id", bookingId),
+    admin.from("crm_le_bookings").select("confirmation_number, le_booking_id").eq("crm_booking_id", bookingId),
+  ]);
+  const confirmationRefs = [
+    ...((itemRefs || []) as { confirmation_ref?: string | null }[]).map((row) => row.confirmation_ref || ""),
+    ...((leRows || []) as { confirmation_number?: string | null }[]).map((row) => row.confirmation_number || ""),
+  ];
+  const leBookingIds = ((leRows || []) as { le_booking_id?: number | null }[])
+    .map((row) => Number(row.le_booking_id))
+    .filter((id) => Number.isInteger(id));
+  try {
+    await recordBookingSuppression(admin, {
+      reference: (booking.reference as string | null) || null,
+      confirmationRefs,
+      leBookingIds,
+    });
+  } catch (err) {
+    throw new BookingDeleteError(err instanceof Error ? err.message : "La suppression du dossier n’a pas pu être retenue.", 500);
+  }
 
   const [{ data: bookingCards }, { data: registry }, { data: stays }] = await Promise.all([
     admin.from("crm_booking_cards").select("pliant_card_id, status").eq("booking_id", bookingId),

@@ -15,6 +15,9 @@ const AIRPORTS: { re: RegExp; iata: string; city: string }[] = [
   { re: /ENRIQUE MALEK/i, iata: "DAV", city: "David" },
   { re: /TOCUMEN/i, iata: "PTY", city: "Panama" },
   { re: /CHARLES-DE-GAULLE|CHARLES DE GAULLE/i, iata: "CDG", city: "Paris" },
+  { re: /TAN SON NHAT|HO CHI MINH|SAIGON|SAÏGON|\bSGN\b/i, iata: "SGN", city: "Hô Chi Minh" },
+  { re: /CON DAO|CON SON|CO ONG|\bVCS\b/i, iata: "VCS", city: "Con Dao" },
+  { re: /PHU QUOC|DUONG DONG|\bPQC\b/i, iata: "PQC", city: "Phu Quoc" },
   { re: /\bORLY\b/i, iata: "ORY", city: "Paris" },
   { re: /TEL AVIV|BEN GOURION|BEN GURION/i, iata: "TLV", city: "Tel Aviv" },
   { re: /MAKTOUM|WORLD CENTRAL/i, iata: "DWC", city: "Dubaï" },
@@ -300,6 +303,31 @@ export function parseAmadeusFlights(text: string): ParsedAmadeusFlight[] {
 
 export function parseAmadeusReceipt(text: string): ParsedAmadeusFlight | null {
   return parseAmadeusFlights(text)[0] || null;
+}
+
+function stripCourtesy(value: string) {
+  return value
+    .replace(/\b(MR|MRS|MS|MISS|MSTR|CHD|INF|MME|MLLE)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Passager d’un e-ticket : « BERDA/DAVID MR » ou « Passager : BERDA/DAVID ». */
+export function parseTicketPassengers(text: string): { first_name: string; last_name: string }[] {
+  const re =
+    /(?:passager|passenger|voyageur|billet [eé]lectronique)\s*:?\s*([A-Z][A-Z' -]{1,40})\/([A-Z][A-Z' -]{1,40})/gi;
+  const out: { first_name: string; last_name: string }[] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(re)) {
+    const last = titleCasePerson(stripCourtesy(match[1] || ""));
+    const first = titleCasePerson(stripCourtesy(match[2] || ""));
+    if (!first || !last) continue;
+    const key = `${first.toLowerCase()}|${last.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ first_name: first, last_name: last });
+  }
+  return out;
 }
 
 function titleCasePerson(value: string) {
@@ -1791,8 +1819,12 @@ export function parsedItemsFromText(text: string): {
     destination = transavia.destination;
     status = "confirmed";
   }
-  for (const flight of parseAmadeusFlights(clean)) {
+  const amadeus = parseAmadeusFlights(clean);
+  for (const flight of amadeus) {
     items.push(withDocumentPrice(flightToItem(flight), money));
+  }
+  if (amadeus.length && !travelers.length) {
+    travelers = parseTicketPassengers(clean);
   }
   const maeva = parseMaevaStay(clean);
   if (maeva) {

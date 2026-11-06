@@ -400,6 +400,17 @@ describe("little emperors staging client", () => {
     });
     assert.equal(fuzzy.kind, "wait");
 
+    const failed = parseLeBooking({ ...sample, state: "failed" });
+    assert.ok(failed);
+    assert.equal(
+      decideLittleEmperorsAuto({
+        booking: failed,
+        suggestion: { autoBookingId: null, candidates: [] },
+        customers: [nico],
+      }).kind,
+      "wait"
+    );
+
     const cancelled = parseLeBooking({ ...sample, state: "cancelled" });
     assert.ok(cancelled);
     assert.equal(

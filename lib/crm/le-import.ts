@@ -8,6 +8,7 @@ import type { BookingExtract } from "@/lib/crm/ingest-types";
 import {
   benefitsFromLeRaw,
   isLeCancelled,
+  isLeFailed,
   leCreatedDossierStatus,
   leDateOnly,
   LittleEmperorsError,
@@ -17,6 +18,8 @@ import {
 } from "@/lib/crm/little-emperors";
 import { parseMoney } from "@/lib/crm/money";
 import { foldName, namesReferToSamePerson } from "@/lib/crm/person-match";
+import { loadSuppressions, suppressionMatches, SUPPRESSED_DOSSIER } from "@/lib/crm/booking-suppression";
+import { incomingTrip, reunionPlan, tripDossierFromRows, type TripDossier, type TripPerson } from "@/lib/crm/trip-match";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -89,6 +92,7 @@ export type LeImportDeps = {
   refresh?: (bookingId: string) => Promise<void>;
   rememberHotel?: (hotelId: number, bookingId: string) => Promise<void>;
   deleteBooking?: (bookingId: string) => Promise<void>;
+  merge?: (keepId: string, dropId: string) => Promise<{ ok: boolean; message: string | null }>;
 };
 
 function fail(message: string, status: number, code: string): never {
@@ -116,10 +120,7 @@ function stringList(value: unknown): string[] {
 /** Annulée ou en échec : l’import attend `forcer`. */
 export function leImportBlocked(state: string | null | undefined): "annulee" | "echec" | null {
   if (isLeCancelled(state)) return "annulee";
-  const value = String(state || "")
-    .trim()
-    .toLowerCase();
-  if (value === "failed" || value === "failure" || value === "booking_failed") return "echec";
+  if (isLeFailed(state)) return "echec";
   return null;
 }
 
@@ -410,6 +411,68 @@ async function defaultDelete(bookingId: string) {
   await deleteBookingById(bookingId);
 }
 
+async function defaultMerge(admin: Admin, keepId: string, dropId: string) {
+  const { mergeDossierInto } = await import("@/lib/crm/dossier-merge");
+  return mergeDossierInto(admin, keepId, dropId);
+}
+
+async function openTripsForCustomer(admin: Admin, holder: Person & { id: string }): Promise<TripDossier[]> {
+  const { data, error } = await admin
+    .from("crm_bookings")
+    .select("id, reference, title, destination, customer_id, status, start_date, end_date, visible_to_client, archived_at")
+    .eq("customer_id", holder.id);
+  if (error) fail("Dossier introuvable.", 500, "dossier");
+  const bookings = ((data || []) as {
+    id: string;
+    reference: string | null;
+    title: string | null;
+    destination: string | null;
+    customer_id: string | null;
+    status: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    visible_to_client?: boolean | null;
+    archived_at?: string | null;
+  }[]).filter((row) => row.status !== "cancelled" && !row.archived_at);
+  const ids = bookings.map((row) => row.id);
+  const itemsById = new Map<string, { booking_id: string; kind?: string | null; title?: string | null; start_at?: string | null; end_at?: string | null; details?: Record<string, unknown> | null; lifecycle?: string | null }[]>();
+  const peopleById = new Map<string, TripPerson[]>();
+  for (const id of ids) {
+    peopleById.set(id, [{ first_name: holder.first_name, last_name: holder.last_name }]);
+  }
+  if (ids.length) {
+    const [{ data: items }, { data: travelers }] = await Promise.all([
+      admin
+        .from("crm_booking_items")
+        .select("booking_id, kind, title, start_at, end_at, details, lifecycle")
+        .in("booking_id", ids),
+      admin.from("crm_booking_travelers").select("booking_id, first_name, last_name").in("booking_id", ids),
+    ]);
+    for (const item of items || []) {
+      const list = itemsById.get(item.booking_id) || [];
+      list.push(item);
+      itemsById.set(item.booking_id, list);
+    }
+    for (const traveler of travelers || []) {
+      const list = peopleById.get(traveler.booking_id) || [];
+      list.push({ first_name: traveler.first_name || "", last_name: traveler.last_name || "" });
+      peopleById.set(traveler.booking_id, list);
+    }
+  }
+  return bookings.map((booking) =>
+    tripDossierFromRows({
+      booking: {
+        ...booking,
+        reference: booking.reference || "",
+        title: booking.title || "",
+        destination: booking.destination || "",
+      },
+      items: itemsById.get(booking.id) || [],
+      people: peopleById.get(booking.id) || [],
+    })
+  );
+}
+
 /**
  * Crée un dossier Non visible, ou rattache les réservations à un dossier déjà ouvert.
  * Aucune invitation, aucun message. Un dossier déjà Visible n’est pas recaché.
@@ -420,7 +483,7 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
   const stored = await rowsOf(admin);
   const picked = pickRows(stored, input);
   if (!picked.length) fail("Indiquez la référence Little Emperors.", 422, "reference");
-  const target = input.dossierId
+  let target = input.dossierId
     ? await dossierBy(admin, "id", input.dossierId)
     : input.dossierReference
       ? await dossierBy(admin, "reference", input.dossierReference)
@@ -467,6 +530,31 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
   ]);
   const extracts = pending.map((row, index) => leImportExtract(row.booking, index === 0 ? extras : [], input.force));
   const merged = mergeExtracts(extracts);
+  let mergeIds: string[] = [];
+  if (!target) {
+    const refs = pending.flatMap((row) => bookingRefs(row.booking).filter((ref): ref is string => Boolean(ref)));
+    const leIds = pending
+      .map((row) => Number(row.le_booking_id))
+      .filter((id) => Number.isInteger(id));
+    const suppressions = await loadSuppressions(admin);
+    if (suppressions.some((row) => suppressionMatches(row, refs, leIds))) {
+      fail(SUPPRESSED_DOSSIER, 409, "suppressed");
+    }
+    const open = await openTripsForCustomer(admin, {
+      id: holder.id,
+      first_name: holder.first_name || "",
+      last_name: holder.last_name || "",
+    });
+    const reunion = reunionPlan(incomingTrip(merged, holder.id), open);
+    if (reunion.hold) fail(reunion.hold, 409, "ambiguous");
+    if (reunion.keeper) {
+      const found = await dossierBy(admin, "id", reunion.keeper.id);
+      if (found && found.customer_id === holder.id) {
+        target = found;
+        mergeIds = reunion.mergeIds.filter((id) => id !== found.id);
+      }
+    }
+  }
   const persist = deps.persist ?? defaultPersist;
   const apply = deps.apply ?? defaultApply;
   const createdStatus = leCreatedDossierStatus(pending[0]?.booking.state);
@@ -502,6 +590,13 @@ export async function importLittleEmperorsReservations(input: LeImportInput, dep
       visibleToClient: false,
       keepSellingPrice: true,
     });
+  }
+  if (mergeIds.length) {
+    const merge = deps.merge ?? ((keepId: string, dropId: string) => defaultMerge(admin, keepId, dropId));
+    for (const dropId of mergeIds) {
+      const mergedDossier = await merge(dossierId, dropId);
+      if (!mergedDossier.ok && mergedDossier.message) fail(mergedDossier.message, 409, "merge");
+    }
   }
   try {
     for (const row of pending) {
