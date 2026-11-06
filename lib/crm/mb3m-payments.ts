@@ -311,6 +311,7 @@ export async function applyMb3mPaymentPlans(
       continue;
     }
     try {
+      if (plan.alreadyMatched && plan.matched <= CENT) continue;
       let number = plan.existingNumber || savedNumbers.get(plan.credit.id) || null;
       const statut: Mb3mReglement["statut"] = number ? "deja_dans_mb3m" : "envoye";
       if (!number) {
