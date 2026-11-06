@@ -20,7 +20,7 @@ Status on screen: **En cours / In progress**, **Confirmée / Success**, **Échou
 2. Set arrival and departure. Click **Chercher**.
 3. On Conrad Los Angeles, click **Voir les tarifs**. Choose one rate (same room type for both rooms). Click **Pré-réserver**.
 4. If the champagne box says the price rose, tick **Continuer avec ce prix**.
-5. Enter a real adult first and last name in each room. Leave **Scénario bac à sable** on **Réservation normale**.
+5. Enter a phone of at least 5 characters, then a real adult first and last name in each room. Leave **Scénario bac à sable** on **Réservation normale**.
 6. Click **Réserver**. If a second box shows the form amount, click **Confirmer et réserver**.
 7. Wait until **Confirmée / Success**. Record `partner_order_id`.
 

@@ -3,6 +3,7 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CERTIFICATION_HOTELS } from "@/lib/crm/ratehawk/catalog";
 import { certificationEnvironmentAllowed, safeConfig } from "@/lib/crm/ratehawk/config";
+import { validateUserPhone } from "@/lib/crm/ratehawk/limits";
 import { ratehawkDb } from "@/lib/crm/ratehawk/store";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -48,6 +49,7 @@ export default async function AdminRatehawkPage() {
           orders={orders}
           mappedHotels={mapped}
           linkDossier={!cert}
+          agencyPhone={config?.agencyPhone && !validateUserPhone(config.agencyPhone) ? config.agencyPhone.trim() : ""}
         />
       </div>
     </div>

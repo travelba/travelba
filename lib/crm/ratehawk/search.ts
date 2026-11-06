@@ -1,7 +1,7 @@
 import type { RatehawkConfig } from "./config";
 import { etgPost, type EtgCall } from "./client";
 import {
-  imageUrl,
+  collectImageUrls,
   matchRoomGroup,
   mealLabel,
   partitionTaxes,
@@ -23,12 +23,6 @@ export type SearchInput = {
   timeout: number;
 };
 
-export type HotelCard = {
-  hid: number;
-  name: string;
-  region_id: number | null;
-  rates: ShownRate[];
-};
 
 export type ShownRate = {
   book_hash: string;
@@ -48,6 +42,14 @@ export type ShownRate = {
   rg_ext: RgExt | null;
   room_images: string[];
   room_amenities: string[];
+};
+
+export type HotelCard = {
+  hid: number;
+  name: string;
+  region_id: number | null;
+  rates: ShownRate[];
+  images: string[];
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -120,7 +122,7 @@ export function normalizeRate(
     penalties: penaltyLines(policies, payment.cancellation_penalties?.free_cancellation_before, price.currency || String(payment.show_currency_code || payment.currency_code)),
     free_cancellation_before: payment.cancellation_penalties?.free_cancellation_before || null,
     rg_ext: rg,
-    room_images: (group?.images || []).flatMap((item) => (typeof item === "string" ? [imageUrl(item)] : [])),
+    room_images: collectImageUrls([group?.images, group?.images_ext], 4),
     room_amenities: group?.room_amenities || [],
   };
 }
@@ -157,6 +159,7 @@ export function normalizeHotels(
       hid,
       name: String(row.name || row.id || `Hôtel ${hid}`),
       region_id: row.region_id == null ? null : Number(row.region_id) || null,
+      images: collectImageUrls(row.images_ext ?? row.images, 8),
       rates: lowest(rates, rateLimit),
     });
   }

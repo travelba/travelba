@@ -1,7 +1,9 @@
 import { RatehawkConfigError, safeConfig } from "@/lib/crm/ratehawk/config";
+import { preferHotelImages } from "@/lib/crm/ratehawk/display";
 import { ratehawkJson, staffOrResponse } from "@/lib/crm/ratehawk/http";
 import { validateStay, type RoomGuests } from "@/lib/crm/ratehawk/limits";
-import { searchGeo, searchHids, searchRegion } from "@/lib/crm/ratehawk/search";
+import { searchGeo, searchHids, searchRegion, type HotelCard } from "@/lib/crm/ratehawk/search";
+import { ratehawkDb } from "@/lib/crm/ratehawk/store";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
     if (body.mode === "region") {
       if (!Number.isInteger(body.region_id)) return ratehawkJson({ error: "Choisissez une destination." }, 400);
       const result = await searchRegion(input, body.region_id as number, config);
-      return ratehawkJson({ hotels: result.hotels, error: result.call.error });
+      return ratehawkJson({ hotels: await withStoredImages(result.hotels), error: result.call.error });
     }
     if (body.mode === "geo") {
       if (typeof body.latitude !== "number" || typeof body.longitude !== "number") {
@@ -52,12 +54,35 @@ export async function POST(request: Request) {
       }
       const radius = Math.min(70_000, Math.max(1, Math.trunc(body.radius || 5_000)));
       const result = await searchGeo(input, body.latitude, body.longitude, radius, config);
-      return ratehawkJson({ hotels: result.hotels, error: result.call.error });
+      return ratehawkJson({ hotels: await withStoredImages(result.hotels), error: result.call.error });
     }
     const result = await searchHids(input, body.hids || [], config);
-    return ratehawkJson({ hotels: result.hotels, error: result.call.error });
+    return ratehawkJson({ hotels: await withStoredImages(result.hotels), error: result.call.error });
   } catch (caught) {
     const message = caught instanceof RatehawkConfigError ? caught.message : "La recherche Ratehawk a échoué.";
     return ratehawkJson({ error: message }, 502);
+  }
+}
+
+/** Vignette : la colonne `images`, sinon `images_ext` du contenu déjà stocké. */
+async function withStoredImages(hotels: HotelCard[]): Promise<HotelCard[]> {
+  if (!hotels.length) return hotels;
+  try {
+    const { data } = await ratehawkDb()
+      .from("crm_ratehawk_hotels")
+      .select("hid, images, images_ext:raw->images_ext")
+      .in("hid", hotels.map((hotel) => hotel.hid));
+    const photos = new Map<number, string[]>();
+    for (const row of data || []) {
+      const hid = Number(row.hid);
+      const urls = preferHotelImages(row.images, row.images_ext, 1);
+      if (urls.length) photos.set(hid, urls);
+    }
+    return hotels.map((hotel) => ({
+      ...hotel,
+      images: photos.get(hotel.hid) || hotel.images.slice(0, 1),
+    }));
+  } catch {
+    return hotels.map((hotel) => ({ ...hotel, images: hotel.images.slice(0, 1) }));
   }
 }

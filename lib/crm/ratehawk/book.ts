@@ -17,9 +17,11 @@ import { normalizeHotels, type ShownRate } from "./search";
 import { ratehawkDb } from "./store";
 import {
   assertSandboxScenario,
+  bookingUser,
   guestsPayload,
   scenarioOrNull,
   validateBookingGuests,
+  validateUserPhone,
   type FinishGuest,
   type RoomGuests,
 } from "./limits";
@@ -69,6 +71,7 @@ type BookInput = {
   scenario: string | null;
   dossier: string | null;
   userIp: string;
+  phone: string;
   partnerOrderId?: string | null;
 };
 
@@ -133,8 +136,7 @@ function bookingRow(
 function finishBody(config: RatehawkConfig, input: BookInput, quote: RateQuote, partnerOrderId: string, payment: FormPayment) {
   const net = moneyNumber(quote.show_amount);
   const sell = net == null ? null : sellFromNet(net, config.marginPercent);
-  const user: Record<string, string> = { email: config.agencyEmail };
-  if (config.agencyPhone) user.phone = config.agencyPhone;
+  const user = bookingUser(config.agencyEmail, input.phone);
   const partner: Record<string, string> = { partner_order_id: partnerOrderId };
   if (sell != null && quote.show_currency_code === payment.currency_code) partner.amount_sell_b2b2c = sell.toFixed(2);
   return {
@@ -183,6 +185,8 @@ export async function startBooking(input: BookInput, supabase = ratehawkDb(), co
   if (scenarioError) return { ok: false as const, status: "failed" as const, error: scenarioError };
   const names = validateBookingGuests(input.rooms, input.searched);
   if (names) return { ok: false as const, status: "failed" as const, error: names };
+  const phoneError = validateUserPhone(input.phone);
+  if (phoneError) return { ok: false as const, status: "failed" as const, error: phoneError };
   const quote = readQuote(input.quoteToken, config);
   if (!quote || quote.hid !== input.hid) {
     return { ok: false as const, status: "failed" as const, error: "Le tarif pré-réservé a expiré. Reprenez la fiche hôtel." };

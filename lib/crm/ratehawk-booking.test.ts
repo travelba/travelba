@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { newPartnerOrderId } from "./ratehawk/client";
 import { loadRatehawkConfig, RatehawkConfigError } from "./ratehawk/config";
-import { formatUtcInParis, mealLabel, metapolicyLines, partitionTaxes, penaltyLines, rgExtEqual } from "./ratehawk/display";
-import { validateBookingGuests, validateStay, validPersonName } from "./ratehawk/limits";
+import { collectImageUrls, formatUtcInParis, mealLabel, metapolicyLines, partitionTaxes, penaltyLines, preferHotelImages, rgExtEqual } from "./ratehawk/display";
+import { bookingUser, guestsPayload, validateBookingGuests, validateStay, validateUserPhone, validPersonName } from "./ratehawk/limits";
 import {
   applyCutoff,
   decideBookingFinish,
@@ -46,6 +46,34 @@ test("limites de recherche : chambres, âges, nuits, horizon, résidence, hids",
   assert.match(validateStay(stay({ checkin: "2028-11-01", checkout: "2028-11-03" }), today) || "", /730/);
   assert.match(validateStay(stay({ hids: Array.from({ length: 301 }, (_, index) => index + 1) }), today) || "", /300/);
   assert.equal(validateStay(stay({ hids: [10004834, 8819557] }), today), null);
+  assert.equal(validateStay(stay({ guests: [{ adults: 2, children: [0, 17] }] }), today), null);
+});
+
+test("le téléphone de réservation part dans user.phone, 5 caractères au moins", () => {
+  assert.match(validateUserPhone("") || "", /5 caractères/);
+  assert.match(validateUserPhone("1234") || "", /5 caractères/);
+  assert.equal(validateUserPhone("12345"), null);
+  assert.equal(validateUserPhone("  +33 6 12 34 56 78  "), null);
+  assert.match(validateUserPhone("1".repeat(36)) || "", /35/);
+  assert.deepEqual(bookingUser("agence@travelba.fr", "  +33123456789 "), { email: "agence@travelba.fr", phone: "+33123456789" });
+  assert.deepEqual(
+    guestsPayload([{ guests: [{ first_name: "Ada", last_name: "Martin" }, { first_name: "Lina", last_name: "Martin", is_child: true, age: 0 }] }]),
+    [{ guests: [{ first_name: "Ada", last_name: "Martin" }, { first_name: "Lina", last_name: "Martin", is_child: true, age: 0 }] }]
+  );
+});
+
+test("les photos d’hôtel viennent de images ou de images_ext", () => {
+  const template = "https://cdn.worldota.net/t/{size}/content/abc.jpeg";
+  const sized = "https://cdn.worldota.net/t/640x400/content/abc.jpeg";
+  assert.deepEqual(collectImageUrls([template, { url: template }]), [sized]);
+  assert.deepEqual(preferHotelImages([], [{ url: template }]), [sized]);
+  assert.deepEqual(preferHotelImages([template], [{ url: "https://cdn.worldota.net/t/{size}/other.jpeg" }]), [sized]);
+  const body = searchBody(
+    { checkin: "2026-11-20", checkout: "2026-11-22", residency: "mc", guests: [{ adults: 2, children: [0, 17] }], currency: "EUR", timeout: 30 },
+    { hid: 10004834 },
+    "en"
+  );
+  assert.deepEqual(body.guests, [{ adults: 2, children: [0, 17] }]);
 });
 
 test("au moins un adulte réel par chambre, enfants nommés seulement s’ils sont vrais", () => {

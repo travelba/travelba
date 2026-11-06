@@ -61,7 +61,8 @@ export function rgExtEqual(left: RgExt | null | undefined, right: RgExt | null |
 export type RoomGroupStatic = {
   name?: string;
   rg_ext?: RgExt;
-  images?: unknown[];
+  images?: unknown;
+  images_ext?: unknown;
   room_amenities?: string[];
 };
 
@@ -158,6 +159,38 @@ export function penaltyLines(
 
 export function imageUrl(template: string) {
   return template.replace("{size}", "640x400");
+}
+
+/** Photos ETG : chaîne `{size}`, ou objet `{ url }` (`images` et `images_ext`). */
+export function collectImageUrls(value: unknown, limit = 12): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: unknown) => {
+    if (urls.length >= limit || raw == null) return;
+    if (Array.isArray(raw)) {
+      for (const item of raw) push(item);
+      return;
+    }
+    let template = "";
+    if (typeof raw === "string") template = raw.trim();
+    else if (typeof raw === "object") {
+      const row = raw as Record<string, unknown>;
+      const candidate = row.url ?? row.tmpl ?? row.src;
+      if (typeof candidate === "string") template = candidate.trim();
+    }
+    if (!template || seen.has(template)) return;
+    seen.add(template);
+    urls.push(imageUrl(template));
+  };
+  push(value);
+  return urls;
+}
+
+/** La colonne `images` prime. Sinon les photos du contenu sont dans `images_ext`. */
+export function preferHotelImages(stored: unknown, extended: unknown, limit = 12) {
+  const fromColumn = collectImageUrls(stored, limit);
+  if (fromColumn.length) return fromColumn;
+  return collectImageUrls(extended, limit);
 }
 
 export function metapolicyLines(struct: unknown, extra: unknown): string[] {

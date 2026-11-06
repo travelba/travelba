@@ -134,6 +134,21 @@ export function validateBookingGuests(rooms: { guests: FinishGuest[] }[], search
   return null;
 }
 
+export const USER_PHONE_MIN = 5;
+export const USER_PHONE_MAX = 35;
+
+/** `user.phone` ETG : obligatoire, 5 à 35 caractères. */
+export function validateUserPhone(value: string | null | undefined): string | null {
+  const phone = (value || "").trim();
+  if (phone.length < USER_PHONE_MIN) return "Le téléphone doit compter au moins 5 caractères.";
+  if (phone.length > USER_PHONE_MAX) return "Le téléphone dépasse 35 caractères.";
+  return null;
+}
+
+export function bookingUser(email: string, phone: string) {
+  return { email, phone: phone.trim() };
+}
+
 export function guestsPayload(rooms: { guests: FinishGuest[] }[]) {
   return rooms.map((room) => ({
     guests: room.guests.map((guest) => {

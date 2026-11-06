@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PAGE_POLL_MS, pollRunsWhileVisible } from "@/lib/crm/page-poll";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { fieldControlClass, Field } from "@/components/crm/fields";
 import { CERTIFICATION_HOTELS } from "@/lib/crm/ratehawk/catalog";
-import type { RoomGuests } from "@/lib/crm/ratehawk/limits";
+import { validateUserPhone, type RoomGuests } from "@/lib/crm/ratehawk/limits";
 
 type Destination =
   | { kind: "region"; id: number; name: string; country_code: string | null }
@@ -28,7 +28,82 @@ type ShownRate = {
   needs_card: boolean;
 };
 
-type HotelCard = { hid: number; name: string; rates: ShownRate[] };
+type HotelCard = { hid: number; name: string; rates: ShownRate[]; images?: string[] };
+
+const CHILD_AGES = Array.from({ length: 18 }, (_, age) => age);
+
+function childAgeLabel(age: number) {
+  if (age === 0) return "Moins d’un an";
+  if (age === 1) return "1 an";
+  return `${age} ans`;
+}
+
+function HotelPhoto({ src, className }: { src: string; className: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- photos Ratehawk, hôte distant hors next.config
+    <img src={src} alt="" referrerPolicy="no-referrer" className={className} />
+  );
+}
+
+function RateRow({
+  rate,
+  picked,
+  onPrebook,
+  onContinue,
+}: {
+  rate: ShownRate;
+  picked: boolean;
+  onPrebook: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <li className={`rounded-xl border p-3 ${picked ? "border-[var(--admin-navy)] bg-[#f8f1e6]" : "border-[#e5e3dc]"}`}>
+      {picked ? <p className="text-xs font-semibold uppercase tracking-wide text-[#9e7e51]">Tarif choisi</p> : null}
+      <p className="font-medium">{rate.room_name}</p>
+      <p className="text-sm">{rate.meal_label}</p>
+      <p className="mt-1 text-sm">
+        Net {rate.show_amount} {rate.show_currency_code}
+        {rate.sell_amount ? ` · Prix agence ${rate.sell_amount} ${rate.show_currency_code}` : ""}
+        {" · "}
+        {rate.payment_type}
+      </p>
+      {rate.excluded_taxes.length ? (
+        <ul className="mt-2 text-sm">
+          {rate.excluded_taxes.map((tax) => (
+            <li key={`${tax.name}-${tax.amount}`}>
+              Taxe non incluse : {tax.name} {tax.amount} {tax.currency_code}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <ul className="mt-2 text-sm">
+        {rate.penalties.map((line) => (
+          <li key={line.text}>{line.text}</li>
+        ))}
+      </ul>
+      {rate.room_images.length ? (
+        <div className="mt-2 flex gap-2 overflow-x-auto">
+          {rate.room_images.slice(0, 4).map((src) => (
+            <HotelPhoto key={src} src={src} className="h-20 w-28 rounded-lg object-cover" />
+          ))}
+        </div>
+      ) : null}
+      {rate.room_amenities.length ? <p className="mt-2 text-xs">{rate.room_amenities.join(" · ")}</p> : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {rate.book_hash.startsWith("h-") ? (
+          <button type="button" className="rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-sm text-white" onClick={onPrebook}>
+            Pré-réserver
+          </button>
+        ) : null}
+        {picked ? (
+          <button type="button" className="rounded-full border border-[var(--admin-navy)] px-3 py-1.5 text-sm" onClick={onContinue}>
+            Continuer : voyageurs
+          </button>
+        ) : null}
+      </div>
+    </li>
+  );
+}
 
 export type RatehawkOrder = {
   partner_order_id: string;
@@ -81,6 +156,7 @@ export function RatehawkDesk({
   orders,
   mappedHotels,
   linkDossier = true,
+  agencyPhone = "",
 }: {
   configured: boolean;
   bookingReady: boolean;
@@ -92,6 +168,8 @@ export function RatehawkDesk({
   mappedHotels: number[];
   /** Le relecteur de certification ne rattache pas un dossier du CRM. */
   linkDossier?: boolean;
+  /** Préremplit le téléphone s’il a déjà 5 caractères. Le champ reste obligatoire. */
+  agencyPhone?: string;
 }) {
   const [query, setQuery] = useState("");
   const [choices, setChoices] = useState<Destination[]>([]);
@@ -112,6 +190,16 @@ export function RatehawkDesk({
   const [priceNote, setPriceNote] = useState<string | null>(null);
   const [priceAccepted, setPriceAccepted] = useState(false);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [phone, setPhone] = useState(agencyPhone);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [listOpen, setListOpen] = useState(true);
+  const [pickedHash, setPickedHash] = useState<string | null>(null);
+  const [focus, setFocus] = useState<{ target: "rates" | "guests"; token: number } | null>(null);
+  function showStep(target: "rates" | "guests") {
+    setFocus((current) => ({ target, token: (current?.token ?? 0) + 1 }));
+  }
+  const ratesRef = useRef<HTMLElement>(null);
+  const guestsRef = useRef<HTMLElement>(null);
   const [scenario, setScenario] = useState("none");
   const [dossier, setDossier] = useState("");
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -121,6 +209,12 @@ export function RatehawkDesk({
   const [list, setList] = useState(orders);
 
   const guests = useMemo(() => rooms, [rooms]);
+
+  useEffect(() => {
+    if (!focus) return;
+    const node = focus.target === "rates" ? ratesRef.current : guestsRef.current;
+    node?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focus]);
 
   useEffect(() => {
     if (!orderId || orderStatus !== "in_progress") return;
@@ -189,6 +283,8 @@ export function RatehawkDesk({
     setBusy("Recherche des disponibilités…");
     setError(null);
     setHotel(null);
+    setListOpen(true);
+    setPickedHash(null);
     setQuote(null);
     setChosen(null);
     const mode = destination?.kind === "region" ? "region" : latitude && longitude && !destination ? "geo" : "hids";
@@ -234,14 +330,22 @@ export function RatehawkDesk({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ hid, checkin, checkout, residency, guests }),
     });
-    const payload = (await response.json()) as { hotel?: HotelCard | null; static?: { policies?: string[] } | null; error?: string };
+    const payload = (await response.json()) as {
+      hotel?: HotelCard | null;
+      static?: { policies?: string[]; images?: string[] } | null;
+      error?: string;
+    };
     setBusy(null);
     if (!response.ok) {
       setError(payload.error || "Fiche indisponible.");
       return;
     }
-    setHotel(payload.hotel ? { ...payload.hotel, name: payload.hotel.name || name } : { hid, name, rates: [] });
+    const images = payload.static?.images?.length ? payload.static.images : payload.hotel?.images || [];
+    setHotel(payload.hotel ? { ...payload.hotel, name: payload.hotel.name || name, images } : { hid, name, rates: [], images });
     setPolicies(payload.static?.policies || []);
+    setListOpen(false);
+    setPickedHash(null);
+    showStep("rates");
     if (payload.error && !payload.hotel?.rates?.length) setError(payload.error);
   }
 
@@ -269,6 +373,8 @@ export function RatehawkDesk({
     }
     setChosen(payload.rate);
     setQuote(payload.quote);
+    setPickedHash(rate.book_hash);
+    showStep("guests");
     if (payload.price?.increased) {
       setPriceNote(
         `Le prix net passe de ${payload.price.before.toFixed(2)} à ${payload.price.after.toFixed(2)} ${payload.rate.show_currency_code} (+${payload.price.percent.toFixed(1)} %). Confirmez-le pour continuer.`
@@ -284,6 +390,13 @@ export function RatehawkDesk({
     if (!hotel || !chosen || !quote) return;
     if (priceNote && !priceAccepted) {
       setError("Confirmez la hausse de prix avant de réserver.");
+      return;
+    }
+    const phoneProblem = validateUserPhone(phone);
+    if (phoneProblem) {
+      setPhoneError(phoneProblem);
+      setError(phoneProblem);
+      showStep("guests");
       return;
     }
     setBusy("Réservation en cours…");
@@ -316,6 +429,7 @@ export function RatehawkDesk({
         accept_form_price: acceptForm,
         scenario: scenario === "none" ? null : scenario,
         dossier: linkDossier ? dossier || null : null,
+        phone: phone.trim(),
         partner_order_id: acceptForm ? orderId : null,
       }),
     });
@@ -453,21 +567,65 @@ export function RatehawkDesk({
                     }}
                   />
                 </label>
-                <label className="text-sm">
-                  Âges des enfants
-                  <input
-                    className={`${fieldControlClass} mt-1 w-48`}
-                    placeholder="3, 5"
-                    value={room.children.join(", ")}
-                    onChange={(event) => {
-                      const children = event.target.value
-                        .split(/[,\s]+/)
-                        .filter(Boolean)
-                        .map((age) => Number(age));
-                      setRooms((current) => current.map((item, at) => (at === index ? { ...item, children } : item)));
-                    }}
-                  />
-                </label>
+                <div className="min-w-[12rem] text-sm">
+                  <span className="font-medium">Enfants</span>
+                  <div className="mt-1 space-y-2">
+                    {room.children.map((age, childIndex) => (
+                      <div key={childIndex} className="flex items-center gap-2">
+                        <label className="sr-only" htmlFor={`child-age-${index}-${childIndex}`}>
+                          Âge de l’enfant {childIndex + 1}, chambre {index + 1}
+                        </label>
+                        <select
+                          id={`child-age-${index}-${childIndex}`}
+                          className={`${fieldControlClass} w-44`}
+                          value={age}
+                          onChange={(event) => {
+                            const next = Number(event.target.value);
+                            setRooms((current) =>
+                              current.map((item, at) =>
+                                at === index
+                                  ? { ...item, children: item.children.map((value, childAt) => (childAt === childIndex ? next : value)) }
+                                  : item
+                              )
+                            );
+                          }}
+                        >
+                          {CHILD_AGES.map((option) => (
+                            <option key={option} value={option}>
+                              {childAgeLabel(option)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="text-xs text-[#9e7e51]"
+                          onClick={() =>
+                            setRooms((current) =>
+                              current.map((item, at) =>
+                                at === index ? { ...item, children: item.children.filter((_, childAt) => childAt !== childIndex) } : item
+                              )
+                            )
+                          }
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                    ))}
+                    {room.children.length < 4 ? (
+                      <button
+                        type="button"
+                        className="text-sm text-[#9e7e51]"
+                        onClick={() =>
+                          setRooms((current) =>
+                            current.map((item, at) => (at === index ? { ...item, children: [...item.children, 0] } : item))
+                          )
+                        }
+                      >
+                        Ajouter un enfant
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </div>
           ))}
@@ -488,77 +646,99 @@ export function RatehawkDesk({
       {error ? <p className="text-sm text-accent">{error}</p> : null}
 
       {results.length ? (
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-[var(--admin-navy)]">Résultats</h2>
-          {results.map((card) => (
-            <article key={card.hid} className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold">{card.name}</h3>
-                  <p className="text-xs text-muted">hid {card.hid}</p>
-                </div>
-                <button type="button" className="rounded-full border border-[#e5e3dc] px-3 py-1 text-sm" onClick={() => void openHotel(card.hid, card.name)}>
-                  Voir les tarifs
+        listOpen ? (
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-[var(--admin-navy)]">Résultats</h2>
+              {hotel ? (
+                <button
+                  type="button"
+                  className="rounded-full border border-[#e5e3dc] px-3 py-1 text-sm"
+                  onClick={() => {
+                    setListOpen(false);
+                    showStep("rates");
+                  }}
+                >
+                  Revenir aux tarifs
                 </button>
-              </div>
-              <ul className="mt-3 space-y-1 text-sm">
-                {card.rates.slice(0, 2).map((rate) => (
-                  <li key={`${card.hid}-${rate.show_amount}-${rate.meal_label}`}>
-                    {rate.room_name} · {rate.meal_label} · net {rate.show_amount} {rate.show_currency_code}
-                    {rate.sell_amount ? ` · agence ${rate.sell_amount} ${rate.show_currency_code}` : ""}
-                  </li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </section>
-      ) : null}
-
-      {hotel ? (
-        <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
-          <h2 className="text-lg font-semibold">{hotel.name}</h2>
-          <ul className="mt-4 space-y-4">
-            {hotel.rates.map((rate) => (
-              <li key={rate.book_hash || `${rate.room_name}-${rate.show_amount}`} className="rounded-xl border border-[#e5e3dc] p-3">
-                <p className="font-medium">{rate.room_name}</p>
-                <p className="text-sm">{rate.meal_label}</p>
-                <p className="mt-1 text-sm">
-                  Net {rate.show_amount} {rate.show_currency_code}
-                  {rate.sell_amount ? ` · Prix agence ${rate.sell_amount} ${rate.show_currency_code}` : ""}
-                  {" · "}
-                  {rate.payment_type}
-                </p>
-                {rate.excluded_taxes.length ? (
-                  <ul className="mt-2 text-sm">
-                    {rate.excluded_taxes.map((tax) => (
-                      <li key={`${tax.name}-${tax.amount}`}>
-                        Taxe non incluse : {tax.name} {tax.amount} {tax.currency_code}
+              ) : null}
+            </div>
+            {results.map((card) => {
+              const selected = hotel?.hid === card.hid;
+              return (
+                <article
+                  key={card.hid}
+                  className={`rounded-2xl border bg-white p-4 ${selected ? "border-[var(--admin-navy)] ring-2 ring-[var(--admin-navy)]" : "border-[#e5e3dc]"}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 gap-3">
+                      {card.images?.[0] ? <HotelPhoto src={card.images[0]} className="h-16 w-24 shrink-0 rounded-lg object-cover" /> : null}
+                      <div>
+                        <h3 className="font-semibold">{card.name}</h3>
+                        <p className="text-xs text-muted">hid {card.hid}{selected ? " · sélectionné" : ""}</p>
+                      </div>
+                    </div>
+                    <button type="button" className="shrink-0 rounded-full border border-[#e5e3dc] px-3 py-1 text-sm" onClick={() => void openHotel(card.hid, card.name)}>
+                      {selected ? "Tarifs affichés" : "Voir les tarifs"}
+                    </button>
+                  </div>
+                  <ul className="mt-3 space-y-1 text-sm">
+                    {card.rates.slice(0, 2).map((rate) => (
+                      <li key={`${card.hid}-${rate.show_amount}-${rate.meal_label}`}>
+                        {rate.room_name} · {rate.meal_label} · net {rate.show_amount} {rate.show_currency_code}
+                        {rate.sell_amount ? ` · agence ${rate.sell_amount} ${rate.show_currency_code}` : ""}
                       </li>
                     ))}
                   </ul>
-                ) : null}
-                <ul className="mt-2 text-sm">
-                  {rate.penalties.map((line) => (
-                    <li key={line.text}>{line.text}</li>
-                  ))}
-                </ul>
-                {rate.room_images.length ? (
-                  <div className="mt-2 flex gap-2 overflow-x-auto">
-                    {rate.room_images.slice(0, 4).map((src) => (
-                      // eslint-disable-next-line @next/next/no-img-element -- photos Ratehawk, hôte distant hors next.config
-                      <img key={src} src={src} alt="" className="h-20 w-28 rounded-lg object-cover" />
-                    ))}
-                  </div>
-                ) : null}
-                {rate.room_amenities.length ? <p className="mt-2 text-xs">{rate.room_amenities.join(" · ")}</p> : null}
-                {rate.book_hash.startsWith("h-") ? (
-                  <button type="button" className="mt-3 rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-sm text-white" onClick={() => void prebook(rate)}>
-                    Pré-réserver
-                  </button>
-                ) : null}
-              </li>
+                </article>
+              );
+            })}
+          </section>
+        ) : (
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] bg-[#f7f6f3] px-4 py-3">
+            <p className="text-sm text-[var(--admin-navy)]">
+              <span className="font-medium">{results.length} hôtel{results.length > 1 ? "s" : ""}</span>
+              {" · liste repliée. Les tarifs sont juste en dessous."}
+            </p>
+            <button type="button" className="rounded-full border border-[#e5e3dc] bg-white px-3 py-1 text-sm" onClick={() => setListOpen(true)}>
+              Changer d’hôtel
+            </button>
+          </section>
+        )
+      ) : null}
+
+      {hotel ? (
+        <section ref={ratesRef} className="scroll-mt-24 rounded-2xl border-2 border-[var(--admin-navy)] bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#9e7e51]">Hôtel sélectionné</p>
+          <div className="mt-2 flex gap-3">
+            {hotel.images?.[0] ? <HotelPhoto src={hotel.images[0]} className="h-24 w-36 shrink-0 rounded-xl object-cover" /> : null}
+            <div>
+              <h2 className="text-lg font-semibold">{hotel.name}</h2>
+              <p className="mt-1 text-sm">Choisissez un tarif, puis Pré-réserver. L’étape suivante s’ouvre juste en dessous.</p>
+            </div>
+          </div>
+          {hotel.images && hotel.images.length > 1 ? (
+            <div className="mt-3 flex gap-2 overflow-x-auto">
+              {hotel.images.slice(0, 8).map((src) => (
+                <HotelPhoto key={src} src={src} className="h-28 w-44 shrink-0 rounded-xl object-cover" />
+              ))}
+            </div>
+          ) : null}
+          <ul className="mt-4 space-y-4">
+            {(pickedHash ? hotel.rates.filter((rate) => rate.book_hash === pickedHash) : hotel.rates).map((rate) => (
+              <RateRow key={rate.book_hash || `${rate.room_name}-${rate.show_amount}`} rate={rate} picked={rate.book_hash === pickedHash} onPrebook={() => void prebook(rate)} onContinue={() => showStep("guests")} />
             ))}
           </ul>
+          {pickedHash && hotel.rates.some((rate) => rate.book_hash !== pickedHash) ? (
+            <details className="mt-4 rounded-xl border border-[#e5e3dc] p-3">
+              <summary className="cursor-pointer text-sm font-medium">Autres tarifs ({hotel.rates.filter((rate) => rate.book_hash !== pickedHash).length})</summary>
+              <ul className="mt-3 space-y-4">
+                {hotel.rates.filter((rate) => rate.book_hash !== pickedHash).map((rate) => (
+                  <RateRow key={rate.book_hash || `${rate.room_name}-${rate.show_amount}`} rate={rate} picked={false} onPrebook={() => void prebook(rate)} onContinue={() => showStep("guests")} />
+                ))}
+              </ul>
+            </details>
+          ) : null}
           {policies.length ? (
             <div className="mt-4 text-sm">
               <h3 className="font-medium">Conditions de l’hôtel</h3>
@@ -573,12 +753,32 @@ export function RatehawkDesk({
       ) : null}
 
       {chosen && quote ? (
-        <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
+        <section ref={guestsRef} className="scroll-mt-24 rounded-2xl border-2 border-[#C5A880] bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#9e7e51]">Étape suivante</p>
           <h2 className="text-lg font-semibold">Voyageurs</h2>
           <p className="mt-1 text-sm">
             {chosen.room_name} · net {chosen.show_amount} {chosen.show_currency_code}
             {chosen.sell_amount ? ` · agence ${chosen.sell_amount} ${chosen.show_currency_code}` : ""}
           </p>
+          <div className="mt-4 max-w-md">
+            <Field label="Téléphone" hint="Contact envoyé à Ratehawk. Au moins 5 caractères." error={phoneError}>
+              <input
+                className={fieldControlClass}
+                type="tel"
+                name="phone"
+                required
+                minLength={5}
+                maxLength={35}
+                autoComplete="tel"
+                inputMode="tel"
+                value={phone}
+                onChange={(event) => {
+                  setPhone(event.target.value);
+                  setPhoneError(event.target.value.trim().length >= 5 ? null : phoneError);
+                }}
+              />
+            </Field>
+          </div>
           {priceNote ? (
             <div className="mt-3 rounded-xl bg-[#f8f1e6] p-3 text-sm">
               <p>{priceNote}</p>
@@ -606,7 +806,7 @@ export function RatehawkDesk({
                 </div>
                 {room.children.map((age, childIndex) => (
                   <div key={`${age}-${childIndex}`} className="mt-2 grid gap-2 md:grid-cols-2">
-                    <input className={fieldControlClass} placeholder={`Enfant ${age} ans, prénom (facultatif)`} value={guestName(roomIndex, childIndex + 1, "first")} onChange={(event) => setNames((current) => ({ ...current, [`${roomIndex}-${childIndex + 1}-first`]: event.target.value }))} />
+                    <input className={fieldControlClass} placeholder={age === 0 ? "Enfant de moins d’un an, prénom (facultatif)" : `Enfant ${age} ans, prénom (facultatif)`} value={guestName(roomIndex, childIndex + 1, "first")} onChange={(event) => setNames((current) => ({ ...current, [`${roomIndex}-${childIndex + 1}-first`]: event.target.value }))} />
                     <input className={fieldControlClass} placeholder="Nom" value={guestName(roomIndex, childIndex + 1, "last")} onChange={(event) => setNames((current) => ({ ...current, [`${roomIndex}-${childIndex + 1}-last`]: event.target.value }))} />
                   </div>
                 ))}

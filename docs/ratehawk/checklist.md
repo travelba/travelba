@@ -135,6 +135,9 @@ Status OK in **Check booking process** (`/order/booking/finish/status/`) only. O
 **Confirmation email (`user.email`).**  
 We send our **corporate** email address (`RATEHAWK_AGENCY_EMAIL`). We do not send the guest’s address. **OPEN:** the agency must set that address in Vercel before any booking. It is not hardcoded.
 
+**Contact phone (`user.phone`).**  
+Required on the guest step (at least 5 characters, at most 35). The value entered on the form is what finish sends. `RATEHAWK_AGENCY_PHONE` only prefills that field when it is already long enough.
+
 ## Post-booking
 
 **Retrieve bookings (`/order/info`).** Yes.

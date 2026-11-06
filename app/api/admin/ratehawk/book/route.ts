@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     scenario?: string | null;
     dossier?: string | null;
     partner_order_id?: string | null;
+    phone?: string;
   } | null;
   if (!body?.quote || !body.hid || !body.checkin || !body.checkout || !body.rooms || !body.guests) {
     return ratehawkJson({ error: "Réservation incomplète." }, 400);
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
       scenario: body.scenario || null,
       dossier: auth.staff.role === "ratehawk_cert" ? null : body.dossier || null,
       userIp: requestIp(request),
+      phone: body.phone || "",
       partnerOrderId: body.partner_order_id || null,
     });
     return ratehawkJson(result, result.ok ? 200 : result.status === "price_increase" ? 409 : 422);

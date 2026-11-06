@@ -3,6 +3,7 @@ import zlib from "node:zlib";
 import { CERTIFICATION_HOTELS, CERTIFICATION_REGION } from "./catalog";
 import { requireConfig, type RatehawkConfig } from "./config";
 import { etgDownload, etgPost } from "./client";
+import { collectImageUrls } from "./display";
 import { ratehawkDb } from "./store";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -27,7 +28,7 @@ export function hotelRecord(raw: Record<string, unknown>, language: "en" | "fr")
   const hid = Number(raw.hid);
   if (!Number.isInteger(hid)) return null;
   const region = raw.region && typeof raw.region === "object" ? (raw.region as Record<string, unknown>) : null;
-  const images = Array.isArray(raw.images) ? raw.images : [];
+  const images = collectImageUrls(Array.isArray(raw.images) && raw.images.length ? raw.images : raw.images_ext, 40);
   return {
     hid,
     slug: typeof raw.id === "string" ? raw.id : null,

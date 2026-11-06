@@ -3,7 +3,7 @@ import { ratehawkJson, staffOrResponse } from "@/lib/crm/ratehawk/http";
 import { validateStay, type RoomGuests } from "@/lib/crm/ratehawk/limits";
 import { hotelPage } from "@/lib/crm/ratehawk/search";
 import { ratehawkDb } from "@/lib/crm/ratehawk/store";
-import { metapolicyLines, type RoomGroupStatic } from "@/lib/crm/ratehawk/display";
+import { metapolicyLines, preferHotelImages, type RoomGroupStatic } from "@/lib/crm/ratehawk/display";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,10 +32,11 @@ export async function POST(request: Request) {
     const supabase = ratehawkDb();
     const { data } = await supabase
       .from("crm_ratehawk_hotels")
-      .select("name, address, metapolicy_struct, metapolicy_extra_info, room_groups, check_in_time, check_out_time, images")
+      .select("name, address, metapolicy_struct, metapolicy_extra_info, room_groups, check_in_time, check_out_time, images, images_ext:raw->images_ext")
       .eq("hid", body.hid)
       .maybeSingle();
     const groups = (Array.isArray(data?.room_groups) ? data.room_groups : []) as RoomGroupStatic[];
+    const images = preferHotelImages(data?.images, data?.images_ext, 12);
     const result = await hotelPage(
       {
         checkin: body.checkin,
@@ -50,14 +51,14 @@ export async function POST(request: Request) {
       groups
     );
     return ratehawkJson({
-      hotel: result.hotel,
+      hotel: result.hotel ? { ...result.hotel, images: images.length ? images : result.hotel.images } : null,
       static: data
         ? {
             name: data.name,
             address: data.address,
             check_in_time: data.check_in_time,
             check_out_time: data.check_out_time,
-            images: data.images,
+            images,
             policies: metapolicyLines(data.metapolicy_struct, data.metapolicy_extra_info),
           }
         : null,
