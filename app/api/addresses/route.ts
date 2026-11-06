@@ -13,6 +13,11 @@ export async function GET(request: Request) {
   });
   if (!allowed) return NextResponse.json({ error: RATE_LIMITED_MESSAGE }, { status: 429 });
   const url = new URL(request.url);
-  const hits = await searchAddresses(url.searchParams.get("q") || "", url.searchParams.get("near"));
+  const hits = await searchAddresses(
+    url.searchParams.get("q") || "",
+    url.searchParams.get("near"),
+    fetch,
+    url.searchParams.get("country")
+  );
   return NextResponse.json({ hits });
 }

@@ -225,6 +225,13 @@ const MRZ_ALIASES: Record<string, string> = {
   UK: "GB",
 };
 
+/** Noms anglais et sigles absents de la liste française. */
+const COUNTRY_ALIASES: Record<string, string> = {
+  uae: "AE",
+  unitedarabemirates: "AE",
+  unitedarabemirate: "AE",
+};
+
 /** Adjectifs / dénominations fréquents sur un passeport (vision OCR). */
 const NATIONALITY_ALIASES: Record<string, string> = {
   francais: "FR",
@@ -405,7 +412,9 @@ export function resolveCountryCode(value: string | null | undefined): string | n
   if (MRZ_ALIASES[upper]) return MRZ_ALIASES[upper];
   if (/^[A-Z]{2}$/.test(upper) && BY_ISO2.has(upper)) return upper;
   if (/^[A-Z]{3}$/.test(upper) && BY_ISO3.has(upper)) return BY_ISO3.get(upper)!.iso2;
-  const byName = BY_NAME.get(foldLetters(raw));
+  const folded = foldLetters(raw);
+  if (COUNTRY_ALIASES[folded]) return COUNTRY_ALIASES[folded];
+  const byName = BY_NAME.get(folded);
   if (byName) return byName.iso2;
   const starts = COUNTRIES.find((c) => foldLetters(c.name).startsWith(foldLetters(raw)));
   return starts?.iso2 || null;

@@ -39,3 +39,12 @@ test("resolveCountryCode still does not treat demonyms as country names", () => 
   assert.equal(resolveCountryCode("Française"), null);
   assert.equal(resolveCountryCode("France"), "FR");
 });
+
+test("les Émirats arabes unis restent un pays, y compris en anglais", () => {
+  assert.equal(resolveCountryCode("AE"), "AE");
+  assert.equal(resolveCountryCode("ARE"), "AE");
+  assert.equal(resolveCountryCode("Émirats arabes unis"), "AE");
+  assert.equal(resolveCountryCode("United Arab Emirates"), "AE");
+  assert.equal(resolveCountryCode("UAE"), "AE");
+  assert.equal(resolveCountryCode("U.A.E."), "AE");
+});

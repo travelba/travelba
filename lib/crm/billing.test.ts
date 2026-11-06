@@ -13,8 +13,10 @@ import {
   vatFromSiret,
 } from "./billing";
 import { customerPatchFromBody } from "./customer-patch";
+import { normalizeBillingCompanies } from "./billing-companies";
 import {
   billingAddressDisplay,
+  billingAddressEdit,
   billingJson,
   type CompanyBillingValues,
 } from "../../components/crm/CompanyBillingFields";
@@ -148,6 +150,109 @@ test("billing address fields stay visible from the traveler or the company", () 
   );
   assert.equal(own.line, "1 avenue de l’Opéra");
   assert.equal(own.postal, "75002");
+});
+
+test("une adresse à Dubaï s’enregistre sans code postal français", () => {
+  const empty = customerPatchFromBody({
+    address_line: "Apartment 1204, Marina Gate, Dubai Marina",
+    postal_code: "",
+    city: "Dubaï",
+    country: "AE",
+  });
+  assert.equal(empty.error, undefined);
+  assert.equal(empty.patch.address_line, "Apartment 1204, Marina Gate, Dubai Marina");
+  assert.equal(empty.patch.postal_code, null);
+  assert.equal(empty.patch.city, "Dubaï");
+  assert.equal(empty.patch.country, "AE");
+  const box = customerPatchFromBody({
+    address_line: "Marina Gate",
+    postal_code: "PO Box 2431",
+    city: "Dubai",
+    country: "United Arab Emirates",
+  });
+  assert.equal(box.error, undefined);
+  assert.equal(box.patch.country, "AE");
+  assert.equal(box.patch.postal_code, "PO Box 2431");
+  assert.notEqual(box.patch.country, null);
+});
+
+test("l’adresse de facturation reste distincte du domicile", () => {
+  const home = {
+    country: "FR",
+    line: "12 rue de Rivoli",
+    postal: "75001",
+    city: "Paris",
+  };
+  const company: CompanyBillingValues = {
+    ...emptyBilling,
+    companyName: "Atelier Exemple",
+    billingCountry: "FR",
+    billingLine: home.line,
+    billingPostal: home.postal,
+    billingCity: home.city,
+  };
+  const edited = billingAddressEdit(company, home, {
+    country: "AE",
+    line: "Apartment 1204, Marina Gate",
+    postal: "",
+    city: "Dubaï",
+  });
+  assert.equal(edited.sameAsProfile, false);
+  const json = billingJson(edited.values, home, edited.sameAsProfile);
+  assert.equal(json.billing_address_line, "Apartment 1204, Marina Gate");
+  assert.equal(json.billing_postal_code, "");
+  assert.equal(json.billing_city, "Dubaï");
+  assert.equal(json.billing_country, "AE");
+  assert.notEqual(json.billing_address_line, home.line);
+  const stored = normalizeBillingCompanies([
+    {
+      company_name: json.company_name,
+      billing_address_line: json.billing_address_line,
+      billing_postal_code: json.billing_postal_code,
+      billing_city: json.billing_city,
+      billing_country: json.billing_country,
+    },
+  ]);
+  assert.equal("error" in stored, false);
+  if ("error" in stored) return;
+  assert.equal(stored.companies[0]?.billing_country, "AE");
+  assert.equal(stored.companies[0]?.billing_postal_code, null);
+  assert.equal(stored.companies[0]?.billing_city, "Dubaï");
+  const homePatch = customerPatchFromBody({
+    address_line: home.line,
+    postal_code: home.postal,
+    city: home.city,
+    country: home.country,
+    billing_address_line: json.billing_address_line,
+    billing_postal_code: json.billing_postal_code,
+    billing_city: json.billing_city,
+    billing_country: json.billing_country,
+  });
+  assert.equal(homePatch.error, undefined);
+  assert.equal(homePatch.patch.address_line, home.line);
+  assert.equal(homePatch.patch.postal_code, "75001");
+  assert.equal(homePatch.patch.billing_address_line, "Apartment 1204, Marina Gate");
+  assert.equal(homePatch.patch.billing_country, "AE");
+  assert.equal(homePatch.patch.billing_postal_code, null);
+});
+
+test("une saisie libre sans suggestion reste une adresse valide hors France", () => {
+  const kept = {
+    line: "Sheikh Zayed Road",
+    postal: "",
+    city: "Dubaï",
+    country: "UAE",
+  };
+  const { patch, error } = customerPatchFromBody({
+    address_line: kept.line,
+    postal_code: kept.postal,
+    city: kept.city,
+    country: kept.country,
+  });
+  assert.equal(error, undefined);
+  assert.equal(patch.address_line, "Sheikh Zayed Road");
+  assert.equal(patch.postal_code, null);
+  assert.equal(patch.country, "AE");
 });
 
 test("billing json copies traveler address when marked identical", () => {

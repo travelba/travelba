@@ -160,9 +160,13 @@ export function BillingCompaniesTabs({
           <CompanyBillingFields
             heading={false}
             values={current.values}
-            onChange={(values) => updateCurrent({ values })}
+            onChange={(values, patch) =>
+              updateCurrent({
+                values,
+                ...(patch && typeof patch.sameAsProfile === "boolean" ? { sameAsProfile: patch.sameAsProfile } : {}),
+              })
+            }
             sameAsProfile={current.sameAsProfile}
-            onSameAsProfileChange={(sameAsProfile) => updateCurrent({ sameAsProfile })}
             profileAddress={profileAddress}
           />
           {confirmRemove ? (
