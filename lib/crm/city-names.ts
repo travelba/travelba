@@ -18,6 +18,15 @@ export const CITY_ALIASES: Record<string, string> = {
   moscou: "moscow",
   pekin: "beijing",
   nyc: "new york",
+  saigon: "ho chi minh",
+  "sai gon": "ho chi minh",
+  "ho chi minh": "ho chi minh",
+  "ho chi minh city": "ho chi minh",
+  hcmc: "ho chi minh",
+  "thanh pho ho chi minh": "ho chi minh",
+  "con dao": "con dao",
+  "con son": "con dao",
+  "phu quoc": "phu quoc",
 };
 
 /** Libellé français quand plusieurs graphies désignent la même ville. */
@@ -38,6 +47,9 @@ const CITY_LABELS: Record<string, string> = {
   beijing: "Pékin",
   "new york": "New York",
   paris: "Paris",
+  "ho chi minh": "Hô Chi Minh",
+  "con dao": "Con Dao",
+  "phu quoc": "Phu Quoc",
 };
 
 /** Aéroports du domicile : la même ville que Paris. */
@@ -46,6 +58,9 @@ const AIRPORT_CITY: Record<string, string> = {
   ory: "paris",
   lbg: "paris",
   bva: "paris",
+  sgn: "ho chi minh",
+  vcs: "con dao",
+  pqc: "phu quoc",
 };
 
 /** Hubs de départ FR. La photo les ignore dès qu’une autre ville de séjour existe. Un aller simple vers Paris les garde. */
@@ -81,4 +96,26 @@ export function cityLabel(value: string) {
   if (!token) return "";
   const key = cityPlaceKey(token);
   return CITY_LABELS[key] || token;
+}
+
+const HOTEL_PLACES: { needle: string; label: string }[] = [
+  { needle: "ho chi minh", label: "Hô Chi Minh" },
+  { needle: "con dao", label: "Con Dao" },
+  { needle: "phu quoc", label: "Phu Quoc" },
+  { needle: "sai gon", label: "Hô Chi Minh" },
+  { needle: "saigon", label: "Hô Chi Minh" },
+  { needle: "hcmc", label: "Hô Chi Minh" },
+];
+
+/**
+ * Ville du séjour. Le nom de l’hôtel prime sur une ville Little Emperors trop large
+ * (« Six Senses Con Dao » reste Con Dao, même si le champ ville dit Vung Tau).
+ */
+export function stayCityFromHotel(hotelName: string | null | undefined, fallback: string | null | undefined) {
+  const folded = foldCityName(hotelName || "");
+  const hits = HOTEL_PLACES.filter((place) => folded.includes(place.needle)).sort(
+    (a, b) => b.needle.length - a.needle.length
+  );
+  if (hits[0]) return hits[0].label;
+  return (fallback || "").trim();
 }

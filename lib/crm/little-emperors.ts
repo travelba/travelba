@@ -234,6 +234,14 @@ export function isLeCancelled(state: string | null | undefined, event?: string |
   return normalized === "cancelled" || normalized === "canceled" || normalized === "annulee" || normalized === "annule";
 }
 
+/** Réservation en échec chez Little Emperors : pas d’import sans forcer. */
+export function isLeFailed(state: string | null | undefined) {
+  const value = String(state || "")
+    .trim()
+    .toLowerCase();
+  return value === "failed" || value === "failure" || value === "booking_failed";
+}
+
 /**
  * Un dossier créé depuis Little Emperors naît Non visible, même si la réservation
  * est déjà réservée ou confirmée. Montrer au client, ou publier_carnet, le passe

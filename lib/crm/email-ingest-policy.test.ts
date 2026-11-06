@@ -23,11 +23,12 @@ describe("pas de rattachement autonome", () => {
     }
   });
 
-  it("le parse ne crée pas de dossier et n’applique pas les cartes", () => {
+  it("le parse constitue le séjour, sans invitation", () => {
+    assert.match(ingest, /organizeInboundMail/);
+    assert.equal(ingest.includes("inviteCustomer"), false);
+    assert.equal(ingest.includes("visibleToClient: true"), false);
+    assert.equal(ingest.includes("notifyStayPublished"), false);
     assert.equal(ingest.includes("autoCreateBookingFromIngestId"), false);
-    assert.equal(ingest.includes("applyReplacementToBooking"), false);
-    assert.equal(ingest.includes("applyCancellationToBooking"), false);
-    assert.equal(ingest.includes("persistNewBookingFromExtract"), false);
     const rematchStart = ingest.indexOf("export async function rematchEmailIngestRow");
     const rematchEnd = ingest.indexOf("async function storeAttachment");
     const rematch = ingest.slice(rematchStart, rematchEnd);

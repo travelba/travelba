@@ -43,6 +43,11 @@ test("un label suivi reste dans la file, même s’il ressemble à une newslette
   );
 });
 
+test("un objet vide, y compris le label crm, reste dans la file", () => {
+  assert.equal(classifyInboundMail({ subject: "", text: "", label: "crm" }), null);
+  assert.equal(classifyInboundMail({ subject: "", text: "", label: "billet-avion" }), null);
+});
+
 test("une confirmation fournisseur n’est pas écartée par le pied de page", () => {
   const text = `${"Confirmation de réservation à Milan. ".repeat(20)}Unsubscribe`;
   assert.equal(classifyInboundMail({ subject: "Booking", text, label: "little-emperors" }), null);
