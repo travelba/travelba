@@ -79,6 +79,9 @@ const EXPECTED = [
   "statut_modeles_whatsapp",
   "deposer_modeles_autorisation_whatsapp",
   "statut_modeles_autorisation_whatsapp",
+  "deposer_modele_message_libre",
+  "statut_modele_message_libre",
+  "envoyer_message_libre",
   "lister_membres",
   "ajouter_membre",
   "changer_role_membre",
@@ -165,6 +168,8 @@ const WRITE_TOOLS = [
   "create_restaurant_whatsapp_templates",
   "deposer_modeles_whatsapp",
   "deposer_modeles_autorisation_whatsapp",
+  "deposer_modele_message_libre",
+  "envoyer_message_libre",
   "ajouter_membre",
   "changer_role_membre",
   "desactiver_membre",
@@ -369,6 +374,14 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(releve?.description || "", /force/);
   assert.match(releve?.description || "", /twilio_sid/);
   assert.match(releve?.description || "", /e-mail n’est pas ouvert/);
+  const libre = MCP_TOOLS.find((tool) => tool.name === "envoyer_message_libre");
+  assert.equal(libre?.write, true);
+  assert.equal(libre?.openWorld, true);
+  assert.match(libre?.description || "", /confirmer/);
+  assert.match(libre?.description || "", /message_libre_document/);
+  assert.match(libre?.description || "", /autorisation_validee_document_v2/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "deposer_modele_message_libre")?.description || "", /UTILITY/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "deposer_modele_message_libre")?.description || "", /aucun secret|Ne renvoie aucun secret/);
   const facture = MCP_TOOLS.find((tool) => tool.name === "envoyer_facture");
   assert.equal(facture?.write, true);
   assert.equal(facture?.openWorld, true);

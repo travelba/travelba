@@ -6,6 +6,8 @@ import {
   authorizationTemplatesStatus,
   ensureAgencyTemplates,
   ensureAuthorizationTemplates,
+  ensureFreeMessageTemplate,
+  freeMessageTemplateStatus,
   type AgencyTemplateReport,
 } from "./agency-templates-arm";
 
@@ -41,6 +43,9 @@ const NOTE =
 
 const AUTORISATION_NOTE =
   "Aucun WhatsApp n’est envoyé. Les SID v1 et v2 sont dans crm_whatsapp_content_sids. L’envoi utilise autorisation_validee_document_v2 et autorisation_validee_image_v2 dès que Meta les a approuvés, sinon les modèles v1. Un envoi v1 ou v2 compte comme déjà envoyé.";
+
+const MESSAGE_LIBRE_NOTE =
+  "Aucun WhatsApp n’est envoyé. Le SID de message_libre_document est dans crm_whatsapp_content_sids. L’envoi le lit sans redéploiement, et retombe sur TWILIO_CONTENT_MESSAGE_LIBRE_DOCUMENT si le réglage est vide. Ce n’est pas le modèle d’autorisation.";
 
 function authorizationReady(rows: AgencyTemplateReport[]) {
   const next = rows.filter((row) => row.nom.endsWith("_v2"));
@@ -96,6 +101,41 @@ export async function statutModelesAutorisationWhatsapp(
     pret: authorizationReady(result.modeles),
     ...(result.message ? { message: result.message } : {}),
     note: AUTORISATION_NOTE,
+  };
+}
+
+/** Dépose message_libre_document. Réservé aux administrateurs. Aucun message. */
+export async function deposerModeleMessageLibre(
+  input: Record<string, unknown>,
+  fetchImpl?: typeof fetch,
+  store?: ContentSidStore
+) {
+  void input;
+  const result = await ensureFreeMessageTemplate(fetchImpl, store);
+  if (!result.ok && result.message) throw new McpWriteError(result.message);
+  return {
+    ok: result.ok,
+    categorie: AGENCY_TEMPLATE_CATEGORY,
+    modeles: result.modeles.map(presentAuthorization),
+    pret: result.modeles.length > 0 && result.modeles.every((row) => row.statut === "approved"),
+    note: MESSAGE_LIBRE_NOTE,
+  };
+}
+
+/** Statut Meta de message_libre_document. Lecture. Réservé aux administrateurs. */
+export async function statutModeleMessageLibre(
+  input: Record<string, unknown>,
+  fetchImpl?: typeof fetch,
+  store?: ContentSidStore
+) {
+  void input;
+  const result = await freeMessageTemplateStatus(fetchImpl, store);
+  return {
+    ok: result.ok,
+    modeles: result.modeles.map(presentAuthorization),
+    pret: result.modeles.length > 0 && result.modeles.every((row) => row.statut === "approved"),
+    ...(result.message ? { message: result.message } : {}),
+    note: MESSAGE_LIBRE_NOTE,
   };
 }
 

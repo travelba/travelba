@@ -3,6 +3,7 @@ import { hotelOptionContentDrafts } from "./hotel-option-whatsapp";
 import { invoiceContentDraft } from "./invoice-document";
 import { productionOnlySecret } from "./preview-secrets";
 import { resolveContentSid } from "./twilio-content-sid";
+import { freeMessageContentDrafts } from "./free-message-whatsapp";
 import { visaGrantContentDrafts } from "./visa-grant-whatsapp";
 import { isContentSid, serviceContentSidStore, type ContentSidStore } from "./whatsapp-content-sid-store";
 
@@ -57,6 +58,11 @@ export function agencyTemplateDrafts(): Draft[] {
 /** PDF et image de l’autorisation validée. Les exemples sont les URL de production. */
 export function authorizationTemplateDrafts(): Draft[] {
   return asDrafts(visaGrantContentDrafts());
+}
+
+/** PDF du message libre. L’exemple est l’URL de production. */
+export function freeMessageTemplateDrafts(): Draft[] {
+  return asDrafts(freeMessageContentDrafts());
 }
 
 function twilioAccount() {
@@ -219,6 +225,14 @@ export async function ensureAuthorizationTemplates(
   return ensureTemplateDrafts(authorizationTemplateDrafts(), fetchImpl, store);
 }
 
+/** Dépose message_libre_document. Aucun message. */
+export async function ensureFreeMessageTemplate(
+  fetchImpl: typeof fetch = fetch,
+  store: ContentSidStore = serviceContentSidStore()
+) {
+  return ensureTemplateDrafts(freeMessageTemplateDrafts(), fetchImpl, store);
+}
+
 async function ensureTemplateDrafts(
   drafts: Draft[],
   fetchImpl: typeof fetch,
@@ -286,6 +300,13 @@ export async function authorizationTemplatesStatus(
   store: ContentSidStore = serviceContentSidStore()
 ) {
   return templateDraftsStatus(authorizationTemplateDrafts(), fetchImpl, store);
+}
+
+export async function freeMessageTemplateStatus(
+  fetchImpl: typeof fetch = fetch,
+  store: ContentSidStore = serviceContentSidStore()
+) {
+  return templateDraftsStatus(freeMessageTemplateDrafts(), fetchImpl, store);
 }
 
 async function templateDraftsStatus(

@@ -317,6 +317,10 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "requalifier_piece")?.openWorld, false);
   assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "notifier_piece")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "envoyer_message_libre")?.readOnly, false);
+  assert.equal(seen.find((tool) => tool.name === "envoyer_message_libre")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "deposer_modele_message_libre")?.openWorld, true);
+  assert.equal(seen.find((tool) => tool.name === "statut_modele_message_libre")?.readOnly, true);
   assert.equal(seen.find((tool) => tool.name === "notifier_carte_embarquement")?.readOnly, false);
   assert.equal(seen.find((tool) => tool.name === "notifier_carte_embarquement")?.openWorld, true);
   assert.equal(seen.find((tool) => tool.name === "envoyer_releve")?.readOnly, false);
