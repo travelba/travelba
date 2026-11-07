@@ -3,18 +3,10 @@ import test from "node:test";
 import {
   AI_CRAWLER_AGENTS,
   catalogueCrawlerDecision,
-  catalogueImageSegments,
-  catalogueImageSrc,
-  contentSlug,
-  groupSupplierRooms,
   isMcpPath,
-  isPublicCatalogueImagePath,
   isSearchCrawler,
   publicImageCacheHeaders,
   publicRobots,
-  RANKING_ENTRY_COLUMNS,
-  SUPPLIER_ROOM_COLUMNS,
-  textBlocks,
 } from "./public-catalogue";
 
 const BROWSER =
@@ -45,43 +37,36 @@ test("robots.txt bloque les robots d’IA et laisse Google et Bing", () => {
 test("le connecteur MCP n’est jamais limité, même pour GPTBot", () => {
   for (const path of ["/api/mcp", "/api/mcp/", "/api/mcp/tools"]) {
     assert.equal(isMcpPath(path), true);
-    const decision = catalogueCrawlerDecision(
-      { path, userAgent: "GPTBot", ip: "1.1.1.1", now: 1_000 },
-      new Map()
-    );
+    const decision = catalogueCrawlerDecision({ path, userAgent: "GPTBot", ip: "1.1.1.1", now: 1_000 }, new Map());
     assert.equal(decision.action, "pass");
   }
   const home = catalogueCrawlerDecision({ path: "/fr", userAgent: "GPTBot", now: 1 }, new Map());
   assert.equal(home.action, "pass");
 });
 
-test("les robots d’IA sont limités sur le catalogue, Google passe", () => {
-  const blocked = catalogueCrawlerDecision(
-    { path: "/fr/classement/meilleurs-palaces", userAgent: "ClaudeBot", ip: "2.2.2.2", now: 5 },
-    new Map()
-  );
-  assert.equal(blocked.action, "limit");
-  assert.equal(blocked.retryAfter, 86_400);
+test("les pages catalogue My Concierge ne sont plus limitées : elles répondent 404", () => {
+  for (const path of [
+    "/fr/classement",
+    "/fr/classement/top-four-seasons-palaces-monde",
+    "/en/guide",
+    "/en/guide/paris",
+    "/guide",
+    "/fr/donnees-fournisseur",
+    "/donnees-fournisseur/hotel-paris",
+    "/api/media/catalogue/covers/a.webp",
+  ]) {
+    const decision = catalogueCrawlerDecision({ path, userAgent: "ClaudeBot", ip: "2.2.2.2", now: 5 }, new Map());
+    assert.equal(decision.action, "pass");
+  }
+});
 
-  const image = catalogueCrawlerDecision(
-    { path: "/api/media/catalogue/covers/a.webp", userAgent: "Bytespider", now: 5 },
-    new Map()
-  );
-  assert.equal(image.action, "limit");
-
-  const cover = catalogueCrawlerDecision(
-    { path: "/api/covers/photo-paris", userAgent: "GPTBot", now: 5 },
-    new Map()
-  );
+test("les robots d’IA sont limités sur les couvertures, Google passe", () => {
+  const cover = catalogueCrawlerDecision({ path: "/api/covers/photo-paris", userAgent: "GPTBot", now: 5 }, new Map());
   assert.equal(cover.action, "limit");
-  const coverSearch = catalogueCrawlerDecision(
-    { path: "/api/covers/photo-paris", userAgent: GOOGLE, now: 5 },
-    new Map()
-  );
-  assert.equal(coverSearch.action, "pass");
+  assert.equal(cover.retryAfter, 86_400);
 
-  const google = catalogueCrawlerDecision({ path: "/en/guide/paris", userAgent: GOOGLE, now: 5 }, new Map());
-  assert.equal(google.action, "pass");
+  const coverSearch = catalogueCrawlerDecision({ path: "/api/covers/photo-paris", userAgent: GOOGLE, now: 5 }, new Map());
+  assert.equal(coverSearch.action, "pass");
 
   const reader = catalogueCrawlerDecision({ path: "/fr/hotels/crillon", userAgent: BROWSER, now: 5 }, new Map());
   assert.equal(reader.action, "pass");
@@ -93,55 +78,27 @@ test("les robots d’IA sont limités sur le catalogue, Google passe", () => {
   assert.equal(client.action, "pass");
 });
 
-test("un robot générique est limité après trente lectures catalogue", () => {
+test("un robot générique est limité après trente lectures des couvertures", () => {
   const store = new Map<string, number[]>();
   const ua = "Mozilla/5.0 (compatible; AhrefsBot/7.0)";
   for (let index = 0; index < 30; index += 1) {
-    const decision = catalogueCrawlerDecision({ path: "/guide", userAgent: ua, ip: "9.9.9.9", now: 10_000 + index }, store);
+    const decision = catalogueCrawlerDecision(
+      { path: "/api/covers/photo-paris", userAgent: ua, ip: "9.9.9.9", now: 10_000 + index },
+      store
+    );
     assert.equal(decision.action, "pass");
   }
-  const blocked = catalogueCrawlerDecision({ path: "/en/guide", userAgent: ua, ip: "9.9.9.9", now: 10_040 }, store);
+  const blocked = catalogueCrawlerDecision(
+    { path: "/en/hotels/crillon", userAgent: ua, ip: "9.9.9.9", now: 10_040 },
+    store
+  );
   assert.equal(blocked.action, "limit");
   assert.equal(blocked.retryAfter, 60);
 });
 
-test("les images Storage passent par le CDN, jamais en adresse directe", () => {
-  const src = catalogueImageSrc(
-    "https://example.supabase.co/storage/v1/object/sign/crm-files/covers/catalog/photo-paris.webp?token=secret"
-  );
-  assert.equal(src, "/api/media/catalogue/covers/catalog/photo-paris.webp");
-  assert.equal(src?.includes("supabase.co"), false);
-  assert.equal(src?.includes("token"), false);
-
-  assert.equal(
-    catalogueImageSrc("https://example.supabase.co/storage/v1/object/public/crm-files/customers/a/passeport.jpg"),
-    null
-  );
-  assert.equal(catalogueImageSrc("covers/../customers/a/photo.webp"), null);
-  assert.equal(isPublicCatalogueImagePath("bookings/a/cover.webp"), false);
-  assert.equal(catalogueImageSegments(["covers", "..", "secret.webp"]), null);
-  assert.equal(catalogueImageSegments(["covers", "catalog", "photo.webp"]), "covers/catalog/photo.webp");
-  assert.match(publicImageCacheHeaders("image/webp")["Vercel-CDN-Cache-Control"], /s-maxage=31536000/);
-});
-
-test("les lectures catalogue n’emportent ni description d’hôtel, ni clé, ni image fournisseur", () => {
-  assert.equal(RANKING_ENTRY_COLUMNS.includes("description"), false);
-  assert.equal(SUPPLIER_ROOM_COLUMNS.includes("images"), false);
-  assert.equal(SUPPLIER_ROOM_COLUMNS.includes("raw"), false);
-  assert.equal(SUPPLIER_ROOM_COLUMNS.includes("supplier_room_key"), false);
-  assert.equal(contentSlug("../admin"), false);
-  assert.deepEqual(textBlocks([{ question: "Quand partir ?", answer: "Au printemps." }]), [
-    { title: "Quand partir ?", body: "Au printemps." },
-  ]);
-  const grouped = groupSupplierRooms([
-    {
-      supplier: "ratehawk",
-      room_name: "Suite jardin",
-      room_amenities: ["Bain", { name: "Vue" }],
-      hotels: { slug: "hotel-paris", name: "Hôtel Paris", city: "Paris", is_published: true },
-    },
-  ]);
-  assert.equal(grouped[0]?.rooms[0]?.roomName, "Suite jardin");
-  assert.deepEqual(grouped[0]?.rooms[0]?.amenities, ["Bain", "Vue"]);
-  assert.equal(JSON.stringify(grouped).includes("supplier_room_key"), false);
+test("les couvertures publiques restent en cache long", () => {
+  const headers = publicImageCacheHeaders("image/webp");
+  assert.equal(headers["Content-Type"], "image/webp");
+  assert.match(headers["Cache-Control"], /max-age=31536000/);
+  assert.match(headers["Vercel-CDN-Cache-Control"], /s-maxage=31536000/);
 });

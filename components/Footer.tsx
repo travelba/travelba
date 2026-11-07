@@ -156,12 +156,6 @@ export function Footer() {
             © {year} {siteConfig.name}. {t("rights")}
           </p>
           <div className="flex items-center gap-4">
-            <Link href="/classement" className="transition-colors hover:text-foreground">
-              {t("rankingsLink")}
-            </Link>
-            <Link href="/guide" className="transition-colors hover:text-foreground">
-              {t("guidesLink")}
-            </Link>
             <Link
               href="/legal"
               className="transition-colors hover:text-foreground"

@@ -1,7 +1,7 @@
 import { siteConfig } from "@/lib/site";
 import { routing } from "@/i18n/routing";
 
-const PATHS = ["", "/legal", "/classement", "/guide"] as const;
+const PATHS = ["", "/legal"] as const;
 
 export default function sitemap() {
   const lastModified = new Date();
@@ -10,8 +10,8 @@ export default function sitemap() {
     PATHS.map((path) => ({
       url: `${siteConfig.url}/${locale}${path}`,
       lastModified,
-      changeFrequency: path === "" || path === "/classement" || path === "/guide" ? ("weekly" as const) : ("yearly" as const),
-      priority: path === "" ? 1 : path === "/legal" ? 0.4 : 0.6,
+      changeFrequency: path === "" ? ("weekly" as const) : ("yearly" as const),
+      priority: path === "" ? 1 : 0.4,
       alternates: {
         languages: Object.fromEntries(
           routing.locales.map((l) => [l, `${siteConfig.url}/${l}${path}`])
