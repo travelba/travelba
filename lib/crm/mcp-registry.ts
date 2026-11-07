@@ -70,10 +70,13 @@ import {
 import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus } from "@/lib/crm/mcp-restaurant-templates";
 import {
   deposerModelesAutorisationWhatsapp,
+  deposerModelesMessageLibreWhatsapp,
   deposerModelesWhatsapp,
   statutModelesAutorisationWhatsapp,
+  statutModelesMessageLibreWhatsapp,
   statutModelesWhatsapp,
 } from "@/lib/crm/mcp-agency-templates";
+import { envoyerMessageLibre } from "@/lib/crm/mcp-free-message";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
@@ -119,7 +122,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 109;
+export const MCP_TOOL_CAP = 112;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1061,6 +1064,23 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => notifyTravelPiece(args),
   },
   {
+    name: "envoyer_message_libre",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie un message WhatsApp libre, rédigé par l’agence. Ce n’est pas le modèle d’autorisation « Bonne nouvelle ! Votre autorisation a été validée ». client_id (ou customer_id), ou dossier_id / reference. texte : le message en français. document_id facultatif : une pièce déjà déposée, PDF, JPEG ou PNG. Un passeport ou une carte d’identité est refusé. Sans confirmer, aperçu seulement : le texte qui partirait, la fenêtre de 24 h, le modèle, rien n’est envoyé. confirmer true envoie. Dans la fenêtre de 24 h, le texte part tel quel, avec la pièce s’il y en a une. Hors fenêtre, le modèle UTILITY message_libre_texte, message_libre_document (PDF) ou message_libre_image. Sans modèle approuvé, rien ne part et la raison nomme deposer_modeles_message_libre_whatsapp. Le SID est dans crm_whatsapp_content_sids. Aucun envoi sans confirmer.",
+    input: {
+      client_id: z.string().trim().max(80).optional().describe("Client. dossier_id ou reference à la place"),
+      customer_id: z.string().trim().max(80).optional().describe("Même identifiant que client_id"),
+      dossier_id: z.string().trim().max(80).optional().describe("Dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier, par exemple TB-2026-0124"),
+      texte: z.string().trim().max(700).describe("Message en français, rédigé par l’agence"),
+      document_id: z.string().trim().max(80).optional().describe("Pièce déjà déposée. PDF, JPEG ou PNG. Pas un passeport"),
+      confirmer: z.boolean().optional().describe("true pour envoyer. Sans true, aperçu seulement"),
+    },
+    run: (args) => envoyerMessageLibre(args),
+  },
+  {
     name: "notifier_carte_embarquement",
     write: true,
     openWorld: true,
@@ -1653,6 +1673,21 @@ export const MCP_TOOLS: ToolDef[] = [
     description:
       "Statut d’approbation Meta de autorisation_validee_document_v2, autorisation_validee_image_v2 et des modèles v1 : nom, content_sid, statut, pret. pret vrai quand les deux v2 sont approuvées. L’envoi utilise alors la v2, sinon la v1. Lecture seule. N’envoie aucun message. Ne renvoie aucun secret. Réservé aux administrateurs.",
     run: (args) => statutModelesAutorisationWhatsapp(args),
+  },
+  {
+    name: "deposer_modeles_message_libre_whatsapp",
+    write: true,
+    openWorld: true,
+    description:
+      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, les modèles message_libre_texte, message_libre_document (PDF) et message_libre_image (JPEG ou PNG). Un nom déjà refusé n’est pas repris. Chaque modèle est soumis à Meta en catégorie UTILITY. Idempotent par nom. Le texte est « Bonjour {{1}}, Votre conseiller Travel BA vous adresse ce message : {{2}} Le Concierge » sans pièce, et « Bonjour {{2}}, Votre conseiller Travel BA vous adresse ce message. Vous trouverez le document ci-joint. {{3}} Le Concierge » avec une pièce. Les exemples de média sont https://travelba.fr/api/whatsapp/autorisations/exemple/esta-exemple.pdf et esta-exemple.jpg. Le content_sid est écrit dans crm_whatsapp_content_sids : l’envoi le lit sans redéploiement, et retombe sur TWILIO_CONTENT_MESSAGE_LIBRE_TEXTE, _DOCUMENT ou _IMAGE. Renvoie nom, content_sid, statut et pret. pret vrai quand les trois sont approuvés. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Ce n’est pas le modèle d’autorisation. Réservé aux administrateurs.",
+    run: (args) => deposerModelesMessageLibreWhatsapp(args),
+  },
+  {
+    name: "statut_modeles_message_libre_whatsapp",
+    openWorld: true,
+    description:
+      "Statut d’approbation Meta de message_libre_texte, message_libre_document et message_libre_image : nom, content_sid, statut, pret. pret vrai quand les trois sont approuvés. Lecture seule. N’envoie aucun message. Ne renvoie aucun secret. Réservé aux administrateurs.",
+    run: (args) => statutModelesMessageLibreWhatsapp(args),
   },
   {
     name: "lister_membres",

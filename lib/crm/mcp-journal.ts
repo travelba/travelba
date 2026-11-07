@@ -3,6 +3,7 @@ import type { JournalAction, JournalEntity } from "./agency-journal";
 const SEND = new Set([
   "publier_carnet",
   "notifier_piece",
+  "envoyer_message_libre",
   "notifier_carte_embarquement",
   "envoyer_releve",
   "envoyer_facture",
@@ -70,6 +71,7 @@ const PHRASES: Record<string, string> = {
   ajouter_piece: "Pièce déposée",
   requalifier_piece: "Pièce requalifiée",
   notifier_piece: "Pièce notifiée",
+  envoyer_message_libre: "Message libre WhatsApp",
   notifier_carte_embarquement: "Carte d’embarquement envoyée",
   creer_dossier: "Dossier créé",
   ajouter_voyageur: "Voyageur ajouté",
@@ -96,6 +98,7 @@ const PHRASES: Record<string, string> = {
   create_restaurant_whatsapp_templates: "Modèles WhatsApp restaurants déposés",
   deposer_modeles_whatsapp: "Modèles WhatsApp accès et facture déposés",
   deposer_modeles_autorisation_whatsapp: "Modèles WhatsApp d’autorisation déposés",
+  deposer_modeles_message_libre_whatsapp: "Modèles WhatsApp de message libre déposés",
   supprimer_client: "Client supprimé",
   annuler_mouvement: "Mouvement annulé",
   fusionner_clients: "Clients fusionnés",

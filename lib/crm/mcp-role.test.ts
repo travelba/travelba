@@ -33,6 +33,8 @@ test("chaque outil a un droit, les outils d’équipe sont administrateur", () =
     "statut_modeles_whatsapp",
     "deposer_modeles_autorisation_whatsapp",
     "statut_modeles_autorisation_whatsapp",
+    "deposer_modeles_message_libre_whatsapp",
+    "statut_modeles_message_libre_whatsapp",
     "reactiver_membre",
     "fusionner_clients",
     "completer_payeurs_stripe",

@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/crm/auth";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { verifyVisaGrantToken } from "@/lib/crm/visa-grant-link";
+import { verifyFreeMessageToken } from "@/lib/crm/free-message-link";
+import { freeMessagePublicFile, loadFreeMessageDocument, readFreeMessageBytes } from "@/lib/crm/free-message-file";
 import {
   VISA_GRANT_SAMPLE_IMAGE,
   VISA_GRANT_SAMPLE_PDF,
@@ -62,7 +64,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
   }
 
   const verified = verifyVisaGrantToken(token, filename);
-  if (!verified) return jsonError("Document introuvable", 404);
+  if (!verified) return serveFreeMessage(token, filename);
 
   try {
     const admin = createServiceClient();
@@ -82,6 +84,28 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
     const actual = visaGrantHeader(downloaded.contentType, storage);
     if (actual !== namedHeader) return jsonError("Document introuvable", 404);
     return fileResponse(downloaded.bytes, filename, type);
+  } catch {
+    return jsonError("Document introuvable", 404);
+  }
+}
+
+/** Pièce déjà déposée, jointe à un message libre. Le jeton n’est pas celui de l’autorisation. */
+async function serveFreeMessage(token: string, filename: string) {
+  const verified = verifyFreeMessageToken(token, filename);
+  if (!verified) return jsonError("Document introuvable", 404);
+  try {
+    const admin = createServiceClient();
+    const row = await loadFreeMessageDocument(admin, verified.documentId);
+    const gate = row
+      ? freeMessagePublicFile(
+          { docType: row.docType, mime: row.mime, storagePath: row.storagePath, fileName: row.fileName },
+          filename
+        )
+      : null;
+    if (!row || !gate) return jsonError("Document introuvable", 404);
+    const bytes = await readFreeMessageBytes(gate.storagePath, gate.header);
+    if (!bytes) return jsonError("Document introuvable", 404);
+    return fileResponse(bytes, filename, gate.contentType);
   } catch {
     return jsonError("Document introuvable", 404);
   }
