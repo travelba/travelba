@@ -1,4 +1,5 @@
 import { boardingPassContentDrafts, type BoardingPassTemplate } from "./boarding-pass-whatsapp";
+import { FREE_MESSAGE_SAMPLE_TEXT, FREE_MESSAGE_TEMPLATE, freeMessagePreview } from "./free-message-whatsapp";
 import { visaGrantPreview } from "./visa-grant-whatsapp";
 import { statementContentDrafts } from "./statement-whatsapp";
 import { siteConfig } from "../site";
@@ -645,6 +646,31 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       ],
     },
     authorizationGroup(),
+    {
+      id: "message-libre",
+      title: "Message libre",
+      intro:
+        "L’agence écrit un texte et joint un PDF déjà déposé. L’en-tête est un document. Ce n’est pas l’autorisation de voyage. Rien ne part sans confirmer.",
+      messages: [
+        {
+          id: "message-libre-document",
+          title: "Message libre avec PDF",
+          when: "document_id d’un PDF déjà dans le dossier ou l’espace client, puis confirmer.",
+          kind: "modele",
+          wired: true,
+          bubble: {
+            body: freeMessagePreview(FREE_MESSAGE_SAMPLE_TEXT) || "",
+            button: null,
+            photo: false,
+            image: null,
+            imageAlt: null,
+            modelName: FREE_MESSAGE_TEMPLATE,
+          },
+          fallback: null,
+          earlier: null,
+        },
+      ],
+    },
     {
       id: "vols",
       title: "Vol en cours",

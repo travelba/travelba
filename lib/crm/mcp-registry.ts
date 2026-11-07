@@ -33,6 +33,7 @@ import {
   updateClient,
 } from "@/lib/crm/mcp-write";
 import { notifyBoardingPass } from "@/lib/crm/mcp-boarding-pass";
+import { envoyerMessageLibre } from "@/lib/crm/mcp-free-message";
 import { addTravelPiece, notifyTravelPiece, requalifyPiece } from "@/lib/crm/mcp-piece";
 import {
   addAccueilVip,
@@ -69,8 +70,10 @@ import {
 } from "@/lib/crm/mcp-restaurants";
 import { createRestaurantWhatsappTemplates, getRestaurantWhatsappTemplatesStatus } from "@/lib/crm/mcp-restaurant-templates";
 import {
+  deposerModeleMessageLibre,
   deposerModelesAutorisationWhatsapp,
   deposerModelesWhatsapp,
+  statutModeleMessageLibre,
   statutModelesAutorisationWhatsapp,
   statutModelesWhatsapp,
 } from "@/lib/crm/mcp-agency-templates";
@@ -119,7 +122,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 109;
+export const MCP_TOOL_CAP = 112;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1653,6 +1656,39 @@ export const MCP_TOOLS: ToolDef[] = [
     description:
       "Statut d’approbation Meta de autorisation_validee_document_v2, autorisation_validee_image_v2 et des modèles v1 : nom, content_sid, statut, pret. pret vrai quand les deux v2 sont approuvées. L’envoi utilise alors la v2, sinon la v1. Lecture seule. N’envoie aucun message. Ne renvoie aucun secret. Réservé aux administrateurs.",
     run: (args) => statutModelesAutorisationWhatsapp(args),
+  },
+  {
+    name: "deposer_modele_message_libre",
+    write: true,
+    openWorld: true,
+    description:
+      "Dépose chez Twilio, depuis le serveur et avec ses identifiants, le modèle message_libre_document. Catégorie UTILITY, langue fr, en-tête Document. Le corps est « Bonjour, {{2}} Ce message de Travel BA accompagne le document joint. Le Concierge ». {{1}} est le PDF, exemple https://travelba.fr/api/whatsapp/messages/exemple/message-agence-exemple.pdf. {{2}} exemple : « Camille, votre document de voyage est prêt. Vous le trouverez ci-joint. » Un nom déjà refusé (acces_client) n’est pas repris. Idempotent par nom. Le content_sid est écrit dans crm_whatsapp_content_sids : l’envoi le lit sans redéploiement, et retombe sur TWILIO_CONTENT_MESSAGE_LIBRE_DOCUMENT si le réglage est vide. Renvoie nom, content_sid, statut et pret. N’envoie aucun WhatsApp. Ne renvoie aucun secret. Ce n’est pas le modèle d’autorisation. Réservé aux administrateurs.",
+    run: (args) => deposerModeleMessageLibre(args),
+  },
+  {
+    name: "statut_modele_message_libre",
+    openWorld: true,
+    description:
+      "Statut d’approbation Meta de message_libre_document : nom, content_sid, statut, pret. pret vrai quand Meta a approuvé. Lecture seule. N’envoie aucun message. Ne renvoie aucun secret. Réservé aux administrateurs.",
+    run: (args) => statutModeleMessageLibre(args),
+  },
+  {
+    name: "envoyer_message_libre",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie un message WhatsApp libre avec un PDF déjà déposé. document_id : pièce du dossier (deposer_piece_dossier) ou de l’espace client (ajouter_piece). message : le texte de l’agence, une ligne, sans numéro de pièce. Le modèle est message_libre_document (en-tête Document), pas autorisation_validee_document_v2. destinataires : tous (défaut), client ou voyageur. Sans confirmer, aperçu seulement : rien ne part. confirmer true envoie. forcer true renvoie le même texte. Sans modèle approuvé, rien ne part et la réponse décrit le modèle à déposer (deposer_modele_message_libre). Le téléphone n’est pas renvoyé. Réservé aux administrateurs.",
+    input: {
+      document_id: z.string().trim().max(80).describe("Identifiant du PDF déjà déposé, dossier ou espace client"),
+      message: z.string().trim().max(600).describe("Texte libre. La salutation et la signature Travel BA / Le Concierge sont déjà dans le modèle"),
+      destinataires: z
+        .enum(["tous", "client", "voyageur"])
+        .optional()
+        .describe("tous par défaut. voyageur : seulement le voyageur de la pièce, s’il a un autre numéro"),
+      confirmer: z.boolean().optional().describe("true pour envoyer. Sans true, aperçu seulement"),
+      forcer: z.boolean().optional().describe("true pour renvoyer le même texte au même destinataire"),
+    },
+    run: (args) => envoyerMessageLibre(args),
   },
   {
     name: "lister_membres",
