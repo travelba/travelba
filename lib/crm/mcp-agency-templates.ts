@@ -6,6 +6,8 @@ import {
   authorizationTemplatesStatus,
   ensureAgencyTemplates,
   ensureAuthorizationTemplates,
+  ensureFreeMessageTemplates,
+  freeMessageTemplatesStatus,
   type AgencyTemplateReport,
 } from "./agency-templates-arm";
 
@@ -96,6 +98,48 @@ export async function statutModelesAutorisationWhatsapp(
     pret: authorizationReady(result.modeles),
     ...(result.message ? { message: result.message } : {}),
     note: AUTORISATION_NOTE,
+  };
+}
+
+const MESSAGE_LIBRE_NOTE =
+  "Aucun WhatsApp n’est envoyé. Les SID de message_libre_texte, message_libre_document et message_libre_image sont dans crm_whatsapp_content_sids. L’envoi les lit sans redéploiement, et retombe sur la variable du même nom si le réglage est vide. Ce n’est pas le modèle d’autorisation.";
+
+function presentFreeMessage(row: AgencyTemplateReport) {
+  return { ...present(row), pret: row.statut === "approved" };
+}
+
+/** Dépose le message libre (texte, PDF, image). Réservé aux administrateurs. Aucun envoi. */
+export async function deposerModelesMessageLibreWhatsapp(
+  input: Record<string, unknown>,
+  fetchImpl?: typeof fetch,
+  store?: ContentSidStore
+) {
+  void input;
+  const result = await ensureFreeMessageTemplates(fetchImpl, store);
+  if (!result.ok && result.message) throw new McpWriteError(result.message);
+  return {
+    ok: result.ok,
+    categorie: AGENCY_TEMPLATE_CATEGORY,
+    modeles: result.modeles.map(presentFreeMessage),
+    pret: result.modeles.length > 0 && result.modeles.every((row) => row.statut === "approved"),
+    note: MESSAGE_LIBRE_NOTE,
+  };
+}
+
+/** Statut Meta du message libre. Lecture. Réservé aux administrateurs. */
+export async function statutModelesMessageLibreWhatsapp(
+  input: Record<string, unknown>,
+  fetchImpl?: typeof fetch,
+  store?: ContentSidStore
+) {
+  void input;
+  const result = await freeMessageTemplatesStatus(fetchImpl, store);
+  return {
+    ok: result.ok,
+    modeles: result.modeles.map(presentFreeMessage),
+    pret: result.modeles.length > 0 && result.modeles.every((row) => row.statut === "approved"),
+    ...(result.message ? { message: result.message } : {}),
+    note: MESSAGE_LIBRE_NOTE,
   };
 }
 

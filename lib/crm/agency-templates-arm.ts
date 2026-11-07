@@ -3,6 +3,7 @@ import { hotelOptionContentDrafts } from "./hotel-option-whatsapp";
 import { invoiceContentDraft } from "./invoice-document";
 import { productionOnlySecret } from "./preview-secrets";
 import { resolveContentSid } from "./twilio-content-sid";
+import { freeMessageContentDrafts } from "./free-message-whatsapp";
 import { visaGrantContentDrafts } from "./visa-grant-whatsapp";
 import { isContentSid, serviceContentSidStore, type ContentSidStore } from "./whatsapp-content-sid-store";
 
@@ -57,6 +58,11 @@ export function agencyTemplateDrafts(): Draft[] {
 /** PDF et image de l’autorisation validée. Les exemples sont les URL de production. */
 export function authorizationTemplateDrafts(): Draft[] {
   return asDrafts(visaGrantContentDrafts());
+}
+
+/** Texte libre, PDF et image. Les exemples de média sont ceux de l’autorisation. */
+export function freeMessageTemplateDrafts(): Draft[] {
+  return asDrafts(freeMessageContentDrafts());
 }
 
 function twilioAccount() {
@@ -219,6 +225,14 @@ export async function ensureAuthorizationTemplates(
   return ensureTemplateDrafts(authorizationTemplateDrafts(), fetchImpl, store);
 }
 
+/** Dépose message_libre_texte, message_libre_document et message_libre_image. Aucun message. */
+export async function ensureFreeMessageTemplates(
+  fetchImpl: typeof fetch = fetch,
+  store: ContentSidStore = serviceContentSidStore()
+) {
+  return ensureTemplateDrafts(freeMessageTemplateDrafts(), fetchImpl, store);
+}
+
 async function ensureTemplateDrafts(
   drafts: Draft[],
   fetchImpl: typeof fetch,
@@ -286,6 +300,13 @@ export async function authorizationTemplatesStatus(
   store: ContentSidStore = serviceContentSidStore()
 ) {
   return templateDraftsStatus(authorizationTemplateDrafts(), fetchImpl, store);
+}
+
+export async function freeMessageTemplatesStatus(
+  fetchImpl: typeof fetch = fetch,
+  store: ContentSidStore = serviceContentSidStore()
+) {
+  return templateDraftsStatus(freeMessageTemplateDrafts(), fetchImpl, store);
 }
 
 async function templateDraftsStatus(

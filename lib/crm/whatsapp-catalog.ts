@@ -1,5 +1,6 @@
 import { boardingPassContentDrafts, type BoardingPassTemplate } from "./boarding-pass-whatsapp";
 import { visaGrantPreview } from "./visa-grant-whatsapp";
+import { FREE_MESSAGE_SAMPLE_TEXT, freeMessageTemplatePreview } from "./free-message-whatsapp";
 import { statementContentDrafts } from "./statement-whatsapp";
 import { siteConfig } from "../site";
 import {
@@ -645,6 +646,7 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       ],
     },
     authorizationGroup(),
+    freeMessageGroup(),
     {
       id: "vols",
       title: "Vol en cours",
@@ -966,6 +968,53 @@ function authorizationGroup(): WhatsappCatalogGroup {
           image: "/whatsapp/visa.jpg",
           imageAlt: "TBA Visa",
           modelName: "autorisation_validee_image_v2",
+        },
+        fallback: null,
+        earlier: null,
+      },
+    ],
+  };
+}
+
+function freeMessageGroup(): WhatsappCatalogGroup {
+  const text = freeMessageTemplatePreview("message_libre_texte", FIRST_NAME, FREE_MESSAGE_SAMPLE_TEXT) || "";
+  const media = freeMessageTemplatePreview("message_libre_document", FIRST_NAME, FREE_MESSAGE_SAMPLE_TEXT) || "";
+  return {
+    id: "message-libre",
+    title: "Message libre",
+    intro:
+      "Texte rédigé par l’agence. Dans la fenêtre de 24 h, il part tel quel. Hors fenêtre, ce modèle part, avec le document s’il y en a un. Ce n’est pas l’autorisation de voyage. Rien ne part sans confirmation.",
+    messages: [
+      {
+        id: "message-libre-texte",
+        title: "Message libre, sans pièce",
+        when: "L’agence écrit un texte et confirme l’envoi. Hors des 24 heures, sans pièce jointe.",
+        kind: "modele",
+        wired: true,
+        bubble: {
+          body: text,
+          button: null,
+          photo: false,
+          image: null,
+          imageAlt: null,
+          modelName: "message_libre_texte",
+        },
+        fallback: null,
+        earlier: null,
+      },
+      {
+        id: "message-libre-document",
+        title: "Message libre, avec document",
+        when: "L’agence joint un PDF déjà déposé. Hors des 24 heures. Une image utilise message_libre_image, le même texte.",
+        kind: "modele",
+        wired: true,
+        bubble: {
+          body: media,
+          button: null,
+          photo: false,
+          image: null,
+          imageAlt: null,
+          modelName: "message_libre_document",
         },
         fallback: null,
         earlier: null,
