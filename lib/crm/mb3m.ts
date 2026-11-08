@@ -677,6 +677,8 @@ function paymentKind(block: string) {
 function isPaymentBlock(block: string) {
   const tag = /^<([A-Za-z]+)/.exec(block)?.[1] || "";
   if (tag === "Payment" || tag === "PaymentSummary") return true;
+  // FindAllPieces renvoie des Piece. Le règlement est <IsPayment>true</IsPayment>, pas un Type.
+  if (/<IsPayment>\s*true\s*<\/IsPayment>/i.test(block)) return true;
   return /paye?ment|r[eè]glement|encaissement/i.test(paymentKind(block));
 }
 
@@ -713,6 +715,7 @@ function paymentFromBlock(block: string): Mb3mRemotePayment | null {
   const number = paymentNumber(block);
   const amount = Number(mb3mXmlText(head, "Amount") || mb3mXmlText(head, "Total") || mb3mXmlText(head, "TotalPrice"));
   const date = (
+    mb3mXmlText(head, "DateCreation") ||
     mb3mXmlText(head, "Date") ||
     mb3mXmlText(head, "CreationDate") ||
     mb3mXmlText(head, "PieceDate") ||
@@ -724,7 +727,7 @@ function paymentFromBlock(block: string): Mb3mRemotePayment | null {
   const invoiceNumber = mb3mXmlText(head, "PieceNumber") || mb3mXmlText(head, "InvoiceNumber") || mb3mXmlText(block, "PieceNumber") || null;
   return {
     number,
-    reference: mb3mXmlText(head, "Reference"),
+    reference: mb3mXmlText(head, "Reference") || mb3mXmlText(head, "RefNumber"),
     amount,
     date,
     folderId: paymentFolderId(block),
@@ -737,7 +740,8 @@ function paymentFolderId(block: string) {
   const direct = mb3mXmlText(block, "FolderId");
   if (direct) return direct;
   const folder = mb3mLocalNames(block).match(/<Folder(?:\s[^>]*)?>[\s\S]*?<\/Folder>/)?.[0] || "";
-  return mb3mXmlText(folder, "Id") || null;
+  // La liste met Id à nil. Seul Folder/Uid est rempli.
+  return mb3mXmlText(folder, "Id") || mb3mXmlText(folder, "Uid") || null;
 }
 
 async function readPaymentPage(customerUid: string, page: number, pageSize: number, folderId: string | null, fetchImpl?: FetchImpl) {

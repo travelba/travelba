@@ -1,0 +1,129 @@
+{
+  "bookings": [
+    {
+      "id": "3d9eb840-dae8-4632-b755-f9e61e050b50",
+      "reference": "TB-2026-0044",
+      "customer_id": "77b1ddfe-ac74-471a-a84a-5f841dae9837",
+      "billing_customer_id": "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      "billing_company_id": "0b6d9845-5042-47a2-b083-c33c791414e5",
+      "status": "confirmed"
+    },
+    {
+      "id": "5779081d-2144-4524-a84d-ed26741722fc",
+      "reference": "TB-2026-0034",
+      "customer_id": "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      "billing_customer_id": "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      "billing_company_id": "0b6d9845-5042-47a2-b083-c33c791414e5",
+      "status": "confirmed"
+    }
+  ],
+  "customers": [
+    {
+      "id": "77b1ddfe-ac74-471a-a84a-5f841dae9837",
+      "company_role": "member",
+      "billing_parent_id": "6aa27baa-644a-4ba8-94fe-e8283436969c"
+    },
+    {
+      "id": "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      "company_role": "admin",
+      "billing_parent_id": null
+    }
+  ],
+  "transactions": [
+    {
+      "id": "128699bc-97fd-4de3-97f7-af7bfcf06281",
+      "customer_id": "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      "booking_id": null,
+      "billing_company_id": "0b6d9845-5042-47a2-b083-c33c791414e5",
+      "amount": 15000,
+      "occurred_on": "2026-09-09",
+      "currency": "EUR",
+      "source": "revolut",
+      "label": "Virement Revolut",
+      "status": "posted",
+      "direction": "credit"
+    },
+    {
+      "id": "f9043b09-cfb6-40a3-936c-c12f01bbb288",
+      "customer_id": "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      "booking_id": null,
+      "billing_company_id": "0b6d9845-5042-47a2-b083-c33c791414e5",
+      "amount": 6500,
+      "occurred_on": "2026-10-05",
+      "currency": "EUR",
+      "source": "revolut",
+      "label": "Virement Revolut",
+      "status": "posted",
+      "direction": "credit"
+    },
+    {
+      "id": "c47f41ef-f8fe-4072-b610-1640aacf0dd2",
+      "customer_id": "6aa27baa-644a-4ba8-94fe-e8283436969c",
+      "booking_id": null,
+      "billing_company_id": null,
+      "amount": 5330.29,
+      "occurred_on": "2026-10-15",
+      "currency": "EUR",
+      "source": "revolut",
+      "label": "Virement Revolut",
+      "status": "posted",
+      "direction": "credit"
+    }
+  ],
+  "pieces": [
+    {
+      "id": "ee16fb9c-5633-4391-8881-9ec66e7d221e",
+      "booking_id": "5779081d-2144-4524-a84d-ed26741722fc",
+      "kind": "invoice",
+      "realm": "production",
+      "piece_number": "2096",
+      "folder_id": "01-0002000",
+      "folder_uid": "b74cb0fe-afc2-4210-92a1-202610141546",
+      "amount": 25071.66,
+      "customer_uid": "92c5a491-b764-4c07-9a08-ebf0e56a21a4",
+      "printed_at": null,
+      "warning": null
+    },
+    {
+      "id": "499e5679-b15a-438d-882c-b90fb45a212c",
+      "booking_id": "5779081d-2144-4524-a84d-ed26741722fc",
+      "kind": "invoice",
+      "realm": "test",
+      "piece_number": "4545",
+      "folder_id": "22-0000027",
+      "folder_uid": "1a4495a8-a426-423d-9f21-202610141230",
+      "amount": 24572.91,
+      "customer_uid": "6759c8c7-2cb1-40a7-a9e8-91eaf71c8623",
+      "printed_at": null,
+      "warning": null
+    },
+    {
+      "id": "f8fa28f3-ef0c-4438-ac89-62e1b4cf87c9",
+      "booking_id": "3d9eb840-dae8-4632-b755-f9e61e050b50",
+      "kind": "gds",
+      "realm": "production",
+      "piece_number": "2005",
+      "folder_id": null,
+      "folder_uid": null,
+      "amount": 1197.44,
+      "customer_uid": null,
+      "printed_at": "2026-11-03T14:19:22.42+00:00",
+      "warning": null
+    },
+    {
+      "id": "ccf86180-08fa-4abc-ba69-e9fb37216b9c",
+      "booking_id": "3d9eb840-dae8-4632-b755-f9e61e050b50",
+      "kind": "invoice",
+      "realm": "production",
+      "piece_number": "2157",
+      "folder_id": "01-0002007",
+      "folder_uid": "b127ebaa-8fcd-4399-99c2-202611021224",
+      "amount": 561.19,
+      "customer_uid": "92c5a491-b764-4c07-9a08-ebf0e56a21a4",
+      "printed_at": null,
+      "warning": "La facture Amadeus n° 2005 n’a pas été déplacée dans MB3M : Une erreur s'est produite durant l'enregistrement de la facture. — La pièce de gestion ne peut pas être modifiée Aucun règlement à lettrer n’a été trouvé pour la facture n° 2157 (561,19 € encore dus)."
+    }
+  ],
+  "payments": [],
+  "matches": []
+}
