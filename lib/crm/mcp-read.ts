@@ -84,7 +84,8 @@ import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
 import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { CLIENT_VISA_STEPS, clientVisaStepCopy, type ClientVisaStep } from "@/lib/crm/visa-flow";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
-import { deskView, reasonLabel, type DeskTask } from "@/lib/crm/visa-desk";
+import { reasonLabel, type DeskTask } from "@/lib/crm/visa-desk";
+import { loadAccueilTodoCounts } from "@/lib/crm/admin-todo-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { mcpPageMeta, mcpSlice, mcpWindow } from "@/lib/crm/mcp-page";
 
@@ -269,27 +270,7 @@ async function bookingTravelers(admin: SupabaseClient, bookingId: string) {
   return (data || []) as { id: string; first_name: string | null; last_name: string | null }[];
 }
 
-type VisaTaskRow = {
-  booking_id: string;
-  holder_name: string;
-  reference: string;
-  reasons: DeskTask["reasons"] | null;
-  done_at: string | null;
-  created_at: string;
-};
-
 type ServiceBookingRow = { id: string; reference: string; status: string; customer_id: string };
-
-function visaTasks(rows: VisaTaskRow[]): DeskTask[] {
-  return rows.map((row) => ({
-    bookingId: row.booking_id,
-    holderName: row.holder_name,
-    reference: row.reference,
-    reasons: row.reasons || [],
-    doneAt: row.done_at,
-    createdAt: row.created_at,
-  }));
-}
 
 async function openServiceLines(admin: SupabaseClient, serviceBookings: ServiceBookingRow[]) {
   const serviceIds = serviceBookings.map((row) => row.id);
@@ -352,18 +333,7 @@ function pieceLine(doc: CrmTravelDocument, names?: Map<string, string>) {
 export async function readTableauDeBord() {
   const admin = db();
   const today = todayIsoDate();
-  const weekAgo = isoDateInDays(-7);
-  const [
-    badges,
-    balances,
-    comptes,
-    bookingCount,
-    departSoon,
-    departTomorrow,
-    tasks,
-    activeBookings,
-    whatsappOpen,
-  ] = await Promise.all([
+  const [badges, balances, comptes, bookingCount, departSoon, whatsappOpen, tripTodo] = await Promise.all([
     adminBadges(),
     admin.from("crm_customer_balances").select("balance, currency"),
     loadAgencyAccounts(),
@@ -376,32 +346,11 @@ export async function readTableauDeBord() {
       .neq("status", "cancelled")
       .is("archived_at", null),
     admin
-      .from("crm_bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("start_date", isoDateInDays(1))
-      .neq("status", "cancelled")
-      .is("archived_at", null),
-    admin
-      .from("crm_visa_tasks")
-      .select("booking_id, holder_name, reference, reasons, done_at, created_at")
-      .or(`done_at.is.null,done_at.gte.${weekAgo}`)
-      .order("created_at", { ascending: false })
-      .limit(100),
-    admin
-      .from("crm_bookings")
-      .select("id, reference, status, customer_id")
-      .neq("status", "cancelled")
-      .is("archived_at", null)
-      .or(`end_date.is.null,end_date.gte.${isoDateInDays(-1)}`)
-      .order("start_date", { ascending: true, nullsFirst: false })
-      .limit(300),
-    admin
       .from("crm_whatsapp_requests")
       .select("id", { count: "exact", head: true })
       .eq("status", "open"),
+    loadAccueilTodoCounts(admin, stayToday()),
   ]);
-  const desk = deskView(visaTasks((tasks.data || []) as VisaTaskRow[]), today);
-  const services = await openServiceLines(admin, (activeBookings.data || []) as ServiceBookingRow[]);
   const remaining = ((balances.data || []) as { balance: number | string }[]).reduce(
     (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
     0
@@ -415,13 +364,12 @@ export async function readTableauDeBord() {
   }
   return {
     a_faire: adminTodoLines({
-      emails: badges.emails,
-      le: badges.le,
-      formalities: desk.open.length,
-      services: services.length,
-      departTomorrow: departTomorrow.count ?? 0,
-      expiring: badges.pieces,
       whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
+      unread: badges.whatsapp,
+      hotels: badges.hotels,
+      paymentLinks: tripTodo.paymentLinks,
+      visas: tripTodo.visas,
+      checkins: tripTodo.checkins,
     }),
     encours_a_encaisser: formatMoney(remaining),
     comptes: comptes.map((account) => ({
