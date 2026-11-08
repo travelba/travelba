@@ -63,6 +63,7 @@ export function AdminNav({
   staffRole = "",
   allows = null,
   showExample = false,
+  refonteShell = false,
   children,
 }: {
   /** Les compteurs du menu (`adminBadges`). */
@@ -74,6 +75,8 @@ export function AdminNav({
   staffRole?: StaffRole | "";
   allows?: Partial<Record<Permission, boolean>> | null;
   showExample?: boolean;
+  /** Aperçu /admin/preview/refonte : le menu actuel laisse la place au sien. */
+  refonteShell?: boolean;
   children?: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -102,6 +105,10 @@ export function AdminNav({
 
   if (pathname === "/admin/login") {
     return <main className="px-4 py-6 sm:px-6 sm:py-8">{children}</main>;
+  }
+
+  if (refonteShell && pathname.startsWith("/admin/preview/refonte")) {
+    return <div className="min-h-screen">{children}</div>;
   }
 
   async function signOut() {
