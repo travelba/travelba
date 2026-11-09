@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { appOrigin } from "@/lib/crm/invite";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelFollowUp, sendHotelMessage, sendHotelReply, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
 import { HOTEL_DESK_KINDS } from "@/lib/crm/types";
 import type { HotelDeskKind } from "@/lib/crm/types";
@@ -65,7 +66,11 @@ async function readPayload(request: Request) {
   const type = request.headers.get("content-type") || "";
   if (!type.includes("multipart/form-data")) {
     const json = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-    return { ...(json || {}), clientCard: null as { filename: string; content: Buffer; mime?: string } | null };
+    return {
+      ...(json || {}),
+      note: typeof json?.note === "string" ? json.note : "",
+      clientCard: null as { filename: string; content: Buffer; mime?: string } | null,
+    };
   }
   const form = await request.formData();
   const file = form.get("clientCard");
@@ -90,6 +95,7 @@ async function readPayload(request: Request) {
     cardChoice: String(form.get("cardChoice") || ""),
     contacts: contactRows(form.get("contacts")),
     identityDocumentIds: documentIds(form.get("identityDocumentIds")),
+    note: String(form.get("note") || ""),
     clientCard,
   };
 }
@@ -176,6 +182,26 @@ export async function POST(request: Request, ctx: Ctx) {
   if (action === "clear-client-card") {
     await clearClientStayCard(admin, id, itemId);
     return NextResponse.json({ ok: true });
+  }
+  if (action === "classer" || action === "rouvrir") {
+    if (!kind) return jsonError("Action incomplète", 400);
+    try {
+      await setHotelCourrierClass(
+        admin,
+        {
+          dossier_id: id,
+          carte_id: itemId,
+          demande: kind,
+          note: typeof body.note === "string" ? body.note : "",
+          rouvrir: action === "rouvrir",
+        },
+        { staffId: auth.staff.id, name: auth.staff.full_name },
+        { journalPath: `/api/admin/bookings/${id}/hotel-desk` }
+      );
+      return NextResponse.json({ ok: true });
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
+    }
   }
   if (!kind) return jsonError("Action incomplète", 400);
   const rawChoice = body?.cardChoice;

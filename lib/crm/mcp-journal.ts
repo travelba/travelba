@@ -88,6 +88,7 @@ const PHRASES: Record<string, string> = {
   ajouter_hotel: "Hôtel ajouté",
   modifier_hotel: "Hôtel modifié",
   ajouter_accueil_vip: "Accueil ajouté",
+  classer_courrier_hotel: "Courrier hôtel classé",
   enregistrement_en_ligne: "Enregistrement en ligne mis à jour",
   envoyer_releve: "Relevé envoyé",
   preparer_facture_mb3m: "Facture MB3M préparée",

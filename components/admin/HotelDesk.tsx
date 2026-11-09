@@ -10,6 +10,7 @@ import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownPersonName } from "@/lib/crm/identity";
+import { classificationStillHolds } from "@/lib/crm/hotel-courrier-board";
 import { applyHotelSalutation, bookingToken, ensureHotelMailIdentity, followUpSubject, hotelMailSubjectKey, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelThread, signHotelLetter, type DeskRosterPerson, type HotelMailPiece, type HotelThreadTurn } from "@/lib/crm/hotel-desk";
 import { applyPaymentLinkChoice, formatArrivalAmount, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
@@ -20,6 +21,32 @@ import { HOTEL_DESK_KINDS, type CrmBookingItem, type CrmBookingTraveler, type Cr
 
 const letterFieldClass =
   "w-full rounded-xl border border-[#d9d1c3] bg-[#faf9f6] px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C] focus:bg-white";
+
+function classTurns(row: CrmHotelRequest, thread: CrmHotelThreadMessage[]) {
+  const keys = new Set(
+    [...(row.sent_subjects || []), row.subject || ""].map((subject) => hotelMailSubjectKey(subject)).filter(Boolean)
+  );
+  const turns = thread
+    .filter(
+      (turn) =>
+        turn.direction === "in" &&
+        (turn.request_id === row.id || (turn.booking_item_id === row.booking_item_id && keys.has(turn.subject_key)))
+    )
+    .map((turn) => ({ at: turn.received_at, direction: "in" as const }));
+  if (row.replied_at) turns.push({ at: row.replied_at, direction: "in" });
+  return turns;
+}
+
+function classedCaption(row: CrmHotelRequest) {
+  const when = row.classified_at
+    ? new Date(row.classified_at).toLocaleDateString("fr-FR", { dateStyle: "medium", timeZone: "Europe/Paris" })
+    : "";
+  const dated = when && when !== "Invalid Date" ? `Classé le ${when}` : "Classé";
+  const who = (row.classified_by_name || "").trim();
+  const note = (row.classified_note || "").replace(/\s+/g, " ").trim();
+  const head = [dated, who ? `par ${who}` : ""].filter(Boolean).join(" ");
+  return note ? `${head}. ${note}` : head;
+}
 
 export function HotelChecklistGlance({ itemId, requests }: { itemId: string; requests: CrmHotelRequest[] }) {
   const stay = hotelStayChecklist(itemId, requests);
@@ -80,6 +107,8 @@ export function HotelDesk({
   const [replyKey, setReplyKey] = useState<string | null>(initialReplyId);
   const [marking, setMarking] = useState<string | null>(null);
   const [markError, setMarkError] = useState<string | null>(null);
+  const [classDraft, setClassDraft] = useState<HotelDeskKind | null>(null);
+  const [classNote, setClassNote] = useState("");
   const turns = hotelThread({ item, requests, messages, thread, attached });
   const relanceTurn =
     relanceKey == null
@@ -114,6 +143,26 @@ export function HotelDesk({
     ref: bookingToken(item.confirmation_ref),
   };
 
+  async function classify(row: CrmHotelRequest, action: "classer" | "rouvrir", note = "") {
+    if (marking) return;
+    setMarking(row.kind);
+    setMarkError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-desk`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, itemId: row.booking_item_id, kind: row.kind, note }),
+    });
+    const json = (await res.json().catch(() => null)) as { error?: string } | null;
+    setMarking(null);
+    if (!res.ok) {
+      setMarkError(json?.error || "Le courrier n’a pas pu être classé.");
+      return;
+    }
+    setClassDraft(null);
+    setClassNote("");
+    router.refresh();
+  }
+
   async function mark(row: CrmHotelRequest, action: "skip" | "restore") {
     if (marking) return;
     setMarking(row.kind);
@@ -147,8 +196,12 @@ export function HotelDesk({
             const row = rows.find((itemRow) => itemRow.kind === line.kind);
             if (!row) return null;
             const selected = open === line.kind;
+            const canClass = row.status === "sent" || row.status === "follow_up" || row.status === "replied";
+            const held = canClass && classificationStillHolds(row.classified_at, classTurns(row, thread));
+            const classed = held ? classedCaption(row) : "";
             return (
-              <li key={line.kind} className="flex items-center border-t border-[#e5e0d4] first:border-t-0">
+              <li key={line.kind} className="border-t border-[#e5e0d4] first:border-t-0">
+                <div className="flex items-center">
                 <button
                   type="button"
                   className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left ${selected ? "bg-white" : ""}`}
@@ -160,7 +213,7 @@ export function HotelDesk({
                   />
                   <span className="truncate text-sm font-semibold text-[#0B192C]">{line.title}</span>
                   <span className={`ml-auto shrink-0 text-xs font-medium ${line.mark === "unneeded" ? "text-[#3d4654]" : "text-[#0B192C]"}`}>
-                    {line.caption}
+                    {held ? "Classé" : line.caption}
                   </span>
                 </button>
                 {line.mark === "open" ? (
@@ -182,6 +235,60 @@ export function HotelDesk({
                   >
                     {marking === line.kind ? "…" : "Remettre"}
                   </button>
+                ) : null}
+                {canClass && held ? (
+                  <button
+                    type="button"
+                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C] disabled:opacity-50"
+                    disabled={Boolean(marking)}
+                    onClick={() => void classify(row, "rouvrir")}
+                  >
+                    {marking === line.kind ? "…" : "Rouvrir"}
+                  </button>
+                ) : null}
+                {canClass && !held ? (
+                  <button
+                    type="button"
+                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C] disabled:opacity-50"
+                    disabled={Boolean(marking)}
+                    title="Classe le fil sans envoyer d’e-mail"
+                    onClick={() => {
+                      setClassDraft(line.kind);
+                      setClassNote("");
+                      setMarkError(null);
+                    }}
+                  >
+                    Classer
+                  </button>
+                ) : null}
+                </div>
+                {classed ? <p className="px-3 pb-2 text-xs text-[#3d4654]">{classed}</p> : null}
+                {classDraft === line.kind ? (
+                  <form
+                    className="flex flex-wrap items-center gap-2 border-t border-[#e5e0d4] px-3 py-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void classify(row, "classer", classNote);
+                    }}
+                  >
+                    <label className="sr-only" htmlFor={`class-note-${row.id}`}>
+                      Note de classement
+                    </label>
+                    <input
+                      id={`class-note-${row.id}`}
+                      value={classNote}
+                      maxLength={500}
+                      placeholder="Note, facultative"
+                      onChange={(event) => setClassNote(event.target.value)}
+                      className="min-w-0 flex-1 rounded-lg border border-[#d9d1c3] bg-white px-2 py-1.5 text-xs text-[#0B192C] outline-none focus:border-[#0B192C]"
+                    />
+                    <button type="submit" className="text-xs font-semibold text-[#0B192C] disabled:opacity-50" disabled={Boolean(marking)}>
+                      {marking === line.kind ? "…" : "Classer, sans e-mail"}
+                    </button>
+                    <button type="button" className="text-xs font-semibold text-[#3d4654]" onClick={() => setClassDraft(null)}>
+                      Annuler
+                    </button>
+                  </form>
                 ) : null}
               </li>
             );

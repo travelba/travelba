@@ -1,12 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hotelMailSubjectKey } from "./hotel-desk";
 import {
+  classificationSuperseded,
   dashboardCourriers,
+  HOTEL_COURRIER_CLASS_CLEAR,
   type DashboardCourrier,
   type HotelCourrierSource,
   type HotelCourrierTurn,
   type HotelPliantSpend,
 } from "./hotel-courrier-board";
+import { missingDbColumn } from "./optional-column";
 
 export type DashboardMail = DashboardCourrier;
 
@@ -23,6 +26,7 @@ type RequestRow = {
   replied_at: string | null;
   reply_body: string | null;
   follow_up_count: number | null;
+  classified_at?: string | null;
 };
 
 type TurnRow = {
@@ -101,19 +105,27 @@ function turnOf(row: TurnRow): HotelCourrierTurn | null {
   };
 }
 
-/** Courriers hôtel encore à traiter : dernier message du fil, paiement, dossier. */
-export async function loadDashboardMails(supabase: SupabaseClient): Promise<DashboardMail[]> {
-  const { data, error } = await supabase
+const REQUEST_COLUMNS =
+  "id, booking_id, booking_item_id, kind, status, subject, sent_subjects, sent_at, last_follow_up_at, replied_at, reply_body, follow_up_count, updated_at";
+
+function requestQuery(supabase: SupabaseClient, columns: string) {
+  return supabase
     .from("crm_hotel_requests")
-    .select(
-      "id, booking_id, booking_item_id, kind, status, subject, sent_subjects, sent_at, last_follow_up_at, replied_at, reply_body, follow_up_count, updated_at"
-    )
+    .select(columns)
     .in("status", ["sent", "follow_up", "replied"])
     .order("updated_at", { ascending: false })
     .limit(120);
+}
+
+/** Courriers hôtel encore à traiter : dernier message du fil, paiement, classement, dossier. */
+export async function loadDashboardMails(supabase: SupabaseClient): Promise<DashboardMail[]> {
+  const wide = await requestQuery(supabase, `${REQUEST_COLUMNS}, classified_at, classified_by, classified_by_name, classified_note`);
+  const loaded =
+    wide.error && missingDbColumn(wide.error, "classified_at") ? await requestQuery(supabase, REQUEST_COLUMNS) : wide;
+  const { data, error } = loaded;
 
   if (error || !data?.length) return [];
-  const requests = data as RequestRow[];
+  const requests = data as unknown as RequestRow[];
   const itemIds = [...new Set(requests.map((row) => row.booking_item_id))];
   const bookingIds = [...new Set(requests.map((row) => row.booking_id))];
   const requestIds = new Set(requests.map((row) => row.id));
@@ -207,8 +219,20 @@ export async function loadDashboardMails(supabase: SupabaseClient): Promise<Dash
       bookingEnd: booking?.end_date || null,
       itemEnd: item?.end_at || null,
       itemLifecycle: item?.lifecycle || null,
+      classifiedAt: row.classified_at || null,
     };
   });
 
+  for (const source of sources) {
+    if (!classificationSuperseded(source.classifiedAt, source.turns || [])) continue;
+    await supabase.from("crm_hotel_requests").update(HOTEL_COURRIER_CLASS_CLEAR).eq("id", source.id);
+  }
+
   return dashboardCourriers(sources, payments.spends, payments.known);
+}
+
+/** Réponses d’hôtel encore à traiter, le même décompte que la liste du tableau de bord. */
+export async function countHotelRepliesToTreat(supabase: SupabaseClient) {
+  const mails = await loadDashboardMails(supabase);
+  return mails.filter((mail) => mail.replyState === "treat").length;
 }

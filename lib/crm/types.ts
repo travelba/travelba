@@ -468,6 +468,11 @@ export type CrmHotelRequest = {
   /** Titres réellement partis. La recherche suit cette liste. */
   sent_subjects?: string[];
   thread_synced_at?: string | null;
+  /** Classement manuel du fil. Null : le statut calculé s’applique. */
+  classified_at?: string | null;
+  classified_by?: string | null;
+  classified_by_name?: string | null;
+  classified_note?: string | null;
   created_at: string;
   updated_at: string;
 };
