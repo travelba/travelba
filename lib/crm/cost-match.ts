@@ -4,6 +4,7 @@
  * Un indice faible (compagnie seule, marque d’hôtel seule, petit montant) ne propose rien.
  */
 
+import { pliantAgencyCardLabel, scorePliantMatches, type PliantMatchCustomer } from "./pliant-match";
 import { matchTokens, normalizeMatchText, tokensSpell } from "./revolut-match";
 
 export type CostTargetItem = {
@@ -32,9 +33,14 @@ export type CostTargetBooking = {
   /** Société facturée du séjour, quand elle est connue. */
   billingCompanyId?: string | null;
   clientName?: string | null;
+  clientFirst?: string | null;
+  clientLast?: string | null;
+  clientUsage?: string | null;
   companyName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  /** Jour de création du dossier. */
+  createdAt?: string | null;
   items: CostTargetItem[];
   travelers?: CostPerson[];
   /** Pièces et e-mails déjà rattachés au dossier. Textes courts, pas le corps entier. */
@@ -58,7 +64,10 @@ export type CostSignal =
   | "hotel"
   | "place"
   | "date"
-  | "duplicate";
+  | "duplicate"
+  | "clientCard"
+  | "sameCard"
+  | "nearest";
 
 export type CostConfidence = "haute" | "moyenne" | "basse";
 
@@ -81,6 +90,11 @@ export type CostMatchInput = {
   originalCurrency?: string | null;
   cardBookingIds?: string[];
   customerId?: string | null;
+  /**
+   * Libellé de la carte Pliant (nom gravé, une carte par client avant octobre 2026).
+   * Le porteur technique (collaborateur agence) n’est pas ce nom.
+   */
+  cardName?: string | null;
   /** Jour d’autorisation Pliant, ou jour Revolut. */
   date?: string | null;
 };
@@ -89,6 +103,8 @@ const SHOW_SCORE = 62;
 const HAUTE_SCORE = 85;
 const AMBIGUOUS_GAP = 15;
 const CLIENT_WINDOW_DAYS = 10;
+const CARD_BEFORE_CREATED_DAYS = 14;
+const CARD_AFTER_END_DAYS = 7;
 const DAY = 86_400_000;
 
 const HARD = new Set<CostSignal>(["reference", "card", "pnr", "amount", "hotel", "email", "passengers"]);
@@ -166,6 +182,9 @@ const SIGNAL_LABEL: Record<CostSignal, string> = {
   place: "Le lieu correspond à la destination.",
   date: "La date d’autorisation est celle du vol ou du séjour.",
   duplicate: "Montant déjà proposé pour une autre sortie – doublon possible.",
+  clientCard: "Carte au nom du client (ancien système, une carte par client).",
+  sameCard: "Même client / même carte.",
+  nearest: "Dossier le plus proche : la date est hors du séjour.",
 };
 
 const REASON_LABEL: Record<CostSuggestion["reason"], string> = {
@@ -587,7 +606,7 @@ function confidenceOf(score: number): CostConfidence {
   return score >= HAUTE_SCORE ? "haute" : "moyenne";
 }
 
-const SIGNAL_ORDER: CostSignal[] = ["reference", "card", "pnr", "amount", "fx", "passengers", "email", "airline", "hotel", "place", "date", "client", "duplicate"];
+const SIGNAL_ORDER: CostSignal[] = ["reference", "card", "pnr", "amount", "fx", "passengers", "email", "airline", "hotel", "place", "date", "client", "clientCard", "sameCard", "nearest", "duplicate"];
 
 function toSuggestion(row: Scored, extra?: CostSignal[]): CostSuggestion {
   const signals = [...row.signals];
@@ -610,9 +629,127 @@ function boostUnique(rows: Scored[], signal: CostSignal, floor: number) {
   hits[0].score = Math.max(hits[0].score, floor);
 }
 
+/** Amadeus, Hôtel, TB-2026-0001, Club Med : pas un nom de client. */
+function ignoredCardLabel(label: string) {
+  const trimmed = label.trim();
+  if (!trimmed || pliantAgencyCardLabel(trimmed)) return true;
+  if (/\bTB-\d{4}-\d{4}\b/i.test(trimmed)) return true;
+  const key = normalizeMatchText(trimmed);
+  if (["hotel", "hotels", "clubmed", "hostel", "resort", "amadeus"].includes(key)) return true;
+  const tokens = matchTokens(trimmed);
+  if (tokens.includes("club") && tokens.includes("med")) return true;
+  const name = tokens.filter((token) => token.length >= 3 && !GENERIC.has(token) && !HOTEL_BRANDS.has(token) && !/^\d+$/.test(token));
+  return name.length === 0;
+}
+
+function splitDisplayName(value: string) {
+  const bare = value.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+  const parts = bare.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return { first: parts[0] || "", last: "" };
+  return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
+}
+
+function cardCustomers(bookings: CostTargetBooking[]): PliantMatchCustomer[] {
+  const byId = new Map<string, PliantMatchCustomer>();
+  for (const booking of bookings) {
+    if (!booking.customerId || byId.has(booking.customerId)) continue;
+    const split = splitDisplayName(booking.clientName || "");
+    byId.set(booking.customerId, {
+      id: booking.customerId,
+      first_name: booking.clientFirst || split.first || null,
+      last_name: booking.clientLast || split.last || null,
+      usage_name: booking.clientUsage || null,
+      company_name: booking.companyName || null,
+    });
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Fenêtre [création du dossier − 14 j, fin du séjour + 7 j].
+ * Si le dossier a été saisi après le voyage, la fenêtre englobe aussi le séjour lui-même,
+ * pour qu’un débit pendant une étape compte pour cette étape.
+ */
+function inClientCardWindow(date: string | null | undefined, booking: CostTargetBooking) {
+  const at = dayMs(date);
+  if (at == null) return false;
+  const created = dayMs(booking.createdAt);
+  const start = dayMs(booking.startDate);
+  const end = dayMs(booking.endDate) ?? start;
+  const bounds: number[] = [];
+  if (created != null) bounds.push(created - CARD_BEFORE_CREATED_DAYS * DAY);
+  if (end != null) bounds.push(end + CARD_AFTER_END_DAYS * DAY);
+  if (start != null) bounds.push(start);
+  if (bounds.length < 2) return false;
+  return at >= Math.min(...bounds) && at <= Math.max(...bounds);
+}
+
+function tripDistance(date: string | null | undefined, booking: CostTargetBooking) {
+  const at = dayMs(date);
+  if (at == null) return Number.POSITIVE_INFINITY;
+  const start = dayMs(booking.startDate);
+  const end = dayMs(booking.endDate) ?? start;
+  if (start == null || end == null) {
+    const created = dayMs(booking.createdAt);
+    return created == null ? Number.POSITIVE_INFINITY : Math.abs(at - created);
+  }
+  if (at >= start && at <= end) return 0;
+  return at < start ? start - at : at - end;
+}
+
+function clientCardEvidence(row: Scored | undefined) {
+  if (!row) return false;
+  return row.signals.some((signal) => signal === "amount" || signal === "fx" || signal === "airline" || signal === "hotel" || signal === "pnr" || signal === "email" || signal === "passengers");
+}
+
+/**
+ * Carte au nom du client (avant octobre 2026, une carte par client).
+ * Le dossier de CE client l’emporte sur l’hôtel ou le montant d’un autre client.
+ */
+function clientCardSuggestion(input: CostMatchInput, bookings: CostTargetBooking[], scored: Scored[]): CostSuggestion | null {
+  const label = (input.cardName || "").trim();
+  if (ignoredCardLabel(label)) return null;
+  const matched = scorePliantMatches({ card_label: label }, cardCustomers(bookings));
+  const customerId = matched.autoCustomerId;
+  const strong = matched.candidates.find((row) => row.customer_id === customerId && row.score >= 90);
+  if (!customerId || !strong) return null;
+  const own = scored.filter((row) => row.booking.customerId === customerId);
+  if (!own.length) return null;
+  const linked = (input.cardBookingIds || []).filter((id) => own.some((row) => row.booking.id === id));
+  if (linked.length === 1) {
+    const row = own.find((item) => item.booking.id === linked[0]);
+    if (row) return toSuggestion(row);
+  }
+  const inside = own.filter((row) => inClientCardWindow(input.date, row.booking));
+  const pool = inside.length ? inside : own;
+  pool.sort((left, right) => tripDistance(input.date, left.booking) - tripDistance(input.date, right.booking) || left.booking.reference.localeCompare(right.booking.reference));
+  const chosen = pool[0];
+  const inWindow = inside.length > 0;
+  const evidence = inWindow && clientCardEvidence(chosen);
+  const reasons: CostSignal[] = ["clientCard"];
+  if (inWindow) reasons.push("date");
+  if (inside.length > 1) reasons.push("sameCard");
+  if (!inWindow) reasons.push("nearest");
+  for (const signal of chosen.signals) {
+    if (!reasons.includes(signal)) reasons.push(signal);
+  }
+  reasons.sort((left, right) => SIGNAL_ORDER.indexOf(left) - SIGNAL_ORDER.indexOf(right));
+  const confidence: CostConfidence = !inWindow ? "basse" : evidence ? "haute" : "moyenne";
+  return {
+    bookingId: chosen.booking.id,
+    itemId: chosen.itemId,
+    score: confidence === "haute" ? 90 : confidence === "moyenne" ? 74 : 58,
+    reason: "client",
+    reasons,
+    passengers: chosen.passengers,
+    confidence,
+  };
+}
+
 /**
  * Classe les dossiers. Référence, carte, PNR, montant, hôtel distinct (pas la marque seule),
  * e-mail et noms. Deux pistes trop proches et peu sûres : aucune proposition.
+ * Une carte au nom du client l’emporte sur l’hôtel d’un autre dossier.
  */
 export function rankCostTargets(input: CostMatchInput, bookings: CostTargetBooking[]): CostSuggestion[] {
   const reference = (input.text || input.party || "").match(/\bTB-\d{4}-\d{4}\b/i)?.[0]?.toUpperCase() || null;
@@ -628,6 +765,8 @@ export function rankCostTargets(input: CostMatchInput, bookings: CostTargetBooki
   const scored = bookings.map((booking) => scoreOne(input, booking, cards));
   boostUnique(scored, "amount", 64);
   boostUnique(scored, "hotel", 70);
+  const namedCard = clientCardSuggestion(input, bookings, scored);
+  if (namedCard) return [namedCard];
   const passengerHits = scored.filter((row) => row.signals.includes("passengers") && (row.signals.includes("airline") || row.signals.includes("hotel") || row.signals.includes("amount") || row.signals.includes("email")));
   if (passengerHits.length === 1) passengerHits[0].score = Math.max(passengerHits[0].score, 66);
 

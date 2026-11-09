@@ -633,7 +633,7 @@ async function chunked<T>(ids: string[], run: (slice: string[]) => Promise<T[]>)
 
 /** Dossiers ouverts (non annulés) avec leurs lignes : la base des propositions. */
 export async function loadCostTargets(admin: SupabaseClient, bookingId?: string | null): Promise<CostTargetBooking[]> {
-  const select = "id, reference, title, destination, customer_id, billing_company_id, start_date, end_date";
+  const select = "id, reference, title, destination, customer_id, billing_company_id, start_date, end_date, created_at";
   let query = admin.from("crm_bookings").select(select).neq("status", "cancelled").order("created_at", { ascending: false }).limit(400);
   if (bookingId) query = admin.from("crm_bookings").select(select).eq("id", bookingId);
   const { data: bookings } = await query;
@@ -646,6 +646,7 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     billing_company_id: string | null;
     start_date: string | null;
     end_date: string | null;
+    created_at: string | null;
   }[];
   if (!rows.length) return [];
   const items = await chunked(
@@ -673,6 +674,7 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     billingCompanyId: row.billing_company_id,
     startDate: row.start_date,
     endDate: row.end_date,
+    createdAt: row.created_at ? String(row.created_at).slice(0, 10) : null,
     items: (byBooking.get(row.id) || []).map((item) => ({
       id: item.id,
       kind: item.kind,
@@ -730,7 +732,14 @@ async function attachClientFaces(admin: SupabaseClient, bookings: CostTargetBook
     const client = holderName(person);
     const billed = booking.billingCompanyId ? byCompany.get(booking.billingCompanyId) || "" : "";
     const company = billed || (person?.company_name || "").trim() || companiesByCustomer.get(booking.customerId || "")?.[0] || "";
-    return { ...booking, clientName: client || null, companyName: company || null };
+    return {
+      ...booking,
+      clientName: client || null,
+      clientFirst: person?.first_name || null,
+      clientLast: person?.last_name || null,
+      clientUsage: person?.usage_name || null,
+      companyName: company || null,
+    };
   });
 }
 
@@ -953,6 +962,7 @@ export async function loadOutgoingQueue(
             originalAmount: draft.originalAmount,
             originalCurrency: draft.originalCurrency,
             cardBookingIds,
+            cardName: row.card_label,
             customerId: row.customer_id || row.matched_customer_id || null,
             date: authorizedOn,
           },

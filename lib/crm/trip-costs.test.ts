@@ -659,6 +659,110 @@ describe("coûts du voyage", () => {
     assert.equal(other.suggestions[0]?.confidence, "haute");
     assert.equal(other.suggestions[0]?.reasons.includes("duplicate"), false);
   });
+
+  it("rattache la carte au nom du client, même si un hôtel d’un autre dossier porte le même fournisseur", () => {
+    const elad = (partial: {
+      id: string;
+      reference: string;
+      title: string;
+      startDate: string;
+      endDate: string;
+      amount?: number;
+    }) => ({
+      id: partial.id,
+      reference: partial.reference,
+      title: partial.title,
+      destination: partial.title,
+      customerId: "elad",
+      clientName: "Elad Taieb",
+      clientFirst: "Elad",
+      clientLast: "Taieb",
+      startDate: partial.startDate,
+      endDate: partial.endDate,
+      createdAt: "2026-10-31",
+      items: partial.amount
+        ? [{ id: `${partial.id}-fee`, kind: "expense", title: "Frais", amount: partial.amount, details: { document_amount: partial.amount, document_currency: "EUR" } }]
+        : [],
+    });
+    const bajos = elad({ id: "119", reference: "TB-2026-0119", title: "Bajos del Toro", startDate: "2026-07-28", endDate: "2026-07-30" });
+    const cabo = elad({ id: "120", reference: "TB-2026-0120", title: "Cabo Velas", startDate: "2026-08-07", endDate: "2026-08-10", amount: 39.22 });
+    const heredia = elad({ id: "121", reference: "TB-2026-0121", title: "Heredia", startDate: "2026-08-10", endDate: "2026-08-11" });
+    const bettane = {
+      id: "066",
+      reference: "TB-2026-0066",
+      title: "Santa Teresa",
+      destination: "Santa Teresa",
+      customerId: "bettane",
+      clientName: "Benjamin Bettane",
+      clientFirst: "Benjamin",
+      clientLast: "Bettane",
+      startDate: "2026-08-02",
+      endDate: "2026-08-06",
+      createdAt: "2026-10-09",
+      items: [
+        { id: "nantipa", kind: "hotel", title: "Nantipa", amount: 234.53, startAt: "2026-08-02", details: { hotel_name: "Nantipa", document_amount: 234.53, document_currency: "EUR" } },
+      ],
+    };
+    const deauville = {
+      id: "089",
+      reference: "TB-2026-0089",
+      title: "Deauville",
+      destination: "Deauville",
+      customerId: "boukris",
+      clientName: "Benjamin Elie David Boukris",
+      clientFirst: "Benjamin Elie David",
+      clientLast: "Boukris",
+      startDate: "2026-10-30",
+      endDate: "2026-11-01",
+      createdAt: "2026-10-18",
+      items: [
+        {
+          id: "you",
+          kind: "hotel",
+          title: "You Hotel Deauville",
+          supplier: "RateHawk",
+          amount: 460,
+          startAt: "2026-10-30",
+          endAt: "2026-11-01",
+          details: { hotel_name: "You Hotel Deauville - Handwritten Collection" },
+        },
+      ],
+    };
+    const bookings = [bettane, deauville, bajos, cabo, heredia];
+    const card = { cardName: "Elad Taieb" };
+
+    assert.equal(suggestCostTargets({ party: "NANTIPA", amount: 1839.4, date: "2026-08-07" }, bookings)[0]?.bookingId, "066");
+
+    const nantipa = suggestCostTargets({ party: "NANTIPA", amount: 1839.4, date: "2026-08-07", ...card }, bookings);
+    assert.equal(nantipa[0]?.bookingId, "120");
+    assert.equal(nantipa[0]?.confidence, "moyenne");
+    assert.match(costSuggestionSummary(nantipa[0]!), /carte au nom du client/i);
+    assert.match(costSuggestionSummary(nantipa[0]!), /même client \/ même carte/i);
+
+    const early = suggestCostTargets({ party: "NANTIPA", amount: 7566.96, date: "2026-07-20", ...card }, bookings);
+    assert.equal(early[0]?.bookingId, "119");
+    assert.equal(early[0]?.confidence, "basse");
+    assert.equal(early.some((hit) => hit.bookingId === "066"), false);
+
+    const ratehawk = suggestCostTargets({ party: "ratehawk.com", amount: 3497, date: "2026-07-13", ...card }, bookings);
+    assert.equal(ratehawk[0]?.bookingId, "119");
+    assert.equal(ratehawk[0]?.confidence, "basse");
+    assert.equal(ratehawk.some((hit) => hit.bookingId === "089"), false);
+
+    const refund = suggestCostTargets({ party: "PAYPAL *TOURPLANMAY", amount: 234.53, date: "2026-08-21", ...card }, bookings);
+    assert.equal(refund[0]?.bookingId, "121");
+    assert.equal(refund[0]?.confidence, "moyenne");
+    assert.match(costSuggestionSummary(refund[0]!), /même client \/ même carte/i);
+    assert.equal(refund.some((hit) => hit.bookingId === "066"), false);
+
+    const priced = suggestCostTargets({ party: "CTT", amount: 39.22, date: "2026-08-08", ...card }, bookings);
+    assert.equal(priced[0]?.bookingId, "120");
+    assert.equal(priced[0]?.confidence, "haute");
+
+    for (const cardName of ["Amadeus", "Hotel", "TB-2026-0066", "Club Med"]) {
+      assert.equal(suggestCostTargets({ party: "CTT", amount: 12.34, date: "2026-08-06", cardName }, [bajos, cabo, heredia]).length, 0, cardName);
+    }
+  });
 });
 
 function roundSale(lines: { sale: number; cost: number }[]) {
