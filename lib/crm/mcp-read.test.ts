@@ -3,7 +3,8 @@ import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatMoney } from "./money";
 import { McpReadError } from "./mcp-passport";
-import { dossierPayerLine, readChercherDossiers, readFicheClient, readFicheDossier, readFormalites, readGrandLivre } from "./mcp-read";
+import { dossierPayerLine, mcpTripCost, readChercherDossiers, readFicheClient, readFicheDossier, readFormalites, readGrandLivre } from "./mcp-read";
+import type { TripCost } from "./trip-costs";
 
 const BOOKING = "22222222-2222-4222-8222-222222222222";
 
@@ -20,6 +21,31 @@ test("fiche et recherche montrent la société à côté du contact", () => {
     societe: "EXPONENTIEL",
     paye_par: "société",
   });
+});
+
+test("chaque coût de comptabilite_voyage porte cout_id et sortie_id", () => {
+  const cost: TripCost = {
+    id: "44444444-4444-4444-8444-444444444444",
+    bookingId: BOOKING,
+    bookingItemId: null,
+    source: "pliant",
+    sourceId: "33333333-3333-4333-8333-333333333333",
+    amountEur: 2108.96,
+    originalAmount: 2108.96,
+    originalCurrency: "EUR",
+    supplier: "AIR FRANCE",
+    occurredOn: "2026-11-03",
+    instrument: "pliant_card",
+    instrumentDetail: "4242",
+    state: "posted",
+  };
+  const line = mcpTripCost(cost);
+  assert.equal(line.cout_id, cost.id);
+  assert.equal(line.sortie_id, cost.sourceId);
+  assert.equal(line.source, "Pliant");
+  assert.equal(line.fournisseur, "AIR FRANCE");
+  assert.match(line.montant, /2[\s\u202f]?108,96/);
+  assert.equal(line.etat, "confirmé");
 });
 
 test("formalites lists visa requests by created_at", async () => {

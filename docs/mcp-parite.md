@@ -70,7 +70,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 
 | Action admin | Outil MCP |
 | --- | --- |
-| Grand livre, encours, comptabilité voyage | `grand_livre`, `comptabilite_voyage` — couvert |
+| Grand livre, encours, comptabilité voyage | `grand_livre`, `comptabilite_voyage` — couvert. Chaque coût (`lignes.couts` et `couts_sans_vente`) porte `cout_id` et `sortie_id` |
 | Créditer Revolut, Stripe, virement | `crediter_revolut` (aussi une ligne de versement Stripe, brut ; frais non crédités), `crediter_stripe`, `crediter_virement` — couvert |
 | Compléter le nom et l’e-mail Stripe | `completer_payeurs_stripe` — ajouté. Sans `confirmer`, aperçu. Écrit seulement le nom et l’e-mail, sans crédit. Réservé aux administrateurs |
 | Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
@@ -80,7 +80,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — ajouté |
 | Créer la fiche client dans MB3M | `creer_fiche_mb3m` — ajouté |
 | Refuser un encaissement Revolut ou Stripe | `refuser_encaissement` — ajouté |
-| Détacher, déplacer, refuser, hors voyage, nouvelle dépense, changer de ligne | `comptabilite_sortie` — ajouté |
+| Détacher, déplacer, refuser, hors voyage, nouvelle dépense, changer de ligne | `comptabilite_sortie` — ajouté. `detacher` accepte `cout_id`, ou `sortie_id` seul (et `dossier_id`) quand un seul coût est lié |
 | Compte de facturation sur un crédit | partiel |
 | Sync Revolut / Pliant, OAuth Revolut | hors API |
 

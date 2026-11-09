@@ -27,6 +27,8 @@ export type FinanceDeps = {
   reissue?: (bookingId: string, actorName: string | null) => Promise<Mb3mInvoiceResult & { creditNote: string }>;
   pushCustomer?: (customerId: string) => Promise<{ updated: boolean }>;
   runCost?: (action: string, input: Record<string, unknown>, actor: TripCostActor) => Promise<unknown>;
+  /** Détache un coût déjà identifié. Les tests évitent la base. */
+  detachCost?: (costId: string, admin: SupabaseClient, actor: TripCostActor) => Promise<TripCost>;
   loadRevolut?: (id: string) => Promise<CrmRevolutTransaction | null>;
   loadStripe?: (id: string) => Promise<CrmStripeTransaction | null>;
   refuseRevolut?: typeof refuseRevolutInbox;
@@ -127,9 +129,41 @@ function sourceOf(value: unknown): TripCostSource | null {
   return value === "pliant" || value === "revolut" ? value : null;
 }
 
+type LinkedCostRow = { id: string; source: string; source_id: string; booking_id: string };
+
+/**
+ * Une sortie (source + identifiant) ne correspond qu’à un coût.
+ * `dossier_id` restreint. Zéro ligne, ou plusieurs : on ne détache pas.
+ */
+export function chooseLinkedCost(
+  rows: LinkedCostRow[],
+  filter: { source?: TripCostSource | null; dossierId?: string | null }
+): string {
+  const scoped = filter.source ? rows.filter((row) => row.source === filter.source) : rows;
+  if (!scoped.length) throw new McpWriteError("Cette sortie n’est pas rattachée.");
+  const onDossier = filter.dossierId ? scoped.filter((row) => row.booking_id === filter.dossierId) : scoped;
+  if (filter.dossierId && !onDossier.length) throw new McpWriteError("Cette sortie est rattachée à un autre dossier.");
+  if (onDossier.length === 1) return onDossier[0].id;
+  throw new McpWriteError("Plusieurs coûts pour cette sortie. Indiquez cout_id.");
+}
+
+async function linkedCostId(admin: SupabaseClient, input: Record<string, unknown>) {
+  const sourceId = text(input.sortie_id, 80);
+  if (!UUID.test(sourceId)) throw new McpWriteError("Coût invalide.");
+  const dossier = text(input.dossier_id, 80);
+  if (dossier && !UUID.test(dossier)) throw new McpWriteError("Dossier invalide.");
+  const source = sourceOf(input.source);
+  let query = admin.from("crm_trip_costs").select("id, source, source_id, booking_id").eq("source_id", sourceId);
+  if (source) query = query.eq("source", source);
+  const { data, error } = await query.limit(5);
+  if (error) throw new McpWriteError("Coût introuvable.");
+  return chooseLinkedCost((data || []) as LinkedCostRow[], { source, dossierId: dossier || null });
+}
+
 function publicCost(cost: TripCost) {
   return {
     cout_id: cost.id,
+    sortie_id: cost.sourceId,
     dossier_id: cost.bookingId,
     carte_id: cost.bookingItemId,
     montant_eur: cost.amountEur,
@@ -171,7 +205,9 @@ export async function comptabiliteSortie(input: Record<string, unknown>, deps: F
       }
     };
     if (action === "detacher") {
-      const cost = await detachTripCost(requireUuid(input.cout_id, "Coût"), admin, actor);
+      const costId = text(input.cout_id, 80) ? requireUuid(input.cout_id, "Coût") : await linkedCostId(admin, input);
+      const detach = deps.detachCost ?? detachTripCost;
+      const cost = await detach(costId, admin, actor);
       refresh(cost.bookingId);
       return { action, ...publicCost(cost) };
     }

@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Mb3mError } from "./mb3m";
 import {
+  chooseLinkedCost,
   comptabiliteSortie,
   creerFicheMb3m,
   refuserEncaissement,
   reprendreFactureMb3m,
 } from "./mcp-finance-ops";
+import type { TripCost } from "./trip-costs";
 import { mcpWriteJournalDraft } from "./mcp-journal";
 import type { CrmRevolutTransaction, CrmStripeTransaction } from "./types";
 
@@ -85,6 +87,110 @@ test("une sortie se détache seulement avec confirmer", async () => {
     }
   );
   assert.equal((attached as { action: string }).action, "rattacher");
+});
+
+const COST = "44444444-4444-4444-8444-444444444444";
+const OTHER = "55555555-5555-4555-8555-555555555555";
+
+function costRow(partial: { id: string; source?: string; source_id?: string; booking_id?: string }) {
+  return {
+    id: partial.id,
+    source: partial.source || "pliant",
+    source_id: partial.source_id || MOVE,
+    booking_id: partial.booking_id || DOSSIER,
+  };
+}
+
+function costsAdmin(rows: ReturnType<typeof costRow>[]) {
+  return {
+    from(table: string) {
+      if (table !== "crm_trip_costs") throw new Error(table);
+      const filters: [string, string][] = [];
+      const api = {
+        select() {
+          return api;
+        },
+        eq(column: string, value: string) {
+          filters.push([column, value]);
+          return api;
+        },
+        limit() {
+          return api;
+        },
+        then(onFulfilled: (value: { data: typeof rows; error: null }) => unknown, onRejected?: (reason: unknown) => unknown) {
+          const data = rows.filter((row) => filters.every(([column, value]) => row[column as keyof typeof row] === value));
+          return Promise.resolve({ data, error: null }).then(onFulfilled, onRejected);
+        },
+      };
+      return api;
+    },
+  };
+}
+
+function detached(id: string): TripCost {
+  return {
+    id,
+    bookingId: DOSSIER,
+    bookingItemId: null,
+    source: "pliant",
+    sourceId: MOVE,
+    amountEur: 12,
+    originalAmount: 12,
+    originalCurrency: "EUR",
+    supplier: "Air France",
+    occurredOn: "2026-11-06",
+    instrument: "pliant_card",
+    instrumentDetail: "4242",
+    state: "posted",
+  };
+}
+
+test("détacher par sortie_id quand un seul coût est lié", async () => {
+  assert.equal(chooseLinkedCost([costRow({ id: COST })], {}), COST);
+  assert.equal(chooseLinkedCost([costRow({ id: COST })], { dossierId: DOSSIER }), COST);
+  assert.throws(() => chooseLinkedCost([], {}), /n’est pas rattachée/);
+  assert.throws(() => chooseLinkedCost([costRow({ id: COST })], { dossierId: OTHER }), /autre dossier/);
+  assert.throws(
+    () => chooseLinkedCost([costRow({ id: COST, source: "pliant" }), costRow({ id: OTHER, source: "revolut" })], {}),
+    /cout_id/
+  );
+  assert.equal(
+    chooseLinkedCost([costRow({ id: COST, source: "pliant" }), costRow({ id: OTHER, source: "revolut" })], { source: "revolut" }),
+    OTHER
+  );
+
+  const seen: string[] = [];
+  const detachedBySortie = (await comptabiliteSortie(
+    { action: "detacher", sortie_id: MOVE, confirmer: true },
+    {
+      admin: costsAdmin([costRow({ id: COST })]) as never,
+      detachCost: async (id) => {
+        seen.push(id);
+        return detached(id);
+      },
+    }
+  )) as { cout_id: string; sortie_id: string };
+  assert.deepEqual(seen, [COST]);
+  assert.equal(detachedBySortie.cout_id, COST);
+  assert.equal(detachedBySortie.sortie_id, MOVE);
+
+  const withDossier = (await comptabiliteSortie(
+    { action: "detacher", sortie_id: MOVE, dossier_id: DOSSIER, confirmer: true },
+    {
+      admin: costsAdmin([costRow({ id: COST })]) as never,
+      detachCost: async (id) => detached(id),
+    }
+  )) as { cout_id: string };
+  assert.equal(withDossier.cout_id, COST);
+
+  await assert.rejects(
+    () =>
+      comptabiliteSortie(
+        { action: "detacher", confirmer: true },
+        { admin: costsAdmin([]) as never, detachCost: async () => detached(COST) }
+      ),
+    /Coût invalide/
+  );
 });
 
 test("refuser un encaissement déjà rapproché échoue clairement", async () => {
