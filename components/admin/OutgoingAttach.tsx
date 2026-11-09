@@ -5,7 +5,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { useRouter } from "next/navigation";
 import { ATTACH_SEARCH_DEBOUNCE_MS, ATTACH_SEARCH_MIN_CHARS, attachTargetCaption } from "@/lib/crm/attach-search";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { costConfidenceLabel, costSuggestionSummary, isSureSuggestion, type OutgoingLine } from "@/lib/crm/trip-costs";
+import { costConfidenceLabel, costSuggestionSummary, dossierMatchLabel, isSureSuggestion, type OutgoingLine } from "@/lib/crm/trip-costs";
 
 export type TargetOption = {
   id: string;
@@ -227,7 +227,7 @@ export function OutgoingAttach({
 
   const sure = lineIsSure(line, fixedBooking?.id || null);
   const proposalWord = sure ? "Quasi certain" : "Proposition";
-  const proposalPlace = top ? [top.reference, top.title.trim()].filter(Boolean).join(" · ") : "";
+  const proposalPlace = top ? dossierMatchLabel(top) : "";
   const proposalItem = top?.itemLabel && top.itemLabel.trim() !== top.title.trim() ? top.itemLabel : null;
   const showProposal = Boolean(top) || !fixedBooking || sure;
 
@@ -245,7 +245,7 @@ export function OutgoingAttach({
           {top && !fixedBooking && proposalItem ? <p className="text-xs leading-5 text-muted">{proposalItem}</p> : null}
           {top ? (
             <p className="text-xs leading-5 text-muted">
-              Confiance {costConfidenceLabel(top.confidence).toLowerCase()} · {costSuggestionSummary(top)}
+              {proposalPlace}. Confiance {costConfidenceLabel(top.confidence).toLowerCase()}. {costSuggestionSummary(top)}
             </p>
           ) : null}
           {top?.passengers?.length ? <p className="text-xs leading-5 text-[var(--admin-navy)]">Voyageurs : {top.passengers.join(", ")}</p> : null}
@@ -332,9 +332,9 @@ export function OutgoingAttach({
             type="button"
             disabled={busy}
             onClick={top && !needsEur ? quickAttach : () => setOpen(true)}
-            className="admin-af-btn rounded-full px-3 py-1 text-sm"
+            className="admin-af-btn max-w-full whitespace-normal rounded-full px-3 py-1 text-left text-sm"
           >
-            {top ? `Rattacher à ${top.reference}` : "Rattacher"}
+            {top ? `Rattacher à ${proposalPlace}` : "Rattacher"}
           </button>
           {top ? (
             <button

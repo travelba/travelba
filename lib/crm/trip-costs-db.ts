@@ -632,7 +632,7 @@ async function chunked<T>(ids: string[], run: (slice: string[]) => Promise<T[]>)
 
 /** Dossiers ouverts (non annulés) avec leurs lignes : la base des propositions. */
 export async function loadCostTargets(admin: SupabaseClient, bookingId?: string | null): Promise<CostTargetBooking[]> {
-  const select = "id, reference, title, destination, customer_id, start_date, end_date";
+  const select = "id, reference, title, destination, customer_id, billing_company_id, start_date, end_date";
   let query = admin.from("crm_bookings").select(select).neq("status", "cancelled").order("created_at", { ascending: false }).limit(400);
   if (bookingId) query = admin.from("crm_bookings").select(select).eq("id", bookingId);
   const { data: bookings } = await query;
@@ -642,6 +642,7 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     title: string | null;
     destination: string | null;
     customer_id: string | null;
+    billing_company_id: string | null;
     start_date: string | null;
     end_date: string | null;
   }[];
@@ -668,6 +669,7 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     title: row.title,
     destination: row.destination,
     customerId: row.customer_id,
+    billingCompanyId: row.billing_company_id,
     startDate: row.start_date,
     endDate: row.end_date,
     items: (byBooking.get(row.id) || []).map((item) => ({
@@ -683,7 +685,52 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
       confirmationRef: item.confirmation_ref || null,
     })),
   }));
-  return attachMatchHints(admin, built);
+  return attachClientFaces(admin, await attachMatchHints(admin, built));
+}
+
+function holderName(person: { first_name?: string | null; last_name?: string | null; usage_name?: string | null } | null) {
+  if (!person) return "";
+  const name = [person.first_name, person.last_name].map((value) => (value || "").trim()).filter(Boolean).join(" ");
+  const usage = (person.usage_name || "").trim();
+  if (usage && usage.localeCompare(person.last_name || "", "fr", { sensitivity: "accent" }) !== 0 && !name.toLocaleLowerCase("fr").includes(usage.toLocaleLowerCase("fr"))) {
+    return name ? `${name} (${usage})` : usage;
+  }
+  return name;
+}
+
+/** Titulaire du dossier et société facturée, pour que la proposition ne soit pas qu’un numéro. */
+async function attachClientFaces(admin: SupabaseClient, bookings: CostTargetBooking[]): Promise<CostTargetBooking[]> {
+  const customerIds = [...new Set(bookings.map((row) => row.customerId).filter((id): id is string => Boolean(id)))];
+  if (!customerIds.length) return bookings;
+  const [people, companies] = await Promise.all([
+    chunked(customerIds, async (slice) => {
+      const { data, error } = await admin.from("crm_customers").select("id, first_name, last_name, usage_name, company_name").in("id", slice);
+      if (error) return [];
+      return (data || []) as { id: string; first_name: string | null; last_name: string | null; usage_name: string | null; company_name: string | null }[];
+    }),
+    chunked(customerIds, async (slice) => {
+      const { data, error } = await admin.from("crm_billing_companies").select("id, customer_id, company_name").in("customer_id", slice);
+      if (error) return [];
+      return (data || []) as { id: string; customer_id: string; company_name: string | null }[];
+    }),
+  ]);
+  const byPerson = new Map(people.map((row) => [row.id, row]));
+  const byCompany = new Map(companies.map((row) => [row.id, (row.company_name || "").trim()]));
+  const companiesByCustomer = new Map<string, string[]>();
+  for (const company of companies) {
+    const name = (company.company_name || "").trim();
+    if (!name) continue;
+    const list = companiesByCustomer.get(company.customer_id) || [];
+    list.push(name);
+    companiesByCustomer.set(company.customer_id, list);
+  }
+  return bookings.map((booking) => {
+    const person = booking.customerId ? byPerson.get(booking.customerId) || null : null;
+    const client = holderName(person);
+    const billed = booking.billingCompanyId ? byCompany.get(booking.billingCompanyId) || "" : "";
+    const company = billed || (person?.company_name || "").trim() || companiesByCustomer.get(booking.customerId || "")?.[0] || "";
+    return { ...booking, clientName: client || null, companyName: company || null };
+  });
 }
 
 function clipEvidence(value: string | null | undefined) {
@@ -1012,6 +1059,8 @@ function decorate(suggestions: CostSuggestion[], targets: CostTargetBooking[]) {
         ...hit,
         reference: booking.reference,
         title: booking.title || booking.destination || "",
+        clientName: booking.clientName || null,
+        companyName: booking.companyName || null,
         itemLabel: item ? itemLabelFor(item) : null,
       },
     ];

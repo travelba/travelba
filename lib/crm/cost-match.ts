@@ -29,6 +29,10 @@ export type CostTargetBooking = {
   title: string | null;
   destination?: string | null;
   customerId?: string | null;
+  /** Société facturée du séjour, quand elle est connue. */
+  billingCompanyId?: string | null;
+  clientName?: string | null;
+  companyName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   items: CostTargetItem[];
@@ -292,6 +296,11 @@ function moneysOf(booking: CostTargetBooking): Money[] {
     if (sale != null && sale > 0) out.push({ value: round2(sale), currency: "EUR", itemId: item.id });
     const document = num(details.document_amount);
     if (document != null && document > 0) out.push({ value: round2(document), currency, itemId: item.id });
+    const net = num(details.supplier_net);
+    const netCurrency = (textOf(details.supplier_currency) || currency).toUpperCase();
+    if (net != null && net > 0) out.push({ value: round2(net), currency: netCurrency, itemId: item.id });
+    const netEur = num(details.supplier_net_eur);
+    if (netEur != null && netEur > 0) out.push({ value: round2(netEur), currency: "EUR", itemId: item.id });
     const pnr = cleanPnr(textOf(item.confirmationRef) || textOf(details.pnr));
     const fare = document != null && document > 0 ? document : sale;
     if (pnr && fare != null && fare > 0 && (item.kind === "flight" || item.kind === "train")) {
@@ -299,9 +308,6 @@ function moneysOf(booking: CostTargetBooking): Money[] {
       group.values.push(round2(fare));
       groups.set(`${pnr}:${currency}`, group);
     }
-  }
-  for (const hint of booking.hints?.amounts || []) {
-    if (hint.value > 0) out.push({ value: round2(hint.value), currency: (hint.currency || "EUR").toUpperCase(), itemId: null });
   }
   for (const group of groups.values()) {
     const same = new Set(group.values.map((value) => value.toFixed(2)));
@@ -414,6 +420,7 @@ function scoreOne(input: CostMatchInput, booking: CostTargetBooking, cards: Set<
     add(signals, "airline");
     score += 16;
     itemId = itemId || airlineItem.id;
+    if (paid.exact) score = Math.max(score, 90);
     const delta = dayMs(airlineItem.startAt);
     const at = dayMs(input.date);
     if (delta != null && at != null) {
@@ -431,6 +438,7 @@ function scoreOne(input: CostMatchInput, booking: CostTargetBooking, cards: Set<
       add(signals, "hotel");
       score += 40;
       itemId = itemId || hotel.item.id;
+      if (paid.exact) score = Math.max(score, 90);
       const at = dayMs(input.date);
       const start = dayMs(hotel.item.startAt);
       const end = dayMs(hotel.item.endAt) ?? start;

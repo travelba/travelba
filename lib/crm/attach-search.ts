@@ -221,7 +221,10 @@ export function attachTargetCaption(row: {
   const destination = clean(row.destination);
   const place = title || destination;
   const extra = destination && title && attachSearchFold(destination) !== attachSearchFold(title) ? destination : "";
-  const headline = [clean(row.reference), place, extra].filter(Boolean).join(" · ") || "Dossier";
+  const client = clean(row.client);
+  const company = clean(row.company);
+  const sameCompany = client && company && client.localeCompare(company, "fr", { sensitivity: "accent" }) === 0;
+  const headline = [clean(row.reference), place, extra, client, sameCompany ? "" : company].filter(Boolean).join(" · ") || "Dossier";
   const detail = [clean(row.dates), clean(row.client), clean(row.company)].filter(Boolean).join(" · ");
   return { headline, detail };
 }
