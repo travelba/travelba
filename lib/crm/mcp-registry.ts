@@ -440,7 +440,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "comptabilite_voyage",
     description:
-      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). Chaque ligne a carte_id quand la vente est rattachée à une carte. id ou reference. Lecture seule, jamais montré au client.",
+      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). Chaque ligne a carte_id quand la vente est rattachée à une carte. Chaque coût, dans lignes.couts et dans couts_sans_vente, porte cout_id et sortie_id (le mouvement Pliant ou Revolut). id ou reference. Lecture seule, jamais montré au client.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -2031,7 +2031,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     destructive: true,
     description:
-      "Paiement fournisseur, comme la page Argent. action : rattacher, deplacer, detacher, ligne, refuser, hors_voyage, remettre. source revolut ou pliant, sortie_id. dossier_id pour rattacher, déplacer ou refuser. carte_id choisit la ligne ; sejour true laisse le montant sur le séjour ; nouvelle_depense { titre, prix } ouvre une dépense. montant_eur pour une sortie hors euros. detacher, deplacer, hors_voyage et refuser exigent confirmer true. La vente du client ne change pas. Pas de numéro de carte.",
+      "Paiement fournisseur, comme la page Argent. action : rattacher, deplacer, detacher, ligne, refuser, hors_voyage, remettre. source revolut ou pliant, sortie_id. dossier_id pour rattacher, déplacer ou refuser. carte_id choisit la ligne ; sejour true laisse le montant sur le séjour ; nouvelle_depense { titre, prix } ouvre une dépense. montant_eur pour une sortie hors euros. detacher accepte cout_id, ou sortie_id seul (dossier_id facultatif) quand cette sortie n’a qu’un coût. detacher, deplacer, hors_voyage et refuser exigent confirmer true. La vente du client ne change pas. Pas de numéro de carte.",
     input: {
       action: z
         .enum(["rattacher", "deplacer", "detacher", "ligne", "refuser", "hors_voyage", "remettre"])

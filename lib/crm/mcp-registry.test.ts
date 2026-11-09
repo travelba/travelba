@@ -249,6 +249,9 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_dossier")?.description || "", /voyageur_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /voyageur_ids/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_voyage")?.description || "", /carte_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_voyage")?.description || "", /cout_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_voyage")?.description || "", /sortie_id/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_sortie")?.description || "", /sortie_id seul/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /date de naissance/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /compagnon_id/);

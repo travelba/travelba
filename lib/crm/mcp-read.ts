@@ -1211,6 +1211,19 @@ export async function readRevolutDebits(input: { page?: number; limite?: number 
   };
 }
 
+/** Un coût rattaché, pour comptabilite_voyage : cout_id sert à detacher, sortie_id est le mouvement. */
+export function mcpTripCost(cost: TripCost, eur: (value: number) => string = (value) => formatMoney(value, "EUR")) {
+  return {
+    cout_id: cost.id,
+    sortie_id: cost.sourceId,
+    source: cost.source === "pliant" ? "Pliant" : "Revolut",
+    fournisseur: cost.supplier,
+    montant: eur(cost.amountEur),
+    date: cost.occurredOn ? formatDateFr(cost.occurredOn) : null,
+    etat: cost.state === "pending" ? "en attente" : "confirmé",
+  };
+}
+
 /** Comptabilité d’un voyage : ventes, coûts rattachés, marge par ligne, facture MB3M. Rien côté client. */
 export async function readComptabiliteVoyage(input: { id?: string; reference?: string }) {
   const admin = db();
@@ -1264,13 +1277,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     logRead("commission", err as { code?: string; message?: string });
   }
   const eur = (value: number) => formatMoney(value, "EUR");
-  const costLine = (cost: TripCost) => ({
-    source: cost.source === "pliant" ? "Pliant" : "Revolut",
-    fournisseur: cost.supplier,
-    montant: eur(cost.amountEur),
-    date: cost.occurredOn ? formatDateFr(cost.occurredOn) : null,
-    etat: cost.state === "pending" ? "en attente" : "confirmé",
-  });
+  const costLine = (cost: TripCost) => mcpTripCost(cost, eur);
   return {
     lien: `/admin/reservations/${booking.id}?tab=argent`,
     reference: booking.reference,
