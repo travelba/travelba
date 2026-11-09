@@ -8,7 +8,7 @@ import { StatusChip } from "@/components/crm/ui";
 import { ATTACH_SEARCH_DEBOUNCE_MS, ATTACH_SEARCH_MIN_CHARS } from "@/lib/crm/attach-search";
 import { formatMoney } from "@/lib/crm/money";
 import { pliantLinkPhase, pliantLinkPhaseLabel } from "@/lib/crm/pliant-link";
-import { costSuggestionReasonLabel, type OutgoingLine } from "@/lib/crm/trip-costs";
+import { costConfidenceLabel, costSuggestionSummary, type OutgoingLine } from "@/lib/crm/trip-costs";
 import { AttachTargetList, type TargetOption } from "@/components/admin/OutgoingAttach";
 
 const STAY = "__stay__";
@@ -207,7 +207,12 @@ export function PliantMatchActions({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9e7e51]">Proposition</p>
           <p className="text-sm font-semibold leading-snug text-[var(--admin-navy)]">{place(suggestion.reference, suggestion.title)}</p>
           {suggestion.itemLabel ? <p className="text-xs leading-5 text-muted">{suggestion.itemLabel}</p> : null}
-          <p className="text-xs leading-5 text-muted">{costSuggestionReasonLabel(suggestion.reason)}</p>
+          <p className="text-xs leading-5 text-muted">
+            Confiance {costConfidenceLabel(suggestion.confidence).toLowerCase()} · {costSuggestionSummary(suggestion)}
+          </p>
+          {suggestion.passengers?.length ? (
+            <p className="text-xs leading-5 text-[var(--admin-navy)]">Voyageurs : {suggestion.passengers.join(", ")}</p>
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" className={PRIMARY} disabled={busy} onClick={() => askLink("accept")}>
               Accepter

@@ -245,9 +245,13 @@ export async function comptabiliteSortie(input: Record<string, unknown>, deps: F
         expense && typeof expense === "object"
           ? {
               title: text((expense as { titre?: unknown }).titre, 160) || null,
-              amount: Number((expense as { prix?: unknown }).prix),
+              amount:
+                (expense as { prix?: unknown }).prix == null || (expense as { prix?: unknown }).prix === ""
+                  ? null
+                  : Number((expense as { prix?: unknown }).prix),
             }
           : null,
+      lineTitle: text(input.titre, 160) || null,
       eurAmount:
         input.montant_eur == null || input.montant_eur === "" ? null : Number(input.montant_eur),
       actor,

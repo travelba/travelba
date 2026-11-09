@@ -5,7 +5,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { useRouter } from "next/navigation";
 import { ATTACH_SEARCH_DEBOUNCE_MS, ATTACH_SEARCH_MIN_CHARS, attachTargetCaption } from "@/lib/crm/attach-search";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { costSuggestionReasonLabel, isSureSuggestion, type OutgoingLine } from "@/lib/crm/trip-costs";
+import { costConfidenceLabel, costSuggestionSummary, isSureSuggestion, type OutgoingLine } from "@/lib/crm/trip-costs";
 
 export type TargetOption = {
   id: string;
@@ -200,6 +200,18 @@ export function OutgoingAttach({
     }
   }
 
+  function quickAttach() {
+    if (!top || needsEur) {
+      setOpen(true);
+      return;
+    }
+    const body: Record<string, unknown> = { action: "attach", booking_id: top.bookingId };
+    if (top.itemId) body.item_id = top.itemId;
+    else if (line.source === "pliant" && line.eurAmount != null) body.new_expense = { title: line.party, amount: Math.abs(line.eurAmount) };
+    else body.stay = true;
+    void post(body, "Rattachement impossible. Réessayez.");
+  }
+
   function attach() {
     if (!bookingId) {
       setError("Choisissez le voyage.");
@@ -231,7 +243,12 @@ export function OutgoingAttach({
           {top && !fixedBooking ? <p className="text-sm font-semibold leading-snug text-[var(--admin-navy)]">{proposalPlace}</p> : null}
           {top && fixedBooking && proposalItem ? <p className="text-sm font-semibold leading-snug text-[var(--admin-navy)]">{proposalItem}</p> : null}
           {top && !fixedBooking && proposalItem ? <p className="text-xs leading-5 text-muted">{proposalItem}</p> : null}
-          {top ? <p className="text-xs leading-5 text-muted">{costSuggestionReasonLabel(top.reason)}</p> : null}
+          {top ? (
+            <p className="text-xs leading-5 text-muted">
+              Confiance {costConfidenceLabel(top.confidence).toLowerCase()} · {costSuggestionSummary(top)}
+            </p>
+          ) : null}
+          {top?.passengers?.length ? <p className="text-xs leading-5 text-[var(--admin-navy)]">Voyageurs : {top.passengers.join(", ")}</p> : null}
           {!top && sure ? <p className="text-sm font-semibold text-[var(--admin-navy)]">Carte générée dans ce dossier</p> : null}
           {!top && !sure && line.agencyCard ? <p className="text-xs text-muted">Carte d’agence : sans doute hors voyage.</p> : null}
           {!top && !sure && !line.agencyCard && !fixedBooking ? <p className="text-xs text-muted">Aucune proposition</p> : null}
@@ -311,9 +328,24 @@ export function OutgoingAttach({
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={busy} onClick={() => setOpen(true)} className="admin-af-btn rounded-full px-3 py-1 text-sm">
-            Rattacher
+          <button
+            type="button"
+            disabled={busy}
+            onClick={top && !needsEur ? quickAttach : () => setOpen(true)}
+            className="admin-af-btn rounded-full px-3 py-1 text-sm"
+          >
+            {top ? `Rattacher à ${top.reference}` : "Rattacher"}
           </button>
+          {top ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setOpen(true)}
+              className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
+            >
+              Autre dossier
+            </button>
+          ) : null}
           {!fixedBooking || allowOutside ? (
             <ConfirmAction
               size="sm"
@@ -393,7 +425,11 @@ export function OutgoingRow({
         <div className="min-w-0">
           <p className="font-medium leading-snug text-[var(--admin-navy)]">{line.party}</p>
           <p className="mt-0.5 text-xs leading-5 text-muted">
-            {line.occurredOn ? formatDateFr(line.occurredOn) : "—"} · {line.source === "pliant" ? "Pliant" : "Revolut"} · {line.kind}
+            {line.source === "pliant" && line.occurredOn ? `Autorisée le ${formatDateFr(line.occurredOn)}` : line.occurredOn ? formatDateFr(line.occurredOn) : "—"}
+            {line.bookedOn && line.bookedOn !== line.occurredOn ? ` · débitée le ${formatDateFr(line.bookedOn)}` : ""}
+            {" · "}
+            {line.source === "pliant" ? "Pliant" : "Revolut"} · {line.kind}
+            {line.last4 ? ` · ···· ${line.last4}` : ""}
             {line.card ? ` · ${line.card}` : ""}
             {line.text ? ` · ${line.text}` : ""}
           </p>

@@ -11,6 +11,7 @@ import {
   readFormalites,
   readGrandLivre,
   readLittleEmperorsEnAttente,
+  readPliantDebits,
   readRevolutDebits,
   readRevolutEnAttente,
   readStripeEnAttente,
@@ -122,7 +123,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 112;
+export const MCP_TOOL_CAP = 113;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -436,6 +437,13 @@ export const MCP_TOOLS: ToolDef[] = [
       "Sorties du compte Revolut. Celles à rapprocher ont un id pour rapprocher_depense_revolut. Ne crédite pas un client. page et limite parcourent toute la file.",
     input: { page: listPage, limite: listLimit },
     run: (args) => readRevolutDebits(pageOf(args)),
+  },
+  {
+    name: "pliant_debits",
+    description:
+      "Dépenses carte Pliant. id, date d’autorisation (createdAt, pas le débit), quatre derniers chiffres, commerçant, montant, devise, état, proposition du moment (dossier, confiance, raisons, voyageurs). La proposition ne rattache pas. page et limite parcourent la file. L’id sert à comptabilite_sortie.",
+    input: { page: listPage, limite: listLimit },
+    run: (args) => readPliantDebits(pageOf(args)),
   },
   {
     name: "comptabilite_voyage",
@@ -2031,7 +2039,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     destructive: true,
     description:
-      "Paiement fournisseur, comme la page Argent. action : rattacher, deplacer, detacher, ligne, refuser, hors_voyage, remettre. source revolut ou pliant, sortie_id. dossier_id pour rattacher, déplacer ou refuser. carte_id choisit la ligne ; sejour true laisse le montant sur le séjour ; nouvelle_depense { titre, prix } ouvre une dépense. montant_eur pour une sortie hors euros. detacher accepte cout_id, ou sortie_id seul (dossier_id facultatif) quand cette sortie n’a qu’un coût. detacher, deplacer, hors_voyage et refuser exigent confirmer true. La vente du client ne change pas. Pas de numéro de carte.",
+      "Paiement fournisseur, comme la page Argent. action : rattacher, deplacer, detacher, ligne, refuser, hors_voyage, remettre. source revolut ou pliant, sortie_id. dossier_id pour rattacher, déplacer ou refuser. carte_id choisit la ligne ; sejour true laisse le montant sur le séjour ; nouvelle_depense { titre, prix } ouvre une dépense. prix est facultatif : sans prix, le libellé est posé et il n’y a pas de vente. titre, avec carte_id, renomme la ligne sans changer le prix. montant_eur pour une sortie hors euros. detacher accepte cout_id, ou sortie_id seul (dossier_id facultatif) quand cette sortie n’a qu’un coût. detacher, deplacer, hors_voyage et refuser exigent confirmer true. La vente du client ne change pas, sauf un prix de nouvelle dépense. Pas de numéro de carte.",
     input: {
       action: z
         .enum(["rattacher", "deplacer", "detacher", "ligne", "refuser", "hors_voyage", "remettre"])
@@ -2040,6 +2048,7 @@ export const MCP_TOOLS: ToolDef[] = [
       source: z.enum(["revolut", "pliant"]).optional(),
       sortie_id: z.string().trim().max(80).optional().describe("Identifiant du mouvement Revolut ou Pliant"),
       cout_id: z.string().trim().max(80).optional().describe("Coût déjà rattaché, pour détacher ou changer de ligne"),
+      titre: z.string().trim().max(160).optional().describe("Libellé de la ligne, sans changer le prix vendu"),
       dossier_id: z.string().trim().max(80).optional(),
       carte_id: z.string().trim().max(80).optional(),
       sejour: z.boolean().optional().describe("true : montant du séjour, sans ligne"),
@@ -2047,7 +2056,7 @@ export const MCP_TOOLS: ToolDef[] = [
       nouvelle_depense: z
         .object({
           titre: z.string().trim().max(160).optional(),
-          prix: z.union([z.number(), z.string()]),
+          prix: z.union([z.number(), z.string()]).optional().describe("Prix vendu. Omis : pas de vente, seulement le libellé"),
         })
         .optional(),
     },

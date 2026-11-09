@@ -15,6 +15,7 @@ const EXPECTED = [
   "grand_livre",
   "revolut_en_attente",
   "revolut_debits",
+  "pliant_debits",
   "comptabilite_voyage",
   "stripe_en_attente",
   "emails_en_attente",

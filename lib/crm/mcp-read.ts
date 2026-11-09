@@ -61,7 +61,9 @@ import { dossierFace, dossierFaceLabel } from "@/lib/crm/dossier-status";
 import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { buildTripAccountingView, loadDossierAccountingInputs } from "@/lib/crm/trip-accounting-view";
-import { TRIP_ACCOUNTING_LABELS, type TripCost } from "@/lib/crm/trip-costs";
+import { costSuggestionSummary, TRIP_ACCOUNTING_LABELS, type TripCost } from "@/lib/crm/trip-costs";
+import { pliantAuthorizationAt } from "@/lib/crm/pliant-tx";
+import { loadOutgoingQueue } from "@/lib/crm/trip-costs-db";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
   DOC_TYPE_LABELS,
@@ -1224,6 +1226,79 @@ export function mcpTripCost(cost: TripCost, eur: (value: number) => string = (va
   };
 }
 
+const PLIANT_DEBIT_STATE: Record<string, string> = {
+  unmatched: "à pointer",
+  matched: "rattachée",
+  ignored: "hors voyage",
+};
+
+/** Dépenses Pliant, comme revolut_debits. La date est l’autorisation. La proposition ne rattache pas. */
+export async function readPliantDebits(input: { page?: number; limite?: number } = {}) {
+  const admin = db();
+  const window = mcpWindow(input, INBOX_LIMIT);
+  const { data, error } = await admin
+    .from("crm_pliant_transactions")
+    .select("id, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, type, status, match_status, booked_at, raw, card_last4")
+    .in("type", ["PURCHASE", "CASH_WITHDRAWAL", "REFUND", "CHARGEBACK"])
+    .order("booked_at", { ascending: false, nullsFirst: false })
+    .limit(window.from + window.limite + 1);
+  if (error) {
+    logRead("pliant-debits", error);
+    throw new Error("Lecture impossible.");
+  }
+  const page = mcpSlice(
+    (data || []) as {
+      id: string;
+      merchant: string | null;
+      billing_cents: number | null;
+      billing_currency: string | null;
+      transaction_cents: number | null;
+      transaction_currency: string | null;
+      type: string | null;
+      status: string | null;
+      match_status: string | null;
+      booked_at: string | null;
+      raw: unknown;
+      card_last4: string | null;
+    }[],
+    window
+  );
+  const queue = page.rows.some((row) => (row.match_status || "unmatched") === "unmatched")
+    ? await loadOutgoingQueue({ source: "pliant", limit: 500 }, admin).catch(() => [])
+    : [];
+  const suggestions = new Map(queue.map((line) => [line.id, line]));
+  return {
+    lien: "/admin/argent?onglet=a-pointer&vue=pliant",
+    page: page.page,
+    limite: page.limite,
+    suite: page.suite,
+    page_suivante: page.page_suivante,
+    debits: page.rows.map((row) => {
+      const currency = (row.transaction_currency || row.billing_currency || "EUR").toUpperCase();
+      const cents = row.transaction_cents ?? row.billing_cents;
+      const amount = cents == null ? null : Math.abs(cents) / 100;
+      const hit = suggestions.get(row.id)?.suggestions[0] || null;
+      return {
+        id: row.id,
+        date_autorisation: formatDateFr(pliantAuthorizationAt(row.raw, row.booked_at)),
+        carte: (row.card_last4 || "").replace(/\D/g, "").slice(-4) || null,
+        commercant: row.merchant,
+        montant: amount == null ? null : formatMoney(row.type === "REFUND" || row.type === "CHARGEBACK" ? amount : -amount, currency),
+        devise: currency,
+        etat: PLIANT_DEBIT_STATE[row.match_status || "unmatched"] || "à pointer",
+        suggestion: hit
+          ? {
+              reference: hit.reference,
+              confiance: hit.confidence,
+              raisons: costSuggestionSummary(hit),
+              voyageurs: hit.passengers,
+            }
+          : null,
+      };
+    }),
+  };
+}
+
 /** Comptabilité d’un voyage : ventes, coûts rattachés, marge par ligne, facture MB3M. Rien côté client. */
 export async function readComptabiliteVoyage(input: { id?: string; reference?: string }) {
   const admin = db();
@@ -1301,11 +1376,21 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
       marge: eur(view.totals.margin),
     },
     sorties_proposees: view.proposed.map((line) => ({
+      sortie_id: line.id,
       source: line.source === "pliant" ? "Pliant" : "Revolut",
       beneficiaire: line.party,
       montant: formatMoney(line.refund ? line.amount : -line.amount, line.currency),
       date: line.occurredOn ? formatDateFr(line.occurredOn) : null,
-      proposition: line.suggestions[0]?.itemLabel || (line.suggestions[0] ? "Montant du séjour" : null),
+      carte: line.last4 || null,
+      proposition: line.suggestions[0]
+        ? {
+            reference: line.suggestions[0].reference,
+            ligne: line.suggestions[0].itemLabel,
+            confiance: line.suggestions[0].confidence,
+            raisons: costSuggestionSummary(line.suggestions[0]),
+            voyageurs: line.suggestions[0].passengers,
+          }
+        : null,
     })),
     facture: {
       numero: view.invoice.number,

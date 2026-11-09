@@ -27,6 +27,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   grand_livre: "view_finances",
   revolut_en_attente: "view_finances",
   revolut_debits: "view_finances",
+  pliant_debits: "view_finances",
   comptabilite_voyage: "view_margins",
   stripe_en_attente: "view_finances",
   emails_en_attente: "view_inbox",

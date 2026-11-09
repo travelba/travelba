@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { hintsFromExtract } from "./cost-match";
 import {
   accountLines,
+  costSuggestionSummary,
   isFixedCostParty,
   marginByTransaction,
   referenceInText,
@@ -194,9 +196,8 @@ describe("coûts du voyage", () => {
     const byCard = suggestCostTargets({ text: "", party: "UNKNOWN SHOP", amount: 12, cardBookingIds: ["b1"] }, bookings);
     assert.equal(byCard[0].reason, "card");
     assert.equal(byCard[0].itemId, null);
-    const bySupplier = suggestCostTargets({ text: "", party: "AIR FRANCE PARIS", amount: 10 }, bookings);
-    assert.equal(bySupplier[0].bookingId, "b1");
-    assert.equal(bySupplier[0].itemId, FLIGHT);
+    // La compagnie seule, sans le montant du billet, ne désigne pas un dossier.
+    assert.deepEqual(suggestCostTargets({ text: "", party: "AIR FRANCE PARIS", amount: 10 }, bookings), []);
     const byAmount = suggestCostTargets({ text: "", party: "XYZ", amount: 850.5 }, bookings);
     assert.equal(byAmount[0].bookingId, "b2");
     assert.equal(byAmount[0].reason, "amount");
@@ -213,8 +214,8 @@ describe("coûts du voyage", () => {
     ];
     const byClient = suggestCostTargets({ text: "", party: "WINXO JNANE OUMNAS", amount: 453.41, customerId: "c1", date: "2026-10-11" }, own);
     assert.deepEqual(byClient.map((hit) => [hit.bookingId, hit.reason]), [["b5", "client"]]);
-    // Hors fenêtre : tous les voyages du client, à l’agent de choisir.
-    assert.equal(suggestCostTargets({ text: "", party: "X", amount: 1, customerId: "c1", date: "2026-06-01" }, own).length, 2);
+    // Hors fenêtre : pas de proposition. Un séjour du client sans la date ne suffit pas.
+    assert.deepEqual(suggestCostTargets({ text: "", party: "X", amount: 1, customerId: "c1", date: "2026-06-01" }, own), []);
     // Le prélèvement IATA (BSP) regroupe tous les billets : jamais de proposition, même au montant.
     assert.deepEqual(suggestCostTargets({ text: "", party: "IATA ESPAGNA SL", amount: 850.5 }, bookings), []);
     assert.deepEqual(suggestCostTargets({ text: "TB-2026-0002", party: "IATA ESPAGNA SL", amount: 1, cardBookingIds: ["b1"] }, bookings), []);
@@ -295,9 +296,8 @@ describe("coûts du voyage", () => {
     assert.equal(named[0]?.itemId, "anantara");
     assert.equal(named[0]?.reason, "supplier");
     assert.equal(costSuggestionReasonLabel(named[0].reason), supplierSentence);
-    const france = suggestCostTargets({ text: "", party: "AIRFRANCE", amount: 62.15 }, phuket);
-    assert.equal(france[0]?.itemId, "flight");
-    assert.equal(france[0]?.reason, "supplier");
+    // Un petit débit Air France (bagage, siège) ne propose pas le séjour au seul nom de la compagnie.
+    assert.deepEqual(suggestCostTargets({ text: "", party: "AIRFRANCE", amount: 62.15 }, phuket), []);
     assert.equal(suggestCostTargets({ text: "", party: "HIVERNAGE MARRAKECH", amount: 1 }, [
       { id: "b3", reference: "TB-2026-0003", title: "Marrakech", items: [{ id: "i4", kind: "hotel", title: "Hivernage Hotel And Spa", amount: 2000 }] },
     ])[0]?.itemId, "i4");
@@ -309,6 +309,125 @@ describe("coûts du voyage", () => {
       taxi.map((hit) => costSuggestionReasonLabel(hit.reason)).includes(supplierSentence),
       false
     );
+  });
+
+  it("rapproche le montant, le PNR, l’hôtel et le lieu, et se tait si l’indice est faible", () => {
+    const berda = {
+      id: "berda",
+      reference: "TB-2026-0148",
+      title: "Famille Berda",
+      destination: "Paris",
+      travelers: [
+        { first: "David", last: "Berda" },
+        { first: "Sarah", last: "Berda" },
+      ],
+      items: [
+        {
+          id: "tickets",
+          kind: "flight",
+          title: "Paris → New York",
+          supplier: "Air France",
+          amount: 2108.96,
+          confirmationRef: "YQYS8U",
+          startAt: "2026-11-12",
+          details: { airline: "Air France", pnr: "YQYS8U", document_amount: 2108.96, document_currency: "EUR" },
+        },
+      ],
+    };
+    const coupat = {
+      id: "coupat",
+      reference: "TB-2026-0100",
+      title: "New York",
+      destination: "New York",
+      travelers: [{ first: "Camille", last: "Coupat" }],
+      items: [
+        {
+          id: "ny",
+          kind: "flight",
+          title: "Paris → New York",
+          supplier: "Air France",
+          amount: 640,
+          startAt: "2026-11-20",
+          details: { airline: "Air France" },
+        },
+      ],
+    };
+    const air = suggestCostTargets(
+      { text: "YQYS8U", party: "AIR FRANCE", amount: 2108.96, date: "2026-11-03" },
+      [coupat, berda]
+    );
+    assert.equal(air[0]?.bookingId, "berda");
+    assert.equal(air[0]?.itemId, "tickets");
+    assert.equal(air[0]?.confidence, "haute");
+    assert.equal(air[0]?.passengers.join(", "), "David Berda, Sarah Berda");
+    assert.match(costSuggestionSummary(air[0]), /PNR/);
+    assert.match(costSuggestionSummary(air[0]), /montant/);
+    assert.equal(air.some((hit) => hit.bookingId === "coupat"), false);
+    assert.deepEqual(suggestCostTargets({ party: "AIR FRANCE", amount: 72, date: "2026-11-03" }, [coupat, berda]), []);
+
+    const corrot = {
+      id: "corrot",
+      reference: "TB-2026-0038",
+      title: "Miami",
+      destination: "Miami",
+      travelers: [{ first: "Jean", last: "Corrot" }],
+      items: [
+        {
+          id: "edition",
+          kind: "hotel",
+          title: "The Miami Beach Edition",
+          amount: null,
+          startAt: "2026-11-06",
+          endAt: "2026-11-09",
+          details: { hotel_name: "The Miami Beach Edition", city: "Miami", document_amount: 1157.25, document_currency: "USD" },
+        },
+      ],
+      hints: { texts: ["Edition Hotels — confirmation for Mr Corrot, The Miami Beach Edition"] },
+    };
+    const khiari = {
+      id: "khiari",
+      reference: "TB-2026-0124",
+      title: "Séjour",
+      destination: "Con Dao",
+      travelers: [{ first: "Amine", last: "Khiari" }],
+      items: [
+        {
+          id: "condao",
+          kind: "hotel",
+          title: "Six Senses Con Dao",
+          amount: 900,
+          details: { hotel_name: "Six Senses Con Dao", city: "Con Dao" },
+        },
+      ],
+    };
+    const edition = suggestCostTargets(
+      { party: "THE MIAMI BEACH EDITION", amount: 1060, originalAmount: 1157.25, originalCurrency: "USD", date: "2026-11-06" },
+      [khiari, corrot]
+    );
+    assert.equal(edition[0]?.bookingId, "corrot");
+    assert.equal(edition[0]?.passengers[0], "Jean Corrot");
+    assert.match(costSuggestionSummary(edition[0]), /e-mail|hôtel|montant/);
+    assert.equal(edition.some((hit) => hit.bookingId === "khiari"), false);
+
+    const douro = {
+      id: "douro",
+      reference: "TB-2026-0200",
+      title: "Douro",
+      destination: "Douro",
+      items: [{ id: "douro-hotel", kind: "hotel", title: "Six Senses Douro Valley", amount: 2000, details: { hotel_name: "Six Senses Douro Valley", city: "Douro" } }],
+    };
+    const valley = suggestCostTargets({ party: "SIX SENSES DOURO VALLEY", amount: 40 }, [khiari, douro]);
+    assert.equal(valley[0]?.bookingId, "douro");
+    assert.equal(valley[0]?.itemId, "douro-hotel");
+    assert.equal(valley.some((hit) => hit.bookingId === "khiari"), false);
+
+    const hints = hintsFromExtract({
+      items: [{ confirmation_ref: "YQYS8U", document_amount: 527.24, document_currency: "EUR" }],
+      travelers: [{ first_name: "Sarah", last_name: "Berda" }],
+    });
+    assert.deepEqual(hints.pnrs, ["YQYS8U"]);
+    assert.equal(hints.amounts[0]?.value, 527.24);
+    assert.equal(hints.names[0]?.last, "Berda");
   });
 });
 
