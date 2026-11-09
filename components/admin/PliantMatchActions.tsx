@@ -205,10 +205,13 @@ export function PliantMatchActions({
       {phase === "a_proposer" && suggestion ? (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9e7e51]">Proposition</p>
-          <p className="text-sm font-semibold leading-snug text-[var(--admin-navy)]">{place(suggestion.reference, suggestion.title)}</p>
+          <p className="text-sm font-semibold leading-snug text-[var(--admin-navy)]">
+            {place(suggestion.reference, suggestion.title, suggestion.clientName || "", undefined, suggestion.companyName || "")}
+          </p>
           {suggestion.itemLabel ? <p className="text-xs leading-5 text-muted">{suggestion.itemLabel}</p> : null}
           <p className="text-xs leading-5 text-muted">
-            Confiance {costConfidenceLabel(suggestion.confidence).toLowerCase()} · {costSuggestionSummary(suggestion)}
+            {place(suggestion.reference, suggestion.title, suggestion.clientName || "", undefined, suggestion.companyName || "")}. Confiance{" "}
+            {costConfidenceLabel(suggestion.confidence).toLowerCase()}. {costSuggestionSummary(suggestion)}
           </p>
           {suggestion.passengers?.length ? (
             <p className="text-xs leading-5 text-[var(--admin-navy)]">Voyageurs : {suggestion.passengers.join(", ")}</p>
@@ -226,7 +229,7 @@ export function PliantMatchActions({
                 setConfirm({
                   kind: "refuse",
                   title: "Écarter la proposition",
-                  question: `Écarter ${suggestion.reference} ? La dépense reste à proposer.`,
+                  question: `Écarter ${place(suggestion.reference, suggestion.title, suggestion.clientName || "", undefined, suggestion.companyName || "")} ? La dépense reste à proposer.`,
                   confirmLabel: "Écarter",
                   tone: "default",
                 });

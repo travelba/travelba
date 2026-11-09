@@ -163,6 +163,8 @@ describe("recherche de pointage", () => {
     const caption = attachTargetCaption(rows[0] || {});
     assert.match(caption.headline, /TB-2026-0088/);
     assert.match(caption.headline, /Miami/);
+    assert.match(caption.headline, /Amin Martin/);
+    assert.match(caption.headline, /NILOS FRANCE/);
     assert.equal(caption.headline.includes("Miami · Miami"), false);
     assert.match(caption.detail, /Amin Martin/);
     assert.match(caption.detail, /NILOS FRANCE/);

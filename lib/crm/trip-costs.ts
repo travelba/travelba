@@ -541,6 +541,27 @@ export type OutgoingCardInfo = {
   bookingTitle?: string | null;
 };
 
+/** Référence, titre du dossier, client titulaire et société. Le numéro seul ne suffit pas. */
+export function dossierMatchLabel(face: {
+  reference?: string | null;
+  title?: string | null;
+  clientName?: string | null;
+  companyName?: string | null;
+}) {
+  const client = (face.clientName || "").trim();
+  const company = (face.companyName || "").trim();
+  const same = client && company && client.localeCompare(company, "fr", { sensitivity: "accent" }) === 0;
+  return [(face.reference || "").trim(), (face.title || "").trim(), client, same ? "" : company].filter(Boolean).join(" · ");
+}
+
+/** Nom du titulaire, et la société s’il y en a une. */
+export function dossierClientLabel(face: { clientName?: string | null; companyName?: string | null }) {
+  const client = (face.clientName || "").trim();
+  const company = (face.companyName || "").trim();
+  if (client && company && client.localeCompare(company, "fr", { sensitivity: "accent" }) !== 0) return `${client} · ${company}`;
+  return client || company || null;
+}
+
 /** Un rattachement quasi certain : la référence du dossier, ou la carte générée depuis le dossier. */
 export const SURE_SUGGESTION_SCORE = 90;
 
@@ -571,7 +592,13 @@ export type OutgoingLine = {
   agencyCard: boolean;
   /** Carte Pliant générée depuis un dossier : porteur, plafond, validité, dossier d’origine. */
   cardInfo: OutgoingCardInfo | null;
-  suggestions: (CostSuggestion & { reference: string; title: string; itemLabel: string | null })[];
+  suggestions: (CostSuggestion & {
+    reference: string;
+    title: string;
+    itemLabel: string | null;
+    clientName: string | null;
+    companyName: string | null;
+  })[];
 };
 
 export function round(value: number) {

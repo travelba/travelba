@@ -441,14 +441,14 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "pliant_debits",
     description:
-      "Dépenses carte Pliant. id, date d’autorisation (createdAt, pas le débit), quatre derniers chiffres, commerçant, montant, devise, état, proposition du moment (dossier, confiance, raisons, voyageurs). La proposition ne rattache pas. page et limite parcourent la file. L’id sert à comptabilite_sortie.",
+      "Dépenses carte Pliant. id, date d’autorisation (createdAt, pas le débit), quatre derniers chiffres, commerçant, montant, devise, état, proposition du moment (dossier_titre, client_nom, confiance, raisons, voyageurs). La proposition ne rattache pas. page et limite parcourent la file. L’id sert à comptabilite_sortie.",
     input: { page: listPage, limite: listLimit },
     run: (args) => readPliantDebits(pageOf(args)),
   },
   {
     name: "comptabilite_voyage",
     description:
-      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). Chaque ligne a carte_id quand la vente est rattachée à une carte. Chaque coût, dans lignes.couts et dans couts_sans_vente, porte cout_id et sortie_id (le mouvement Pliant ou Revolut). id ou reference. Lecture seule, jamais montré au client.",
+      "Comptabilité d’un voyage : ventes, coûts Pliant et Revolut rattachés, marge par ligne, facture MB3M, sorties proposées, commission d’agence (taux et source). Chaque ligne a carte_id quand la vente est rattachée à une carte. Chaque coût, dans lignes.couts et dans couts_sans_vente, porte cout_id et sortie_id (le mouvement Pliant ou Revolut). Chaque proposition porte dossier_titre et client_nom (titulaire et société), pas seulement la référence. id ou reference. Lecture seule, jamais montré au client.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),

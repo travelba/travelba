@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { hintsFromExtract } from "./cost-match";
 import {
   accountLines,
+  dossierClientLabel,
+  dossierMatchLabel,
   costSuggestionSummary,
   isFixedCostParty,
   marginByTransaction,
@@ -428,6 +430,129 @@ describe("coûts du voyage", () => {
     assert.deepEqual(hints.pnrs, ["YQYS8U"]);
     assert.equal(hints.amounts[0]?.value, 527.24);
     assert.equal(hints.names[0]?.last, "Berda");
+  });
+
+  it("nomme le dossier, le titulaire et la société à côté de la référence", () => {
+    const face = {
+      reference: "TB-2026-0148",
+      title: "Mykonos – Bar Mitsvah Shon Bechet",
+      clientName: "Shon Bechet",
+      companyName: "Bechet Events",
+    };
+    assert.equal(dossierMatchLabel(face), "TB-2026-0148 · Mykonos – Bar Mitsvah Shon Bechet · Shon Bechet · Bechet Events");
+    assert.equal(dossierClientLabel(face), "Shon Bechet · Bechet Events");
+    assert.equal(dossierClientLabel({ clientName: "Shon Bechet", companyName: "Shon Bechet" }), "Shon Bechet");
+    assert.equal(dossierMatchLabel({ reference: "TB-2026-0001", title: "", clientName: null, companyName: null }), "TB-2026-0001");
+  });
+
+  it("retient le billet Air France au montant du dossier, même si un autre e-mail cite le même chiffre", () => {
+    const cymerman = {
+      id: "cym",
+      reference: "TB-2026-0155",
+      title: "Tel Aviv",
+      destination: "Tel Aviv",
+      startDate: "2026-11-26",
+      endDate: "2026-12-03",
+      travelers: [{ first: "Arnaud", last: "Cymerman" }],
+      items: [
+        {
+          id: "out",
+          kind: "flight",
+          title: "CDG → TLV",
+          supplier: "Air France",
+          amount: 2108.96,
+          confirmationRef: "ZFSB6K",
+          startAt: "2026-11-26",
+          details: { pnr: "ZFSB6K", airline: "Air France", airline_iata: "AF", flight_number: "AF962", amount_is_total: true },
+        },
+        {
+          id: "back",
+          kind: "flight",
+          title: "TLV → CDG",
+          supplier: "Air France",
+          amount: 0,
+          confirmationRef: "ZFSB6K",
+          startAt: "2026-12-03",
+          details: { pnr: "ZFSB6K", airline: "Air France", airline_iata: "AF", flight_number: "AF975", amount_is_total: true },
+        },
+        {
+          id: "exp",
+          kind: "expense",
+          title: "Billets Air France ZFSB6K",
+          supplier: "Air France",
+          amount: 2108.96,
+          confirmationRef: "ZFSB6K",
+          details: { pnr: "ZFSB6K", airline: "Air France", document_amount: 2108.96, document_currency: "EUR" },
+        },
+      ],
+    };
+    const decoy = {
+      id: "decoy",
+      reference: "TB-2026-0099",
+      title: "Rome",
+      destination: "Rome",
+      items: [{ id: "af", kind: "flight", title: "CDG → FCO", supplier: "Air France", amount: 400, details: { airline: "Air France" } }],
+      hints: { amounts: [{ value: 2108.96, currency: "EUR" }], texts: ["E-ticket Air France 2108,96 €"] },
+    };
+    const hits = suggestCostTargets(
+      { party: "AIR FRANCE", amount: 2108.96, originalAmount: 2108.96, originalCurrency: "EUR", date: "2026-11-06" },
+      [decoy, cymerman]
+    );
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0]?.bookingId, "cym");
+    assert.equal(hits[0]?.confidence, "haute");
+    assert.equal(hits[0]?.reasons.includes("amount"), true);
+    assert.equal(hits[0]?.reasons.includes("airline"), true);
+    assert.equal(hits[0]?.passengers[0], "Arnaud Cymerman");
+  });
+
+  it("compare le débit en dollars au coût net hôtel, pas au prix de vente en euros", () => {
+    const corrot = {
+      id: "corrot",
+      reference: "TB-2026-0038",
+      title: "Miami Beach",
+      destination: "Miami Beach",
+      travelers: [{ first: "Charles", last: "Corrot" }],
+      items: [
+        {
+          id: "edition",
+          kind: "hotel",
+          title: "The Miami Beach EDITION",
+          amount: 9757,
+          details: {
+            hotel_name: "The Miami Beach EDITION",
+            city: "Miami Beach",
+            supplier_net: 1157.25,
+            supplier_currency: "USD",
+            document_amount: 12937,
+          },
+        },
+      ],
+    };
+    const otherMiami = {
+      id: "other",
+      reference: "TB-2026-0124",
+      title: "Miami",
+      destination: "Miami",
+      items: [
+        {
+          id: "other-hotel",
+          kind: "hotel",
+          title: "Fontainebleau Miami Beach",
+          amount: 4000,
+          details: { hotel_name: "Fontainebleau Miami Beach", city: "Miami" },
+        },
+      ],
+    };
+    const hits = suggestCostTargets(
+      { party: "THE MIAMI BEACH EDITION", amount: 1035.66, originalAmount: 1157.25, originalCurrency: "USD", date: "2026-11-04" },
+      [otherMiami, corrot]
+    );
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0]?.bookingId, "corrot");
+    assert.equal(hits[0]?.itemId, "edition");
+    assert.equal(hits[0]?.confidence, "haute");
+    assert.equal(hits[0]?.reasons.includes("amount"), true);
   });
 });
 

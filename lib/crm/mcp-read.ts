@@ -61,7 +61,7 @@ import { dossierFace, dossierFaceLabel } from "@/lib/crm/dossier-status";
 import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { buildTripAccountingView, loadDossierAccountingInputs } from "@/lib/crm/trip-accounting-view";
-import { costSuggestionSummary, TRIP_ACCOUNTING_LABELS, type TripCost } from "@/lib/crm/trip-costs";
+import { costSuggestionSummary, dossierClientLabel, TRIP_ACCOUNTING_LABELS, type OutgoingLine, type TripCost } from "@/lib/crm/trip-costs";
 import { pliantAuthorizationAt } from "@/lib/crm/pliant-tx";
 import { loadOutgoingQueue } from "@/lib/crm/trip-costs-db";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
@@ -1213,6 +1213,17 @@ export async function readRevolutDebits(input: { page?: number; limite?: number 
   };
 }
 
+function proposedMatch(hit: OutgoingLine["suggestions"][number]) {
+  return {
+    reference: hit.reference,
+    dossier_titre: hit.title || null,
+    client_nom: dossierClientLabel(hit),
+    confiance: hit.confidence,
+    raisons: costSuggestionSummary(hit),
+    voyageurs: hit.passengers,
+  };
+}
+
 /** Un coût rattaché, pour comptabilite_voyage : cout_id sert à detacher, sortie_id est le mouvement. */
 export function mcpTripCost(cost: TripCost, eur: (value: number) => string = (value) => formatMoney(value, "EUR")) {
   return {
@@ -1286,14 +1297,7 @@ export async function readPliantDebits(input: { page?: number; limite?: number }
         montant: amount == null ? null : formatMoney(row.type === "REFUND" || row.type === "CHARGEBACK" ? amount : -amount, currency),
         devise: currency,
         etat: PLIANT_DEBIT_STATE[row.match_status || "unmatched"] || "à pointer",
-        suggestion: hit
-          ? {
-              reference: hit.reference,
-              confiance: hit.confidence,
-              raisons: costSuggestionSummary(hit),
-              voyageurs: hit.passengers,
-            }
-          : null,
+        suggestion: hit ? proposedMatch(hit) : null,
       };
     }),
   };
@@ -1382,15 +1386,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
       montant: formatMoney(line.refund ? line.amount : -line.amount, line.currency),
       date: line.occurredOn ? formatDateFr(line.occurredOn) : null,
       carte: line.last4 || null,
-      proposition: line.suggestions[0]
-        ? {
-            reference: line.suggestions[0].reference,
-            ligne: line.suggestions[0].itemLabel,
-            confiance: line.suggestions[0].confidence,
-            raisons: costSuggestionSummary(line.suggestions[0]),
-            voyageurs: line.suggestions[0].passengers,
-          }
-        : null,
+      proposition: line.suggestions[0] ? { ...proposedMatch(line.suggestions[0]), ligne: line.suggestions[0].itemLabel } : null,
     })),
     facture: {
       numero: view.invoice.number,
