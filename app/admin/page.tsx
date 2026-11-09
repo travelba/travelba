@@ -16,8 +16,8 @@ import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { loadAccueilTodoCounts } from "@/lib/crm/admin-todo-load";
 import { ADMIN_ROUTES } from "@/lib/crm/admin-nav";
-import { loadAgencyServiceDesk } from "@/lib/crm/service-desk-load";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
 import { siteConfig } from "@/lib/site";
 
@@ -28,17 +28,15 @@ export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
 
   const today = stayToday();
-  const tomorrow = addIsoDays(today, 1);
   const horizon = addIsoDays(today, 7);
 
   const [
     { data: travellingRows },
     { data: upcomingRows },
     { data: balances },
-    { count: departTomorrowCount },
-    { count: openFormalities },
     badges,
-    serviceLines,
+    tripTodo,
+    whatsappOpen,
     agencyAccounts,
     clientActivity,
   ] = await Promise.all([
@@ -61,15 +59,12 @@ export default async function AdminHomePage() {
       .order("start_date")
       .limit(40),
     supabase.from("crm_customer_balances").select("balance, currency"),
-    supabase
-      .from("crm_bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("start_date", tomorrow)
-      .neq("status", "cancelled")
-      .is("archived_at", null),
-    supabase.from("crm_visa_tasks").select("id", { count: "exact", head: true }).is("done_at", null),
     adminBadges(),
-    loadAgencyServiceDesk(supabase),
+    loadAccueilTodoCounts(supabase, today),
+    supabase
+      .from("crm_whatsapp_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "open"),
     loadAgencyAccounts(),
     loadClientActivityFeed(supabase, today),
   ]);
@@ -100,22 +95,13 @@ export default async function AdminHomePage() {
       countries: places.countries[row.id],
     }))
   );
-  const whatsappOpen = await supabase
-    .from("crm_whatsapp_requests")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "open");
   const todo = adminTodoLines({
-    emails: badges.emails,
-    le: badges.le,
-    formalities: openFormalities ?? 0,
-    services: serviceLines.length,
-    departTomorrow: departTomorrowCount ?? 0,
-    expiring: badges.pieces,
     whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
     unread: badges.whatsapp,
     hotels: badges.hotels,
-    credits: badges.revolut + badges.stripe,
-    costs: badges.costs,
+    paymentLinks: tripTodo.paymentLinks,
+    visas: tripTodo.visas,
+    checkins: tripTodo.checkins,
   });
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
 
