@@ -763,6 +763,98 @@ describe("coûts du voyage", () => {
       assert.equal(suggestCostTargets({ party: "CTT", amount: 12.34, date: "2026-08-06", cardName }, [bajos, cabo, heredia]).length, 0, cardName);
     }
   });
+
+  it("parmi les dossiers d’Elad, la confirmation et le fournisseur passent avant la date", () => {
+    const face = (partial: { id: string; reference: string; title: string; destination: string; startDate?: string | null; endDate?: string | null }) => ({
+      customerId: "elad",
+      clientName: "Elad Taieb",
+      clientFirst: "Elad",
+      clientLast: "Taieb",
+      createdAt: "2026-11-09",
+      items: [] as { id: string; kind: string; title: string; supplier?: string; amount: number | null; confirmationRef?: string; startAt?: string; endAt?: string; details?: Record<string, unknown> }[],
+      ...partial,
+    });
+    const bajos = face({ id: "119", reference: "TB-2026-0119", title: "Bajos del Toro", destination: "Bajos del Toro", startDate: "2026-07-28", endDate: "2026-07-30" });
+    bajos.items.push({
+      id: "sjo-out",
+      kind: "transfer",
+      title: "Transfert aéroport SJO",
+      supplier: "Expedia TAAP",
+      amount: 0,
+      confirmationRef: "73499370819632",
+      startAt: "2026-07-28",
+      details: { aeroport: "SJO", ville: "San José" },
+    });
+    const cabo = face({ id: "120", reference: "TB-2026-0120", title: "Cabo Velas", destination: "Cabo Velas", startDate: "2026-08-07", endDate: "2026-08-10" });
+    const heredia = face({ id: "121", reference: "TB-2026-0121", title: "Heredia", destination: "Heredia", startDate: "2026-08-10", endDate: "2026-08-11" });
+    const arenas = face({ id: "161", reference: "TB-2026-0161", title: "Manuel Antonio – Arenas del Mar", destination: "Manuel Antonio" });
+    arenas.items.push({
+      id: "arenas",
+      kind: "hotel",
+      title: "Arenas del Mar Beachfront",
+      supplier: "Expedia TAAP",
+      amount: 0,
+      confirmationRef: "73497926989438",
+      details: { hotel_name: "Arenas del Mar Beachfront", country: "Costa Rica", supplier_net: 2612.03, supplier_currency: "USD" },
+    });
+    const nantipa = face({ id: "162", reference: "TB-2026-0162", title: "Santa Teresa – Nantipa", destination: "Santa Teresa" });
+    nantipa.items.push({
+      id: "nantipa",
+      kind: "hotel",
+      title: "Nantipa",
+      supplier: "Nantipa",
+      amount: 0,
+      details: { hotel_name: "Nantipa", country: "Costa Rica", supplier_net: 8644.5, supplier_currency: "USD" },
+    });
+    const miami = face({ id: "163", reference: "TB-2026-0163", title: "Miami Beach", destination: "Miami", startDate: "2026-07-23", endDate: "2026-07-28" });
+    miami.items.push({
+      id: "w",
+      kind: "hotel",
+      title: "W South Beach",
+      supplier: "RateHawk",
+      amount: 0,
+      startAt: "2026-07-23",
+      endAt: "2026-07-28",
+      details: { hotel_name: "W South Beach", city: "Miami Beach", supplier_net: 3497, supplier_currency: "EUR" },
+    });
+    const bookings = [miami, bajos, cabo, heredia, arenas, nantipa];
+    const card = { cardName: "Elad Taieb" };
+
+    const arenasPay = suggestCostTargets({ party: "EG*TRVL73497926989438", amount: 5499.6, date: "2026-07-17", ...card }, bookings);
+    assert.equal(arenasPay[0]?.bookingId, "161");
+    assert.equal(arenasPay[0]?.itemId, "arenas");
+    assert.equal(arenasPay[0]?.confidence, "haute");
+    assert.equal(arenasPay[0]?.reasons.includes("itinerary"), true);
+    assert.equal(dossierMatchLabel({ reference: "TB-2026-0161", title: arenas.title, clientName: arenas.clientName }), "TB-2026-0161 · Manuel Antonio – Arenas del Mar · Elad Taieb");
+    const tail = suggestCostTargets({ party: "EG*TRVL89438", amount: 5499.6, date: "2026-07-17", ...card }, bookings);
+    assert.equal(tail[0]?.bookingId, "161");
+
+    const hotel = suggestCostTargets(
+      { party: "NANTIPA", amount: 1839.4, originalAmount: 2117.88, originalCurrency: "USD", date: "2026-08-07", ...card },
+      bookings
+    );
+    assert.equal(hotel[0]?.bookingId, "162");
+    assert.equal(hotel[0]?.confidence, "haute");
+    assert.equal(hotel[0]?.reasons.includes("hotel"), true);
+    const refund = suggestCostTargets(
+      { party: "NANTIPA", amount: 172.85, originalAmount: 200, originalCurrency: "USD", date: "2026-08-14", ...card },
+      bookings
+    );
+    assert.equal(refund[0]?.bookingId, "162");
+    assert.equal(refund.some((hit) => hit.bookingId === "120" || hit.bookingId === "121"), false);
+
+    const transfer = suggestCostTargets({ party: "EG*TRVL73499370819632", amount: 183.24, date: "2026-07-19", ...card }, bookings);
+    assert.equal(transfer[0]?.bookingId, "119");
+    assert.equal(transfer[0]?.itemId, "sjo-out");
+    const sjo = suggestCostTargets({ party: "TAXI SJO", amount: 45, date: "2026-07-19", ...card }, bookings);
+    assert.notEqual(sjo[0]?.bookingId, "163");
+    assert.equal(["119", "120", "121", "161", "162"].includes(sjo[0]?.bookingId || ""), true);
+
+    const avianca = suggestCostTargets({ party: "AVIANCA", amount: 365.93, date: "2026-07-20", ...card }, bookings);
+    assert.notEqual(avianca[0]?.bookingId, "163");
+    assert.equal(avianca[0]?.bookingId, "119");
+    assert.match(costSuggestionSummary(avianca[0]!), /même client \/ même carte/i);
+  });
 });
 
 function roundSale(lines: { sale: number; cost: number }[]) {

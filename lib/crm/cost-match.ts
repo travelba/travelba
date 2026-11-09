@@ -56,6 +56,7 @@ export type CostSignal =
   | "card"
   | "client"
   | "pnr"
+  | "itinerary"
   | "passengers"
   | "email"
   | "amount"
@@ -173,6 +174,7 @@ const SIGNAL_LABEL: Record<CostSignal, string> = {
   card: "Carte Pliant générée dans ce dossier.",
   client: "La carte est au nom du client, pendant son séjour.",
   pnr: "Même PNR qu’un billet du dossier.",
+  itinerary: "Le n° de confirmation figure sur une prestation du dossier.",
   passengers: "Les noms des voyageurs figurent sur la sortie.",
   email: "Un e-mail du dossier nomme le voyageur et le fournisseur.",
   amount: "Même montant qu’un billet, un hôtel ou une pièce du dossier.",
@@ -606,7 +608,7 @@ function confidenceOf(score: number): CostConfidence {
   return score >= HAUTE_SCORE ? "haute" : "moyenne";
 }
 
-const SIGNAL_ORDER: CostSignal[] = ["reference", "card", "pnr", "amount", "fx", "passengers", "email", "airline", "hotel", "place", "date", "client", "clientCard", "sameCard", "nearest", "duplicate"];
+const SIGNAL_ORDER: CostSignal[] = ["reference", "card", "pnr", "itinerary", "amount", "fx", "passengers", "email", "airline", "hotel", "place", "date", "client", "clientCard", "sameCard", "nearest", "duplicate"];
 
 function toSuggestion(row: Scored, extra?: CostSignal[]): CostSuggestion {
   const signals = [...row.signals];
@@ -697,9 +699,102 @@ function tripDistance(date: string | null | undefined, booking: CostTargetBookin
   return at < start ? start - at : at - end;
 }
 
-function clientCardEvidence(row: Scored | undefined) {
-  if (!row) return false;
-  return row.signals.some((signal) => signal === "amount" || signal === "fx" || signal === "airline" || signal === "hotel" || signal === "pnr" || signal === "email" || signal === "passengers");
+function digitRuns(value: string) {
+  return value.match(/\d{8,}/g) || [];
+}
+
+function confirmationText(item: CostTargetItem) {
+  const bits: string[] = [item.confirmationRef || "", item.title || "", item.supplier || ""];
+  const walk = (value: unknown, depth: number) => {
+    if (depth > 4 || value == null) return;
+    if (typeof value === "string") {
+      if (!/^https?:/i.test(value) && value.length <= 800) bits.push(value);
+      return;
+    }
+    if (Array.isArray(value)) value.forEach((row) => walk(row, depth + 1));
+    else if (typeof value === "object") Object.values(value as Record<string, unknown>).forEach((row) => walk(row, depth + 1));
+  };
+  walk(item.details, 0);
+  return bits.join(" ");
+}
+
+/** N° Expedia du libellé (EG*TRVL…), entier ou seulement sa fin, déjà sur une prestation. */
+function confirmationItem(payment: string, booking: CostTargetBooking) {
+  const runs = new Set(digitRuns(payment));
+  const tail = payment.match(/EG\*TRVL[^\d]*(\d{5,})/i);
+  if (tail) runs.add(tail[1]);
+  if (!runs.size) return null;
+  for (const item of activeItems(booking)) {
+    const stored = digitRuns(confirmationText(item));
+    for (const run of runs) {
+      const hit = stored.some((value) => value === run || (value.length >= 8 && run.length >= 5 && (value.endsWith(run) || run.endsWith(value))));
+      if (hit) return item;
+    }
+  }
+  return null;
+}
+
+function supplierItem(payment: string, booking: CostTargetBooking) {
+  const wanted = distinctive(payment).filter((token) => token.length >= 5);
+  if (!wanted.length) return null;
+  let best: { item: CostTargetItem; overlap: number } | null = null;
+  for (const item of activeItems(booking)) {
+    const have = new Set(distinctive(itemBlob(item)));
+    const overlap = wanted.filter((token) => have.has(token)).length;
+    if (overlap > 0 && (!best || overlap > best.overlap)) best = { item, overlap };
+  }
+  return best?.item || null;
+}
+
+function paymentSide(payment: string) {
+  const tokens = new Set(matchTokens(payment));
+  const glued = normalizeMatchText(payment);
+  if (tokens.has("avianca") || tokens.has("sjo") || glued.includes("costarica") || glued.includes("sanjose")) return "costa" as const;
+  if (glued.includes("miami")) return "miami" as const;
+  return null;
+}
+
+function dossierSide(booking: CostTargetBooking) {
+  const text = normalizeMatchText(
+    [
+      booking.title,
+      booking.destination,
+      ...activeItems(booking).flatMap((item) => {
+        const details = item.details || {};
+        return [item.title, item.supplier, textOf(details.city), textOf(details.ville), textOf(details.country), textOf(details.pays), textOf(details.aeroport), textOf(details.hotel_name)];
+      }),
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const costa = ["costarica", "sjo", "sanjose", "manuelantonio", "santateresa", "heredia", "bajos", "cabovelas"].some((token) => text.includes(token));
+  const miami = text.includes("miami");
+  if (costa && !miami) return "costa" as const;
+  if (miami && !costa) return "miami" as const;
+  return null;
+}
+
+type CardRank = { tier: number; distance: number; itemId: string | null; signal: CostSignal | null };
+
+/**
+ * Même client et même carte : confirmation, fournisseur, montant, lieu, puis la date.
+ * Un dossier sans dates reste éligible dès qu’un indice fort le désigne.
+ */
+function rankClientCard(input: CostMatchInput, row: Scored): CardRank {
+  const payment = `${input.party || ""} ${input.text || ""}`.trim();
+  const confirmation = confirmationItem(payment, row.booking);
+  const supplier = confirmation ? null : supplierItem(payment, row.booking);
+  const paid = confirmation || supplier ? null : moneyHits(input, moneysOf(row.booking)).exact;
+  const side = paymentSide(payment);
+  const place = !confirmation && !supplier && !paid && side && dossierSide(row.booking) === side;
+  const tier = confirmation ? 4 : supplier ? 3 : paid ? 2 : place ? 1 : 0;
+  const signal: CostSignal | null = confirmation ? "itinerary" : supplier ? (supplier.kind === "flight" || supplier.kind === "train" ? "airline" : "hotel") : paid ? "amount" : place ? "place" : null;
+  return {
+    tier,
+    distance: tripDistance(input.date, row.booking),
+    itemId: confirmation?.id || supplier?.id || paid?.itemId || null,
+    signal,
+  };
 }
 
 /**
@@ -720,28 +815,24 @@ function clientCardSuggestion(input: CostMatchInput, bookings: CostTargetBooking
     const row = own.find((item) => item.booking.id === linked[0]);
     if (row) return toSuggestion(row);
   }
-  const inside = own.filter((row) => inClientCardWindow(input.date, row.booking));
-  const pool = inside.length ? inside : own;
-  pool.sort((left, right) => tripDistance(input.date, left.booking) - tripDistance(input.date, right.booking) || left.booking.reference.localeCompare(right.booking.reference));
-  const chosen = pool[0];
-  const inWindow = inside.length > 0;
-  const evidence = inWindow && clientCardEvidence(chosen);
+  const ranked = own.map((row) => ({ row, rank: rankClientCard(input, row) }));
+  ranked.sort((left, right) => right.rank.tier - left.rank.tier || left.rank.distance - right.rank.distance || left.row.booking.reference.localeCompare(right.row.booking.reference));
+  const chosen = ranked[0];
+  const inWindow = inClientCardWindow(input.date, chosen.row.booking);
   const reasons: CostSignal[] = ["clientCard"];
-  if (inWindow) reasons.push("date");
-  if (inside.length > 1) reasons.push("sameCard");
-  if (!inWindow) reasons.push("nearest");
-  for (const signal of chosen.signals) {
-    if (!reasons.includes(signal)) reasons.push(signal);
-  }
+  if (chosen.rank.signal) reasons.push(chosen.rank.signal);
+  if (own.length > 1) reasons.push("sameCard");
+  if (chosen.rank.tier === 0 && inWindow) reasons.push("date");
+  if (chosen.rank.tier === 0 && !inWindow) reasons.push("nearest");
   reasons.sort((left, right) => SIGNAL_ORDER.indexOf(left) - SIGNAL_ORDER.indexOf(right));
-  const confidence: CostConfidence = !inWindow ? "basse" : evidence ? "haute" : "moyenne";
+  const confidence: CostConfidence = chosen.rank.tier >= 2 ? "haute" : chosen.rank.tier === 1 || inWindow ? "moyenne" : "basse";
   return {
-    bookingId: chosen.booking.id,
-    itemId: chosen.itemId,
-    score: confidence === "haute" ? 90 : confidence === "moyenne" ? 74 : 58,
+    bookingId: chosen.row.booking.id,
+    itemId: chosen.rank.itemId || chosen.row.itemId,
+    score: confidence === "haute" ? 92 : confidence === "moyenne" ? 74 : 58,
     reason: "client",
     reasons,
-    passengers: chosen.passengers,
+    passengers: chosen.row.passengers,
     confidence,
   };
 }
