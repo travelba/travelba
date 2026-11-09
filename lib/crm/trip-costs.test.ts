@@ -855,6 +855,80 @@ describe("coûts du voyage", () => {
     assert.equal(avianca[0]?.bookingId, "119");
     assert.match(costSuggestionSummary(avianca[0]!), /même client \/ même carte/i);
   });
+
+  it("relie EG*TRVL au dossier même sur la carte agence, y compris si le débit est inférieur au coût net", () => {
+    const ranch = {
+      id: "ranch",
+      reference: "TB-2026-0044",
+      title: "Paris · Marrakech · Aghouatim",
+      destination: "Marrakech",
+      customerId: "samak",
+      clientName: "Jérémy Samak",
+      clientFirst: "Jérémy",
+      clientLast: "Samak",
+      items: [
+        {
+          id: "ranch-hotel",
+          kind: "hotel",
+          title: "The Ranch resort",
+          supplier: "Expedia TAAP",
+          amount: 400,
+          confirmationRef: "73540142114230",
+          details: {
+            hotel_name: "The Ranch resort",
+            supplier_net: 400,
+            supplier_currency: "EUR",
+            notes: "Coût total 400 € : part Expedia TAAP 271,66 € + reste payé à l’hôtel.",
+          },
+        },
+      ],
+    };
+    const decoy = {
+      id: "decoy",
+      reference: "TB-2026-0099",
+      title: "Rome",
+      customerId: "ada",
+      clientName: "Ada Martin",
+      items: [{ id: "rome", kind: "hotel", title: "Hôtel de Rome", amount: 271.66, details: { hotel_name: "Hôtel de Rome" } }],
+    };
+    const card = { cardName: "AMADEUS" };
+    const hits = suggestCostTargets({ party: "EG*TRVL73540142114230", amount: 271.66, date: "2026-10-01", ...card }, [decoy, ranch]);
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0]?.bookingId, "ranch");
+    assert.equal(hits[0]?.itemId, "ranch-hotel");
+    assert.equal(hits[0]?.confidence, "haute");
+    assert.equal(hits[0]?.reasons.includes("itinerary"), true);
+    assert.equal(
+      dossierMatchLabel({ reference: ranch.reference, title: ranch.title, clientName: ranch.clientName }),
+      "TB-2026-0044 · Paris · Marrakech · Aghouatim · Jérémy Samak"
+    );
+    const bare = suggestCostTargets({ party: "73540142114230", amount: 271.66, cardName: "AMADEUS" }, [decoy, ranch]);
+    assert.equal(bare[0]?.bookingId, "ranch");
+
+    const portion = suggestCostTargets({ party: "EG*TRVL73540142114230", amount: 271.66, cardName: "" }, [ranch]);
+    assert.equal(portion[0]?.confidence, "haute");
+    assert.ok((portion[0]?.score || 0) >= 90);
+    const share = suggestCostTargets({ party: "EXPEDIA TAAP", amount: 271.66 }, [ranch]);
+    assert.equal(share[0]?.bookingId, "ranch");
+    assert.equal(share[0]?.reasons.includes("amount"), true);
+
+    const copies = markDuplicateOutgoing(
+      [0, 1, 2, 3].map((index) => ({
+        id: `eg-${index}`,
+        party: "EG*TRVL73540142114230",
+        amount: 271.66,
+        currency: "EUR",
+        suggestions: hits,
+      }))
+    );
+    assert.equal(copies[0]?.suggestions[0]?.confidence, "haute");
+    assert.equal(copies[0]?.suggestions[0]?.reasons.includes("duplicate"), false);
+    for (const line of copies.slice(1)) {
+      assert.equal(line.suggestions[0]?.bookingId, "ranch");
+      assert.equal(line.suggestions[0]?.confidence, "basse");
+      assert.match(costSuggestionSummary(line.suggestions[0]!), /doublon possible/i);
+    }
+  });
 });
 
 function roundSale(lines: { sale: number; cost: number }[]) {

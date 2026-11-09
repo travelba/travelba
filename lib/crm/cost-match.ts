@@ -76,7 +76,7 @@ export type CostSuggestion = {
   bookingId: string;
   itemId: string | null;
   score: number;
-  reason: "reference" | "card" | "client" | "supplier" | "amount" | "pnr" | "passengers" | "email";
+  reason: "reference" | "card" | "client" | "supplier" | "amount" | "pnr" | "passengers" | "email" | "itinerary";
   reasons: CostSignal[];
   passengers: string[];
   confidence: CostConfidence;
@@ -196,6 +196,7 @@ const REASON_LABEL: Record<CostSuggestion["reason"], string> = {
   supplier: "Le nom du fournisseur correspond à cette prestation.",
   amount: "Même montant qu’une prestation du dossier.",
   pnr: SIGNAL_LABEL.pnr,
+  itinerary: SIGNAL_LABEL.itinerary,
   passengers: SIGNAL_LABEL.passengers,
   email: SIGNAL_LABEL.email,
 };
@@ -386,6 +387,7 @@ function moneysOf(booking: CostTargetBooking): Money[] {
     if (net != null && net > 0) out.push({ value: round2(net), currency: netCurrency, itemId: item.id });
     const netEur = num(details.supplier_net_eur);
     if (netEur != null && netEur > 0) out.push({ value: round2(netEur), currency: "EUR", itemId: item.id });
+    for (const share of expediaShares(details, item.id)) out.push(share);
     const pnr = cleanPnr(textOf(item.confirmationRef) || textOf(details.pnr));
     const fare = document != null && document > 0 ? document : sale;
     if (pnr && fare != null && fare > 0 && (item.kind === "flight" || item.kind === "train")) {
@@ -595,7 +597,7 @@ function isHard(row: Scored) {
 function primaryReason(signals: CostSignal[]): CostSuggestion["reason"] {
   if (signals.includes("reference")) return "reference";
   if (signals.includes("card")) return "card";
-  if (signals.includes("pnr")) return "pnr";
+  if (signals.includes("pnr") || signals.includes("itinerary")) return signals.includes("itinerary") ? "itinerary" : "pnr";
   if (signals.includes("passengers")) return "passengers";
   if (signals.includes("email")) return "email";
   if (signals.includes("amount") || signals.includes("fx")) return "amount";
@@ -701,6 +703,28 @@ function tripDistance(date: string | null | undefined, booking: CostTargetBookin
 
 function digitRuns(value: string) {
   return value.match(/\d{8,}/g) || [];
+}
+
+function frenchAmount(raw: string) {
+  const parsed = Number(raw.replace(/[\s\u00a0]/g, "").replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? round2(parsed) : null;
+}
+
+/** Part payée à Expedia, quand elle est écrite à part du coût net (le reste se paie à l’hôtel). */
+function expediaShares(details: Record<string, unknown>, itemId: string): Money[] {
+  const out: Money[] = [];
+  const currency = (textOf(details.expedia_currency) || textOf(details.supplier_currency) || "EUR").toUpperCase();
+  for (const key of ["expedia_amount", "expedia_part", "part_expedia", "paid_to_expedia"]) {
+    const value = num(details[key]);
+    if (value != null && value > 0) out.push({ value: round2(value), currency, itemId });
+  }
+  const notes = textOf(details.notes);
+  const pattern = /part\s+expedia[\s\S]{0,48}?(\d{1,3}(?:[ \u00a0]\d{3})*(?:[.,]\d{2})|\d+[.,]\d{2})/gi;
+  for (const match of notes.matchAll(pattern)) {
+    const value = frenchAmount(match[1] || "");
+    if (value != null) out.push({ value, currency: "EUR", itemId });
+  }
+  return out;
 }
 
 function confirmationText(item: CostTargetItem) {
@@ -856,6 +880,8 @@ export function rankCostTargets(input: CostMatchInput, bookings: CostTargetBooki
   const scored = bookings.map((booking) => scoreOne(input, booking, cards));
   boostUnique(scored, "amount", 64);
   boostUnique(scored, "hotel", 70);
+  const itinerary = itinerarySuggestion(input, bookings);
+  if (itinerary) return [itinerary];
   const namedCard = clientCardSuggestion(input, bookings, scored);
   if (namedCard) return [namedCard];
   const passengerHits = scored.filter((row) => row.signals.includes("passengers") && (row.signals.includes("airline") || row.signals.includes("hotel") || row.signals.includes("amount") || row.signals.includes("email")));
@@ -889,7 +915,31 @@ function asDuplicate(hit: CostSuggestion): CostSuggestion {
 }
 
 /**
- * Deux sorties identiques (même commerçant, même montant) : la première garde sa piste.
+ * N° d’itinéraire Expedia (EG*TRVL) ou longue suite de chiffres déjà dans confirmationRef.
+ * Vaut pour toute carte, y compris la carte agence. Le débit peut n’être que la part Expedia,
+ * inférieure au coût net : le numéro suffit, en confiance haute.
+ */
+function itinerarySuggestion(input: CostMatchInput, bookings: CostTargetBooking[]): CostSuggestion | null {
+  const payment = `${input.party || ""} ${input.text || ""}`.trim();
+  const hits = bookings.flatMap((booking) => {
+    const item = confirmationItem(payment, booking);
+    return item ? [{ booking, item }] : [];
+  });
+  if (hits.length !== 1) return null;
+  const { booking, item } = hits[0];
+  return {
+    bookingId: booking.id,
+    itemId: item.id,
+    score: 94,
+    reason: "itinerary",
+    reasons: ["itinerary"],
+    passengers: peopleOf(booking).slice(0, 6).map((person) => person.label),
+    confidence: "haute",
+  };
+}
+
+/**
+ * Deux sorties identiques (même commerçant, même montant, ou même n° d’itinéraire) : la première garde sa piste.
  * La suivante reprend le même dossier, en confiance faible, comme doublon possible.
  * Une sortie sans piste reprend aussi ce dossier.
  */
@@ -902,7 +952,8 @@ export function markDuplicateOutgoing<T extends DuplicateLine>(lines: T[]): T[] 
   next.forEach((line, index) => {
     const cents = Math.round(Math.abs(line.amount) * 100);
     if (!cents) return;
-    const key = `${normalizeMatchText(line.party)}|${(line.currency || "EUR").toUpperCase()}|${cents}`;
+    const itinerary = (line.party.match(/EG\*TRVL[^\d]*(\d{8,})/i) || [])[1] || "";
+    const key = `${itinerary || normalizeMatchText(line.party)}|${(line.currency || "EUR").toUpperCase()}|${cents}`;
     const list = groups.get(key) || [];
     list.push(index);
     groups.set(key, list);
