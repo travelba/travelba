@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hintsFromExtract } from "./cost-match";
+import { hintsFromExtract, markDuplicateOutgoing } from "./cost-match";
 import {
   accountLines,
   dossierClientLabel,
@@ -20,6 +20,7 @@ import {
   tripCostFromPliant,
   tripCostFromRevolut,
   tripTotals,
+  type CostSuggestion,
   type TripCost,
 } from "./trip-costs";
 
@@ -553,6 +554,214 @@ describe("coûts du voyage", () => {
     assert.equal(hits[0]?.itemId, "edition");
     assert.equal(hits[0]?.confidence, "haute");
     assert.equal(hits[0]?.reasons.includes("amount"), true);
+  });
+
+  it("reconnaît El Al comme une expression, ou le code LY, et les EMD au centime", () => {
+    const limor = {
+      id: "limor",
+      reference: "TB-2026-0156",
+      title: "CDG → TLV",
+      destination: "Tel Aviv",
+      startDate: "2026-11-20",
+      travelers: [{ first: "Limor", last: "Bechet" }],
+      items: [
+        {
+          id: "out",
+          kind: "flight",
+          title: "CDG → TLV",
+          supplier: "El Al",
+          amount: 1901.74,
+          confirmationRef: "ZDKRU6",
+          startAt: "2026-11-20",
+          details: { airline: "El Al", pnr: "ZDKRU6", airline_iata: "LY", flight_number: "LY315" },
+        },
+        {
+          id: "back",
+          kind: "flight",
+          title: "TLV → CDG",
+          supplier: "ELAL",
+          amount: 0,
+          confirmationRef: "ZDKRU6",
+          details: { airline: "El Al", pnr: "ZDKRU6" },
+        },
+        {
+          id: "emd",
+          kind: "expense",
+          title: "EMD El Al ZDKRU6 – BECHET Limor",
+          supplier: "El Al",
+          amount: 107.01,
+          confirmationRef: "ZDKRU6",
+          details: { pnr: "ZDKRU6", document_amount: 107.01, document_currency: "EUR" },
+        },
+        {
+          id: "seats",
+          kind: "expense",
+          title: "EMD sièges El Al ZDKRU6 – BECHET Limor",
+          supplier: "El Al",
+          amount: 178.02,
+          confirmationRef: "ZDKRU6",
+          details: { pnr: "ZDKRU6", document_amount: 178.02, document_currency: "EUR" },
+        },
+      ],
+    };
+    const sameAmount = {
+      id: "other",
+      reference: "TB-2026-0200",
+      title: "Autre",
+      items: [{ id: "fee", kind: "expense", title: "Frais", amount: 107.01, details: { document_amount: 107.01, document_currency: "EUR" } }],
+    };
+    const almenara = {
+      id: "almenara",
+      reference: "TB-2026-0201",
+      title: "Hôtel Almenara",
+      destination: "Marbella",
+      items: [{ id: "hotel", kind: "hotel", title: "Hotel Almenara", supplier: "Hotel Almenara", amount: 107.01, details: { hotel_name: "Hotel Almenara" } }],
+    };
+    const bag = suggestCostTargets({ party: "El Al", amount: 107.01, originalCurrency: "EUR", date: "2026-11-09" }, [sameAmount, almenara, limor]);
+    assert.equal(bag.length, 1);
+    assert.equal(bag[0]?.bookingId, "limor");
+    assert.equal(bag[0]?.itemId, "emd");
+    assert.equal(bag[0]?.confidence, "haute");
+    assert.equal(bag[0]?.reasons.includes("airline"), true);
+    const seats = suggestCostTargets({ party: "ELAL", amount: 178.02, originalCurrency: "EUR" }, [limor]);
+    assert.equal(seats[0]?.bookingId, "limor");
+    assert.equal(seats[0]?.itemId, "seats");
+    assert.equal(seats[0]?.confidence, "haute");
+    const fare = suggestCostTargets({ party: "LY315", amount: 1901.74, originalCurrency: "EUR" }, [limor, almenara]);
+    assert.equal(fare[0]?.bookingId, "limor");
+    assert.equal(fare[0]?.reasons.includes("airline"), true);
+    const hotel = suggestCostTargets({ party: "HOTEL ALMENARA", amount: 107.01, originalCurrency: "EUR" }, [limor, sameAmount, almenara]);
+    assert.equal(hotel.some((hit) => hit.bookingId === "limor"), false);
+    assert.equal(hotel.some((hit) => hit.reasons.includes("airline")), false);
+  });
+
+  it("reprend le même dossier pour un second débit identique, en le signalant comme doublon", () => {
+    const hit: CostSuggestion = {
+      bookingId: "limor",
+      itemId: "out",
+      score: 90,
+      reason: "supplier",
+      reasons: ["amount", "airline"],
+      passengers: ["Limor Bechet"],
+      confidence: "haute",
+    };
+    const [first, second, other] = markDuplicateOutgoing([
+      { id: "booked", party: "El Al", amount: 1901.74, currency: "EUR", suggestions: [hit] },
+      { id: "declined", party: "EL AL", amount: 1901.74, currency: "EUR", suggestions: [] },
+      { id: "emd", party: "El Al", amount: 107.01, currency: "EUR", suggestions: [{ ...hit, itemId: "emd", score: 90 }] },
+    ]);
+    assert.equal(first.suggestions[0]?.confidence, "haute");
+    assert.equal(first.suggestions[0]?.reasons.includes("duplicate"), false);
+    assert.equal(second.suggestions[0]?.bookingId, "limor");
+    assert.equal(second.suggestions[0]?.confidence, "basse");
+    assert.ok(second.suggestions[0] && second.suggestions[0].score < 90);
+    assert.match(costSuggestionSummary(second.suggestions[0]!), /montant déjà proposé pour une autre sortie – doublon possible/i);
+    assert.equal(other.suggestions[0]?.confidence, "haute");
+    assert.equal(other.suggestions[0]?.reasons.includes("duplicate"), false);
+  });
+
+  it("rattache la carte au nom du client, même si un hôtel d’un autre dossier porte le même fournisseur", () => {
+    const elad = (partial: {
+      id: string;
+      reference: string;
+      title: string;
+      startDate: string;
+      endDate: string;
+      amount?: number;
+    }) => ({
+      id: partial.id,
+      reference: partial.reference,
+      title: partial.title,
+      destination: partial.title,
+      customerId: "elad",
+      clientName: "Elad Taieb",
+      clientFirst: "Elad",
+      clientLast: "Taieb",
+      startDate: partial.startDate,
+      endDate: partial.endDate,
+      createdAt: "2026-10-31",
+      items: partial.amount
+        ? [{ id: `${partial.id}-fee`, kind: "expense", title: "Frais", amount: partial.amount, details: { document_amount: partial.amount, document_currency: "EUR" } }]
+        : [],
+    });
+    const bajos = elad({ id: "119", reference: "TB-2026-0119", title: "Bajos del Toro", startDate: "2026-07-28", endDate: "2026-07-30" });
+    const cabo = elad({ id: "120", reference: "TB-2026-0120", title: "Cabo Velas", startDate: "2026-08-07", endDate: "2026-08-10", amount: 39.22 });
+    const heredia = elad({ id: "121", reference: "TB-2026-0121", title: "Heredia", startDate: "2026-08-10", endDate: "2026-08-11" });
+    const bettane = {
+      id: "066",
+      reference: "TB-2026-0066",
+      title: "Santa Teresa",
+      destination: "Santa Teresa",
+      customerId: "bettane",
+      clientName: "Benjamin Bettane",
+      clientFirst: "Benjamin",
+      clientLast: "Bettane",
+      startDate: "2026-08-02",
+      endDate: "2026-08-06",
+      createdAt: "2026-10-09",
+      items: [
+        { id: "nantipa", kind: "hotel", title: "Nantipa", amount: 234.53, startAt: "2026-08-02", details: { hotel_name: "Nantipa", document_amount: 234.53, document_currency: "EUR" } },
+      ],
+    };
+    const deauville = {
+      id: "089",
+      reference: "TB-2026-0089",
+      title: "Deauville",
+      destination: "Deauville",
+      customerId: "boukris",
+      clientName: "Benjamin Elie David Boukris",
+      clientFirst: "Benjamin Elie David",
+      clientLast: "Boukris",
+      startDate: "2026-10-30",
+      endDate: "2026-11-01",
+      createdAt: "2026-10-18",
+      items: [
+        {
+          id: "you",
+          kind: "hotel",
+          title: "You Hotel Deauville",
+          supplier: "RateHawk",
+          amount: 460,
+          startAt: "2026-10-30",
+          endAt: "2026-11-01",
+          details: { hotel_name: "You Hotel Deauville - Handwritten Collection" },
+        },
+      ],
+    };
+    const bookings = [bettane, deauville, bajos, cabo, heredia];
+    const card = { cardName: "Elad Taieb" };
+
+    assert.equal(suggestCostTargets({ party: "NANTIPA", amount: 1839.4, date: "2026-08-07" }, bookings)[0]?.bookingId, "066");
+
+    const nantipa = suggestCostTargets({ party: "NANTIPA", amount: 1839.4, date: "2026-08-07", ...card }, bookings);
+    assert.equal(nantipa[0]?.bookingId, "120");
+    assert.equal(nantipa[0]?.confidence, "moyenne");
+    assert.match(costSuggestionSummary(nantipa[0]!), /carte au nom du client/i);
+    assert.match(costSuggestionSummary(nantipa[0]!), /même client \/ même carte/i);
+
+    const early = suggestCostTargets({ party: "NANTIPA", amount: 7566.96, date: "2026-07-20", ...card }, bookings);
+    assert.equal(early[0]?.bookingId, "119");
+    assert.equal(early[0]?.confidence, "basse");
+    assert.equal(early.some((hit) => hit.bookingId === "066"), false);
+
+    const ratehawk = suggestCostTargets({ party: "ratehawk.com", amount: 3497, date: "2026-07-13", ...card }, bookings);
+    assert.equal(ratehawk[0]?.bookingId, "119");
+    assert.equal(ratehawk[0]?.confidence, "basse");
+    assert.equal(ratehawk.some((hit) => hit.bookingId === "089"), false);
+
+    const refund = suggestCostTargets({ party: "PAYPAL *TOURPLANMAY", amount: 234.53, date: "2026-08-21", ...card }, bookings);
+    assert.equal(refund[0]?.bookingId, "121");
+    assert.equal(refund[0]?.confidence, "moyenne");
+    assert.match(costSuggestionSummary(refund[0]!), /même client \/ même carte/i);
+    assert.equal(refund.some((hit) => hit.bookingId === "066"), false);
+
+    const priced = suggestCostTargets({ party: "CTT", amount: 39.22, date: "2026-08-08", ...card }, bookings);
+    assert.equal(priced[0]?.bookingId, "120");
+    assert.equal(priced[0]?.confidence, "haute");
+
+    for (const cardName of ["Amadeus", "Hotel", "TB-2026-0066", "Club Med"]) {
+      assert.equal(suggestCostTargets({ party: "CTT", amount: 12.34, date: "2026-08-06", cardName }, [bajos, cabo, heredia]).length, 0, cardName);
+    }
   });
 });
 

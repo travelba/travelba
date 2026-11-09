@@ -10,7 +10,7 @@ import { EXPENSE_QUANTITY_KEY, EXPENSE_UNIT_PRICE_KEY } from "./expense-pricing"
 import { validatedExpenseDetails } from "./expense-validation";
 import { withoutRefusedSuggestions, type TripCostActor } from "./pliant-link";
 import { revolutDebitLine } from "./revolut-inbox";
-import { hintsFromExtract } from "./cost-match";
+import { hintsFromExtract, markDuplicateOutgoing } from "./cost-match";
 import { pliantAuthorizationAt } from "./pliant-tx";
 import {
   accountLines,
@@ -20,6 +20,7 @@ import {
   saleLines,
   suggestCostTargets,
   suggestItem,
+  pliantSpendSettlement,
   tripCostFromPliant,
   tripCostFromRevolut,
   tripTotals,
@@ -632,7 +633,7 @@ async function chunked<T>(ids: string[], run: (slice: string[]) => Promise<T[]>)
 
 /** Dossiers ouverts (non annulés) avec leurs lignes : la base des propositions. */
 export async function loadCostTargets(admin: SupabaseClient, bookingId?: string | null): Promise<CostTargetBooking[]> {
-  const select = "id, reference, title, destination, customer_id, billing_company_id, start_date, end_date";
+  const select = "id, reference, title, destination, customer_id, billing_company_id, start_date, end_date, created_at";
   let query = admin.from("crm_bookings").select(select).neq("status", "cancelled").order("created_at", { ascending: false }).limit(400);
   if (bookingId) query = admin.from("crm_bookings").select(select).eq("id", bookingId);
   const { data: bookings } = await query;
@@ -645,6 +646,7 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     billing_company_id: string | null;
     start_date: string | null;
     end_date: string | null;
+    created_at: string | null;
   }[];
   if (!rows.length) return [];
   const items = await chunked(
@@ -672,6 +674,7 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     billingCompanyId: row.billing_company_id,
     startDate: row.start_date,
     endDate: row.end_date,
+    createdAt: row.created_at ? String(row.created_at).slice(0, 10) : null,
     items: (byBooking.get(row.id) || []).map((item) => ({
       id: item.id,
       kind: item.kind,
@@ -729,7 +732,14 @@ async function attachClientFaces(admin: SupabaseClient, bookings: CostTargetBook
     const client = holderName(person);
     const billed = booking.billingCompanyId ? byCompany.get(booking.billingCompanyId) || "" : "";
     const company = billed || (person?.company_name || "").trim() || companiesByCustomer.get(booking.customerId || "")?.[0] || "";
-    return { ...booking, clientName: client || null, companyName: company || null };
+    return {
+      ...booking,
+      clientName: client || null,
+      clientFirst: person?.first_name || null,
+      clientLast: person?.last_name || null,
+      clientUsage: person?.usage_name || null,
+      companyName: company || null,
+    };
   });
 }
 
@@ -900,20 +910,29 @@ export async function loadOutgoingQueue(
   const limit = filter.limit ?? 500;
   const targets = await loadCostTargets(admin, null);
   const lines: OutgoingLine[] = [];
+  const declinedIds = new Set<string>();
+  const pendingIds = new Set<string>();
 
   if (filter.source !== "revolut") {
-    let query = admin
-      .from("crm_pliant_transactions")
-      .select(PLIANT_SELECT)
-      .eq("match_status", "unmatched")
-      .in("status", ["BOOKED", "CONFIRMED"])
-      .in("type", ["PURCHASE", "CASH_WITHDRAWAL", "REFUND", "CHARGEBACK"])
-      .order("booked_at", { ascending: false, nullsFirst: false })
-      .limit(limit);
-    if (filter.from) query = query.gte("booked_at", filter.from);
-    if (filter.to) query = query.lte("booked_at", `${filter.to}T23:59:59`);
-    const { data } = await query;
-    const rows = (data || []) as PliantRow[];
+    const pliantQuery = (statuses: string[], rowLimit: number) => {
+      let query = admin
+        .from("crm_pliant_transactions")
+        .select(PLIANT_SELECT)
+        .eq("match_status", "unmatched")
+        .in("status", statuses)
+        .in("type", ["PURCHASE", "CASH_WITHDRAWAL", "REFUND", "CHARGEBACK"])
+        .order("booked_at", { ascending: false, nullsFirst: false })
+        .limit(rowLimit);
+      if (filter.from) query = query.gte("booked_at", filter.from);
+      if (filter.to) query = query.lte("booked_at", `${filter.to}T23:59:59`);
+      return query;
+    };
+    // Les refus et les autorisations en attente ne remplacent pas la fenêtre des dépenses comptabilisées.
+    const [{ data: postedData }, { data: openData }] = await Promise.all([
+      pliantQuery(["BOOKED", "CONFIRMED"], limit),
+      pliantQuery(["PENDING", "DECLINED"], Math.min(limit, 200)),
+    ]);
+    const rows = [...((postedData || []) as PliantRow[]), ...((openData || []) as PliantRow[])];
     const cards = await cardBookings(
       admin,
       rows.map((row) => row.card_id || "")
@@ -924,7 +943,9 @@ export async function loadOutgoingQueue(
       rows.map((row) => row.id)
     );
     for (const row of rows) {
-      const draft = tripCostFromPliant(row);
+      const status = (row.status || "").toUpperCase();
+      const settlement = pliantSpendSettlement(status === "DECLINED" ? { ...row, status: "BOOKED" } : row);
+      const draft = settlement?.draft || null;
       if (!draft) continue;
       // Coût fixe de l’agence (logiciel, IA, téléphonie) : pas une sortie de voyage, rien à l’écran.
       if (isFixedCostParty(row.merchant)) continue;
@@ -941,6 +962,7 @@ export async function loadOutgoingQueue(
             originalAmount: draft.originalAmount,
             originalCurrency: draft.originalCurrency,
             cardBookingIds,
+            cardName: row.card_label,
             customerId: row.customer_id || row.matched_customer_id || null,
             date: authorizedOn,
           },
@@ -948,6 +970,8 @@ export async function loadOutgoingQueue(
         ),
         refused.get(row.id) || []
       );
+      if (status === "DECLINED") declinedIds.add(row.id);
+      if (status === "PENDING") pendingIds.add(row.id);
       lines.push({
         source: "pliant",
         id: row.id,
@@ -1043,9 +1067,14 @@ export async function loadOutgoingQueue(
     }
   }
 
+  const marked = markDuplicateOutgoing(lines).filter((line) => {
+    if (pendingIds.has(line.id)) return line.suggestions.length > 0;
+    if (declinedIds.has(line.id)) return line.suggestions.some((hit) => hit.reasons.includes("duplicate"));
+    return true;
+  });
   const scoped = filter.bookingId
-    ? lines.filter((line) => line.suggestions.some((hit) => hit.bookingId === filter.bookingId))
-    : lines;
+    ? marked.filter((line) => line.suggestions.some((hit) => hit.bookingId === filter.bookingId))
+    : marked;
   return scoped.sort((left, right) => (right.occurredOn || "").localeCompare(left.occurredOn || ""));
 }
 
