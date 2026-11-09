@@ -4,7 +4,7 @@
  * Un indice faible (compagnie seule, marque d’hôtel seule, petit montant) ne propose rien.
  */
 
-import { matchTokens, normalizeMatchText } from "./revolut-match";
+import { matchTokens, normalizeMatchText, tokensSpell } from "./revolut-match";
 
 export type CostTargetItem = {
   id: string;
@@ -57,9 +57,10 @@ export type CostSignal =
   | "airline"
   | "hotel"
   | "place"
-  | "date";
+  | "date"
+  | "duplicate";
 
-export type CostConfidence = "haute" | "moyenne";
+export type CostConfidence = "haute" | "moyenne" | "basse";
 
 export type CostSuggestion = {
   bookingId: string;
@@ -111,8 +112,45 @@ const HOTEL_BRANDS = new Set([
   "curio", "tribute", "design", "luxury", "collection", "hotels", "slh",
 ]);
 
-/** Clés collées d’au moins 6 lettres, ou sigles courts comparés aux mots. */
-const AIRLINES = ["airfrance", "lufthansa", "britishairways", "emirates", "qatarairways", "easyjet", "ryanair", "vueling", "transavia", "iberia", "singaporeair", "etihad", "unitedairlines", "americanairlines", "austrian", "brusselsairlines", "corsair", "frenchbee", "itaairways", "elal", "arkia", "aegean", "turkishairlines", "finnair", "norwegian", "wizzair", "ethiopian", "cathay", "qantas", "latam", "aeromexico", "aircanada", "klm"];
+/**
+ * Nom collé (« El Al », « ELAL » → elal) et code IATA. Le code ne compte que dans un n° de vol
+ * (LY315) ou après le mot iata, pour ne pas prendre « la » ou « to ».
+ */
+const AIRLINES: { key: string; iata: string }[] = [
+  { key: "airfrance", iata: "AF" },
+  { key: "lufthansa", iata: "LH" },
+  { key: "britishairways", iata: "BA" },
+  { key: "emirates", iata: "EK" },
+  { key: "qatarairways", iata: "QR" },
+  { key: "easyjet", iata: "U2" },
+  { key: "ryanair", iata: "FR" },
+  { key: "vueling", iata: "VY" },
+  { key: "transavia", iata: "TO" },
+  { key: "iberia", iata: "IB" },
+  { key: "singaporeair", iata: "SQ" },
+  { key: "etihad", iata: "EY" },
+  { key: "unitedairlines", iata: "UA" },
+  { key: "americanairlines", iata: "AA" },
+  { key: "austrian", iata: "OS" },
+  { key: "brusselsairlines", iata: "SN" },
+  { key: "corsair", iata: "SS" },
+  { key: "frenchbee", iata: "BF" },
+  { key: "itaairways", iata: "AZ" },
+  { key: "elal", iata: "LY" },
+  { key: "arkia", iata: "IZ" },
+  { key: "aegean", iata: "A3" },
+  { key: "turkishairlines", iata: "TK" },
+  { key: "finnair", iata: "AY" },
+  { key: "norwegian", iata: "DY" },
+  { key: "wizzair", iata: "W6" },
+  { key: "ethiopian", iata: "ET" },
+  { key: "cathay", iata: "CX" },
+  { key: "qantas", iata: "QF" },
+  { key: "latam", iata: "LA" },
+  { key: "aeromexico", iata: "AM" },
+  { key: "aircanada", iata: "AC" },
+  { key: "klm", iata: "KL" },
+];
 
 const SIGNAL_LABEL: Record<CostSignal, string> = {
   reference: "Le n° de dossier figure dans le libellé.",
@@ -127,6 +165,7 @@ const SIGNAL_LABEL: Record<CostSignal, string> = {
   hotel: "L’hôtel correspond à une étape du dossier.",
   place: "Le lieu correspond à la destination.",
   date: "La date d’autorisation est celle du vol ou du séjour.",
+  duplicate: "Montant déjà proposé pour une autre sortie – doublon possible.",
 };
 
 const REASON_LABEL: Record<CostSuggestion["reason"], string> = {
@@ -145,7 +184,9 @@ export function costSuggestionReasonLabel(reason: CostSuggestion["reason"]) {
 }
 
 export function costConfidenceLabel(level: CostConfidence) {
-  return level === "haute" ? "Haute" : "Moyenne";
+  if (level === "haute") return "Haute";
+  if (level === "basse") return "Faible";
+  return "Moyenne";
 }
 
 /** Pourquoi la proposition, dans l’ordre des indices. */
@@ -206,10 +247,22 @@ function brands(value: string) {
   return tokensOf(value).filter((token) => HOTEL_BRANDS.has(token));
 }
 
+/** « El Al » et « ELAL » valent elal. « Hôtel Almenara » ne colle pas el+al au milieu d’un autre mot. */
+function phraseIn(value: string, key: string) {
+  return tokensSpell(matchTokens(value), key);
+}
+
+function hasIata(value: string, iata: string) {
+  const upper = value.toUpperCase();
+  if (new RegExp(`(?:^|[^A-Z0-9])${iata}\\s*\\d`).test(upper)) return true;
+  return new RegExp(`(?:^|[^A-Z])IATA\\s+${iata}(?:[^A-Z]|$)`).test(upper);
+}
+
 function mentionsAirline(value: string) {
-  const glued = normalizeMatchText(value);
-  const tokens = new Set(matchTokens(value));
-  return AIRLINES.find((key) => (key.length >= 6 ? glued.includes(key) : tokens.has(key))) || null;
+  for (const airline of AIRLINES) {
+    if (phraseIn(value, airline.key) || hasIata(value, airline.iata)) return airline.key;
+  }
+  return null;
 }
 
 function cleanPnr(value: string) {
@@ -277,7 +330,18 @@ function withinTrip(date: string | null | undefined, booking: CostTargetBooking)
 
 function itemBlob(item: CostTargetItem) {
   const details = item.details || {};
-  return [item.title, item.supplier, item.confirmationRef, textOf(details.hotel_name), textOf(details.city), textOf(details.airline), textOf(details.pnr)]
+  const iata = textOf(details.airline_iata);
+  return [
+    item.title,
+    item.supplier,
+    item.confirmationRef,
+    textOf(details.hotel_name),
+    textOf(details.city),
+    textOf(details.airline),
+    textOf(details.pnr),
+    textOf(details.flight_number),
+    iata ? `iata ${iata}` : "",
+  ]
     .filter(Boolean)
     .join(" ");
 }
@@ -523,7 +587,7 @@ function confidenceOf(score: number): CostConfidence {
   return score >= HAUTE_SCORE ? "haute" : "moyenne";
 }
 
-const SIGNAL_ORDER: CostSignal[] = ["reference", "card", "pnr", "amount", "fx", "passengers", "email", "airline", "hotel", "place", "date", "client"];
+const SIGNAL_ORDER: CostSignal[] = ["reference", "card", "pnr", "amount", "fx", "passengers", "email", "airline", "hotel", "place", "date", "client", "duplicate"];
 
 function toSuggestion(row: Scored, extra?: CostSignal[]): CostSuggestion {
   const signals = [...row.signals];
@@ -579,6 +643,54 @@ export function rankCostTargets(input: CostMatchInput, bookings: CostTargetBooki
   visible.sort((left, right) => right.score - left.score || left.booking.reference.localeCompare(right.booking.reference));
   if (visible.length > 1 && visible[0].score < HAUTE_SCORE && visible[0].score - visible[1].score < AMBIGUOUS_GAP) return [];
   return visible.slice(0, 3).map((row) => toSuggestion(row));
+}
+
+type DuplicateLine = {
+  id: string;
+  party: string;
+  amount: number;
+  currency: string;
+  suggestions: CostSuggestion[];
+};
+
+function asDuplicate(hit: CostSuggestion): CostSuggestion {
+  const reasons: CostSignal[] = hit.reasons.includes("duplicate") ? [...hit.reasons] : [...hit.reasons, "duplicate"];
+  return { ...hit, reasons, score: Math.min(hit.score, 70), confidence: "basse" };
+}
+
+/**
+ * Deux sorties identiques (même commerçant, même montant) : la première garde sa piste.
+ * La suivante reprend le même dossier, en confiance faible, comme doublon possible.
+ * Une sortie sans piste reprend aussi ce dossier.
+ */
+export function markDuplicateOutgoing<T extends DuplicateLine>(lines: T[]): T[] {
+  const next = lines.map((line) => ({
+    ...line,
+    suggestions: line.suggestions.map((hit) => ({ ...hit, reasons: [...hit.reasons], passengers: [...hit.passengers] })),
+  }));
+  const groups = new Map<string, number[]>();
+  next.forEach((line, index) => {
+    const cents = Math.round(Math.abs(line.amount) * 100);
+    if (!cents) return;
+    const key = `${normalizeMatchText(line.party)}|${(line.currency || "EUR").toUpperCase()}|${cents}`;
+    const list = groups.get(key) || [];
+    list.push(index);
+    groups.set(key, list);
+  });
+  for (const indexes of groups.values()) {
+    if (indexes.length < 2) continue;
+    const ranked = [...indexes].sort(
+      (left, right) => (next[right].suggestions[0]?.score || 0) - (next[left].suggestions[0]?.score || 0) || left - right
+    );
+    const source = next[ranked[0]].suggestions[0];
+    if (!source) continue;
+    for (const index of ranked.slice(1)) {
+      const copy = asDuplicate(source);
+      const rest = next[index].suggestions.filter((hit) => hit.bookingId !== copy.bookingId);
+      next[index] = { ...next[index], suggestions: [copy, ...rest] };
+    }
+  }
+  return next;
 }
 
 /** PNR, montants et noms lus dans l’extrait d’un e-mail déjà rattaché. Pas de numéro de pièce. */

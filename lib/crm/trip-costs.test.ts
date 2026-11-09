@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hintsFromExtract } from "./cost-match";
+import { hintsFromExtract, markDuplicateOutgoing } from "./cost-match";
 import {
   accountLines,
   dossierClientLabel,
@@ -20,6 +20,7 @@ import {
   tripCostFromPliant,
   tripCostFromRevolut,
   tripTotals,
+  type CostSuggestion,
   type TripCost,
 } from "./trip-costs";
 
@@ -553,6 +554,110 @@ describe("coûts du voyage", () => {
     assert.equal(hits[0]?.itemId, "edition");
     assert.equal(hits[0]?.confidence, "haute");
     assert.equal(hits[0]?.reasons.includes("amount"), true);
+  });
+
+  it("reconnaît El Al comme une expression, ou le code LY, et les EMD au centime", () => {
+    const limor = {
+      id: "limor",
+      reference: "TB-2026-0156",
+      title: "CDG → TLV",
+      destination: "Tel Aviv",
+      startDate: "2026-11-20",
+      travelers: [{ first: "Limor", last: "Bechet" }],
+      items: [
+        {
+          id: "out",
+          kind: "flight",
+          title: "CDG → TLV",
+          supplier: "El Al",
+          amount: 1901.74,
+          confirmationRef: "ZDKRU6",
+          startAt: "2026-11-20",
+          details: { airline: "El Al", pnr: "ZDKRU6", airline_iata: "LY", flight_number: "LY315" },
+        },
+        {
+          id: "back",
+          kind: "flight",
+          title: "TLV → CDG",
+          supplier: "ELAL",
+          amount: 0,
+          confirmationRef: "ZDKRU6",
+          details: { airline: "El Al", pnr: "ZDKRU6" },
+        },
+        {
+          id: "emd",
+          kind: "expense",
+          title: "EMD El Al ZDKRU6 – BECHET Limor",
+          supplier: "El Al",
+          amount: 107.01,
+          confirmationRef: "ZDKRU6",
+          details: { pnr: "ZDKRU6", document_amount: 107.01, document_currency: "EUR" },
+        },
+        {
+          id: "seats",
+          kind: "expense",
+          title: "EMD sièges El Al ZDKRU6 – BECHET Limor",
+          supplier: "El Al",
+          amount: 178.02,
+          confirmationRef: "ZDKRU6",
+          details: { pnr: "ZDKRU6", document_amount: 178.02, document_currency: "EUR" },
+        },
+      ],
+    };
+    const sameAmount = {
+      id: "other",
+      reference: "TB-2026-0200",
+      title: "Autre",
+      items: [{ id: "fee", kind: "expense", title: "Frais", amount: 107.01, details: { document_amount: 107.01, document_currency: "EUR" } }],
+    };
+    const almenara = {
+      id: "almenara",
+      reference: "TB-2026-0201",
+      title: "Hôtel Almenara",
+      destination: "Marbella",
+      items: [{ id: "hotel", kind: "hotel", title: "Hotel Almenara", supplier: "Hotel Almenara", amount: 107.01, details: { hotel_name: "Hotel Almenara" } }],
+    };
+    const bag = suggestCostTargets({ party: "El Al", amount: 107.01, originalCurrency: "EUR", date: "2026-11-09" }, [sameAmount, almenara, limor]);
+    assert.equal(bag.length, 1);
+    assert.equal(bag[0]?.bookingId, "limor");
+    assert.equal(bag[0]?.itemId, "emd");
+    assert.equal(bag[0]?.confidence, "haute");
+    assert.equal(bag[0]?.reasons.includes("airline"), true);
+    const seats = suggestCostTargets({ party: "ELAL", amount: 178.02, originalCurrency: "EUR" }, [limor]);
+    assert.equal(seats[0]?.bookingId, "limor");
+    assert.equal(seats[0]?.itemId, "seats");
+    assert.equal(seats[0]?.confidence, "haute");
+    const fare = suggestCostTargets({ party: "LY315", amount: 1901.74, originalCurrency: "EUR" }, [limor, almenara]);
+    assert.equal(fare[0]?.bookingId, "limor");
+    assert.equal(fare[0]?.reasons.includes("airline"), true);
+    const hotel = suggestCostTargets({ party: "HOTEL ALMENARA", amount: 107.01, originalCurrency: "EUR" }, [limor, sameAmount, almenara]);
+    assert.equal(hotel.some((hit) => hit.bookingId === "limor"), false);
+    assert.equal(hotel.some((hit) => hit.reasons.includes("airline")), false);
+  });
+
+  it("reprend le même dossier pour un second débit identique, en le signalant comme doublon", () => {
+    const hit: CostSuggestion = {
+      bookingId: "limor",
+      itemId: "out",
+      score: 90,
+      reason: "supplier",
+      reasons: ["amount", "airline"],
+      passengers: ["Limor Bechet"],
+      confidence: "haute",
+    };
+    const [first, second, other] = markDuplicateOutgoing([
+      { id: "booked", party: "El Al", amount: 1901.74, currency: "EUR", suggestions: [hit] },
+      { id: "declined", party: "EL AL", amount: 1901.74, currency: "EUR", suggestions: [] },
+      { id: "emd", party: "El Al", amount: 107.01, currency: "EUR", suggestions: [{ ...hit, itemId: "emd", score: 90 }] },
+    ]);
+    assert.equal(first.suggestions[0]?.confidence, "haute");
+    assert.equal(first.suggestions[0]?.reasons.includes("duplicate"), false);
+    assert.equal(second.suggestions[0]?.bookingId, "limor");
+    assert.equal(second.suggestions[0]?.confidence, "basse");
+    assert.ok(second.suggestions[0] && second.suggestions[0].score < 90);
+    assert.match(costSuggestionSummary(second.suggestions[0]!), /montant déjà proposé pour une autre sortie – doublon possible/i);
+    assert.equal(other.suggestions[0]?.confidence, "haute");
+    assert.equal(other.suggestions[0]?.reasons.includes("duplicate"), false);
   });
 });
 

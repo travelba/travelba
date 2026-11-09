@@ -10,7 +10,7 @@ import { EXPENSE_QUANTITY_KEY, EXPENSE_UNIT_PRICE_KEY } from "./expense-pricing"
 import { validatedExpenseDetails } from "./expense-validation";
 import { withoutRefusedSuggestions, type TripCostActor } from "./pliant-link";
 import { revolutDebitLine } from "./revolut-inbox";
-import { hintsFromExtract } from "./cost-match";
+import { hintsFromExtract, markDuplicateOutgoing } from "./cost-match";
 import { pliantAuthorizationAt } from "./pliant-tx";
 import {
   accountLines,
@@ -20,6 +20,7 @@ import {
   saleLines,
   suggestCostTargets,
   suggestItem,
+  pliantSpendSettlement,
   tripCostFromPliant,
   tripCostFromRevolut,
   tripTotals,
@@ -900,20 +901,29 @@ export async function loadOutgoingQueue(
   const limit = filter.limit ?? 500;
   const targets = await loadCostTargets(admin, null);
   const lines: OutgoingLine[] = [];
+  const declinedIds = new Set<string>();
+  const pendingIds = new Set<string>();
 
   if (filter.source !== "revolut") {
-    let query = admin
-      .from("crm_pliant_transactions")
-      .select(PLIANT_SELECT)
-      .eq("match_status", "unmatched")
-      .in("status", ["BOOKED", "CONFIRMED"])
-      .in("type", ["PURCHASE", "CASH_WITHDRAWAL", "REFUND", "CHARGEBACK"])
-      .order("booked_at", { ascending: false, nullsFirst: false })
-      .limit(limit);
-    if (filter.from) query = query.gte("booked_at", filter.from);
-    if (filter.to) query = query.lte("booked_at", `${filter.to}T23:59:59`);
-    const { data } = await query;
-    const rows = (data || []) as PliantRow[];
+    const pliantQuery = (statuses: string[], rowLimit: number) => {
+      let query = admin
+        .from("crm_pliant_transactions")
+        .select(PLIANT_SELECT)
+        .eq("match_status", "unmatched")
+        .in("status", statuses)
+        .in("type", ["PURCHASE", "CASH_WITHDRAWAL", "REFUND", "CHARGEBACK"])
+        .order("booked_at", { ascending: false, nullsFirst: false })
+        .limit(rowLimit);
+      if (filter.from) query = query.gte("booked_at", filter.from);
+      if (filter.to) query = query.lte("booked_at", `${filter.to}T23:59:59`);
+      return query;
+    };
+    // Les refus et les autorisations en attente ne remplacent pas la fenêtre des dépenses comptabilisées.
+    const [{ data: postedData }, { data: openData }] = await Promise.all([
+      pliantQuery(["BOOKED", "CONFIRMED"], limit),
+      pliantQuery(["PENDING", "DECLINED"], Math.min(limit, 200)),
+    ]);
+    const rows = [...((postedData || []) as PliantRow[]), ...((openData || []) as PliantRow[])];
     const cards = await cardBookings(
       admin,
       rows.map((row) => row.card_id || "")
@@ -924,7 +934,9 @@ export async function loadOutgoingQueue(
       rows.map((row) => row.id)
     );
     for (const row of rows) {
-      const draft = tripCostFromPliant(row);
+      const status = (row.status || "").toUpperCase();
+      const settlement = pliantSpendSettlement(status === "DECLINED" ? { ...row, status: "BOOKED" } : row);
+      const draft = settlement?.draft || null;
       if (!draft) continue;
       // Coût fixe de l’agence (logiciel, IA, téléphonie) : pas une sortie de voyage, rien à l’écran.
       if (isFixedCostParty(row.merchant)) continue;
@@ -948,6 +960,8 @@ export async function loadOutgoingQueue(
         ),
         refused.get(row.id) || []
       );
+      if (status === "DECLINED") declinedIds.add(row.id);
+      if (status === "PENDING") pendingIds.add(row.id);
       lines.push({
         source: "pliant",
         id: row.id,
@@ -1043,9 +1057,14 @@ export async function loadOutgoingQueue(
     }
   }
 
+  const marked = markDuplicateOutgoing(lines).filter((line) => {
+    if (pendingIds.has(line.id)) return line.suggestions.length > 0;
+    if (declinedIds.has(line.id)) return line.suggestions.some((hit) => hit.reasons.includes("duplicate"));
+    return true;
+  });
   const scoped = filter.bookingId
-    ? lines.filter((line) => line.suggestions.some((hit) => hit.bookingId === filter.bookingId))
-    : lines;
+    ? marked.filter((line) => line.suggestions.some((hit) => hit.bookingId === filter.bookingId))
+    : marked;
   return scoped.sort((left, right) => (right.occurredOn || "").localeCompare(left.occurredOn || ""));
 }
 
