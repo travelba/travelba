@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   annotatePliantPayload,
   mapPliantTransaction,
+  pliantAuthorizationAt,
   pliantAvailableLimit,
   pliantCardDisplay,
   pliantDossierLabels,
@@ -36,6 +37,11 @@ test("une transaction Pliant garde le commerçant, les centimes, et retire le nu
   assert.equal(mapped.billing_currency, "EUR");
   assert.equal(mapped.card_id, CARD);
   assert.equal(mapped.booked_at, "2026-09-30T10:00:00.000Z");
+  assert.equal(
+    pliantAuthorizationAt({ createdAt: "2026-11-03T08:00:00.000Z", confirmedAt: "2026-11-06T10:00:00.000Z" }, "2026-11-06T10:00:00.000Z"),
+    "2026-11-03"
+  );
+  assert.equal(pliantAuthorizationAt({}, "2026-11-06T10:00:00.000Z"), "2026-11-06");
   assert.equal(mapped.raw.pan, undefined);
   assert.equal((mapped.raw.merchantData as { pan?: string }).pan, undefined);
   assert.equal(pliantSignedCents(mapped.type, mapped.billing_cents), -12500);

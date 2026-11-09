@@ -10,6 +10,8 @@ import { EXPENSE_QUANTITY_KEY, EXPENSE_UNIT_PRICE_KEY } from "./expense-pricing"
 import { validatedExpenseDetails } from "./expense-validation";
 import { withoutRefusedSuggestions, type TripCostActor } from "./pliant-link";
 import { revolutDebitLine } from "./revolut-inbox";
+import { hintsFromExtract } from "./cost-match";
+import { pliantAuthorizationAt } from "./pliant-tx";
 import {
   accountLines,
   isFixedCostParty,
@@ -21,6 +23,8 @@ import {
   tripCostFromPliant,
   tripCostFromRevolut,
   tripTotals,
+  type CostAmountHint,
+  type CostPerson,
   type CostSuggestion,
   type CostTargetBooking,
   type OutgoingCardInfo,
@@ -38,7 +42,7 @@ const COST_SELECT =
 const COST_SELECT_STATE = `${COST_SELECT}, state`;
 
 const PLIANT_SELECT =
-  "id, pliant_transaction_id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, card_last4, match_status, customer_id, matched_customer_id";
+  "id, pliant_transaction_id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, raw, card_label, card_last4, match_status, customer_id, matched_customer_id";
 
 const REVOLUT_SELECT =
   "id, direction, status, amount, currency, counterparty_name, reference, booked_at, raw";
@@ -55,6 +59,7 @@ type PliantRow = {
   transaction_cents: number | null;
   transaction_currency: string | null;
   booked_at: string | null;
+  raw?: unknown;
   card_label: string | null;
   card_last4: string | null;
   match_status: string;
@@ -290,8 +295,10 @@ export type AttachInput = {
   itemId?: string | null;
   /** Vrai : l’agent a choisi « Montant du séjour » explicitement ; pas de ligne devinée. */
   stayOnly?: boolean;
-  /** Nouvelle dépense libre, prix vendu pré-rempli au coût. */
-  newExpense?: { title?: string | null; amount: number } | null;
+  /** Nouvelle dépense libre. Sans montant : libellé seulement, pas de vente. */
+  newExpense?: { title?: string | null; amount: number | null } | null;
+  /** Renomme la ligne retenue, sans toucher au prix vendu. */
+  lineTitle?: string | null;
   /** Sortie Revolut hors euros : coût en euros saisi par l’agent. */
   eurAmount?: number | null;
   /** Qui fait le geste. Le journal garde le nom, pas l’e-mail. */
@@ -300,9 +307,12 @@ export type AttachInput = {
 
 async function resolveCostItem(admin: SupabaseClient, input: AttachInput, draft: TripCostDraft) {
   if (input.newExpense) {
-    const amount = Number(input.newExpense.amount);
-    if (!Number.isFinite(amount) || amount <= 0) throw new TripCostError("Prix vendu requis.");
-    const sold = Math.round(amount * 100) / 100;
+    const raw = input.newExpense.amount;
+    const priced = raw != null && Number.isFinite(Number(raw));
+    if (priced && Number(raw) <= 0) throw new TripCostError("Prix vendu requis.");
+    const title = (input.newExpense.title || "").trim();
+    if (!priced && !title) throw new TripCostError("Indiquez un libellé ou un prix vendu.");
+    const sold = priced ? Math.round(Number(raw) * 100) / 100 : null;
     const { data: existing } = await admin.from("crm_booking_items").select("sort_order").eq("booking_id", input.bookingId);
     const maxSort = (existing || []).reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1);
     // Dépense Pliant : la ligne garde l’origine (transaction, montant Pliant, commerçant, date) ; le prix vendu est celui de l’agence.
@@ -312,17 +322,22 @@ async function resolveCostItem(admin: SupabaseClient, input: AttachInput, draft:
       .insert({
         booking_id: input.bookingId,
         kind: "expense",
-        title: pliantExpenseTitle(input.newExpense.title || draft.supplier),
+        title: (title || pliantExpenseTitle(draft.supplier)).slice(0, 160),
         amount: sold,
         start_at: pliant?.start_at ?? null,
-        include_in_ledger: true,
+        include_in_ledger: sold != null,
         sort_order: maxSort + 1,
         // Prix saisi par l’agence : la ligne est validée d’emblée.
-        details: pliant
-          ? { ...validatedExpenseDetails(pliant.details), [EXPENSE_UNIT_PRICE_KEY]: sold }
-          : input.source === "pliant"
-            ? { pliant_transaction_id: input.sourceId, [EXPENSE_QUANTITY_KEY]: 1, [EXPENSE_UNIT_PRICE_KEY]: sold }
-            : { [EXPENSE_QUANTITY_KEY]: 1, [EXPENSE_UNIT_PRICE_KEY]: sold },
+        details:
+          sold == null
+            ? input.source === "pliant"
+              ? { pliant_transaction_id: input.sourceId, [EXPENSE_QUANTITY_KEY]: 1 }
+              : { [EXPENSE_QUANTITY_KEY]: 1 }
+            : pliant
+              ? { ...validatedExpenseDetails(pliant.details), [EXPENSE_UNIT_PRICE_KEY]: sold }
+              : input.source === "pliant"
+                ? { pliant_transaction_id: input.sourceId, [EXPENSE_QUANTITY_KEY]: 1, [EXPENSE_UNIT_PRICE_KEY]: sold }
+                : { [EXPENSE_QUANTITY_KEY]: 1, [EXPENSE_UNIT_PRICE_KEY]: sold },
         visible_to_client: false,
       })
       .select("id")
@@ -367,6 +382,11 @@ export async function attachOutgoing(input: AttachInput, admin: SupabaseClient =
   const payer = bookingRow.billing_customer_id || bookingRow.customer_id || null;
   const draft = await draftFor(admin, input.source, input.sourceId, input.eurAmount);
   const itemId = await resolveCostItem(admin, input, draft);
+  const lineTitle = (input.lineTitle || "").trim().slice(0, 160);
+  if (lineTitle && itemId) {
+    const { error: titleError } = await admin.from("crm_booking_items").update({ title: lineTitle }).eq("id", itemId).eq("booking_id", input.bookingId);
+    if (titleError) throw new TripCostError(titleError.message, 500);
+  }
 
   const { data: inserted, error } = await admin
     .from("crm_trip_costs")
@@ -599,6 +619,9 @@ type ItemRow = {
   amount: number | null;
   details: Record<string, unknown> | null;
   lifecycle: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  confirmation_ref?: string | null;
 };
 
 async function chunked<T>(ids: string[], run: (slice: string[]) => Promise<T[]>) {
@@ -628,7 +651,7 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     async (slice) => {
       const { data } = await admin
         .from("crm_booking_items")
-        .select("id, booking_id, kind, title, supplier, amount, details, lifecycle")
+        .select("id, booking_id, kind, title, supplier, amount, details, lifecycle, start_at, end_at, confirmation_ref")
         .in("booking_id", slice);
       return (data || []) as ItemRow[];
     }
@@ -639,7 +662,7 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
     list.push(item);
     byBooking.set(item.booking_id, list);
   }
-  return rows.map((row) => ({
+  const built = rows.map((row) => ({
     id: row.id,
     reference: row.reference,
     title: row.title,
@@ -655,7 +678,93 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
       amount: item.amount == null ? null : Number(item.amount),
       details: item.details,
       lifecycle: item.lifecycle,
+      startAt: item.start_at || null,
+      endAt: item.end_at || null,
+      confirmationRef: item.confirmation_ref || null,
     })),
+  }));
+  return attachMatchHints(admin, built);
+}
+
+function clipEvidence(value: string | null | undefined) {
+  return (value || "").replace(/\s+/g, " ").trim().slice(0, 1200);
+}
+
+/** Voyageurs, PNR et extraits d’e-mails déjà rattachés. Une lecture en échec laisse les cartes seules. */
+async function attachMatchHints(admin: SupabaseClient, bookings: CostTargetBooking[]): Promise<CostTargetBooking[]> {
+  const ids = bookings.map((row) => row.id);
+  if (!ids.length) return bookings;
+  const travelers = new Map<string, CostPerson[]>();
+  const texts = new Map<string, string[]>();
+  const pnrs = new Map<string, string[]>();
+  const amounts = new Map<string, CostAmountHint[]>();
+  const pushText = (id: string | null, value: string) => {
+    const clip = clipEvidence(value);
+    if (!id || !clip) return;
+    const list = texts.get(id) || [];
+    if (list.length >= 8) return;
+    list.push(clip);
+    texts.set(id, list);
+  };
+  const addHints = (id: string | null, extract: unknown) => {
+    if (!id) return;
+    const hints = hintsFromExtract(extract);
+    if (hints.pnrs.length) pnrs.set(id, [...(pnrs.get(id) || []), ...hints.pnrs].slice(0, 12));
+    if (hints.amounts.length) amounts.set(id, [...(amounts.get(id) || []), ...hints.amounts].slice(0, 20));
+    for (const person of hints.names) {
+      const list = travelers.get(id) || [];
+      if (list.length < 12) list.push(person);
+      travelers.set(id, list);
+    }
+  };
+  try {
+    const people = await chunked(ids, async (slice) => {
+      const { data, error } = await admin.from("crm_booking_travelers").select("booking_id, first_name, last_name").in("booking_id", slice);
+      if (error) return [];
+      return (data || []) as { booking_id: string; first_name: string | null; last_name: string | null }[];
+    });
+    for (const row of people) {
+      const list = travelers.get(row.booking_id) || [];
+      list.push({ first: row.first_name, last: row.last_name });
+      travelers.set(row.booking_id, list);
+    }
+    const mails = await chunked(ids, async (slice) => {
+      const { data, error } = await admin
+        .from("crm_email_ingest")
+        .select("created_booking_id, subject, body_text, extract")
+        .in("created_booking_id", slice)
+        .order("received_at", { ascending: false })
+        .limit(200);
+      if (error) return [];
+      return (data || []) as { created_booking_id: string | null; subject: string | null; body_text: string | null; extract: unknown }[];
+    });
+    for (const mail of mails) {
+      pushText(mail.created_booking_id, `${mail.subject || ""} ${mail.body_text || ""}`);
+      addHints(mail.created_booking_id, mail.extract);
+    }
+    const threads = await chunked(ids, async (slice) => {
+      const { data, error } = await admin
+        .from("crm_hotel_messages")
+        .select("booking_id, subject, body, reply_subject, reply_body")
+        .in("booking_id", slice)
+        .limit(200);
+      if (error) return [];
+      return (data || []) as { booking_id: string; subject: string | null; body: string | null; reply_subject: string | null; reply_body: string | null }[];
+    });
+    for (const thread of threads) {
+      pushText(thread.booking_id, `${thread.subject || ""} ${thread.body || ""} ${thread.reply_subject || ""} ${thread.reply_body || ""}`);
+    }
+  } catch {
+    return bookings;
+  }
+  return bookings.map((booking) => ({
+    ...booking,
+    travelers: travelers.get(booking.id) || booking.travelers,
+    hints: {
+      pnrs: pnrs.get(booking.id) || [],
+      amounts: amounts.get(booking.id) || [],
+      texts: texts.get(booking.id) || [],
+    },
   }));
 }
 
@@ -775,15 +884,18 @@ export async function loadOutgoingQueue(
       const card = row.card_id ? cards.get(row.card_id) || null : null;
       const cardBookingIds = card?.bookingIds || [];
       const cardBooking = cardBookingIds.map((id) => targets.find((target) => target.id === id)).find(Boolean) || null;
+      const authorizedOn = pliantAuthorizationAt(row.raw, row.booked_at);
       const suggestions = withoutRefusedSuggestions(
         suggestCostTargets(
           {
             text: row.merchant,
             party: row.merchant,
             amount: Math.abs(draft.amountEur),
+            originalAmount: draft.originalAmount,
+            originalCurrency: draft.originalCurrency,
             cardBookingIds,
             customerId: row.customer_id || row.matched_customer_id || null,
-            date: draft.occurredOn,
+            date: authorizedOn,
           },
           targets
         ),
@@ -797,7 +909,9 @@ export async function loadOutgoingQueue(
         currency: draft.originalCurrency || "EUR",
         eurAmount: draft.amountEur,
         refund: draft.amountEur < 0,
-        occurredOn: draft.occurredOn,
+        occurredOn: authorizedOn,
+        bookedOn: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
+        last4: (row.card_last4 || "").replace(/\D/g, "").slice(-4) || null,
         card: [row.card_label, row.card_last4 ? `···· ${row.card_last4}` : ""].filter(Boolean).join(" ") || null,
         text: "",
         kind: draft.amountEur < 0 ? "Remboursement" : "Carte",
@@ -851,7 +965,10 @@ export async function loadOutgoingQueue(
               {
                 text: `${line.reference} ${row.reference || ""}`,
                 party: line.party,
-                amount: line.amount,
+                amount: draft && line.currency !== "EUR" ? Math.abs(draft.amountEur) : line.currency === "EUR" ? line.amount : 0,
+                originalAmount: line.amount,
+                originalCurrency: line.currency,
+                date: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
                 raw: row.raw,
               },
               targets
@@ -867,6 +984,8 @@ export async function loadOutgoingQueue(
         eurAmount: draft ? draft.amountEur : null,
         refund: false,
         occurredOn: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
+        bookedOn: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
+        last4: null,
         card: null,
         text: line.reference,
         kind: line.kind,

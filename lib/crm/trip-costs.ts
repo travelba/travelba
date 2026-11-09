@@ -5,8 +5,30 @@
  * Marge = vente − somme des coûts. Le client ne voit que la vente.
  */
 
+import {
+  rankCostTargets,
+  type CostMatchInput,
+  type CostSuggestion,
+  type CostTargetBooking,
+  type CostTargetItem,
+} from "./cost-match";
 import { isStayRollupDebit } from "./ledger-display";
 import { matchTokens, normalizeMatchText } from "./revolut-match";
+
+export {
+  costConfidenceLabel,
+  costSuggestionReasonLabel,
+  costSuggestionSummary,
+  hintsFromExtract,
+  type CostAmountHint,
+  type CostConfidence,
+  type CostMatchInput,
+  type CostPerson,
+  type CostSignal,
+  type CostSuggestion,
+  type CostTargetBooking,
+  type CostTargetItem,
+} from "./cost-match";
 
 export type TripCostSource = "pliant" | "revolut";
 
@@ -357,45 +379,6 @@ export function referenceInText(text: string | null | undefined) {
   return text?.match(REFERENCE)?.[0]?.toUpperCase() || null;
 }
 
-export type CostTargetItem = {
-  id: string;
-  kind: string | null;
-  title: string | null;
-  supplier?: string | null;
-  amount: number | null;
-  details?: Record<string, unknown> | null;
-  lifecycle?: string | null;
-};
-
-export type CostTargetBooking = {
-  id: string;
-  reference: string;
-  title: string | null;
-  destination?: string | null;
-  customerId?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
-  items: CostTargetItem[];
-};
-
-export type CostSuggestion = {
-  bookingId: string;
-  itemId: string | null;
-  score: number;
-  reason: "reference" | "card" | "client" | "supplier" | "amount";
-};
-
-/** Jours autour du voyage pendant lesquels une dépense du client lui appartient sans doute. */
-const CLIENT_WINDOW_DAYS = 10;
-
-function withinTrip(date: string | null | undefined, booking: CostTargetBooking) {
-  if (!date || !booking.startDate) return true;
-  const day = Date.parse(date.slice(0, 10));
-  const start = Date.parse(booking.startDate) - CLIENT_WINDOW_DAYS * 86_400_000;
-  const end = Date.parse(booking.endDate || booking.startDate) + CLIENT_WINDOW_DAYS * 86_400_000;
-  return Number.isFinite(day) && day >= start && day <= end;
-}
-
 function itemFields(item: CostTargetItem) {
   const details = item.details || {};
   return [item.title, item.supplier, details.hotel_name, details.airline, details.operator].filter(
@@ -536,56 +519,12 @@ export function isNonTripParty(text: string | null | undefined) {
 }
 
 /**
- * Propositions pour une sortie. La référence du dossier dans la désignation gagne,
- * puis la carte Pliant du dossier, puis les voyages du client de la carte autour de la date,
- * puis un fournisseur ou un montant qui correspond. Jamais d’écriture : l’agent clique.
+ * Propositions pour une sortie. Montant, date d’autorisation, vol ou hôtel, PNR, e-mail.
+ * Un indice faible ne propose rien. Jamais d’écriture : l’agence clique.
  */
-export function suggestCostTargets(
-  input: {
-    text: string | null | undefined;
-    party: string | null | undefined;
-    amount: number;
-    cardBookingIds?: string[];
-    /** Client porteur de la carte, quand Pliant le connaît. */
-    customerId?: string | null;
-    /** Jour de la sortie : départage les voyages du client. */
-    date?: string | null;
-    /** Payload Revolut : deux jambes internes = trésorerie, pas un fournisseur. */
-    raw?: unknown;
-  },
-  bookings: CostTargetBooking[]
-): CostSuggestion[] {
+export function suggestCostTargets(input: CostMatchInput & { raw?: unknown }, bookings: CostTargetBooking[]): CostSuggestion[] {
   if (isNonTripParty(input.party) || isSettlementParty(input.text) || isOwnAccountTransfer(input)) return [];
-  const out: CostSuggestion[] = [];
-  const seen = new Set<string>();
-  const push = (bookingId: string, itemId: string | null, score: number, reason: CostSuggestion["reason"]) => {
-    if (seen.has(bookingId)) return;
-    seen.add(bookingId);
-    out.push({ bookingId, itemId, score, reason });
-  };
-  const reference = referenceInText(input.text) || referenceInText(input.party);
-  if (reference) {
-    const booking = bookings.find((row) => row.reference.toUpperCase() === reference);
-    if (booking) push(booking.id, suggestItem(booking, input).itemId, 100, "reference");
-  }
-  for (const bookingId of input.cardBookingIds || []) {
-    const booking = bookings.find((row) => row.id === bookingId);
-    if (booking) push(booking.id, suggestItem(booking, input).itemId, 90, "card");
-  }
-  if (input.customerId) {
-    const own = bookings.filter((row) => row.customerId === input.customerId);
-    const around = own.filter((row) => withinTrip(input.date, row));
-    for (const booking of around.length ? around : own) push(booking.id, suggestItem(booking, input).itemId, 80, "client");
-  }
-  for (const booking of bookings) {
-    const hit = suggestItem(booking, input);
-    if (hit.reason === "supplier") push(booking.id, hit.itemId, 70, "supplier");
-  }
-  for (const booking of bookings) {
-    const hit = suggestItem(booking, input);
-    if (hit.reason === "amount") push(booking.id, hit.itemId, 50, "amount");
-  }
-  return out.sort((left, right) => right.score - left.score);
+  return rankCostTargets(input, bookings);
 }
 
 /** Ce que l’agence sait d’une carte Pliant générée depuis un dossier. */
@@ -622,6 +561,10 @@ export type OutgoingLine = {
   /** Négatif : remboursement reçu. */
   refund: boolean;
   occurredOn: string | null;
+  /** Jour de débit Pliant, s’il diffère de l’autorisation. */
+  bookedOn?: string | null;
+  /** Quatre derniers chiffres de la carte. */
+  last4?: string | null;
   card: string | null;
   text: string;
   kind: string;
@@ -630,22 +573,6 @@ export type OutgoingLine = {
   cardInfo: OutgoingCardInfo | null;
   suggestions: (CostSuggestion & { reference: string; title: string; itemLabel: string | null })[];
 };
-
-/** Pourquoi le CRM propose ce dossier, en clair pour l’agence. */
-export function costSuggestionReasonLabel(reason: CostSuggestion["reason"]) {
-  switch (reason) {
-    case "reference":
-      return "Le n° de dossier figure dans le libellé.";
-    case "card":
-      return "Carte Pliant générée dans ce dossier.";
-    case "client":
-      return "La carte est au nom du client.";
-    case "supplier":
-      return "Le nom du fournisseur correspond à cette prestation.";
-    default:
-      return "Même montant qu’une prestation du dossier.";
-  }
-}
 
 export function round(value: number) {
   return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;

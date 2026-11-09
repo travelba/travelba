@@ -31,8 +31,8 @@ function day(value: SearchParamValue) {
   return ISO_DAY.test(raw) ? raw : null;
 }
 
-function fileHref(source: string, from: string | null, to: string | null) {
-  return argentHref("a-pointer", { source: source || null, du: from, au: to });
+function fileHref(source: string, from: string | null, to: string | null, proposition: string | null) {
+  return argentHref("a-pointer", { source: source || null, du: from, au: to, proposition: proposition || null });
 }
 
 type CostRef = { id: string; bookingId: string; reference: string; itemLabel: string | null };
@@ -241,6 +241,8 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
 
   const sourceParam = firstParam(params.source);
   const source: TripCostSource | null = sourceParam === "pliant" || sourceParam === "revolut" ? sourceParam : null;
+  const propositionParam = firstParam(params.proposition);
+  const proposition = propositionParam === "suggerees" || propositionParam === "sans" ? propositionParam : "";
   const from = day(params.du);
   const to = day(params.au);
   let lines: OutgoingLine[] = [];
@@ -261,6 +263,8 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
     console.error("[admin/argent/pointer]", err instanceof Error ? err.message : err);
   }
   const withSuggestion = lines.filter((line) => line.suggestions.length > 0).length;
+  const shown =
+    proposition === "suggerees" ? lines.filter((line) => line.suggestions.length > 0) : proposition === "sans" ? lines.filter((line) => line.suggestions.length === 0) : lines;
 
   return (
     <div className="space-y-4">
@@ -273,7 +277,7 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
             return (
               <Link
                 key={option.value || "all"}
-                href={fileHref(option.value, from, to)}
+                href={fileHref(option.value, from, to, proposition || null)}
                 aria-current={active ? "page" : undefined}
                 className={`admin-tap inline-flex min-h-10 items-center rounded-full border px-4 text-sm font-semibold ${
                   active ? "border-[var(--admin-navy)] bg-[var(--admin-navy)] text-white" : "border-[var(--border)] bg-white text-[var(--admin-navy)]"
@@ -285,6 +289,7 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
           })}
         </div>
         {source ? <input type="hidden" name="source" value={source} /> : null}
+        {proposition ? <input type="hidden" name="proposition" value={proposition} /> : null}
         <label className="text-xs font-semibold uppercase tracking-wide text-muted">
           Du
           <input
@@ -307,22 +312,48 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
           Filtrer
         </button>
         {from || to ? (
-          <Link href={fileHref(source || "", null, null)} className="text-sm font-semibold text-[#9e7e51] underline">
+          <Link href={fileHref(source || "", null, null, proposition || null)} className="text-sm font-semibold text-[#9e7e51] underline">
             Toute la période
           </Link>
         ) : null}
       </form>
 
       <section className="admin-af-card p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold text-[var(--admin-navy)]">À pointer</h2>
-          <p className="text-sm text-muted">
-            {lines.length === 0
-              ? "Aucune sortie en attente."
-              : `${lines.length} sortie${lines.length > 1 ? "s" : ""} · ${withSuggestion} avec une proposition`}
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--admin-navy)]">À pointer</h2>
+            <p className="text-2xl font-semibold tabular-nums text-[var(--admin-navy)]">
+              {lines.length === 0 ? "Rien à pointer" : `${lines.length} à pointer`}
+            </p>
+            <p className="text-sm text-muted">
+              {withSuggestion} avec une proposition · {lines.length - withSuggestion} sans
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Proposition">
+            {(
+              [
+                ["", "Toutes"],
+                ["suggerees", "Avec une proposition"],
+                ["sans", "Sans proposition"],
+              ] as const
+            ).map(([value, label]) => {
+              const active = proposition === value;
+              return (
+                <Link
+                  key={value || "toutes"}
+                  href={fileHref(source || "", from, to, value || null)}
+                  aria-current={active ? "page" : undefined}
+                  className={`admin-tap inline-flex min-h-10 items-center rounded-full border px-4 text-sm font-semibold ${
+                    active ? "border-[var(--admin-navy)] bg-[var(--admin-navy)] text-white" : "border-[var(--border)] bg-white text-[var(--admin-navy)]"
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
         </div>
-        <OutgoingQueue lines={lines} />
+        <OutgoingQueue lines={shown} />
       </section>
 
       <p className="text-sm text-muted">

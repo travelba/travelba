@@ -201,6 +201,18 @@ export function pliantSyncSummary(fetched: number, autoMatched = 0) {
   return `${base} ${rapproches}.`;
 }
 
+/**
+ * Date d’autorisation de la carte. Pliant `createdAt` précède souvent le débit (`confirmedAt`,
+ * stocké dans `booked_at`).
+ */
+export function pliantAuthorizationAt(raw: unknown, bookedAt?: string | null) {
+  const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const created = typeof row.createdAt === "string" ? row.createdAt : typeof row.created_at === "string" ? row.created_at : "";
+  const authorized = typeof row.authorizedAt === "string" ? row.authorizedAt : typeof row.authorized_at === "string" ? row.authorized_at : "";
+  const pick = created || authorized || bookedAt || "";
+  return pick ? pick.slice(0, 10) : null;
+}
+
 export function mapPliantTransaction(payload: unknown): PliantTransactionRow | null {
   if (!payload || typeof payload !== "object") return null;
   const row = payload as Record<string, unknown>;
