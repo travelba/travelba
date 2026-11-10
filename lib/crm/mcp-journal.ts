@@ -25,6 +25,7 @@ const CREATE = new Set([
   "create_restaurant",
   "dupliquer_dossier",
   "ajouter_carte",
+  "ajouter_societe",
   "deposer_piece_dossier",
 ]);
 
@@ -108,6 +109,8 @@ const PHRASES: Record<string, string> = {
   changer_client_dossier: "Client du dossier changé",
   depenses_types: "Dépenses types enregistrées",
   enregistrer_societes: "Sociétés de facturation enregistrées",
+  ajouter_societe: "Société de facturation ajoutée",
+  modifier_societe: "Société de facturation modifiée",
   regler_acces_hotels: "Accès hôtels modifié",
   archiver_dossier: "Dossier archivé",
   supprimer_dossier: "Dossier supprimé",

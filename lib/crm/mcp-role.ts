@@ -105,6 +105,8 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   revoquer_cle_api: "admin",
   supprimer_client: "admin",
   enregistrer_societes: "edit_dossiers",
+  ajouter_societe: "edit_dossiers",
+  modifier_societe: "edit_dossiers",
   regler_acces_hotels: "admin",
   archiver_dossier: "delete_archive",
   supprimer_dossier: "admin",

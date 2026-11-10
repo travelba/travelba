@@ -1,7 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { roleAllows } from "@/lib/crm/agency-access";
 import { JOURNAL_ACTIONS, JOURNAL_ENTITIES, type JournalAction, type JournalEntity } from "@/lib/crm/agency-journal";
-import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
+import {
+  appendBillingCompany,
+  billingCompaniesPublic,
+  saveCustomerBillingCompanies,
+  updateBillingCompany,
+  type BillingCompanyInput,
+} from "@/lib/crm/billing-companies";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { setCarnetPublished, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
 import { customerDeleteConfirmed, DELETE_CUSTOMER_CONFIRM_ERROR } from "@/lib/crm/delete-confirm";
@@ -52,8 +58,6 @@ const KIND_INPUT: Record<string, BookingItemKind> = {
 
 const SECRET_KEY = /passport|mrz|numero|personal_number|iban|pan|cvc|cvv|card_number/i;
 
-type Row = Record<string, unknown>;
-
 type BookingHit = { id: string; reference: string; visible_to_client?: boolean | null; archived_at?: string | null; status?: string | null };
 
 export type DeskDeps = {
@@ -61,6 +65,8 @@ export type DeskDeps = {
   loadCustomer?: (id: string) => Promise<{ first_name?: string | null; last_name?: string | null } | null>;
   deleteCustomer?: (id: string) => Promise<{ ok: true; name: string }>;
   saveCompanies?: typeof saveCustomerBillingCompanies;
+  appendCompany?: typeof appendBillingCompany;
+  updateCompany?: typeof updateBillingCompany;
   writeHotelAccess?: (input: {
     actor: "admin";
     staffId: string | null;
@@ -233,12 +239,28 @@ function mapCompany(entry: unknown) {
   };
 }
 
-function publicCompany(row: Row) {
-  return {
-    id: row.id,
-    raison_sociale: row.company_name ?? null,
-    ville: row.billing_city ?? null,
-  };
+const COMPANY_INPUT_KEYS = [
+  ["raison_sociale", "company_name"],
+  ["siret", "siret"],
+  ["tva", "vat_number"],
+  ["email", "billing_email"],
+  ["adresse", "billing_address_line"],
+  ["code_postal", "billing_postal_code"],
+  ["ville", "billing_city"],
+  ["pays", "billing_country"],
+] as const;
+
+/** Seuls les champs présents sont repris. Un champ omis ne s’efface pas. */
+function companyFields(input: Record<string, unknown>): BillingCompanyInput | null {
+  const body: BillingCompanyInput = {};
+  let any = false;
+  for (const [from, to] of COMPANY_INPUT_KEYS) {
+    if (from in input) {
+      body[to] = input[from];
+      any = true;
+    }
+  }
+  return any ? body : null;
 }
 
 /** Suppression définitive, comme le bouton admin : le nom complet confirme. */
@@ -291,7 +313,39 @@ export async function enregistrerSocietes(input: Record<string, unknown>, deps: 
   if ("error" in saved) throw new McpWriteError(saved.error);
   return {
     client_id: id,
-    societes: saved.companies.map((row) => publicCompany(row as unknown as Row)),
+    societes: billingCompaniesPublic(saved.companies),
+  };
+}
+
+/** Ajoute une société sans modifier les autres ni les dossiers déjà facturés. Aucun message. */
+export async function ajouterSociete(input: Record<string, unknown>, deps: DeskDeps = {}) {
+  const id = requireUuid(input.client_id, "Client");
+  const company = companyFields(input);
+  if (!company) throw new McpWriteError("Indiquez la raison sociale ou le SIRET.");
+  const save = deps.appendCompany ?? appendBillingCompany;
+  const saved = await save(clientOf(deps, Boolean(deps.appendCompany)), id, company);
+  if ("error" in saved) throw new McpWriteError(saved.error);
+  return {
+    client_id: id,
+    societe_id: saved.company.id,
+    ajoutee: true,
+    societes: billingCompaniesPublic(saved.companies),
+  };
+}
+
+/** Corrige la société de cet identifiant. Les autres sociétés et les dossiers ne changent pas. */
+export async function modifierSociete(input: Record<string, unknown>, deps: DeskDeps = {}) {
+  const id = requireUuid(input.client_id, "Client");
+  const societeId = requireUuid(input.societe_id, "Société");
+  const company = companyFields(input);
+  if (!company) throw new McpWriteError("Rien à modifier.");
+  const save = deps.updateCompany ?? updateBillingCompany;
+  const saved = await save(clientOf(deps, Boolean(deps.updateCompany)), id, societeId, company);
+  if ("error" in saved) throw new McpWriteError(saved.error);
+  return {
+    client_id: id,
+    societe_id: saved.company.id,
+    societes: billingCompaniesPublic(saved.companies),
   };
 }
 

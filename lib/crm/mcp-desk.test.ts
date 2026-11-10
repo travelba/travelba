@@ -9,8 +9,10 @@ import {
   ajouterCarte,
   archiverDossier,
   cacherCarnet,
+  ajouterSociete,
   deposerPieceDossier,
   enregistrerSocietes,
+  modifierSociete,
   journalReadDenial,
   lireJournal,
   reglerAccesHotels,
@@ -238,6 +240,111 @@ test("le journal entier est fermé à l’agent, un dossier reste ouvert", async
     }
   );
   assert.equal(page.chaine_intacte, true);
+});
+
+test("ajouter et modifier une société ne remplacent pas la liste", async () => {
+  await assert.rejects(() => ajouterSociete({ client_id: CLIENT }, { admin: fakeAdmin() }), /raison sociale ou le SIRET/);
+  const added: { id: string; raw: { company_name?: unknown; billing_email?: unknown; siret?: unknown } | null } = {
+    id: "",
+    raw: null,
+  };
+  const created = await ajouterSociete(
+    { client_id: CLIENT, raison_sociale: "Bureau LLC", email: "Compta@Bureau.test", pays: "US" },
+    {
+      admin: fakeAdmin(),
+      appendCompany: async (_db, id, raw) => {
+        added.id = id;
+        added.raw = raw;
+        return {
+          ok: true as const,
+          company: {
+            id: "soc-2",
+            customer_id: CLIENT,
+            company_name: "Bureau LLC",
+            siret: null,
+            vat_number: null,
+            billing_email: "compta@bureau.test",
+            billing_address_line: null,
+            billing_postal_code: null,
+            billing_city: null,
+            billing_country: "US",
+            sort_order: 1,
+          },
+          companies: [
+            {
+              id: "soc-1",
+              customer_id: CLIENT,
+              company_name: "Atelier",
+              siret: "73282932000074",
+              vat_number: null,
+              billing_email: null,
+              billing_address_line: null,
+              billing_postal_code: null,
+              billing_city: "Paris",
+              billing_country: "FR",
+              sort_order: 0,
+            },
+            {
+              id: "soc-2",
+              customer_id: CLIENT,
+              company_name: "Bureau LLC",
+              siret: null,
+              vat_number: null,
+              billing_email: "compta@bureau.test",
+              billing_address_line: null,
+              billing_postal_code: null,
+              billing_city: null,
+              billing_country: "US",
+              sort_order: 1,
+            },
+          ],
+        };
+      },
+    }
+  );
+  assert.equal(added.raw?.company_name, "Bureau LLC");
+  assert.equal(added.raw?.billing_email, "Compta@Bureau.test");
+  assert.equal("siret" in (added.raw || {}), false);
+  assert.equal(created.ajoutee, true);
+  assert.equal(created.societes[0]?.raison_sociale, "Atelier");
+  assert.equal(created.societes[0]?.principale, true);
+  assert.equal(created.societes[1]?.principale, false);
+  const edited: { societeId: string; billing_city?: unknown } = { societeId: "" };
+  await modifierSociete(
+    { client_id: CLIENT, societe_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", ville: "Lyon" },
+    {
+      admin: fakeAdmin(),
+      updateCompany: async (_db, _id, societeId, raw) => {
+        edited.societeId = societeId;
+        edited.billing_city = raw.billing_city;
+        return {
+          ok: true as const,
+          company: {
+            id: societeId,
+            customer_id: CLIENT,
+            company_name: "Atelier",
+            siret: null,
+            vat_number: null,
+            billing_email: null,
+            billing_address_line: null,
+            billing_postal_code: null,
+            billing_city: "Lyon",
+            billing_country: null,
+            sort_order: 0,
+          },
+          companies: [],
+        };
+      },
+    }
+  );
+  assert.deepEqual(edited, { societeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", billing_city: "Lyon" });
+  const journal = mcpWriteJournalDraft("ajouter_societe", { client_id: CLIENT }, "Raphael");
+  assert.equal(journal.action, "create");
+  assert.equal(journal.entityType, "client");
+  assert.match(journal.summary, /Société de facturation ajoutée/);
+  const changed = mcpWriteJournalDraft("modifier_societe", { client_id: CLIENT }, "Raphael");
+  assert.equal(changed.action, "update");
+  assert.match(changed.summary, /Société de facturation modifiée/);
 });
 
 test("le journal d’une suppression nomme le client", () => {
