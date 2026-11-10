@@ -1294,3 +1294,57 @@ test("la relance montre en copie une personne apparue dans le fil", async () => 
     Module._load = load;
   }
 });
+
+test("un fil déjà parti se classe ou se rouvre sans formulaire d’envoi", async () => {
+  const nodeRequire = createRequire(import.meta.url);
+  const Module = nodeRequire("module") as { _load: (...args: unknown[]) => unknown };
+  const load = Module._load;
+  Module._load = function (request: unknown, parent: unknown, isMain: unknown) {
+    if (request === "next/navigation") return { useRouter: () => ({ refresh() {} }) };
+    return load.call(this, request, parent, isMain);
+  };
+  try {
+    const { HotelDesk } = await import("../../components/admin/HotelDesk");
+    const item = hotel();
+    const openHtml = renderToStaticMarkup(
+      createElement(HotelDesk, {
+        bookingId: "b1",
+        item,
+        requests: [letter({ status: "replied" })],
+        today: "2026-10-20",
+        messages: [],
+        thread: [],
+        attached: [],
+      })
+    );
+    assert.match(openHtml, />Classer</);
+    assert.equal(openHtml.includes("Note, facultative"), false);
+    assert.equal(openHtml.includes("Rouvrir"), false);
+    assert.equal(openHtml.includes("Envoyer"), false);
+    const heldHtml = renderToStaticMarkup(
+      createElement(HotelDesk, {
+        bookingId: "b1",
+        item,
+        requests: [
+          letter({
+            status: "replied",
+            classified_at: "2026-10-18T09:00:00.000Z",
+            classified_by_name: "Raphaël",
+            classified_note: "Payé via Pliant",
+          }),
+        ],
+        today: "2026-10-20",
+        messages: [],
+        thread: [],
+        attached: [],
+      })
+    );
+    assert.match(heldHtml, /Rouvrir/);
+    assert.match(heldHtml, /Classé le/);
+    assert.match(heldHtml, /Raphaël/);
+    assert.match(heldHtml, /Payé via Pliant/);
+    assert.equal(heldHtml.includes(">Classer<"), false);
+  } finally {
+    Module._load = load;
+  }
+});

@@ -5,6 +5,7 @@ import { EMAIL_INBOX_QUEUE_STATUSES } from "@/lib/crm/types";
 import { isoDateInDays } from "@/lib/crm/money";
 import { foldThreads, unreadThreadCount, type InboxMessage } from "@/lib/crm/whatsapp-inbox";
 import { loadRecentWhatsappRows } from "@/lib/crm/whatsapp-dock-load";
+import { countHotelRepliesToTreat } from "@/lib/crm/dashboard-mails";
 
 export type AdminBadges = {
   /** Virements Revolut reçus, pas encore rapprochés. */
@@ -19,7 +20,7 @@ export type AdminBadges = {
   pieces: number;
   /** Fils WhatsApp avec un message client non lu. */
   whatsapp: number;
-  /** Courriers hôtel où l’hôtel a écrit en dernier : une réponse à traiter. */
+  /** Courriers hôtel dont la pastille est « Réponse à traiter ». */
   hotels: number;
   /** Sorties Pliant et débits Revolut pas encore pointés sur un dossier. */
   costs: number;
@@ -63,7 +64,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
         .gte("expires_on", isoDateInDays(0))
         .lte("expires_on", isoDateInDays(90)),
       loadRecentWhatsappRows(),
-      admin.from("crm_hotel_requests").select("id", { count: "exact", head: true }).eq("status", "replied"),
+      countHotelRepliesToTreat(admin),
       admin
         .from("crm_pliant_transactions")
         .select("id", { count: "exact", head: true })
@@ -84,7 +85,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
       le: le.error ? 0 : le.count ?? 0,
       pieces: pieces.error ? 0 : pieces.count ?? 0,
       whatsapp: unreadWhatsapp(whatsapp),
-      hotels: hotels.error ? 0 : hotels.count ?? 0,
+      hotels,
       costs: (pliantCosts.error ? 0 : pliantCosts.count ?? 0) + (revolutCosts.error ? 0 : revolutCosts.count ?? 0),
     };
   } catch (err) {

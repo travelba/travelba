@@ -51,6 +51,7 @@ import {
   replyWindowStartMs,
   subjectsToFollow,
 } from "./hotel-desk";
+import { classificationSuperseded, HOTEL_COURRIER_CLASS_CLEAR } from "./hotel-courrier-board";
 import { HOTEL_REPLY_STAY_STATUSES, shouldSyncHotelReplies, stayNeedsHotelReplyWatch } from "./hotel-reply-notice";
 import { precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
@@ -636,6 +637,17 @@ async function mirrorThreadReplies(admin: Admin, bookingId: string, letters: Crm
   let replied = 0;
   for (const row of letters) {
     const keys = new Set(subjectsToFollow(row).map((subject) => hotelMailSubjectKey(subject)));
+    const inbound = turns
+      .filter(
+        (turn) =>
+          turn.direction === "in" &&
+          (turn.request_id === row.id || (turn.booking_item_id === row.booking_item_id && keys.has(turn.subject_key)))
+      )
+      .map((turn) => ({ at: turn.received_at, direction: "in" as const }));
+    if (classificationSuperseded(row.classified_at, inbound)) {
+      const cleared = await admin.from("crm_hotel_requests").update(HOTEL_COURRIER_CLASS_CLEAR).eq("id", row.id);
+      if (!cleared.error) row.classified_at = null;
+    }
     const group = deskTurns(turns, row.booking_item_id, keys);
     const incoming = turns
       .filter((turn) => turn.booking_item_id === row.booking_item_id && keys.has(turn.subject_key) && turn.counts_as_reply)

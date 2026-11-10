@@ -65,7 +65,8 @@ test("le visa s’arrête au paiement, seulement après un fichier de passeport"
   assert.equal(launchExampleVisa("US", ESTA).step, "paiement");
 });
 
-test("le chauffeur reste en attente, au tarif produit, sans confirmation", () => {
+test("le chauffeur reste en attente, au tarif produit, sans confirmation", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-25T12:00:00Z") });
   resetExampleState();
   const result = orderExampleExtra({
     kind: "chauffeur",

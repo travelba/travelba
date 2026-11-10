@@ -192,6 +192,46 @@ test("le lien de paiement sort s’il est payé, et le dit s’il ne l’est pas
   assert.equal(asked[0]?.replyLabel, "Réponse à traiter");
   assert.match(asked[0]?.paymentLabel || "", /Paiement Pliant effectué/);
   assert.match(asked[0]?.paymentLabel || "", /186,50/);
+
+  const paidBeforeTheLink = dashboardCourriers(
+    [
+      courrier({
+        id: "adyen",
+        kind: "payment_link",
+        itemId: "stay-1",
+        replies: [
+          {
+            id: "link",
+            body: "Please use this Adyen link to complete the payment.",
+            receivedAt: "2026-10-14T08:00:00.000Z",
+          },
+        ],
+      }),
+    ],
+    [spend({ bookingItemId: "stay-1", billingCents: 136775, bookedAt: "2026-10-17T10:00:00.000Z" })],
+    true
+  );
+  assert.deepEqual(paidBeforeTheLink, []);
+
+  const askedBeforePay = dashboardCourriers(
+    [
+      courrier({
+        id: "avant",
+        kind: "payment_link",
+        itemId: "stay-1",
+        replies: [
+          {
+            id: "q",
+            body: "Pouvez-vous confirmer le nom du client ?",
+            receivedAt: "2026-10-13T08:00:00.000Z",
+          },
+        ],
+      }),
+    ],
+    [spend({ bookingItemId: "stay-1", bookedAt: "2026-10-17T10:00:00.000Z" })],
+    true
+  );
+  assert.deepEqual(askedBeforePay, []);
 });
 
 test("refus, attente, remboursement et un autre hôtel ne comptent pas comme un paiement", () => {
@@ -448,4 +488,34 @@ test("confirmation, annulation, paiement dit et séjour passé sortent le courri
   );
   assert.equal(fresh[0]?.replyLabel, "Réponse à traiter");
   assert.equal(fresh[0]?.lastWriter, "L'hôtel");
+});
+
+test("un classement manuel prime jusqu’au message entrant suivant", () => {
+  const held = dashboardCourriers(
+    [
+      courrier({
+        classifiedAt: "2026-10-18T09:00:00.000Z",
+        replies: [{ id: "ask", body: "Please use this Adyen link.", receivedAt: "2026-10-14T08:00:00.000Z" }],
+      }),
+    ],
+    [],
+    true
+  );
+  assert.deepEqual(held, []);
+
+  const reopened = dashboardCourriers(
+    [
+      courrier({
+        classifiedAt: "2026-10-18T09:00:00.000Z",
+        replies: [
+          { id: "ask", body: "Please use this Adyen link.", receivedAt: "2026-10-14T08:00:00.000Z" },
+          { id: "later", body: "Avez-vous reçu notre lien ?", receivedAt: "2026-10-19T08:00:00.000Z" },
+        ],
+      }),
+    ],
+    [],
+    true
+  );
+  assert.equal(reopened[0]?.replyLabel, "Réponse à traiter");
+  assert.equal(reopened[0]?.lastWriter, "L'hôtel");
 });

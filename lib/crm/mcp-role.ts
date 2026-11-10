@@ -76,6 +76,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   ajouter_hotel: "edit_dossiers",
   modifier_hotel: "edit_dossiers",
   ajouter_accueil_vip: "edit_dossiers",
+  classer_courrier_hotel: "edit_dossiers",
   enregistrement_en_ligne: "edit_dossiers",
   envoyer_releve: "message_client",
   preparer_facture_mb3m: "edit_finances",

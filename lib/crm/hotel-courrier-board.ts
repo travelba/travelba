@@ -49,7 +49,17 @@ export type HotelCourrierSource = {
   bookingEnd?: string | null;
   itemEnd?: string | null;
   itemLifecycle?: string | null;
+  /** Classement manuel. Il prime tant qu’aucun message entrant n’est plus récent. */
+  classifiedAt?: string | null;
 };
+
+/** Efface le classement. Aucun e-mail. */
+export const HOTEL_COURRIER_CLASS_CLEAR = {
+  classified_at: null,
+  classified_by: null,
+  classified_by_name: null,
+  classified_note: null,
+} as const;
 
 /** Dépense Pliant déjà rattachée à l’hôtel ou au courrier. Sans numéro de carte. */
 export type HotelPliantSpend = {
@@ -248,6 +258,28 @@ export function hotelConfirmedText(text: string) {
   return /(?:^|[^\p{L}])(?:pleased to confirm|we confirm|nous confirmons|confirmed|confirmée|confirmé)(?![\p{L}])/iu.test(flat);
 }
 
+/**
+ * Le classement manuel tient tant qu’aucun message entrant de l’hôtel n’est plus récent.
+ * Un message à la même seconde ne rouvre pas : il faut qu’il arrive après.
+ */
+export function classificationStillHolds(
+  classifiedAt: string | null | undefined,
+  turns: { at: string; direction: string }[]
+) {
+  if (!classifiedAt) return false;
+  const mark = time(classifiedAt);
+  if (!Number.isFinite(mark)) return false;
+  return !turns.some((turn) => turn.direction === "in" && Number.isFinite(time(turn.at)) && time(turn.at) > mark);
+}
+
+/** Vrai si un message entrant est arrivé après le classement : le fil est rouvert. */
+export function classificationSuperseded(
+  classifiedAt: string | null | undefined,
+  turns: { at: string; direction: string }[]
+) {
+  return Boolean(classifiedAt) && !classificationStillHolds(classifiedAt, turns);
+}
+
 /** Le lien est payé, dit par l’hôtel. « Le lien est prêt » ne compte pas. */
 export function paymentSettledText(text: string) {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -263,6 +295,7 @@ export type CourrierCloseReason = "payment" | "confirmed" | "cancelled" | "past"
  * Le besoin est réglé : on retire le courrier de la liste d’action.
  * Paiement Pliant ou lien payé, confirmation de l’hôtel, dossier annulé,
  * ou fil muet sur un séjour déjà passé.
+ * Un lien déjà payé reste ouvert seulement si l’hôtel a posé une question après le paiement.
  */
 export function courrierCloseReason(input: {
   kind: string;
@@ -274,6 +307,8 @@ export function courrierCloseReason(input: {
   paymentsKnown: boolean;
   hotelWroteLast: boolean;
   latestHotelText: string;
+  /** Heure du dernier message de l’hôtel. Vide si l’hôtel n’a pas écrit. */
+  latestHotelAt: string;
   lastActivityMs: number;
   nowMs: number;
 }): CourrierCloseReason | null {
@@ -281,8 +316,14 @@ export function courrierCloseReason(input: {
     return "cancelled";
   }
   if (input.kind === "payment_link" && input.paymentsKnown && input.payment) {
-    const stillOpen = input.hotelWroteLast && asksSomething(input.latestHotelText) && !paymentSettledText(input.latestHotelText);
-    if (!stillOpen) return "payment";
+    const paymentAt = time(input.payment.bookedAt);
+    const hotelAt = time(input.latestHotelAt);
+    const askedAfterPayment =
+      input.hotelWroteLast &&
+      asksSomething(input.latestHotelText) &&
+      !paymentSettledText(input.latestHotelText) &&
+      (!Number.isFinite(paymentAt) || (Number.isFinite(hotelAt) && hotelAt > paymentAt));
+    if (!askedAfterPayment) return "payment";
   }
   if (input.kind === "payment_link" && paymentSettledText(input.latestHotelText)) return "payment";
   if (input.kind !== "payment_link" && input.hotelWroteLast && hotelConfirmedText(input.latestHotelText)) {
@@ -313,7 +354,9 @@ export function dashboardCourriers(
     if (!SENT.has(row.status)) continue;
     const mark = deskKindLabel(row.kind);
     if (!mark) continue;
-    const ordered = realTurns(turnsOf(row));
+    const openedTurns = turnsOf(row);
+    if (classificationStillHolds(row.classifiedAt, openedTurns)) continue;
+    const ordered = realTurns(openedTurns);
     const last = ordered[ordered.length - 1] || null;
     const hotelWroteLast = last?.direction === "in";
     const agencyAfterHotel =
@@ -334,6 +377,7 @@ export function dashboardCourriers(
       paymentsKnown,
       hotelWroteLast,
       latestHotelText,
+      latestHotelAt: latestHotel?.at || "",
       lastActivityMs: time(moment),
       nowMs,
     });

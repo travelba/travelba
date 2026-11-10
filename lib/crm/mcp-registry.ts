@@ -121,9 +121,10 @@ import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
 import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
+import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 113;
+export const MCP_TOOL_CAP = 114;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -305,7 +306,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "tableau_de_bord",
     description:
-      "À faire aujourd’hui : liens de paiement hôtel, visas, enregistrements, demandes WhatsApp et réponses d’hôtel. Les e-mails, Little Emperors, encaissements, coûts et pièces à échéance n’y sont pas : ils restent dans la Boîte, Argent et Clients. Soldes Revolut, Stripe et Pliant. courriers_hotel : fils d’hôtel encore à traiter, statut synchronisé avec Gmail (Réponse à traiter, En attente de réponse, Sans réponse), qui a écrit en dernier. Un fil où l’agence a répondu en dernier, un paiement fait, une confirmation, un dossier annulé ou un séjour passé sans nouveau message n’y figurent pas. Lecture seule.",
+      "À faire aujourd’hui : liens de paiement hôtel, visas, enregistrements, demandes WhatsApp et réponses d’hôtel. Les e-mails, Little Emperors, encaissements, coûts et pièces à échéance n’y sont pas : ils restent dans la Boîte, Argent et Clients. Soldes Revolut, Stripe et Pliant. courriers_hotel : fils d’hôtel encore à traiter, statut synchronisé avec Gmail (Réponse à traiter, En attente de réponse, Sans réponse), qui a écrit en dernier. Un fil où l’agence a répondu en dernier, un paiement fait, une confirmation, un dossier annulé, un séjour passé sans nouveau message, ou un classement manuel encore valable n’y figurent pas. Un lien de paiement déjà réglé sur Pliant n’y figure plus, sauf si l’hôtel a écrit après ce paiement pour poser une question. Lecture seule.",
     run: () => readTableauDeBord(),
   },
   {
@@ -1486,6 +1487,38 @@ export const MCP_TOOLS: ToolDef[] = [
       document_id: z.string().trim().max(80).optional().describe("Confirmation déjà déposée sur le dossier"),
     },
     run: (args) => addAccueilVip(args),
+  },
+  {
+    name: "classer_courrier_hotel",
+    write: true,
+    selfJournal: true,
+    description:
+      "Classe un fil d’hôtel déjà parti, sans envoyer d’e-mail. Le classement (date, auteur, note facultative) prime sur le statut calculé tant qu’aucun message entrant de l’hôtel n’arrive après. rouvrir true retire le classement et le fil reprend son statut calculé. reference ou dossier_id, demande (Lien de paiement, Transfert, Upgrade et accueil, Pré-check-in, Note de la maison, Concierge, Autre demande). hotel si plusieurs hôtels du dossier ont la même demande. carte_id ou courrier_id ciblent une carte ou un fil. Aucun message n’est envoyé.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0079"),
+      demande: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Lien de paiement, Transfert, Upgrade et accueil, Pré-check-in, Note de la maison, Concierge ou Autre demande"),
+      hotel: z.string().trim().max(160).optional().describe("Nom de l’hôtel, si le dossier en a plusieurs"),
+      carte_id: z.string().trim().max(80).optional().describe("Identifiant de la carte hôtel"),
+      courrier_id: z.string().trim().max(80).optional().describe("Identifiant du fil, à la place de demande"),
+      note: z.string().trim().max(500).optional().describe("Note interne facultative. Pas de numéro de carte"),
+      rouvrir: z.boolean().optional().describe("vrai : retire le classement. Aucun e-mail"),
+    },
+    run: async (args) => {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const access = currentMcpAccess();
+      return setHotelCourrierClass(
+        createServiceClient(),
+        args,
+        { staffId: access.staff?.id || null, name: access.staff?.name || "Jeton MCP" },
+        { journalPath: "/api/mcp" }
+      );
+    },
   },
   {
     name: "enregistrement_en_ligne",
