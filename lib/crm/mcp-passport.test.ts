@@ -593,6 +593,11 @@ test("a passport file path stays inside the customer documents folder", () => {
   assert.equal(passportScanPath(CLIENT, `customers/${CLIENT}/documents/%2e%2e/passeport.jpg`), null);
   assert.equal(parseScanQuery({}).kind, "missing");
   assert.equal(parseScanQuery({ client_id: CLIENT }).kind, "missing");
+  assert.equal(parseScanQuery({ client_id: CLIENT, voyageur_id: CLIENT }).kind, "fiche");
+  assert.equal(parseScanQuery({ client_id: CLIENT, compagnon_id: COMPANION }).kind, "fiche");
+  assert.equal(parseScanQuery({ compagnon_id: COMPANION }).kind, "missing");
+  assert.equal(parseScanQuery({ client_id: CLIENT, compagnon_id: "lea" }).kind, "invalid");
+  assert.equal(parseScanQuery({ client_id: CLIENT, voyageur_id: CLIENT, compagnon_id: COMPANION }).kind, "invalid");
   assert.equal(parseScanQuery({ reference: "TB-2026-0042", voyageur_id: "zoe" }).kind, "invalid");
   assert.equal(parseScanQuery({ reference: "TB-2026-0042", voyageur_id: HOLDER_TRAVELER }).kind, "dossier");
 });
@@ -816,4 +821,135 @@ test("a foreign file path and an unknown traveler do not produce a url", async (
   );
   assert.equal((unknown as { message: string }).message.includes("pas sur ce dossier"), true);
   assert.equal(missing.inserts.at(-1)?.outcome, "introuvable");
+});
+
+test("a client without a booking can open the holder or companion scan", async () => {
+  const holder: Script = {
+    customers: customerRow(),
+    documents: [
+      passportRow({
+        place_of_birth: "PARIS",
+        storage_path: SCAN_PATH,
+        file_name: "passeport.jpg",
+        mime_type: "image/jpeg",
+      }),
+    ],
+    inserts: [],
+    seen: [],
+  };
+  const signed: string[] = [];
+  const result = await runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+    readScanPasseport({ client_id: CLIENT, voyageur_id: CLIENT }, fakeAdmin(holder), async (path) => {
+      signed.push(path);
+      return SIGNED;
+    })
+  );
+  const body = result as {
+    client_id: string;
+    voyageur_id: string;
+    compagnon_id?: string;
+    dossier?: unknown;
+    message?: string;
+    scans: { url_signee: string; expire_dans: number; fichier: string }[];
+  };
+  assert.equal(body.client_id, CLIENT);
+  assert.equal(body.voyageur_id, CLIENT);
+  assert.equal(body.compagnon_id, undefined);
+  assert.equal(body.dossier, undefined);
+  assert.equal(body.message, undefined);
+  assert.deepEqual(signed, [SCAN_PATH]);
+  assert.equal(body.scans[0].url_signee, SIGNED);
+  assert.equal(body.scans[0].expire_dans, 600);
+  assert.equal(body.scans[0].fichier, "passeport.jpg");
+  assert.equal(holder.seen.includes("crm_bookings"), false);
+  assert.equal(holder.inserts.at(-1)?.kind, "scan");
+  assert.equal(holder.inserts.at(-1)?.outcome, "ok");
+  assert.equal(holder.inserts.at(-1)?.customer_id, CLIENT);
+  assert.equal(holder.inserts.at(-1)?.booking_id, null);
+  assert.equal(JSON.stringify(result).includes(NUMBER), false);
+  assert.equal(JSON.stringify(result).includes(SCAN_PATH), false);
+
+  const companion: Script = {
+    customers: customerRow(),
+    companions: [{ id: COMPANION, customer_id: CLIENT, first_name: "Léa", last_name: "Martin" }],
+    documents: [
+      passportRow({
+        id: "lea",
+        companion_id: COMPANION,
+        number: OTHER_NUMBER,
+        first_name: "Léa",
+        last_name: "Martin",
+        storage_path: `customers/${CLIENT}/documents/livret.pdf`,
+        file_name: "livret.pdf",
+        mime_type: "application/pdf",
+      }),
+    ],
+    inserts: [],
+    seen: [],
+  };
+  let companionSigns = 0;
+  const companionResult = await runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+    readScanPasseport({ client_id: CLIENT, compagnon_id: COMPANION }, fakeAdmin(companion), async () => {
+      companionSigns += 1;
+      return SIGNED;
+    })
+  );
+  const companionBody = companionResult as {
+    voyageur_id: string;
+    compagnon_id: string;
+    scans: { pdf: boolean; type_mime: string; expire_dans: number }[];
+  };
+  assert.equal(companionSigns, 1);
+  assert.equal(companionBody.voyageur_id, COMPANION);
+  assert.equal(companionBody.compagnon_id, COMPANION);
+  assert.equal(companionBody.scans[0].pdf, true);
+  assert.equal(companionBody.scans[0].type_mime, "application/pdf");
+  assert.equal(companionBody.scans[0].expire_dans, 600);
+  assert.equal(JSON.stringify(companionResult).includes(OTHER_NUMBER), false);
+  assert.equal(companion.seen.includes("crm_bookings"), false);
+
+  const stranger: Script = {
+    customers: customerRow(),
+    companions: [],
+    documents: [
+      passportRow({
+        companion_id: COMPANION,
+        storage_path: SCAN_PATH,
+        file_name: "passeport.jpg",
+        mime_type: "image/jpeg",
+      }),
+    ],
+    inserts: [],
+    seen: [],
+  };
+  let strangerSigns = 0;
+  const refused = await runWithMcpAccess({ actor: "amadeus", passport: true }, () =>
+    readScanPasseport({ client_id: CLIENT, compagnon_id: COMPANION }, fakeAdmin(stranger), async () => {
+      strangerSigns += 1;
+      return SIGNED;
+    })
+  );
+  assert.equal(strangerSigns, 0);
+  assert.match((refused as { message: string }).message, /n’est pas sur cette fiche/);
+  assert.equal(stranger.inserts.at(-1)?.outcome, "introuvable");
+  assert.equal(JSON.stringify(refused).includes(SIGNED), false);
+
+  const locked: Script = {
+    customers: customerRow(),
+    documents: [passportRow({ storage_path: SCAN_PATH, file_name: "passeport.jpg", mime_type: "image/jpeg" })],
+    inserts: [],
+    seen: [],
+  };
+  let lockedSigns = 0;
+  await assert.rejects(
+    () =>
+      readScanPasseport({ client_id: CLIENT, voyageur_id: CLIENT }, fakeAdmin(locked), async () => {
+        lockedSigns += 1;
+        return SIGNED;
+      }),
+    (err: unknown) => err instanceof McpReadError && /pas autorisé/.test(err.message)
+  );
+  assert.equal(lockedSigns, 0);
+  assert.equal(locked.inserts[0].outcome, "refuse");
+  assert.equal(locked.seen.includes("crm_customers"), false);
 });

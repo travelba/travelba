@@ -67,7 +67,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Fichier sur le dossier ou sur une carte | `deposer_piece_dossier` — ajouté |
 | Retirer cette pièce | `retirer_piece_dossier` — ajouté |
 | Retirer une pièce d’identité de la fiche (titulaire ou compagnon) | `supprimer_piece_client` (`confirmer` true) — ajouté. Réservé aux administrateurs. Le fichier part avec la ligne. Jamais le numéro, au plus les trois derniers caractères (`fin`) |
-| Lecture du numéro ou du scan de passeport | `passeport_voyageur`, `scan_passeport` — jeton passeport seulement |
+| Lecture du numéro ou du scan de passeport | `passeport_voyageur`, `scan_passeport` — jeton passeport seulement. `scan_passeport` accepte un dossier, ou `client_id` avec `voyageur_id` ou `compagnon_id` sans dossier. URL signée dix minutes. Lecture seule, aucun message |
 | OCR « Mal lu » sur la fiche | hors API |
 
 ## Finances, factures, fournisseurs
