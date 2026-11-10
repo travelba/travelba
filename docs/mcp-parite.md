@@ -120,8 +120,10 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Cartes Pliant du dossier | `creer_carte_pliant`, `lire_carte_pliant`, `bloquer_carte_pliant` — jeton carte pour le numéro |
 | Plafond et clôture d’une carte Pliant | `modifier_plafond_pliant`, `cloturer_carte_pliant` — ajouté. Sans `confirmer`, aperçu. `confirmer` true change le plafond ou clôture. Ce n’est pas un gel |
 | Formalités (lecture) | `formalites` — couvert |
-| Lancer, remplir ou payer une formalité (ESTA, ETA, visa) | `lancer_formalite` — lancer couvert. `statut_formalite` lit le parcours. Le remplissage du portail et le paiement restent à l’écran |
-| Répondre sur WhatsApp, valider une proposition Concierge | hors API — envoie un message |
+| Lancer une formalité (ESTA, ETA, visa) | `lancer_formalite` — couvert. `statut_formalite` lit le parcours. `reprendre_formalite` recommence (US, GB, IL) : sans `confirmer`, aperçu. Le remplissage du portail et le paiement restent à l’écran |
+| Séjour hôtel réservé par le client | `sejour_hotel` — ajouté. Répondre, marquer payé, lien expiré, envoyer la carte, valider le prix, annuler, rembourser. Sans `confirmer`, aperçu des effets. `confirmer` true écrit. Réservé aux administrateurs |
+| Carte d’arrivée du pré-check-in | `carte_arrivee` — ajouté. Sans `confirmer`, aperçu. `confirmer` true crée la carte. Quatre derniers chiffres et titulaire, jamais le numéro complet. Aucun message |
+| Réserver ou annuler chez Ratehawk | `ratehawk` — ajouté. `statut` lit. `prereserver`, `reserver` et `annuler` : sans `confirmer`, aperçu. `confirmer` true exécute. Deposit, sans numéro de carte, aucun message au client |
 | Réglages Gmail, WhatsApp, mot de passe staff, connexion | hors API |
 
 ## Hors API, et pourquoi
@@ -129,7 +131,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 - **OAuth, sync bancaire, diagnostics, mot de passe, connexion.** Ce sont des réglages d’infrastructure, pas des gestes dossier.
 - **Numéro de passeport et PAN.** Ils restent sur `TRAVELBA_MCP_PASSPORT_TOKENS` et `TRAVELBA_MCP_CARD_TOKENS`. Une clé nominative ne les ouvre pas.
 - **Messages libres.** Le WhatsApp rédigé par l’agence, avec une pièce déjà déposée, est `envoyer_message_libre`. Le partage à un accompagnateur est `partager_sejour`, la file est `file_whatsapp`, la proposition du Concierge est `proposition_concierge`, l’envoi restaurants est `envoyer_restaurants`. Sans `confirmer`, rien ne part.
-- **Réservation Ratehawk, remplissage de portail visa, paiement de la formalité.** Le lancement est `lancer_formalite`. Le remplissage du portail et le paiement restent des parcours longs, tenus par l’écran. L’import PDF ou photo est `importer_pieces`.
+- **Remplissage de portail visa et paiement de la formalité.** Le lancement est `lancer_formalite`, la reprise est `reprendre_formalite`. Le remplissage du portail et le paiement restent à l’écran. Ratehawk est `ratehawk`. La carte d’arrivée est `carte_arrivee`. Le séjour réservé par le client est `sejour_hotel`. L’import PDF ou photo est `importer_pieces`.
 - **Ouvrir l’espace client à la place du client.** Cela crée une session sur le poste de l’agence. Ce n’est pas un outil. Le renvoi des accès au client, lui, est `renvoyer_acces_whatsapp`.
 - **Export CSV du journal.** Le droit d’export et le volume de données restent sur l’écran.
 

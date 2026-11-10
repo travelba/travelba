@@ -134,6 +134,10 @@ const EXPECTED = [
   "file_whatsapp",
   "proposition_concierge",
   "envoyer_restaurants",
+  "sejour_hotel",
+  "reprendre_formalite",
+  "ratehawk",
+  "carte_arrivee",
 ];
 
 const WRITE_TOOLS = [
@@ -235,6 +239,10 @@ const WRITE_TOOLS = [
   "file_whatsapp",
   "proposition_concierge",
   "envoyer_restaurants",
+  "sejour_hotel",
+  "reprendre_formalite",
+  "ratehawk",
+  "carte_arrivee",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {

@@ -146,6 +146,10 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   file_whatsapp: "message_client",
   proposition_concierge: "message_client",
   envoyer_restaurants: "message_client",
+  sejour_hotel: "admin",
+  reprendre_formalite: "edit_dossiers",
+  ratehawk: "edit_dossiers",
+  carte_arrivee: "edit_dossiers",
 };
 
 export type McpStaffGate = {
