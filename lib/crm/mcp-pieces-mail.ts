@@ -1,7 +1,7 @@
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
-import { parseTicketMail, ticketFlightPatch, type TicketMailRead } from "@/lib/crm/ticket-mail";
+import { parseTicketMail, ticketRowsFromRead, type TicketMailRead, type TicketRowDraft } from "@/lib/crm/ticket-mail";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_FILES = 8;
@@ -69,6 +69,29 @@ export type DetachEffects = {
 
 function asFiles(files: { name: string; type: string; bytes: Uint8Array }[]) {
   return files.map((file) => new File([Buffer.from(file.bytes)], file.name, { type: file.type }));
+}
+
+function flightCode(value: unknown) {
+  return String(value || "").toUpperCase().replace(/\s+/g, "");
+}
+
+function sameTicketLeg(row: FlightRow, draft: TicketRowDraft) {
+  const number = flightCode(row.details?.flight_number);
+  const wanted = flightCode(draft.details.flight_number);
+  if (number && wanted && number === wanted) return true;
+  const from = String(row.details?.from || "").toUpperCase();
+  const to = String(row.details?.to || "").toUpperCase();
+  return Boolean(
+    from &&
+      to &&
+      from === String(draft.details.from || "").toUpperCase() &&
+      to === String(draft.details.to || "").toUpperCase()
+  );
+}
+
+function keptPassengers(current: Record<string, unknown> | null | undefined, incoming: Record<string, unknown>) {
+  const existing = Array.isArray(current?.passengers) ? current.passengers : [];
+  return { ...(current || {}), ...incoming, ...(existing.length ? { passengers: existing } : {}) };
 }
 
 function text(value: unknown) {
@@ -325,42 +348,54 @@ async function liveApplyTicket(input: Record<string, unknown>): Promise<TicketPl
   const decided = planTicketDeposit(loaded);
   const { createServiceClient } = await import("@/lib/supabase/admin");
   const { attachBookingDocument } = await import("@/lib/crm/booking-document-write");
-  const { syncBookingTotalFromItems } = await import("@/lib/crm/bookings");
   const admin = createServiceClient();
-  const current = loaded.flights.find((row) => row.id === decided.carte_id);
-  const patch = ticketFlightPatch(decided.cree ? {} : current || {}, loaded.read);
+  const drafts = ticketRowsFromRead(loaded.read);
+  const active = loaded.flights.filter((row) => row.lifecycle !== "cancelled" && row.lifecycle !== "superseded");
   let carteId = decided.carte_id;
-  if (decided.cree) {
-    const order =
-      loaded.flights
-        .filter((row) => row.lifecycle !== "cancelled" && row.lifecycle !== "superseded")
-        .reduce((max, row) => Math.max(max, row.sort_order || 0), 0) + 1;
+  let order =
+    active.reduce((max, row) => Math.max(max, row.sort_order || 0), 0) + 1;
+  for (const [index, draft] of drafts.entries()) {
+    const hit =
+      active.find((row) => sameTicketLeg(row, draft)) ||
+      (index === 0 ? active.find((row) => row.id === decided.carte_id) : undefined);
+    const details = keptPassengers(hit?.details, draft.details);
+    if (hit) {
+      const { error } = await admin
+        .from("crm_booking_items")
+        .update({
+          title: draft.title,
+          supplier: draft.supplier,
+          confirmation_ref: draft.confirmation_ref,
+          start_at: draft.start_at,
+          end_at: draft.end_at,
+          details,
+        })
+        .eq("id", hit.id)
+        .eq("booking_id", loaded.dossier_id);
+      if (error) throw new McpWriteError("Le vol n’a pas pu être mis à jour.");
+      if (!carteId) carteId = hit.id;
+      continue;
+    }
     const { data, error } = await admin
       .from("crm_booking_items")
       .insert({
         booking_id: loaded.dossier_id,
         kind: "flight",
-        title: "Vol",
-        confirmation_ref: patch.confirmation_ref || loaded.read.pnr,
-        amount: patch.amount ?? null,
+        title: draft.title,
+        supplier: draft.supplier,
+        confirmation_ref: draft.confirmation_ref || loaded.read.pnr,
+        start_at: draft.start_at,
+        end_at: draft.end_at,
+        amount: null,
         sort_order: order,
         visible_to_client: false,
-        details: patch.details,
+        details,
       })
       .select("id")
       .single();
+    order += 1;
     if (error || !data?.id) throw new McpWriteError("Le vol n’a pas pu être créé.");
-    carteId = String(data.id);
-  } else if (carteId) {
-    const { error } = await admin.from("crm_booking_items").update(patch).eq("id", carteId).eq("booking_id", loaded.dossier_id);
-    if (error) throw new McpWriteError("Le vol n’a pas pu être mis à jour.");
-  }
-  if (patch.amount != null) {
-    try {
-      await syncBookingTotalFromItems(admin, loaded.dossier_id);
-    } catch {
-      // Le total se recalcule au prochain enregistrement du dossier.
-    }
+    if (!carteId) carteId = String(data.id);
   }
   const file = decodePieceFiles(input.fichiers ?? [input.fichier])[0];
   const attached = await attachBookingDocument(admin, {

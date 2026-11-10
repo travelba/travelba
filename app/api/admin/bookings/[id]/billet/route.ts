@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { attachBookingDocument } from "@/lib/crm/booking-document-write";
-import { syncBookingTotalFromItems } from "@/lib/crm/bookings";
 import { pdfPlainText } from "@/lib/crm/pdf-raster";
-import { emlToText, parseTicketMail, ticketFlightPatch, type TicketMailRead } from "@/lib/crm/ticket-mail";
+import { emlToText, parseTicketMail, ticketRowsFromRead, type TicketMailRead } from "@/lib/crm/ticket-mail";
 import { isUuid } from "@/lib/crm/ids";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -68,38 +67,54 @@ export async function POST(request: Request, ctx: Ctx) {
 
   let itemId = askedRow?.id || byPnr?.id || "";
   let created = false;
-  const current = askedRow || byPnr;
-  const patch = ticketFlightPatch(current || {}, read);
-  if (!itemId) {
-    if (!read.pnr) return jsonError("Le PNR n’a pas été lu. Ouvrez le vol et déposez le billet dessus.", 400);
-    const order = active.reduce((max, row) => Math.max(max, row.sort_order || 0), 0) + 1;
+  if (!itemId && !read.pnr) return jsonError("Le PNR n’a pas été lu. Ouvrez le vol et déposez le billet dessus.", 400);
+  const drafts = ticketRowsFromRead(read);
+  let order = active.reduce((max, row) => Math.max(max, row.sort_order || 0), 0) + 1;
+  for (const [index, draft] of drafts.entries()) {
+    const code = String(draft.details.flight_number || "").toUpperCase().replace(/\s+/g, "");
+    const hit =
+      active.find((row) => code && String(row.details?.flight_number || "").toUpperCase().replace(/\s+/g, "") === code) ||
+      (index === 0 ? askedRow || byPnr : undefined);
+    const existing = Array.isArray(hit?.details?.passengers) ? hit.details.passengers : [];
+    const details = { ...(hit?.details || {}), ...draft.details, ...(existing.length ? { passengers: existing } : {}) };
+    if (hit) {
+      const { error } = await auth.supabase
+        .from("crm_booking_items")
+        .update({
+          title: draft.title,
+          supplier: draft.supplier,
+          confirmation_ref: draft.confirmation_ref,
+          start_at: draft.start_at,
+          end_at: draft.end_at,
+          details,
+        })
+        .eq("id", hit.id)
+        .eq("booking_id", id);
+      if (error) return jsonError("Le vol n’a pas pu être mis à jour.", 400);
+      if (!itemId) itemId = hit.id;
+      continue;
+    }
     const { data: inserted, error } = await auth.supabase
       .from("crm_booking_items")
       .insert({
         booking_id: id,
         kind: "flight",
-        title: "Vol",
-        confirmation_ref: patch.confirmation_ref || read.pnr,
-        amount: patch.amount ?? null,
+        title: draft.title,
+        supplier: draft.supplier,
+        confirmation_ref: draft.confirmation_ref || read.pnr,
+        start_at: draft.start_at,
+        end_at: draft.end_at,
+        amount: null,
         sort_order: order,
         visible_to_client: false,
-        details: patch.details,
+        details,
       })
       .select("id")
       .single();
+    order += 1;
     if (error || !inserted?.id) return jsonError("Le vol n’a pas pu être créé.", 400);
-    itemId = String(inserted.id);
     created = true;
-  } else {
-    const { error } = await auth.supabase.from("crm_booking_items").update(patch).eq("id", itemId).eq("booking_id", id);
-    if (error) return jsonError("Le vol n’a pas pu être mis à jour.", 400);
-  }
-  if (patch.amount != null) {
-    try {
-      await syncBookingTotalFromItems(auth.supabase, id);
-    } catch (err) {
-      console.error("[billet] total", err instanceof Error ? err.message : err);
-    }
+    if (!itemId) itemId = String(inserted.id);
   }
   const attached = await attachBookingDocument(auth.supabase, {
     bookingId: id,
