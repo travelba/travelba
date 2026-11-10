@@ -61,7 +61,12 @@ export function ClientsTable({
             const amount = rows[0];
             const value = amount ? Number(amount.balance) : 0;
             return (
-              <li key={c.id} data-search={clientSearchText(c)} className="space-y-2 px-4 py-4">
+              <li
+                key={c.id}
+                data-search={clientSearchText(c)}
+                style={{ contentVisibility: "auto", containIntrinsicSize: "auto 72px" }}
+                className="space-y-2 px-4 py-4"
+              >
                 <Link href={`/admin/clients/${c.id}`} prefetch={false} className="flex min-w-0 items-center gap-3">
                   <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">
                     {initials(c)}
@@ -129,7 +134,12 @@ export function ClientsTable({
                 const amount = rows[0];
                 const value = amount ? Number(amount.balance) : 0;
                 return (
-                  <tr key={c.id} data-search={clientSearchText(c)} className="transition hover:bg-[var(--admin-sky)]/40">
+                  <tr
+                    key={c.id}
+                    data-search={clientSearchText(c)}
+                    style={{ contentVisibility: "auto", containIntrinsicSize: "auto 56px" }}
+                    className="transition hover:bg-[var(--admin-sky)]/40"
+                  >
                     <td className="px-5 py-3">
                       <Link href={`/admin/clients/${c.id}`} prefetch={false} className="flex items-center gap-3">
                         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">

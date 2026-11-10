@@ -1,6 +1,10 @@
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
-import { WhatsappInbox } from "@/components/admin/WhatsappInbox";
+
+const WhatsappInbox = dynamic(() => import("@/components/admin/WhatsappInbox").then((mod) => mod.WhatsappInbox), {
+  loading: () => <p className="text-sm text-muted">Messages…</p>,
+});
 import { firstParam, type SearchParamValue } from "@/lib/crm/admin-list";
 import { CARNET_ADDITION_KIND, CARNET_ADDITION_LABEL } from "@/lib/crm/carnet-addition";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
