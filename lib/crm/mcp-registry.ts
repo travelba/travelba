@@ -127,12 +127,13 @@ import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
 import { deposerBillet, detacherEmail, importerPieces } from "@/lib/crm/mcp-pieces-mail";
 import { envoyerRestaurants, fileWhatsapp, partagerSejour, propositionConcierge } from "@/lib/crm/mcp-messages";
+import { carteArrivee, ratehawk, reprendreFormalite, sejourHotel } from "@/lib/crm/mcp-stays";
 import { runIfConfirmed } from "@/lib/crm/mcp-preview";
 import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant-ops";
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 131;
+export const MCP_TOOL_CAP = 135;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2588,6 +2589,77 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: confirmOpt,
     },
     run: (args: ToolArgs) => envoyerRestaurants(args),
+  },
+  {
+    name: "sejour_hotel",
+    write: true,
+    openWorld: true,
+    description:
+      "Traite un séjour d’hôtel réservé par le client. client_id, sejour_id, action : repondre (texte), paye, lien_expire, envoyer_carte, prix (prix_hotel en euros), annuler, annuler_hotel, rembourser. Sans confirmer, aperçu : phase, effets, et si un courrier ou un remboursement part. confirmer true écrit. Réservé aux administrateurs. Aucun numéro de carte.",
+    input: {
+      client_id: z.string().trim().max(80),
+      sejour_id: z.string().trim().max(80),
+      action: z.enum(["repondre", "paye", "lien_expire", "envoyer_carte", "prix", "annuler", "annuler_hotel", "rembourser"]),
+      texte: z.string().trim().max(4000).optional().describe("Réponse de l’hôtel, pour repondre"),
+      prix_hotel: z.union([z.number(), z.string()]).optional().describe("Prix hôtel en euros, pour prix"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => sejourHotel(args),
+  },
+  {
+    name: "reprendre_formalite",
+    write: true,
+    description:
+      "Recommence une demande ESTA (US), ETA Royaume-Uni (GB) ou ETA-IL (IL). dossier_id ou reference, pays. Sans confirmer, aperçu : le client revoit la carte de départ, le remplissage est effacé. confirmer true recommence. Aucun message, aucun paiement. Le remplissage du portail et les frais d’État restent à l’écran.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      pays: z.enum(["US", "GB", "IL"]),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => reprendreFormalite(args),
+  },
+  {
+    name: "ratehawk",
+    write: true,
+    openWorld: true,
+    description:
+      "Ratehawk. action statut lit une commande, sans écrire. prereserver (hash h-, hid, prix) fige le tarif. reserver (devis, hid, hotel, arrivee, depart, chambres, recherche, telephone) réserve en deposit, sans numéro de carte. annuler (commande) annule. Sans confirmer, aperçu, rien n’est réservé ni annulé. confirmer true exécute. statut ne demande pas confirmer. Aucun message au client.",
+    input: {
+      action: z.enum(["statut", "prereserver", "reserver", "annuler"]),
+      hash: z.string().trim().max(200).optional(),
+      hid: z.union([z.number(), z.string()]).optional(),
+      prix: z.union([z.number(), z.string()]).optional(),
+      devis: z.string().trim().max(4000).optional(),
+      hotel: z.string().trim().max(200).optional(),
+      arrivee: z.string().trim().max(20).optional(),
+      depart: z.string().trim().max(20).optional(),
+      residence: z.string().trim().max(8).optional(),
+      telephone: z.string().trim().max(40).optional(),
+      chambres: z.array(z.object({ voyageurs: z.array(z.object({ prenom: z.string().max(80), nom: z.string().max(80), enfant: z.boolean().optional(), age: z.number().optional() })).max(8) })).max(8).optional(),
+      recherche: z.array(z.object({ adultes: z.number(), enfants: z.array(z.number()).max(6).optional() })).max(8).optional(),
+      prix_accepte: z.boolean().optional(),
+      accepter_prix: z.boolean().optional(),
+      commande: z.string().trim().max(80).optional(),
+      dossier: z.string().trim().max(80).optional(),
+      scenario: z.string().trim().max(40).optional(),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => ratehawk(args),
+  },
+  {
+    name: "carte_arrivee",
+    write: true,
+    openWorld: true,
+    description:
+      "Crée la carte d’arrivée du pré-check-in, comme le bouton de la fiche hôtel. dossier_id ou reference, carte_id de l’hôtel. Sans confirmer, aperçu, aucune carte. confirmer true crée la carte. La réponse donne les quatre derniers chiffres et le titulaire, jamais le numéro complet. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      carte_id: z.string().trim().max(80),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => carteArrivee(args),
   },
 ];
 
