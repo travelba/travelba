@@ -103,6 +103,7 @@ export function BookingsTable({
           <li
             key={b.id}
             data-search={searchText[b.id] || ""}
+            style={{ contentVisibility: "auto", containIntrinsicSize: "auto 88px" }}
             className="flex flex-col gap-3 px-4 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:px-5 lg:flex-row lg:items-center lg:justify-between"
           >
             <Link

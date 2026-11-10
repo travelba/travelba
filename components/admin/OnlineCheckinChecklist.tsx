@@ -1,15 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
 import { adminAction } from "@/lib/crm/admin-action";
-import type { FlightCheckinView, OnlineCheckinStatus } from "@/lib/crm/online-checkin";
+import { ONLINE_CHECKIN_LABELS, type FlightCheckinView, type OnlineCheckinStatus } from "@/lib/crm/online-checkin";
+
+function withStatus(line: FlightCheckinView, status: OnlineCheckinStatus): FlightCheckinView {
+  const done = status === "fait" || status === "cartes_recues" || status === "envoyees";
+  return { ...line, status, label: ONLINE_CHECKIN_LABELS[status], done, alert: status === "ouvert" };
+}
 
 export function OnlineCheckinChecklist({ bookingId, lines }: { bookingId: string; lines: FlightCheckinView[] }) {
-  const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, OnlineCheckinStatus>>({});
   if (!lines.length) return null;
 
   async function mark(line: FlightCheckinView, statut: OnlineCheckinStatus) {
@@ -24,14 +28,15 @@ export function OnlineCheckinChecklist({ bookingId, lines }: { bookingId: string
       setNote(result.error || "Enregistrement impossible.");
       return;
     }
-    router.refresh();
+    setOverrides((current) => ({ ...current, [line.itemId]: statut }));
   }
 
   return (
     <section className="admin-af-card space-y-3 rounded-3xl p-5" aria-label="Enregistrement en ligne">
       <h2 className="font-display text-lg font-bold text-[#0B192C]">Enregistrement en ligne</h2>
       <ul className="space-y-3">
-        {lines.map((line) => {
+        {lines.map((source) => {
+          const line = overrides[source.itemId] ? withStatus(source, overrides[source.itemId]) : source;
           const title = [line.route, line.flight].filter(Boolean).join(" · ");
           return (
             <li key={line.itemId} className="flex flex-wrap items-start gap-3 text-sm text-[#0B192C]">

@@ -195,6 +195,7 @@ function StayRow({
     <Link
       href={`/admin/reservations/${booking.id}`}
       prefetch={false}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 64px" }}
       className={`flex items-center gap-3 px-3 py-3 transition hover:bg-[var(--admin-sky)]/40 ${
         entry.unseen ? "border-l-4 border-l-[var(--admin-gold)] bg-[var(--admin-peach)]" : ""
       }`}

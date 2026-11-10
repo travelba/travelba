@@ -201,7 +201,7 @@ export function BookingExpensesPanel({
     setQuantityText("1");
     setUnitPrice(null);
     setAmount(null);
-    router.refresh();
+    if (!(id && onExpenseWrite)) router.refresh();
   }
 
   /** Un clic : même écriture que le formulaire, quantité 1, libellé et montant du raccourci. */
@@ -240,7 +240,7 @@ export function BookingExpensesPanel({
     setQuantityText("1");
     setUnitPrice(null);
     setAmount(null);
-    router.refresh();
+    if (!(id && onExpenseWrite)) router.refresh();
   }
 
   /** Valider une dépense automatique : elle compte côté client (livre, prix, facture) dès que le séjour est Visible. */
@@ -267,7 +267,7 @@ export function BookingExpensesPanel({
       amount: item.amount == null ? 0 : Number(item.amount),
       validated: true,
     });
-    router.refresh();
+    if (!onExpenseWrite) router.refresh();
   }
 
   async function remove(id: string) {
@@ -296,7 +296,7 @@ export function BookingExpensesPanel({
       });
     }
     if (editingId === id) setEditingId(null);
-    router.refresh();
+    if (!(current && onExpenseWrite)) router.refresh();
   }
 
   async function toggleCommission(enabled: boolean) {
