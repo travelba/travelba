@@ -27,13 +27,18 @@ export type McpAccess = {
   actor: string;
   /** Jeton cité dans `TRAVELBA_MCP_PASSPORT_TOKENS`. Une clé nominative ne l’ouvre pas. */
   passport: boolean;
-  /** Jeton cité dans `TRAVELBA_MCP_CARD_TOKENS`. Absent : pas de lecture du numéro. */
+  /** Jeton cité dans `TRAVELBA_MCP_CARD_TOKENS`. Ce n’est pas le droit de lecture à lui seul. */
   cards?: boolean;
   /**
    * Créer ou geler une carte. Vrai pour le jeton général, un jeton carte,
-   * et une clé `tbk_` dont le membre a `create_pliant_card`. Pas la lecture du numéro.
+   * et une clé `tbk_` dont le membre a `create_pliant_card`.
    */
   cards_create?: boolean;
+  /**
+   * Lire le numéro, l’expiration et le CVV. Vrai pour le jeton général et un jeton carte.
+   * Une clé `tbk_` reste fausse, même avec `create_pliant_card`.
+   */
+  cards_read?: boolean;
   /** Présent seulement pour une clé nominative. Les jetons d’environnement n’ont pas de collègue. */
   staff?: McpStaffAccess;
 };
@@ -41,7 +46,13 @@ export type McpAccess = {
 export type PersonalMcpLookup = (token: string) => Promise<McpAccess | null>;
 
 const accessStore = new AsyncLocalStorage<McpAccess>();
-const DENIED: McpAccess = Object.freeze({ actor: "mcp", passport: false, cards: false, cards_create: false });
+const DENIED: McpAccess = Object.freeze({
+  actor: "mcp",
+  passport: false,
+  cards: false,
+  cards_create: false,
+  cards_read: false,
+});
 const warnedSharedSecret = new Set<string>();
 
 type NamedGrant = { actor: string; secret: string };
@@ -87,7 +98,7 @@ function matchingGrant(authorizationHeader: string | null | undefined, grants: N
 }
 
 /**
- * Jeton général : CRM, création et gel de carte, sans lecture du numéro.
+ * Jeton général : CRM, création, gel et lecture du numéro.
  * Un jeton passeport ne lit ni ne crée les cartes. Un jeton carte lit le numéro.
  * Le même secret dans les deux variables ouvre les deux.
  */
@@ -102,10 +113,11 @@ export function mcpAccessFromAuthorization(authorizationHeader: string | null | 
       passport: Boolean(passport),
       cards: Boolean(cards),
       cards_create: Boolean(cards),
+      cards_read: Boolean(cards),
     });
   }
   if (cronAuthorized(authorizationHeader, mcpSecret())) {
-    return Object.freeze({ actor: "mcp", passport: false, cards: false, cards_create: true });
+    return Object.freeze({ actor: "mcp", passport: false, cards: false, cards_create: true, cards_read: true });
   }
   return null;
 }
