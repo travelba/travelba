@@ -137,12 +137,18 @@ export const MCP_TOOL_CAP = 135;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
-  siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres. Même SIRET : la société existante est mise à jour"),
-  tva: z.string().trim().max(40).optional().describe("Numéro de TVA"),
+  siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres. Société française. Même SIRET : la société existante est mise à jour"),
+  identifiant_entreprise: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .describe("Identifiant d’entreprise hors SIRET (numéro de registre, NUI). Société hors France"),
+  tva: z.string().trim().max(40).optional().describe("Numéro de TVA ou numéro fiscal. Hors France : aucune forme imposée"),
   adresse: z.string().trim().max(300).optional().describe("Adresse de facturation"),
-  code_postal: z.string().trim().max(20).optional().describe("Code postal de facturation"),
+  code_postal: z.string().trim().max(20).optional().describe("Code postal de facturation. Facultatif hors France"),
   ville: z.string().trim().max(80).optional().describe("Ville de facturation"),
-  pays: z.string().trim().max(80).optional().describe("Pays de facturation"),
+  pays: z.string().trim().max(80).optional().describe("Pays, code ISO (XK) ou nom (Kosovo, Kosova)"),
 };
 
 /** Champs d’une fiche restaurant, partagés par create_restaurant et update_restaurant. */
@@ -335,7 +341,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_client",
     description:
-      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, TVA, e-mail, adresse, code postal, ville, pays, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro). id ou q.",
+      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro). id ou q.",
     input: { id, q },
     run: (args: ToolArgs) => readFicheClient({ id: str(args, "id"), q: str(args, "q") }),
   },
@@ -1893,12 +1899,13 @@ export const MCP_TOOLS: ToolDef[] = [
             id: z.string().trim().max(80).optional().describe("Société déjà là. Absent : création"),
             raison_sociale: z.string().trim().max(300).optional(),
             siret: z.string().trim().max(40).optional(),
+            identifiant_entreprise: z.string().trim().max(40).optional().describe("Numéro de registre hors SIRET"),
             tva: z.string().trim().max(40).optional(),
             email: z.string().trim().max(180).optional(),
             adresse: z.string().trim().max(300).optional(),
             code_postal: z.string().trim().max(20).optional(),
             ville: z.string().trim().max(80).optional(),
-            pays: z.string().trim().max(80).optional(),
+            pays: z.string().trim().max(80).optional().describe("Code ISO ou nom. Kosovo = XK"),
           })
         )
         .max(12)
@@ -1910,17 +1917,23 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_societe",
     write: true,
     description:
-      "Ajoute une société de facturation au client. Les autres sociétés ne changent pas, et les dossiers déjà facturés gardent leur société. La première reste la principale, recopiée sur la fiche. Un SIRET déjà présent est refusé : modifier_societe corrige cette société. Pas de téléphone sur la société. Aucun message.",
+      "Ajoute une société de facturation au client. Les autres sociétés ne changent pas, et les dossiers déjà facturés gardent leur société. La première reste la principale, recopiée sur la fiche. Un SIRET déjà présent est refusé : modifier_societe corrige cette société. Hors France, le SIRET n’est pas exigé : identifiant_entreprise et pays ISO (Kosovo = XK). Le numéro fiscal n’a pas de forme imposée. Le code postal est facultatif. Pas de téléphone sur la société. Aucun message.",
     input: {
       client_id: z.string().trim().max(80).describe("Identifiant du client"),
       raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
-      siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres. Déjà présent : refus, sans modification"),
-      tva: z.string().trim().max(40).optional().describe("Numéro de TVA"),
+      siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres, société française. Déjà présent : refus, sans modification"),
+      identifiant_entreprise: z
+        .string()
+        .trim()
+        .max(40)
+        .optional()
+        .describe("Identifiant d’entreprise hors SIRET (numéro de registre, NUI)"),
+      tva: z.string().trim().max(40).optional().describe("Numéro de TVA ou numéro fiscal. Hors France : aucune forme imposée"),
       email: z.string().trim().max(180).optional().describe("E-mail de facturation"),
       adresse: z.string().trim().max(300).optional().describe("Adresse de facturation"),
-      code_postal: z.string().trim().max(20).optional().describe("Code postal"),
+      code_postal: z.string().trim().max(20).optional().describe("Code postal. Facultatif hors France"),
       ville: z.string().trim().max(80).optional().describe("Ville"),
-      pays: z.string().trim().max(80).optional().describe("Pays"),
+      pays: z.string().trim().max(80).optional().describe("Pays, code ISO (XK) ou nom (Kosovo, Kosova)"),
     },
     run: (args) => ajouterSociete(args),
   },
@@ -1928,18 +1941,24 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_societe",
     write: true,
     description:
-      "Modifie une société de facturation déjà là, par societe_id (celui de fiche_client). Seuls les champs indiqués changent. Les autres sociétés et les dossiers facturés ne bougent pas. Si c’est la société principale, la fiche reprend ses champs. Pas de téléphone sur la société. Aucun message.",
+      "Modifie une société de facturation déjà là, par societe_id (celui de fiche_client). Seuls les champs indiqués changent. Les autres sociétés et les dossiers facturés ne bougent pas. Si c’est la société principale, la fiche reprend ses champs. Hors France : identifiant_entreprise, pays ISO, numéro fiscal sans forme imposée, code postal facultatif. Pas de téléphone sur la société. Aucun message.",
     input: {
       client_id: z.string().trim().max(80).describe("Identifiant du client"),
       societe_id: z.string().trim().max(80).describe("Identifiant de la société, renvoyé par fiche_client"),
       raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
-      siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres"),
-      tva: z.string().trim().max(40).optional().describe("Numéro de TVA"),
+      siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres, société française"),
+      identifiant_entreprise: z
+        .string()
+        .trim()
+        .max(40)
+        .optional()
+        .describe("Identifiant d’entreprise hors SIRET (numéro de registre, NUI)"),
+      tva: z.string().trim().max(40).optional().describe("Numéro de TVA ou numéro fiscal. Hors France : aucune forme imposée"),
       email: z.string().trim().max(180).optional().describe("E-mail de facturation"),
       adresse: z.string().trim().max(300).optional().describe("Adresse de facturation"),
-      code_postal: z.string().trim().max(20).optional().describe("Code postal"),
+      code_postal: z.string().trim().max(20).optional().describe("Code postal. Facultatif hors France"),
       ville: z.string().trim().max(80).optional().describe("Ville"),
-      pays: z.string().trim().max(80).optional().describe("Pays"),
+      pays: z.string().trim().max(80).optional().describe("Pays, code ISO (XK) ou nom (Kosovo, Kosova)"),
     },
     run: (args) => modifierSociete(args),
   },

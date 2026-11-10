@@ -46,6 +46,25 @@ test("la facture pro forma porte l’agence, le RIB et le reste à payer, sans l
   assert.equal(doc.missing.some((line) => line.includes("hors euros")), true);
 });
 
+test("une société hors UE garde la TVA sur la marge et le dit", () => {
+  const french = invoiceDocument(base);
+  assert.equal(french.legal.some((line) => line === "TVA sur la marge, article 297 A du CGI. TVA non déductible."), true);
+  assert.equal(french.legal.some((line) => line.includes("hors Union")), false);
+  const foreign = invoiceDocument({ ...base, outsideEu: true });
+  assert.equal(foreign.vatMode, "marge");
+  assert.equal(
+    foreign.legal.some(
+      (line) =>
+        line ===
+        "Client établi hors Union européenne. TVA sur la marge, article 297 A du CGI. TVA non déductible."
+    ),
+    true
+  );
+  const rated = invoiceDocument({ ...base, outsideEu: true, lines: [{ label: "Visa", amount: 120, vatRate: 20 }] });
+  assert.equal(rated.vatMode, "detail");
+  assert.equal(rated.legal.some((line) => line.includes("hors Union")), false);
+});
+
 test("un délai d’échéance et un taux de TVA suivent les données", () => {
   const doc = invoiceDocument({
     ...base,

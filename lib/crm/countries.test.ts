@@ -40,6 +40,15 @@ test("resolveCountryCode still does not treat demonyms as country names", () => 
   assert.equal(resolveCountryCode("France"), "FR");
 });
 
+test("le Kosovo est XK, y compris Kosova", () => {
+  assert.equal(resolveCountryCode("XK"), "XK");
+  assert.equal(resolveCountryCode("XKX"), "XK");
+  assert.equal(resolveCountryCode("Kosovo"), "XK");
+  assert.equal(resolveCountryCode("Kosova"), "XK");
+  assert.equal(resolveCountryCode("Kosovë"), "XK");
+  assert.equal(resolveNationality("Kosovar"), "XK");
+});
+
 test("les Émirats arabes unis restent un pays, y compris en anglais", () => {
   assert.equal(resolveCountryCode("AE"), "AE");
   assert.equal(resolveCountryCode("ARE"), "AE");

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   formatSiretInput,
+  isForeignBillingCountry,
   normalizeSiret,
   siretError,
   siretFieldError,
@@ -15,6 +16,7 @@ import { useCompanySuggest } from "@/components/crm/CompanyLookup";
 export type CompanyBillingValues = {
   companyName: string;
   siret: string;
+  registrationNumber: string;
   vatNumber: string;
   billingEmail: string;
   billingCountry: string;
@@ -26,6 +28,7 @@ export type CompanyBillingValues = {
 export function companyBillingFromCustomer(customer: {
   company_name?: string | null;
   siret?: string | null;
+  registration_number?: string | null;
   vat_number?: string | null;
   billing_email?: string | null;
   billing_country?: string | null;
@@ -36,6 +39,7 @@ export function companyBillingFromCustomer(customer: {
   return {
     companyName: customer.company_name || "",
     siret: customer.siret ? formatSiretInput(customer.siret) : "",
+    registrationNumber: customer.registration_number || "",
     vatNumber: customer.vat_number || "",
     billingEmail: customer.billing_email || "",
     billingCountry: customer.billing_country || "",
@@ -113,19 +117,26 @@ export function billingJson(
   profile: { country: string; line: string; postal: string; city: string },
   sameAsProfile: boolean
 ) {
+  const country = sameAsProfile ? profile.country : values.billingCountry;
+  const foreign = isForeignBillingCountry(country);
   const hasCompany = Boolean(
     values.companyName.trim() ||
       values.siret.trim() ||
+      values.registrationNumber.trim() ||
       values.vatNumber.trim() ||
       values.billingEmail.trim() ||
       (!sameAsProfile && (values.billingLine.trim() || values.billingPostal.trim() || values.billingCity.trim()))
   );
+  const identity = {
+    company_name: values.companyName,
+    siret: foreign ? "" : values.siret,
+    registration_number: foreign ? values.registrationNumber : "",
+    vat_number: values.vatNumber,
+    billing_email: values.billingEmail,
+  };
   if (!hasCompany) {
     return {
-      company_name: values.companyName,
-      siret: values.siret,
-      vat_number: values.vatNumber,
-      billing_email: values.billingEmail,
+      ...identity,
       billing_address_line: values.billingLine,
       billing_postal_code: values.billingPostal,
       billing_city: values.billingCity,
@@ -133,14 +144,11 @@ export function billingJson(
     };
   }
   return {
-    company_name: values.companyName,
-    siret: values.siret,
-    vat_number: values.vatNumber,
-    billing_email: values.billingEmail,
+    ...identity,
     billing_address_line: sameAsProfile ? profile.line : values.billingLine,
     billing_postal_code: sameAsProfile ? profile.postal : values.billingPostal,
     billing_city: sameAsProfile ? profile.city : values.billingCity,
-    billing_country: sameAsProfile ? profile.country : values.billingCountry,
+    billing_country: country,
   };
 }
 
@@ -185,9 +193,11 @@ export function CompanyBillingFields({
   const suggest = useCompanySuggest({ query: lookup ?? "", onPick: pickCompany });
 
   const address = billingAddressDisplay(values, profileAddress, sameAsProfile);
+  const foreign = isForeignBillingCountry(address.country);
 
   function editAddress(partial: Partial<ProfileAddress>) {
     const next = billingAddressEdit(values, address, partial);
+    if (isForeignBillingCountry(next.values.billingCountry)) setLookup(null);
     onChange(next.values, { sameAsProfile: next.sameAsProfile });
   }
 
@@ -223,7 +233,7 @@ export function CompanyBillingFields({
               onChange={(event) => {
                 const text = event.target.value;
                 update({ companyName: text });
-                setLookup(text);
+                if (!foreign) setLookup(text);
               }}
               onKeyDown={suggest.onKeyDown}
               role="combobox"
@@ -235,30 +245,42 @@ export function CompanyBillingFields({
               className={fieldControlClass}
               placeholder="Nom de la société ou SIRET"
             />
-            {lookup !== null && !/^\d+$/.test(lookup.replace(/\s/g, "")) ? suggest.list : null}
+            {!foreign && lookup !== null && !/^\d+$/.test(lookup.replace(/\s/g, "")) ? suggest.list : null}
           </div>
         </Field>
-        <Field label="SIRET" error={siretHint} hint={!siretHint ? "14 chiffres" : undefined}>
-          <div className="relative">
+        {foreign ? (
+          <Field label="Identifiant d’entreprise" hint="Numéro de registre, hors SIRET.">
             <input
-              value={values.siret}
-              onChange={(event) => onSiret(event.target.value)}
-              onKeyDown={suggest.onKeyDown}
-              inputMode="numeric"
+              value={values.registrationNumber}
+              onChange={(event) => update({ registrationNumber: event.target.value })}
               autoComplete="off"
               className={fieldControlClass}
-              placeholder="000 000 000 00000"
+              placeholder="NUI, numéro d’entreprise"
             />
-            {lookup !== null && /^\d+$/.test(lookup.replace(/\s/g, "")) ? suggest.list : null}
-          </div>
-        </Field>
-        <Field label="N° TVA intracommunautaire">
+          </Field>
+        ) : (
+          <Field label="SIRET" error={siretHint} hint={!siretHint ? "14 chiffres" : undefined}>
+            <div className="relative">
+              <input
+                value={values.siret}
+                onChange={(event) => onSiret(event.target.value)}
+                onKeyDown={suggest.onKeyDown}
+                inputMode="numeric"
+                autoComplete="off"
+                className={fieldControlClass}
+                placeholder="000 000 000 00000"
+              />
+              {lookup !== null && /^\d+$/.test(lookup.replace(/\s/g, "")) ? suggest.list : null}
+            </div>
+          </Field>
+        )}
+        <Field label={foreign ? "N° fiscal" : "N° TVA intracommunautaire"}>
           <input
             value={values.vatNumber}
             onChange={(event) => update({ vatNumber: event.target.value.toUpperCase() })}
             autoComplete="off"
             className={fieldControlClass}
-            placeholder="FRXX000000000"
+            placeholder={foreign ? "Numéro fiscal" : "FRXX000000000"}
           />
         </Field>
         <Field label="Email de facturation" className="sm:col-span-2">

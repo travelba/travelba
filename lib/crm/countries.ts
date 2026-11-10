@@ -92,6 +92,7 @@ JO|JOR|Jordanie
 KZ|KAZ|Kazakhstan
 KE|KEN|Kenya
 KG|KGZ|Kirghizistan
+XK|XKX|Kosovo
 KW|KWT|Koweït
 LA|LAO|Laos
 LS|LSO|Lesotho
@@ -230,6 +231,15 @@ const COUNTRY_ALIASES: Record<string, string> = {
   uae: "AE",
   unitedarabemirates: "AE",
   unitedarabemirate: "AE",
+  unitedstates: "US",
+  unitedstatesofamerica: "US",
+  uk: "GB",
+  greatbritain: "GB",
+  kosova: "XK",
+  kosove: "XK",
+  republicofkosovo: "XK",
+  republiquedukosovo: "XK",
+  rks: "XK",
 };
 
 /** Adjectifs / dénominations fréquents sur un passeport (vision OCR). */
@@ -363,6 +373,8 @@ const NATIONALITY_ALIASES: Record<string, string> = {
   autrichien: "AT",
   autrichienne: "AT",
   austrian: "AT",
+  kosovar: "XK",
+  kosovare: "XK",
 };
 
 const DEMONYM_SUFFIXES = [
@@ -470,6 +482,59 @@ export function resolveNationality(
   fallback?: string | null | undefined
 ): string | null {
   return resolveNationalityToken(value) || resolveNationalityToken(fallback);
+}
+
+/** États membres de l’UE. Le Royaume-Uni, la Suisse et le Kosovo n’y sont pas. */
+const EU_MEMBER_ISO = new Set([
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
+]);
+
+/** Nom affiché. Un code ou un nom connu devient le libellé français. Le texte inconnu reste. */
+export function displayCountry(value: string | null | undefined) {
+  const code = resolveCountryCode(value);
+  if (code) return countryName(code);
+  return (value || "").trim();
+}
+
+export function isEuMember(value: string | null | undefined) {
+  const code = resolveCountryCode(value);
+  return Boolean(code && EU_MEMBER_ISO.has(code));
+}
+
+/**
+ * Client société hors Union européenne.
+ * Un pays illisible ne compte pas : on ne pose pas la mention hors UE.
+ */
+export function businessOutsideEu(value: string | null | undefined) {
+  const code = resolveCountryCode(value);
+  if (!code) return false;
+  return !EU_MEMBER_ISO.has(code);
 }
 
 export function countriesForSelect(priorityFirst = true): Country[] {

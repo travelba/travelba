@@ -416,6 +416,10 @@ export function clientBillingInput(input: Record<string, unknown>): BillingCompa
     body.siret = input.siret;
     any = true;
   }
+  if ("identifiant_entreprise" in input) {
+    body.registration_number = input.identifiant_entreprise;
+    any = true;
+  }
   if ("tva" in input) {
     body.vat_number = input.tva;
     any = true;

@@ -28,6 +28,8 @@ export type InvoiceInput = {
   wire?: InvoiceWire | null;
   stripeUrl?: string | null;
   payerFirstName?: string | null;
+  /** Société établie hors Union européenne. La mention de marge ne change pas de régime. */
+  outsideEu?: boolean;
 };
 
 export type InvoiceDocument = {
@@ -232,7 +234,7 @@ export function invoiceDocument(input: InvoiceInput): InvoiceDocument {
   const missing: string[] = [];
   if (paymentMissing) missing.push("RIB (IBAN) : Revolut ne le fournit pas et le réglage Facture est vide.");
   if (paid.foreign) missing.push("Un acompte hors euros n’est pas converti.");
-  const legal = invoiceLegalLines(vatMode, dueDays);
+  const legal = invoiceLegalLines(vatMode, dueDays, input.outsideEu === true);
   const payerFirstName = (input.payerFirstName || "").trim();
   const title = (input.title || "").trim() || reference || "Séjour";
   const doc: InvoiceDocument = {
@@ -275,12 +277,14 @@ export function invoiceDocument(input: InvoiceInput): InvoiceDocument {
   return doc;
 }
 
-export function invoiceLegalLines(vatMode: "marge" | "detail", dueDays: number | null) {
+export function invoiceLegalLines(vatMode: "marge" | "detail", dueDays: number | null, outsideEu = false) {
   const { legal, address } = siteConfig;
   const payment =
     dueDays == null
       ? "Payable à réception. Aucun escompte pour paiement anticipé."
       : `Payable sous ${dueDays} jour${dueDays > 1 ? "s" : ""}. Aucun escompte pour paiement anticipé.`;
+  const margin =
+    "TVA sur la marge, article 297 A du CGI. TVA non déductible.";
   return [
     `${legal.legalName} — ${legal.legalForm} au capital de ${legal.capital} — SIRET ${legal.siret}`,
     `${legal.rcs} — TVA ${legal.vat}`,
@@ -288,7 +292,9 @@ export function invoiceLegalLines(vatMode: "marge" | "detail", dueDays: number |
     `Immatriculation Atout France ${legal.atoutFrance} — IATA ${legal.iata}`,
     `Garantie financière : APST n° ${legal.apstNumber}, 15 avenue Carnot, 75017 Paris.`,
     vatMode === "marge"
-      ? "TVA sur la marge, article 297 A du CGI. TVA non déductible."
+      ? outsideEu
+        ? `Client établi hors Union européenne. ${margin}`
+        : margin
       : "Montants hors taxe, TVA et toutes taxes comprises selon les lignes.",
     payment,
     "En cas de retard : pénalités au taux légal et indemnité forfaitaire de 40 EUR pour frais de recouvrement (art. L441-10 du code de commerce).",

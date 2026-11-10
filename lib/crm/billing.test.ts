@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  billingIdentifierLines,
   formatSiretInput,
   normalizeFlyingBlue,
   normalizeIban,
@@ -24,6 +25,7 @@ import {
 const emptyBilling: CompanyBillingValues = {
   companyName: "",
   siret: "",
+  registrationNumber: "",
   vatNumber: "",
   billingEmail: "",
   billingCountry: "",
@@ -93,6 +95,45 @@ test("customer patch maps billing fields", () => {
   assert.equal(patch.billing_country, "FR");
   assert.equal(patch.flying_blue, "AB12");
   assert.equal(patch.phone_secondary, "+33601020304");
+});
+
+test("une société au Kosovo n’exige pas de SIRET et garde un numéro fiscal libre", () => {
+  const stored = normalizeBillingCompanies([
+    {
+      company_name: "BEELYNQ LLC",
+      siret: "pas-un-siret",
+      registration_number: "810123456",
+      vat_number: "810 123 456",
+      billing_email: "agon@beelynq.com",
+      billing_address_line: 'Rr. "Tirana", Arberia III, Lokali 12-1',
+      billing_postal_code: "",
+      billing_city: "Prishtine",
+      billing_country: "Kosova",
+    },
+  ]);
+  assert.equal("error" in stored, false);
+  if ("error" in stored) return;
+  const company = stored.companies[0];
+  assert.equal(company?.billing_country, "XK");
+  assert.equal(company?.siret, null);
+  assert.equal(company?.registration_number, "810123456");
+  assert.equal(company?.vat_number, "810123456");
+  assert.equal(company?.billing_postal_code, null);
+  assert.equal(company?.billing_city, "Prishtine");
+  assert.deepEqual(billingIdentifierLines(company || {}), ["Identifiant 810123456", "N° fiscal 810123456"]);
+  const french = normalizeBillingCompanies([
+    { company_name: "Atelier", siret: "73282932000074", vat_number: "FR44732829320", billing_country: "France" },
+  ]);
+  assert.equal("error" in french, false);
+  if ("error" in french) return;
+  assert.equal(french.companies[0]?.siret, "73282932000074");
+  assert.equal(french.companies[0]?.registration_number, null);
+  assert.deepEqual(billingIdentifierLines(french.companies[0] || {}), ["SIRET 73282932000074", "TVA FR44732829320"]);
+  assert.deepEqual(
+    billingIdentifierLines({ billing_country: "DE", registration_number: "HRB 1", vat_number: "DE123456789" }),
+    ["Identifiant HRB 1", "TVA DE123456789"]
+  );
+  assert.equal(siretError("73282932000075"), "SIRET invalide.");
 });
 
 test("invalid SIRET is rejected", () => {

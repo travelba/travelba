@@ -53,7 +53,12 @@ export function billingCompanyDrafts(
   }
   const values = companyBillingFromCustomer(legacy || {});
   const hasLegacy = Boolean(
-    values.companyName || values.siret || values.vatNumber || values.billingEmail || values.billingLine
+    values.companyName ||
+      values.siret ||
+      values.registrationNumber ||
+      values.vatNumber ||
+      values.billingEmail ||
+      values.billingLine
   );
   if (!hasLegacy) return [];
   return [

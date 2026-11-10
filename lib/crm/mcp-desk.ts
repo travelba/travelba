@@ -230,6 +230,7 @@ function mapCompany(entry: unknown) {
     id: row.id,
     company_name: row.raison_sociale ?? row.company_name,
     siret: row.siret,
+    registration_number: row.identifiant_entreprise ?? row.registration_number,
     vat_number: row.tva ?? row.vat_number,
     billing_email: row.email ?? row.billing_email,
     billing_address_line: row.adresse ?? row.billing_address_line,
@@ -242,6 +243,7 @@ function mapCompany(entry: unknown) {
 const COMPANY_INPUT_KEYS = [
   ["raison_sociale", "company_name"],
   ["siret", "siret"],
+  ["identifiant_entreprise", "registration_number"],
   ["tva", "vat_number"],
   ["email", "billing_email"],
   ["adresse", "billing_address_line"],

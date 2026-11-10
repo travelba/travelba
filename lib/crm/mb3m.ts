@@ -1,5 +1,6 @@
 /** Client SOAP MB3M Partners (serveur). Les identifiants restent dans l’environnement. */
 
+import { resolveCountryCode } from "@/lib/crm/countries";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export const MB3M_ORIGIN = "https://api.mb3m.com";
@@ -27,6 +28,34 @@ export type Mb3mAddress = {
   city: string;
   countryCode?: string;
 };
+
+/**
+ * Adresse MB3M. Une société hors France peut n’avoir ni code postal :
+ * le champ est alors omis. Une personne, ou une société française, le garde.
+ */
+export function mb3mAddress(input: {
+  name: string;
+  line?: string | null;
+  postal?: string | null;
+  city?: string | null;
+  country?: string | null;
+  company?: boolean;
+}): Mb3mAddress | null {
+  const line1 = (input.line || "").trim();
+  const postalCode = (input.postal || "").trim();
+  const cityName = (input.city || "").trim();
+  const countryCode = resolveCountryCode(input.country) || undefined;
+  const postalOptional = Boolean(input.company && countryCode && countryCode !== "FR");
+  if (!line1 || !cityName) return null;
+  if (!postalOptional && !postalCode) return null;
+  return {
+    name: input.name,
+    line1,
+    postalCode,
+    city: cityName,
+    ...(countryCode ? { countryCode } : {}),
+  };
+}
 
 export type Mb3mPersonDraft = {
   partnerId?: string;

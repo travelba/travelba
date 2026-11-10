@@ -574,6 +574,8 @@ export type CrmBillingCompany = {
   company_name: string | null;
   siret: string | null;
   vat_number: string | null;
+  /** Numéro de registre hors SIRET. Absent tant que la migration n’est pas jouée. */
+  registration_number?: string | null;
   billing_email: string | null;
   billing_address_line: string | null;
   billing_postal_code: string | null;

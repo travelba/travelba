@@ -668,6 +668,28 @@ describe("client MB3M Partners", () => {
     assert.equal(body.toLowerCase().includes("siret"), false);
     assert.equal(body.toLowerCase().includes("tva"), false);
     assert.equal(body.includes("secret-value"), false);
+    let foreign = "";
+    await mb3mSaveCompany(
+      {
+        name: "BEELYNQ LLC",
+        address: {
+          name: "BEELYNQ LLC",
+          line1: 'Rr. "Tirana"',
+          postalCode: "",
+          city: "Prishtine",
+          countryCode: "XK",
+        },
+      },
+      async (_url, init) => {
+        foreign = String(init?.body);
+        return new Response(
+          `<CustomerOperationResponse><ResultCode>1</ResultCode><Id>BEELYNQ</Id><Uid>company-xk</Uid></CustomerOperationResponse>`
+        );
+      }
+    );
+    assert.equal(foreign.includes("<PostalCode>"), false);
+    assert.equal(foreign.includes("<CountryCode>XK</CountryCode>"), true);
+    assert.equal(foreign.toLowerCase().includes("siret"), false);
   });
 
   it("n’envoie que le prénom et le nom des voyageurs", async () => {

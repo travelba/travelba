@@ -118,8 +118,23 @@ describe("fiche MB3M", () => {
     assert.equal(fromCustomer?.email, "ada@example.invalid");
     assert.equal(fromCustomer?.phoneNumber, "+33600000000");
     assert.deepEqual(mb3mHandCompanies([{ company_name: "OZB", siret: "12345678900012", vat_number: "FR123" }]), [
-      { name: "OZB", siret: "12345678900012", vatNumber: "FR123" },
+      { name: "OZB", siret: "12345678900012", vatNumber: "FR123", registrationNumber: null },
     ]);
+    const kosovo = mb3mCompanyDraft({
+      id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      company_name: "BEELYNQ LLC",
+      registration_number: "810123456",
+      vat_number: "810123456",
+      billing_email: "agon@beelynq.com",
+      billing_address_line: 'Rr. "Tirana", Arberia III, Lokali 12-1',
+      billing_postal_code: null,
+      billing_city: "Prishtine",
+      billing_country: "Kosova",
+    });
+    assert.equal(kosovo?.address.city, "Prishtine");
+    assert.equal(kosovo?.address.postalCode, "");
+    assert.equal(kosovo?.address.countryCode, "XK");
+    assert.equal("siret" in (kosovo || {}), false);
   });
 
   it("éteint le bouton tant que l’adresse manque", () => {
