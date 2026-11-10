@@ -1097,7 +1097,12 @@ async function captureLegacyChoice(
  * Envoi demandé par l’agence. Le cron de 16 h ne passe pas par ici. Le mode test n’écrit qu’au numéro de test.
  * Un dossier hors de `RESTAURANT_ALLOWED_BOOKINGS` est refusé avant toute lecture du reste.
  */
-export async function sendRestaurantEvening(db: SupabaseClient, bookingId: string, date: string) {
+export async function sendRestaurantEvening(
+  db: SupabaseClient,
+  bookingId: string,
+  date: string,
+  opts?: { dry?: boolean }
+) {
   const head = await bookingHead(db, bookingId);
   if (!head) return { error: "Dossier introuvable." };
   if (!head.is_test && !restaurantBookingAllowed(head.reference)) return { error: RESTAURANT_ALLOWLIST_BLOCK };
@@ -1149,6 +1154,7 @@ export async function sendRestaurantEvening(db: SupabaseClient, bookingId: strin
   if (!introSid || !(carouselSid || menuSid)) {
     if (!test) return { error: "Le modèle WhatsApp n’est pas encore approuvé par Meta." };
     const text = restaurantIntroText({ greeting, eveningDate: date });
+    if (opts?.dry) return { ok: true as const, apercu: true as const, messages: [{ partie: "intro", texte: text }] };
     const libre = await sendWhatsappSession({ to: sessionAddress(phone) || phone, body: text });
     if (!libre.ok) return { error: "Aperçu seul. Le modèle n’est pas approuvé et la fenêtre de 24 h n’est pas ouverte." };
     await rememberMessage(db, {
@@ -1167,7 +1173,7 @@ export async function sendRestaurantEvening(db: SupabaseClient, bookingId: strin
     return { ok: true as const, libre: true };
   }
   const detail = { booking, customer, tables };
-  let sentCount = 0;
+  const pending: { part: "intro" | "A" | "B"; prepared: Exclude<ReturnType<typeof prepareRestaurantSend>, { error: string }> }[] = [];
   for (const part of ["intro", "A", "B"] as const) {
     if (sent[part]) continue;
     const prepared = prepareRestaurantSend({
@@ -1180,6 +1186,13 @@ export async function sendRestaurantEvening(db: SupabaseClient, bookingId: strin
       menuSid,
     });
     if ("error" in prepared) return { error: prepared.error };
+    pending.push({ part, prepared });
+  }
+  if (opts?.dry) {
+    return { ok: true as const, apercu: true as const, messages: pending.map((row) => ({ partie: row.part, texte: row.prepared.text })) };
+  }
+  let sentCount = 0;
+  for (const { part, prepared } of pending) {
     const result = await sendContentTemplate({ phone, contentSid: prepared.contentSid, variables: prepared.variables });
     if (!result.ok) return { error: "WhatsApp n’a pas accepté le message." };
     await rememberMessage(db, {

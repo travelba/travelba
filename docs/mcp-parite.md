@@ -55,7 +55,8 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Statut d’enregistrement des vols | `enregistrement_en_ligne` — couvert |
 | Brouillon WhatsApp d’un ajout | `preparer_message_carnet` — couvert, n’envoie pas |
 | Demander ou annuler une option (extras), devis chauffeur | hors API |
-| Responsable du dossier, partage WhatsApp accompagnateur | hors API |
+| Responsable du dossier | hors API |
+| Partage WhatsApp à un accompagnateur | `partager_sejour` — ajouté. Sans `confirmer`, aperçu (prénom, titre, destinataire masqué, « lien personnel »). `confirmer` true envoie. Le lien n’est pas renvoyé |
 | Import PDF / photos (lire, créer ou compléter) | `importer_pieces` — ajouté. Sans `confirmer`, aperçu (titre, dates, voyageurs, cartes). `confirmer` true crée un dossier caché (`client_id`) ou complète le séjour (`dossier_id`). Une annulation ne crée pas de dossier |
 | Services proposés (`offer_*`), destination, devise, titulaire facturé | partiel dans `mettre_a_jour_dossier` |
 
@@ -109,10 +110,12 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Rouvrir un accès coupé | `reactiver_membre` — ajouté |
 | Départ (réattribuer les dossiers), sessions, matrice des droits | hors API |
 | Restaurants du catalogue et tables du soir | `list_restaurants`, `create_restaurant`, `update_restaurant`, `tables_restaurant`, `choix_restaurant`, `sejours_restaurants` — couvert |
-| Envoyer le WhatsApp 16 h, modèles | `create_restaurant_whatsapp_templates`, `get_restaurant_whatsapp_templates_status` — le dépôt des modèles est couvert ; l’envoi du soir reste le cron |
+| Envoyer le WhatsApp restaurants | `envoyer_restaurants` — ajouté. Sans `confirmer`, aperçu des messages. `confirmer` true envoie. Le cron de 16 h ne change pas. Les modèles restent `create_restaurant_whatsapp_templates` |
 | Déposer espace_client_lien, option_hotel_activee, facture_paiement | `deposer_modeles_whatsapp`, `statut_modeles_whatsapp` — ajouté. Administrateurs. Le SID est dans `crm_whatsapp_content_sids`, repli sur la variable |
 | Déposer autorisation_validee_document_v2 et autorisation_validee_image_v2 | `deposer_modeles_autorisation_whatsapp`, `statut_modeles_autorisation_whatsapp` — ajouté. Administrateurs. La v2 nomme l’autorisation. L’envoi l’utilise dès approbation, sinon la v1. Même réglage, repli `TWILIO_CONTENT_AUTORISATION_VALIDEE_*` et `_V2`. Un envoi v1 ou v2 compte. Aucun message |
 | Message WhatsApp libre, avec PDF déjà déposé | `envoyer_message_libre`, `deposer_modeles_message_libre_whatsapp`, `statut_modeles_message_libre_whatsapp` — ajouté. Sans `confirmer`, aperçu. `confirmer` true envoie. Fenêtre de 24 h : texte tel quel. Hors fenêtre : `message_libre_texte`, `message_libre_document` ou `message_libre_image`. SID dans `crm_whatsapp_content_sids`. Pas le modèle d’autorisation. Un passeport ne part pas |
+| File WhatsApp | `file_whatsapp` — ajouté. Répondre, reprendre, rendre au Concierge, traiter, noter, créer une fiche sans invitation. Sans `confirmer`, aperçu. Seule `repondre` envoie, et rien ne part sans `confirmer` true |
+| Proposition du Concierge, relance | `proposition_concierge` — ajouté. Approuver, refuser, modifier, relancer. Sans `confirmer`, aperçu du texte et si un message partirait. `confirmer` true enregistre. Refuser n’envoie rien |
 | Little Emperors | `reservation_little_emperors`, `little_emperors_en_attente` — couvert. `importer_reservation_little_emperors` crée ou rattache le dossier (`client_id`, `reference` ou `regroupement`, `dossier_id` ou `dossier_reference`, `voyageurs`, `forcer`). Le dossier créé reste Non visible, aucun message. Un dossier déjà Visible n’est pas recaché. Montrer au client ou `publier_carnet` le passe en Visible et prévient le client. Annulée ou en échec : refus, sauf `forcer`. Déjà liée ailleurs : refus, avec le dossier |
 | Cartes Pliant du dossier | `creer_carte_pliant`, `lire_carte_pliant`, `bloquer_carte_pliant` — jeton carte pour le numéro |
 | Plafond et clôture d’une carte Pliant | `modifier_plafond_pliant`, `cloturer_carte_pliant` — ajouté. Sans `confirmer`, aperçu. `confirmer` true change le plafond ou clôture. Ce n’est pas un gel |
@@ -125,7 +128,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 
 - **OAuth, sync bancaire, diagnostics, mot de passe, connexion.** Ce sont des réglages d’infrastructure, pas des gestes dossier.
 - **Numéro de passeport et PAN.** Ils restent sur `TRAVELBA_MCP_PASSPORT_TOKENS` et `TRAVELBA_MCP_CARD_TOKENS`. Une clé nominative ne les ouvre pas.
-- **Messages libres** (réponse hôtel, partage, formalité qui part au client). Le connecteur prépare (`preparer_message_carnet`, `traiter_email`) ; ces envois restent un clic humain. Le WhatsApp rédigé par l’agence, avec une pièce déjà déposée, est `envoyer_message_libre` : sans `confirmer`, rien ne part.
+- **Messages libres.** Le WhatsApp rédigé par l’agence, avec une pièce déjà déposée, est `envoyer_message_libre`. Le partage à un accompagnateur est `partager_sejour`, la file est `file_whatsapp`, la proposition du Concierge est `proposition_concierge`, l’envoi restaurants est `envoyer_restaurants`. Sans `confirmer`, rien ne part.
 - **Réservation Ratehawk, remplissage de portail visa, paiement de la formalité.** Le lancement est `lancer_formalite`. Le remplissage du portail et le paiement restent des parcours longs, tenus par l’écran. L’import PDF ou photo est `importer_pieces`.
 - **Ouvrir l’espace client à la place du client.** Cela crée une session sur le poste de l’agence. Ce n’est pas un outil. Le renvoi des accès au client, lui, est `renvoyer_acces_whatsapp`.
 - **Export CSV du journal.** Le droit d’export et le volume de données restent sur l’écran.

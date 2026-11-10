@@ -126,12 +126,13 @@ import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
 import { deposerBillet, detacherEmail, importerPieces } from "@/lib/crm/mcp-pieces-mail";
+import { envoyerRestaurants, fileWhatsapp, partagerSejour, propositionConcierge } from "@/lib/crm/mcp-messages";
 import { runIfConfirmed } from "@/lib/crm/mcp-preview";
 import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant-ops";
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 127;
+export const MCP_TOOL_CAP = 131;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2523,6 +2524,70 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: confirmOpt,
     },
     run: (args: ToolArgs) => societeDepense(args),
+  },
+  {
+    name: "partager_sejour",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie le lien du séjour publié à un accompagnateur par WhatsApp, comme Envoyer à … . compagnon_id, dossier_id ou reference. Sans confirmer, aperçu : prénom, titre, destinataire masqué, texte avec « lien personnel ». Le lien n’est pas renvoyé. confirmer true envoie. Rien ne part sans confirmation.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      compagnon_id: z.string().trim().max(80).describe("Accompagnateur du voyage"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => partagerSejour(args),
+  },
+  {
+    name: "file_whatsapp",
+    write: true,
+    openWorld: true,
+    description:
+      "Tient la file WhatsApp. action : repondre (texte, ou modele sejour_texte ou rappel), reprendre (le Concierge se tait jusqu’au matin), rendre (le fil revient au Concierge), traiter (demande_id), noter (message_id, note good, bad ou clear), creer_fiche (prenom, nom, telephone, aucune invitation). Sans confirmer, aperçu. confirmer true écrit. Seule repondre envoie un message, et rien ne part sans confirmation. Le téléphone est masqué.",
+    input: {
+      action: z.enum(["repondre", "reprendre", "rendre", "traiter", "noter", "creer_fiche"]),
+      telephone: z.string().trim().max(40).optional(),
+      texte: z.string().trim().max(1200).optional(),
+      modele: z.enum(["sejour_texte", "rappel"]).optional(),
+      dossier_id: z.string().trim().max(80).optional(),
+      client_id: z.string().trim().max(80).optional(),
+      demande_id: z.string().trim().max(80).optional(),
+      message_id: z.string().trim().max(80).optional(),
+      note: z.enum(["good", "bad", "clear"]).optional(),
+      prenom: z.string().trim().max(80).optional(),
+      nom: z.string().trim().max(80).optional(),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => fileWhatsapp(args),
+  },
+  {
+    name: "proposition_concierge",
+    write: true,
+    openWorld: true,
+    description:
+      "Traite une proposition du Concierge ou une relance. action : approuver, refuser, modifier (texte), relancer. Sans confirmer, aperçu du texte et si un message partirait. confirmer true enregistre. Un message ne part que si le canal est ouvert et confirmer est true. Refuser n’envoie rien.",
+    input: {
+      action: z.enum(["approuver", "refuser", "modifier", "relancer"]),
+      id: z.string().trim().max(80).describe("Proposition, ou relance si action est relancer"),
+      texte: z.string().trim().max(2000).optional().describe("Texte corrigé, pour modifier"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => propositionConcierge(args),
+  },
+  {
+    name: "envoyer_restaurants",
+    write: true,
+    openWorld: true,
+    description:
+      "Envoie tout de suite le WhatsApp restaurants d’une soirée, comme le bouton Envoyer. dossier_id ou reference, date AAAA-MM-JJ. Sans confirmer, aperçu des messages (intro, A, B). confirmer true envoie. Rien ne part sans confirmation. Le cron de 16 h ne change pas.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      date: z.string().trim().max(20).describe("Soirée, AAAA-MM-JJ"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => envoyerRestaurants(args),
   },
 ];
 
