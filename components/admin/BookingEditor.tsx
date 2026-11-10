@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { FormEvent, KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { DeferredHotels, DeferredLedger, type DeferredLedgerValue } from "@/components/admin/BookingDeferred";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -345,6 +346,8 @@ export function BookingEditor({
   revolutExpenses = [],
   ledger = null,
   accountLedger = null,
+  deferredLedger = null,
+  deferredItems = null,
   bookingCards = [],
   pliantRecap = [],
   estaLines = [],
@@ -438,6 +441,10 @@ export function BookingEditor({
   ledger?: ClientLedgerView | null;
   /** Grand livre du compte, même lecture que Transactions du client. */
   accountLedger?: ClientLedgerView | null;
+  /** Même lecture, après le rapprochement Stripe. N’empêche pas l’en-tête. */
+  deferredLedger?: Promise<DeferredLedgerValue | null> | null;
+  /** Cartes hôtel complétées (contacts, photos). Les étapes déjà affichées restent. */
+  deferredItems?: Promise<CrmBookingItem[] | null> | null;
   bookingCards?: CrmBookingCard[];
   pliantRecap?: PliantCardRecap[];
   estaLines?: EstaTravelerLine[];
@@ -468,7 +475,13 @@ export function BookingEditor({
   /** Qui est en charge (null : à prendre) et qui a créé le dossier (null : inconnu). */
   ownership?: { owner: string | null; createdBy: string | null } | null;
 }) {
-  const items = useMemo(() => completeFlightRoutes(sourceItems), [sourceItems]);
+  const [seenSource, setSeenSource] = useState(sourceItems);
+  const [liveSource, setLiveSource] = useState<CrmBookingItem[] | null>(null);
+  if (seenSource !== sourceItems) {
+    setSeenSource(sourceItems);
+    setLiveSource(null);
+  }
+  const items = useMemo(() => completeFlightRoutes(liveSource ?? sourceItems), [liveSource, sourceItems]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -477,16 +490,29 @@ export function BookingEditor({
   const ledgerKey = ledgerMoneyKey(accountLedger);
   const [seenLedgerKey, setSeenLedgerKey] = useState(ledgerKey);
   const [liveLedger, setLiveLedger] = useState(accountLedger);
+  const [previewLedger, setPreviewLedger] = useState(ledger);
+  const [ledgerEdited, setLedgerEdited] = useState(false);
   if (ledgerKey !== seenLedgerKey) {
     setSeenLedgerKey(ledgerKey);
     setLiveLedger(accountLedger);
+    setPreviewLedger(ledger);
+    setLedgerEdited(false);
   }
+  const onDeferredLedger = useCallback((value: DeferredLedgerValue) => {
+    if (ledgerEdited) return;
+    setLiveLedger(value.accountLedger);
+    setPreviewLedger(value.ledger);
+  }, [ledgerEdited]);
+  const onDeferredItems = useCallback((next: CrmBookingItem[]) => {
+    setLiveSource(next);
+  }, []);
   const onLiveItems = useCallback((next: CrmBookingItem[]) => {
     setPricedItems((current) => (stayAmountKey(current) === stayAmountKey(next) ? current : next));
   }, []);
   const onExpenseWrite = useCallback(
     (change: ExpenseWrite) => {
       setPricedItems((current) => withExpenseWrite(current, change, booking.id));
+      setLedgerEdited(true);
       setLiveLedger((current) =>
         applyExpenseLedgerChange(current, {
           bookingId: booking.id,
@@ -1275,6 +1301,16 @@ export function BookingEditor({
 
   return (
     <div className="flex flex-col gap-6">
+      {deferredLedger ? (
+        <Suspense fallback={null}>
+          <DeferredLedger promise={deferredLedger} onReady={onDeferredLedger} />
+        </Suspense>
+      ) : null}
+      {deferredItems ? (
+        <Suspense fallback={null}>
+          <DeferredHotels promise={deferredItems} onReady={onDeferredItems} />
+        </Suspense>
+      ) : null}
       {compact ? (
         <div className="fixed inset-x-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-30 border-b border-[var(--border)] bg-[rgba(250,249,246,0.94)] px-4 py-2 shadow-[0_1px_8px_rgba(11,25,44,0.06)] backdrop-blur-xl sm:px-6 lg:left-72 lg:top-20 lg:px-8">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
@@ -1589,7 +1625,7 @@ export function BookingEditor({
           pliantReady={pliantReady}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
-          ledger={ledger}
+          ledger={previewLedger}
           settled={settledAuthorizationCountries({
             travelerIds: travelers.map((traveler) => traveler.id),
             estaTones: estaLines,
