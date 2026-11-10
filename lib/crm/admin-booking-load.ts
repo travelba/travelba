@@ -190,6 +190,7 @@ export async function loadAdminBookingCritical(input: {
     new Set([b.customer_id, b.billing_customer_id].filter((value): value is string => Boolean(value)))
   );
   const ownerRow = b as CrmBooking & { owner_staff_id?: string | null; created_by_staff_id?: string | null };
+  console.time("[dossier] vague 1");
   const first = await wave({
     items: supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     travelers: supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -216,57 +217,10 @@ export async function loadAdminBookingCritical(input: {
       )
       .eq("customer_id", b.billing_customer_id || b.customer_id)
       .order("sort_order"),
-    attachedMails: supabase
-      .from("crm_email_ingest")
-      .select("id, subject, from_email, received_at, body_text, extract, warnings")
-      .eq("status", "attached")
-      .eq("created_booking_id", id)
-      .order("received_at", { ascending: false, nullsFirst: false }),
-    loginRows: supabase
-      .from("crm_customer_logins")
-      .select("id, customer_id, auth_user_id, method, created_at")
-      .eq("customer_id", b.customer_id)
-      .order("created_at", { ascending: false })
-      .limit(80),
-    activityRows: supabase
-      .from("crm_customer_activity")
-      .select("id, customer_id, auth_user_id, action, summary, detail, path, booking_id, created_at")
-      .eq("customer_id", b.customer_id)
-      .order("created_at", { ascending: false })
-      .limit(200),
-    whatsappMessages: loadCustomerWhatsappMessages(supabase, b.customer_id),
-    whatsappRequests: supabase
-      .from("crm_whatsapp_requests")
-      .select("id, kind, body, booking_id, created_at")
-      .eq("customer_id", b.customer_id)
-      .order("created_at", { ascending: false }),
-    stayRefs: supabase.from("crm_bookings").select("id, reference").eq("customer_id", b.customer_id),
     ficheCompanyRows: supabase.from("crm_billing_companies").select("*").eq("customer_id", b.customer_id).order("sort_order"),
     revealPassports: staffAllows(staff, "passport_reveal"),
     showMargins: staffAllows(staff, "view_margins"),
     staffNames: loadStaffNames(createServiceClient(), [ownerRow.owner_staff_id, ownerRow.created_by_staff_id]),
-    cards: supabase
-      .from("crm_booking_cards")
-      .select(
-        "id, booking_id, pliant_card_id, label, first_name, last_name, limit_cents, transaction_limit_cents, max_transaction_count, currency, valid_from, valid_to, last4, status, created_at"
-      )
-      .eq("booking_id", id)
-      .order("created_at", { ascending: true }),
-    hotelDesk: loadArrivals(id),
-    pliantCard: pliantCardForBooking(createServiceClient(), id).catch(() => null as PliantCardDraft | null),
-    estaLines: loadEstaForBookingId(createServiceClient(), id).catch(() => []),
-    ukEtaLines: readUkEtaLines(createServiceClient(), id).catch(() => []),
-    revolutExpenses: loadRevolutExpenses(id),
-    accountingInputs: loadDossierAccountingInputs(createServiceClient(), id).catch((error: unknown) => {
-      console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
-      return EMPTY_ACCOUNTING;
-    }),
-    gdsPieces: createServiceClient()
-      .from("crm_mb3m_pieces")
-      .select("piece_number, lines")
-      .eq("booking_id", id)
-      .eq("kind", "gds")
-      .eq("realm", mb3mRealm()),
     importTasks: supabase.from("crm_booking_tasks").select("id, kind, title").eq("booking_id", id).order("created_at"),
     checkins: supabase.from("crm_flight_checkins").select("booking_item_id, status, actor").eq("booking_id", id),
     appliedFees: loadResolvedAgencyFees(supabase, [b]),
@@ -278,20 +232,8 @@ export async function loadAdminBookingCritical(input: {
   const party = (first.relatedCustomers.data || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
   const billingCustomer = party.find((row) => row.id === (b.billing_customer_id || b.customer_id)) || customer;
-  const bookingCards = first.cards.error || !first.cards.data ? [] : (first.cards.data as CrmBookingCard[]);
-  const { arrivals, hotelRequests, hotelMessages, hotelThreadMessages } = first.hotelDesk;
-
-  const second = await wave({
-    bookingItems: loadHotelContacts(id, rawItems, { live: false }),
-    ledgers: bookingLedgers(supabase, customer, billingCustomer, false),
-    spends: loadPliantSpends(bookingCards, arrivals, first.pliantCard),
-    accounting: buildTripAccountingView(createServiceClient(), b, rawItems, first.accountingInputs).catch((error: unknown) => {
-      console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
-      return null;
-    }),
-  });
-
-  const bookingItems = second.bookingItems;
+  const bookingItems = await loadHotelContacts(id, rawItems, { live: false });
+  console.timeEnd("[dossier] vague 1");
   const allIdentity = (first.identityDocs.data || []) as CrmTravelDocument[];
   const bookingTravelers = (first.travelers.data || []) as CrmBookingTraveler[];
   const billingCompanyRows = (first.billingCompanies.data || []) as {
@@ -316,42 +258,17 @@ export async function loadAdminBookingCritical(input: {
     state: string | null;
     created_at: string | null;
   }[];
-  const hotelNames: Record<string, string> = {};
-  for (const item of bookingItems) {
-    if (item.kind === "hotel") hotelNames[item.id] = hotelDisplayName(item);
-  }
-  const pliantRecap = pliantCardRecaps(
-    pliantBookingCards({
-      bookingCards,
-      arrivals,
-      hotelNames,
-      registry: first.pliantCard,
-    }),
-    second.spends
-  );
   const storedShare = (b as CrmBooking & { share_code?: string | null }).share_code;
   const shareUrl =
     b.visible_to_client && storedShare && isTripShareCode(storedShare) ? tripShareUrl(siteConfig.url, storedShare) : null;
-  const accountingInputs = first.accountingInputs;
-  const mb3mPiece = accountingInputs.openNumber ? { number: accountingInputs.openNumber } : null;
-  const mb3mDraft = accountingInputs.pieces.find((row) => !row.printed_at && !(row.piece_number || "").trim()) || null;
-  const amadeus = ((first.gdsPieces.data || []) as { piece_number: string | null; lines: unknown }[]).flatMap((row) => {
-    const line = Array.isArray(row.lines) ? (row.lines[0] as { label?: string; placement?: string } | undefined) : undefined;
-    const placement: "move" | "here" | "other" =
-      line?.placement === "move" || line?.placement === "other" ? line.placement : "here";
-    const number = (row.piece_number || "").trim();
-    if (!number) return [];
-    return [{ label: (line?.label || "Vol").trim(), invoiceNumber: number, placement }];
-  });
-  const mb3mContext = buildMb3mInvoiceContext({
+  const panels = startDossierPanels({
+    supabase,
     booking: b,
-    items: bookingItems,
+    customer,
+    billingCustomer,
+    bookingItems,
     travelers: bookingTravelers,
-    payer: billingCustomer || customer,
-    companies: billingCompanyRows,
-    charges: accountingInputs.charges,
-    coveredIds: accountingInputs.coveredIds,
-    costs: accountingInputs.costs,
+    billingCompanyRows,
   });
   const appliedFee = first.appliedFees.get(b.id) || { rate: DEFAULT_AGENCY_FEE_RATE, source: "defaut" as const };
   const inheritedFee = first.inheritedFees.get(b.id) || { rate: DEFAULT_AGENCY_FEE_RATE, source: "defaut" as const };
@@ -405,16 +322,16 @@ export async function loadAdminBookingCritical(input: {
     pliantReady: pliantConfigured(),
     shareUrl,
     shareCompanions: companionsForShare(bookingTravelers, (first.companions.data || []) as CrmCompanion[]),
-    arrivals,
-    hotelRequests,
+    arrivals: [],
+    hotelRequests: [],
     hotelSignatory: hotelSignatoryName(staff.full_name),
-    hotelMessages,
-    hotelThreadMessages,
+    hotelMessages: [],
+    hotelThreadMessages: [],
     openHotelItemId: input.openHotelItemId,
     openRelanceId: input.openRelanceId,
     openReplyId: input.openReplyId,
     billingCompanies: billingCompanyRows,
-    revolutExpenses: first.revolutExpenses,
+    revolutExpenses: [],
     expenseBilling: bookingItems
       .filter((item) => isLedgerExpenseKind(item.kind))
       .map((item) => ({
@@ -422,38 +339,31 @@ export async function loadAdminBookingCritical(input: {
         title: visibleServiceCopy(item.title),
         billing_company_id: item.billing_company_id || null,
       })),
-    attachedEmails: (first.attachedMails.data || []) as {
-      id: string;
-      subject: string | null;
-      from_email: string | null;
-      received_at: string | null;
-      body_text?: string | null;
-      extract?: unknown;
-      warnings?: { file?: string | null; message?: string | null }[] | null;
-    }[],
+    attachedEmails: [],
     littleEmperors: leList[0] || null,
     leStays: leList,
-    ledger: second.ledgers.ledger,
-    accountLedger: second.ledgers.accountLedger,
-    bookingCards,
-    pliantRecap,
-    estaLines: first.estaLines,
-    ukEtaLines: first.ukEtaLines,
-    whatsappMessages: first.whatsappMessages,
-    whatsappRequests: first.whatsappRequests.error ? [] : first.whatsappRequests.data || [],
-    whatsappBookings: (first.stayRefs.data || []) as { id: string; reference: string }[],
+    ledger: null,
+    accountLedger: null,
+    bookingCards: [],
+    pliantRecap: [],
+    estaLines: [],
+    ukEtaLines: [],
+    whatsappMessages: [],
+    whatsappRequests: [],
+    whatsappBookings: [],
     whatsappTemplates: approvedManualTemplates(),
     whatsappPreviewBlocked: isVercelPreview(),
-    customerLogins: (first.loginRows.data || []) as CrmCustomerLogin[],
-    customerActivity: (first.activityRows.data || []) as CrmCustomerActivity[],
+    customerLogins: [],
+    customerActivity: [],
     ficheBillingCompanies: (first.ficheCompanyRows.data || []) as CrmBillingCompany[],
     mb3m: {
-      blocker: mb3mInvoiceBlocker(mb3mContext),
-      piece: mb3mPiece,
-      preparation: mb3mPreparationFromRow(mb3mDraft),
-      amadeus,
+      blocker: null,
+      piece: null,
+      preparation: { state: null, message: null, resume: false },
+      amadeus: [],
     },
-    accounting: second.accounting,
+    accounting: null,
+    panels,
     importTasks: first.importTasks.error
       ? []
       : ((first.importTasks.data || []) as { id: string; kind: string; title: string }[]),
@@ -464,6 +374,196 @@ export async function loadAdminBookingCritical(input: {
 function gotItems(result: { data: unknown }) {
   return result.data;
 }
+
+async function timed<T>(label: string, run: () => Promise<T>): Promise<T> {
+  console.time(label);
+  try {
+    return await run();
+  } finally {
+    console.timeEnd(label);
+  }
+}
+
+function startDossierPanels(input: {
+  supabase: SupabaseClient;
+  booking: CrmBooking;
+  customer: CrmCustomer | null;
+  billingCustomer: CrmCustomer | null;
+  bookingItems: CrmBookingItem[];
+  travelers: CrmBookingTraveler[];
+  billingCompanyRows: {
+    id: string;
+    company_name: string | null;
+    sort_order: number;
+    billing_email?: string | null;
+    billing_address_line?: string | null;
+    billing_postal_code?: string | null;
+    billing_city?: string | null;
+    billing_country?: string | null;
+  }[];
+}) {
+  const { supabase, booking: b, customer, billingCustomer, bookingItems, travelers, billingCompanyRows } = input;
+  const id = b.id;
+  console.time("[dossier] vague 2");
+  const settle = <T,>(label: string, run: () => Promise<T>): Promise<T | null> =>
+    timed(label, run).then(
+      (value) => value,
+      (error: unknown) => {
+        console.error("[dossier]", label, error instanceof Error ? error.message : error);
+        return null;
+      }
+    );
+  const emails = settle("[dossier] e-mails", async () => {
+    const { data } = await supabase
+      .from("crm_email_ingest")
+      .select("id, subject, from_email, received_at, extract, warnings")
+      .eq("status", "attached")
+      .eq("created_booking_id", id)
+      .order("received_at", { ascending: false, nullsFirst: false });
+    return (data || []) as {
+      id: string;
+      subject: string | null;
+      from_email: string | null;
+      received_at: string | null;
+      extract?: unknown;
+      warnings?: { file?: string | null; message?: string | null }[] | null;
+    }[];
+  });
+  const activity = settle("[dossier] activité", async () => {
+    const [loginRows, activityRows] = await Promise.all([
+      supabase
+        .from("crm_customer_logins")
+        .select("id, customer_id, auth_user_id, method, created_at")
+        .eq("customer_id", b.customer_id)
+        .order("created_at", { ascending: false })
+        .limit(80),
+      supabase
+        .from("crm_customer_activity")
+        .select("id, customer_id, auth_user_id, action, summary, detail, path, booking_id, created_at")
+        .eq("customer_id", b.customer_id)
+        .order("created_at", { ascending: false })
+        .limit(30),
+    ]);
+    return {
+      logins: loginRows.error ? [] : ((loginRows.data || []) as CrmCustomerLogin[]),
+      activity: activityRows.error ? [] : ((activityRows.data || []) as CrmCustomerActivity[]),
+    };
+  });
+  const whatsapp = settle("[dossier] whatsapp", async () => {
+    const [messages, requests, stayRefs] = await Promise.all([
+      loadCustomerWhatsappMessages(supabase, b.customer_id, 50),
+      supabase
+        .from("crm_whatsapp_requests")
+        .select("id, kind, body, booking_id, created_at")
+        .eq("customer_id", b.customer_id)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase.from("crm_bookings").select("id, reference").eq("customer_id", b.customer_id),
+    ]);
+    return {
+      messages,
+      requests: requests.error ? [] : requests.data || [],
+      bookings: (stayRefs.data || []) as { id: string; reference: string }[],
+    };
+  });
+  const esta = settle("[dossier] formalités", async () => {
+    const [estaLines, ukEtaLines] = await Promise.all([
+      loadEstaForBookingId(createServiceClient(), id).catch(() => []),
+      readUkEtaLines(createServiceClient(), id).catch(() => []),
+    ]);
+    return { estaLines, ukEtaLines };
+  });
+  const pliant = settle("[dossier] pliant", async () => {
+    const [cards, hotelDesk, registry] = await Promise.all([
+      supabase
+        .from("crm_booking_cards")
+        .select(
+          "id, booking_id, pliant_card_id, label, first_name, last_name, limit_cents, transaction_limit_cents, max_transaction_count, currency, valid_from, valid_to, last4, status, created_at"
+        )
+        .eq("booking_id", id)
+        .order("created_at", { ascending: true }),
+      loadArrivals(id),
+      pliantCardForBooking(createServiceClient(), id).catch(() => null as PliantCardDraft | null),
+    ]);
+    const bookingCards = cards.error || !cards.data ? [] : (cards.data as CrmBookingCard[]);
+    const spends = await loadPliantSpends(bookingCards, hotelDesk.arrivals, registry);
+    const hotelNames: Record<string, string> = {};
+    for (const item of bookingItems) {
+      if (item.kind === "hotel") hotelNames[item.id] = hotelDisplayName(item);
+    }
+    return {
+      bookingCards,
+      pliantRecap: pliantCardRecaps(
+        pliantBookingCards({ bookingCards, arrivals: hotelDesk.arrivals, hotelNames, registry }),
+        spends
+      ),
+      arrivals: hotelDesk.arrivals,
+      hotelRequests: hotelDesk.hotelRequests,
+      hotelMessages: hotelDesk.hotelMessages,
+      hotelThreadMessages: hotelDesk.hotelThreadMessages,
+    };
+  });
+  const money = settle("[dossier] compta", async () => {
+    const [ledgers, accountingInputs, gdsPieces, revolutExpenses] = await Promise.all([
+      bookingLedgers(supabase, customer, billingCustomer, false),
+      loadDossierAccountingInputs(createServiceClient(), id).catch((error: unknown) => {
+        console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
+        return EMPTY_ACCOUNTING;
+      }),
+      createServiceClient()
+        .from("crm_mb3m_pieces")
+        .select("piece_number, lines")
+        .eq("booking_id", id)
+        .eq("kind", "gds")
+        .eq("realm", mb3mRealm()),
+      loadRevolutExpenses(id),
+    ]);
+    const accounting = await buildTripAccountingView(createServiceClient(), b, bookingItems, accountingInputs).catch(
+      (error: unknown) => {
+        console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
+        return null;
+      }
+    );
+    const mb3mPiece = accountingInputs.openNumber ? { number: accountingInputs.openNumber } : null;
+    const mb3mDraft = accountingInputs.pieces.find((row) => !row.printed_at && !(row.piece_number || "").trim()) || null;
+    const amadeus = ((gdsPieces.data || []) as { piece_number: string | null; lines: unknown }[]).flatMap((row) => {
+      const line = Array.isArray(row.lines) ? (row.lines[0] as { label?: string; placement?: string } | undefined) : undefined;
+      const placement: "move" | "here" | "other" =
+        line?.placement === "move" || line?.placement === "other" ? line.placement : "here";
+      const number = (row.piece_number || "").trim();
+      if (!number) return [];
+      return [{ label: (line?.label || "Vol").trim(), invoiceNumber: number, placement }];
+    });
+    const mb3mContext = buildMb3mInvoiceContext({
+      booking: b,
+      items: bookingItems,
+      travelers,
+      payer: billingCustomer || customer,
+      companies: billingCompanyRows,
+      charges: accountingInputs.charges,
+      coveredIds: accountingInputs.coveredIds,
+      costs: accountingInputs.costs,
+    });
+    return {
+      ledger: ledgers.ledger,
+      accountLedger: ledgers.accountLedger,
+      accounting,
+      revolutExpenses,
+      mb3m: {
+        blocker: mb3mInvoiceBlocker(mb3mContext),
+        piece: mb3mPiece,
+        preparation: mb3mPreparationFromRow(mb3mDraft),
+        amadeus,
+      },
+    };
+  });
+  void Promise.all([emails, activity, whatsapp, esta, pliant, money]).finally(() => {
+    console.timeEnd("[dossier] vague 2");
+  });
+  return { emails, activity, whatsapp, esta, pliant, money };
+}
+
+export type DossierPanels = ReturnType<typeof startDossierPanels>;
 
 async function loadPliantSpends(
   bookingCards: CrmBookingCard[],

@@ -4,7 +4,8 @@ import { clientDownloadSummary, downloadActivityPath, recordCustomerActivity } f
 import { describeDownload, lookupDownloadPiece, recordStaffDownload } from "@/lib/crm/download-journal";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExampleFile } from "@/lib/crm/example-store";
-import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
+import { safeFileName, signedCrmUrl, uploadCrmFile } from "@/lib/crm/files";
+import sharp from "sharp";
 import { customerPathScope, isAgencyCardPath, isInlineSafeFile, isSafeCrmPath } from "@/lib/crm/files-access";
 import { rasterPdfPages } from "@/lib/crm/pdf-raster";
 import { isTripShareCode } from "@/lib/crm/trip-share";
@@ -17,29 +18,45 @@ function isPdf(path: string, contentType: string) {
   return contentType.includes("pdf") || path.toLowerCase().endsWith(".pdf");
 }
 
-async function thumbnailResponse(bytes: Uint8Array, path: string, contentType: string) {
-  if (!isPdf(path, contentType)) {
-    if (!isInlineSafeFile(path, contentType)) return jsonError("Aperçu indisponible", 415);
-    return new NextResponse(Buffer.from(bytes), {
-      status: 200,
-      headers: {
-        "Content-Type": contentType || "application/octet-stream",
-        "Cache-Control": "private, max-age=120",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+const THUMB_TTL_SECONDS = 60 * 60 * 24 * 7;
+const thumbReady = new Set<string>();
+
+function storedThumbPath(path: string) {
+  return `thumbs/${path}.webp`;
+}
+
+async function signedThumb(path: string) {
+  const url = await signedCrmUrl(path, THUMB_TTL_SECONDS);
+  return NextResponse.redirect(url, {
+    headers: { "Cache-Control": "private, max-age=86400" },
+  });
+}
+
+/** Vignette PDF écrite une fois dans Storage. Une image part tout de suite, sans raster. */
+async function thumbnailRedirect(path: string) {
+  if (!isPdf(path, "")) {
+    if (!isInlineSafeFile(path, "")) return jsonError("Aperçu indisponible", 415);
+    return signedThumb(path);
   }
-  const pages = await rasterPdfPages(bytes, 1);
+  const stored = storedThumbPath(path);
+  if (!thumbReady.has(stored)) {
+    const probe = await fetch(await signedCrmUrl(stored, THUMB_TTL_SECONDS), { method: "HEAD" }).catch(() => null);
+    if (probe?.ok) thumbReady.add(stored);
+  }
+  if (thumbReady.has(stored)) return signedThumb(stored);
+  const upstream = await fetch(await signedCrmUrl(path));
+  if (!upstream.ok) return jsonError("Fichier introuvable", 404);
+  const pages = await rasterPdfPages(new Uint8Array(await upstream.arrayBuffer()), 1);
   const page = pages[0];
   if (!page) return jsonError("Aperçu impossible", 422);
-  return new NextResponse(Buffer.from(page.image), {
-    status: 200,
-    headers: {
-      "Content-Type": page.mediaType,
-      "Cache-Control": "private, max-age=120",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+  try {
+    const webp = await sharp(Buffer.from(page.image)).webp({ quality: 72 }).toBuffer();
+    await uploadCrmFile(stored, webp, "image/webp", { upsert: true });
+  } catch {
+    return jsonError("Aperçu impossible", 422);
+  }
+  thumbReady.add(stored);
+  return signedThumb(stored);
 }
 
 async function sendCrmFile(path: string, requestUrl: URL) {
@@ -47,14 +64,11 @@ async function sendCrmFile(path: string, requestUrl: URL) {
   const download = requestUrl.searchParams.get("download") === "1";
   const inline = requestUrl.searchParams.get("inline") === "1";
   const thumb = requestUrl.searchParams.get("thumb") === "1";
-  if (!download && !inline && !thumb) return NextResponse.redirect(signed);
+  if (thumb) return thumbnailRedirect(path);
+  if (!download && !inline) return NextResponse.redirect(signed);
   const upstream = await fetch(signed);
   if (!upstream.ok || !upstream.body) return jsonError("Fichier introuvable", 404);
   const contentType = upstream.headers.get("content-type") || "application/octet-stream";
-  if (thumb) {
-    const bytes = new Uint8Array(await upstream.arrayBuffer());
-    return thumbnailResponse(bytes, path, contentType.toLowerCase());
-  }
   const filename = safeFileName(requestUrl.searchParams.get("name") || "document");
   // Un .eml, .docx, .txt… ne s’ouvre jamais dans l’onglet, même avec inline=1 : téléchargement.
   const disposition = download || !isInlineSafeFile(path, contentType) ? "attachment" : "inline";

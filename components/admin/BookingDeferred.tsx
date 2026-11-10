@@ -24,6 +24,21 @@ export function DeferredLedger({
   return null;
 }
 
+/** Une vague du dossier (e-mails, activité, messages, formalités, Pliant, compta). */
+export function DeferredSlice<T>({
+  promise,
+  onReady,
+}: {
+  promise: Promise<T | null>;
+  onReady: (value: T) => void;
+}) {
+  const value = use(promise);
+  useEffect(() => {
+    if (value) onReady(value);
+  }, [value, onReady]);
+  return null;
+}
+
 /** Les étapes déjà là restent. Les contacts et photos d’hôtel arrivent ensuite. */
 export function DeferredHotels({
   promise,

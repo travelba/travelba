@@ -74,7 +74,9 @@ describe("Argent : quatre onglets, un par geste", () => {
 
   it("la fiche client renvoie vers À encaisser et ne crédite plus sur place", () => {
     const fiche = readFileSync(join(root, "app/admin/clients/[id]/page.tsx"), "utf8");
-    assert.match(fiche, /ClientPaymentsToCredit/);
+    const slot = readFileSync(join(root, "components/admin/ClientPaymentsSlot.tsx"), "utf8");
+    assert.match(fiche, /ClientPaymentsSlot/);
+    assert.match(slot, /ClientPaymentsToCredit/);
     assert.equal(/ClientRevolutSuggestions|ClientStripeSuggestions/.test(fiche), false);
     const link = readFileSync(join(root, "components/admin/argent/ClientPaymentsToCredit.tsx"), "utf8");
     assert.match(link, /argentHref\("a-encaisser", \{ client: customerId \}\)/);

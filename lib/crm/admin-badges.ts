@@ -94,6 +94,18 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
   }
 });
 
+const BADGE_TTL_MS = 45_000;
+let badgeMemo: { at: number; pending: Promise<AdminBadges> } | null = null;
+
+/** Même compteurs pendant 45 s, pour que le menu n’attende pas la base à chaque page. */
+export function cachedAdminBadges(): Promise<AdminBadges> {
+  const now = Date.now();
+  if (badgeMemo && now - badgeMemo.at < BADGE_TTL_MS) return badgeMemo.pending;
+  const pending = adminBadges();
+  badgeMemo = { at: now, pending };
+  return pending;
+}
+
 /** Une carte par fil. Si les colonnes de regroupement manquent encore, le décompte brut. */
 async function emailInboxCount(admin: ReturnType<typeof createServiceClient>) {
   const grouped = await admin

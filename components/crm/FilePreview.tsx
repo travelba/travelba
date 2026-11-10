@@ -54,6 +54,7 @@ function FileThumb({ file }: { file: FilePreviewModel }) {
       <img
         src={pdf || file.sealed ? fileThumbHref(file.path, accessOf(file)) : inline}
         alt=""
+        loading="lazy"
         referrerPolicy="no-referrer"
         draggable={false}
         className={`h-full w-full bg-white object-cover object-top ${ready ? "" : "absolute opacity-0"} ${file.sealed ? SEAL : ""}`}
@@ -259,6 +260,7 @@ function FilePreviewDialog({
               <img
                 src={fileThumbHref(file.path, accessOf(file))}
                 alt=""
+                loading="lazy"
                 referrerPolicy="no-referrer"
                 draggable={false}
                 className={`mx-auto max-h-[58vh] w-full object-contain ${SEAL}`}
