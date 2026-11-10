@@ -725,13 +725,13 @@ async function readFicheScan(
     throw new Error("Lecture impossible.");
   }
   const resolved = { customerId: customer.id, bookingId: null, reference: null };
-  const holder = query.personId === customer.id;
-  const companion = holder ? null : loaded.companions.find((row) => row.id === query.personId);
-  if (!holder && !companion) {
+  const companion = loaded.companions.find((row) => row.id === query.personId);
+  const person = query.personId === customer.id ? customer : companion;
+  if (!person) {
     await audit("introuvable", 0, resolved);
     return { message: "Cette personne n’est pas sur cette fiche.", client_id: customer.id };
   }
-  const person = holder ? customer : companion;
+  const holder = person.id === customer.id;
   const passports = piecesForPerson(loaded.documents, holder ? null : person.id).filter((doc) => doc.doc_type === "passport");
   const head = {
     client_id: customer.id,
