@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/admin/equipe", title: "Équipe", text: "Collègues et partenaire MyLER." },
   { href: "/admin/cles", title: "Clés API", text: "Une clé par personne, pour brancher son assistant sur le CRM." },
   { href: "/admin/reglages/facture", title: "Facture", text: "RIB de repli, échéance et mentions imprimées." },
+  { href: "/admin/reglages/depenses", title: "Dépenses types", text: "Raccourcis du bloc Dépenses : libellé et montant, en un clic." },
   { href: "/admin/concierge", title: "Savoir du Concierge", text: "Ce que le Concierge sait répondre au client." },
 ];
 

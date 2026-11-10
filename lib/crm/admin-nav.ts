@@ -138,6 +138,7 @@ export function adminNavGroups(input: {
             { href: `${ADMIN_ROUTES.reglages}/whatsapp`, label: "Modèles WhatsApp", icon: "chat" },
             { href: `${ADMIN_ROUTES.reglages}/mails`, label: "E-mails au client", icon: "mail" },
             { href: `${ADMIN_ROUTES.reglages}/facture`, label: "Facture", icon: "description" },
+            { href: `${ADMIN_ROUTES.reglages}/depenses`, label: "Dépenses types", icon: "receipt_long" },
             { href: "/admin/concierge", label: "Savoir du Concierge", icon: "menu_book" },
             { href: `${ADMIN_ROUTES.reglages}/hotels`, label: "Accès Hôtels", icon: "lock" },
             { href: `${ADMIN_ROUTES.reglages}/gmail`, label: "Diagnostic Gmail", icon: "activity" },
