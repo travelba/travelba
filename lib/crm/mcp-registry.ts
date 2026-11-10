@@ -681,7 +681,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut (usage unique, un contrôle de passerelle ne compte pas). Au-delà, carte virtuelle réutilisable : le plafond total et le montant maximum par transaction sont envoyés, par exemple 1 500 € et 5 achats pour la garantie, les extras et le solde. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie pas le numéro : lire_carte_pliant. Réservé à l’assistant autorisé. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
+      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut (usage unique, un contrôle de passerelle ne compte pas). Au-delà, carte virtuelle réutilisable : le plafond total et le montant maximum par transaction sont envoyés, par exemple 1 500 € et 5 achats pour la garantie, les extras et le solde. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie jamais le numéro ni le CVV. lire_carte_pliant, jeton carte seulement, donne le numéro. Jeton général, jeton carte, ou clé tbk_ avec le droit Créer une carte Pliant. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0082"),
@@ -731,7 +731,7 @@ export const MCP_TOOLS: ToolDef[] = [
     openWorld: true,
     cardSecrets: true,
     description:
-      "Numéro, expiration, CVV et titulaire d’une carte Pliant du dossier, et de celle-là seulement. dossier_id ou reference, et carte_id s’il y a plusieurs cartes (celui de creer_carte_pliant). Rien n’est enregistré. Réservé à l’assistant autorisé. Lecture seule.",
+      "Numéro, expiration, CVV et titulaire d’une carte Pliant du dossier, et de celle-là seulement. dossier_id ou reference, et carte_id s’il y a plusieurs cartes (celui de creer_carte_pliant). Rien n’est enregistré. Réservé au jeton TRAVELBA_MCP_CARD_TOKENS. Le jeton général et une clé tbk_ refusent. Lecture seule.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -749,7 +749,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Gèle une carte virtuelle Pliant du dossier : elle ne peut plus payer, et le gel se retire. dossier_id ou reference, et carte_id s’il y a plusieurs cartes. debloquer vrai retire le gel (lock Pliant, pas une suppression). Le statut est enregistré sur le dossier. Ne renvoie pas le numéro. Réservé à l’assistant autorisé.",
+      "Gèle une carte virtuelle Pliant du dossier : elle ne peut plus payer, et le gel se retire. dossier_id ou reference, et carte_id s’il y a plusieurs cartes. debloquer vrai retire le gel (lock Pliant, pas une suppression). Le statut est enregistré sur le dossier. Ne renvoie pas le numéro. Jeton général, jeton carte, ou clé tbk_ avec le droit Créer une carte Pliant.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0088"),

@@ -71,11 +71,13 @@ test("a named passport token is a separate grant", () => {
       actor: "amadeus",
       passport: true,
       cards: false,
+      cards_create: false,
     });
     assert.deepEqual(mcpAccessFromAuthorization("Bearer general-token-value"), {
       actor: "mcp",
       passport: false,
       cards: false,
+      cards_create: true,
     });
     assert.equal(mcpAuthorized("Bearer ticketing-token-ok"), true);
     assert.equal(mcpAccessFromAuthorization("Bearer nope"), null);
@@ -83,6 +85,7 @@ test("a named passport token is a separate grant", () => {
       actor: "billets",
       passport: true,
       cards: false,
+      cards_create: false,
     });
   }, "Amadeus:ticketing-token-ok, billets:second-token-value!");
 });
@@ -95,6 +98,7 @@ test("passport grants ignore a short secret, the name mcp, and the general token
       actor: "mcp",
       passport: false,
       cards: false,
+      cards_create: true,
     });
   }, "amadeus:short,mcp:ticketing-token-ok,copie:general-token-value");
 });
@@ -108,11 +112,13 @@ test("a card token is a separate grant from the passport token", () => {
         actor: "cartes",
         passport: false,
         cards: true,
+        cards_create: true,
       });
       assert.deepEqual(mcpAccessFromAuthorization("Bearer ticketing-token-ok"), {
         actor: "amadeus",
         passport: true,
         cards: false,
+        cards_create: false,
       });
       assert.equal(mcpAuthorized("Bearer card-token-value!!"), true);
       assert.equal(mcpAccessFromAuthorization("Bearer tiny"), null);
@@ -128,6 +134,7 @@ test("a card token is a separate grant from the passport token", () => {
         actor: "cartes",
         passport: true,
         cards: true,
+        cards_create: true,
       });
     },
     "amadeus:shared-token-value!",
@@ -151,6 +158,7 @@ test("une clé nominative est acceptée après les jetons d’environnement, et 
       actor: "mcp",
       passport: false,
       cards: false,
+      cards_create: true,
     });
     assert.deepEqual(await resolveMcpAccess(`Bearer ${issued.token}`, async () => staff), staff);
     assert.equal(await resolveMcpAccess(`Bearer ${issued.token}`, async () => null), null);

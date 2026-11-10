@@ -322,7 +322,7 @@ export async function createPliantCard(
     kind: "creation" as const,
   };
 
-  if (access.cards !== true) {
+  if (access.cards_create !== true) {
     await writeCardAudit(admin, { ...auditBase, outcome: "refuse" });
     throw new McpWriteError("Cet assistant n’est pas autorisé à créer une carte.");
   }
@@ -513,7 +513,7 @@ export async function createPliantCard(
     outcome: "ok",
   });
 
-  return {
+  const created = {
     cree: true as const,
     carte_id: carteId,
     dossier_id: booking.id,
@@ -528,6 +528,11 @@ export async function createPliantCard(
     valable_au: body.validTo,
     quatre_derniers: last4,
   };
+  if (access.cards !== true) {
+    const hidden = created as Record<string, unknown>;
+    for (const key of ["pan", "cvv", "cvc", "expiration", "numero"]) delete hidden[key];
+  }
+  return created;
 }
 
 export async function readPliantCard(
@@ -698,7 +703,7 @@ export async function blockPliantCard(
     kind,
   };
 
-  if (access.cards !== true) {
+  if (access.cards_create !== true) {
     await writeCardAudit(admin, { ...auditBase, outcome: "refuse" });
     throw new McpWriteError(unlock ? "Cet assistant n’est pas autorisé à débloquer une carte." : "Cet assistant n’est pas autorisé à bloquer une carte.");
   }
