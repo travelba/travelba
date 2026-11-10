@@ -24,20 +24,27 @@ export async function reconcileLedgerSepa(customer: LedgerCustomer) {
   }
 }
 
+export type LedgerLoadOptions = {
+  /** Faux : le grand livre déjà en base, sans relire Stripe. Défaut : rapprochement. */
+  reconcile?: boolean;
+};
+
 export async function loadClientLedger(
   supabase: SupabaseClient,
   customer: LedgerCustomer,
-  audience: ClientLedgerAudience
+  audience: ClientLedgerAudience,
+  options?: LedgerLoadOptions
 ): Promise<ClientLedgerView> {
-  await reconcileLedgerSepa(customer);
+  if (options?.reconcile !== false) await reconcileLedgerSepa(customer);
   return loadLedger(supabase, customer, audience);
 }
 
 export async function loadClientLedgerViews(
   supabase: SupabaseClient,
   customer: LedgerCustomer,
-  audiences: ClientLedgerAudience[]
+  audiences: ClientLedgerAudience[],
+  options?: LedgerLoadOptions
 ) {
-  await reconcileLedgerSepa(customer);
+  if (options?.reconcile !== false) await reconcileLedgerSepa(customer);
   return loadLedgerViews(supabase, customer, audiences);
 }

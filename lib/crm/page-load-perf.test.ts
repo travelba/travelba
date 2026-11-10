@@ -21,9 +21,16 @@ describe("page-load-perf", () => {
   });
 
   it("ne charge pas tout crm_customers sur le détail réservation", () => {
-    const src = readFileSync(join(root, "app/admin/reservations/[id]/page.tsx"), "utf8");
-    assert.equal(src.includes('.order("last_name")'), false);
-    assert.match(src, /\.in\("id", relatedIds\)/);
+    const page = readFileSync(join(root, "app/admin/reservations/[id]/page.tsx"), "utf8");
+    const load = readFileSync(join(root, "lib/crm/admin-booking-load.ts"), "utf8");
+    assert.equal(page.includes('.order("last_name")'), false);
+    assert.equal(load.includes('.order("last_name")'), false);
+    assert.match(load, /\.in\("id", relatedIds\)/);
+    assert.match(load, /live: false/);
+    assert.match(load, /bookingLedgers\(supabase, customer, billingCustomer, false\)/);
+    assert.match(page, /shellAdminBooking/);
+    assert.equal(page.includes("await repairCustomerDownloads"), false);
+    assert.match(page, /after\(task\)/);
   });
 
   it("le sélecteur typeahead n’expose pas l’IBAN", () => {
