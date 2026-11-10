@@ -42,6 +42,7 @@ import {
 import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { loadDossierPeople, type DossierPeople } from "@/lib/crm/dossier-responsables";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
+import { billingCompaniesPublic, readBillingCompanies } from "@/lib/crm/billing-companies";
 import { formatDateTimeFr } from "@/lib/crm/dates";
 import { pieceDigits } from "@/lib/crm/stripe-payer";
 import { loadStripeSuggestHints } from "@/lib/crm/stripe-suggest-load";
@@ -537,7 +538,7 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
   if (found.kind === "many") return { choix: await withDossierCounts(admin, found.customers) };
   const customer = found.customer;
   const offAgency = await offAgencyStayAmounts(admin, customer.id);
-  const [{ data: balances }, { data: docs }] = await Promise.all([
+  const [{ data: balances }, { data: docs }, companies] = await Promise.all([
     admin.from("crm_customer_balances").select("currency, balance").eq("customer_id", customer.id),
     admin
       .from("crm_travel_documents")
@@ -548,7 +549,9 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
       .lte("expires_on", isoDateInDays(90))
       .order("expires_on")
       .limit(20),
+    readBillingCompanies(admin, customer.id),
   ]);
+  if ("error" in companies) throw new McpReadError("Lecture des sociétés impossible.");
   const wallets = ((balances || []) as { currency: string; balance: number | string }[]).map((row) => {
     const currency = row.currency || "EUR";
     const value = Number(row.balance) + (offAgency.get(currency.toUpperCase()) || 0);
@@ -562,6 +565,7 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
   const pieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]);
   return {
     ...customerLine(customer),
+    societes: billingCompaniesPublic(companies.companies),
     en_veille: customer.on_hold === true,
     encours: wallets,
     pieces_a_echeance: pieces.map((doc) => pieceLine(doc)),

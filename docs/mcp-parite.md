@@ -13,8 +13,11 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Passeport d’un accompagnateur (numéro, délivrance, expiration, nationalité, naissance, lieu, sexe) | `modifier_titulaire` avec `compagnon_id` — couvert. Le numéro n’est ni renvoyé ni journalisé |
 | Renommer un accompagnateur (prénoms, nom, nom d’usage, naissance, sexe) | `mettre_a_jour_accompagnant` — ajouté. Le passeport et les séjours suivent. Le numéro, la délivrance et l’expiration restent |
 | Rôle société | `definir_role_societe` — couvert |
-| Une société, ou retirer une société vide | `mettre_a_jour_client` — couvert |
-| Liste complète des sociétés (ajout, modification, retrait) | `enregistrer_societes` — ajouté |
+| Une société, ou retirer une société vide | `mettre_a_jour_client` — couvert. Avec plusieurs sociétés, un champ sans SIRET est refusé |
+| Ajouter une société sans modifier les autres | `ajouter_societe` — ajouté. Les dossiers déjà facturés gardent leur société |
+| Modifier une société par identifiant | `modifier_societe` — ajouté. Seuls les champs indiqués changent |
+| Lire toutes les sociétés | `fiche_client` (`societes`, identifiant, champs, `principale`) — ajouté |
+| Remplacer toute la liste | `enregistrer_societes` (`confirmer` true) — ajouté |
 | Supprimer la fiche | `supprimer_client` (`confirmer` = nom complet) — ajouté |
 | Inviter / renvoyer l’invitation | `inviter_client` — couvert |
 | Renvoyer ses accès par WhatsApp | `renvoyer_acces_whatsapp` (`confirmer: true`) — ajouté. Un bouton, Ouvrir mon espace : lien personnel 30 jours (empreinte seulement), aucun mot de passe, le lien n’est pas renvoyé |

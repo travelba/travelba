@@ -104,9 +104,11 @@ import {
   supprimerDossier,
   cacherCarnet,
   deposerPieceDossier,
+  ajouterSociete,
   dupliquerDossier,
   enregistrerSocietes,
   lireJournal,
+  modifierSociete,
   modifierCarte,
   reglerAccesHotels,
   reordonnerCartes,
@@ -124,7 +126,7 @@ import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 114;
+export const MCP_TOOL_CAP = 116;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -325,7 +327,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_client",
     description:
-      "Fiche d’un client : coordonnées, encours (signe brut), pièces à échéance (type et date, jamais le numéro). id ou q.",
+      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, TVA, e-mail, adresse, code postal, ville, pays, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro). id ou q.",
     input: { id, q },
     run: (args: ToolArgs) => readFicheClient({ id: str(args, "id"), q: str(args, "q") }),
   },
@@ -1826,7 +1828,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     destructive: true,
     description:
-      "Enregistre les sociétés de facturation du client, comme Enregistrer sur la fiche. La liste remplace les sociétés : une société absente est retirée, sauf un compte Crédit ou Pro. confirmer true est obligatoire. Même SIRET : la ligne existante est mise à jour.",
+      "Enregistre les sociétés de facturation du client, comme Enregistrer sur la fiche. La liste remplace les sociétés : une société absente est retirée, sauf un compte Crédit ou Pro. Pour ajouter une société sans retirer les autres, utiliser ajouter_societe. confirmer true est obligatoire. Même SIRET : la ligne existante est mise à jour.",
     input: {
       client_id: z.string().trim().max(80).describe("Identifiant du client"),
       confirmer: z.boolean().describe("true pour remplacer la liste"),
@@ -1848,6 +1850,43 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Sociétés à garder, dans l’ordre"),
     },
     run: (args) => enregistrerSocietes(args),
+  },
+  {
+    name: "ajouter_societe",
+    write: true,
+    description:
+      "Ajoute une société de facturation au client. Les autres sociétés ne changent pas, et les dossiers déjà facturés gardent leur société. La première reste la principale, recopiée sur la fiche. Un SIRET déjà présent est refusé : modifier_societe corrige cette société. Pas de téléphone sur la société. Aucun message.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
+      siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres. Déjà présent : refus, sans modification"),
+      tva: z.string().trim().max(40).optional().describe("Numéro de TVA"),
+      email: z.string().trim().max(180).optional().describe("E-mail de facturation"),
+      adresse: z.string().trim().max(300).optional().describe("Adresse de facturation"),
+      code_postal: z.string().trim().max(20).optional().describe("Code postal"),
+      ville: z.string().trim().max(80).optional().describe("Ville"),
+      pays: z.string().trim().max(80).optional().describe("Pays"),
+    },
+    run: (args) => ajouterSociete(args),
+  },
+  {
+    name: "modifier_societe",
+    write: true,
+    description:
+      "Modifie une société de facturation déjà là, par societe_id (celui de fiche_client). Seuls les champs indiqués changent. Les autres sociétés et les dossiers facturés ne bougent pas. Si c’est la société principale, la fiche reprend ses champs. Pas de téléphone sur la société. Aucun message.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      societe_id: z.string().trim().max(80).describe("Identifiant de la société, renvoyé par fiche_client"),
+      raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
+      siret: z.string().trim().max(40).optional().describe("SIRET, 14 chiffres"),
+      tva: z.string().trim().max(40).optional().describe("Numéro de TVA"),
+      email: z.string().trim().max(180).optional().describe("E-mail de facturation"),
+      adresse: z.string().trim().max(300).optional().describe("Adresse de facturation"),
+      code_postal: z.string().trim().max(20).optional().describe("Code postal"),
+      ville: z.string().trim().max(80).optional().describe("Ville"),
+      pays: z.string().trim().max(80).optional().describe("Pays"),
+    },
+    run: (args) => modifierSociete(args),
   },
   {
     name: "regler_acces_hotels",

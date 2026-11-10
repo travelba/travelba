@@ -10,11 +10,11 @@ function secretKey(key: string, keepPieceNumber: boolean, keepCardSecrets: boole
   return SECRET_KEY.test(key);
 }
 
-function scrubString(value: string, keepCardSecrets: boolean) {
+function scrubString(value: string, keepCardSecrets: boolean, keepDigits = false) {
   if (JWT.test(value)) return "retiré";
   if (/^https?:\/\//i.test(value) && (/\/sign\//.test(value) || /[?&]token=/.test(value))) return "retiré";
   if (/\/acces\/[A-Za-z0-9_-]{20,}/.test(value)) return value.replace(/\/acces\/[A-Za-z0-9_-]{20,}/g, "/acces/…");
-  if (keepCardSecrets) return value;
+  if (keepCardSecrets || keepDigits) return value;
   return value.replace(/\b\d{13,19}\b/g, "•••").replace(/\b(?:\d{4} ){3}\d{4,7}\b/g, "•••");
 }
 
@@ -42,6 +42,11 @@ export function redactMcp(
     if (secretKey(key, keepPieceNumber, keepCardSecrets)) continue;
     if (keepSignedUrl && key === "url_signee" && typeof item === "string") {
       out[key] = item;
+      continue;
+    }
+    // Le SIRET fait 14 chiffres : le masque des numéros de carte ne doit pas le retirer.
+    if (key === "siret" && typeof item === "string") {
+      out[key] = scrubString(item, keepCardSecrets, true);
       continue;
     }
     out[key] = redactMcp(item, depth + 1, keepPieceNumber, keepSignedUrl, keepCardSecrets);

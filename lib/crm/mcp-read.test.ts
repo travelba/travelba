@@ -468,6 +468,164 @@ test("fiche_client et grand_livre retrouvent Prénom Nom", async () => {
   const fiche = await readFicheClient({ q: "Norman Cohen" }, admin);
   assert.equal("introuvable" in fiche, false);
   assert.equal((fiche as { id?: string }).id, CLIENT);
+  assert.deepEqual((fiche as { societes?: unknown[] }).societes, []);
   const book = await readGrandLivre({ q: "cohen norman" }, admin);
   assert.equal("introuvable" in book, false);
+});
+
+test("fiche_client liste chaque société avec son identifiant", async () => {
+  const holder = "12121212-1212-4121-8121-121212121212";
+  const first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const customer = {
+    id: holder,
+    first_name: "Camille",
+    last_name: "Martin",
+    usage_name: null,
+    company_name: "Atelier",
+    email: "camille@example.com",
+    phone: "+33600000000",
+    birth_date: null,
+    on_hold: false,
+  };
+  const companies = [
+    {
+      id: second,
+      company_name: "Bureau LLC",
+      siret: null,
+      vat_number: null,
+      billing_email: "compta@bureau.test",
+      billing_address_line: "1 Main",
+      billing_postal_code: "19801",
+      billing_city: "Wilmington",
+      billing_country: "US",
+      sort_order: 1,
+      funding: null,
+    },
+    {
+      id: first,
+      company_name: "Atelier",
+      siret: "73282932000074",
+      vat_number: "FR88732829320",
+      billing_email: "atelier@example.com",
+      billing_address_line: "10 rue",
+      billing_postal_code: "75002",
+      billing_city: "Paris",
+      billing_country: "FR",
+      sort_order: 0,
+      funding: "advance",
+    },
+  ];
+  const admin = {
+    from(table: string) {
+      const api = {
+        select() {
+          return api;
+        },
+        eq() {
+          return api;
+        },
+        order() {
+          return api;
+        },
+        limit() {
+          return api;
+        },
+        not() {
+          return api;
+        },
+        gte() {
+          return api;
+        },
+        lte() {
+          return api;
+        },
+        is() {
+          return api;
+        },
+        in() {
+          return api;
+        },
+        or() {
+          return api;
+        },
+        maybeSingle() {
+          return Promise.resolve({
+            data: table === "crm_customers" ? customer : null,
+            error: null,
+          });
+        },
+        then(resolve: (value: { data: unknown; error: { code?: string } | null }) => void) {
+          if (table === "crm_billing_companies") resolve({ data: companies, error: null });
+          else resolve({ data: [], error: null });
+        },
+      };
+      return api;
+    },
+  } as unknown as SupabaseClient;
+  const fiche = await readFicheClient({ id: holder }, admin);
+  assert.equal("societes" in fiche, true);
+  if (!("societes" in fiche)) return;
+  assert.equal(fiche.societe, "Atelier");
+  assert.equal(fiche.telephone, "+33600000000");
+  assert.equal(fiche.societes.length, 2);
+  assert.equal(fiche.societes[0]?.id, first);
+  assert.equal(fiche.societes[0]?.principale, true);
+  assert.equal(fiche.societes[0]?.siret, "73282932000074");
+  assert.equal(fiche.societes[0]?.tva, "FR88732829320");
+  assert.equal(fiche.societes[0]?.email, "atelier@example.com");
+  assert.equal(fiche.societes[0]?.adresse, "10 rue");
+  assert.equal(fiche.societes[0]?.compte, "avance");
+  assert.equal(fiche.societes[1]?.raison_sociale, "Bureau LLC");
+  assert.equal(fiche.societes[1]?.principale, false);
+  assert.equal(fiche.societes[1]?.ville, "Wilmington");
+  assert.equal(fiche.societes[1]?.pays, "US");
+  const failed = {
+    from(table: string) {
+      const api = {
+        select() {
+          return api;
+        },
+        eq() {
+          return api;
+        },
+        order() {
+          return api;
+        },
+        limit() {
+          return api;
+        },
+        not() {
+          return api;
+        },
+        gte() {
+          return api;
+        },
+        lte() {
+          return api;
+        },
+        is() {
+          return api;
+        },
+        in() {
+          return api;
+        },
+        or() {
+          return api;
+        },
+        maybeSingle() {
+          return Promise.resolve({ data: table === "crm_customers" ? customer : null, error: null });
+        },
+        then(resolve: (value: { data: unknown; error: { code?: string } | null }) => void) {
+          if (table === "crm_billing_companies") resolve({ data: null, error: { code: "42501" } });
+          else resolve({ data: [], error: null });
+        },
+      };
+      return api;
+    },
+  } as unknown as SupabaseClient;
+  await assert.rejects(
+    () => readFicheClient({ id: holder }, failed),
+    (err: unknown) => err instanceof McpReadError && err.message === "Lecture des sociétés impossible."
+  );
 });

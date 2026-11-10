@@ -59,6 +59,15 @@ test("a signed url stays only on url_signee when the scan tool asks for it", () 
   assert.equal("storage_path" in shown, false);
 });
 
+test("un SIRET de 14 chiffres reste lisible, un numéro de carte dans une note non", () => {
+  const cleaned = redactMcp({
+    siret: "73282932000074",
+    note: "carte 4242424242424242",
+  }) as { siret: string; note: string };
+  assert.equal(cleaned.siret, "73282932000074");
+  assert.equal(cleaned.note, "carte •••");
+});
+
 test("a card number stays only on pan, cvv and expiration when the card tool asks", () => {
   const dossier = "11111111-1111-4111-8111-111111111111";
   const payload = {
