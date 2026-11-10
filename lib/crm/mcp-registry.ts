@@ -126,9 +126,10 @@ import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
 import { runIfConfirmed } from "@/lib/crm/mcp-preview";
+import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant-ops";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 121;
+export const MCP_TOOL_CAP = 123;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2424,6 +2425,36 @@ export const MCP_TOOLS: ToolDef[] = [
     "pas_besoin",
     "Passe une demande hôtel (Pas besoin) ou la remet. action : pas_besoin ou remettre. Sans confirmer, aperçu du courrier, rien n’est écrit. confirmer true enregistre. Aucun e-mail."
   ),
+  {
+    name: "modifier_plafond_pliant",
+    write: true,
+    openWorld: true,
+    description:
+      "Change le plafond d’une carte Pliant du dossier, comme Modifier le plafond. dossier_id ou reference, carte_id s’il y a plusieurs cartes, plafond en euros. Sans confirmer, aperçu : libellé, quatre derniers chiffres, plafond actuel et nouveau. confirmer true écrit chez Pliant. Le numéro complet ne sort pas.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      carte_id: z.string().trim().max(80).optional().describe("Carte du dossier, ou identifiant Pliant"),
+      plafond: z.union([z.number(), z.string()]).describe("Nouveau plafond en euros"),
+      confirmer: z.boolean().optional().describe("true pour modifier. Sans true : aperçu"),
+    },
+    run: (args: ToolArgs) => modifierPlafondPliant(args),
+  },
+  {
+    name: "cloturer_carte_pliant",
+    write: true,
+    openWorld: true,
+    destructive: true,
+    description:
+      "Clôture une carte Pliant du dossier, comme Supprimer la carte. Ce n’est pas un gel : la carte ne peut plus payer. dossier_id ou reference, carte_id s’il y en a plusieurs. Sans confirmer, aperçu seulement. confirmer true clôture. Le numéro complet ne sort pas.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      carte_id: z.string().trim().max(80).optional(),
+      confirmer: z.boolean().optional().describe("true pour clôturer. Sans true : aperçu"),
+    },
+    run: (args: ToolArgs) => cloturerCartePliant(args),
+  },
 ];
 
 function hotelMailTool(name: string, mode: "envoyer" | "relancer" | "repondre" | "pas_besoin", description: string) {

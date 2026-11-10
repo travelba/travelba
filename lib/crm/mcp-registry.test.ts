@@ -124,6 +124,8 @@ const EXPECTED = [
   "relancer_hotel",
   "repondre_hotel",
   "demande_hotel",
+  "modifier_plafond_pliant",
+  "cloturer_carte_pliant",
 ];
 
 const WRITE_TOOLS = [
@@ -215,6 +217,8 @@ const WRITE_TOOLS = [
   "relancer_hotel",
   "repondre_hotel",
   "demande_hotel",
+  "modifier_plafond_pliant",
+  "cloturer_carte_pliant",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
