@@ -126,7 +126,7 @@ import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 116;
+export const MCP_TOOL_CAP = 117;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2295,6 +2295,59 @@ export const MCP_TOOLS: ToolDef[] = [
         return result;
       } catch (err) {
         if (err instanceof ReassignClientError) throw new McpWriteError(err.message);
+        throw err;
+      }
+    },
+  },
+  {
+    name: "depenses_types",
+    write: true,
+    destructive: true,
+    selfJournal: true,
+    description:
+      "Raccourcis du bloc Dépenses, comme Réglages › Dépenses types. Réservé aux administrateurs. Sans enregistrer, lecture : libellé, montant, actif, billeterie. enregistrer true remplace la liste (lignes). Un raccourci ajouté sur un dossier est une dépense libre, quantité 1. billeterie true refuse ce raccourci tant que les frais de billeterie automatiques (25 € par voyageur dès qu’il y a un vol) sont sur le dossier. Ces frais automatiques ne sont ni modifiés ni retirés. Aucune dépense déjà posée ne change.",
+    input: {
+      enregistrer: z.boolean().optional().describe("true remplace la liste. Omis : lecture seulement"),
+      lignes: z
+        .array(
+          z.object({
+            id: z.string().trim().max(80).optional().describe("Raccourci déjà là. Absent : création"),
+            libelle: z.string().trim().max(80).describe("Libellé de la dépense"),
+            montant: z.union([z.number(), z.string()]).describe("Montant en euros, quantité 1"),
+            actif: z.boolean().optional().describe("false retire le raccourci des dossiers"),
+            billeterie: z
+              .boolean()
+              .optional()
+              .describe("true : ne pas l’ajouter si les frais de billeterie automatiques sont déjà là"),
+          })
+        )
+        .max(20)
+        .optional()
+        .describe("Liste entière à garder, dans l’ordre. Obligatoire avec enregistrer"),
+    },
+    run: async (args) => {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const { ExpensePresetError, readOrSaveExpensePresets } = await import("@/lib/crm/expense-presets-db");
+      const staff = currentMcpAccess().staff;
+      try {
+        const result = await readOrSaveExpensePresets(
+          createServiceClient(),
+          { enregistrer: args.enregistrer === true, lignes: args.lignes },
+          staff?.id || null
+        );
+        if (result.enregistre && staff) {
+          await recordAgencyJournal({
+            staffId: staff.id,
+            action: "update",
+            entityType: "setting",
+            entityId: "expense-presets",
+            summary: `Dépenses types enregistrées par ${staff.name}.`,
+            path: "/api/mcp",
+          });
+        }
+        return result;
+      } catch (err) {
+        if (err instanceof ExpensePresetError) throw new McpWriteError(err.message);
         throw err;
       }
     },

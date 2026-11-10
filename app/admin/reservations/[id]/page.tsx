@@ -8,6 +8,8 @@ import { approvedManualTemplates } from "@/lib/crm/whatsapp-inbox";
 import { loadCustomerWhatsappMessages } from "@/lib/crm/whatsapp-dock-load";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { DEFAULT_AGENCY_FEE_RATE, loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
+import { DEFAULT_EXPENSE_PRESETS } from "@/lib/crm/expense-presets";
+import { loadExpensePresets, presetsForDossier } from "@/lib/crm/expense-presets-db";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { DossierPliantBalance } from "@/components/admin/DossierPliantBalance";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
@@ -400,12 +402,14 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     .eq("booking_id", id);
   if (!checkinRows.error && checkinRows.data) checkins = checkinRows.data as StoredFlightCheckin[];
 
-  const [appliedFees, inheritedFees] = await Promise.all([
+  const [appliedFees, inheritedFees, presetLoad] = await Promise.all([
     loadResolvedAgencyFees(supabase, [b]),
     loadResolvedAgencyFees(supabase, [{ ...b, agency_fee_rate: null }]),
+    loadExpensePresets(supabase).catch(() => null),
   ]);
   const appliedFee = appliedFees.get(b.id) || { rate: DEFAULT_AGENCY_FEE_RATE, source: "defaut" as const };
   const inheritedFee = inheritedFees.get(b.id) || { rate: DEFAULT_AGENCY_FEE_RATE, source: "defaut" as const };
+  const expensePresets = presetLoad ? presetsForDossier(presetLoad) : [...DEFAULT_EXPENSE_PRESETS];
 
   return (
     <BookingEditor
@@ -416,6 +420,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
             inheritedRate: inheritedFee.rate,
             inheritedSource: inheritedFee.source,
           }}
+          expensePresets={expensePresets}
           items={bookingItems}
           travelers={bookingTravelers}
           documents={(documents || []) as CrmBookingDocument[]}
