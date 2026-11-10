@@ -175,8 +175,10 @@ export function parsePassportQuery(input: {
   return { kind: "client", customerId };
 }
 
-function queryIds(query: PassportQuery) {
-  if (query.kind === "client") return { customerId: query.customerId, bookingId: null as string | null, reference: null as string | null };
+function queryIds(query: PassportQuery | ScanQuery) {
+  if (query.kind === "client" || query.kind === "fiche") {
+    return { customerId: query.customerId, bookingId: null as string | null, reference: null as string | null };
+  }
   if (query.kind === "dossier") {
     return { customerId: query.customerId ?? null, bookingId: query.dossierId ?? null, reference: query.reference ?? null };
   }
@@ -185,7 +187,7 @@ function queryIds(query: PassportQuery) {
 
 function auditRow(
   actor: string,
-  query: PassportQuery,
+  query: PassportQuery | ScanQuery,
   outcome: PassportOutcome,
   travelerCount: number,
   resolved?: { customerId?: string | null; bookingId?: string | null; reference?: string | null },
@@ -607,23 +609,30 @@ const PHOTO_MIME = new Set(["image/jpeg", "image/jpg", "image/png"]);
 export type ScanQuery =
   | { kind: "missing" }
   | { kind: "invalid" }
-  | { kind: "dossier"; dossierId?: string; reference?: string; customerId?: string; voyageurId?: string };
+  | { kind: "dossier"; dossierId?: string; reference?: string; customerId?: string; voyageurId?: string }
+  | { kind: "fiche"; customerId: string; personId: string };
 
 export function parseScanQuery(input: {
   client_id?: string;
   dossier_id?: string;
   reference?: string;
   voyageur_id?: string;
+  compagnon_id?: string;
 }): ScanQuery {
   const voyageurId = (input.voyageur_id || "").trim();
-  if (voyageurId && !UUID.test(voyageurId)) return { kind: "invalid" };
+  const compagnonId = (input.compagnon_id || "").trim();
+  if ((voyageurId && !UUID.test(voyageurId)) || (compagnonId && !UUID.test(compagnonId))) return { kind: "invalid" };
+  if (voyageurId && compagnonId && voyageurId !== compagnonId) return { kind: "invalid" };
+  const personId = compagnonId || voyageurId;
   const base = parsePassportQuery({
     client_id: input.client_id,
     dossier_id: input.dossier_id,
     reference: input.reference,
   });
-  if (base.kind !== "dossier") return { kind: base.kind === "invalid" ? "invalid" : "missing" };
-  return { ...base, voyageurId: voyageurId || undefined };
+  if (base.kind === "invalid") return { kind: "invalid" };
+  if (base.kind === "dossier") return { ...base, voyageurId: personId || undefined };
+  if (base.kind === "client" && personId) return { kind: "fiche", customerId: base.customerId, personId };
+  return { kind: "missing" };
 }
 
 function mimeFromName(name: string) {
@@ -689,8 +698,75 @@ function holderName(customer: BioRow): PersonName {
   };
 }
 
+async function readFicheScan(
+  db: SupabaseClient,
+  query: Extract<ScanQuery, { kind: "fiche" }>,
+  audit: (
+    outcome: PassportOutcome,
+    travelerCount: number,
+    resolved?: { customerId?: string | null; bookingId?: string | null; reference?: string | null }
+  ) => Promise<void>,
+  sign: ScanSigner
+) {
+  const { data, error } = await db.from("crm_customers").select(PERSON_COLUMNS).eq("id", query.customerId).maybeSingle();
+  if (error) {
+    logDb("client", error);
+    await audit("erreur", 0, { customerId: query.customerId });
+    throw new Error("Lecture impossible.");
+  }
+  if (!data) {
+    await audit("introuvable", 0, { customerId: query.customerId });
+    return { introuvable: true as const };
+  }
+  const customer = data as BioRow;
+  const loaded = await loadIdentity(db, customer.id);
+  if (!loaded) {
+    await audit("erreur", 0, { customerId: customer.id });
+    throw new Error("Lecture impossible.");
+  }
+  const resolved = { customerId: customer.id, bookingId: null, reference: null };
+  const companion = loaded.companions.find((row) => row.id === query.personId);
+  const person = query.personId === customer.id ? customer : companion;
+  if (!person) {
+    await audit("introuvable", 0, resolved);
+    return { message: "Cette personne n’est pas sur cette fiche.", client_id: customer.id };
+  }
+  const holder = person.id === customer.id;
+  const passports = piecesForPerson(loaded.documents, holder ? null : person.id).filter((doc) => doc.doc_type === "passport");
+  const head = {
+    client_id: customer.id,
+    voyageur_id: person.id,
+    ...(holder ? {} : { compagnon_id: person.id }),
+    nom: clean(person.last_name),
+    prenoms: clean(person.first_name),
+  };
+  if (!passports.length) {
+    await audit("ok", 1, resolved);
+    return { ...head, scans: [], message: "Aucun passeport n’est enregistré pour ce voyageur." };
+  }
+  const withFile = passports.filter((doc) => passportScanPath(doc.customer_id, doc.storage_path));
+  if (!withFile.length) {
+    await audit("ok", 1, resolved);
+    return {
+      ...head,
+      lieu_naissance: clean(passports[0].place_of_birth),
+      scans: [],
+      message: "Aucun scan n’est enregistré pour ce passeport.",
+    };
+  }
+  try {
+    const scans: ScanFichier[] = [];
+    for (const doc of withFile) scans.push(await toScan(doc, sign));
+    await audit("ok", 1, resolved);
+    return { ...head, scans };
+  } catch (err) {
+    await audit("erreur", 0, resolved);
+    throw err;
+  }
+}
+
 export async function readScanPasseport(
-  input: { client_id?: string; dossier_id?: string; reference?: string; voyageur_id?: string },
+  input: { client_id?: string; dossier_id?: string; reference?: string; voyageur_id?: string; compagnon_id?: string },
   admin?: SupabaseClient,
   sign: ScanSigner = (path) => signedCrmUrl(path, SCAN_URL_SECONDS)
 ) {
@@ -708,12 +784,13 @@ export async function readScanPasseport(
   }
   if (query.kind === "missing") {
     await audit("invalide", 0);
-    return { message: "Indiquez un identifiant de dossier ou une référence." };
+    return { message: "Indiquez un dossier, ou le client et le voyageur." };
   }
   if (query.kind === "invalid") {
     await audit("invalide", 0);
     return { message: "Identifiant inconnu." };
   }
+  if (query.kind === "fiche") return readFicheScan(db, query, audit, sign);
   let bookingQuery = db.from("crm_bookings").select("id, reference, title, customer_id");
   bookingQuery = query.dossierId ? bookingQuery.eq("id", query.dossierId) : bookingQuery.eq("reference", query.reference || "");
   const { data, error } = await bookingQuery.limit(2);
