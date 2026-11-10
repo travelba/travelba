@@ -383,12 +383,13 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "scan_passeport",
     signedUrl: true,
     description:
-      "Scan du passeport d’un voyageur du dossier. Même espace travelba-passeports que passeport_voyageur (jeton TRAVELBA_MCP_PASSPORT_TOKENS). L’espace travelba, jeton général, refuse : c’est voulu. dossier_id ou reference, et voyageur_id (celui de passeport_voyageur). URL signée dix minutes, nom du fichier, type mime. Un PDF est signalé : ce n’est pas une photo png, jpg ou jpeg. Lieu de naissance si le coffre l’a. Pas de champ biométrique. Lecture seule.",
+      "Scan du passeport. Même espace travelba-passeports que passeport_voyageur (jeton TRAVELBA_MCP_PASSPORT_TOKENS). L’espace travelba, jeton général, refuse : c’est voulu. dossier_id ou reference, et voyageur_id s’il y a plusieurs voyageurs. Sans dossier : client_id et voyageur_id (celui de passeport_voyageur, le titulaire ou l’accompagnateur), ou client_id et compagnon_id. URL signée dix minutes, nom du fichier, type mime. Un PDF est signalé : ce n’est pas une photo png, jpg ou jpeg. Lieu de naissance si le coffre l’a. Pas de champ biométrique. Lecture seule, aucun message.",
     input: {
-      client_id: z.string().trim().max(80).optional().describe("Identifiant du client, pour vérifier le dossier"),
+      client_id: z.string().trim().max(80).optional().describe("Identifiant du client. Sans dossier, avec voyageur_id ou compagnon_id"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
-      voyageur_id: z.string().trim().max(80).optional().describe("Identifiant du voyageur sur le dossier"),
+      voyageur_id: z.string().trim().max(80).optional().describe("Voyageur du dossier, ou personne de la fiche (passeport_voyageur)"),
+      compagnon_id: z.string().trim().max(80).optional().describe("Accompagnateur de la fiche, sans dossier"),
     },
     run: (args: ToolArgs) =>
       readScanPasseport({
@@ -396,6 +397,7 @@ export const MCP_TOOLS: ToolDef[] = [
         dossier_id: str(args, "dossier_id"),
         reference: str(args, "reference"),
         voyageur_id: str(args, "voyageur_id"),
+        compagnon_id: str(args, "compagnon_id"),
       }),
   },
   {
