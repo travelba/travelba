@@ -129,6 +129,7 @@ const EXPECTED = [
   "importer_pieces",
   "deposer_billet",
   "detacher_email",
+  "societe_depense",
 ];
 
 const WRITE_TOOLS = [
@@ -225,6 +226,7 @@ const WRITE_TOOLS = [
   "importer_pieces",
   "deposer_billet",
   "detacher_email",
+  "societe_depense",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {

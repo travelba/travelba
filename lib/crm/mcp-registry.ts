@@ -128,9 +128,10 @@ import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
 import { deposerBillet, detacherEmail, importerPieces } from "@/lib/crm/mcp-pieces-mail";
 import { runIfConfirmed } from "@/lib/crm/mcp-preview";
 import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant-ops";
+import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 126;
+export const MCP_TOOL_CAP = 127;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2508,7 +2509,21 @@ export const MCP_TOOLS: ToolDef[] = [
     },
     run: (args: ToolArgs) => detacherEmail(args),
   },
-
+  {
+    name: "societe_depense",
+    write: true,
+    description:
+      "Choisit la société de facturation d’une dépense, comme le sélecteur du séjour. dossier_id ou reference, carte_id de la dépense, societe_id. suivre_voyage true reprend la société du voyage. Sans confirmer, aperçu : sociétés du compte, société actuelle, société demandée. confirmer true écrit. Le grand livre suit. Moins de deux sociétés : refus. La société du séjour entier reste mettre_a_jour_dossier.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+      carte_id: z.string().trim().max(80).describe("Dépense du dossier"),
+      societe_id: z.string().trim().max(80).optional().describe("Société du compte facturé"),
+      suivre_voyage: z.boolean().optional().describe("true : la dépense reprend la société du voyage"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => societeDepense(args),
+  },
 ];
 
 function hotelMailTool(name: string, mode: "envoyer" | "relancer" | "repondre" | "pas_besoin", description: string) {
