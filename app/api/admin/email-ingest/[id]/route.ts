@@ -14,6 +14,7 @@ import {
   markEmailAttached,
   resolveEmailCardId,
 } from "@/lib/crm/email-attach-run";
+import { applyBookingSteps, EmailStepError, previewBookingSteps } from "@/lib/crm/email-step-run";
 import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
 import { closeIngestSiblings, loadEmailIngestFiles, noteIngestDecision, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
@@ -55,6 +56,7 @@ export async function POST(request: Request, ctx: Ctx) {
     extract?: unknown;
     apply_stay_currency?: boolean;
     item_id?: string;
+    confirmer?: boolean;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -260,6 +262,45 @@ export async function POST(request: Request, ctx: Ctx) {
         carte_id: cardId,
         message,
       });
+    }
+
+    if (action === "preview_steps" || action === "update_steps") {
+      const bookingId = String(body.booking_id || "");
+      if (!bookingId) return jsonError("Choisissez un voyage");
+      const { data: booking } = await admin
+        .from("crm_bookings")
+        .select("id, customer_id, visible_to_client")
+        .eq("id", bookingId)
+        .maybeSingle();
+      if (!booking) return jsonError("Voyage introuvable", 404);
+      let preview;
+      try {
+        preview = await previewBookingSteps(admin, bookingId, extract);
+      } catch (err) {
+        if (err instanceof EmailStepError) return jsonError(err.message);
+        throw err;
+      }
+      if (action === "preview_steps" || body.confirmer !== true) {
+        return NextResponse.json({ ok: true, ecrit: false, apercu: preview });
+      }
+      await applyBookingSteps({
+        admin,
+        bookingId,
+        customerId: booking.customer_id,
+        extract: extract || { items: [] },
+        staffUserId: auth.user.id,
+        emailIngestId: id,
+        visibleToClient: booking.visible_to_client === true,
+      });
+      const message = "Les étapes sont mises à jour. Le prix de vente n’a pas changé.";
+      await markEmailAttached(admin, row, {
+        bookingId,
+        customerId: booking.customer_id,
+        actorId: auth.user.id,
+        summary: message,
+        cards: true,
+      });
+      return NextResponse.json({ ok: true, ecrit: true, booking_id: bookingId, apercu: preview, message });
     }
 
     if (action === "new_booking") {

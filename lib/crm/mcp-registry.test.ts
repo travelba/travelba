@@ -443,7 +443,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(lecture?.description || "", /PNR/);
   const mail = MCP_TOOLS.find((tool) => tool.name === "traiter_email");
   assert.match(mail?.description || "", /creer_dossier/);
-  assert.match(mail?.description || "", /Aucune carte n’est créée ni modifiée/);
+  assert.match(mail?.description || "", /ne crée ni ne modifie aucune carte/);
+  assert.match(mail?.description || "", /mettre_a_jour/);
+  assert.match(mail?.description || "", /confirmer true/);
+  assert.match(mail?.description || "", /prix de vente/);
   assert.match(mail?.description || "", /sans e-mail/);
   assert.match(mail?.description || "", /Aucune invitation/);
   const lancer = MCP_TOOLS.find((tool) => tool.name === "lancer_formalite");

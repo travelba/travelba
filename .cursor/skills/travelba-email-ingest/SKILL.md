@@ -26,12 +26,8 @@ Un mail sans texte est classé et rien n’est ajouté. Le résultat du clic est
 affiché sur la carte. La même empreinte n’est pas déposée deux fois.
 Le mail reste lié au dossier (`attached`).
 
-**Mettre à jour** (`apply_cards`, MCP `mettre_a_jour`) sur un dossier déjà ouvert
-est le même geste que **Déposer les pièces** : les fichiers vont sur la carte
-qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le
-dossier s’il n’y en a pas. Aucune carte n’est créée ni modifiée. Il ne part
-jamais tout seul. **Créer un dossier** reste le clic manuel (brouillon caché, sans invitation). Le parse le fait aussi, tout seul, pour une confirmation lisible : fiche trouvée ou créée (sans e-mail si le billet n’en a pas), dossier caché, cartes du document (vol, hôtel, transfert, train, voiture). Un aller-retour au même PNR s’affiche en une carte, une ligne par trajet. Le même voyage (mêmes voyageurs, dates qui se chevauchent ou se suivent, y compris deux hôtels Hô Chi Minh puis Con Dao) rejoint le dossier déjà ouvert. Deux dossiers du même voyage sont réunis. Un dossier supprimé volontairement n’est pas recréé. Une annulation, un devis ou une pièce d’identité ne crée pas de dossier : la file le dit en français. Un billet illisible aussi. Aucun message, aucun prix de vente inventé. `traiter_email` `creer_dossier` reste le même clic. `rattacher` et
-`mettre_a_jour` ne créent toujours pas de carte. `lire_email` donne le corps,
+**Déposer les pièces** (`apply_cards`, `replace_booking`) reste le dépôt des fichiers. Aucune étape n’est créée ni modifiée.
+**Mettre à jour les étapes** (bouton, MCP `mettre_a_jour`) montre d’abord l’aperçu (étapes à créer ou à compléter, confirmation, dates, vols, prix fournisseur, voyageurs, écarts sur un champ déjà rempli). L’écriture n’a lieu qu’après confirmation (`confirmer` true). Une étape vide du même type, aux dates qui se croisent ou vers la même destination, est remplie. Un aller-retour au même PNR reste une carte, une ligne par trajet. Le prix de vente n’est pas pris dans le mail. Une annulation ne met pas les étapes à jour. **Créer un dossier** reste le clic manuel (brouillon caché, sans invitation). Le parse le fait aussi, tout seul, pour une confirmation lisible : fiche trouvée ou créée (sans e-mail si le billet n’en a pas), dossier caché, cartes du document (vol, hôtel, transfert, train, voiture). Un aller-retour au même PNR s’affiche en une carte, une ligne par trajet. Le même voyage (mêmes voyageurs, dates qui se chevauchent ou se suivent, y compris deux hôtels Hô Chi Minh puis Con Dao) rejoint le dossier déjà ouvert. Deux dossiers du même voyage sont réunis. Un dossier supprimé volontairement n’est pas recréé. Une annulation, un devis ou une pièce d’identité ne crée pas de dossier : la file le dit en français. Un billet illisible aussi. Aucun message, aucun prix de vente inventé. `traiter_email` `creer_dossier` reste le même clic. `rattacher` ne crée toujours pas de carte. `lire_email` donne le corps,
 le texte des PDF et le billet déjà lu, sans numéro de passeport ni de carte.
 
 Deux séjours vers la même ville, deux cartes du même type, une annulation sans
@@ -78,8 +74,7 @@ rien. Le parse ne crée pas le dossier et n’applique pas les cartes. Le rematc
 non plus. `received` et `error` restent dans la file, pas seulement `parsed` /
 `matched`.
 
-Le clic **Mettre à jour** sur une annulation, comme **Déposer les pièces**, ne
-fait qu’attacher les fichiers. Il n’appelle pas `applyCancellationToBooking`.
+Le clic **Déposer les pièces** sur une annulation ne fait qu’attacher les fichiers. Il n’appelle pas `applyCancellationToBooking`. **Mettre à jour les étapes** refuse une annulation.
 **Créer
 un dossier** est refusé si le mail est une annulation.
 
