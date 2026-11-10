@@ -25,6 +25,6 @@ La clé en clair n’apparaît qu’une fois, à la création (`/admin/cles`, r�
 
 Les actions faites avec la clé sont au nom du membre (historique du dossier : son nom) et suivent son rôle. Les outils d’équipe et de clés (`lister_membres`, `ajouter_membre`, `changer_role_membre`, `desactiver_membre`, `lister_cles_api`, `creer_cle_api`, `revoquer_cle_api`) sont réservés aux administrateurs. Un agent reçoit « Réservé aux administrateurs. »
 
-Passeports et le numéro complet d’une carte restent sur les jetons d’environnement dédiés. Une clé nominative ne lit pas le numéro. Elle peut créer ou geler une carte si son rôle a le droit « Créer une carte Pliant ». Le jeton général `TRAVELBA_MCP_TOKEN` peut créer et geler, sans lire le numéro. `lire_carte_pliant` reste `TRAVELBA_MCP_CARD_TOKENS`.
+Les passeports restent sur le jeton d’environnement dédié. Une clé nominative ne lit pas le numéro d’une carte, même si son rôle a le droit « Créer une carte Pliant ». Elle peut créer ou geler une carte avec ce droit. Le jeton général `TRAVELBA_MCP_TOKEN` peut créer, geler et lire le numéro (`lire_carte_pliant` : numéro, expiration, CVV, titulaire), comme un jeton de `TRAVELBA_MCP_CARD_TOKENS`. La création ne renvoie pas le numéro : la lecture suit, et elle est journalisée sans l’enregistrer.
 
 Première clé : un administrateur crée la clé de `raphael@travelba.fr` (rôle admin) depuis Clés API, après que ce membre existe dans Équipe.

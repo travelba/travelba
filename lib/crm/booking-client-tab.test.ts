@@ -10,6 +10,7 @@ test("l’onglet Client d’un dossier résume la fiche, sans l’éditer", () =
   const editor = readFileSync(join(root, "components/admin/BookingEditor.tsx"), "utf8");
   const change = readFileSync(join(root, "components/admin/ChangeBookingClient.tsx"), "utf8");
   const page = readFileSync(join(root, "app/admin/reservations/[id]/page.tsx"), "utf8");
+  const load = readFileSync(join(root, "lib/crm/admin-booking-load.ts"), "utf8");
   assert.equal(editor.includes("<CustomerEditor"), false, "la fiche complète se modifie sur /admin/clients/[id]");
   assert.match(editor, /Ouvrir la fiche/);
   assert.match(editor, /Identité, coordonnées, passeports et sociétés se modifient sur la fiche client/);
@@ -23,9 +24,12 @@ test("l’onglet Client d’un dossier résume la fiche, sans l’éditer", () =
   assert.match(editor, /Sur ce séjour/);
   assert.match(editor, /<TripSharePanel/);
   assert.match(editor, /<CustomerLoginLog/);
-  assert.match(page, /ficheBillingCompanies=\{ficheBillingCompanies\}/);
+  assert.match(page, /\{\.\.\.shell\.value\}/);
+  assert.match(load, /ficheBillingCompanies:/);
   assert.equal(page.includes("companyAdmins"), false);
+  assert.equal(load.includes("companyAdmins"), false);
   assert.equal(page.includes('eq("company_role", "admin")'), false);
+  assert.equal(load.includes('eq("company_role", "admin")'), false);
 });
 
 test("le fil WhatsApp vit dans l’onglet Client", () => {

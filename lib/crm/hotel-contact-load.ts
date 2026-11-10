@@ -60,9 +60,24 @@ function groupContactRows(rows: HotelContactRow[]): StoredHotelSource[] {
   });
 }
 
+export type HotelContactLoadOptions = {
+  /** Faux : contacts et faits déjà en base, sans appel Little Emperors ni catalogue entier. */
+  live?: boolean;
+};
+
 /** Catalogue (Milano = Milan) pour la fiche. L’admin affiche le roster ; l’interface client passe par withoutHotelRoster. */
-export async function loadHotelContacts(bookingId: string, items: CrmBookingItem[]) {
+export async function loadHotelContacts(bookingId: string, items: CrmBookingItem[], options?: HotelContactLoadOptions) {
   if (!items.some((item) => item.kind === "hotel")) return items;
+  const { sourced, stays } = await readStoredHotelSources(bookingId, items);
+  if (options?.live === false) {
+    return sourced.map((item) => frenchBenefits(applyLeStayFacts(item, pickLeStay(item, stays))));
+  }
+  const withContacts = await attachLittleEmperorsCatalog(await fillLeHotelDetails(sourced));
+  const withFacts = withContacts.map((item) => frenchBenefits(applyLeStayFacts(item, pickLeStay(item, stays))));
+  return attachHotelGallery(withFacts);
+}
+
+async function readStoredHotelSources(bookingId: string, items: CrmBookingItem[]) {
   let rows: StoredHotelSource[] = [];
   let stays: LeStayFacts[] = [];
   try {
@@ -120,11 +135,7 @@ export async function loadHotelContacts(bookingId: string, items: CrmBookingItem
     rows = [];
     stays = [];
   }
-  const withContacts = await attachLittleEmperorsCatalog(
-    await fillLeHotelDetails(applyStoredHotelSources(items, rows))
-  );
-  const withFacts = withContacts.map((item) => frenchBenefits(applyLeStayFacts(item, pickLeStay(item, stays))));
-  return attachHotelGallery(withFacts);
+  return { sourced: applyStoredHotelSources(items, rows), stays };
 }
 
 function frenchBenefits(item: CrmBookingItem): CrmBookingItem {

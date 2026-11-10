@@ -11,7 +11,7 @@ const PAN = "4242424242424242";
 const CVV = "482";
 const CLIENT = "11111111-1111-4111-8111-111111111111";
 const BOOKING = "22222222-2222-4222-8222-222222222222";
-const CARDS = { actor: "cartes", passport: false, cards: true, cards_create: true };
+const CARDS = { actor: "cartes", passport: false, cards: true, cards_create: true, cards_read: true };
 
 type Row = Record<string, unknown>;
 
@@ -379,17 +379,18 @@ test("un nombre de transactions invalide n’émet pas la carte", async () => {
   assert.equal(state.audits[0]?.outcome, "invalide");
 });
 
-test("un jeton passeport ne crée pas de carte ; le jeton général crée sans numéro", async () => {
+test("le jeton général crée sans numéro puis lit la carte ; une clé tbk_ ne lit pas", async () => {
   const state = baseState();
   await assert.rejects(
     () =>
-      runWithMcpAccess({ actor: "amadeus", passport: true, cards: false, cards_create: false }, () =>
+      runWithMcpAccess({ actor: "amadeus", passport: true, cards: false, cards_create: false, cards_read: false }, () =>
         createPliantCard({ reference: "TB-2026-0082", nom: "Visa", plafond: 10 }, fakeAdmin(state), deps(state))
       ),
     (err: unknown) => err instanceof McpWriteError && /pas autorisé/.test(err.message)
   );
-  const created = await runWithMcpAccess({ actor: "mcp", passport: false, cards: false, cards_create: true }, () =>
-    createPliantCard({ dossier_id: BOOKING, nom: "Visa", plafond: 10 }, fakeAdmin(state), deps(state))
+  const created = await runWithMcpAccess(
+    { actor: "mcp", passport: false, cards: false, cards_create: true, cards_read: true },
+    () => createPliantCard({ dossier_id: BOOKING, nom: "Visa", plafond: 10 }, fakeAdmin(state), deps(state))
   );
   if (!("cree" in created) || !created.cree) assert.fail("carte non créée");
   assert.equal(created.quatre_derniers, "4242");
@@ -412,6 +413,7 @@ test("un jeton passeport ne crée pas de carte ; le jeton général crée sans n
           passport: false,
           cards: false,
           cards_create: false,
+          cards_read: false,
           staff: { id: CLIENT, role: "lecture", name: "Léa", keyId: BOOKING, allows: { create_pliant_card: false } },
         },
         () => createPliantCard({ dossier_id: BOOKING, nom: "Visa", plafond: 10 }, fakeAdmin(state), deps(state))
@@ -422,16 +424,44 @@ test("un jeton passeport ne crée pas de carte ; le jeton général crée sans n
   assert.equal(state.audits.at(-1)?.outcome, "refuse");
   assert.equal(state.issued.length, 1);
 
+  const revealed = await runWithMcpAccess(
+    { actor: "mcp", passport: false, cards: false, cards_create: true, cards_read: true },
+    () => readPliantCard({ dossier_id: BOOKING }, fakeAdmin(state), deps(state))
+  );
+  if (!("pan" in revealed)) assert.fail("lecture");
+  assert.equal(revealed.pan, PAN);
+  assert.equal(revealed.expiration, "06/28");
+  assert.equal(revealed.cvv, CVV);
+  assert.equal(revealed.titulaire, "Camille Martin");
+  assert.equal(state.audits.at(-1)?.actor, "mcp");
+  assert.equal(state.audits.at(-1)?.kind, "reveal");
+  assert.equal(state.audits.at(-1)?.outcome, "ok");
+  assert.equal(JSON.stringify(state.audits).includes(PAN), false);
+  assert.equal(JSON.stringify(state.audits).includes(CVV), false);
+
   await assert.rejects(
     () =>
-      runWithMcpAccess({ actor: "mcp", passport: false, cards: false, cards_create: true }, () =>
-        readPliantCard({ dossier_id: BOOKING }, fakeAdmin(state), deps(state))
+      runWithMcpAccess(
+        {
+          actor: "lea",
+          passport: false,
+          cards: false,
+          cards_create: true,
+          cards_read: false,
+          staff: { id: CLIENT, role: "agent", name: "Léa", keyId: BOOKING, allows: { create_pliant_card: true } },
+        },
+        () => readPliantCard({ dossier_id: BOOKING }, fakeAdmin(state), deps(state))
       ),
     (err: unknown) => err instanceof McpReadError && /pas autorisé/.test(err.message)
   );
+  assert.equal(state.audits.at(-1)?.actor, "lea");
+  assert.equal(state.audits.at(-1)?.kind, "reveal");
+  assert.equal(state.audits.at(-1)?.outcome, "refuse");
+  assert.equal(state.order.filter((step) => step === "secrets").length, 1);
 
-  const blocked = await runWithMcpAccess({ actor: "mcp", passport: false, cards: false, cards_create: true }, () =>
-    blockPliantCard({ dossier_id: BOOKING }, fakeAdmin(state), deps(state))
+  const blocked = await runWithMcpAccess(
+    { actor: "mcp", passport: false, cards: false, cards_create: true, cards_read: true },
+    () => blockPliantCard({ dossier_id: BOOKING }, fakeAdmin(state), deps(state))
   );
   if (!("bloquee" in blocked) || !blocked.bloquee) assert.fail("carte non gelée");
   assert.equal("pan" in blocked, false);
