@@ -379,7 +379,7 @@ test("un nombre de transactions invalide n’émet pas la carte", async () => {
   assert.equal(state.audits[0]?.outcome, "invalide");
 });
 
-test("le jeton général crée sans numéro puis lit la carte ; une clé tbk_ ne lit pas", async () => {
+test("le jeton général et une clé tbk_ autorisée lisent la carte ; sans le droit, refus", async () => {
   const state = baseState();
   await assert.rejects(
     () =>
@@ -446,9 +446,9 @@ test("le jeton général crée sans numéro puis lit la carte ; une clé tbk_ ne
           actor: "lea",
           passport: false,
           cards: false,
-          cards_create: true,
+          cards_create: false,
           cards_read: false,
-          staff: { id: CLIENT, role: "agent", name: "Léa", keyId: BOOKING, allows: { create_pliant_card: true } },
+          staff: { id: CLIENT, role: "lecture", name: "Léa", keyId: BOOKING, allows: { create_pliant_card: false } },
         },
         () => readPliantCard({ dossier_id: BOOKING }, fakeAdmin(state), deps(state))
       ),
@@ -458,6 +458,27 @@ test("le jeton général crée sans numéro puis lit la carte ; une clé tbk_ ne
   assert.equal(state.audits.at(-1)?.kind, "reveal");
   assert.equal(state.audits.at(-1)?.outcome, "refuse");
   assert.equal(state.order.filter((step) => step === "secrets").length, 1);
+
+  const byKey = await runWithMcpAccess(
+    {
+      actor: "lea",
+      passport: false,
+      cards: false,
+      cards_create: true,
+      cards_read: true,
+      staff: { id: CLIENT, role: "agent", name: "Léa", keyId: BOOKING, allows: { create_pliant_card: true } },
+    },
+    () => readPliantCard({ dossier_id: BOOKING }, fakeAdmin(state), deps(state))
+  );
+  if (!("pan" in byKey)) assert.fail("lecture clé");
+  assert.equal(byKey.pan, PAN);
+  assert.equal(byKey.expiration, "06/28");
+  assert.equal(byKey.cvv, CVV);
+  assert.equal(state.audits.at(-1)?.actor, "lea");
+  assert.equal(state.audits.at(-1)?.kind, "reveal");
+  assert.equal(state.audits.at(-1)?.outcome, "ok");
+  assert.equal(JSON.stringify(state.audits).includes(PAN), false);
+  assert.equal(JSON.stringify(state.audits).includes(CVV), false);
 
   const blocked = await runWithMcpAccess(
     { actor: "mcp", passport: false, cards: false, cards_create: true, cards_read: true },

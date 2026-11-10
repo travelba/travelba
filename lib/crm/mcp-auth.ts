@@ -35,8 +35,8 @@ export type McpAccess = {
    */
   cards_create?: boolean;
   /**
-   * Lire le numéro, l’expiration et le CVV. Vrai pour le jeton général et un jeton carte.
-   * Une clé `tbk_` reste fausse, même avec `create_pliant_card`.
+   * Lire le numéro, l’expiration et le CVV. Vrai pour le jeton général, un jeton carte,
+   * et une clé `tbk_` dont le membre a `create_pliant_card`.
    */
   cards_read?: boolean;
   /** Présent seulement pour une clé nominative. Les jetons d’environnement n’ont pas de collègue. */
