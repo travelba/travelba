@@ -234,6 +234,7 @@ export async function findPersonalMcpAccess(token: string) {
     passport: false as const,
     cards: false as const,
     cards_create: allows.create_pliant_card === true,
+    cards_read: false as const,
     staff: {
       id: staff!.id,
       role: role as StaffRole,

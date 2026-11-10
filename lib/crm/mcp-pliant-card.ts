@@ -550,7 +550,7 @@ export async function readPliantCard(
     kind: "reveal" as const,
   };
 
-  if (access.cards !== true) {
+  if (access.cards !== true && access.cards_read !== true) {
     await writeCardAudit(admin, { ...auditBase, outcome: "refuse" });
     throw new McpReadError("Cet assistant n’est pas autorisé à lire une carte.");
   }
