@@ -126,6 +126,9 @@ const EXPECTED = [
   "demande_hotel",
   "modifier_plafond_pliant",
   "cloturer_carte_pliant",
+  "importer_pieces",
+  "deposer_billet",
+  "detacher_email",
 ];
 
 const WRITE_TOOLS = [
@@ -219,6 +222,9 @@ const WRITE_TOOLS = [
   "demande_hotel",
   "modifier_plafond_pliant",
   "cloturer_carte_pliant",
+  "importer_pieces",
+  "deposer_billet",
+  "detacher_email",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
