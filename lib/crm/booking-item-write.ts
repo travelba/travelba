@@ -16,6 +16,13 @@ import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
+import {
+  DEFAULT_EXPENSE_PRESETS,
+  TICKETING_PRESET_BLOCKED,
+  ticketingPresetBlocked,
+  type ExpensePreset,
+} from "@/lib/crm/expense-presets";
+import { loadExpensePresets } from "@/lib/crm/expense-presets-db";
 
 const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
 
@@ -130,6 +137,19 @@ export async function addStaffBookingCard(
     ).has(txId)
   ) {
     return { error: "Cette dépense est déjà au dossier.", status: 409 };
+  }
+  if (isLedgerExpenseKind(kind)) {
+    const expenseTitle = String(nextBody.title || title).trim();
+    let catalog: readonly ExpensePreset[] = DEFAULT_EXPENSE_PRESETS;
+    try {
+      const loaded = await loadExpensePresets(supabase);
+      if (loaded.source === "table") catalog = loaded.presets;
+    } catch {
+      catalog = DEFAULT_EXPENSE_PRESETS;
+    }
+    if (ticketingPresetBlocked(catalog, expenseTitle, rows)) {
+      return { error: TICKETING_PRESET_BLOCKED, status: 409 };
+    }
   }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: company.error, status: 400 };

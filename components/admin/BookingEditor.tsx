@@ -68,6 +68,7 @@ import { hotelCardNeedsAlert, principalGuest } from "@/lib/crm/hotel-arrival";
 import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
 import type { WhatsappThreadMessage, WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
 import type { ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
+import { DEFAULT_EXPENSE_PRESETS, type ExpensePreset } from "@/lib/crm/expense-presets";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { BoardingPassSend } from "@/components/admin/BoardingPassSend";
@@ -358,6 +359,7 @@ export function BookingEditor({
   mb3m,
   accounting = null,
   agencyFee,
+  expensePresets = DEFAULT_EXPENSE_PRESETS,
   importTasks = [],
   showMargins = true,
   checkins = [],
@@ -455,6 +457,8 @@ export function BookingEditor({
   };
   /** Comptabilité du voyage : ventes, coûts rattachés, marge, sorties proposées. */
   accounting?: TripAccountingView | null;
+  /** Raccourcis du bloc Dépenses. Vide si l’agence les a tous retirés. */
+  expensePresets?: readonly ExpensePreset[];
   /** Enregistrement, visa et pré-enregistrement issus d’un mail. Pas des étapes. */
   importTasks?: { id: string; kind: string; title: string }[];
   /** Faux : marges, coûts nets et commission restent cachés. */
@@ -2284,6 +2288,7 @@ export function BookingEditor({
               agencyCommission={booking.agency_commission === true}
               agencyFeeRate={previewFeeRate}
               onExpenseWrite={onExpenseWrite}
+              presets={expensePresets}
             />
           </section>
 

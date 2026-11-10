@@ -10,6 +10,13 @@ import { agencyFeeBaseFromItems } from "@/lib/crm/bookings";
 import { formatAgencyFeePercent } from "@/lib/crm/agency-fee-rate";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import { isAutoTicketingExpense, ticketingExpenseTouched, AUTO_TICKETING_FEE } from "@/lib/crm/ticketing-fee";
+import {
+  DEFAULT_EXPENSE_PRESETS,
+  TICKETING_PRESET_BLOCKED,
+  expenseFromPreset,
+  ticketingPresetBlocked,
+  type ExpensePreset,
+} from "@/lib/crm/expense-presets";
 import { expensePricingLabel, parseExpenseQuantity, readExpensePricing } from "@/lib/crm/expense-pricing";
 import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
 import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
@@ -47,6 +54,7 @@ export function BookingExpensesPanel({
   currency = "EUR",
   agencyCommission = false,
   agencyFeeRate = 0.1,
+  presets = DEFAULT_EXPENSE_PRESETS,
   onExpenseWrite,
 }: {
   bookingId: string;
@@ -55,6 +63,8 @@ export function BookingExpensesPanel({
   currency?: string;
   agencyCommission?: boolean;
   agencyFeeRate?: number;
+  /** Raccourcis actifs. Tableau vide : l’agence les a retirés. */
+  presets?: readonly ExpensePreset[];
   /** Le prix dans Transactions suit tout de suite, sans recharger la page. */
   onExpenseWrite?: (change: ExpenseWrite) => void;
 }) {
@@ -130,6 +140,10 @@ export function BookingExpensesPanel({
       setError("Montant requis.");
       return;
     }
+    if ((editingId === "new" || !editingId) && ticketingPresetBlocked(presets, label, expenses)) {
+      setError(TICKETING_PRESET_BLOCKED);
+      return;
+    }
     setBusy(true);
     setError(null);
     const current = expenses.find((item) => item.id === editingId);
@@ -180,6 +194,45 @@ export function BookingExpensesPanel({
         title: label,
         previousAmount: current?.amount == null ? 0 : Number(current.amount),
         amount,
+      });
+    }
+    setEditingId(null);
+    setTitle("");
+    setQuantityText("1");
+    setUnitPrice(null);
+    setAmount(null);
+    router.refresh();
+  }
+
+  /** Un clic : même écriture que le formulaire, quantité 1, libellé et montant du raccourci. */
+  async function addPreset(preset: ExpensePreset) {
+    if (ticketingPresetBlocked(presets, preset.label, expenses)) {
+      setError(TICKETING_PRESET_BLOCKED);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const payload = expenseFromPreset(preset);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setError(json.error || "Enregistrement impossible");
+      return;
+    }
+    setLedgerNote(readLedgerWarning(json));
+    const id = String((json.item as { id?: string } | undefined)?.id || "");
+    if (id) {
+      onExpenseWrite?.({
+        id,
+        previousTitle: payload.title,
+        title: payload.title,
+        previousAmount: 0,
+        amount: payload.amount,
       });
     }
     setEditingId(null);
@@ -335,6 +388,37 @@ export function BookingExpensesPanel({
           ? "Les frais de billeterie se créent ici dès qu’il y a un vol. Modifier ou retirer une ligne met à jour la transaction."
           : "Les frais de billeterie se créent ici dès qu’il y a un vol. Le débit part quand le séjour est visible."}
       </p>
+      {presets.length ? (
+        <div className="mt-3">
+          <p className="text-xs font-semibold text-[var(--admin-navy)]">Ajouter en un clic</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {presets.map((preset) => {
+              const blocked = ticketingPresetBlocked(presets, preset.label, expenses);
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  disabled={busy || blocked}
+                  title={blocked ? TICKETING_PRESET_BLOCKED : `Ajouter ${preset.label}`}
+                  aria-label={
+                    blocked
+                      ? `${preset.label}, ${formatMoney(preset.amount, currency)}. ${TICKETING_PRESET_BLOCKED}`
+                      : `Ajouter ${preset.label}, ${formatMoney(preset.amount, currency)}`
+                  }
+                  onClick={() => void addPreset(preset)}
+                  className="admin-tap inline-flex min-h-11 items-center rounded-full border border-border px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50 lg:min-h-0"
+                >
+                  {preset.label}
+                  <span className="ml-1 font-normal text-muted">{formatMoney(preset.amount, currency)}</span>
+                </button>
+              );
+            })}
+          </div>
+          {presets.some((preset) => ticketingPresetBlocked(presets, preset.label, expenses)) ? (
+            <p className="mt-2 text-xs text-muted">{TICKETING_PRESET_BLOCKED}</p>
+          ) : null}
+        </div>
+      ) : null}
       {awaitingCount ? (
         <p className="mt-1 text-xs font-semibold text-[#9e7e51]">
           {awaitingCount === 1

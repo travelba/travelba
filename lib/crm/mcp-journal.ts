@@ -30,6 +30,8 @@ const CREATE = new Set([
 
 const REMOVE = new Set(["retirer_carte", "retirer_voyageur", "supprimer_client", "supprimer_compagnon", "supprimer_piece_client", "archiver_dossier", "supprimer_dossier", "retirer_piece_dossier", "annuler_mouvement", "fusionner_clients"]);
 
+const SETTINGS = new Set(["depenses_types"]);
+
 const FINANCE = new Set([
   "crediter_virement",
   "crediter_revolut",
@@ -104,6 +106,7 @@ const PHRASES: Record<string, string> = {
   annuler_mouvement: "Mouvement annulé",
   fusionner_clients: "Clients fusionnés",
   changer_client_dossier: "Client du dossier changé",
+  depenses_types: "Dépenses types enregistrées",
   enregistrer_societes: "Sociétés de facturation enregistrées",
   regler_acces_hotels: "Accès hôtels modifié",
   archiver_dossier: "Dossier archivé",
@@ -156,6 +159,9 @@ export function mcpWriteJournalDraft(tool: string, args: Record<string, unknown>
   } else if (!dossierId && !clientId && FINANCE.has(tool)) {
     entityType = "finance";
     entityId = null;
+  } else if (!dossierId && !clientId && SETTINGS.has(tool)) {
+    entityType = "setting";
+    entityId = "expense-presets";
   }
   return {
     action,
