@@ -1039,7 +1039,49 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
   } catch (err) {
     raise(err, "E-mail non traité.");
   }
-  if (action.action === "rattacher" || action.action === "mettre_a_jour") {
+  if (action.action === "mettre_a_jour") {
+    const { applyBookingSteps, EmailStepError, previewBookingSteps } = await import("@/lib/crm/email-step-run");
+    let preview;
+    try {
+      preview = await previewBookingSteps(db, booking.id, extract);
+    } catch (err) {
+      if (err instanceof EmailStepError) throw new McpWriteError(err.message);
+      raise(err, "E-mail non traité.");
+    }
+    if (input.confirmer !== true) {
+      return { envoye: false, ecrit: false, apercu: true, id: row.id, dossier_id: booking.id, ...preview };
+    }
+    if (!extract) throw new McpWriteError("Ce mail n’a pas d’étapes à lire.");
+    try {
+      await applyBookingSteps({
+        admin: db,
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        extract,
+        staffUserId: null,
+        emailIngestId: row.id,
+        visibleToClient: booking.visible_to_client === true,
+      });
+      await markEmailAttached(db, row, {
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        actorId: null,
+        summary: "Les étapes sont mises à jour. Le prix de vente n’a pas changé.",
+        cards: true,
+      });
+    } catch (err) {
+      if (err instanceof EmailStepError) throw new McpWriteError(err.message);
+      raise(err, "E-mail non traité.");
+    }
+    return {
+      ecrit: true as const,
+      id: row.id,
+      statut: "attached" as const,
+      dossier_id: booking.id,
+      apercu: preview,
+    };
+  }
+  if (action.action === "rattacher") {
     let deposited;
     try {
       deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments, cardId, {

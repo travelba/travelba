@@ -99,7 +99,8 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Action admin | Outil MCP |
 | --- | --- |
 | File fournisseurs, lire un mail | `emails_en_attente`, `lire_email` — couvert |
-| Déposer les pièces, mettre à jour, refuser, créer un dossier | `traiter_email` — couvert |
+| Déposer les pièces, refuser, créer un dossier | `traiter_email` — couvert. `rattacher` dépose les pièces et ne touche pas aux étapes |
+| Mettre à jour les étapes depuis un mail | `traiter_email` `mettre_a_jour` — ajouté. Sans `confirmer`, aperçu. `confirmer` true écrit. Une étape vide est remplie. Le prix de vente ne vient pas du mail |
 | Courrier type à l’hôtel, relance, réponse, Pas besoin / Remettre | `courrier_hotel`, `relancer_hotel`, `repondre_hotel`, `demande_hotel` — ajouté. Sans `confirmer`, aperçu (destinataires, objet, corps). `confirmer` true envoie, ou enregistre Pas besoin / Remettre sans e-mail |
 | Détacher un mail du mauvais séjour | `detacher_email` — ajouté. Sans `confirmer`, aperçu (cartes, pièces, voyageurs, dossier retiré). `confirmer` true retire et remet le mail en file. Un mail bloqué n’est pas retiré |
 | Billet déposé transformé en carte vol | `deposer_billet` — ajouté. Sans `confirmer`, aperçu (PNR, prix, création ou mise à jour). `confirmer` true écrit la carte et dépose le fichier. Sans PNR et sans carte, refus |

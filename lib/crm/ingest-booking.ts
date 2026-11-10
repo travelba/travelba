@@ -55,6 +55,7 @@ import {
   stayDatesFromExtract,
 } from "@/lib/crm/item-lifecycle";
 import {
+  findBlankStep,
   findHotelBookingCard,
   findHotelExactStay,
   findMatchingItem,
@@ -404,6 +405,10 @@ async function upsertItemsAndTravelers(
     }
     if (!match && opts?.keepSellingPrice) {
       match = findHotelBookingCard(pool, probe);
+      sameBooking = Boolean(match);
+    }
+    if (!match && opts?.keepSellingPrice) {
+      match = findBlankStep(pool, probe);
       sameBooking = Boolean(match);
     }
     const incomingAmount = parseMoney(item.amount);

@@ -153,11 +153,69 @@ function OriginalMail({ row }: { row: CrmEmailIngest }) {
   );
 }
 
+type StepPreview = {
+  etapes: {
+    action: "completer" | "creer";
+    titre: string;
+    confirmation: string | null;
+    dates: string;
+    vol: string | null;
+    trajet: string | null;
+    prix_fournisseur: number | null;
+    prix_vente: number;
+    voyageurs: string[];
+    changements: { champ: string; avant: string; apres: string }[];
+  }[];
+  aller_retour: { pnr: string; lignes: string[] }[];
+};
+
+function StepUpdatePreview({ preview }: { preview: StepPreview }) {
+  return (
+    <div className="space-y-2 rounded-xl border border-[#C5A880] bg-white px-3 py-3 text-sm text-[#0B192C] sm:col-span-2">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Aperçu des étapes</p>
+      {preview.aller_retour.map((trip) => (
+        <p key={trip.pnr}>
+          Aller-retour {trip.pnr} : {trip.lignes.join(" · ")}
+        </p>
+      ))}
+      <ul className="space-y-2">
+        {preview.etapes.map((step, index) => (
+          <li key={`${step.titre}-${index}`}>
+            <p className="font-semibold">
+              {step.action === "completer" ? "Compléter" : "Créer"} · {step.titre}
+            </p>
+            <p className="text-muted">
+              {[step.confirmation, step.dates, step.vol, step.trajet].filter(Boolean).join(" · ")}
+            </p>
+            <p>
+              Prix fournisseur {step.prix_fournisseur == null ? "non lu" : formatMoney(step.prix_fournisseur)} · prix de vente{" "}
+              {formatMoney(step.prix_vente)} (inchangé)
+            </p>
+            {step.voyageurs.length ? <p>Voyageurs : {step.voyageurs.join(", ")}</p> : null}
+            {step.changements.length ? (
+              <ul className="mt-1 space-y-0.5">
+                {step.changements.map((change) => (
+                  <li key={change.champ}>
+                    {change.champ} : {change.avant} → {change.apres}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {!preview.etapes.length ? <p>Aucune étape à créer ni à compléter.</p> : null}
+    </div>
+  );
+}
+
 function pendingLabel(action: string) {
   if (action === "new_booking") return "Création…";
   if (action === "refuse" || action === "ignore") return "Classement…";
   if (action === "attach_booking") return "Dépôt…";
   if (action === "apply_cards" || action === "replace_booking") return "Dépôt…";
+  if (action === "preview_steps") return "Lecture…";
+  if (action === "update_steps") return "Mise à jour…";
   return "Rattachement…";
 }
 
@@ -168,6 +226,7 @@ function doneLabel(action: string) {
   if (action === "apply_cards" || action === "replace_booking") {
     return "Les pièces sont déposées. Les étapes n’ont pas changé.";
   }
+  if (action === "update_steps") return "Les étapes sont mises à jour. Le prix de vente n’a pas changé.";
   return "Le mail est classé sur le dossier.";
 }
 
@@ -233,6 +292,7 @@ export function EmailIngestInbox({
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
   const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
   const [openedId, setOpenedId] = useState<string | null>(initialOpenId);
+  const [stepPreview, setStepPreview] = useState<Record<string, StepPreview>>({});
 
   const cards = useMemo(() => collapseInboxRows(rows), [rows]);
   const proposalById = useMemo(() => {
@@ -386,6 +446,7 @@ export function EmailIngestInbox({
       extract?: ExtractView;
       apply_stay_currency?: boolean;
       item_id?: string;
+      confirmer?: boolean;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -414,6 +475,8 @@ export function EmailIngestInbox({
         error?: string;
         issues?: BookingIssue[];
         message?: string;
+        ecrit?: boolean;
+        apercu?: StepPreview;
       };
       if (!res.ok) {
         const detail = (data.issues || []).map((issue) => issue.message).filter(Boolean).join(" ");
@@ -422,6 +485,18 @@ export function EmailIngestInbox({
           [rowId]: detail || data.error || "Opération impossible",
         }));
         return;
+      }
+      if (data.apercu && data.ecrit === false) {
+        setStepPreview((prev) => ({ ...prev, [rowId]: data.apercu as StepPreview }));
+        return;
+      }
+      if (payload.action === "update_steps") {
+        setStepPreview((prev) => {
+          if (!(rowId in prev)) return prev;
+          const next = { ...prev };
+          delete next[rowId];
+          return next;
+        });
       }
       const message = rememberOutcome(data.message || doneLabel(payload.action));
       setNotice(message);
@@ -895,7 +970,41 @@ export function EmailIngestInbox({
                               ? pendingLabel("attach_booking")
                               : "Déposer les pièces"}
                           </button>
+                          <button
+                            type="button"
+                            disabled={isBusy || !depositBookingId}
+                            aria-busy={(isBusy && busy?.action === "preview_steps") || undefined}
+                            className="admin-tap rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+                            onClick={() =>
+                              act(row.id, { action: "preview_steps", booking_id: depositBookingId }, { refresh: false })
+                            }
+                          >
+                            {isBusy && busy?.action === "preview_steps" ? pendingLabel("preview_steps") : "Mettre à jour les étapes"}
+                          </button>
                         </div>
+                        {stepPreview[row.id] ? (
+                          <>
+                            <StepUpdatePreview preview={stepPreview[row.id]} />
+                            <div className="flex flex-wrap gap-2 sm:col-span-2">
+                              <button
+                                type="button"
+                                disabled={isBusy || !stepPreview[row.id].etapes.length}
+                                className="admin-af-btn admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                                onClick={() =>
+                                  act(row.id, {
+                                    action: "update_steps",
+                                    booking_id: depositBookingId,
+                                    confirmer: true,
+                                  })
+                                }
+                              >
+                                {isBusy && busy?.action === "update_steps"
+                                  ? pendingLabel("update_steps")
+                                  : "Confirmer la mise à jour"}
+                              </button>
+                            </div>
+                          </>
+                        ) : null}
                         {rowNotice[row.id] ? (
                           <p
                             role="status"

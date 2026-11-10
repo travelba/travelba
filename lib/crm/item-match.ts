@@ -592,3 +592,54 @@ export function collapseSharedTicketPrice<T extends MatchableItem>(items: T[]): 
   }
   return next;
 }
+
+function hasReservationNumber(item: MatchableItem) {
+  return Boolean((item.confirmation_ref || "").trim() || detail(item, "pnr").trim());
+}
+
+/** Étape du bon type, sans PNR ni numéro de vol : le mail peut la remplir. */
+export function isBlankStep(item: MatchableItem) {
+  if (hasReservationNumber(item)) return false;
+  if ((item.kind || "") === "flight" && detail(item, "flight_number").trim()) return false;
+  return true;
+}
+
+function datesOverlap(current: MatchableItem, incoming: MatchableItem) {
+  const start = day(current.start_at);
+  const end = day(current.end_at) || start;
+  const otherStart = day(incoming.start_at);
+  const otherEnd = day(incoming.end_at) || otherStart;
+  if (!start || !otherStart) return false;
+  return start <= otherEnd && otherStart <= end;
+}
+
+function destinationToken(item: MatchableItem) {
+  if ((item.kind || "") === "flight") {
+    return norm(detail(item, "to") || detail(item, "city_to"));
+  }
+  return norm(detail(item, "city") || detail(item, "hotel_name") || item.title);
+}
+
+function sameDestination(current: MatchableItem, incoming: MatchableItem) {
+  const left = destinationToken(current);
+  const right = destinationToken(incoming);
+  if (left.length < 3 || right.length < 3) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+/**
+ * Une étape vide du même type : dates qui se croisent, ou la même destination.
+ * Plusieurs candidats : la plus tôt dont les dates se croisent, sinon la plus tôt.
+ */
+export function findBlankStep<T extends MatchableItem>(existing: T[], incoming: MatchableItem): T | null {
+  const kind = incoming.kind || "";
+  if (!kind) return null;
+  const hits = existing.filter((row) => {
+    if ((row.kind || "") !== kind || !isBlankStep(row)) return false;
+    return datesOverlap(row, incoming) || sameDestination(row, incoming);
+  });
+  if (!hits.length) return null;
+  const overlapping = hits.filter((row) => datesOverlap(row, incoming));
+  const pool = overlapping.length ? overlapping : hits;
+  return [...pool].sort((a, b) => String(a.start_at || "").localeCompare(String(b.start_at || "")))[0];
+}

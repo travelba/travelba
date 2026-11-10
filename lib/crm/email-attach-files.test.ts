@@ -108,7 +108,7 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
 
   it("mettre à jour les cartes dépose les pièces et n’en crée pas", () => {
     const start = route.indexOf('if (action === "apply_cards"');
-    const end = route.indexOf('if (action === "new_booking")');
+    const end = route.indexOf('if (action === "preview_steps"');
     const block = route.slice(start, end);
     assert.match(block, /resolveEmailCardId/);
     assert.match(block, /depositEmailAttachments/);
@@ -123,17 +123,42 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     assert.match(run, /matchEmailToCard/);
   });
 
-  it("rattacher et mettre_a_jour déposent les pièces, sans créer de carte", () => {
-    const start = mcp.indexOf("export async function settleEmail");
+  it("rattacher dépose les pièces, sans créer de carte", () => {
+    const start = mcp.indexOf('if (action.action === "rattacher")');
     const end = mcp.indexOf("export async function createClient");
-    const fn = mcp.slice(start, end);
-    assert.match(fn, /resolveEmailCardId/);
-    assert.match(fn, /depositEmailAttachments/);
-    assert.match(fn, /body_text/);
-    assert.equal(/applyIngestCards|applyReplacementToBooking|applyCancellationToBooking/.test(fn), false);
-    assert.match(fn, /cartes: false/);
-    assert.equal(fn.includes("persistNewBookingFromExtract"), false);
-    assert.equal(fn.includes("applyExtractToBooking"), false);
-    assert.match(fn, /creer_dossier/);
+    const block = mcp.slice(start, end);
+    assert.ok(start > 0 && end > start);
+    assert.match(block, /depositEmailAttachments/);
+    assert.match(block, /body_text/);
+    assert.match(block, /cartes: false/);
+    assert.equal(/applyReplacementToBooking|applyBookingSteps/.test(block), false);
+  });
+
+  it("mettre_a_jour montre l’aperçu et n’écrit qu’avec confirmer", () => {
+    const start = mcp.indexOf('if (action.action === "mettre_a_jour")');
+    const end = mcp.indexOf('if (action.action === "rattacher")');
+    const block = mcp.slice(start, end);
+    assert.ok(start > 0 && end > start);
+    assert.match(block, /previewBookingSteps/);
+    assert.match(block, /confirmer !== true/);
+    assert.match(block, /applyBookingSteps/);
+    assert.match(block, /ecrit: false/);
+    assert.equal(block.includes("depositEmailAttachments"), false);
+  });
+
+  it("le bouton Mettre à jour les étapes confirme avant d’écrire", () => {
+    const start = route.indexOf('if (action === "preview_steps"');
+    const end = route.indexOf('if (action === "new_booking")');
+    const block = route.slice(start, end);
+    assert.ok(start > 0 && end > start);
+    assert.match(block, /previewBookingSteps/);
+    assert.match(block, /body\.confirmer !== true/);
+    assert.match(block, /applyBookingSteps/);
+    assert.equal(block.includes("depositEmailAttachments"), false);
+    const inbox = readFileSync(new URL("../../components/admin/EmailIngestInbox.tsx", import.meta.url), "utf8");
+    assert.match(inbox, /Mettre à jour les étapes/);
+    assert.match(inbox, /Confirmer la mise à jour/);
+    assert.match(inbox, /preview_steps/);
+    assert.match(inbox, /update_steps/);
   });
 });
