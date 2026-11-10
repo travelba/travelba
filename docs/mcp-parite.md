@@ -89,6 +89,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Refuser un encaissement Revolut ou Stripe | `refuser_encaissement` — ajouté |
 | Détacher, déplacer, refuser, hors voyage, nouvelle dépense, changer de ligne | `comptabilite_sortie` — ajouté. `detacher` accepte `cout_id`, ou `sortie_id` seul (et `dossier_id`) quand un seul coût est lié |
 | Compte de facturation sur un crédit | partiel |
+| Société de facturation d’une dépense | `societe_depense` — ajouté. Sans `confirmer`, aperçu. `confirmer` true pose la société sur la ligne, ou `suivre_voyage` pour reprendre celle du voyage. Le grand livre suit. Moins de deux sociétés : refus. La société du séjour entier reste `mettre_a_jour_dossier` |
 | Raccourcis du bloc Dépenses | `depenses_types` — ajouté. Réservé aux administrateurs. Sans `enregistrer`, lecture. `enregistrer` true remplace la liste. Un raccourci posé sur un dossier est une dépense libre. `billeterie` refuse le doublon avec les frais automatiques, qui restent en place |
 | Sync Revolut / Pliant, OAuth Revolut | hors API |
 
