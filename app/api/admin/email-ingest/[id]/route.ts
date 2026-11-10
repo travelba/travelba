@@ -205,7 +205,11 @@ export async function POST(request: Request, ctx: Ctx) {
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
       const cardId = await resolveEmailCardId(admin, bookingId, extract);
-      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId);
+      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId, {
+        subject: row.subject,
+        text: row.body_text,
+        html: row.body_html,
+      });
       const message = attachFilesSummary(deposited, Boolean(cardId));
       await markEmailAttached(admin, row, {
         bookingId,
@@ -233,7 +237,11 @@ export async function POST(request: Request, ctx: Ctx) {
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
       const cardId = await resolveEmailCardId(admin, bookingId, extract);
-      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId);
+      const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId, {
+        subject: row.subject,
+        text: row.body_text,
+        html: row.body_html,
+      });
       if (extractPatch.extract) {
         await admin.from("crm_email_ingest").update(extractPatch).eq("id", id);
       }

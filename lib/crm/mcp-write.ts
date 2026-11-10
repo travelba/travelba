@@ -1042,7 +1042,11 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
   if (action.action === "rattacher" || action.action === "mettre_a_jour") {
     let deposited;
     try {
-      deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments, cardId);
+      deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments, cardId, {
+        subject: row.subject,
+        text: row.body_text,
+        html: row.body_html,
+      });
     } catch (err) {
       raise(err, "E-mail non traité.");
     }

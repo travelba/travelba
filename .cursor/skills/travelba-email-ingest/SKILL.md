@@ -20,8 +20,10 @@ Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**, **bo
 La file « e-mails à relire » garde ces mails. La notification (« Un e-mail est arrivé dans la file », y compris l’alerte du navigateur) ne part que si le mail répond à un envoi du CRM (In-Reply-To, fil, ou `Re:` sur un objet envoyé). Un autre mail reste dans la file, sans alerte.
 **Déposer les pièces** (bouton, raccourci A, `traiter_email` `rattacher`) copie
 les pièces jointes dans les pièces du dossier. Il ne modifie pas les cartes et
-n’en crée pas. Sans pièce utile (ou seulement une image de signature), le mail
-est classé et rien n’est ajouté. La même empreinte n’est pas déposée deux fois.
+n’en crée pas. Sans fichier joint (ou seulement une image de signature), le texte
+du mail est déposé comme fichier sur la carte qui correspond, ou sur le dossier.
+Un mail sans texte est classé et rien n’est ajouté. Le résultat du clic est
+affiché sur la carte. La même empreinte n’est pas déposée deux fois.
 Le mail reste lié au dossier (`attached`).
 
 **Mettre à jour** (`apply_cards`, MCP `mettre_a_jour`) sur un dossier déjà ouvert

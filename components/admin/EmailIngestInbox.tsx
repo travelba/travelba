@@ -175,6 +175,22 @@ function itemLabel(kind: string | undefined) {
   return BOOKING_ITEM_LABELS[(kind || "fee") as BookingItemKind] || "Prestation";
 }
 
+/** Survit à un rafraîchissement qui remonte la liste : le clic ne redevient pas muet. */
+let pendingOutcome: { message: string; at: number } | null = null;
+
+function rememberOutcome(message: string) {
+  pendingOutcome = { message, at: Date.now() };
+  return message;
+}
+
+function rememberedOutcome() {
+  if (!pendingOutcome || Date.now() - pendingOutcome.at > 20_000) {
+    pendingOutcome = null;
+    return null;
+  }
+  return pendingOutcome.message;
+}
+
 export function EmailIngestInbox({
   rows,
   customers,
@@ -201,8 +217,9 @@ export function EmailIngestInbox({
   // L’autosave du titre a son propre état : il ne verrouille plus Rattacher / Créer (A-55).
   const [savingTitle, setSavingTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(rememberedOutcome);
   const [rowError, setRowError] = useState<Record<string, string>>({});
+  const [rowNotice, setRowNotice] = useState<Record<string, string>>({});
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [pickFor, setPickFor] = useState<string | null>(null);
   const [bookings, setBookings] = useState<Record<string, BookingOption[]>>({});
@@ -381,6 +398,12 @@ export function EmailIngestInbox({
       delete next[rowId];
       return next;
     });
+    setRowNotice((prev) => {
+      if (!(rowId in prev)) return prev;
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
     try {
       const res = await fetch(`/api/admin/email-ingest/${rowId}`, {
         method: "POST",
@@ -400,7 +423,9 @@ export function EmailIngestInbox({
         }));
         return;
       }
-      setNotice(data.message || doneLabel(payload.action));
+      const message = rememberOutcome(data.message || doneLabel(payload.action));
+      setNotice(message);
+      setRowNotice((prev) => ({ ...prev, [rowId]: message }));
       if (opts?.refresh !== false) router.refresh();
     } catch {
       setRowError((prev) => ({ ...prev, [rowId]: "Réseau indisponible, réessayez." }));
@@ -409,25 +434,31 @@ export function EmailIngestInbox({
     }
   }
 
+  const outcome = notice ? (
+    <p
+      role="status"
+      aria-live="assertive"
+      className="fixed inset-x-4 top-4 z-50 mx-auto max-w-lg rounded-xl border border-[#C5A880] bg-[#FAF9F6] px-4 py-3 text-sm font-semibold text-[#0B192C] shadow-lg"
+    >
+      {notice}
+    </p>
+  ) : null;
+
   if (!rows.length) {
     return (
-      <EmptyState
-        title="Aucun e-mail à traiter"
-        description="Les e-mails fournisseurs (Little Emperors, Expedia TAAP, billets d’avion) restent ici tant que l’agence ne les a pas déposés sur un dossier ou classés."
-      />
+      <>
+        {outcome}
+        <EmptyState
+          title="Aucun e-mail à traiter"
+          description="Les e-mails fournisseurs (Little Emperors, Expedia TAAP, billets d’avion) restent ici tant que l’agence ne les a pas déposés sur un dossier ou classés."
+        />
+      </>
     );
   }
 
   return (
     <div className="space-y-4">
-      {notice ? (
-        <p
-          role="status"
-          className="rounded-lg border border-[#C5A880] bg-[#FAF9F6] px-3 py-2 text-sm text-[#0B192C]"
-        >
-          {notice}
-        </p>
-      ) : null}
+      {outcome}
       {error ? (
         <p role="alert" className="rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-sm text-accent">
           {error}
@@ -865,9 +896,19 @@ export function EmailIngestInbox({
                               : "Déposer les pièces"}
                           </button>
                         </div>
-                        <p className="text-xs text-muted sm:col-span-2">
-                          Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée.
-                        </p>
+                        {rowNotice[row.id] ? (
+                          <p
+                            role="status"
+                            aria-live="assertive"
+                            className="rounded-lg border border-[#C5A880] bg-white px-3 py-2 text-sm font-semibold text-[#0B192C] sm:col-span-2"
+                          >
+                            {rowNotice[row.id]}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted sm:col-span-2">
+                            Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée.
+                          </p>
+                        )}
                       </>
                     );
                   })()}

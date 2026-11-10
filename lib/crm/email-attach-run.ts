@@ -6,8 +6,10 @@ import {
   bookingDocumentKind,
   emailDepositMessage,
   isDepositableAttachment,
+  mailBodyFile,
   planEmailAttachmentCopies,
   type DepositOutcome,
+  type MailBodySource,
 } from "@/lib/crm/email-attach-files";
 import { downloadCrmFile, safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { matchEmailToCard, type EmailCardRef, type EmailMention } from "@/lib/crm/email-card-match";
@@ -53,7 +55,8 @@ export async function depositEmailAttachments(
   bookingId: string,
   emailId: string,
   attachments: EmailIngestAttachment[] | null | undefined,
-  bookingItemId?: string | null
+  bookingItemId?: string | null,
+  body?: MailBodySource | null
 ): Promise<DepositOutcome> {
   const files: LoadedFile[] = [];
   let skipped = 0;
@@ -83,6 +86,20 @@ export async function depositEmailAttachments(
       continue;
     }
     files.push({ name, mime, bytes, sha256: attachmentSha256(bytes) });
+  }
+  let fromBody = false;
+  if (!files.length && unreadable === 0) {
+    const fallback = mailBodyFile(body);
+    if (fallback) {
+      const bytes = new TextEncoder().encode(fallback.text);
+      files.push({
+        name: fallback.name,
+        mime: fallback.mime,
+        bytes,
+        sha256: attachmentSha256(bytes),
+      });
+      fromBody = true;
+    }
   }
   if (unreadable > 0) throw new Error("Pièce jointe illisible.");
   if (!files.length) return { added: 0, skipped, empty: true };
@@ -125,7 +142,7 @@ export async function depositEmailAttachments(
     if (insertError) throw new Error("Pièce jointe non enregistrée.");
     added += 1;
   }
-  return { added, skipped, empty: false };
+  return { added, skipped, empty: false, fromBody: fromBody && added > 0 };
 }
 
 /** Lie le mail au dossier pour l’historique. Ne touche pas aux cartes. */
