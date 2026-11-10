@@ -124,9 +124,10 @@ import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
+import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 117;
+export const MCP_TOOL_CAP = 121;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2354,7 +2355,54 @@ export const MCP_TOOLS: ToolDef[] = [
       }
     },
   },
+  hotelMailTool(
+    "courrier_hotel",
+    "envoyer",
+    "Prépare un courrier type à l’hôtel du dossier : Lien de paiement, Upgrade et accueil, Pré-check-in, Note de la maison, Transfert, Concierge ou Autre demande. Sans confirmer, aperçu seulement : destinataires, objet, corps. confirmer true envoie. Aucun numéro de carte dans le texte."
+  ),
+  hotelMailTool(
+    "relancer_hotel",
+    "relancer",
+    "Prépare la relance d’un courrier hôtel déjà parti. Sans confirmer, aperçu : destinataires, objet, corps. confirmer true envoie dans le même fil. Aucun numéro de carte."
+  ),
+  hotelMailTool(
+    "repondre_hotel",
+    "repondre",
+    "Prépare la réponse au dernier message de l’hôtel, ou au corps indiqué. Sans confirmer, aperçu : destinataires, objet, corps. confirmer true envoie. Aucun numéro de carte."
+  ),
+  hotelMailTool(
+    "demande_hotel",
+    "pas_besoin",
+    "Passe une demande hôtel (Pas besoin) ou la remet. action : pas_besoin ou remettre. Sans confirmer, aperçu du courrier, rien n’est écrit. confirmer true enregistre. Aucun e-mail."
+  ),
 ];
+
+function hotelMailTool(name: string, mode: "envoyer" | "relancer" | "repondre" | "pas_besoin", description: string) {
+  return {
+    name,
+    write: true,
+    openWorld: mode !== "pas_besoin",
+    description,
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+      demande: z.string().trim().max(80).describe("Lien de paiement, Upgrade et accueil, Pré-check-in, Note de la maison, Transfert, Concierge ou Autre demande"),
+      hotel: z.string().trim().max(160).optional().describe("Nom de l’hôtel, s’il y en a plusieurs"),
+      carte_id: z.string().trim().max(80).optional().describe("Identifiant de la carte hôtel"),
+      destinataires: z.array(z.string().trim().max(180)).max(12).optional().describe("Adresses. Absentes : celles du courrier"),
+      copie: z.array(z.string().trim().max(180)).max(12).optional(),
+      objet: z.string().trim().max(300).optional().describe("Objet. Absent : le modèle"),
+      corps: z.string().trim().max(8000).optional().describe("Texte. Absent : le modèle"),
+      carte: z.enum(["pliant", "client"]).optional().describe("Carte du lien de paiement ou du pré-check-in"),
+      action: z.enum(["pas_besoin", "remettre"]).optional().describe("Pour demande_hotel seulement"),
+      confirmer: z.boolean().optional().describe("true pour envoyer ou enregistrer. Sans true : aperçu"),
+    },
+    run: (args: ToolArgs) => {
+      const action = args.action === "remettre" ? "remettre" : args.action === "pas_besoin" ? "pas_besoin" : mode;
+      return runHotelMail(args, name === "demande_hotel" ? action : mode);
+    },
+  };
+}
 
 export function registerTravelbaTools(server: McpServer) {
   for (const tool of MCP_TOOLS) {

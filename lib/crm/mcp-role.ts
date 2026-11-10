@@ -132,6 +132,10 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   fusionner_clients: "admin",
   changer_client_dossier: "edit_dossiers",
   depenses_types: "admin",
+  courrier_hotel: "edit_dossiers",
+  relancer_hotel: "edit_dossiers",
+  repondre_hotel: "edit_dossiers",
+  demande_hotel: "edit_dossiers",
 };
 
 export type McpStaffGate = {
