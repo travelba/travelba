@@ -223,6 +223,7 @@ export async function findPersonalMcpAccess(token: string) {
   if (!apiKeyUsable({ revokedAt: row.revoked_at, expiresAt: row.expires_at, staffActive: active })) return null;
   const matrix = await readMatrix(admin);
   const name = staffKeyName(staff?.full_name, staff?.email);
+  const allows = permissionFlags(role as StaffRole, matrix) as Record<string, boolean>;
   await admin
     .from("crm_mcp_api_keys")
     .update({ last_used_at: new Date().toISOString() })
@@ -232,12 +233,13 @@ export async function findPersonalMcpAccess(token: string) {
     actor: mcpActorSlug(name),
     passport: false as const,
     cards: false as const,
+    cards_create: allows.create_pliant_card === true,
     staff: {
       id: staff!.id,
       role: role as StaffRole,
       name,
       keyId: row.id,
-      allows: permissionFlags(role as StaffRole, matrix) as Record<string, boolean>,
+      allows,
     },
   };
 }
