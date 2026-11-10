@@ -1,20 +1,21 @@
-import { resolveCountryCode, resolveNationality } from "@/lib/crm/countries";
+import { resolveNationality } from "@/lib/crm/countries";
+import { queryWithOptionalColumn } from "@/lib/crm/optional-column";
 import {
   Mb3mError,
   mb3mCivilityFromSex,
   mb3mConfigured,
   mb3mPartnerCode,
   mb3mRealm,
+  mb3mAddress,
   mb3mSaveCompany,
   mb3mSavePerson,
-  type Mb3mAddress,
 } from "@/lib/crm/mb3m";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 const CUSTOMER_SELECT =
   "id, first_name, last_name, email, phone, phone_secondary, sex, birth_date, nationality, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country, address_line, postal_code, city, country";
 
-const COMPANY_SELECT =
+const COMPANY_COLUMNS =
   "id, company_name, siret, vat_number, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country";
 
 type PersonRow = {
@@ -43,6 +44,7 @@ type CompanyRow = {
   company_name: string | null;
   siret?: string | null;
   vat_number?: string | null;
+  registration_number?: string | null;
   billing_email: string | null;
   billing_address_line: string | null;
   billing_postal_code: string | null;
@@ -54,6 +56,7 @@ export type Mb3mHandCompany = {
   name: string;
   siret: string | null;
   vatNumber: string | null;
+  registrationNumber: string | null;
 };
 
 function blank(value: string | null | undefined) {
@@ -61,33 +64,25 @@ function blank(value: string | null | undefined) {
   return text || null;
 }
 
-function addressOf(
-  name: string,
-  line: string | null | undefined,
-  postal: string | null | undefined,
-  city: string | null | undefined,
-  country: string | null | undefined
-): Mb3mAddress | null {
-  const line1 = (line || "").trim();
-  const postalCode = (postal || "").trim();
-  const cityName = (city || "").trim();
-  if (!line1 || !postalCode || !cityName) return null;
-  return {
-    name,
-    line1,
-    postalCode,
-    city: cityName,
-    countryCode: resolveCountryCode(country) || undefined,
-  };
-}
-
 export function mb3mPersonDraft(customer: PersonRow) {
   const firstName = (customer.first_name || "").trim();
   const lastName = (customer.last_name || "").trim();
   const name = [firstName, lastName].filter(Boolean).join(" ").trim() || "Client";
   const address =
-    addressOf(name, customer.billing_address_line, customer.billing_postal_code, customer.billing_city, customer.billing_country) ||
-    addressOf(name, customer.address_line, customer.postal_code, customer.city, customer.country);
+    mb3mAddress({
+      name,
+      line: customer.billing_address_line,
+      postal: customer.billing_postal_code,
+      city: customer.billing_city,
+      country: customer.billing_country,
+    }) ||
+    mb3mAddress({
+      name,
+      line: customer.address_line,
+      postal: customer.postal_code,
+      city: customer.city,
+      country: customer.country,
+    });
   if (!firstName || !lastName || !address) return null;
   return {
     partnerId: mb3mPartnerCode(customer.id),
@@ -108,13 +103,14 @@ export function mb3mCompanyDraft(
   customer?: { email?: string | null; phone?: string | null }
 ) {
   const name = (company.company_name || "").trim();
-  const address = addressOf(
-    name || "Société",
-    company.billing_address_line,
-    company.billing_postal_code,
-    company.billing_city,
-    company.billing_country
-  );
+  const address = mb3mAddress({
+    name: name || "Société",
+    line: company.billing_address_line,
+    postal: company.billing_postal_code,
+    city: company.billing_city,
+    country: company.billing_country,
+    company: true,
+  });
   if (!name || !address) return null;
   return {
     partnerId: mb3mPartnerCode(company.id),
@@ -128,12 +124,18 @@ export function mb3mCompanyDraft(
 
 /** SIRET, TVA et lien du contact : à saisir dans MB3M. L’API Partners ne les porte pas. */
 export function mb3mHandCompanies(
-  companies: { company_name: string | null; siret: string | null; vat_number: string | null }[]
+  companies: {
+    company_name: string | null;
+    siret: string | null;
+    vat_number: string | null;
+    registration_number?: string | null;
+  }[]
 ): Mb3mHandCompany[] {
   return companies.map((company) => ({
     name: (company.company_name || "").trim() || "Société",
     siret: blank(company.siret),
     vatNumber: blank(company.vat_number),
+    registrationNumber: blank(company.registration_number),
   }));
 }
 
@@ -149,12 +151,13 @@ export async function pushMb3mCustomer(customerId: string) {
   const updated = await partyExists(customerId);
   const saved = await mb3mSavePerson(person);
   await remember(customerId, null, saved.uid, saved.partnerId);
-  const { data: companies, error: companyError } = await admin
-    .from("crm_billing_companies")
-    .select(COMPANY_SELECT)
-    .eq("customer_id", customerId);
-  if (companyError) throw new Mb3mError(companyError.message, -1);
-  for (const company of (companies || []) as CompanyRow[]) {
+  const { data: companies, error: companyError } = await queryWithOptionalColumn(
+    (columns) => admin.from("crm_billing_companies").select(columns).eq("customer_id", customerId),
+    COMPANY_COLUMNS,
+    "registration_number"
+  );
+  if (companyError) throw new Mb3mError(companyError.message || "Lecture de la société impossible.", -1);
+  for (const company of (companies || []) as unknown as CompanyRow[]) {
     const draft = mb3mCompanyDraft(company, customer as PersonRow);
     if (!draft) continue;
     const companySaved = await mb3mSaveCompany(draft);

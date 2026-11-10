@@ -324,6 +324,32 @@ describe("facture MB3M", () => {
     });
     assert.equal(mb3mInvoiceBlocker(company), "L’adresse de facturation de la société est incomplète (rue, code postal, ville).");
     assert.equal(company.company?.name, "Travelba");
+    const foreign = buildMb3mInvoiceContext({
+      booking: booking({ payer_kind: "company", billing_company_id: "co-xk" }),
+      items: [{ kind: "hotel", amount: 100, lifecycle: "active" }],
+      travelers: [],
+      payer: payer(),
+      companies: [
+        {
+          id: "co-xk",
+          sort_order: 1,
+          company_name: "BEELYNQ LLC",
+          billing_email: "agon@beelynq.com",
+          billing_address_line: 'Rr. "Tirana", Arberia III, Lokali 12-1',
+          billing_postal_code: null,
+          billing_city: "Prishtine",
+          billing_country: "Kosova",
+        },
+      ],
+    });
+    assert.equal(foreign.company?.countryCode, "XK");
+    assert.equal(foreign.company?.address?.postalCode, "");
+    assert.equal(foreign.company?.address?.countryCode, "XK");
+    assert.equal(foreign.company?.address?.city, "Prishtine");
+    assert.notEqual(
+      mb3mInvoiceBlocker(foreign),
+      "L’adresse de facturation de la société est incomplète (rue, code postal, ville)."
+    );
   });
 
   it("dépose le PDF et ne le montre que si le séjour est déjà visible", async () => {

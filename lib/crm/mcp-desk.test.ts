@@ -20,6 +20,7 @@ import {
   supprimerClient,
 } from "./mcp-desk";
 import { mcpWriteJournalDraft } from "./mcp-journal";
+import type { BillingCompanyInput } from "./billing-companies";
 import { McpWriteError } from "./mcp-write";
 import { permissionFlags } from "./agency-access";
 
@@ -345,6 +346,49 @@ test("ajouter et modifier une société ne remplacent pas la liste", async () =>
   const changed = mcpWriteJournalDraft("modifier_societe", { client_id: CLIENT }, "Raphael");
   assert.equal(changed.action, "update");
   assert.match(changed.summary, /Société de facturation modifiée/);
+});
+
+test("ajouter une société étrangère transmet l’identifiant et le pays", async () => {
+  const seen: { company: BillingCompanyInput | null } = { company: null };
+  await ajouterSociete(
+    {
+      client_id: CLIENT,
+      raison_sociale: "BEELYNQ LLC",
+      identifiant_entreprise: "810123456",
+      tva: "810 123 456",
+      pays: "Kosova",
+      ville: "Prishtine",
+      code_postal: "",
+    },
+    {
+      admin: fakeAdmin(),
+      appendCompany: async (_db, _id, company) => {
+        seen.company = company;
+        return {
+          ok: true as const,
+          company: {
+            id: "soc-xk",
+            customer_id: CLIENT,
+            company_name: "BEELYNQ LLC",
+            siret: null,
+            vat_number: "810123456",
+            registration_number: "810123456",
+            billing_email: null,
+            billing_address_line: null,
+            billing_postal_code: null,
+            billing_city: "Prishtine",
+            billing_country: "XK",
+            sort_order: 1,
+          },
+          companies: [],
+        };
+      },
+    }
+  );
+  assert.equal(seen.company?.registration_number, "810123456");
+  assert.equal(seen.company?.vat_number, "810 123 456");
+  assert.equal(seen.company?.billing_country, "Kosova");
+  assert.equal("siret" in (seen.company || {}), false);
 });
 
 test("le journal d’une suppression nomme le client", () => {

@@ -13,9 +13,9 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Passeport d’un accompagnateur (numéro, délivrance, expiration, nationalité, naissance, lieu, sexe) | `modifier_titulaire` avec `compagnon_id` — couvert. Le numéro n’est ni renvoyé ni journalisé |
 | Renommer un accompagnateur (prénoms, nom, nom d’usage, naissance, sexe) | `mettre_a_jour_accompagnant` — ajouté. Le passeport et les séjours suivent. Le numéro, la délivrance et l’expiration restent |
 | Rôle société | `definir_role_societe` — couvert |
-| Une société, ou retirer une société vide | `mettre_a_jour_client` — couvert. Avec plusieurs sociétés, un champ sans SIRET est refusé |
-| Ajouter une société sans modifier les autres | `ajouter_societe` — ajouté. Les dossiers déjà facturés gardent leur société |
-| Modifier une société par identifiant | `modifier_societe` — ajouté. Seuls les champs indiqués changent |
+| Une société, ou retirer une société vide | `mettre_a_jour_client` — couvert. Avec plusieurs sociétés, un champ sans SIRET ni identifiant d’entreprise est refusé |
+| Ajouter une société sans modifier les autres | `ajouter_societe` — ajouté. Les dossiers déjà facturés gardent leur société. Hors France : identifiant d’entreprise, pays ISO, code postal facultatif |
+| Modifier une société par identifiant | `modifier_societe` — ajouté. Seuls les champs indiqués changent. `identifiant_entreprise` et `pays` ISO |
 | Lire toutes les sociétés | `fiche_client` (`societes`, identifiant, champs, `principale`) — ajouté |
 | Remplacer toute la liste | `enregistrer_societes` (`confirmer` true) — ajouté |
 | Supprimer la fiche | `supprimer_client` (`confirmer` = nom complet) — ajouté |

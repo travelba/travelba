@@ -1,11 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizeSiret, normalizeVat, siretError } from "./billing";
+import {
+  isForeignBillingCountry,
+  normalizeRegistration,
+  normalizeSiret,
+  normalizeVat,
+  registrationError,
+  siretError,
+} from "./billing";
+import { missingDbColumn, queryWithOptionalColumn } from "./optional-column";
 import { resolveCountryCode } from "./countries";
 import { dbErrorMessage, type DbErrorLike } from "./db-error";
 import { fundingCompanyOptionLabel } from "./funding-wallet";
 import { emptyToNull } from "./identity";
 
 export const DUPLICATE_SIRET_ERROR = "Ce SIRET est déjà indiqué sur une autre société.";
+export const DUPLICATE_REGISTRATION_ERROR = "Cet identifiant d’entreprise est déjà indiqué sur une autre société.";
+const REGISTRATION_NOT_READY =
+  "L’identifiant d’entreprise n’est pas encore enregistrable. Jouez la migration, puis réessayez.";
 
 export type BillingCompanyRow = {
   id: string;
@@ -13,6 +24,8 @@ export type BillingCompanyRow = {
   company_name: string | null;
   siret: string | null;
   vat_number: string | null;
+  /** Numéro de registre hors SIRET. Absent tant que la migration n’est pas jouée. */
+  registration_number?: string | null;
   billing_email: string | null;
   billing_address_line: string | null;
   billing_postal_code: string | null;
@@ -27,6 +40,7 @@ export type BillingCompanyInput = {
   company_name?: unknown;
   siret?: unknown;
   vat_number?: unknown;
+  registration_number?: unknown;
   billing_email?: unknown;
   billing_address_line?: unknown;
   billing_postal_code?: unknown;
@@ -122,6 +136,7 @@ export function billingCompanyIsEmpty(row: {
   company_name?: string | null;
   siret?: string | null;
   vat_number?: string | null;
+  registration_number?: string | null;
   billing_email?: string | null;
   billing_address_line?: string | null;
   billing_postal_code?: string | null;
@@ -131,6 +146,7 @@ export function billingCompanyIsEmpty(row: {
     row.company_name,
     row.siret,
     row.vat_number,
+    row.registration_number,
     row.billing_email,
     row.billing_address_line,
     row.billing_postal_code,
@@ -142,6 +158,7 @@ function blankCompany(row: {
   company_name: string | null;
   siret: string | null;
   vat_number: string | null;
+  registration_number: string | null;
   billing_email: string | null;
   billing_address_line: string | null;
   billing_postal_code: string | null;
@@ -151,6 +168,7 @@ function blankCompany(row: {
     row.company_name ||
     row.siret ||
     row.vat_number ||
+    row.registration_number ||
     row.billing_email ||
     row.billing_address_line ||
     row.billing_postal_code ||
@@ -165,6 +183,7 @@ export function normalizeBillingCompanies(raw: unknown):
         company_name: string | null;
         siret: string | null;
         vat_number: string | null;
+        registration_number: string | null;
         billing_email: string | null;
         billing_address_line: string | null;
         billing_postal_code: string | null;
@@ -180,6 +199,7 @@ export function normalizeBillingCompanies(raw: unknown):
     company_name: string | null;
     siret: string | null;
     vat_number: string | null;
+    registration_number: string | null;
     billing_email: string | null;
     billing_address_line: string | null;
     billing_postal_code: string | null;
@@ -188,17 +208,27 @@ export function normalizeBillingCompanies(raw: unknown):
     sort_order: number;
   }[] = [];
   const sirets = new Set<string>();
+  const registrations = new Set<string>();
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") return { error: "Société invalide." };
     const body = entry as BillingCompanyInput;
     const parsedId = parseBillingCompanyId(body.id);
     if ("error" in parsedId) return parsedId;
-    const siret = normalizeSiret(body.siret);
+    const country = resolveCountryCode(String(body.billing_country || "")) || emptyToNull(body.billing_country);
+    const foreign = isForeignBillingCountry(country);
+    const siret = foreign ? null : normalizeSiret(body.siret);
     const siretErr = siretError(siret);
     if (siretErr) return { error: siretErr };
     if (siret) {
       if (sirets.has(siret)) return { error: DUPLICATE_SIRET_ERROR };
       sirets.add(siret);
+    }
+    const registration = foreign ? normalizeRegistration(body.registration_number) : null;
+    const registrationErr = registrationError(registration);
+    if (registrationErr) return { error: registrationErr };
+    if (registration) {
+      if (registrations.has(registration)) return { error: DUPLICATE_REGISTRATION_ERROR };
+      registrations.add(registration);
     }
     const email = emptyToNull(body.billing_email);
     const row = {
@@ -206,11 +236,12 @@ export function normalizeBillingCompanies(raw: unknown):
       company_name: emptyToNull(body.company_name),
       siret,
       vat_number: normalizeVat(body.vat_number),
+      registration_number: registration,
       billing_email: email ? email.toLowerCase() : null,
       billing_address_line: emptyToNull(body.billing_address_line),
       billing_postal_code: emptyToNull(body.billing_postal_code),
       billing_city: emptyToNull(body.billing_city),
-      billing_country: resolveCountryCode(String(body.billing_country || "")) || emptyToNull(body.billing_country),
+      billing_country: country,
       sort_order: companies.length,
     };
     if (blankCompany(row)) continue;
@@ -223,10 +254,17 @@ export function normalizeBillingCompanies(raw: unknown):
  * Le formulaire renvoie souvent une société sans id après le premier enregistrement.
  * On réutilise alors la ligne qui a déjà ce SIRET, au lieu d’en insérer une deuxième.
  */
-export function planBillingCompanyWrites<T extends { id: string | null; siret: string | null }>(
-  existing: { id: string; siret: string | null }[],
+export function planBillingCompanyWrites<
+  T extends { id: string | null; siret: string | null; registration_number?: string | null },
+>(
+  existing: { id: string; siret: string | null; registration_number?: string | null }[],
   companies: T[]
-): { writes: (T & { id: string | null })[]; releaseIds: string[]; clearSiretIds: string[] } {
+): {
+  writes: (T & { id: string | null })[];
+  releaseIds: string[];
+  clearSiretIds: string[];
+  clearRegistrationIds: string[];
+} {
   const existingIds = new Set(existing.map((row) => row.id));
   const claimed = new Set<string>();
   const writes = companies.map((company) => {
@@ -238,23 +276,38 @@ export function planBillingCompanyWrites<T extends { id: string | null; siret: s
         (row) => !claimed.has(row.id) && normalizeSiret(row.siret) === company.siret
       );
       if (match) id = match.id;
+    } else if (company.registration_number) {
+      const match = existing.find(
+        (row) =>
+          !claimed.has(row.id) && normalizeRegistration(row.registration_number) === company.registration_number
+      );
+      if (match) id = match.id;
     }
     if (id) claimed.add(id);
     return { ...company, id };
   });
-  const wantedBy = new Map<string, string | null>();
+  const wantedSiret = new Map<string, string | null>();
+  const wantedRegistration = new Map<string, string | null>();
   for (const write of writes) {
-    if (write.siret) wantedBy.set(write.siret, write.id);
+    if (write.siret) wantedSiret.set(write.siret, write.id);
+    if (write.registration_number) wantedRegistration.set(write.registration_number, write.id);
   }
   const clearSiretIds = existing
     .filter((row) => {
       const siret = normalizeSiret(row.siret);
-      if (!siret || !wantedBy.has(siret)) return false;
-      return wantedBy.get(siret) !== row.id;
+      if (!siret || !wantedSiret.has(siret)) return false;
+      return wantedSiret.get(siret) !== row.id;
+    })
+    .map((row) => row.id);
+  const clearRegistrationIds = existing
+    .filter((row) => {
+      const registration = normalizeRegistration(row.registration_number);
+      if (!registration || !wantedRegistration.has(registration)) return false;
+      return wantedRegistration.get(registration) !== row.id;
     })
     .map((row) => row.id);
   const releaseIds = existing.map((row) => row.id).filter((id) => !claimed.has(id));
-  return { writes, releaseIds, clearSiretIds };
+  return { writes, releaseIds, clearSiretIds, clearRegistrationIds };
 }
 
 function billingWriteError(error: DbErrorLike) {
@@ -265,7 +318,7 @@ function billingWriteError(error: DbErrorLike) {
   return { error: dbErrorMessage(error, "Enregistrement de la société impossible.") };
 }
 
-const COMPANY_REQUIRED = "Indiquez la raison sociale ou le SIRET.";
+const COMPANY_REQUIRED = "Indiquez la raison sociale ou le SIRET, ou l’identifiant d’entreprise.";
 
 function siretAlready(id: string) {
   return `${DUPLICATE_SIRET_ERROR} (${id}).`;
@@ -292,6 +345,7 @@ export function billingCompaniesPublic(rows: BillingCompanyRow[]) {
     raison_sociale: row.company_name ?? null,
     siret: row.siret ?? null,
     tva: row.vat_number ?? null,
+    identifiant_entreprise: row.registration_number ?? null,
     email: row.billing_email ?? null,
     adresse: row.billing_address_line ?? null,
     code_postal: row.billing_postal_code ?? null,
@@ -335,52 +389,46 @@ export async function saveCustomerBillingCompanies(
 ) {
   const normalized = normalizeBillingCompanies(raw);
   if ("error" in normalized) return normalized;
-  const { data: existing, error: readError } = await supabase
-    .from("crm_billing_companies")
-    .select("id, siret, funding")
-    .eq("customer_id", customerId);
-  if (readError) return billingWriteError(readError);
-  const stored = (existing || []) as { id: string; siret: string | null; funding?: string | null }[];
+  const existingRead = await queryWithOptionalColumn(
+    (columns) => supabase.from("crm_billing_companies").select(columns).eq("customer_id", customerId),
+    "id, siret, funding",
+    "registration_number"
+  );
+  if (existingRead.error) return billingWriteError(existingRead.error);
+  const stored = (existingRead.data || []) as unknown as {
+    id: string;
+    siret: string | null;
+    registration_number?: string | null;
+    funding?: string | null;
+  }[];
   const plan = planBillingCompanyWrites(stored, normalized.companies);
   const protectedIds = new Set(
     stored.filter((row) => row.funding === "advance" || row.funding === "pro").map((row) => row.id)
   );
   plan.releaseIds = plan.releaseIds.filter((id) => !protectedIds.has(id));
 
-  if (plan.clearSiretIds.length) {
-    const { error } = await supabase
-      .from("crm_billing_companies")
-      .update({ siret: null })
-      .eq("customer_id", customerId)
-      .in("id", plan.clearSiretIds);
-    if (error) return billingWriteError(error);
-  }
+  const clearedSiret = await clearCompanyColumn(supabase, customerId, "siret", plan.clearSiretIds);
+  if (clearedSiret) return clearedSiret;
+  const clearedRegistration = await clearCompanyColumn(
+    supabase,
+    customerId,
+    "registration_number",
+    plan.clearRegistrationIds
+  );
+  if (clearedRegistration) return clearedRegistration;
 
   for (const company of plan.writes) {
     const fields = {
-      company_name: company.company_name,
-      siret: company.siret,
-      vat_number: company.vat_number,
-      billing_email: company.billing_email,
-      billing_address_line: company.billing_address_line,
-      billing_postal_code: company.billing_postal_code,
-      billing_city: company.billing_city,
-      billing_country: company.billing_country,
+      ...companyColumns(company),
       sort_order: company.sort_order,
     };
-    if (company.id) {
-      const { error } = await supabase
-        .from("crm_billing_companies")
-        .update(fields)
-        .eq("id", company.id)
-        .eq("customer_id", customerId);
-      if (error) return billingWriteError(error);
-      continue;
-    }
-    const { error } = await supabase
-      .from("crm_billing_companies")
-      .insert({ customer_id: customerId, ...fields });
-    if (error) return billingWriteError(error);
+    const written = await applyCompanyWrite(
+      supabase,
+      company.id ? "update" : "insert",
+      { customerId, id: company.id },
+      fields
+    );
+    if (written) return written;
   }
 
   if (plan.releaseIds.length) {
@@ -431,9 +479,16 @@ export async function upsertBillingCompany(
   customerId: string,
   raw: BillingCompanyInput
 ): Promise<{ ok: true; company: BillingCompanyRow } | { error: string }> {
-  const probedSiret = "siret" in raw ? normalizeSiret(raw.siret) : undefined;
+  const foreignInput = "billing_country" in raw && isForeignBillingCountry(raw.billing_country);
+  const probedSiret = !foreignInput && "siret" in raw ? normalizeSiret(raw.siret) : undefined;
   if (probedSiret !== undefined) {
     const invalid = siretError(probedSiret);
+    if (invalid) return { error: invalid };
+  }
+  const probedRegistration =
+    "registration_number" in raw ? normalizeRegistration(raw.registration_number) : undefined;
+  if (probedRegistration) {
+    const invalid = registrationError(probedRegistration);
     if (invalid) return { error: invalid };
   }
   const { data: existing, error: readError } = await supabase
@@ -445,8 +500,10 @@ export async function upsertBillingCompany(
   let target: BillingCompanyRow | null = null;
   if (probedSiret) {
     target = stored.find((row) => normalizeSiret(row.siret) === probedSiret) || null;
+  } else if (probedRegistration) {
+    target = stored.find((row) => normalizeRegistration(row.registration_number) === probedRegistration) || null;
   } else if (stored.length > 1) {
-    return { error: "Plusieurs sociétés sur la fiche. Indiquez le SIRET." };
+    return { error: "Plusieurs sociétés sur la fiche. Indiquez le SIRET ou l’identifiant d’entreprise." };
   } else {
     target = stored[0] || null;
   }
@@ -455,6 +512,7 @@ export async function upsertBillingCompany(
     company_name: "company_name" in raw ? raw.company_name : target?.company_name,
     siret: "siret" in raw ? raw.siret : target?.siret,
     vat_number: "vat_number" in raw ? raw.vat_number : target?.vat_number,
+    registration_number: "registration_number" in raw ? raw.registration_number : target?.registration_number,
     billing_email: "billing_email" in raw ? raw.billing_email : target?.billing_email,
     billing_address_line: "billing_address_line" in raw ? raw.billing_address_line : target?.billing_address_line,
     billing_postal_code: "billing_postal_code" in raw ? raw.billing_postal_code : target?.billing_postal_code,
@@ -463,46 +521,36 @@ export async function upsertBillingCompany(
   };
   const normalized = normalizeBillingCompanies([merged]);
   if ("error" in normalized) return normalized;
-  if (!normalized.companies.length) return { error: "Indiquez la raison sociale ou le SIRET." };
+  if (!normalized.companies.length) return { error: COMPANY_REQUIRED };
   const incoming = { ...normalized.companies[0], id: target?.id ?? null };
   const plan = planBillingCompanyWrites(
-    stored.map((row) => ({ id: row.id, siret: row.siret })),
+    stored.map((row) => ({ id: row.id, siret: row.siret, registration_number: row.registration_number })),
     [incoming]
   );
-  if (plan.clearSiretIds.length) {
-    const { error } = await supabase
-      .from("crm_billing_companies")
-      .update({ siret: null })
-      .eq("customer_id", customerId)
-      .in("id", plan.clearSiretIds);
-    if (error) return billingWriteError(error);
-  }
+  const clearedSiret = await clearCompanyColumn(supabase, customerId, "siret", plan.clearSiretIds);
+  if (clearedSiret) return clearedSiret;
+  const clearedRegistration = await clearCompanyColumn(
+    supabase,
+    customerId,
+    "registration_number",
+    plan.clearRegistrationIds
+  );
+  if (clearedRegistration) return clearedRegistration;
   const write = plan.writes[0];
   const sortOrder = target
     ? target.sort_order
     : stored.reduce((max, row) => Math.max(max, Number(row.sort_order) || 0), -1) + 1;
   const fields = {
-    company_name: write.company_name,
-    siret: write.siret,
-    vat_number: write.vat_number,
-    billing_email: write.billing_email,
-    billing_address_line: write.billing_address_line,
-    billing_postal_code: write.billing_postal_code,
-    billing_city: write.billing_city,
-    billing_country: write.billing_country,
+    ...companyColumns(write),
     sort_order: sortOrder,
   };
-  if (write.id) {
-    const { error } = await supabase
-      .from("crm_billing_companies")
-      .update(fields)
-      .eq("id", write.id)
-      .eq("customer_id", customerId);
-    if (error) return billingWriteError(error);
-  } else {
-    const { error } = await supabase.from("crm_billing_companies").insert({ customer_id: customerId, ...fields });
-    if (error) return billingWriteError(error);
-  }
+  const written = await applyCompanyWrite(
+    supabase,
+    write.id ? "update" : "insert",
+    { customerId, id: write.id },
+    fields
+  );
+  if (written) return written;
   const saved = await readBillingCompanies(supabase, customerId);
   if ("error" in saved) return saved;
   const mirrored = await mirrorPrimaryBillingCompany(supabase, customerId, saved.companies);
@@ -510,6 +558,9 @@ export async function upsertBillingCompany(
   const company =
     (write.id ? saved.companies.find((row) => row.id === write.id) : null) ||
     saved.companies.find((row) => row.siret && row.siret === write.siret) ||
+    saved.companies.find(
+      (row) => row.registration_number && row.registration_number === write.registration_number
+    ) ||
     saved.companies.find((row) => row.sort_order === sortOrder) ||
     null;
   if (!company) return { error: "Enregistrement de la société impossible." };
@@ -527,6 +578,7 @@ function companyColumns(company: {
   company_name: string | null;
   siret: string | null;
   vat_number: string | null;
+  registration_number?: string | null;
   billing_email: string | null;
   billing_address_line: string | null;
   billing_postal_code: string | null;
@@ -537,12 +589,57 @@ function companyColumns(company: {
     company_name: company.company_name,
     siret: company.siret,
     vat_number: company.vat_number,
+    registration_number: company.registration_number ?? null,
     billing_email: company.billing_email,
     billing_address_line: company.billing_address_line,
     billing_postal_code: company.billing_postal_code,
     billing_city: company.billing_city,
     billing_country: company.billing_country,
   };
+}
+
+async function clearCompanyColumn(
+  supabase: SupabaseClient,
+  customerId: string,
+  column: "siret" | "registration_number",
+  ids: string[]
+) {
+  if (!ids.length) return null;
+  const { error } = await supabase
+    .from("crm_billing_companies")
+    .update({ [column]: null })
+    .eq("customer_id", customerId)
+    .in("id", ids);
+  if (error && column === "registration_number" && missingDbColumn(error, "registration_number")) return null;
+  if (error) return billingWriteError(error);
+  return null;
+}
+
+/** Écrit la société. Sans la colonne d’identifiant, un enregistrement vide de ce champ réessaie sans elle. */
+async function applyCompanyWrite(
+  supabase: SupabaseClient,
+  mode: "insert" | "update",
+  scope: { customerId: string; id?: string | null },
+  fields: ReturnType<typeof companyColumns> & { sort_order?: number }
+) {
+  const run = (payload: Record<string, unknown>) => {
+    if (mode === "insert") {
+      return supabase.from("crm_billing_companies").insert({ customer_id: scope.customerId, ...payload });
+    }
+    return supabase
+      .from("crm_billing_companies")
+      .update(payload)
+      .eq("id", scope.id || "")
+      .eq("customer_id", scope.customerId);
+  };
+  let result = await run(fields);
+  if (result.error && missingDbColumn(result.error, "registration_number")) {
+    if (fields.registration_number) return { error: REGISTRATION_NOT_READY };
+    const { registration_number: _drop, ...rest } = fields;
+    result = await run(rest);
+  }
+  if (result.error) return billingWriteError(result.error);
+  return null;
 }
 
 async function duplicateSiret(supabase: SupabaseClient, customerId: string, siret: string | null, mapped: { error: string }) {
@@ -568,7 +665,7 @@ export async function appendBillingCompany(
   const normalized = normalizeBillingCompanies([raw]);
   if ("error" in normalized) return normalized;
   const incoming = normalized.companies[0];
-  if (!incoming?.company_name && !incoming?.siret) return { error: COMPANY_REQUIRED };
+  if (!incoming?.company_name && !incoming?.siret && !incoming?.registration_number) return { error: COMPANY_REQUIRED };
   const { data: existing, error: readError } = await supabase
     .from("crm_billing_companies")
     .select("*")
@@ -579,14 +676,14 @@ export async function appendBillingCompany(
     const clash = stored.find((row) => normalizeSiret(row.siret) === incoming.siret);
     if (clash) return { error: siretAlready(clash.id) };
   }
+  if (incoming.registration_number) {
+    const clash = stored.find((row) => normalizeRegistration(row.registration_number) === incoming.registration_number);
+    if (clash) return { error: `${DUPLICATE_REGISTRATION_ERROR} (${clash.id}).` };
+  }
   const sortOrder = stored.reduce((max, row) => Math.max(max, Number(row.sort_order) || 0), -1) + 1;
   const previous = new Set(stored.map((row) => row.id));
-  const { error } = await supabase.from("crm_billing_companies").insert({
-    customer_id: customerId,
-    ...companyColumns(incoming),
-    sort_order: sortOrder,
-  });
-  if (error) return duplicateSiret(supabase, customerId, incoming.siret, billingWriteError(error));
+  const written = await applyCompanyWrite(supabase, "insert", { customerId }, { ...companyColumns(incoming), sort_order: sortOrder });
+  if (written) return duplicateSiret(supabase, customerId, incoming.siret, written);
   const saved = await readBillingCompanies(supabase, customerId);
   if ("error" in saved) return saved;
   if (!stored.length) {
@@ -615,6 +712,7 @@ export async function updateBillingCompany(
     "company_name",
     "siret",
     "vat_number",
+    "registration_number",
     "billing_email",
     "billing_address_line",
     "billing_postal_code",
@@ -640,12 +738,14 @@ export async function updateBillingCompany(
     const clash = stored.find((row) => row.id !== target.id && normalizeSiret(row.siret) === incoming.siret);
     if (clash) return { error: siretAlready(clash.id) };
   }
-  const { error } = await supabase
-    .from("crm_billing_companies")
-    .update(companyColumns(incoming))
-    .eq("id", target.id)
-    .eq("customer_id", customerId);
-  if (error) return duplicateSiret(supabase, customerId, incoming.siret, billingWriteError(error));
+  if (incoming.registration_number) {
+    const clash = stored.find(
+      (row) => row.id !== target.id && normalizeRegistration(row.registration_number) === incoming.registration_number
+    );
+    if (clash) return { error: `${DUPLICATE_REGISTRATION_ERROR} (${clash.id}).` };
+  }
+  const written = await applyCompanyWrite(supabase, "update", { customerId, id: target.id }, companyColumns(incoming));
+  if (written) return duplicateSiret(supabase, customerId, incoming.siret, written);
   const saved = await readBillingCompanies(supabase, customerId);
   if ("error" in saved) return saved;
   if (primaryBillingCompanyId(stored) === target.id) {
@@ -683,17 +783,16 @@ export async function deleteEmptyBillingCompany(
   customerId: string,
   companyId: string
 ): Promise<{ ok: true } | { error: string }> {
-  const { data, error } = await supabase
-    .from("crm_billing_companies")
-    .select(
-      "id, company_name, siret, vat_number, billing_email, billing_address_line, billing_postal_code, billing_city, funding"
-    )
-    .eq("id", companyId)
-    .eq("customer_id", customerId)
-    .maybeSingle();
-  if (error) return billingWriteError(error);
+  const loaded = await queryWithOptionalColumn(
+    (columns) =>
+      supabase.from("crm_billing_companies").select(columns).eq("id", companyId).eq("customer_id", customerId).maybeSingle(),
+    "id, company_name, siret, vat_number, billing_email, billing_address_line, billing_postal_code, billing_city, funding",
+    "registration_number"
+  );
+  if (loaded.error) return billingWriteError(loaded.error);
+  const data = loaded.data;
   if (!data) return { error: "Cette société n’est pas sur la fiche du client." };
-  const row = data as {
+  const row = data as unknown as {
     funding?: string | null;
     company_name: string | null;
     siret: string | null;

@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveCountryCode } from "@/lib/crm/countries";
 import { mb3mCompanyDraft, mb3mPersonDraft } from "@/lib/crm/mb3m-party";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import {
@@ -26,6 +25,7 @@ import {
   mb3mRenderPiece,
   mb3mSaveCompany,
   mb3mSaveFolder,
+  mb3mAddress,
   mb3mSavePerson,
   type Mb3mAddress,
 } from "@/lib/crm/mb3m";
@@ -87,14 +87,10 @@ function addressOf(
   line: string | null,
   postal: string | null,
   city: string | null,
-  country: string | null
+  country: string | null,
+  company = false
 ): Mb3mAddress | null {
-  const line1 = (line || "").trim();
-  const postalCode = (postal || "").trim();
-  const cityName = (city || "").trim();
-  if (!line1 || !postalCode || !cityName) return null;
-  const countryCode = resolveCountryCode(country);
-  return { name, line1, postalCode, city: cityName, ...(countryCode ? { countryCode } : {}) };
+  return mb3mAddress({ name, line, postal, city, country, company });
 }
 
 function roundMoney(value: number) {
@@ -288,7 +284,14 @@ function partyOf(customer: CustomerRow, companies: CompanyRow[], companyId: stri
     const company = companies.find((row) => row.id === companyId);
     const name = (company?.company_name || "").trim();
     const address = company
-      ? addressOf(name || "Société", company.billing_address_line, company.billing_postal_code, company.billing_city, company.billing_country)
+      ? addressOf(
+          name || "Société",
+          company.billing_address_line,
+          company.billing_postal_code,
+          company.billing_city,
+          company.billing_country,
+          true
+        )
       : null;
     if (!company || !name || !address) return null;
     return { kind: "company", id: company.id, name, email: blank(company.billing_email), address };

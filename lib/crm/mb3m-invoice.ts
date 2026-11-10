@@ -70,6 +70,7 @@ import {
   mb3mSaveFolder,
   mb3mSavePerson,
   mb3mSingleAgencyUid,
+  mb3mAddress,
   type Mb3mAddress,
   type Mb3mCivility,
 } from "@/lib/crm/mb3m";
@@ -122,6 +123,7 @@ export type Mb3mInvoiceContext = {
     id: string;
     name: string;
     email: string | null;
+    countryCode: string | null;
     address: Mb3mAddress | null;
     commercialName?: string | null;
     phoneNumber?: string | null;
@@ -302,35 +304,22 @@ function blank(value: string | null | undefined) {
   return text || null;
 }
 
-function addressOf(
-  name: string,
-  line: string | null | undefined,
-  postal: string | null | undefined,
-  city: string | null | undefined,
-  country: string | null | undefined
-): Mb3mAddress | null {
-  const line1 = (line || "").trim();
-  const postalCode = (postal || "").trim();
-  const cityName = (city || "").trim();
-  if (!line1 || !postalCode || !cityName) return null;
-  return {
-    name,
-    line1,
-    postalCode,
-    city: cityName,
-    countryCode: resolveCountryCode(country) || undefined,
-  };
-}
-
 function personAddress(customer: PayerCustomer, name: string) {
   return (
-    addressOf(
+    mb3mAddress({
       name,
-      customer.billing_address_line,
-      customer.billing_postal_code,
-      customer.billing_city,
-      customer.billing_country
-    ) || addressOf(name, customer.address_line, customer.postal_code, customer.city, customer.country)
+      line: customer.billing_address_line,
+      postal: customer.billing_postal_code,
+      city: customer.billing_city,
+      country: customer.billing_country,
+    }) ||
+    mb3mAddress({
+      name,
+      line: customer.address_line,
+      postal: customer.postal_code,
+      city: customer.city,
+      country: customer.country,
+    })
   );
 }
 
@@ -341,7 +330,11 @@ export function mb3mInvoiceBlocker(ctx: Mb3mInvoiceContext) {
   if (ctx.dateEnd < ctx.dateStart) return "Les dates du séjour sont inversées.";
   if (ctx.payerKind === "company") {
     if (!ctx.company?.name) return "La raison sociale est incomplète.";
-    if (!ctx.company.address) return "L’adresse de facturation de la société est incomplète (rue, code postal, ville).";
+    if (!ctx.company.address) {
+      return ctx.company.countryCode && ctx.company.countryCode !== "FR"
+        ? "L’adresse de facturation de la société est incomplète (rue, ville)."
+        : "L’adresse de facturation de la société est incomplète (rue, code postal, ville).";
+    }
   } else {
     if (!ctx.person?.firstName || !ctx.person.lastName) return "Le nom du client est incomplet.";
     // Particulier : l’adresse de la fiche est l’adresse de facturation.
@@ -446,13 +439,15 @@ export function buildMb3mInvoiceContext(input: {
           commercialName: companyName,
           email: blank(company.billing_email) || blank(input.payer?.email),
           phoneNumber: blank(input.payer?.phone),
-          address: addressOf(
-            companyName || "Société",
-            company.billing_address_line,
-            company.billing_postal_code,
-            company.billing_city,
-            company.billing_country
-          ),
+          countryCode: resolveCountryCode(company.billing_country),
+          address: mb3mAddress({
+            name: companyName || "Société",
+            line: company.billing_address_line,
+            postal: company.billing_postal_code,
+            city: company.billing_city,
+            country: company.billing_country,
+            company: true,
+          }),
         }
       : null,
     travelers: namedTravelers,

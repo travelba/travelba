@@ -1,3 +1,4 @@
+import { isEuMember, resolveCountryCode } from "./countries";
 import { emptyToNull } from "./identity";
 
 export function digitsOnly(value: string) {
@@ -54,6 +55,42 @@ export function normalizeVat(value: unknown) {
   const raw = emptyToNull(value);
   if (!raw) return null;
   return raw.replace(/[\s.]/g, "").toUpperCase();
+}
+
+/** Pays de facturation hors France. Vide ou illisible : on garde les règles françaises. */
+export function isForeignBillingCountry(value: unknown) {
+  const code = resolveCountryCode(String(value || ""));
+  return Boolean(code && code !== "FR");
+}
+
+/** Numéro de registre local (NUI, identifiant d’entreprise). Pas un SIRET : aucun contrôle de forme. */
+export function normalizeRegistration(value: unknown) {
+  const raw = emptyToNull(value);
+  if (!raw) return null;
+  return raw.replace(/\s+/g, " ").trim();
+}
+
+export function registrationError(value: string | null) {
+  if (!value) return null;
+  if (value.length > 40) return "L’identifiant d’entreprise est trop long.";
+  return null;
+}
+
+/** Lignes d’identification imprimées sur la facture. Hors France : pas de SIRET. */
+export function billingIdentifierLines(company: {
+  billing_country?: string | null;
+  siret?: string | null;
+  vat_number?: string | null;
+  registration_number?: string | null;
+}) {
+  const registration = (company.registration_number || "").trim();
+  const vat = (company.vat_number || "").trim();
+  const siret = (company.siret || "").trim();
+  if (isForeignBillingCountry(company.billing_country)) {
+    const vatLabel = isEuMember(company.billing_country) ? "TVA" : "N° fiscal";
+    return [registration ? `Identifiant ${registration}` : "", vat ? `${vatLabel} ${vat}` : ""].filter(Boolean);
+  }
+  return [siret ? `SIRET ${siret}` : "", vat ? `TVA ${vat}` : ""].filter(Boolean);
 }
 
 export function normalizeFlyingBlue(value: unknown) {

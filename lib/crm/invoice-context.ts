@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mb3mRealm } from "./mb3m";
 import { isVercelPreview } from "./preview-secrets";
+import { billingIdentifierLines } from "./billing";
+import { businessOutsideEu, displayCountry } from "./countries";
+import { queryWithOptionalColumn } from "./optional-column";
 import { formatDateFr } from "./money";
 import {
   INVOICE_TEMPLATE_ENV,
@@ -45,7 +48,8 @@ function addressLines(
   extra: string[] = []
 ) {
   const place = [postal, city].map((part) => (part || "").trim()).filter(Boolean).join(" ");
-  return [name, line, place, country, ...extra].map((part) => (part || "").trim()).filter(Boolean);
+  const countryName = displayCountry(country);
+  return [name, line, place, countryName, ...extra].map((part) => (part || "").trim()).filter(Boolean);
 }
 
 async function loadWire(): Promise<InvoiceWire | null> {
@@ -193,7 +197,7 @@ export async function loadInvoiceSnapshot(
   const payerId = stay.billing_customer_id || stay.customer_id;
   if (!payerId) return null;
   const ids = (piece.transaction_ids || []).filter(Boolean);
-  const [{ data: charges }, { data: credits }, { data: payer }, { data: company }, settings, savedUrl] = await Promise.all([
+  const [{ data: charges }, { data: credits }, { data: payer }, companyResult, settings, savedUrl] = await Promise.all([
     ids.length
       ? admin.from("crm_transactions").select("id, label, amount").in("id", ids)
       : Promise.resolve({ data: [] as { id: string; label: string | null; amount: number | null }[] }),
@@ -211,15 +215,18 @@ export async function loadInvoiceSnapshot(
       .eq("id", payerId)
       .maybeSingle(),
     stay.payer_kind === "company" && stay.billing_company_id
-      ? admin
-          .from("crm_billing_companies")
-          .select("company_name, siret, vat_number, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country")
-          .eq("id", stay.billing_company_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
+      ? queryWithOptionalColumn(
+          (columns) =>
+            admin.from("crm_billing_companies").select(columns).eq("id", stay.billing_company_id!).maybeSingle(),
+          "company_name, siret, vat_number, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country",
+          "registration_number"
+        )
+      : Promise.resolve({ data: null, error: null }),
     loadSettings(admin),
     loadSavedStripeUrl(admin, bookingId),
   ]);
+  if (companyResult.error) throw new Error(companyResult.error.message || "Société de facturation illisible.");
+  const company = companyResult.data;
   const person = payer as {
     first_name: string | null;
     last_name: string | null;
@@ -240,6 +247,7 @@ export async function loadInvoiceSnapshot(
     company_name: string | null;
     siret: string | null;
     vat_number: string | null;
+    registration_number?: string | null;
     billing_email: string | null;
     billing_address_line: string | null;
     billing_postal_code: string | null;
@@ -267,7 +275,7 @@ export async function loadInvoiceSnapshot(
         firm.billing_postal_code,
         firm.billing_city,
         firm.billing_country,
-        [firm.siret ? `SIRET ${firm.siret}` : "", firm.vat_number ? `TVA ${firm.vat_number}` : ""].filter(Boolean)
+        billingIdentifierLines(firm)
       )
     : addressLines(
         personName,
@@ -300,6 +308,7 @@ export async function loadInvoiceSnapshot(
     wire,
     stripeUrl,
     payerFirstName: person?.first_name,
+    outsideEu: firm ? businessOutsideEu(firm.billing_country) : false,
   });
   const email = (firm?.billing_email || person?.billing_email || person?.email || "").trim() || null;
   const phone = (person?.phone || "").trim() || null;
