@@ -20,13 +20,16 @@ export default async function AdminTeamPage() {
       </div>
     );
   }
-  let colleagues = null;
-  try {
-    colleagues = await listColleagues();
-  } catch {
-    console.error("[admin/equipe] lecture");
-  }
-  const [matrix, settings] = await Promise.all([loadPermissionMatrix(), loadAgencySettings()]);
+  console.time("[equipe] vague 1");
+  const [colleagues, matrix, settings] = await Promise.all([
+    listColleagues().catch((error: unknown) => {
+      console.error("[admin/equipe] lecture", error instanceof Error ? error.message : error);
+      return null;
+    }),
+    loadPermissionMatrix(),
+    loadAgencySettings(),
+  ]);
+  console.timeEnd("[equipe] vague 1");
 
   return (
     <div>

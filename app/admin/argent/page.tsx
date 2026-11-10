@@ -4,7 +4,7 @@ import { EncaisserPanel } from "@/components/admin/argent/EncaisserPanel";
 import { GrandLivrePanel } from "@/components/admin/argent/GrandLivrePanel";
 import { PointerPanel } from "@/components/admin/argent/PointerPanel";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { adminBadges } from "@/lib/crm/admin-badges";
+import { cachedAdminBadges } from "@/lib/crm/admin-badges";
 import { firstParam, type SearchParamValue } from "@/lib/crm/admin-list";
 import { ARGENT_TAB_HELP, ARGENT_TAB_LABELS, argentTabFromParam } from "@/lib/crm/argent-tabs";
 import { requirePermissionPage } from "@/lib/crm/agency-guard";
@@ -16,7 +16,7 @@ export default async function ArgentPage({ searchParams }: { searchParams: Promi
   const [{ supabase, staff }, params, badges] = await Promise.all([
     requirePermissionPage("view_finances"),
     searchParams,
-    adminBadges(),
+    cachedAdminBadges(),
   ]);
   const tab = argentTabFromParam(params.onglet);
 

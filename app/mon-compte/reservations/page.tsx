@@ -1,6 +1,7 @@
 import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { stayTransitionName } from "@/lib/crm/account-motion";
@@ -36,6 +37,7 @@ export default async function ReservationsPage({
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
+  console.time("[espace] reservations");
   const all = await loadVisibleCarnets(supabase, customer.id, await clientTripOwnerIds(customer));
   const walletIds = [...new Set(all.map((row) => row.billing_customer_id || row.customer_id))];
   const [displayedAmounts, payerResult, places] = await Promise.all([
@@ -63,9 +65,12 @@ export default async function ReservationsPage({
   const past = sortBookingsByStart(all.filter((b) => isClientPastStay(b)), "desc");
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
-  const covers = await resolveListCovers(
-    list.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }))
-  );
+  const coverRows = list.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }));
+  const covers = await resolveListCovers(coverRows, { geocode: false });
+  console.timeEnd("[espace] reservations");
+  after(() => {
+    void resolveListCovers(coverRows).catch(() => undefined);
+  });
 
   return (
     <AccountPage>

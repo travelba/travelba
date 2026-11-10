@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";
 import { StripeInbox } from "@/components/admin/StripeInbox";
 import { argentHref } from "@/lib/crm/argent-tabs";
@@ -43,10 +44,36 @@ export async function EncaisserPanel({
         ? "Compte Revolut connecté. Chaque virement reste à encaisser jusqu’au clic Créditer."
         : null;
 
-  const { data: people } = await admin
-    .from("crm_customers")
-    .select(`${REVOLUT_MATCH_SELECT}, usage_name, email, phone, stripe_customer_id`)
-    .order("last_name");
+  console.time("[argent] encaisser");
+  after(() => {
+    void repairRevolutDebitQueue(admin).catch((error: unknown) => {
+      console.error("[argent] débits", error instanceof Error ? error.message : error);
+    });
+    void reclassifyPendingRevolutCredits(admin).catch((error: unknown) => {
+      console.error("[argent] reclassement", error instanceof Error ? error.message : error);
+    });
+    void splitPendingStripePayouts(admin).catch((error: unknown) => {
+      console.error("[argent] versements", error instanceof Error ? error.message : error);
+    });
+  });
+  const [{ data: people }, credits, payments] = await Promise.all([
+    admin
+      .from("crm_customers")
+      .select(`${REVOLUT_MATCH_SELECT}, usage_name, email, phone, stripe_customer_id`)
+      .order("last_name"),
+    admin
+      .from("crm_revolut_transactions")
+      .select("*")
+      .eq("direction", "credit")
+      .order("booked_at", { ascending: false, nullsFirst: false })
+      .limit(200),
+    admin
+      .from("crm_stripe_transactions")
+      .select("*")
+      .eq("direction", "credit")
+      .order("booked_at", { ascending: false, nullsFirst: false })
+      .limit(200),
+  ]);
   const index = (people || []) as (RevolutMatchCustomer & StripeMatchCustomer & PickableCustomer)[];
   const customerIds = index.map((row) => row.id);
   const { data: companyRows } = customerIds.length
@@ -64,32 +91,9 @@ export async function EncaisserPanel({
     companies: byCustomer.get(id) || [],
   }));
 
-  let revolutRows: CrmRevolutTransaction[] = [];
-  let stripeRows: CrmStripeTransaction[] = [];
-  try {
-    await repairRevolutDebitQueue(admin);
-    await reclassifyPendingRevolutCredits(admin);
-    await splitPendingStripePayouts(admin);
-    const [credits, payments] = await Promise.all([
-      admin
-        .from("crm_revolut_transactions")
-        .select("*")
-        .eq("direction", "credit")
-        .order("booked_at", { ascending: false, nullsFirst: false })
-        .limit(200),
-      admin
-        .from("crm_stripe_transactions")
-        .select("*")
-        .eq("direction", "credit")
-        .order("booked_at", { ascending: false, nullsFirst: false })
-        .limit(200),
-    ]);
-    revolutRows = (credits.data || []) as CrmRevolutTransaction[];
-    stripeRows = (payments.data || []) as CrmStripeTransaction[];
-  } catch {
-    revolutRows = [];
-    stripeRows = [];
-  }
+  let revolutRows = (credits.error ? [] : credits.data || []) as CrmRevolutTransaction[];
+  let stripeRows = (payments.error ? [] : payments.data || []) as CrmStripeTransaction[];
+  console.timeEnd("[argent] encaisser");
 
   const stripeCustomerIds = [
     ...stripeRows.map((row) => {

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { after } from "next/server";
+import { Suspense } from "react";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { customerFullName, type CrmBalance, type CrmBooking } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -14,7 +16,7 @@ import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { adminBadges } from "@/lib/crm/admin-badges";
+import { cachedAdminBadges } from "@/lib/crm/admin-badges";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { loadAccueilTodoCounts } from "@/lib/crm/admin-todo-load";
 import { ADMIN_ROUTES } from "@/lib/crm/admin-nav";
@@ -27,6 +29,7 @@ export const metadata = { title: { absolute: `Accueil — ${siteConfig.shortName
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
 
+  console.time("[accueil] vague 1");
   const today = stayToday();
   const horizon = addIsoDays(today, 7);
 
@@ -37,7 +40,6 @@ export default async function AdminHomePage() {
     badges,
     tripTodo,
     whatsappOpen,
-    agencyAccounts,
     clientActivity,
   ] = await Promise.all([
     supabase
@@ -59,15 +61,15 @@ export default async function AdminHomePage() {
       .order("start_date")
       .limit(40),
     supabase.from("crm_customer_balances").select("balance, currency"),
-    adminBadges(),
+    cachedAdminBadges(),
     loadAccueilTodoCounts(supabase, today),
     supabase
       .from("crm_whatsapp_requests")
       .select("id", { count: "exact", head: true })
       .eq("status", "open"),
-    loadAgencyAccounts(),
     loadClientActivityFeed(supabase, today),
   ]);
+  console.timeEnd("[accueil] vague 1");
   const remainingDue = ((balances || []) as Pick<CrmBalance, "balance" | "currency">[]).reduce(
     (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
     0
@@ -76,6 +78,7 @@ export default async function AdminHomePage() {
   const week = dashboardWeek(weekBookings, today);
   const shown = [...week.travelling, ...week.soon, ...week.week].map((entry) => entry.booking);
   const nameIds = [...new Set(shown.map((row) => row.customer_id).filter(Boolean))];
+  console.time("[accueil] vague 2");
   const [{ data: customers }, displayedStayAmounts, places] = await Promise.all([
     nameIds.length
       ? supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", nameIds)
@@ -87,14 +90,17 @@ export default async function AdminHomePage() {
     ),
   ]);
   const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
-  const covers = await resolveListCovers(
-    shown.map((row) => ({
-      id: row.id,
-      booking: row,
-      places: places.arrival[row.id],
-      countries: places.countries[row.id],
-    }))
-  );
+  const coverRows = shown.map((row) => ({
+    id: row.id,
+    booking: row,
+    places: places.arrival[row.id],
+    countries: places.countries[row.id],
+  }));
+  const covers = await resolveListCovers(coverRows, { geocode: false });
+  console.timeEnd("[accueil] vague 2");
+  after(() => {
+    void resolveListCovers(coverRows).catch(() => undefined);
+  });
   const todo = adminTodoLines({
     whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
     unread: badges.whatsapp,
@@ -155,13 +161,22 @@ export default async function AdminHomePage() {
             <p className="mt-2 font-display text-3xl font-bold tabular-nums">{formatMoney(remainingDue)}</p>
             <p className="mt-1 text-xs text-muted">Somme des comptes débiteurs</p>
           </Link>
-          <AgencyAccountBalances accounts={agencyAccounts} bare />
+          <Suspense fallback={<p className="text-sm text-muted">Soldes…</p>}>
+            <DashboardAccountStrip />
+          </Suspense>
         </div>
       </section>
 
       <ClientActivity groups={clientActivity} today={today} collapsed />
     </div>
   );
+}
+
+async function DashboardAccountStrip() {
+  console.time("[accueil] soldes");
+  const accounts = await loadAgencyAccounts();
+  console.timeEnd("[accueil] soldes");
+  return <AgencyAccountBalances accounts={accounts} bare />;
 }
 
 function todoCaption(label: string) {

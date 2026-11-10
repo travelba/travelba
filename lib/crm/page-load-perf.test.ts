@@ -44,6 +44,10 @@ describe("page-load-perf", () => {
     assert.equal(page.includes("reconcileCustomerSepa"), false);
     assert.match(page, /geocode: false/);
     assert.match(page, /console\.time\("\[fiche\] vague 1"\)/);
+    assert.match(readFileSync(join(root, "app/admin/page.tsx"), "utf8"), /geocode: false/);
+    assert.match(readFileSync(join(root, "app/admin/reservations/page.tsx"), "utf8"), /geocode: false/);
+    assert.match(readFileSync(join(root, "app/mon-compte/reservations/page.tsx"), "utf8"), /geocode: false/);
+    assert.match(readFileSync(join(root, "app/mon-compte/transactions/page.tsx"), "utf8"), /reconcile: false/);
     assert.match(sepa, /export async function loadCustomerSepaState/);
     assert.doesNotMatch(
       sepa.slice(sepa.indexOf("export async function loadCustomerSepaState")),

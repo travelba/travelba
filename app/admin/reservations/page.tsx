@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { BookingsFilters } from "@/components/admin/BookingsFilters";
 import { BookingsTable } from "@/components/admin/BookingsTable";
@@ -173,10 +174,16 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     const names = new Map(
       [...customersById.entries()].map(([id, row]) => [id, customerFullName(row)])
     );
+    const coverRows = shown.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }));
+    console.time("[dossiers] semaine");
     const [covers, owners] = await Promise.all([
-      resolveListCovers(shown.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))),
+      resolveListCovers(coverRows, { geocode: false }),
       ownerLabelsFor(createServiceClient(), shown),
     ]);
+    console.timeEnd("[dossiers] semaine");
+    after(() => {
+      void resolveListCovers(coverRows).catch(() => undefined);
+    });
 
     return (
       <div>
@@ -375,10 +382,16 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     redirect(listHref("/admin/reservations", { q, etat: state, tri: bookingSortParam(sort), qui }, lastPage));
   }
   const rows = q || order.proximity ? matched.slice(from, to + 1) : matched;
+  const coverRows = rows.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }));
+  console.time("[dossiers] liste");
   const [covers, owners] = await Promise.all([
-    resolveListCovers(rows.map((row) => ({ id: row.id, booking: row, places: maps.arrival[row.id] }))),
+    resolveListCovers(coverRows, { geocode: false }),
     ownerLabelsFor(createServiceClient(), rows),
   ]);
+  console.timeEnd("[dossiers] liste");
+  after(() => {
+    void resolveListCovers(coverRows).catch(() => undefined);
+  });
   const hiddenArchiveHits =
     q && state !== "archive"
       ? listResult.archived.filter((row) => smartSearchMatch(q, searchText.get(row.id))).length
