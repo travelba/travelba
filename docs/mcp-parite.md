@@ -19,7 +19,8 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Lire toutes les sociétés | `fiche_client` (`societes`, identifiant, champs, `principale`) — ajouté |
 | Remplacer toute la liste | `enregistrer_societes` (`confirmer` true) — ajouté |
 | Supprimer la fiche | `supprimer_client` (`confirmer` = nom complet) — ajouté |
-| Inviter / renvoyer l’invitation | `inviter_client` — couvert |
+| Inviter / renvoyer l’invitation | `inviter_client` — couvert. Sans `confirmer`, aperçu, rien ne part |
+| Montrer le carnet, relevé, pièce visa/ETA, carte d’embarquement | `publier_carnet`, `envoyer_releve`, `ajouter_piece`, `notifier_piece`, `notifier_carte_embarquement` — sans `confirmer`, aperçu, rien n’est écrit et rien ne part |
 | Renvoyer ses accès par WhatsApp | `renvoyer_acces_whatsapp` (`confirmer: true`) — ajouté. Un bouton, Ouvrir mon espace : lien personnel 30 jours (empreinte seulement), aucun mot de passe, le lien n’est pas renvoyé |
 | Annoncer l’accès Hôtels | `annoncer_option_hotel` (`confirmer: true`) — ajouté. Même lien, vers la rubrique Hôtels. Réservé aux administrateurs. L’option doit déjà être activée |
 | Accès Hôtels, mode réel, réservation directe par l’API, accepter ou refuser une demande | `regler_acces_hotels` — ajouté |
@@ -79,9 +80,11 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Compléter le nom et l’e-mail Stripe | `completer_payeurs_stripe` — ajouté. Sans `confirmer`, aperçu. Écrit seulement le nom et l’e-mail, sans crédit. Réservé aux administrateurs |
 | Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
 | Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
-| Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert |
+| Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert. `preparer_facture_mb3m` : sans `confirmer`, aperçu, aucune pièce |
 | Envoyer la facture et demander le paiement | `envoyer_facture` — ajouté. Sans `confirmer`, aperçu seulement |
-| Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — ajouté |
+| Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — ajouté. Sans `confirmer`, aperçu, aucun avoir |
+| Créditer un virement, Revolut ou Stripe | `crediter_virement`, `crediter_revolut`, `crediter_stripe` — sans `confirmer`, aperçu, rien n’est écrit |
+| Créer une carte Pliant | `creer_carte_pliant` — sans `confirmer`, aperçu, la carte n’est pas créée |
 | Créer la fiche client dans MB3M | `creer_fiche_mb3m` — ajouté |
 | Refuser un encaissement Revolut ou Stripe | `refuser_encaissement` — ajouté |
 | Détacher, déplacer, refuser, hors voyage, nouvelle dépense, changer de ligne | `comptabilite_sortie` — ajouté. `detacher` accepte `cout_id`, ou `sortie_id` seul (et `dossier_id`) quand un seul coût est lié |

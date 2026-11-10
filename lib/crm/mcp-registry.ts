@@ -125,6 +125,7 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
+import { runIfConfirmed } from "@/lib/crm/mcp-preview";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
 export const MCP_TOOL_CAP = 121;
@@ -239,6 +240,7 @@ async function journalPersonalWrite(name: string, args: ToolArgs) {
 const q = z.string().trim().max(80).optional().describe("Nom, société, e-mail, téléphone ou référence");
 const id = z.string().trim().max(80).optional().describe("Identifiant du client ou du dossier");
 const listPage = z.number().int().min(1).optional().describe("Page, à partir de 1. page_suivante donne la suivante. Aucun plafond sur le total.");
+const confirmOpt = z.boolean().optional().describe("true pour exécuter. Sans true : aperçu, rien n’est écrit");
 const listLimit = z.number().int().min(1).max(100).optional().describe("Taille de page, 100 au plus. Défaut selon l’outil.");
 
 type ToolArgs = Record<string, unknown>;
@@ -540,7 +542,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "crediter_virement",
     write: true,
     description:
-      "Crédite un virement au grand livre d’un client, comme la saisie agence. client_id obligatoire. Crédit seulement, jamais un débit.",
+      "Crédite un virement au grand livre d’un client, comme la saisie agence. client_id obligatoire. Crédit seulement, jamais un débit. Sans confirmer, aperçu seulement : rien n’est écrit.",
     input: {
       client_id: z.string().trim().describe("Identifiant du client"),
       montant: z.union([z.number(), z.string()]).describe("Montant du crédit, supérieur à zéro"),
@@ -550,19 +552,25 @@ export const MCP_TOOLS: ToolDef[] = [
       dossier_id: z.string().trim().optional().describe("Dossier lié, s’il y en a un"),
       sens: z.string().trim().optional().describe("Doit rester un crédit"),
       type: z.string().trim().optional().describe("Doit rester un virement"),
+      confirmer: confirmOpt,
     },
-    run: (args) => creditManualTransfer(args),
+    run: (args) =>
+      runIfConfirmed(args, { action: "credit_virement", client_id: args.client_id, montant: args.montant, devise: args.devise, dossier_id: args.dossier_id }, () =>
+        creditManualTransfer(args)
+      ),
   },
   {
     name: "crediter_revolut",
     write: true,
     description:
-      "Crédite un virement Revolut, ou une ligne d’un versement Stripe, au client désigné. Le montant crédité est le brut payé. Les frais Stripe restent à l’agence. Intérêts, virement interne, remboursement et frais ne se créditent pas. Un paiement déjà au grand livre via Stripe n’est pas crédité une seconde fois. Les deux identifiants sont obligatoires. Ne choisit pas un client à la place de l’agence.",
+      "Crédite un virement Revolut, ou une ligne d’un versement Stripe, au client désigné. Le montant crédité est le brut payé. Les frais Stripe restent à l’agence. Intérêts, virement interne, remboursement et frais ne se créditent pas. Un paiement déjà au grand livre via Stripe n’est pas crédité une seconde fois. Les deux identifiants sont obligatoires. Ne choisit pas un client à la place de l’agence. Sans confirmer, aperçu seulement : rien n’est écrit.",
     input: {
       virement_id: z.string().trim().describe("Identifiant du virement Revolut en attente"),
       client_id: z.string().trim().describe("Identifiant du client à créditer"),
+      confirmer: confirmOpt,
     },
-    run: (args) => creditRevolutTransfer(args),
+    run: (args) =>
+      runIfConfirmed(args, { action: "credit_revolut", virement_id: args.virement_id, client_id: args.client_id }, () => creditRevolutTransfer(args)),
   },
   {
     name: "rapprocher_depense_revolut",
@@ -580,12 +588,14 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "crediter_stripe",
     write: true,
     description:
-      "Crédite un paiement Stripe en attente au client désigné. Les deux identifiants sont obligatoires. Ne choisit pas un client à la place de l’agence.",
+      "Crédite un paiement Stripe en attente au client désigné. Les deux identifiants sont obligatoires. Ne choisit pas un client à la place de l’agence. Sans confirmer, aperçu seulement : rien n’est écrit.",
     input: {
       paiement_id: z.string().trim().describe("Identifiant du paiement Stripe en attente"),
       client_id: z.string().trim().describe("Identifiant du client à créditer"),
+      confirmer: confirmOpt,
     },
-    run: (args) => creditStripePayment(args),
+    run: (args) =>
+      runIfConfirmed(args, { action: "credit_stripe", paiement_id: args.paiement_id, client_id: args.client_id }, () => creditStripePayment(args)),
   },
   {
     name: "completer_payeurs_stripe",
@@ -666,7 +676,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut (usage unique, un contrôle de passerelle ne compte pas). Au-delà, carte virtuelle réutilisable : le plafond total et le montant maximum par transaction sont envoyés, par exemple 1 500 € et 5 achats pour la garantie, les extras et le solde. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie pas le numéro : lire_carte_pliant. Réservé à l’assistant autorisé.",
+      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut (usage unique, un contrôle de passerelle ne compte pas). Au-delà, carte virtuelle réutilisable : le plafond total et le montant maximum par transaction sont envoyés, par exemple 1 500 € et 5 achats pour la garantie, les extras et le solde. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie pas le numéro : lire_carte_pliant. Réservé à l’assistant autorisé. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0082"),
@@ -683,19 +693,33 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Maximum d’un paiement. Défaut : le plafond"),
       prenom: z.string().trim().max(50).optional().describe("Prénom du titulaire. Défaut : le voyageur du dossier"),
       nom_titulaire: z.string().trim().max(50).optional().describe("Nom du titulaire"),
+      confirmer: confirmOpt,
     },
     run: (args) =>
-      createPliantCard({
-        dossier_id: str(args, "dossier_id"),
-        reference: str(args, "reference"),
-        nom: str(args, "nom"),
-        plafond: args.plafond,
-        devise: str(args, "devise"),
-        transactions: args.transactions,
-        montant_transaction: args.montant_transaction,
-        prenom: str(args, "prenom"),
-        nom_titulaire: str(args, "nom_titulaire"),
-      }),
+      runIfConfirmed(
+        args,
+        {
+          action: "carte_pliant",
+          dossier_id: args.dossier_id,
+          reference: args.reference,
+          nom: args.nom,
+          plafond: args.plafond,
+          devise: args.devise,
+          transactions: args.transactions,
+        },
+        () =>
+          createPliantCard({
+            dossier_id: str(args, "dossier_id"),
+            reference: str(args, "reference"),
+            nom: str(args, "nom"),
+            plafond: args.plafond,
+            devise: str(args, "devise"),
+            transactions: args.transactions,
+            montant_transaction: args.montant_transaction,
+            prenom: str(args, "prenom"),
+            nom_titulaire: str(args, "nom_titulaire"),
+          })
+      ),
   },
   {
     name: "lire_carte_pliant",
@@ -739,12 +763,13 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "publier_carnet",
     write: true,
     description:
-      "Passe le dossier en Visible : le client le voit, le séjour est confirmé, la carte hôtel peut partir. Il faut au moins une carte. Un dossier archivé reste caché. Un carnet déjà montré n’est pas renvoyé.",
+      "Passe le dossier en Visible : le client le voit, le séjour est confirmé, la carte hôtel peut partir. Il faut au moins une carte. Un dossier archivé reste caché. Un carnet déjà montré n’est pas renvoyé. Sans confirmer, aperçu seulement : rien n’est montré et aucun message ne part.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      confirmer: confirmOpt,
     },
-    run: (args) => publishCarnet(args),
+    run: (args) => runIfConfirmed(args, { action: "publier_carnet", id: args.id, reference: args.reference }, () => publishCarnet(args)),
   },
   {
     name: "mettre_a_jour_dossier",
@@ -980,11 +1005,12 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée l’accès à l’espace du client et envoie l’invitation, le même flux que le bouton de la fiche. L’e-mail part, et WhatsApp avec le même lien si le message part : le canal du lien suit. Rien ne part sans cet appel. Un accès déjà invité ou déjà ouvert n’est pas renvoyé. Le lien n’est pas renvoyé. Un compte de l’agence est refusé.",
+      "Crée l’accès à l’espace du client et envoie l’invitation, le même flux que le bouton de la fiche. L’e-mail part, et WhatsApp avec le même lien si le message part : le canal du lien suit. Un accès déjà invité ou déjà ouvert n’est pas renvoyé. Le lien n’est pas renvoyé. Un compte de l’agence est refusé. Sans confirmer, aperçu seulement : rien ne part.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
+      confirmer: confirmOpt,
     },
-    run: (args) => inviteClientAccess(args),
+    run: (args) => runIfConfirmed(args, { action: "inviter_client", id: args.id }, () => inviteClientAccess(args)),
   },
   {
     name: "renvoyer_acces_whatsapp",
@@ -1017,7 +1043,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays, délivrance) sont écrits. La délivrance est aussi posée quand elle est lue sur le fichier. Autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le fichier du visa par WhatsApp au client et au voyageur concerné s’il a un autre numéro. Le modèle est autorisation_validee_document_v2 (PDF) ou autorisation_validee_image_v2 (JPEG ou PNG) dès qu’il est approuvé, sinon la v1. Le texte v2 est « Bonne nouvelle ! Votre autorisation {{3}} a été validée. Vous la trouverez ci-jointe. » {{3}} est le nom réel : ESTA, ETA, ETA-IL, eTA Canada, NZeTA, ETIAS, e-Visa et le pays, sinon Visa ou ETA. Sans modèle approuvé, rien ne part et la raison le dit. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. carte_embarquement dépose un PDF sur le dossier, type carte d’embarquement, le même que le bouton Cartes d’embarquement : aucun WhatsApp. Le numéro n’est pas renvoyé.",
+      "Dépose une pièce (visa, ETA, passeport, assurance) dans l’espace client, comme le formulaire Pièces. client_id, ou dossier_id / reference. voyageur_id : voyageur du séjour, ou accompagnateur déjà lié au client sans dossier. Fichier en base64. Sur un séjour, la pièce du même type déjà liée à ce voyageur est remplacée : une ETA ne remplace pas un visa. Un passeport déjà enregistré est complété : le fichier et les champs fournis (numéro, expiration, pays, délivrance) sont écrits. La délivrance est aussi posée quand elle est lue sur le fichier. Autorité, noms, naissance, nationalité, sexe et lieu restent. Le pays émetteur n’est pas recopié dans la nationalité. Par défaut, une formalité (visa ou ETA) liée au séjour envoie le fichier du visa par WhatsApp au client et au voyageur concerné s’il a un autre numéro. Le modèle est autorisation_validee_document_v2 (PDF) ou autorisation_validee_image_v2 (JPEG ou PNG) dès qu’il est approuvé, sinon la v1. Le texte v2 est « Bonne nouvelle ! Votre autorisation {{3}} a été validée. Vous la trouverez ci-jointe. » {{3}} est le nom réel : ESTA, ETA, ETA-IL, eTA Canada, NZeTA, ETIAS, e-Visa et le pays, sinon Visa ou ETA. Sans modèle approuvé, rien ne part et la raison le dit. Le client déjà prévenu n’est pas renvoyé. Un passeport, ou une pièce sans séjour, n’envoie rien. notifier false coupe l’envoi. carte_embarquement dépose un PDF sur le dossier, type carte d’embarquement, le même que le bouton Cartes d’embarquement : aucun WhatsApp. Le numéro n’est pas renvoyé. Sans confirmer, aperçu seulement : la pièce n’est pas déposée et rien ne part.",
     input: {
       client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
@@ -1040,8 +1066,14 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("WhatsApp « formalité prête ». Vrai si omis. false pour ne pas écrire au client"),
+      confirmer: confirmOpt,
     },
-    run: (args) => addTravelPiece(args),
+    run: (args) =>
+      runIfConfirmed(
+        args,
+        { action: "ajouter_piece", client_id: args.client_id, dossier_id: args.dossier_id, type: args.type, notifier: args.notifier },
+        () => addTravelPiece(args)
+      ),
   },
   {
     name: "requalifier_piece",
@@ -1063,7 +1095,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Renvoie le document du visa ou de l’ETA déjà déposé, joint au WhatsApp. document_id. destinataires : tous (défaut), client ou voyageur. Le modèle est autorisation_validee_document_v2 ou autorisation_validee_image_v2 dès approbation, sinon la v1. Le texte nomme l’autorisation (ESTA, ETA, ETA-IL, eTA Canada, e-Visa…). Sans modèle approuvé, rien ne part. Déjà envoyé compte un envoi v1 ou v2 de ce fichier : une ancienne carte sans pièce jointe ne bloque pas. Deux pièces du même client partent chacune avec son fichier. forcer true renvoie même si le nouveau modèle est déjà parti. Ne redépose pas le fichier.",
+      "Renvoie le document du visa ou de l’ETA déjà déposé, joint au WhatsApp. document_id. destinataires : tous (défaut), client ou voyageur. Le modèle est autorisation_validee_document_v2 ou autorisation_validee_image_v2 dès approbation, sinon la v1. Le texte nomme l’autorisation (ESTA, ETA, ETA-IL, eTA Canada, e-Visa…). Sans modèle approuvé, rien ne part. Déjà envoyé compte un envoi v1 ou v2 de ce fichier : une ancienne carte sans pièce jointe ne bloque pas. Deux pièces du même client partent chacune avec son fichier. forcer true renvoie même si le nouveau modèle est déjà parti. Ne redépose pas le fichier. Sans confirmer, aperçu seulement : rien ne part.",
     input: {
       document_id: z.string().trim().max(80).describe("Identifiant de la pièce déjà dans l’espace"),
       destinataires: z
@@ -1074,8 +1106,12 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("true pour renvoyer même si ce fichier est déjà parti avec le nouveau modèle. Faux si omis"),
+      confirmer: confirmOpt,
     },
-    run: (args) => notifyTravelPiece(args),
+    run: (args) =>
+      runIfConfirmed(args, { action: "notifier_piece", document_id: args.document_id, destinataires: args.destinataires }, () =>
+        notifyTravelPiece(args)
+      ),
   },
   {
     name: "envoyer_message_libre",
@@ -1099,7 +1135,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Envoie au client du dossier la carte d’embarquement déjà déposée. document_id : PDF de type carte d’embarquement. Le fichier part en en-tête Document du modèle carte_embarquement. Un PDF de plusieurs pages (une page par passager ; un bébé reste sur la page de l’adulte) part en un message par passager, avec le prénom, le vol, le trajet, l’horaire et le siège lus sur la page. Rien n’est inventé. Si la lecture échoue : prenom, vol, trajet, date_heure, siege, ou passagers (mêmes champs, nom facultatif). Un passager déjà prévenu ne repart pas. Sans modèle approuvé par Meta, rien ne part et la réponse décrit le modèle à soumettre. Le numéro de pièce n’est pas renvoyé.",
+      "Envoie au client du dossier la carte d’embarquement déjà déposée. document_id : PDF de type carte d’embarquement. Le fichier part en en-tête Document du modèle carte_embarquement. Un PDF de plusieurs pages (une page par passager ; un bébé reste sur la page de l’adulte) part en un message par passager, avec le prénom, le vol, le trajet, l’horaire et le siège lus sur la page. Rien n’est inventé. Si la lecture échoue : prenom, vol, trajet, date_heure, siege, ou passagers (mêmes champs, nom facultatif). Un passager déjà prévenu ne repart pas. Sans modèle approuvé par Meta, rien ne part et la réponse décrit le modèle à soumettre. Le numéro de pièce n’est pas renvoyé. Sans confirmer, aperçu seulement : rien ne part.",
     input: {
       document_id: z.string().trim().max(80).describe("Identifiant de la carte d’embarquement déjà sur le dossier"),
       prenom: z.string().trim().max(80).optional().describe("Prénom, si la lecture du PDF a échoué"),
@@ -1122,8 +1158,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(9)
         .optional()
         .describe("Un passager par page, si la lecture du PDF a échoué. Rien n’est inventé."),
+      confirmer: confirmOpt,
     },
-    run: (args) => notifyBoardingPass(args),
+    run: (args) =>
+      runIfConfirmed(args, { action: "notifier_carte_embarquement", document_id: args.document_id }, () => notifyBoardingPass(args)),
   },
   {
     name: "creer_dossier",
@@ -1548,25 +1586,33 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Envoie le relevé de compte du client, comme le bouton admin. customer_id. canal whatsapp par défaut. L’e-mail n’est pas ouvert. Le PDF est le même, déposé au coffre, puis envoyé sur WhatsApp : hors des 24 heures, le modèle approuvé TWILIO_CONTENT_RELEVE (en-tête Document) ; dans la fenêtre, le message de session. Chaque essai est écrit dans le journal, y compris un échec. L’auteur est le jeton, pas un collaborateur. La réponse donne twilio_sid et statut. Un second envoi réussi pour le même client dans les cinq minutes est refusé, sauf force.",
+      "Envoie le relevé de compte du client, comme le bouton admin. customer_id. canal whatsapp par défaut. L’e-mail n’est pas ouvert. Le PDF est le même, déposé au coffre, puis envoyé sur WhatsApp : hors des 24 heures, le modèle approuvé TWILIO_CONTENT_RELEVE (en-tête Document) ; dans la fenêtre, le message de session. Chaque essai est écrit dans le journal, y compris un échec. L’auteur est le jeton, pas un collaborateur. La réponse donne twilio_sid et statut. Un second envoi réussi pour le même client dans les cinq minutes est refusé, sauf force. Sans confirmer, aperçu seulement : rien ne part.",
     input: {
       customer_id: z.string().trim().max(80).describe("Identifiant du client"),
       channel: z.enum(["whatsapp", "email"]).optional().describe("whatsapp par défaut. email est refusé : ce canal n’est pas ouvert"),
       force: z.boolean().optional().describe("Renvoie même si un relevé réussi est parti dans les cinq dernières minutes"),
+      confirmer: confirmOpt,
     },
-    run: (args) => envoyerReleve(args),
+    run: (args) =>
+      runIfConfirmed(args, { action: "envoyer_releve", customer_id: args.customer_id, channel: args.channel ?? "whatsapp" }, () =>
+        envoyerReleve(args)
+      ),
   },
   {
     name: "preparer_facture_mb3m",
     write: true,
     openWorld: true,
     description:
-      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. Les crédits postés du client partent en règlements MB3M (reglements : date, montant, numero_mb3m, statut envoye, deja_dans_mb3m ou erreur), d’abord sur la facture CRM puis sur les factures Amadeus. Un règlement déjà saisi dans un autre dossier du même client est lettré pour son reste, le dossier de la facture d’abord. Sans lien CRM, l’avertissement nomme ce règlement. Un vol dont le PNR est déjà une facture MB3M (RefCommand) n’est pas refacturé : vols_amadeus dit « déjà dans MB3M via Amadeus (facture n°…) ». Sans PNR identique, la ligne reste ; suggestions_amadeus ne fait que signaler. La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, avertissement, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), reglements, erreur, avertissement et auteur (le jeton). Un avertissement déjà enregistré (facture Amadeus non déplacée) donne statut avertissement, y compris quand la pièce est déjà en place. Un règlement introuvable alors qu’il reste un montant dû n’est pas une liste vide : reglements porte l’erreur et avertissement la reprend. Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M.",
+      "Prépare la facture MB3M du dossier, comme le bouton Préparer la facture ou Reprendre. dossier_id ou reference (TB-…). Même fonction que le bouton : si la pro forma ouverte a déjà ces lignes, ou si la facture imprimée les couvre déjà, aucune seconde pièce n’est créée. Les crédits postés du client partent en règlements MB3M (reglements : date, montant, numero_mb3m, statut envoye, deja_dans_mb3m ou erreur), d’abord sur la facture CRM puis sur les factures Amadeus. Un règlement déjà saisi dans un autre dossier du même client est lettré pour son reste, le dossier de la facture d’abord. Sans lien CRM, l’avertissement nomme ce règlement. Un vol dont le PNR est déjà une facture MB3M (RefCommand) n’est pas refacturé : vols_amadeus dit « déjà dans MB3M via Amadeus (facture n°…) ». Sans PNR identique, la ligne reste ; suggestions_amadeus ne fait que signaler. La réponse donne statut (preparee, deja_en_place, mise_a_jour, imprimee, avertissement, en_cours, echec), numero_mb3m, lignes (libellé, activité, net, marge), reglements, erreur, avertissement et auteur (le jeton). Un avertissement déjà enregistré (facture Amadeus non déplacée) donne statut avertissement, y compris quand la pièce est déjà en place. Un règlement introuvable alors qu’il reste un montant dû n’est pas une liste vide : reglements porte l’erreur et avertissement la reprend. Un échec MB3M reste dans la réponse, il n’efface pas la pièce. N’imprime pas la facture dans MB3M. Sans confirmer, aperçu seulement : aucune pièce n’est créée.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+      confirmer: confirmOpt,
     },
-    run: (args) => preparerFactureMb3m(args),
+    run: (args) =>
+      runIfConfirmed(args, { action: "preparer_facture_mb3m", dossier_id: args.dossier_id, reference: args.reference }, () =>
+        preparerFactureMb3m(args)
+      ),
   },
   {
     name: "statut_facture_mb3m",
@@ -2090,13 +2136,16 @@ export const MCP_TOOLS: ToolDef[] = [
     openWorld: true,
     destructive: true,
     description:
-      "Avoir et nouvelle facture MB3M, comme le bouton quand la marge d’une facture imprimée a changé. confirmer true. dossier_id ou reference. N’imprime pas la nouvelle pièce dans MB3M. La réponse donne le numéro d’avoir et le nouveau numéro.",
+      "Avoir et nouvelle facture MB3M, comme le bouton quand la marge d’une facture imprimée a changé. dossier_id ou reference. N’imprime pas la nouvelle pièce dans MB3M. La réponse donne le numéro d’avoir et le nouveau numéro. Sans confirmer, aperçu seulement : aucun avoir n’est émis.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
-      confirmer: z.boolean().describe("true pour émettre l’avoir et préparer la facture suivante"),
+      confirmer: confirmOpt,
     },
-    run: (args) => reprendreFactureMb3m(args),
+    run: (args) =>
+      runIfConfirmed(args, { action: "reprendre_facture_mb3m", dossier_id: args.dossier_id, reference: args.reference }, () =>
+        reprendreFactureMb3m(args)
+      ),
   },
   {
     name: "creer_fiche_mb3m",
