@@ -6,6 +6,7 @@ import {
   bookingDocumentKind,
   emailDepositMessage,
   isDepositableAttachment,
+  mailBodyFile,
   planEmailAttachmentCopies,
 } from "./email-attach-files";
 
@@ -42,6 +43,42 @@ describe("dépôt des pièces", () => {
     assert.match(emailDepositMessage({ added: 2, skipped: 0, empty: false }), /Les cartes n’ont pas changé/);
   });
 
+  it("un mail sans fichier joint dépose le texte de la confirmation", () => {
+    const file = mailBodyFile({
+      subject: "TR: Confirmation de réservation Transavia: ZZ9ZZ9",
+      text: `${"Paris Tel Aviv ".repeat(8)}Numéro de réservation ZZ9ZZ9`,
+      html: "<p>ignoré car le texte suffit</p>",
+    });
+    assert.ok(file);
+    assert.equal(file?.name, "Confirmation de reservation Transavia ZZ9ZZ9.txt");
+    assert.equal(file?.mime, "text/plain");
+    assert.match(file?.text || "", /ZZ9ZZ9/);
+    assert.equal(file?.text.includes("ignoré"), false);
+    assert.equal(mailBodyFile({ subject: "TR: Court", text: "Bonjour", html: "<p>ok</p>" }), null);
+    const fromHtml = mailBodyFile({
+      subject: "Re: Fwd: confirmation",
+      text: "",
+      html: `<div>${"Vol Transavia ".repeat(12)}</div>`,
+    });
+    assert.match(fromHtml?.name || "", /^confirmation\.txt$/);
+    assert.match(fromHtml?.text || "", /Vol Transavia/);
+  });
+
+  it("le texte du mail a son propre message, une devise vide ne change rien", () => {
+    assert.match(
+      emailDepositMessage({ added: 1, skipped: 0, empty: false, fromBody: true }, true),
+      /La confirmation du mail est déposée sur la carte de la réservation/
+    );
+    assert.match(
+      emailDepositMessage({ added: 1, skipped: 0, empty: false, fromBody: true }, true),
+      /Aucune étape n’a été créée ni modifiée/
+    );
+    assert.match(
+      emailDepositMessage({ added: 1, skipped: 0, empty: false }, false),
+      /Une pièce est déposée sur le dossier/
+    );
+  });
+
   it("l’empreinte suit les octets", () => {
     const a = attachmentSha256(new Uint8Array([1, 2, 3]));
     const b = attachmentSha256(new Uint8Array([1, 2, 3]));
@@ -62,6 +99,10 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     const block = route.slice(start, end);
     assert.ok(start > 0 && end > start);
     assert.match(block, /depositEmailAttachments/);
+    assert.match(block, /body_text/);
+    const inbox = readFileSync(new URL("../../components/admin/EmailIngestInbox.tsx", import.meta.url), "utf8");
+    assert.match(inbox, /aria-live="assertive"/);
+    assert.match(inbox, /rowNotice\[row\.id\]/);
     assert.equal(/applyIngestCards|applyReplacementToBooking|applyCancellationToBooking|upsertItems/.test(block), false);
   });
 
@@ -71,6 +112,7 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     const block = route.slice(start, end);
     assert.match(block, /resolveEmailCardId/);
     assert.match(block, /depositEmailAttachments/);
+    assert.match(block, /body_text/);
     assert.equal(
       /applyIngestCards|applyReplacementToBooking|applyCancellationToBooking|upsertItems|persistNewBookingFromExtract/.test(block),
       false
@@ -87,6 +129,7 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     const fn = mcp.slice(start, end);
     assert.match(fn, /resolveEmailCardId/);
     assert.match(fn, /depositEmailAttachments/);
+    assert.match(fn, /body_text/);
     assert.equal(/applyIngestCards|applyReplacementToBooking|applyCancellationToBooking/.test(fn), false);
     assert.match(fn, /cartes: false/);
     assert.equal(fn.includes("persistNewBookingFromExtract"), false);
