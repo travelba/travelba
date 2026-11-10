@@ -359,18 +359,114 @@ export type ParsedTransavia = {
   travelers: { first_name: string; last_name: string }[];
   title: string | null;
   destination: string | null;
+  /** Total du billet. Jamais le prix de vente. */
+  ticket_total: { amount: number; currency: "EUR" } | null;
 };
+
+const TRANSAVIA_REF =
+  /(?:num[eé]ro de r[eé]servation|booking number|code de r[eé]servation)\s*[:\s]+([A-Z0-9]{5,6})\b/i;
+
+function transaviaFlightCode(raw: string) {
+  const compact = raw.toUpperCase().replace(/\s+/g, "");
+  const match = compact.match(/^(TO|HV)(\d{2,4})$/);
+  return match ? `${match[1]} ${match[2]}` : raw.toUpperCase().trim();
+}
+
+function transaviaPlace(raw: string) {
+  const label = raw.replace(/\s+/g, " ").trim();
+  const explicit = [...label.matchAll(/\(([A-Z]{3})\)/g)].at(-1)?.[1] || null;
+  const known = inferAirportIata(label);
+  return {
+    iata: explicit || known?.iata || null,
+    city: known?.city || label.replace(/\s*\([^)]*\)/g, " ").replace(/\s+/g, " ").trim(),
+  };
+}
+
+function transaviaClocks(date: string, depart: string, arrive: string) {
+  const start = parseDmyClock(date, depart);
+  let end = parseDmyClock(date, arrive);
+  if (start && end && end <= start) {
+    const day = new Date(`${end.slice(0, 10)}T12:00:00Z`);
+    day.setUTCDate(day.getUTCDate() + 1);
+    end = `${day.toISOString().slice(0, 10)}T${end.slice(11)}`;
+  }
+  return { start, end };
+}
+
+/** « 15-04-2027 TO 3458 12:10 Paris (Orly) (ORY) 17:45 Tel Aviv ». */
+function compactTransaviaFlights(text: string, confirmation_ref: string): ParsedAmadeusFlight[] {
+  const flat = text.replace(/\s+/g, " ");
+  const re =
+    /(\d{2}-\d{2}-20\d{2})\s+((?:TO|HV)\s*\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+?)\s+(\d{1,2}:\d{2})\s+(.+?)(?=\s+\d{2}-\d{2}-20\d{2}\s+(?:TO|HV)\b|\s+Les heures|\s+Informations|\s+Passagers|\s+\bTotal\b|$)/gi;
+  return [...flat.matchAll(re)].map((match) => {
+    const from = transaviaPlace(match[4]);
+    const to = transaviaPlace(match[6]);
+    const clocks = transaviaClocks(match[1], match[3], match[5]);
+    return {
+      confirmation_ref,
+      pnr: confirmation_ref,
+      supplier: "Transavia",
+      airline: "Transavia",
+      flight_number: transaviaFlightCode(match[2]),
+      from: from.iata,
+      to: to.iata,
+      city_from: from.city || null,
+      city_to: to.city || null,
+      start_at: clocks.start,
+      end_at: clocks.end,
+      cabin: null,
+      baggage: null,
+      terminal: null,
+      seat: null,
+    };
+  });
+}
+
+function transaviaTravelers(text: string) {
+  const travelers: ParsedTransavia["travelers"] = [];
+  const seen = new Set<string>();
+  const push = (person: { first_name: string; last_name: string } | null) => {
+    if (!person) return;
+    const key = `${person.first_name}|${person.last_name}`.toLocaleLowerCase("fr");
+    if (seen.has(key)) return;
+    seen.add(key);
+    travelers.push(person);
+  };
+  const flat = text.replace(/\s+/g, " ");
+  for (const match of flat.matchAll(/\b([A-Z][A-Z'’]+(?:\s+[A-Z][A-Z'’]+)+)\s*\|\s*Basic\b/g)) {
+    push(splitPersonName(match[1]));
+  }
+  for (const match of text.matchAll(
+    /\b(?:MR|MRS|MS|MISS|CHD|INF|MSTR)\s*\.\s*([A-Z][A-Z'’ -]{2,}?)\s*\(\s*\d{2}\/\d{2}\/\d{4}\s*\)/gi
+  )) {
+    push(splitPersonName(match[1]));
+  }
+  return travelers;
+}
+
+/** Le total imprimé, sauf s’il ne fait que répéter les services additionnels. */
+function transaviaTicketTotal(text: string): { amount: number; currency: "EUR" } | null {
+  const flat = text.replace(/\s+/g, " ");
+  const services = flat.match(/Total des services additionnels\s+([0-9][0-9 .]{0,12}[.,][0-9]{2})/i);
+  const total = flat.match(/\bTotal\s+([0-9][0-9 .]{0,12}[.,][0-9]{2})\s*(?:€|EUR)(?!\w)/i);
+  if (!total) return null;
+  const amount = parsePrintedAmount(total[1]);
+  const extras = services ? parsePrintedAmount(services[1]) : null;
+  if (amount == null || (extras != null && extras === amount)) return null;
+  return { amount, currency: "EUR" };
+}
 
 /** Confirmation Transavia : vols aller/retour + passagers imprimés, une fois chacun. */
 export function parseTransaviaConfirmation(text: string): ParsedTransavia | null {
-  if (!/transavia/i.test(text) || !/num[eé]ro de r[eé]servation/i.test(text)) return null;
-  const ref = text.match(/Num[eé]ro de r[eé]servation\s+([A-Z0-9]{5,6})\b/i);
-  if (!ref) return null;
+  if (!/transavia/i.test(text) || !TRANSAVIA_REF.test(text)) return null;
+  const ref = text.match(TRANSAVIA_REF);
+  if (!ref || /^\d{8}$/.test(ref[1])) return null;
   const confirmation_ref = ref[1].toUpperCase();
   const flightRe =
     /Num[eé]ro de vol\s+([A-Z0-9]{2})\s*(\d{2,4})\s+Date\s+(\d{2}-\d{2}-20\d{2})\s+Heure de d[eé]part\s+(\d{1,2}:\d{2})\s+Heure d['’]arriv[eé]e\s+(\d{1,2}:\d{2})/gi;
   const specs = [...text.matchAll(flightRe)];
-  if (!specs.length) return null;
+  const compact = specs.length ? [] : compactTransaviaFlights(text, confirmation_ref);
+  if (!specs.length && !compact.length) return null;
   const routes = [...text.matchAll(/Vol\s+[A-Za-zÀ-ÿ]+\s*:\s*([^\n]+?)\s[-–]\s*([^\n]+)/gi)].map(
     (match) => ({
       from: match[1].replace(/\s+/g, " ").trim(),
@@ -381,8 +477,10 @@ export function parseTransaviaConfirmation(text: string): ParsedTransavia | null
     /bagage à main/i.test(text) && /40\s*x\s*30\s*x\s*20/i.test(text)
       ? "1 bagage à main 40 × 30 × 20 cm"
       : null;
-  const cabin = /tarif\s+Basic/i.test(text) ? "Basic" : null;
-  const flights: ParsedAmadeusFlight[] = specs.map((spec, index) => {
+  const cabin = /tarif\s+Basic|\|\s*Basic\b/i.test(text) ? "Basic" : null;
+  const flights: ParsedAmadeusFlight[] = compact.length
+    ? compact
+    : specs.map((spec, index) => {
     const route =
       routes[index] ||
       (index > 0 && routes[0] ? { from: routes[0].to, to: routes[0].from } : null);
@@ -406,18 +504,11 @@ export function parseTransaviaConfirmation(text: string): ParsedTransavia | null
       seat: null,
     };
   });
-  const travelers: ParsedTransavia["travelers"] = [];
-  const seen = new Set<string>();
-  for (const match of text.matchAll(
-    /\b(?:MR|MRS|MS|MISS|CHD|INF|MSTR)\s*\.\s*([A-Z][A-Z'’ -]{2,}?)\s*\(\s*\d{2}\/\d{2}\/\d{4}\s*\)/gi
-  )) {
-    const person = splitPersonName(match[1]);
-    if (!person) continue;
-    const key = `${person.first_name}|${person.last_name}`.toLocaleLowerCase("fr");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    travelers.push(person);
+  for (const flight of flights) {
+    flight.cabin = flight.cabin || cabin;
+    flight.baggage = flight.baggage || baggage;
   }
+  const travelers = transaviaTravelers(text);
   const plan = tripCityPlan(
     flights.map((flight) => ({
       kind: "flight",
@@ -442,6 +533,7 @@ export function parseTransaviaConfirmation(text: string): ParsedTransavia | null
     travelers,
     title: destination,
     destination,
+    ticket_total: transaviaTicketTotal(text),
   };
 }
 
@@ -1559,7 +1651,7 @@ export function structuredHintFromPdfText(text: string): string {
       })}`
     );
     bits.push(
-      "Transavia : un item par vol. Les passagers imprimés vont dans travelers, une fois chacun. « Début de l’enregistrement » n’est pas l’heure du vol. Le total des services additionnels n’est pas le prix des billets."
+      "Transavia : un item par vol, un aller-retour au même numéro reste deux lignes d’une carte. Les passagers imprimés vont dans travelers, une fois chacun. « Début de l’enregistrement » n’est pas l’heure du vol. Le total du billet est le prix fournisseur, jamais le prix de vente. Le total des services additionnels n’est pas le prix des billets."
     );
   }
   const maeva = parseMaevaStay(clean);
@@ -1813,7 +1905,17 @@ export function parsedItemsFromText(text: string): {
   const money = parseDocumentMoney(clean);
   const transavia = parseTransaviaConfirmation(clean);
   if (transavia) {
-    for (const flight of transavia.flights) items.push(flightToItem(flight));
+    transavia.flights.forEach((flight, index) => {
+      const item = flightToItem(flight);
+      if (index === 0 && transavia.ticket_total) {
+        item.details = {
+          ...(item.details || {}),
+          document_amount: transavia.ticket_total.amount,
+          document_currency: "EUR",
+        };
+      }
+      items.push(item);
+    });
     travelers = transavia.travelers;
     title = transavia.title;
     destination = transavia.destination;

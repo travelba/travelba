@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { roundTripPairs } from "./flight-roundtrip";
 import { redactIngestText } from "./ingest-redact";
 import {
   bookingNotesFromImport,
@@ -1394,4 +1395,85 @@ describe("parseTransaviaConfirmation", () => {
     assert.equal(inferAirportIata("Paris (Orly)")?.iata, "ORY");
     assert.equal(inferAirportIata("Tel Aviv")?.iata, "TLV");
   });
+
+  it("lit une confirmation Transavia « Numéro de réservation » sans en faire le prix de vente", () => {
+    const parsed = parsedItemsFromText(TRANSAVIA_MAIL);
+    assert.equal(parsed.items.length, 2);
+    assert.equal(parsed.items[0]?.confirmation_ref, "NHN3QN");
+    assert.equal(parsed.items[0]?.amount, null);
+    assert.equal(parsed.items[1]?.amount, null);
+    assert.equal(String(parsed.items[0]?.details?.flight_number || "").replace(/\s/g, ""), "TO3458");
+    assert.equal(parsed.items[0]?.details?.from, "ORY");
+    assert.equal(parsed.items[0]?.details?.to, "TLV");
+    assert.equal(parsed.items[0]?.start_at, "2027-04-15T12:10:00");
+    assert.equal(parsed.items[0]?.end_at, "2027-04-15T17:45:00");
+    assert.equal(parsed.items[0]?.details?.document_amount, 2391.01);
+    assert.equal(parsed.items[0]?.details?.document_currency, "EUR");
+    assert.equal(parsed.items[1]?.details?.document_amount, undefined);
+    assert.equal(String(parsed.items[1]?.details?.flight_number || "").replace(/\s/g, ""), "TO3451");
+    assert.equal(parsed.items[1]?.details?.from, "TLV");
+    assert.equal(parsed.items[1]?.details?.to, "ORY");
+    assert.equal(parsed.items[1]?.start_at, "2027-04-30T13:35:00");
+    assert.equal(parsed.items[1]?.end_at, "2027-04-30T17:40:00");
+    assert.equal(parsed.items[1]?.confirmation_ref, "NHN3QN");
+    assert.deepEqual(
+      parsed.travelers.map((row) => `${row.first_name} ${row.last_name}`),
+      ["Lea Martin", "Paul Martin", "Anne Martin", "Noah Martin", "Lucie Martin"]
+    );
+    const pairs = roundTripPairs(
+      parsed.items.map((item, index) => ({ ...item, id: `leg-${index}`, kind: "flight" }))
+    );
+    assert.equal(pairs.length, 1);
+    assert.equal(pairs[0]?.outbound.details?.from, "ORY");
+    assert.equal(pairs[0]?.inbound.details?.to, "ORY");
+  });
 });
+
+/** Structure d’une confirmation Transavia, noms et dates de naissance fictifs. */
+const TRANSAVIA_MAIL = `
+Confirmation de réservation Transavia
+Numéro de réservation: NHN3QN
+Données de votre vol
+15-04-2027
+TO 3458
+12:10
+Paris (Orly) (ORY)
+17:45
+Tel Aviv
+30-04-2027
+TO 3451
+13:35
+Tel Aviv (TLV)
+17:40
+Paris (Orly)
+Les heures de vol sont indiquées en heures locales
+Passagers
+LEA MARTIN | Basic
+Sexe
+Female
+Date de naissance
+01/02/1990
+PAUL MARTIN | Basic
+Sexe
+Male
+Date de naissance
+03/04/1991
+ANNE MARTIN | Basic
+Sexe
+Female
+Date de naissance
+05/06/2018
+NOAH MARTIN | Basic
+Sexe
+Male
+Date de naissance
+07/08/2020
+LUCIE MARTIN | Basic
+Sexe
+Female
+Date de naissance
+09/10/2022
+Total des services additionnels
+Total
+2391.01 €
+`;
