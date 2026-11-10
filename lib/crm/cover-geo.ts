@@ -183,6 +183,13 @@ export async function describePlace(query: string): Promise<PlaceDescription | n
   return { country: hit.country || "", state: hit.state || "", type: hit.type || "" };
 }
 
+/** Photo déjà en mémoire pour ce lieu. N’appelle pas Nominatim. */
+export function rememberedPlacePhoto(query: string): string | null {
+  const key = foldPlace(query);
+  if (key.length < 2 || !memory.has(key)) return null;
+  return memory.get(key) ?? null;
+}
+
 /** Lieu quelconque → image du lieu, ou la ville déjà photographiée citée dans le libellé. */
 export async function photoForUnknownPlace(query: string): Promise<string | null> {
   const key = foldPlace(query);

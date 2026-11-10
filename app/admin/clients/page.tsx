@@ -82,7 +82,7 @@ export default async function AdminClientsPage({
               const owner = ownerById.get(doc.customer_id);
               return (
                 <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                  <Link href={`/admin/clients/${doc.customer_id}`} className="font-semibold text-[var(--admin-navy)]">
+                  <Link href={`/admin/clients/${doc.customer_id}`} prefetch={false} className="font-semibold text-[var(--admin-navy)]">
                     {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type} · {owner ? customerFullName(owner) : "Client"}
                   </Link>
                   <span className="font-semibold text-[var(--admin-red)]">{formatDateFr(doc.expires_on)}</span>
@@ -97,7 +97,7 @@ export default async function AdminClientsPage({
               const owner = ownerById.get(doc.customer_id);
               return (
                 <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                  <Link href={`/admin/clients/${doc.customer_id}`} className="font-semibold text-[var(--admin-navy)]">
+                  <Link href={`/admin/clients/${doc.customer_id}`} prefetch={false} className="font-semibold text-[var(--admin-navy)]">
                     {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type} · {owner ? customerFullName(owner) : "Client"}
                   </Link>
                   <span className="font-semibold text-[var(--admin-red)]">{formatDateFr(doc.expires_on)}</span>

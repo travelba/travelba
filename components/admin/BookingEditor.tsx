@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DeferredHotels, DeferredLedger, type DeferredLedgerValue } from "@/components/admin/BookingDeferred";
+import { DeferredHotels, DeferredLedger, DeferredSlice, type DeferredLedgerValue } from "@/components/admin/BookingDeferred";
+import type { DossierPanels } from "@/lib/crm/admin-booking-load";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -59,7 +60,6 @@ import { bookingCoverPlan, catalogPhotoId } from "@/lib/crm/covers";
 import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
-import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
@@ -141,6 +141,10 @@ function panelLoading(label: string) {
 const BookingIngest = dynamic(() => import("@/components/crm/BookingIngest").then((m) => m.BookingIngest), {
   loading: () => panelLoading("Chargement de l’import…"),
 });
+const CustomerLoginLog = dynamic(
+  () => import("@/components/admin/CustomerLoginLog").then((m) => m.CustomerLoginLog),
+  { loading: () => panelLoading("Activité…") }
+);
 const WhatsappThread = dynamic(() => import("@/components/admin/WhatsappThread").then((m) => m.WhatsappThread), {
   loading: () => panelLoading("Chargement de WhatsApp…"),
 });
@@ -329,12 +333,12 @@ export function BookingEditor({
   pliantBalance = null,
   shareUrl = null,
   shareCompanions = [],
-  arrivals = [],
-  hotelRequests = [],
+  arrivals: arrivalsIn = [],
+  hotelRequests: hotelRequestsIn = [],
   hotelSignatory = "",
-  attachedEmails = [],
-  hotelMessages = [],
-  hotelThreadMessages = [],
+  attachedEmails: attachedEmailsIn = [],
+  hotelMessages: hotelMessagesIn = [],
+  hotelThreadMessages: hotelThreadMessagesIn = [],
   openHotelItemId = null,
   openRelanceId = null,
   openReplyId = null,
@@ -343,24 +347,25 @@ export function BookingEditor({
   littleEmperors = null,
   leStays = [],
   expenseBilling = [],
-  revolutExpenses = [],
-  ledger = null,
-  accountLedger = null,
+  revolutExpenses: revolutIn = [],
+  ledger: ledgerIn = null,
+  accountLedger: accountLedgerIn = null,
   deferredLedger = null,
   deferredItems = null,
-  bookingCards = [],
-  pliantRecap = [],
-  estaLines = [],
-  ukEtaLines = [],
-  whatsappMessages = [],
-  whatsappRequests = [],
-  whatsappBookings = [],
+  bookingCards: bookingCardsIn = [],
+  pliantRecap: pliantRecapIn = [],
+  estaLines: estaIn = [],
+  ukEtaLines: ukIn = [],
+  whatsappMessages: whatsappMessagesIn = [],
+  whatsappRequests: whatsappRequestsIn = [],
+  whatsappBookings: whatsappBookingsIn = [],
   whatsappTemplates = [],
   whatsappPreviewBlocked = false,
-  customerLogins = [],
-  customerActivity = [],
-  mb3m,
-  accounting = null,
+  customerLogins: loginsIn = [],
+  customerActivity: activityIn = [],
+  mb3m: mb3mIn,
+  accounting: accountingIn = null,
+  panels = null,
   agencyFee,
   expensePresets = DEFAULT_EXPENSE_PRESETS,
   importTasks = [],
@@ -474,7 +479,57 @@ export function BookingEditor({
   checkins?: StoredFlightCheckin[];
   /** Qui est en charge (null : à prendre) et qui a créé le dossier (null : inconnu). */
   ownership?: { owner: string | null; createdBy: string | null } | null;
+  /** E-mails, activité, WhatsApp, formalités, Pliant et compta, après le premier affichage. */
+  panels?: DossierPanels | null;
 }) {
+  const [mailRows, setMailRows] = useState<typeof attachedEmailsIn | null>(null);
+  const [hotelRows, setHotelRows] = useState<{
+    arrivals: typeof arrivalsIn;
+    hotelRequests: typeof hotelRequestsIn;
+    hotelMessages: typeof hotelMessagesIn;
+    hotelThreadMessages: typeof hotelThreadMessagesIn;
+    bookingCards: typeof bookingCardsIn;
+    pliantRecap: typeof pliantRecapIn;
+  } | null>(null);
+  const [moneyRows, setMoneyRows] = useState<{
+    ledger: typeof ledgerIn;
+    accountLedger: typeof accountLedgerIn;
+    accounting: typeof accountingIn;
+    revolutExpenses: typeof revolutIn;
+    mb3m: typeof mb3mIn;
+  } | null>(null);
+  const [estaRows, setEstaRows] = useState<{ estaLines: typeof estaIn; ukEtaLines: typeof ukIn } | null>(null);
+  const [threadRows, setThreadRows] = useState<{
+    messages: typeof whatsappMessagesIn;
+    requests: typeof whatsappRequestsIn;
+    bookings: typeof whatsappBookingsIn;
+  } | null>(null);
+  const [activityRows, setActivityRows] = useState<{ logins: typeof loginsIn; activity: typeof activityIn } | null>(null);
+  const attachedEmails = mailRows ?? attachedEmailsIn;
+  const arrivals = hotelRows?.arrivals ?? arrivalsIn;
+  const hotelRequests = hotelRows?.hotelRequests ?? hotelRequestsIn;
+  const hotelMessages = hotelRows?.hotelMessages ?? hotelMessagesIn;
+  const hotelThreadMessages = hotelRows?.hotelThreadMessages ?? hotelThreadMessagesIn;
+  const bookingCards = hotelRows?.bookingCards ?? bookingCardsIn;
+  const pliantRecap = hotelRows?.pliantRecap ?? pliantRecapIn;
+  const ledger = moneyRows?.ledger ?? ledgerIn;
+  const accountLedger = moneyRows?.accountLedger ?? accountLedgerIn;
+  const accounting = moneyRows?.accounting ?? accountingIn;
+  const revolutExpenses = moneyRows?.revolutExpenses ?? revolutIn;
+  const mb3m = moneyRows?.mb3m ?? mb3mIn;
+  const estaLines = estaRows?.estaLines ?? estaIn;
+  const ukEtaLines = estaRows?.ukEtaLines ?? ukIn;
+  const whatsappMessages = threadRows?.messages ?? whatsappMessagesIn;
+  const whatsappRequests = threadRows?.requests ?? whatsappRequestsIn;
+  const whatsappBookings = threadRows?.bookings ?? whatsappBookingsIn;
+  const customerLogins = activityRows?.logins ?? loginsIn;
+  const customerActivity = activityRows?.activity ?? activityIn;
+  const onMails = useCallback((value: NonNullable<typeof mailRows>) => setMailRows(value), []);
+  const onHotels = useCallback((value: NonNullable<typeof hotelRows>) => setHotelRows(value), []);
+  const onMoney = useCallback((value: NonNullable<typeof moneyRows>) => setMoneyRows(value), []);
+  const onEsta = useCallback((value: NonNullable<typeof estaRows>) => setEstaRows(value), []);
+  const onThread = useCallback((value: NonNullable<typeof threadRows>) => setThreadRows(value), []);
+  const onActivity = useCallback((value: NonNullable<typeof activityRows>) => setActivityRows(value), []);
   const [seenSource, setSeenSource] = useState(sourceItems);
   const [liveSource, setLiveSource] = useState<CrmBookingItem[] | null>(null);
   if (seenSource !== sourceItems) {
@@ -492,14 +547,17 @@ export function BookingEditor({
   const [liveLedger, setLiveLedger] = useState(accountLedger);
   const [previewLedger, setPreviewLedger] = useState(ledger);
   const [ledgerEdited, setLedgerEdited] = useState(false);
+  const [stripeLedgerReady, setStripeLedgerReady] = useState(false);
   if (ledgerKey !== seenLedgerKey) {
     setSeenLedgerKey(ledgerKey);
-    setLiveLedger(accountLedger);
-    setPreviewLedger(ledger);
-    setLedgerEdited(false);
+    if (!stripeLedgerReady && !ledgerEdited) {
+      setLiveLedger(accountLedger);
+      setPreviewLedger(ledger);
+    }
   }
   const onDeferredLedger = useCallback((value: DeferredLedgerValue) => {
     if (ledgerEdited) return;
+    setStripeLedgerReady(true);
     setLiveLedger(value.accountLedger);
     setPreviewLedger(value.ledger);
   }, [ledgerEdited]);
@@ -553,6 +611,11 @@ export function BookingEditor({
     !booking.cover_image_path && coverPlan.mode === "single" ? catalogPhotoId(coverPlan.src) : null;
   const [flash, setFlash] = useState<string | null>(null);
   const [invoicePiece, setInvoicePiece] = useState(mb3m.piece);
+  const [seenInvoice, setSeenInvoice] = useState(mb3m.piece?.number || null);
+  if ((mb3m.piece?.number || null) !== seenInvoice) {
+    setSeenInvoice(mb3m.piece?.number || null);
+    if (mb3m.piece) setInvoicePiece(mb3m.piece);
+  }
   const [invoiceNote, setInvoiceNote] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "publish" | "unpublish" | "cancel">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
@@ -1310,6 +1373,28 @@ export function BookingEditor({
         <Suspense fallback={null}>
           <DeferredHotels promise={deferredItems} onReady={onDeferredItems} />
         </Suspense>
+      ) : null}
+      {panels ? (
+        <>
+          <Suspense fallback={null}>
+            <DeferredSlice promise={panels.emails} onReady={onMails} />
+          </Suspense>
+          <Suspense fallback={null}>
+            <DeferredSlice promise={panels.activity} onReady={onActivity} />
+          </Suspense>
+          <Suspense fallback={null}>
+            <DeferredSlice promise={panels.whatsapp} onReady={onThread} />
+          </Suspense>
+          <Suspense fallback={null}>
+            <DeferredSlice promise={panels.esta} onReady={onEsta} />
+          </Suspense>
+          <Suspense fallback={null}>
+            <DeferredSlice promise={panels.pliant} onReady={onHotels} />
+          </Suspense>
+          <Suspense fallback={null}>
+            <DeferredSlice promise={panels.money} onReady={onMoney} />
+          </Suspense>
+        </>
       ) : null}
       {compact ? (
         <div className="fixed inset-x-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-30 border-b border-[var(--border)] bg-[rgba(250,249,246,0.94)] px-4 py-2 shadow-[0_1px_8px_rgba(11,25,44,0.06)] backdrop-blur-xl sm:px-6 lg:left-72 lg:top-20 lg:px-8">

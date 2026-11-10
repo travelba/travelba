@@ -83,6 +83,18 @@ export async function loadDockSnapshot(): Promise<DockSnapshot> {
   }
 }
 
+const DOCK_TTL_MS = 45_000;
+let dockMemo: { at: number; pending: Promise<DockSnapshot> } | null = null;
+
+/** Fil du quai pendant 45 s. Le layout le lance sans attendre le rendu de la page. */
+export function cachedDockSnapshot(): Promise<DockSnapshot> {
+  const now = Date.now();
+  if (dockMemo && now - dockMemo.at < DOCK_TTL_MS) return dockMemo.pending;
+  const pending = loadDockSnapshot();
+  dockMemo = { at: now, pending };
+  return pending;
+}
+
 export async function loadDockThread(fil: string): Promise<{ messages: InboxMessage[]; windowOpen: boolean }> {
   const admin = createServiceClient();
   const folded = await foldRows(admin, fil);
@@ -175,13 +187,25 @@ const THREAD_BASE = "id, direction, body, status, error, created_at, booking_id"
 export async function loadCustomerWhatsappMessages(
   supabase: SupabaseClient,
   customerId: string,
+  limit?: number,
 ): Promise<WhatsappThreadMessage[]> {
-  const run = (columns: string) =>
-    supabase.from("crm_whatsapp_messages").select(columns).eq("customer_id", customerId).order("created_at", { ascending: true });
+  const run = (columns: string) => {
+    let query = supabase
+      .from("crm_whatsapp_messages")
+      .select(columns)
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: !limit });
+    if (limit) query = query.limit(limit);
+    return query;
+  };
+  const rows = async (result: { error: { message?: string } | null; data: unknown }) => {
+    const list = (result.data || []) as WhatsappThreadMessage[];
+    return limit ? list.reverse() : list;
+  };
   const full = await run(THREAD_FULL);
-  if (!full.error) return (full.data || []) as unknown as WhatsappThreadMessage[];
+  if (!full.error) return rows(full);
   const mid = schemaMissesColumn(full.error, "transcript") ? await run(THREAD_MID) : full;
-  if (!mid.error) return (mid.data || []) as unknown as WhatsappThreadMessage[];
+  if (!mid.error) return rows(mid);
   const base = await run(THREAD_BASE);
-  return (base.data || []) as unknown as WhatsappThreadMessage[];
+  return rows(base);
 }

@@ -31,6 +31,24 @@ describe("page-load-perf", () => {
     assert.match(page, /shellAdminBooking/);
     assert.equal(page.includes("await repairCustomerDownloads"), false);
     assert.match(page, /after\(task\)/);
+    assert.match(load, /console\.time\("\[dossier\] vague 1"\)/);
+    assert.match(load, /\.limit\(30\)/);
+    assert.match(load, /loadCustomerWhatsappMessages\(supabase, b\.customer_id, 50\)/);
+    assert.doesNotMatch(load, /body_text, extract/);
+  });
+
+  it("la fiche client ne rapproche pas Stripe et ne géocode pas au premier affichage", () => {
+    const page = readFileSync(join(root, "app/admin/clients/[id]/page.tsx"), "utf8");
+    const sepa = readFileSync(join(root, "lib/crm/sepa-ledger.ts"), "utf8");
+    assert.equal(page.includes("await repairCustomerDownloads"), false);
+    assert.equal(page.includes("reconcileCustomerSepa"), false);
+    assert.match(page, /geocode: false/);
+    assert.match(page, /console\.time\("\[fiche\] vague 1"\)/);
+    assert.match(sepa, /export async function loadCustomerSepaState/);
+    assert.doesNotMatch(
+      sepa.slice(sepa.indexOf("export async function loadCustomerSepaState")),
+      /reconcileCustomerSepa/
+    );
   });
 
   it("le sélecteur typeahead n’expose pas l’IBAN", () => {

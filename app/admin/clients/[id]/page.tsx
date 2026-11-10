@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
+import { Suspense } from "react";
 import { redactVaultDocument } from "@/lib/crm/agency-access";
 import { staffAllows } from "@/lib/crm/agency-guard";
 import { requireStaffPage } from "@/lib/crm/auth";
@@ -13,7 +15,7 @@ import {
   DuplicateBookingButton,
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
-import { ClientPaymentsToCredit } from "@/components/admin/argent/ClientPaymentsToCredit";
+import { ClientPaymentsSlot } from "@/components/admin/ClientPaymentsSlot";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { MergeCustomersButton } from "@/components/admin/MergeCustomersButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
@@ -25,16 +27,6 @@ import { agencyPayFollowUp } from "@/lib/crm/client-pay";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { getPortalAccess } from "@/lib/crm/invite";
-import {
-  REVOLUT_MATCH_SELECT,
-  suggestionsForCustomer,
-  type RevolutMatchCustomer,
-} from "@/lib/crm/revolut-match";
-import {
-  STRIPE_MATCH_SELECT,
-  suggestionsForStripeCustomer,
-  type StripeMatchCustomer,
-} from "@/lib/crm/stripe-match";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { readPendingAccess } from "@/lib/crm/hotel-access-run";
 import { mb3mRealm } from "@/lib/crm/mb3m";
@@ -45,8 +37,6 @@ import {
   type CrmBooking,
   type CrmCompanion,
   type CrmCustomer,
-  type CrmRevolutTransaction,
-  type CrmStripeTransaction,
   type CrmTransaction,
   type CrmBillingCompany,
   type CrmCustomerActivity,
@@ -92,41 +82,16 @@ export default async function AdminClientDetailPage({ params }: Props) {
     .maybeSingle();
   if (!customer) notFound();
   const c = customer as CrmCustomer;
-  const hotelRequest = await readPendingAccess(id).catch(() => null);
-  let hotelStays: DirectDeskStay[] = [];
-  try {
-    const { data } = await createServiceClient()
-      .from("crm_hotel_direct_stays")
-      .select("id, phase, pay_method, trial, state")
-      .eq("customer_id", id)
-      .order("created_at", { ascending: false })
-      .limit(8);
-    hotelStays = ((data || []) as { id: string; phase: string; pay_method: string; trial: boolean; state: { confirmation?: string | null; hotelName?: string } }[])
-      .filter((row) => row.phase in CLIENT_PHASE_LABEL)
-      .map(
-        (row): DirectDeskStay => ({
-          id: row.id,
-          phase: row.phase as ClientPhase,
-          payMethod: row.pay_method,
-          trial: row.trial !== false,
-          hotel: row.state?.hotelName || "",
-          confirmation: row.state?.confirmation || null,
-        })
-      );
-  } catch {
-    hotelStays = [];
-  }
-  const { data: mb3mParty } = await createServiceClient()
-    .from("crm_mb3m_parties")
-    .select("id")
-    .eq("customer_id", id)
-    .eq("realm", mb3mRealm())
-    .is("billing_company_id", null)
-    .maybeSingle();
-  const mb3mSent = Boolean(mb3mParty?.id);
-  await repairCustomerDownloads([id]);
-
+  after(() => {
+    void repairCustomerDownloads([id]).catch((error: unknown) => {
+      console.error("[fiche] téléchargements", error instanceof Error ? error.message : error);
+    });
+  });
+  console.time("[fiche] vague 1");
   const [
+    hotelRequest,
+    hotelStays,
+    mb3mParty,
     { data: companions },
     { data: documents },
     { data: bookings },
@@ -136,13 +101,23 @@ export default async function AdminClientDetailPage({ params }: Props) {
     { data: companyAdmins },
     { data: billingCompanies },
     portal,
-    revolut,
-    stripe,
     whatsappMessages,
     whatsappRequests,
     { data: loginRows, error: loginError },
     { data: activityRows, error: activityError },
+    sepa,
+    revealPassports,
   ] = await Promise.all([
+    readPendingAccess(id).catch(() => null),
+    loadDirectStays(id),
+    createServiceClient()
+      .from("crm_mb3m_parties")
+      .select("id")
+      .eq("customer_id", id)
+      .eq("realm", mb3mRealm())
+      .is("billing_company_id", null)
+      .maybeSingle()
+      .then((result) => result.data),
     supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
     supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
@@ -166,48 +141,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .order("last_name"),
     supabase.from("crm_billing_companies").select("*").eq("customer_id", id).order("sort_order"),
     getPortalAccess(c),
-    (async () => {
-      try {
-        const admin = createServiceClient();
-        const [{ data }, { data: people }] = await Promise.all([
-          admin
-            .from("crm_revolut_transactions")
-            .select("*")
-            .eq("status", "unmatched")
-            .eq("direction", "credit")
-            .order("booked_at", { ascending: false, nullsFirst: false })
-            .limit(100),
-          admin.from("crm_customers").select(REVOLUT_MATCH_SELECT),
-        ]);
-        return {
-          rows: (data || []) as CrmRevolutTransaction[],
-          people: (people || []) as RevolutMatchCustomer[],
-        };
-      } catch {
-        return { rows: [] as CrmRevolutTransaction[], people: [] as RevolutMatchCustomer[] };
-      }
-    })(),
-    (async () => {
-      try {
-        const admin = createServiceClient();
-        const [{ data }, { data: people }] = await Promise.all([
-          admin
-            .from("crm_stripe_transactions")
-            .select("*")
-            .eq("status", "unmatched")
-            .eq("direction", "credit")
-            .order("booked_at", { ascending: false, nullsFirst: false })
-            .limit(100),
-          admin.from("crm_customers").select(STRIPE_MATCH_SELECT),
-        ]);
-        return {
-          rows: (data || []) as CrmStripeTransaction[],
-          people: (people || []) as StripeMatchCustomer[],
-        };
-      } catch {
-        return { rows: [] as CrmStripeTransaction[], people: [] as StripeMatchCustomer[] };
-      }
-    })(),
     loadCustomerWhatsappMessages(supabase, id),
     supabase
       .from("crm_whatsapp_requests")
@@ -226,7 +159,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .eq("customer_id", id)
       .order("created_at", { ascending: false })
       .limit(200),
+    loadCustomerSepaState(c),
+    staffAllows(staff, "passport_reveal"),
   ]);
+  console.timeEnd("[fiche] vague 1");
+  const mb3mSent = Boolean(mb3mParty?.id);
   const logins = loginError ? [] : ((loginRows || []) as CrmCustomerLogin[]);
   const activity = activityError ? [] : ((activityRows || []) as CrmCustomerActivity[]);
   const bookingRows = mergeFicheBookings(
@@ -238,17 +175,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
   const travelerIds = [
     ...new Set(bookingRows.map((row) => row.customer_id).filter((customerId) => customerId !== id)),
   ];
-  const travelerNames = new Map<string, string>();
-  if (travelerIds.length) {
-    const { data: travelers } = await supabase
-      .from("crm_customers")
-      .select("id, first_name, last_name")
-      .in("id", travelerIds);
-    for (const traveler of (travelers || []) as Pick<CrmCustomer, "id" | "first_name" | "last_name">[]) {
-      travelerNames.set(traveler.id, ficheTravelerCaption(traveler));
-    }
-  }
-  const revealPassports = await staffAllows(staff, "passport_reveal");
   const vaultDocuments = ((documents || []) as CrmTravelDocument[]).map((doc) =>
     redactVaultDocument(doc, revealPassports)
   );
@@ -265,7 +191,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
     : "Aucune pièce au coffre.";
   const receipts = filterAgencyReceipts((txs || []) as CrmTransaction[]);
   const balanceRows = (balances || []) as CrmBalance[];
-  const sepa = await loadCustomerSepaState(c);
   const sepaHeld = sepa.holds.reduce((sum, hold) => sum + (hold.currency === "EUR" ? hold.amount : 0), 0);
   const stillOwes = balanceRows.some((row) => displayedEncours(Number(row.balance), row.currency === "EUR" ? sepaHeld : 0) < -0.5);
   const latestPay = activity.find((row) => row.action === "pay");
@@ -280,23 +205,34 @@ export default async function AdminClientDetailPage({ params }: Props) {
   const travelerCount = 1 + ((companions || []) as CrmCompanion[]).length;
   const lastVisit = formatCustomerLoginAt(logins[0]?.created_at || portal.lastSignInAt) || "Jamais";
   const contactLine = [c.email, c.phone].filter(Boolean).join(" · ");
-  const places = await loadStayMaps(
-    supabase,
-    bookingRows.map((row) => row.id)
-  );
-  const [pauseRow, covers] = await Promise.all([
+  const coverInput = activeBookings.map((row) => ({ id: row.id, booking: row }));
+  console.time("[fiche] vague 2");
+  const [travelerRows, pauseRow, places] = await Promise.all([
+    travelerIds.length
+      ? supabase.from("crm_customers").select("id, first_name, last_name").in("id", travelerIds)
+      : Promise.resolve({ data: [] as Pick<CrmCustomer, "id" | "first_name" | "last_name">[] }),
     c.phone
       ? supabase.from("crm_whatsapp_threads").select("paused_until").eq("phone", c.phone).maybeSingle()
       : Promise.resolve({ data: null }),
-    resolveListCovers(
-      activeBookings.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }))
+    loadStayMaps(
+      supabase,
+      bookingRows.map((row) => row.id)
     ),
   ]);
+  const travelerNames = new Map<string, string>();
+  for (const traveler of (travelerRows.data || []) as Pick<CrmCustomer, "id" | "first_name" | "last_name">[]) {
+    travelerNames.set(traveler.id, ficheTravelerCaption(traveler));
+  }
+  const covers = await resolveListCovers(
+    coverInput.map((row) => ({ ...row, places: places.arrival[row.id] })),
+    { geocode: false }
+  );
+  console.timeEnd("[fiche] vague 2");
+  after(() => {
+    void resolveListCovers(coverInput.map((row) => ({ ...row, places: places.arrival[row.id] }))).catch(() => undefined);
+  });
   const conciergePaused = !pauseRow.data ? false : threadIsPaused(pauseRow.data.paused_until, new Date());
   const threadMessages = whatsappMessages;
-  const paymentsToCredit =
-    suggestionsForCustomer(c, revolut.rows, revolut.people).length +
-    suggestionsForStripeCustomer(c, stripe.rows, stripe.people).length;
   return (
     <div className="space-y-5">
       <header className="admin-af-hero-band overflow-hidden rounded-3xl">
@@ -317,7 +253,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="w-56 [&>div]:mt-0">
-              <StatementRequest endpoint={`/api/admin/clients/${c.id}/releve`} audience="staff" />
+              <Suspense fallback={null}>
+                <StatementRequest endpoint={`/api/admin/clients/${c.id}/releve`} audience="staff" />
+              </Suspense>
             </div>
             <Link
               href={clientLedgerAdminHref(c.id)}
@@ -400,7 +338,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
         sent={mb3mSent}
         companies={(billingCompanies || []) as CrmBillingCompany[]}
       />
-      <ClientPaymentsToCredit customerId={c.id} count={paymentsToCredit} />
+      <Suspense fallback={null}>
+        <ClientPaymentsSlot customer={c} />
+      </Suspense>
       <section className="admin-af-card rounded-3xl px-5 py-4">
         <div className="flex items-end justify-between gap-3">
           <div>
@@ -427,6 +367,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                 <li key={b.id} className="flex min-w-0 flex-col gap-2 py-3 lg:flex-row lg:items-center lg:justify-between">
                   <Link
                     href={`/admin/reservations/${b.id}`}
+                    prefetch={false}
                     className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)]"
                   >
                     <BookingHero
@@ -473,6 +414,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                 <li key={b.id} className="flex min-w-0 flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
                   <Link
                     href={`/admin/reservations/${b.id}`}
+                    prefetch={false}
                     className="min-w-0 break-words text-[var(--admin-navy)] sm:truncate"
                   >
                     {b.reference} · {listStayTitle(b.title, b.destination, places.arrival[b.id], places.route[b.id], places.layovers[b.id], "Séjour", b.customer_id === c.id ? c.city : null)}
@@ -608,4 +550,29 @@ export default async function AdminClientDetailPage({ params }: Props) {
       </div>
     </div>
   );
+}
+
+async function loadDirectStays(customerId: string): Promise<DirectDeskStay[]> {
+  try {
+    const { data } = await createServiceClient()
+      .from("crm_hotel_direct_stays")
+      .select("id, phase, pay_method, trial, state")
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false })
+      .limit(8);
+    return ((data || []) as { id: string; phase: string; pay_method: string; trial: boolean; state: { confirmation?: string | null; hotelName?: string } }[])
+      .filter((row) => row.phase in CLIENT_PHASE_LABEL)
+      .map(
+        (row): DirectDeskStay => ({
+          id: row.id,
+          phase: row.phase as ClientPhase,
+          payMethod: row.pay_method,
+          trial: row.trial !== false,
+          hotel: row.state?.hotelName || "",
+          confirmation: row.state?.confirmation || null,
+        })
+      );
+  } catch {
+    return [];
+  }
 }

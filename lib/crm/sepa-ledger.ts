@@ -204,7 +204,7 @@ export async function reconcileCustomerSepa(
       const result = await syncSepaIntent(admin, intent, { customerId: customer.id });
       if (!result.ok) return { ok: false as const, error: result.error };
     }
-    await cancelOrphanSepaIntents(stripe, listed.data);
+    // Une page ne cancel jamais un PaymentIntent. Seul le cron stripe-sync le fait.
     await releaseStaleSepaLocks(admin, customer.id);
     return { ok: true as const, skipped: false as const };
   } catch (err) {
@@ -320,7 +320,7 @@ export async function alertSepaReturned(input: {
   });
 }
 
-/** Réconciliation à la lecture, puis les réservations et le dernier refus. */
+/** Réservations SEPA déjà écrites dans crm_transactions. Aucun appel Stripe, aucune annulation. */
 export async function loadCustomerSepaState(customer: { id: string; stripe_customer_id?: string | null }) {
   const { createServiceClient } = await import("@/lib/supabase/admin");
   let admin: SepaAdmin;
@@ -329,7 +329,6 @@ export async function loadCustomerSepaState(customer: { id: string; stripe_custo
   } catch {
     return { holds: [], failures: [] };
   }
-  await reconcileCustomerSepa(admin, { id: customer.id, stripeCustomerId: customer.stripe_customer_id || null });
   const [{ data }, { data: companies }] = await Promise.all([
     admin
       .from("crm_transactions")

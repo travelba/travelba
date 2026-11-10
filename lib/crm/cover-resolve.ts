@@ -1,6 +1,6 @@
 import "server-only";
 
-import { photoForUnknownPlace } from "@/lib/crm/cover-geo";
+import { photoForUnknownPlace, rememberedPlacePhoto } from "@/lib/crm/cover-geo";
 import {
   bookingCoverPlan,
   catalogCoverUrl,
@@ -25,7 +25,10 @@ export type ListCoverInput = {
  * Le plan connu (ville, pays, import) reste calculé dans `BookingHero`.
  * Ici, seulement le géocodage, une fois, côté serveur.
  */
-export async function resolveListCovers(rows: ListCoverInput[]): Promise<Record<string, string | null>> {
+export async function resolveListCovers(
+  rows: ListCoverInput[],
+  options?: { geocode?: boolean }
+): Promise<Record<string, string | null>> {
   const resolved: Record<string, string | null> = {};
   const pending: { query: string; ids: string[] }[] = [];
   const index = new Map<string, { query: string; ids: string[] }>();
@@ -46,11 +49,14 @@ export async function resolveListCovers(rows: ListCoverInput[]): Promise<Record<
     index.set(query, group);
     pending.push(group);
   }
+  const geocode = options?.geocode !== false;
   const deadline = Date.now() + LIST_MATCH_BUDGET_MS;
   for (const group of pending) {
     const left = deadline - Date.now();
     let photo: string | null = null;
-    if (left > 0) {
+    if (!geocode) {
+      photo = rememberedPlacePhoto(group.query);
+    } else if (left > 0) {
       photo = await Promise.race([
         photoForUnknownPlace(group.query),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), left)),

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { Suspense, use, useMemo, useState, useSyncExternalStore } from "react";
 import { useMirror } from "@/lib/crm/use-mirror";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
@@ -21,6 +21,7 @@ import {
   parseCollapsedGroups,
   toggleCollapsedGroup,
   type AdminNavCounts,
+  type AdminNavGroup,
 } from "@/lib/crm/admin-nav";
 import type { Permission } from "@/lib/crm/agency-access";
 import type { StaffRole } from "@/lib/crm/staff-team";
@@ -54,11 +55,19 @@ function writeCollapsed(next: string[]) {
   for (const listener of collapsedListeners) listener();
 }
 
+type DockSnap = {
+  threads: InboxThread[];
+  templates: { key: string; label: string }[];
+  previewBlocked: boolean;
+};
+
 export function AdminNav({
   counts: countsInput = EMPTY_NAV_COUNTS,
+  countsPromise = null,
   whatsappThreads = [],
   whatsappTemplates = [],
   whatsappPreview = false,
+  dockPromise = null,
   staffName = "",
   staffRole = "",
   allows = null,
@@ -67,9 +76,12 @@ export function AdminNav({
 }: {
   /** Les compteurs du menu (`adminBadges`). */
   counts?: AdminNavCounts;
+  /** Lancé par le layout. Le menu se remplit sans retenir la page. */
+  countsPromise?: Promise<AdminNavCounts> | null;
   whatsappThreads?: InboxThread[];
   whatsappTemplates?: { key: string; label: string }[];
   whatsappPreview?: boolean;
+  dockPromise?: Promise<DockSnap> | null;
   staffName?: string;
   staffRole?: StaffRole | "";
   allows?: Partial<Record<Permission, boolean>> | null;
@@ -199,13 +211,35 @@ export function AdminNav({
         </Link>
         {narrow ? null : <div className="mt-5">{newBooking}</div>}
         <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
-          <SidebarGroups
-            groups={groups}
-            activeHref={activeHref}
-            counts={counts}
-            openIds={openIds}
-            onToggle={toggleGroup}
-          />
+          <Suspense
+            fallback={
+              <SidebarGroups
+                groups={groups}
+                activeHref={activeHref}
+                counts={EMPTY_NAV_COUNTS}
+                openIds={openIds}
+                onToggle={toggleGroup}
+              />
+            }
+          >
+            {countsPromise ? (
+              <LiveSidebar
+                promise={countsPromise}
+                groups={groups}
+                activeHref={activeHref}
+                openIds={openIds}
+                onToggle={toggleGroup}
+              />
+            ) : (
+              <SidebarGroups
+                groups={groups}
+                activeHref={activeHref}
+                counts={counts}
+                openIds={openIds}
+                onToggle={toggleGroup}
+              />
+            )}
+          </Suspense>
         </div>
       </aside>
 
@@ -234,15 +268,54 @@ export function AdminNav({
               {children}
             </main>
           </div>
-          {narrow ? null : (
+          {narrow ? null : dockPromise ? (
+            <Suspense fallback={null}>
+              <LiveDock promise={dockPromise} />
+            </Suspense>
+          ) : (
             <WhatsappDock threads={whatsappThreads} templates={whatsappTemplates} previewBlocked={whatsappPreview} />
           )}
         </div>
       </div>
       {narrow ? null : (
-        <MobileTabBar pathname={pathname} counts={counts} />
+        <Suspense fallback={<MobileTabBar pathname={pathname} counts={EMPTY_NAV_COUNTS} />}>
+          {countsPromise ? (
+            <LiveTabs pathname={pathname} promise={countsPromise} />
+          ) : (
+            <MobileTabBar pathname={pathname} counts={counts} />
+          )}
+        </Suspense>
       )}
       {narrow ? null : <HotelReplyToasts />}
     </>
   );
+}
+
+function LiveSidebar({
+  promise,
+  groups,
+  activeHref,
+  openIds,
+  onToggle,
+}: {
+  promise: Promise<AdminNavCounts>;
+  groups: AdminNavGroup[];
+  activeHref: string | null;
+  openIds: string[];
+  onToggle: (groupId: string) => void;
+}) {
+  const counts = use(promise);
+  return (
+    <SidebarGroups groups={groups} activeHref={activeHref} counts={counts} openIds={openIds} onToggle={onToggle} />
+  );
+}
+
+function LiveTabs({ promise, pathname }: { promise: Promise<AdminNavCounts>; pathname: string }) {
+  const counts = use(promise);
+  return <MobileTabBar pathname={pathname} counts={counts} />;
+}
+
+function LiveDock({ promise }: { promise: Promise<DockSnap> }) {
+  const dock = use(promise);
+  return <WhatsappDock threads={dock.threads} templates={dock.templates} previewBlocked={dock.previewBlocked} />;
 }
