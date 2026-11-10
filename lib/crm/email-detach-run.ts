@@ -39,7 +39,7 @@ function extractParts(raw: unknown) {
   };
 }
 
-export async function detachAttachedEmail(row: CrmEmailIngest) {
+export async function detachAttachedEmail(row: CrmEmailIngest, opts?: { dry?: boolean }) {
   if (row.status !== "attached" || !row.created_booking_id) {
     throw new Error("Ce mail n’est pas rattaché à un voyage");
   }
@@ -113,6 +113,17 @@ export async function detachAttachedEmail(row: CrmEmailIngest) {
   });
   if (plan.blocked) throw new Error(plan.message || "Rien n’a été retiré.");
 
+  const summary = {
+    dossier_id: bookingId,
+    statut: plan.nextStatus,
+    cartes: plan.itemIds.length,
+    pieces: plan.documentIds.length,
+    voyageurs: plan.travelerIds.length,
+    supprime_dossier: plan.deleteBooking,
+    conserve: plan.keptItems.map((item) => item.title),
+  };
+  if (opts?.dry) return { ...summary, apercu: true as const, ecrit: false as const };
+
   if (plan.deleteBooking) {
     await deleteBookingById(bookingId);
   } else {
@@ -154,5 +165,8 @@ export async function detachAttachedEmail(row: CrmEmailIngest) {
     status: plan.nextStatus,
     kept: plan.keptItems.map((item) => item.title),
     deleted_booking: plan.deleteBooking,
+    ...summary,
+    apercu: false as const,
+    ecrit: true as const,
   };
 }

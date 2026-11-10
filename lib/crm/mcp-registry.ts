@@ -125,11 +125,12 @@ import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
 import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
+import { deposerBillet, detacherEmail, importerPieces } from "@/lib/crm/mcp-pieces-mail";
 import { runIfConfirmed } from "@/lib/crm/mcp-preview";
 import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant-ops";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 123;
+export const MCP_TOOL_CAP = 126;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2455,6 +2456,59 @@ export const MCP_TOOLS: ToolDef[] = [
     },
     run: (args: ToolArgs) => cloturerCartePliant(args),
   },
+  {
+    name: "importer_pieces",
+    write: true,
+    description:
+      "Lit des PDF ou des photos (nom, type_mime, contenu en base64) comme la dropzone. Sans confirmer, aperçu seulement : titre, dates, voyageurs, cartes, avertissements. Rien n’est écrit. confirmer true avec client_id crée un dossier caché. confirmer true avec dossier_id complète ce séjour et y dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation, aucun message.",
+    input: {
+      fichiers: z
+        .array(
+          z.object({
+            nom: z.string().trim().max(180).describe("Nom du fichier"),
+            type_mime: z.string().trim().max(120).optional().describe("application/pdf, image/jpeg ou image/png"),
+            contenu: z.string().trim().max(12_000_000).describe("Fichier en base64"),
+          })
+        )
+        .min(1)
+        .max(8),
+      client_id: z.string().trim().max(80).optional().describe("Fiche, pour créer un dossier"),
+      dossier_id: z.string().trim().max(80).optional().describe("Séjour à compléter. L’emporte sur client_id"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => importerPieces(args),
+  },
+  {
+    name: "deposer_billet",
+    write: true,
+    description:
+      "Lit un billet déposé (PDF ou e-mail) et prépare la carte vol : PNR, prix, création ou mise à jour. Sans confirmer, aperçu seulement. confirmer true crée la carte s’il n’y en a pas, ou met à jour celle du PNR ou de carte_id, puis dépose le fichier. Sans PNR et sans carte, refus. Aucun message.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-…"),
+      carte_id: z.string().trim().max(80).optional().describe("Carte vol, si le PNR n’est pas lu"),
+      fichier: z.object({
+        nom: z.string().trim().max(180),
+        type_mime: z.string().trim().max(120).optional(),
+        contenu: z.string().trim().max(12_000_000).describe("PDF ou e-mail en base64"),
+      }),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => deposerBillet(args),
+  },
+  {
+    name: "detacher_email",
+    write: true,
+    destructive: true,
+    description:
+      "Retire un mail appliqué au mauvais séjour. Sans confirmer, aperçu seulement : cartes, pièces, voyageurs, et si le dossier entier part. confirmer true retire et remet le mail en file. Un mail bloqué (crédit, arrivée, carte gardée) n’est pas retiré. Aucun message.",
+    input: {
+      id: z.string().trim().max(80).describe("Identifiant du mail"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => detacherEmail(args),
+  },
+
 ];
 
 function hotelMailTool(name: string, mode: "envoyer" | "relancer" | "repondre" | "pas_besoin", description: string) {

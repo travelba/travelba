@@ -138,6 +138,9 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   demande_hotel: "edit_dossiers",
   modifier_plafond_pliant: "create_pliant_card",
   cloturer_carte_pliant: "create_pliant_card",
+  importer_pieces: "edit_dossiers",
+  deposer_billet: "edit_dossiers",
+  detacher_email: "edit_dossiers",
 };
 
 export type McpStaffGate = {

@@ -56,7 +56,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Brouillon WhatsApp d’un ajout | `preparer_message_carnet` — couvert, n’envoie pas |
 | Demander ou annuler une option (extras), devis chauffeur | hors API |
 | Responsable du dossier, partage WhatsApp accompagnateur | hors API |
-| Import PDF dropzone (analyse puis application) | hors API — le parse e-mail reste `traiter_email` `creer_dossier` |
+| Import PDF / photos (lire, créer ou compléter) | `importer_pieces` — ajouté. Sans `confirmer`, aperçu (titre, dates, voyageurs, cartes). `confirmer` true crée un dossier caché (`client_id`) ou complète le séjour (`dossier_id`). Une annulation ne crée pas de dossier |
 | Services proposés (`offer_*`), destination, devise, titulaire facturé | partiel dans `mettre_a_jour_dossier` |
 
 ## Fichiers
@@ -99,7 +99,9 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | File fournisseurs, lire un mail | `emails_en_attente`, `lire_email` — couvert |
 | Déposer les pièces, mettre à jour, refuser, créer un dossier | `traiter_email` — couvert |
 | Courrier type à l’hôtel, relance, réponse, Pas besoin / Remettre | `courrier_hotel`, `relancer_hotel`, `repondre_hotel`, `demande_hotel` — ajouté. Sans `confirmer`, aperçu (destinataires, objet, corps). `confirmer` true envoie, ou enregistre Pas besoin / Remettre sans e-mail |
-| Classer (ignorer), doublon, remettre un mail, détacher | hors API |
+| Détacher un mail du mauvais séjour | `detacher_email` — ajouté. Sans `confirmer`, aperçu (cartes, pièces, voyageurs, dossier retiré). `confirmer` true retire et remet le mail en file. Un mail bloqué n’est pas retiré |
+| Billet déposé transformé en carte vol | `deposer_billet` — ajouté. Sans `confirmer`, aperçu (PNR, prix, création ou mise à jour). `confirmer` true écrit la carte et dépose le fichier. Sans PNR et sans carte, refus |
+| Classer (ignorer), doublon, remettre un mail | hors API |
 | Journal (fiche ou agence) | `lire_journal` — ajouté. Pas d’export CSV |
 | Recherches Hôtels de l’espace client | `recherches_hotels` — ajouté. Client et dates. Résumé, heure, lien fiche. Pas de prix net ni de marge |
 | Membres et clés | `lister_membres`, `ajouter_membre`, `changer_role_membre`, `desactiver_membre`, `lister_cles_api`, `creer_cle_api`, `revoquer_cle_api` — couvert |
@@ -123,7 +125,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 - **OAuth, sync bancaire, diagnostics, mot de passe, connexion.** Ce sont des réglages d’infrastructure, pas des gestes dossier.
 - **Numéro de passeport et PAN.** Ils restent sur `TRAVELBA_MCP_PASSPORT_TOKENS` et `TRAVELBA_MCP_CARD_TOKENS`. Une clé nominative ne les ouvre pas.
 - **Messages libres** (réponse hôtel, partage, formalité qui part au client). Le connecteur prépare (`preparer_message_carnet`, `traiter_email`) ; ces envois restent un clic humain. Le WhatsApp rédigé par l’agence, avec une pièce déjà déposée, est `envoyer_message_libre` : sans `confirmer`, rien ne part.
-- **Réservation Ratehawk, remplissage de portail visa, paiement de la formalité, import dropzone.** Le lancement est `lancer_formalite`. Le remplissage du portail et le paiement restent des parcours longs, tenus par l’écran.
+- **Réservation Ratehawk, remplissage de portail visa, paiement de la formalité.** Le lancement est `lancer_formalite`. Le remplissage du portail et le paiement restent des parcours longs, tenus par l’écran. L’import PDF ou photo est `importer_pieces`.
 - **Ouvrir l’espace client à la place du client.** Cela crée une session sur le poste de l’agence. Ce n’est pas un outil. Le renvoi des accès au client, lui, est `renvoyer_acces_whatsapp`.
 - **Export CSV du journal.** Le droit d’export et le volume de données restent sur l’écran.
 
