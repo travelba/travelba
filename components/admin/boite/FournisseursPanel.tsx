@@ -54,16 +54,23 @@ function viewHref(view: FournisseursView, page = 1, source: string | null = null
   return boiteHref("fournisseurs", { vue: view === "file" ? null : view, page: page > 1 ? page : null, source });
 }
 
+const LE_LIST_COLUMNS =
+  "id, le_booking_id, confirmation_number, state, hotel_id, hotel_name, address, city, country, website, check_in, check_out, currency, total_cost, is_cancellable, cancellation_deadline, guest_names, cancellation_policies, room_types, crm_booking_id, status, candidates, last_event, last_error, created_at, updated_at";
+
 async function loadLittleEmperors(supabase: SupabaseClient, onlyUnmatched: boolean) {
-  const [{ data: rows, error: rowsError }, { data: probe }, mailsResult] = await Promise.all([
-    supabase.from("crm_le_bookings").select("*"),
+  const listed = await supabase.from("crm_le_bookings").select(`${LE_LIST_COLUMNS}, booked_at`);
+  const rowsResult =
+    listed.error && (listed.error.code === "42703" || listed.error.code === "PGRST204")
+      ? await supabase.from("crm_le_bookings").select(LE_LIST_COLUMNS)
+      : listed;
+  const [{ data: probe }, mailsResult] = await Promise.all([
     supabase.from("crm_le_sync").select("last_status, last_error, last_ok_at").eq("provider", "little_emperors").maybeSingle(),
     supabase.from("crm_email_ingest").select("received_at, subject, extract, label").ilike("label", "%emperor%"),
   ]);
   const mails = mailsResult.error ? [] : ((mailsResult.data || []) as LeMailStamp[]);
-  const all = rowsError ? [] : ((rows || []) as LeListRow[]);
+  const all = rowsResult.error ? [] : ((rowsResult.data || []) as LeListRow[]);
   const kept = onlyUnmatched ? all.filter((row) => !row.crm_booking_id && row.status === "unmatched") : all;
-  const listed = sortByLeMadeAt(
+  const sorted = sortByLeMadeAt(
     kept.map((row) => {
       const booked_on = leListMadeAt(row, mails);
       const { raw: _raw, ...rest } = row;
@@ -71,9 +78,9 @@ async function loadLittleEmperors(supabase: SupabaseClient, onlyUnmatched: boole
     })
   );
   return {
-    rows: listed,
+    rows: sorted,
     total: all.length,
-    storageReady: !rowsError,
+    storageReady: !rowsResult.error,
     probe: {
       last_status: probe?.last_status ?? null,
       last_error: probe?.last_error ?? null,

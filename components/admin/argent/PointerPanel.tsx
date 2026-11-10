@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { OutgoingQueue } from "@/components/admin/OutgoingQueue";
 import { PliantAccount, type PliantLine } from "@/components/admin/PliantAccount";
 import { RevolutDebits, type RevolutDebitRow } from "@/components/admin/RevolutDebits";
@@ -107,7 +108,8 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
   if (view === "pliant") {
     const limit = parseLoadMore(params.limite, PLIANT_PAGE, PLIANT_MAX);
     const configured = pliantConfigured();
-    const account = configured ? await loadPliantAccountBalance() : null;
+    console.time("[argent] pliant");
+    const accountPromise = configured ? loadPliantAccountBalance() : Promise.resolve(null);
     let lines: PliantLine[] = [];
     let more = false;
     try {
@@ -184,6 +186,8 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
       lines = [];
       more = false;
     }
+    const account = await accountPromise;
+    console.timeEnd("[argent] pliant");
     return (
       <div className="space-y-4">
         <ViewPills view={view} />
@@ -204,8 +208,14 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
 
   if (view === "revolut") {
     let debits: RevolutDebitRow[] = [];
+    after(() => {
+      void repairRevolutDebitQueue(admin).catch((error: unknown) => {
+        console.error("[argent] débits", error instanceof Error ? error.message : error);
+      });
+    });
+    console.time("[argent] revolut");
+    const connectedPromise = revolutConnected();
     try {
-      await repairRevolutDebitQueue(admin);
       const [outs, queue] = await Promise.all([
         admin
           .from("crm_revolut_transactions")
@@ -231,10 +241,12 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
     } catch {
       debits = [];
     }
+    const connected = await connectedPromise;
+    console.timeEnd("[argent] revolut");
     return (
       <div className="space-y-4">
         <ViewPills view={view} />
-        <RevolutDebits debits={debits} configured={revolutConfigured()} connected={await revolutConnected()} />
+        <RevolutDebits debits={debits} configured={revolutConfigured()} connected={connected} />
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
+import { after } from "next/server";
 import { AccountPage } from "@/components/account/AccountPage";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { stayTransitionName } from "@/lib/crm/account-motion";
@@ -33,13 +34,15 @@ export default async function ExampleReservationsPage({
   const past = all.filter((b) => isClientPastStay(b));
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
-  const covers = await resolveListCovers(
-    list.map((row) => ({
-      id: row.id,
-      booking: row,
-      items: row.id === session.booking.id ? session.items : undefined,
-    }))
-  );
+  const coverRows = list.map((row) => ({
+    id: row.id,
+    booking: row,
+    items: row.id === session.booking.id ? session.items : undefined,
+  }));
+  const covers = await resolveListCovers(coverRows, { geocode: false });
+  after(() => {
+    void resolveListCovers(coverRows).catch(() => undefined);
+  });
 
   return (
     <AccountPage>

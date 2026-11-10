@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { AccountBalanceCard } from "@/components/admin/AccountBalance";
 import { PliantAccountBalanceCard } from "@/components/admin/PliantCardDesk";
 import { RevolutConnectButton } from "@/components/admin/RevolutConnectButton";
@@ -47,7 +48,16 @@ function Account({
 }
 
 /** Comptes : soldes Revolut, Stripe et Pliant, connexion et où chaque mouvement arrive. Aucune écriture ici. */
-export async function ComptesPanel() {
+export function ComptesPanel() {
+  return (
+    <Suspense fallback={<p className="text-sm text-muted">Soldes des comptes…</p>}>
+      <ComptesBalances />
+    </Suspense>
+  );
+}
+
+async function ComptesBalances() {
+  console.time("[argent] comptes");
   const revolutOk = revolutConfigured();
   const connected = revolutOk ? await revolutConnected() : false;
   const stripeOk = stripeConfigured();
@@ -59,6 +69,7 @@ export async function ComptesPanel() {
   ]);
   const encaisser = argentHref("a-encaisser");
   const pointer = argentHref("a-pointer");
+  console.timeEnd("[argent] comptes");
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">

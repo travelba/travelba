@@ -19,7 +19,9 @@ export default async function TransactionsPage() {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const view = await loadClientLedger(supabase, customer, "client");
+  console.time("[espace] transactions");
+  const view = await loadClientLedger(supabase, customer, "client", { reconcile: false });
+  console.timeEnd("[espace] transactions");
 
   return (
     <AccountPage>

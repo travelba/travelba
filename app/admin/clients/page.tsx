@@ -46,6 +46,7 @@ export default async function AdminClientsPage({
   // Ancien lien `?pieces=echeance` : la même vue, en filtre de la liste.
   if (firstParam(params.pieces) === "echeance") redirect(listHref("/admin/clients", { q: q || null, filtre: "echeance" }));
   const { supabase } = await requireStaffPage();
+  console.time("[clients] vague 1");
   if (filter === "echeance") {
     const { data } = await supabase
       .from("crm_travel_documents")
@@ -63,6 +64,7 @@ export default async function AdminClientsPage({
       ? await supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", ownerIds)
       : { data: [] as CustomerNameRow[] };
     const ownerById = new Map(((owners || []) as CustomerNameRow[]).map((row) => [row.id, row]));
+    console.timeEnd("[clients] vague 1");
     return (
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
@@ -137,12 +139,13 @@ export default async function AdminClientsPage({
   const { data: balances } = rows.length
     ? await supabase
         .from("crm_customer_balances")
-        .select("*")
+        .select("customer_id, balance, currency")
         .in(
           "customer_id",
           rows.map((row) => row.id)
         )
     : { data: [] as CrmBalance[] };
+  console.timeEnd("[clients] vague 1");
 
   return (
     <div>
