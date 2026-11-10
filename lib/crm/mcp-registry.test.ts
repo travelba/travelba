@@ -120,6 +120,10 @@ const EXPECTED = [
   "fusionner_clients",
   "changer_client_dossier",
   "depenses_types",
+  "courrier_hotel",
+  "relancer_hotel",
+  "repondre_hotel",
+  "demande_hotel",
 ];
 
 const WRITE_TOOLS = [
@@ -207,6 +211,10 @@ const WRITE_TOOLS = [
   "fusionner_clients",
   "changer_client_dossier",
   "depenses_types",
+  "courrier_hotel",
+  "relancer_hotel",
+  "repondre_hotel",
+  "demande_hotel",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
