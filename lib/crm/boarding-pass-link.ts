@@ -81,6 +81,15 @@ export function verifyBoardingPassToken(token: string, filename: string, now = D
   return { documentId, exp, pages };
 }
 
+const WALLET_FILE = "passe.pkpass";
+
+/** Jeton d’une heure pour le .pkpass, sans le modifier. */
+export function walletPassSignedPath(documentId: string, now = Date.now()) {
+  const token = signBoardingPassToken(documentId, WALLET_FILE, now);
+  if (!token) return null;
+  return `${token}/${encodeURIComponent(WALLET_FILE)}`;
+}
+
 /** Variable {{1}} : jeton puis nom de fichier .pdf. Null si la signature est impossible. */
 export function boardingPassSignedPath(
   documentId: string,

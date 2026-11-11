@@ -11,6 +11,8 @@ import {
   type DepositOutcome,
   type MailBodySource,
 } from "@/lib/crm/email-attach-files";
+import { insertBookingDocument, placeWalletPass } from "@/lib/crm/booking-document-write";
+import { syncCheckinWithPasses } from "@/lib/crm/online-checkin-db";
 import { downloadCrmFile, safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { matchEmailToCard, type EmailCardRef, type EmailMention } from "@/lib/crm/email-card-match";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
@@ -116,24 +118,33 @@ export async function depositEmailAttachments(
   skipped += plan.skipped.length;
 
   let added = 0;
+  let boarding = false;
   for (const index of plan.copy) {
     const file = files[index];
+    const wallet = await placeWalletPass(
+      admin,
+      bookingId,
+      { name: file.name, type: file.mime, bytes: file.bytes },
+      bookingItemId || null
+    );
     const path = `bookings/${bookingId}/${file.sha256}-${safeFileName(file.name)}`;
+    const mime = wallet?.mime || file.mime || "application/octet-stream";
     try {
-      await uploadCrmFile(path, Buffer.from(file.bytes), file.mime || "application/octet-stream");
+      await uploadCrmFile(path, Buffer.from(file.bytes), mime);
     } catch (err) {
       if (!uploadExists(err)) throw new Error("Pièce jointe non enregistrée.");
     }
-    const { error: insertError } = await admin.from("crm_booking_documents").insert({
+    const { error: insertError } = await insertBookingDocument(admin, {
       booking_id: bookingId,
-      booking_item_id: bookingItemId || null,
-      kind: bookingDocumentKind(file.name, file.mime),
+      booking_item_id: wallet ? wallet.itemId : bookingItemId || null,
+      kind: wallet?.kind || bookingDocumentKind(file.name, file.mime),
       file_name: file.name,
-      mime_type: file.mime || null,
+      mime_type: mime,
       storage_path: path,
       visible_to_client: false,
       content_sha256: file.sha256,
       email_ingest_id: emailId,
+      ...(wallet ? { extracted: wallet.extracted } : {}),
     });
     if (insertError?.code === "23505") {
       skipped += 1;
@@ -141,7 +152,9 @@ export async function depositEmailAttachments(
     }
     if (insertError) throw new Error("Pièce jointe non enregistrée.");
     added += 1;
+    if (wallet) boarding = true;
   }
+  if (boarding) await syncCheckinWithPasses(admin, bookingId, "agence");
   return { added, skipped, empty: false, fromBody: fromBody && added > 0 };
 }
 

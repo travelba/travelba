@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { dropInboundImage } from "@/lib/crm/email-prefilter";
 import { htmlToText } from "@/lib/crm/gmail-parse";
+import { isWalletPassName } from "@/lib/crm/pkpass";
 
 /** Pièce déjà sur le dossier, reconnue par son empreinte. */
 export type StoredPiece = {
@@ -72,6 +73,7 @@ export function isDepositableAttachment(file: { name: string; mime: string | nul
 }
 
 export function bookingDocumentKind(name: string, mime: string) {
+  if (isWalletPassName(name, mime)) return "carte d'embarquement";
   const blob = `${mime} ${name}`.toLowerCase();
   if (blob.includes("pdf")) return "pdf";
   if (blob.includes("image") || /\.(png|jpe?g|gif|webp|heic)$/i.test(name)) return "image";

@@ -9,6 +9,7 @@ import {
   BOARDING_PASS_SAMPLE_FILE,
   BOARDING_PASS_SAMPLE_NAME,
   boardingPassDownloadHeaders,
+  walletPassDownloadHeaders,
 } from "@/lib/crm/boarding-pass-whatsapp";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -36,7 +37,8 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
   } catch {
     return jsonError("Document introuvable", 404);
   }
-  if (filename.includes("/") || filename.includes("\\") || !filename.toLowerCase().endsWith(".pdf")) {
+  const wallet = filename.toLowerCase() === "passe.pkpass";
+  if (filename.includes("/") || filename.includes("\\") || (!filename.toLowerCase().endsWith(".pdf") && !wallet)) {
     return jsonError("Document introuvable", 404);
   }
 
@@ -62,6 +64,16 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
     const storage = String(data?.storage_path || "");
     if (!data || data.kind !== BOARDING_PASS_KIND) {
       return jsonError("Document introuvable", 404);
+    }
+    if (wallet) {
+      if (!mime.includes("pkpass") && !storage.toLowerCase().endsWith(".pkpass")) {
+        return jsonError("Document introuvable", 404);
+      }
+      const downloaded = await downloadCrmFile(storage);
+      return new NextResponse(Buffer.from(downloaded.bytes), {
+        status: 200,
+        headers: walletPassDownloadHeaders(filename),
+      });
     }
     if (!mime.includes("pdf") && !storage.toLowerCase().endsWith(".pdf")) {
       return jsonError("Document introuvable", 404);

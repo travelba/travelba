@@ -6,7 +6,9 @@ import {
   clientBoardingFullHref,
   clientBoardingHref,
   clientBoardingView,
+  clientWalletHref,
   scopeBoardingOffer,
+  withWalletPasses,
 } from "./client-boarding-pass";
 import type { BoardingPassPassenger } from "./boarding-pass-pdf";
 
@@ -114,6 +116,36 @@ test("un PDF illisible de plusieurs pages ne s’ouvre qu’en entier, pas une a
   });
   assert.deepEqual(invoice.cards, []);
   assert.deepEqual(invoice.full, []);
+});
+
+test("le passe Apple Wallet se pose sur la page du même passager", () => {
+  const offer = boardingOfferForDocument({
+    doc: { id: DOC, kind: "carte d'embarquement", file_name: "cartes.pdf" },
+    passengers: [passenger({ firstName: "Camille", page: 1, flight: "AF 7308" })],
+    flights: [flight],
+    pageCount: 1,
+  });
+  const walletId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const linked = withWalletPasses(
+    offer,
+    [
+      {
+        id: walletId,
+        kind: "carte d'embarquement",
+        file_name: "AF7308.pkpass",
+        mime_type: "application/vnd.apple.pkpass",
+        booking_item_id: "flight-1",
+        extracted: { firstName: "Camille", lastName: "Martin", flight: "AF7308", seat: "12A" },
+      },
+    ],
+    [flight]
+  );
+  assert.equal(linked.cards.length, 1);
+  assert.equal(linked.cards[0]?.walletHref, clientWalletHref(walletId));
+  assert.equal(linked.cards[0]?.href, undefined);
+  const view = clientBoardingView(linked);
+  assert.equal(view.cards[0]?.href, `/api/mon-compte/cartes/${DOC}?page=1`);
+  assert.equal(view.cards[0]?.walletHref, `/api/mon-compte/cartes/${walletId}/passe.pkpass`);
 });
 
 test("une autre pièce cachée ne devient pas une carte d’embarquement", () => {

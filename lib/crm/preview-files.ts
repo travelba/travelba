@@ -20,6 +20,8 @@ export type FilePreviewModel = {
    * le fichier ne passe pas par /api/files, qui ne sert que les pièces publiées.
    */
   href?: string | null;
+  /** Passe Apple Wallet du même voyageur. */
+  walletHref?: string | null;
 };
 
 export function isPreviewImage(mime?: string | null, name?: string | null) {
@@ -120,15 +122,17 @@ export function boardingPassPreviews(
   reference?: string | null
 ): FilePreviewModel[] {
   const people = cards.flatMap((card) => {
-    const href = card.href || clientBoardingHref(card.documentId, card.page);
-    if (!href) return [];
+    const href = card.walletOnly ? null : card.href || clientBoardingHref(card.documentId, card.page);
+    const walletHref = card.walletHref || null;
+    if (!href && !walletHref) return [];
     return [
       {
         id: card.key,
         path: "",
-        href,
-        fileName: "Carte embarquement.pdf",
-        mimeType: "application/pdf",
+        href: href || walletHref,
+        walletHref,
+        fileName: card.walletOnly ? "passe.pkpass" : "Carte embarquement.pdf",
+        mimeType: card.walletOnly ? "application/vnd.apple.pkpass" : "application/pdf",
         label: boardingLabel(card),
         shareText: boardingShareText(reference),
       },

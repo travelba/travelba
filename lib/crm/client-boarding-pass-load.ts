@@ -4,10 +4,13 @@ import { cache } from "react";
 import {
   boardingOfferForDocument,
   mergeBoardingOffers,
+  withWalletPasses,
   type BoardingDocRef,
   type BoardingFlightRef,
   type ClientBoardingOffer,
 } from "./client-boarding-pass";
+import { queryWithOptionalColumn } from "./optional-column";
+import { isWalletPassName } from "./pkpass";
 import { clientTripOwnerIds } from "./company-peers";
 import type { CrmCustomer } from "./types";
 import { boardingPassPageTexts, readBoardingPassPages } from "./boarding-pass-pdf";
@@ -75,11 +78,12 @@ export const loadClientBoardingOffer = cache(async (bookingId: string): Promise<
   try {
     const admin = createServiceClient();
     const [docsRes, itemsRes] = await Promise.all([
-      admin
-        .from("crm_booking_documents")
-        .select("id, kind, file_name, mime_type, storage_path, booking_item_id")
-        .eq("booking_id", bookingId)
-        .in("kind", KINDS),
+      queryWithOptionalColumn(
+        (columns) =>
+          admin.from("crm_booking_documents").select(columns).eq("booking_id", bookingId).in("kind", KINDS),
+        "id, kind, file_name, mime_type, storage_path, booking_item_id",
+        "extracted"
+      ),
       admin
         .from("crm_booking_items")
         .select("id, kind, title, start_at, details, visible_to_client, lifecycle, source_document_id")
@@ -89,8 +93,13 @@ export const loadClientBoardingOffer = cache(async (bookingId: string): Promise<
     if (docsRes.error || itemsRes.error) return EMPTY_OFFER;
     const flights = (itemsRes.data || []) as BoardingFlightRef[];
     const parts: ClientBoardingOffer[] = [];
+    const wallets: (BoardingDocRef & { mime_type?: string | null; extracted?: unknown })[] = [];
     for (const row of docsRes.data || []) {
-      const doc = row as BoardingDocRef & { mime_type?: string | null; storage_path?: string | null };
+      const doc = row as unknown as BoardingDocRef & { mime_type?: string | null; storage_path?: string | null; extracted?: unknown };
+      if (isWalletPassName(doc.file_name, doc.mime_type)) {
+        wallets.push(doc);
+        continue;
+      }
       if (!isBoardingPassFile(doc) || !doc.storage_path) continue;
       try {
         const file = await downloadCrmFile(doc.storage_path);
@@ -108,7 +117,7 @@ export const loadClientBoardingOffer = cache(async (bookingId: string): Promise<
         continue;
       }
     }
-    return mergeBoardingOffers(parts);
+    return withWalletPasses(mergeBoardingOffers(parts), wallets, flights);
   } catch {
     return EMPTY_OFFER;
   }

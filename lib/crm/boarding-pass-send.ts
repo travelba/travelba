@@ -18,6 +18,9 @@ import {
   type CheckinSituation,
 } from "./boarding-pass-whatsapp";
 import { boardingPassSignedPath } from "./boarding-pass-link";
+import { findWalletDocumentId } from "./pkpass";
+import { queryWithOptionalColumn } from "./optional-column";
+import { deliverWalletNotice } from "./wallet-pass-notify";
 import { syncCheckinSent } from "./online-checkin-db";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { resolveContentSid } from "./twilio-content-sid";
@@ -45,6 +48,20 @@ export type BoardingPassSendInput = {
     situation?: string;
   };
 };
+
+async function walletDocuments(supabase: SupabaseClient, bookingId: string) {
+  try {
+    const result = await queryWithOptionalColumn(
+      (columns) => supabase.from("crm_booking_documents").select(columns).eq("booking_id", bookingId),
+      "id, file_name, mime_type",
+      "extracted"
+    );
+    if (result.error || !Array.isArray(result.data)) return [];
+    return result.data as unknown as { id: string; file_name?: string | null; mime_type?: string | null; extracted?: unknown }[];
+  } catch {
+    return [];
+  }
+}
 
 function situationOf(value: string | undefined): CheckinSituation | null {
   if (value === "echec" || value === "comptoir") return value;
@@ -135,6 +152,7 @@ export async function sendBoardingPassWhatsapp(
   const contentSid = await resolveContentSid(BOARDING_PASS_TEMPLATE_ENV[template]);
   if (!contentSid) return { ok: false, error: "Le modèle WhatsApp n’est pas encore approuvé.", sent: 0 };
 
+  const wallets = await walletDocuments(supabase, input.bookingId);
   const prepared: { fields: BoardingPassFields; documentId: string; filename: string; preview: string }[] = [];
   const sentCards: { documentId: string; flight: string }[] = [];
   for (const card of cards) {
@@ -191,6 +209,10 @@ export async function sendBoardingPassWhatsapp(
     });
     sent += 1;
     sentCards.push({ documentId: row.documentId, flight: row.fields.flight });
+    const walletId = findWalletDocumentId(wallets, row.fields);
+    if (walletId) {
+      await deliverWalletNotice({ phone: customer.phone, firstName: row.fields.firstName, documentId: walletId });
+    }
   }
   if (sentCards.length) {
     await syncCheckinSent(supabase, input.bookingId, "agence", {

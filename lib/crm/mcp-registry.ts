@@ -1147,7 +1147,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Envoie au client du dossier la carte d’embarquement déjà déposée. document_id : PDF de type carte d’embarquement. Le fichier part en en-tête Document du modèle carte_embarquement. Un PDF de plusieurs pages (une page par passager ; un bébé reste sur la page de l’adulte) part en un message par passager, avec le prénom, le vol, le trajet, l’horaire et le siège lus sur la page. Rien n’est inventé. Si la lecture échoue : prenom, vol, trajet, date_heure, siege, ou passagers (mêmes champs, nom facultatif). Un passager déjà prévenu ne repart pas. Sans modèle approuvé par Meta, rien ne part et la réponse décrit le modèle à soumettre. Le numéro de pièce n’est pas renvoyé. Sans confirmer, aperçu seulement : rien ne part.",
+      "Envoie au client du dossier la carte d’embarquement déjà déposée. document_id : PDF de type carte d’embarquement. Le fichier part en en-tête Document du modèle carte_embarquement. Un PDF de plusieurs pages (une page par passager ; un bébé reste sur la page de l’adulte) part en un message par passager, avec le prénom, le vol, le trajet, l’horaire et le siège lus sur la page. Rien n’est inventé. Si un .pkpass du même passager est déjà déposé, le lien Apple Wallet de ce passager part ensuite, quand le modèle message libre est approuvé. Si la lecture échoue : prenom, vol, trajet, date_heure, siege, ou passagers (mêmes champs, nom facultatif). Un passager déjà prévenu ne repart pas. Sans modèle approuvé par Meta, rien ne part et la réponse décrit le modèle à soumettre. Le numéro de pièce n’est pas renvoyé. Sans confirmer, aperçu seulement : rien ne part.",
     input: {
       document_id: z.string().trim().max(80).describe("Identifiant de la carte d’embarquement déjà sur le dossier"),
       prenom: z.string().trim().max(80).optional().describe("Prénom, si la lecture du PDF a échoué"),
@@ -2091,7 +2091,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "deposer_piece_dossier",
     write: true,
     description:
-      "Dépose un fichier sur le dossier, ou sur une carte si carte_id est indiqué. Même geste que Documents du dossier. contenu est le fichier en base64. La pièce reste cachée. carte d'embarquement met à jour l’enregistrement. Pas de numéro de pièce dans la réponse, aucun message.",
+      "Dépose un fichier sur le dossier, ou sur une carte si carte_id est indiqué. Même geste que Documents du dossier. contenu est le fichier en base64. La pièce reste cachée. carte d'embarquement met à jour l’enregistrement. Un .pkpass déjà signé par la compagnie est une carte d’embarquement : le passager, le vol, le siège, la porte et le PNR sont lus au dépôt, rien n’est inventé, le fichier n’est pas re-signé. Pas de numéro de pièce dans la réponse, aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),

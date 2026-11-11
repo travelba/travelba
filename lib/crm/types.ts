@@ -544,6 +544,11 @@ export type CrmBookingDocument = {
   content_sha256?: string | null;
   /** Mail dont cette pièce a été copiée. */
   email_ingest_id?: string | null;
+  /**
+   * Champs lus à l’envoi d’un .pkpass. Absent tant que la migration n’est pas jouée.
+   * Jamais relu dans le fichier à l’affichage.
+   */
+  extracted?: Record<string, unknown> | null;
   created_at: string;
 };
 

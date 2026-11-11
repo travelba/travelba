@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
 import { Icon } from "@/components/crm/icons";
 import {
   clientBoardingView,
@@ -184,35 +185,39 @@ function BoardingSheet({
           {!loading && !failed && !cards.length && !full.length ? (
             <p className="text-sm text-muted">Aucune carte d’embarquement à ouvrir.</p>
           ) : null}
-          {cards.map((card) => (
-            <a
-              key={card.key}
-              href={card.href}
-              target={card.href.startsWith("/api/") ? "_blank" : undefined}
-              rel={card.href.startsWith("/api/") ? "noopener noreferrer" : undefined}
-              className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] px-4 py-3"
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-semibold text-[var(--admin-navy)]">
-                  {card.firstName || "Carte d’embarquement"}
-                </span>
-                <span className="block truncate text-xs text-muted">
-                  {[card.flight, card.seat ? `Siège ${card.seat}` : "", card.route].filter(Boolean).join(" · ")}
-                </span>
-              </span>
-              <span className="shrink-0 text-sm font-semibold text-[var(--admin-navy)]">Ouvrir</span>
-            </a>
-          ))}
+          {cards.map((card) => {
+            const meta = [card.flight, card.seat ? `Siège ${card.seat}` : ""].filter(Boolean).join(" · ");
+            return (
+              <div key={card.key} className="flex items-center gap-2 rounded-2xl bg-[#f6f5f2] px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                    {card.firstName || "Carte d’embarquement"}
+                  </p>
+                  {meta ? <p className="truncate text-xs text-muted">{meta}</p> : null}
+                  {card.href ? (
+                    <a
+                      href={card.href}
+                      target={card.href.startsWith("/api/") ? "_blank" : undefined}
+                      rel={card.href.startsWith("/api/") ? "noopener noreferrer" : undefined}
+                      className="mt-0.5 inline-block text-xs text-[#5c6570] underline decoration-[#c5c6cd] underline-offset-2"
+                    >
+                      Ouvrir le PDF
+                    </a>
+                  ) : null}
+                </div>
+                {card.walletHref ? <AddToAppleWallet href={card.walletHref} /> : null}
+              </div>
+            );
+          })}
           {full.map((file) => (
             <a
               key={file.href}
               href={file.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-[#C5A880] px-4 py-3 text-sm font-semibold text-[var(--admin-navy)]"
+              className="px-3 text-xs text-[#5c6570] underline decoration-[#c5c6cd] underline-offset-2"
             >
-              <span>{file.label}</span>
-              <span>Ouvrir</span>
+              {file.label}
             </a>
           ))}
         </div>

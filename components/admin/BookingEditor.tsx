@@ -2128,7 +2128,7 @@ export function BookingEditor({
             <option value="other">Confirmation</option>
             <option value="carte d'embarquement">Carte d’embarquement</option>
           </select>
-          <input name="file" type="file" required disabled={docBusy} aria-label="Confirmation PDF ou photo" className="text-sm" />
+          <input name="file" type="file" accept=".pdf,.pkpass,application/pdf,application/vnd.apple.pkpass,image/*,.eml,.docx,.xlsx,.txt,.ics" required disabled={docBusy} aria-label="PDF, photo ou passe Apple Wallet" className="text-sm" />
           <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
             {docBusy ? "Envoi…" : "Joindre"}
           </button>
