@@ -1,4 +1,5 @@
 import { documentLabel } from "./carnet";
+import { clientBoardingHref, type BoardingFileLink, type ClientBoardingCard } from "./client-boarding-pass";
 import { isPlaceholderTraveler, type PersonName } from "./person-match";
 import { documentMatchesTraveler, travelerDisplayName } from "./trip-documents";
 import type { CrmBookingDocument, CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "./types";
@@ -14,6 +15,11 @@ export type FilePreviewModel = {
   partage?: string | null;
   /** Pièce d’identité : vignette et aperçu restent flous. Le fichier téléchargé est net. */
   sealed?: boolean;
+  /**
+   * Ouverture directe. Posé pour une carte d’embarquement cachée :
+   * le fichier ne passe pas par /api/files, qui ne sert que les pièces publiées.
+   */
+  href?: string | null;
 };
 
 export function isPreviewImage(mime?: string | null, name?: string | null) {
@@ -92,6 +98,57 @@ export function attachmentPreviews(
       label: documentLabel(doc, items),
       shareText: attachmentShareText(reference),
     }));
+}
+
+function boardingShareText(reference?: string | null) {
+  const ref = (reference || "").trim();
+  return ref
+    ? `Bonjour, je vous transmets une carte d’embarquement du dossier ${ref}.`
+    : "Bonjour, je vous transmets une carte d’embarquement.";
+}
+
+function boardingLabel(card: ClientBoardingCard) {
+  const who = card.firstName || "Carte d’embarquement";
+  const seat = card.seat ? `siège ${card.seat}` : "";
+  return [who, seat || card.flight].filter(Boolean).join(" · ");
+}
+
+/** Une vignette par passager, puis le PDF entier quand il regroupe plusieurs pages. */
+export function boardingPassPreviews(
+  cards: ClientBoardingCard[],
+  full: BoardingFileLink[],
+  reference?: string | null
+): FilePreviewModel[] {
+  const people = cards.flatMap((card) => {
+    const href = card.href || clientBoardingHref(card.documentId, card.page);
+    if (!href) return [];
+    return [
+      {
+        id: card.key,
+        path: "",
+        href,
+        fileName: "Carte embarquement.pdf",
+        mimeType: "application/pdf",
+        label: boardingLabel(card),
+        shareText: boardingShareText(reference),
+      },
+    ];
+  });
+  const files = full.flatMap((file) => {
+    if (!file.href) return [];
+    return [
+      {
+        id: `complet:${file.documentId}`,
+        path: "",
+        href: file.href,
+        fileName: "Cartes embarquement.pdf",
+        mimeType: "application/pdf",
+        label: file.label,
+        shareText: boardingShareText(reference),
+      },
+    ];
+  });
+  return [...people, ...files];
 }
 
 export function identityPreview(

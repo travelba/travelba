@@ -138,22 +138,177 @@ function pagePassenger(page: string, pageNumber: number): BoardingPassPassenger 
   return { ...fields, page: pageNumber };
 }
 
-/**
- * Une page Transavia = un passager. Le bébé indiqué sur la page reste avec l’adulte.
- * Une page reconnue mais incomplète vide la liste : on n’envoie pas un sous-ensemble.
- */
-export function readBoardingPassPages(pages: string[]): BoardingPassRead {
+const AF_MONTHS: Record<string, number> = {
+  jan: 1,
+  janv: 1,
+  january: 1,
+  janvier: 1,
+  feb: 2,
+  fev: 2,
+  fevr: 2,
+  february: 2,
+  fevrier: 2,
+  mar: 3,
+  mars: 3,
+  march: 3,
+  apr: 4,
+  avr: 4,
+  avril: 4,
+  april: 4,
+  may: 5,
+  mai: 5,
+  jun: 6,
+  juin: 6,
+  june: 6,
+  jul: 7,
+  juil: 7,
+  july: 7,
+  juillet: 7,
+  aug: 8,
+  aou: 8,
+  aout: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  septembre: 9,
+  september: 9,
+  oct: 10,
+  octobre: 10,
+  october: 10,
+  nov: 11,
+  novembre: 11,
+  november: 11,
+  dec: 12,
+  decembre: 12,
+  december: 12,
+};
+
+const AF_SHORT_MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+
+function exactNext(lines: string[], pattern: RegExp) {
+  const at = lines.findIndex((line) => pattern.test(line));
+  if (at < 0) return "";
+  return lines[at + 1] || "";
+}
+
+function airFranceName(lines: string[]) {
+  for (const line of lines) {
+    if (/\d/.test(line)) continue;
+    const match = line.match(/^([\p{Lu}][\p{Lu}'’ .-]{1,40}?)\s*,\s*([\p{L}][\p{L}'’ .-]{1,60})$/u);
+    if (!match) continue;
+    const last = (match[1] || "").replace(/\s+/g, " ").trim();
+    const first = greetingGivenName(match[2]);
+    if (!last || !first) continue;
+    return { first, last };
+  }
+  return null;
+}
+
+function airFranceFlight(lines: string[]) {
+  const raw = exactNext(lines, /^vol$/i).replace(/\s+/g, "");
+  const match = raw.match(/^([A-Z]{1,3})(\d{2,4})$/i);
+  if (!match) return "";
+  return `${(match[1] || "").toUpperCase()} ${match[2]}`;
+}
+
+function airFranceSeat(lines: string[]) {
+  const match = exactNext(lines, /^si[eè]ge$/i).match(/^(\d{1,2}[A-Z])\b/i);
+  return match ? (match[1] || "").toUpperCase() : "";
+}
+
+function airFranceRoute(lines: string[]) {
+  const cities: string[] = [];
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    if (!/^[A-Z]{3}$/.test(lines[index] || "")) continue;
+    const city = lines[index + 1] || "";
+    if (!/^[\p{L}][\p{L} .'-]{1,40}$/u.test(city)) continue;
+    cities.push(titlePlace(city));
+    if (cities.length === 2) break;
+  }
+  if (cities.length < 2) return "";
+  return `${cities[0]} → ${cities[1]}`;
+}
+
+function monthNumber(token: string) {
+  const key = token
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\./g, "");
+  return AF_MONTHS[key] || 0;
+}
+
+/** « 13:50 / 11 Nov » ou avec l’année. Sans année sur la page, on ne l’invente pas. */
+function airFranceWhen(lines: string[]) {
+  const stamp = lines.find((line) => /^\d{2}:\d{2}\s*\/\s*\d{1,2}\s+/u.test(line));
+  if (!stamp) return "";
+  const match = stamp.match(/^(\d{2}):(\d{2})\s*\/\s*(\d{1,2})\s+([A-Za-zÀ-ÿ.]+)(?:\s+(\d{4}))?/u);
+  if (!match) return "";
+  const month = monthNumber(match[4] || "");
+  const day = Number(match[3]);
+  if (!month || day < 1 || day > 31) return "";
+  const clock = `${match[1]}h${match[2]}`;
+  const year = match[5];
+  if (year) {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const label = formatDateFr(iso);
+    if (!label || label === "—") return "";
+    return `${label} à ${clock}`;
+  }
+  return `${day} ${AF_SHORT_MONTHS[month - 1]} à ${clock}`;
+}
+
+function airFrancePassenger(page: string, pageNumber: number): BoardingPassPassenger | null {
+  if (!/air france/i.test(page) && !/carte d[’']embarquement/i.test(page)) return null;
+  const lines = linesOf(page);
+  const name = airFranceName(lines);
+  const fields = boardingPassFields({
+    firstName: name?.first || "",
+    lastName: name?.last || "",
+    flight: airFranceFlight(lines),
+    route: airFranceRoute(lines),
+    when: airFranceWhen(lines),
+    seat: airFranceSeat(lines),
+  });
+  if (!fields) return null;
+  return { ...fields, page: pageNumber };
+}
+
+function readAirFranceBoardingPasses(pages: string[]): BoardingPassRead {
   const passengers: BoardingPassPassenger[] = [];
   let recognized = false;
   for (let index = 0; index < pages.length; index += 1) {
     const page = pages[index] || "";
-    if (!looksLikeBoardingPass(page)) continue;
+    const lines = linesOf(page);
+    if (!airFranceFlight(lines) || !airFranceSeat(lines) || !airFranceName(lines)) continue;
     recognized = true;
-    const passenger = pagePassenger(page, index + 1);
+    const passenger = airFrancePassenger(page, index + 1);
     if (!passenger) return { recognized: true, passengers: [] };
     passengers.push(passenger);
   }
   return { recognized, passengers };
+}
+
+/**
+ * Une page Transavia = un passager. Le bébé indiqué sur la page reste avec l’adulte.
+ * Une page Air France (« NOM , Prénom », vol, siège) suit la même règle : une page, un passager.
+ * Une page reconnue mais incomplète vide la liste : on n’envoie pas un sous-ensemble.
+ */
+export function readBoardingPassPages(pages: string[]): BoardingPassRead {
+  if (pages.some((page) => looksLikeBoardingPass(page))) {
+    const passengers: BoardingPassPassenger[] = [];
+    let recognized = false;
+    for (let index = 0; index < pages.length; index += 1) {
+      const page = pages[index] || "";
+      if (!looksLikeBoardingPass(page)) continue;
+      recognized = true;
+      const passenger = pagePassenger(page, index + 1);
+      if (!passenger) return { recognized: true, passengers: [] };
+      passengers.push(passenger);
+    }
+    return { recognized, passengers };
+  }
+  return readAirFranceBoardingPasses(pages);
 }
 
 function textOf(value: unknown) {

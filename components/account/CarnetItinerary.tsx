@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import type {
   CrmBookingDocument,
   CrmBookingItem,
@@ -16,7 +16,13 @@ import { HotelReservationCard } from "@/components/crm/HotelReservationCard";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
 import { hotelPhotos, hotelRoomLine } from "@/lib/crm/hotel-gallery";
 import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
-import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
+import {
+  BOARDING_PASSES_READY_LABEL,
+  boardingPassesReadyStatus,
+  flightGate,
+  flightTerminal,
+  flightWatchBadge,
+} from "@/lib/crm/flight-watch";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import {
   documentsForItems,
@@ -48,7 +54,7 @@ import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-open";
 import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
-import { BoardingPassStack } from "@/components/account/BoardingPassStack";
+import { BoardingPassActions } from "@/components/account/BoardingPassActions";
 import { cardsForFlight, type ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import { HotelFreeCancel } from "@/components/account/HotelFreeCancel";
 import type { ClientHotelCancelOffer } from "@/lib/crm/le-cancel-copy";
@@ -328,7 +334,7 @@ function CardBody({
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
             {returnLeg ? " · aller-retour" : ""}
             {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
-            {watchLine ? ` · ${watchLine}` : ""}
+            {watchLine && watchLine !== BOARDING_PASSES_READY_LABEL ? ` · ${watchLine}` : ""}
           </p>
           <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">
             {item.kind === "hotel"
@@ -355,9 +361,9 @@ function CardBody({
                   {placeLine(terminal, gate)}
                 </p>
               ) : null}
-              {returnLeg && (returnWhere || returnWatch) ? (
+              {returnLeg && (returnWhere || (returnWatch && returnWatch !== BOARDING_PASSES_READY_LABEL)) ? (
                 <p className="break-words text-xs leading-snug text-muted">
-                  {[returnWhere, returnWatch].filter(Boolean).join(" · ")}
+                  {[returnWhere, returnWatch !== BOARDING_PASSES_READY_LABEL ? returnWatch : ""].filter(Boolean).join(" · ")}
                 </p>
               ) : null}
             </>
@@ -447,9 +453,9 @@ export function CarnetItinerary({
   refusals?: ServiceRefusal[];
   /** Statut CRM d’enregistrement, par vol. */
   checkinByItem?: Record<string, string>;
-  /** Cartes déjà lues. L’espace client passe plutôt renderPasses, chargé à part. */
+  /** Cartes déjà lues (aperçu). L’espace client passe plutôt renderPasses, sans lire le PDF au chargement. */
   passes?: ClientBoardingCard[];
-  renderPasses?: (itemId: string) => ReactNode;
+  renderPasses?: (itemIds: string[], showBadge: boolean) => ReactNode;
   services?: {
     variant: "admin" | "client";
     travelers: CrmBookingTraveler[];
@@ -554,18 +560,22 @@ export function CarnetItinerary({
     if (item.kind !== "flight") return null;
     const ids = [item.id, mate?.id].filter((id): id is string => Boolean(id));
     const inline = cardsForFlight(passes, ids);
-    if (!inline.length && !renderPasses) return null;
+    const ready =
+      inline.length > 0 ||
+      boardingPassesReadyStatus(checkinByItem[item.id]) ||
+      (mate ? boardingPassesReadyStatus(checkinByItem[mate.id]) : false);
+    if (!ready) return null;
+    const showBadge =
+      flightWatchBadge(item, now, checkinByItem[item.id] || null) === BOARDING_PASSES_READY_LABEL ||
+      (mate ? flightWatchBadge(mate, now, checkinByItem[mate.id] || null) === BOARDING_PASSES_READY_LABEL : false);
     return (
-      <>
+      <div className="border-t border-[#e5e3dc] px-3.5 py-3">
         {inline.length ? (
-          <div className="border-t border-[#e5e3dc] px-3.5 py-3">
-            <BoardingPassStack cards={inline} variant="flight" />
-          </div>
+          <BoardingPassActions variant="flight" cards={inline} badge={showBadge} />
+        ) : renderPasses ? (
+          renderPasses(ids, showBadge)
         ) : null}
-        {renderPasses
-          ? ids.map((id) => <Fragment key={id}>{renderPasses(id)}</Fragment>)
-          : null}
-      </>
+      </div>
     );
   }
 

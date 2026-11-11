@@ -34,7 +34,7 @@ import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 
 export const dynamic = "force-dynamic";
-import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
+import { attachmentPreviews, boardingPassPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
@@ -58,7 +58,7 @@ const exampleStayPasses: ClientBoardingCard[] = [
     terminal: "2E",
     gate: "K42",
     itemId: "exemple-vol-aller",
-    href: "#",
+    href: "about:blank",
   },
   {
     key: "ines",
@@ -72,7 +72,7 @@ const exampleStayPasses: ClientBoardingCard[] = [
     terminal: "2E",
     gate: "K42",
     itemId: "exemple-vol-aller",
-    href: "#",
+    href: "about:blank",
   },
 ];
 
@@ -295,7 +295,21 @@ export default async function ExampleReservationPage({ params }: Props) {
         <>
           <ReservationFiles
             showPassports={false}
-            attachments={attachmentPreviews(unlinkedDocuments([], visibleItems), visibleItems, b.reference)}
+            attachments={[
+              ...attachmentPreviews(unlinkedDocuments([], visibleItems), visibleItems, b.reference),
+              ...boardingPassPreviews(
+                exampleStayPasses,
+                [
+                  {
+                    documentId: "exemple-complet",
+                    href: "about:blank",
+                    label: "PDF complet · EX 100",
+                    itemIds: ["exemple-vol-aller"],
+                  },
+                ],
+                b.reference
+              ),
+            ]}
           />
           <a
             href={modifyHref}

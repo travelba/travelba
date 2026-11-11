@@ -7,7 +7,6 @@ import { stayTransitionName } from "@/lib/crm/account-motion";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
-import { BoardingPassStack } from "@/components/account/BoardingPassStack";
 import type { ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
@@ -28,7 +27,7 @@ const examplePasses: ClientBoardingCard[] = [
     terminal: "2E",
     gate: "K42",
     itemId: "exemple-vol-aller",
-    href: "#",
+    href: "about:blank",
   },
   {
     key: "ines",
@@ -42,7 +41,7 @@ const examplePasses: ClientBoardingCard[] = [
     terminal: "2E",
     gate: "K42",
     itemId: "exemple-vol-aller",
-    href: "#",
+    href: "about:blank",
   },
 ];
 
@@ -175,7 +174,7 @@ export default async function ExampleHomePage() {
           terminal="2E"
           gate="K42"
           statusLabel="Cartes d’embarquement prêtes"
-          passes={<BoardingPassStack cards={examplePasses} variant="home" />}
+          boarding={{ cards: examplePasses }}
         />
       ) : null}
     </div>

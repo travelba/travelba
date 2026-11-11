@@ -19,14 +19,28 @@ function accessOf(file: FilePreviewModel) {
   return file.partage ? { partage: file.partage } : undefined;
 }
 
+function openHref(file: FilePreviewModel) {
+  if (file.href) return file.href;
+  return file.path ? fileInlineHref(file.path, accessOf(file)) : "";
+}
+
+function saveHref(file: FilePreviewModel) {
+  const href = openHref(file);
+  if (!href || href === "#") return href;
+  if (file.href) return href.includes("?") ? `${href}&download=1` : `${href}?download=1`;
+  return file.path ? fileDownloadHref(file.path, file.fileName, accessOf(file)) : href;
+}
+
 /** Assez fort pour qu’un visage et une MRZ ne se lisent pas, en vignette comme en aperçu. */
 const SEAL = "pointer-events-none scale-110 select-none blur-[64px]";
 
 function FileThumb({ file }: { file: FilePreviewModel }) {
   const image = isPreviewImage(file.mimeType, file.fileName);
   const pdf = isPreviewPdf(file.mimeType, file.fileName);
-  const inline = fileInlineHref(file.path, accessOf(file));
-  const [mode, setMode] = useState<"thumb" | "frame" | "icon">(image || pdf ? "thumb" : "icon");
+  const inline = openHref(file);
+  const [mode, setMode] = useState<"thumb" | "frame" | "icon">(
+    !inline ? "icon" : file.href && pdf ? "frame" : image || pdf ? "thumb" : "icon"
+  );
   const [ready, setReady] = useState(false);
   if (mode === "icon") {
     return (
@@ -52,7 +66,7 @@ function FileThumb({ file }: { file: FilePreviewModel }) {
       )}
       {/* eslint-disable-next-line @next/next/no-img-element -- vignette servie par /api/files */}
       <img
-        src={pdf || file.sealed ? fileThumbHref(file.path, accessOf(file)) : inline}
+        src={file.href ? inline : pdf || file.sealed ? fileThumbHref(file.path, accessOf(file)) : inline}
         alt=""
         loading="lazy"
         referrerPolicy="no-referrer"
@@ -180,8 +194,8 @@ function FilePreviewDialog({
   const [notice, setNotice] = useState<string | null>(null);
   const image = isPreviewImage(file.mimeType, file.fileName);
   const pdf = isPreviewPdf(file.mimeType, file.fileName);
-  const href = fileInlineHref(file.path, accessOf(file));
-  const downloadHref = fileDownloadHref(file.path, file.fileName, accessOf(file));
+  const href = openHref(file);
+  const downloadHref = saveHref(file);
   const sealed = Boolean(file.sealed);
   const [raster, setRaster] = useState(sealed && (image || pdf));
 

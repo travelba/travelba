@@ -3,11 +3,9 @@ import { headers } from "next/headers";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import { Icon } from "@/components/crm/icons";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
-import { BoardingPassStack } from "@/components/account/BoardingPassStack";
-import { cardsForFlight } from "@/lib/crm/client-boarding-pass";
-import { loadClientBoardingCards, loadClientCheckinStatus } from "@/lib/crm/client-boarding-pass-load";
+import { loadClientCheckinStatus } from "@/lib/crm/client-boarding-pass-load";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
-import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
+import { boardingPassesReadyStatus, flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { getSessionUser } from "@/lib/crm/auth";
@@ -83,11 +81,7 @@ export async function HomeBoardingPass({ booking }: { booking: CrmBooking }) {
   const homeFlight = nextTimelineFlight(rows);
   if (!homeFlight) return null;
   const flightItem = rows.find((row) => row.id === homeFlight.itemId) || null;
-  const [cards, checkin] = await Promise.all([
-    loadClientBoardingCards(booking.id),
-    loadClientCheckinStatus(booking.id),
-  ]);
-  const passes = cardsForFlight(cards, [homeFlight.itemId]);
+  const checkin = await loadClientCheckinStatus(booking.id);
   const headerList = await headers();
   const phone = flightItem ? { google: googleCalendarHref(flightItem, booking) } : null;
   const calendarHref = chosenCalendarHref(
@@ -106,7 +100,11 @@ export async function HomeBoardingPass({ booking }: { booking: CrmBooking }) {
       terminal={flightItem ? flightTerminal(flightItem) : ""}
       gate={flightItem ? flightGate(flightItem) : ""}
       statusLabel={statusLabel}
-      passes={passes.length ? <BoardingPassStack cards={passes} variant="home" /> : null}
+      boarding={
+        boardingPassesReadyStatus(checkin[homeFlight.itemId])
+          ? { reference: booking.reference, itemIds: [homeFlight.itemId] }
+          : null
+      }
     />
   );
 }
