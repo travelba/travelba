@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BoardingPassGroups } from "@/components/account/BoardingPassGroups";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
+import { boardingSegments } from "@/lib/crm/boarding-pass-groups";
 import type { ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { AccountPage } from "@/components/account/AccountPage";
@@ -17,7 +19,6 @@ import {
   insuranceLineLabel,
   itemPriceLabel,
   tripPlaceLine,
-  unlinkedDocuments,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
@@ -34,7 +35,7 @@ import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 
 export const dynamic = "force-dynamic";
-import { attachmentPreviews, boardingPassPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
+import { groupedBoardingPasses, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
@@ -297,21 +298,28 @@ export default async function ExampleReservationPage({ params }: Props) {
         <>
           <ReservationFiles
             showPassports={false}
-            attachments={[
-              ...attachmentPreviews(unlinkedDocuments([], visibleItems), visibleItems, b.reference),
-              ...boardingPassPreviews(
-                exampleStayPasses,
-                [
-                  {
-                    documentId: "exemple-complet",
-                    href: "about:blank",
-                    label: "PDF complet · EX 100",
-                    itemIds: ["exemple-vol-aller"],
-                  },
-                ],
-                b.reference
-              ),
-            ]}
+            attachments={[]}
+            leading={
+              <BoardingPassGroups
+                groups={groupedBoardingPasses({
+                  cards: exampleStayPasses,
+                  full: [
+                    {
+                      documentId: "exemple-complet",
+                      href: "about:blank",
+                      label: "PDF complet · EX 100",
+                      itemIds: ["exemple-vol-aller"],
+                    },
+                  ],
+                  segments: boardingSegments(visibleItems, { clientVisible: true }),
+                  travelers: party.map((traveler) => ({
+                    firstName: traveler.first_name || "",
+                    lastName: traveler.last_name || "",
+                  })),
+                  reference: b.reference,
+                })}
+              />
+            }
           />
           <a
             href={modifyHref}

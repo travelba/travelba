@@ -87,8 +87,9 @@ import { dossierCheckinBadge, flightCheckinViews, type StoredFlightCheckin } fro
 import { OnlineCheckinChecklist } from "@/components/admin/OnlineCheckinChecklist";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
+import { BoardingPassGroups, boardingGroupsEmpty } from "@/components/account/BoardingPassGroups";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
-import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
+import { passportPreviewsForStay, splitBoardingAttachments } from "@/lib/crm/preview-files";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
@@ -1154,6 +1155,7 @@ export function BookingEditor({
       : `${travelers.length} voyageurs`
     : "Aucun voyageur";
   const mailGroups = groupAttachedEmails(attachedEmails);
+  const boardingAttachments = splitBoardingAttachments(documents, items, travelers, booking.reference);
   const payerCaption = payingCompanyCaption(payerKind, payerCompanies, payerCompanyId);
   const previewFeeRate = feeChoice === "compte" ? inheritedFee.inheritedRate : Number(feeChoice);
   const previewFeeSource: AgencyFeeSource = feeChoice === "compte" ? inheritedFee.inheritedSource : "dossier";
@@ -2193,7 +2195,16 @@ export function BookingEditor({
       <ReservationFiles
         variant="admin"
         showPassports={false}
-        attachments={attachmentPreviews(documents, items, booking.reference)}
+        attachments={boardingAttachments.others}
+        leading={
+          boardingGroupsEmpty(boardingAttachments.groups) ? null : (
+            <BoardingPassGroups
+              groups={boardingAttachments.groups}
+              onRemove={(file) => removeDocument(file.id)}
+              removeQuestion={(file) => `${file.label} quitte le dossier et son fichier est supprimé.`}
+            />
+          )
+        }
         onRemoveAttachment={(file) => removeDocument(file.id)}
         removeQuestion={(file) => `${file.label} quitte le dossier et son fichier est supprimé.`}
       />

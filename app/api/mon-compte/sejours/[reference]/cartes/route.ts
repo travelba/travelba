@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { boardingSegments } from "@/lib/crm/boarding-pass-groups";
 import { clientBoardingView, scopeBoardingOffer } from "@/lib/crm/client-boarding-pass";
 import { loadClientBoardingOffer, visibleClientBookingByReference } from "@/lib/crm/client-boarding-pass-load";
+import { groupedBoardingPasses } from "@/lib/crm/preview-files";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -23,8 +25,20 @@ export async function GET(request: Request, ctx: { params: Promise<{ reference: 
     /^[0-9a-f-]{36}$/i.test(id)
   );
   try {
-    const offer = scopeBoardingOffer(await loadClientBoardingOffer(booking.id), vols);
-    return NextResponse.json(clientBoardingView(offer));
+    const bundle = await loadClientBoardingOffer(booking.id);
+    const segments = boardingSegments(bundle.flights, { clientVisible: true });
+    const offer = scopeBoardingOffer(bundle.offer, vols);
+    const groups = groupedBoardingPasses({
+      cards: offer.cards,
+      full: offer.full,
+      segments,
+      travelers: bundle.travelers,
+    });
+    return NextResponse.json({
+      ...clientBoardingView(offer),
+      groups,
+      foldPast: vols.length === 0,
+    });
   } catch {
     return jsonError("Introuvable", 404);
   }

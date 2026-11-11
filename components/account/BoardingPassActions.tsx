@@ -2,8 +2,10 @@
 
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
+import { BoardingPassGroups, boardingGroupsEmpty } from "@/components/account/BoardingPassGroups";
 import { Icon } from "@/components/crm/icons";
+import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
+import type { BoardingPassGrouping } from "@/lib/crm/boarding-pass-groups";
 import {
   clientBoardingView,
   scopeBoardingOffer,
@@ -12,6 +14,12 @@ import {
   type ClientBoardingView,
 } from "@/lib/crm/client-boarding-pass";
 import { BOARDING_PASSES_READY_LABEL } from "@/lib/crm/flight-watch";
+import type { BoardingShownPass } from "@/lib/crm/preview-files";
+
+type BoardingSheetPayload = ClientBoardingView & {
+  groups?: BoardingPassGrouping<BoardingShownPass> | null;
+  foldPast?: boolean;
+};
 
 const OPEN_LABEL = "Voir mes cartes d’embarquement";
 
@@ -21,6 +29,8 @@ export function BoardingPassActions({
   itemIds = [],
   cards,
   full = [],
+  groups = null,
+  foldPast = true,
   badge = false,
   children,
 }: {
@@ -30,18 +40,26 @@ export function BoardingPassActions({
   /** Déjà lues (aperçu). Sinon le clic interroge le séjour. */
   cards?: ClientBoardingCard[];
   full?: BoardingFileLink[];
+  /** Rangées par vol, déjà calculées. Sinon la feuille les reçoit au clic. */
+  groups?: BoardingPassGrouping<BoardingShownPass> | null;
+  /** Faux : le vol demandé reste ouvert, même s’il a atterri. */
+  foldPast?: boolean;
   badge?: boolean;
   children?: (parts: { badge: ReactNode; button: ReactNode; sheet: ReactNode }) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const preset = cards ? clientBoardingView(scopeBoardingOffer({ cards, full }, itemIds)) : null;
-  const [fetched, setFetched] = useState<ClientBoardingView | null>(null);
+  const preset: BoardingSheetPayload | null = groups
+    ? { cards: [], full: [], groups, foldPast }
+    : cards
+      ? clientBoardingView(scopeBoardingOffer({ cards, full }, itemIds))
+      : null;
+  const [fetched, setFetched] = useState<BoardingSheetPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const titleId = useId();
   const view = preset || fetched;
   const volKey = itemIds.join(",");
-  const hasPreset = cards != null;
+  const hasPreset = cards != null || groups != null;
 
   function openSheet() {
     if (!hasPreset && !fetched) setLoading(true);
@@ -60,7 +78,7 @@ export function BoardingPassActions({
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("read");
-        return (await response.json()) as ClientBoardingView;
+        return (await response.json()) as BoardingSheetPayload;
       })
       .then((next) => {
         setFetched(next);
@@ -144,7 +162,7 @@ function BoardingSheet({
   onClose,
 }: {
   titleId: string;
-  view: ClientBoardingView | null;
+  view: BoardingSheetPayload | null;
   loading: boolean;
   failed: boolean;
   onClose: () => void;
@@ -152,6 +170,7 @@ function BoardingSheet({
   if (typeof document === "undefined") return null;
   const cards = view?.cards || [];
   const full = view?.full || [];
+  const grouped = view?.groups && !boardingGroupsEmpty(view.groups) ? view.groups : null;
   return createPortal(
     <div
       className="fixed inset-0 z-[90] flex items-end justify-center bg-[#0B192C]/55 p-3 pb-24 sm:items-center sm:p-3"
@@ -183,34 +202,41 @@ function BoardingSheet({
               Les cartes d’embarquement ne sont pas disponibles pour le moment.
             </p>
           ) : null}
-          {!loading && !failed && !cards.length && !full.length ? (
+          {!loading && !failed && !grouped && !cards.length && !full.length ? (
             <p className="text-sm text-muted">Aucune carte d’embarquement à ouvrir.</p>
           ) : null}
-          {cards.map((card) => {
-            const meta = [card.flight, card.seat ? `Siège ${card.seat}` : ""].filter(Boolean).join(" · ");
-            return (
-              <div key={card.key} className="flex items-center gap-2 rounded-2xl bg-[#f6f5f2] px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                    {card.firstName || "Carte d’embarquement"}
-                  </p>
-                  {meta ? <p className="truncate text-xs text-muted">{meta}</p> : null}
-                  {card.href ? (
-                    <a
-                      href={card.href}
-                      target={card.href.startsWith("/api/") ? "_blank" : undefined}
-                      rel={card.href.startsWith("/api/") ? "noopener noreferrer" : undefined}
-                      className="mt-0.5 inline-block text-xs text-[#5c6570] underline decoration-[#c5c6cd] underline-offset-2"
-                    >
-                      Ouvrir le PDF
-                    </a>
-                  ) : null}
-                </div>
-                {card.walletHref ? <AddToAppleWallet href={card.walletHref} /> : null}
-              </div>
-            );
-          })}
-          {full.map((file) => (
+          {grouped ? (
+            <BoardingPassGroups groups={grouped} foldPast={view?.foldPast !== false} />
+          ) : null}
+          {grouped
+            ? null
+            : cards.map((card) => {
+                const meta = [card.flight, card.seat ? `Siège ${card.seat}` : ""].filter(Boolean).join(" · ");
+                return (
+                  <div key={card.key} className="flex items-center gap-2 rounded-2xl bg-[#f6f5f2] px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                        {card.firstName || "Carte d’embarquement"}
+                      </p>
+                      {meta ? <p className="truncate text-xs text-muted">{meta}</p> : null}
+                      {card.href ? (
+                        <a
+                          href={card.href}
+                          target={card.href.startsWith("/api/") ? "_blank" : undefined}
+                          rel={card.href.startsWith("/api/") ? "noopener noreferrer" : undefined}
+                          className="mt-0.5 inline-block text-xs text-[#5c6570] underline decoration-[#c5c6cd] underline-offset-2"
+                        >
+                          Ouvrir le PDF
+                        </a>
+                      ) : null}
+                    </div>
+                    {card.walletHref ? <AddToAppleWallet href={card.walletHref} /> : null}
+                  </div>
+                );
+              })}
+          {grouped
+            ? null
+            : full.map((file) => (
             <a
               key={file.href}
               href={file.href}

@@ -332,7 +332,7 @@ export async function ClientStayRest({
           <ReservationFiles
             showPassports={false}
             attachments={attachmentPreviews(looseDocs, visibleItems, b.reference)}
-            trailing={
+            leading={
               <Suspense fallback={<div className="h-16 animate-pulse rounded-2xl bg-[#0B192C]/10" aria-hidden />}>
                 <StayBoardingAttachments
                   bookingId={b.id}
