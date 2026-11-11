@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OwnerBadge } from "@/components/admin/OwnerBadge";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { EmptyState } from "@/components/crm/ui";
 import { listStayTitle } from "@/lib/crm/carnet";
@@ -19,6 +20,7 @@ export function DashboardWeek({
   places,
   amounts,
   covers = {},
+  owners = {},
 }: {
   groups: {
     travelling: DashboardWeekEntry<CrmBooking>[];
@@ -34,6 +36,8 @@ export function DashboardWeek({
   };
   amounts: Map<string, number>;
   covers?: Record<string, string | null>;
+  /** Nom complet du collègue en charge. Absent : le dossier est à prendre. */
+  owners?: Record<string, string>;
 }) {
   const total = groups.travelling.length + groups.soon.length + groups.week.length;
   if (!total) {
@@ -119,6 +123,7 @@ export function DashboardWeek({
                               >
                                 {staffStayLabel(booking)}
                               </span>
+                              <OwnerBadge name={owners[booking.id]} />
                               <span className="text-sm font-semibold text-[var(--admin-navy)]">
                                 {formatMoney(amounts.get(booking.id) ?? Number(booking.total_amount), booking.currency)}
                               </span>

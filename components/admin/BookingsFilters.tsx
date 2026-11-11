@@ -13,6 +13,12 @@ import {
 } from "@/lib/crm/admin-list";
 import { smartSearchMatch } from "@/lib/crm/smart-search";
 
+const DEFAULT_CHARGE_OPTIONS = [
+  { value: "", label: "En charge : Tous" },
+  { value: "moi", label: "En charge : Moi" },
+  { value: "personne", label: "En charge : Personne" },
+];
+
 const STATE_LABELS: Record<BookingStateFilter, string> = {
   "a-venir": "À venir",
   preparation: "Non visible",
@@ -30,6 +36,7 @@ export function BookingsFilters({
   tri,
   vue = null,
   qui = null,
+  chargeOptions = DEFAULT_CHARGE_OPTIONS,
   revision,
 }: {
   q: string;
@@ -37,8 +44,10 @@ export function BookingsFilters({
   tri: BookingSort;
   /** Garde la liste quand l’agence l’a ouverte elle-même. */
   vue?: "liste" | null;
-  /** Garde « Mes dossiers » quand on change la recherche ou le tri. */
-  qui?: "moi" | null;
+  /** `moi`, `personne`, ou l’identifiant du collègue en charge. */
+  qui?: string | null;
+  /** Options du sélecteur En charge, y compris Tous / Moi / Personne. */
+  chargeOptions?: { value: string; label: string }[];
   /** Change quand la liste serveur est remplacée, pour réappliquer le filtre local. */
   revision: string;
 }) {
@@ -49,14 +58,21 @@ export function BookingsFilters({
   const [value, setValue] = useState(q);
   const [state, setState] = useState(etat || "");
   const [sort, setSort] = useState<BookingSort>(tri);
-  const filtersKey = `${etat || ""}|${tri}`;
+  const [who, setWho] = useState(qui || "");
+  const filtersKey = `${etat || ""}|${tri}|${qui || ""}`;
   const [seenFilters, setSeenFilters] = useState(filtersKey);
   if (filtersKey !== seenFilters) {
     setSeenFilters(filtersKey);
     setState(etat || "");
     setSort(tri);
+    setWho(qui || "");
   }
-  const filtering = Boolean(q || etat || tri !== DEFAULT_BOOKING_SORT);
+  const filtering = Boolean(q || etat || tri !== DEFAULT_BOOKING_SORT || qui);
+  const listed = chargeOptions.length ? chargeOptions : DEFAULT_CHARGE_OPTIONS;
+  const options =
+    qui && !listed.some((option) => option.value === qui)
+      ? [...listed, { value: qui, label: "En charge : collègue" }]
+      : listed;
 
   useEffect(() => {
     const list = document.getElementById("dossiers-liste");
@@ -84,22 +100,23 @@ export function BookingsFilters({
     []
   );
 
-  function apply(form: HTMLFormElement, patch: { q?: string; etat?: string; tri?: string } = {}) {
+  function apply(form: HTMLFormElement, patch: { q?: string; etat?: string; tri?: string; qui?: string } = {}) {
     const data = new FormData(form);
     const query = (patch.q ?? String(data.get("q") || "")).trim();
     const stateValue = patch.etat ?? String(data.get("etat") || "");
     const sortValue = patch.tri ?? String(data.get("tri") || "");
+    const whoValue = patch.qui ?? String(data.get("qui") || "");
     const href = listHref("/admin/reservations", {
       q: query || null,
       etat: stateValue || null,
       tri: bookingSortParam((sortValue || DEFAULT_BOOKING_SORT) as BookingSort),
       vue: vue === "liste" ? "liste" : null,
-      qui: qui === "moi" ? "moi" : null,
+      qui: whoValue || null,
     });
     router.replace(href, { scroll: false });
   }
 
-  function applyNow(form: HTMLFormElement, patch: { q?: string; etat?: string; tri?: string } = {}) {
+  function applyNow(form: HTMLFormElement, patch: { q?: string; etat?: string; tri?: string; qui?: string } = {}) {
     if (timer.current) clearTimeout(timer.current);
     apply(form, patch);
   }
@@ -167,6 +184,24 @@ export function BookingsFilters({
         {(Object.keys(BOOKING_SORTS) as BookingSort[]).map((sortId) => (
           <option key={sortId} value={sortId}>
             {BOOKING_SORTS[sortId].label}
+          </option>
+        ))}
+      </select>
+      <select
+        name="qui"
+        value={who}
+        aria-label="En charge"
+        className="admin-af-input text-sm sm:w-56"
+        onChange={(event) => {
+          const next = event.target.value;
+          setWho(next);
+          const form = event.currentTarget.form;
+          if (form) applyNow(form, { qui: next });
+        }}
+      >
+        {options.map((option) => (
+          <option key={option.value || "tous"} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>

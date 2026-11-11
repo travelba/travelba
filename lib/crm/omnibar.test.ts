@@ -13,6 +13,7 @@ import {
   flattenOmnibar,
   foldSearch,
   loadOmnibar,
+  withOmnibarCharge,
   omnibarNeedle,
   omnibarOnKey,
   readOmnibarPayload,
@@ -163,6 +164,52 @@ test("le endpoint ne part pas sous deux signes et passe le texte en paramètre",
   );
 });
 
+test("la barre ajoute le prénom en charge, et une lecture en échec laisse le résultat", async () => {
+  const base = shapeOmnibar({
+    dossiers: [
+      {
+        id: bookingId,
+        reference: "TB-2026-0088",
+        title: "Avoriaz",
+        destination: "Avoriaz",
+        start_date: "2026-03-20",
+        end_date: "2026-03-27",
+      },
+    ],
+  });
+  const lookup = {
+    from(table: string) {
+      const api = {
+        select() {
+          return api;
+        },
+        in() {
+          return api;
+        },
+        then(resolve: (value: { data: unknown; error: null }) => void) {
+          resolve({
+            data:
+              table === "crm_bookings"
+                ? [{ id: bookingId, owner_staff_id: "staff-marie" }]
+                : [{ id: "staff-marie", full_name: "Marie Martin" }],
+            error: null,
+          });
+        },
+      };
+      return api;
+    },
+  };
+  const named = await withOmnibarCharge(lookup as never, base);
+  assert.match(named.dossiers[0]?.subtitle || "", /Marie/);
+  const broken = {
+    from() {
+      throw new Error("indisponible");
+    },
+  };
+  const kept = await withOmnibarCharge(broken as never, base);
+  assert.equal(kept, base);
+});
+
 test("un lien hors admin est écarté à la lecture", () => {
   const hit = readOmnibarPayload({
     clients: [
@@ -180,6 +227,7 @@ test("la route staff appelle la fonction, le menu reprend les états des autres 
   const route = readFileSync(join(root, "app/api/admin/recherche/route.ts"), "utf8");
   assert.match(route, /requireStaff\(/);
   assert.match(route, /loadOmnibar\(/);
+  assert.match(route, /withOmnibarCharge\(/);
   assert.doesNotMatch(route, /\$\{q\}/);
   const sql = readFileSync(join(root, "supabase/migrations/20261018074306_omnibar_search.sql"), "utf8");
   assert.match(sql, /crm_private\.is_staff\(\)/);

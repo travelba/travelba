@@ -61,6 +61,7 @@ import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
+import { ChargeControl } from "@/components/admin/ChargeControl";
 import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
 import type { TripAccountingView } from "@/lib/crm/trip-costs";
@@ -478,7 +479,13 @@ export function BookingEditor({
   /** Statut d’enregistrement en ligne déjà noté, une ligne par vol. */
   checkins?: StoredFlightCheckin[];
   /** Qui est en charge (null : à prendre) et qui a créé le dossier (null : inconnu). */
-  ownership?: { owner: string | null; createdBy: string | null } | null;
+  ownership?: {
+    owner: string | null;
+    createdBy: string | null;
+    mine?: boolean;
+    canTake?: boolean;
+    meName?: string;
+  } | null;
   /** E-mails, activité, WhatsApp, formalités, Pliant et compta, après le premier affichage. */
   panels?: DossierPanels | null;
 }) {
@@ -1408,11 +1415,23 @@ export function BookingEditor({
                 autoComplete="off"
                 className={`${stayNameClass} truncate text-base`}
               />
-              <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
                 <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--admin-navy)]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" aria-hidden />
                   {staffStayLabel(booking)}
                 </span>
+                {ownership ? (
+                  <ChargeControl
+                    compact
+                    bookingId={booking.id}
+                    owner={ownership.owner}
+                    createdBy={ownership.createdBy}
+                    mine={ownership.mine === true}
+                    canTake={ownership.canTake === true}
+                    meName={ownership.meName || ""}
+                    onHistory={() => setTab("historique")}
+                  />
+                ) : null}
                 {unsaved ? <span>· Modifications non enregistrées</span> : null}
               </p>
             </div>
@@ -1498,18 +1517,15 @@ export function BookingEditor({
         <div className="flex flex-wrap items-center gap-2">
           {stateChip}
           {ownership ? (
-            <button
-              type="button"
-              onClick={() => setTab("historique")}
-              title={ownership.createdBy ? `Créé par ${ownership.createdBy}` : "Créé par : inconnu"}
-              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
-                ownership.owner
-                  ? "bg-[#0B192C] text-[#C5A880]"
-                  : "border border-dashed border-[#9e7e51] bg-white text-[#9e7e51]"
-              }`}
-            >
-              {ownership.owner ? `En charge : ${ownership.owner}` : "À prendre"}
-            </button>
+            <ChargeControl
+              bookingId={booking.id}
+              owner={ownership.owner}
+              createdBy={ownership.createdBy}
+              mine={ownership.mine === true}
+              canTake={ownership.canTake === true}
+              meName={ownership.meName || ""}
+              onHistory={() => setTab("historique")}
+            />
           ) : null}
           {checkinBadge && !checkinBadge.alert ? (
             <button

@@ -348,7 +348,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "chercher_dossiers",
     description:
-      "Dossiers. q retrouve la référence, le titre, la destination, le prénom, le nom, la société du client, la société facturée et les voyageurs, sans accent et dans n’importe quel ordre. etat : a-venir, non_visible (ou preparation), visible (ou montre), annule, archive. Sans filtre : les prochains départs. statut : non_visible, visible ou annule. statut_libelle : Non visible, Visible ou Annulé. Un dossier archivé garde etat Archivée et archivee true. À côté du contact : societe et paye_par (société ou particulier).",
+      "Dossiers. q retrouve la référence, le titre, la destination, le prénom, le nom, la société du client, la société facturée et les voyageurs, sans accent et dans n’importe quel ordre. etat : a-venir, non_visible (ou preparation), visible (ou montre), annule, archive. Sans filtre : les prochains départs. statut : non_visible, visible ou annule. statut_libelle : Non visible, Visible ou Annulé. Un dossier archivé garde etat Archivée et archivee true. À côté du contact : societe et paye_par (société ou particulier). en_charge : nom du collègue, null si le dossier est à prendre.",
     input: {
       q,
       etat: z

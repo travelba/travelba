@@ -1,6 +1,9 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatSiretInput } from "./billing";
+import { loadStaffNames } from "./dossier-responsables";
 import { shownPersonName } from "./identity";
 import { formatDateRangeShort } from "./money";
+import { staffGivenName } from "./staff-name";
 import { fold } from "./text";
 
 /** Même délai que les champs ville et société (`PlaceField`, `CompanyLookup`). */
@@ -266,4 +269,40 @@ export async function loadOmnibar(supabase: OmnibarRpc, query: string): Promise<
   const { data, error } = await supabase.rpc("crm_omnibar_suggest", { q: needle });
   if (error) throw error;
   return shapeOmnibar(data);
+}
+
+/**
+ * Ajoute le prénom en charge au sous-titre des dossiers, en une lecture.
+ * Un échec laisse la suggestion telle quelle : la barre ne doit pas attendre ni échouer.
+ */
+export async function withOmnibarCharge(supabase: SupabaseClient, payload: OmnibarPayload): Promise<OmnibarPayload> {
+  if (!payload.dossiers.length) return payload;
+  try {
+    const { data, error } = await supabase
+      .from("crm_bookings")
+      .select("id, owner_staff_id")
+      .in(
+        "id",
+        payload.dossiers.map((row) => row.id)
+      );
+    if (error || !data) return payload;
+    const rows = data as { id: string; owner_staff_id: string | null }[];
+    const names = await loadStaffNames(
+      supabase,
+      rows.map((row) => row.owner_staff_id)
+    );
+    const byId = new Map(rows.map((row) => [row.id, row.owner_staff_id]));
+    return {
+      ...payload,
+      dossiers: payload.dossiers.map((hit) => {
+        if (!byId.has(hit.id)) return hit;
+        const ownerId = byId.get(hit.id);
+        const full = ownerId ? names.get(ownerId) : "";
+        const mark = full ? staffGivenName(full) : "À prendre";
+        return { ...hit, subtitle: hit.subtitle ? `${hit.subtitle} · ${mark}` : mark };
+      }),
+    };
+  } catch {
+    return payload;
+  }
 }

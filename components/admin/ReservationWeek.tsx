@@ -31,20 +31,6 @@ export function ReservationsViewToggle({ active, listeHref }: { active: Dossiers
   );
 }
 
-/** « Tous » / « Mes dossiers » : les dossiers dont le collègue connecté est en charge. */
-export function MineToggle({ mine, allHref, mineHref }: { mine: boolean; allHref: string; mineHref: string }) {
-  return (
-    <div className="flex w-fit rounded-xl border border-[var(--border)] bg-white p-1" role="tablist" aria-label="Dossiers de qui">
-      <Link href={allHref} role="tab" aria-selected={!mine} className={toggleClass(!mine)}>
-        Tous
-      </Link>
-      <Link href={mineHref} role="tab" aria-selected={mine} className={toggleClass(mine)}>
-        Mes dossiers
-      </Link>
-    </div>
-  );
-}
-
 function toggleClass(on: boolean) {
   return `shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold ${on ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)]"}`;
 }

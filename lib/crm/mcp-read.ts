@@ -40,7 +40,7 @@ import {
   type CustomerNameRow,
 } from "@/lib/crm/customer-search";
 import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
-import { loadDossierPeople, type DossierPeople } from "@/lib/crm/dossier-responsables";
+import { loadDossierPeople, loadStaffNames, type DossierPeople } from "@/lib/crm/dossier-responsables";
 import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
 import { billingCompaniesPublic, readBillingCompanies } from "@/lib/crm/billing-companies";
 import { formatDateTimeFr } from "@/lib/crm/dates";
@@ -98,7 +98,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SERVICE_KINDS = ["chauffeur", "greeter", "checkin"] as const;
 
 const BOOKING_COLUMNS =
-  "id, reference, title, destination, status, start_date, end_date, created_at, currency, total_amount, agency_commission, fee_mode, visible_to_client, archived_at, customer_id, client_settles_stay, include_in_ledger, billing_company_id, payer_kind";
+  "id, reference, title, destination, status, start_date, end_date, created_at, currency, total_amount, agency_commission, fee_mode, visible_to_client, archived_at, customer_id, client_settles_stay, include_in_ledger, billing_company_id, payer_kind, owner_staff_id";
 
 type BookingRow = Pick<
   CrmBooking,
@@ -122,6 +122,7 @@ type BookingRow = Pick<
   created_at?: string | null;
   billing_company_id?: string | null;
   payer_kind?: "company" | "personal" | null;
+  owner_staff_id?: string | null;
 };
 
 function db() {
@@ -178,7 +179,8 @@ function bookingLine(
   row: BookingRow,
   names: Map<string, string>,
   amounts: Map<string, number>,
-  companies: Map<string, string | null>
+  companies: Map<string, string | null>,
+  staffNames: Map<string, string> = new Map()
 ) {
   const amount = amounts.get(row.id);
   return {
@@ -196,8 +198,21 @@ function bookingLine(
     ...dossierPayerLine(row, row.billing_company_id ? companies.get(row.billing_company_id) : null),
     montant: amount == null ? null : formatMoney(amount, row.currency || "EUR"),
     grand_livre: staffLedgerCaption(row),
+    en_charge: row.owner_staff_id ? staffNames.get(row.owner_staff_id) || "Collègue" : null,
     lien: `/admin/reservations/${row.id}`,
   };
+}
+
+async function chargeNames(admin: SupabaseClient, rows: { owner_staff_id?: string | null }[]) {
+  try {
+    return await loadStaffNames(
+      admin,
+      rows.map((row) => row.owner_staff_id)
+    );
+  } catch (err) {
+    logRead("en_charge", err as { code?: string; message?: string });
+    return new Map<string, string>();
+  }
 }
 
 async function companyNames(admin: SupabaseClient, ids: (string | null | undefined)[]) {
@@ -650,15 +665,16 @@ export async function readChercherDossiers(
     ? mcpPageMeta(orderedRows.slice(0, window.limite + 1), window)
     : mcpPageMeta(orderedRows, window);
   const rows = paged.rows;
-  const [names, amounts, companies] = await Promise.all([
+  const [names, amounts, companies, staffNames] = await Promise.all([
     customerNames(admin, rows.map((row) => row.customer_id)),
     dossierAmounts(admin, rows),
     companyNames(admin, rows.map((row) => row.billing_company_id)),
+    chargeNames(admin, rows),
   ]);
   const rankedSuite = Boolean(rankedPage && rankedPage.length > window.limite);
   return {
     etat: etat || "recherche",
-    dossiers: rows.map((row) => bookingLine(row, names, amounts, companies)),
+    dossiers: rows.map((row) => bookingLine(row, names, amounts, companies, staffNames)),
     page: window.page,
     limite: window.limite,
     suite: rankedPage ? rankedSuite : paged.suite,
@@ -783,11 +799,12 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
   const rows = (data || []) as BookingRow[];
   if (!rows.length) return { introuvable: true };
   if (rows.length > 1) {
-    const [names, companies] = await Promise.all([
+    const [names, companies, staffNames] = await Promise.all([
       customerNames(admin, rows.map((row) => row.customer_id)),
       companyNames(admin, rows.map((row) => row.billing_company_id)),
+      chargeNames(admin, rows),
     ]);
-    return { choix: rows.map((row) => bookingLine(row, names, new Map(), companies)) };
+    return { choix: rows.map((row) => bookingLine(row, names, new Map(), companies, staffNames)) };
   }
   const booking = rows[0];
   const [cards, pliantCards, travelers, visas, tasks, names, amounts, companies, checkin] = await Promise.all([

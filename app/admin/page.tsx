@@ -21,7 +21,9 @@ import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { loadAccueilTodoCounts } from "@/lib/crm/admin-todo-load";
 import { ADMIN_ROUTES } from "@/lib/crm/admin-nav";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
+import { ownerLabelsFor } from "@/lib/crm/dossier-responsables";
 import { siteConfig } from "@/lib/site";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 /** Même segment que le layout : le modèle de titre ne s’applique pas ici. */
 export const metadata = { title: { absolute: `Accueil — ${siteConfig.shortName}` } };
@@ -79,7 +81,7 @@ export default async function AdminHomePage() {
   const shown = [...week.travelling, ...week.soon, ...week.week].map((entry) => entry.booking);
   const nameIds = [...new Set(shown.map((row) => row.customer_id).filter(Boolean))];
   console.time("[accueil] vague 2");
-  const [{ data: customers }, displayedStayAmounts, places] = await Promise.all([
+  const [{ data: customers }, displayedStayAmounts, places, owners] = await Promise.all([
     nameIds.length
       ? supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", nameIds)
       : Promise.resolve({ data: [] as CustomerNameRow[] }),
@@ -88,6 +90,7 @@ export default async function AdminHomePage() {
       supabase,
       shown.map((row) => row.id)
     ),
+    ownerLabelsFor(createServiceClient(), shown),
   ]);
   const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
   const coverRows = shown.map((row) => ({
@@ -141,7 +144,7 @@ export default async function AdminHomePage() {
         )}
       </section>
 
-      <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} covers={covers} />
+      <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} covers={covers} owners={owners} />
 
       <section aria-labelledby="argent-titre" className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

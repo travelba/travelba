@@ -19,6 +19,7 @@ test("le texte de liste retrouve la ville, le client, la date, le montant et le 
     phone: "+33612345678",
     routes: ["Lamego", "Porto"],
     amount: 0,
+    assignee: "Marie Martin",
   });
   assert.equal(smartSearchMatch("lamega", text), true);
   assert.equal(smartSearchMatch("porto", text), true);
@@ -29,5 +30,6 @@ test("le texte de liste retrouve la ville, le client, la date, le montant et le 
   assert.equal(smartSearchMatch("mars 2027", text), true);
   assert.equal(smartSearchMatch("non visible", text), true);
   assert.equal(smartSearchMatch("non visible", text), true);
+  assert.equal(smartSearchMatch("marie", text), true);
   assert.equal(smartSearchMatch("avoriaz", text), false);
 });
