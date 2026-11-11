@@ -239,9 +239,21 @@ test("l’URL signée expire et ne sert pas un autre nom de fichier", () => {
     assert.deepEqual(verifyBoardingPassToken(token, filename, now), {
       documentId: DOC,
       exp: Math.floor(now / 1000) + 3600,
+      pages: null,
     });
     assert.equal(verifyBoardingPassToken(token, "autre.pdf", now), null);
     assert.equal(verifyBoardingPassToken(token, filename, now + 3600 * 1000), null);
+    const sliced = boardingPassSignedPath(DOC, filename, now, [3, 1]);
+    assert.ok(sliced);
+    const [slicedToken, slicedFile] = sliced.split("/");
+    assert.deepEqual(verifyBoardingPassToken(slicedToken, decodeURIComponent(slicedFile), now), {
+      documentId: DOC,
+      exp: Math.floor(now / 1000) + 3600,
+      pages: [1, 3],
+    });
+    const tampered = slicedToken.replace(".1,3.", ".1,2.");
+    assert.equal(verifyBoardingPassToken(tampered, filename, now), null);
+    assert.equal(boardingPassSignedPath(DOC, filename, now, [0]), null);
     assert.match(BOARDING_PASS_SAMPLE_NAME, /Carte embarquement EXEMPLE\.pdf/);
   } finally {
     if (previous === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;

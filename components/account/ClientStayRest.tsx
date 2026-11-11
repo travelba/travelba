@@ -1,4 +1,7 @@
+import { Suspense } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { FlightBoardingPasses } from "@/components/account/FlightBoardingPasses";
+import { loadClientCheckinStatus } from "@/lib/crm/client-boarding-pass-load";
 import { cookies } from "next/headers";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { VisaSection } from "@/components/crm/VisaSection";
@@ -111,7 +114,7 @@ export async function ClientStayRest({
   const visibleDocs = docs;
   const identity = identityDocs;
 
-  const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl, leRows, tableEvenings] = await Promise.all([
+  const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl, leRows, tableEvenings, checkinByItem] = await Promise.all([
     loadHotelContacts(b.id, rawItems),
     loadClientLedger(supabase, customer, "client"),
     settledCountries(b, party, identity, customer),
@@ -120,6 +123,7 @@ export async function ClientStayRest({
     loadShareUrl(b.id),
     b.customer_id === customer.id ? loadLeCancelRows(b.id) : Promise.resolve([] as LeCancelRow[]),
     b.customer_id === customer.id ? loadClientRestaurantEvenings(b.id) : Promise.resolve([]),
+    loadClientCheckinStatus(b.id),
   ]);
 
   const visibleItems = withoutHotelRosterItems(catalogItems);
@@ -216,6 +220,12 @@ export async function ClientStayRest({
           }}
           refusals={refusals}
           hotelCancels={hotelCancels}
+          checkinByItem={checkinByItem}
+          renderPasses={(itemId) => (
+            <Suspense fallback={null}>
+              <FlightBoardingPasses bookingId={b.id} itemId={itemId} />
+            </Suspense>
+          )}
         />
       }
       services={

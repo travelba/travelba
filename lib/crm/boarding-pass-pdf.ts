@@ -1,3 +1,4 @@
+import { PDFDocument } from "pdf-lib";
 import { extractText } from "unpdf";
 import { formatDateFr } from "./dates";
 import { greetingGivenName } from "./identity";
@@ -203,6 +204,35 @@ export function storedBoardingPassName(fileName: string | null | undefined) {
   const name = String(fileName || "").replace(/[\r\n"\\]/g, "").trim();
   if (!name.toLowerCase().endsWith(".pdf") || name.length > 120 || name.includes("/") || name.includes("..")) return null;
   return name;
+}
+
+/**
+ * Ne garde que les pages demandées (1 = première page). Le PDF d’archive n’est pas modifié.
+ * Une page absente ou un fichier illisible renvoie null : on ne sert pas le document entier à la place.
+ */
+export async function pdfPageCount(bytes: Uint8Array): Promise<number | null> {
+  try {
+    const source = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    return source.getPageCount();
+  } catch {
+    return null;
+  }
+}
+
+export async function slicePdfPages(bytes: Uint8Array, pages: number[]): Promise<Uint8Array | null> {
+  if (!pages.length) return null;
+  try {
+    const source = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const total = source.getPageCount();
+    const indexes = pages.map((page) => page - 1);
+    if (indexes.some((index) => index < 0 || index >= total)) return null;
+    const next = await PDFDocument.create();
+    const copied = await next.copyPages(source, indexes);
+    for (const page of copied) next.addPage(page);
+    return new Uint8Array(await next.save());
+  } catch {
+    return null;
+  }
 }
 
 export async function boardingPassPageTexts(bytes: Uint8Array): Promise<string[]> {

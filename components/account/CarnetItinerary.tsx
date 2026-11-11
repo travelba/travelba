@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from "react";
 import type {
   CrmBookingDocument,
   CrmBookingItem,
@@ -47,6 +48,8 @@ import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-open";
 import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
+import { BoardingPassStack } from "@/components/account/BoardingPassStack";
+import { cardsForFlight, type ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import { HotelFreeCancel } from "@/components/account/HotelFreeCancel";
 import type { ClientHotelCancelOffer } from "@/lib/crm/le-cancel-copy";
 import {
@@ -66,6 +69,14 @@ import {
   type ServiceOffer,
   type ServiceRefusal,
 } from "@/lib/crm/extras";
+
+function placeLine(terminal: string, gate: string) {
+  const terminalText = terminal.trim();
+  const gateText = gate.trim();
+  const terminalLabel = terminalText ? (/^terminal\b/i.test(terminalText) ? terminalText : `Terminal ${terminalText}`) : "";
+  const gateLabel = gateText ? (/^(porte|gate)\b/i.test(gateText) ? gateText : `Porte ${gateText}`) : "";
+  return [terminalLabel, gateLabel].filter(Boolean).join(" · ");
+}
 
 function AgendaLink({
   href,
@@ -105,6 +116,9 @@ function CardBody({
   returnLeg = null,
   returnCalendarHref = null,
   stayItems = null,
+  checkinStatus = null,
+  returnCheckinStatus = null,
+  boarding = null,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -121,6 +135,9 @@ function CardBody({
   returnLeg?: CrmBookingItem | null;
   returnCalendarHref?: string | null;
   stayItems?: CrmBookingItem[] | null;
+  checkinStatus?: string | null;
+  returnCheckinStatus?: string | null;
+  boarding?: ReactNode;
 }) {
   const price = returnLeg && stayItems
     ? roundTripPriceLabel(item, returnLeg, stayItems, currency, pricesVisible)
@@ -151,7 +168,10 @@ function CardBody({
   const seat = detailStr(item, "seat");
   const terminal = item.kind === "flight" ? flightTerminal(item) : detailStr(item, "terminal");
   const gate = item.kind === "flight" ? flightGate(item) : "";
-  const watchLine = item.kind === "flight" ? flightWatchBadge(item, new Date()) : "";
+  const watchLine = item.kind === "flight" ? flightWatchBadge(item, new Date(), checkinStatus) : "";
+  const returnWatch =
+    returnLeg && item.kind === "flight" ? flightWatchBadge(returnLeg, new Date(), returnCheckinStatus) : "";
+  const returnWhere = returnLeg ? placeLine(flightTerminal(returnLeg), flightGate(returnLeg)) : "";
   const cabin = detailStr(item, "cabin");
   const airline = detailStr(item, "airline") || item.supplier || "";
   const city = detailStr(item, "city");
@@ -330,6 +350,16 @@ function CardBody({
               {ticketTravelers ? (
                 <p className="break-words text-xs leading-snug text-[var(--admin-navy)]">{ticketTravelers}</p>
               ) : null}
+              {item.kind === "flight" && (terminal || gate) ? (
+                <p className="break-words text-xs font-semibold leading-snug text-[var(--admin-navy)]">
+                  {placeLine(terminal, gate)}
+                </p>
+              ) : null}
+              {returnLeg && (returnWhere || returnWatch) ? (
+                <p className="break-words text-xs leading-snug text-muted">
+                  {[returnWhere, returnWatch].filter(Boolean).join(" · ")}
+                </p>
+              ) : null}
             </>
           ) : item.kind === "hotel" ? (
             <>
@@ -361,6 +391,7 @@ function CardBody({
       </summary>
       {panel}
     </details>
+    {boarding}
     {item.kind === "accueil_vip" && (clientInfo || hotline || providerMail || party) ? (
       <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3">
         {party ? <p className="text-xs text-muted">{party}</p> : null}
@@ -397,6 +428,9 @@ export function CarnetItinerary({
   partage = null,
   pricesVisible = true,
   hotelCancels = [],
+  checkinByItem = {},
+  passes = [],
+  renderPasses,
 }: {
   booking: PublicBooking;
   items: CrmBookingItem[];
@@ -411,6 +445,11 @@ export function CarnetItinerary({
   /** Titulaire seulement. Absent de l’aperçu, du lien public et de l’exemple. */
   hotelCancels?: ClientHotelCancelOffer[];
   refusals?: ServiceRefusal[];
+  /** Statut CRM d’enregistrement, par vol. */
+  checkinByItem?: Record<string, string>;
+  /** Cartes déjà lues. L’espace client passe plutôt renderPasses, chargé à part. */
+  passes?: ClientBoardingCard[];
+  renderPasses?: (itemId: string) => ReactNode;
   services?: {
     variant: "admin" | "client";
     travelers: CrmBookingTraveler[];
@@ -511,6 +550,25 @@ export function CarnetItinerary({
     ...offerDays.map((day) => [day, composeItineraryDay(day, [], openOffers)] as const),
   ].sort(([a], [b]) => a.localeCompare(b));
 
+  function boardingFor(item: CrmBookingItem, mate: CrmBookingItem | null) {
+    if (item.kind !== "flight") return null;
+    const ids = [item.id, mate?.id].filter((id): id is string => Boolean(id));
+    const inline = cardsForFlight(passes, ids);
+    if (!inline.length && !renderPasses) return null;
+    return (
+      <>
+        {inline.length ? (
+          <div className="border-t border-[#e5e3dc] px-3.5 py-3">
+            <BoardingPassStack cards={inline} variant="flight" />
+          </div>
+        ) : null}
+        {renderPasses
+          ? ids.map((id) => <Fragment key={id}>{renderPasses(id)}</Fragment>)
+          : null}
+      </>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <section className="space-y-4">
@@ -556,6 +614,9 @@ export function CarnetItinerary({
                     returnLeg={mate}
                     returnCalendarHref={mate ? itemHref(mate.id) : null}
                     stayItems={liveItems}
+                    checkinStatus={checkinByItem[row.item.id] || null}
+                    returnCheckinStatus={mate ? checkinByItem[mate.id] || null : null}
+                    boarding={boardingFor(row.item, mate)}
                   />
               );
             })}
@@ -584,6 +645,9 @@ export function CarnetItinerary({
                 returnLeg={mate}
                 returnCalendarHref={mate ? itemHref(mate.id) : null}
                 stayItems={liveItems}
+                checkinStatus={checkinByItem[item.id] || null}
+                returnCheckinStatus={mate ? checkinByItem[mate.id] || null : null}
+                boarding={boardingFor(item, mate)}
               />
               );
             })}

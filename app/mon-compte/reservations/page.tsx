@@ -21,6 +21,8 @@ import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { BoardingReadyNote } from "@/components/account/BoardingPassStack";
+import { boardingPassBookingIds } from "@/lib/crm/client-boarding-pass-load";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 
@@ -40,7 +42,7 @@ export default async function ReservationsPage({
   console.time("[espace] reservations");
   const all = await loadVisibleCarnets(supabase, customer.id, await clientTripOwnerIds(customer));
   const walletIds = [...new Set(all.map((row) => row.billing_customer_id || row.customer_id))];
-  const [displayedAmounts, payerResult, places] = await Promise.all([
+  const [displayedAmounts, payerResult, places, boardingReady] = await Promise.all([
     loadDisplayedStayAmounts(createServiceClient(), all).catch(() => new Map<string, number>()),
     walletIds.length
       ? supabase
@@ -53,6 +55,7 @@ export default async function ReservationsPage({
       all.map((row) => row.id),
       { visibleOnly: true }
     ),
+    boardingPassBookingIds(all.map((row) => row.id)),
   ]);
   const payerCompanies = payerResult.data;
   const companiesByWallet = new Map<string, FundingCompany[]>();
@@ -198,6 +201,7 @@ export default async function ReservationsPage({
                   {payerLabel ? (
                     <p className="text-[13px] font-semibold text-[var(--admin-navy)]">Réglé par {payerLabel}</p>
                   ) : null}
+                  {boardingReady.has(b.id) ? <BoardingReadyNote /> : null}
                   <Link
                     href={`/mon-compte/reservations/${b.reference}`}
                     transitionTypes={["nav-forward"]}

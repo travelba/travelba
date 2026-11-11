@@ -1,6 +1,7 @@
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
 import { after } from "next/server";
+import { BoardingReadyNote } from "@/components/account/BoardingPassStack";
 import { AccountPage } from "@/components/account/AccountPage";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { stayTransitionName } from "@/lib/crm/account-motion";
@@ -168,6 +169,7 @@ export default async function ExampleReservationsPage({
                       <span className="text-[16px] font-bold tabular-nums text-[var(--admin-navy)]">{amountLabel}</span>
                     </div>
                   </div>
+                  {b.id === session.booking.id ? <BoardingReadyNote /> : null}
                   <Link
                     href={`${EXAMPLE_BASE}/reservations/${b.reference}`}
                     transitionTypes={["nav-forward"]}

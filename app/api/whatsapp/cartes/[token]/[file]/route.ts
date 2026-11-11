@@ -3,6 +3,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/crm/auth";
 import { verifyBoardingPassToken } from "@/lib/crm/boarding-pass-link";
+import { slicePdfPages } from "@/lib/crm/boarding-pass-pdf";
 import {
   BOARDING_PASS_KIND,
   BOARDING_PASS_SAMPLE_FILE,
@@ -70,7 +71,10 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
     if (!type.includes("pdf") && !storage.toLowerCase().endsWith(".pdf")) {
       return jsonError("Document introuvable", 404);
     }
-    return pdfResponse(downloaded.bytes, filename);
+    if (!verified.pages?.length) return pdfResponse(downloaded.bytes, filename);
+    const sliced = await slicePdfPages(downloaded.bytes, verified.pages);
+    if (!sliced) return jsonError("Document introuvable", 404);
+    return pdfResponse(sliced, filename);
   } catch {
     return jsonError("Document introuvable", 404);
   }

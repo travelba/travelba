@@ -132,6 +132,30 @@ test("l’enregistrement Air France s’ouvre 30 h avant, pas pour une compagnie
     false
   );
   assert.equal(flightWatchBadge(open, new Date("2026-10-01T06:00:00Z")), "Enregistrement ouvert");
+  assert.equal(flightWatchBadge(open, new Date("2026-10-01T06:00:00Z"), "fait"), "Enregistré");
+  assert.equal(flightWatchBadge(open, new Date("2026-10-01T06:00:00Z"), "cartes_recues"), "Cartes d’embarquement prêtes");
+  assert.equal(flightWatchBadge(open, new Date("2026-10-01T06:00:00Z"), "envoyees"), "Cartes d’embarquement prêtes");
+  assert.equal(flightWatchBadge(open, new Date("2026-10-01T05:00:00Z"), "ouvert"), "Enregistrement ouvert");
+  const late = card({
+    details: {
+      airline_iata: "AF",
+      flight_number: "AF 1789",
+      from: "CDG",
+      to: "RAK",
+      flight_watch: { status: "delayed" },
+    },
+  });
+  assert.equal(flightWatchBadge(late, NOW, "cartes_recues"), "Retard");
+  const cancelled = card({
+    details: {
+      airline_iata: "AF",
+      flight_number: "AF 1789",
+      from: "CDG",
+      to: "RAK",
+      flight_watch: { status: "cancelled" },
+    },
+  });
+  assert.equal(flightWatchBadge(cancelled, NOW, "fait"), "Annulé");
 });
 
 test("Lufthansa ouvre l’enregistrement 23 h avant", () => {

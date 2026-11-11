@@ -7,11 +7,44 @@ import { stayTransitionName } from "@/lib/crm/account-motion";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
+import { BoardingPassStack } from "@/components/account/BoardingPassStack";
+import type { ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
+
+const examplePasses: ClientBoardingCard[] = [
+  {
+    key: "camille",
+    documentId: "exemple",
+    page: 1,
+    firstName: "Camille",
+    flight: "EX 100",
+    route: "Paris → New York",
+    when: "12 nov. 2026 à 13h50",
+    seat: "12A",
+    terminal: "2E",
+    gate: "K42",
+    itemId: "exemple-vol-aller",
+    href: "#",
+  },
+  {
+    key: "ines",
+    documentId: "exemple",
+    page: 2,
+    firstName: "Inès",
+    flight: "EX 100",
+    route: "Paris → New York",
+    when: "12 nov. 2026 à 13h50",
+    seat: "12B",
+    terminal: "2E",
+    gate: "K42",
+    itemId: "exemple-vol-aller",
+    href: "#",
+  },
+];
 
 export const dynamic = "force-dynamic";
 import { greetingGivenName } from "@/lib/crm/identity";
@@ -135,7 +168,15 @@ export default async function ExampleHomePage() {
       </article>
 
       {homeFlight ? (
-        <BoardingPass pass={homeFlight} calendarHref={calendarHref} googleHref={googleHref} />
+        <BoardingPass
+          pass={homeFlight}
+          calendarHref={calendarHref}
+          googleHref={googleHref}
+          terminal="2E"
+          gate="K42"
+          statusLabel="Cartes d’embarquement prêtes"
+          passes={<BoardingPassStack cards={examplePasses} variant="home" />}
+        />
       ) : null}
     </div>
     </AccountPage>

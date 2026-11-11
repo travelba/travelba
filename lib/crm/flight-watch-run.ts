@@ -6,6 +6,7 @@ import { countryForIata } from "./airports";
 import { countryName } from "./countries";
 import { ensureFlightNoticeSids, sendApprovedFlightSamples } from "./flight-notice-arm";
 import { aeroApiKey, fetchAeroFlights, flightNoticeSid } from "./flight-watch-api";
+import { checkinReminderBlocked, type ReminderDocument, type ReminderMessage } from "./checkin-reminder";
 import {
   applyAeroFlight,
   checkinAttemptDue,
@@ -53,7 +54,10 @@ type ItemRow = FlightCard & {
   id: string;
   booking_id: string;
   kind: string;
+  source_document_id?: string | null;
 };
+
+const MISSING_TABLE = new Set(["42P01", "PGRST205", "PGRST204"]);
 
 const WATCH = new Set(["draft", "quoted", "confirmed"]);
 const REFERENCE = /^[A-Za-z0-9-]{4,40}$/;
@@ -139,6 +143,46 @@ async function notify(input: {
   return result.ok;
 }
 
+function missingTable(error: { code?: string } | null) {
+  return Boolean(error?.code && MISSING_TABLE.has(error.code));
+}
+
+async function loadCheckinReminder(admin: Admin, bookingIds: string[]) {
+  const empty = {
+    documents: [] as ReminderDocument[],
+    messages: [] as ReminderMessage[],
+    status: new Map<string, string>(),
+  };
+  if (!bookingIds.length) return empty;
+  const [docs, messages, checkins] = await Promise.all([
+    admin
+      .from("crm_booking_documents")
+      .select("id, booking_id, booking_item_id, file_name, kind")
+      .in("booking_id", bookingIds)
+      .in("kind", ["carte d'embarquement", "carte d’embarquement"]),
+    admin
+      .from("crm_whatsapp_messages")
+      .select("booking_id, template_key, status, body, payload")
+      .in("booking_id", bookingIds)
+      .in("template_key", ["carte_embarquement", "cartes_embarquement"]),
+    admin.from("crm_flight_checkins").select("booking_item_id, status").in("booking_id", bookingIds),
+  ]);
+  if (docs.error) quiet(docs.error);
+  if (messages.error) quiet(messages.error);
+  if (checkins.error && !missingTable(checkins.error)) quiet(checkins.error);
+  const status = new Map<string, string>();
+  if (!checkins.error) {
+    for (const row of (checkins.data || []) as { booking_item_id?: string; status?: string }[]) {
+      if (row.booking_item_id && row.status) status.set(row.booking_item_id, row.status);
+    }
+  }
+  return {
+    documents: docs.error ? [] : ((docs.data || []) as ReminderDocument[]),
+    messages: messages.error ? [] : ((messages.data || []) as ReminderMessage[]),
+    status,
+  };
+}
+
 function groupDue(items: ItemRow[], now: Date) {
   const groups = new Map<string, ItemRow[]>();
   for (const item of items) {
@@ -180,7 +224,7 @@ export async function runFlightWatch(
   const to = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000).toISOString();
   const { data: rows, error } = await admin
     .from("crm_booking_items")
-    .select("id, booking_id, kind, start_at, end_at, details")
+    .select("id, booking_id, kind, start_at, end_at, details, source_document_id")
     .eq("kind", "flight")
     .gte("start_at", from)
     .lte("start_at", to);
@@ -285,8 +329,29 @@ export async function runFlightWatch(
     }
   }
 
+  const flightCounts = new Map<string, number>();
+  for (const item of active) flightCounts.set(item.booking_id, (flightCounts.get(item.booking_id) || 0) + 1);
+  const activeBookingIds = [...flightCounts.keys()];
+  const reminder = await loadCheckinReminder(admin, activeBookingIds);
+
   for (const item of active) {
     if (!checkinAttemptDue(item, now, agencyCheckin.has(item.booking_id))) continue;
+    if (
+      checkinReminderBlocked({
+        status: reminder.status.get(item.id) || null,
+        flight: {
+          id: item.id,
+          booking_id: item.booking_id,
+          source_document_id: item.source_document_id || null,
+          details: item.details,
+        },
+        flightsOnBooking: flightCounts.get(item.booking_id) || 1,
+        documents: reminder.documents,
+        messages: reminder.messages,
+      })
+    ) {
+      continue;
+    }
     const booking = bookings.get(item.booking_id);
     if (!booking) continue;
     const customer = customers.get(booking.customer_id);

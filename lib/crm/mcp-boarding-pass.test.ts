@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { verifyBoardingPassToken } from "./boarding-pass-link";
 import { boardingPassSendKey } from "./boarding-pass-pdf";
 import { boardingPassDedupeKey, boardingPassUnapprovedMessage } from "./boarding-pass-whatsapp";
 import { notifyBoardingPass } from "./mcp-boarding-pass";
@@ -313,6 +314,14 @@ test("un PDF Transavia part une fois par passager, puis plus", async () => {
     assert.deepEqual(
       crm.sends.map((row) => row.variables?.["6"]),
       ["2F", "3A", "2E"]
+    );
+    assert.deepEqual(
+      crm.sends.map((row) => {
+        const path = row.variables?.["1"] || "";
+        const [token, file] = path.split("/");
+        return verifyBoardingPassToken(token, decodeURIComponent(file || ""))?.pages;
+      }),
+      [[1], [2], [3]]
     );
     assert.equal(crm.sends[0].variables?.["3"], "TO 3004");
     assert.equal(crm.sends[0].variables?.["4"], "Paris (Orly) → Agadir");

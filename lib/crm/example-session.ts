@@ -152,6 +152,8 @@ function items(): CrmBookingItem[] {
         to: "JFK",
         city_from: "Paris",
         city_to: "New York",
+        terminal: "2E",
+        gate: "K42",
       },
     }),
     item({
