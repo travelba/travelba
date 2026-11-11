@@ -9,6 +9,7 @@ import { aeroApiKey, fetchAeroFlights, flightNoticeSid } from "./flight-watch-ap
 import { checkinReminderBlocked, type ReminderDocument, type ReminderMessage } from "./checkin-reminder";
 import {
   applyAeroFlight,
+  capDueGroups,
   checkinAttemptDue,
   flightClockLabel,
   flightIdent,
@@ -193,11 +194,7 @@ function groupDue(items: ItemRow[], now: Date) {
     list.push(item);
     groups.set(ident, list);
   }
-  return [...groups.entries()].sort((left, right) => {
-    const a = Date.parse(left[1][0]?.start_at || "") || 0;
-    const b = Date.parse(right[1][0]?.start_at || "") || 0;
-    return a - b;
-  });
+  return capDueGroups([...groups.entries()], now);
 }
 
 const PACE_EVERY = 8;

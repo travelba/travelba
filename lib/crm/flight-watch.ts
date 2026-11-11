@@ -62,6 +62,14 @@ export type FlightWatch = {
   sold_out: string;
   scheduled_out: string;
   estimated_out: string;
+  /** Heure locale d’arrivée prévue, quand AeroAPI l’a donnée. */
+  scheduled_in: string;
+  estimated_in: string;
+  /** Heure locale réelle, seulement si AeroAPI l’a donnée. */
+  actual_out: string;
+  /** Décollage (roues), heure locale, seulement si AeroAPI l’a donnée. */
+  actual_off: string;
+  actual_in: string;
   gate: string;
   terminal: string;
   checked_at: string;
@@ -83,8 +91,10 @@ export type AeroFlight = {
   scheduledOut: string | null;
   estimatedOut: string | null;
   actualOut: string | null;
+  actualOff: string | null;
   scheduledIn: string | null;
   estimatedIn: string | null;
+  actualIn: string | null;
   departureDelay: number | null;
   originIata: string;
   destinationIata: string;
@@ -140,6 +150,11 @@ export function readFlightWatch(details: Record<string, unknown> | null | undefi
     sold_out: text("sold_out"),
     scheduled_out: text("scheduled_out"),
     estimated_out: text("estimated_out"),
+    scheduled_in: text("scheduled_in"),
+    estimated_in: text("estimated_in"),
+    actual_out: text("actual_out"),
+    actual_off: text("actual_off"),
+    actual_in: text("actual_in"),
     gate: text("gate"),
     terminal: text("terminal"),
     checked_at: text("checked_at"),
@@ -211,13 +226,71 @@ export function airportLocalIso(utcIso: string | null | undefined, timeZone: str
   return `${year}-${month}-${day}T${hour}:${minute}:00`;
 }
 
+const TEN_MIN_MS = 10 * 60 * 1000;
+/** Au-delà, un avion encore au sol ne reste pas en relecture toutes les 10 minutes. */
+const GROUND_HOLD_MS = 12 * HOUR_MS;
+const ARRIVAL_LAG_MS = TEN_MIN_MS;
+const ARRIVAL_BACKUP_MS = HOUR_MS;
+/** Appels AeroAPI par passage du cron. Le palier Personal est de 10 par minute. */
+export const FLIGHT_POLL_CAP = 8;
+
+function instant(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Heure estimée du départ si elle est connue, sinon l’heure prévue. */
+export function departureInstant(item: FlightCard) {
+  const watch = readFlightWatch(item.details);
+  return instant(watch.estimated_out) || instant(watch.scheduled_out) || instant(item.start_at);
+}
+
+function scheduledDepartureInstant(item: FlightCard) {
+  const watch = readFlightWatch(item.details);
+  return instant(watch.scheduled_out) || instant(watch.sold_out) || instant(item.start_at);
+}
+
+/** L’avion a quitté le sol : heure réelle, ou statut en vol / arrivé. */
+export function hasTakenOff(item: FlightCard) {
+  const watch = readFlightWatch(item.details);
+  if (watch.status === "en_route" || watch.status === "landed") return true;
+  return Boolean(watch.actual_off || watch.actual_out);
+}
+
 export function pollIntervalMs(startAt: string | null, now: Date) {
   const start = startAt ? Date.parse(startAt) : Number.NaN;
   if (!Number.isFinite(start)) return 12 * HOUR_MS;
   const hours = (start - now.getTime()) / HOUR_MS;
-  if (hours <= 3) return HOUR_MS;
+  if (hours <= 3) return TEN_MIN_MS;
   if (hours <= 12) return 4 * HOUR_MS;
   return 12 * HOUR_MS;
+}
+
+function groundIntervalMs(item: FlightCard, now: Date) {
+  const target = departureInstant(item);
+  if (target == null) return 12 * HOUR_MS;
+  const hours = (target - now.getTime()) / HOUR_MS;
+  if (hours > 12) return 12 * HOUR_MS;
+  if (hours > 3) return 4 * HOUR_MS;
+  const scheduled = scheduledDepartureInstant(item) ?? target;
+  if (now.getTime() > scheduled + GROUND_HOLD_MS) return 12 * HOUR_MS;
+  return TEN_MIN_MS;
+}
+
+/**
+ * Après le décollage : une lecture à l’arrivée estimée + 10 min,
+ * puis une seule de secours une heure plus tard. Pas de relecture entre les deux.
+ */
+function arrivalPollDue(item: FlightCard, now: Date) {
+  const watch = readFlightWatch(item.details);
+  const arrival = instant(watch.estimated_in) || instant(item.end_at);
+  const checked = instant(watch.checked_at);
+  if (arrival == null) return checked == null;
+  const target = arrival + ARRIVAL_LAG_MS;
+  if (checked == null || checked < target) return now.getTime() >= target;
+  if (checked >= target + ARRIVAL_BACKUP_MS) return false;
+  return now.getTime() >= checked + ARRIVAL_BACKUP_MS;
 }
 
 export function inAeroWindow(startAt: string | null, now: Date) {
@@ -228,14 +301,41 @@ export function inAeroWindow(startAt: string | null, now: Date) {
 }
 
 export function pollDue(item: FlightCard, now: Date) {
-  if (!inAeroWindow(item.start_at, now)) return false;
   const watch = readFlightWatch(item.details);
   if (watch.status === "landed" && watch.notified_arrival) return false;
   if (watch.status === "cancelled" && watch.notified_cancel) return false;
-  if (!watch.checked_at) return true;
-  const checked = Date.parse(watch.checked_at);
-  if (!Number.isFinite(checked)) return true;
-  return now.getTime() - checked >= pollIntervalMs(item.start_at, now);
+  if (!inAeroWindow(item.start_at, now)) return false;
+  if (watch.status === "landed") {
+    const checked = instant(watch.checked_at);
+    return checked == null || now.getTime() - checked >= TEN_MIN_MS;
+  }
+  if (hasTakenOff(item)) return arrivalPollDue(item, now);
+  const checked = instant(watch.checked_at);
+  if (checked == null) return true;
+  return now.getTime() - checked >= groundIntervalMs(item, now);
+}
+
+function pollTier(item: FlightCard, now: Date) {
+  if (hasTakenOff(item)) return 1;
+  const departure = departureInstant(item);
+  if (departure != null && departure - now.getTime() <= 3 * HOUR_MS) return 0;
+  return 2;
+}
+
+/** Au plus huit vols par passage, départs les plus proches d’abord. */
+export function capDueGroups<T extends FlightCard>(groups: [string, T[]][], now: Date, cap = FLIGHT_POLL_CAP) {
+  const ranked = groups.map((group) => {
+    let tier = 2;
+    let soonest = Number.POSITIVE_INFINITY;
+    for (const item of group[1]) {
+      tier = Math.min(tier, pollTier(item, now));
+      const departure = departureInstant(item);
+      if (departure != null && departure < soonest) soonest = departure;
+    }
+    return { group, tier, soonest };
+  });
+  ranked.sort((left, right) => left.tier - right.tier || left.soonest - right.soonest);
+  return ranked.slice(0, cap).map((row) => row.group);
 }
 
 export function checkinOpensAt(details: Record<string, unknown> | null | undefined, startAt: string | null) {
@@ -364,6 +464,8 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
   const departureUtc = flight.estimatedOut || flight.scheduledOut;
   const localOut = airportLocalIso(departureUtc, flight.originTimezone);
   const scheduledLocal = airportLocalIso(flight.scheduledOut, flight.originTimezone);
+  const actualOutLocal = airportLocalIso(flight.actualOut, flight.originTimezone);
+  const actualOffLocal = airportLocalIso(flight.actualOff, flight.originTimezone);
   const delayMs = Math.max(0, (flight.departureDelay || 0) * 1000);
   const status = watchStatus(flight, delayMs);
   const sold_out = previous.sold_out || item.start_at || "";
@@ -373,22 +475,31 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
   let end_at = item.end_at;
   const arrivalUtc = flight.estimatedIn || flight.scheduledIn;
   const localIn = airportLocalIso(arrivalUtc, flight.destinationTimezone);
+  const scheduledInLocal = airportLocalIso(flight.scheduledIn, flight.destinationTimezone);
+  const estimatedInLocal = airportLocalIso(flight.estimatedIn, flight.destinationTimezone);
+  const actualInLocal = airportLocalIso(flight.actualIn, flight.destinationTimezone);
   if (localIn && (!end_at || shifted(end_at, localIn))) end_at = localIn;
 
+  const flight_watch: FlightWatch = {
+    ...previous,
+    status,
+    phrase: flight.status,
+    fa_flight_id: flight.faFlightId,
+    sold_out,
+    scheduled_out: scheduledLocal || previous.scheduled_out,
+    estimated_out: localOut || "",
+    scheduled_in: scheduledInLocal || previous.scheduled_in,
+    estimated_in: estimatedInLocal || previous.estimated_in,
+    actual_out: actualOutLocal || previous.actual_out,
+    actual_off: actualOffLocal || previous.actual_off,
+    actual_in: actualInLocal || previous.actual_in,
+    gate: flight.gateOrigin || previous.gate,
+    terminal: flight.terminalOrigin || previous.terminal,
+    checked_at,
+  };
   const details: Record<string, unknown> = {
     ...item.details,
-    flight_watch: {
-      ...previous,
-      status,
-      phrase: flight.status,
-      fa_flight_id: flight.faFlightId,
-      sold_out,
-      scheduled_out: scheduledLocal || previous.scheduled_out,
-      estimated_out: localOut || "",
-      gate: flight.gateOrigin || previous.gate,
-      terminal: flight.terminalOrigin || previous.terminal,
-      checked_at,
-    },
+    flight_watch,
   };
   if (!detail(item.details, "gate") && flight.gateOrigin) details.gate = flight.gateOrigin;
   if (!detail(item.details, "terminal") && flight.terminalOrigin) details.terminal = flight.terminalOrigin;
@@ -397,6 +508,11 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
     start_at !== item.start_at ||
     end_at !== item.end_at ||
     status !== previous.status ||
+    flight_watch.scheduled_in !== previous.scheduled_in ||
+    flight_watch.estimated_in !== previous.estimated_in ||
+    flight_watch.actual_out !== previous.actual_out ||
+    flight_watch.actual_off !== previous.actual_off ||
+    flight_watch.actual_in !== previous.actual_in ||
     (flight.gateOrigin && flight.gateOrigin !== previous.gate) ||
     !previous.checked_at ||
     flight.status !== previous.phrase;
@@ -487,8 +603,10 @@ export function parseAeroFlights(payload: unknown): AeroFlight[] {
       scheduledOut: text(flight.scheduled_out) || null,
       estimatedOut: text(flight.estimated_out) || null,
       actualOut: text(flight.actual_out) || null,
+      actualOff: text(flight.actual_off) || null,
       scheduledIn: text(flight.scheduled_in) || null,
       estimatedIn: text(flight.estimated_in) || null,
+      actualIn: text(flight.actual_in) || null,
       departureDelay: typeof flight.departure_delay === "number" ? flight.departure_delay : null,
       originIata: airport(flight.origin, "code_iata"),
       destinationIata: airport(flight.destination, "code_iata"),
