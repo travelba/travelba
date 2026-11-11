@@ -9,6 +9,7 @@ import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import type { ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
+import { buildLiveFlight } from "@/lib/crm/next-flight-model";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
@@ -75,6 +76,9 @@ export default async function ExampleHomePage() {
     ? itemCalendarHref(`${EXAMPLE_BASE}/reservations/${nextTrip.reference}/agenda.ics`, homeFlight.itemId)
     : "";
   const calendarHref = chosenCalendarHref(httpsHref, { google: googleHref }, headerList.get("user-agent") || "");
+  // Heure de la requête : le premier rendu correspond, puis le navigateur avance chaque seconde.
+  // eslint-disable-next-line react-hooks/purity -- horodatage de la requête pour le compte à rebours
+  const openedAt = Date.now();
 
   return (
     <AccountPage>
@@ -166,14 +170,12 @@ export default async function ExampleHomePage() {
         </BookingHero>
       </article>
 
-      {homeFlight ? (
+      {homeFlight && flightItem ? (
         <BoardingPass
-          pass={homeFlight}
+          live={buildLiveFlight(flightItem)}
+          nowMs={openedAt}
           calendarHref={calendarHref}
           googleHref={googleHref}
-          terminal="2E"
-          gate="K42"
-          statusLabel="Cartes d’embarquement prêtes"
           boarding={{ cards: examplePasses }}
         />
       ) : null}

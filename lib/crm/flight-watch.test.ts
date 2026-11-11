@@ -49,6 +49,7 @@ function aero(partial: Partial<AeroFlight> = {}): AeroFlight {
     actualOut: null,
     scheduledIn: "2026-09-29T14:30:00Z",
     estimatedIn: "2026-09-29T14:30:00Z",
+    actualIn: null,
     departureDelay: 0,
     originIata: "CDG",
     destinationIata: "RAK",

@@ -62,6 +62,12 @@ export type FlightWatch = {
   sold_out: string;
   scheduled_out: string;
   estimated_out: string;
+  /** Heure locale d’arrivée prévue, quand AeroAPI l’a donnée. */
+  scheduled_in: string;
+  estimated_in: string;
+  /** Heure locale réelle, seulement si AeroAPI l’a donnée. */
+  actual_out: string;
+  actual_in: string;
   gate: string;
   terminal: string;
   checked_at: string;
@@ -85,6 +91,7 @@ export type AeroFlight = {
   actualOut: string | null;
   scheduledIn: string | null;
   estimatedIn: string | null;
+  actualIn: string | null;
   departureDelay: number | null;
   originIata: string;
   destinationIata: string;
@@ -140,6 +147,10 @@ export function readFlightWatch(details: Record<string, unknown> | null | undefi
     sold_out: text("sold_out"),
     scheduled_out: text("scheduled_out"),
     estimated_out: text("estimated_out"),
+    scheduled_in: text("scheduled_in"),
+    estimated_in: text("estimated_in"),
+    actual_out: text("actual_out"),
+    actual_in: text("actual_in"),
     gate: text("gate"),
     terminal: text("terminal"),
     checked_at: text("checked_at"),
@@ -364,6 +375,7 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
   const departureUtc = flight.estimatedOut || flight.scheduledOut;
   const localOut = airportLocalIso(departureUtc, flight.originTimezone);
   const scheduledLocal = airportLocalIso(flight.scheduledOut, flight.originTimezone);
+  const actualOutLocal = airportLocalIso(flight.actualOut, flight.originTimezone);
   const delayMs = Math.max(0, (flight.departureDelay || 0) * 1000);
   const status = watchStatus(flight, delayMs);
   const sold_out = previous.sold_out || item.start_at || "";
@@ -373,22 +385,30 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
   let end_at = item.end_at;
   const arrivalUtc = flight.estimatedIn || flight.scheduledIn;
   const localIn = airportLocalIso(arrivalUtc, flight.destinationTimezone);
+  const scheduledInLocal = airportLocalIso(flight.scheduledIn, flight.destinationTimezone);
+  const estimatedInLocal = airportLocalIso(flight.estimatedIn, flight.destinationTimezone);
+  const actualInLocal = airportLocalIso(flight.actualIn, flight.destinationTimezone);
   if (localIn && (!end_at || shifted(end_at, localIn))) end_at = localIn;
 
+  const flight_watch: FlightWatch = {
+    ...previous,
+    status,
+    phrase: flight.status,
+    fa_flight_id: flight.faFlightId,
+    sold_out,
+    scheduled_out: scheduledLocal || previous.scheduled_out,
+    estimated_out: localOut || "",
+    scheduled_in: scheduledInLocal || previous.scheduled_in,
+    estimated_in: estimatedInLocal || previous.estimated_in,
+    actual_out: actualOutLocal || previous.actual_out,
+    actual_in: actualInLocal || previous.actual_in,
+    gate: flight.gateOrigin || previous.gate,
+    terminal: flight.terminalOrigin || previous.terminal,
+    checked_at,
+  };
   const details: Record<string, unknown> = {
     ...item.details,
-    flight_watch: {
-      ...previous,
-      status,
-      phrase: flight.status,
-      fa_flight_id: flight.faFlightId,
-      sold_out,
-      scheduled_out: scheduledLocal || previous.scheduled_out,
-      estimated_out: localOut || "",
-      gate: flight.gateOrigin || previous.gate,
-      terminal: flight.terminalOrigin || previous.terminal,
-      checked_at,
-    },
+    flight_watch,
   };
   if (!detail(item.details, "gate") && flight.gateOrigin) details.gate = flight.gateOrigin;
   if (!detail(item.details, "terminal") && flight.terminalOrigin) details.terminal = flight.terminalOrigin;
@@ -397,6 +417,10 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
     start_at !== item.start_at ||
     end_at !== item.end_at ||
     status !== previous.status ||
+    flight_watch.scheduled_in !== previous.scheduled_in ||
+    flight_watch.estimated_in !== previous.estimated_in ||
+    flight_watch.actual_out !== previous.actual_out ||
+    flight_watch.actual_in !== previous.actual_in ||
     (flight.gateOrigin && flight.gateOrigin !== previous.gate) ||
     !previous.checked_at ||
     flight.status !== previous.phrase;
@@ -489,6 +513,7 @@ export function parseAeroFlights(payload: unknown): AeroFlight[] {
       actualOut: text(flight.actual_out) || null,
       scheduledIn: text(flight.scheduled_in) || null,
       estimatedIn: text(flight.estimated_in) || null,
+      actualIn: text(flight.actual_in) || null,
       departureDelay: typeof flight.departure_delay === "number" ? flight.departure_delay : null,
       originIata: airport(flight.origin, "code_iata"),
       destinationIata: airport(flight.destination, "code_iata"),
