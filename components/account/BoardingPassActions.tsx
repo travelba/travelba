@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
 import { Icon } from "@/components/crm/icons";
 import {
   clientBoardingView,
@@ -185,23 +186,29 @@ function BoardingSheet({
             <p className="text-sm text-muted">Aucune carte d’embarquement à ouvrir.</p>
           ) : null}
           {cards.map((card) => (
-            <a
-              key={card.key}
-              href={card.href}
-              target={card.href.startsWith("/api/") ? "_blank" : undefined}
-              rel={card.href.startsWith("/api/") ? "noopener noreferrer" : undefined}
-              className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] px-4 py-3"
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-semibold text-[var(--admin-navy)]">
-                  {card.firstName || "Carte d’embarquement"}
+            <div key={card.key} className="space-y-2 rounded-2xl border border-[#e5e3dc] px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-[var(--admin-navy)]">
+                    {card.firstName || "Carte d’embarquement"}
+                  </span>
+                  <span className="block truncate text-xs text-muted">
+                    {[card.flight, card.seat ? `Siège ${card.seat}` : "", card.route].filter(Boolean).join(" · ")}
+                  </span>
                 </span>
-                <span className="block truncate text-xs text-muted">
-                  {[card.flight, card.seat ? `Siège ${card.seat}` : "", card.route].filter(Boolean).join(" · ")}
-                </span>
-              </span>
-              <span className="shrink-0 text-sm font-semibold text-[var(--admin-navy)]">Ouvrir</span>
-            </a>
+                {card.href ? (
+                  <a
+                    href={card.href}
+                    target={card.href.startsWith("/api/") ? "_blank" : undefined}
+                    rel={card.href.startsWith("/api/") ? "noopener noreferrer" : undefined}
+                    className="shrink-0 text-sm font-semibold text-[var(--admin-navy)]"
+                  >
+                    Ouvrir
+                  </a>
+                ) : null}
+              </div>
+              {card.walletHref ? <AddToAppleWallet href={card.walletHref} /> : null}
+            </div>
           ))}
           {full.map((file) => (
             <a

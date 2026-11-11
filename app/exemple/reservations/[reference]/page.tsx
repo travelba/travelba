@@ -59,6 +59,7 @@ const exampleStayPasses: ClientBoardingCard[] = [
     gate: "K42",
     itemId: "exemple-vol-aller",
     href: "about:blank",
+    walletHref: "#apple-wallet",
   },
   {
     key: "ines",
@@ -73,6 +74,7 @@ const exampleStayPasses: ClientBoardingCard[] = [
     gate: "K42",
     itemId: "exemple-vol-aller",
     href: "about:blank",
+    walletHref: "#apple-wallet",
   },
 ];
 

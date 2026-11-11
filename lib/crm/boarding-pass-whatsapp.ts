@@ -209,6 +209,31 @@ export function boardingPassContentDisposition(filename: string) {
   return `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
 }
 
+export function walletPassDownloadHeaders(filename = "passe.pkpass"): Record<string, string> {
+  const safe = filename.toLowerCase().endsWith(".pkpass") ? filename : "passe.pkpass";
+  return {
+    "Content-Type": "application/vnd.apple.pkpass",
+    "Content-Disposition": boardingPassContentDisposition(safe),
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+  };
+}
+
+export function walletPassPublicUrl(signedPath: string | null) {
+  if (!signedPath || !/^[^/]+\.[^/]+\.[^/]+\/passe\.pkpass$/.test(signedPath)) return null;
+  return `${siteConfig.url}/api/whatsapp/cartes/${signedPath}`;
+}
+
+/** Phrase envoyée avec le PDF quand un .pkpass existe pour ce passager. */
+export function walletPassNotice(firstName: string, url: string | null) {
+  if (!url || !url.startsWith(`${siteConfig.url}/api/whatsapp/cartes/`) || !url.endsWith("/passe.pkpass")) return null;
+  const name = cleanTemplateValue(firstName, 40);
+  const who = name ? `de ${name} ` : "";
+  const text = `Ajoutez la carte d’embarquement ${who}à Apple Wallet : ${url}`;
+  if (text.length > 500 || text.includes("{{")) return null;
+  return text;
+}
+
 export function boardingPassDownloadHeaders(
   filename: string,
   disposition: "attachment" | "inline" = "attachment"

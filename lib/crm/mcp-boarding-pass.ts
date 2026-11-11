@@ -26,6 +26,9 @@ import {
   suggestBoardingPass,
 } from "./boarding-pass-whatsapp";
 import { boardingPassSignedPath } from "./boarding-pass-link";
+import { deliverWalletNotice } from "./wallet-pass-notify";
+import { findWalletDocumentId } from "./pkpass";
+import { queryWithOptionalColumn } from "./optional-column";
 import { McpWriteError } from "./mcp-write";
 import { resolveContentSid, whatsappContentApproved } from "./twilio-content-sid";
 import type { CrmBookingItem } from "./types";
@@ -198,6 +201,17 @@ export async function notifyBoardingPass(
 
   const send = deps?.send ?? sendContentTemplate;
   const phone = typeof customer.phone === "string" ? customer.phone : null;
+  const walletRows = await queryWithOptionalColumn(
+    (columns) => db.from("crm_booking_documents").select(columns).eq("booking_id", bookingId),
+    "id, file_name, mime_type",
+    "extracted"
+  ).catch(() => ({ data: [], error: null }));
+  const walletDocs = (walletRows.error ? [] : walletRows.data || []) as unknown as {
+    id: string;
+    file_name?: string | null;
+    mime_type?: string | null;
+    extracted?: unknown;
+  }[];
   const storedName = typeof doc.file_name === "string" ? doc.file_name : null;
   for (const passenger of pending) {
     const key = boardingPassSendKey(documentId, passenger.page, passengers.length);
@@ -263,6 +277,15 @@ export async function notifyBoardingPass(
       .update({ status: "sent", twilio_sid: result.sid, error: null })
       .eq("id", messageId);
     outcomes.set(passenger.page, "envoye");
+    const walletId = findWalletDocumentId(walletDocs, passenger);
+    if (walletId) {
+      await deliverWalletNotice({
+        phone,
+        firstName: passenger.firstName,
+        documentId: walletId,
+        send,
+      });
+    }
     const noted = boardingPassJournal({
       names: [passenger.firstName],
       flight: passenger.flight,

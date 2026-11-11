@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import { greetingGivenName } from "@/lib/crm/identity";
+import { isWalletPassName } from "@/lib/crm/pkpass";
 import {
   boardingPassChannelBlock,
   boardingPassFields,
@@ -148,6 +149,9 @@ export function BoardingPassSend({
             {readyCards.length > 1
               ? "WhatsApp joint un seul PDF par message. Chaque carte part à part, avec le nom du voyageur."
               : "Le PDF est joint au message, pas seulement un lien."}
+            {documents.some((doc) => isWalletPassName(doc.file_name, doc.mime_type))
+              ? " Si un passe Apple Wallet correspond au passager, son lien part avec le message."
+              : ""}
           </p>
           {rows.length ? (
             rows.map((row) => {

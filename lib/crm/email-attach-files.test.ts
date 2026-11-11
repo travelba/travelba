@@ -34,6 +34,8 @@ describe("dépôt des pièces", () => {
       true
     );
     assert.equal(bookingDocumentKind("e-ticket.pdf", "application/pdf"), "pdf");
+    assert.equal(bookingDocumentKind("carte.pkpass", "application/vnd.apple.pkpass"), "carte d'embarquement");
+    assert.equal(bookingDocumentKind("carte.pkpass", "application/octet-stream"), "carte d'embarquement");
   });
 
   it("un mail sans pièce utile se classe sans rien ajouter", () => {

@@ -22,8 +22,9 @@ const DOSSIER_MIME = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "text/plain",
   "text/calendar",
+  "application/vnd.apple.pkpass",
 ]);
-const DOSSIER_EXT = /\.(pdf|jpe?g|png|webp|heic|heif|eml|docx|xlsx|txt|ics)$/i;
+const DOSSIER_EXT = /\.(pdf|jpe?g|png|webp|heic|heif|eml|docx|xlsx|txt|ics|pkpass)$/i;
 
 /** Type générique (navigateur muet) : l’extension décide, dans la liste de la politique seulement. */
 const GENERIC_MIME = new Set(["", "application/octet-stream", "binary/octet-stream"]);
@@ -36,7 +37,7 @@ const RULES: Record<UploadPolicy, { mime: Set<string>; ext: RegExp }> = {
 export const UPLOAD_TYPE_ERRORS: Record<UploadPolicy, string> = {
   identity: "Format non pris en charge : PDF, JPEG, PNG, WebP ou HEIC.",
   dossier:
-    "Format non pris en charge : PDF, image (JPEG, PNG, WebP, HEIC), e-mail (.eml), Word (.docx), Excel (.xlsx), texte (.txt) ou calendrier (.ics).",
+    "Format non pris en charge : PDF, image (JPEG, PNG, WebP, HEIC), e-mail (.eml), Word (.docx), Excel (.xlsx), texte (.txt), calendrier (.ics) ou passe Apple Wallet (.pkpass).",
 };
 export const UPLOAD_TYPE_ERROR = UPLOAD_TYPE_ERRORS.identity;
 export const UPLOAD_SIZE_ERROR = "Fichier trop lourd : 25 Mo maximum.";
@@ -49,8 +50,12 @@ export function isAllowedUploadType(
 ) {
   const rules = RULES[policy];
   const type = String(mime || "").split(";")[0].trim().toLowerCase();
+  const file = String(name || "");
+  if (policy === "dossier" && /\.pkpass$/i.test(file) && (GENERIC_MIME.has(type) || type === "application/zip")) {
+    return true;
+  }
   if (!GENERIC_MIME.has(type)) return rules.mime.has(type);
-  return rules.ext.test(String(name || ""));
+  return rules.ext.test(file);
 }
 
 export class UploadPolicyError extends Error {

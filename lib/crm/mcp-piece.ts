@@ -7,7 +7,9 @@ import { resolveNationality } from "@/lib/crm/countries";
 import { notifyFormalitiesReady, type FormalityAudience, type FormalityNotice, type FormalityRecipient } from "@/lib/crm/concierge-send";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { insertBookingDocument, placeWalletPass } from "@/lib/crm/booking-document-write";
 import { BOARDING_PASS_KIND, isBoardingPassFile } from "@/lib/crm/boarding-pass-whatsapp";
+import { isWalletPassName } from "@/lib/crm/pkpass";
 import { syncCheckinWithPasses } from "@/lib/crm/online-checkin-db";
 import {
   assertBookingForCustomer,
@@ -169,8 +171,12 @@ export function prepareTravelPiece(input: Record<string, unknown>): PreparedPiec
   const issuedOn = optionalText(input.delivrance, "Date de délivrance", 40);
   if (issuedOn && !isIsoDate(issuedOn)) throw new McpWriteError("Date de délivrance invalide (AAAA-MM-JJ).");
   const bytes = decodeUploadedBytes(input.contenu);
+  const docType = pieceType(input.type);
   try {
-    assertUpload({ size: bytes.length, type: mimeType, name: fileName });
+    assertUpload(
+      { size: bytes.length, type: mimeType, name: fileName },
+      docType === "carte_embarquement" ? "dossier" : "identity"
+    );
   } catch (err) {
     if (err instanceof UploadPolicyError) throw new McpWriteError(err.message);
     throw err;
@@ -180,7 +186,7 @@ export function prepareTravelPiece(input: Record<string, unknown>): PreparedPiec
     dossierId,
     reference,
     voyageurId,
-    docType: pieceType(input.type),
+    docType,
     issuingCountry: optionalText(input.pays, "Pays", 80),
     number: optionalText(input.numero, "Numéro", 40),
     expiresOn,
@@ -620,6 +626,13 @@ export async function addTravelPiece(
 
 const BOARDING_PASS_LABEL = "Carte d’embarquement";
 
+function boardingPassBytes(doc: { mime_type?: string | null; file_name?: string | null }) {
+  return (
+    isBoardingPassFile({ kind: BOARDING_PASS_KIND, mime_type: doc.mime_type, file_name: doc.file_name }) ||
+    isWalletPassName(doc.file_name, doc.mime_type)
+  );
+}
+
 function boardingPassQuiet(reference: string) {
   return {
     notifie: false,
@@ -637,24 +650,29 @@ async function storeBoardingPass(
   upload?: PieceUpload
 ) {
   if (!target.booking) throw new McpWriteError("La carte d’embarquement se dépose sur un dossier.");
-  if (!isBoardingPassFile({ kind: BOARDING_PASS_KIND, mime_type: draft.mimeType, file_name: draft.fileName })) {
-    throw new McpWriteError("La carte d’embarquement doit être un PDF.");
+  const wallet = await placeWalletPass(
+    db,
+    target.booking.id,
+    { name: draft.fileName, type: draft.mimeType, bytes: draft.bytes },
+    null
+  );
+  if (!wallet && !isBoardingPassFile({ kind: BOARDING_PASS_KIND, mime_type: draft.mimeType, file_name: draft.fileName })) {
+    throw new McpWriteError("La carte d’embarquement doit être un PDF ou un passe Apple Wallet (.pkpass).");
   }
   await assertBookingForCustomer(db, target.customerId, target.booking.id);
   const path = `bookings/${target.booking.id}/${Date.now()}-${safeFileName(draft.fileName)}`;
-  await (upload ?? uploadCrmFile)(path, draft.bytes, draft.mimeType || "application/pdf");
-  const { data, error } = await db
-    .from("crm_booking_documents")
-    .insert({
-      booking_id: target.booking.id,
-      kind: BOARDING_PASS_KIND,
-      file_name: draft.fileName,
-      mime_type: draft.mimeType || "application/pdf",
-      storage_path: path,
-      visible_to_client: false,
-    })
-    .select("id, file_name")
-    .single();
+  const mime = wallet ? wallet.mime : draft.mimeType || "application/pdf";
+  await (upload ?? uploadCrmFile)(path, draft.bytes, mime);
+  const { data, error } = await insertBookingDocument(db, {
+    booking_id: target.booking.id,
+    booking_item_id: wallet?.itemId || null,
+    kind: BOARDING_PASS_KIND,
+    file_name: draft.fileName,
+    mime_type: mime,
+    storage_path: path,
+    visible_to_client: false,
+    ...(wallet ? { extracted: wallet.extracted } : {}),
+  });
   if (error) failDb(error, "Enregistrement impossible.");
   await syncCheckinWithPasses(db, target.booking.id, "bot");
   const quiet = boardingPassQuiet(target.booking.reference);
@@ -743,8 +761,8 @@ async function requalifyBookingPiece(db: SupabaseClient, doc: BookingPieceRow, t
     throw new McpWriteError("Cette pièce du dossier se requalifie en carte d’embarquement ou autre.");
   }
   const kind = type === "carte_embarquement" ? BOARDING_PASS_KIND : "other";
-  if (kind === BOARDING_PASS_KIND && !isBoardingPassFile({ kind, mime_type: doc.mime_type, file_name: doc.file_name })) {
-    throw new McpWriteError("La carte d’embarquement doit être un PDF.");
+  if (kind === BOARDING_PASS_KIND && !boardingPassBytes(doc)) {
+    throw new McpWriteError("La carte d’embarquement doit être un PDF ou un passe Apple Wallet (.pkpass).");
   }
   if (doc.kind !== kind) {
     const { error } = await db
@@ -761,8 +779,8 @@ async function requalifyBookingPiece(db: SupabaseClient, doc: BookingPieceRow, t
 async function moveTravelPieceToBoardingPass(db: SupabaseClient, doc: TravelPieceRow) {
   const bookingId = doc.booking_id || "";
   if (!doc.storage_path) throw new McpWriteError("La pièce n’a pas de fichier.");
-  if (!isBoardingPassFile({ kind: BOARDING_PASS_KIND, mime_type: doc.mime_type, file_name: doc.file_name })) {
-    throw new McpWriteError("La carte d’embarquement doit être un PDF.");
+  if (!boardingPassBytes(doc)) {
+    throw new McpWriteError("La carte d’embarquement doit être un PDF ou un passe Apple Wallet (.pkpass).");
   }
   const { error: insertError } = await db.from("crm_booking_documents").insert({
     id: doc.id,

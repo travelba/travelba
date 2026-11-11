@@ -48,6 +48,10 @@ test("pièces d’un dossier : en plus, e-mail, Word, Excel, texte, calendrier",
   // Type connu hors liste : refusé même avec une extension rassurante.
   assert.equal(isAllowedUploadType("text/html", "page.txt", "dossier"), false);
   assert.equal(isAllowedUploadType("application/zip", "archive.zip", "dossier"), false);
+  assert.equal(isAllowedUploadType("application/vnd.apple.pkpass", "AF7308.pkpass", "dossier"), true);
+  assert.equal(isAllowedUploadType("application/octet-stream", "AF7308.pkpass", "dossier"), true);
+  assert.equal(isAllowedUploadType("application/zip", "AF7308.pkpass", "dossier"), true);
+  assert.equal(isAllowedUploadType("application/vnd.apple.pkpass", "AF7308.pkpass"), false);
   assert.equal(isAllowedUploadType("application/msword", "lettre.doc", "dossier"), false);
 });
 

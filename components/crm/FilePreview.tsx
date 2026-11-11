@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
 import { fileDownloadHref, fileInlineHref, fileThumbHref } from "@/lib/crm/file-href";
 import { isPreviewImage, isPreviewPdf, type FilePreviewModel } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
@@ -110,6 +111,7 @@ export function FilePreviewTile({
           {file.label}
         </span>
       </button>
+      {file.walletHref ? <AddToAppleWallet href={file.walletHref} className="justify-center" /> : null}
       {onRemove ? (
         <ConfirmAction
           size="sm"

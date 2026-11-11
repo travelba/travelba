@@ -4,6 +4,7 @@ import { greetingGivenName } from "./identity";
 import { isBoardingPassDocument, passMatchesFlight } from "./online-checkin";
 import { flightGate, flightTerminal } from "./flight-watch";
 import type { BoardingPassPassenger } from "./boarding-pass-pdf";
+import { isWalletPassName, storedWalletPass } from "./pkpass";
 import type { CrmBookingItem } from "./types";
 
 export type ClientBoardingCard = {
@@ -21,6 +22,10 @@ export type ClientBoardingCard = {
   itemId: string | null;
   /** Lien déjà choisi (aperçu). Sinon l’espace client signe la page. */
   href?: string | null;
+  /** Passe Apple Wallet déjà signé par la compagnie. */
+  walletHref?: string | null;
+  /** Pas de PDF : seulement le passe. */
+  walletOnly?: boolean;
 };
 
 export type BoardingDocRef = {
@@ -57,6 +62,11 @@ export function clientBoardingHref(documentId: string, page: number | null) {
 }
 
 /** PDF entier, y compris quand il contient plusieurs passagers. */
+export function clientWalletHref(documentId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(documentId)) return null;
+  return `/api/mon-compte/cartes/${documentId}/passe.pkpass`;
+}
+
 export function clientBoardingFullHref(documentId: string) {
   const href = clientBoardingHref(documentId, null);
   return href ? `${href}?complet=1` : null;
@@ -235,16 +245,91 @@ export type ClientBoardingView = {
     route: string;
     when: string;
     seat: string;
-    href: string;
+    href: string | null;
+    walletHref: string | null;
   }[];
   full: { href: string; label: string }[];
 };
 
+function foldCard(value: string) {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function cardMatchesWallet(
+  card: ClientBoardingCard,
+  doc: BoardingDocRef,
+  extract: ReturnType<typeof storedWalletPass>,
+  flightId: string | null
+) {
+  if (card.walletOnly) return false;
+  if (card.itemId && flightId && card.itemId !== flightId) return false;
+  if (card.itemId && doc.booking_item_id && card.itemId !== doc.booking_item_id) return false;
+  const flight = foldCard(extract?.flight || "");
+  const cardFlight = foldCard(card.flight);
+  if (flight && cardFlight && flight !== cardFlight) return false;
+  const first = foldCard(extract?.firstName || "");
+  const cardFirst = foldCard(card.firstName);
+  if (first && cardFirst && first !== cardFirst) return false;
+  if (!first && !cardFirst && !flight && !cardFlight && !flightId && !card.itemId) return false;
+  return Boolean(first || cardFirst || flight || cardFlight || flightId || card.itemId);
+}
+
+/** Pose le bouton Apple Wallet sur la page du passager, ou ajoute une carte s’il n’y a pas de PDF. */
+export function withWalletPasses(
+  offer: ClientBoardingOffer,
+  docs: (BoardingDocRef & { mime_type?: string | null; extracted?: unknown })[],
+  flights: BoardingFlightRef[]
+): ClientBoardingOffer {
+  const cards = offer.cards.map((card) => ({ ...card }));
+  const visible = visibleFlights(flights);
+  for (const doc of docs) {
+    if (!isWalletPassName(doc.file_name, doc.mime_type) || !isBoardingPassDocument(doc)) continue;
+    const href = clientWalletHref(doc.id);
+    if (!href) continue;
+    const extract = storedWalletPass(doc.extracted);
+    const linked = doc.booking_item_id ? visible.find((flight) => flight.id === doc.booking_item_id) || null : null;
+    const byNumber = extract?.flight
+      ? visible.filter((flight) => foldCard(flightNumber(asItem(flight))) === foldCard(extract.flight || ""))
+      : [];
+    const flight = linked || (byNumber.length === 1 ? byNumber[0] : null);
+    const hits = cards.filter((card) => cardMatchesWallet(card, doc, extract, flight?.id || null));
+    if (hits.length === 1) {
+      hits[0].walletHref = href;
+      continue;
+    }
+    if (hits.length > 1) continue;
+    const onlyName = extract?.firstName || extract?.passenger || "";
+    cards.push({
+      ...cardFrom(
+        doc,
+        flight,
+        {
+          firstName: onlyName,
+          lastName: extract?.lastName || "",
+          flight: extract?.flight || "",
+          route: extract?.route || "",
+          when: "",
+          seat: extract?.seat || "",
+          page: 1,
+        },
+        null
+      ),
+      seat: extract?.seat || "",
+      gate: extract?.gate || "",
+      route: extract?.route || "",
+      walletHref: href,
+      walletOnly: true,
+    });
+  }
+  return { cards, full: offer.full };
+}
+
 export function clientBoardingView(offer: ClientBoardingOffer): ClientBoardingView {
   return {
     cards: offer.cards.flatMap((card) => {
-      const href = card.href || clientBoardingHref(card.documentId, card.page);
-      if (!href) return [];
+      const href = card.walletOnly ? null : card.href || clientBoardingHref(card.documentId, card.page);
+      const walletHref = card.walletHref || null;
+      if (!href && !walletHref) return [];
       return [
         {
           key: card.key,
@@ -254,6 +339,7 @@ export function clientBoardingView(offer: ClientBoardingOffer): ClientBoardingVi
           when: card.when,
           seat: card.seat,
           href,
+          walletHref,
         },
       ];
     }),
