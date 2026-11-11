@@ -44,7 +44,7 @@
     },
     {
       "path": "/api/cron/flight-status",
-      "schedule": "8 * * * *"
+      "schedule": "5,15,25,35,45,55 * * * *"
     },
     {
       "path": "/api/cron/esta",

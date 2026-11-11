@@ -71,8 +71,9 @@ export const CRON_CADENCE: CronCadence[] = [
   },
   {
     path: "/api/cron/flight-status",
-    schedule: "8 * * * *",
-    reason: "Le suivi des vols reste horaire. La minute 8 ne coïncide plus avec l’ancienne salve des quarts d’heure.",
+    schedule: "5,15,25,35,45,55 * * * *",
+    reason:
+      "Le cron passe toutes les 10 minutes pour les départs proches. pollDue laisse les vols lointains à 12 h puis 4 h, et coupe la relecture rapprochée après le décollage. Décalé à la minute 5 pour ne pas tomber avec les autres.",
   },
   {
     path: "/api/cron/esta",

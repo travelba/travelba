@@ -107,6 +107,7 @@ export function BoardingPassActions({
   }, [open]);
 
   const home = variant === "home";
+  const buttonLabel = home ? "Carte d’embarquement" : OPEN_LABEL;
   const badgeNode = badge ? (
     <button
       type="button"
@@ -126,11 +127,11 @@ export function BoardingPassActions({
       onClick={openSheet}
       className={
         home
-          ? "inline-flex h-11 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C]"
+          ? "inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[#C5A880] px-3 text-[12px] font-semibold text-[#0B192C]"
           : "inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white"
       }
     >
-      {OPEN_LABEL}
+      {buttonLabel}
     </button>
   );
   const sheet = open ? (

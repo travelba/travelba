@@ -5,7 +5,8 @@ import { Icon } from "@/components/crm/icons";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import { loadClientCheckinStatus } from "@/lib/crm/client-boarding-pass-load";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
-import { boardingPassesReadyStatus, flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
+import { boardingPassesReadyStatus } from "@/lib/crm/flight-watch";
+import { buildLiveFlight } from "@/lib/crm/next-flight-model";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { getSessionUser } from "@/lib/crm/auth";
@@ -26,7 +27,7 @@ export function WeatherChipSkeleton() {
 }
 
 export function BoardingPassSkeleton() {
-  return <div className="h-[148px] animate-pulse rounded-2xl bg-[#0B192C]/10" aria-hidden />;
+  return <div className="h-56 animate-pulse rounded-3xl bg-[#0B192C]/10" aria-hidden />;
 }
 
 export async function HomeWeatherChip({
@@ -89,17 +90,16 @@ export async function HomeBoardingPass({ booking }: { booking: CrmBooking }) {
     phone,
     headerList.get("user-agent") || ""
   );
-  const statusLabel = flightItem
-    ? flightWatchBadge(flightItem, new Date(), checkin[homeFlight.itemId] || null)
-    : "";
+  if (!flightItem) return null;
+  // Heure de la requête : le premier rendu correspond, puis le navigateur avance chaque seconde.
+  // eslint-disable-next-line react-hooks/purity -- horodatage de la requête pour le compte à rebours
+  const openedAt = Date.now();
   return (
     <BoardingPass
-      pass={homeFlight}
+      live={buildLiveFlight(flightItem)}
+      nowMs={openedAt}
       calendarHref={calendarHref}
       googleHref={phone?.google}
-      terminal={flightItem ? flightTerminal(flightItem) : ""}
-      gate={flightItem ? flightGate(flightItem) : ""}
-      statusLabel={statusLabel}
       boarding={
         boardingPassesReadyStatus(checkin[homeFlight.itemId])
           ? { reference: booking.reference, itemIds: [homeFlight.itemId] }
