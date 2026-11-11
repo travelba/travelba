@@ -154,6 +154,7 @@ test("le suivi conserve l’arrivée prévue et l’heure réelle déjà reçues
     scheduledOut: "2026-09-29T12:00:00Z",
     estimatedOut: "2026-09-29T12:00:00Z",
     actualOut: "2026-09-29T12:10:00Z",
+    actualOff: null,
     scheduledIn: "2026-09-29T14:30:00Z",
     estimatedIn: "2026-09-29T14:45:00Z",
     actualIn: null,

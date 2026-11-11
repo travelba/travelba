@@ -14,6 +14,8 @@ import {
   parseAeroFlights,
   pendingFlightNotices,
   pollDue,
+  pollIntervalMs,
+  capDueGroups,
   reserveAeroBudget,
   welcomePlace,
   type AeroFlight,
@@ -47,6 +49,7 @@ function aero(partial: Partial<AeroFlight> = {}): AeroFlight {
     scheduledOut: "2026-09-29T12:00:00Z",
     estimatedOut: "2026-09-29T12:00:00Z",
     actualOut: null,
+    actualOff: null,
     scheduledIn: "2026-09-29T14:30:00Z",
     estimatedIn: "2026-09-29T14:30:00Z",
     actualIn: null,
@@ -301,3 +304,149 @@ test("la bienvenue vise la ville, sinon le pays", () => {
   assert.equal(welcomePlace({ country: "Israël" }), "en Israël");
   assert.equal(welcomePlace({}), null);
 });
+
+const TEN_MIN = 10 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
+
+test("à 3 h du départ la relecture passe à 10 minutes, au-delà elle reste à 4 h puis 12 h", () => {
+  assert.equal(pollIntervalMs("2026-09-29T13:00:00.000Z", NOW), TEN_MIN);
+  assert.equal(pollIntervalMs("2026-09-29T13:01:00.000Z", NOW), 4 * HOUR);
+  assert.equal(pollIntervalMs("2026-09-29T22:00:00.000Z", NOW), 4 * HOUR);
+  assert.equal(pollIntervalMs("2026-09-29T22:01:00.000Z", NOW), 12 * HOUR);
+
+  const recent = card({
+    start_at: "2026-09-29T13:00:00.000Z",
+    details: {
+      flight_number: "AF 1789",
+      from: "CDG",
+      to: "RAK",
+      flight_watch: { status: "scheduled", checked_at: "2026-09-29T09:51:00.000Z" },
+    },
+  });
+  assert.equal(pollDue(recent, NOW), false);
+  const due = card({
+    ...recent,
+    details: {
+      ...recent.details,
+      flight_watch: { status: "scheduled", checked_at: "2026-09-29T09:49:00.000Z" },
+    },
+  });
+  assert.equal(pollDue(due, NOW), true);
+});
+
+test("un retard au sol garde les 10 minutes tant que l’avion n’a pas décollé", () => {
+  const held = card({
+    start_at: "2026-09-29T09:00:00.000Z",
+    details: {
+      flight_number: "AF 1789",
+      from: "CDG",
+      to: "RAK",
+      flight_watch: {
+        status: "delayed",
+        scheduled_out: "2026-09-29T09:00:00.000Z",
+        estimated_out: "2026-09-29T11:00:00.000Z",
+        checked_at: "2026-09-29T09:49:00.000Z",
+      },
+    },
+  });
+  assert.equal(pollDue(held, NOW), true);
+  const fresh = card({
+    ...held,
+    details: {
+      ...held.details,
+      flight_watch: {
+        status: "delayed",
+        scheduled_out: "2026-09-29T09:00:00.000Z",
+        estimated_out: "2026-09-29T11:00:00.000Z",
+        checked_at: "2026-09-29T09:51:00.000Z",
+      },
+    },
+  });
+  assert.equal(pollDue(fresh, NOW), false);
+});
+
+test("en vol, pas de relecture avant l’arrivée estimée, puis une seule de secours", () => {
+  const airborne = card({
+    start_at: "2026-09-29T09:00:00.000Z",
+    end_at: "2026-09-29T12:00:00.000Z",
+    details: {
+      flight_number: "AF 1789",
+      from: "CDG",
+      to: "RAK",
+      flight_watch: {
+        status: "en_route",
+        actual_out: "2026-09-29T09:05:00.000Z",
+        estimated_in: "2026-09-29T12:00:00.000Z",
+        checked_at: "2026-09-29T09:50:00.000Z",
+      },
+    },
+  });
+  assert.equal(pollDue(airborne, NOW), false);
+  assert.equal(pollDue(airborne, new Date("2026-09-29T12:09:00.000Z")), false);
+  assert.equal(pollDue(airborne, new Date("2026-09-29T12:10:00.000Z")), true);
+
+  const afterArrival = card({
+    ...airborne,
+    details: {
+      ...airborne.details,
+      flight_watch: {
+        status: "en_route",
+        actual_out: "2026-09-29T09:05:00.000Z",
+        estimated_in: "2026-09-29T12:00:00.000Z",
+        checked_at: "2026-09-29T12:10:00.000Z",
+      },
+    },
+  });
+  assert.equal(pollDue(afterArrival, new Date("2026-09-29T12:20:00.000Z")), false);
+  assert.equal(pollDue(afterArrival, new Date("2026-09-29T13:10:00.000Z")), true);
+
+  const afterBackup = card({
+    ...airborne,
+    details: {
+      ...airborne.details,
+      flight_watch: {
+        status: "en_route",
+        actual_out: "2026-09-29T09:05:00.000Z",
+        estimated_in: "2026-09-29T12:00:00.000Z",
+        checked_at: "2026-09-29T13:10:00.000Z",
+      },
+    },
+  });
+  assert.equal(pollDue(afterBackup, new Date("2026-09-29T16:00:00.000Z")), false);
+});
+
+test("un vol atterri et déjà annoncé n’est plus relu", () => {
+  const landed = card({
+    start_at: "2026-09-29T08:00:00.000Z",
+    end_at: "2026-09-29T09:30:00.000Z",
+    details: {
+      flight_number: "AF 1789",
+      from: "CDG",
+      to: "RAK",
+      flight_watch: {
+        status: "landed",
+        notified_arrival: true,
+        actual_out: "2026-09-29T08:02:00.000Z",
+        estimated_in: "2026-09-29T09:30:00.000Z",
+        checked_at: "2026-09-29T09:40:00.000Z",
+      },
+    },
+  });
+  assert.equal(pollDue(landed, NOW), false);
+});
+
+test("un passage ne relit pas plus de huit vols, les plus proches d’abord", () => {
+  const groups = Array.from({ length: 9 }, (_, index) => {
+    const hours = 20 - index;
+    const item = card({
+      start_at: new Date(NOW.getTime() + hours * HOUR).toISOString(),
+      details: { flight_number: `AF ${1000 + index}`, from: "CDG", to: "NCE" },
+    });
+    return [`AF${1000 + index}`, [item]] as [string, FlightCard[]];
+  });
+  const kept = capDueGroups(groups, NOW);
+  assert.equal(kept.length, 8);
+  assert.equal(kept[0][0], "AF1008");
+  assert.equal(kept.some((group) => group[0] === "AF1000"), false);
+});
+
