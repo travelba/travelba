@@ -7,6 +7,7 @@ import {
   partitionTaxes,
   penaltyLines,
   pickPaymentType,
+  preferHotelImages,
   shownPrice,
   type PaymentType,
   type RgExt,
@@ -213,4 +214,134 @@ export async function hotelPage(input: SearchInput, hid: number, config: Ratehaw
 
 export function callFailed(call: EtgCall) {
   return call.httpStatus === 0 || call.httpStatus >= 400 || (call.error != null && call.status !== "ok");
+}
+
+/** Huit hôtels dans la liste. La fiche hôtel, elle, garde tous ses tarifs. */
+export const RATEHAWK_LIST_CAP = 8;
+export const RATEHAWK_PHOTO_CAP = 3;
+
+export type StoredHotelFacts = {
+  hid: number;
+  name?: string | null;
+  address?: string | null;
+  star_rating?: number | null;
+  images?: unknown;
+  images_ext?: unknown;
+  room_groups?: RoomGroupStatic[];
+};
+
+export type SearchRateView = {
+  hash: string;
+  chambre: string;
+  repas: string;
+  net: string;
+  vente: string | null;
+  devise: string;
+  remboursable: boolean;
+  annulation_gratuite_avant: string | null;
+  paiement: string;
+};
+
+export type SearchHotelView = {
+  nom: string;
+  hid: number;
+  etoiles: number | null;
+  adresse: string | null;
+  photos: string[];
+  tarifs: SearchRateView[];
+};
+
+export function presentHotels(
+  cards: HotelCard[],
+  stored: StoredHotelFacts[] = [],
+  hotelLimit = RATEHAWK_LIST_CAP
+): { hotels: SearchHotelView[]; tronque: boolean } {
+  const byHid = new Map(stored.map((row) => [row.hid, row]));
+  return {
+    tronque: cards.length > hotelLimit,
+    hotels: cards.slice(0, hotelLimit).map((card) => {
+      const facts = byHid.get(card.hid);
+      const fromStore = facts ? preferHotelImages(facts.images, facts.images_ext, RATEHAWK_PHOTO_CAP) : [];
+      const stars = facts?.star_rating;
+      const address = typeof facts?.address === "string" ? facts.address.trim() : "";
+      const storedName = typeof facts?.name === "string" ? facts.name.trim() : "";
+      return {
+        nom: storedName || card.name,
+        hid: card.hid,
+        etoiles: typeof stars === "number" && Number.isInteger(stars) && stars >= 0 && stars <= 5 ? stars : null,
+        adresse: address || null,
+        photos: fromStore.length ? fromStore : card.images.slice(0, RATEHAWK_PHOTO_CAP),
+        tarifs: card.rates.map((rate) => ({
+          hash: rate.book_hash,
+          chambre: rate.room_name,
+          repas: rate.meal_label,
+          net: rate.show_amount,
+          vente: rate.sell_amount,
+          devise: rate.show_currency_code,
+          remboursable: Boolean(rate.free_cancellation_before),
+          annulation_gratuite_avant: rate.free_cancellation_before,
+          paiement: rate.payment_type,
+        })),
+      };
+    }),
+  };
+}
+
+export type CompletionChoice = { kind: "region"; id: number; nom: string } | { kind: "hotel"; hid: number; nom: string };
+
+function foldName(value: string) {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+}
+
+function scoreName(needle: string, name: string) {
+  const folded = foldName(name);
+  if (!needle || !folded) return 0;
+  if (folded === needle) return 100;
+  if (folded.startsWith(needle)) return 70;
+  if (folded.includes(needle)) return 40;
+  return 0;
+}
+
+/** Ville d’abord. Un hôtel dont le nom ou le slug est exact passe devant une région approchante. */
+export function pickCompletion(query: string, data: unknown): CompletionChoice | null {
+  const root = asRecord(data);
+  const needle = foldName(query);
+  if (!needle) return null;
+  const numeric = /^\d+$/.test(query.trim()) ? Number(query.trim()) : null;
+  const scored: { score: number; choice: CompletionChoice }[] = [];
+  for (const region of Array.isArray(root?.regions) ? root.regions : []) {
+    const row = asRecord(region);
+    if (!row) continue;
+    const id = Number(row.id);
+    if (!Number.isInteger(id) || id < 1) continue;
+    const nom = String(row.name || "").trim();
+    let score = scoreName(needle, nom);
+    if (numeric != null && id === numeric) score = 120;
+    if (score > 0 && String(row.type || "").toLowerCase() === "city") score += 10;
+    if (score > 0) scored.push({ score, choice: { kind: "region", id, nom: nom || `Région ${id}` } });
+  }
+  for (const hotel of Array.isArray(root?.hotels) ? root.hotels : []) {
+    const row = asRecord(hotel);
+    if (!row) continue;
+    const hid = Number(row.hid);
+    if (!Number.isInteger(hid) || hid < 1) continue;
+    const nom = String(row.name || "").trim();
+    const slug = typeof row.id === "string" ? row.id.trim() : "";
+    let score = Math.max(scoreName(needle, nom), scoreName(needle, slug));
+    if (numeric != null && hid === numeric) score = 130;
+    if (score > 0) scored.push({ score, choice: { kind: "hotel", hid, nom: nom || slug || `Hôtel ${hid}` } });
+  }
+  scored.sort((left, right) => right.score - left.score);
+  return scored[0]?.choice ?? null;
+}
+
+export async function completeQuery(query: string, config: RatehawkConfig) {
+  const call = await etgPost(
+    "/api/b2b/v3/search/multicomplete/",
+    { query: query.trim().slice(0, 80), language: config.language },
+    10_000,
+    null,
+    config
+  );
+  return { call, choice: pickCompletion(query, call.data) };
 }
