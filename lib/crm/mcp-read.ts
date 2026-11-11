@@ -18,6 +18,7 @@ import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { clientCreditLines } from "@/lib/crm/unmatch-credit";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
+import { flightGate, flightTerminal } from "@/lib/crm/flight-watch";
 import { checkinMcpLine, type FlightCheckinView } from "@/lib/crm/online-checkin";
 import { loadCheckinContext, viewsFromContext } from "@/lib/crm/online-checkin-db";
 import { loadLedgerCountedStayAmounts } from "@/lib/crm/displayed-stay";
@@ -692,11 +693,15 @@ function cardLine(
     const from = typeof item.details?.from === "string" ? item.details.from : null;
     const to = typeof item.details?.to === "string" ? item.details.to : null;
     const line = checkin ? checkinMcpLine(checkin) : null;
+    const terminal = flightTerminal(full);
+    const gate = flightGate(full);
     return {
       carte_id: item.id,
       kind: "vol",
       titre: flightCities(full) || item.title,
       aeroports: flightIata(full) || null,
+      terminal: terminal || null,
+      porte: gate || null,
       debut: dossierFlightStamp(item.start_at, from, item.details?.departure_timezone),
       fin: dossierFlightStamp(item.end_at, to, item.details?.arrival_timezone),
       reference: item.confirmation_ref,

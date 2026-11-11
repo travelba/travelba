@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { formatDateFr } from "./dates";
-import { overrideBoardingPassengers, readBoardingPassPages } from "./boarding-pass-pdf";
+import { PDFDocument } from "pdf-lib";
+import { overrideBoardingPassengers, readBoardingPassPages, slicePdfPages } from "./boarding-pass-pdf";
 
 function transaviaPage(input: { seq: string; name: string; infant?: string; seat?: string }) {
   return [
@@ -97,4 +98,16 @@ test("les champs saisis ne complètent pas un trou", () => {
   assert.equal(group.passengers[1].lastName, "Martin");
   assert.equal(group.passengers[0].seat, "2F");
   assert.equal(overrideBoardingPassengers({}).provided, false);
+});
+
+test("le PDF servi ne garde que les pages du passager", async () => {
+  const src = await PDFDocument.create();
+  for (let index = 0; index < 4; index += 1) src.addPage([200, 200]);
+  const bytes = new Uint8Array(await src.save());
+  const sliced = await slicePdfPages(bytes, [2, 4]);
+  assert.ok(sliced);
+  const out = await PDFDocument.load(sliced);
+  assert.equal(out.getPageCount(), 2);
+  assert.equal(await slicePdfPages(bytes, [5]), null);
+  assert.equal(await slicePdfPages(bytes, []), null);
 });

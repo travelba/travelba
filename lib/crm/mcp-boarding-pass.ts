@@ -151,7 +151,9 @@ export async function notifyBoardingPass(
   });
   if (block) throw new McpWriteError(block);
 
-  const passengers = await passengersFor(db, input, doc, bookingId, deps);
+  const loaded = await passengersFor(db, input, doc, bookingId, deps);
+  const passengers = loaded.passengers;
+  const slicePages = loaded.slicePages;
   const { data: messageRows, error: messageError } = await db
     .from("crm_whatsapp_messages")
     .select("id, status, twilio_sid, dedupe_key, template_key, payload")
@@ -237,7 +239,12 @@ export async function notifyBoardingPass(
     }
     if (!messageId) throw new McpWriteError("Envoi impossible.");
 
-    const mediaPath = boardingPassSignedPath(documentId, filename);
+    const mediaPath = boardingPassSignedPath(
+      documentId,
+      filename,
+      Date.now(),
+      slicePages ? [passenger.page] : null
+    );
     const variables = mediaPath ? boardingPassContentVariables(mediaPath, named) : null;
     if (!variables) {
       await db.from("crm_whatsapp_messages").update({ status: "failed", error: "pdf" }).eq("id", messageId);
@@ -359,10 +366,10 @@ async function passengersFor(
   doc: { id: string; booking_item_id?: string | null; kind?: string | null; file_name?: string | null; mime_type?: string | null; storage_path?: string | null },
   bookingId: string,
   deps?: BoardingPassNotifyDeps
-) {
+): Promise<{ passengers: BoardingPassPassenger[]; slicePages: boolean }> {
   const pages = deps?.readPages ? await deps.readPages() : deps ? null : await storedPages(String(doc.storage_path || ""));
   const read = pages ? readBoardingPassPages(pages) : { recognized: false, passengers: [] as BoardingPassPassenger[] };
-  if (read.passengers.length) return read.passengers;
+  if (read.passengers.length) return { passengers: read.passengers, slicePages: true };
   if (!read.recognized) {
     const { data: itemRows } = await db.from("crm_booking_items").select(MCP_ITEM_COLUMNS).eq("booking_id", bookingId);
     const { data: travelerRows } = await db
@@ -382,9 +389,9 @@ async function passengersFor(
         travelers: (travelerRows || []) as { first_name?: string | null; last_name?: string | null }[],
       })
     );
-    if (suggested) return [{ ...suggested, page: 1 }];
+    if (suggested) return { passengers: [{ ...suggested, page: 1 }], slicePages: false };
   }
   const override = overrideBoardingPassengers(input);
   if (!override.passengers.length) throw new McpWriteError(BOARDING_PASS_MISSING);
-  return override.passengers;
+  return { passengers: override.passengers, slicePages: override.passengers.length > 1 };
 }

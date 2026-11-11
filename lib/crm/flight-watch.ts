@@ -263,7 +263,14 @@ export function checkinAttemptDue(item: FlightCard, now: Date, agencyCheckin = f
   return now.getTime() - attempt >= 24 * HOUR_MS;
 }
 
-export function flightWatchBadge(item: FlightCard, now: Date) {
+export const BOARDING_PASSES_READY_LABEL = "Cartes d’embarquement prêtes";
+
+/**
+ * Le suivi du vol (annulé, retard, en vol) reste prioritaire.
+ * Le statut CRM remplace ensuite la fenêtre compagnie : fait, cartes reçues ou envoyées
+ * ne redeviennent pas « Enregistrement ouvert ».
+ */
+export function flightWatchBadge(item: FlightCard, now: Date, checkinStatus?: string | null) {
   if (item.kind && item.kind !== "flight") return "";
   const watch = readFlightWatch(item.details);
   if (watch.status === "cancelled") return "Annulé";
@@ -272,7 +279,11 @@ export function flightWatchBadge(item: FlightCard, now: Date) {
   if (watch.status === "en_route") return "En vol";
   if (watch.status === "delayed") return "Retard";
   if (watch.sold_out && shifted(watch.sold_out, item.start_at)) return "Horaire modifié";
-  if (checkinOpen(item, now)) return "Enregistrement ouvert";
+  const status = (checkinStatus || "").trim();
+  if (status === "fait") return "Enregistré";
+  if (status === "cartes_recues" || status === "envoyees") return BOARDING_PASSES_READY_LABEL;
+  if (status === "en_cours") return "Enregistrement en cours";
+  if (status === "ouvert" || checkinOpen(item, now)) return "Enregistrement ouvert";
   return "";
 }
 

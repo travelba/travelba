@@ -368,7 +368,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), statut non_visible, visible ou annule (statut_libelle : Non visible, Visible, Annulé). Un dossier archivé a etat Archivée. Société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee), qui s’en occupe (en_charge, null = à prendre ; cree_par ; intervenants). Chaque vol porte enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), statut non_visible, visible ou annule (statut_libelle : Non visible, Visible, Annulé). Un dossier archivé a etat Archivée. Société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee), qui s’en occupe (en_charge, null = à prendre ; cree_par ; intervenants). Chaque vol porte terminal, porte et enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),

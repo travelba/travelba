@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
+import type { ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { AccountPage } from "@/components/account/AccountPage";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
@@ -43,6 +44,37 @@ import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { visaRequestShown } from "@/lib/crm/visa-flow";
+
+const exampleStayPasses: ClientBoardingCard[] = [
+  {
+    key: "camille",
+    documentId: "exemple",
+    page: 1,
+    firstName: "Camille",
+    flight: "EX 100",
+    route: "Paris → New York",
+    when: "13h50",
+    seat: "12A",
+    terminal: "2E",
+    gate: "K42",
+    itemId: "exemple-vol-aller",
+    href: "#",
+  },
+  {
+    key: "ines",
+    documentId: "exemple",
+    page: 2,
+    firstName: "Inès",
+    flight: "EX 100",
+    route: "Paris → New York",
+    when: "13h50",
+    seat: "12B",
+    terminal: "2E",
+    gate: "K42",
+    itemId: "exemple-vol-aller",
+    href: "#",
+  },
+];
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -169,6 +201,8 @@ export default async function ExampleReservationPage({ params }: Props) {
             whatsappHref: modifyHref,
           }}
           refusals={session.refusals}
+          checkinByItem={{ "exemple-vol-aller": "cartes_recues" }}
+          passes={exampleStayPasses}
         />
       }
       services={

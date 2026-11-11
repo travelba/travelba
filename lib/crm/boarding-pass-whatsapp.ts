@@ -209,10 +209,14 @@ export function boardingPassContentDisposition(filename: string) {
   return `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
 }
 
-export function boardingPassDownloadHeaders(filename: string): Record<string, string> {
+export function boardingPassDownloadHeaders(
+  filename: string,
+  disposition: "attachment" | "inline" = "attachment"
+): Record<string, string> {
+  const header = boardingPassContentDisposition(filename).replace(/^attachment/, disposition);
   return {
     "Content-Type": "application/pdf",
-    "Content-Disposition": boardingPassContentDisposition(filename),
+    "Content-Disposition": header,
     "Cache-Control": "private, no-store",
     "X-Content-Type-Options": "nosniff",
   };
