@@ -1,6 +1,7 @@
 import { applyStay, type DirectEffect, type DirectStay, type StayEvent } from "@/lib/crm/hotel-direct";
 import { runIfConfirmed } from "@/lib/crm/mcp-preview";
 import { McpWriteError } from "@/lib/crm/mcp-write";
+import { validateUserPhone } from "@/lib/crm/ratehawk/limits";
 import { visaResetPatch } from "@/lib/crm/visa-flow";
 import type { VisaCorridor } from "@/lib/crm/visa-fees";
 
@@ -188,6 +189,8 @@ export async function ratehawk(
     if (!text(input.devis) || !Number.isInteger(Number(input.hid)) || !DAY.test(text(input.arrivee)) || !DAY.test(text(input.depart))) {
       throw new McpWriteError("Réservation incomplète.");
     }
+    const phoneError = validateUserPhone(text(input.telephone));
+    if (phoneError) throw new McpWriteError(phoneError);
   }
   const preview = await (effects?.preview ?? liveRatePreview)(input);
   return runIfConfirmed(input, { action, envoye: false, envoie: false, ...preview }, async () => {
@@ -274,10 +277,33 @@ async function liveArrivalApply(input: { dossierId: string; reference: string; c
   return { dossier_id: booking.id, fin: last4, titulaire: card.holder };
 }
 
+/** Réponse d’un `prereserver` confirmé. `devis` se recopie tel quel dans `reserver`. */
+export function ratehawkPrebookAnswer(result: {
+  quote: string;
+  price: { increased: boolean; delta: number; percent: number; before: number; after: number };
+  rate: { show_currency_code: string };
+}) {
+  return {
+    devis: result.quote,
+    prix: result.price.after,
+    prix_depart: result.price.before,
+    prix_augmente: result.price.increased,
+    ecart: result.price.delta,
+    ecart_pourcent: result.price.percent,
+    devise: result.rate.show_currency_code,
+    reserve: false as const,
+  };
+}
+
 async function liveRatePreview(input: Record<string, unknown>) {
   const action = text(input.action);
   if (action === "prereserver") {
-    return { hid: Number(input.hid), prix: Number(input.prix), message: "La pré-réservation fige le tarif. La chambre n’est pas encore réservée." };
+    return {
+      hid: Number(input.hid),
+      prix: Number(input.prix),
+      reserve: false,
+      message: "La pré-réservation fige le tarif. La chambre n’est pas encore réservée. confirmer true renvoie devis, à recopier dans reserver.",
+    };
   }
   if (action === "annuler") {
     return { commande: text(input.commande), message: "La réservation Ratehawk sera annulée. Aucun message au client." };
@@ -305,7 +331,7 @@ async function liveRateApply(input: Record<string, unknown>) {
   if (action === "prereserver") {
     const result = await prebookRate(text(input.hash), Number(input.hid), Number(input.prix));
     if (!result.ok) throw new McpWriteError(result.error || "Tarif indisponible.");
-    return { prix: result.price ?? null, reserve: false };
+    return ratehawkPrebookAnswer(result);
   }
   if (action === "annuler") {
     const result = await cancelBooking(text(input.commande), undefined, undefined, { touchCrm: true });

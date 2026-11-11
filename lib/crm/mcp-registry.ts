@@ -2644,7 +2644,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Ratehawk. rechercher lit les disponibilités, sans écrire et sans confirmer : destination (multicomplete) ou region_id, ou hid, arrivee, depart, recherche (adultes, enfants), residence (fr par défaut). Huit hôtels, deux tarifs. fiche true : page d’un hid, tous les tarifs, hash h- pour prereserver. net = prix ETG, vente = prix agence. statut lit une commande. prereserver (hash h-, hid, prix) fige le tarif. reserver (devis, hid, hotel, arrivee, depart, chambres, recherche, telephone) réserve en deposit, sans numéro de carte. annuler (commande) annule. Sans confirmer, aperçu. confirmer true exécute. Aucun message au client.",
+      "Ratehawk. rechercher lit les disponibilités, sans écrire et sans confirmer : destination (multicomplete) ou region_id, ou hid, arrivee, depart, recherche (adultes, enfants), residence (fr par défaut). Huit hôtels, deux tarifs. fiche true : page d’un hid, tous les tarifs, hash h- pour prereserver. net = prix ETG, vente = prix agence. statut lit une commande. prereserver (hash h-, hid, prix) fige le tarif. confirmer true renvoie devis (jeton signé), prix (prix final), prix_depart, prix_augmente, ecart, ecart_pourcent et devise. Ce devis est l’argument devis de reserver. Si prix_augmente est vrai, reserver attend prix_accepte true. reserver (devis, hid, hotel, arrivee, depart, chambres, recherche, telephone) réserve en deposit, sans numéro de carte. telephone : 5 à 35 caractères, refusé dès l’aperçu, et encore à la réservation. annuler (commande) annule. Sans confirmer, aperçu. confirmer true exécute. Aucun message au client.",
     input: {
       action: z.enum(["statut", "rechercher", "prereserver", "reserver", "annuler"]),
       hash: z.string().trim().max(200).optional(),
@@ -2654,12 +2654,12 @@ export const MCP_TOOLS: ToolDef[] = [
       region_id: z.union([z.number(), z.string()]).optional().describe("Région ETG, à la place de destination"),
       fiche: z.boolean().optional().describe("true : tous les tarifs d’un seul hid, avec hash"),
       prix: z.union([z.number(), z.string()]).optional(),
-      devis: z.string().trim().max(4000).optional(),
+      devis: z.string().trim().max(4000).optional().describe("Jeton signé renvoyé par prereserver (champ devis) quand confirmer est vrai. À passer tel quel à reserver."),
       hotel: z.string().trim().max(200).optional(),
       arrivee: z.string().trim().max(20).optional(),
       depart: z.string().trim().max(20).optional(),
       residence: z.string().trim().max(8).optional().describe("Résidence du passeport, code pays. Défaut fr pour rechercher"),
-      telephone: z.string().trim().max(40).optional(),
+      telephone: z.string().trim().max(40).optional().describe("Téléphone ETG, 5 à 35 caractères. Absent ou hors limites : refus dès l’aperçu de reserver."),
       chambres: z.array(z.object({ voyageurs: z.array(z.object({ prenom: z.string().max(80), nom: z.string().max(80), enfant: z.boolean().optional(), age: z.number().optional() })).max(8) })).max(8).optional(),
       recherche: z.array(z.object({ adultes: z.number(), enfants: z.array(z.number()).max(6).optional() })).max(8).optional(),
       prix_accepte: z.boolean().optional(),
