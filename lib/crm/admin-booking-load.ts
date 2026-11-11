@@ -220,6 +220,7 @@ export async function loadAdminBookingCritical(input: {
     ficheCompanyRows: supabase.from("crm_billing_companies").select("*").eq("customer_id", b.customer_id).order("sort_order"),
     revealPassports: staffAllows(staff, "passport_reveal"),
     showMargins: staffAllows(staff, "view_margins"),
+    canEdit: staffAllows(staff, "edit_dossiers"),
     staffNames: loadStaffNames(createServiceClient(), [ownerRow.owner_staff_id, ownerRow.created_by_staff_id]),
     importTasks: supabase.from("crm_booking_tasks").select("id, kind, title").eq("booking_id", id).order("created_at"),
     checkins: supabase.from("crm_flight_checkins").select("booking_item_id, status, actor").eq("booking_id", id),
@@ -293,6 +294,9 @@ export async function loadAdminBookingCritical(input: {
     ownership: {
       owner: ownerRow.owner_staff_id ? first.staffNames.get(ownerRow.owner_staff_id) || "Collègue" : null,
       createdBy: ownerRow.created_by_staff_id ? first.staffNames.get(ownerRow.created_by_staff_id) || "Collègue" : null,
+      mine: (ownerRow.owner_staff_id ?? null) === staff.id,
+      canTake: first.canEdit,
+      meName: staff.full_name || "",
     },
     companions: (first.companions.data || []) as CrmCompanion[],
     customer,

@@ -193,10 +193,13 @@ function chain(answer: (calls: Call[]) => { data: unknown; error: { code?: strin
   return api;
 }
 
-function bookingRow(reference: string, id: string, companyId: string, total: number) {
+const STAFF_MARIE = "55555555-5555-4555-8555-555555555555";
+
+function bookingRow(reference: string, id: string, companyId: string, total: number, ownerId: string | null = null) {
   return {
     id,
     reference,
+    owner_staff_id: ownerId,
     title: reference,
     destination: null,
     status: reference === "TB-2026-0088" ? "draft" : "confirmed",
@@ -242,7 +245,7 @@ const AMOUNT_ITEMS = [
 
 function dossierClient(options: { fail?: "societe" | "cartes" | "montant" } = {}) {
   const bookings = [
-    bookingRow("TB-2026-0079", DOSSIER_79, SOCIETE_79, 3749.17),
+    bookingRow("TB-2026-0079", DOSSIER_79, SOCIETE_79, 3749.17, STAFF_MARIE),
     bookingRow("TB-2026-0082", DOSSIER_82, SOCIETE_82, 1971.96),
     bookingRow("TB-2026-0088", DOSSIER_88, SOCIETE_88, 52242.39),
   ];
@@ -299,6 +302,9 @@ function dossierClient(options: { fail?: "societe" | "cartes" | "montant" } = {}
         if (table === "crm_customers") {
           return { data: [{ id: CLIENT, first_name: "Camille", last_name: "Martin" }], error: null };
         }
+        if (table === "crm_staff") {
+          return { data: [{ id: STAFF_MARIE, full_name: "Marie Martin" }], error: null };
+        }
         if (table === "crm_booking_cards") {
           const bookingId = calls.find((call) => call.method === "eq" && call.args[0] === "booking_id")?.args[1];
           if (bookingId !== DOSSIER_88) return { data: [], error: null };
@@ -337,6 +343,7 @@ test("fiche et recherche montrent la société, les cartes et le même montant",
   assert.equal(fiche79.commission_agence, "10 %");
   assert.equal(fiche79.commission_source, "defaut");
   assert.equal(fiche79.commission_appliquee, false);
+  assert.equal(fiche79.en_charge, "Marie Martin");
 
   const fiche82 = await readFicheDossier({ reference: "TB-2026-0082" }, admin);
   assert.ok("cartes" in fiche82);
@@ -358,6 +365,8 @@ test("fiche et recherche montrent la société, les cartes et le même montant",
   const byRef = new Map(list.dossiers.map((row) => [row.reference, row]));
   assert.equal(byRef.get("TB-2026-0079")?.montant, fiche79.montant);
   assert.equal(byRef.get("TB-2026-0079")?.societe, "NILOS FRANCE");
+  assert.equal(byRef.get("TB-2026-0079")?.en_charge, "Marie Martin");
+  assert.equal(byRef.get("TB-2026-0082")?.en_charge, null);
   assert.equal(byRef.get("TB-2026-0082")?.montant, fiche82.montant);
   assert.equal(byRef.get("TB-2026-0082")?.societe, "RB&A");
   assert.equal(byRef.get("TB-2026-0088")?.societe, "ATELIER");

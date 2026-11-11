@@ -18,7 +18,7 @@ type People = {
 
 /**
  * Créé par, En charge, Intervenants : tout d’un coup d’œil, un bouton à la fois.
- * « Je prends ce dossier » pour soi ; « Attribuer à… » pour un administrateur.
+ * « Me mettre en charge » pour soi ; « Attribuer à… » pour un administrateur.
  */
 export function ResponsableForm({ bookingId }: { bookingId: string }) {
   const router = useRouter();
@@ -120,7 +120,7 @@ export function ResponsableForm({ bookingId }: { bookingId: string }) {
               onClick={() => void patch({ action: "prendre" })}
               className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
             >
-              Je prends ce dossier
+              Me mettre en charge
             </button>
           ) : null}
           {people.can_assign ? (

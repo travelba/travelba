@@ -4,6 +4,7 @@ export type AdminSearchBooking = {
   title: string;
   destination: string | null;
   archived_at?: string | null;
+  owner_staff_id?: string | null;
 };
 
 export type AdminSearchCustomer = {

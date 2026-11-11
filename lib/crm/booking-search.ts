@@ -22,6 +22,8 @@ export function bookingListSearchText(input: {
   routes?: string[] | null;
   layovers?: string[] | null;
   amount?: number | null;
+  /** Collègue en charge, ou « À prendre ». */
+  assignee?: string | null;
 }) {
   const places = input.places || [];
   const routes = input.routes || [];
@@ -36,6 +38,7 @@ export function bookingListSearchText(input: {
     input.destination,
     listStayTitle(input.title, input.destination, places, routes, input.layovers),
     input.customer,
+    input.assignee,
     input.company,
     input.email,
     phone,

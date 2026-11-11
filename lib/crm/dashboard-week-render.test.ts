@@ -51,6 +51,7 @@ test("la semaine montre les trois groupes, le retour et le départ pas encore vi
       names: new Map([["client-1", "Camille Martin"]]),
       places: { arrival: {}, route: {} },
       amounts: new Map([["soon", 1500]]),
+      owners: { back: "Marie Martin" },
     })
   );
   assert.match(html, /En voyage/);
@@ -62,6 +63,10 @@ test("la semaine montre les trois groupes, le retour et le départ pas encore vi
   assert.match(html, /Non visible/);
   assert.match(html, /border-l-\[var\(--admin-gold\)\]/);
   assert.match(html, /Camille Martin/);
+  assert.match(html, /Marie/);
+  assert.match(html, /MM/);
+  assert.match(html, /En charge : Marie Martin/);
+  assert.match(html, /À prendre/);
   assert.match(html, /Tout voir/);
   assert.match(html, /Aucun\./);
 });

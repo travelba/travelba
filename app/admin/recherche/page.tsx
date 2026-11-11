@@ -5,8 +5,11 @@ import { rankAdminSearch, type AdminSearchBooking, type AdminSearchCustomer } fr
 import { listStayTitle } from "@/lib/crm/carnet";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { AdminSearchField } from "@/components/admin/AdminSearchField";
+import { OwnerBadge } from "@/components/admin/OwnerBadge";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
+import { ownerLabelsFor } from "@/lib/crm/dossier-responsables";
 import { customerFullName } from "@/lib/crm/types";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 function pattern(value: string) {
   return `%${value.replace(/[%_]/g, "").trim()}%`;
@@ -36,7 +39,7 @@ export default async function AdminSearchPage({
   const referenceQuery = /^tb-/i.test(query);
   const [references, confirmations, hotelTitles, hotelDetails, firstNames, lastNames] = await Promise.all([
     referenceQuery
-      ? supabase.from("crm_bookings").select("id, reference, title, destination, archived_at").ilike("reference", needle).limit(8)
+      ? supabase.from("crm_bookings").select("id, reference, title, destination, archived_at, owner_staff_id").ilike("reference", needle).limit(8)
       : Promise.resolve({ data: [] as AdminSearchBooking[] }),
     supabase.from("crm_booking_items").select("booking_id").ilike("confirmation_ref", needle).limit(12),
     supabase.from("crm_booking_items").select("booking_id").eq("kind", "hotel").ilike("title", needle).limit(12),
@@ -61,7 +64,7 @@ export default async function AdminSearchPage({
   ].map((row) => row.booking_id);
   const uniqueIds = [...new Set(bookingIds)];
   const { data: linked } = uniqueIds.length
-    ? await supabase.from("crm_bookings").select("id, reference, title, destination, archived_at").in("id", uniqueIds)
+    ? await supabase.from("crm_bookings").select("id, reference, title, destination, archived_at, owner_staff_id").in("id", uniqueIds)
     : { data: [] as AdminSearchBooking[] };
   const byId = new Map(((linked || []) as AdminSearchBooking[]).map((row) => [row.id, row]));
   const bookingsFor = (rows: { booking_id: string }[] | null) =>
@@ -83,10 +86,13 @@ export default async function AdminSearchPage({
     customers: [...customers.values()],
   });
   if (hit.href) redirect(hit.href);
-  const routes = await loadStayMaps(
-    supabase,
-    hit.bookings.map((booking) => booking.id)
-  );
+  const [routes, owners] = await Promise.all([
+    loadStayMaps(
+      supabase,
+      hit.bookings.map((booking) => booking.id)
+    ),
+    ownerLabelsFor(createServiceClient(), hit.bookings),
+  ]);
 
   return (
     <div>
@@ -100,9 +106,12 @@ export default async function AdminSearchPage({
             <ul className="divide-y divide-border text-sm">
               {hit.bookings.map((booking) => (
                 <li key={booking.id}>
-                  <Link href={`/admin/reservations/${booking.id}`} className="block px-5 py-3 font-semibold text-[var(--admin-navy)]">
-                    {booking.reference} · {listStayTitle(booking.title, booking.destination, routes.arrival[booking.id], routes.route[booking.id], routes.layovers[booking.id])}
-                    {booking.archived_at ? " · Archivée" : ""}
+                  <Link href={`/admin/reservations/${booking.id}`} className="flex items-center justify-between gap-3 px-5 py-3 font-semibold text-[var(--admin-navy)]">
+                    <span className="min-w-0">
+                      {booking.reference} · {listStayTitle(booking.title, booking.destination, routes.arrival[booking.id], routes.route[booking.id], routes.layovers[booking.id])}
+                      {booking.archived_at ? " · Archivée" : ""}
+                    </span>
+                    <OwnerBadge name={owners[booking.id]} className="shrink-0" />
                   </Link>
                 </li>
               ))}

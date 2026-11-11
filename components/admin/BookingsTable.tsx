@@ -28,8 +28,8 @@ export type BookingsListFilters = {
   etat: BookingStateFilter | null;
   tri: BookingSort;
   vue?: "liste" | null;
-  /** « moi » : seulement les dossiers dont le collègue connecté est en charge. */
-  qui?: "moi" | null;
+  /** `moi`, `personne`, ou l’identifiant du collègue en charge. */
+  qui?: string | null;
 };
 
 /** Liste paginée côté serveur : la recherche met l’URL à jour pendant la saisie. */
@@ -49,6 +49,7 @@ export function BookingsTable({
   payerLabels = {},
   owners = {},
   covers = {},
+  chargeOptions = [],
 }: {
   bookings: CrmBooking[];
   customers: CustomerNameRow[];
@@ -69,6 +70,8 @@ export function BookingsTable({
   owners?: Record<string, string>;
   /** Photo déjà résolue quand le catalogue local ne connaît pas le lieu. */
   covers?: Record<string, string | null>;
+  /** Sélecteur En charge. Vide : Tous, Moi et Personne seulement. */
+  chargeOptions?: { value: string; label: string }[];
 }) {
   const byId = new Map(customers.map((c) => [c.id, customerFullName(c)]));
   const urlFilters = {
@@ -76,7 +79,7 @@ export function BookingsTable({
     etat: filters.etat,
     tri: bookingSortParam(filters.tri),
     vue: filters.vue === "liste" ? "liste" : null,
-    qui: filters.qui === "moi" ? "moi" : null,
+    qui: filters.qui || null,
   };
   const filtering = Boolean(filters.q || filters.etat);
   const archivedOnly = filters.etat === "archive";
@@ -89,6 +92,7 @@ export function BookingsTable({
         tri={filters.tri}
         vue={filters.vue}
         qui={filters.qui}
+        chargeOptions={chargeOptions}
         revision={bookings.map((b) => b.id).join(",")}
       />
       <Pagination
