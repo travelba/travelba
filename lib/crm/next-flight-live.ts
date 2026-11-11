@@ -19,11 +19,13 @@ export type LiveFlight = {
   /** Instant de l’arrivée retenue. Null si le fuseau manque. */
   arrivalAt: number | null;
   status: string;
-  /** « Embarquement HH:MM · Porte X · Terminal Y », champs connus seulement. */
+  /** Avant le décollage : « Terminal 2F · Porte K35 ». */
   place: string;
+  /** Après le décollage : « Arrivée Terminal 1 », tapis bagages si connu. */
+  arrivalPlace: string;
   /** HH:MM de l’arrivée prévue, ou vide. */
   arrivalPrevue: string;
-  /** HH:MM affichée après l’atterrissage. */
+  /** HH:MM réelle d’atterrissage. Vide si AeroAPI ne l’a pas donnée. */
   landedClock: string;
 };
 
@@ -34,6 +36,13 @@ export type LiveCaption =
   | { kind: "airborne"; minutes: number | null }
   | { kind: "landed"; clock: string }
   | { kind: "plain"; text: string };
+
+/** Terminal de départ avant l’envol, terminal d’arrivée ensuite. */
+export function liveFlightPlace(flight: LiveFlight, nowMs: number) {
+  const phase = liveFlightPhase(flight, nowMs);
+  if (phase === "airborne" || phase === "landed") return flight.arrivalPlace;
+  return flight.place;
+}
 
 export function liveFlightPhase(flight: LiveFlight, nowMs: number): LivePhase {
   if (flight.status === "cancelled") return "cancelled";

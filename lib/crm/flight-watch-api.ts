@@ -28,14 +28,16 @@ export function flightNoticeSid(kind: FlightNoticeKind) {
 
 export async function fetchAeroFlights(
   ident: string,
-  now: Date,
-  fetchImpl: typeof fetch = fetch
+  anchor: Date,
+  fetchImpl: typeof fetch = fetch,
+  now: Date = anchor,
+  until: Date = anchor
 ): Promise<AeroFetchResult> {
   const key = aeroApiKey();
   if (!key) return { ok: false, stop: true, status: 0, flights: [] };
   let response: Response;
   try {
-    response = await fetchImpl(aeroFlightUrl(ident, now), {
+    response = await fetchImpl(aeroFlightUrl(ident, anchor, now, until), {
       headers: { "x-apikey": key, Accept: "application/json" },
       signal: AbortSignal.timeout(12_000),
     });

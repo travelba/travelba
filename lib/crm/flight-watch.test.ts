@@ -3,8 +3,11 @@ import test from "node:test";
 import {
   AEROAPI_DAILY_CALL_CAP,
   aeroFlightUrl,
+  aeroQueryRange,
   airportLocalIso,
   applyAeroFlight,
+  explainAeroMatch,
+  flightDesignators,
   checkinOpen,
   flightIdent,
   flightNoticeDrafts,
@@ -55,11 +58,16 @@ function aero(partial: Partial<AeroFlight> = {}): AeroFlight {
     actualIn: null,
     departureDelay: 0,
     originIata: "CDG",
+    originIcao: "LFPG",
     destinationIata: "RAK",
+    destinationIcao: "GMMX",
     originTimezone: "Europe/Paris",
     destinationTimezone: "Africa/Casablanca",
     gateOrigin: "K",
     terminalOrigin: "2E",
+    gateDestination: "",
+    terminalDestination: "",
+    baggageClaim: "",
     ...partial,
   };
 }
@@ -119,7 +127,9 @@ test("le vol retenu est celui de la route, pas un autre AF1789", () => {
   const other = aero({
     faFlightId: "autre",
     originIata: "ORY",
+    originIcao: "LFPO",
     destinationIata: "LIS",
+    destinationIcao: "LPPT",
     scheduledOut: "2026-09-29T12:10:00Z",
   });
   assert.equal(matchAeroFlight(card(), [other, aero()])?.faFlightId, "AFR1789-1");
@@ -203,8 +213,32 @@ test("un vol déjà contrôlé récemment n’est pas rappelé", () => {
 test("l’appel AeroAPI reste sur une page et l’en-tête n’est pas dans l’URL", () => {
   const url = aeroFlightUrl("AF1789", NOW);
   assert.equal(url.pathname, "/aeroapi/flights/AF1789");
+  assert.equal(url.searchParams.get("ident_type"), "designator");
   assert.equal(url.searchParams.get("max_pages"), "1");
   assert.equal(url.searchParams.has("x-apikey"), false);
+  const start = Date.parse(url.searchParams.get("start") || "");
+  const end = Date.parse(url.searchParams.get("end") || "");
+  assert.ok(start < NOW.getTime() && end > NOW.getTime());
+});
+
+test("la fenêtre entoure la date du vol et reste dans les bornes AeroAPI", () => {
+  const now = new Date("2026-11-11T08:00:00.000Z");
+  const anchor = new Date("2026-11-11T12:48:00.000Z");
+  const range = aeroQueryRange(anchor, anchor, now);
+  assert.ok(range.start.getTime() <= anchor.getTime());
+  assert.ok(range.end.getTime() > anchor.getTime());
+  assert.ok(range.start.getTime() >= now.getTime() - 10 * 24 * 60 * 60 * 1000);
+  assert.ok(range.end.getTime() <= now.getTime() + 2 * 24 * 60 * 60 * 1000);
+  const late = new Date(now.getTime() + 40 * 60 * 60 * 1000);
+  const clamped = aeroQueryRange(late, late, now);
+  assert.ok(clamped.end.getTime() <= now.getTime() + 2 * 24 * 60 * 60 * 1000);
+  assert.ok(clamped.end.getTime() > late.getTime());
+});
+
+test("AF7308 est cherché en IATA puis en ICAO", () => {
+  assert.deepEqual(flightDesignators({ flight_number: "AF 7308" }), ["AF7308", "AFR7308"]);
+  assert.deepEqual(flightDesignators({ flight_number: "AFR7308" }), ["AFR7308"]);
+  assert.deepEqual(flightDesignators({ flight_number: "ZZ 9" }), ["ZZ9"]);
 });
 
 test("la réponse AeroAPI ne garde que le statut utile", () => {
@@ -448,5 +482,151 @@ test("un passage ne relit pas plus de huit vols, les plus proches d’abord", ()
   assert.equal(kept.length, 8);
   assert.equal(kept[0][0], "AF1008");
   assert.equal(kept.some((group) => group[0] === "AF1000"), false);
+});
+
+const AF7308 = {
+  ident: "AFR7308",
+  ident_icao: "AFR7308",
+  ident_iata: "AF7308",
+  fa_flight_id: "AFR7308-1111",
+  cancelled: false,
+  diverted: false,
+  status: "Scheduled",
+  scheduled_out: "2026-11-11T12:48:00Z",
+  estimated_out: "2026-11-11T12:55:00Z",
+  actual_out: null,
+  actual_off: null,
+  scheduled_off: "2026-11-11T13:05:00Z",
+  scheduled_in: "2026-11-11T14:15:00Z",
+  estimated_in: "2026-11-11T14:20:00Z",
+  actual_in: null,
+  departure_delay: 420,
+  gate_origin: "K35",
+  gate_destination: "A4",
+  terminal_origin: "2F",
+  terminal_destination: "1",
+  baggage_claim: "2",
+  origin: {
+    code: "LFPG",
+    code_icao: "LFPG",
+    code_iata: "CDG",
+    timezone: "Europe/Paris",
+    name: "Paris Charles de Gaulle",
+    city: "Paris",
+  },
+  destination: {
+    code: "LFMN",
+    code_icao: "LFMN",
+    code_iata: "NCE",
+    timezone: "Europe/Paris",
+    name: "Nice Cote d'Azur",
+    city: "Nice",
+  },
+};
+
+function niceCard(day = "2026-11-11"): FlightCard {
+  return {
+    kind: "flight",
+    start_at: `${day}T13:48:00`,
+    end_at: `${day}T15:15:00`,
+    details: { airline_iata: "AF", flight_number: "AF 7308", from: "CDG", to: "NCE" },
+  };
+}
+
+test("une réponse AeroAPI type retient AF7308 CDG-NCE du bon jour", () => {
+  const flights = parseAeroFlights({
+    flights: [
+      {
+        ...AF7308,
+        fa_flight_id: "AFR7308-veille",
+        scheduled_out: "2026-11-10T12:48:00Z",
+        estimated_out: "2026-11-10T12:48:00Z",
+      },
+      AF7308,
+      {
+        ...AF7308,
+        fa_flight_id: "autre-route",
+        origin: { code: "LFPG", code_icao: "LFPG", code_iata: "CDG", timezone: "Europe/Paris" },
+        destination: { code: "LFPO", code_icao: "LFPO", code_iata: "ORY", timezone: "Europe/Paris" },
+      },
+    ],
+  });
+  assert.equal(flights[1].originIata, "CDG");
+  assert.equal(flights[1].originIcao, "LFPG");
+  assert.equal(flights[1].destinationIcao, "LFMN");
+  assert.equal(flights[1].terminalDestination, "1");
+  assert.equal(flights[1].gateDestination, "A4");
+  assert.equal(flights[1].baggageClaim, "2");
+  const explained = explainAeroMatch(niceCard(), flights);
+  assert.equal(explained.note, "");
+  assert.equal(explained.flight?.faFlightId, "AFR7308-1111");
+  const patch = applyAeroFlight(niceCard(), explained.flight, new Date("2026-11-11T10:00:00.000Z"));
+  const watch = patch.details.flight_watch as Record<string, string>;
+  assert.equal(watch.fa_flight_id, "AFR7308-1111");
+  assert.equal(watch.status, "scheduled");
+  assert.equal(watch.terminal_origin, "2F");
+  assert.equal(watch.gate_origin, "K35");
+  assert.equal(watch.terminal_destination, "1");
+  assert.equal(watch.gate_destination, "A4");
+  assert.equal(watch.baggage_claim, "2");
+  assert.equal(watch.scheduled_out, "2026-11-11T13:48:00");
+  assert.equal(watch.estimated_out, "2026-11-11T13:55:00");
+  assert.equal(watch.scheduled_in, "2026-11-11T15:15:00");
+  assert.equal(watch.estimated_in, "2026-11-11T15:20:00");
+  assert.equal(watch.actual_in, "");
+  assert.equal(watch.last_error, "");
+  assert.equal(watch.match_note, "");
+  assert.equal(patch.details.terminal, "2F");
+  assert.equal(patch.details.gate, "K35");
+});
+
+test("LFPG et LFMN seuls rapprochent encore CDG et NCE", () => {
+  const flights = parseAeroFlights({
+    flights: [
+      {
+        ident: "AFR7308",
+        ident_icao: "AFR7308",
+        fa_flight_id: "icao-seul",
+        status: "Scheduled",
+        scheduled_out: "2026-11-11T12:48:00Z",
+        scheduled_in: "2026-11-11T14:15:00Z",
+        origin: { code: "LFPG", code_icao: "LFPG", timezone: "Europe/Paris" },
+        destination: { code: "LFMN", code_icao: "LFMN", timezone: "Europe/Paris" },
+        terminal_origin: "2F",
+        gate_origin: "K35",
+      },
+    ],
+  });
+  assert.equal(flights[0].originIata, "");
+  assert.equal(flights[0].originIcao, "LFPG");
+  assert.equal(explainAeroMatch(niceCard(), flights).flight?.faFlightId, "icao-seul");
+});
+
+test("une mauvaise date ou une autre route explique le refus", () => {
+  const flights = parseAeroFlights({ flights: [AF7308] });
+  assert.equal(explainAeroMatch(niceCard("2026-11-12"), flights).note, "mauvaise date");
+  const elsewhere = parseAeroFlights({
+    flights: [
+      {
+        ...AF7308,
+        destination: { code: "LFPO", code_icao: "LFPO", code_iata: "ORY", timezone: "Europe/Paris" },
+      },
+    ],
+  });
+  assert.equal(explainAeroMatch(niceCard(), elsewhere).note, "autre arrivee");
+  assert.equal(explainAeroMatch(niceCard(), []).note, "aucun vol");
+});
+
+test("sans vol retenu, la raison courte est stockée", () => {
+  const patch = applyAeroFlight(niceCard(), null, new Date("2026-11-11T10:00:00.000Z"), {
+    note: "aucun vol",
+    error: "http 404",
+  });
+  const watch = patch.details.flight_watch as Record<string, string>;
+  assert.equal(watch.match_note, "aucun vol");
+  assert.equal(watch.last_error, "http 404");
+  assert.equal(watch.fa_flight_id, "");
+  assert.equal(watch.checked_at, "2026-11-11T10:00:00.000Z");
+  assert.equal(patch.start_at, "2026-11-11T13:48:00");
 });
 

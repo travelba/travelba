@@ -6,6 +6,7 @@ import { BoardingPassActions } from "@/components/account/BoardingPassActions";
 import type { BoardingFileLink, ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import {
   liveFlightCaption,
+  liveFlightPlace,
   liveFlightProgress,
   type LiveCaption,
   type LiveClock,
@@ -126,6 +127,7 @@ export function BoardingPass({
   const now = useTicker(nowMs);
   const caption = liveFlightCaption(live, now);
   const progress = liveFlightProgress(live, now);
+  const place = liveFlightPlace(live, now);
   const arrivalMain = live.arrival.scheduled || live.arrival.revised;
   const label = ["Prochain vol", live.number, live.origin, live.destination].filter(Boolean).join(" ");
   const calendarClass =
@@ -175,9 +177,9 @@ export function BoardingPass({
           {arrivalMain ? <span className="text-sm font-semibold tabular-nums text-white">{arrivalMain}</span> : null}
           <p className="font-display text-[2rem] font-bold leading-none tracking-tight">{live.destination}</p>
         </div>
-        {live.place || live.arrivalPrevue ? (
+        {place || live.arrivalPrevue ? (
           <div className="mt-3 flex items-start justify-between gap-3 text-[12px] leading-snug text-white/75">
-            <p className="min-w-0">{live.place}</p>
+            <p className="min-w-0">{place}</p>
             {live.arrivalPrevue ? (
               <p className="shrink-0 text-right">
                 Arrivée prévue <span className="tabular-nums text-white">{live.arrivalPrevue}</span>
