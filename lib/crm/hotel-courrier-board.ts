@@ -8,8 +8,14 @@ import type { HotelDeskKind } from "./types";
 /** Trois courriers visibles, le reste derrière Voir plus. */
 export const DASHBOARD_MAIL_PREVIEW = 3;
 
-/** Un achat réellement passé : réservé ou confirmé, comme le grand livre Pliant. */
-const POSTED_PAYMENT = new Set(["BOOKED", "CONFIRMED"]);
+/** Autorisation encore ouverte : le paiement est passé, Pliant n’a pas soldé. */
+const AUTHORIZED_PAYMENT = new Set(["PENDING"]);
+/** Achat soldé, comme le grand livre Pliant. */
+const SETTLED_PAYMENT = new Set(["BOOKED", "CONFIRMED"]);
+/** Fenêtre d’un règlement d’hôtel : avant l’arrivée, jusqu’au départ. */
+const PAYMENT_BEFORE_STAY_MS = 90 * 24 * 60 * 60 * 1000;
+const PAYMENT_AFTER_STAY_MS = 7 * 24 * 60 * 60 * 1000;
+const GENERIC_HOTEL_WORD = new Set(["hotel", "hotels", "resort", "resorts", "palace", "beach", "suite", "suites", "spa"]);
 
 export type HotelCourrierReply = {
   id: string;
@@ -51,6 +57,14 @@ export type HotelCourrierSource = {
   itemLifecycle?: string | null;
   /** Classement manuel. Il prime tant qu’aucun message entrant n’est plus récent. */
   classifiedAt?: string | null;
+  /** Hôtels actifs du dossier. Absent : on ne devine pas un paiement de carte dossier. */
+  hotelCount?: number;
+  stayStart?: string | null;
+  stayAmountCents?: number | null;
+  stayAmountCurrency?: string | null;
+  /** Autres lignes hôtel du même dossier, pour ne pas coller un débit au mauvais séjour. */
+  siblingItemIds?: string[];
+  siblingHotelNames?: string[];
 };
 
 /** Efface le classement. Aucun e-mail. */
@@ -61,7 +75,7 @@ export const HOTEL_COURRIER_CLASS_CLEAR = {
   classified_note: null,
 } as const;
 
-/** Dépense Pliant déjà rattachée à l’hôtel ou au courrier. Sans numéro de carte. */
+/** Dépense Pliant déjà rattachée à l’hôtel, au courrier, ou à une carte du dossier. Sans numéro de carte. */
 export type HotelPliantSpend = {
   bookingItemId: string | null;
   hotelRequestId: string | null;
@@ -71,12 +85,19 @@ export type HotelPliantSpend = {
   billingCents: number | string | null;
   billingCurrency: string | null;
   bookedAt: string | null;
+  /** Dossier de la carte émise, quand l’achat n’est pas déjà pointé sur l’hôtel. */
+  bookingId?: string | null;
+  /** Libellé ou objet de la carte. Jamais un numéro. */
+  cardPurpose?: string | null;
+  /** Ligne du coût : l’hôtel, ou une dépense à part. */
+  costItemId?: string | null;
 };
 
 export type HotelPliantPayment = {
   amount: number;
   currency: string;
   bookedAt: string;
+  state: "authorized" | "settled";
 };
 
 export type DashboardCourrier = {
@@ -141,12 +162,19 @@ export function courrierReplyReceived(row: Pick<HotelCourrierSource, "status" | 
   return row.replies.some((reply) => Boolean(reply.receivedAt));
 }
 
-/** Dernier achat Pliant qui compte. Refus, attente, remboursement et montant nul : non. */
+function paymentStateOf(status: string): HotelPliantPayment["state"] | null {
+  if (SETTLED_PAYMENT.has(status)) return "settled";
+  if (AUTHORIZED_PAYMENT.has(status)) return "authorized";
+  return null;
+}
+
+/** Dernier achat Pliant qui compte. Refus, annulation, remboursement et montant nul : non. Une autorisation compte. */
 export function latestHotelPliantPayment(spends: HotelPliantSpend[]): HotelPliantPayment | null {
-  const hits: { payment: HotelPliantPayment; id: string }[] = [];
+  const hits: { payment: HotelPliantPayment; id: string; rank: number }[] = [];
   for (const spend of spends) {
     const status = (spend.status || "").trim().toUpperCase();
-    if (!POSTED_PAYMENT.has(status)) continue;
+    const state = paymentStateOf(status);
+    if (!state) continue;
     const cents = centsOf(spend.billingCents);
     const copy = pliantSpendCopy({
       type: spend.type,
@@ -157,37 +185,128 @@ export function latestHotelPliantPayment(spends: HotelPliantSpend[]): HotelPlian
     if (!copy) continue;
     hits.push({
       id: spend.transactionId,
+      rank: state === "settled" ? 1 : 0,
       payment: {
         amount: copy.amount,
         currency: copy.currency,
         bookedAt: spend.bookedAt || "",
+        state,
       },
     });
   }
-  hits.sort((a, b) => time(b.payment.bookedAt) - time(a.payment.bookedAt) || a.id.localeCompare(b.id));
+  hits.sort(
+    (a, b) => time(b.payment.bookedAt) - time(a.payment.bookedAt) || b.rank - a.rank || a.id.localeCompare(b.id)
+  );
   return hits[0]?.payment || null;
+}
+
+function foldHotel(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function distinctiveTokens(name: string) {
+  return foldHotel(name)
+    .split(" ")
+    .filter((token) => token.length >= 5 && !GENERIC_HOTEL_WORD.has(token));
+}
+
+function purposeNamesHotel(purpose: string, hotelName: string) {
+  const hay = foldHotel(purpose);
+  const full = foldHotel(hotelName);
+  if (!hay || full.length < 4) return false;
+  if (hay.includes(full)) return true;
+  return distinctiveTokens(hotelName).some((token) => hay.includes(token));
+}
+
+function dayMs(value: string | null | undefined) {
+  const day = (value || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return Number.NaN;
+  return Date.parse(`${day}T12:00:00Z`);
+}
+
+function dateNearStay(bookedAt: string | null | undefined, start: string | null | undefined, end: string | null | undefined) {
+  const at = time(bookedAt) || dayMs(bookedAt);
+  if (!Number.isFinite(at)) return false;
+  const startMs = dayMs(start);
+  const endMs = dayMs(end);
+  const from = Number.isFinite(startMs) ? startMs : endMs;
+  const to = Number.isFinite(endMs) ? endMs : startMs;
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return false;
+  return at >= from - PAYMENT_BEFORE_STAY_MS && at <= to + PAYMENT_AFTER_STAY_MS;
+}
+
+function amountNearStay(spend: HotelPliantSpend, row: HotelCourrierSource) {
+  const stay = row.stayAmountCents;
+  if (stay == null || !Number.isFinite(stay) || stay <= 0) return false;
+  const paid = centsOf(spend.billingCents);
+  if (paid == null) return false;
+  const cents = Math.abs(Math.round(paid));
+  if (cents === 0) return false;
+  const paidCode = (spend.billingCurrency || "EUR").trim().toUpperCase();
+  const stayCode = (row.stayAmountCurrency || "EUR").trim().toUpperCase();
+  if (paidCode !== stayCode) return false;
+  return Math.abs(cents - stay) <= Math.max(100, Math.round(stay * 0.2));
+}
+
+function purposeMatchesThisHotel(row: HotelCourrierSource, purpose: string) {
+  const name = noticeHotelName({ hotelName: row.hotelName, title: row.itemTitle });
+  if (!purposeNamesHotel(purpose, name)) return false;
+  return !(row.siblingHotelNames || []).some((sibling) => sibling && purposeNamesHotel(purpose, sibling));
+}
+
+/**
+ * Carte émise sur le dossier, pas encore liée à l’hôtel.
+ * Un seul hôtel : l’achat compte. Le coût posé sur cette ligne aussi.
+ * Sinon, seulement si l’objet de la carte nomme cet hôtel et que le montant et la date collent au séjour.
+ */
+export function dossierCardSpendCounts(row: HotelCourrierSource, spend: HotelPliantSpend) {
+  if (!spend.bookingId || spend.bookingId !== row.bookingId) return false;
+  if (spend.costItemId && spend.costItemId === row.itemId) return true;
+  if (spend.costItemId && (row.siblingItemIds || []).includes(spend.costItemId)) return false;
+  if (row.hotelCount === 1) return true;
+  if (row.hotelCount == null || row.hotelCount < 2) return false;
+  const purpose = (spend.cardPurpose || "").trim();
+  if (!purpose || !purposeMatchesThisHotel(row, purpose)) return false;
+  return dateNearStay(spend.bookedAt, row.stayStart, row.itemEnd || row.bookingEnd) && amountNearStay(spend, row);
+}
+
+function directlyLinked(row: HotelCourrierSource, spend: HotelPliantSpend) {
+  return (
+    (spend.bookingItemId != null && spend.bookingItemId === row.itemId) ||
+    (spend.hotelRequestId != null && spend.hotelRequestId === row.id)
+  );
+}
+
+function linkScore(row: HotelCourrierSource, spend: HotelPliantSpend) {
+  let score = 0;
+  if (spend.bookingItemId != null && spend.bookingItemId === row.itemId) score += 4;
+  if (spend.hotelRequestId != null && spend.hotelRequestId === row.id) score += 2;
+  if (spend.costItemId != null && spend.costItemId === row.itemId) score += 1;
+  return score;
 }
 
 function spendsForCourrier(row: HotelCourrierSource, spends: HotelPliantSpend[]) {
   if (row.kind !== "payment_link") return [];
-  const seen = new Set<string>();
-  const hits: HotelPliantSpend[] = [];
+  const byId = new Map<string, HotelPliantSpend>();
   for (const spend of spends) {
-    const linked =
-      (spend.bookingItemId != null && spend.bookingItemId === row.itemId) ||
-      (spend.hotelRequestId != null && spend.hotelRequestId === row.id);
-    if (!linked || seen.has(spend.transactionId)) continue;
-    seen.add(spend.transactionId);
-    hits.push(spend);
+    if (!directlyLinked(row, spend) && !dossierCardSpendCounts(row, spend)) continue;
+    const prev = byId.get(spend.transactionId);
+    if (!prev || linkScore(row, spend) > linkScore(row, prev)) byId.set(spend.transactionId, spend);
   }
-  return hits;
+  return [...byId.values()];
 }
 
 export function pliantPaymentCaption(payment: HotelPliantPayment | null) {
   if (!payment) return "Pas de paiement Pliant";
   const amount = formatMoney(payment.amount, payment.currency);
   const when = payment.bookedAt && Number.isFinite(time(payment.bookedAt)) ? formatPaymentDate(payment.bookedAt) : "";
-  return when ? `Paiement Pliant effectué · ${amount} · ${when}` : `Paiement Pliant effectué · ${amount}`;
+  const verb = payment.state === "authorized" ? "Paiement Pliant autorisé" : "Paiement Pliant effectué";
+  return when ? `${verb} · ${amount} · ${when}` : `${verb} · ${amount}`;
 }
 
 function formatPaymentDate(value: string) {

@@ -22,6 +22,7 @@ type State = {
   cards: Row[];
   stays: Row[];
   items: Row[];
+  arrivals: Row[];
   audits: Row[];
   registry: Row[];
   order: string[];
@@ -50,6 +51,7 @@ function baseState(): State {
     cards: [],
     stays: [],
     items: [],
+    arrivals: [],
     audits: [],
     registry: [],
     order: [],
@@ -77,7 +79,9 @@ function fakeAdmin(state: State) {
                 ? state.cards
                 : table === "crm_booking_items"
                   ? state.items
-                : table === "crm_pliant_cards"
+                  : table === "crm_hotel_arrivals"
+                    ? state.arrivals
+                  : table === "crm_pliant_cards"
                   ? state.registry
                   : table === "crm_hotel_direct_stays"
                     ? state.stays
@@ -113,6 +117,10 @@ function fakeAdmin(state: State) {
             state.order.push("audit");
             return { error: null };
           }
+          if (table === "crm_hotel_arrivals") {
+            state.arrivals.push(payload);
+            return { error: null };
+          }
           return { error: null };
         },
         upsert: async (payload: Row) => {
@@ -125,6 +133,10 @@ function fakeAdmin(state: State) {
               filters.push({ col, val });
               return result;
             },
+            is(col: string, val: unknown) {
+              filters.push({ col, val });
+              return result;
+            },
             select() {
               return result;
             },
@@ -133,7 +145,7 @@ function fakeAdmin(state: State) {
               onRejected?: (reason: unknown) => unknown
             ) {
               const apply = async () => {
-                if (table !== "crm_booking_cards") return { data: null, error: null };
+                if (table !== "crm_booking_cards" && table !== "crm_hotel_arrivals") return { data: null, error: null };
                 if (state.failCardUpdate) return { data: null, error: { code: "XX000" } };
                 const rows = matched();
                 for (const row of rows) Object.assign(row, payload);
@@ -277,6 +289,32 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
   const blob = JSON.stringify(state.audits) + JSON.stringify(lines);
   assert.equal(blob.includes(PAN), false);
   assert.equal(blob.includes(CVV), false);
+});
+
+test("un seul hôtel lie la carte créée à la ligne, sans numéro", async () => {
+  const state = baseState();
+  const hotel = "33333333-3333-4333-8333-333333333333";
+  state.items.push({
+    id: hotel,
+    booking_id: BOOKING,
+    kind: "hotel",
+    title: "The David Kempinski Tel Aviv",
+    supplier: null,
+    details: { hotel_name: "The David Kempinski Tel Aviv" },
+    lifecycle: "active",
+  });
+  const value = await runWithMcpAccess(CARDS, () =>
+    createPliantCard({ reference: "TB-2026-0082", nom: "Hôtel", plafond: 3336 }, fakeAdmin(state), deps(state))
+  );
+  if (!("cree" in value) || !value.cree) assert.fail("carte non créée");
+  assert.equal(value.ligne_hotel, hotel);
+  assert.equal(state.arrivals.length, 1);
+  assert.equal(state.arrivals[0]?.booking_item_id, hotel);
+  assert.equal(state.arrivals[0]?.pliant_card_id, "pliant-visa-1");
+  assert.equal(state.arrivals[0]?.task_note, "Saisie agence");
+  assert.equal("pan" in value, false);
+  const blob = JSON.stringify(state.arrivals);
+  assert.equal(blob.includes(PAN), false);
 });
 
 test("cinq transactions : carte virtuelle, plafond total et montant par achat, sans blocage", async () => {

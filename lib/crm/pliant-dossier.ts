@@ -29,7 +29,7 @@ export type DossierCostSnap = {
 };
 
 export type DossierSpendAction =
-  | { op: "insert"; bookingId: string; spendId: string; draft: TripCostDraft; state: "pending" | "posted" }
+  | { op: "insert"; bookingId: string; spendId: string; cardId: string | null; draft: TripCostDraft; state: "pending" | "posted" }
   | { op: "update"; costId: string; spendId: string; draft: TripCostDraft; state: "pending" | "posted" }
   | { op: "drop"; costId: string; spendId: string };
 
@@ -85,7 +85,14 @@ export function planDossierPliantSpends(input: {
       continue;
     }
     if (!cost) {
-      actions.push({ op: "insert", bookingId, spendId: spend.id, draft: settlement.draft, state: settlement.state });
+      actions.push({
+        op: "insert",
+        bookingId,
+        spendId: spend.id,
+        cardId: spend.cardId,
+        draft: settlement.draft,
+        state: settlement.state,
+      });
       continue;
     }
     if (changed(cost, settlement.draft, settlement.state)) {
