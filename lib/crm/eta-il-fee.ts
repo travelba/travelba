@@ -127,7 +127,7 @@ function hotelCited(hotelKey: string, designation: string | null | undefined) {
  * Un nom saisi ne garde que les hôtels qu’il cite (sans accent, en minuscules).
  * Aucun nom, ou aucun hôtel dedans : on garde tous les hôtels.
  */
-function hotelsNamedInDesignation(
+export function hotelsNamedInDesignation(
   hotels: Array<string | null | undefined> | undefined,
   designation: string | null | undefined
 ) {

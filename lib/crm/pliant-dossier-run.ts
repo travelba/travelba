@@ -126,7 +126,12 @@ async function selectCosts(admin: SupabaseClient, spendIds: string[]) {
   return { costs, stateKnown };
 }
 
-async function applyAction(admin: SupabaseClient, action: DossierSpendAction, bookingOfCost?: string | null) {
+async function applyAction(
+  admin: SupabaseClient,
+  action: DossierSpendAction,
+  bookingOfCost?: string | null,
+  hotelItemId?: string | null
+) {
   if (action.op === "drop") {
     const { error } = await admin.from("crm_trip_costs").delete().eq("id", action.costId);
     if (error) throw new Error(error.message);
@@ -148,12 +153,14 @@ async function applyAction(admin: SupabaseClient, action: DossierSpendAction, bo
     updated_at: new Date().toISOString(),
   };
   if (action.op === "insert") {
-    // Par défaut, la dépense de la carte devient une ligne Dépense du dossier (une par transaction).
-    const expense = await quietly(() => ensurePliantExpenseItem(admin, action.bookingId, draft), "création");
+    // Carte liée à un hôtel : le coût est celui de la ligne, pas une dépense au nom du prestataire.
+    const expense = hotelItemId
+      ? null
+      : await quietly(() => ensurePliantExpenseItem(admin, action.bookingId, draft), "création");
     const { error } = await admin.from("crm_trip_costs").insert({
       ...row,
       booking_id: action.bookingId,
-      booking_item_id: expense?.itemId ?? null,
+      booking_item_id: hotelItemId || expense?.itemId || null,
       source: "pliant",
       source_id: action.spendId,
     });
@@ -215,10 +222,41 @@ export async function linkDossierPliantSpends(admin: SupabaseClient) {
   if (!loaded.stateKnown) return 0;
   const actions = planDossierPliantSpends({ spends, cardBookingId: bookings, costs: loaded.costs });
   const bookingByCost = new Map(loaded.costs.map((cost) => [cost.id, cost.bookingId]));
+  const hotelByCard = await hotelItemByCard(admin, [...new Set([...bookings.values()])]);
   for (const action of actions) {
-    await applyAction(admin, action, action.op === "insert" ? action.bookingId : bookingByCost.get(action.costId) || null);
+    const hotelItemId = action.op === "insert" && action.cardId ? hotelByCard.get(action.cardId) || null : null;
+    await applyAction(
+      admin,
+      action,
+      action.op === "insert" ? action.bookingId : bookingByCost.get(action.costId) || null,
+      hotelItemId
+    );
   }
   return actions.length;
+}
+
+/** Carte liée à une seule ligne hôtel ouverte. Deux lignes : on ne choisit pas. */
+async function hotelItemByCard(admin: SupabaseClient, bookingIds: string[]) {
+  const grouped = new Map<string, string[]>();
+  for (const slice of chunks([...new Set(bookingIds.filter(Boolean))])) {
+    const { data, error } = await admin
+      .from("crm_hotel_arrivals")
+      .select("pliant_card_id, booking_item_id, card_closed_at")
+      .in("booking_id", slice);
+    if (error) throw new Error(error.message);
+    for (const row of (data || []) as Row[]) {
+      if (!row.pliant_card_id || row.card_closed_at || !row.booking_item_id) continue;
+      const list = grouped.get(row.pliant_card_id) || [];
+      list.push(String(row.booking_item_id));
+      grouped.set(row.pliant_card_id, list);
+    }
+  }
+  const map = new Map<string, string>();
+  for (const [cardId, items] of grouped) {
+    const unique = [...new Set(items)];
+    if (unique.length === 1) map.set(cardId, unique[0]);
+  }
+  return map;
 }
 
 async function linksForBooking(admin: SupabaseClient, bookingId: string) {

@@ -322,7 +322,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "tableau_de_bord",
     description:
-      "À faire aujourd’hui : liens de paiement hôtel, visas, enregistrements, demandes WhatsApp et réponses d’hôtel. Les e-mails, Little Emperors, encaissements, coûts et pièces à échéance n’y sont pas : ils restent dans la Boîte, Argent et Clients. Soldes Revolut, Stripe et Pliant. courriers_hotel : fils d’hôtel encore à traiter, statut synchronisé avec Gmail (Réponse à traiter, En attente de réponse, Sans réponse), qui a écrit en dernier. Un fil où l’agence a répondu en dernier, un paiement fait, une confirmation, un dossier annulé, un séjour passé sans nouveau message, ou un classement manuel encore valable n’y figurent pas. Un lien de paiement déjà réglé sur Pliant n’y figure plus, sauf si l’hôtel a écrit après ce paiement pour poser une question. Lecture seule.",
+      "À faire aujourd’hui : liens de paiement hôtel, visas, enregistrements, demandes WhatsApp et réponses d’hôtel. Les e-mails, Little Emperors, encaissements, coûts et pièces à échéance n’y sont pas : ils restent dans la Boîte, Argent et Clients. Soldes Revolut, Stripe et Pliant. courriers_hotel : fils d’hôtel encore à traiter, statut synchronisé avec Gmail (Réponse à traiter, En attente de réponse, Sans réponse), qui a écrit en dernier. Un fil où l’agence a répondu en dernier, un paiement fait, une confirmation, un dossier annulé, un séjour passé sans nouveau message, ou un classement manuel encore valable n’y figurent pas. Un lien de paiement déjà réglé sur Pliant n’y figure plus, sauf si l’hôtel a écrit après ce paiement pour poser une question. Une autorisation Pliant encore en attente compte comme un règlement. Lecture seule.",
     run: () => readTableauDeBord(),
   },
   {
@@ -687,11 +687,17 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut (usage unique, un contrôle de passerelle ne compte pas). Au-delà, carte virtuelle réutilisable : le plafond total et le montant maximum par transaction sont envoyés, par exemple 1 500 € et 5 achats pour la garantie, les extras et le solde. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie jamais le numéro ni le CVV. lire_carte_pliant, juste après, donne le numéro au jeton général, au jeton carte, et à une clé tbk_ qui a le droit Créer une carte Pliant. Jeton général, jeton carte, ou clé tbk_ avec le droit Créer une carte Pliant. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
+      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut (usage unique, un contrôle de passerelle ne compte pas). Au-delà, carte virtuelle réutilisable : le plafond total et le montant maximum par transaction sont envoyés, par exemple 1 500 € et 5 achats pour la garantie, les extras et le solde. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. S’il n’y a qu’un hôtel, ou si hotel nomme la ligne, la carte est liée à cet hôtel : le débit suivant est le coût de la ligne, pas une dépense au nom du prestataire de paiement. Ne renvoie jamais le numéro ni le CVV. lire_carte_pliant, juste après, donne le numéro au jeton général, au jeton carte, et à une clé tbk_ qui a le droit Créer une carte Pliant. Jeton général, jeton carte, ou clé tbk_ avec le droit Créer une carte Pliant. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0082"),
       nom: z.string().trim().max(40).describe("Nom de la carte, ex. Visa"),
+      hotel: z
+        .string()
+        .trim()
+        .max(120)
+        .optional()
+        .describe("Ligne hôtel à lier, identifiant ou nom, quand le dossier en a plusieurs"),
       plafond: z.union([z.number(), z.string()]).optional().describe("Plafond, ex. 10. Sans plafond, la carte n’est pas créée"),
       devise: z.string().trim().max(8).optional().describe("Devise du plafond, 3 lettres. Défaut EUR"),
       transactions: z
@@ -714,6 +720,7 @@ export const MCP_TOOLS: ToolDef[] = [
           dossier_id: args.dossier_id,
           reference: args.reference,
           nom: args.nom,
+          hotel: args.hotel,
           plafond: args.plafond,
           devise: args.devise,
           transactions: args.transactions,
@@ -723,6 +730,7 @@ export const MCP_TOOLS: ToolDef[] = [
             dossier_id: str(args, "dossier_id"),
             reference: str(args, "reference"),
             nom: str(args, "nom"),
+            hotel: str(args, "hotel"),
             plafond: args.plafond,
             devise: str(args, "devise"),
             transactions: args.transactions,

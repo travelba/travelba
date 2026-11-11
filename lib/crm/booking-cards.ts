@@ -4,6 +4,7 @@ import { hotelDisplayName } from "./carnet";
 import { pliantDesignation } from "./eta-il-fee";
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardDraft, sameCardNameCount } from "./manual-stay-card";
+import { linkIssuedCardToHotel } from "./pliant-hotel-link";
 import { rememberPliantCard } from "./pliant-card-run";
 import { isActiveItem, type CrmBookingItem } from "./types";
 import {
@@ -47,10 +48,11 @@ export async function issueBookingCard(
     booking.customer_id
       ? admin.from("crm_customers").select("last_name").eq("id", booking.customer_id).maybeSingle()
       : Promise.resolve({ data: null as { last_name?: string | null } | null }),
-    admin.from("crm_booking_items").select("kind, title, supplier, details, lifecycle").eq("booking_id", input.bookingId),
+    admin.from("crm_booking_items").select("id, kind, title, supplier, details, lifecycle").eq("booking_id", input.bookingId),
   ]);
   const prior = (priorData || []) as { first_name: string; last_name: string }[];
-  const hotels = ((itemData || []) as Pick<CrmBookingItem, "kind" | "title" | "supplier" | "details" | "lifecycle">[])
+  const stayItems = (itemData || []) as Pick<CrmBookingItem, "id" | "kind" | "title" | "supplier" | "details" | "lifecycle">[];
+  const hotels = stayItems
     .filter((item) => item.kind === "hotel" && isActiveItem(item))
     .map((item) => hotelDisplayName(item as CrmBookingItem));
   const draft = manualStayCardDraft({
@@ -94,6 +96,19 @@ export async function issueBookingCard(
     last4,
   });
   if (error) throw new Error("La carte a été créée, mais le dossier ne l’a pas enregistrée.");
+  try {
+    await linkIssuedCardToHotel(admin, {
+      bookingId: input.bookingId,
+      cardId: issued.cardId,
+      last4,
+      limitCents: draft.body.limit.value,
+      currency: draft.body.limit.currency,
+      items: stayItems,
+      designation: input.designation,
+    });
+  } catch (err) {
+    console.error("[pliant] lien hôtel", err instanceof Error ? err.message : "échec");
+  }
   await rememberPliantCard(admin, {
     pliant_card_id: issued.cardId,
     booking_id: input.bookingId,

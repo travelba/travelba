@@ -6,6 +6,7 @@ import { RecentMails } from "../../components/admin/RecentMails";
 import {
   DASHBOARD_MAIL_PREVIEW,
   dashboardCourriers,
+  dossierCardSpendCounts,
   latestHotelPliantPayment,
   type HotelCourrierSource,
   type HotelPliantSpend,
@@ -234,20 +235,206 @@ test("le lien de paiement sort s’il est payé, et le dit s’il ne l’est pas
   assert.deepEqual(askedBeforePay, []);
 });
 
-test("refus, attente, remboursement et un autre hôtel ne comptent pas comme un paiement", () => {
+test("refus, annulation, remboursement et un autre hôtel ne comptent pas comme un paiement", () => {
   assert.equal(
     latestHotelPliantPayment([spend({ status: "DECLINED" }), spend({ transactionId: "rev", status: "REVERSED" })]),
     null
   );
-  assert.equal(latestHotelPliantPayment([spend({ status: "PENDING" })]), null);
   assert.equal(latestHotelPliantPayment([spend({ type: "REFUND", billingCents: 18650 })]), null);
   assert.equal(latestHotelPliantPayment([spend({ type: "STATUS_INQUIRY", status: "CONFIRMED" })]), null);
   assert.equal(latestHotelPliantPayment([spend({ billingCents: 0 })]), null);
+  const pending = latestHotelPliantPayment([spend({ status: "PENDING", billingCents: 299623 })]);
+  assert.equal(pending?.state, "authorized");
+  assert.equal(pending?.amount, 2996.23);
   const latest = latestHotelPliantPayment([
     spend({ transactionId: "old", bookedAt: "2026-10-01T00:00:00.000Z", billingCents: 1000 }),
     spend({ transactionId: "new", bookedAt: "2026-10-18T00:00:00.000Z", billingCents: 2500 }),
   ]);
+  assert.equal(latest?.state, "settled");
   assert.equal(latest?.amount, 25);
+  const settledWins = latestHotelPliantPayment([
+    spend({ transactionId: "auth", status: "PENDING", bookedAt: "2026-10-18T00:00:00.000Z", billingCents: 1000 }),
+    spend({ transactionId: "done", status: "CONFIRMED", bookedAt: "2026-10-18T00:00:00.000Z", billingCents: 2500 }),
+  ]);
+  assert.equal(settledWins?.state, "settled");
+  assert.equal(settledWins?.amount, 25);
+});
+
+test("une autorisation Pliant se dit autorisée, un achat soldé se dit effectué", () => {
+  const asked = {
+    id: "lien",
+    kind: "payment_link" as const,
+    itemId: "stay-1",
+    replies: [
+      {
+        id: "ask",
+        body: "Le règlement est passé. Pouvez-vous confirmer l’heure d’arrivée ?",
+        receivedAt: "2026-10-15T09:00:00.000Z",
+      },
+    ],
+  };
+  const [authorized] = dashboardCourriers(
+    [courrier(asked)],
+    [spend({ status: "PENDING", billingCents: 299623, bookingItemId: "stay-1" })],
+    true
+  );
+  assert.equal(authorized?.paymentState, "paid");
+  assert.match(authorized?.paymentLabel || "", /Paiement Pliant autorisé/);
+  assert.match(authorized?.paymentLabel || "", /2\s?996,23/);
+  assert.match(authorized?.paymentLabel || "", /14 oct/);
+
+  const [settled] = dashboardCourriers(
+    [courrier(asked)],
+    [spend({ status: "CONFIRMED", bookingItemId: "stay-1" })],
+    true
+  );
+  assert.match(settled?.paymentLabel || "", /Paiement Pliant effectué/);
+
+  const closed = dashboardCourriers(
+    [courrier({ id: "lien", kind: "payment_link", itemId: "stay-1" })],
+    [spend({ status: "PENDING", bookingItemId: "stay-1" })],
+    true
+  );
+  assert.deepEqual(closed, []);
+});
+
+test("une carte du dossier compte pour l’unique hôtel, pas quand deux hôtels restent ambigus", () => {
+  const question = [
+    {
+      id: "ask",
+      body: "Le lien est prêt. Pouvez-vous confirmer le nom ?",
+      receivedAt: "2026-10-15T09:00:00.000Z",
+    },
+  ];
+  const dossierSpend = spend({
+    bookingItemId: null,
+    bookingId: "booking-1",
+    status: "PENDING",
+    billingCents: 299623,
+    cardPurpose: "Martin – The David Kempinski Tel Aviv – TB-2026-0170",
+    costItemId: "expense-bridge",
+  });
+  const [single] = dashboardCourriers(
+    [
+      courrier({
+        id: "lien",
+        kind: "payment_link",
+        itemId: "stay-1",
+        hotelName: "The David Kempinski Tel Aviv",
+        bookingId: "booking-1",
+        hotelCount: 1,
+        replies: question,
+      }),
+    ],
+    [dossierSpend],
+    true
+  );
+  assert.match(single?.paymentLabel || "", /Paiement Pliant autorisé/);
+
+  const duringTheStay = Date.parse("2026-10-20T12:00:00.000Z");
+  const [ambiguous] = dashboardCourriers(
+    [
+      courrier({
+        id: "lien",
+        kind: "payment_link",
+        itemId: "stay-1",
+        hotelName: "The David Kempinski Tel Aviv",
+        bookingId: "booking-1",
+        hotelCount: 2,
+        siblingItemIds: ["stay-2"],
+        siblingHotelNames: ["The Setai Tel Aviv"],
+        stayStart: "2026-11-01",
+        itemEnd: "2026-11-05",
+        stayAmountCents: 299623,
+        stayAmountCurrency: "EUR",
+        replies: question,
+      }),
+    ],
+    [spend({ ...dossierSpend, cardPurpose: "Visa", bookedAt: "2026-10-20T09:00:00.000Z" })],
+    true,
+    duringTheStay
+  );
+  assert.equal(ambiguous?.paymentLabel, "Pas de paiement Pliant");
+  assert.equal(
+    dossierCardSpendCounts(
+      courrier({
+        itemId: "stay-1",
+        hotelName: "The David Kempinski Tel Aviv",
+        bookingId: "booking-1",
+        hotelCount: 2,
+        siblingHotelNames: ["The Setai Tel Aviv"],
+      }),
+      dossierSpend
+    ),
+    false
+  );
+
+  const [named] = dashboardCourriers(
+    [
+      courrier({
+        id: "lien",
+        kind: "payment_link",
+        itemId: "stay-1",
+        hotelName: "The David Kempinski Tel Aviv",
+        bookingId: "booking-1",
+        hotelCount: 2,
+        siblingItemIds: ["stay-2"],
+        siblingHotelNames: ["The Setai Tel Aviv"],
+        stayStart: "2026-11-01",
+        itemEnd: "2026-11-05",
+        stayAmountCents: 299623,
+        stayAmountCurrency: "EUR",
+        replies: question,
+      }),
+    ],
+    [spend({ ...dossierSpend, bookedAt: "2026-10-14T09:00:00.000Z" })],
+    true,
+    duringTheStay
+  );
+  assert.match(named?.paymentLabel || "", /Paiement Pliant autorisé/);
+
+  const [other] = dashboardCourriers(
+    [
+      courrier({
+        id: "autre",
+        kind: "payment_link",
+        itemId: "stay-2",
+        hotelName: "The Setai Tel Aviv",
+        bookingId: "booking-1",
+        hotelCount: 2,
+        siblingItemIds: ["stay-1"],
+        siblingHotelNames: ["The David Kempinski Tel Aviv"],
+        stayStart: "2026-11-06",
+        itemEnd: "2026-11-08",
+        stayAmountCents: 120000,
+        stayAmountCurrency: "EUR",
+        replies: question,
+      }),
+    ],
+    [spend({ ...dossierSpend, bookedAt: "2026-10-20T09:00:00.000Z" })],
+    true,
+    duringTheStay
+  );
+  assert.equal(other?.paymentLabel, "Pas de paiement Pliant");
+
+  const [onTheLine] = dashboardCourriers(
+    [
+      courrier({
+        id: "ligne",
+        kind: "payment_link",
+        itemId: "stay-2",
+        hotelName: "The Setai Tel Aviv",
+        bookingId: "booking-1",
+        hotelCount: 2,
+        siblingItemIds: ["stay-1"],
+        siblingHotelNames: ["The David Kempinski Tel Aviv"],
+        replies: question,
+      }),
+    ],
+    [spend({ ...dossierSpend, costItemId: "stay-2", cardPurpose: "Visa" })],
+    true
+  );
+  assert.match(onTheLine?.paymentLabel || "", /Paiement Pliant autorisé/);
 });
 
 test("sans lecture Pliant, on n’écrit pas qu’il n’y a pas eu de paiement", () => {

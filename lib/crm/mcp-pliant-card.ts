@@ -10,6 +10,7 @@ import { currentMcpAccess } from "./mcp-auth";
 import { McpReadError, journalReference } from "./mcp-passport";
 import { McpWriteError } from "./mcp-write";
 import { pliantDesignation } from "./eta-il-fee";
+import { linkIssuedCardToHotel } from "./pliant-hotel-link";
 import { hotelDisplayName } from "./carnet";
 import { pliantIdFromStayState } from "./le-stay-card";
 import { rememberPliantCard } from "./pliant-card-run";
@@ -296,6 +297,7 @@ export async function createPliantCard(
     dossier_id?: string;
     reference?: string;
     nom?: string;
+    hotel?: string;
     plafond?: unknown;
     devise?: string;
     transactions?: unknown;
@@ -500,6 +502,28 @@ export async function createPliantCard(
     max_transaction_count: body.maxTransactionCount ?? null,
   });
 
+  let ligneHotel: string | null = null;
+  try {
+    const { data: itemData } = await admin
+      .from("crm_booking_items")
+      .select("id, kind, title, supplier, details, lifecycle")
+      .eq("booking_id", booking.id);
+    const asked = clean(input.hotel);
+    const namedHotel = Boolean(asked) && !UUID.test(asked);
+    ligneHotel = await linkIssuedCardToHotel(admin, {
+      bookingId: booking.id,
+      cardId,
+      last4,
+      limitCents: body.limit.value,
+      currency: body.limit.currency,
+      items: (itemData || []) as Pick<CrmBookingItem, "id" | "kind" | "title" | "supplier" | "details" | "lifecycle">[],
+      designation: namedHotel ? [label, asked].filter(Boolean).join(" · ") : label,
+      itemId: asked && UUID.test(asked) ? asked : null,
+    });
+  } catch (err) {
+    console.error("[mcp] lien hôtel", err instanceof Error ? err.message : "échec");
+  }
+
   await writeCardAudit(admin, {
     actor: access.actor,
     customerId: booking.customer_id,
@@ -527,6 +551,7 @@ export async function createPliantCard(
     valable_du: body.validFrom,
     valable_au: body.validTo,
     quatre_derniers: last4,
+    ...(ligneHotel ? { ligne_hotel: ligneHotel } : {}),
   };
   if (access.cards !== true) {
     const hidden = created as Record<string, unknown>;

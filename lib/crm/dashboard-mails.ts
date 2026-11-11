@@ -9,7 +9,9 @@ import {
   type HotelCourrierTurn,
   type HotelPliantSpend,
 } from "./hotel-courrier-board";
+import { hotelDisplayName } from "./carnet";
 import { missingDbColumn } from "./optional-column";
+import { isActiveItem, type CrmBookingItem } from "./types";
 
 export type DashboardMail = DashboardCourrier;
 
@@ -49,6 +51,26 @@ type SpendRow = {
   billing_cents: number | string | null;
   billing_currency: string | null;
   booked_at: string | null;
+  booking_id?: string | null;
+  card_label?: string | null;
+  cost_item_id?: string | null;
+};
+
+type HotelItemRow = {
+  id: string;
+  booking_id: string;
+  title: string | null;
+  details: { hotel_name?: unknown } | null;
+  lifecycle: string | null;
+  amount: number | string | null;
+  start_at: string | null;
+  end_at: string | null;
+};
+
+type ArrivalNetRow = {
+  booking_item_id: string | null;
+  net_cents: number | string | null;
+  currency: string | null;
 };
 
 function spendOf(row: SpendRow): HotelPliantSpend | null {
@@ -62,7 +84,33 @@ function spendOf(row: SpendRow): HotelPliantSpend | null {
     billingCents: row.billing_cents,
     billingCurrency: row.billing_currency,
     bookedAt: row.booked_at,
+    bookingId: row.booking_id || null,
+    cardPurpose: row.card_label || null,
+    costItemId: row.cost_item_id || null,
   };
+}
+
+function centsFrom(value: number | string | null | undefined) {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.round(parsed) : null;
+  }
+  return null;
+}
+
+function moneyCode(value: string | null | undefined) {
+  const code = (value || "EUR").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : "EUR";
+}
+
+/** Net de l’arrivée s’il est connu, sinon le montant de la ligne, en centimes. Pas de change au rendu. */
+function stayMoney(item: HotelItemRow, net: ArrivalNetRow | undefined) {
+  const netCents = centsFrom(net?.net_cents ?? null);
+  if (netCents != null && netCents > 0) return { cents: netCents, currency: moneyCode(net?.currency) };
+  const major = typeof item.amount === "number" ? item.amount : typeof item.amount === "string" ? Number(item.amount) : Number.NaN;
+  if (!Number.isFinite(major) || major <= 0) return { cents: null, currency: null };
+  return { cents: Math.round(major * 100), currency: "EUR" };
 }
 
 /** Achats Pliant des hôtels. Échec ou fonction absente : on ne conclut pas « pas de paiement ». */
@@ -133,8 +181,11 @@ export async function loadDashboardMails(supabase: SupabaseClient): Promise<Dash
   const paymentItems = [
     ...new Set(requests.filter((row) => row.kind === "payment_link").map((row) => row.booking_item_id)),
   ];
+  const paymentBookingIds = [
+    ...new Set(requests.filter((row) => row.kind === "payment_link").map((row) => row.booking_id)),
+  ];
 
-  const [{ data: items }, { data: bookings }, { data: thread }, payments] = await Promise.all([
+  const [{ data: items }, { data: bookings }, { data: thread }, payments, hotelLoad, netLoad] = await Promise.all([
     supabase.from("crm_booking_items").select("id, title, details, lifecycle, end_at").in("id", itemIds),
     supabase.from("crm_bookings").select("id, reference, status, end_date, archived_at").in("id", bookingIds),
     supabase
@@ -142,6 +193,16 @@ export async function loadDashboardMails(supabase: SupabaseClient): Promise<Dash
       .select("id, request_id, booking_item_id, subject_key, body, received_at, direction, counts_as_reply")
       .in("booking_item_id", itemIds),
     loadHotelPliantSpends(supabase, paymentItems, paymentIds),
+    paymentBookingIds.length
+      ? supabase
+          .from("crm_booking_items")
+          .select("id, booking_id, kind, title, details, lifecycle, amount, start_at, end_at")
+          .in("booking_id", paymentBookingIds)
+          .eq("kind", "hotel")
+      : Promise.resolve({ data: [] as HotelItemRow[], error: null }),
+    paymentItems.length
+      ? supabase.from("crm_hotel_arrivals").select("booking_item_id, net_cents, currency").in("booking_item_id", paymentItems)
+      : Promise.resolve({ data: [] as ArrivalNetRow[], error: null }),
   ]);
 
   const byItem = new Map(
@@ -166,6 +227,23 @@ export async function loadDashboardMails(supabase: SupabaseClient): Promise<Dash
       }[]
     ).map((row) => [row.id, row])
   );
+  const hotelsKnown = !hotelLoad.error;
+  const hotelsByBooking = new Map<string, HotelItemRow[]>();
+  if (hotelsKnown) {
+    for (const item of (hotelLoad.data || []) as HotelItemRow[]) {
+      if (!item.id || !item.booking_id || !isActiveItem(item)) continue;
+      const list = hotelsByBooking.get(item.booking_id) || [];
+      list.push(item);
+      hotelsByBooking.set(item.booking_id, list);
+    }
+  }
+  const nets = new Map<string, ArrivalNetRow>();
+  if (!netLoad.error) {
+    for (const row of (netLoad.data || []) as ArrivalNetRow[]) {
+      if (row.booking_item_id) nets.set(row.booking_item_id, row);
+    }
+  }
+
   const turnsByRequest = new Map<string, HotelCourrierTurn[]>();
   const loose: TurnRow[] = [];
   for (const row of (thread || []) as TurnRow[]) {
@@ -196,6 +274,10 @@ export async function loadDashboardMails(supabase: SupabaseClient): Promise<Dash
     const booking = byBooking.get(row.booking_id);
     const hotelName = item?.details && typeof item.details.hotel_name === "string" ? item.details.hotel_name : "";
     const turns = turnsByRequest.get(row.id) || [];
+    const stayHotels = hotelsByBooking.get(row.booking_id) || [];
+    const mine = stayHotels.find((hotel) => hotel.id === row.booking_item_id) || null;
+    const siblings = stayHotels.filter((hotel) => hotel.id !== row.booking_item_id);
+    const money = mine ? stayMoney(mine, nets.get(mine.id)) : { cents: null, currency: null };
     return {
       id: row.id,
       bookingId: row.booking_id,
@@ -217,9 +299,15 @@ export async function loadDashboardMails(supabase: SupabaseClient): Promise<Dash
       bookingStatus: booking?.status || "",
       bookingArchived: Boolean(booking?.archived_at),
       bookingEnd: booking?.end_date || null,
-      itemEnd: item?.end_at || null,
+      itemEnd: item?.end_at || mine?.end_at || null,
       itemLifecycle: item?.lifecycle || null,
       classifiedAt: row.classified_at || null,
+      hotelCount: row.kind === "payment_link" && hotelsKnown && mine ? stayHotels.length : undefined,
+      stayStart: mine?.start_at || null,
+      stayAmountCents: money.cents,
+      stayAmountCurrency: money.currency,
+      siblingItemIds: siblings.map((hotel) => hotel.id),
+      siblingHotelNames: siblings.map((hotel) => hotelDisplayName(hotel as CrmBookingItem)),
     };
   });
 
