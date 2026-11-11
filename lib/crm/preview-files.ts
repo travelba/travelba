@@ -1,5 +1,14 @@
+import {
+  boardingSegments,
+  documentFlightId,
+  groupBoardingPasses,
+  type BoardingPassGrouping,
+  type BoardingSegment,
+  type BoardingTravelerName,
+} from "./boarding-pass-groups";
 import { documentLabel } from "./carnet";
 import { clientBoardingHref, type BoardingFileLink, type ClientBoardingCard } from "./client-boarding-pass";
+import { isBoardingPassDocument } from "./online-checkin";
 import { isPlaceholderTraveler, type PersonName } from "./person-match";
 import { documentMatchesTraveler, travelerDisplayName } from "./trip-documents";
 import type { CrmBookingDocument, CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "./types";
@@ -115,6 +124,28 @@ function boardingLabel(card: ClientBoardingCard) {
   return [who, seat || card.flight].filter(Boolean).join(" · ");
 }
 
+/** Nom et siège seulement : le vol est dans l’en-tête du groupe. */
+export function boardingRowLabel(card: Pick<ClientBoardingCard, "firstName" | "seat">) {
+  const who = card.firstName || "Carte d’embarquement";
+  return card.seat ? `${who} · siège ${card.seat}` : who;
+}
+
+export function boardingPassFile(card: ClientBoardingCard, reference?: string | null): FilePreviewModel | null {
+  const href = card.walletOnly ? null : card.href || clientBoardingHref(card.documentId, card.page);
+  const walletHref = card.walletHref || null;
+  if (!href && !walletHref) return null;
+  return {
+    id: card.key,
+    path: "",
+    href: href || walletHref,
+    walletHref,
+    fileName: card.walletOnly ? "passe.pkpass" : "Carte embarquement.pdf",
+    mimeType: card.walletOnly ? "application/vnd.apple.pkpass" : "application/pdf",
+    label: boardingRowLabel(card),
+    shareText: boardingShareText(reference),
+  };
+}
+
 /** Une vignette par passager, puis le PDF entier quand il regroupe plusieurs pages. */
 export function boardingPassPreviews(
   cards: ClientBoardingCard[],
@@ -122,21 +153,9 @@ export function boardingPassPreviews(
   reference?: string | null
 ): FilePreviewModel[] {
   const people = cards.flatMap((card) => {
-    const href = card.walletOnly ? null : card.href || clientBoardingHref(card.documentId, card.page);
-    const walletHref = card.walletHref || null;
-    if (!href && !walletHref) return [];
-    return [
-      {
-        id: card.key,
-        path: "",
-        href: href || walletHref,
-        walletHref,
-        fileName: card.walletOnly ? "passe.pkpass" : "Carte embarquement.pdf",
-        mimeType: card.walletOnly ? "application/vnd.apple.pkpass" : "application/pdf",
-        label: boardingLabel(card),
-        shareText: boardingShareText(reference),
-      },
-    ];
+    const file = boardingPassFile(card, reference);
+    if (!file) return [];
+    return [{ ...file, label: boardingLabel(card) }];
   });
   const files = full.flatMap((file) => {
     if (!file.href) return [];
@@ -153,6 +172,154 @@ export function boardingPassPreviews(
     ];
   });
   return [...people, ...files];
+}
+
+export type BoardingShownPass = {
+  id: string;
+  label: string;
+  href: string | null;
+  walletHref: string | null;
+  preview?: FilePreviewModel;
+};
+
+type GroupablePass = {
+  id: string;
+  itemId: string | null;
+  firstName: string;
+  lastName?: string | null;
+  card?: ClientBoardingCard;
+  preview?: FilePreviewModel;
+};
+
+function shownPass(pass: GroupablePass, reference?: string | null): BoardingShownPass | null {
+  if (pass.preview) {
+    return {
+      id: pass.preview.id,
+      label: pass.preview.label,
+      href: pass.preview.href || null,
+      walletHref: pass.preview.walletHref || null,
+      preview: pass.preview,
+    };
+  }
+  if (!pass.card) return null;
+  const file = boardingPassFile(pass.card, reference);
+  if (!file) return null;
+  return {
+    id: file.id,
+    label: file.label,
+    href: file.href || null,
+    walletHref: file.walletHref || null,
+    preview: file,
+  };
+}
+
+function shownGroups(
+  grouping: BoardingPassGrouping<GroupablePass>,
+  reference?: string | null
+): BoardingPassGrouping<BoardingShownPass> {
+  const mapGroup = (group: BoardingPassGrouping<GroupablePass>["upcoming"][number]) => ({
+    ...group,
+    passes: group.passes.flatMap((pass) => {
+      const shown = shownPass(pass, reference);
+      return shown ? [shown] : [];
+    }),
+  });
+  return {
+    upcoming: grouping.upcoming.map(mapGroup).filter((group) => group.passes.length || group.files.length),
+    past: grouping.past.map(mapGroup).filter((group) => group.passes.length || group.files.length),
+    other: grouping.other
+      ? {
+          passes: grouping.other.passes.flatMap((pass) => {
+            const shown = shownPass(pass, reference);
+            return shown ? [shown] : [];
+          }),
+          files: grouping.other.files,
+        }
+      : null,
+  };
+}
+
+/** Cartes déjà lues, rangées par vol. Le PDF complet n’est pas une ligne voyageur. */
+export function groupedBoardingPasses(input: {
+  cards: ClientBoardingCard[];
+  full: BoardingFileLink[];
+  segments: BoardingSegment[];
+  travelers?: BoardingTravelerName[];
+  reference?: string | null;
+  now?: Date;
+  extras?: GroupablePass[];
+}) {
+  const grouping = groupBoardingPasses({
+    segments: input.segments,
+    passes: [
+      ...input.cards.map((card) => ({
+        id: card.key,
+        itemId: card.itemId,
+        firstName: card.firstName,
+        lastName: card.lastName,
+        card,
+      })),
+      ...(input.extras || []),
+    ],
+    files: input.full.map((file) => ({
+      id: `complet:${file.documentId}`,
+      href: file.href,
+      label: file.label,
+      itemIds: file.itemIds,
+    })),
+    travelers: input.travelers,
+    now: input.now,
+  });
+  const shown = shownGroups(grouping, input.reference);
+  if (shown.other && !shown.other.passes.length && !shown.other.files.length) shown.other = null;
+  return shown;
+}
+
+/** Pièces du dossier admin : cartes d’embarquement par vol, le reste à part. */
+export function splitBoardingAttachments(
+  docs: CrmBookingDocument[],
+  items: CrmBookingItem[],
+  travelers: { first_name?: string | null; last_name?: string | null }[],
+  reference?: string | null,
+  now?: Date
+) {
+  const segments = boardingSegments(items, { clientVisible: false });
+  const boarding = docs.filter((doc) => isBoardingPassDocument(doc) && doc.storage_path);
+  const others = attachmentPreviews(
+    docs.filter((doc) => !isBoardingPassDocument(doc)),
+    items,
+    reference
+  );
+  const groups = groupedBoardingPasses({
+    cards: [],
+    full: [],
+    segments,
+    travelers: travelers.map((traveler) => ({
+      firstName: traveler.first_name || "",
+      lastName: traveler.last_name || "",
+    })),
+    reference,
+    now,
+    extras: boarding.flatMap((doc) => {
+      const preview = attachmentPreviews([doc], items, reference)[0];
+      if (!preview) return [];
+      const extracted = doc.extracted;
+      const firstName =
+        extracted && typeof extracted === "object" && typeof extracted.firstName === "string" ? extracted.firstName : "";
+      const lastName =
+        extracted && typeof extracted === "object" && typeof extracted.lastName === "string" ? extracted.lastName : "";
+      return [
+        {
+          id: doc.id,
+          itemId: documentFlightId(doc, segments),
+          firstName,
+          lastName,
+          preview,
+        },
+      ];
+    }),
+  });
+  return { groups, others };
 }
 
 export function identityPreview(

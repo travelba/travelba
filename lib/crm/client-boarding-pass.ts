@@ -13,6 +13,7 @@ export type ClientBoardingCard = {
   /** Page 1-based. Null : le fichier n’a qu’une page, servi entier. */
   page: number | null;
   firstName: string;
+  lastName?: string;
   flight: string;
   route: string;
   when: string;
@@ -44,6 +45,8 @@ export type BoardingFlightRef = {
   source_document_id?: string | null;
   visible_to_client?: boolean | null;
   lifecycle?: string | null;
+  end_at?: string | null;
+  supplier?: string | null;
 };
 
 function asItem(flight: BoardingFlightRef) {
@@ -132,6 +135,7 @@ function cardFrom(
     documentId: doc.id,
     page,
     firstName,
+    lastName: passenger?.lastName || "",
     flight: passenger?.flight || (item ? flightNumber(item) : "") || "",
     route: passenger?.route || (item ? flightCities(item) : "") || "",
     when: passenger?.when || clockLabel(flight),

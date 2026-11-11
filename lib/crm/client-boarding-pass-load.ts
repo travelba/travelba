@@ -9,6 +9,7 @@ import {
   type BoardingFlightRef,
   type ClientBoardingOffer,
 } from "./client-boarding-pass";
+import type { BoardingTravelerName } from "./boarding-pass-groups";
 import { queryWithOptionalColumn } from "./optional-column";
 import { isWalletPassName } from "./pkpass";
 import { clientTripOwnerIds } from "./company-peers";
@@ -27,6 +28,14 @@ const KINDS = ["carte d'embarquement", "carte d’embarquement"];
  * La lecture du PDF est lourde : à appeler dans un bloc suspendu.
  */
 const EMPTY_OFFER: ClientBoardingOffer = { cards: [], full: [] };
+
+export type ClientBoardingBundle = {
+  offer: ClientBoardingOffer;
+  flights: BoardingFlightRef[];
+  travelers: BoardingTravelerName[];
+};
+
+const EMPTY_BUNDLE: ClientBoardingBundle = { offer: EMPTY_OFFER, flights: [], travelers: [] };
 
 /**
  * Séjour visible du client, y compris via un admin société.
@@ -74,10 +83,10 @@ export async function visibleClientBookingByReference(
   }
 }
 
-export const loadClientBoardingOffer = cache(async (bookingId: string): Promise<ClientBoardingOffer> => {
+export const loadClientBoardingOffer = cache(async (bookingId: string): Promise<ClientBoardingBundle> => {
   try {
     const admin = createServiceClient();
-    const [docsRes, itemsRes] = await Promise.all([
+    const [docsRes, itemsRes, travelersRes] = await Promise.all([
       queryWithOptionalColumn(
         (columns) =>
           admin.from("crm_booking_documents").select(columns).eq("booking_id", bookingId).in("kind", KINDS),
@@ -86,11 +95,16 @@ export const loadClientBoardingOffer = cache(async (bookingId: string): Promise<
       ),
       admin
         .from("crm_booking_items")
-        .select("id, kind, title, start_at, details, visible_to_client, lifecycle, source_document_id")
+        .select("id, kind, title, supplier, start_at, end_at, details, visible_to_client, lifecycle, source_document_id")
         .eq("booking_id", bookingId)
         .eq("kind", "flight"),
+      admin
+        .from("crm_booking_travelers")
+        .select("first_name, last_name, created_at")
+        .eq("booking_id", bookingId)
+        .order("created_at"),
     ]);
-    if (docsRes.error || itemsRes.error) return EMPTY_OFFER;
+    if (docsRes.error || itemsRes.error) return EMPTY_BUNDLE;
     const flights = (itemsRes.data || []) as BoardingFlightRef[];
     const parts: ClientBoardingOffer[] = [];
     const wallets: (BoardingDocRef & { mime_type?: string | null; extracted?: unknown })[] = [];
@@ -117,14 +131,21 @@ export const loadClientBoardingOffer = cache(async (bookingId: string): Promise<
         continue;
       }
     }
-    return withWalletPasses(mergeBoardingOffers(parts), wallets, flights);
+    const travelers = ((travelersRes.data || []) as { first_name?: string | null; last_name?: string | null }[]).map(
+      (row) => ({ firstName: row.first_name || "", lastName: row.last_name || "" })
+    );
+    return {
+      offer: withWalletPasses(mergeBoardingOffers(parts), wallets, flights),
+      flights,
+      travelers,
+    };
   } catch {
-    return EMPTY_OFFER;
+    return EMPTY_BUNDLE;
   }
 });
 
 export const loadClientBoardingCards = cache(async (bookingId: string) => {
-  return (await loadClientBoardingOffer(bookingId)).cards;
+  return (await loadClientBoardingOffer(bookingId)).offer.cards;
 });
 
 /** Statut d’enregistrement par vol. Une carte déjà au dossier monte à « cartes reçues ». */

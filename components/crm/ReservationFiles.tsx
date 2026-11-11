@@ -11,6 +11,7 @@ export function ReservationFiles({
   emptyLabel = "Aucune pièce jointe sur cette réservation.",
   onRemoveAttachment,
   removeQuestion,
+  leading = null,
   trailing = null,
 }: {
   passports?: FilePreviewModel[];
@@ -21,7 +22,9 @@ export function ReservationFiles({
   emptyLabel?: string;
   onRemoveAttachment?: (file: FilePreviewModel) => void | string | null | undefined | Promise<void | string | null | undefined>;
   removeQuestion?: string | ((file: FilePreviewModel) => string);
-  /** Cartes d’embarquement, chargées à part pour ne pas retenir la page. */
+  /** Cartes d’embarquement, au-dessus des autres pièces. */
+  leading?: ReactNode;
+  /** Complément après les pièces, si un écran en a encore besoin. */
   trailing?: ReactNode;
 }) {
   const card =
@@ -46,9 +49,12 @@ export function ReservationFiles({
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
           {attachmentsLabel}
         </p>
+        {leading}
         {attachments.length ? (
-          <FilePreviewGrid files={attachments} onRemove={onRemoveAttachment} removeQuestion={removeQuestion} />
-        ) : trailing ? null : (
+          <div className={leading ? "pt-1" : undefined}>
+            <FilePreviewGrid files={attachments} onRemove={onRemoveAttachment} removeQuestion={removeQuestion} />
+          </div>
+        ) : leading || trailing ? null : (
           <p className="text-sm text-muted">{emptyLabel}</p>
         )}
         {trailing}
