@@ -92,11 +92,11 @@ export function FilePreviewTile({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex w-28 shrink-0 flex-col gap-1.5">
+    <div className={file.walletHref ? "flex w-full flex-col items-start gap-1.5" : "flex w-28 shrink-0 flex-col gap-1.5"}>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-left"
+        className="w-28 text-left"
         aria-label={file.sealed ? `Aperçu flouté de ${file.label}` : `Aperçu de ${file.label}`}
       >
         <span className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#0B192C] ring-1 ring-[#C5A880]/50">
@@ -111,7 +111,7 @@ export function FilePreviewTile({
           {file.label}
         </span>
       </button>
-      {file.walletHref ? <AddToAppleWallet href={file.walletHref} className="justify-center" /> : null}
+      {file.walletHref ? <AddToAppleWallet href={file.walletHref} /> : null}
       {onRemove ? (
         <ConfirmAction
           size="sm"
@@ -168,7 +168,7 @@ export function FilePreviewGrid({
   return (
     <ul className="flex flex-wrap gap-3">
       {files.map((file) => (
-        <li key={file.id}>
+        <li key={file.id} className={file.walletHref ? "basis-full" : undefined}>
           <FilePreviewTile
             file={file}
             onRemove={onRemove ? () => onRemove(file) : undefined}
