@@ -56,6 +56,24 @@ export function clientBoardingHref(documentId: string, page: number | null) {
   return `/api/mon-compte/cartes/${documentId}?page=${page}`;
 }
 
+/** PDF entier, y compris quand il contient plusieurs passagers. */
+export function clientBoardingFullHref(documentId: string) {
+  const href = clientBoardingHref(documentId, null);
+  return href ? `${href}?complet=1` : null;
+}
+
+export type BoardingFileLink = {
+  documentId: string;
+  href: string;
+  label: string;
+  itemIds: string[];
+};
+
+export type ClientBoardingOffer = {
+  cards: ClientBoardingCard[];
+  full: BoardingFileLink[];
+};
+
 function visibleFlights(flights: BoardingFlightRef[]) {
   return flights.filter(
     (flight) =>
@@ -156,4 +174,89 @@ export function clientBoardingCards(input: {
 export function cardsForFlight(cards: ClientBoardingCard[], itemIds: string[]) {
   const ids = new Set(itemIds);
   return cards.filter((card) => card.itemId && ids.has(card.itemId));
+}
+
+function flightsMatchingDoc(doc: BoardingDocRef, flights: BoardingFlightRef[]) {
+  return visibleFlights(flights)
+    .filter((flight) => passMatchesFlight(doc, asItem(flight)))
+    .map((flight) => flight.id);
+}
+
+/** Cartes par passager, et le PDF entier quand il a plusieurs pages. */
+export function boardingOfferForDocument(input: {
+  doc: BoardingDocRef;
+  passengers: BoardingPassPassenger[];
+  flights: BoardingFlightRef[];
+  pageCount?: number;
+}): ClientBoardingOffer {
+  if (!isBoardingPassDocument(input.doc)) return { cards: [], full: [] };
+  const cards = clientBoardingCards(input);
+  const pageCount = input.pageCount ?? 0;
+  if (pageCount <= 1) return { cards, full: [] };
+  const href = clientBoardingFullHref(input.doc.id);
+  if (!href) return { cards, full: [] };
+  const fromCards = [...new Set(cards.map((card) => card.itemId).filter((id): id is string => Boolean(id)))];
+  const flight = cards.find((card) => card.flight)?.flight || "";
+  return {
+    cards,
+    full: [
+      {
+        documentId: input.doc.id,
+        href,
+        label: cards.length ? (flight ? `PDF complet · ${flight}` : "PDF complet") : "Carte d’embarquement",
+        itemIds: fromCards.length ? fromCards : flightsMatchingDoc(input.doc, input.flights),
+      },
+    ],
+  };
+}
+
+export function mergeBoardingOffers(parts: ClientBoardingOffer[]): ClientBoardingOffer {
+  return {
+    cards: parts.flatMap((part) => part.cards),
+    full: parts.flatMap((part) => part.full),
+  };
+}
+
+/** Limite l’offre aux vols demandés. Sans vol, tout le séjour. */
+export function scopeBoardingOffer(offer: ClientBoardingOffer, itemIds: string[]): ClientBoardingOffer {
+  if (!itemIds.length) return offer;
+  const ids = new Set(itemIds);
+  return {
+    cards: offer.cards.filter((card) => card.itemId && ids.has(card.itemId)),
+    full: offer.full.filter((file) => file.itemIds.some((id) => ids.has(id))),
+  };
+}
+
+export type ClientBoardingView = {
+  cards: {
+    key: string;
+    firstName: string;
+    flight: string;
+    route: string;
+    when: string;
+    seat: string;
+    href: string;
+  }[];
+  full: { href: string; label: string }[];
+};
+
+export function clientBoardingView(offer: ClientBoardingOffer): ClientBoardingView {
+  return {
+    cards: offer.cards.flatMap((card) => {
+      const href = card.href || clientBoardingHref(card.documentId, card.page);
+      if (!href) return [];
+      return [
+        {
+          key: card.key,
+          firstName: card.firstName,
+          flight: card.flight,
+          route: card.route,
+          when: card.when,
+          seat: card.seat,
+          href,
+        },
+      ];
+    }),
+    full: offer.full.map((file) => ({ href: file.href, label: file.label })),
+  };
 }

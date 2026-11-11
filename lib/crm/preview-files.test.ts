@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileDownloadHref, fileHref, fileInlineHref } from "./file-href";
-import { attachmentPreviews, identityPreview, passportPreviewsForStay } from "./preview-files";
+import { attachmentPreviews, boardingPassPreviews, identityPreview, passportPreviewsForStay } from "./preview-files";
+import type { ClientBoardingCard } from "./client-boarding-pass";
 import type { CrmBookingDocument, CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 function traveler(partial: Partial<CrmBookingTraveler>): CrmBookingTraveler {
@@ -114,4 +115,39 @@ test("les pièces jointes reprennent le libellé du dossier", () => {
   assert.equal(file?.shareText.includes("confirmation.pdf"), false);
   assert.equal(file?.path.startsWith("bookings/"), true);
   assert.equal(file?.sealed, undefined);
+});
+
+test("une carte d’embarquement s’ouvre par la page du passager, pas par le stockage", () => {
+  const card = {
+    key: "camille",
+    documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    page: 2,
+    firstName: "Camille",
+    flight: "AF 7308",
+    route: "Paris → Nice",
+    when: "11 nov. à 13h50",
+    seat: "21B",
+    terminal: "",
+    gate: "",
+    itemId: "flight-1",
+  } satisfies ClientBoardingCard;
+  const [file, full] = boardingPassPreviews(
+    [card],
+    [
+      {
+        documentId: card.documentId,
+        href: `/api/mon-compte/cartes/${card.documentId}?complet=1`,
+        label: "PDF complet · AF 7308",
+        itemIds: ["flight-1"],
+      },
+    ],
+    "TB-1"
+  );
+  assert.equal(file?.label, "Camille · siège 21B");
+  assert.equal(file?.href, `/api/mon-compte/cartes/${card.documentId}?page=2`);
+  assert.equal(file?.path, "");
+  assert.equal(file?.shareText.includes("21B"), false);
+  assert.match(file?.shareText || "", /TB-1/);
+  assert.match(full?.href || "", /complet=1/);
+  assert.equal(full?.label, "PDF complet · AF 7308");
 });

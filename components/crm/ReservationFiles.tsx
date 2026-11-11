@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import type { FilePreviewModel } from "@/lib/crm/preview-files";
 
@@ -10,6 +11,7 @@ export function ReservationFiles({
   emptyLabel = "Aucune pièce jointe sur cette réservation.",
   onRemoveAttachment,
   removeQuestion,
+  trailing = null,
 }: {
   passports?: FilePreviewModel[];
   attachments: FilePreviewModel[];
@@ -19,6 +21,8 @@ export function ReservationFiles({
   emptyLabel?: string;
   onRemoveAttachment?: (file: FilePreviewModel) => void | string | null | undefined | Promise<void | string | null | undefined>;
   removeQuestion?: string | ((file: FilePreviewModel) => string);
+  /** Cartes d’embarquement, chargées à part pour ne pas retenir la page. */
+  trailing?: ReactNode;
 }) {
   const card =
     variant === "admin"
@@ -44,9 +48,10 @@ export function ReservationFiles({
         </p>
         {attachments.length ? (
           <FilePreviewGrid files={attachments} onRemove={onRemoveAttachment} removeQuestion={removeQuestion} />
-        ) : (
+        ) : trailing ? null : (
           <p className="text-sm text-muted">{emptyLabel}</p>
         )}
+        {trailing}
       </section>
     </div>
   );

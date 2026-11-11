@@ -77,6 +77,69 @@ test("une page reconnue sans siège n’envoie personne", () => {
   assert.deepEqual(read.passengers, []);
 });
 
+function airFrancePage(input: { name: string; seat: string; flight?: string }) {
+  return [
+    input.name,
+    "CDG",
+    "Paris",
+    "13:50 / 11 Nov",
+    "NCE",
+    "Nice",
+    "15:25",
+    "Terminal 2F",
+    "Porte",
+    "-",
+    "Siège",
+    input.seat,
+    "Vol",
+    input.flight || "AF7308",
+    "Effectué par AIR FRANCE",
+    "N° billet : 000 0000000000",
+    "Si votre carte d'embarquement n'indique pas les bagages autorisés",
+  ].join("\n");
+}
+
+test("une page Air France est un passager, sans inventer l’année ni le numéro de billet", () => {
+  const read = readBoardingPassPages([
+    airFrancePage({ name: "MARTIN , Camille", seat: "21B" }),
+    airFrancePage({ name: "MARTIN , Inès", seat: "21C" }),
+    "Conditions de transport\nAir France",
+  ]);
+  assert.equal(read.recognized, true);
+  assert.equal(read.passengers.length, 2);
+  assert.deepEqual(
+    read.passengers.map((row) => [row.firstName, row.seat, row.page]),
+    [
+      ["Camille", "21B", 1],
+      ["Inès", "21C", 2],
+    ]
+  );
+  assert.equal(read.passengers[0].flight, "AF 7308");
+  assert.equal(read.passengers[0].route, "Paris → Nice");
+  assert.equal(read.passengers[0].when, "11 nov. à 13h50");
+  assert.equal(read.passengers[0].when.includes("2026"), false);
+  assert.equal(JSON.stringify(read).includes("0000000000"), false);
+});
+
+test("une page Air France avec l’année la reprend", () => {
+  const read = readBoardingPassPages([
+    [
+      "MARTIN , Camille",
+      "CDG",
+      "Paris",
+      "13:50 / 11 Nov 2026",
+      "NCE",
+      "Nice",
+      "Siège",
+      "12A",
+      "Vol",
+      "AF 7308",
+      "Effectué par AIR FRANCE",
+    ].join("\n"),
+  ]);
+  assert.equal(read.passengers[0]?.when, `${formatDateFr("2026-11-11")} à 13h50`);
+});
+
 test("un texte qui n’est pas une carte n’est pas reconnu", () => {
   const read = readBoardingPassPages(["Facture hôtel\nParis\n1200 EUR"]);
   assert.equal(read.recognized, false);

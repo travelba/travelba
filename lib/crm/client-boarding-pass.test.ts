@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clientBoardingCards, clientBoardingHref } from "./client-boarding-pass";
+import {
+  boardingOfferForDocument,
+  clientBoardingCards,
+  clientBoardingFullHref,
+  clientBoardingHref,
+  clientBoardingView,
+  scopeBoardingOffer,
+} from "./client-boarding-pass";
 import type { BoardingPassPassenger } from "./boarding-pass-pdf";
 
 const DOC = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -63,6 +70,50 @@ test("un PDF illisible de plusieurs pages n’est pas proposé en entier", () =>
     pageCount: 4,
   });
   assert.deepEqual(cards, []);
+});
+
+test("un PDF Air France donne une page par passager et garde le fichier entier", () => {
+  const offer = boardingOfferForDocument({
+    doc: { id: DOC, kind: "carte d'embarquement", file_name: "carte-embarquement-AF7308.pdf" },
+    passengers: [
+      passenger({ firstName: "Camille", page: 1, seat: "21B", flight: "AF 7308" }),
+      passenger({ firstName: "Inès", page: 2, seat: "21C", flight: "AF 7308" }),
+    ],
+    flights: [flight, { ...flight, id: "flight-2", details: { ...flight.details, flight_number: "AF 7309" } }],
+    pageCount: 2,
+  });
+  assert.equal(offer.cards.length, 2);
+  assert.equal(offer.cards[0]?.itemId, "flight-1");
+  assert.equal(offer.full.length, 1);
+  assert.equal(offer.full[0]?.href, clientBoardingFullHref(DOC));
+  assert.match(offer.full[0]?.label || "", /PDF complet/);
+  const scoped = scopeBoardingOffer(offer, ["flight-2"]);
+  assert.deepEqual(scoped.cards, []);
+  assert.deepEqual(scoped.full, []);
+  const view = clientBoardingView(scopeBoardingOffer(offer, ["flight-1"]));
+  assert.equal(view.cards.length, 2);
+  assert.equal(view.cards[0]?.href, `/api/mon-compte/cartes/${DOC}?page=1`);
+  assert.equal(view.full[0]?.href.includes("complet=1"), true);
+});
+
+test("un PDF illisible de plusieurs pages ne s’ouvre qu’en entier, pas une autre pièce", () => {
+  const hidden = boardingOfferForDocument({
+    doc: { id: DOC, kind: "carte d'embarquement", file_name: "carte-embarquement-AF7308.pdf" },
+    passengers: [],
+    flights: [flight],
+    pageCount: 4,
+  });
+  assert.deepEqual(hidden.cards, []);
+  assert.equal(hidden.full[0]?.label, "Carte d’embarquement");
+  assert.deepEqual(hidden.full[0]?.itemIds, ["flight-1"]);
+  const invoice = boardingOfferForDocument({
+    doc: { id: DOC, kind: "invoice", file_name: "facture-fournisseur.pdf" },
+    passengers: [passenger({ firstName: "Camille", page: 1 })],
+    flights: [flight],
+    pageCount: 2,
+  });
+  assert.deepEqual(invoice.cards, []);
+  assert.deepEqual(invoice.full, []);
 });
 
 test("une autre pièce cachée ne devient pas une carte d’embarquement", () => {

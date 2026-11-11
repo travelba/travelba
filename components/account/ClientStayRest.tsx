@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { FlightBoardingPasses } from "@/components/account/FlightBoardingPasses";
+import { BoardingPassActions } from "@/components/account/BoardingPassActions";
+import { StayBoardingAttachments } from "@/components/account/StayBoardingAttachments";
 import { loadClientCheckinStatus } from "@/lib/crm/client-boarding-pass-load";
 import { cookies } from "next/headers";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
@@ -13,6 +14,7 @@ import { pliantConfigured } from "@/lib/crm/pliant";
 import { agencyFeeForBooking } from "@/lib/crm/agency-fee-rate";
 import { todayIsoDate } from "@/lib/crm/money";
 import { insuranceLineLabel, itemPriceLabel, unlinkedDocuments, whatsappModifyHref } from "@/lib/crm/carnet";
+import { isBoardingPassDocument } from "@/lib/crm/online-checkin";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { SepaInFlight } from "@/components/account/SepaInFlight";
@@ -194,6 +196,7 @@ export async function ClientStayRest({
       </section>
     );
   const passportRows = passportVaultRows(party, identity, todayIsoDate(), holder, b, companions);
+  const looseDocs = unlinkedDocuments(visibleDocs, visibleItems).filter((doc) => !isBoardingPassDocument(doc));
 
   return (
     <ClientTripBody
@@ -221,10 +224,13 @@ export async function ClientStayRest({
           refusals={refusals}
           hotelCancels={hotelCancels}
           checkinByItem={checkinByItem}
-          renderPasses={(itemId) => (
-            <Suspense fallback={null}>
-              <FlightBoardingPasses bookingId={b.id} itemId={itemId} />
-            </Suspense>
+          renderPasses={(itemIds, showBadge) => (
+            <BoardingPassActions
+              variant="flight"
+              reference={b.reference}
+              itemIds={itemIds}
+              badge={showBadge}
+            />
           )}
         />
       }
@@ -325,7 +331,17 @@ export async function ClientStayRest({
         <>
           <ReservationFiles
             showPassports={false}
-            attachments={attachmentPreviews(unlinkedDocuments(visibleDocs, visibleItems), visibleItems, b.reference)}
+            attachments={attachmentPreviews(looseDocs, visibleItems, b.reference)}
+            trailing={
+              <Suspense fallback={<div className="h-16 animate-pulse rounded-2xl bg-[#0B192C]/10" aria-hidden />}>
+                <StayBoardingAttachments
+                  bookingId={b.id}
+                  reference={b.reference}
+                  showEmpty={!looseDocs.length}
+                  visiblePasses={visibleDocs.filter((doc) => isBoardingPassDocument(doc))}
+                />
+              </Suspense>
+            }
           />
           {customer.phone ? (
             <a
