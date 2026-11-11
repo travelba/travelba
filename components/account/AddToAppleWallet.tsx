@@ -18,17 +18,16 @@ function appleNow() {
 }
 
 /**
- * Badge officiel « Ajouter à l’app Cartes Apple ».
- * Hauteur 40 pt, largeur proportionnelle, marge de 0,1× la hauteur.
- * Réservé aux appareils Apple. Le PDF reste le repli.
+ * Badge officiel, taille du fichier Apple (35 × 113 px), sans agrandissement.
+ * L’espace libre autour est 0,1× la hauteur. Réservé aux appareils Apple.
  */
 export function AddToAppleWallet({ href }: { href: string }) {
   const show = useSyncExternalStore(subscribe, appleNow, () => false);
   if (!show) return null;
   return (
-    <a href={href} className="inline-flex" style={{ margin: "4pt" }}>
+    <a href={href} className="inline-flex shrink-0 p-1">
       {/* eslint-disable-next-line @next/next/no-img-element -- badge officiel Apple, servi tel quel */}
-      <img src={BADGE_SRC} alt="Ajouter à l'app Cartes Apple" style={{ height: "40pt", width: "auto" }} />
+      <img src={BADGE_SRC} alt="Ajouter à l'app Cartes Apple" className="h-[35px] w-auto" />
     </a>
   );
 }

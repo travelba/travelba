@@ -91,12 +91,48 @@ export function FilePreviewTile({
   removeQuestion?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const direct = Boolean(file.href) && !file.path;
+  const pdfHref = file.href && file.href !== file.walletHref ? file.href : null;
+  if (direct) {
+    return (
+      <div className="flex w-full items-center gap-2 rounded-2xl bg-[#f6f5f2] px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{file.label}</p>
+          {pdfHref ? (
+            <a
+              href={pdfHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-0.5 inline-block text-xs text-[#5c6570] underline decoration-[#c5c6cd] underline-offset-2"
+            >
+              Ouvrir le PDF
+            </a>
+          ) : null}
+        </div>
+        {file.walletHref ? <AddToAppleWallet href={file.walletHref} /> : null}
+        {onRemove ? (
+          <ConfirmAction
+            size="sm"
+            tone="danger"
+            label="Retirer"
+            confirmLabel="Retirer"
+            ariaLabel={`Retirer ${file.label}`}
+            question={removeQuestion || `${file.label} quitte le dossier et son fichier est supprimé.`}
+            onConfirm={async () => {
+              const result = await onRemove();
+              return typeof result === "string" ? result : undefined;
+            }}
+          />
+        ) : null}
+      </div>
+    );
+  }
   return (
-    <div className={file.walletHref ? "flex w-full flex-col items-start gap-1.5" : "flex w-28 shrink-0 flex-col gap-1.5"}>
+    <div className="flex w-28 shrink-0 flex-col gap-1.5">
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-28 text-left"
+        className="text-left"
         aria-label={file.sealed ? `Aperçu flouté de ${file.label}` : `Aperçu de ${file.label}`}
       >
         <span className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#0B192C] ring-1 ring-[#C5A880]/50">
@@ -111,7 +147,6 @@ export function FilePreviewTile({
           {file.label}
         </span>
       </button>
-      {file.walletHref ? <AddToAppleWallet href={file.walletHref} /> : null}
       {onRemove ? (
         <ConfirmAction
           size="sm"
@@ -168,7 +203,7 @@ export function FilePreviewGrid({
   return (
     <ul className="flex flex-wrap gap-3">
       {files.map((file) => (
-        <li key={file.id} className={file.walletHref ? "basis-full" : undefined}>
+        <li key={file.id} className={file.href && !file.path ? "basis-full" : undefined}>
           <FilePreviewTile
             file={file}
             onRemove={onRemove ? () => onRemove(file) : undefined}
