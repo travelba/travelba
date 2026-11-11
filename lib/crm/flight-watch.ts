@@ -1,3 +1,4 @@
+import { icaoAirline, sameAirport } from "./aero-codes";
 import { airlineIataFromFlightNumber } from "./brand-marks";
 import { placeWithPreposition } from "./stay-phrase";
 
@@ -70,8 +71,18 @@ export type FlightWatch = {
   /** Décollage (roues), heure locale, seulement si AeroAPI l’a donnée. */
   actual_off: string;
   actual_in: string;
+  /** Porte et terminal de départ. `gate` / `terminal` reprennent l’origine. */
   gate: string;
   terminal: string;
+  gate_origin: string;
+  terminal_origin: string;
+  gate_destination: string;
+  terminal_destination: string;
+  baggage_claim: string;
+  /** Dernier échec HTTP ou réseau, vide quand un vol est retenu. */
+  last_error: string;
+  /** Raison courte si aucun vol n’est retenu. Vide après un rapprochement. */
+  match_note: string;
   checked_at: string;
   notified_out: string;
   notified_cancel: boolean;
@@ -97,11 +108,16 @@ export type AeroFlight = {
   actualIn: string | null;
   departureDelay: number | null;
   originIata: string;
+  originIcao: string;
   destinationIata: string;
+  destinationIcao: string;
   originTimezone: string;
   destinationTimezone: string;
   gateOrigin: string;
   terminalOrigin: string;
+  gateDestination: string;
+  terminalDestination: string;
+  baggageClaim: string;
 };
 
 export type FlightCard = {
@@ -129,8 +145,21 @@ function detail(details: Record<string, unknown> | null | undefined, key: string
 
 export function flightIdent(details: Record<string, unknown> | null | undefined) {
   const raw = detail(details, "flight_number").toUpperCase().replace(/\s+/g, "");
-  if (!/^[A-Z0-9]{2}\d{1,4}$/.test(raw)) return null;
-  return raw;
+  if (/^[A-Z0-9]{2}\d{1,4}$/.test(raw)) return raw;
+  if (/^[A-Z]{3}\d{1,4}$/.test(raw)) return raw;
+  return null;
+}
+
+/** IATA d’abord (AF7308), puis ICAO (AFR7308) quand la compagnie est connue. */
+export function flightDesignators(details: Record<string, unknown> | null | undefined) {
+  const raw = detail(details, "flight_number").toUpperCase().replace(/\s+/g, "");
+  if (/^[A-Z]{3}\d{1,4}$/.test(raw)) return [raw];
+  const iata = flightIdent(details);
+  if (!iata) return [];
+  const icao = icaoAirline(iata.slice(0, 2));
+  if (!icao) return [iata];
+  const ident = `${icao}${iata.slice(2)}`;
+  return ident === iata ? [iata] : [iata, ident];
 }
 
 export function airlineForCheckin(details: Record<string, unknown> | null | undefined) {
@@ -155,8 +184,15 @@ export function readFlightWatch(details: Record<string, unknown> | null | undefi
     actual_out: text("actual_out"),
     actual_off: text("actual_off"),
     actual_in: text("actual_in"),
-    gate: text("gate"),
-    terminal: text("terminal"),
+    gate_origin: text("gate_origin") || text("gate"),
+    terminal_origin: text("terminal_origin") || text("terminal"),
+    gate_destination: text("gate_destination"),
+    terminal_destination: text("terminal_destination"),
+    baggage_claim: text("baggage_claim"),
+    gate: text("gate_origin") || text("gate"),
+    terminal: text("terminal_origin") || text("terminal"),
+    last_error: text("last_error"),
+    match_note: text("match_note"),
     checked_at: text("checked_at"),
     notified_out: text("notified_out"),
     notified_cancel: watch.notified_cancel === true,
@@ -410,60 +446,106 @@ function watchStatus(flight: AeroFlight, delayMs: number): FlightWatchStatus {
   return "unknown";
 }
 
-function closestFlight(flights: AeroFlight[], start: number | null) {
-  let best: AeroFlight | null = null;
+function flightLocalDay(flight: AeroFlight) {
+  const local = airportLocalIso(
+    flight.scheduledOut || flight.estimatedOut || flight.actualOut,
+    flight.originTimezone
+  );
+  if (local) return local.slice(0, 10);
+  return (flight.scheduledOut || flight.estimatedOut || flight.actualOut || "").slice(0, 10);
+}
+
+function cardLocalDay(item: FlightCard) {
+  const watch = readFlightWatch(item.details);
+  return (item.start_at || watch.scheduled_out || watch.sold_out || "").slice(0, 10);
+}
+
+function airportHit(wanted: string, iata: string, icao: string) {
+  return sameAirport(wanted, { iata, icao });
+}
+
+function closestOnDay(flights: AeroFlight[], item: FlightCard) {
+  if (flights.length <= 1) return flights[0] || null;
+  const start = clockMs(item.start_at);
+  let best = flights[0];
   let bestDelta = Number.POSITIVE_INFINITY;
   for (const flight of flights) {
     const local = airportLocalIso(flight.scheduledOut || flight.estimatedOut, flight.originTimezone);
     const localMs = clockMs(local);
-    if (start == null || localMs == null) continue;
-    const delta = Math.abs(localMs - start);
+    const delta = start == null || localMs == null ? Number.POSITIVE_INFINITY : Math.abs(localMs - start);
     if (delta < bestDelta) {
       best = flight;
       bestDelta = delta;
     }
   }
-  if (!best || bestDelta > 18 * HOUR_MS) return null;
   return best;
 }
 
-export function matchAeroFlight(item: FlightCard, flights: AeroFlight[]) {
+export type AeroMatch = { flight: AeroFlight | null; note: string };
+
+/** Date locale de départ, et aéroports comparés en IATA et en ICAO. */
+export function explainAeroMatch(item: FlightCard, flights: AeroFlight[]): AeroMatch {
   const known = readFlightWatch(item.details).fa_flight_id;
   if (known) {
     const same = flights.find((flight) => flight.faFlightId === known);
-    if (same) return same;
+    if (same) return { flight: same, note: "" };
   }
+  if (!flights.length) return { flight: null, note: "aucun vol" };
   const from = detail(item.details, "from").toUpperCase();
   const to = detail(item.details, "to").toUpperCase();
-  if (!from || !to) return null;
-  const start = clockMs(item.start_at);
-  const routed = closestFlight(
-    flights.filter(
-      (flight) => flight.originIata.toUpperCase() === from && flight.destinationIata.toUpperCase() === to
-    ),
-    start
+  if (!from || !to) return { flight: null, note: "route absente" };
+  const day = cardLocalDay(item);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { flight: null, note: "date absente" };
+  const sameDay = flights.filter((flight) => flightLocalDay(flight) === day);
+  if (!sameDay.length) return { flight: null, note: "mauvaise date" };
+  const routed = sameDay.filter(
+    (flight) =>
+      airportHit(from, flight.originIata, flight.originIcao) &&
+      airportHit(to, flight.destinationIata, flight.destinationIcao)
   );
-  if (routed) return routed;
-  return closestFlight(
-    flights.filter((flight) => flight.diverted && flight.originIata.toUpperCase() === from),
-    start
+  const picked = closestOnDay(routed, item);
+  if (picked) return { flight: picked, note: "" };
+  const diverted = closestOnDay(
+    sameDay.filter((flight) => flight.diverted && airportHit(from, flight.originIata, flight.originIcao)),
+    item
   );
+  if (diverted) return { flight: diverted, note: "" };
+  const originOnly = sameDay.some((flight) => airportHit(from, flight.originIata, flight.originIcao));
+  return { flight: null, note: originOnly ? "autre arrivee" : "autre route" };
 }
 
-export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now: Date): FlightPatch {
+export function matchAeroFlight(item: FlightCard, flights: AeroFlight[]) {
+  return explainAeroMatch(item, flights).flight;
+}
+
+function shortNote(value: string | undefined) {
+  return (value || "").replace(/[\r\n]+/g, " ").trim().slice(0, 80);
+}
+
+export function applyAeroFlight(
+  item: FlightCard,
+  flight: AeroFlight | null,
+  now: Date,
+  meta: { note?: string; error?: string } = {}
+): FlightPatch {
   const previous = readFlightWatch(item.details);
   const checked_at = now.toISOString();
   if (!flight) {
     const details = {
       ...item.details,
-      flight_watch: { ...previous, checked_at },
+      flight_watch: {
+        ...previous,
+        checked_at,
+        last_error: meta.error !== undefined ? shortNote(meta.error) : previous.last_error,
+        match_note: meta.note !== undefined ? shortNote(meta.note) : previous.match_note,
+      },
     };
     return { start_at: item.start_at, end_at: item.end_at, details, event: null, changed: true };
   }
 
-  const departureUtc = flight.estimatedOut || flight.scheduledOut;
-  const localOut = airportLocalIso(departureUtc, flight.originTimezone);
   const scheduledLocal = airportLocalIso(flight.scheduledOut, flight.originTimezone);
+  const estimatedLocal = airportLocalIso(flight.estimatedOut, flight.originTimezone);
+  const localOut = estimatedLocal || scheduledLocal;
   const actualOutLocal = airportLocalIso(flight.actualOut, flight.originTimezone);
   const actualOffLocal = airportLocalIso(flight.actualOff, flight.originTimezone);
   const delayMs = Math.max(0, (flight.departureDelay || 0) * 1000);
@@ -487,14 +569,21 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
     fa_flight_id: flight.faFlightId,
     sold_out,
     scheduled_out: scheduledLocal || previous.scheduled_out,
-    estimated_out: localOut || "",
+    estimated_out: estimatedLocal || previous.estimated_out,
     scheduled_in: scheduledInLocal || previous.scheduled_in,
     estimated_in: estimatedInLocal || previous.estimated_in,
     actual_out: actualOutLocal || previous.actual_out,
     actual_off: actualOffLocal || previous.actual_off,
     actual_in: actualInLocal || previous.actual_in,
+    gate_origin: flight.gateOrigin || previous.gate_origin,
+    terminal_origin: flight.terminalOrigin || previous.terminal_origin,
+    gate_destination: flight.gateDestination || previous.gate_destination,
+    terminal_destination: flight.terminalDestination || previous.terminal_destination,
+    baggage_claim: flight.baggageClaim || previous.baggage_claim,
     gate: flight.gateOrigin || previous.gate,
     terminal: flight.terminalOrigin || previous.terminal,
+    last_error: "",
+    match_note: "",
     checked_at,
   };
   const details: Record<string, unknown> = {
@@ -570,10 +659,36 @@ export function markCheckinAttempt(details: Record<string, unknown>, now: Date) 
   return { ...details, flight_watch: { ...previous, checkin_attempt_at: now.toISOString() } };
 }
 
-export function aeroFlightUrl(ident: string, now: Date) {
+const API_PAST_MS = 10 * 24 * HOUR_MS;
+const API_FUTURE_MS = 2 * 24 * HOUR_MS;
+const WINDOW_BEFORE_MS = 14 * HOUR_MS;
+const WINDOW_AFTER_MS = 20 * HOUR_MS;
+
+/**
+ * Fenêtre autour de la date du vol, bornée par AeroAPI :
+ * start au plus 10 jours dans le passé, end au plus 2 jours dans le futur, end exclusif.
+ */
+export function aeroQueryRange(from: Date, to: Date, now: Date) {
+  const earliest = now.getTime() - API_PAST_MS;
+  const latest = now.getTime() + API_FUTURE_MS;
+  let start = from.getTime() - WINDOW_BEFORE_MS;
+  let end = to.getTime() + WINDOW_AFTER_MS;
+  if (start < earliest) start = earliest;
+  if (start > latest) start = latest;
+  if (end > latest) end = latest;
+  if (end < earliest) end = earliest;
+  const flightEnd = to.getTime();
+  if (flightEnd >= earliest && flightEnd < latest && end <= flightEnd) end = Math.min(latest, flightEnd + 60_000);
+  if (end <= start) end = Math.min(latest, start + 60_000);
+  return { start: new Date(start), end: new Date(end) };
+}
+
+export function aeroFlightUrl(ident: string, anchor: Date, now: Date = anchor, until: Date = anchor) {
+  const range = aeroQueryRange(anchor, until, now);
   const url = new URL(`${AEROAPI_ORIGIN}/flights/${encodeURIComponent(ident)}`);
-  url.searchParams.set("start", new Date(now.getTime() - 12 * HOUR_MS).toISOString());
-  url.searchParams.set("end", new Date(now.getTime() + 47 * HOUR_MS).toISOString());
+  url.searchParams.set("ident_type", "designator");
+  url.searchParams.set("start", range.start.toISOString());
+  url.searchParams.set("end", range.end.toISOString());
   url.searchParams.set("max_pages", "1");
   return url;
 }
@@ -582,9 +697,17 @@ function text(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
-function airport(value: unknown, field: "code_iata" | "timezone") {
-  if (!value || typeof value !== "object") return "";
-  return text((value as Record<string, unknown>)[field]);
+function airportFields(value: unknown) {
+  if (!value || typeof value !== "object") return { iata: "", icao: "", timezone: "" };
+  const row = value as Record<string, unknown>;
+  const code = text(row.code).toUpperCase();
+  const iata = text(row.code_iata).toUpperCase();
+  const icao = text(row.code_icao).toUpperCase();
+  return {
+    iata: iata || (code.length === 3 ? code : ""),
+    icao: icao || (code.length === 4 ? code : ""),
+    timezone: text(row.timezone),
+  };
 }
 
 export function parseAeroFlights(payload: unknown): AeroFlight[] {
@@ -594,6 +717,8 @@ export function parseAeroFlights(payload: unknown): AeroFlight[] {
   for (const row of rows) {
     if (!row || typeof row !== "object") continue;
     const flight = row as Record<string, unknown>;
+    const origin = airportFields(flight.origin);
+    const destination = airportFields(flight.destination);
     flights.push({
       ident: text(flight.ident_iata) || text(flight.ident),
       faFlightId: text(flight.fa_flight_id),
@@ -608,12 +733,17 @@ export function parseAeroFlights(payload: unknown): AeroFlight[] {
       estimatedIn: text(flight.estimated_in) || null,
       actualIn: text(flight.actual_in) || null,
       departureDelay: typeof flight.departure_delay === "number" ? flight.departure_delay : null,
-      originIata: airport(flight.origin, "code_iata"),
-      destinationIata: airport(flight.destination, "code_iata"),
-      originTimezone: airport(flight.origin, "timezone"),
-      destinationTimezone: airport(flight.destination, "timezone"),
+      originIata: origin.iata,
+      originIcao: origin.icao,
+      destinationIata: destination.iata,
+      destinationIcao: destination.icao,
+      originTimezone: origin.timezone,
+      destinationTimezone: destination.timezone,
       gateOrigin: text(flight.gate_origin),
       terminalOrigin: text(flight.terminal_origin),
+      gateDestination: text(flight.gate_destination),
+      terminalDestination: text(flight.terminal_destination),
+      baggageClaim: text(flight.baggage_claim),
     });
   }
   return flights;

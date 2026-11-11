@@ -12,6 +12,8 @@ import {
   capDueGroups,
   checkinAttemptDue,
   flightClockLabel,
+  explainAeroMatch,
+  flightDesignators,
   flightIdent,
   flightNoticeVariables,
   flightNumberLabel,
@@ -66,6 +68,25 @@ const REFERENCE = /^[A-Za-z0-9-]{4,40}$/;
 function quiet(error: unknown) {
   const message = error instanceof Error ? error.message : "échec";
   console.error("[flight-watch]", message.replace(/https?:\/\/\S+/g, "").slice(0, 180));
+}
+
+function watchLog(status: number, received: number, note: string) {
+  console.info(
+    "[flight-watch]",
+    JSON.stringify({ status, received, note: note.replace(/[\r\n]+/g, " ").trim().slice(0, 80) })
+  );
+}
+
+function httpNote(status: number) {
+  return status ? `http ${status}` : "reseau";
+}
+
+function groupSpan(group: FlightCard[], now: Date) {
+  const times = group.map((item) => Date.parse(item.start_at || "")).filter((value) => Number.isFinite(value));
+  return {
+    from: new Date(times.length ? Math.min(...times) : now.getTime()),
+    to: new Date(times.length ? Math.max(...times) : now.getTime()),
+  };
 }
 
 async function reservationSuffix(admin: Admin, email: string, reference: string) {
@@ -274,23 +295,63 @@ export async function runFlightWatch(
   const seen = new Set<string>();
 
   for (const [ident, group] of aero ? groupDue(active, now) : []) {
-    if (calls > 0 && calls % PACE_EVERY === 0) await sleep(PACE_MS);
-    const budget = await takeBudget(admin, now);
-    if (!budget.ok) {
-      capped = true;
-      break;
+    const designators = flightDesignators(group[0].details);
+    const idents = designators.length ? designators : [ident];
+    const attempts: Awaited<ReturnType<typeof fetchAeroFlights>>[] = [];
+    let stopRun = false;
+    const span = groupSpan(group, now);
+    for (const designator of idents) {
+      if (attempts.some((attempt) => attempt.ok && group.every((item) => matchAeroFlight(item, attempt.flights)))) {
+        break;
+      }
+      if (calls > 0 && calls % PACE_EVERY === 0) await sleep(PACE_MS);
+      const budget = await takeBudget(admin, now);
+      if (!budget.ok) {
+        capped = true;
+        stopRun = true;
+        break;
+      }
+      const result = await fetchAeroFlights(designator, span.from, deps.fetchImpl, now, span.to);
+      calls += 1;
+      attempts.push(result);
+      const unmatched = result.ok ? group.filter((item) => !matchAeroFlight(item, result.flights)) : group;
+      const note = !result.ok
+        ? httpNote(result.status)
+        : unmatched.length
+          ? explainAeroMatch(unmatched[0], result.flights).note
+          : "apparie";
+      watchLog(result.status, result.flights.length, note);
+      if (result.stop) {
+        capped = true;
+        stopRun = true;
+        break;
+      }
     }
-    const result = await fetchAeroFlights(ident, now, deps.fetchImpl);
-    calls += 1;
-    if (result.stop) {
-      capped = true;
-      break;
-    }
-    for (const item of group) {
+    const usable = attempts.filter((attempt) => !attempt.stop);
+    for (const item of usable.length ? group : []) {
       seen.add(item.id);
       const booking = bookings.get(item.booking_id);
       if (!booking) continue;
-      const patch = applyAeroFlight(item, result.ok ? matchAeroFlight(item, result.flights) : null, now);
+      let chosen: ReturnType<typeof matchAeroFlight> = null;
+      let note = "aucun vol";
+      let error = "";
+      for (const attempt of usable) {
+        if (!attempt.ok) {
+          error = httpNote(attempt.status);
+          note = error;
+          continue;
+        }
+        const explained = explainAeroMatch(item, attempt.flights);
+        if (explained.flight) {
+          chosen = explained.flight;
+          note = "";
+          error = "";
+          break;
+        }
+        note = explained.note;
+        error = "";
+      }
+      const patch = applyAeroFlight(item, chosen, now, { note, error });
       let details = patch.details;
       const noticed = { ...item, start_at: patch.start_at, end_at: patch.end_at, details };
       for (const kind of pendingFlightNotices(noticed)) {
@@ -324,6 +385,7 @@ export async function runFlightWatch(
       item.end_at = patch.end_at;
       item.details = details;
     }
+    if (stopRun) break;
   }
 
   const flightCounts = new Map<string, number>();

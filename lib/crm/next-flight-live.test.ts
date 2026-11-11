@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { airportLocalIso, applyAeroFlight, type AeroFlight, type FlightCard } from "./flight-watch";
-import { buildLiveFlight, flightHm, livePlaceLine } from "./next-flight-model";
-import { formatCountdown, liveFlightCaption, liveFlightPhase, liveFlightProgress } from "./next-flight-live";
+import { arrivalPlaceLine, buildLiveFlight, flightHm, livePlaceLine } from "./next-flight-model";
+import { formatCountdown, liveFlightCaption, liveFlightPhase, liveFlightPlace, liveFlightProgress } from "./next-flight-live";
 
 const NOW = Date.parse("2026-11-11T11:35:20Z");
 
@@ -37,8 +37,12 @@ test("une heure sans chiffres, ou minuit, ne s’affiche pas", () => {
   assert.equal(flightHm("2026-11-11T00:00:00"), "");
   assert.equal(flightHm("2026-11-11"), "");
   assert.equal(livePlaceLine("", "F35", ""), "Porte F35");
-  assert.equal(livePlaceLine("13:15", "F35", "2E"), "Embarquement 13:15 · Porte F35 · Terminal 2E");
+  assert.equal(livePlaceLine("13:15", "F35", "2E"), "Embarquement 13:15 · Terminal 2E · Porte F35");
+  assert.equal(livePlaceLine("", "K35", "2F"), "Terminal 2F · Porte K35");
   assert.equal(livePlaceLine("", "", ""), "");
+  assert.equal(arrivalPlaceLine("1", ""), "Arrivée Terminal 1");
+  assert.equal(arrivalPlaceLine("1", "4"), "Arrivée Terminal 1 · Tapis bagages 4");
+  assert.equal(arrivalPlaceLine("", ""), "");
 });
 
 test("avant le départ, le compte à rebours part de l’heure locale de l’aéroport", () => {
@@ -52,7 +56,7 @@ test("avant le départ, le compte à rebours part de l’heure locale de l’aé
   assert.equal(flight.destination, "NCE");
   assert.deepEqual(flight.departure, { scheduled: "13:48", revised: "" });
   assert.deepEqual(flight.arrival, { scheduled: "15:15", revised: "15:25" });
-  assert.equal(flight.place, "Embarquement 13:15 · Porte F35 · Terminal 2E");
+  assert.equal(flight.place, "Embarquement 13:15 · Terminal 2E · Porte F35");
   assert.equal(flight.arrivalPrevue, "15:25");
   assert.equal(flight.departureAt, Date.parse("2026-11-11T12:48:00Z"));
   assert.equal(liveFlightPhase(flight, NOW), "before");
@@ -160,11 +164,16 @@ test("le suivi conserve l’arrivée prévue et l’heure réelle déjà reçues
     actualIn: null,
     departureDelay: 0,
     originIata: "CDG",
+    originIcao: "LFPG",
     destinationIata: "RAK",
+    destinationIcao: "GMMX",
     originTimezone: "Europe/Paris",
     destinationTimezone: "Africa/Casablanca",
     gateOrigin: "K",
     terminalOrigin: "2E",
+    gateDestination: "",
+    terminalDestination: "",
+    baggageClaim: "",
   };
   const patch = applyAeroFlight(card, aero, new Date("2026-09-29T10:00:00.000Z"));
   const watch = patch.details.flight_watch as Record<string, string>;
@@ -172,6 +181,61 @@ test("le suivi conserve l’arrivée prévue et l’heure réelle déjà reçues
   assert.equal(watch.scheduled_in, airportLocalIso("2026-09-29T14:30:00Z", "Africa/Casablanca"));
   assert.equal(watch.estimated_in, airportLocalIso("2026-09-29T14:45:00Z", "Africa/Casablanca"));
   assert.equal(watch.actual_in, "");
+});
+
+test("avant le départ le terminal vient du suivi, sinon du dossier", () => {
+  const tracked = buildLiveFlight({
+    ...item(),
+    details: {
+      ...item().details,
+      terminal: "2E",
+      gate: "F35",
+      flight_watch: {
+        status: "scheduled",
+        terminal_origin: "2F",
+        gate_origin: "K35",
+        terminal_destination: "1",
+        baggage_claim: "4",
+        scheduled_out: "2026-11-11T13:48:00",
+        scheduled_in: "2026-11-11T15:15:00",
+        estimated_in: "2026-11-11T15:25:00",
+      },
+    },
+  });
+  assert.equal(tracked.place, "Terminal 2F · Porte K35");
+  assert.equal(tracked.arrivalPlace, "Arrivée Terminal 1 · Tapis bagages 4");
+  assert.equal(liveFlightPlace(tracked, NOW), "Terminal 2F · Porte K35");
+  assert.equal(liveFlightPlace({ ...tracked, status: "en_route" }, NOW), "Arrivée Terminal 1 · Tapis bagages 4");
+  assert.equal(liveFlightPlace({ ...tracked, status: "landed" }, NOW), "Arrivée Terminal 1 · Tapis bagages 4");
+
+  const dossier = buildLiveFlight({
+    ...item(),
+    details: {
+      ...item().details,
+      terminal: "2E",
+      flight_watch: { status: "unknown", scheduled_out: "2026-11-11T13:48:00" },
+    },
+  });
+  assert.equal(dossier.place, "Terminal 2E · Porte F35");
+  assert.equal(dossier.arrivalPlace, "");
+});
+
+test("atterri sans heure réelle ne cite pas l’heure prévue", () => {
+  const flight = buildLiveFlight({
+    ...item(),
+    details: {
+      ...item().details,
+      flight_watch: {
+        status: "landed",
+        scheduled_out: "2026-11-11T13:48:00",
+        scheduled_in: "2026-11-11T15:15:00",
+        estimated_in: "2026-11-11T15:25:00",
+      },
+    },
+  });
+  assert.equal(flight.landedClock, "");
+  assert.equal(flight.arrivalPrevue, "15:25");
+  assert.deepEqual(liveFlightCaption(flight, NOW), { kind: "landed", clock: "" });
 });
 
 test("le format du compte à rebours est h:mm:ss", () => {

@@ -84,9 +84,18 @@ function labeled(value: string, word: "Porte" | "Terminal") {
 }
 
 export function livePlaceLine(boarding: string, gate: string, terminal: string) {
-  return [boarding ? `Embarquement ${boarding}` : "", labeled(gate, "Porte"), labeled(terminal, "Terminal")]
+  return [boarding ? `Embarquement ${boarding}` : "", labeled(terminal, "Terminal"), labeled(gate, "Porte")]
     .filter(Boolean)
     .join(" · ");
+}
+
+export function arrivalPlaceLine(terminal: string, claim: string) {
+  const terminalLabel = labeled(terminal, "Terminal");
+  const value = claim.trim();
+  const claimLabel = value ? (/^tapis\b/i.test(value) ? value : `Tapis bagages ${value}`) : "";
+  if (terminalLabel && claimLabel) return `Arrivée ${terminalLabel} · ${claimLabel}`;
+  if (terminalLabel) return `Arrivée ${terminalLabel}`;
+  return claimLabel;
 }
 
 function operativeIso(scheduledIso: string, revisedIso: string) {
@@ -133,11 +142,12 @@ export function buildLiveFlight(item: LiveFlightItem): LiveFlight {
   const departureIso = operativeIso(scheduledOut, revisedOut);
   const departureZone = storedZone(details.departure_timezone) || timezoneForIata(origin);
   const arrivalZone = storedZone(details.arrival_timezone) || timezoneForIata(destination);
-  const gate = flightGate({ start_at: item.start_at, end_at: item.end_at, details });
-  const terminal = flightTerminal({ start_at: item.start_at, end_at: item.end_at, details });
+  const gate = watch.gate_origin || watch.gate || flightGate({ start_at: item.start_at, end_at: item.end_at, details });
+  const terminal =
+    watch.terminal_origin || watch.terminal || flightTerminal({ start_at: item.start_at, end_at: item.end_at, details });
   const boarding = boardingHm(details);
-  const landedClock = flightHm(watch.actual_in) || arrival.revised || arrival.scheduled;
-  const arrivalPrevue = flightHm(watch.estimated_in) || arrival.revised || arrival.scheduled;
+  const landedClock = flightHm(watch.actual_in);
+  const arrivalPrevue = flightHm(watch.estimated_in) || flightHm(watch.scheduled_in) || arrival.scheduled;
 
   return {
     airline: detail(details, "airline") || (item.supplier || "").trim(),
@@ -150,6 +160,7 @@ export function buildLiveFlight(item: LiveFlightItem): LiveFlight {
     arrivalAt: airportInstant(arrivalIso, arrivalZone),
     status: watch.status === "unknown" ? "" : watch.status,
     place: livePlaceLine(boarding, gate, terminal),
+    arrivalPlace: arrivalPlaceLine(watch.terminal_destination, watch.baggage_claim),
     arrivalPrevue,
     landedClock,
   };
