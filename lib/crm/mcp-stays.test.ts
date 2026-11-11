@@ -120,3 +120,32 @@ test("la carte d’arrivée et Ratehawk attendent confirmer", async () => {
   await assert.rejects(() => ratehawk({ action: "reserver", hid: 1 }, { preview: async () => ({}) }), /incomplète/);
   await assert.rejects(() => sejourHotel({ client_id: CLIENT, sejour_id: STAY, action: "paye", confirmer: "oui" }, { preview: async () => ({ envoie: false }) }), McpWriteError);
 });
+
+test("rechercher Ratehawk ne réserve pas, même avec confirmer", async () => {
+  let booked = 0;
+  const day = (offset: number) => {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + offset);
+    return date.toISOString().slice(0, 10);
+  };
+  const found = await ratehawk(
+    {
+      action: "rechercher",
+      hid: 8473727,
+      arrivee: day(40),
+      depart: day(42),
+      recherche: [{ adultes: 2, enfants: [5] }],
+      confirmer: true,
+    },
+    {
+      read: async () => ({ action: "rechercher", ecrit: false, envoye: false }),
+      preview: async () => ((booked += 1), {}),
+      apply: async () => ((booked += 1), {}),
+    }
+  );
+  assert.equal(booked, 0);
+  assert.equal(found.ecrit, false);
+  assert.equal(found.envoye, false);
+  await assert.rejects(() => ratehawk({ action: "rechercher", hid: 8473727 }, { read: async () => ({}) }), /incomplète/);
+  await assert.rejects(() => ratehawk({ action: "chercher" }), /inconnue/);
+});

@@ -141,7 +141,7 @@ export async function carteArrivee(
   });
 }
 
-type RateAction = "statut" | "prereserver" | "reserver" | "annuler";
+type RateAction = "statut" | "rechercher" | "prereserver" | "reserver" | "annuler";
 
 export async function ratehawk(
   input: Record<string, unknown>,
@@ -152,13 +152,30 @@ export async function ratehawk(
   }
 ) {
   const action = text(input.action) as RateAction;
-  if (action !== "statut" && action !== "prereserver" && action !== "reserver" && action !== "annuler") {
+  if (action !== "statut" && action !== "rechercher" && action !== "prereserver" && action !== "reserver" && action !== "annuler") {
     throw new McpWriteError("Action inconnue.");
   }
   if (action === "statut") {
     const order = text(input.commande);
     if (!order) throw new McpWriteError("Réservation manquante.");
     return (effects?.read ?? liveRateStatus)(input);
+  }
+  if (action === "rechercher") {
+    const { parseRatehawkLookup, runRatehawkLookup, RatehawkLookupError } = await import("@/lib/crm/ratehawk/lookup");
+    const { RatehawkConfigError } = await import("@/lib/crm/ratehawk/config");
+    let query;
+    try {
+      query = parseRatehawkLookup(input);
+    } catch (err) {
+      throw err instanceof RatehawkLookupError ? new McpWriteError(err.message) : err;
+    }
+    if (effects?.read) return effects.read(input);
+    try {
+      return await runRatehawkLookup(query);
+    } catch (err) {
+      if (err instanceof RatehawkLookupError || err instanceof RatehawkConfigError) throw new McpWriteError(err.message);
+      throw new McpWriteError("La recherche Ratehawk a échoué.");
+    }
   }
   if (action === "prereserver") {
     const hash = text(input.hash);

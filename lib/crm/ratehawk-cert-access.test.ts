@@ -84,6 +84,7 @@ test("le relecteur Ratehawk n’est pas un rôle d’agence", () => {
   assert.equal(certificationEnvironmentAllowed("sandbox"), true);
   assert.equal(certificationEnvironmentAllowed("production"), false);
   assert.equal(mcpStaffDenial("fiche_client", { role: "ratehawk_cert" }), MCP_ROLE_DENIAL);
+  assert.equal(mcpStaffDenial("ratehawk", { role: "ratehawk_cert" }), MCP_ROLE_DENIAL);
   assert.equal(mcpStaffDenial("creer_dossier", { role: "partner" }), MCP_PARTNER_DENIAL);
 });
 
