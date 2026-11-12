@@ -1,5 +1,6 @@
 import type { ConciergeDossier, ConciergePending, ConciergeTurn, ReplyLang } from "@/lib/crm/whatsapp-concierge";
 import { classifyHandoff, messageLanguage } from "@/lib/crm/whatsapp-concierge";
+import { sketchQuote } from "@/lib/crm/concierge-quote";
 import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "@/lib/crm/whatsapp-conversation";
 import { advanceJourney, inTripHelp, planFollowups, type PlannedFollowup, type ProposalDraft, type TripBrief } from "@/lib/crm/concierge-journey";
 import { factsFromDossier } from "@/lib/crm/concierge-touchpoints";
@@ -47,6 +48,7 @@ export async function planPhase2(input: {
   const history = input.history || [];
   const act = classifyHandoff(input.message);
   const briefOpen = Boolean(input.brief && input.brief.stage !== "ready");
+  const concreteQuote = sketchQuote(input.message, input.dossier.stays, history);
   const discovering = input.message.trim().length > 0 && (act === "quote" || (briefOpen && !act));
   const snippets = rankKnowledge(input.knowledge || [], input.message, 3);
   const facts = knowledgePrompt(snippets.filter((item) => !item.toneOnly));
@@ -54,7 +56,7 @@ export async function planPhase2(input: {
   let brief: TripBrief | null = input.brief || null;
   let proposal: ProposalDraft | null = null;
 
-  if (discovering && act !== "quote") {
+  if (discovering && act !== "quote" && !concreteQuote) {
     const step = await advanceJourney({
       phone: input.phone,
       message: input.message,
@@ -85,7 +87,7 @@ export async function planPhase2(input: {
       now,
       pending: input.pending,
     });
-    if (turn.handoff === "quote") {
+    if (turn.handoff === "quote" && !concreteQuote) {
       const step = await advanceJourney({
         phone: input.phone,
         message: input.message,

@@ -43,6 +43,7 @@ import { clientVisaStepCopy, clientVisaStepNote, type ClientVisaStep } from "./v
 import { authorizationDisplayName } from "./visa-fr";
 import { stayCoverUrl, whatsappTypeImageUrl, type WhatsappImageKind } from "./concierge-notices";
 import { packBubbles, conciergeOpening, type BubbleHistory } from "../concierge/bubbles";
+import { priceConfirmLine, renderQuote, replyCore, sketchQuote, varyAutomaticText } from "./concierge-quote";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 
 export const HANDOFF_SENTENCE = "Je transmets à l’agence.";
@@ -812,7 +813,7 @@ function topicOf(message: string) {
     return "schedule";
   }
   if (/inclus|petit.dejeuner|pension|demi.pension|included|breakfast|half board/.test(text)) return "included";
-  if (/prix|tarif|combien coute|montant|price|how much|cost/.test(text)) return "price";
+  if (/\bprix\b|\btarifs?\b|\bmontant\b|\bprice\b|\bcost\b|\bhow much\b|combien coute|combien ca coute/.test(text)) return "price";
   if (/chauffeur|\bvtc\b|\bdriver\b/.test(text)) return "chauffeur";
   if (
     /sejour|voyage|hotel|vol\b|train|reservation|carnet|destination|quand|ou est|ou sejour|stay|flight|trip|when is|where is/.test(
@@ -1616,6 +1617,9 @@ function priceText(message: string, dossier: ConciergeDossier, lang: ReplyLang) 
   if (!stay && dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
   if (!stay) {
     const priced = dossier.stays.filter((row) => row.totalAmount != null);
+    if (!priced.length && !dossier.stays.length) {
+      return lang === "en" ? "I don’t have a published stay on your account." : "Je n’ai pas de séjour publié sur votre compte.";
+    }
     if (!priced.length) return lang === "en" ? "I don’t have that price in your file." : MISSING_PRICE;
     return priced
       .map((row) => `${row.reference} : ${moneyLabel(row.totalAmount || 0, row.currency, lang)}\n${stayClientUrl(row.reference)}`)
@@ -1756,9 +1760,9 @@ export function pieceSavedLine(lang: ReplyLang) {
 export function voiceNoteUnheardReply(lang: ReplyLang = "fr") {
   return withConciergeSignature(
     say(lang, {
-      fr: "Je n’ai pas pu entendre cette note vocale. Écrivez votre message, l’agence pourra l’écouter.",
-      en: "I couldn’t hear that voice note. Please write your message. The agency can listen to it.",
-      he: "לא הצלחתי לשמוע את ההודעה הקולית. כתבו את ההודעה, והסוכנות תוכל להאזין.",
+      fr: "Votre message vocal est bien reçu. Un conseiller revient vers vous.",
+      en: "Your voice message is received. A counsellor will come back to you.",
+      he: "ההודעה הקולית התקבלה. יועץ יחזור אליכם.",
     })
   );
 }
@@ -1867,6 +1871,20 @@ export function planConciergeTurn(
   const lang = messageLanguage(message);
   const empty = { cover: null as string | null, optOut: false, access: false };
   const sayTurn = (body: string, block = false) => spoken(body, dossier, lang, now, history, block);
+  const finish = (turn: ConciergeTurn): ConciergeTurn => {
+    let previous: string | null = null;
+    for (let i = (history || []).length - 1; i >= 0; i -= 1) {
+      const row = history?.[i];
+      if (row?.direction === "outbound" && row.body?.trim()) {
+        previous = row.body;
+        break;
+      }
+    }
+    const varied = varyAutomaticText(previous, turn.text, lang);
+    if (replyCore(varied) === replyCore(turn.text)) return turn;
+    const packed = sayTurn(varied.replace(/\n+le concierge\.?$/i, "").trim(), true);
+    return { ...turn, text: packed.text, messages: packed.messages, handoff: turn.handoff || "question", cover: null };
+  };
 
   if (isConciergeStop(message) && !classifyHandoff(message)) {
     const text = sign(stopText(lang));
@@ -1923,6 +1941,24 @@ export function planConciergeTurn(
   }
 
   const handoff = classifyHandoff(message);
+  const blocksQuote =
+    handoff === "cancel" ||
+    handoff === "change" ||
+    handoff === "payment" ||
+    handoff === "formality" ||
+    handoff === "chauffeur" ||
+    handoff === "urgent";
+  const quote = blocksQuote || isComplaint(message) ? null : sketchQuote(message, dossier.stays, history);
+  if (quote) {
+    const packed = sayTurn(renderQuote(quote, lang));
+    return finish({
+      ...empty,
+      handoff: "quote",
+      bookingId: null,
+      text: packed.text,
+      messages: packed.messages,
+    });
+  }
   if (handoff && AGENCY_HANDOFF.has(handoff)) {
     const stay = focusStay(message, dossier.stays);
     const sentence = handoff === "payment" ? benjaminHandoff(lang) : handoffSentence(lang);
@@ -1935,13 +1971,13 @@ export function planConciergeTurn(
         })}\n${stayClientUrl(stay.reference)}`
       : "";
     const agency = sayTurn(conciergeFollowUp(`${sentence}${focused}${which}`, lang), true);
-    return {
+    return finish({
       ...empty,
       handoff,
       bookingId: stay?.id || null,
       text: agency.text,
       messages: agency.messages,
-    };
+    });
   }
 
   const topic = topicOf(message);
@@ -2011,7 +2047,18 @@ export function planConciergeTurn(
   else if (topic === "formality") body = formalityText(message, dossier, lang);
   else if (topic === "schedule") body = scheduleText(message, dossier, lang, now);
   else if (topic === "included") body = includedText(message, dossier, lang);
-  else if (topic === "price") body = priceText(message, dossier, lang);
+  else if (topic === "price") {
+    body = priceText(message, dossier, lang);
+    const missing =
+      body.includes(MISSING_PRICE) ||
+      body.includes("I don’t have that price") ||
+      body.includes("Je n’ai pas de séjour publié") ||
+      body.includes("I don’t have a published stay");
+    if (missing) {
+      body = `${body}\n${priceConfirmLine(lang)}`;
+      answerHandoff = "question";
+    }
+  }
   else if (topic === "chauffeur") body = chauffeurText(message, dossier, lang);
   else if (topic === "stay") body = stayText(message, dossier, lang, now);
   else if (topic === "hello") body = helloText(dossier, lang, now);
@@ -2025,34 +2072,34 @@ export function planConciergeTurn(
     if (!/benjamin/i.test(body)) body = `${body}\n${benjaminHandoff(lang)}`;
     const stay = pinned || subjectStay(message, dossier, topic);
     const packed = sayTurn(body);
-    return {
+    return finish({
       ...empty,
       handoff: "complaint",
       bookingId: stay?.id || null,
       text: packed.text,
       messages: packed.messages,
-    };
+    });
   }
   if (answerHandoff === "question") {
     const stay = pinned || subjectStay(message, dossier, topic);
     const packed = sayTurn(body);
-    return {
+    return finish({
       ...empty,
       handoff: "question",
       bookingId: stay?.id || null,
       text: packed.text,
       messages: packed.messages,
-    };
+    });
   }
 
   const stay = pinned || subjectStay(message, dossier, topic);
   const packed = sayTurn(body);
-  return {
+  return finish({
     ...empty,
     handoff: null,
     bookingId: stay?.id || null,
     text: packed.text,
     messages: packed.messages,
     cover: replyImage(message, topic, stay, thin),
-  };
+  });
 }

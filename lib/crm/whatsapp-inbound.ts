@@ -26,6 +26,7 @@ import {
 } from "./whatsapp-concierge";
 import { type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
 import { signalWhatsappTyping } from "./whatsapp-typing";
+import { varyAutomaticText } from "./concierge-quote";
 import { planPhase2 } from "./concierge-phase2";
 import { knowledgeSeed, type KnowledgeChunk } from "./concierge-knowledge";
 import type { PlannedFollowup, ProposalDraft, TripBrief } from "./concierge-journey";
@@ -510,10 +511,12 @@ export async function receiveWhatsappWebhook(input: {
   }
 
   let said = journal;
+  let burstRows: WhatsappThreadRow[] | null = null;
   if (customer && input.store.recentThread) {
     const wait = input.burstWaitMs || 0;
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    const decision = burstReply(sid, await input.store.recentThread(customer.id));
+    burstRows = await input.store.recentThread(customer.id);
+    const decision = burstReply(sid, burstRows);
     if (!decision.send) return done(200);
     if (decision.text) said = decision.text;
   }
@@ -566,7 +569,17 @@ export async function receiveWhatsappWebhook(input: {
   } else if (piece === "pan") {
     reply = panRefusedReply(lang);
   } else if (voiceUnheard) {
-    reply = voiceNoteUnheardReply(messageLanguage(caption));
+    const voiceLang = messageLanguage(caption);
+    let previous: string | null = null;
+    for (let i = (burstRows || []).length - 1; i >= 0; i -= 1) {
+      const row = burstRows?.[i];
+      if (row?.direction === "outbound" && row.body?.trim()) {
+        previous = row.body;
+        break;
+      }
+    }
+    reply = varyAutomaticText(previous, voiceNoteUnheardReply(voiceLang), voiceLang);
+    handoff = "question";
   } else {
     const parts = said
       .split("\n")

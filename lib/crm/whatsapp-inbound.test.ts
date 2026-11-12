@@ -1315,7 +1315,10 @@ test("transcription en échec : phrase fixe, rien n’est inventé", async () =>
   assert.equal(inbound?.row?.body, "Note vocale (transcription indisponible)");
   assert.equal(inbound?.row?.transcript ?? null, null);
   assert.equal(inbound?.row?.media_path, "customers/cust-1/whatsapp/muet.ogg");
-  assert.match(sent[0]?.body || "", /Je n’ai pas pu entendre cette note vocale/);
+  assert.match(sent[0]?.body || "", /Votre message vocal est bien reçu/);
+  assert.match(sent[0]?.body || "", /Un conseiller revient vers vous/);
+  assert.equal((sent[0]?.body || "").includes("Je n’ai pas ce prix"), false);
+  assert.equal(writes.find((row) => row.table === "crm_whatsapp_requests")?.row?.kind, "question");
   assert.equal(JSON.stringify(writes).includes("TOKYO"), false);
   assert.equal((sent[0]?.body || "").includes("Tokyo"), false);
   assert.equal(logs.some((line) => line.includes("[whatsapp-voice] transcription")), true);

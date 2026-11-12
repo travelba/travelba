@@ -9,6 +9,7 @@ export type BubbleLang = "fr" | "en" | "he";
 
 export type BubbleHistory = {
   direction: "inbound" | "outbound";
+  body?: string;
   at?: string | null;
 };
 
