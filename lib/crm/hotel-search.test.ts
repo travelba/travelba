@@ -760,6 +760,10 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(homeCopy, /Jusqu’au 31 déc\. 2026/);
   assert.match(ui, /HOTEL_ACCESS_LEVEL/);
   assert.match(ui, /h-member/);
+  assert.match(ui, /data-hotel-club/);
+  assert.match(ui, /HOTEL_CLUB_CARD/);
+  assert.match(ui, /HOTEL_CLUB_OPEN/);
+  assert.match(night, /openHotelClub/);
   assert.match(homeCopy, /Un catalogue d’hôtels aux tarifs qui vous sont réservés/);
   assert.match(homeCopy, /Petit-déjeuner offert/);
   assert.match(homeCopy, /Arrivée anticipée et départ tardif\*/);

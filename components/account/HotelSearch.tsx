@@ -6,18 +6,21 @@ import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelMap } from "@/components/account/HotelMap";
 import { HotelWait } from "@/components/account/HotelWait";
+import { AgencyLogo } from "@/components/AgencyLogo";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import {
   HOTEL_ACCESS_EYEBROW,
   HOTEL_ACCESS_LEVEL,
-  HOTEL_ACCESS_LEVEL_LABEL,
   HOTEL_ACCESS_LINES,
   HOTEL_ACCESS_OFFER,
   HOTEL_ACCESS_PROMISE,
   HOTEL_ACCESS_RESERVE,
   HOTEL_ACCESS_UNTIL,
+  HOTEL_CLUB_CARD,
+  HOTEL_CLUB_EVENT,
+  HOTEL_CLUB_OPEN,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
   hotelDraftStorageKey,
@@ -346,6 +349,7 @@ export function HotelSearch({
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
+  const [clubOpen, setClubOpen] = useState(true);
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
@@ -398,6 +402,12 @@ export function HotelSearch({
   useEffect(() => {
     adoptHotelStorage(customerId);
   }, [customerId]);
+
+  useEffect(() => {
+    const open = () => setClubOpen(true);
+    window.addEventListener(HOTEL_CLUB_EVENT, open);
+    return () => window.removeEventListener(HOTEL_CLUB_EVENT, open);
+  }, []);
 
   useEffect(() => {
     const root = document.querySelector(".account-app");
@@ -844,36 +854,6 @@ export function HotelSearch({
       </div>
       {!searched ? (
         <div className="h-ask">
-          <div className="h-member" data-hotel-hero="1">
-            {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
-            <img
-              src={heroSrc}
-              alt=""
-              width={960}
-              height={540}
-              fetchPriority="high"
-              decoding="async"
-              onError={() => setHeroBroken(true)}
-              className="absolute inset-0 h-full w-full object-cover opacity-35"
-            />
-            <div className="absolute inset-0 bg-[#0B192C]/80" aria-hidden />
-            <div className="relative space-y-3 px-4 py-4" data-hotel-agency-benefits="1">
-              <div className="flex items-end justify-between gap-3 border-b border-[#C5A880]/40 pb-3">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
-                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">{HOTEL_ACCESS_LEVEL_LABEL}</p>
-                  <p className="h-serif text-[1.45rem] leading-none tracking-[0.04em] text-[#f7f4ee]">{HOTEL_ACCESS_LEVEL}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="text-[13px] font-semibold text-[#C5A880]">{HOTEL_ACCESS_OFFER}</p>
-                  <p className="mt-1 text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
-                </div>
-              </div>
-              <h1 className="h-serif text-[1.02rem] font-semibold leading-snug">{HOTEL_ACCESS_PROMISE}</h1>
-              <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
-              <p className="text-[11px] leading-snug text-white/70">{HOTEL_ACCESS_RESERVE}</p>
-            </div>
-          </div>
           {recent.length ? (
             <div data-hotel-recent="1">
               <p className="h-section px-1">Dernières recherches</p>
@@ -1289,6 +1269,46 @@ export function HotelSearch({
                 </button>
               </>
             )}
+          </div>
+        </div>
+      ) : null}
+      {clubOpen ? (
+        <div className="h-club" data-hotel-club="1" role="dialog" aria-modal="true" aria-label={HOTEL_ACCESS_EYEBROW}>
+          <div className="h-club-body" data-hotel-agency-benefits="1">
+            <AgencyLogo className="h-20 w-20" alt="" />
+            <p className="h-club-name">{HOTEL_ACCESS_EYEBROW}</p>
+            <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
+            <div className="h-member" data-hotel-hero="1">
+              {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+              <img
+                src={heroSrc}
+                alt=""
+                width={960}
+                height={540}
+                fetchPriority="high"
+                decoding="async"
+                onError={() => setHeroBroken(true)}
+                className="absolute inset-0 h-full w-full object-cover opacity-35"
+              />
+              <div className="absolute inset-0 bg-[#0B192C]/80" aria-hidden />
+              <div className="relative flex items-end justify-between gap-3 px-4 py-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_CLUB_CARD}</p>
+                  <p className="h-serif mt-2 text-[1.7rem] leading-none tracking-[0.04em] text-[#f7f4ee]">{HOTEL_ACCESS_LEVEL}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-[13px] font-semibold text-[#C5A880]">{HOTEL_ACCESS_OFFER}</p>
+                  <p className="mt-1 text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
+                </div>
+              </div>
+            </div>
+            <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
+            <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+          </div>
+          <div className="h-club-bar">
+            <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
+              {HOTEL_CLUB_OPEN}
+            </button>
           </div>
         </div>
       ) : null}

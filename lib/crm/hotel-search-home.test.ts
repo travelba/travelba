@@ -4,6 +4,8 @@ import { SEARCH_PERK_LABEL, stayBenefits } from "./hotel-journey";
 import type { HotelPerks } from "./hotel-search";
 import {
   HOTEL_ACCESS_EYEBROW,
+  HOTEL_CLUB_CARD,
+  HOTEL_CLUB_OPEN,
   HOTEL_ACCESS_LEVEL,
   HOTEL_ACCESS_LINES,
   HOTEL_ACCESS_OFFER,
@@ -57,6 +59,8 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
   ]);
   assert.equal(HOTEL_ACCESS_RESERVE, "* Soumis à disponibilité et selon l’hôtel.");
   assert.equal(HOTEL_ACCESS_EYEBROW, "Club Travel BA");
+  assert.equal(HOTEL_CLUB_CARD, "Carte de fidélité");
+  assert.equal(HOTEL_CLUB_OPEN, "Ouvrir les hôtels");
   assert.equal(HOTEL_ACCESS_LEVEL, "Platinum");
   assert.equal(HOTEL_ACCESS_OFFER, "Offert*");
   assert.equal(HOTEL_ACCESS_UNTIL, "Jusqu’au 31 déc. 2026");

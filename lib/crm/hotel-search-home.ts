@@ -26,6 +26,17 @@ export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
 /** Première page : la carte membre, avant de chercher. */
 export const HOTEL_ACCESS_EYEBROW = "Club Travel BA";
 
+export const HOTEL_CLUB_CARD = "Carte de fidélité";
+
+export const HOTEL_CLUB_OPEN = "Ouvrir les hôtels";
+
+export const HOTEL_CLUB_EVENT = "travelba-hotel-club";
+
+export function openHotelClub() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(HOTEL_CLUB_EVENT));
+}
+
 export const HOTEL_ACCESS_LEVEL_LABEL = "Niveau";
 
 export const HOTEL_ACCESS_LEVEL = "Platinum";

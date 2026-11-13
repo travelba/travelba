@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { openHotelClub } from "@/lib/crm/hotel-search-home";
 
 const REG = {
   home: "M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V160h32v56a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68ZM208,208H160V152a8,8,0,0,0-8-8H104a8,8,0,0,0-8,8v56H48V120l80-80,80,80Z",
@@ -46,6 +47,7 @@ export function AccountNightTabs({
               href={tab.href}
               transitionTypes={[tab.transition]}
               aria-current={tab.active ? "page" : undefined}
+              onClick={() => openHotelClub()}
               className="account-press account-hotel-tab relative flex h-14 min-h-11 min-w-11 flex-1 flex-col items-center"
             >
               <span className="account-hotel-fab absolute left-1/2 top-[-1.75rem] flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-[#C5A880] text-[#1a1a1a] shadow-[0_10px_22px_rgba(197,168,128,0.48)]">
