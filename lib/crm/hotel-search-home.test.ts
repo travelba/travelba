@@ -9,8 +9,11 @@ import {
   HOTEL_CLUB_TITLE,
   HOTEL_CLUB_FAMILY,
   HOTEL_CLUB_GIVEN,
+  HOTEL_CLUB_LADDER,
+  HOTEL_CLUB_LADDER_LABEL,
   HOTEL_CLUB_NUMBER,
   HOTEL_CLUB_OPEN,
+  hotelClubLadderState,
   hotelMemberNumber,
   HOTEL_ACCESS_LEVEL,
   HOTEL_ACCESS_LINES,
@@ -76,6 +79,12 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
   assert.match(hotelMemberNumber("exemple-client"), /^\d{4} \d{4}$/);
   assert.notEqual(hotelMemberNumber("exemple-client"), hotelMemberNumber("autre-client"));
   assert.equal(HOTEL_ACCESS_LEVEL, "Platinum");
+  assert.deepEqual([...HOTEL_CLUB_LADDER], ["Silver", "Gold", "Platinum", "Titanium"]);
+  assert.equal(HOTEL_CLUB_LADDER_LABEL, "Parcours");
+  assert.equal(hotelClubLadderState("Silver"), "done");
+  assert.equal(hotelClubLadderState("Gold"), "done");
+  assert.equal(hotelClubLadderState("Platinum"), "now");
+  assert.equal(hotelClubLadderState("Titanium"), "next");
   assert.equal(HOTEL_ACCESS_OFFER, "Offert*");
   assert.equal(HOTEL_ACCESS_UNTIL, "Jusqu’au 31 déc. 2026");
   assert.equal(HOTEL_ACCESS_LINES[0].endsWith("*"), false);

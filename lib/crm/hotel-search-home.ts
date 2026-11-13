@@ -62,6 +62,21 @@ export const HOTEL_ACCESS_LEVEL_LABEL = "Niveau";
 
 export const HOTEL_ACCESS_LEVEL = "Platinum";
 
+/** Parcours affiché sur la carte. Le niveau en cours est HOTEL_ACCESS_LEVEL. */
+export const HOTEL_CLUB_LADDER = ["Silver", "Gold", "Platinum", "Titanium"] as const;
+
+export const HOTEL_CLUB_LADDER_LABEL = "Parcours";
+
+export type HotelClubLadderName = (typeof HOTEL_CLUB_LADDER)[number];
+
+export function hotelClubLadderState(name: HotelClubLadderName) {
+  const current = HOTEL_CLUB_LADDER.indexOf(HOTEL_ACCESS_LEVEL);
+  const index = HOTEL_CLUB_LADDER.indexOf(name);
+  if (index < current) return "done" as const;
+  if (index === current) return "now" as const;
+  return "next" as const;
+}
+
 export const HOTEL_ACCESS_OFFER = "Offert*";
 
 export const HOTEL_ACCESS_UNTIL = "Jusqu’au 31 déc. 2026";
