@@ -64,6 +64,8 @@ const PHRASES: Record<string, string> = {
   traiter_email: "E-mail traité",
   creer_client: "Fiche client créée",
   importer_reservation_little_emperors: "Réservation Little Emperors importée",
+  deplacer_etape: "Étape déplacée vers un autre dossier",
+  deplacer_reservation: "Réservation déplacée vers un autre dossier",
   mettre_a_jour_client: "Fiche client modifiée",
   modifier_titulaire: "Titulaire modifié",
   mettre_a_jour_accompagnant: "Accompagnateur modifié",

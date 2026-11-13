@@ -53,6 +53,7 @@ import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHold
 import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { importLittleEmperorsFromMcp } from "@/lib/crm/le-import";
+import { moveReservationFromMcp, moveStepFromMcp } from "@/lib/crm/le-reattach";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
@@ -133,7 +134,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 135;
+export const MCP_TOOL_CAP = 137;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -548,6 +549,41 @@ export const MCP_TOOLS: ToolDef[] = [
       forcer: z.boolean().optional().describe("true pour importer une réservation annulée ou en échec"),
     },
     run: (args) => importLittleEmperorsFromMcp(args),
+  },
+  {
+    name: "deplacer_etape",
+    write: true,
+    selfJournal: true,
+    description:
+      "Déplace une étape du séjour (hôtel, vol, transfert, activité…) vers un autre dossier. carte_id est l’étape. recherche : nom du client, d’un voyageur ou destination, renvoie les dossiers (client, référence, titre, dates) sans écrire. dossier_id ou dossier_reference choisit la cible. Sans confirmer, aperçu. confirmer true écrit. Si le client du dossier cible ne correspond pas aux voyageurs, accepter_client est exigé. Les pièces, courriers et coûts déjà posés suivent. Aucun message. Aucun débit. Les cartes Pliant restent.",
+    input: {
+      carte_id: z.string().trim().max(80).optional().describe("Étape à déplacer"),
+      recherche: z.string().trim().max(80).optional().describe("Nom du client, voyageur ou destination. Sans dossier : liste seulement"),
+      dossier_exclu: z.string().trim().max(80).optional().describe("Dossier actuel, retiré de la recherche"),
+      dossier_id: z.string().trim().max(80).optional().describe("Dossier cible"),
+      dossier_reference: z.string().trim().max(80).optional().describe("Référence du dossier cible"),
+      accepter_client: z.boolean().optional().describe("true si le client du dossier cible ne correspond pas aux voyageurs"),
+      confirmer: confirmOpt,
+    },
+    run: (args) => moveStepFromMcp(args),
+  },
+  {
+    name: "deplacer_reservation",
+    write: true,
+    selfJournal: true,
+    description:
+      "Déplace une réservation fournisseur déjà importée (Little Emperors ou une autre confirmation) vers un autre dossier. reference obligatoire. fournisseur facultatif (Little Emperors, ou le nom du fournisseur sur la carte). recherche liste les dossiers par nom de client, voyageur ou destination, sans écrire. dossier_id ou dossier_reference choisit la cible. Sans confirmer, aperçu. confirmer true écrit. Si le client du dossier cible ne correspond pas aux voyageurs, accepter_client est exigé. La carte, les pièces, les courriers et les coûts déjà posés suivent. Aucun message. Aucun débit. Les cartes Pliant restent.",
+    input: {
+      reference: z.string().trim().max(80).optional().describe("Référence Little Emperors ou confirmation"),
+      fournisseur: z.string().trim().max(80).optional().describe("Little Emperors, ou le fournisseur de la carte"),
+      recherche: z.string().trim().max(80).optional().describe("Nom du client, voyageur ou destination. Sans dossier : liste seulement"),
+      dossier_exclu: z.string().trim().max(80).optional().describe("Dossier actuel, retiré de la recherche"),
+      dossier_id: z.string().trim().max(80).optional().describe("Dossier cible"),
+      dossier_reference: z.string().trim().max(80).optional().describe("Référence du dossier cible"),
+      accepter_client: z.boolean().optional().describe("true si le client du dossier cible ne correspond pas aux voyageurs"),
+      confirmer: confirmOpt,
+    },
+    run: (args) => moveReservationFromMcp(args),
   },
   {
     name: "crediter_virement",

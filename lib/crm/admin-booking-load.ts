@@ -207,7 +207,9 @@ export async function loadAdminBookingCritical(input: {
       .eq("booking_id", id),
     leRows: supabase
       .from("crm_le_bookings")
-      .select("id, hotel_name, check_in, total_cost, currency, is_cancellable, cancellation_deadline, cancellation_policies, state, created_at")
+      .select(
+        "id, confirmation_number, hotel_name, check_in, total_cost, currency, is_cancellable, cancellation_deadline, cancellation_policies, state, created_at"
+      )
       .eq("crm_booking_id", id)
       .limit(20),
     billingCompanies: supabase
@@ -249,6 +251,7 @@ export async function loadAdminBookingCritical(input: {
   }[];
   const leList = (first.leRows.data || []) as {
     id: string;
+    confirmation_number?: string | null;
     hotel_name: string | null;
     check_in: string | null;
     total_cost: string | null;
@@ -345,6 +348,13 @@ export async function loadAdminBookingCritical(input: {
       })),
     attachedEmails: [],
     littleEmperors: leList[0] || null,
+    leLinks: leList
+      .filter((row) => row.confirmation_number)
+      .map((row) => ({
+        id: row.id,
+        confirmation_number: row.confirmation_number as string,
+        hotel_name: row.hotel_name,
+      })),
     leStays: leList,
     ledger: null,
     accountLedger: null,

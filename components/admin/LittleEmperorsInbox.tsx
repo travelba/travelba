@@ -7,6 +7,7 @@ import { BookingPickDialog, type RevolutBookingChoice } from "@/components/admin
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { LeCancelNotice } from "@/components/admin/LittleEmperorsCancel";
+import { MoveToDossier } from "@/components/admin/MoveToDossier";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
@@ -397,12 +398,23 @@ export function LittleEmperorsInbox({
                   </label>
                 ) : null}
                 {row.crm_booking_id ? (
-                  <Link
-                    href={`/admin/reservations/${row.crm_booking_id}`}
-                    className="rounded-md border border-[#e5e3dc] px-3 py-2 text-sm font-semibold"
-                  >
-                    Ouvrir le dossier
-                  </Link>
+                  <>
+                    <Link
+                      href={`/admin/reservations/${row.crm_booking_id}`}
+                      className="rounded-md border border-[#e5e3dc] px-3 py-2 text-sm font-semibold"
+                    >
+                      Ouvrir le dossier
+                    </Link>
+                    {row.confirmation_number ? (
+                      <MoveToDossier
+                        bookingId={row.crm_booking_id}
+                        kind="reservation"
+                        reference={row.confirmation_number}
+                        titre={row.hotel_name || row.confirmation_number}
+                        buttonClassName="rounded-full border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+                      />
+                    ) : null}
+                  </>
                 ) : !isBlockedState(row.state) ? (
                   <>
                     <button

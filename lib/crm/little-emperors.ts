@@ -546,7 +546,7 @@ export function littleEmperorsActionAllowed(role: string, action: string) {
   if (role === "ratehawk_cert") return false;
   if (action === "sync") return true;
   if (role === "partner" || role === "lecture" || role === "comptable") return false;
-  return action === "attach" || action === "import" || action === "cancel";
+  return action === "attach" || action === "import" || action === "cancel" || action === "reattach";
 }
 
 export function parseLeWebhook(body: unknown): { event: string; booking: LeBooking | null } | null {

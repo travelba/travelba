@@ -35,6 +35,8 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   reservation_little_emperors: "agency",
   little_emperors_en_attente: "agency",
   importer_reservation_little_emperors: "create_dossiers",
+  deplacer_etape: "edit_dossiers",
+  deplacer_reservation: "edit_dossiers",
   crediter_virement: "edit_finances",
   crediter_revolut: "edit_finances",
   rapprocher_depense_revolut: "edit_finances",

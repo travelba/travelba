@@ -51,6 +51,7 @@ import { hotelPhotos } from "@/lib/crm/hotel-gallery";
 import { AccueilVipForm } from "@/components/admin/AccueilVipForm";
 import { composeAccueilVip, accueilVipQuietLine, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { MoveToDossier } from "@/components/admin/MoveToDossier";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import { readLedgerWarning } from "@/lib/crm/ledger-warning";
@@ -1016,6 +1017,15 @@ export function BookingItemsPanel({
                           Descendre
                         </button>
                       </div>
+                      {countsAsCarnetCard(item.kind) ? (
+                        <MoveToDossier
+                          bookingId={bookingId}
+                          kind="etape"
+                          carteId={item.id}
+                          titre={stepTitle(item)}
+                          buttonClassName="admin-tap flex w-full items-center justify-start rounded-full border border-[var(--border)] bg-white px-3 py-2 text-left text-xs font-semibold text-[var(--admin-navy)]"
+                        />
+                      ) : null}
                       <ConfirmAction
                         size="sm"
                         tone="danger"

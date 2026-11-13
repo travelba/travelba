@@ -3,6 +3,7 @@ import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { dbError, jsonError, jsonIssues, requireLittleEmperorsActor } from "@/lib/crm/auth";
 import { LittleEmperorsError, littleEmperorsActionAllowed, littleEmperorsPartnerMessage } from "@/lib/crm/little-emperors";
 import { importLittleEmperorsReservations, type LeImportInput } from "@/lib/crm/le-import";
+import { reattachLittleEmperorsReservation } from "@/lib/crm/le-reattach";
 import {
   attachLittleEmperorsBooking,
   cancelLittleEmperorsFromCrm,
@@ -77,6 +78,18 @@ export async function POST(request: Request) {
         force: body.forcer === true,
       };
       return NextResponse.json(await importLittleEmperorsReservations(input));
+    }
+    if (action === "reattach") {
+      return NextResponse.json(
+        await reattachLittleEmperorsReservation({
+          reference: String(body.reference || ""),
+          dossierId: body.dossier_id ? String(body.dossier_id) : null,
+          dossierReference: body.dossier_reference ? String(body.dossier_reference) : null,
+          confirmer: body.confirmer === true,
+          accepterClient: body.accepter_client === true,
+          staffId: auth.staff.id,
+        })
+      );
     }
     if (action === "cancel") {
       return NextResponse.json(await cancelLittleEmperorsFromCrm(String(body.id || "")));
