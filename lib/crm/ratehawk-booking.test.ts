@@ -54,7 +54,11 @@ test("limites de recherche : chambres, âges, nuits, horizon, résidence, hids",
 test("user_ip est une adresse, et invalid_params nomme le champ ETG", () => {
   assert.equal(bookingUserIp("mcp"), null);
   assert.equal(bookingUserIp("127.0.0.1"), "127.0.0.1");
+  assert.equal(bookingUserIp("256.1.1.1"), null);
+  assert.equal(bookingUserIp("01.2.3.4"), null);
+  assert.equal(bookingUserIp("::1"), "::1");
   assert.equal(bookingUserIp(" 2001:db8::1 "), "2001:db8::1");
+  assert.equal(bookingUserIp("::ffff:203.0.113.8"), "::ffff:203.0.113.8");
   const forwarded = new Request("https://travelba.fr/api/mcp", { headers: { "x-forwarded-for": "203.0.113.8, 10.0.0.1" } });
   assert.equal(requestIp(forwarded), "203.0.113.8");
   assert.equal(requestIp(new Request("https://travelba.fr/api/mcp", { headers: { "x-forwarded-for": "mcp" } })), "127.0.0.1");

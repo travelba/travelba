@@ -1,5 +1,29 @@
-import { isIP } from "node:net";
 import { isSandboxOrderSuffix, type SandboxOrderSuffix } from "./catalog";
+
+const IPV4_PART = "(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)";
+const IPV4 = new RegExp(`^(?:${IPV4_PART}\\.){3}${IPV4_PART}$`);
+const IPV6_PART = "[0-9A-Fa-f]{1,4}";
+const IPV6 = new RegExp(
+  "^(?:" +
+    `(?:${IPV6_PART}:){7}${IPV6_PART}|` +
+    `(?:${IPV6_PART}:){1,7}:|` +
+    `(?:${IPV6_PART}:){1,6}:${IPV6_PART}|` +
+    `(?:${IPV6_PART}:){1,5}(?::${IPV6_PART}){1,2}|` +
+    `(?:${IPV6_PART}:){1,4}(?::${IPV6_PART}){1,3}|` +
+    `(?:${IPV6_PART}:){1,3}(?::${IPV6_PART}){1,4}|` +
+    `(?:${IPV6_PART}:){1,2}(?::${IPV6_PART}){1,5}|` +
+    `${IPV6_PART}:(?::${IPV6_PART}){1,6}|` +
+    `:(?:(?::${IPV6_PART}){1,7}|:)` +
+    ")$"
+);
+
+/** IPv4 ou IPv6, sans `node:net` : ce module part aussi dans le navigateur. */
+function isInetAddress(value: string) {
+  const bare = value.split("%", 1)[0];
+  if (IPV4.test(bare) || IPV6.test(bare)) return true;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(bare);
+  return Boolean(mapped && IPV4.test(mapped[1]));
+}
 
 export const RATEHAWK_LIMITS = {
   maxRooms: 9,
@@ -153,7 +177,7 @@ export function bookingUser(email: string, phone: string) {
 /** `user_ip` ETG : IPv4 ou IPv6. Un libellé (`mcp`) n’est pas une adresse. */
 export function bookingUserIp(value: string | null | undefined): string | null {
   const ip = (value || "").trim();
-  return isIP(ip) ? ip : null;
+  return isInetAddress(ip) ? ip : null;
 }
 
 export function guestsPayload(rooms: { guests: FinishGuest[] }[]) {
