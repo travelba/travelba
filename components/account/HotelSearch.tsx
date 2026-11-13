@@ -10,12 +10,12 @@ import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import {
+  HOTEL_CATALOG_COPY,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
   TRAVEL_BA_SEARCH_ADVANTAGES,
   hotelDraftStorageKey,
   hotelRecentStorageKey,
-  hotelSearchHeroSrc,
   type FeaturedHotel,
 } from "@/lib/crm/hotel-search-home";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
@@ -311,8 +311,7 @@ export function HotelSearch({
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
-  const [heroBroken, setHeroBroken] = useState(false);
-  const [heroSeen, setHeroSeen] = useState("");
+  const [coverBroken, setCoverBroken] = useState(false);
   const router = useRouter();
   const params = useSearchParams();
   const hotelToken = params.get("hotel");
@@ -356,20 +355,27 @@ export function HotelSearch({
   const suggestAbort = useRef<AbortController | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
   const destinationRef = useRef<HTMLInputElement>(null);
-  const focusReady = useRef(false);
+  const fieldsRef = useRef<HTMLDivElement>(null);
+  const [fieldsVisible, setFieldsVisible] = useState(false);
 
   useEffect(() => {
     adoptHotelStorage(customerId);
   }, [customerId]);
 
   useEffect(() => {
-    if (focusReady.current) return;
-    focusReady.current = true;
-    if (destinationRef.current?.value) return;
+    const node = fieldsRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(([entry]) => setFieldsVisible(entry.isIntersecting), { threshold: 0 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [searched]);
+
+  function revealSearch() {
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    fieldsRef.current?.scrollIntoView({ behavior: motion, block: "start" });
     if (window.matchMedia("(pointer: coarse)").matches) return;
-    if (!window.matchMedia("(min-width: 768px)").matches) return;
     destinationRef.current?.focus({ preventScroll: true });
-  }, []);
+  }
 
   const folded = destination.trim().toLocaleLowerCase("fr");
   const suggestions = useMemo(() => {
@@ -658,12 +664,8 @@ export function HotelSearch({
     }
   }
 
-  const heroCandidate = hotelSearchHeroSrc((city || destination).trim());
-  if (heroSeen !== heroCandidate) {
-    setHeroSeen(heroCandidate);
-    setHeroBroken(false);
-  }
-  const heroSrc = heroBroken ? HOTEL_SEARCH_HERO_FALLBACK : heroCandidate;
+  const catalogPhoto = highlights.find((row) => row.photo)?.photo || "";
+  const coverSrc = coverBroken || !catalogPhoto ? HOTEL_SEARCH_HERO_FALLBACK : catalogPhoto;
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
@@ -731,22 +733,68 @@ export function HotelSearch({
           }}
         >
           <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-            <div className="relative -mx-4 -mt-5 h-64 overflow-hidden bg-[#0B192C]" data-hotel-hero="1">
-              {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+            <div className="h-privilege relative -mx-4 -mt-5 overflow-hidden bg-[#0B192C]" data-hotel-hero="1" data-hotel-catalog="1">
+              {/* eslint-disable-next-line @next/next/no-img-element -- photo déjà enregistrée, ou image du projet */}
               <img
-                src={heroSrc}
+                src={coverSrc}
                 alt=""
                 width={960}
                 height={540}
                 fetchPriority="high"
                 decoding="async"
-                onError={() => setHeroBroken(true)}
+                onError={() => setCoverBroken(true)}
                 className="h-full w-full object-cover"
               />
               <div className="h-cover-fade" aria-hidden />
-              <h1 className="h-cover-copy h-serif !pb-16 text-[1.45rem] font-semibold leading-tight">Où souhaitez-vous séjourner ?</h1>
+              <div className="h-cover-copy">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_CATALOG_COPY.kicker}</p>
+                <h1 className="h-serif mt-1 text-[1.7rem] font-semibold leading-[1.05]">{HOTEL_CATALOG_COPY.title}</h1>
+              </div>
             </div>
-            <div className="relative z-10 -mt-8 overflow-hidden rounded-2xl bg-white shadow-[0_16px_36px_rgba(11,25,44,0.14)]" data-hotel-fields="1">
+            <p className="mt-4 text-[15px] leading-relaxed h-ink">{HOTEL_CATALOG_COPY.lead}</p>
+            <div className="mt-4" data-hotel-agency-benefits="1">
+              <HotelBenefits lines={[...TRAVEL_BA_SEARCH_ADVANTAGES]} title={HOTEL_CATALOG_COPY.servicesTitle} />
+              <p className="mt-2 px-1 text-[11px] leading-snug h-muted">{HOTEL_CATALOG_COPY.servicesNote}</p>
+            </div>
+            <button
+              type="button"
+              data-hotel-catalog-search="1"
+              onClick={revealSearch}
+              className="h-btn h-search-go h-press mt-4 flex h-14 w-full items-center justify-center text-sm font-semibold"
+            >
+              {HOTEL_CATALOG_COPY.search}
+            </button>
+            {showIdeas && highlights.length ? (
+              <section aria-label="Hôtels coups de cœur" className="mt-6" data-hotel-highlights="1">
+                <h2 className="h-section px-1">Hôtels coups de cœur</h2>
+                <ul className="h-gallery mt-3 flex gap-3 overflow-x-auto px-1 pb-1">
+                  {highlights.map((pick) => (
+                    <li key={`${pick.hotelId || ""}-${pick.name}`} className="w-44 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openPlace(pick.name, pick.city, pick.hotelId)}
+                        className="h-press w-full text-left"
+                        aria-label={`Rechercher ${pick.name}${pick.city ? `, ${pick.city}` : ""}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- photo déjà enregistrée sur un séjour */}
+                        <img
+                          src={pick.photo}
+                          alt=""
+                          width={288}
+                          height={192}
+                          loading="lazy"
+                          decoding="async"
+                          className="h-36 w-full rounded-xl bg-[#0B192C] object-cover"
+                        />
+                        <span className="mt-1.5 block truncate text-sm font-semibold h-ink">{pick.name}</span>
+                        {pick.city ? <span className="block truncate text-xs h-muted">{pick.city}</span> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            <div ref={fieldsRef} className="relative z-10 mt-6 scroll-mt-3 overflow-hidden rounded-2xl bg-white shadow-[0_16px_36px_rgba(11,25,44,0.14)]" data-hotel-fields="1">
               <label className="block">
                 <span className="flex min-h-14 items-center gap-3 px-4">
                   <Icon name="search" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
@@ -932,44 +980,10 @@ export function HotelSearch({
                     ))}
                   </ul>
                 </div>
-                <div data-hotel-agency-benefits="1">
-                  <HotelBenefits lines={[...TRAVEL_BA_SEARCH_ADVANTAGES]} title="Vos avantages Travel BA" layout="row" />
-                  <p className="mt-2 px-1 text-[11px] leading-snug h-muted">Selon l’hôtel et les disponibilités. Le détail est celui de chaque hôtel.</p>
-                </div>
-                {highlights.length ? (
-                  <section aria-label="Hôtels coups de cœur" data-hotel-highlights="1">
-                    <h2 className="h-section px-1">Hôtels coups de cœur</h2>
-                    <ul className="h-gallery mt-3 flex gap-3 overflow-x-auto px-1 pb-1">
-                      {highlights.map((pick) => (
-                        <li key={`${pick.hotelId || ""}-${pick.name}`} className="w-44 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openPlace(pick.name, pick.city, pick.hotelId)}
-                            className="h-press w-full text-left"
-                            aria-label={`Rechercher ${pick.name}${pick.city ? `, ${pick.city}` : ""}`}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element -- photo déjà enregistrée sur un séjour */}
-                            <img
-                              src={pick.photo}
-                              alt=""
-                              width={288}
-                              height={192}
-                              loading="lazy"
-                              decoding="async"
-                              className="h-24 w-full rounded-xl bg-[#0B192C] object-cover"
-                            />
-                            <span className="mt-1.5 block truncate text-sm font-semibold h-ink">{pick.name}</span>
-                            {pick.city ? <span className="block truncate text-xs h-muted">{pick.city}</span> : null}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ) : null}
               </div>
             ) : null}
           </div>
-          <div className="h-search-dock shrink-0" data-hotel-search-dock="1">
+          <div className={`h-search-dock shrink-0 ${fieldsVisible ? "" : "hidden"}`} data-hotel-search-dock="1">
             <button type="submit" data-hotel-search-cta="1" disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center gap-2 text-sm font-semibold shadow-[0_10px_24px_rgba(11,25,44,0.18)] disabled:opacity-60">
               <Icon name="search" className="h-4 w-4 text-[#C5A880]" strokeWidth={1.75} />
               <span>Rechercher</span>

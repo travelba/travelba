@@ -362,6 +362,13 @@
     pointer-events: auto;
   }
 }
+.hotel-theme .h-privilege {
+  height: 12.75rem;
+}
+.hotel-theme .h-privilege .h-cover-fade {
+  height: 10rem;
+  background: linear-gradient(to top, #0b192c 36%, rgba(11, 25, 44, 0.62) 72%, transparent 100%);
+}
 .hotel-theme .h-cover-fade {
   position: absolute;
   right: 0;

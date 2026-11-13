@@ -23,12 +23,6 @@ export const HOTEL_ACCESS_COPY = {
   reserved: `La réservation d’hôtels en autonomie est réservée aux membres ${HOTEL_MEMBERSHIP_LABEL}.`,
   ask: `Demander l’accès ${HOTEL_MEMBERSHIP_LABEL}`,
   sent: "Demande envoyée, votre conseiller revient vers vous.",
-  benefits: [
-    "Choisir le séjour dans votre espace",
-    "Confier la demande à l’agence, auprès de l’hôtel",
-    "Suivre la confirmation au même endroit",
-    "Annuler lorsque le tarif le permet",
-  ],
 } as const;
 
 export type HotelAccessCustomer = {
