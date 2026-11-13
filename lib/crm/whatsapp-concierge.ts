@@ -9,8 +9,10 @@ import {
 } from "./carnet";
 import { placeWithPreposition, stayDestinationLine, stayDestinationNames } from "./stay-phrase";
 import { timezoneForIata } from "./airport-time";
+import { inferAirlineIata } from "./brand-marks";
 import {
   airportSpokenName,
+  asksSchedule,
   civilDate,
   englishLongDate,
   englishWeekday,
@@ -402,6 +404,20 @@ function publishedCover(booking: RawBooking): ConciergeCover | null {
   return { kind: "catalog", photoId: photo };
 }
 
+/** AF253, pas 253. Un numéro déjà préfixé (AF253, 7P123) n’est pas doublé. */
+function clientFlightNumber(card: CrmBookingItem) {
+  const raw = detailStr(card, "flight_number").replace(/\s+/g, "").toUpperCase();
+  if (!raw) return "";
+  if (/^[A-Z][A-Z0-9]\d/.test(raw) || /^[0-9][A-Z]\d/.test(raw)) return raw;
+  const iata = inferAirlineIata({
+    airline: detailStr(card, "airline") || (typeof card.supplier === "string" ? card.supplier : null),
+    airline_iata: detailStr(card, "airline_iata"),
+    flight_number: /^[A-Z]/.test(raw) ? raw : "",
+  });
+  if (iata && /^\d/.test(raw)) return `${iata}${raw}`;
+  return raw;
+}
+
 function itemLines(item: RawItem, prices: boolean): ConciergeItem {
   const card = item as CrmBookingItem;
   const clock = itemClock(card.start_at);
@@ -415,7 +431,7 @@ function itemLines(item: RawItem, prices: boolean): ConciergeItem {
   const toPlace = detailStr(card, "city_to") || (item.kind === "hotel" ? hotelCityLine(card) : "");
   const fromCode = detailStr(card, "from").toUpperCase();
   const toCode = detailStr(card, "to").toUpperCase();
-  const flightNumber = item.kind === "flight" ? detailStr(card, "flight_number") : "";
+  const flightNumber = item.kind === "flight" ? clientFlightNumber(card) : "";
   const terminalRaw = detailStr(card, "terminal") || detailStr(card, "departure_terminal");
   const terminal = /^[A-Za-z0-9]{1,4}$/.test(terminalRaw) ? terminalRaw : "";
   if (item.kind === "hotel") {
@@ -1041,7 +1057,8 @@ export function conciergeBrief(dossier: ConciergeDossier, now: Date = new Date()
   const today = parisMoment(now);
   const lines = [
     `Aujourd’hui : ${today.label} (Europe/Paris).`,
-    "« jeudi », « prochain » et « mon vol » = le prochain segment à venir, jamais une date passée. Le jour se lit dans le fuseau du trajet. « demain » = le lendemain. « mon dernier voyage » = le séjour terminé le plus récent. « le retour » = le vol qui ramène.",
+    "« jeudi », « prochain » et « mon vol » = le prochain segment à venir, jamais une date passée. Le jour se lit dans le fuseau du trajet. « demain » = le lendemain. « mon dernier voyage » = le séjour terminé le plus récent. « le retour » ne désigne le vol qui ramène que si la question porte sur l’horaire (quand, à quelle heure, décolle). Fast track, VIP, salon, assistance, accueil, bagage, siège, repas ou transfert : répondre sur ce service, même si le message dit aller ou retour.",
+    "Un numéro de vol se dit avec le code de la compagnie : AF253, pas 253.",
     "Ne jamais citer un taux d’agence, un prix d’achat, un nom de grossiste, un numéro de pièce ni une zone de lecture.",
   ];
   if (dossier.firstName) lines.push(`Client : ${dossier.firstName}.`);
@@ -1282,7 +1299,111 @@ function dayPhrase(date: string, lang: ReplyLang, now: Date) {
   return clientWhen(date, lang, now);
 }
 
-type RelativeAnswer = { body: string; handoff: "question" | null; stay: ConciergeStay | null };
+type RelativeAnswer = { body: string; handoff: HandoffKind | null; stay: ConciergeStay | null };
+
+type AddonFamily = "vip" | "lounge" | "assist" | "bag" | "seat" | "meal" | "transfer";
+
+function addonFamily(message: string): AddonFamily | null {
+  const text = fold(message);
+  if (/fast[\s-]?tracks?|fastpass|fast pass|\bvip\b|accueils?|greeters?|passe prioritaire|meet and greet/.test(text)) {
+    return "vip";
+  }
+  if (/\bsalons?\b|\blounges?\b/.test(text)) return "lounge";
+  if (/\bassistances?\b/.test(text)) return "assist";
+  if (/\bbagages?\b|\bbaggage\b/.test(text)) return "bag";
+  if (/\bsieges?\b|\bseats?\b/.test(text)) return "seat";
+  if (/\brepas\b|\bmeals?\b/.test(text)) return "meal";
+  if (/\btransferts?\b|\btransfers?\b|\bnavettes?\b/.test(text)) return "transfer";
+  return null;
+}
+
+/** Fast track, salon, siège… même si la phrase dit aussi « aller » ou « retour ». */
+export function asksAddonService(message: string) {
+  return addonFamily(message) !== null;
+}
+
+function addonHay(item: ConciergeItem) {
+  return fold([item.kind, item.label, item.lines.join(" "), item.included.join(" ")].join(" "));
+}
+
+function itemMatchesAddon(item: ConciergeItem, family: AddonFamily) {
+  const hay = addonHay(item);
+  if (family === "vip") {
+    return (
+      item.kind === "accueil_vip" ||
+      item.kind === "greeter" ||
+      /fast[\s-]?track|fastpass|accueil vip|vip airport|passe prioritaire/.test(hay)
+    );
+  }
+  if (family === "lounge") return /\bsalon\b|\blounge\b/.test(hay);
+  if (family === "assist") return /assistance/.test(hay);
+  if (family === "bag") return /bagage|baggage/.test(hay);
+  if (family === "seat") return /\bsiege\b|\bseat\b/.test(hay);
+  if (family === "meal") return /\brepas\b|\bmeal\b/.test(hay);
+  return item.kind === "transfer" || item.kind === "chauffeur" || /transfert|navette|chauffeur/.test(hay);
+}
+
+function addonMatches(message: string, dossier: ConciergeDossier) {
+  const family = addonFamily(message);
+  if (!family) return [] as { stay: ConciergeStay; item: ConciergeItem }[];
+  const rows: { stay: ConciergeStay; item: ConciergeItem }[] = [];
+  for (const stay of dossier.stays) {
+    for (const item of stay.items) {
+      if (itemMatchesAddon(item, family)) rows.push({ stay, item });
+    }
+  }
+  return rows;
+}
+
+function addonMissing(lang: ReplyLang) {
+  return say(lang, {
+    fr: "Je regarde et je vous fais un retour.",
+    en: "I’ll look into it and come back to you.",
+    he: "אני בודק ואחזור אליכם.",
+  });
+}
+
+function addonConfirm(item: ConciergeItem, lang: ReplyLang, now: Date, dossier: ConciergeDossier) {
+  if (item.kind === "accueil_vip" || item.kind === "greeter") return welcomeSentence(item, lang, now, dossier);
+  if (item.kind === "transfer" || item.kind === "chauffeur") return transferSentence(item, lang, now, dossier);
+  const when = clientWhen(item.date, lang, now);
+  const clock = item.clock ? spokenClock(item.clock, lang) : "";
+  const title = safeLine(item, dossier) || item.label;
+  if (lang === "en") return `Your ${title} is booked${when ? ` on ${when}` : ""}${clock ? ` at ${clock}` : ""}.`;
+  const head = `Votre ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
+  return `${head} est réservé${when ? ` ${when}` : ""}${clock ? ` à ${clock}` : ""}.`.replace(/\s+/g, " ").trim();
+}
+
+function addonAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, now: Date): RelativeAnswer {
+  const cards = addonMatches(message, dossier);
+  const stay = cards[0]?.stay || focusStay(message, dossier.stays);
+  if (!cards.length) return { body: addonMissing(lang), handoff: "question", stay };
+  const body = cards
+    .slice(0, 2)
+    .map((row) => addonConfirm(row.item, lang, now, dossier))
+    .filter(Boolean)
+    .join("\n");
+  return { body, handoff: null, stay };
+}
+
+/**
+ * Question de service sans jour précis. L’horaire d’un jeudi donné reste au routeur du jour.
+ */
+export function openAddonQuestion(message: string, dossier: ConciergeDossier, now: Date) {
+  if (!asksAddonService(message)) return false;
+  if (explicitCalendarDate(message, now)) return false;
+  const when = relativeWhen(message, now, tripZone(dossier, now));
+  return when?.kind !== "date";
+}
+
+/** Le modèle a répondu l’horaire du retour à une question qui n’était pas un horaire. */
+export function returnScheduleMisread(message: string, text: string, dossier: ConciergeDossier, now: Date) {
+  if (asksSchedule(message) || asksAddonService(message)) return false;
+  const when = relativeWhen(message, now, tripZone(dossier, now));
+  if (when?.kind !== "return") return false;
+  const folded = fold(text);
+  return /vol de retour|return flight/.test(folded) && /decoll|atterrit|\bleaves\b|\blands\b/.test(folded);
+}
 
 function missingSegment(lang: ReplyLang, date: string, kind: "flight" | "hotel" | "transfer" | "any", now: Date): RelativeAnswer {
   const day = dayPhrase(date, lang, now);
@@ -1334,7 +1455,9 @@ function answerRelative(message: string, dossier: ConciergeDossier, lang: ReplyL
   const explicit = explicitCalendarDate(message, now);
   const topic = topicOf(message);
   if (when?.kind === "last-trip") return lastTripAnswer(dossier, lang, now);
-  if (when?.kind === "return" && !explicit) return returnAnswer(dossier, lang, now);
+  if (when?.kind === "return" && !explicit && asksSchedule(message) && !asksAddonService(message)) {
+    return returnAnswer(dossier, lang, now);
+  }
   const date = explicit || (when?.kind === "date" ? when.date : null);
   if (!date) return null;
   if (topic === "balance" || topic === "transactions" || topic === "price" || topic === "documents" || topic === "formality" || topic === "hello") {
@@ -1846,12 +1969,15 @@ export function routerCanAnswerAlone(
   if (contestsMessage(message) || asksCheckIn(message) || recallsRoomChange(message, pending) || asksPublishedResend(message)) {
     return true;
   }
+  if (openAddonQuestion(message, dossier, now)) return true;
+  const when = relativeWhen(message, now, tripZone(dossier, now));
+  if (when?.kind === "return" && !asksSchedule(message)) return false;
   const topic = topicOf(message);
   if (["schedule", "documents", "balance", "transactions", "price", "formality", "included", "chauffeur"].includes(topic)) {
     return true;
   }
   if (asksNextFlight(message) || asksNextHotel(message)) return true;
-  if (relativeWhen(message, now, tripZone(dossier, now))) return true;
+  if (when) return true;
   const text = fold(message);
   if (/\b(vol|flight|hotel|chambre)\b/.test(text) && topic === "stay") return true;
   return false;
@@ -1993,6 +2119,11 @@ export function planConciergeTurn(
       he: "אני מעביר את בקשת המסעדה לסוכנות. שום דבר לא הוזמן.",
     });
     answerHandoff = "question";
+  } else if (openAddonQuestion(message, dossier, now)) {
+    const addon = addonAnswer(message, dossier, lang, now);
+    body = addon.body;
+    answerHandoff = addon.handoff;
+    pinned = addon.stay;
   } else if (relative) {
     body = relative.body;
     answerHandoff = relative.handoff;
@@ -2033,12 +2164,12 @@ export function planConciergeTurn(
       messages: packed.messages,
     };
   }
-  if (answerHandoff === "question") {
+  if (answerHandoff === "question" || answerHandoff === "quote") {
     const stay = pinned || subjectStay(message, dossier, topic);
     const packed = sayTurn(body);
     return {
       ...empty,
-      handoff: "question",
+      handoff: answerHandoff,
       bookingId: stay?.id || null,
       text: packed.text,
       messages: packed.messages,

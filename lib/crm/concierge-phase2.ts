@@ -1,5 +1,5 @@
 import type { ConciergeDossier, ConciergePending, ConciergeTurn, ReplyLang } from "@/lib/crm/whatsapp-concierge";
-import { classifyHandoff, messageLanguage } from "@/lib/crm/whatsapp-concierge";
+import { asksAddonService, classifyHandoff, messageLanguage } from "@/lib/crm/whatsapp-concierge";
 import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "@/lib/crm/whatsapp-conversation";
 import { advanceJourney, inTripHelp, planFollowups, type PlannedFollowup, type ProposalDraft, type TripBrief } from "@/lib/crm/concierge-journey";
 import { factsFromDossier } from "@/lib/crm/concierge-touchpoints";
@@ -108,7 +108,7 @@ export async function planPhase2(input: {
       phone: input.phone,
     });
   }
-  const help = turn.handoff ? null : inTripHelp(input.message);
+  const help = turn.handoff || asksAddonService(input.message) ? null : inTripHelp(input.message);
   if (help === "delay" || help === "transfer" || help === "restaurant") {
     const kind = help === "restaurant" ? "restaurant" : help === "transfer" ? "transfer" : "help";
     if (!proposal) proposal = serviceDraft(kind, input.message);
