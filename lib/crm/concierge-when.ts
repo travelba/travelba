@@ -129,6 +129,18 @@ export function relativeWhen(message: string, now: Date, timeZone = "Europe/Pari
   return { kind: "date", date: addIsoDays(today, delta) };
 }
 
+/**
+ * Vrai seulement si le message demande un horaire.
+ * « le retour » tout seul ne suffit pas : un fast track ou un salon au retour n’est pas une heure.
+ */
+export function asksSchedule(message: string) {
+  const text = fold(message);
+  if (/\bdate (de |du )?retour\b/.test(text)) return true;
+  return /\b(quand|a quelle heure|quelle heure|a quelle h|horaires?|decoll\w*|atterr\w*|what time|which time|when(?: is| does|'s)?|departure time|arrival time|heure de depart|heure d'arrivee|heure d arrivee)\b/.test(
+    text
+  );
+}
+
 export function airportSpokenName(code: string) {
   return AIRPORT_NAMES[code.trim().toUpperCase()] || "";
 }
