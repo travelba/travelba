@@ -400,6 +400,17 @@ export function HotelSearch({
   }, [customerId]);
 
   useEffect(() => {
+    const root = document.querySelector(".account-app");
+    if (!(root instanceof HTMLElement)) return;
+    if (searched || openedLive) {
+      root.removeAttribute("data-hotel-home");
+      return;
+    }
+    root.setAttribute("data-hotel-home", "");
+    return () => root.removeAttribute("data-hotel-home");
+  }, [searched, openedLive]);
+
+  useEffect(() => {
     if (focusReady.current) return;
     focusReady.current = true;
     if (destinationRef.current?.value) return;
@@ -809,7 +820,7 @@ export function HotelSearch({
               <Icon name="bed" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
               <span className="shrink-0">{barRooms}</span>
             </button>
-            <button type="button" data-hotel-search-cta="1" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-press mt-1 flex h-12 w-full items-center justify-center font-semibold disabled:opacity-60">
+            <button type="button" data-hotel-search-cta="1" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-search-launch h-press flex items-center justify-center font-semibold disabled:opacity-60">
               <span>Rechercher</span>
             </button>
           </div>
@@ -1050,7 +1061,7 @@ export function HotelSearch({
         </div>
       ) : null}
       {sheet && panel === "when" ? (
-        <div className="hotel-sheet h-dates fixed inset-x-0 top-16 z-[60] flex flex-col bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:bottom-0" data-hotel-sheet="1" data-hotel-dates-sheet="1" role="dialog" aria-modal="true" aria-label="Dates du séjour">
+        <div className="hotel-sheet h-dates fixed inset-0 z-[70] flex flex-col" data-hotel-sheet="1" data-hotel-dates-sheet="1" role="dialog" aria-modal="true" aria-label="Dates du séjour">
           <header className="flex items-center justify-end px-3 py-2">
             <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-11 w-11 place-items-center h-ink">
               <Icon name="close" className="h-5 w-5" />
@@ -1097,7 +1108,7 @@ export function HotelSearch({
       ) : null}
       {sheet && panel === "who" ? (
         <div
-          className="fixed inset-x-0 top-0 z-[60] flex items-end bg-[#0B192C]/45 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:bottom-0"
+          className="fixed inset-x-0 top-0 z-[60] flex items-end bg-[#0B192C]/45 bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-0"
           data-hotel-sheet="1"
           data-hotel-party-sheet="1"
           role="dialog"
@@ -1170,7 +1181,7 @@ export function HotelSearch({
               ))}
             </div>
             {rooms.length < 4 ? (
-              <button type="button" className="mt-4 text-sm font-semibold underline h-ink" onClick={() => resizeRooms(rooms.length + 1)}>
+              <button type="button" className="mt-5 block w-full text-right text-sm font-semibold underline h-ink" onClick={() => resizeRooms(rooms.length + 1)}>
                 Ajouter une chambre
               </button>
             ) : null}
