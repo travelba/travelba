@@ -1,6 +1,7 @@
 import type { PliantCardRecap, PliantReconcileState } from "./pliant-booking";
 import { pliantReconcileState } from "./pliant-booking";
 import type { PliantSpendLine } from "./pliant-cards";
+import { coverPliantAuthorizations, pliantStatusBlocksAttach, type PliantCoverSpend } from "./pliant-authorization";
 import { pliantSignedCents } from "./pliant-tx";
 import { isFixedCostParty, type OutgoingLine, type TripAccountingView, type TripCost } from "./trip-costs";
 
@@ -66,6 +67,20 @@ export function spendAwaitsAttach(state: PliantReconcileState) {
   return state === "post" || state === "attach";
 }
 
+function coverFace(row: PliantSpendLine, bookingId: string): PliantCoverSpend {
+  return {
+    id: row.id,
+    status: row.status,
+    type: row.type,
+    merchant: row.merchant,
+    billingCents: row.billingCents,
+    currency: row.currency,
+    occurredOn: row.bookedAt ? String(row.bookedAt).slice(0, 10) : null,
+    cardId: row.cardId || null,
+    bookingIds: [bookingId],
+  };
+}
+
 /**
  * Sorties à rattacher sur le dossier : la file proposée (Pliant + Revolut), puis les dépenses des cartes
  * du dossier qui attendent encore et que la file n’a pas déjà. Une transaction n’apparaît qu’une fois.
@@ -75,12 +90,15 @@ export function pendingCostLines(input: {
   cards: PliantCardRecap[];
   bookingId: string;
 }): OutgoingLine[] {
+  const faces = input.cards.flatMap((card) => card.spends.map((row) => coverFace(row, input.bookingId)));
+  const covered = coverPliantAuthorizations(faces);
   const seen = new Set(input.proposed.map((line) => `${line.source}:${line.id}`));
-  const lines = [...input.proposed];
+  const lines = input.proposed.filter((line) => line.source !== "pliant" || (!line.coveredNote && !covered.has(line.id)));
   for (const card of input.cards) {
     for (const row of card.spends) {
       const key = `pliant:${row.id}`;
       if (seen.has(key)) continue;
+      if (pliantStatusBlocksAttach(row.status) || covered.has(row.id)) continue;
       if (!spendAwaitsAttach(spendReconcileState(row, input.bookingId))) continue;
       if (isFixedCostParty(row.merchant)) continue;
       const line = pliantSpendToOutgoing(card, row);
