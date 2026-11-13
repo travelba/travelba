@@ -14,6 +14,7 @@ import {
   isComplaint,
   messageLanguage,
   planConciergeTurn,
+  returnScheduleMisread,
   replyCitesPastSegment,
   replyMentionsForbiddenPlace,
   replyMissesAskedDay,
@@ -69,6 +70,7 @@ function systemPrompt() {
 Français par défaut. Sinon la langue du client. Une ou deux phrases. Pas de conseil général, pas de formule de politesse.
 Tu ne signes pas. Tu ne salues pas. Tu ne bluffes pas.
 Paiement, plainte, doute : Benjamin. Restaurant ou transfert absent du dossier : ouvrir_demande, sans réserver ni encaisser.
+Un service demandé (fast track, VIP, salon, assistance, accueil, bagage, siège, repas, transfert) qui n’est pas dans le dossier : le programme dit « Je regarde et je vous fais un retour. » et ouvre une question pour l’agence. Tu ne dis pas qu’il n’est pas réservé et tu ne parles pas d’un devis. S’il est dans le dossier, tu le confirmes avec le détail. « le retour » ne donne l’horaire que si la question porte sur l’heure. Le numéro de vol inclut le code compagnie (AF253).
 Le dossier est déjà dans le message. Tu ne le relis pas avec un outil.
 Tu n’annules rien, tu ne rapproches aucun paiement, tu n’envoies rien à un tiers, tu ne crées aucun dossier.
 Un téléphone, un e-mail, une naissance, une préférence ou une demande sur le dossier de ce client est déjà enregistré par le programme. Tu ne dis pas que tu ne peux pas modifier le dossier. Tu ne confirmes que ce que le programme a écrit.
@@ -564,7 +566,8 @@ export async function planConciergeConversation(input: {
     console.error("[whatsapp-concierge] turn", err instanceof Error ? err.name : "error");
     output = null;
   }
-  if (!output?.text.trim() || usesTutoiement(output.text) || replyOverCap(output.text) || soundsRobotic(output.text)) {
+  const misread = output?.text ? returnScheduleMisread(input.message, output.text, input.dossier, now) : false;
+  if (!output?.text.trim() || usesTutoiement(output.text) || replyOverCap(output.text) || soundsRobotic(output.text) || misread) {
     if (clientWantsAgency(input.message)) return questionTurn(keyword, messageLanguage(input.message), input.dossier, now, history);
     return keyword;
   }

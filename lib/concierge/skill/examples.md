@@ -33,6 +33,11 @@ Client : À quelle heure est mon vol de retour ?
 Concierge :
 Votre vol de retour AF2101 décolle jeudi 29 octobre à 18h40 et atterrit à 22h10.
 
+## Service absent
+Client : Il y a bien le vip fast track pour l’aller et le retour ?
+Concierge :
+Je regarde et je vous fais un retour.
+
 ## Lendemain vide
 Client : Je pars demain ?
 Concierge :
