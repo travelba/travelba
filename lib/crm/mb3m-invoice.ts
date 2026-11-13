@@ -54,6 +54,17 @@ import {
   type TripCostRow,
 } from "@/lib/crm/trip-costs";
 import {
+  conformMb3mAccountLines,
+  MB3M_FLIGHT_HOLD_MESSAGE,
+  mb3mInvoiceNotice,
+  mb3mInvoiceRefCommand,
+  mb3mSendableLines,
+  mb3mSoapLines,
+  mb3mSupplierAlertMail,
+  mb3mSupplierBlock,
+} from "@/lib/crm/mb3m-conform";
+import { deliverServiceRequestMail } from "@/lib/crm/service-request-mail";
+import {
   Mb3mError,
   mb3mAddCreditNote,
   mb3mAddInvoice,
@@ -77,6 +88,7 @@ import {
 import { createServiceClient } from "@/lib/supabase/admin";
 
 type StayItem = {
+  id?: string;
   kind?: string | null;
   amount?: number | string | null;
   lifecycle?: string | null;
@@ -84,6 +96,8 @@ type StayItem = {
   start_at?: string | null;
   end_at?: string | null;
   title?: string | null;
+  supplier?: string | null;
+  confirmation_ref?: string | null;
   sort_order?: number | null;
 };
 
@@ -132,6 +146,8 @@ export type Mb3mInvoiceContext = {
   visibleToClient: boolean;
   configured: boolean;
   lines: Mb3mAccountLine[];
+  /** Billetterie retenue, ou fournisseur manquant sur un vol qui ne part pas. */
+  notice?: string | null;
   hadExpenses: boolean;
   /** Vols déjà importés par Amadeus. Absent : rien à écarter. */
   gdsPlan?: Mb3mGdsPlan;
@@ -206,11 +222,12 @@ type PiecePatch = {
  * facture »), et ses types Fees / Note ne conviennent pas (non supporté / ligne absente du PDF).
  * Une ligne de marge pure (frais, prestation sans coût pointé) part donc avec un net plancher
  * d’un centime et la marge qui complète : la pièce imprime le bon montant, la marge varie de 0,01 €.
- * Vol, train et low cost suivent la même règle : net et marge réels, sans commission forcée.
+ * Un frais d’agence part en ligne Custom, sans marge. Un vol garde son activité (2, 1001 ou 27).
  */
 export const MB3M_MIN_NET = 0.01;
 
 export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
+  if (line.customCode || line.agencyProvider) return mb3mSoapLines([line], MB3M_MIN_NET)[0];
   const raw = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
   let net = raw == null ? line.amount : Math.round((line.amount - raw) * 100) / 100;
   let margin = raw;
@@ -227,6 +244,9 @@ export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
     type: "Standard" as const,
     marginUnit: margin,
     note: line.note ?? null,
+    providerId: line.providerId ?? null,
+    refPiece: line.refPiece ?? null,
+    refCommand: line.refCommand ?? null,
   };
 }
 
@@ -258,6 +278,8 @@ export type Mb3mInvoiceDeps = {
   }) => Promise<string>;
   /** Range les factures Amadeus dans le dossier, une fois qu’il existe. */
   finishGds?: (folderId: string | null) => Promise<string | null>;
+  /** Alerte Marie quand un fournisseur du catalogue manque. Défaut : l’e-mail agence. */
+  notifySupplier?: (mail: { to: string; subject: string; html: string; text: string }) => Promise<boolean>;
   /** Crédits du client sur la pièce. Une erreur ici ne retire pas la facture. */
   recordPayments?: (input: {
     bookingId: string;
@@ -345,7 +367,23 @@ export function mb3mInvoiceBlocker(ctx: Mb3mInvoiceContext) {
       ? "Les dépenses de ce séjour sont déjà sur une facture validée."
       : "Aucune dépense de ce séjour n’est au grand livre.";
   }
-  if (ctx.lines.some((line) => line.activityId == null)) return "L’activité MB3M n’est pas configurée.";
+  const supplier = mb3mSupplierBlock(ctx.lines);
+  if (supplier) {
+    const held = ctx.lines.some((line) => line.held) ? MB3M_FLIGHT_HOLD_MESSAGE : "";
+    return [supplier, held].filter(Boolean).join(" ");
+  }
+  const sendable = mb3mSendableLines(ctx.lines);
+  if (!sendable.length) {
+    const notice = mb3mInvoiceNotice(ctx.lines);
+    if (notice) return notice;
+    if (ctx.lines.some((line) => !line.rollup && !line.held && line.activityId == null && !line.customCode && !line.supplierReason)) {
+      return "L’activité MB3M n’est pas configurée.";
+    }
+    return ctx.hadExpenses
+      ? "Les dépenses de ce séjour sont déjà sur une facture validée."
+      : "Aucune dépense de ce séjour n’est au grand livre.";
+  }
+  if (sendable.some((line) => line.activityId == null && !line.customCode)) return "L’activité MB3M n’est pas configurée.";
   return null;
 }
 
@@ -406,13 +444,17 @@ export function buildMb3mInvoiceContext(input: {
       )
     : null;
   const posted = mb3mDossierLines(input.charges || [], input.items, margins);
-  const lines = posted.filter((line) => !covered.has(line.transactionId));
+  const lines = conformMb3mAccountLines(
+    posted.filter((line) => !covered.has(line.transactionId)),
+    input.items
+  );
+  const sendable = mb3mSendableLines(lines);
   return {
     bookingId: input.booking.id,
     reference: input.booking.reference,
     title: (input.booking.title || "").trim().slice(0, 120) || input.booking.reference,
     currency: stayCurrency(input.booking.currency),
-    amount: Math.round(lines.reduce((sum, line) => sum + line.amount, 0) * 100) / 100,
+    amount: Math.round(sendable.reduce((sum, line) => sum + line.amount, 0) * 100) / 100,
     dateStart: facts.start,
     dateEnd: facts.end,
     destination: facts.placeLine.trim().slice(0, 120) || null,
@@ -454,6 +496,7 @@ export function buildMb3mInvoiceContext(input: {
     visibleToClient: input.booking.visible_to_client === true,
     configured: mb3mConfigured(),
     lines,
+    notice: mb3mInvoiceNotice(lines),
     hadExpenses: posted.length > 0,
   };
 }
@@ -545,8 +588,26 @@ async function attachReglements(
   }
 }
 
+async function notifySupplierGap(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps) {
+  const reason = [...new Set(ctx.lines.map((line) => line.supplierReason).filter(Boolean))].join(" ");
+  if (!reason) return;
+  try {
+    const mail = mb3mSupplierAlertMail({ reference: ctx.reference, bookingId: ctx.bookingId, reason });
+    const send = deps.notifySupplier || deliverServiceRequestMail;
+    await send(mail);
+  } catch {
+    console.error("[mb3m] alerte fournisseur non délivrée");
+  }
+}
+
+function withNotice(ctx: Mb3mInvoiceContext, result: Mb3mInvoiceResult): Mb3mInvoiceResult {
+  const avertissement = [ctx.notice, result.avertissement].filter(Boolean).join(" ") || null;
+  return { ...result, avertissement };
+}
+
 export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps): Promise<Mb3mInvoiceResult> {
-  const signature = mb3mLineSignature(ctx.lines);
+  const sendable = mb3mSendableLines(ctx.lines);
+  const signature = mb3mLineSignature(sendable);
   const claimed = await deps.claim(ctx.bookingId, ctx.amount);
   let piece = claimed.piece;
   const created = Boolean(claimed.created);
@@ -567,6 +628,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
       }
       throw new Mb3mError(mb3mInvoiceBlocker(ctx) || "Aucune dépense de ce séjour n’est au grand livre.", 0);
     }
+    await notifySupplierGap(ctx, deps);
     let previous: { folderId: string; number: string } | null = null;
     if (piece.pieceNumber) {
       const state = await deps.findPiece(piece.pieceNumber);
@@ -579,7 +641,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
         const covered = new Set(piece.transactionIds);
         const fresh = ctx.lines.filter((line) => !covered.has(line.transactionId));
         if (!fresh.length) {
-          return await attachReglements(
+          return withNotice(ctx, await attachReglements(
             ctx,
             deps,
             {
@@ -593,7 +655,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
             piece.amount ?? ctx.amount,
             piece.folderId,
             piece.customerUid
-          );
+          ));
         }
         return await runMb3mInvoice(
           { ...ctx, lines: fresh, amount: Math.round(fresh.reduce((sum, line) => sum + line.amount, 0) * 100) / 100, hadExpenses: true },
@@ -601,7 +663,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
         );
       }
       if (state === "open" && piece.signature === signature) {
-        return await attachReglements(
+        return withNotice(ctx, await attachReglements(
           ctx,
           deps,
           {
@@ -615,7 +677,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
           piece.amount ?? ctx.amount,
           piece.folderId,
           piece.customerUid
-        );
+        ));
       }
       // L’ancienne pro forma s’annule après la nouvelle : un refus de MB3M ne laisse pas le dossier sans pièce.
       if (state === "open" && piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
@@ -655,16 +717,18 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
 
     const savedPiece = await ensureFolder(ctx, deps, piece);
     const replaced = Boolean(piece.pieceNumber);
+    const soapLines = mb3mSoapLines(sendable, MB3M_MIN_NET);
+    const invoiceAmount = Math.round(sendable.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
     const invoice = await deps.addInvoice({
       folderId: savedPiece.folderId || "",
       customerUid: savedPiece.customerUid || "",
       title: ctx.title,
-      refCommand: ctx.reference,
+      refCommand: mb3mInvoiceRefCommand(ctx.reference, soapLines),
       dateStart: ctx.dateStart || undefined,
       dateEnd: ctx.dateEnd || undefined,
       destination: ctx.destination || undefined,
       destinationIso: ctx.destinationIso || undefined,
-      lines: ctx.lines.map(mb3mInvoiceLine),
+      lines: soapLines,
       travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
       agencyUid: savedPiece.agencyUid,
     });
@@ -687,30 +751,33 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     await deps.save(savedPiece.id, {
       pieceNumber: invoice.number,
       pieceUid: invoice.uid || null,
-      amount: ctx.amount,
+      amount: invoiceAmount,
       signature,
-      transactionIds: ctx.lines.map((line) => line.transactionId),
-      lines: ctx.lines.map(mb3mInvoiceLine),
+      transactionIds: sendable.map((line) => line.transactionId),
+      lines: soapLines,
       customerUid: savedPiece.customerUid,
       folderId: savedPiece.folderId,
       folderUid: savedPiece.folderUid,
       attemptStatus: null,
       attemptError: null,
     });
-    return await attachReglements(
+    return withNotice(
       ctx,
-      deps,
-      {
-        number: invoice.number,
-        documentId: null,
-        created: !replaced,
-        replaced,
-        printed: false,
-        visibleToClient: ctx.visibleToClient,
-      },
-      ctx.amount,
-      savedPiece.folderId,
-      savedPiece.customerUid
+      await attachReglements(
+        ctx,
+        deps,
+        {
+          number: invoice.number,
+          documentId: null,
+          created: !replaced,
+          replaced,
+          printed: false,
+          visibleToClient: ctx.visibleToClient,
+        },
+        invoiceAmount,
+        savedPiece.folderId,
+        savedPiece.customerUid
+      )
     );
   } catch (error) {
     if (rememberFailure) {

@@ -19,7 +19,7 @@ export class Mb3mError extends Error {
 
 export type Mb3mCivility = "Unknown" | "Mme" | "Mlle" | "Mr";
 export type Mb3mFolderType = "Prestation" | "Production" | "ProductionGIR";
-export type Mb3mLineType = "Standard" | "Note";
+export type Mb3mLineType = "Standard" | "Note" | "Custom";
 
 export type Mb3mAddress = {
   name: string;
@@ -112,16 +112,22 @@ export type Mb3mLine = {
   netPriceTotal: number;
   activityId?: number;
   type?: Mb3mLineType;
-  /** Marge unitaire : prix vendu − coûts rattachés. Peut être négative. */
+  /** Marge unitaire : prix vendu − coûts rattachés. Peut être négative. Absente sur un frais d’agence. */
   marginUnit?: number | null;
   /**
-   * Commission de la ligne. Absente ou nulle : 0,01 sur une billetterie
-   * (aérien 2, ferroviaire 5, low cost 27), sinon le bloc n’est pas envoyé.
-   * MB3M refuse AddPieces sans commission nette et TTC (-504, code interne -22).
+   * CommissionId MB3M, seulement quand la billetterie est ouverte (`MB3M_FLIGHT_COMMISSION=1`).
+   * Jamais les champs CommissionNetTotal / CommissionTotal : la marge seule est envoyée.
    */
-  commissionTotal?: number | null;
-  /** Fournisseur MB3M déjà connu. Sinon le défaut d’environnement, sinon l’agence de la pièce. */
+  commissionId?: number | null;
+  /** Frais d’agence : Type Custom, LineType 4, code 401, 12, 13 ou 4. */
+  customType?: { complementary: string; lineType: 4 } | null;
+  /** Fournisseur déjà dans le catalogue. L’agence pour un frais. Jamais un fournisseur créé. */
   providerId?: string | null;
+  providerRole?: "agency" | "supplier" | null;
+  /** Hôtel ou transfert : n° de réservation. Vol : billet à 10 chiffres. */
+  refPiece?: string | null;
+  /** Vol : PNR, recopié sur la pièce s’il n’y en a qu’un. */
+  refCommand?: string | null;
   /** Nom des fournisseurs des coûts, imprimé en note. Ne crée pas de fournisseur. */
   note?: string | null;
 };
@@ -421,14 +427,14 @@ export async function mb3mSaveFolder(
   return { id, uid };
 }
 
-/** Vol, train et low cost du fichier MB3M. On les facture en Divers terrestre. */
-const MB3M_TICKETING_FILE_IDS = new Set([2, 5, 27]);
-const MB3M_STANDARD_ACTIVITY = 22;
-
-/** 2, 5 et 27 deviennent 22. Les autres activités restent. */
+/**
+ * Activité envoyée telle quelle. 2 = aérien, 1001 = achat direct, 27 = low cost, 5 = train.
+ * Les frais généraux (14) ne sont pas une ligne de facture.
+ */
 export function mb3mPrestationActivityId(activityId: number | null | undefined) {
   if (activityId == null) return undefined;
-  return MB3M_TICKETING_FILE_IDS.has(activityId) ? MB3M_STANDARD_ACTIVITY : activityId;
+  if (activityId === 14) throw new Mb3mError("Les frais généraux ne sont pas une ligne de facture.", -1);
+  return activityId;
 }
 
 const MB3M_GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -447,17 +453,21 @@ export function mb3mDefaultProviderId() {
   return mb3mGuid(raw);
 }
 
-function commissionXml(line: Mb3mLine) {
-  const given = line.commissionTotal;
-  if (given == null || !Number.isFinite(given) || given === 0) return "";
-  const amount = money(given);
-  // Ordre WCF : CommissionNetTotal, CommissionTaxRate, CommissionTotal.
-  return `${tag("CommissionNetTotal", amount)}${tag("CommissionTaxRate", 0)}${tag("CommissionTotal", amount)}`;
+function commissionIdXml(line: Mb3mLine) {
+  const id = line.commissionId;
+  if (id == null || !Number.isInteger(id) || id <= 0) return "";
+  return tag("CommissionId", id);
+}
+
+function customTypeXml(line: Mb3mLine) {
+  const custom = line.customType;
+  if (!custom || custom.lineType !== 4 || !custom.complementary.trim()) return "";
+  return `<CustomType>${tag("Complementary", custom.complementary.trim())}${tag("LineType", 4)}</CustomType>`;
 }
 
 function providerXml(line: Mb3mLine, fallback?: string | null) {
-  const id = mb3mGuid(line.providerId) || mb3mDefaultProviderId() || mb3mGuid(fallback);
-  return tag("ProviderId", id);
+  if (line.providerRole === "agency") return tag("ProviderId", mb3mGuid(fallback) || mb3mGuid(line.providerId));
+  return tag("ProviderId", mb3mGuid(line.providerId));
 }
 
 export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine[], providerFallback?: string | null) {
@@ -468,15 +478,18 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
       if (line.activityId != null && (!Number.isInteger(line.activityId) || line.activityId <= 0)) {
         throw new Mb3mError("Activité MB3M invalide.", -1);
       }
-      const activityId = mb3mPrestationActivityId(line.activityId);
+      const activityId = line.type === "Custom" ? undefined : mb3mPrestationActivityId(line.activityId);
       const activity = activityId == null ? "" : tag("ActivityId", activityId);
       const margin =
-        line.marginUnit == null || !Number.isFinite(line.marginUnit) ? "" : tag("MarginUnit", money(line.marginUnit));
-      const note = tag("Note", (line.note || "").trim().slice(0, 250));
-      // Ordre WCF InvoiceLine / CreditNoteLine : ActivityId, CommissionNetTotal, CommissionTaxRate,
-      // CommissionTotal, CustomType, Label, MarginTaxRate, MarginTaxTotal, MarginUnit, NetPriceTotal,
-      // NetPriceUnit, Note, ProviderId, Quantity, RefPiece, TaxRate, TaxTotal, Type.
-      return `<${kind}>${activity}${commissionXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${tag("Type", type)}</${kind}>`;
+        line.type === "Custom" || line.marginUnit == null || !Number.isFinite(line.marginUnit)
+          ? ""
+          : tag("MarginUnit", money(line.marginUnit));
+      const note = line.type === "Custom" ? "" : tag("Note", (line.note || "").trim().slice(0, 250));
+      const refPiece = tag("RefPiece", (line.refPiece || "").trim().slice(0, 40));
+      // Ordre WCF : ActivityId, CommissionId, CustomType, Label, MarginUnit, NetPriceTotal,
+      // NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
+      // Pas de CommissionNetTotal ni de CommissionTotal : la marge seule.
+      return `<${kind}>${activity}${commissionIdXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
     })
     .join("");
 }

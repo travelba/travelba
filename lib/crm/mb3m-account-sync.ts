@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mb3mCompanyDraft, mb3mPersonDraft } from "@/lib/crm/mb3m-party";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { mb3mAccountSyncCanSend } from "@/lib/crm/mb3m-conform";
 import {
   mb3mAccountBalance,
   mb3mAccountBuckets,
@@ -190,7 +191,9 @@ async function syncBucket(
   const next = mb3mAccountLines(rows, companyId, split).filter((line) => !printedIds.has(line.transactionId));
   const current = open ? await invoiceLines(admin, open.id) : null;
   const action = mb3mInvoiceAction(current, next);
-  if ((action === "create" || action === "replace") && next.some((line) => line.activityId == null)) return;
+  if ((action === "create" || action === "replace") && (next.some((line) => line.activityId == null) || !mb3mAccountSyncCanSend(next))) {
+    return;
+  }
   if (action === "keep") {
     if (open) await touchBalance(admin, open.id, balance);
     return;

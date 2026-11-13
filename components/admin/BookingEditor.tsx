@@ -465,6 +465,7 @@ export function BookingEditor({
   customerActivity?: CrmCustomerActivity[];
   mb3m: {
     blocker: string | null;
+    notice?: string | null;
     piece: { number: string } | null;
     preparation: { state: "running" | "failed" | null; message: string | null; resume: boolean };
     amadeus?: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }[];
@@ -2478,6 +2479,7 @@ export function BookingEditor({
               invoicing={busy === "invoice"}
               unsaved={unsaved}
               blocker={mb3m.blocker}
+              notice={mb3m.notice}
               view={{
                 number: invoiceNumber,
                 printed: Boolean(accounting?.invoice.printed),

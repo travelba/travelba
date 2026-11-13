@@ -35,6 +35,7 @@ export function InvoiceBlock({
   invoicing,
   unsaved,
   blocker,
+  notice,
   view,
   note,
   onBusy,
@@ -46,6 +47,7 @@ export function InvoiceBlock({
   invoicing: boolean;
   unsaved: boolean;
   blocker: string | null;
+  notice?: string | null;
   view: InvoiceBlockView;
   note: string | null;
   onBusy: (active: boolean) => void;
@@ -55,6 +57,7 @@ export function InvoiceBlock({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const reason = unsaved ? "Enregistrez le séjour avant de facturer." : blocker;
+  const held = !reason && notice ? notice : null;
 
   async function prepare() {
     onBusy(true);
@@ -192,6 +195,7 @@ export function InvoiceBlock({
           </a>
         ) : null}
         {reason ? <p className="text-sm text-muted">{reason}</p> : null}
+        {held ? <p className="text-sm text-[var(--admin-navy)]">{held}</p> : null}
       </div>
       {view.number ? <InvoiceSendPanel bookingId={bookingId} /> : null}
 

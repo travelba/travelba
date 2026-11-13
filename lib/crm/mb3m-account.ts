@@ -1,3 +1,4 @@
+import { MB3M_ACTIVITY, mb3mChooseActivity, type Mb3mFeeCode } from "@/lib/crm/mb3m-conform";
 import { mb3mActivityId, mb3mConfigured, mb3mRealm } from "@/lib/crm/mb3m";
 import { isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
 
@@ -28,10 +29,27 @@ export type Mb3mAccountLine = {
   label: string;
   amount: number;
   activityId: number | null;
-  /** Marge : vente − coûts rattachés. Sans coût pointé, la vente entière. */
+  /** Marge : vente − coûts rattachés. Sans coût pointé, la vente entière. Nulle sur un frais d’agence. */
   margin?: number | null;
   /** Fournisseurs des coûts, pour la note de la ligne. */
   note?: string | null;
+  itemId?: string | null;
+  chargeKind?: string | null;
+  providerId?: string | null;
+  providerName?: string | null;
+  refPiece?: string | null;
+  /** Billets à 10 chiffres, une ligne SOAP par passager quand la billetterie part. */
+  ticketRefs?: string[];
+  refCommand?: string | null;
+  fareScope?: "france" | "international" | null;
+  /** 401 billetterie, 12 hôtel, 13 tourisme, 4 remise. */
+  customCode?: Mb3mFeeCode | null;
+  agencyProvider?: boolean;
+  /** Vol 2, 1001 ou 27 : pas envoyé tant que l’API n’accepte pas CommissionId. */
+  held?: boolean;
+  supplierReason?: string | null;
+  /** Montant global du séjour : hors pièce dès qu’une prestation est détaillée. */
+  rollup?: boolean;
 };
 
 /**
@@ -47,49 +65,22 @@ export function mb3mLineNote(suppliers: string[]) {
 }
 
 /**
- * Activités du fichier agence.
- * Le 3 de la base de test n’est pas l’assurance.
- * Maritime (9) n’a pas de type Travelba : on ne le devine pas.
- * Vol, train et low cost (2, 5, 27 dans le fichier MB3M) partent en Divers terrestre :
- * MB3M refuse ces activités de billetterie sans commission (-22), même à 0,01 €.
- * Frais généraux (14) est une activité de charges : la base agence refuse une ligne de facture
- * dessus (-504, « Nullable object must have a value » sur la facture entière). Les frais d’agence
- * partent en Divers Terrestre.
+ * Activités du fichier agence (12/11/2026).
+ * 2 aérien (Amadeus), 1001 achat direct, 27 low cost, 5 train, 7 hôtel, 22 terrestre.
+ * Les frais d’agence ne sont pas une activité : ligne Custom. Les frais généraux (14) ne partent jamais.
+ * Il n’y a pas d’activité « Prestation complémentaire » ni « Interface GDS ».
  */
 
-/** Identifiants du fichier MB3M. On ne les envoie plus : la ligne part en 22. */
-export const MB3M_ACTIVITY_TICKETING = 2;
-export const MB3M_ACTIVITY_RAIL = 5;
-export const MB3M_ACTIVITY_LOW_COST = 27;
-/** Divers terrestre. Frais, vol, train, low cost. */
-export const MB3M_ACTIVITY_STANDARD = 22;
-
-const AGENCY_ACTIVITY: Record<string, number> = {
-  flight: MB3M_ACTIVITY_STANDARD,
-  insurance: 3,
-  rail: MB3M_ACTIVITY_STANDARD,
-  low_cost: MB3M_ACTIVITY_STANDARD,
-  hotel: 7,
-  car: 8,
-  package: 11,
-  fee: 22,
-  cruise: 20,
-  transfer: 22,
-  activity: 22,
-  chauffeur: 22,
-  greeter: 22,
-  accueil_vip: 22,
-  visa: 22,
-  checkin: 22,
-  expense: 22,
-};
-
-/** Tour opérateur : la ligne unique du bouton dossier, et le montant global du séjour. */
-export const MB3M_ACTIVITY_PACKAGE = 11;
+export const MB3M_ACTIVITY_TICKETING = MB3M_ACTIVITY.air;
+export const MB3M_ACTIVITY_DIRECT = MB3M_ACTIVITY.directTicket;
+export const MB3M_ACTIVITY_RAIL = MB3M_ACTIVITY.rail;
+export const MB3M_ACTIVITY_LOW_COST = MB3M_ACTIVITY.lowCost;
+export const MB3M_ACTIVITY_STANDARD = MB3M_ACTIVITY.land;
+export const MB3M_ACTIVITY_PACKAGE = MB3M_ACTIVITY.tourOperator;
 
 export function mb3mAgencyActivityId(kind: string | null | undefined) {
   if (!kind || kind === "package" || kind === "stay") return MB3M_ACTIVITY_PACKAGE;
-  return AGENCY_ACTIVITY[kind] ?? 22;
+  return mb3mChooseActivity({ kind });
 }
 
 /** La base de test envoie toujours son activité unique. La production suit le fichier agence. */
@@ -104,7 +95,7 @@ export function mb3mDossierActivityId() {
   return mb3mActivityId();
 }
 
-const ITEM_ID = /:(?:item|expense):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const ITEM_ID = /:(?:item|expense):([^:\s]+)$/i;
 
 export function withChargeKinds(
   rows: Mb3mLedgerRow[],
@@ -212,11 +203,14 @@ export function mb3mAccountLines(
     .map((row) => {
       const hit = margins?.get(row.id);
       const amount = Math.round(Number(row.amount) * 100) / 100;
+      const chargeKind = row.chargeKind ?? mb3mChargeKind(row);
       return {
         transactionId: row.id,
         label: (row.label || "").trim().slice(0, 120) || "Dépense",
         amount,
-        activityId: mb3mLineActivityId(row.chargeKind ?? mb3mChargeKind(row)),
+        activityId: mb3mLineActivityId(chargeKind),
+        itemId: row.external_id?.match(ITEM_ID)?.[1] || null,
+        chargeKind,
         // Chaque ligne porte sa marge : vente − coûts pointés. Sans coût, la marge est la vente,
         // comme MB3M le calcule lui-même pour une ligne sans achat. Rattacher un coût la fait baisser.
         margin: hit ? Math.round(hit.margin * 100) / 100 : amount,
@@ -255,6 +249,8 @@ export function mb3mLineSignature(lines: Mb3mAccountLine[]) {
 /** Une pièce imprimée dont les lignes (marge comprise) ne correspondent plus : « Marge à corriger ». */
 export function mb3mPieceStale(piece: { transactionIds: string[]; signature: string | null }, lines: Mb3mAccountLine[]) {
   if (!piece.signature || !piece.transactionIds.length) return false;
+  const held = new Set(lines.filter((line) => line.held).map((line) => line.transactionId));
+  if (piece.transactionIds.some((id) => held.has(id))) return false;
   const ids = new Set(piece.transactionIds);
   const current = lines.filter((line) => ids.has(line.transactionId));
   if (current.length !== piece.transactionIds.length) return false;

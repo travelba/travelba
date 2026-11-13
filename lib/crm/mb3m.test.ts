@@ -202,11 +202,7 @@ describe("client MB3M Partners", () => {
       }
     );
     assert.ok(invoiceBody.includes("<Invoice><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
-    assert.ok(
-      invoiceBody.includes(
-        "<NetPriceUnit>100</NetPriceUnit><ProviderId>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</ProviderId><Quantity>1</Quantity>"
-      )
-    );
+    assert.equal(invoiceBody.includes("<ProviderId>"), false);
   });
 
   it("crée une fiche et lit l’identifiant renvoyé", async () => {
@@ -371,7 +367,7 @@ describe("client MB3M Partners", () => {
     const flight = body.slice(body.lastIndexOf("<InvoiceLine>"));
     assert.equal(flight.includes("<MarginUnit>"), false);
     assert.equal(flight.includes("<Note>"), false);
-    assert.ok(flight.includes("<ActivityId>22</ActivityId><Label>Vol</Label>"), flight);
+    assert.ok(flight.includes("<ActivityId>2</ActivityId><Label>Vol</Label>"), flight);
     assert.equal(flight.includes("Commission"), false);
   });
 
@@ -385,16 +381,15 @@ describe("client MB3M Partners", () => {
     const fromAgency = linesXml(
       "InvoiceLine",
       [
-        { label: "Frais d’agence", quantity: 1, netPriceUnit: 0.01, netPriceTotal: 0.01, activityId: 22 },
-        { label: "Vol", quantity: 1, netPriceUnit: 0.01, netPriceTotal: 0.01, activityId: 2, note: "Fournisseur : AIR FRANCE" },
+        { label: "Frais d’agence", quantity: 1, netPriceUnit: 25, netPriceTotal: 25, providerRole: "agency", type: "Custom", customType: { complementary: "401", lineType: 4 } },
+        { label: "Vol", quantity: 1, netPriceUnit: 0.01, netPriceTotal: 0.01, activityId: 2, providerId: supplier, note: "Fournisseur : AIR FRANCE" },
       ],
       provider
     );
     assert.equal(fromAgency.match(/<ProviderId>/g)?.length, 2);
-    assert.ok(fromAgency.includes(`<NetPriceUnit>0.01</NetPriceUnit><ProviderId>${provider}</ProviderId><Quantity>1</Quantity>`));
-    assert.ok(
-      fromAgency.includes(`<Note>Fournisseur : AIR FRANCE</Note><ProviderId>${provider}</ProviderId><Quantity>1</Quantity>`)
-    );
+    assert.ok(fromAgency.includes(`<ProviderId>${provider}</ProviderId>`));
+    assert.ok(fromAgency.includes(`<ProviderId>${supplier}</ProviderId>`));
+    assert.equal(fromAgency.includes("<MarginUnit>"), false);
     process.env.MB3M_PROVIDER_ID = supplier;
     assert.equal(mb3mDefaultProviderId(), supplier);
     const fromEnv = linesXml(
@@ -412,37 +407,37 @@ describe("client MB3M Partners", () => {
     assert.equal(mb3mDefaultProviderId(), provider);
   });
 
-  it("un vol ou un train part en activité 22, sans commission, et garde une commission explicite dans l’ordre", () => {
+  it("garde l’activité du fichier, la marge, et n’écrit une commission que si CommissionId est posé", () => {
     const base = { quantity: 1, netPriceUnit: 400, netPriceTotal: 400 };
-    for (const activityId of [2, 5, 27] as const) {
-      assert.equal(mb3mPrestationActivityId(activityId), 22);
+    for (const activityId of [2, 5, 27, 1001] as const) {
+      assert.equal(mb3mPrestationActivityId(activityId), activityId);
       const air = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId }]);
-      assert.ok(air.includes("<ActivityId>22</ActivityId><Label>Vol</Label>"), air);
+      assert.ok(air.includes(`<ActivityId>${activityId}</ActivityId><Label>Vol</Label>`), air);
       assert.equal(air.includes("Commission"), false);
     }
     assert.equal(mb3mPrestationActivityId(7), 7);
+    assert.throws(() => mb3mPrestationActivityId(14), /frais généraux/i);
     const priced = linesXml("InvoiceLine", [
-      { ...base, label: "Hôtel", activityId: 7, commissionTotal: 12.5, marginUnit: 12.5 },
+      { ...base, label: "Hôtel", activityId: 7, marginUnit: 12.5, refPiece: "3569AJ70546" },
     ]);
     const pricedAt = [
       "<ActivityId>7",
-      "<CommissionNetTotal>12.5",
-      "<CommissionTaxRate>0",
-      "<CommissionTotal>12.5",
       "<Label>Hôtel",
       "<MarginUnit>12.5",
       "<NetPriceTotal>400",
       "<NetPriceUnit>400",
       "<Quantity>1",
+      "<RefPiece>3569AJ70546",
       "<Type>Standard",
     ].map((needle) => priced.indexOf(needle));
     assert.ok(pricedAt.every((index) => index >= 0), priced);
     assert.deepEqual(pricedAt, [...pricedAt].sort((left, right) => left - right));
-    const hotel = linesXml("InvoiceLine", [{ ...base, label: "Hôtel", activityId: 7 }]);
-    assert.equal(hotel.includes("<CommissionNetTotal>"), false);
-    assert.equal(hotel.includes("<CommissionTotal>"), false);
+    assert.equal(priced.includes("Commission"), false);
+    const ready = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId: 2, commissionId: 1 }]);
+    assert.ok(ready.includes("<ActivityId>2</ActivityId><CommissionId>1</CommissionId><Label>Vol</Label>"), ready);
+    assert.equal(ready.includes("CommissionNetTotal"), false);
     const credit = linesXml("CreditNoteLine", [{ ...base, label: "Avoir vol", activityId: 2 }]);
-    assert.ok(credit.includes("<CreditNoteLine><ActivityId>22</ActivityId><Label>Avoir vol</Label>"));
+    assert.ok(credit.includes("<CreditNoteLine><ActivityId>2</ActivityId><Label>Avoir vol</Label>"));
     assert.equal(credit.includes("Commission"), false);
   });
 
@@ -483,27 +478,26 @@ describe("client MB3M Partners", () => {
     assert.deepEqual(
       account.map((line) => [line.transactionId, line.activityId]),
       [
-        ["tx-flight", 22],
-        ["tx-train", 22],
+        ["tx-flight", 2],
+        ["tx-train", 5],
       ]
     );
     const issued = account.map(mb3mInvoiceLine);
     const flight = issued.find((line) => line.label.includes("Air France"));
     const trainLine = issued.find((line) => line.label.includes("Strasbourg"));
-    assert.equal(flight?.activityId, 22);
+    assert.equal(flight?.activityId, 2);
     assert.equal(flight?.netPriceUnit, 198);
     assert.equal(flight?.marginUnit, 1000.44);
     assert.equal(Math.round(((flight?.netPriceUnit || 0) + (flight?.marginUnit || 0)) * 100) / 100, 1198.44);
-    assert.equal(trainLine?.activityId, 22);
+    assert.equal(trainLine?.activityId, 5);
     assert.equal(trainLine?.netPriceUnit, 0.01);
     assert.equal(trainLine?.marginUnit, 361.99);
     assert.equal(Math.round(((trainLine?.netPriceUnit || 0) + (trainLine?.marginUnit || 0)) * 100) / 100, 362);
-    assert.equal(issued.every((line) => line.commissionTotal == null), true);
+    assert.equal(issued.every((line) => line.commissionId == null), true);
     const xml = linesXml("InvoiceLine", issued);
     assert.equal(xml.includes("Commission"), false);
-    assert.equal(xml.includes("<ActivityId>2</ActivityId>"), false);
-    assert.equal(xml.includes("<ActivityId>5</ActivityId>"), false);
-    assert.ok(xml.includes("<ActivityId>22</ActivityId><Label>Vol"));
+    assert.ok(xml.includes("<ActivityId>2</ActivityId><Label>Vol"));
+    assert.ok(xml.includes("<ActivityId>5</ActivityId>"));
     assert.ok(xml.includes("<NetPriceTotal>198</NetPriceTotal>"));
     assert.ok(xml.includes("<MarginUnit>1000.44</MarginUnit>"));
     arm();
@@ -547,15 +541,15 @@ describe("client MB3M Partners", () => {
     );
     for (const body of [invoiceBody, creditBody]) {
       assert.equal(body.includes("Commission"), false, body);
-      assert.equal(body.includes("<ActivityId>2</ActivityId>"), false);
-      assert.equal(body.includes("<ActivityId>5</ActivityId>"), false);
+      assert.ok(body.includes("<ActivityId>2</ActivityId>"));
+      assert.ok(body.includes("<ActivityId>5</ActivityId>"));
       assert.ok(body.includes("<NetPriceTotal>198</NetPriceTotal>"));
       assert.ok(body.includes("<MarginUnit>1000.44</MarginUnit>"));
     }
     const lowCost = linesXml("InvoiceLine", [
       { label: "Low cost", quantity: 1, netPriceUnit: 80, netPriceTotal: 80, activityId: 27 },
     ]);
-    assert.ok(lowCost.includes("<ActivityId>22</ActivityId><Label>Low cost</Label>"));
+    assert.ok(lowCost.includes("<ActivityId>27</ActivityId><Label>Low cost</Label>"));
     assert.equal(lowCost.includes("Commission"), false);
   });
 
