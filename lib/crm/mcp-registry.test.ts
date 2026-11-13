@@ -23,6 +23,7 @@ const EXPECTED = [
   "reservation_little_emperors",
   "little_emperors_en_attente",
   "importer_reservation_little_emperors",
+  "rattacher_reservation_little_emperors",
   "crediter_virement",
   "crediter_revolut",
   "rapprocher_depense_revolut",
@@ -142,6 +143,7 @@ const EXPECTED = [
 
 const WRITE_TOOLS = [
   "importer_reservation_little_emperors",
+  "rattacher_reservation_little_emperors",
   "crediter_virement",
   "crediter_revolut",
   "rapprocher_depense_revolut",

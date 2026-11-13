@@ -81,6 +81,7 @@ import {
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
+import { LeReattach } from "@/components/admin/LeReattach";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { hotelTripChecklist } from "@/lib/crm/hotel-desk";
 import { dossierCheckinBadge, flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
@@ -347,6 +348,7 @@ export function BookingEditor({
   billingCompanies = [],
   ficheBillingCompanies = [],
   littleEmperors = null,
+  leLinks = [],
   leStays = [],
   expenseBilling = [],
   revolutExpenses: revolutIn = [],
@@ -441,6 +443,7 @@ export function BookingEditor({
     state: string | null;
     created_at?: string | null;
   } | null;
+  leLinks?: { id: string; confirmation_number: string; hotel_name: string | null }[];
   leStays?: { hotel_name: string | null; check_in: string | null; total_cost: string | null; currency: string | null }[];
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
   /** Débits Revolut rattachés au dossier. Hors encours ; montrés dans Coûts du voyage s’ils n’ont pas de coût posé. */
@@ -2644,6 +2647,14 @@ export function BookingEditor({
                   );
                 })}
               </ul>
+            </section>
+          ) : null}
+          {leLinks.length ? (
+            <section className="admin-af-card space-y-4 rounded-3xl p-5">
+              <h2 className="font-display text-lg font-bold text-[#0B192C]">Little Emperors</h2>
+              {leLinks.map((row) => (
+                <LeReattach key={row.id} reference={row.confirmation_number} hotelName={row.hotel_name} />
+              ))}
             </section>
           ) : null}
           {leOpen && littleEmperors ? (

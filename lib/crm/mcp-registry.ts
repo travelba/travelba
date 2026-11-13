@@ -53,6 +53,7 @@ import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHold
 import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { importLittleEmperorsFromMcp } from "@/lib/crm/le-import";
+import { reattachLittleEmperorsFromMcp } from "@/lib/crm/le-reattach";
 import { McpReadError, readPasseportVoyageur, readScanPasseport } from "@/lib/crm/mcp-passport";
 import { enregistrementEnLigne } from "@/lib/crm/mcp-checkin";
 import { blockPliantCard, createPliantCard, readPliantCard } from "@/lib/crm/mcp-pliant-card";
@@ -133,7 +134,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 135;
+export const MCP_TOOL_CAP = 136;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -548,6 +549,29 @@ export const MCP_TOOLS: ToolDef[] = [
       forcer: z.boolean().optional().describe("true pour importer une réservation annulée ou en échec"),
     },
     run: (args) => importLittleEmperorsFromMcp(args),
+  },
+  {
+    name: "rattacher_reservation_little_emperors",
+    write: true,
+    selfJournal: true,
+    description:
+      "Déplace une réservation Little Emperors déjà importée vers un autre dossier. reference : référence Little Emperors ou confirmation hôtel. dossier_id ou dossier_reference : le dossier cible. Sans confirmer, aperçu seulement : dossiers, client, cartes hôtel qui suivent. confirmer true écrit. Si le client du dossier cible ne correspond pas aux voyageurs de la réservation, accepter_client est exigé. La carte hôtel qui porte cette référence suit, avec ses pièces et ses courriers. Les coûts déjà posés suivent la carte. Aucun message au client. Aucun débit n’est créé. Les cartes Pliant restent sur l’ancien dossier.",
+    input: {
+      reference: z.string().trim().max(80).describe("Référence Little Emperors ou confirmation hôtel"),
+      dossier_id: z.string().trim().max(80).optional().describe("Dossier cible"),
+      dossier_reference: z
+        .string()
+        .trim()
+        .max(80)
+        .optional()
+        .describe("Référence du dossier cible, si dossier_id est absent"),
+      accepter_client: z
+        .boolean()
+        .optional()
+        .describe("true si le client du dossier cible ne correspond pas aux voyageurs"),
+      confirmer: confirmOpt,
+    },
+    run: (args) => reattachLittleEmperorsFromMcp(args),
   },
   {
     name: "crediter_virement",
