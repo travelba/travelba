@@ -24,14 +24,26 @@ export type Mb3mLineType = "Standard" | "Note" | "Custom";
 export type Mb3mAddress = {
   name: string;
   line1: string;
+  line2?: string;
+  line3?: string;
   postalCode: string;
   city: string;
   countryCode?: string;
 };
 
 /**
+ * Ordre DataContract de l’adresse Partners (`MainAddress`).
+ * Déduit du refus « Expecting element Line2 | Line3 | PostalCode » quand City arrive trop tôt,
+ * et des fiches déjà acceptées (Name, Line1, PostalCode, City, CountryCode).
+ * PostalCode est exigé avant City : un code postal vide part quand même.
+ * Line2 et Line3 sont omis s’ils sont vides.
+ */
+export const MB3M_ADDRESS_ELEMENTS = ["Name", "Line1", "Line2", "Line3", "PostalCode", "City", "CountryCode"] as const;
+
+/**
  * Adresse MB3M. Une société hors France peut n’avoir ni code postal :
- * le champ est alors omis. Une personne, ou une société française, le garde.
+ * la valeur reste vide, l’élément PostalCode est quand même écrit.
+ * Une personne, ou une société française, garde un code postal.
  */
 export function mb3mAddress(input: {
   name: string;
@@ -215,6 +227,11 @@ function tag(name: string, value: string | number | undefined | null) {
   return `<${name}>${escapeMb3mXml(String(value))}</${name}>`;
 }
 
+/** Élément toujours présent. PostalCode vide reste `<PostalCode></PostalCode>`. */
+function tagPresent(name: string, value: string | number | undefined | null) {
+  return `<${name}>${escapeMb3mXml(value === undefined || value === null ? "" : String(value))}</${name}>`;
+}
+
 function money(value: number) {
   if (!Number.isFinite(value)) throw new Mb3mError("Montant MB3M invalide.", -1);
   return String(value);
@@ -237,7 +254,8 @@ function birthStamp(value: string | null | undefined) {
 }
 
 function addressXml(address: Mb3mAddress, fallbackName: string) {
-  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("PostalCode", address.postalCode.trim())}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}`;
+  // Name, Line1, Line2, Line3, PostalCode, City, CountryCode. Pas d’autre ordre : WCF refuse City avant PostalCode.
+  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tagPresent("PostalCode", address.postalCode.trim())}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}`;
 }
 
 /** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
@@ -391,7 +409,8 @@ export async function mb3mSaveCompany(draft: Mb3mCompanyDraft, fetchImpl?: Fetch
   if (!name) throw new Mb3mError("La raison sociale est requise.", -1);
   const commercial = (draft.commercialName || name).trim() || name;
   // Company : CommercialName, Email, MainAddress, Name, PhoneNumber, puis Id du client.
-  // SIRET, TVA et lien du contact : absents du schéma Partners.
+  // SIRET, TVA et lien du contact : absents du schéma Partners (société étrangère comprise).
+  // Pas d’export Supplier : le catalogue fournisseur est déjà dans MB3M. La même adresse sert Person et Company.
   const company = `<Company>${tag("CommercialName", commercial)}${tag("Email", draft.email?.trim())}<MainAddress>${addressXml(draft.address, name)}</MainAddress>${tag("Name", name)}${tag("PhoneNumber", draft.phoneNumber?.trim())}</Company>`;
   const inner = `<CustomerSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Customer>${company}${tag("Id", draft.partnerId?.trim())}</Customer></CustomerSaveRequest>`;
   const xml = await mb3mSoap("CustomerService", "ICustomerService", "Save", inner, fetchImpl);
