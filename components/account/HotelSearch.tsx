@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useSyncExternalStore, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelMap } from "@/components/account/HotelMap";
@@ -10,6 +10,9 @@ import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import {
+  HOTEL_ACCESS_EYEBROW,
+  HOTEL_ACCESS_PROMISE,
+  HOTEL_ACCESS_RESERVE,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
   TRAVEL_BA_SEARCH_ADVANTAGES,
@@ -83,6 +86,15 @@ const suggestMemory = new Map<string, PlaceSuggestion[]>();
 
 function euros(cents: number, currency: string) {
   return formatMoney(cents / 100, currency);
+}
+
+function compactStayDates(checkIn: string, checkOut: string) {
+  if (!checkIn || !checkOut) return "Dates";
+  const day = (iso: string) => String(Number(iso.slice(8, 10)));
+  const month = (iso: string) =>
+    new Date(`${iso}T12:00:00Z`).toLocaleDateString("fr-FR", { month: "short", timeZone: "UTC" }).replace(".", "");
+  if (checkIn.slice(0, 7) === checkOut.slice(0, 7)) return `${day(checkIn)}–${day(checkOut)} ${month(checkOut)}`;
+  return `${day(checkIn)} ${month(checkIn)} – ${day(checkOut)} ${month(checkOut)}`;
 }
 
 function upsertHotel(list: ClientHotel[], hotel: ClientHotel) {
@@ -313,6 +325,8 @@ export function HotelSearch({
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
+  const pathname = usePathname();
+  const hotelsPath = pathname.startsWith("/exemple") ? "/exemple/hotels" : "/mon-compte/hotels";
   const params = useSearchParams();
   const hotelToken = params.get("hotel");
   const journeyStep = hotelJourneyStep(params.get("etape"));
@@ -338,7 +352,7 @@ export function HotelSearch({
     if (!hotel.hotelId) postHotelActivity({ kind: "view", hotel: hotel.name, city: hotel.city });
     setCatalog((current) => (current[token] === hotel ? current : { ...current, [token]: hotel }));
     setPending(token);
-    router.push(`/mon-compte/hotels?${hotelJourneySearch(token, "hotel")}`);
+    router.push(`${hotelsPath}?${hotelJourneySearch(token, "hotel")}`);
   }
 
   function onJourneyStep(next: HotelJourneyStep | "back") {
@@ -347,8 +361,8 @@ export function HotelSearch({
       return;
     }
     if (!openedLive) return;
-    const href = `/mon-compte/hotels?${hotelJourneySearch(tokenOf(openedLive), next)}`;
-    if (`/mon-compte/hotels?${params.toString()}` === href) return;
+    const href = `${hotelsPath}?${hotelJourneySearch(tokenOf(openedLive), next)}`;
+    if (`${hotelsPath}?${params.toString()}` === href) return;
     router.push(href);
   }
 
@@ -407,15 +421,6 @@ export function HotelSearch({
     }, 100);
     return () => clearTimeout(timer);
   }, [destination, panel]);
-
-  useEffect(() => {
-    if (sheet || searched || openedLive) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [sheet, searched, openedLive]);
 
   useEffect(() => {
     if (!sheet) return;
@@ -523,6 +528,7 @@ export function HotelSearch({
     if (nextDestination.length < 2) {
       setNote("Indiquez une destination ou un hôtel.");
       setPanel("where");
+      setSheet(true);
       void fetch("/api/client/hotels/search", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -533,6 +539,7 @@ export function HotelSearch({
     if (!nextCheckIn || !nextCheckOut) {
       setNote("Indiquez les dates du séjour.");
       setPanel("when");
+      setSheet(true);
       void fetch("/api/client/hotels/search", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -543,6 +550,7 @@ export function HotelSearch({
     if (!stayRooms) {
       setNote("Indiquez l’âge de chaque enfant.");
       setPanel("who");
+      setSheet(true);
       void fetch("/api/client/hotels/search", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -554,6 +562,7 @@ export function HotelSearch({
     if (!partyOk.ok) {
       setNote(partyOk.message);
       setPanel("who");
+      setSheet(true);
       return;
     }
     if (override) {
@@ -571,7 +580,7 @@ export function HotelSearch({
     searchLock.current = true;
     setPage(1);
     setPending(null);
-    if (hotelToken) router.replace("/mon-compte/hotels");
+    if (hotelToken) router.replace(hotelsPath);
     setCommitted({ rooms: stayRooms });
     try {
       const entry: RecentStay = {
@@ -665,7 +674,14 @@ export function HotelSearch({
   const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
   const nightLabel = nightCount > 0 ? `${nightCount} nuit${nightCount > 1 ? "s" : ""}` : "";
-  const showIdeas = panel !== "when" && panel !== "who" && destinations.length === 0 && hotelNames.length === 0;
+  const destinationLabel = destination.trim() ? frenchCity(destination.trim()) : "Destination";
+  const barDates = compactStayDates(checkIn, checkOut);
+  const barAdults = rooms.reduce((sum, room) => sum + room.adults, 0);
+  const barChildren = rooms.reduce((sum, room) => sum + room.children.length, 0);
+  const barPeople = barChildren
+    ? `${barAdults} ad. · ${barChildren} enf.`
+    : barAdults > 1 ? `${barAdults} adultes` : "1 adulte";
+  const barRooms = rooms.length > 1 ? `${rooms.length} chambres` : "1 chambre";
 
   function openPlace(destinationName: string, cityName = "", hotelId: number | null = null) {
     void onSearch({
@@ -700,7 +716,7 @@ export function HotelSearch({
           query={journeyQuery}
           step={journeyStep}
           onStep={onJourneyStep}
-          onBack={() => router.replace("/mon-compte/hotels")}
+          onBack={() => router.replace(hotelsPath)}
           others={shown.filter((item) => item.hotelKey !== openedLive.hotelKey).slice(0, 8)}
           onOpenOther={openHotel}
           trial={trial}
@@ -708,192 +724,69 @@ export function HotelSearch({
         />
       ) : null}
       {openedLive ? null : <>
-      {searched ? (
-        <button
-          type="button"
-          data-hotel-summary="1"
-          onClick={() => openSheet("where")}
-          className="h-recap sticky top-16 z-30 w-full text-left"
-        >
-          <span className="h-serif block text-[1.15rem] font-semibold leading-tight h-ink">{destination}</span>
-          <span className="mt-1 block text-sm h-muted">{[summaryDates, nightLabel, party].filter(Boolean).join(" · ")}</span>
-        </button>
-      ) : (
-        <form
-          className="h-ask"
-          data-hotel-ask="1"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onSearch();
-          }}
-        >
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-            <div className="relative -mx-4 -mt-5 h-64 overflow-hidden bg-[#0B192C]" data-hotel-hero="1">
-              {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
-              <img
-                src={heroSrc}
-                alt=""
-                width={960}
-                height={540}
-                fetchPriority="high"
-                decoding="async"
-                onError={() => setHeroBroken(true)}
-                className="h-full w-full object-cover"
-              />
-              <div className="h-cover-fade" aria-hidden />
-              <h1 className="h-cover-copy h-serif !pb-16 text-[1.45rem] font-semibold leading-tight">Où souhaitez-vous séjourner ?</h1>
+      <div className="h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
+        <div className="h-searchbar-row">
+          <button type="button" data-hotel-destination="1" onClick={() => openSheet("where")} className="h-bar-cell h-press" aria-label={destination.trim() ? `Destination, ${destinationLabel}` : "Destination ou hôtel"}>
+            <Icon name="search" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+            <span className="truncate">{destinationLabel}</span>
+          </button>
+          <button type="button" data-hotel-dates="1" onClick={() => { openDates(); setSheet(true); }} className="h-bar-cell h-press" aria-label={checkIn && checkOut ? `Dates, ${barDates}` : "Dates"}>
+            <Icon name="event" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+            <span className="truncate">{barDates}</span>
+          </button>
+          <button type="button" data-hotel-party="1" onClick={() => openSheet("who")} className="h-bar-cell h-press" aria-label={`Voyageurs, ${party}`}>
+            <Icon name="person" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+            <span className="min-w-0 text-left leading-tight">
+              <span className="block truncate">{barPeople}</span>
+              <span className="block truncate text-[11px] font-medium text-[#8c7352]">{barRooms}</span>
+            </span>
+          </button>
+          <button type="button" data-hotel-search-cta="1" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-bar-go h-press inline-flex items-center justify-center gap-1.5 font-semibold disabled:opacity-60">
+            <Icon name="search" className="h-4 w-4 text-[#C5A880]" strokeWidth={1.75} />
+            <span>Rechercher</span>
+          </button>
+        </div>
+        {note && !sheet ? <p className="px-1 pt-2 text-sm h-gold">{note}</p> : null}
+        {searched && hotels.length > 0 ? (
+          <div className="mt-2 flex items-center gap-1.5 overflow-x-auto">
+            <button type="button" className={`h-pill shrink-0 ${layout === "liste" ? "h-on" : ""}`} onClick={() => setLayout("liste")}>Liste</button>
+            {canMap ? (
+              <button type="button" className={`h-pill shrink-0 ${layout === "carte" ? "h-on" : ""}`} onClick={() => setLayout("carte")}>Carte</button>
+            ) : null}
+            <button type="button" className="h-pill shrink-0" aria-pressed={needs.length > 0} onClick={() => setTool("filtre")}>
+              Filtres{needs.length ? ` · ${needs.length}` : ""}
+            </button>
+            <button type="button" className="h-pill shrink-0" onClick={() => setTool("tri")}>
+              {sort === "prix" ? "Prix" : "Privilèges"}
+            </button>
+            <p className="ml-auto shrink-0 text-xs h-muted">{shown.length} {shown.length > 1 ? "hôtels" : "hôtel"}</p>
+          </div>
+        ) : null}
+      </div>
+      {!searched ? (
+        <div className="h-ask">
+          <div className="relative overflow-hidden rounded-2xl bg-[#0B192C] text-[#f7f4ee]" data-hotel-hero="1">
+            {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+            <img
+              src={heroSrc}
+              alt=""
+              width={960}
+              height={540}
+              fetchPriority="high"
+              decoding="async"
+              onError={() => setHeroBroken(true)}
+              className="absolute inset-0 h-full w-full object-cover opacity-40"
+            />
+            <div className="absolute inset-0 bg-[#0B192C]/75" aria-hidden />
+            <div className="relative space-y-3 px-4 py-4" data-hotel-agency-benefits="1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+              <h1 className="h-serif text-[1.05rem] font-semibold leading-snug">{HOTEL_ACCESS_PROMISE}</h1>
+              <HotelBenefits lines={[...TRAVEL_BA_SEARCH_ADVANTAGES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
+              <p className="text-[11px] leading-snug text-white/70">{HOTEL_ACCESS_RESERVE}</p>
             </div>
-            <div className="relative z-10 -mt-8 overflow-hidden rounded-2xl bg-white shadow-[0_16px_36px_rgba(11,25,44,0.14)]" data-hotel-fields="1">
-              <label className="block">
-                <span className="flex min-h-14 items-center gap-3 px-4">
-                  <Icon name="search" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-                  <input
-                    ref={destinationRef}
-                    value={destination}
-                    data-hotel-destination="1"
-                    onChange={(event) => {
-                      setDestination(event.target.value);
-                      setTarget(null);
-                      setCity("");
-                      setPanel("where");
-                    }}
-                    className="min-h-12 w-full bg-transparent text-[15px] h-ink outline-none"
-                    placeholder="Destination ou hôtel"
-                    autoComplete="off"
-                    enterKeyHint="search"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-label="Destination ou hôtel"
-                    onFocus={() => setPanel("where")}
-                    aria-expanded={panel === "where" && (destinations.length > 0 || hotelNames.length > 0)}
-                    aria-controls="hotel-suggest-list"
-                  />
-                </span>
-              </label>
-              {panel === "where" && (destinations.length > 0 || hotelNames.length > 0) ? (
-                <div id="hotel-suggest-list" role="listbox" className="border-t border-[#e6e0d6] px-1 py-1">
-                  <SuggestGroup title="Destinations" items={destinations} onPick={pickPlace} />
-                  <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
-                </div>
-              ) : null}
-              <div className="mx-4 h-px bg-[#e6e0d6]" />
-              <button
-                type="button"
-                data-hotel-dates="1"
-                onClick={() => (panel === "when" ? setPanel(null) : openDates())}
-                className="h-press flex min-h-14 w-full items-center gap-3 px-4 text-left"
-              >
-                <Icon name="event" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-                <span className="text-[15px] h-ink">{nightLabel ? `${summaryDates} · ${nightLabel}` : summaryDates}</span>
-              </button>
-              {panel === "when" ? (
-                <div className="border-t border-[#e6e0d6] px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <button type="button" aria-label="Mois précédent" onClick={() => shiftMonth(-1)} className="grid h-11 w-11 place-items-center h-ink">
-                      <Icon name="chevron_left" className="h-5 w-5" />
-                    </button>
-                    <p className="text-base font-semibold h-ink">{monthTitle(cursor.year, cursor.month)}</p>
-                    <button type="button" aria-label="Mois suivant" onClick={() => shiftMonth(1)} className="grid h-11 w-11 place-items-center h-ink">
-                      <Icon name="chevron_right" className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <div className="mt-2 grid grid-cols-7 text-center text-[11px] h-muted">
-                    {WEEKDAYS.map((day, index) => (
-                      <span key={`${day}-${index}`}>{day}</span>
-                    ))}
-                  </div>
-                  <div className="mt-1 grid grid-cols-7">
-                    {monthCells(cursor.year, cursor.month).map((iso, index) => {
-                      if (!iso) return <span key={`empty-${index}`} />;
-                      const endpoint = iso === checkIn || iso === checkOut;
-                      const inside = Boolean(checkIn && checkOut && iso > checkIn && iso < checkOut);
-                      const past = iso < today;
-                      return (
-                        <button
-                          key={iso}
-                          type="button"
-                          data-date={iso}
-                          disabled={past}
-                          onClick={() => pickDay(iso)}
-                          className={`grid h-11 place-items-center text-sm ${
-                            endpoint ? "h-day-on" : inside ? "h-range" : past ? "h-faint" : "h-ink"
-                          }`}
-                        >
-                          {Number(iso.slice(-2))}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-              <div className="mx-4 h-px bg-[#e6e0d6]" />
-              <button
-                type="button"
-                data-hotel-party="1"
-                onClick={() => setPanel(panel === "who" ? null : "who")}
-                className="h-press flex min-h-14 w-full items-center gap-3 px-4 text-left"
-              >
-                <Icon name="person" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-                <span className="text-[15px] h-ink">{party}</span>
-                <Icon name="bed" className="ml-auto h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-              </button>
-              {panel === "who" ? (
-                <div className="space-y-4 border-t border-[#e6e0d6] px-4 py-3">
-                  <Stepper
-                    label="Chambres"
-                    value={rooms.length}
-                    min={1}
-                    max={4}
-                    onChange={resizeRooms}
-                  />
-                  {rooms.map((room, index) => (
-                    <div key={index} className="space-y-3 pt-1">
-                      <p className="text-sm h-muted">Chambre {index + 1}</p>
-                      <Stepper label="Adultes" value={room.adults} min={1} max={6} onChange={(adults) => updateRoom(index, { ...room, adults })} />
-                      <Stepper
-                        label="Enfants"
-                        value={room.children.length}
-                        min={0}
-                        max={4}
-                        onChange={(count) =>
-                          updateRoom(index, {
-                            ...room,
-                            children: count > room.children.length ? [...room.children, null] : room.children.slice(0, count),
-                          })
-                        }
-                      />
-                      {room.children.map((age, childIndex) => (
-                        <label key={childIndex} className="flex min-h-11 items-center justify-between gap-3 text-sm h-ink">
-                          <span>Âge, enfant {childIndex + 1}</span>
-                          <select
-                            value={age ?? ""}
-                            aria-label={`Âge, enfant ${childIndex + 1}, chambre ${index + 1}`}
-                            onChange={(event) => {
-                              const next = room.children.slice();
-                              next[childIndex] = Number(event.target.value);
-                              updateRoom(index, { ...room, children: next });
-                            }}
-                            className="h-field min-h-11 px-3 py-2 text-base h-ink"
-                          >
-                            <option value="">Âge</option>
-                            {Array.from({ length: 18 }, (_, value) => (
-                              <option key={value} value={value}>
-                                {value === 0 ? "Moins d’un an" : `${value} ans`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            {note ? <p className="mt-3 px-1 text-sm h-gold">{note}</p> : null}
-            {showIdeas ? (
-              <div className="mt-5 space-y-4">
-                <div data-hotel-recent="1">
-                  <p className="h-section px-1">Dernières recherches</p>
+          </div>
+          <div data-hotel-recent="1">
+            <p className="h-section px-1">Dernières recherches</p>
                   {recent.length ? (
                     recent.map((item) => {
                       const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
@@ -929,10 +822,6 @@ export function HotelSearch({
                     ))}
                   </ul>
                 </div>
-                <div data-hotel-agency-benefits="1">
-                  <HotelBenefits lines={[...TRAVEL_BA_SEARCH_ADVANTAGES]} title="Vos avantages Travel BA" layout="row" />
-                  <p className="mt-2 px-1 text-[11px] leading-snug h-muted">Selon l’hôtel et les disponibilités. Le détail est celui de chaque hôtel.</p>
-                </div>
                 {highlights.length ? (
                   <section aria-label="Hôtels coups de cœur" data-hotel-highlights="1">
                     <h2 className="h-section px-1">Hôtels coups de cœur</h2>
@@ -963,22 +852,7 @@ export function HotelSearch({
                     </ul>
                   </section>
                 ) : null}
-              </div>
-            ) : null}
-          </div>
-          <div className="h-search-dock shrink-0" data-hotel-search-dock="1">
-            <button type="submit" data-hotel-search-cta="1" disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center gap-2 text-sm font-semibold shadow-[0_10px_24px_rgba(11,25,44,0.18)] disabled:opacity-60">
-              <Icon name="search" className="h-4 w-4 text-[#C5A880]" strokeWidth={1.75} />
-              <span>Rechercher</span>
-            </button>
-          </div>
-        </form>
-      )}
-
-      {searched && note && !sheet ? (
-        <article className="h-recap">
-          <p className="text-sm h-ink">{note}</p>
-        </article>
+        </div>
       ) : null}
       <div className="space-y-5" aria-live="polite">
         {searching && hotels.length === 0 ? (
@@ -987,28 +861,7 @@ export function HotelSearch({
             detail={[summaryDates, nightLabel, party].filter(Boolean).join(" · ")}
           />
         ) : null}
-        {searched && hotels.length > 0 ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex gap-3">
-                <button type="button" className={layout === "liste" ? "h-on" : "h-muted"} onClick={() => setLayout("liste")}>Liste</button>
-                {canMap ? (
-                  <button type="button" className={layout === "carte" ? "h-on" : "h-muted"} onClick={() => setLayout("carte")}>Carte</button>
-                ) : null}
-              </div>
-              <p className="h-muted">{shown.length} {shown.length > 1 ? "hôtels" : "hôtel"}</p>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" className="h-pill" aria-pressed={needs.length > 0} onClick={() => setTool("filtre")}>
-                Filtres{needs.length ? ` · ${needs.length}` : ""}
-              </button>
-              <button type="button" className="h-pill" onClick={() => setTool("tri")}>
-                {sort === "prix" ? "Prix" : "Privilèges"}
-              </button>
-            </div>
-            {layout === "carte" && canMap ? <HotelMap hotels={shown} onOpen={openHotel} /> : null}
-          </div>
-        ) : null}
+        {searched && hotels.length > 0 && layout === "carte" && canMap ? <HotelMap hotels={shown} onOpen={openHotel} /> : null}
         {layout === "liste" || !canMap
           ? visible.map((hotel, index) => (
               <HotelCard key={hotel.hotelKey} hotel={hotel} first={index === 0} onOpen={() => openHotel(hotel)} />
@@ -1049,7 +902,7 @@ export function HotelSearch({
       </>}
 
       {sheet ? (
-        <div className="hotel-sheet h-search fixed inset-0 z-[60] flex flex-col" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
+        <div className="hotel-sheet h-search fixed inset-x-0 top-16 z-[60] flex flex-col bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:bottom-0" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
           <header className="flex items-center justify-between bg-white px-5 py-4 pt-[max(1rem,env(safe-area-inset-top))]">
             <p className="h-serif text-[1.7rem] font-medium leading-tight h-ink">Où souhaitez-vous séjourner ?</p>
             <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-10 w-10 shrink-0 place-items-center h-ink">
@@ -1060,7 +913,9 @@ export function HotelSearch({
             <label className="h-field flex items-center gap-3 px-4 py-3">
               <Icon name="search" className="h-4 w-4 h-muted" strokeWidth={1.5} />
               <input
+                ref={destinationRef}
                 value={destination}
+                data-hotel-destination="1"
                 onChange={(event) => {
                   setDestination(event.target.value);
                   setTarget(null);
@@ -1231,7 +1086,7 @@ export function HotelSearch({
             ) : null}
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
-          <footer className="bg-white px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_28px_rgba(11,25,44,0.06)]">
+          <footer className="bg-white px-5 py-3 pb-8 shadow-[0_-12px_28px_rgba(11,25,44,0.06)] md:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <button type="button" onClick={() => void onSearch()} disabled={searching} className="h-btn h-search-go h-press flex h-14 w-full items-center justify-center gap-2 text-sm font-semibold disabled:opacity-60">
               <Icon name="search" className="h-4 w-4 text-[#C5A880]" strokeWidth={1.75} />
               <span>Rechercher</span>
@@ -1241,7 +1096,7 @@ export function HotelSearch({
       ) : null}
       {tool ? (
         <div
-          className="fixed inset-0 z-[70] flex items-end bg-[#1a1a1a]/40"
+          className="fixed inset-x-0 top-0 z-[70] flex items-end bg-[#1a1a1a]/40 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:bottom-0"
           role="dialog"
           aria-modal="true"
           aria-label={tool === "tri" ? "Trier" : "Filtres"}
@@ -1441,7 +1296,7 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
         ) : null}
         {hasBenefits ? (
           <div className="px-4 pb-4" data-hotel-benefits="1">
-            <HotelBenefits lines={hotel.benefits} />
+            <HotelBenefits lines={hotel.benefits} layout="icons" title="Vos avantages" />
           </div>
         ) : perk ? (
           <p className="px-4 pb-4 text-[12px] text-[#9a7b4f]">{perk}</p>

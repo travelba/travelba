@@ -151,7 +151,16 @@ function Fact({ icon, label, value }: { icon: string; label: string; value: stri
   );
 }
 
-function StayBenefits({ lines, discreet }: { lines: string[]; discreet: string }) {
+function StayBenefits({ lines, discreet, reminder = false }: { lines: string[]; discreet: string; reminder?: boolean }) {
+  if (reminder) {
+    const text = lines.length > 1 ? `${lines.length} avantages réservés` : lines[0] || discreet;
+    if (!text) return null;
+    return (
+      <p className="text-[13px] font-medium leading-snug text-[#8c7352]" data-hotel-benefits="1">
+        {text}
+      </p>
+    );
+  }
   if (lines.length) {
     return (
       <div data-hotel-benefits="1">
@@ -829,21 +838,26 @@ export function HotelJourney({
             <Icon name="chevron_left" className="h-5 w-5" />
           </button>
           <p className={`h-serif truncate text-center text-[17px] font-semibold leading-none ${widget && !placing ? "" : "h-ink"}`}>
-            {placing ? "Réservation" : view === "hotel" ? file?.name || hotel.name : BOOKING_STEPS.find((item) => item.id === view)?.label}
+            {placing ? "Réservation" : view === "hotel" ? null : BOOKING_STEPS.find((item) => item.id === view)?.label}
           </p>
           <span />
         </div>
         {placing || view === "hotel" ? null : (
-          <ol data-hotel-stepper="1" className="flex items-center justify-between gap-1 overflow-x-auto px-3 pb-2 text-[10px] font-semibold">
-            {BOOKING_STEPS.map((item, index) => (
-              <li
-                key={item.id}
-                aria-current={item.id === view ? "step" : undefined}
-                className={`shrink-0 ${item.id === view ? "text-[#8c7352]" : widget ? "text-[#f7f4ee]/45" : "text-[#1a1a1a]/40"}`}
-              >
-                {index + 1} {item.label}
-              </li>
-            ))}
+          <ol data-hotel-stepper="1" className="flex items-center gap-1.5 overflow-hidden px-3 pb-2">
+            {BOOKING_STEPS.map((item, index) => {
+              const current = item.id === view;
+              return (
+                <li key={item.id} aria-current={current ? "step" : undefined} className={current ? "min-w-0 flex-1" : "shrink-0"}>
+                  {current ? (
+                    <span className="h-step-now block truncate">{item.label}</span>
+                  ) : (
+                    <span className={`h-step-pill${widget ? " h-step-pill-on" : ""}`} aria-label={item.label}>
+                      {index + 1}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         )}
         {view === "hotel" ? (
@@ -865,11 +879,8 @@ export function HotelJourney({
         {placing ? <HotelBookingWait phase={waitPhase} /> : null}
         {view === "hotel" ? (
           <div data-hotel-detail="1" className="h-paper pb-8">
-            <div className="px-4 pb-3 pt-3">
-              <article className="h-recap">
-                <h2 className="h-serif text-[1.15rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</h2>
-                <p className="mt-1 text-sm h-muted">{[datesLabel, party].filter(Boolean).join(" · ")}</p>
-              </article>
+            <div className="px-4 pb-1 pt-3">
+              <p className="text-sm h-muted">{[datesLabel, party].filter(Boolean).join(" · ")}</p>
             </div>
             <Gallery images={images} alt={file?.name || hotel.name} />
             <div className="space-y-3 bg-white px-5 py-5" data-hotel-hero="1">
@@ -1120,7 +1131,7 @@ export function HotelJourney({
               <p className="mt-4 text-2xl font-semibold tracking-tight h-ink">{euros(rate.sellCents, rate.currency)}</p>
               <p className="mt-1 text-sm h-muted">{datesLabel}</p>
               <div className="mt-4">
-                <StayBenefits lines={programme.lines} discreet={programme.discreet} />
+                <StayBenefits lines={programme.lines} discreet={programme.discreet} reminder />
               </div>
             </article>
             {known.length ? (
@@ -1184,7 +1195,7 @@ export function HotelJourney({
                   <p className="mt-1 text-sm leading-relaxed h-ink">{reading.cancellation}</p>
                 </div>
               ) : null}
-              <StayBenefits lines={programme.lines} discreet={programme.discreet} />
+              <StayBenefits lines={programme.lines} discreet={programme.discreet} reminder />
               <ul className="space-y-1 h-ink">
                 {stayRooms.map((_, index) => (
                   <li key={index}>
@@ -1207,7 +1218,7 @@ export function HotelJourney({
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
               <p className="h-muted">{[file?.city || hotel.city, datesLabel, party].filter(Boolean).join(" · ")}</p>
               <p className="h-ink">{rate.room}</p>
-              <StayBenefits lines={programme.lines} discreet={programme.discreet} />
+              <StayBenefits lines={programme.lines} discreet={programme.discreet} reminder />
               <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)}</p>
               {stayConditions ? <p className="h-muted">{stayConditions}</p> : null}
             </article>
@@ -1243,7 +1254,7 @@ export function HotelJourney({
               <p className="h-serif text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</p>
               <p className="h-muted">{[file?.city || hotel.city, datesLabel].filter(Boolean).join(" · ")}</p>
               <p className="h-ink">{reading.title}</p>
-              <StayBenefits lines={programme.lines} discreet={programme.discreet} />
+              <StayBenefits lines={programme.lines} discreet={programme.discreet} reminder />
               <p className="pt-2 text-2xl font-semibold h-ink">{euros(rate.sellCents, rate.currency)} TTC</p>
               {nonRefundable ? (
                 <div role="status" data-hotel-non-refundable="1" className="rounded-2xl border border-[#C5A880] bg-[#f4efe6] px-4 py-3">
