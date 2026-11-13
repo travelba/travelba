@@ -25,7 +25,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Annoncer l’accès Hôtels | `annoncer_option_hotel` (`confirmer: true`) — ajouté. Même lien, vers la rubrique Hôtels. Réservé aux administrateurs. L’option doit déjà être activée |
 | Accès Hôtels, mode réel, réservation directe par l’API, accepter ou refuser une demande | `regler_acces_hotels` — ajouté |
 | Relevé WhatsApp | `envoyer_releve` — couvert |
-| Créer la fiche dans MB3M | `creer_fiche_mb3m` — ajouté |
+| Créer la fiche dans MB3M | `creer_fiche_mb3m` — ajouté. Un bouton par société : `societe_id` n’envoie que celle-là. Sans code postal, la société est nommée et rien n’est envoyé |
 | Ouvrir l’espace à la place du client | hors API |
 | Lien d’accès magique 24 h (mot de passe déjà posé) | hors API — le bouton « Envoyer un lien d’accès » reste à l’écran |
 | Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
@@ -86,7 +86,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — ajouté. Sans `confirmer`, aperçu, aucun avoir |
 | Créditer un virement, Revolut ou Stripe | `crediter_virement`, `crediter_revolut`, `crediter_stripe` — sans `confirmer`, aperçu, rien n’est écrit |
 | Créer une carte Pliant | `creer_carte_pliant` — sans `confirmer`, aperçu, la carte n’est pas créée |
-| Créer la fiche client dans MB3M | `creer_fiche_mb3m` — ajouté |
+| Créer la fiche client dans MB3M | `creer_fiche_mb3m` — ajouté. `societe_id` crée une seule société |
 | Refuser un encaissement Revolut ou Stripe | `refuser_encaissement` — ajouté |
 | Détacher, déplacer, refuser, hors voyage, nouvelle dépense, changer de ligne | `comptabilite_sortie` — ajouté. `detacher` accepte `cout_id`, ou `sortie_id` seul (et `dossier_id`) quand un seul coût est lié |
 | Compte de facturation sur un crédit | partiel |

@@ -1,5 +1,6 @@
 import { resolveNationality } from "@/lib/crm/countries";
 import { queryWithOptionalColumn } from "@/lib/crm/optional-column";
+import { mb3mCompanyError, mb3mCompanyName, mb3mCompanyRefusal } from "@/lib/crm/mb3m-companies";
 import {
   Mb3mError,
   mb3mCivilityFromSex,
@@ -139,8 +140,58 @@ export function mb3mHandCompanies(
   }));
 }
 
-/** Envoie la fiche au clic. Rien ne part à l’enregistrement. */
-export async function pushMb3mCustomer(customerId: string) {
+export type Mb3mCompanyPush = {
+  id: string;
+  name: string;
+  ok: boolean;
+  error: string | null;
+};
+
+async function loadCompanies(customerId: string) {
+  const admin = createServiceClient();
+  const { data: companies, error } = await queryWithOptionalColumn(
+    (columns) => admin.from("crm_billing_companies").select(columns).eq("customer_id", customerId).order("sort_order"),
+    COMPANY_COLUMNS,
+    "registration_number"
+  );
+  if (error) throw new Mb3mError(error.message || "Lecture de la société impossible.", -1);
+  return (companies || []) as unknown as CompanyRow[];
+}
+
+async function saveOneCompany(customerId: string, company: CompanyRow, customer: PersonRow): Promise<Mb3mCompanyPush> {
+  const name = mb3mCompanyName(company);
+  const reason = mb3mCompanyRefusal(company);
+  if (reason) return { id: company.id, name, ok: false, error: mb3mCompanyError(name, reason) };
+  const draft = mb3mCompanyDraft(company, customer);
+  if (!draft) return { id: company.id, name, ok: false, error: mb3mCompanyError(name, "Ajoutez l’adresse de facturation.") };
+  try {
+    const saved = await mb3mSaveCompany(draft);
+    await remember(customerId, company.id, saved.uid, saved.partnerId);
+    return { id: company.id, name, ok: true, error: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "La fiche MB3M n’a pas abouti.";
+    return { id: company.id, name, ok: false, error: mb3mCompanyError(name, message) };
+  }
+}
+
+/** Une société, et seulement celle-là. L’erreur nomme la société. */
+export async function pushMb3mCompany(customerId: string, companyId: string) {
+  if (!mb3mConfigured()) throw new Mb3mError("L’accès MB3M n’est pas configuré.", 0);
+  const admin = createServiceClient();
+  const { data: customer, error } = await admin.from("crm_customers").select(CUSTOMER_SELECT).eq("id", customerId).maybeSingle();
+  if (error) throw new Mb3mError(error.message, -1);
+  if (!customer) throw new Mb3mError("Client introuvable.", 0);
+  const companies = await loadCompanies(customerId);
+  const company = companies.find((row) => row.id === companyId);
+  if (!company) throw new Mb3mError("Société introuvable.", 0);
+  const updated = await companyPartyExists(customerId, companyId);
+  const result = await saveOneCompany(customerId, company, customer as PersonRow);
+  if (!result.ok) throw new Mb3mError(result.error || "La fiche MB3M n’a pas abouti.", -701);
+  return { updated, company: result };
+}
+
+/** Envoie la fiche personne, puis chaque société. `companies: false` n’envoie que la personne. Une société refusée est nommée. */
+export async function pushMb3mCustomer(customerId: string, options?: { companies?: boolean }) {
   if (!mb3mConfigured()) throw new Mb3mError("L’accès MB3M n’est pas configuré.", 0);
   const admin = createServiceClient();
   const { data: customer, error } = await admin.from("crm_customers").select(CUSTOMER_SELECT).eq("id", customerId).maybeSingle();
@@ -151,25 +202,34 @@ export async function pushMb3mCustomer(customerId: string) {
   const updated = await partyExists(customerId);
   const saved = await mb3mSavePerson(person);
   await remember(customerId, null, saved.uid, saved.partnerId);
-  const { data: companies, error: companyError } = await queryWithOptionalColumn(
-    (columns) => admin.from("crm_billing_companies").select(columns).eq("customer_id", customerId),
-    COMPANY_COLUMNS,
-    "registration_number"
-  );
-  if (companyError) throw new Mb3mError(companyError.message || "Lecture de la société impossible.", -1);
-  for (const company of (companies || []) as unknown as CompanyRow[]) {
-    const draft = mb3mCompanyDraft(company, customer as PersonRow);
-    if (!draft) continue;
-    const companySaved = await mb3mSaveCompany(draft);
-    await remember(customerId, company.id, companySaved.uid, companySaved.partnerId);
+  if (options?.companies === false) return { updated, companies: [] as Mb3mCompanyPush[] };
+  const companies = await loadCompanies(customerId);
+  const sent: Mb3mCompanyPush[] = [];
+  for (const company of companies) {
+    sent.push(await saveOneCompany(customerId, company, customer as PersonRow));
   }
-  return { updated };
+  const failed = sent.filter((row) => !row.ok);
+  if (failed.length) throw new Mb3mError(failed.map((row) => row.error).filter(Boolean).join(" "), -701);
+  return { updated, companies: sent };
 }
 
 export function mb3mFicheBlocker(customer: PersonRow) {
   if (!mb3mConfigured()) return "L’accès MB3M n’est pas configuré.";
   if (!mb3mPersonDraft(customer)) return "Ajoutez l’adresse avant d’envoyer la fiche.";
   return null;
+}
+
+async function companyPartyExists(customerId: string, companyId: string) {
+  const admin = createServiceClient();
+  const { data, error } = await admin
+    .from("crm_mb3m_parties")
+    .select("id")
+    .eq("customer_id", customerId)
+    .eq("billing_company_id", companyId)
+    .eq("realm", mb3mRealm())
+    .maybeSingle();
+  if (error) throw new Mb3mError(error.message, -1);
+  return Boolean(data?.id);
 }
 
 async function partyExists(customerId: string) {

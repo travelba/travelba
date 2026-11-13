@@ -2213,9 +2213,10 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Envoie la fiche client et ses sociétés dans MB3M, comme Créer dans MB3M. client_id. L’adresse de la fiche est requise. Ne prépare pas une facture de dossier.",
+      "Envoie la fiche client dans MB3M, comme Créer dans MB3M. client_id. societe_id n’envoie que cette société. L’adresse de la fiche est requise pour le client. Une société sans code postal est refusée, en la nommant. Ne prépare pas une facture de dossier.",
     input: {
       client_id: z.string().trim().max(80).describe("Identifiant du client"),
+      societe_id: z.string().trim().max(80).optional().describe("Société à créer, et seulement celle-là"),
     },
     run: (args) => creerFicheMb3m(args),
   },

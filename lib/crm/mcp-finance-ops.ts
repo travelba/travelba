@@ -4,7 +4,7 @@ import { McpWriteError } from "@/lib/crm/mcp-write";
 import { Mb3mError } from "@/lib/crm/mb3m";
 import { mb3mActorLabel } from "@/lib/crm/mb3m-prep";
 import type { Mb3mInvoiceResult } from "@/lib/crm/mb3m-invoice";
-import { pushMb3mCustomer } from "@/lib/crm/mb3m-party";
+import { pushMb3mCompany, pushMb3mCustomer } from "@/lib/crm/mb3m-party";
 import type { TripCostActor } from "@/lib/crm/pliant-link";
 import { refuseRevolutInbox } from "@/lib/crm/revolut-match";
 import { refuseStripeInbox } from "@/lib/crm/stripe-match";
@@ -26,6 +26,7 @@ export type FinanceDeps = {
   findBooking?: (target: { id: string; reference: string }) => Promise<BookingHit>;
   reissue?: (bookingId: string, actorName: string | null) => Promise<Mb3mInvoiceResult & { creditNote: string }>;
   pushCustomer?: (customerId: string) => Promise<{ updated: boolean }>;
+  pushCompany?: (customerId: string, companyId: string) => Promise<{ updated: boolean }>;
   runCost?: (action: string, input: Record<string, unknown>, actor: TripCostActor) => Promise<unknown>;
   /** Détache un coût déjà identifié. Les tests évitent la base. */
   detachCost?: (costId: string, admin: SupabaseClient, actor: TripCostActor) => Promise<TripCost>;
@@ -112,11 +113,18 @@ export async function reprendreFactureMb3m(input: Record<string, unknown>, deps:
   }
 }
 
-/** Envoie la fiche client (et ses sociétés) dans MB3M, comme Créer dans MB3M. */
+/** Envoie la fiche client, ou une seule société si societe_id est indiqué. */
 export async function creerFicheMb3m(input: Record<string, unknown>, deps: FinanceDeps = {}) {
   const id = requireUuid(input.client_id, "Client");
+  const companyId = text(input.societe_id, 80);
+  if (companyId && !UUID.test(companyId)) throw new McpWriteError("Société introuvable.");
   const push = deps.pushCustomer ?? pushMb3mCustomer;
+  const pushCompany = deps.pushCompany ?? pushMb3mCompany;
   try {
+    if (companyId) {
+      const result = await pushCompany(id, companyId);
+      return { client_id: id, societe_id: companyId, envoyee: true, deja_connue: result.updated, auteur: actorName() };
+    }
     const result = await push(id);
     return { client_id: id, envoyee: true, deja_connue: result.updated, auteur: actorName() };
   } catch (err) {

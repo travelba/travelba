@@ -35,15 +35,15 @@ export type Mb3mAddress = {
  * Ordre DataContract de l’adresse Partners (`MainAddress`).
  * Déduit du refus « Expecting element Line2 | Line3 | PostalCode » quand City arrive trop tôt,
  * et des fiches déjà acceptées (Name, Line1, PostalCode, City, CountryCode).
- * PostalCode est exigé avant City : un code postal vide part quand même.
+ * PostalCode est exigé avant City. Un code postal vide n’est pas envoyé :
+ * MB3M accepte le XML puis refuse l’insertion dans ContactAddress.
  * Line2 et Line3 sont omis s’ils sont vides.
  */
 export const MB3M_ADDRESS_ELEMENTS = ["Name", "Line1", "Line2", "Line3", "PostalCode", "City", "CountryCode"] as const;
 
 /**
- * Adresse MB3M. Une société hors France peut n’avoir ni code postal :
- * la valeur reste vide, l’élément PostalCode est quand même écrit.
- * Une personne, ou une société française, garde un code postal.
+ * Adresse MB3M. Une société hors France peut n’avoir ni code postal dans le CRM.
+ * MB3M n’enregistre pas cette adresse : ContactAddress refuse un code postal vide.
  */
 export function mb3mAddress(input: {
   name: string;
@@ -227,10 +227,6 @@ function tag(name: string, value: string | number | undefined | null) {
   return `<${name}>${escapeMb3mXml(String(value))}</${name}>`;
 }
 
-/** Élément toujours présent. PostalCode vide reste `<PostalCode></PostalCode>`. */
-function tagPresent(name: string, value: string | number | undefined | null) {
-  return `<${name}>${escapeMb3mXml(value === undefined || value === null ? "" : String(value))}</${name}>`;
-}
 
 function money(value: number) {
   if (!Number.isFinite(value)) throw new Mb3mError("Montant MB3M invalide.", -1);
@@ -254,8 +250,11 @@ function birthStamp(value: string | null | undefined) {
 }
 
 function addressXml(address: Mb3mAddress, fallbackName: string) {
+  const postal = address.postalCode.trim();
+  // Élément vide : le désérialiseur accepte, puis SQL refuse l’insertion ContactAddress (-701).
+  if (!postal) throw new Mb3mError("MB3M refuse l’adresse sans code postal.", -701);
   // Name, Line1, Line2, Line3, PostalCode, City, CountryCode. Pas d’autre ordre : WCF refuse City avant PostalCode.
-  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tagPresent("PostalCode", address.postalCode.trim())}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}`;
+  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tag("PostalCode", postal)}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}`;
 }
 
 /** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */

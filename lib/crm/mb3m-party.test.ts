@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { mb3mCompanyButtons, mb3mCompanyError } from "./mb3m-companies";
 import { mb3mCompanyDraft, mb3mFicheBlocker, mb3mHandCompanies, mb3mPersonDraft } from "./mb3m-party";
 
 const customerId = "11111111-2222-4333-8444-555555555555";
@@ -135,6 +136,32 @@ describe("fiche MB3M", () => {
     assert.equal(kosovo?.address.postalCode, "");
     assert.equal(kosovo?.address.countryCode, "XK");
     assert.equal("siret" in (kosovo || {}), false);
+    const buttons = mb3mCompanyButtons([
+      {
+        id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        company_name: "LYNQ CONSULTING",
+        siret: "93788754500013",
+        vat_number: "FR40937887545",
+        billing_address_line: "10 rue",
+        billing_postal_code: "92200",
+        billing_city: "Neuilly-sur-Seine",
+      },
+      {
+        id: "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        company_name: "BEELYNQ LLC",
+        siret: null,
+        vat_number: null,
+        billing_address_line: 'Rr. "Tirana"',
+        billing_postal_code: null,
+        billing_city: "Prishtine",
+      },
+    ]);
+    assert.equal(buttons.length, 2);
+    assert.equal(buttons[0]?.ready, true);
+    assert.equal(buttons[0]?.name, "LYNQ CONSULTING");
+    assert.equal(buttons[1]?.ready, false);
+    assert.match(buttons[1]?.reason || "", /code postal/);
+    assert.equal(mb3mCompanyError("BEELYNQ LLC", "MB3M refuse l’adresse sans code postal."), "BEELYNQ LLC : MB3M refuse l’adresse sans code postal.");
   });
 
   it("éteint le bouton tant que l’adresse manque", () => {
