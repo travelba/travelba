@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyInboundMail, dropInboundImage, SIGNATURE_IMAGE_BYTES } from "./email-prefilter";
+import { unfoldMail } from "./nested-mail";
 
 test("les images trop légères et les logos de signature ne vont pas au modèle", () => {
   assert.equal(dropInboundImage({ filename: "photo.jpg", mimeType: "image/jpeg", size: 19_000 }), true);
@@ -12,6 +13,93 @@ test("les images trop légères et les logos de signature ne vont pas au modèle
     false
   );
   assert.equal(dropInboundImage({ filename: "confirmation.pdf", mimeType: "application/pdf", size: 4_000 }), false);
+  assert.equal(dropInboundImage({ filename: "image.png", mimeType: "image/png", size: 80_000 }), true);
+  assert.equal(dropInboundImage({ filename: "image006.png", mimeType: "image/png", size: 80_000 }), true);
+  assert.equal(
+    dropInboundImage({
+      filename: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.png",
+      mimeType: "image/png",
+      size: 120_000,
+    }),
+    true
+  );
+  assert.equal(
+    dropInboundImage({ filename: "", mimeType: "image/png", size: SIGNATURE_IMAGE_BYTES + 1 }),
+    true
+  );
+  assert.equal(
+    dropInboundImage({ filename: "voucher.jpg", mimeType: "image/jpeg", size: SIGNATURE_IMAGE_BYTES + 1 }),
+    false
+  );
+  assert.equal(
+    dropInboundImage({ filename: "imagery.png", mimeType: "image/png", size: SIGNATURE_IMAGE_BYTES + 1 }),
+    false
+  );
+});
+
+test("un mail transféré envoie ses images au même filtre", () => {
+  const pixel =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const raw = [
+    "Subject: TR: confirmation",
+    "MIME-Version: 1.0",
+    "Content-Type: multipart/mixed; boundary=outer",
+    "",
+    "--outer",
+    "Content-Type: message/rfc822; name=\"forward.eml\"",
+    "Content-Disposition: attachment; filename=\"forward.eml\"",
+    "",
+    "Subject: capture",
+    "MIME-Version: 1.0",
+    "Content-Type: multipart/mixed; boundary=inner",
+    "",
+    "--inner",
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    "Confirmation de séjour.",
+    "--inner",
+    "Content-Type: image/png; name=\"image001.png\"",
+    "Content-Transfer-Encoding: base64",
+    "Content-Disposition: inline; filename=\"image001.png\"",
+    "",
+    pixel,
+    "--inner",
+    "Content-Type: image/png",
+    "Content-Transfer-Encoding: base64",
+    "Content-Disposition: inline; filename=\"a1b2c3d4-e5f6-7890-abcd-ef1234567890.png\"",
+    "",
+    pixel,
+    "--inner",
+    "Content-Type: image/png; name=\"image.png\"",
+    "Content-Transfer-Encoding: base64",
+    "Content-Disposition: inline; filename=\"image.png\"",
+    "",
+    pixel,
+    "--inner",
+    "Content-Type: image/jpeg; name=\"voucher.jpg\"",
+    "Content-Transfer-Encoding: base64",
+    "Content-Disposition: attachment; filename=\"voucher.jpg\"",
+    "",
+    pixel,
+    "--inner--",
+    "--outer--",
+    "",
+  ].join("\n");
+  const unfolded = unfoldMail(raw);
+  const names = unfolded.files.map((file) => file.name).sort();
+  assert.deepEqual(names, [
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890.png",
+    "image.png",
+    "image001.png",
+    "voucher.jpg",
+  ]);
+  const kept = unfolded.files.filter(
+    (file) => !dropInboundImage({ filename: file.name, mimeType: file.mime, size: Math.max(file.bytes.byteLength, 80_000) })
+  );
+  assert.deepEqual(
+    kept.map((file) => file.name),
+    ["voucher.jpg"]
+  );
 });
 
 test("publicité, code, guide API et newsletter sont ignorés sans modèle", () => {

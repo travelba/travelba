@@ -25,10 +25,12 @@ import {
 } from "@/lib/crm/gmail-parse";
 import {
   extractBookingFromPrepared,
+  preparedFileText,
   type PreparedIngestFile,
 } from "@/lib/crm/ingest-file";
 import { clipEmailBody } from "@/lib/crm/email-source";
 import { classifyInboundMail, dropInboundImage } from "@/lib/crm/email-prefilter";
+import { preparedLooksLikeImage, preparedLooksLikePdf, screenInboundExtract } from "@/lib/crm/ingest-samples";
 import { isNestedMailFile, unfoldMail } from "@/lib/crm/nested-mail";
 import { isAgencySender, shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
 import { loadSentMailIndex, rememberSentMail } from "@/lib/crm/sent-mail";
@@ -548,6 +550,24 @@ async function storeAttachment(
   return { name, path, mime_type: mime };
 }
 
+/** Texte du mail et des PDF. Les images n’y entrent pas. */
+async function inboundCorpus(files: PreparedIngestFile[]) {
+  const parts: string[] = [];
+  let images = 0;
+  let pdfs = 0;
+  for (const file of files) {
+    if (preparedLooksLikeImage(file)) {
+      images += 1;
+      continue;
+    }
+    if (preparedLooksLikePdf(file)) pdfs += 1;
+    const text = await preparedFileText(file);
+    if (text.trim()) parts.push(text);
+  }
+  const text = parts.join("\n");
+  return { sourceText: text, corroborationText: text, imageOnly: images > 0 && pdfs === 0 };
+}
+
 /** Traite une ligne `received` : télécharge le mail, extrait, rapproche. Ne crée pas de dossier et ne touche pas aux cartes. */
 export async function processEmailIngestRow(row: CrmEmailIngest) {
   const admin = createServiceClient();
@@ -637,6 +657,12 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
   const stored: EmailIngestAttachment[] = [];
   const mailNotes: IngestWarning[] = [];
   let count = 0;
+  let skippedImages = 0;
+  const keepForModel = (name: string, mime: string, size: number) => {
+    if (!dropInboundImage({ filename: name, mimeType: mime, size })) return true;
+    skippedImages += 1;
+    return false;
+  };
   const pushUnfolded = (name: string, raw: string | Uint8Array) => {
     const unfolded = unfoldMail(raw);
     if (!unfolded.texts.length && !unfolded.files.length) {
@@ -647,24 +673,35 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
       prepared.push({ name: name || "billet.eml", type: "text/plain", text: unfolded.texts.join("\n\n") });
     }
     for (const file of unfolded.files) {
+      if (!keepForModel(file.name, file.mime, file.bytes.byteLength)) continue;
       if (!isAllowedIngestType(file.mime, file.name)) continue;
       prepared.push({ name: file.name, type: file.mime, bytes: file.bytes });
     }
   };
   for (const raw of message.inlineMails || []) pushUnfolded("message.eml", raw);
   for (const att of message.attachments) {
-    if (dropInboundImage(att)) continue;
+    if (dropInboundImage(att)) {
+      skippedImages += 1;
+      continue;
+    }
     if (count >= MAX_INGEST_FILES) break;
     const nested = isNestedMailFile(att.mimeType, att.filename);
     if (!nested && !isAllowedIngestType(att.mimeType, att.filename)) continue;
     if (att.size && att.size > MAX_INGEST_BYTES) continue;
     const bytes = await getAttachmentBytes(row.gmail_message_id, att.attachmentId);
     if (!bytes.byteLength) continue;
+    if (!keepForModel(att.filename, att.mimeType, bytes.byteLength)) continue;
     const saved = await storeAttachment(row.id, att.filename, att.mimeType, bytes);
     stored.push(saved);
     if (nested) pushUnfolded(att.filename, bytes);
     else prepared.push({ name: att.filename, type: att.mimeType, bytes });
     count += 1;
+  }
+  if (skippedImages) {
+    mailNotes.push({
+      file: "images",
+      message: "Images de signature, de logo ou sans réservation laissées de côté.",
+    });
   }
 
   const body = (message.text || "").trim();
@@ -699,8 +736,17 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     return;
   }
 
-  const { extract, warnings } = await extractBookingFromPrepared(prepared);
+  const { extract: read, warnings } = await extractBookingFromPrepared(prepared);
   warnings.push(...mailNotes);
+  const corpus = await inboundCorpus(prepared);
+  const screened = screenInboundExtract(read, {
+    receivedAt: message.receivedAt || row.received_at,
+    sourceText: corpus.sourceText,
+    corroborationText: corpus.corroborationText,
+    imageOnly: corpus.imageOnly,
+  });
+  warnings.push(...screened.warnings);
+  const extract = screened.extract;
   if (
     extract.document_status !== "identity" &&
     (isBookingCancellationLabel(row.label) ||

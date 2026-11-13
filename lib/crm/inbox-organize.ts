@@ -14,10 +14,12 @@ export const INBOX_HOLDS = {
   unnamed: "Le client n’est pas reconnu. La file attend un nom.",
   homonym: "Plusieurs fiches portent ce nom. La file attend.",
   shown: "Deux séjours déjà montrés correspondent. La file attend.",
+  visible: "Ce séjour est déjà Visible. Les cartes du mail attendent une validation.",
 } as const;
 
 export type InboxPlan =
   | { action: "attach"; bookingId: string; customerId: string; mergeIds: string[] }
+  | { action: "propose"; bookingId: string; customerId: string; message: string }
   | { action: "create"; customerId: string }
   | { action: "create_customer"; firstName: string; lastName: string; email: string | null }
   | { action: "hold"; message: string };
@@ -60,6 +62,14 @@ export function planInboxOrganization(input: {
   const reunion = reunionPlan(incoming, input.dossiers);
   if (reunion.hold) return { action: "hold", message: reunion.hold };
   if (reunion.keeper?.customerId) {
+    if (reunion.keeper.visible) {
+      return {
+        action: "propose",
+        bookingId: reunion.keeper.id,
+        customerId: reunion.keeper.customerId,
+        message: INBOX_HOLDS.visible,
+      };
+    }
     return {
       action: "attach",
       bookingId: reunion.keeper.id,
@@ -87,10 +97,15 @@ export type InboxHandlers = {
   merge: (keepId: string, dropId: string) => Promise<{ ok: boolean; message: string | null }>;
   markAttached: (bookingId: string, customerId: string, created: boolean) => Promise<void>;
   hold: (message: string) => Promise<void>;
+  /** Séjour déjà Visible : rien n’est écrit sur les cartes. La file garde la proposition. */
+  propose?: (bookingId: string, customerId: string, message: string) => Promise<void>;
 };
 
 export async function executeInboxPlan(plan: InboxPlan, extract: BookingExtract, handlers: InboxHandlers) {
-  if (plan.action === "hold") {
+  if (plan.action === "hold" || plan.action === "propose") {
+    if (plan.action === "propose" && handlers.propose) {
+      await handlers.propose(plan.bookingId, plan.customerId, plan.message);
+    }
     await handlers.hold(plan.message);
     return { attached: false, bookingId: null as string | null };
   }

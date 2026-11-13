@@ -58,6 +58,7 @@ document_status : confirmed | quote | identity | cancelled.
 
 Règles d’honnêteté :
 - Ne jamais inventer. Absent = null. Pas de check-in 15:00 / check-out 12:00.
+- Un logo, une signature ou une capture d’exemple n’est pas une réservation. Laisser vides : PNR ABC123, DEF456, XYZ123, ABCDE1, ABCDEFG, 97531XY ; vols 1234, 5678, LX123, HV5802, TO3456, AF123, UA100 ; hôtels Hôtel Exemples, Option Hôtelière, The Grand Hotel ; voyageurs John Doe, Jane Doe, John Smith, Jean Dupont, Marie Dupont, Marie Durand, Pierre Durand, Paul Durand, Marie Curie, Marie Dubois, Josephine Peterson, Michael Peterson.
 - Ne jamais extraire de PAN / CVC, même masqué.
 - Ne pas extraire conditions d’annulation, net fournisseur, franchise, CGV.
 - Inclus (petit-déj, spa, taxes) UNIQUEMENT si une phrase l’écrit. Sinon included = [].
@@ -494,6 +495,22 @@ async function readPdfText(bytes: Uint8Array): Promise<{ text: string; pages: nu
     };
   } catch {
     return { text: "", pages: 1 };
+  }
+}
+
+/** Texte du corps ou du PDF. Une image ne compte pas : elle n’est pas une confirmation écrite. */
+export async function preparedFileText(file: PreparedIngestFile) {
+  if (typeof file.text === "string") return file.text;
+  const name = file.name || "";
+  const mediaType = file.type || "";
+  const pdf = mediaType === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+  if (!pdf) return "";
+  try {
+    const bytes = await loadPreparedBytes(file);
+    const extracted = await readPdfText(bytes);
+    return extracted.text;
+  } catch {
+    return "";
   }
 }
 

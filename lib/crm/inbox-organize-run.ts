@@ -3,6 +3,7 @@ import "server-only";
 import { loadSuppressions } from "@/lib/crm/booking-suppression";
 import { mergeDossierInto } from "@/lib/crm/dossier-merge";
 import { executeInboxPlan, planInboxOrganization, type InboxHandlers } from "@/lib/crm/inbox-organize";
+import { screenInboundExtract } from "@/lib/crm/ingest-samples";
 import { parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
 import { namesReferToSamePerson } from "@/lib/crm/person-match";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -101,8 +102,15 @@ export async function organizeInboundMail(id: string) {
   const row = data as CrmEmailIngest;
   if (row.status !== "parsed" && row.status !== "matched") return { attached: false, bookingId: null };
   if (row.created_booking_id) return { attached: false, bookingId: row.created_booking_id };
-  const extract = parseExtractPayloadSafe(row.extract);
-  const warnings = Array.isArray(row.warnings) ? row.warnings : [];
+  const screened = screenInboundExtract(parseExtractPayloadSafe(row.extract), { receivedAt: row.received_at });
+  const extract = screened.extract;
+  const warnings = Array.isArray(row.warnings) ? [...row.warnings] : [];
+  for (const warning of screened.warnings) {
+    if (!warnings.some((known) => known.message === warning.message)) warnings.push(warning);
+  }
+  if (screened.warnings.length && warnings.length !== (Array.isArray(row.warnings) ? row.warnings.length : 0)) {
+    await admin.from("crm_email_ingest").update({ warnings }).eq("id", id);
+  }
   const unreadTicket = warnings.some((warning) => warning.message === "Le billet électronique n’a pas pu être lu.");
   let dossiers: TripDossier[] = [];
   let suppressions: Awaited<ReturnType<typeof loadSuppressions>> = [];
@@ -179,6 +187,7 @@ export async function organizeInboundMail(id: string) {
           files,
           visibleToClient: false,
           emailIngestId: row.id,
+          automatic: true,
         });
       },
       merge: (keepId, dropId) => mergeDossierInto(admin, keepId, dropId),
@@ -193,6 +202,22 @@ export async function organizeInboundMail(id: string) {
             error: null,
           })
           .eq("id", row.id);
+      },
+      propose: async (bookingId) => {
+        const { data: existing } = await admin
+          .from("crm_import_proposals")
+          .select("id")
+          .eq("email_ingest_id", row.id)
+          .limit(1);
+        if ((existing || []).length) return;
+        const { error } = await admin.from("crm_import_proposals").insert({
+          email_ingest_id: row.id,
+          booking_id: bookingId,
+          confidence: null,
+          conflict: true,
+          ops: [{ op: "attach_mail" }],
+        });
+        if (error) console.error("[import] proposition non enregistrée");
       },
       hold: async (message) => {
         if (warnings.some((warning) => warning.message === message)) return;
