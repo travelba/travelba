@@ -159,23 +159,21 @@ describe("facture MB3M du compte", () => {
 
   it("reprend le fichier d’activités de l’agence, une activité par dépense", () => {
     assert.equal(MB3M_ACTIVITY_TICKETING, 2);
-    assert.equal(mb3mAgencyActivityId("flight"), 22);
-    assert.notEqual(mb3mAgencyActivityId("flight"), MB3M_ACTIVITY_TICKETING);
+    assert.equal(mb3mAgencyActivityId("flight"), MB3M_ACTIVITY_TICKETING);
     assert.equal(mb3mAgencyActivityId("insurance"), 3);
-    assert.equal(mb3mAgencyActivityId("rail"), 22);
-    assert.equal(mb3mAgencyActivityId("low_cost"), 22);
+    assert.equal(mb3mAgencyActivityId("rail"), 5);
+    assert.equal(mb3mAgencyActivityId("low_cost"), 27);
     assert.equal(MB3M_ACTIVITY_RAIL, 5);
     assert.equal(MB3M_ACTIVITY_LOW_COST, 27);
     assert.equal(mb3mAgencyActivityId("expense"), 22);
     assert.equal(mb3mAgencyActivityId("hotel"), 7);
     assert.equal(mb3mAgencyActivityId("car"), 8);
     assert.equal(mb3mAgencyActivityId("cruise"), 20);
-    // Frais généraux (14) est refusé en ligne de facture par la base agence.
-    assert.equal(mb3mAgencyActivityId("fee"), 22);
+    // Frais généraux (14) ne sont pas une activité de facture. Les frais d’agence sont une ligne Custom.
+    assert.equal(mb3mAgencyActivityId("fee"), null);
     assert.equal(mb3mAgencyActivityId("package"), 11);
     assert.equal(mb3mAgencyActivityId("transfer"), 22);
-    assert.equal(mb3mAgencyActivityId("expense"), 22);
-    assert.equal(mb3mAgencyActivityId("inconnu"), 22);
+    assert.equal(mb3mAgencyActivityId("inconnu"), null);
     assert.equal(
       mb3mChargeKind({ external_id: "booking:b1:agency-commission" }),
       "fee"
@@ -202,7 +200,7 @@ describe("facture MB3M du compte", () => {
       lines.map((line) => [line.transactionId, line.activityId]),
       [
         ["e", 22],
-        ["f", 22],
+        ["f", 2],
         ["h", 7],
         ["s", 11],
       ]

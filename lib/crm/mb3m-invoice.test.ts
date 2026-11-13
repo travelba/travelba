@@ -54,7 +54,7 @@ describe("mb3mInvoiceLine", () => {
     assert.equal(hotelZero.marginUnit, 0);
   });
 
-  it("vol, train et low cost : net et marge réels, activité 22, le TTC reste celui du CRM", () => {
+  it("vol, train et low cost : net et marge réels, l’activité du fichier, le TTC reste celui du CRM", () => {
     const sold = (line: { netPriceUnit: number; marginUnit?: number | null }) =>
       Math.round((line.netPriceUnit + (line.marginUnit || 0)) * 100) / 100;
     for (const activityId of [2, 5, 27, 22]) {
@@ -65,7 +65,7 @@ describe("mb3mInvoiceLine", () => {
         activityId,
         margin: 1000.44,
       });
-      assert.equal(priced.activityId, 22);
+      assert.equal(priced.activityId, activityId);
       assert.equal(priced.netPriceUnit, 198);
       assert.equal(priced.netPriceTotal, 198);
       assert.equal(priced.marginUnit, 1000.44);
@@ -77,7 +77,7 @@ describe("mb3mInvoiceLine", () => {
         activityId,
         margin: 0,
       });
-      assert.equal(zero.activityId, 22);
+      assert.equal(zero.activityId, activityId);
       assert.equal(zero.netPriceUnit, 362);
       assert.equal(zero.marginUnit, 0);
       assert.equal(sold(zero), 362);
@@ -248,8 +248,8 @@ describe("facture MB3M", () => {
     assert.deepEqual(
       ctx.lines.map((line) => [line.transactionId, line.amount, line.activityId]),
       [
-        ["fee-debit", 50, 3],
-        ["hotel-debit", 1000, 3],
+        ["fee-debit", 50, 22],
+        ["hotel-debit", 1000, 7],
       ]
     );
     assert.equal(ctx.currency, "EUR");

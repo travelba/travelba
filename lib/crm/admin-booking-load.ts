@@ -362,6 +362,7 @@ export async function loadAdminBookingCritical(input: {
     ficheBillingCompanies: (first.ficheCompanyRows.data || []) as CrmBillingCompany[],
     mb3m: {
       blocker: null,
+      notice: null,
       piece: null,
       preparation: { state: null, message: null, resume: false },
       amadeus: [],
@@ -555,6 +556,7 @@ function startDossierPanels(input: {
       revolutExpenses,
       mb3m: {
         blocker: mb3mInvoiceBlocker(mb3mContext),
+        notice: mb3mContext.notice || null,
         piece: mb3mPiece,
         preparation: mb3mPreparationFromRow(mb3mDraft),
         amadeus,
