@@ -3,6 +3,20 @@ import test from "node:test";
 import { SEARCH_PERK_LABEL, stayBenefits } from "./hotel-journey";
 import type { HotelPerks } from "./hotel-search";
 import {
+  HOTEL_ACCESS_EYEBROW,
+  HOTEL_CLUB_CARD,
+  HOTEL_CLUB_LEVEL,
+  HOTEL_CLUB_TITLE,
+  HOTEL_CLUB_FAMILY,
+  HOTEL_CLUB_GIVEN,
+  HOTEL_CLUB_NUMBER,
+  HOTEL_CLUB_OPEN,
+  hotelMemberNumber,
+  HOTEL_ACCESS_LEVEL,
+  HOTEL_ACCESS_LINES,
+  HOTEL_ACCESS_OFFER,
+  HOTEL_ACCESS_RESERVE,
+  HOTEL_ACCESS_UNTIL,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
   TRAVEL_BA_SEARCH_ADVANTAGES,
@@ -42,6 +56,29 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
     "Arrivée anticipée",
     "Départ tardif",
   ]);
+  assert.deepEqual([...HOTEL_ACCESS_LINES], [
+    "Petit-déjeuner offert",
+    "Arrivée anticipée et départ tardif*",
+    "Surclassement prioritaire*",
+    "Jusqu’à 200 $ de crédit de dépense dans l’hôtel*",
+    "Transfert aéroport*",
+  ]);
+  assert.equal(HOTEL_ACCESS_RESERVE, "* Soumis à disponibilité et selon l’hôtel.");
+  assert.equal(HOTEL_ACCESS_EYEBROW, "Club Travel BA");
+  assert.equal(HOTEL_CLUB_TITLE, "Ma carte");
+  assert.equal(HOTEL_CLUB_LEVEL, "Mon niveau");
+  assert.equal(HOTEL_CLUB_CARD, "Carte de fidélité");
+  assert.equal(HOTEL_CLUB_GIVEN, "Prénom");
+  assert.equal(HOTEL_CLUB_FAMILY, "Nom");
+  assert.equal(HOTEL_CLUB_NUMBER, "N° d’adhérent");
+  assert.equal(HOTEL_CLUB_OPEN, "Ouvrir les hôtels");
+  assert.equal(hotelMemberNumber("exemple-client"), hotelMemberNumber("exemple-client"));
+  assert.match(hotelMemberNumber("exemple-client"), /^\d{4} \d{4}$/);
+  assert.notEqual(hotelMemberNumber("exemple-client"), hotelMemberNumber("autre-client"));
+  assert.equal(HOTEL_ACCESS_LEVEL, "Platinum");
+  assert.equal(HOTEL_ACCESS_OFFER, "Offert*");
+  assert.equal(HOTEL_ACCESS_UNTIL, "Jusqu’au 31 déc. 2026");
+  assert.equal(HOTEL_ACCESS_LINES[0].endsWith("*"), false);
   const perks: HotelPerks = {
     breakfast: true,
     freeCancellation: true,

@@ -6,16 +6,30 @@ import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelMap } from "@/components/account/HotelMap";
 import { HotelWait } from "@/components/account/HotelWait";
+import { AgencyLogo } from "@/components/AgencyLogo";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
+import { greetingGivenName } from "@/lib/crm/identity";
 import {
   HOTEL_ACCESS_EYEBROW,
+  HOTEL_ACCESS_LEVEL,
+  HOTEL_ACCESS_LINES,
+  HOTEL_ACCESS_OFFER,
   HOTEL_ACCESS_PROMISE,
   HOTEL_ACCESS_RESERVE,
+  HOTEL_ACCESS_UNTIL,
+  HOTEL_CLUB_CARD,
+  HOTEL_CLUB_LEVEL,
+  HOTEL_CLUB_TITLE,
+  HOTEL_CLUB_EVENT,
+  HOTEL_CLUB_FAMILY,
+  HOTEL_CLUB_GIVEN,
+  HOTEL_CLUB_NUMBER,
+  HOTEL_CLUB_OPEN,
+  hotelMemberNumber,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
-  TRAVEL_BA_SEARCH_ADVANTAGES,
   hotelDraftStorageKey,
   hotelRecentStorageKey,
   hotelSearchHeroSrc,
@@ -57,8 +71,9 @@ let recentOwner = "hotel-recent-list";
 
 const PERK_LABEL = SEARCH_PERK_LABEL;
 
-const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
+const WEEKDAYS = ["Lu", "Ma", "Me", "Je", "Ve", "Sa", "Di"];
 const RECENT_KEY = "hotel-recent-list";
+const RECENT_LIMIT = 2;
 const PERK_GROUPS: { title: string; keys: (keyof HotelPerks)[] }[] = [
   { title: "Avantages", keys: ["breakfast", "freeCancellation", "upgrade", "credit"] },
   { title: "Arrivée anticipée et départ tardif", keys: ["earlyCheckIn", "lateCheckOut"] },
@@ -137,6 +152,27 @@ function monthTitle(year: number, monthIndex: number) {
   return label.charAt(0).toLocaleUpperCase("fr") + label.slice(1);
 }
 
+function monthsFrom(iso: string, count = 8) {
+  const start = monthCursor(iso);
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(Date.UTC(start.year, start.month + index, 1));
+    return { year: date.getUTCFullYear(), month: date.getUTCMonth() };
+  });
+}
+
+function confirmStayLine(checkIn: string, checkOut: string) {
+  const label = (iso: string) =>
+    new Date(`${iso}T12:00:00Z`).toLocaleDateString("fr-FR", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    });
+  if (!checkIn) return "Choisissez l’arrivée";
+  if (!checkOut) return label(checkIn);
+  return `${label(checkIn)} – ${label(checkOut)}`;
+}
+
 type RecentStay = {
   destination: string;
   city: string;
@@ -170,7 +206,7 @@ function parseRecent(raw: string): RecentStay[] {
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(row);
-      if (out.length === 5) break;
+      if (out.length === RECENT_LIMIT) break;
     }
     return out;
   } catch {
@@ -211,7 +247,7 @@ function subscribeRecent(onChange: () => void) {
 }
 
 function writeRecent(entry: RecentStay) {
-  const next = [entry, ...parseRecent(readRecentSnapshot()).filter((row) => recentKey(row) !== recentKey(entry))].slice(0, 5);
+  const next = [entry, ...parseRecent(readRecentSnapshot()).filter((row) => recentKey(row) !== recentKey(entry))].slice(0, RECENT_LIMIT);
   const raw = JSON.stringify(next);
   localStorage.setItem(recentOwner, raw);
   sessionStorage.setItem(recentOwner, raw);
@@ -281,12 +317,16 @@ export function HotelSearch({
   trial = true,
   leApi = false,
   customerId = "",
+  firstName = "",
+  lastName = "",
   highlights = [],
 }: {
   trial?: boolean;
   leApi?: boolean;
   /** Isole les recherches récentes de cet appareil pour cette personne. */
   customerId?: string;
+  firstName?: string;
+  lastName?: string;
   /** Hôtels déjà réservés, avec photo. Vide : la section reste cachée. */
   highlights?: FeaturedHotel[];
 }) {
@@ -308,8 +348,6 @@ export function HotelSearch({
   const [remoteSuggest, setRemoteSuggest] = useState<{ key: string; items: PlaceSuggestion[] } | null>(null);
   const [sheet, setSheet] = useState(false);
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [cursorPick, setCursor] = useState<{ year: number; month: number } | null>(null);
-  const cursor = cursorPick ?? monthCursor(checkIn);
   const [hotels, setHotels] = useState<ClientHotel[]>([]);
   const [searching, setSearching] = useState(false);
   const searchLock = useRef(false);
@@ -322,6 +360,7 @@ export function HotelSearch({
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
+  const [clubOpen, setClubOpen] = useState(true);
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
@@ -374,6 +413,23 @@ export function HotelSearch({
   useEffect(() => {
     adoptHotelStorage(customerId);
   }, [customerId]);
+
+  useEffect(() => {
+    const open = () => setClubOpen(true);
+    window.addEventListener(HOTEL_CLUB_EVENT, open);
+    return () => window.removeEventListener(HOTEL_CLUB_EVENT, open);
+  }, []);
+
+  useEffect(() => {
+    const root = document.querySelector(".account-app");
+    if (!(root instanceof HTMLElement)) return;
+    if (searched || openedLive) {
+      root.removeAttribute("data-hotel-home");
+      return;
+    }
+    root.setAttribute("data-hotel-home", "");
+    return () => root.removeAttribute("data-hotel-home");
+  }, [searched, openedLive]);
 
   useEffect(() => {
     if (focusReady.current) return;
@@ -448,12 +504,12 @@ export function HotelSearch({
     setCity(item.kind === "hotel" ? item.detail : "");
     setTarget(item.id ? { kind: item.kind, id: item.id } : null);
     setPanel("when");
+    setSheet(true);
   }
 
   /** Le calendrier s’ouvre sur le mois de l’arrivée proposée (demain), déjà sélectionnée avec le départ. */
   function openDates() {
     setNote("");
-    setCursor(null);
     setPanel("when");
   }
 
@@ -475,12 +531,6 @@ export function HotelSearch({
       return;
     }
     setCheckOut(iso);
-    setPanel("who");
-  }
-
-  function shiftMonth(delta: number) {
-    const date = new Date(Date.UTC(cursor.year, cursor.month + delta, 1));
-    setCursor({ year: date.getUTCFullYear(), month: date.getUTCMonth() });
   }
 
   function noteParty(next: DraftRoom[]) {
@@ -682,6 +732,9 @@ export function HotelSearch({
     ? `${barAdults} ad. · ${barChildren} enf.`
     : barAdults > 1 ? `${barAdults} adultes` : "1 adulte";
   const barRooms = rooms.length > 1 ? `${rooms.length} chambres` : "1 chambre";
+  const guestLine = `${barAdults > 1 ? `${barAdults} adultes` : "1 adulte"} · ${
+    barChildren > 1 ? `${barChildren} enfants` : barChildren === 1 ? "1 enfant" : "0 enfant"
+  }`;
 
   function openPlace(destinationName: string, cityName = "", hotelId: number | null = null) {
     void onSearch({
@@ -724,28 +777,75 @@ export function HotelSearch({
         />
       ) : null}
       {openedLive ? null : <>
-      <div className="h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
-        <div className="h-searchbar-row">
-          <button type="button" data-hotel-destination="1" onClick={() => openSheet("where")} className="h-bar-cell h-press" aria-label={destination.trim() ? `Destination, ${destinationLabel}` : "Destination ou hôtel"}>
-            <Icon name="search" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-            <span className="truncate">{destinationLabel}</span>
-          </button>
-          <button type="button" data-hotel-dates="1" onClick={() => { openDates(); setSheet(true); }} className="h-bar-cell h-press" aria-label={checkIn && checkOut ? `Dates, ${barDates}` : "Dates"}>
-            <Icon name="event" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-            <span className="truncate">{barDates}</span>
-          </button>
-          <button type="button" data-hotel-party="1" onClick={() => openSheet("who")} className="h-bar-cell h-press" aria-label={`Voyageurs, ${party}`}>
-            <Icon name="person" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-            <span className="min-w-0 text-left leading-tight">
-              <span className="block truncate">{barPeople}</span>
-              <span className="block truncate text-[11px] font-medium text-[#8c7352]">{barRooms}</span>
-            </span>
-          </button>
-          <button type="button" data-hotel-search-cta="1" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-bar-go h-press inline-flex items-center justify-center gap-1.5 font-semibold disabled:opacity-60">
-            <Icon name="search" className="h-4 w-4 text-[#C5A880]" strokeWidth={1.75} />
-            <span>Rechercher</span>
-          </button>
-        </div>
+      <div className={searched ? "h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" : ""} data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
+        {searched ? (
+          <div className="h-searchbar-row">
+            <button type="button" data-hotel-destination="1" onClick={() => openSheet("where")} className="h-bar-cell h-press" aria-label={destination.trim() ? `Destination, ${destinationLabel}` : "Destination ou hôtel"}>
+              <Icon name="search" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+              <span className="truncate">{destinationLabel}</span>
+            </button>
+            <button type="button" data-hotel-dates="1" onClick={() => { openDates(); setSheet(true); }} className="h-bar-cell h-press" aria-label={checkIn && checkOut ? `Dates, ${barDates}` : "Dates"}>
+              <Icon name="event" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+              <span className="truncate">{barDates}</span>
+            </button>
+            <button type="button" data-hotel-party="1" onClick={() => openSheet("who")} className="h-bar-cell h-press" aria-label={`Voyageurs, ${party}`}>
+              <Icon name="person" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+              <span className="min-w-0 text-left leading-tight">
+                <span className="block truncate">{barPeople}</span>
+                <span className="block truncate text-[11px] font-medium text-[#8c7352]">{barRooms}</span>
+              </span>
+            </button>
+            <button type="button" data-hotel-search-cta="1" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-bar-go h-press inline-flex items-center justify-center gap-1.5 font-semibold disabled:opacity-60">
+              <Icon name="search" className="h-4 w-4 text-[#C5A880]" strokeWidth={1.75} />
+              <span>Rechercher</span>
+            </button>
+          </div>
+        ) : (
+          <div className="h-search-stack">
+            <label className="h-stack-field">
+              <Icon name="search" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+              <input
+                value={destination}
+                data-hotel-destination="1"
+                onChange={(event) => {
+                  setDestination(event.target.value);
+                  setTarget(null);
+                  setCity("");
+                  setPanel("where");
+                }}
+                onFocus={() => setPanel("where")}
+                className="w-full bg-transparent text-base h-ink outline-none"
+                placeholder="Destination ou hôtel"
+                autoComplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={panel === "where" && !sheet && (destinations.length > 0 || hotelNames.length > 0)}
+                aria-controls="hotel-suggest-home"
+                ref={sheet ? undefined : destinationRef}
+                aria-label={destination.trim() ? `Destination, ${destinationLabel}` : "Destination ou hôtel"}
+              />
+            </label>
+            {panel === "where" && !sheet && (destinations.length > 0 || hotelNames.length > 0) ? (
+              <div id="hotel-suggest-home" role="listbox" className="overflow-hidden rounded-xl bg-white">
+                <SuggestGroup title="Destinations" items={destinations} onPick={pickPlace} />
+                <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
+              </div>
+            ) : null}
+            <button type="button" data-hotel-dates="1" onClick={() => { openDates(); setSheet(true); }} className="h-stack-field h-press" aria-label={checkIn && checkOut ? `Dates, ${barDates}` : "Dates"}>
+              <Icon name="event" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+              <span className="truncate">{checkIn && checkOut ? `${barDates} (${nightLabel})` : "Dates"}</span>
+            </button>
+            <button type="button" data-hotel-party="1" onClick={() => openSheet("who")} className="h-stack-field h-press" aria-label={`Voyageurs, ${party}`}>
+              <Icon name="person" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+              <span className="min-w-0 flex-1 truncate text-left">{guestLine}</span>
+              <Icon name="bed" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+              <span className="shrink-0">{barRooms}</span>
+            </button>
+            <button type="button" data-hotel-search-cta="1" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-search-launch h-press flex items-center justify-center font-semibold disabled:opacity-60">
+              <span>Rechercher</span>
+            </button>
+          </div>
+        )}
         {note && !sheet ? <p className="px-1 pt-2 text-sm h-gold">{note}</p> : null}
         {searched && hotels.length > 0 ? (
           <div className="mt-2 flex items-center gap-1.5 overflow-x-auto">
@@ -765,52 +865,30 @@ export function HotelSearch({
       </div>
       {!searched ? (
         <div className="h-ask">
-          <div className="relative overflow-hidden rounded-2xl bg-[#0B192C] text-[#f7f4ee]" data-hotel-hero="1">
-            {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
-            <img
-              src={heroSrc}
-              alt=""
-              width={960}
-              height={540}
-              fetchPriority="high"
-              decoding="async"
-              onError={() => setHeroBroken(true)}
-              className="absolute inset-0 h-full w-full object-cover opacity-40"
-            />
-            <div className="absolute inset-0 bg-[#0B192C]/75" aria-hidden />
-            <div className="relative space-y-3 px-4 py-4" data-hotel-agency-benefits="1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
-              <h1 className="h-serif text-[1.05rem] font-semibold leading-snug">{HOTEL_ACCESS_PROMISE}</h1>
-              <HotelBenefits lines={[...TRAVEL_BA_SEARCH_ADVANTAGES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
-              <p className="text-[11px] leading-snug text-white/70">{HOTEL_ACCESS_RESERVE}</p>
+          {recent.length ? (
+            <div data-hotel-recent="1">
+              <p className="h-section px-1">Dernières recherches</p>
+              {recent.map((item) => {
+                const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
+                return (
+                  <button
+                    key={recentKey(item)}
+                    type="button"
+                    onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
+                    className="flex min-h-11 w-full items-center gap-3 px-1 py-2 text-left"
+                  >
+                    <Icon name="history_edu" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{frenchCity(item.destination)}</span>
+                      <span className="block truncate text-xs h-muted">
+                        {compactStayDates(shifted.checkIn, shifted.checkOut)} · {item.party}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          </div>
-          <div data-hotel-recent="1">
-            <p className="h-section px-1">Dernières recherches</p>
-                  {recent.length ? (
-                    recent.map((item) => {
-                      const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
-                      return (
-                        <button
-                          key={recentKey(item)}
-                          type="button"
-                          onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
-                          className="flex min-h-11 w-full items-center gap-3 px-1 py-2 text-left"
-                        >
-                          <Icon name="history_edu" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-                          <span className="min-w-0">
-                            <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{frenchCity(item.destination)}</span>
-                            <span className="block truncate text-xs h-muted">
-                              {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="mt-2 px-1 text-sm h-muted">Aucune recherche pour le moment.</p>
-                  )}
-                </div>
+          ) : null}
                 <div data-hotel-suggestions="1">
                   <ul className="flex gap-2 overflow-x-auto px-1 pb-1" aria-label="Destinations suggérées">
                     {HOTEL_SEARCH_CITY_CHIPS.map((cityName) => (
@@ -901,7 +979,7 @@ export function HotelSearch({
       </div>
       </>}
 
-      {sheet ? (
+      {sheet && panel !== "when" && panel !== "who" ? (
         <div className="hotel-sheet h-search fixed inset-x-0 top-16 z-[60] flex flex-col bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:bottom-0" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
           <header className="flex items-center justify-between bg-white px-5 py-4 pt-[max(1rem,env(safe-area-inset-top))]">
             <p className="h-serif text-[1.7rem] font-medium leading-tight h-ink">Où souhaitez-vous séjourner ?</p>
@@ -938,152 +1016,31 @@ export function HotelSearch({
                 <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
               </div>
             ) : null}
-            {panel === "where" && folded.length < 2 ? (
+            {panel === "where" && folded.length < 2 && recent.length ? (
               <div>
                 <p className="h-section px-1 pb-1">Dernières recherches</p>
-                {recent.length ? (
-                  recent.map((item) => {
-                    const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
-                    return (
-                      <button
-                        key={recentKey(item)}
-                        type="button"
-                        onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
-                        className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
-                      >
-                        <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold h-ink">{frenchCity(item.destination)}</span>
-                          <span className="block truncate text-xs h-muted">
-                            {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
-                          </span>
+                {recent.map((item) => {
+                  const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
+                  return (
+                    <button
+                      key={recentKey(item)}
+                      type="button"
+                      onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
+                      className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
+                    >
+                      <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold h-ink">{frenchCity(item.destination)}</span>
+                        <span className="block truncate text-xs h-muted">
+                          {compactStayDates(shifted.checkIn, shifted.checkOut)} · {item.party}
                         </span>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <p className="px-1 text-sm h-muted">Aucune recherche pour le moment.</p>
-                )}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
 
-            <button
-              type="button"
-              onClick={openDates}
-              className="h-field w-full px-4 py-3 text-left"
-            >
-              <span className="h-kicker">Vos dates</span>
-              <span className="mt-1 block text-base font-medium h-ink">{nightLabel ? `${summaryDates} · ${nightLabel}` : summaryDates}</span>
-            </button>
-            {panel === "when" ? (
-              <div className="px-1 py-2">
-                <div className="flex items-center justify-between">
-                  <button type="button" aria-label="Mois précédent" onClick={() => shiftMonth(-1)} className="grid h-10 w-10 place-items-center h-ink">
-                    <Icon name="chevron_left" className="h-5 w-5" />
-                  </button>
-                  <p className="text-base font-semibold h-ink">{monthTitle(cursor.year, cursor.month)}</p>
-                  <button type="button" aria-label="Mois suivant" onClick={() => shiftMonth(1)} className="grid h-10 w-10 place-items-center h-ink">
-                    <Icon name="chevron_right" className="h-5 w-5" />
-                  </button>
-                </div>
-                <div className="mt-3 grid grid-cols-7 text-center text-[11px] h-muted">
-                  {WEEKDAYS.map((day, index) => (
-                    <span key={`${day}-${index}`}>{day}</span>
-                  ))}
-                </div>
-                <div className="mt-1 grid grid-cols-7">
-                  {monthCells(cursor.year, cursor.month).map((iso, index) => {
-                    if (!iso) return <span key={`empty-${index}`} />;
-                    const endpoint = iso === checkIn || iso === checkOut;
-                    const inside = Boolean(checkIn && checkOut && iso > checkIn && iso < checkOut);
-                    const past = iso < today;
-                    return (
-                      <button
-                        key={iso}
-                        type="button"
-                        data-date={iso}
-                        disabled={past}
-                        onClick={() => pickDay(iso)}
-                        className={`grid h-11 place-items-center text-sm ${
-                          endpoint ? "h-day-on" : inside ? "h-range" : past ? "h-faint" : "h-ink"
-                        }`}
-                      >
-                        {Number(iso.slice(-2))}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={() => setPanel("who")}
-              className="h-field w-full px-4 py-3 text-left"
-            >
-              <span className="h-kicker">Chambres et voyageurs</span>
-              <span className="mt-1 block text-base font-medium h-ink">{party}</span>
-            </button>
-            {panel === "who" ? (
-              <div className="space-y-4 px-1 py-2">
-                <Stepper
-                  label="Chambres"
-                  value={rooms.length}
-                  min={1}
-                  max={4}
-                  onChange={resizeRooms}
-                />
-                {rooms.map((room, index) => (
-                  <div key={index} className="space-y-3 pt-1">
-                    <p className="text-sm h-muted">Chambre {index + 1}</p>
-                    <Stepper
-                      label="Adultes"
-                      value={room.adults}
-                      min={1}
-                      max={6}
-                      onChange={(adults) => updateRoom(index, { ...room, adults })}
-                    />
-                    <Stepper
-                      label="Enfants"
-                      value={room.children.length}
-                      min={0}
-                      max={4}
-                      onChange={(count) =>
-                        updateRoom(index, {
-                          ...room,
-                          children:
-                            count > room.children.length
-                              ? [...room.children, null]
-                              : room.children.slice(0, count),
-                        })
-                      }
-                    />
-                    {room.children.map((age, childIndex) => (
-                      <label key={childIndex} className="flex items-center justify-between gap-3 text-sm h-ink">
-                        <span>Âge, enfant {childIndex + 1}</span>
-                        <select
-                          value={age ?? ""}
-                          aria-label={`Âge, enfant ${childIndex + 1}, chambre ${index + 1}`}
-                          onChange={(event) => {
-                            const next = room.children.slice();
-                            next[childIndex] = Number(event.target.value);
-                            updateRoom(index, { ...room, children: next });
-                          }}
-                          className="h-field px-3 py-2 text-sm h-ink"
-                        >
-                          <option value="">Âge</option>
-                          {Array.from({ length: 18 }, (_, value) => (
-                            <option key={value} value={value}>
-                              {value === 0 ? "Moins d’un an" : `${value} ans`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : null}
             {note ? <p className="text-sm h-gold">{note}</p> : null}
           </div>
           <footer className="bg-white px-5 py-3 pb-8 shadow-[0_-12px_28px_rgba(11,25,44,0.06)] md:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -1092,6 +1049,150 @@ export function HotelSearch({
               <span>Rechercher</span>
             </button>
           </footer>
+        </div>
+      ) : null}
+      {sheet && panel === "when" ? (
+        <div className="hotel-sheet h-dates fixed inset-0 z-[70] flex flex-col" data-hotel-sheet="1" data-hotel-dates-sheet="1" role="dialog" aria-modal="true" aria-label="Dates du séjour">
+          <header className="flex items-center justify-end px-3 py-2">
+            <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-11 w-11 place-items-center h-ink">
+              <Icon name="close" className="h-5 w-5" />
+            </button>
+          </header>
+          <div className="grid grid-cols-7 px-2 text-center text-[11px] font-semibold h-muted">
+            {WEEKDAYS.map((day, index) => (
+              <span key={`${day}-${index}`}>{day}</span>
+            ))}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-4">
+            {monthsFrom(today).map((month) => (
+              <StayMonth
+                key={`${month.year}-${month.month}`}
+                year={month.year}
+                month={month.month}
+                today={today}
+                checkIn={checkIn}
+                checkOut={checkOut}
+                onPick={pickDay}
+              />
+            ))}
+          </div>
+          <footer className="border-t border-[#e6e0d6] bg-white px-5 py-3 pb-8 text-center">
+            <p className="text-sm h-ink">{confirmStayLine(checkIn, checkOut)}</p>
+            <p className="mt-0.5 text-base font-semibold h-ink">{nightLabel || "Choisissez les dates"}</p>
+            {note ? <p className="mt-1 text-sm h-gold">{note}</p> : null}
+            <button
+              type="button"
+              className="h-btn h-search-go h-press mt-3 flex h-12 w-full items-center justify-center font-semibold"
+              onClick={() => {
+                if (!checkIn || !checkOut) {
+                  setNote("Indiquez les dates du séjour.");
+                  return;
+                }
+                setNote("");
+                setSheet(false);
+              }}
+            >
+              Confirmer les dates
+            </button>
+          </footer>
+        </div>
+      ) : null}
+      {sheet && panel === "who" ? (
+        <div
+          className="fixed inset-x-0 top-0 z-[60] flex items-end bg-[#0B192C]/45 bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-0"
+          data-hotel-sheet="1"
+          data-hotel-party-sheet="1"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Voyageurs et chambres"
+          onClick={() => setSheet(false)}
+        >
+          <div className="max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-white px-5 pb-4 pt-4" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <p className="h-serif text-[1.2rem] font-semibold h-ink">Voyageurs et chambres</p>
+              <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-11 w-11 place-items-center h-ink">
+                <Icon name="close" className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-5">
+              {rooms.map((room, index) => (
+                <div key={index} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-base font-semibold h-ink">Chambre {index + 1}</p>
+                    {rooms.length > 1 ? (
+                      <button
+                        type="button"
+                        className="text-sm font-semibold h-gold"
+                        onClick={() => {
+                          const next = rooms.filter((_, at) => at !== index);
+                          setRooms(next);
+                          noteParty(next);
+                        }}
+                      >
+                        Retirer
+                      </button>
+                    ) : null}
+                  </div>
+                  <Stepper label="Adultes" value={room.adults} min={1} max={6} onChange={(adults) => updateRoom(index, { ...room, adults })} />
+                  <Stepper
+                    label="Enfants"
+                    value={room.children.length}
+                    min={0}
+                    max={4}
+                    onChange={(count) =>
+                      updateRoom(index, {
+                        ...room,
+                        children: count > room.children.length ? [...room.children, null] : room.children.slice(0, count),
+                      })
+                    }
+                  />
+                  {room.children.map((age, childIndex) => (
+                    <label key={childIndex} className="flex items-center justify-between gap-3 text-sm h-ink">
+                      <span>Âge, enfant {childIndex + 1}</span>
+                      <select
+                        value={age ?? ""}
+                        aria-label={`Âge, enfant ${childIndex + 1}, chambre ${index + 1}`}
+                        onChange={(event) => {
+                          const next = room.children.slice();
+                          next[childIndex] = Number(event.target.value);
+                          updateRoom(index, { ...room, children: next });
+                        }}
+                        className="h-field px-3 py-2 text-sm h-ink"
+                      >
+                        <option value="">Âge</option>
+                        {Array.from({ length: 18 }, (_, value) => (
+                          <option key={value} value={value}>
+                            {value === 0 ? "Moins d’un an" : `${value} ans`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
+            {rooms.length < 4 ? (
+              <button type="button" className="mt-5 block w-full text-right text-sm font-semibold underline h-ink" onClick={() => resizeRooms(rooms.length + 1)}>
+                Ajouter une chambre
+              </button>
+            ) : null}
+            <p className="mt-4 text-center text-sm h-muted">{barRooms} | {guestLine}</p>
+            {note ? <p className="mt-2 text-sm h-gold">{note}</p> : null}
+            <button
+              type="button"
+              className="h-btn h-search-go h-press mt-3 flex h-12 w-full items-center justify-center font-semibold"
+              onClick={() => {
+                if (!completeRooms(rooms)) {
+                  setNote("Indiquez l’âge de chaque enfant.");
+                  return;
+                }
+                setNote("");
+                setSheet(false);
+              }}
+            >
+              Confirmer les voyageurs
+            </button>
+          </div>
         </div>
       ) : null}
       {tool ? (
@@ -1182,6 +1283,87 @@ export function HotelSearch({
           </div>
         </div>
       ) : null}
+      {clubOpen ? (
+        <div className="h-club" data-hotel-club="1" role="dialog" aria-modal="true" aria-label={HOTEL_CLUB_TITLE}>
+          <p className="h-club-title">{HOTEL_CLUB_TITLE}</p>
+          <div className="h-club-body" data-hotel-agency-benefits="1">
+            <div className="h-club-hero" data-hotel-hero="1">
+              {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+              <img
+                src={heroSrc}
+                alt=""
+                width={960}
+                height={540}
+                fetchPriority="high"
+                decoding="async"
+                onError={() => setHeroBroken(true)}
+                className="h-club-hero-photo"
+              />
+              <div className="h-club-hero-shade" aria-hidden />
+              <div className="h-club-hero-row">
+                <div className="min-w-0">
+                  <p className="h-club-given">
+                    <span className="sr-only">{HOTEL_CLUB_GIVEN}</span>
+                    {greetingGivenName(firstName) || "—"}
+                  </p>
+                  <p className="h-club-hero-number">{hotelMemberNumber(customerId)}</p>
+                  <p className="h-club-hero-meta">{HOTEL_CLUB_NUMBER}</p>
+                </div>
+                <AgencyLogo className="h-16 w-16" alt="" />
+              </div>
+            </div>
+            <div className="h-club-level">
+              <div className="h-club-level-mark">
+                <p className="h-loyalty-label">{HOTEL_CLUB_LEVEL}</p>
+                <p className="h-club-level-name">{HOTEL_ACCESS_LEVEL}</p>
+              </div>
+              <div className="text-right">
+                <p className="h-loyalty-label">{HOTEL_ACCESS_OFFER}</p>
+                <p className="h-club-until">{HOTEL_ACCESS_UNTIL}</p>
+              </div>
+            </div>
+            <div className="h-loyalty-pad">
+              <div className="h-loyalty-wrap">
+                <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
+                <div className="h-member h-loyalty">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+                  <img
+                    src={heroSrc}
+                    alt=""
+                    width={960}
+                    height={540}
+                    decoding="async"
+                    className="absolute inset-0 h-full w-full object-cover opacity-40"
+                  />
+                  <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
+                  <div className="relative flex h-full flex-col justify-between px-4 py-4">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+                    <div className="flex items-end justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="h-loyalty-value">
+                          <span className="sr-only">{HOTEL_CLUB_FAMILY}</span>
+                          {[greetingGivenName(firstName), lastName.trim()].filter(Boolean).join(" ") || "—"}
+                        </p>
+                        <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
+                      </div>
+                      <p className="shrink-0 text-right text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="sr-only">{HOTEL_CLUB_CARD}</p>
+              <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
+              <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
+              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+            </div>
+          </div>
+          <div className="h-club-bar">
+            <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
+              {HOTEL_CLUB_OPEN}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1215,6 +1397,48 @@ function SuggestGroup({
           </span>
         </button>
       ))}
+    </div>
+  );
+}
+
+function StayMonth({
+  year,
+  month,
+  today,
+  checkIn,
+  checkOut,
+  onPick,
+}: {
+  year: number;
+  month: number;
+  today: string;
+  checkIn: string;
+  checkOut: string;
+  onPick: (iso: string) => void;
+}) {
+  return (
+    <div className="mt-5">
+      <p className="px-2 pb-2 text-center text-base font-semibold h-ink">{monthTitle(year, month)}</p>
+      <div className="grid grid-cols-7">
+        {monthCells(year, month).map((iso, index) => {
+          if (!iso) return <span key={`empty-${year}-${month}-${index}`} />;
+          const endpoint = iso === checkIn || iso === checkOut;
+          const inside = Boolean(checkIn && checkOut && iso > checkIn && iso < checkOut);
+          const past = iso < today;
+          return (
+            <button
+              key={iso}
+              type="button"
+              data-date={iso}
+              disabled={past}
+              onClick={() => onPick(iso)}
+              className={`h-day ${inside ? "h-range" : ""} ${past ? "h-faint" : "h-ink"}`}
+            >
+              <span className={endpoint ? "h-day-on" : undefined}>{Number(iso.slice(-2))}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

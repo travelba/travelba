@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { hotelWaitLine } from "@/lib/crm/hotel-wait";
+import { AgencyLogo } from "@/components/AgencyLogo";
+import { HOTEL_WAIT_LINES, hotelWaitLine } from "@/lib/crm/hotel-wait";
 
 /** Attente hôtel : l’animation et les phrases restent dans la page, aucun appel. */
 export function HotelWait({
@@ -43,26 +44,42 @@ export function HotelWait({
     };
   }, []);
 
+  const line = hotelWaitLine(index);
+  const reel = [...HOTEL_WAIT_LINES, ...HOTEL_WAIT_LINES];
+
+  if (quiet) {
+    return (
+      <div className="px-1 py-6 text-center" data-hotel-wait="1" role="status" aria-live="polite">
+        <span className="h-wait-ring" aria-hidden="true">
+          <span />
+        </span>
+        <p
+          className="h-wait-copy h-serif mt-5 max-w-[18rem] text-[1.15rem] font-semibold leading-snug h-ink"
+          style={{ opacity: visible ? 1 : 0 }}
+          data-hotel-wait-line={line}
+        >
+          {line}
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={quiet ? "px-1 py-6 text-center" : "flex min-h-[52vh] flex-col items-center justify-center px-8 py-10 text-center"}
-      data-hotel-wait="1"
-      role="status"
-      aria-live="polite"
-    >
-      <span className="h-wait-ring" aria-hidden="true">
-        <span />
-      </span>
-      {place ? <p className="h-serif mt-6 text-[1.35rem] font-semibold leading-tight h-ink">{place}</p> : null}
-      {detail ? <p className={`text-sm h-muted ${place ? "mt-1" : "mt-6"}`}>{detail}</p> : null}
-      <p
-        className="h-wait-copy h-serif mt-5 max-w-[18rem] text-[1.15rem] font-semibold leading-snug h-ink"
-        style={{ opacity: visible ? 1 : 0 }}
-        data-hotel-wait-line={hotelWaitLine(index)}
-      >
-        {hotelWaitLine(index)}
+    <div className="h-wait-screen" data-hotel-wait="1" role="status" aria-live="polite">
+      <AgencyLogo className="h-32 w-32" alt="" />
+      {place ? <p className="h-serif mt-6 text-[1.35rem] font-semibold leading-tight text-[#f7f4ee]">{place}</p> : null}
+      {detail ? <p className={`text-sm text-white/70 ${place ? "mt-1" : "mt-6"}`}>{detail}</p> : null}
+      <div className="h-wait-reel" aria-hidden="true">
+        <div className="h-wait-track">
+          {reel.map((phrase, slot) => (
+            <p key={`${phrase}-${slot}`} className="h-wait-slot">{phrase}</p>
+          ))}
+        </div>
+      </div>
+      <p className="h-wait-still" style={{ opacity: visible ? 1 : 0 }} data-hotel-wait-line={line}>
+        {line}
       </p>
-      {hold ? <p className="mt-4 text-sm leading-relaxed h-muted">Ne fermez pas cette page.</p> : null}
+      {hold ? <p className="mt-6 text-sm leading-relaxed text-white/70">Ne fermez pas cette page.</p> : null}
     </div>
   );
 }

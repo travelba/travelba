@@ -23,13 +23,62 @@ export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
   (key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label || ""
 ).filter((label) => label.length > 0);
 
-/** Première page : le client voit l’accès avant de chercher. */
-export const HOTEL_ACCESS_EYEBROW = "Votre accès";
+/** Première page : la carte membre, avant de chercher. */
+export const HOTEL_ACCESS_EYEBROW = "Club Travel BA";
+
+export const HOTEL_CLUB_TITLE = "Ma carte";
+
+export const HOTEL_CLUB_LEVEL = "Mon niveau";
+
+export const HOTEL_CLUB_CARD = "Carte de fidélité";
+
+export const HOTEL_CLUB_GIVEN = "Prénom";
+
+export const HOTEL_CLUB_FAMILY = "Nom";
+
+export const HOTEL_CLUB_NUMBER = "N° d’adhérent";
+
+export const HOTEL_CLUB_OPEN = "Ouvrir les hôtels";
+
+/** Huit chiffres stables, tirés de la fiche. Le même client garde le même numéro. */
+export function hotelMemberNumber(customerId: string) {
+  let hash = 2166136261;
+  for (const char of customerId) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  const body = String(hash >>> 0).padStart(8, "0").slice(-8);
+  return `${body.slice(0, 4)} ${body.slice(4)}`;
+}
+
+export const HOTEL_CLUB_EVENT = "travelba-hotel-club";
+
+export function openHotelClub() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(HOTEL_CLUB_EVENT));
+}
+
+export const HOTEL_ACCESS_LEVEL_LABEL = "Niveau";
+
+export const HOTEL_ACCESS_LEVEL = "Platinum";
+
+export const HOTEL_ACCESS_OFFER = "Offert*";
+
+export const HOTEL_ACCESS_UNTIL = "Jusqu’au 31 déc. 2026";
 
 export const HOTEL_ACCESS_PROMISE =
   "Un catalogue d’hôtels aux tarifs qui vous sont réservés, avec des avantages que l’on ne trouve pas en réservation directe.";
 
-export const HOTEL_ACCESS_RESERVE = "Selon l’hôtel et les disponibilités. Le détail est celui de chaque hôtel.";
+/** Ordre du bandeau. L’astérisque renvoie à HOTEL_ACCESS_RESERVE. Le petit-déjeuner n’en a pas. */
+export const HOTEL_ACCESS_LINES = [
+  "Petit-déjeuner offert",
+  "Arrivée anticipée et départ tardif*",
+  "Surclassement prioritaire*",
+  "Jusqu’à 200 $ de crédit de dépense dans l’hôtel*",
+  "Transfert aéroport*",
+] as const;
+
+export const HOTEL_ACCESS_RESERVE = "* Soumis à disponibilité et selon l’hôtel.";
 
 export type FeaturedHotel = {
   name: string;
