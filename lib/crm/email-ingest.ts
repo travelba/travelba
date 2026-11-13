@@ -25,11 +25,12 @@ import {
 } from "@/lib/crm/gmail-parse";
 import {
   extractBookingFromPrepared,
+  preparedFileText,
   type PreparedIngestFile,
 } from "@/lib/crm/ingest-file";
 import { clipEmailBody } from "@/lib/crm/email-source";
 import { classifyInboundMail, dropInboundImage } from "@/lib/crm/email-prefilter";
-import { screenInboundExtract } from "@/lib/crm/ingest-samples";
+import { preparedLooksLikeImage, preparedLooksLikePdf, screenInboundExtract } from "@/lib/crm/ingest-samples";
 import { isNestedMailFile, unfoldMail } from "@/lib/crm/nested-mail";
 import { isAgencySender, shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
 import { loadSentMailIndex, rememberSentMail } from "@/lib/crm/sent-mail";
@@ -549,6 +550,24 @@ async function storeAttachment(
   return { name, path, mime_type: mime };
 }
 
+/** Texte du mail et des PDF. Les images n’y entrent pas. */
+async function inboundCorpus(files: PreparedIngestFile[]) {
+  const parts: string[] = [];
+  let images = 0;
+  let pdfs = 0;
+  for (const file of files) {
+    if (preparedLooksLikeImage(file)) {
+      images += 1;
+      continue;
+    }
+    if (preparedLooksLikePdf(file)) pdfs += 1;
+    const text = await preparedFileText(file);
+    if (text.trim()) parts.push(text);
+  }
+  const text = parts.join("\n");
+  return { sourceText: text, corroborationText: text, imageOnly: images > 0 && pdfs === 0 };
+}
+
 /** Traite une ligne `received` : télécharge le mail, extrait, rapproche. Ne crée pas de dossier et ne touche pas aux cartes. */
 export async function processEmailIngestRow(row: CrmEmailIngest) {
   const admin = createServiceClient();
@@ -719,7 +738,13 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
 
   const { extract: read, warnings } = await extractBookingFromPrepared(prepared);
   warnings.push(...mailNotes);
-  const screened = screenInboundExtract(read, { receivedAt: message.receivedAt || row.received_at });
+  const corpus = await inboundCorpus(prepared);
+  const screened = screenInboundExtract(read, {
+    receivedAt: message.receivedAt || row.received_at,
+    sourceText: corpus.sourceText,
+    corroborationText: corpus.corroborationText,
+    imageOnly: corpus.imageOnly,
+  });
   warnings.push(...screened.warnings);
   const extract = screened.extract;
   if (

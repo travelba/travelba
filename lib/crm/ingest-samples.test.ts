@@ -119,6 +119,76 @@ test("un vol ou un hôtel daté bien avant le mail n’est pas créé", () => {
   assert.equal(cardDateIsStale("2026-12-01", null), false);
 });
 
+test("une image seule, sans confirmation écrite, ne crée ni carte ni voyageur", () => {
+  const extract: BookingExtract = {
+    ...emptyBookingExtract(),
+    document_status: "confirmed",
+    customer_first_name: "John",
+    customer_last_name: "Doe",
+    travelers: [{ first_name: "John", last_name: "Doe" }],
+    items: [
+      flight({
+        confirmation_ref: "ABC123",
+        details: { flight_number: "AF123", source_file_name: "image001.png" },
+      }),
+    ],
+  };
+  const screened = screenInboundExtract(extract, {
+    receivedAt: RECEIVED,
+    imageOnly: true,
+    sourceText: "Logo de la signature",
+    corroborationText: "Logo de la signature",
+  });
+  assert.equal(screened.extract.items.length, 0);
+  assert.equal(screened.extract.travelers.length, 0);
+  assert.match(screened.warnings.map((warning) => warning.message).join(" "), /Image seule/);
+});
+
+test("chaque PNR et chaque voyageur doit être écrit dans le texte, sinon il est écarté", () => {
+  const source = "Passager BERDA/DAVID\nRéférence du dossier YQYS8U\nPark Hyatt 97620170";
+  const extract: BookingExtract = {
+    ...emptyBookingExtract(),
+    document_status: "confirmed",
+    start_date: "2026-12-17",
+    travelers: [
+      { first_name: "David", last_name: "Berda" },
+      { first_name: "Jane", last_name: "Doe" },
+    ],
+    items: [
+      flight({ confirmation_ref: "YQYS8U", details: { flight_number: "AF 258", pnr: "YQYS8U" } }),
+      flight({
+        title: "Rome → Paris",
+        confirmation_ref: "ZZZ999",
+        details: { flight_number: "AZ 100", pnr: "ZZZ999", source_file_name: "capture.png" },
+      }),
+      hotel({
+        title: "Hôtel inventé",
+        confirmation_ref: null,
+        details: { hotel_name: "Hôtel inventé", source_file_name: "logo.png" },
+      }),
+    ],
+  };
+  const screened = screenInboundExtract(extract, {
+    receivedAt: RECEIVED,
+    sourceText: source,
+    corroborationText: source,
+    imageOnly: false,
+  });
+  assert.equal(screened.extract.items.length, 1);
+  assert.equal(screened.extract.items[0]?.confirmation_ref, "YQYS8U");
+  const kept = screened.extract.items[0]?.details as { needs_review?: boolean; client_hidden?: boolean } | undefined;
+  assert.equal(kept?.needs_review, true);
+  assert.equal(kept?.client_hidden, true);
+  assert.deepEqual(
+    screened.extract.travelers.map((person) => person.last_name),
+    ["Berda"]
+  );
+  const notes = screened.warnings.map((warning) => warning.message).join(" ");
+  assert.match(notes, /ZZZ999/);
+  assert.match(notes, /Jane Doe/);
+  assert.match(notes, /Image seule/);
+});
+
 test("une carte réelle récente reste, même si le mail a aussi un exemple", () => {
   const extract: BookingExtract = {
     ...emptyBookingExtract(),

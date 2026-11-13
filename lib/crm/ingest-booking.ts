@@ -76,6 +76,7 @@ import {
   attachTravelerToHousehold,
   householdMembers,
 } from "@/lib/crm/household";
+import { MAIL_REVIEW_REASON } from "@/lib/crm/ingest-samples";
 import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-match";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { foldLetters } from "@/lib/crm/text";
@@ -436,6 +437,18 @@ async function upsertItemsAndTravelers(
       end_at: emptyToNull(item.end_at),
       details,
     }) : null;
+    const fromMail = Boolean(emailIngestId) && !match;
+    const mailDetails = fromMail
+      ? {
+          ...details,
+          needs_review: true,
+          review_reason:
+            typeof details.review_reason === "string" && details.review_reason.trim()
+              ? details.review_reason
+              : MAIL_REVIEW_REASON,
+          client_hidden: true,
+        }
+      : details;
     const payload = {
       kind,
       title: kept?.title || title,
@@ -444,8 +457,8 @@ async function upsertItemsAndTravelers(
       start_at: kept ? kept.start_at : emptyToNull(item.start_at),
       end_at: kept ? kept.end_at : emptyToNull(item.end_at),
       amount,
-      details: kept?.details || details,
-      visible_to_client: cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
+      details: kept?.details || mailDetails,
+      visible_to_client: fromMail ? false : cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
       source_document_id: sourceDocId(details, docs),
       ...(replacing
         ? { include_in_ledger: replacing.includeInLedger }
@@ -470,8 +483,8 @@ async function upsertItemsAndTravelers(
         }
       } else {
         const insertedDetails = emailIngestId
-          ? { ...details, email_ingest_id: emailIngestId }
-          : details;
+          ? { ...mailDetails, email_ingest_id: emailIngestId }
+          : mailDetails;
         const { data: inserted, error } = await supabase
           .from("crm_booking_items")
           .insert({
@@ -589,6 +602,7 @@ export async function persistNewBookingFromExtract(opts: {
   /** Mail source : tamponné sur les cartes créées, pour pouvoir les remettre dans la file. */
   emailIngestId?: string;
 }) {
+  const visibleToClient = opts.emailIngestId ? false : opts.visibleToClient;
   const admin = createServiceClient();
   const [{ data: customer }, { data: companions }] = await Promise.all([
     admin.from("crm_customers").select("*").eq("id", opts.customerId).maybeSingle(),
@@ -628,7 +642,8 @@ export async function persistNewBookingFromExtract(opts: {
   const extracted = bookingStatusFromExtract(extract, opts.status);
   // Une confirmation PDF, un devis ou Little Emperors ne publient pas le dossier.
   // Visible reste le geste Montrer au client, ou publier_carnet.
-  const status = opts.visibleToClient
+  // Un mail ne rend jamais le séjour Visible.
+  const status = visibleToClient
     ? extracted === "cancelled"
       ? "cancelled"
       : "confirmed"
@@ -714,6 +729,8 @@ export async function applyExtractToBooking(opts: {
   applyStayFields?: boolean;
   /** Mail source : tamponné sur les cartes créées, pour pouvoir les remettre dans la file. */
   emailIngestId?: string;
+  /** Import automatique : refuse d’écrire sur un séjour déjà Visible. */
+  automatic?: boolean;
   /** Déjà calculées par le remplacement : enregistrement, visa, pré-enregistrement. */
   importTasks?: ImportTask[];
   /** Le montant du mail ne remplace pas le prix vendu. */
@@ -730,6 +747,9 @@ export async function applyExtractToBooking(opts: {
     .maybeSingle();
   if (!booking || booking.customer_id !== opts.customerId) {
     throw new Error("Réservation introuvable");
+  }
+  if (opts.automatic && booking.visible_to_client) {
+    throw new Error("Le séjour est Visible. Les cartes du mail attendent une validation.");
   }
   const [{ data: customer }, { data: companions }, { data: travelers }, { data: items }] =
     await Promise.all([
@@ -830,6 +850,7 @@ export async function applyReplacementToBooking(opts: {
   visibleToClient: boolean;
   applyStayFields?: boolean;
   emailIngestId?: string;
+  automatic?: boolean;
   replaceItemId?: string | null;
 }) {
   const admin = createServiceClient();

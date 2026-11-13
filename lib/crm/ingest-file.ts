@@ -498,6 +498,22 @@ async function readPdfText(bytes: Uint8Array): Promise<{ text: string; pages: nu
   }
 }
 
+/** Texte du corps ou du PDF. Une image ne compte pas : elle n’est pas une confirmation écrite. */
+export async function preparedFileText(file: PreparedIngestFile) {
+  if (typeof file.text === "string") return file.text;
+  const name = file.name || "";
+  const mediaType = file.type || "";
+  const pdf = mediaType === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+  if (!pdf) return "";
+  try {
+    const bytes = await loadPreparedBytes(file);
+    const extracted = await readPdfText(bytes);
+    return extracted.text;
+  } catch {
+    return "";
+  }
+}
+
 async function loadPreparedBytes(file: PreparedIngestFile) {
   if (file.bytes) return file.bytes;
   if (file.path) {

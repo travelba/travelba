@@ -187,6 +187,7 @@ export async function organizeInboundMail(id: string) {
           files,
           visibleToClient: false,
           emailIngestId: row.id,
+          automatic: true,
         });
       },
       merge: (keepId, dropId) => mergeDossierInto(admin, keepId, dropId),
@@ -201,6 +202,22 @@ export async function organizeInboundMail(id: string) {
             error: null,
           })
           .eq("id", row.id);
+      },
+      propose: async (bookingId) => {
+        const { data: existing } = await admin
+          .from("crm_import_proposals")
+          .select("id")
+          .eq("email_ingest_id", row.id)
+          .limit(1);
+        if ((existing || []).length) return;
+        const { error } = await admin.from("crm_import_proposals").insert({
+          email_ingest_id: row.id,
+          booking_id: bookingId,
+          confidence: null,
+          conflict: true,
+          ops: [{ op: "attach_mail" }],
+        });
+        if (error) console.error("[import] proposition non enregistrée");
       },
       hold: async (message) => {
         if (warnings.some((warning) => warning.message === message)) return;

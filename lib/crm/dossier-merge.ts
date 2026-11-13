@@ -21,6 +21,11 @@ type TravelerRow = {
   last_name?: string | null;
 };
 
+export const VISIBLE_MERGE_HOLD =
+  "Le séjour est déjà Visible. La réunion attend une validation.";
+export const UNVERIFIED_MERGE_HOLD =
+  "Des cartes ou des voyageurs à vérifier ne sont pas déplacés. La réunion attend une validation.";
+
 export type DossierMergeTrace = {
   keepReference: string | null;
   dropReference: string | null;
@@ -28,13 +33,33 @@ export type DossierMergeTrace = {
   skippedCards: string[];
   movedTravelers: string[];
   skippedTravelers: string[];
+  leftCards?: string[];
+  leftTravelers?: string[];
   documentCount: number;
+  /** Le dossier Visible n’est pas modifié. La réunion est seulement proposée. */
+  held?: boolean;
 };
+
+/** Une carte lue dans un mail, pas encore relue par l’agence. */
+export function cardNeedsReview(item: { details?: Record<string, unknown> | null }) {
+  const details = item.details || {};
+  if (details.needs_review === true) return true;
+  return typeof details.email_ingest_id === "string" && details.email_ingest_id.length > 0;
+}
 
 /** Résumé du journal : le dossier retiré, et ce qui a été déplacé. */
 export function dossierMergeSummary(trace: DossierMergeTrace) {
   const keep = trace.keepReference || "le dossier conservé";
   const drop = trace.dropReference || "le doublon";
+  const leftCards = trace.leftCards || [];
+  const leftTravelers = trace.leftTravelers || [];
+  if (trace.held) {
+    const parts = [`Réunion proposée : ${drop} n’est pas fusionné dans ${keep}.`];
+    if (trace.movedCards.length) parts.push(`Cartes vérifiées déplacées : ${trace.movedCards.join(", ")}.`);
+    if (leftCards.length) parts.push(`Cartes laissées à vérifier : ${leftCards.join(", ")}.`);
+    if (leftTravelers.length) parts.push(`Voyageurs laissés à vérifier : ${leftTravelers.join(", ")}.`);
+    return parts.join(" ");
+  }
   const parts = [`Dossier ${drop} réuni dans ${keep}, puis retiré.`];
   if (trace.movedCards.length) parts.push(`Cartes déplacées : ${trace.movedCards.join(", ")}.`);
   if (trace.skippedCards.length) parts.push(`Cartes déjà présentes : ${trace.skippedCards.join(", ")}.`);
@@ -61,10 +86,24 @@ function mergeDetail(keepId: string, dropId: string, trace: DossierMergeTrace) {
     reference_retiree: trace.dropReference,
     cartes_deplacees: trace.movedCards,
     cartes_deja_presentes: trace.skippedCards,
+    cartes_laissez_a_verifier: trace.leftCards || [],
     voyageurs_deplaces: trace.movedTravelers,
     voyageurs_deja_presents: trace.skippedTravelers,
+    voyageurs_laisses_a_verifier: trace.leftTravelers || [],
     pieces: trace.documentCount,
+    proposee: Boolean(trace.held),
   };
+}
+
+async function proposalAlreadyNoted(admin: SupabaseClient, keepId: string, dropId: string) {
+  const { data } = await admin
+    .from("crm_audit_events")
+    .select("id, detail")
+    .eq("booking_id", keepId)
+    .eq("action", "reunion_proposee");
+  return ((data || []) as { detail?: { dossier_retire?: string } }[]).some(
+    (row) => row.detail?.dossier_retire === dropId
+  );
 }
 
 async function writeMergeJournal(
@@ -74,6 +113,7 @@ async function writeMergeJournal(
   customerId: string | null,
   trace: DossierMergeTrace
 ) {
+  if (trace.held && (await proposalAlreadyNoted(admin, keepId, dropId))) return;
   const summary = dossierMergeSummary(trace).slice(0, 500);
   const detail = mergeDetail(keepId, dropId, trace);
   const diff = detail;
@@ -81,7 +121,7 @@ async function writeMergeJournal(
     const audit = await admin.from("crm_audit_events").insert(
       toAuditRow({
         actorKind: "auto",
-        action: "dossiers_reunis",
+        action: trace.held ? "reunion_proposee" : "dossiers_reunis",
         bookingId: keepId,
         customerId,
         summary,
@@ -144,8 +184,8 @@ export async function mergeDossierInto(admin: SupabaseClient, keepId: string, dr
     { data: dropTravelers },
     { data: documents },
   ] = await Promise.all([
-    admin.from("crm_bookings").select("id, reference, customer_id").eq("id", keepId).maybeSingle(),
-    admin.from("crm_bookings").select("id, reference, customer_id").eq("id", dropId).maybeSingle(),
+    admin.from("crm_bookings").select("id, reference, customer_id, visible_to_client").eq("id", keepId).maybeSingle(),
+    admin.from("crm_bookings").select("id, reference, customer_id, visible_to_client").eq("id", dropId).maybeSingle(),
     admin
       .from("crm_booking_items")
       .select("id, kind, title, confirmation_ref, start_at, end_at, details")
@@ -166,7 +206,18 @@ export async function mergeDossierInto(admin: SupabaseClient, keepId: string, dr
     movedTravelers: [],
     skippedTravelers: [],
     documentCount: (documents || []).length,
+    leftCards: [],
+    leftTravelers: [],
   };
+  const customerId = (keepBooking?.customer_id as string | null) || null;
+  if (keepBooking?.visible_to_client) {
+    trace.held = true;
+    trace.documentCount = 0;
+    trace.leftCards = ((dropItems || []) as ItemRow[]).map(cardLabel);
+    trace.leftTravelers = ((dropTravelers || []) as TravelerRow[]).map(travelerLabel).filter(Boolean);
+    await writeMergeJournal(admin, keepId, dropId, customerId, trace);
+    return { ok: false as const, proposal: true as const, message: VISIBLE_MERGE_HOLD };
+  }
   const matchable = (item: ItemRow) => ({ ...item, kind: item.kind || "fee" });
   const keptKeys = new Set(
     ((keepItems || []) as ItemRow[])
@@ -174,6 +225,10 @@ export async function mergeDossierInto(admin: SupabaseClient, keepId: string, dr
       .filter((key): key is string => Boolean(key))
   );
   for (const item of (dropItems || []) as ItemRow[]) {
+    if (cardNeedsReview(item)) {
+      trace.leftCards?.push(cardLabel(item));
+      continue;
+    }
     const key = itemMatchKey(matchable(item));
     if (key && keptKeys.has(key)) {
       await admin.from("crm_booking_items").delete().eq("id", item.id);
@@ -186,7 +241,13 @@ export async function mergeDossierInto(admin: SupabaseClient, keepId: string, dr
     if (key) keptKeys.add(key);
   }
   const travelers = (keepTravelers || []) as TravelerRow[];
+  const leaveTravelers = (trace.leftCards || []).length > 0;
   for (const traveler of (dropTravelers || []) as TravelerRow[]) {
+    if (leaveTravelers) {
+      const label = travelerLabel(traveler);
+      if (label) trace.leftTravelers?.push(label);
+      continue;
+    }
     const same = travelers.some((row) =>
       namesReferToSamePerson(
         { first_name: row.first_name || "", last_name: row.last_name || "" },
@@ -205,6 +266,12 @@ export async function mergeDossierInto(admin: SupabaseClient, keepId: string, dr
     if (label) trace.movedTravelers.push(label);
     travelers.push(traveler);
   }
+  if ((trace.leftCards || []).length || (trace.leftTravelers || []).length) {
+    trace.held = true;
+    trace.documentCount = 0;
+    await writeMergeJournal(admin, keepId, dropId, customerId, trace);
+    return { ok: false as const, proposal: true as const, message: UNVERIFIED_MERGE_HOLD };
+  }
   await admin.from("crm_booking_documents").update({ booking_id: keepId }).eq("booking_id", dropId);
   await admin.from("crm_le_bookings").update({ crm_booking_id: keepId, status: "linked" }).eq("crm_booking_id", dropId);
   await admin
@@ -213,7 +280,7 @@ export async function mergeDossierInto(admin: SupabaseClient, keepId: string, dr
     .eq("suggested_booking_id", dropId);
   const { error } = await admin.from("crm_bookings").delete().eq("id", dropId);
   if (error) return { ok: false as const, message: "Le dossier en double n’a pas pu être retiré." };
-  await writeMergeJournal(admin, keepId, dropId, (keepBooking?.customer_id as string | null) || null, trace);
+  await writeMergeJournal(admin, keepId, dropId, customerId, trace);
   try {
     await syncBookingTitleFromSteps(admin, keepId);
   } catch {

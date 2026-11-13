@@ -138,6 +138,50 @@ test("le billet rejoint le dossier hôtel et réunit Con Dao, sans second dossie
   assert.equal(calls.attached, "dossier-hcm");
 });
 
+test("un séjour déjà Visible ne reçoit pas les cartes du mail", async () => {
+  const shown = { ...hotel, id: "dossier-visible", visible: true, reference: "TB-2026-0100" };
+  const plan = planInboxOrganization({
+    extract: ticketExtract(),
+    fromEmail: "reservations@travelbt.fr",
+    dossiers: [shown],
+    customerId: "client-berda",
+  });
+  assert.equal(plan.action, "propose");
+  if (plan.action !== "propose") return;
+  assert.equal(plan.bookingId, "dossier-visible");
+  assert.match(plan.message, /Visible/);
+  const calls = { apply: 0, merge: 0, hold: "", proposed: "" };
+  const result = await executeInboxPlan(plan, ticketExtract(), {
+    ensureCompanions: async () => undefined,
+    findCustomerByName: async () => null,
+    createCustomer: async () => {
+      throw new Error("fiche");
+    },
+    persist: async () => {
+      throw new Error("création");
+    },
+    apply: async () => {
+      calls.apply += 1;
+    },
+    merge: async () => {
+      calls.merge += 1;
+      return { ok: true, message: null };
+    },
+    markAttached: async () => undefined,
+    propose: async (bookingId) => {
+      calls.proposed = bookingId;
+    },
+    hold: async (message) => {
+      calls.hold = message;
+    },
+  });
+  assert.equal(result.attached, false);
+  assert.equal(calls.apply, 0);
+  assert.equal(calls.merge, 0);
+  assert.equal(calls.proposed, "dossier-visible");
+  assert.match(calls.hold, /validation/);
+});
+
 test("sans dossier, la fiche et un séjour caché sont préparés, sans prix inventé", () => {
   const extract = ticketExtract();
   const plan = planInboxOrganization({
