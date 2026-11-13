@@ -783,7 +783,10 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /Destination ou hôtel/);
   assert.match(ui, /data-hotel-recent/);
   assert.match(ui, /Dernières recherches/);
-  assert.match(ui, /Aucune recherche pour le moment/);
+  assert.match(ui, /const RECENT_LIMIT = 2/);
+  assert.match(ui, /recent\.length \?/);
+  assert.match(ui, /compactStayDates\(shifted\.checkIn, shifted\.checkOut\)/);
+  assert.doesNotMatch(ui, /Aucune recherche pour le moment/);
   assert.match(ui, /Tout effacer/);
   assert.match(ui, /Arrivée anticipée et départ tardif/);
   assert.match(ui, /Voir \$\{hotelCount\}/);

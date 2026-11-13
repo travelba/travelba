@@ -63,6 +63,7 @@ const PERK_LABEL = SEARCH_PERK_LABEL;
 
 const WEEKDAYS = ["Lu", "Ma", "Me", "Je", "Ve", "Sa", "Di"];
 const RECENT_KEY = "hotel-recent-list";
+const RECENT_LIMIT = 2;
 const PERK_GROUPS: { title: string; keys: (keyof HotelPerks)[] }[] = [
   { title: "Avantages", keys: ["breakfast", "freeCancellation", "upgrade", "credit"] },
   { title: "Arrivée anticipée et départ tardif", keys: ["earlyCheckIn", "lateCheckOut"] },
@@ -195,7 +196,7 @@ function parseRecent(raw: string): RecentStay[] {
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(row);
-      if (out.length === 5) break;
+      if (out.length === RECENT_LIMIT) break;
     }
     return out;
   } catch {
@@ -236,7 +237,7 @@ function subscribeRecent(onChange: () => void) {
 }
 
 function writeRecent(entry: RecentStay) {
-  const next = [entry, ...parseRecent(readRecentSnapshot()).filter((row) => recentKey(row) !== recentKey(entry))].slice(0, 5);
+  const next = [entry, ...parseRecent(readRecentSnapshot()).filter((row) => recentKey(row) !== recentKey(entry))].slice(0, RECENT_LIMIT);
   const raw = JSON.stringify(next);
   localStorage.setItem(recentOwner, raw);
   sessionStorage.setItem(recentOwner, raw);
@@ -862,32 +863,30 @@ export function HotelSearch({
               <p className="text-[11px] leading-snug text-white/70">{HOTEL_ACCESS_RESERVE}</p>
             </div>
           </div>
-          <div data-hotel-recent="1">
-            <p className="h-section px-1">Dernières recherches</p>
-                  {recent.length ? (
-                    recent.map((item) => {
-                      const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
-                      return (
-                        <button
-                          key={recentKey(item)}
-                          type="button"
-                          onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
-                          className="flex min-h-11 w-full items-center gap-3 px-1 py-2 text-left"
-                        >
-                          <Icon name="history_edu" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
-                          <span className="min-w-0">
-                            <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{frenchCity(item.destination)}</span>
-                            <span className="block truncate text-xs h-muted">
-                              {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="mt-2 px-1 text-sm h-muted">Aucune recherche pour le moment.</p>
-                  )}
-                </div>
+          {recent.length ? (
+            <div data-hotel-recent="1">
+              <p className="h-section px-1">Dernières recherches</p>
+              {recent.map((item) => {
+                const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
+                return (
+                  <button
+                    key={recentKey(item)}
+                    type="button"
+                    onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
+                    className="flex min-h-11 w-full items-center gap-3 px-1 py-2 text-left"
+                  >
+                    <Icon name="history_edu" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[15px] font-semibold leading-tight h-ink">{frenchCity(item.destination)}</span>
+                      <span className="block truncate text-xs h-muted">
+                        {compactStayDates(shifted.checkIn, shifted.checkOut)} · {item.party}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
                 <div data-hotel-suggestions="1">
                   <ul className="flex gap-2 overflow-x-auto px-1 pb-1" aria-label="Destinations suggérées">
                     {HOTEL_SEARCH_CITY_CHIPS.map((cityName) => (
@@ -1015,32 +1014,28 @@ export function HotelSearch({
                 <SuggestGroup title="Hôtels" items={hotelNames} onPick={pickPlace} />
               </div>
             ) : null}
-            {panel === "where" && folded.length < 2 ? (
+            {panel === "where" && folded.length < 2 && recent.length ? (
               <div>
                 <p className="h-section px-1 pb-1">Dernières recherches</p>
-                {recent.length ? (
-                  recent.map((item) => {
-                    const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
-                    return (
-                      <button
-                        key={recentKey(item)}
-                        type="button"
-                        onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
-                        className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
-                      >
-                        <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold h-ink">{frenchCity(item.destination)}</span>
-                          <span className="block truncate text-xs h-muted">
-                            {formatDateRangeShort(shifted.checkIn, shifted.checkOut)} · {item.party}
-                          </span>
+                {recent.map((item) => {
+                  const shifted = shiftStayForward(today, item.checkIn, item.checkOut);
+                  return (
+                    <button
+                      key={recentKey(item)}
+                      type="button"
+                      onClick={() => void onSearch({ ...item, checkIn: shifted.checkIn, checkOut: shifted.checkOut })}
+                      className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
+                    >
+                      <Icon name="history_edu" className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold h-ink">{frenchCity(item.destination)}</span>
+                        <span className="block truncate text-xs h-muted">
+                          {compactStayDates(shifted.checkIn, shifted.checkOut)} · {item.party}
                         </span>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <p className="px-1 text-sm h-muted">Aucune recherche pour le moment.</p>
-                )}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
 
