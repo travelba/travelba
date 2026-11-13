@@ -202,7 +202,8 @@ export function PliantMatchActions({
           {linked.itemLabel ? <span className="block text-xs font-normal text-muted">{linked.itemLabel}</span> : null}
         </p>
       ) : null}
-      {phase === "a_proposer" && suggestion ? (
+      {outgoing?.coveredNote ? <p className="text-xs leading-5 text-[var(--admin-navy)]">{outgoing.coveredNote}</p> : null}
+      {phase === "a_proposer" && suggestion && !outgoing?.coveredNote ? (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9e7e51]">Proposition</p>
           <p className="text-sm font-semibold leading-snug text-[var(--admin-navy)]">
@@ -240,7 +241,7 @@ export function PliantMatchActions({
           </div>
         </div>
       ) : null}
-      {phase === "a_proposer" && !suggestion ? <p className="text-xs text-muted">Aucune proposition</p> : null}
+      {phase === "a_proposer" && !suggestion && !outgoing?.coveredNote ? <p className="text-xs text-muted">Aucune proposition</p> : null}
       <div className="flex flex-wrap gap-2">
         {phase === "a_proposer" ? (
           <button type="button" className={PRIMARY} disabled={busy} onClick={() => openPicker("attach")}>

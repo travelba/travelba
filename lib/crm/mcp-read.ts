@@ -1324,6 +1324,7 @@ export async function readPliantDebits(input: { page?: number; limite?: number }
         devise: currency,
         etat: PLIANT_DEBIT_STATE[row.match_status || "unmatched"] || "à pointer",
         suggestion: hit ? proposedMatch(hit) : null,
+        couverte: suggestions.get(row.id)?.coveredNote || null,
       };
     }),
   };

@@ -13,6 +13,13 @@ import { revolutDebitLine } from "./revolut-inbox";
 import { hintsFromExtract, markDuplicateOutgoing } from "./cost-match";
 import { pliantAuthorizationAt } from "./pliant-tx";
 import {
+  PLIANT_AUTH_COVER_DAYS,
+  coverPliantAuthorizations,
+  pliantStatusBlocksAttach,
+  splitCoveredAuthorizations,
+  type PliantCoverSpend,
+} from "./pliant-authorization";
+import {
   accountLines,
   isFixedCostParty,
   isOwnAccountTransfer,
@@ -893,6 +900,156 @@ async function cardBookings(admin: SupabaseClient, cardIds: string[]) {
   return map;
 }
 
+function shiftIsoDay(day: string, delta: number) {
+  const time = Date.parse(`${day.slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(time)) return day.slice(0, 10);
+  return new Date(time + delta * 86400000).toISOString().slice(0, 10);
+}
+
+function coverFaceFromRow(
+  row: {
+    id: string;
+    status: string | null;
+    type: string | null;
+    merchant: string | null;
+    billing_cents: number | null;
+    billing_currency: string | null;
+    booked_at: string | null;
+    card_id?: string | null;
+    raw?: unknown;
+  },
+  bookingIds: string[]
+): PliantCoverSpend {
+  const status = (row.status || "").toUpperCase();
+  return {
+    id: row.id,
+    status,
+    type: row.type,
+    merchant: row.merchant,
+    billingCents: row.billing_cents,
+    currency: row.billing_currency,
+    occurredOn:
+      status === "CONFIRMED"
+        ? pliantAuthorizationAt(row.raw, row.booked_at)
+        : row.booked_at
+          ? String(row.booked_at).slice(0, 10)
+          : null,
+    cardId: row.card_id || null,
+    bookingIds,
+  };
+}
+
+/**
+ * Débits BOOKED déjà en base (rattachés ou non) qui peuvent couvrir une autorisation.
+ * Lecture seule, aucune synchro Pliant.
+ */
+async function loadCoveringBooked(
+  admin: SupabaseClient,
+  confirmed: PliantRow[],
+  cards: Map<string, { bookingIds: string[] }>
+): Promise<PliantCoverSpend[]> {
+  const bookingIds = new Set<string>();
+  const cardIds = new Set<string>();
+  const cardBookings = new Map<string, string[]>();
+  const days: string[] = [];
+  const link = (cardId: string | null | undefined, bookingId: string | null | undefined) => {
+    if (!cardId || !bookingId) return;
+    const list = cardBookings.get(cardId) || [];
+    if (!list.includes(bookingId)) list.push(bookingId);
+    cardBookings.set(cardId, list);
+    cardIds.add(cardId);
+    bookingIds.add(bookingId);
+  };
+  for (const row of confirmed) {
+    if (row.card_id) cardIds.add(row.card_id);
+    for (const id of cards.get(row.card_id || "")?.bookingIds || []) link(row.card_id, id);
+    const day = pliantAuthorizationAt(row.raw, row.booked_at);
+    if (day) days.push(day);
+  }
+  if (!days.length || !cardIds.size) return [];
+  days.sort();
+  const from = shiftIsoDay(days[0], -PLIANT_AUTH_COVER_DAYS);
+  const to = shiftIsoDay(days[days.length - 1], PLIANT_AUTH_COVER_DAYS);
+  if (bookingIds.size) {
+    const links = await chunked([...bookingIds], async (slice) => {
+      const found: { pliant_card_id: string | null; booking_id: string | null }[] = [];
+      for (const table of ["crm_pliant_cards", "crm_booking_cards", "crm_hotel_arrivals"] as const) {
+        const { data, error } = await admin.from(table).select("pliant_card_id, booking_id").in("booking_id", slice);
+        if (error || !data) continue;
+        found.push(...(data as { pliant_card_id: string | null; booking_id: string | null }[]));
+      }
+      return found;
+    });
+    for (const row of links) link(row.pliant_card_id, row.booking_id);
+  }
+  const select = "id, card_id, status, type, merchant, billing_cents, billing_currency, booked_at";
+  const booked = await chunked([...cardIds], async (slice) => {
+    const { data, error } = await admin
+      .from("crm_pliant_transactions")
+      .select(select)
+      .in("card_id", slice)
+      .eq("status", "BOOKED")
+      .in("type", ["PURCHASE", "CASH_WITHDRAWAL", "REFUND", "CHARGEBACK"])
+      .gte("booked_at", from)
+      .lte("booked_at", `${to}T23:59:59`)
+      .limit(500);
+    if (error || !data) return [];
+    return data as {
+      id: string;
+      card_id: string | null;
+      status: string | null;
+      type: string | null;
+      merchant: string | null;
+      billing_cents: number | null;
+      billing_currency: string | null;
+      booked_at: string | null;
+    }[];
+  });
+  const faces = new Map<string, PliantCoverSpend>();
+  for (const row of booked) {
+    faces.set(row.id, coverFaceFromRow(row, cardBookings.get(row.card_id || "") || cards.get(row.card_id || "")?.bookingIds || []));
+  }
+  if (bookingIds.size) {
+    const data = await chunked([...bookingIds], async (slice) => {
+      const { data: costs, error } = await admin
+        .from("crm_trip_costs")
+        .select("source_id, booking_id")
+        .eq("source", "pliant")
+        .in("booking_id", slice);
+      if (error || !costs) return [];
+      return costs as { source_id: string | null; booking_id: string | null }[];
+    });
+    if (data.length) {
+      const attached = new Map<string, string[]>();
+      for (const row of data) {
+        if (!row.source_id || !row.booking_id || faces.has(row.source_id)) {
+          if (row.source_id && row.booking_id && faces.has(row.source_id)) {
+            const face = faces.get(row.source_id)!;
+            if (!face.bookingIds.includes(row.booking_id)) face.bookingIds.push(row.booking_id);
+          }
+          continue;
+        }
+        const list = attached.get(row.source_id) || [];
+        if (!list.includes(row.booking_id)) list.push(row.booking_id);
+        attached.set(row.source_id, list);
+      }
+      const missing = [...attached.keys()];
+      if (missing.length) {
+        const rows = await chunked(missing, async (slice) => {
+          const { data: found, error: readError } = await admin.from("crm_pliant_transactions").select(select).in("id", slice).eq("status", "BOOKED");
+          if (readError || !found) return [];
+          return found as typeof booked;
+        });
+        for (const row of rows) {
+          const ids = [...(cardBookings.get(row.card_id || "") || []), ...(attached.get(row.id) || [])];
+          faces.set(row.id, coverFaceFromRow(row, [...new Set(ids)]));
+        }
+      }
+    }
+  }
+  return [...faces.values()];
+}
+
 export function itemLabelFor(item: { kind: string | null; title: string | null; details?: Record<string, unknown> | null }) {
   const details = item.details || {};
   const hotel = typeof details.hotel_name === "string" ? details.hotel_name.trim() : "";
@@ -910,8 +1067,8 @@ export async function loadOutgoingQueue(
   const limit = filter.limit ?? 500;
   const targets = await loadCostTargets(admin, null);
   const lines: OutgoingLine[] = [];
-  const declinedIds = new Set<string>();
   const pendingIds = new Set<string>();
+  let authorizationCovers = new Map<string, { debitId: string; note: string }>();
 
   if (filter.source !== "revolut") {
     const pliantQuery = (statuses: string[], rowLimit: number) => {
@@ -927,16 +1084,30 @@ export async function loadOutgoingQueue(
       if (filter.to) query = query.lte("booked_at", `${filter.to}T23:59:59`);
       return query;
     };
-    // Les refus et les autorisations en attente ne remplacent pas la fenêtre des dépenses comptabilisées.
+    // L’autorisation en attente ne remplace pas la fenêtre des dépenses comptabilisées.
+    // DECLINED et REVERSED ne sont pas chargés : ils ne sont jamais une sortie à rattacher.
     const [{ data: postedData }, { data: openData }] = await Promise.all([
       pliantQuery(["BOOKED", "CONFIRMED"], limit),
-      pliantQuery(["PENDING", "DECLINED"], Math.min(limit, 200)),
+      pliantQuery(["PENDING"], Math.min(limit, 200)),
     ]);
     const rows = [...((postedData || []) as PliantRow[]), ...((openData || []) as PliantRow[])];
     const cards = await cardBookings(
       admin,
       rows.map((row) => row.card_id || "")
     );
+    const confirmed = rows.filter((row) => (row.status || "").toUpperCase() === "CONFIRMED");
+    let covering: PliantCoverSpend[] = [];
+    if (confirmed.length) {
+      try {
+        covering = await loadCoveringBooked(admin, confirmed, cards);
+      } catch {
+        covering = [];
+      }
+    }
+    authorizationCovers = coverPliantAuthorizations([
+      ...rows.map((row) => coverFaceFromRow(row, row.card_id ? cards.get(row.card_id)?.bookingIds || [] : [])),
+      ...covering,
+    ]);
     const refused = await refusedBookingIds(
       admin,
       "pliant",
@@ -944,7 +1115,8 @@ export async function loadOutgoingQueue(
     );
     for (const row of rows) {
       const status = (row.status || "").toUpperCase();
-      const settlement = pliantSpendSettlement(status === "DECLINED" ? { ...row, status: "BOOKED" } : row);
+      if (pliantStatusBlocksAttach(status)) continue;
+      const settlement = pliantSpendSettlement(row);
       const draft = settlement?.draft || null;
       if (!draft) continue;
       // Coût fixe de l’agence (logiciel, IA, téléphonie) : pas une sortie de voyage, rien à l’écran.
@@ -970,7 +1142,6 @@ export async function loadOutgoingQueue(
         ),
         refused.get(row.id) || []
       );
-      if (status === "DECLINED") declinedIds.add(row.id);
       if (status === "PENDING") pendingIds.add(row.id);
       lines.push({
         source: "pliant",
@@ -1067,14 +1238,16 @@ export async function loadOutgoingQueue(
     }
   }
 
-  const marked = markDuplicateOutgoing(lines).filter((line) => {
+  const { open, covered } = splitCoveredAuthorizations(lines, authorizationCovers);
+  const marked = markDuplicateOutgoing(open).filter((line) => {
     if (pendingIds.has(line.id)) return line.suggestions.length > 0;
-    if (declinedIds.has(line.id)) return line.suggestions.some((hit) => hit.reasons.includes("duplicate"));
     return true;
   });
+  // Dossier : l’autorisation couverte disparaît. File générale : elle reste, avec la mention.
+  const visible = filter.bookingId ? marked : [...marked, ...covered];
   const scoped = filter.bookingId
-    ? marked.filter((line) => line.suggestions.some((hit) => hit.bookingId === filter.bookingId))
-    : marked;
+    ? visible.filter((line) => line.suggestions.some((hit) => hit.bookingId === filter.bookingId))
+    : visible;
   return scoped.sort((left, right) => (right.occurredOn || "").localeCompare(left.occurredOn || ""));
 }
 
