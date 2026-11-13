@@ -8,6 +8,7 @@ const TONE_ICON: Record<BenefitTone, string> = {
   schedule: "sunrise",
   night: "moon",
   gift: "verified",
+  transfer: "airport_shuttle",
 };
 
 /** Avantages ou inclus, en bloc. Le titre reste « Inclus » hors Little Emperors. `row` aligne les mêmes lignes. */
@@ -24,13 +25,20 @@ export function HotelBenefits({
   if (!benefits.length) return null;
   if (layout === "grid") {
     return (
-      <ul className="grid grid-cols-2 gap-x-3 gap-y-2" data-hotel-benefit-grid="1">
-        {benefits.map((benefit) => (
-          <li key={`${benefit.title}-${benefit.note}`} className="flex min-h-11 items-center gap-2">
-            <Icon name={TONE_ICON[benefit.tone]} className="h-4 w-4 shrink-0 text-[#C5A880]" />
-            <span className="text-[13px] font-semibold leading-tight text-[#f7f4ee]">{benefit.title}</span>
-          </li>
-        ))}
+      <ul className="grid grid-cols-1 gap-y-1.5" data-hotel-benefit-grid="1">
+        {benefits.map((benefit) => {
+          const marked = benefit.title.endsWith("*");
+          const label = marked ? benefit.title.slice(0, -1).trim() : benefit.title;
+          return (
+            <li key={`${benefit.title}-${benefit.note}`} className="flex min-h-8 items-center gap-2">
+              <Icon name={TONE_ICON[benefit.tone]} className="h-4 w-4 shrink-0 text-[#C5A880]" />
+              <span className="text-[13px] font-semibold leading-tight text-[#f7f4ee]">
+                {label}
+                {marked ? <span className="text-[#C5A880]">*</span> : null}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     );
   }

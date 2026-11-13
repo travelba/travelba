@@ -751,8 +751,13 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   const homeCopy = readFileSync(join(root, "lib/crm/hotel-search-home.ts"), "utf8");
   assert.match(homeCopy, /Votre accès/);
   assert.match(homeCopy, /Un catalogue d’hôtels aux tarifs qui vous sont réservés/);
-  assert.match(homeCopy, /Selon l’hôtel et les disponibilités/);
-  assert.match(ui, /<HotelBenefits lines=\{\[\.\.\.TRAVEL_BA_SEARCH_ADVANTAGES\]\}/);
+  assert.match(homeCopy, /Petit-déjeuner offert/);
+  assert.match(homeCopy, /Arrivée anticipée et départ tardif\*/);
+  assert.match(homeCopy, /Surclassement prioritaire\*/);
+  assert.match(homeCopy, /Jusqu’à 200 \$ de crédit de dépense dans l’hôtel\*/);
+  assert.match(homeCopy, /Transfert aéroport\*/);
+  assert.match(homeCopy, /\* Soumis à disponibilité et selon l’hôtel\./);
+  assert.match(ui, /<HotelBenefits lines=\{\[\.\.\.HOTEL_ACCESS_LINES\]\}/);
   assert.match(ui, /data-hotel-search-dock/);
   assert.match(ui, /hotelRecentStorageKey/);
   assert.match(ui, /data-hotel-ask/);

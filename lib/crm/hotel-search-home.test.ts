@@ -3,6 +3,8 @@ import test from "node:test";
 import { SEARCH_PERK_LABEL, stayBenefits } from "./hotel-journey";
 import type { HotelPerks } from "./hotel-search";
 import {
+  HOTEL_ACCESS_LINES,
+  HOTEL_ACCESS_RESERVE,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
   TRAVEL_BA_SEARCH_ADVANTAGES,
@@ -42,6 +44,15 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
     "Arrivée anticipée",
     "Départ tardif",
   ]);
+  assert.deepEqual([...HOTEL_ACCESS_LINES], [
+    "Petit-déjeuner offert",
+    "Arrivée anticipée et départ tardif*",
+    "Surclassement prioritaire*",
+    "Jusqu’à 200 $ de crédit de dépense dans l’hôtel*",
+    "Transfert aéroport*",
+  ]);
+  assert.equal(HOTEL_ACCESS_RESERVE, "* Soumis à disponibilité et selon l’hôtel.");
+  assert.equal(HOTEL_ACCESS_LINES[0].endsWith("*"), false);
   const perks: HotelPerks = {
     breakfast: true,
     freeCancellation: true,

@@ -296,7 +296,7 @@ export function presentationFromLeHotel(payload: unknown, roomNames: string[]): 
   };
 }
 
-export type BenefitTone = "upgrade" | "breakfast" | "credit" | "schedule" | "night" | "gift";
+export type BenefitTone = "upgrade" | "breakfast" | "credit" | "schedule" | "night" | "gift" | "transfer";
 
 export type BenefitLine = { title: string; note: string; tone: BenefitTone };
 
@@ -324,6 +324,7 @@ export function benefitLine(raw: string): BenefitLine {
   else if (/depart|check out|checkout/.test(folded) && !/enregistrement|arrivee|check in|checkin/.test(folded)) tone = "night";
   else if (/enregistrement|depart|arrivee|check/.test(folded)) tone = "schedule";
   else if (/nuit/.test(folded)) tone = "night";
+  else if (/transfert|aeroport|airport|navette/.test(folded)) tone = "transfer";
   return { title, note, tone };
 }
 

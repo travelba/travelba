@@ -29,7 +29,16 @@ export const HOTEL_ACCESS_EYEBROW = "Votre accès";
 export const HOTEL_ACCESS_PROMISE =
   "Un catalogue d’hôtels aux tarifs qui vous sont réservés, avec des avantages que l’on ne trouve pas en réservation directe.";
 
-export const HOTEL_ACCESS_RESERVE = "Selon l’hôtel et les disponibilités. Le détail est celui de chaque hôtel.";
+/** Ordre du bandeau. L’astérisque renvoie à HOTEL_ACCESS_RESERVE. Le petit-déjeuner n’en a pas. */
+export const HOTEL_ACCESS_LINES = [
+  "Petit-déjeuner offert",
+  "Arrivée anticipée et départ tardif*",
+  "Surclassement prioritaire*",
+  "Jusqu’à 200 $ de crédit de dépense dans l’hôtel*",
+  "Transfert aéroport*",
+] as const;
+
+export const HOTEL_ACCESS_RESERVE = "* Soumis à disponibilité et selon l’hôtel.";
 
 export type FeaturedHotel = {
   name: string;

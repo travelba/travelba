@@ -11,11 +11,11 @@ import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import {
   HOTEL_ACCESS_EYEBROW,
+  HOTEL_ACCESS_LINES,
   HOTEL_ACCESS_PROMISE,
   HOTEL_ACCESS_RESERVE,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
-  TRAVEL_BA_SEARCH_ADVANTAGES,
   hotelDraftStorageKey,
   hotelRecentStorageKey,
   hotelSearchHeroSrc,
@@ -781,7 +781,7 @@ export function HotelSearch({
             <div className="relative space-y-3 px-4 py-4" data-hotel-agency-benefits="1">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
               <h1 className="h-serif text-[1.05rem] font-semibold leading-snug">{HOTEL_ACCESS_PROMISE}</h1>
-              <HotelBenefits lines={[...TRAVEL_BA_SEARCH_ADVANTAGES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
+              <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
               <p className="text-[11px] leading-snug text-white/70">{HOTEL_ACCESS_RESERVE}</p>
             </div>
           </div>
