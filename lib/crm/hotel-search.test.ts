@@ -666,6 +666,11 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /eager=\{first\}/);
   assert.match(readFileSync(join(root, "components/account/HotelPhotoStrip.tsx"), "utf8"), /loading=\{eager \? "eager" : "lazy"\}/);
   assert.match(ui, /HotelWait/);
+  const wait = readFileSync(join(root, "components/account/HotelWait.tsx"), "utf8");
+  assert.match(wait, /h-wait-screen/);
+  assert.match(wait, /AgencyLogo/);
+  assert.match(wait, /h-wait-reel/);
+  assert.match(wait, /if \(quiet\)/);
   assert.match(ui, /searching && hotels.length === 0/);
   assert.doesNotMatch(ui, /animate-pulse/);
   assert.match(ui, /Destinations/);

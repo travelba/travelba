@@ -646,10 +646,64 @@
 .hotel-theme .h-wait-copy {
   transition: opacity 420ms ease;
 }
+.hotel-theme .h-wait-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #0b192c;
+  color: #f7f4ee;
+  text-align: center;
+  padding: calc(2rem + env(safe-area-inset-top, 0px)) 1.5rem calc(2rem + env(safe-area-inset-bottom, 0px));
+}
+.hotel-theme .h-wait-reel {
+  --h-wait-slot: 3.5rem;
+  height: var(--h-wait-slot);
+  width: min(22rem, 100%);
+  margin-top: 1.75rem;
+  overflow: hidden;
+}
+.hotel-theme .h-wait-track {
+  --h-wait-slot: 3.5rem;
+  animation: h-wait-reel 18s linear infinite;
+}
+.hotel-theme .h-wait-slot {
+  display: flex;
+  height: var(--h-wait-slot, 3.5rem);
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #f7f4ee;
+}
+.hotel-theme .h-wait-still {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 @keyframes h-wait-turn {
   to {
     transform: rotate(360deg);
   }
+}
+@keyframes h-wait-reel {
+  0%, 14% { transform: translateY(0); }
+  20%, 34% { transform: translateY(calc(var(--h-wait-slot) * -1)); }
+  40%, 54% { transform: translateY(calc(var(--h-wait-slot) * -2)); }
+  60%, 74% { transform: translateY(calc(var(--h-wait-slot) * -3)); }
+  80%, 94% { transform: translateY(calc(var(--h-wait-slot) * -4)); }
+  100% { transform: translateY(calc(var(--h-wait-slot) * -5)); }
 }
 .hotel-theme .h-rule {
   display: none;
@@ -676,8 +730,26 @@
   .hotel-theme .h-wait-ring > span {
     animation: none;
   }
-  .hotel-theme .h-wait-copy {
+  .hotel-theme .h-wait-copy,
+  .hotel-theme .h-wait-track {
+    animation: none;
     transition: none;
+  }
+  .hotel-theme .h-wait-reel {
+    display: none;
+  }
+  .hotel-theme .h-wait-still {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 1.75rem 0 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+    max-width: 18rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.3;
   }
   ::view-transition-old(*),
   ::view-transition-new(*),
