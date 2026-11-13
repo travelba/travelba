@@ -25,12 +25,12 @@ export function HotelBenefits({
   if (!benefits.length) return null;
   if (layout === "grid") {
     return (
-      <ul className="grid grid-cols-1 gap-y-1.5" data-hotel-benefit-grid="1">
+      <ul className="grid grid-cols-1 gap-y-0" data-hotel-benefit-grid="1">
         {benefits.map((benefit) => {
           const marked = benefit.title.endsWith("*");
           const label = marked ? benefit.title.slice(0, -1).trim() : benefit.title;
           return (
-            <li key={`${benefit.title}-${benefit.note}`} className="flex min-h-8 items-center gap-2">
+            <li key={`${benefit.title}-${benefit.note}`} className="flex items-center gap-2 py-px">
               <Icon name={TONE_ICON[benefit.tone]} className="h-4 w-4 shrink-0 text-[#C5A880]" />
               <span className="text-[13px] font-semibold leading-tight text-[#f7f4ee]">
                 {label}
