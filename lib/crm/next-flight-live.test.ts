@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { airportLocalIso, applyAeroFlight, type AeroFlight, type FlightCard } from "./flight-watch";
 import { arrivalPlaceLine, buildLiveFlight, flightHm, livePlaceLine } from "./next-flight-model";
 import { formatCountdown, liveFlightCaption, liveFlightPhase, liveFlightPlace, liveFlightProgress } from "./next-flight-live";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const NOW = Date.parse("2026-11-11T11:35:20Z");
 
@@ -241,4 +246,80 @@ test("atterri sans heure réelle ne cite pas l’heure prévue", () => {
 test("le format du compte à rebours est h:mm:ss", () => {
   assert.equal(formatCountdown((1 * 3600 + 12 * 60 + 40) * 1000), "1:12:40");
   assert.equal(formatCountdown(5 * 1000), "0:00:05");
+});
+
+/** AF7309 tel qu’il est en base : chiffres locaux, suffixe +00 du timestamptz. */
+function af7309() {
+  return buildLiveFlight({
+    supplier: "Air France",
+    start_at: "2026-11-15T16:20:00+00:00",
+    end_at: "2026-11-15T18:00:00+00:00",
+    details: { airline: "Air France", flight_number: "AF 7309", from: "NCE", to: "CDG" },
+  });
+}
+
+test("AF7309 : 16:20 à Nice, pas 16:20 UTC, et le compte à rebours avance", () => {
+  const flight = af7309();
+  const departure = Date.parse("2026-11-15T15:20:00Z");
+  assert.equal(flight.number, "AF7309");
+  assert.equal(flight.origin, "NCE");
+  assert.equal(flight.destination, "CDG");
+  assert.deepEqual(flight.departure, { scheduled: "16:20", revised: "" });
+  assert.deepEqual(flight.arrival, { scheduled: "18:00", revised: "" });
+  assert.equal(flight.departureAt, departure);
+  assert.equal(flight.arrivalAt, Date.parse("2026-11-15T17:00:00Z"));
+  assert.notEqual(flight.departureAt, Date.parse("2026-11-15T16:20:00+00:00"));
+
+  const report = Date.parse("2026-11-13T16:52:00+01:00");
+  assert.deepEqual(liveFlightCaption(flight, report), { kind: "countdown", clock: "47:28:00" });
+  assert.deepEqual(liveFlightCaption(flight, report + 1000), { kind: "countdown", clock: "47:27:59" });
+
+  // 13 nov. 09:52:30 à Paris : le reste jusqu’à 16:20 est 54:27:30.
+  const morning = Date.parse("2026-11-13T09:52:30+01:00");
+  assert.deepEqual(liveFlightCaption(flight, morning), { kind: "countdown", clock: "54:27:30" });
+  assert.equal(formatCountdown(departure - morning), "54:27:30");
+});
+
+test("le même instant absolu, depuis un téléphone hors de l’aéroport", () => {
+  const probe = `
+    import { buildLiveFlight } from "./lib/crm/next-flight-model.ts";
+    import { liveFlightCaption } from "./lib/crm/next-flight-live.ts";
+    const nice = buildLiveFlight({
+      supplier: "Air France",
+      start_at: "2026-11-15T16:20:00+00:00",
+      end_at: "2026-11-15T18:00:00+00:00",
+      details: { airline: "Air France", flight_number: "AF7309", from: "NCE", to: "CDG" },
+    });
+    const bangkok = buildLiveFlight({
+      supplier: "Thai",
+      start_at: "2026-11-15T16:20:00",
+      end_at: "2026-11-15T18:00:00",
+      details: { airline: "Thai", flight_number: "TG921", from: "BKK", to: "CDG", departure_timezone: "Asia/Bangkok" },
+    });
+    const report = Date.parse("2026-11-13T16:52:00+01:00");
+    const caption = liveFlightCaption(nice, report);
+    console.log(JSON.stringify({
+      tz: process.env.TZ,
+      nice: nice.departureAt,
+      naive: Date.parse("2026-11-15T16:20:00"),
+      clock: caption.kind === "countdown" ? caption.clock : caption.kind,
+      bangkok: bangkok.departureAt,
+    }));
+  `;
+  const parisInstant = Date.parse("2026-11-15T15:20:00Z");
+  const bangkokInstant = Date.parse("2026-11-15T09:20:00Z");
+  for (const tz of ["UTC", "Europe/Paris", "Asia/Jerusalem", "America/Chicago"]) {
+    const run = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", probe], {
+      cwd: repoRoot,
+      env: { ...process.env, TZ: tz },
+      encoding: "utf8",
+    });
+    assert.equal(run.status, 0, `${tz}\n${run.stderr}`);
+    const row = JSON.parse(run.stdout.trim().split("\n").pop() || "");
+    assert.equal(row.tz, tz);
+    assert.equal(row.nice, parisInstant);
+    assert.equal(row.clock, "47:28:00");
+    assert.equal(row.bangkok, bangkokInstant);
+    if (tz !== "Europe/Paris") assert.notEqual(row.naive, row.nice);
+  }
 });
