@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import test from "node:test";
 import { airportLocalIso, applyAeroFlight, type AeroFlight, type FlightCard } from "./flight-watch";
 import { arrivalPlaceLine, buildLiveFlight, flightHm, livePlaceLine } from "./next-flight-model";
@@ -241,4 +243,56 @@ test("atterri sans heure réelle ne cite pas l’heure prévue", () => {
 test("le format du compte à rebours est h:mm:ss", () => {
   assert.equal(formatCountdown((1 * 3600 + 12 * 60 + 40) * 1000), "1:12:40");
   assert.equal(formatCountdown(5 * 1000), "0:00:05");
+});
+
+/** AF7309, 15 nov. 2026 16:20 heure de Nice, tel que la base le renvoie (+00 sur les chiffres locaux). */
+function af7309(start = "2026-11-15T16:20:00+00:00") {
+  return buildLiveFlight({
+    supplier: "Air France",
+    start_at: start,
+    end_at: "2026-11-15T18:00:00+00:00",
+    details: { airline: "Air France", flight_number: "AF 7309", from: "NCE", to: "CDG" },
+  });
+}
+
+test("AF7309 : 16:20 à Nice est 15:20 UTC, le décompte suit cet instant", () => {
+  const flight = af7309();
+  assert.equal(flight.departure.scheduled, "16:20");
+  assert.equal(flight.arrival.scheduled, "18:00");
+  assert.equal(flight.departureAt, Date.parse("2026-11-15T15:20:00Z"));
+  assert.equal(flight.arrivalAt, Date.parse("2026-11-15T17:00:00Z"));
+  const morning = Date.parse("2026-11-13T08:52:30Z");
+  const afternoon = Date.parse("2026-11-13T15:52:30Z");
+  const israel = Date.parse("2026-11-13T07:52:30Z");
+  assert.deepEqual(liveFlightCaption(flight, morning), { kind: "countdown", clock: "54:27:30" });
+  assert.deepEqual(liveFlightCaption(flight, afternoon), { kind: "countdown", clock: "47:27:30" });
+  assert.deepEqual(liveFlightCaption(flight, israel), { kind: "countdown", clock: "55:27:30" });
+  for (const start of ["2026-11-15T16:20:00.000Z", "2026-11-15T16:20:00"]) {
+    assert.equal(af7309(start).departureAt, flight.departureAt);
+  }
+});
+
+test("le même instant AF7309, que l’appareil soit à Chicago ou à Jérusalem", () => {
+  const root = join(import.meta.dirname, "../..");
+  const source = `
+    import { buildLiveFlight } from "./lib/crm/next-flight-model.ts";
+    const flight = buildLiveFlight({
+      supplier: "Air France",
+      start_at: "2026-11-15T16:20:00+00:00",
+      end_at: "2026-11-15T18:00:00+00:00",
+      details: { airline: "Air France", flight_number: "AF7309", from: "NCE", to: "CDG" },
+    });
+    if (flight.departureAt !== Date.parse("2026-11-15T15:20:00Z")) {
+      console.error(String(flight.departureAt));
+      process.exit(1);
+    }
+  `;
+  for (const tz of ["UTC", "America/Chicago", "Asia/Jerusalem", "Europe/Paris"]) {
+    const run = spawnSync(
+      process.execPath,
+      [join(root, "node_modules/tsx/dist/cli.mjs"), "--tsconfig", "tsconfig.test.json", "--eval", source],
+      { cwd: root, env: { ...process.env, TZ: tz }, encoding: "utf8" }
+    );
+    assert.equal(run.status, 0, `${tz}\n${run.stdout}\n${run.stderr}`);
+  }
 });

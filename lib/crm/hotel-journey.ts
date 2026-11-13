@@ -1,4 +1,5 @@
 import { foldHotelLabel } from "./hotel-catalog";
+import { readStayRate } from "./hotel-fr";
 import { clientBenefits, HOTEL_PERK_WEIGHTS, type ClientHotel, type HotelPerks } from "./hotel-search";
 
 export type HotelSort = "prix" | "avantages";
@@ -202,6 +203,36 @@ export function collapseRooms(rooms: ClientRoom[]): ClientRoom[] {
     out.push({ ...room, images: room.images.length ? room.images : rates[0].images, rates });
   }
   return out;
+}
+
+/** Même titre, pension, annulation et prix : un seul tarif. Ce qui diffère reste. */
+export function presentRates(rates: ClientRate[]): ClientRate[] {
+  const kept = new Map<string, ClientRate>();
+  for (const rate of rates) {
+    const reading = readStayRate({
+      title: rate.title,
+      cancellation: rate.cancellation,
+      benefits: rate.benefits,
+      freeCancellation: rate.perks.freeCancellation,
+    });
+    const key = [
+      reading.title,
+      reading.board,
+      reading.cancellation,
+      rate.perks.breakfast ? "pdj" : "",
+      rate.sellCents,
+      (rate.currency || "EUR").toUpperCase(),
+    ].join("|");
+    const previous = kept.get(key);
+    if (!previous || (!previous.offerId && rate.offerId)) kept.set(key, rate);
+  }
+  return [...kept.values()];
+}
+
+/** Le premier tarif réservable, ou le premier s’il n’y en a qu’un. */
+export function initialRate(rates: ClientRate[]) {
+  const shown = presentRates(rates);
+  return shown.find((rate) => rate.offerId) || shown[0] || null;
 }
 
 const JOURNEY_QUERY = {

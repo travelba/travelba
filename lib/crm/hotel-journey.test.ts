@@ -6,16 +6,19 @@ import {
   BOOKING_STEPS,
   agencyPayOffered,
   discreetSearchPerk,
+  initialRate,
   hotelJourneySearch,
   hotelJourneyStep,
   offeredPayMethods,
   payActionLabel,
+  presentRates,
   payStepAction,
   rateBoardLine,
   rateCancelBadge,
   rateChips,
   stayBenefits,
 } from "./hotel-journey";
+import type { ClientRate } from "./hotel-journey";
 import type { HotelPerks } from "./hotel-search";
 
 const PERKS: HotelPerks = {
@@ -169,4 +172,42 @@ test("choisir un mode ne lance pas la réservation", () => {
   assert.match(journey, /J’ai compris que ce tarif n’est pas remboursable/);
   assert.match(journey, /data-hotel-cancel-badge/);
   assert.match(journey, /data-hotel-pay-choice/);
+  assert.match(journey, /data-hotel-rate-choice/);
+  assert.match(journey, /HotelWait/);
+  assert.doesNotMatch(journey, /Nous vérifions le tarif en temps réel/);
+});
+
+function sampleRate(partial: Partial<ClientRate> = {}): ClientRate {
+  return {
+    offerId: "offre",
+    room: "Chambre",
+    title: "Best Available Rate",
+    detail: "",
+    cancellation: "Annulation gratuite jusqu’au 12 février 2027 à 23:59",
+    benefits: [],
+    footnotes: [],
+    sellCents: 25196,
+    perNightCents: 25196,
+    currency: "EUR",
+    images: [],
+    deadlineLabel: "12 février 2027 à 23:59",
+    ...partial,
+    perks: { ...NONE, freeCancellation: true, ...partial.perks },
+  };
+}
+
+test("deux tarifs identiques n’en font qu’un, une pension différente reste", () => {
+  const same = presentRates([
+    sampleRate({ offerId: "a" }),
+    sampleRate({ offerId: "b", title: "Public" }),
+  ]);
+  assert.equal(same.length, 1);
+  assert.equal(initialRate(same)?.offerId, "a");
+
+  const split = presentRates([
+    sampleRate({ offerId: "bb", title: "Room only", perks: { ...NONE, freeCancellation: false } }),
+    sampleRate({ offerId: "pdj", title: "Breakfast included" }),
+  ]);
+  assert.equal(split.length, 2);
+  assert.equal(initialRate([]) , null);
 });

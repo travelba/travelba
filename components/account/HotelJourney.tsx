@@ -7,11 +7,11 @@ import { HotelBookingWait } from "@/components/account/HotelBookingWait";
 import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelGuaranteeNight } from "@/components/account/HotelGuaranteeNight";
 import { HotelMap } from "@/components/account/HotelMap";
-import { BusyBar } from "@/components/crm/BusyBar";
+import { HotelWait } from "@/components/account/HotelWait";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
-import { cancellationPhrase, clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
+import { clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
 import { HotelCardHold } from "@/components/account/HotelCardHold";
 import { LE_PAY_COPY, PAY_COPY } from "@/lib/crm/hotel-direct";
 import { lePrimaryGuest, leWidgetSignal, safeCardWidgetUrl } from "@/lib/crm/le-self-book";
@@ -19,8 +19,10 @@ import {
   BOOKING_STEPS,
   collapseRooms,
   guestNameOk,
+  initialRate,
   offeredPayMethods,
   payStepAction,
+  presentRates,
   rateBoardLine,
   rateCancelBadge,
   rateChips,
@@ -393,7 +395,17 @@ export function HotelJourney({
   /** Réservation par l’API. Les autres clients gardent le parcours e-mail. */
   leApi?: boolean;
 }) {
+  const requestKey = hotel.hotelId
+    ? `${hotel.hotelId}|${query.destination}|${query.checkIn}|${query.checkOut}|${query.rooms.length}`
+    : "";
+  const [seenKey, setSeenKey] = useState(requestKey);
   const [file, setFile] = useState<ClientHotelFile | null>(hotel.hotelId ? null : fileFromCard(hotel));
+  const [ratesState, setRatesState] = useState<"loading" | "ready" | "error">(hotel.hotelId ? "loading" : "ready");
+  if (seenKey !== requestKey) {
+    setSeenKey(requestKey);
+    setFile(hotel.hotelId ? null : fileFromCard(hotel));
+    setRatesState(hotel.hotelId ? "loading" : "ready");
+  }
   const [note, setNote] = useState("");
   const [room, setRoom] = useState<ClientRoom | null>(null);
   const [rate, setRate] = useState<ClientRate | null>(null);
@@ -486,11 +498,13 @@ export function HotelJourney({
     })
       .then((response) => (response.ok ? response.json() : null))
       .then((json: { file?: ClientHotelFile } | null) => {
-        if (json?.file) setFile({ ...json.file, rooms: collapseRooms(json.file.rooms) });
-        else setFile(fileFromCard(hotel));
+        if (json?.file) {
+          setFile({ ...json.file, rooms: collapseRooms(json.file.rooms) });
+          setRatesState("ready");
+        } else setRatesState("error");
       })
       .catch(() => {
-        if (!controller.signal.aborted) setFile(fileFromCard(hotel));
+        if (!controller.signal.aborted) setRatesState("error");
       });
     return () => controller.abort();
   }, [hotel, query]);
@@ -514,15 +528,19 @@ export function HotelJourney({
             : step === "room" && room
               ? "room"
               : "hotel";
-  const fromOffer = file?.rooms
-    .map((item) => item.rates[0])
-    .filter((item): item is ClientRate => Boolean(item))
-    .sort((left, right) => left.sellCents - right.sellCents)[0];
+  const fromOffer =
+    ratesState === "ready"
+      ? file?.rooms
+          .map((item) => item.rates[0])
+          .filter((item): item is ClientRate => Boolean(item))
+          .sort((left, right) => left.sellCents - right.sellCents)[0]
+      : undefined;
 
   function chooseRoom(next: ClientRoom) {
     const picked = collapseRooms([next])[0] || next;
-    setRoom(picked);
-    setRate(picked.rates[0] || null);
+    const rates = presentRates(picked.rates);
+    setRoom({ ...picked, rates });
+    setRate(initialRate(rates));
     postHotelActivity({
       kind: "room",
       hotel: file?.name || hotel.name,
@@ -860,17 +878,23 @@ export function HotelJourney({
               {file?.address ? <p className="text-sm h-ink">{file.address}</p> : null}
               {frenchClientProse(file?.description || "") ? <p className="text-[15px] leading-relaxed h-ink">{frenchClientProse(file?.description || "")}</p> : null}
               <StayBenefits lines={programme.lines} discreet={programme.discreet} />
-              {!file ? (
-                <div data-hotel-check="1" className="space-y-3 pt-2">
-                  <p className="h-serif text-[1.15rem] font-semibold h-ink">Nous vérifions le tarif en temps réel…</p>
-                  <BusyBar label="Nous vérifions le tarif en temps réel…" />
-                  <div className="h-24 animate-pulse rounded-2xl h-skel" />
-                  <div className="h-24 animate-pulse rounded-2xl h-skel" />
+              {ratesState === "loading" ? (
+                <div data-hotel-rates-wait="1">
+                  <HotelWait quiet />
+                </div>
+              ) : null}
+              {ratesState === "error" ? (
+                <div data-hotel-rates-error="1" className="space-y-2 pt-3">
+                  <p className="h-serif text-[1.15rem] font-semibold h-ink">Les tarifs ne sont pas disponibles</p>
+                  <p className="text-sm leading-relaxed h-muted">Écrivez-nous, nous les vérifions pour vous.</p>
+                  <a href={whatsapp} className="inline-flex h-11 items-center text-sm font-semibold h-ink">
+                    Écrire sur WhatsApp
+                  </a>
                 </div>
               ) : null}
             </div>
             <div className="space-y-8 px-5 pt-6">
-              {file?.rooms.length ? (
+              {ratesState === "ready" && file?.rooms.length ? (
                 <div data-hotel-rooms="1" ref={roomsRef}>
                   <p className="h-section">
                     {file.rooms.length > 1 ? `${file.rooms.length} types de chambres disponibles` : "1 type de chambre disponible"}
@@ -927,7 +951,7 @@ export function HotelJourney({
                     })}
                   </div>
                 </div>
-              ) : file ? (
+              ) : ratesState === "ready" && file ? (
                 <p className="text-sm h-muted">Aucune chambre pour ces dates. Écrivez-nous si le séjour vous tient à cœur.</p>
               ) : null}
               {file ? (
@@ -971,22 +995,22 @@ export function HotelJourney({
                   {file.address ? <p className="mt-2 text-sm leading-relaxed h-ink">{file.address}</p> : null}
                 </div>
               ) : null}
-              {file?.rooms.length && others.length ? (
+              {ratesState === "ready" && file?.rooms.length && others.length ? (
                 <div data-hotel-others="1">
                   <p className="h-section">Autres hôtels à {file?.city || hotel.city}</p>
-                  <div className="mt-4 -mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2">
+                  <div className="mt-4 flex snap-x snap-mandatory items-stretch gap-3 overflow-x-auto pb-2">
                     {others.map((item) => (
                       <button
                         key={item.hotelKey}
                         type="button"
                         onClick={() => onOpenOther?.(item)}
-                        className="h-press w-[72%] shrink-0 snap-start text-left"
+                        className="flex w-[78%] shrink-0 snap-start flex-col text-left h-press"
                       >
-                        <span className="block aspect-[4/3] overflow-hidden bg-[#eceae6]">{item.photo ? <Photo src={item.photo} alt="" /> : null}</span>
-                        <span className="block pt-3">
-                          <span className="h-serif block text-[1.35rem] font-medium leading-tight h-ink">{item.name}</span>
+                        <span className="block aspect-[4/3] w-full overflow-hidden bg-[#eceae6]">{item.photo ? <Photo src={item.photo} alt="" /> : null}</span>
+                        <span className="flex min-h-[7.25rem] flex-1 flex-col pt-3">
+                          <span className="h-serif line-clamp-2 min-h-[2.6em] text-[1.05rem] font-semibold leading-snug h-ink">{item.name}</span>
                           <span className="mt-1 block text-sm h-muted">{item.city}</span>
-                          <span className="mt-2 block text-sm font-semibold h-ink">{euros(item.sellCents, item.currency)}</span>
+                          <span className="mt-auto block pt-2 text-sm font-semibold h-ink">{euros(item.sellCents, item.currency)}</span>
                           <span className="block text-[11px] h-muted">TTC</span>
                         </span>
                       </button>
@@ -1016,57 +1040,67 @@ export function HotelJourney({
                 </div>
               ) : null}
               <div className="space-y-3" role="radiogroup" aria-label="Tarifs" data-hotel-rates="1">
-                {room.rates.map((item) => {
+                {presentRates(room.rates).map((item) => {
                   const line = readStayRate({ ...item, freeCancellation: item.perks.freeCancellation });
-                  const selected = rate.offerId === item.offerId && rate.title === item.title && rate.sellCents === item.sellCents;
+                  const selected =
+                    Boolean(rate) &&
+                    rate.offerId === item.offerId &&
+                    rate.title === item.title &&
+                    rate.sellCents === item.sellCents &&
+                    rate.cancellation === item.cancellation;
                   const chips = rateChips({ breakfast: item.perks.breakfast, freeCancellation: false, benefits: programme.lines });
                   const badge = rateCancelBadge({
                     free: item.perks.freeCancellation,
                     deadlineLabel: item.deadlineLabel,
                     cancellation: line.cancellation,
                   });
+                  const board = rateBoardLine(line.board, programme.lines);
                   return (
                     <button
-                      key={`${item.offerId || ""}-${item.title}-${item.sellCents}`}
+                      key={`${item.offerId || ""}-${line.title}-${line.cancellation}-${item.sellCents}`}
                       type="button"
                       role="radio"
                       aria-checked={selected}
+                      data-hotel-rate-choice={selected ? "on" : "off"}
                       disabled={!item.offerId}
                       onClick={() => chooseRate(item)}
-                      className={`h-recap w-full space-y-2 text-left disabled:opacity-40 ${selected ? "ring-2 ring-[#C5A880]" : ""}`}
+                      className={`h-recap h-press flex w-full items-start gap-3 text-left border-2 disabled:opacity-40 ${selected ? "border-[#C5A880] bg-[#f4efe6]" : "border-[#e7e1d6]"}`}
                     >
-                      <span className="h-serif block text-[1.05rem] font-semibold h-ink">{clientRateTitle(item.title)}</span>
-                      <span className={`h-pill inline-block text-[12px] font-semibold ${item.perks.freeCancellation ? "text-[#8c7352]" : "bg-[#0B192C] text-white"}`} data-hotel-cancel-badge="1">
-                        {badge}
+                      <span
+                        aria-hidden="true"
+                        className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[10px] border ${selected ? "border-[#C5A880] bg-[#C5A880] text-[#0B192C]" : "border-[#1a1a1a]/30 bg-white"}`}
+                      >
+                        {selected ? <Icon name="check" className="h-3 w-3" strokeWidth={3} /> : null}
                       </span>
-                      {chips.length ? (
-                        <span className="flex flex-wrap gap-2">
-                          {chips.map((chip) => (
-                            <span key={chip} className="h-pill">{chip}</span>
-                          ))}
+                      <span className="min-w-0 flex-1 space-y-2">
+                        <span className="h-serif block text-[1.05rem] font-semibold h-ink">{clientRateTitle(item.title)}</span>
+                        {board ? <span className="block text-sm h-ink">{board}</span> : null}
+                        <span className={`h-pill inline-block text-[12px] font-semibold ${item.perks.freeCancellation ? "text-[#8c7352]" : "bg-[#0B192C] text-white"}`} data-hotel-cancel-badge="1">
+                          {badge}
                         </span>
-                      ) : null}
-                      <span className="block text-sm h-muted">{line.cancellation}</span>
-                      <span className="block text-lg font-semibold h-ink">{euros(item.sellCents, item.currency)} TTC</span>
+                        {chips.length ? (
+                          <span className="flex flex-wrap gap-2">
+                            {chips.map((chip) => (
+                              <span key={chip} className="h-pill">{chip}</span>
+                            ))}
+                          </span>
+                        ) : null}
+                        <span className="block text-lg font-semibold h-ink">{euros(item.sellCents, item.currency)} TTC</span>
+                      </span>
                     </button>
                   );
                 })}
               </div>
               <div>
-                {cancellationPhrase(rate.cancellation) ? (
-                  <div>
-                    <p className="text-[15px] leading-relaxed h-ink">{cancellationPhrase(rate.cancellation)}</p>
-                    {rate.footnotes.length ? (
-                      <details className="h-fold">
-                        <summary className="text-sm h-ink">Conditions</summary>
-                        <div className="space-y-2 pb-1">
-                          {rate.footnotes.map((line) => (
-                            <p key={line} className="text-xs leading-relaxed h-muted">{line}</p>
-                          ))}
-                        </div>
-                      </details>
-                    ) : null}
-                  </div>
+                {rate.footnotes.length ? (
+                  <details className="h-fold">
+                    <summary className="text-sm h-ink">Conditions</summary>
+                    <div className="space-y-2 pb-1">
+                      {rate.footnotes.map((line) => (
+                        <p key={line} className="text-xs leading-relaxed h-muted">{line}</p>
+                      ))}
+                    </div>
+                  </details>
                 ) : null}
                 <div className="mt-5">
                   <StayBenefits lines={programme.lines} discreet={programme.discreet} />
@@ -1199,15 +1233,8 @@ export function HotelJourney({
           />
         ) : null}
         {!placing && view === "pay" && sending && !widget ? (
-          <div data-hotel-check="1" className="flex min-h-[70vh] flex-col items-center px-8 pt-16 text-center">
-            <p className="h-serif text-[1.35rem] leading-snug h-ink">Nous vérifions le tarif en temps réel…</p>
-            <div className="mt-6 w-full max-w-[16rem]">
-              <BusyBar active label="Nous vérifions le tarif en temps réel…" />
-            </div>
-            <div className="mt-8 w-full space-y-3">
-              <div className="h-24 animate-pulse rounded-2xl h-skel" />
-              <div className="h-24 animate-pulse rounded-2xl h-skel" />
-            </div>
+          <div data-hotel-check="1">
+            <HotelWait />
           </div>
         ) : null}
         {!placing && view === "pay" && rate && reading && !widget && !sending ? (

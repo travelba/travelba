@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelMap } from "@/components/account/HotelMap";
-import { BusyBar } from "@/components/crm/BusyBar";
+import { HotelWait } from "@/components/account/HotelWait";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
@@ -300,7 +300,6 @@ export function HotelSearch({
   const cursor = cursorPick ?? monthCursor(checkIn);
   const [hotels, setHotels] = useState<ClientHotel[]>([]);
   const [searching, setSearching] = useState(false);
-  const [searchLine, setSearchLine] = useState("Nous interrogeons les hôtels disponibles…");
   const searchLock = useRef(false);
   const [searched, setSearched] = useState(false);
   const [note, setNote] = useState("");
@@ -570,7 +569,6 @@ export function HotelSearch({
     setSheet(false);
     setSearched(true);
     searchLock.current = true;
-    setSearchLine("Nous interrogeons les hôtels disponibles…");
     setPage(1);
     setPending(null);
     if (hotelToken) router.replace("/mon-compte/hotels");
@@ -634,7 +632,6 @@ export function HotelSearch({
             latest = upsertHotel(latest, event.hotel);
             if (!sawHotel) {
               sawHotel = true;
-              setSearchLine("Les tarifs arrivent…");
               setClientFirst(since(started));
             }
           } else if (event.type === "link") {
@@ -983,24 +980,13 @@ export function HotelSearch({
           <p className="text-sm h-ink">{note}</p>
         </article>
       ) : null}
-      {searching ? (
-        <div className="h-ink">
-          <BusyBar label={searchLine} />
-        </div>
-      ) : null}
-
       <div className="space-y-5" aria-live="polite">
-        {searching && hotels.length === 0
-          ? [0, 1, 2].map((index) => (
-              <article key={index} className="h-result" aria-hidden>
-                <div className="h-cover animate-pulse h-skel" />
-                <div className="space-y-2 px-4 py-4">
-                  <div className="h-5 w-2/3 animate-pulse h-skel" />
-                  <div className="h-4 w-1/3 animate-pulse h-skel" />
-                </div>
-              </article>
-            ))
-          : null}
+        {searching && hotels.length === 0 ? (
+          <HotelWait
+            place={destination.trim()}
+            detail={[summaryDates, nightLabel, party].filter(Boolean).join(" · ")}
+          />
+        ) : null}
         {searched && hotels.length > 0 ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">

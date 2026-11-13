@@ -573,6 +573,30 @@
   background: #ffffff;
   box-shadow: 0 -12px 28px rgba(11, 25, 44, 0.06);
 }
+.hotel-theme .h-wait-ring {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  place-items: center;
+  border: 1px solid rgba(197, 168, 128, 0.45);
+  border-radius: 999px;
+}
+.hotel-theme .h-wait-ring > span {
+  width: 2.15rem;
+  height: 2.15rem;
+  border: 1.5px solid rgba(11, 25, 44, 0.08);
+  border-top-color: #c5a880;
+  border-radius: inherit;
+  animation: h-wait-turn 2.8s linear infinite;
+}
+.hotel-theme .h-wait-copy {
+  transition: opacity 420ms ease;
+}
+@keyframes h-wait-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .hotel-theme .h-rule {
   display: none;
 }
@@ -597,6 +621,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hotel-theme .h-wait-ring > span {
+    animation: none;
+  }
+  .hotel-theme .h-wait-copy {
+    transition: none;
+  }
   ::view-transition-old(*),
   ::view-transition-new(*),
   ::view-transition-group(*) {
