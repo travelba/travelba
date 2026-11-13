@@ -5,6 +5,8 @@ import type { HotelPerks } from "./hotel-search";
 import {
   HOTEL_ACCESS_EYEBROW,
   HOTEL_CLUB_CARD,
+  HOTEL_CLUB_LEVEL,
+  HOTEL_CLUB_TITLE,
   HOTEL_CLUB_FAMILY,
   HOTEL_CLUB_GIVEN,
   HOTEL_CLUB_NUMBER,
@@ -63,6 +65,8 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
   ]);
   assert.equal(HOTEL_ACCESS_RESERVE, "* Soumis à disponibilité et selon l’hôtel.");
   assert.equal(HOTEL_ACCESS_EYEBROW, "Club Travel BA");
+  assert.equal(HOTEL_CLUB_TITLE, "Ma carte");
+  assert.equal(HOTEL_CLUB_LEVEL, "Mon niveau");
   assert.equal(HOTEL_CLUB_CARD, "Carte de fidélité");
   assert.equal(HOTEL_CLUB_GIVEN, "Prénom");
   assert.equal(HOTEL_CLUB_FAMILY, "Nom");

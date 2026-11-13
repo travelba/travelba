@@ -32,7 +32,7 @@ export function HotelBenefits({
           return (
             <li key={`${benefit.title}-${benefit.note}`} className="flex items-center gap-2 py-px">
               <Icon name={TONE_ICON[benefit.tone]} className="h-4 w-4 shrink-0 text-[#C5A880]" />
-              <span className="text-[13px] font-semibold leading-tight text-[#f7f4ee]">
+              <span className="h-benefit-line text-[13px] font-semibold leading-tight">
                 {label}
                 {marked ? <span className="text-[#C5A880]">*</span> : null}
               </span>

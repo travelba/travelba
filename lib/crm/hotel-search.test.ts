@@ -761,6 +761,8 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /HOTEL_ACCESS_LEVEL/);
   assert.match(ui, /h-member/);
   assert.match(ui, /data-hotel-club/);
+  assert.match(ui, /HOTEL_CLUB_TITLE/);
+  assert.match(ui, /HOTEL_CLUB_LEVEL/);
   assert.match(ui, /HOTEL_CLUB_CARD/);
   assert.match(ui, /HOTEL_CLUB_GIVEN/);
   assert.match(ui, /HOTEL_CLUB_FAMILY/);

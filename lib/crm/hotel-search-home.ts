@@ -26,6 +26,10 @@ export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
 /** Première page : la carte membre, avant de chercher. */
 export const HOTEL_ACCESS_EYEBROW = "Club Travel BA";
 
+export const HOTEL_CLUB_TITLE = "Ma carte";
+
+export const HOTEL_CLUB_LEVEL = "Mon niveau";
+
 export const HOTEL_CLUB_CARD = "Carte de fidélité";
 
 export const HOTEL_CLUB_GIVEN = "Prénom";

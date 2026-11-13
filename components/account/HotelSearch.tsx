@@ -20,6 +20,8 @@ import {
   HOTEL_ACCESS_RESERVE,
   HOTEL_ACCESS_UNTIL,
   HOTEL_CLUB_CARD,
+  HOTEL_CLUB_LEVEL,
+  HOTEL_CLUB_TITLE,
   HOTEL_CLUB_EVENT,
   HOTEL_CLUB_FAMILY,
   HOTEL_CLUB_GIVEN,
@@ -1282,14 +1284,10 @@ export function HotelSearch({
         </div>
       ) : null}
       {clubOpen ? (
-        <div className="h-club" data-hotel-club="1" role="dialog" aria-modal="true" aria-label={HOTEL_ACCESS_EYEBROW}>
+        <div className="h-club" data-hotel-club="1" role="dialog" aria-modal="true" aria-label={HOTEL_CLUB_TITLE}>
+          <p className="h-club-title">{HOTEL_CLUB_TITLE}</p>
           <div className="h-club-body" data-hotel-agency-benefits="1">
-            <AgencyLogo className="h-20 w-20" alt="" />
-            <p className="h-club-name">{HOTEL_ACCESS_EYEBROW}</p>
-            <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
-            <div className="h-loyalty-wrap">
-            <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
-            <div className="h-member h-loyalty" data-hotel-hero="1">
+            <div className="h-club-hero" data-hotel-hero="1">
               {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
               <img
                 src={heroSrc}
@@ -1299,32 +1297,65 @@ export function HotelSearch({
                 fetchPriority="high"
                 decoding="async"
                 onError={() => setHeroBroken(true)}
-                className="absolute inset-0 h-full w-full object-cover opacity-35"
+                className="h-club-hero-photo"
               />
-              <div className="absolute inset-0 bg-[#0B192C]/82" aria-hidden />
-              <div className="relative px-4 pb-4 pt-5">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_CLUB_CARD}</p>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="min-w-0">
-                    <p className="h-loyalty-label">{HOTEL_CLUB_GIVEN}</p>
-                    <p className="h-loyalty-value">{greetingGivenName(firstName) || "—"}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="h-loyalty-label">{HOTEL_CLUB_FAMILY}</p>
-                    <p className="h-loyalty-value">{lastName.trim() || "—"}</p>
-                  </div>
+              <div className="h-club-hero-shade" aria-hidden />
+              <div className="h-club-hero-row">
+                <div className="min-w-0">
+                  <p className="h-club-given">
+                    <span className="sr-only">{HOTEL_CLUB_GIVEN}</span>
+                    {greetingGivenName(firstName) || "—"}
+                  </p>
+                  <p className="h-club-hero-number">{hotelMemberNumber(customerId)}</p>
+                  <p className="h-club-hero-meta">{HOTEL_CLUB_NUMBER}</p>
                 </div>
-                <p className="h-loyalty-label mt-3">{HOTEL_CLUB_NUMBER}</p>
-                <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
-                <div className="mt-3 flex items-end justify-between gap-3">
-                  <p className="text-[13px] font-semibold text-[#C5A880]">{HOTEL_ACCESS_OFFER}</p>
-                  <p className="text-right text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
-                </div>
+                <AgencyLogo className="h-16 w-16" alt="" />
               </div>
             </div>
+            <div className="h-club-level">
+              <div className="h-club-level-mark">
+                <p className="h-loyalty-label">{HOTEL_CLUB_LEVEL}</p>
+                <p className="h-club-level-name">{HOTEL_ACCESS_LEVEL}</p>
+              </div>
+              <div className="text-right">
+                <p className="h-loyalty-label">{HOTEL_ACCESS_OFFER}</p>
+                <p className="h-club-until">{HOTEL_ACCESS_UNTIL}</p>
+              </div>
             </div>
-            <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
-            <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+            <div className="h-loyalty-pad">
+              <div className="h-loyalty-wrap">
+                <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
+                <div className="h-member h-loyalty">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+                  <img
+                    src={heroSrc}
+                    alt=""
+                    width={960}
+                    height={540}
+                    decoding="async"
+                    className="absolute inset-0 h-full w-full object-cover opacity-40"
+                  />
+                  <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
+                  <div className="relative flex h-full flex-col justify-between px-4 py-4">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+                    <div className="flex items-end justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="h-loyalty-value">
+                          <span className="sr-only">{HOTEL_CLUB_FAMILY}</span>
+                          {[greetingGivenName(firstName), lastName.trim()].filter(Boolean).join(" ") || "—"}
+                        </p>
+                        <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
+                      </div>
+                      <p className="shrink-0 text-right text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="sr-only">{HOTEL_CLUB_CARD}</p>
+              <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
+              <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
+              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+            </div>
           </div>
           <div className="h-club-bar">
             <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>

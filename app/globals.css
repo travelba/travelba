@@ -608,51 +608,128 @@
   flex-direction: column;
   gap: 1rem;
 }
+.hotel-theme .h-benefit-line {
+  color: #f7f4ee;
+}
+.hotel-theme .h-club .h-benefit-line {
+  color: #1a1a1a;
+}
 .hotel-theme .h-club {
   position: fixed;
-  inset: 0;
-  z-index: 80;
+  top: 0;
+  right: 0;
+  left: 0;
+  bottom: calc(6.25rem + env(safe-area-inset-bottom, 0px));
+  z-index: 45;
   display: flex;
   flex-direction: column;
-  background: #0b192c;
-  color: #f7f4ee;
+  background: #f4efe6;
+  color: #1a1a1a;
+}
+@media (min-width: 768px) {
+  .hotel-theme .h-club {
+    bottom: 0;
+  }
+}
+.hotel-theme .h-club-title {
+  padding: max(0.9rem, env(safe-area-inset-top)) 1rem 0.7rem;
+  text-align: center;
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.1;
 }
 .hotel-theme .h-club-body {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  align-items: center;
-  gap: 0.85rem;
+  gap: 0;
   overflow-y: auto;
-  padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem 0.5rem;
 }
-.hotel-theme .h-club-body .h-member,
-.hotel-theme .h-club-body ul,
-.hotel-theme .h-club-reserve {
+.hotel-theme .h-club-hero {
+  position: relative;
+  height: 9.75rem;
+  overflow: hidden;
+  color: #f7f4ee;
+}
+.hotel-theme .h-club-hero-photo {
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
-.hotel-theme .h-club-name {
-  font-size: 0.72rem;
+.hotel-theme .h-club-hero-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(11, 25, 44, 0.62), rgba(11, 25, 44, 0.12) 72%);
+}
+.hotel-theme .h-club-hero-row {
+  position: relative;
+  display: flex;
+  height: 100%;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem 0.9rem;
+}
+.hotel-theme .h-club-given {
+  font-size: 2rem;
+  font-weight: 650;
+  line-height: 1;
+}
+.hotel-theme .h-club-hero-number {
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+}
+.hotel-theme .h-club-hero-meta {
+  margin-top: 0.1rem;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #c5a880;
 }
+.hotel-theme .h-club-level {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem 0;
+}
+.hotel-theme .h-club-level-mark {
+  border-bottom: 2px solid #c5a880;
+  padding-bottom: 0.55rem;
+}
+.hotel-theme .h-club-level-name,
+.hotel-theme .h-club-until {
+  margin-top: 0.15rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.hotel-theme .h-club-until {
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+.hotel-theme .h-loyalty-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem 1.25rem 0.5rem;
+}
 .hotel-theme .h-club-promise {
-  max-width: 22rem;
-  text-align: center;
-  font-size: 0.98rem;
+  font-size: 0.95rem;
   font-weight: 600;
   line-height: 1.35;
 }
 .hotel-theme .h-club-reserve {
   font-size: 11px;
   line-height: 1.35;
-  color: rgba(247, 244, 238, 0.7);
+  color: #6d675f;
 }
 .hotel-theme .h-club-bar {
-  padding: 0.75rem 1.25rem max(0.85rem, env(safe-area-inset-bottom));
+  padding: 0.65rem 1.25rem 0.75rem;
 }
 .hotel-theme .h-club-open {
   display: flex;
@@ -662,13 +739,10 @@
   justify-content: center;
   border: 0;
   border-radius: 12px;
-  background: #c5a880;
-  color: #0b192c;
+  background: #0b192c;
+  color: #f7f4ee;
   font-size: 1rem;
   font-weight: 700;
-}
-.hotel-theme .h-club-body > img {
-  filter: drop-shadow(0 0 16px rgba(197, 168, 128, 0.5));
 }
 .hotel-theme .h-member {
   position: relative;
@@ -684,8 +758,12 @@
   width: 100%;
 }
 .hotel-theme .h-loyalty {
+  min-height: 11rem;
   border: 1.5px solid #c5a880;
   box-shadow: inset 0 0 0 1px rgba(197, 168, 128, 0.45);
+}
+.hotel-theme .h-loyalty > .relative {
+  min-height: 11rem;
 }
 .hotel-theme .h-member-status {
   position: absolute;
@@ -693,9 +771,9 @@
   left: 1.1rem;
   z-index: 1;
   transform: translateY(-50%);
-  background: #0b192c;
+  background: #f4efe6;
   padding: 0 0.45rem;
-  color: #c5a880;
+  color: #8c7352;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -706,6 +784,9 @@
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  color: #6d675f;
+}
+.hotel-theme .h-loyalty .h-loyalty-label {
   color: rgba(197, 168, 128, 0.9);
 }
 .hotel-theme .h-loyalty-value {
