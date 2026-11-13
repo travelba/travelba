@@ -651,7 +651,8 @@
 }
 .hotel-theme .h-club-hero {
   position: relative;
-  height: 9.75rem;
+  flex-shrink: 0;
+  min-height: 9.75rem;
   overflow: hidden;
   color: #f7f4ee;
 }
@@ -670,7 +671,7 @@
 .hotel-theme .h-club-hero-row {
   position: relative;
   display: flex;
-  height: 100%;
+  min-height: 9.75rem;
   align-items: flex-end;
   justify-content: space-between;
   gap: 0.75rem;
