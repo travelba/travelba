@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DeferredHotels, DeferredLedger, DeferredSlice, type DeferredLedgerValue } from "@/components/admin/BookingDeferred";
+import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
 import type { DossierPanels } from "@/lib/crm/admin-booking-load";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -347,6 +348,7 @@ export function BookingEditor({
   openReplyId = null,
   billingCompanies = [],
   ficheBillingCompanies = [],
+  mb3mFiche = { blocker: null, sent: false, sentCompanyIds: [] as string[] },
   littleEmperors = null,
   leLinks = [],
   leStays = [],
@@ -434,6 +436,7 @@ export function BookingEditor({
   }[];
   /** Sociétés de la fiche du client du dossier, colonnes complètes. */
   ficheBillingCompanies?: CrmBillingCompany[];
+  mb3mFiche?: { blocker: string | null; sent: boolean; sentCompanyIds: string[] };
   littleEmperors?: {
     id: string;
     hotel_name: string | null;
@@ -1816,6 +1819,15 @@ export function BookingEditor({
             ) : null}
             {customer ? (
               <p className="text-xs text-muted">Identité, coordonnées, passeports et sociétés se modifient sur la fiche client.</p>
+            ) : null}
+            {customer && ficheBillingCompanies.length > 1 ? (
+              <Mb3mFicheAction
+                customerId={customer.id}
+                blocker={mb3mFiche.blocker}
+                sent={mb3mFiche.sent}
+                companies={ficheBillingCompanies}
+                sentCompanyIds={mb3mFiche.sentCompanyIds}
+              />
             ) : null}
             <details className="group rounded-2xl bg-[#faf9f6]">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden [&::marker]:content-none">

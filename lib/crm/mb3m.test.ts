@@ -668,36 +668,37 @@ describe("client MB3M Partners", () => {
     assert.equal(body.toLowerCase().includes("siret"), false);
     assert.equal(body.toLowerCase().includes("tva"), false);
     assert.equal(body.includes("secret-value"), false);
-    let foreign = "";
-    await mb3mSaveCompany(
-      {
-        name: "BEELYNQ LLC",
-        address: {
-          name: "BEELYNQ LLC",
-          line1: 'Rr. "Tirana"',
-          postalCode: "",
-          city: "Prishtine",
-          countryCode: "XK",
-        },
-      },
-      async (_url, init) => {
-        foreign = String(init?.body);
-        return new Response(
-          `<CustomerOperationResponse><ResultCode>1</ResultCode><Id>BEELYNQ</Id><Uid>company-xk</Uid></CustomerOperationResponse>`
-        );
+    let called = false;
+    await assert.rejects(
+      () =>
+        mb3mSaveCompany(
+          {
+            name: "BEELYNQ LLC",
+            address: {
+              name: "BEELYNQ LLC",
+              line1: 'Rr. "Tirana"',
+              postalCode: "",
+              city: "Prishtine",
+              countryCode: "XK",
+            },
+          },
+          async () => {
+            called = true;
+            return new Response("");
+          }
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof Mb3mError);
+        assert.match(error.message, /code postal/);
+        return true;
       }
     );
-    assert.equal(foreign.includes("<PostalCode></PostalCode>"), true);
-    assert.ok(foreign.indexOf("<PostalCode>") < foreign.indexOf("<City>"));
-    assert.equal(foreign.includes("<CountryCode>XK</CountryCode>"), true);
-    assert.equal(foreign.includes("<Line2>"), false);
-    assert.equal(foreign.includes("<Line3>"), false);
-    assert.equal(foreign.toLowerCase().includes("siret"), false);
-    assert.equal(foreign.toLowerCase().includes("tva"), false);
-    assert.deepEqual(mainAddressElements(foreign), ["Name", "Line1", "PostalCode", "City", "CountryCode"]);
+    assert.equal(called, false);
+    assert.equal(body.toLowerCase().includes("siret"), false);
+    assert.equal(body.toLowerCase().includes("tva"), false);
   });
 
-  it("écrit l’adresse dans l’ordre du contrat, code postal vide compris", async () => {
+  it("écrit l’adresse dans l’ordre du contrat quand le code postal est renseigné", async () => {
     arm();
     let full = "";
     await mb3mSaveCompany(

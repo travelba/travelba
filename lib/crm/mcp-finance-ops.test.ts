@@ -67,6 +67,18 @@ test("la fiche MB3M reprend le clic Créer dans MB3M", async () => {
   );
   assert.equal(sent.envoyee, true);
   assert.equal(sent.deja_connue, true);
+  let company = "";
+  const one = await creerFicheMb3m(
+    { client_id: CLIENT, societe_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+    {
+      pushCompany: async (_customerId, companyId) => {
+        company = companyId;
+        return { updated: false };
+      },
+    }
+  );
+  assert.equal(company, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  assert.equal(one.societe_id, company);
 });
 
 test("une sortie se détache seulement avec confirmer", async () => {

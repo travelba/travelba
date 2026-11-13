@@ -18,6 +18,7 @@ import { loadEstaForBookingId } from "@/lib/crm/esta-run";
 import { readUkEtaLines } from "@/lib/crm/uk-eta-run";
 import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
 import { mb3mRealm } from "@/lib/crm/mb3m";
+import { mb3mFicheBlocker } from "@/lib/crm/mb3m-party";
 import { mb3mPreparationFromRow } from "@/lib/crm/mb3m-prep";
 import {
   buildTripAccountingView,
@@ -279,6 +280,12 @@ export async function loadAdminBookingCritical(input: {
   const refusals = ((first.declined.data || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
+  const mb3mLinks = await createServiceClient()
+    .from("crm_mb3m_parties")
+    .select("id, billing_company_id")
+    .eq("customer_id", b.customer_id)
+    .eq("realm", mb3mRealm())
+    .then((result) => (result.error ? [] : result.data || []));
 
   return {
     booking: b,
@@ -370,6 +377,11 @@ export async function loadAdminBookingCritical(input: {
     customerLogins: [],
     customerActivity: [],
     ficheBillingCompanies: (first.ficheCompanyRows.data || []) as CrmBillingCompany[],
+    mb3mFiche: {
+      blocker: customer ? mb3mFicheBlocker(customer) : "Ajoutez l’adresse avant d’envoyer la fiche.",
+      sent: mb3mLinks.some((row) => !row.billing_company_id),
+      sentCompanyIds: mb3mLinks.map((row) => row.billing_company_id).filter((value): value is string => Boolean(value)),
+    },
     mb3m: {
       blocker: null,
       notice: null,

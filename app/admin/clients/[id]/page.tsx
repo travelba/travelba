@@ -112,12 +112,10 @@ export default async function AdminClientDetailPage({ params }: Props) {
     loadDirectStays(id),
     createServiceClient()
       .from("crm_mb3m_parties")
-      .select("id")
+      .select("id, billing_company_id")
       .eq("customer_id", id)
       .eq("realm", mb3mRealm())
-      .is("billing_company_id", null)
-      .maybeSingle()
-      .then((result) => result.data),
+      .then((result) => (result.error ? [] : result.data || [])),
     supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
     supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
@@ -163,7 +161,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
     staffAllows(staff, "passport_reveal"),
   ]);
   console.timeEnd("[fiche] vague 1");
-  const mb3mSent = Boolean(mb3mParty?.id);
+  const mb3mRows = (mb3mParty || []) as { id: string; billing_company_id: string | null }[];
+  const mb3mSent = mb3mRows.some((row) => !row.billing_company_id);
+  const mb3mCompanyIds = mb3mRows.map((row) => row.billing_company_id).filter((value): value is string => Boolean(value));
   const logins = loginError ? [] : ((loginRows || []) as CrmCustomerLogin[]);
   const activity = activityError ? [] : ((activityRows || []) as CrmCustomerActivity[]);
   const bookingRows = mergeFicheBookings(
@@ -337,6 +337,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         blocker={mb3mFicheBlocker(c)}
         sent={mb3mSent}
         companies={(billingCompanies || []) as CrmBillingCompany[]}
+        sentCompanyIds={mb3mCompanyIds}
       />
       <Suspense fallback={null}>
         <ClientPaymentsSlot customer={c} />
