@@ -26,6 +26,7 @@ import {
 } from "@/components/account/HomeTripExtras";
 import { Icon } from "@/components/crm/icons";
 import { greetingGivenName } from "@/lib/crm/identity";
+import { HOTEL_CATALOG_COPY } from "@/lib/crm/hotel-search-home";
 
 export default async function AccountHomePage({ searchParams }: { searchParams: Promise<{ confirme?: string }> }) {
   const { confirme } = await searchParams;
@@ -59,8 +60,8 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
             className="account-press flex items-center justify-between bg-[#f4efe6] px-4 py-4 text-[#1a1a1a]"
           >
             <span>
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8c7352]">Hôtels</span>
-              <span className="text-[15px] font-semibold">Réserver un séjour</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8c7352]">{HOTEL_CATALOG_COPY.kicker}</span>
+              <span className="text-[15px] font-semibold">{HOTEL_CATALOG_COPY.title}</span>
             </span>
             <Icon name="arrow_forward" className="h-4 w-4 text-[#8c7352]" />
           </Link>

@@ -5,6 +5,7 @@ import type { HotelPerks } from "./hotel-search";
 import {
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
+  HOTEL_CATALOG_COPY,
   TRAVEL_BA_SEARCH_ADVANTAGES,
   hotelDraftStorageKey,
   hotelRecentStorageKey,
@@ -31,17 +32,22 @@ test("les puces et le stockage local sont par personne", () => {
 });
 
 test("les avantages de l’accueil sont ceux de la recherche, pas un modèle générique", () => {
-  const keys = ["breakfast", "upgrade", "earlyCheckIn", "lateCheckOut"] as const;
   assert.deepEqual(
     [...TRAVEL_BA_SEARCH_ADVANTAGES],
-    keys.map((key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label)
+    SEARCH_PERK_LABEL.map((row) => row.label)
   );
   assert.deepEqual([...TRAVEL_BA_SEARCH_ADVANTAGES], [
     "Petit-déjeuner",
+    "Annulation gratuite",
     "Surclassement",
+    "Crédit hôtel",
     "Arrivée anticipée",
     "Départ tardif",
   ]);
+  assert.equal(HOTEL_CATALOG_COPY.title, "Les plus beaux hôtels du monde");
+  assert.match(HOTEL_CATALOG_COPY.lead, /tarifs négociés/);
+  assert.match(HOTEL_CATALOG_COPY.lead, /services offerts/);
+  assert.match(HOTEL_CATALOG_COPY.servicesNote, /Selon l’hôtel et les disponibilités/);
   const perks: HotelPerks = {
     breakfast: true,
     freeCancellation: true,

@@ -13,15 +13,25 @@ export const HOTEL_SEARCH_HERO_FALLBACK = "/whatsapp/hotel.jpg";
 /** Puces sous la carte. Une seule liste, à modifier ici. */
 export const HOTEL_SEARCH_CITY_CHIPS = ["Paris", "Milan", "Courchevel", "Bordeaux"] as const;
 
-const HOME_ADVANTAGE_KEYS = ["breakfast", "upgrade", "earlyCheckIn", "lateCheckOut"] as const;
+const HOME_ADVANTAGE_KEYS = SEARCH_PERK_LABEL.map((row) => row.key);
 
 /**
- * Pastilles de la recherche, dans le même ordre que la carte.
- * Elles ne remplacent pas les avantages lus d’un hôtel.
+ * Services classiques de l’accès, dans l’ordre de la carte.
+ * Ils présentent le catalogue. Ils ne remplacent pas les avantages lus d’un hôtel.
  */
 export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
   (key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label || ""
 ).filter((label) => label.length > 0);
+
+/** Texte de l’ouverture Hôtels. Une seule liste, à modifier ici. */
+export const HOTEL_CATALOG_COPY = {
+  kicker: "Votre accès",
+  title: "Les plus beaux hôtels du monde",
+  lead: "L’agence met ce catalogue à votre disposition. Des tarifs négociés, et des services offerts grâce à elle, propres à chaque hôtel.",
+  servicesTitle: "Services offerts par l’agence",
+  servicesNote: "Selon l’hôtel et les disponibilités. Le détail est celui de chaque hôtel.",
+  search: "Rechercher un hôtel",
+} as const;
 
 export type FeaturedHotel = {
   name: string;
