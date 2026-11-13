@@ -774,6 +774,7 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /hotelClubLadderState/);
   assert.match(ui, /!clubOpen && highlights\.length/);
   assert.match(css, /bottom: calc\(3\.5rem \+ env\(safe-area-inset-bottom, 0px\)\)/);
+  assert.match(css, /\.h-club-hero \{\s*position: relative;\s*flex-shrink: 0;\s*min-height: 9\.75rem;/);
   assert.match(night, /openHotelClub/);
   assert.match(homeCopy, /Un catalogue d’hôtels aux tarifs qui vous sont réservés/);
   assert.match(homeCopy, /Petit-déjeuner offert/);
