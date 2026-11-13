@@ -419,10 +419,47 @@
   box-shadow: none;
 }
 .hotel-theme .h-range { background: var(--h-range); color: var(--h-ink); }
+.hotel-theme .h-dates {
+  background: #fff;
+}
+.hotel-theme .h-search-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.hotel-theme .h-stack-field {
+  display: flex;
+  min-height: 3.25rem;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0 1rem;
+  color: #1a1a1a;
+  font-size: 15px;
+  font-weight: 650;
+  text-align: left;
+}
+.hotel-theme .h-day {
+  display: grid;
+  height: 2.75rem;
+  place-items: center;
+  background: transparent;
+  font-size: 0.95rem;
+}
+.hotel-theme .h-day.h-range {
+  background: #f4efe6;
+}
 .hotel-theme .h-day-on {
-  background: var(--h-btn);
-  color: var(--h-btn-ink);
-  border-radius: var(--h-radius);
+  display: grid;
+  width: 2.4rem;
+  height: 2.4rem;
+  place-items: center;
+  border-radius: 999px;
+  background: #0b192c;
+  color: #f7f4ee;
   font-weight: 650;
 }
 .hotel-theme .h-skel { background: color-mix(in srgb, var(--h-ink) 12%, transparent); }

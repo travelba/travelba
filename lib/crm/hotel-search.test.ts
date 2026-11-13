@@ -776,6 +776,10 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /data-hotel-party/);
   assert.match(ui, /data-hotel-search-cta/);
   assert.match(ui, />\s*Rechercher\s*</);
+  assert.match(ui, /h-search-stack/);
+  assert.match(ui, /Confirmer les dates/);
+  assert.match(ui, /Voyageurs et chambres/);
+  assert.match(ui, /Ajouter une chambre/);
   assert.match(ui, /Destination ou hôtel/);
   assert.match(ui, /data-hotel-recent/);
   assert.match(ui, /Dernières recherches/);
