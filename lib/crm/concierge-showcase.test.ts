@@ -261,7 +261,7 @@ test("vingt-cinq questions du carnet, passées et à venir", () => {
     { message: "J’ai fait un virement, merci de le rapprocher", expect: /Je transmets à Benjamin/, handoff: "payment" },
     { message: "Quel est mon encours ?", expect: /840/, handoff: null },
     { message: "Bonjour", expect: /Bonjour Camille/, handoff: null },
-    { message: "Combien coûte le séjour TB-2026-1022 ?", expect: /n’ai pas ce prix/, absent: /9999/, handoff: null },
+    { message: "Combien coûte le séjour TB-2026-1022 ?", expect: /n’ai pas ce prix/, absent: /9999/, handoff: "question" },
     { message: "Je pars jeudi", expect: /22 octobre/, absent: /15h30/, handoff: "question" },
     { message: "À quelle heure part mon vol ?", expect: /n’ai pas l’horaire/, handoff: null },
     { message: "Comment vont les baleines cette année ?", expect: /Souhaitez-vous que j’en parle à Benjamin/, handoff: null },

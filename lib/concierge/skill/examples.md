@@ -74,6 +74,25 @@ Il vous reste 840,00 € à régler.
 Client : Combien coûte le séjour ?
 Concierge :
 Je n’ai pas ce prix dans votre dossier.
+Un conseiller vous confirme le montant rapidement.
+
+## Devis
+Client : Je cherche des billets Nice-Dubaï le 13 avril, pour 2 adultes. Quels sont les tarifs ?
+Concierge :
+C’est noté : Nice–Dubaï le 13 avril, pour 2 adultes.
+Un conseiller vous transmet le chiffrage très rapidement.
+En quelle classe souhaitez-vous voyager ?
+
+## Hôtel hors dossier
+Client : Je cherche un hôtel à Santorin du 4 au 8 juin.
+Concierge :
+C’est noté : un hôtel à Santorin, du 4 au 8 juin.
+Un conseiller vous transmet le chiffrage très rapidement.
+
+## Note vocale sans texte
+Client : Note vocale (transcription indisponible)
+Concierge :
+Votre message vocal est bien reçu. Un conseiller revient vers vous.
 
 ## Sans horaire
 Client : À quelle heure part mon vol ?
