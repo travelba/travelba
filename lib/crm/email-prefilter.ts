@@ -1,9 +1,22 @@
-/** Images de signature et mails sans réservation : pas d’appel au modèle. */
+/**
+ * Images de signature et mails sans réservation : pas d’appel au modèle.
+ * Même règle pour une image inline, un logo, `image.png`, `image001.png`
+ * ou un nom UUID, y compris sorti d’un mail transféré.
+ */
 
 export const SIGNATURE_IMAGE_BYTES = 20 * 1024;
 
-const SIGNATURE_NAME =
-  /(?:^|[/\\])(?:image\d+|app\s*store|google\s*play|logo|signature|facebook|linkedin|twitter|instagram|spacer|pixel|icon)/i;
+/** `image`, `image001`… Un nom plus long (`imagery`) reste une photo. */
+const SIGNATURE_STEM =
+  /^(?:image\d*(?![a-z])|app\s*store|google\s*play|logo|signature|facebook|linkedin|twitter|instagram|spacer|pixel|icon)/i;
+
+/** Pièce générée par le client mail (Outlook, Gmail) : pas une capture de réservation. */
+const UUID_STEM = /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/i;
+
+function fileStem(name: string) {
+  const base = (name.split(/[/\\]/).pop() || "").trim();
+  return base.replace(/\.[^.]+$/, "");
+}
 
 const BOOKING_LABEL = /little-emperors|expedia|billet|cancellation|reservations-tba|cdsgroupe|(?:^|[^a-z])crm(?:[^a-z]|$)/i;
 
@@ -13,10 +26,12 @@ export function dropInboundImage(file: {
   size?: number | null;
 }) {
   const name = file.filename || "";
-  const image = /^image\//i.test(file.mimeType || "") || /\.(png|jpe?g|gif|webp)$/i.test(name);
+  const image = /^image\//i.test(file.mimeType || "") || /\.(png|jpe?g|gif|webp|heic)$/i.test(name);
   if (!image) return false;
   if (typeof file.size === "number" && file.size > 0 && file.size < SIGNATURE_IMAGE_BYTES) return true;
-  return SIGNATURE_NAME.test(name);
+  const stem = fileStem(name);
+  if (!stem) return true;
+  return SIGNATURE_STEM.test(stem) || UUID_STEM.test(stem);
 }
 
 export type MailSkip = { reason: string };

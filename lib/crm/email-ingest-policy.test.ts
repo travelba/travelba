@@ -25,6 +25,9 @@ describe("pas de rattachement autonome", () => {
 
   it("le parse constitue le séjour, sans invitation", () => {
     assert.match(ingest, /organizeInboundMail/);
+    assert.match(ingest, /screenInboundExtract/);
+    const unfold = ingest.slice(ingest.indexOf("const pushUnfolded"), ingest.indexOf("for (const raw of message.inlineMails"));
+    assert.match(unfold, /keepForModel/);
     assert.equal(ingest.includes("inviteCustomer"), false);
     assert.equal(ingest.includes("visibleToClient: true"), false);
     assert.equal(ingest.includes("notifyStayPublished"), false);

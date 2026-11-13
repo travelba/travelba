@@ -129,6 +129,14 @@ function walk(raw: string, out: UnfoldedMail, depth: number) {
   if (/application\/pdf/i.test(contentType) || filename.toLowerCase().endsWith(".pdf")) {
     const bytes = decodeBytes(body, encoding || "base64");
     if (bytes.byteLength) out.files.push({ name: filename || "piece.pdf", mime: "application/pdf", bytes });
+    return;
+  }
+  const image = /^image\//i.test(contentType) || /\.(png|jpe?g|gif|webp|heic)$/i.test(filename);
+  if (image) {
+    const bytes = decodeBytes(body, encoding || "base64");
+    if (!bytes.byteLength) return;
+    const mime = /^image\//i.test(contentType) ? contentType.split(";")[0].trim().toLowerCase() : "image/png";
+    out.files.push({ name: filename || "image.png", mime, bytes });
   }
 }
 
