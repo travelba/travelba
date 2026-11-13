@@ -1351,7 +1351,10 @@ export function HotelSearch({
                   />
                   <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
                   <div className="relative flex h-full flex-col justify-between px-4 py-4">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+                      <AgencyLogo className="h-club-card-logo" alt="" />
+                    </div>
                     <div className="flex items-end justify-between gap-3">
                       <div className="min-w-0">
                         <p className="h-loyalty-value">

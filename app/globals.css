@@ -825,6 +825,11 @@
 .hotel-theme .h-loyalty > .relative {
   min-height: 11rem;
 }
+.hotel-theme .h-club-card-logo {
+  width: 2.75rem;
+  height: 2.75rem;
+  filter: drop-shadow(0 0 10px rgba(197, 168, 128, 0.4));
+}
 .hotel-theme .h-member-status {
   position: absolute;
   top: 0;
