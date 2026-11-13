@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
   Mb3mError,
+  MB3M_ADDRESS_ELEMENTS,
   mb3mActivityId,
   mb3mAddCreditNote,
   mb3mAddInvoice,
@@ -74,6 +75,11 @@ function arm() {
   delete process.env.MB3M_PROD_PROVIDER_ID;
   process.env.MB3M_API_USER = "agent@partner";
   process.env.MB3M_API_PASSWORD = "secret-value";
+}
+
+function mainAddressElements(body: string) {
+  const inner = body.split("<MainAddress>")[1]?.split("</MainAddress>")[0] || "";
+  return [...inner.matchAll(/<([A-Za-z0-9]+)(?:\s[^>]*)?>/g)].map((match) => match[1]);
 }
 
 describe("client MB3M Partners", () => {
@@ -681,9 +687,70 @@ describe("client MB3M Partners", () => {
         );
       }
     );
-    assert.equal(foreign.includes("<PostalCode>"), false);
+    assert.equal(foreign.includes("<PostalCode></PostalCode>"), true);
+    assert.ok(foreign.indexOf("<PostalCode>") < foreign.indexOf("<City>"));
     assert.equal(foreign.includes("<CountryCode>XK</CountryCode>"), true);
+    assert.equal(foreign.includes("<Line2>"), false);
+    assert.equal(foreign.includes("<Line3>"), false);
     assert.equal(foreign.toLowerCase().includes("siret"), false);
+    assert.equal(foreign.toLowerCase().includes("tva"), false);
+    assert.deepEqual(mainAddressElements(foreign), ["Name", "Line1", "PostalCode", "City", "CountryCode"]);
+  });
+
+  it("écrit l’adresse dans l’ordre du contrat, code postal vide compris", async () => {
+    arm();
+    let full = "";
+    await mb3mSaveCompany(
+      {
+        name: "BEELYNQ LLC",
+        address: {
+          name: "BEELYNQ LLC",
+          line1: "1204 Marina Gate",
+          line2: "Dubai Marina",
+          line3: "Étage 12",
+          postalCode: "00000",
+          city: "Dubaï",
+          countryCode: "AE",
+        },
+      },
+      async (_url, init) => {
+        full = String(init?.body);
+        return new Response(
+          `<CustomerOperationResponse><ResultCode>1</ResultCode><Id>BEELYNQ</Id><Uid>company-ae</Uid></CustomerOperationResponse>`
+        );
+      }
+    );
+    assert.deepEqual(mainAddressElements(full), [...MB3M_ADDRESS_ELEMENTS]);
+    assert.equal(full.includes("<Line2>Dubai Marina</Line2>"), true);
+    assert.equal(full.includes("<Line3>Étage 12</Line3>"), true);
+    assert.ok(full.indexOf("<Line1>") < full.indexOf("<Line2>"));
+    assert.ok(full.indexOf("<Line2>") < full.indexOf("<Line3>"));
+    assert.ok(full.indexOf("<Line3>") < full.indexOf("<PostalCode>"));
+    assert.ok(full.indexOf("<PostalCode>") < full.indexOf("<City>"));
+    assert.ok(full.indexOf("<City>") < full.indexOf("<CountryCode>"));
+    assert.equal(full.toLowerCase().includes("siret"), false);
+    let person = "";
+    await mb3mSavePerson(
+      {
+        firstName: "Ada",
+        name: "Lovelace",
+        address: {
+          name: "Ada Lovelace",
+          line1: "1 rue du Test",
+          postalCode: "75001",
+          city: "Paris",
+          countryCode: "FR",
+        },
+      },
+      async (_url, init) => {
+        person = String(init?.body);
+        return new Response(
+          `<CustomerOperationResponse><ResultCode>1</ResultCode><Id>ADA</Id><Uid>person-uid</Uid></CustomerOperationResponse>`
+        );
+      }
+    );
+    assert.deepEqual(mainAddressElements(person), ["Name", "Line1", "PostalCode", "City", "CountryCode"]);
+    assert.ok(person.indexOf("<Id>") < person.indexOf("<Person>"));
   });
 
   it("n’envoie que le prénom et le nom des voyageurs", async () => {
