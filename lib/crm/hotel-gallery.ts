@@ -321,6 +321,7 @@ export function benefitLine(raw: string): BenefitLine {
   if (/surclass|upgrade/.test(folded)) tone = "upgrade";
   else if (/petit dejeuner|breakfast|repas/.test(folded)) tone = "breakfast";
   else if (/credit/.test(folded)) tone = "credit";
+  else if (/depart|check out|checkout/.test(folded) && !/enregistrement|arrivee|check in|checkin/.test(folded)) tone = "night";
   else if (/enregistrement|depart|arrivee|check/.test(folded)) tone = "schedule";
   else if (/nuit/.test(folded)) tone = "night";
   return { title, note, tone };

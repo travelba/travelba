@@ -744,9 +744,14 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /data-hotel-suggestions/);
   assert.match(ui, /data-hotel-agency-benefits/);
   assert.match(ui, /Hôtels coups de cœur/);
-  assert.match(ui, /Vos avantages Travel BA/);
-  assert.match(ui, /Selon l’hôtel et les disponibilités/);
-  assert.match(ui, /layout="row"/);
+  assert.match(ui, /HOTEL_ACCESS_EYEBROW/);
+  assert.match(ui, /HOTEL_ACCESS_PROMISE/);
+  assert.match(ui, /HOTEL_ACCESS_RESERVE/);
+  assert.match(ui, /layout="grid"/);
+  const homeCopy = readFileSync(join(root, "lib/crm/hotel-search-home.ts"), "utf8");
+  assert.match(homeCopy, /Votre accès/);
+  assert.match(homeCopy, /Un catalogue d’hôtels aux tarifs qui vous sont réservés/);
+  assert.match(homeCopy, /Selon l’hôtel et les disponibilités/);
   assert.match(ui, /<HotelBenefits lines=\{\[\.\.\.TRAVEL_BA_SEARCH_ADVANTAGES\]\}/);
   assert.match(ui, /data-hotel-search-dock/);
   assert.match(ui, /hotelRecentStorageKey/);
@@ -768,7 +773,7 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /pointer: coarse/);
   assert.doesNotMatch(ui, /autoFocus/);
   assert.match(css, /\.h-ask \{/);
-  assert.match(css, /padding: 1\.25rem 1rem 2\.75rem/);
+  assert.match(css, /\.h-searchbar \{\s*position: sticky;/);
   assert.match(css, /hotel-step/);
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.doesNotMatch(journey, /bg-gradient|rounded-full|commission/i);
@@ -783,7 +788,7 @@ test("les avantages des résultats reprennent le bloc des réservations, dès la
   assert.match(stayFacts, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);
   assert.match(ui, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);
   assert.match(desk, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);
-  assert.match(ui, /<HotelBenefits lines=\{hotel\.benefits\} \/>/);
+  assert.match(ui, /<HotelBenefits lines=\{hotel\.benefits\} layout="icons" title="Vos avantages" \/>/);
   assert.match(desk, /<HotelBenefits lines=\{row\.benefits\} \/>/);
   const journey = readFileSync(join(root, "components/account/HotelJourney.tsx"), "utf8");
   assert.match(journey, /import \{ HotelBenefits \} from "@\/components\/crm\/HotelBenefits"/);

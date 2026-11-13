@@ -23,6 +23,14 @@ export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
   (key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label || ""
 ).filter((label) => label.length > 0);
 
+/** Première page : le client voit l’accès avant de chercher. */
+export const HOTEL_ACCESS_EYEBROW = "Votre accès";
+
+export const HOTEL_ACCESS_PROMISE =
+  "Un catalogue d’hôtels aux tarifs qui vous sont réservés, avec des avantages que l’on ne trouve pas en réservation directe.";
+
+export const HOTEL_ACCESS_RESERVE = "Selon l’hôtel et les disponibilités. Le détail est celui de chaque hôtel.";
+
 export type FeaturedHotel = {
   name: string;
   city: string;

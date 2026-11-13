@@ -18,10 +18,37 @@ export function HotelBenefits({
 }: {
   lines: string[];
   title?: string;
-  layout?: "stack" | "row";
+  layout?: "stack" | "row" | "grid" | "icons";
 }) {
   const benefits = lines.map(benefitLine).filter((line) => line.title);
   if (!benefits.length) return null;
+  if (layout === "grid") {
+    return (
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-2" data-hotel-benefit-grid="1">
+        {benefits.map((benefit) => (
+          <li key={`${benefit.title}-${benefit.note}`} className="flex min-h-11 items-center gap-2">
+            <Icon name={TONE_ICON[benefit.tone]} className="h-4 w-4 shrink-0 text-[#C5A880]" />
+            <span className="text-[13px] font-semibold leading-tight text-[#f7f4ee]">{benefit.title}</span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (layout === "icons") {
+    return (
+      <section className="flex min-h-11 items-center gap-2 rounded-xl bg-[#0B192C] px-3 py-2 text-[#faf9f6]" data-hotel-benefit-icons="1">
+        <ul className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+          {benefits.map((benefit) => (
+            <li key={`${benefit.title}-${benefit.note}`} className="grid h-7 w-7 shrink-0 place-items-center" title={benefit.title}>
+              <Icon name={TONE_ICON[benefit.tone]} className="h-4 w-4 text-[#C5A880]" />
+              <span className="sr-only">{benefit.title}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="shrink-0 text-[12px] font-semibold text-[#C5A880]">{title}</p>
+      </section>
+    );
+  }
   if (layout === "row") {
     return (
       <section className="rounded-2xl bg-[#0B192C] px-3.5 py-3 text-[#faf9f6]" data-hotel-benefit-row="1">
