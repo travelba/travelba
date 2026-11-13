@@ -34,6 +34,8 @@ export default async function HotelsPage() {
         trial={!hotelDirectLive(customer)}
         leApi={hotelLeApiBooking(customer)}
         customerId={customer.id}
+        firstName={customer.first_name}
+        lastName={customer.last_name}
         highlights={await loadFeaturedHotels()}
       />
     </Suspense>

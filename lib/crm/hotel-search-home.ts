@@ -28,7 +28,24 @@ export const HOTEL_ACCESS_EYEBROW = "Club Travel BA";
 
 export const HOTEL_CLUB_CARD = "Carte de fidélité";
 
+export const HOTEL_CLUB_GIVEN = "Prénom";
+
+export const HOTEL_CLUB_FAMILY = "Nom";
+
+export const HOTEL_CLUB_NUMBER = "N° d’adhérent";
+
 export const HOTEL_CLUB_OPEN = "Ouvrir les hôtels";
+
+/** Huit chiffres stables, tirés de la fiche. Le même client garde le même numéro. */
+export function hotelMemberNumber(customerId: string) {
+  let hash = 2166136261;
+  for (const char of customerId) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  const body = String(hash >>> 0).padStart(8, "0").slice(-8);
+  return `${body.slice(0, 4)} ${body.slice(4)}`;
+}
 
 export const HOTEL_CLUB_EVENT = "travelba-hotel-club";
 

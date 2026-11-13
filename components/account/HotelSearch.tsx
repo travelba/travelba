@@ -10,6 +10,7 @@ import { AgencyLogo } from "@/components/AgencyLogo";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
+import { greetingGivenName } from "@/lib/crm/identity";
 import {
   HOTEL_ACCESS_EYEBROW,
   HOTEL_ACCESS_LEVEL,
@@ -20,7 +21,11 @@ import {
   HOTEL_ACCESS_UNTIL,
   HOTEL_CLUB_CARD,
   HOTEL_CLUB_EVENT,
+  HOTEL_CLUB_FAMILY,
+  HOTEL_CLUB_GIVEN,
+  HOTEL_CLUB_NUMBER,
   HOTEL_CLUB_OPEN,
+  hotelMemberNumber,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
   hotelDraftStorageKey,
@@ -310,12 +315,16 @@ export function HotelSearch({
   trial = true,
   leApi = false,
   customerId = "",
+  firstName = "",
+  lastName = "",
   highlights = [],
 }: {
   trial?: boolean;
   leApi?: boolean;
   /** Isole les recherches récentes de cet appareil pour cette personne. */
   customerId?: string;
+  firstName?: string;
+  lastName?: string;
   /** Hôtels déjà réservés, avec photo. Vide : la section reste cachée. */
   highlights?: FeaturedHotel[];
 }) {
@@ -1278,7 +1287,9 @@ export function HotelSearch({
             <AgencyLogo className="h-20 w-20" alt="" />
             <p className="h-club-name">{HOTEL_ACCESS_EYEBROW}</p>
             <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
-            <div className="h-member" data-hotel-hero="1">
+            <div className="h-loyalty-wrap">
+            <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
+            <div className="h-member h-loyalty" data-hotel-hero="1">
               {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
               <img
                 src={heroSrc}
@@ -1290,17 +1301,27 @@ export function HotelSearch({
                 onError={() => setHeroBroken(true)}
                 className="absolute inset-0 h-full w-full object-cover opacity-35"
               />
-              <div className="absolute inset-0 bg-[#0B192C]/80" aria-hidden />
-              <div className="relative flex items-end justify-between gap-3 px-4 py-4">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_CLUB_CARD}</p>
-                  <p className="h-serif mt-2 text-[1.7rem] leading-none tracking-[0.04em] text-[#f7f4ee]">{HOTEL_ACCESS_LEVEL}</p>
+              <div className="absolute inset-0 bg-[#0B192C]/82" aria-hidden />
+              <div className="relative px-4 pb-4 pt-5">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_CLUB_CARD}</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="min-w-0">
+                    <p className="h-loyalty-label">{HOTEL_CLUB_GIVEN}</p>
+                    <p className="h-loyalty-value">{greetingGivenName(firstName) || "—"}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="h-loyalty-label">{HOTEL_CLUB_FAMILY}</p>
+                    <p className="h-loyalty-value">{lastName.trim() || "—"}</p>
+                  </div>
                 </div>
-                <div className="shrink-0 text-right">
+                <p className="h-loyalty-label mt-3">{HOTEL_CLUB_NUMBER}</p>
+                <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
+                <div className="mt-3 flex items-end justify-between gap-3">
                   <p className="text-[13px] font-semibold text-[#C5A880]">{HOTEL_ACCESS_OFFER}</p>
-                  <p className="mt-1 text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
+                  <p className="text-right text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
                 </div>
               </div>
+            </div>
             </div>
             <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
             <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
