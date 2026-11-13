@@ -555,7 +555,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     selfJournal: true,
     description:
-      "Déplace une étape du séjour (hôtel, vol, transfert, activité…) vers un autre dossier. carte_id est l’étape. recherche : nom du client, d’un voyageur ou destination, renvoie les dossiers (client, référence, titre, dates) sans écrire. dossier_id ou dossier_reference choisit la cible. Sans confirmer, aperçu. confirmer true écrit. Si le client du dossier cible ne correspond pas aux voyageurs, accepter_client est exigé. Les pièces, courriers et coûts déjà posés suivent. Aucun message. Aucun débit. Les cartes Pliant restent.",
+      "Déplace une étape du séjour (hôtel, vol, transfert, activité…) vers un autre dossier. carte_id est l’étape. recherche : nom du client, d’un voyageur ou destination, renvoie les dossiers (client, référence, titre, dates) sans écrire. dossier_id ou dossier_reference choisit la cible. Sans confirmer, aperçu. confirmer true écrit. dossier_id accepte l’identifiant ou la référence TB-AAAA-NNNN. Si le client du dossier cible ne correspond pas aux voyageurs, accepter_client est exigé. Les pièces, courriers et coûts déjà posés suivent. Aucun message. Aucun débit. Les cartes Pliant restent.",
     input: {
       carte_id: z.string().trim().max(80).optional().describe("Étape à déplacer"),
       recherche: z.string().trim().max(80).optional().describe("Nom du client, voyageur ou destination. Sans dossier : liste seulement"),
@@ -572,7 +572,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     selfJournal: true,
     description:
-      "Déplace une réservation fournisseur déjà importée (Little Emperors ou une autre confirmation) vers un autre dossier. reference obligatoire. fournisseur facultatif (Little Emperors, ou le nom du fournisseur sur la carte). recherche liste les dossiers par nom de client, voyageur ou destination, sans écrire. dossier_id ou dossier_reference choisit la cible. Sans confirmer, aperçu. confirmer true écrit. Si le client du dossier cible ne correspond pas aux voyageurs, accepter_client est exigé. La carte, les pièces, les courriers et les coûts déjà posés suivent. Aucun message. Aucun débit. Les cartes Pliant restent.",
+      "Déplace une réservation fournisseur déjà importée (Little Emperors ou une autre confirmation) vers un autre dossier. reference obligatoire. fournisseur facultatif (Little Emperors, ou le nom du fournisseur sur la carte). recherche liste les dossiers par nom de client, voyageur ou destination, sans écrire. dossier_id ou dossier_reference choisit la cible. Sans confirmer, aperçu. confirmer true écrit. dossier_id accepte l’identifiant ou la référence TB-AAAA-NNNN. La même référence déjà sur deux dossiers est déplacée, elle n’est pas bloquée. Un préfixe sur le dossier cible (même hôtel, dates proches) relie la réservation à cette carte, sans en ajouter une. Si le client du dossier cible ne correspond pas aux voyageurs, accepter_client est exigé. Sinon la carte, les pièces, les courriers et les coûts déjà posés suivent. Aucun message. Aucun débit. Les cartes Pliant restent.",
     input: {
       reference: z.string().trim().max(80).optional().describe("Référence Little Emperors ou confirmation"),
       fournisseur: z.string().trim().max(80).optional().describe("Little Emperors, ou le fournisseur de la carte"),

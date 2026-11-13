@@ -14,7 +14,7 @@ Module._load = function (request: unknown, parent: unknown, isMain: unknown) {
   return load.call(this, request, parent, isMain);
 };
 import { LittleEmperorsError } from "./little-emperors";
-import { leConfirmationMatches, leStayMatchesClient, moveCarnetStep, reattachLittleEmperorsReservation, searchDossiersForMove } from "./le-reattach";
+import { leConfirmationExact, leConfirmationMatches, leStayMatchesClient, moveCarnetStep, reattachLittleEmperorsReservation, searchDossiersForMove } from "./le-reattach";
 
 const SOURCE = "33333333-3333-4333-8333-333333333333";
 const TARGET = "44444444-4444-4444-8444-444444444444";
@@ -36,11 +36,13 @@ function memory(seed: Record<string, Row[]>) {
     seen.push(table);
     const state = {
       op: "select" as "select" | "insert" | "update",
+      columns: "",
       payload: {} as Row,
       filters: [] as { kind: "eq" | "in" | "ilike"; col: string; val: unknown }[],
     };
     const api = {
-      select() {
+      select(columns?: string) {
+        state.columns = columns || "";
         return api;
       },
       insert(payload: Row) {
@@ -81,6 +83,9 @@ function memory(seed: Record<string, Row[]>) {
       });
     }
     function run(single: boolean) {
+      if (table === "crm_booking_travelers" && state.columns.includes("usage_name")) {
+        return { data: null, error: { code: "42703", message: "column usage_name does not exist" } };
+      }
       const bucket = tables[table] || (tables[table] = []);
       if (state.op === "insert") {
         writes.push({ table, op: "insert", payload: { ...state.payload } });
@@ -176,6 +181,8 @@ const move = {
 test("le numéro court et la chambre sont la même réservation", () => {
   assert.equal(leConfirmationMatches("64570", "64570SH046735"), true);
   assert.equal(leConfirmationMatches("99999SH000001", "64570SH046735"), false);
+  assert.equal(leConfirmationExact("64570", "64570SH046735"), false);
+  assert.equal(leConfirmationExact("64570SH046735", "64570SH046735"), true);
   assert.equal(
     leStayMatchesClient(["Jean Morel"], [{ first_name: "Hugo", last_name: "Martin" }]),
     false
@@ -308,7 +315,7 @@ test("une réservation sans dossier reste à l’import", async () => {
   );
 });
 
-test("deux dossiers pour la même référence : refus", async () => {
+test("une autre chambre du même numéro n’est pas une collision", async () => {
   const db = seed();
   db.tables.crm_bookings.push({
     id: OTHER,
@@ -323,14 +330,113 @@ test("deux dossiers pour la même référence : refus", async () => {
     confirmation_number: "64570SH046736",
     guest_names: ["Jean Morel"],
     hotel_name: "Four Seasons Milano",
+    check_in: "2026-06-04",
+    check_out: "2026-06-08",
     crm_booking_id: OTHER,
     status: "linked",
   });
-  await assert.rejects(
-    () => reattachLittleEmperorsReservation(move, { admin: db.client }),
-    (err: unknown) => err instanceof LittleEmperorsError && /plusieurs dossiers/.test(err.message)
+  const result = await reattachLittleEmperorsReservation({ ...move, confirmer: false }, { admin: db.client, journal: async () => {} });
+  assert.equal(result.apercu, true);
+  assert.equal(db.tables.crm_le_bookings[1].crm_booking_id, OTHER);
+});
+
+test("la même référence sur deux dossiers se déplace, elle n’est pas bloquée", async () => {
+  const db = seed();
+  db.tables.crm_bookings.push({
+    id: OTHER,
+    reference: "TB-2026-0999",
+    customer_id: CLIENT_B,
+    status: "confirmed",
+    archived_at: null,
+    visible_to_client: false,
+  });
+  db.tables.crm_le_bookings.push({
+    id: "le-2",
+    confirmation_number: "64570SH046735",
+    guest_names: ["Jean Morel"],
+    hotel_name: "Four Seasons Milano",
+    check_in: "2026-06-04",
+    check_out: "2026-06-08",
+    crm_booking_id: OTHER,
+    status: "linked",
+  });
+  const result = await reattachLittleEmperorsReservation(
+    { ...move, confirmer: true, accepterClient: true },
+    { admin: db.client, journal: async () => {} }
   );
-  assert.equal(db.writes.length, 0);
+  assert.equal(result.ecrit, true);
+  assert.equal(db.tables.crm_le_bookings.every((row) => row.crm_booking_id === TARGET), true);
+});
+
+test("un préfixe sur le dossier cible relie la réservation sans copier la carte", async () => {
+  const db = seed();
+  db.tables.crm_le_bookings[0].check_in = "2026-06-04";
+  db.tables.crm_le_bookings[0].check_out = "2026-06-08";
+  db.tables.crm_booking_items.push({
+    id: "5b24554a-7862-41d2-80d8-5e00a0882228",
+    booking_id: TARGET,
+    kind: "hotel",
+    title: "Four Seasons Milano",
+    confirmation_ref: "64570",
+    sort_order: 1,
+    amount: "900.00",
+    visible_to_client: true,
+    start_at: "2026-06-04",
+    end_at: "2026-06-08",
+    details: { hotel_name: "Four Seasons Milano" },
+  });
+  const preview = await reattachLittleEmperorsReservation(move, { admin: db.client, journal: async () => {} });
+  assert.equal(preview.apercu, true);
+  assert.equal(preview.relier_carte?.id, "5b24554a-7862-41d2-80d8-5e00a0882228");
+  assert.match(preview.resume?.join(" ") || "", /déjà la carte/);
+  const done = await reattachLittleEmperorsReservation(
+    { ...move, confirmer: true, accepterClient: true },
+    { admin: db.client, journal: async () => {} }
+  );
+  assert.equal(done.ecrit, true);
+  assert.equal(db.tables.crm_le_bookings[0].crm_booking_id, TARGET);
+  assert.equal(db.tables.crm_booking_items.find((row) => row.id === CARD)?.booking_id, SOURCE);
+  assert.equal(
+    db.tables.crm_booking_items.find((row) => row.id === "5b24554a-7862-41d2-80d8-5e00a0882228")?.booking_id,
+    TARGET
+  );
+});
+
+test("le dossier cible se trouve par référence ou par identifiant", async () => {
+  const db = seed();
+  db.tables.crm_booking_travelers = [{ booking_id: TARGET, first_name: "Jean", last_name: "Morel" }];
+  const byRef = await moveCarnetStep(
+    { carteId: "flight-missing", dossierReference: "tb-2026-0049" },
+    { admin: db.client }
+  ).catch((err: unknown) => err);
+  assert.equal(byRef instanceof Error && /Étape introuvable/.test(byRef.message), true);
+  db.tables.crm_booking_items.push({
+    id: "flight-2",
+    booking_id: SOURCE,
+    kind: "flight",
+    title: "Rome → Paris",
+    confirmation_ref: "ABC999",
+    sort_order: 1,
+    amount: "10.00",
+    visible_to_client: false,
+    details: { passengers: [{ first_name: "Jean", last_name: "Morel" }] },
+  });
+  const lower = await moveCarnetStep(
+    { carteId: "flight-2", dossierReference: "tb-2026-0049", confirmer: false },
+    { admin: db.client, journal: async () => {} }
+  );
+  assert.equal(lower.vers?.id, TARGET);
+  const byId = await moveCarnetStep(
+    { carteId: "flight-2", dossierId: "tb-2026-0049", confirmer: false },
+    { admin: db.client, journal: async () => {} }
+  );
+  assert.equal(byId.vers?.id, TARGET);
+  const byUuid = await moveCarnetStep(
+    { carteId: "flight-2", dossierId: TARGET, confirmer: true },
+    { admin: db.client, journal: async () => {} }
+  );
+  assert.equal(byUuid.ecrit, true);
+  assert.equal(db.tables.crm_booking_items.find((row) => row.id === "flight-2")?.booking_id, TARGET);
 });
 
 test("l’écran ouvre le panneau, pas un champ de référence", async () => {
