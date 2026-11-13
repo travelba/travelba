@@ -18,6 +18,7 @@ import { ratehawkDb } from "./store";
 import {
   assertSandboxScenario,
   bookingUser,
+  bookingUserIp,
   guestsPayload,
   scenarioOrNull,
   validateBookingGuests,
@@ -26,8 +27,8 @@ import {
   type RoomGuests,
 } from "./limits";
 
-function httpOf(call: { httpStatus: number; status: string | null; error: string | null }): EtgHttp {
-  return { httpStatus: call.httpStatus, status: call.status, error: call.error };
+function httpOf(call: { httpStatus: number; status: string | null; error: string | null; detail?: string | null }): EtgHttp {
+  return { httpStatus: call.httpStatus, status: call.status, error: call.error, detail: call.detail ?? null };
 }
 
 export async function prebookRate(hash: string, hid: number, baselineShow: number, config = requireBookingConfig()) {
@@ -187,6 +188,8 @@ export async function startBooking(input: BookInput, supabase = ratehawkDb(), co
   if (names) return { ok: false as const, status: "failed" as const, error: names };
   const phoneError = validateUserPhone(input.phone);
   if (phoneError) return { ok: false as const, status: "failed" as const, error: phoneError };
+  const userIp = bookingUserIp(input.userIp);
+  if (!userIp) return { ok: false as const, status: "failed" as const, error: "L’adresse IP envoyée à Ratehawk doit être une IPv4 ou une IPv6." };
   const quote = readQuote(input.quoteToken, config);
   if (!quote || quote.hid !== input.hid) {
     return { ok: false as const, status: "failed" as const, error: "Le tarif pré-réservé a expiré. Reprenez la fiche hôtel." };
@@ -213,7 +216,7 @@ export async function startBooking(input: BookInput, supabase = ratehawkDb(), co
   for (let attempt = 1; attempt <= 10; attempt += 1) {
     const call = await etgPost(
       "/api/b2b/v3/hotel/order/booking/form/",
-      { partner_order_id: partnerOrderId, book_hash: quote.book_hash, language: config.language, user_ip: input.userIp },
+      { partner_order_id: partnerOrderId, book_hash: quote.book_hash, language: config.language, user_ip: userIp },
       20_000,
       partnerOrderId,
       config

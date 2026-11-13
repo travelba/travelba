@@ -8,9 +8,37 @@ export type EtgCall = {
   httpStatus: number;
   status: string | null;
   error: string | null;
+  /** Champ ETG (`debug.validation_error`), sans le reste de `debug`. Absent sur un double de test. */
+  detail?: string | null;
   data: unknown;
   durationMs: number;
 };
+
+const DETAIL_MAX = 240;
+
+/** Isole `validation_error`. Le reste de `debug` (clé, IP réelle, requête) ne sort pas. */
+export function etgValidationDetail(parsed: unknown): string | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const debug = (parsed as { debug?: unknown }).debug;
+  if (!debug || typeof debug !== "object") return null;
+  const validation = (debug as { validation_error?: unknown }).validation_error;
+  if (typeof validation === "string") return clipDetail(validation);
+  if (Array.isArray(validation)) {
+    const fields = validation.filter((item): item is string => typeof item === "string").slice(0, 8);
+    return fields.length ? clipDetail(fields.join(", ")) : null;
+  }
+  if (validation && typeof validation === "object") {
+    const fields = Object.keys(validation as Record<string, unknown>).slice(0, 8);
+    return fields.length ? clipDetail(fields.join(", ")) : null;
+  }
+  return null;
+}
+
+function clipDetail(value: string) {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.length > DETAIL_MAX ? `${text.slice(0, DETAIL_MAX)}…` : text;
+}
 
 const agents = new Map<string, ProxyAgent>();
 
@@ -114,6 +142,7 @@ export async function etgPost(
     httpStatus,
     status,
     error: apiError,
+    detail: etgValidationDetail(parsed),
     data: record?.data ?? null,
     durationMs: Date.now() - started,
   };

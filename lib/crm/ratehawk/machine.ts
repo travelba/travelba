@@ -10,7 +10,17 @@ export type EtgHttp = {
   httpStatus: number;
   status: string | null;
   error: string | null;
+  /** Texte ETG `debug.validation_error`, déjà isolé du reste de `debug`. */
+  detail?: string | null;
 };
+
+/** Le code ETG, et le champ quand `validation_error` est là. */
+export function etgFailureReason(outcome: EtgHttp): string {
+  const code = outcome.error || outcome.status || "unexpected";
+  const detail = (outcome.detail || "").trim();
+  if (!detail || detail === code) return code;
+  return `${code} (${detail})`;
+}
 
 export type FormDecision =
   | { action: "proceed"; frontend: "in_progress" }
@@ -102,8 +112,8 @@ export function decideBookingForm(outcome: EtgHttp, attempt: number): FormDecisi
     outcome.httpStatus === 0 || outcome.httpStatus >= 500 || (outcome.error != null && FORM_RETRY.has(outcome.error));
   if (transient) return retryForm(outcome.error || `http_${outcome.httpStatus || "timeout"}`, attempt);
   if (outcome.status === "ok" && !outcome.error) return { action: "proceed", frontend: "in_progress" };
-  if (outcome.error && FORM_FAIL.has(outcome.error)) return { action: "fail", frontend: "failed", reason: outcome.error };
-  if (outcome.error) return { action: "fail", frontend: "failed", reason: outcome.error };
+  if (outcome.error && FORM_FAIL.has(outcome.error)) return { action: "fail", frontend: "failed", reason: etgFailureReason(outcome) };
+  if (outcome.error) return { action: "fail", frontend: "failed", reason: etgFailureReason(outcome) };
   return { action: "fail", frontend: "failed", reason: outcome.status || "unexpected" };
 }
 
@@ -115,8 +125,8 @@ export function decideBookingFinish(outcome: EtgHttp): FinishDecision {
     return { action: "poll", frontend: "in_progress", reason: outcome.error };
   }
   if (outcome.status === "ok" && !outcome.error) return { action: "poll", frontend: "in_progress" };
-  if (outcome.error && FINISH_FAIL.has(outcome.error)) return { action: "fail", frontend: "failed", reason: outcome.error };
-  if (outcome.error) return { action: "fail", frontend: "failed", reason: outcome.error };
+  if (outcome.error && FINISH_FAIL.has(outcome.error)) return { action: "fail", frontend: "failed", reason: etgFailureReason(outcome) };
+  if (outcome.error) return { action: "fail", frontend: "failed", reason: etgFailureReason(outcome) };
   return { action: "fail", frontend: "failed", reason: outcome.status || "unexpected" };
 }
 
@@ -132,8 +142,8 @@ export function decideBookingStatus(outcome: EtgHttp): StatusDecision {
     return { action: "pending", frontend: "in_progress", reason: outcome.error };
   }
   if (outcome.status === "3ds" || outcome.error === "3ds") return { action: "fail", frontend: "failed", reason: "3ds" };
-  if (outcome.error && STATUS_FINAL.has(outcome.error)) return { action: "fail", frontend: "failed", reason: outcome.error };
-  if (outcome.error) return { action: "fail", frontend: "failed", reason: outcome.error };
+  if (outcome.error && STATUS_FINAL.has(outcome.error)) return { action: "fail", frontend: "failed", reason: etgFailureReason(outcome) };
+  if (outcome.error) return { action: "fail", frontend: "failed", reason: etgFailureReason(outcome) };
   return { action: "pending", frontend: "in_progress", reason: outcome.status || "processing" };
 }
 

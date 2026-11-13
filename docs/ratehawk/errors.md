@@ -28,7 +28,7 @@ A new `partner_order_id` keeps a sandbox suffix (`unknown_success`, `unknown_sol
 | Error `reservation_is_not_allowed` | Failed | Stop. |
 | Error `rate_not_found` | Failed | Stop. |
 | Error `sandbox_restriction` | Failed | Stop. |
-| Any other error | Failed | Stop. Reason is the ETG error code. |
+| Any other error | Failed | Stop. Reason is the ETG error code. When ETG sends `debug.validation_error`, that text is appended. The rest of `debug` stays out of the answer. |
 
 Timeout, unknown, and 5xx on the form use a new `partner_order_id`, as in the Create booking error section (new id, maximum 10 calls), not a silent replay of the same id.
 
@@ -61,7 +61,7 @@ Timeout, unknown, and 5xx on the form use a new `partner_order_id`, as in the Cr
 | Error `incorrect_pay_uuid_format` | Failed | Stop. |
 | Error `sandbox_restriction` | Failed | Stop. |
 | Error `supplier_data_required` | Failed | Stop. |
-| Any other error | Failed | Stop. |
+| Any other error | Failed | Stop. When ETG sends `debug.validation_error`, that text is appended. The rest of `debug` stays out of the answer. |
 
 ## Check booking process — `/api/b2b/v3/hotel/order/booking/finish/status/`
 
@@ -88,7 +88,7 @@ Poll every 5 seconds while the decision is pending and the cut-off (default 180 
 | Error `endpoint_not_found` | Failed | Stop. |
 | Error `incorrect_credentials` | Failed | Stop. |
 | Error `invalid_auth_header` | Failed | Stop. |
-| Error `invalid_params` | Failed | Stop. |
+| Error `invalid_params` | Failed | Stop. The reason includes `validation_error` when ETG sent it. |
 | Error `lock` | Failed | Stop. |
 | Error `no_auth_header` | Failed | Stop. |
 | Error `not_allowed_host` | Failed | Stop. |

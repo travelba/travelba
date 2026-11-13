@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { newPartnerOrderId } from "./ratehawk/client";
+import { etgValidationDetail, newPartnerOrderId } from "./ratehawk/client";
 import { loadRatehawkConfig, RatehawkConfigError } from "./ratehawk/config";
 import { collectImageUrls, formatUtcInParis, mealLabel, metapolicyLines, partitionTaxes, penaltyLines, preferHotelImages, rgExtEqual } from "./ratehawk/display";
-import { bookingUser, guestsPayload, validateBookingGuests, validateStay, validateUserPhone, validPersonName } from "./ratehawk/limits";
+import { bookingUser, bookingUserIp, guestsPayload, validateBookingGuests, validateStay, validateUserPhone, validPersonName } from "./ratehawk/limits";
 import {
   applyCutoff,
   decideBookingFinish,
   decideBookingForm,
   decideBookingStatus,
+  etgFailureReason,
   decideCancel,
   decideWebhook,
   mergeWebhook,
@@ -21,6 +22,7 @@ import {
 import { formPriceNeedsAcceptance, marginPercent, sellFromNet } from "./ratehawk/pricing";
 import { readQuote, signQuote } from "./ratehawk/quote";
 import { redact } from "./ratehawk/redact";
+import { currentBookingUserIp, requestIp, runWithBookingUserIp } from "./ratehawk/http";
 import { searchBody } from "./ratehawk/search";
 
 const today = new Date("2026-10-21T12:00:00Z");
@@ -47,6 +49,42 @@ test("limites de recherche : chambres, âges, nuits, horizon, résidence, hids",
   assert.match(validateStay(stay({ hids: Array.from({ length: 301 }, (_, index) => index + 1) }), today) || "", /300/);
   assert.equal(validateStay(stay({ hids: [10004834, 8819557] }), today), null);
   assert.equal(validateStay(stay({ guests: [{ adults: 2, children: [0, 17] }] }), today), null);
+});
+
+test("user_ip est une adresse, et invalid_params nomme le champ ETG", () => {
+  assert.equal(bookingUserIp("mcp"), null);
+  assert.equal(bookingUserIp("127.0.0.1"), "127.0.0.1");
+  assert.equal(bookingUserIp("256.1.1.1"), null);
+  assert.equal(bookingUserIp("01.2.3.4"), null);
+  assert.equal(bookingUserIp("::1"), "::1");
+  assert.equal(bookingUserIp(" 2001:db8::1 "), "2001:db8::1");
+  assert.equal(bookingUserIp("::ffff:203.0.113.8"), "::ffff:203.0.113.8");
+  const forwarded = new Request("https://travelba.fr/api/mcp", { headers: { "x-forwarded-for": "203.0.113.8, 10.0.0.1" } });
+  assert.equal(requestIp(forwarded), "203.0.113.8");
+  assert.equal(requestIp(new Request("https://travelba.fr/api/mcp", { headers: { "x-forwarded-for": "mcp" } })), "127.0.0.1");
+  assert.equal(currentBookingUserIp(), "127.0.0.1");
+  runWithBookingUserIp("198.51.100.4", () => assert.equal(currentBookingUserIp(), "198.51.100.4"));
+  runWithBookingUserIp("mcp", () => assert.equal(currentBookingUserIp(), "127.0.0.1"));
+  const parsed = {
+    error: "invalid_params",
+    debug: { api_key_id: "secret", key_id: "secret", validation_error: "user_ip: value is not a valid IPv4 or IPv6 address" },
+  };
+  assert.equal(etgValidationDetail(parsed), "user_ip: value is not a valid IPv4 or IPv6 address");
+  assert.equal(etgValidationDetail({ debug: { validation_error: { user_ip: "bad", language: "bad" } } }), "user_ip, language");
+  assert.equal(etgValidationDetail({ debug: { api_key_id: "secret" } }), null);
+  const detail = "user_ip: value is not a valid IPv4 or IPv6 address";
+  const reason = etgFailureReason({ httpStatus: 400, status: "error", error: "invalid_params", detail });
+  assert.equal(reason, `invalid_params (${detail})`);
+  const form = decideBookingForm({ httpStatus: 400, status: "error", error: "invalid_params", detail }, 1);
+  assert.equal(form.action, "fail");
+  if (form.action === "fail") assert.equal(form.reason, reason);
+  const finish = decideBookingFinish({ httpStatus: 400, status: "error", error: "invalid_params", detail });
+  if (finish.action === "fail") assert.equal(finish.reason, reason);
+  const status = decideBookingStatus({ httpStatus: 400, status: "error", error: "invalid_params", detail });
+  if (status.action === "fail") assert.equal(status.reason, reason);
+  const booking = readFileSync(new URL("./ratehawk/book.ts", import.meta.url), "utf8");
+  assert.match(booking, /bookingUserIp\(input\.userIp\)/);
+  assert.match(booking, /user_ip: userIp/);
 });
 
 test("le téléphone de réservation part dans user.phone, 5 caractères au moins", () => {

@@ -1,6 +1,11 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { NextResponse } from "next/server";
 import { requireRatehawkActor } from "@/lib/crm/auth";
 import { certificationEnvironmentAllowed, safeConfig } from "./config";
+import { bookingUserIp } from "./limits";
+
+const bookingIp = new AsyncLocalStorage<string>();
+const FALLBACK_USER_IP = "127.0.0.1";
 
 export function ratehawkJson(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -19,9 +24,18 @@ export async function staffOrResponse() {
 }
 
 export function requestIp(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-  if (/^[\da-f:.]+$/i.test(forwarded)) return forwarded;
-  const real = request.headers.get("x-real-ip")?.trim() || "";
-  if (/^[\da-f:.]+$/i.test(real)) return real;
-  return "127.0.0.1";
+  const forwarded = bookingUserIp(request.headers.get("x-forwarded-for")?.split(",")[0]);
+  if (forwarded) return forwarded;
+  const real = bookingUserIp(request.headers.get("x-real-ip"));
+  if (real) return real;
+  return FALLBACK_USER_IP;
+}
+
+/** L’appel MCP porte l’IP du visiteur. Un libellé retombe sur l’adresse de repli. */
+export function runWithBookingUserIp<T>(ip: string, run: () => T): T {
+  return bookingIp.run(bookingUserIp(ip) || FALLBACK_USER_IP, run);
+}
+
+export function currentBookingUserIp() {
+  return bookingIp.getStore() || FALLBACK_USER_IP;
 }
