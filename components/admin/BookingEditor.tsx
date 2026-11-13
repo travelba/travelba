@@ -81,7 +81,7 @@ import {
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
-import { LeReattach } from "@/components/admin/LeReattach";
+import { MoveToDossier } from "@/components/admin/MoveToDossier";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { hotelTripChecklist } from "@/lib/crm/hotel-desk";
 import { dossierCheckinBadge, flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
@@ -2650,11 +2650,22 @@ export function BookingEditor({
             </section>
           ) : null}
           {leLinks.length ? (
-            <section className="admin-af-card space-y-4 rounded-3xl p-5">
+            <section className="admin-af-card space-y-3 rounded-3xl p-5">
               <h2 className="font-display text-lg font-bold text-[#0B192C]">Little Emperors</h2>
-              {leLinks.map((row) => (
-                <LeReattach key={row.id} reference={row.confirmation_number} hotelName={row.hotel_name} />
-              ))}
+              <ul className="space-y-2">
+                {leLinks.map((row) => (
+                  <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-[#0B192C]">
+                    <span className="font-semibold">{row.hotel_name || "Hôtel"} · {row.confirmation_number}</span>
+                    <MoveToDossier
+                      bookingId={booking.id}
+                      kind="reservation"
+                      reference={row.confirmation_number}
+                      titre={row.hotel_name || row.confirmation_number}
+                      buttonClassName="admin-tap shrink-0 rounded-full border border-[var(--admin-navy)] px-3 py-1.5 text-sm font-semibold text-[var(--admin-navy)]"
+                    />
+                  </li>
+                ))}
+              </ul>
             </section>
           ) : null}
           {leOpen && littleEmperors ? (

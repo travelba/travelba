@@ -14,7 +14,7 @@ Module._load = function (request: unknown, parent: unknown, isMain: unknown) {
   return load.call(this, request, parent, isMain);
 };
 import { LittleEmperorsError } from "./little-emperors";
-import { leConfirmationMatches, leStayMatchesClient, reattachLittleEmperorsReservation } from "./le-reattach";
+import { leConfirmationMatches, leStayMatchesClient, moveCarnetStep, reattachLittleEmperorsReservation, searchDossiersForMove } from "./le-reattach";
 
 const SOURCE = "33333333-3333-4333-8333-333333333333";
 const TARGET = "44444444-4444-4444-8444-444444444444";
@@ -333,17 +333,68 @@ test("deux dossiers pour la même référence : refus", async () => {
   assert.equal(db.writes.length, 0);
 });
 
-test("l’écran propose l’aperçu avant de rattacher", async () => {
-  const { LeReattach } = await import("../../components/admin/LeReattach");
+test("l’écran ouvre le panneau, pas un champ de référence", async () => {
+  const { MoveToDossier } = await import("../../components/admin/MoveToDossier");
   const html = renderToStaticMarkup(
-    createElement(LeReattach, { reference: "64570SH046735", hotelName: "Four Seasons Milano" })
+    createElement(MoveToDossier, {
+      bookingId: SOURCE,
+      kind: "etape",
+      carteId: CARD,
+      titre: "Rome → Paris",
+      buttonClassName: "admin-tap",
+    })
   );
-  assert.match(html, /Changer de dossier/);
-  assert.match(html, /64570SH046735/);
-  assert.match(html, /Four Seasons Milano/);
-  assert.match(html, /Dossier cible/);
-  assert.match(html, /Aperçu/);
-  assert.equal(html.includes("Rattacher"), false);
+  assert.match(html, /Déplacer vers un autre dossier/);
+  assert.equal(html.includes("TB-2026-0000"), false);
+  assert.equal(html.includes("role=\"dialog\""), false);
+});
+
+test("une étape vol se déplace, une ligne de frais non", async () => {
+  const db = seed();
+  db.tables.crm_booking_items.push({
+    id: "fee-1",
+    booking_id: SOURCE,
+    kind: "fee",
+    title: "Frais",
+    confirmation_ref: null,
+    sort_order: 9,
+    amount: "25.00",
+    visible_to_client: false,
+  });
+  db.tables.crm_booking_items.push({
+    id: "flight-1",
+    booking_id: SOURCE,
+    kind: "flight",
+    title: "Rome → Paris",
+    confirmation_ref: "ABC123",
+    sort_order: 1,
+    amount: "420.00",
+    visible_to_client: false,
+    details: { passengers: [{ first_name: "Jean", last_name: "Morel" }] },
+  });
+  db.tables.crm_booking_travelers = [{ booking_id: TARGET, first_name: "Jean", last_name: "Morel" }];
+  const moved = await moveCarnetStep(
+    { carteId: "flight-1", dossierReference: "TB-2026-0049", confirmer: true, staffId: STAFF },
+    { admin: db.client, journal: async () => {} }
+  );
+  assert.equal(moved.ecrit, true);
+  assert.equal(moved.client_coherent, true);
+  assert.equal(db.tables.crm_booking_items.find((row) => row.id === "flight-1")?.booking_id, TARGET);
+  assert.equal(db.tables.crm_transactions[0].booking_id, SOURCE);
+  await assert.rejects(
+    () => moveCarnetStep({ carteId: "fee-1", dossierReference: "TB-2026-0049", confirmer: true }, { admin: db.client }),
+    (err: unknown) => err instanceof Error && /pas une étape/.test(err.message)
+  );
+});
+
+test("la recherche retrouve un dossier par le nom du client", async () => {
+  const db = seed();
+  const rows = await searchDossiersForMove("Martin", SOURCE, { admin: db.client });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.reference, "TB-2026-0049");
+  assert.equal(rows[0]?.client, "Hugo Martin");
+  const hidden = await searchDossiersForMove("Martin", TARGET, { admin: db.client });
+  assert.equal(hidden.length, 0);
 });
 
 test("le déplacement n’appelle ni le grand livre, ni WhatsApp, ni une carte Pliant", () => {
@@ -353,6 +404,12 @@ test("le déplacement n’appelle ni le grand livre, ni WhatsApp, ni une carte P
   }
   const editor = readFileSync(new URL("../../components/admin/BookingEditor.tsx", import.meta.url), "utf8");
   const inbox = readFileSync(new URL("../../components/admin/LittleEmperorsInbox.tsx", import.meta.url), "utf8");
-  assert.match(editor, /LeReattach/);
-  assert.match(inbox, /LeReattach/);
+  assert.match(editor, /MoveToDossier/);
+  assert.match(inbox, /MoveToDossier/);
+  const panel = readFileSync(new URL("../../components/admin/BookingItemsPanel.tsx", import.meta.url), "utf8");
+  const dialog = readFileSync(new URL("../../components/admin/MoveToDossier.tsx", import.meta.url), "utf8");
+  assert.match(panel, /MoveToDossier/);
+  assert.match(dialog, /Déplacer vers un autre dossier/);
+  assert.match(dialog, /rounded-3xl/);
+  assert.match(dialog, /Rechercher un dossier/);
 });
