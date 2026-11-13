@@ -738,7 +738,7 @@
 .hotel-theme .h-ladder {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 0.9rem 1.25rem 0;
+  margin: 0.15rem 0 0;
   padding: 0;
   list-style: none;
 }

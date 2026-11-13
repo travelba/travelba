@@ -1325,17 +1325,6 @@ export function HotelSearch({
                 <p className="h-club-until">{HOTEL_ACCESS_UNTIL}</p>
               </div>
             </div>
-            <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
-              {HOTEL_CLUB_LADDER.map((name) => {
-                const state = hotelClubLadderState(name);
-                return (
-                  <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
-                    <span className="h-ladder-dot" aria-hidden />
-                    <span className="h-ladder-name">{name}</span>
-                  </li>
-                );
-              })}
-            </ol>
             <div className="h-loyalty-pad">
               <div className="h-loyalty-wrap">
                 <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
@@ -1368,6 +1357,17 @@ export function HotelSearch({
                   </div>
                 </div>
               </div>
+              <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
+                {HOTEL_CLUB_LADDER.map((name) => {
+                  const state = hotelClubLadderState(name);
+                  return (
+                    <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
+                      <span className="h-ladder-dot" aria-hidden />
+                      <span className="h-ladder-name">{name}</span>
+                    </li>
+                  );
+                })}
+              </ol>
               <p className="sr-only">{HOTEL_CLUB_CARD}</p>
               <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
               <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
