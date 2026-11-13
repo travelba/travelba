@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { DirectStay } from "./hotel-direct";
-import { carteArrivee, describeStay, formalitePreview, ratehawk, reprendreFormalite, sejourHotel } from "./mcp-stays";
+import { MCP_TOOLS } from "./mcp-registry";
+import { carteArrivee, describeStay, formalitePreview, ratehawk, ratehawkPrebookAnswer, reprendreFormalite, sejourHotel } from "./mcp-stays";
 import { McpWriteError } from "./mcp-write";
 
 const CLIENT = "11111111-1111-4111-8111-111111111111";
@@ -148,4 +150,96 @@ test("rechercher Ratehawk ne réserve pas, même avec confirmer", async () => {
   assert.equal(found.envoye, false);
   await assert.rejects(() => ratehawk({ action: "rechercher", hid: 8473727 }, { read: async () => ({}) }), /incomplète/);
   await assert.rejects(() => ratehawk({ action: "chercher" }), /inconnue/);
+});
+
+const QUOTE = "jeton.signe";
+
+test("un prereserver confirmé renvoie le devis à recopier dans reserver", async () => {
+  const answer = ratehawkPrebookAnswer({
+    quote: QUOTE,
+    price: { increased: true, delta: 10, percent: 5, before: 200, after: 210 },
+    rate: { show_currency_code: "EUR" },
+  });
+  assert.deepEqual(answer, {
+    devis: QUOTE,
+    prix: 210,
+    prix_depart: 200,
+    prix_augmente: true,
+    ecart: 10,
+    ecart_pourcent: 5,
+    devise: "EUR",
+    reserve: false,
+  });
+  let booked = 0;
+  const done = await ratehawk(
+    { action: "prereserver", hash: "h-abc", hid: 12, prix: 200, confirmer: true },
+    {
+      preview: async () => ({ hid: 12, prix: 200, message: "pas encore réservée" }),
+      apply: async () => {
+        booked += 1;
+        return answer;
+      },
+    }
+  );
+  assert.equal(booked, 1);
+  const row = done as { ecrit?: boolean; apercu?: boolean; devis?: string; prix?: number; prix_augmente?: boolean; reserve?: boolean };
+  assert.equal(row.ecrit, true);
+  assert.equal(row.apercu, false);
+  assert.equal(row.devis, QUOTE);
+  assert.equal(row.prix, 210);
+  assert.equal(row.prix_augmente, true);
+  assert.equal(row.reserve, false);
+  const source = readFileSync(new URL("./mcp-stays.ts", import.meta.url), "utf8");
+  assert.match(source, /return ratehawkPrebookAnswer\(result\)/);
+  const tool = MCP_TOOLS.find((item) => item.name === "ratehawk");
+  assert.match(tool?.description || "", /confirmer true renvoie devis/);
+  assert.match(tool?.description || "", /argument devis de reserver/);
+  assert.match(tool?.input?.devis.meta()?.description || "", /prereserver/);
+  const instructions = readFileSync(new URL("../../app/api/mcp/route.ts", import.meta.url), "utf8");
+  assert.match(instructions, /ce devis est l’argument devis de reserver/);
+});
+
+function reservation(telephone?: string) {
+  return {
+    action: "reserver",
+    devis: QUOTE,
+    hid: 12,
+    hotel: "Hôtel test",
+    arrivee: "2026-12-01",
+    depart: "2026-12-03",
+    chambres: [{ voyageurs: [{ prenom: "Ada", nom: "Martin" }] }],
+    recherche: [{ adultes: 1 }],
+    ...(telephone === undefined ? {} : { telephone }),
+  };
+}
+
+test("un téléphone absent ou hors limites est refusé dès l’aperçu de reserver", async () => {
+  let previewed = 0;
+  let booked = 0;
+  const effects = {
+    preview: async () => {
+      previewed += 1;
+      return { message: "aperçu" };
+    },
+    apply: async () => {
+      booked += 1;
+      return { commande: "ord-1" };
+    },
+  };
+  await assert.rejects(() => ratehawk(reservation(), effects), /5 caractères/);
+  await assert.rejects(() => ratehawk(reservation("1234"), effects), /5 caractères/);
+  await assert.rejects(() => ratehawk(reservation("   "), effects), /5 caractères/);
+  await assert.rejects(() => ratehawk(reservation("1".repeat(36)), effects), /35 caractères/);
+  await assert.rejects(() => ratehawk({ ...reservation("1234"), confirmer: true }, effects), /5 caractères/);
+  assert.equal(previewed, 0);
+  assert.equal(booked, 0);
+  const held = (await ratehawk(reservation("  +33 6 12 34 56 78  "), effects)) as { apercu?: boolean; ecrit?: boolean };
+  assert.equal(held.apercu, true);
+  assert.equal(held.ecrit, false);
+  assert.equal(booked, 0);
+  const done = (await ratehawk({ ...reservation("+33123456789"), confirmer: true }, effects)) as { ecrit?: boolean };
+  assert.equal(done.ecrit, true);
+  assert.equal(booked, 1);
+  const booking = readFileSync(new URL("./ratehawk/book.ts", import.meta.url), "utf8");
+  assert.match(booking, /validateUserPhone\(input\.phone\)/);
 });
