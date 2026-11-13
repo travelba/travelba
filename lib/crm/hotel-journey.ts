@@ -205,33 +205,66 @@ export function collapseRooms(rooms: ClientRoom[]): ClientRoom[] {
   return out;
 }
 
-/** Même titre, pension, annulation et prix : un seul tarif. Ce qui diffère reste. */
-export function presentRates(rates: ClientRate[]): ClientRate[] {
-  const kept = new Map<string, ClientRate>();
+/** Ce que la carte montre : titre, pension visible, badge d’annulation, prix TTC au centime. */
+export function displayedRateFace(rate: ClientRate, benefits: string[] = []) {
+  const reading = readStayRate({
+    title: rate.title,
+    cancellation: rate.cancellation,
+    benefits: rate.benefits,
+    freeCancellation: rate.perks.freeCancellation,
+  });
+  const board = rateBoardLine(reading.board, benefits);
+  const badge = rateCancelBadge({
+    free: rate.perks.freeCancellation,
+    deadlineLabel: rate.deadlineLabel,
+    cancellation: reading.cancellation,
+  });
+  return {
+    title: reading.title,
+    board,
+    badge,
+    cents: Math.round(rate.sellCents),
+    currency: (rate.currency || "EUR").toUpperCase(),
+  };
+}
+
+function sameDisplayedRate(left: ClientRate, right: ClientRate, benefits: string[]) {
+  const a = displayedRateFace(left, benefits);
+  const b = displayedRateFace(right, benefits);
+  return a.title === b.title && a.board === b.board && a.badge === b.badge && a.cents === b.cents && a.currency === b.currency;
+}
+
+/** À prix égal, le tarif réservable qui inclut le petit-déjeuner. Sinon le moins cher, puis le premier réservable. */
+function preferShownRate(current: ClientRate, next: ClientRate) {
+  const currentBookable = Boolean(current.offerId);
+  const nextBookable = Boolean(next.offerId);
+  if (currentBookable !== nextBookable) return nextBookable ? next : current;
+  if (next.sellCents !== current.sellCents) return next.sellCents < current.sellCents ? next : current;
+  if (next.perks.breakfast !== current.perks.breakfast) return next.perks.breakfast ? next : current;
+  return current;
+}
+
+/**
+ * Un seul tarif quand la carte affichée est la même.
+ * La pension cachée par les avantages de l’hôtel ne sépare pas deux cartes identiques.
+ * Une pension réellement affichée reste.
+ */
+export function presentRates(rates: ClientRate[], benefits: string[] = []): ClientRate[] {
+  const kept: ClientRate[] = [];
   for (const rate of rates) {
-    const reading = readStayRate({
-      title: rate.title,
-      cancellation: rate.cancellation,
-      benefits: rate.benefits,
-      freeCancellation: rate.perks.freeCancellation,
-    });
-    const key = [
-      reading.title,
-      reading.board,
-      reading.cancellation,
-      rate.perks.breakfast ? "pdj" : "",
-      rate.sellCents,
-      (rate.currency || "EUR").toUpperCase(),
-    ].join("|");
-    const previous = kept.get(key);
-    if (!previous || (!previous.offerId && rate.offerId)) kept.set(key, rate);
+    const index = kept.findIndex((item) => sameDisplayedRate(item, rate, benefits));
+    if (index < 0) {
+      kept.push(rate);
+      continue;
+    }
+    kept[index] = preferShownRate(kept[index], rate);
   }
-  return [...kept.values()];
+  return kept;
 }
 
 /** Le premier tarif réservable, ou le premier s’il n’y en a qu’un. */
-export function initialRate(rates: ClientRate[]) {
-  const shown = presentRates(rates);
+export function initialRate(rates: ClientRate[], benefits: string[] = []) {
+  const shown = presentRates(rates, benefits);
   return shown.find((rate) => rate.offerId) || shown[0] || null;
 }
 

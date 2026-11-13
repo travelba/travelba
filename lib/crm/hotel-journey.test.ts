@@ -6,6 +6,7 @@ import {
   BOOKING_STEPS,
   agencyPayOffered,
   discreetSearchPerk,
+  displayedRateFace,
   initialRate,
   hotelJourneySearch,
   hotelJourneyStep,
@@ -209,5 +210,38 @@ test("deux tarifs identiques n’en font qu’un, une pension différente reste"
     sampleRate({ offerId: "pdj", title: "Breakfast included" }),
   ]);
   assert.equal(split.length, 2);
-  assert.equal(initialRate([]) , null);
+  assert.equal(initialRate([]), null);
+});
+
+test("Méridien : même carte affichée, le petit-déjeuner déjà dans les avantages ne double pas le tarif", () => {
+  const hotelBenefits = [
+    "Petit-déjeuner quotidien pour deux personnes",
+    "Surclassement prioritaire à l'enregistrement",
+  ];
+  const withBreakfast = sampleRate({
+    offerId: "OLOK00-L72",
+    benefits: ["Petit-déjeuner quotidien pour deux personnes", "Surclassement prioritaire à l'enregistrement"],
+    perks: { ...NONE, breakfast: true, freeCancellation: true },
+    deadlineLabel: "20 décembre 2026 à 23:59",
+    cancellation: "Gratuite jusqu’au 20 décembre 2026, 23 h 59",
+    sellCents: 22696,
+  });
+  const without = sampleRate({
+    offerId: "REGB00-RAC",
+    benefits: ["Surclassement prioritaire à l'enregistrement"],
+    perks: { ...NONE, freeCancellation: true },
+    deadlineLabel: "20 décembre 2026 à 23:59",
+    cancellation: "Gratuite jusqu’au 20 décembre 2026, 23 h 59",
+    sellCents: 22696,
+  });
+  assert.equal(displayedRateFace(withBreakfast, hotelBenefits).board, "");
+  assert.equal(displayedRateFace(without, hotelBenefits).board, "");
+  assert.equal(displayedRateFace(withBreakfast, hotelBenefits).badge, displayedRateFace(without, hotelBenefits).badge);
+  const shown = presentRates([without, withBreakfast], hotelBenefits);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0]?.offerId, "OLOK00-L72");
+
+  const apart = presentRates([without, withBreakfast], []);
+  assert.equal(apart.length, 2);
+  assert.equal(displayedRateFace(withBreakfast, []).board, "Petit-déjeuner inclus");
 });
