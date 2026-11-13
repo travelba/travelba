@@ -156,3 +156,81 @@ test("chaque coût sait sur quelle ligne il est posé", () => {
   const legacy = revolutLinkedWithoutCost([{ id: "rev-9" }, { id: "rev-old" }], placements);
   assert.deepEqual(legacy.map((row) => row.id), ["rev-old"]);
 });
+
+test("Transavia 2 391,01 € : refus, annulation et autorisation couverte sortent de la liste du dossier", () => {
+  const dossier = "tb-2026-0159";
+  const day = "2026-11-10";
+  const attempt = (id: string, status: string, cardId: string): PliantCardRecap["spends"][number] => ({
+    id,
+    cardId,
+    merchant: status === "BOOKED" ? "Transavia" : "TRANSAVIA",
+    status,
+    type: "PURCHASE",
+    billingCents: status === "BOOKED" ? 239101 : -239101,
+    currency: "EUR",
+    bookedAt: day,
+    matchStatus: status === "BOOKED" ? "matched" : "unmatched",
+    matchedBookingId: status === "BOOKED" ? dossier : null,
+  });
+  const first: PliantCardRecap = {
+    ...card,
+    pliantCardId: "card-bloquee",
+    label: "Transavia · carte 1",
+    last4: "1111",
+    spends: [attempt("auth-1", "CONFIRMED", "card-bloquee"), attempt("auth-2", "CONFIRMED", "card-bloquee"), attempt("declined-1", "DECLINED", "card-bloquee"), attempt("reversed-1", "REVERSED", "card-bloquee")],
+  };
+  const second: PliantCardRecap = {
+    ...card,
+    pliantCardId: "card-debitee",
+    label: "Transavia · carte 2",
+    last4: "2222",
+    spends: [attempt("debit-1", "BOOKED", "card-debitee")],
+  };
+  const proposed: OutgoingLine[] = [
+    {
+      source: "pliant",
+      id: "auth-1",
+      party: "TRANSAVIA",
+      amount: 2391.01,
+      currency: "EUR",
+      eurAmount: 2391.01,
+      refund: false,
+      occurredOn: day,
+      card: "···· 1111",
+      text: "",
+      kind: "Carte",
+      agencyCard: false,
+      cardInfo: null,
+      suggestions: [],
+    },
+    {
+      source: "pliant",
+      id: "open-auth",
+      party: "AUTRE",
+      amount: 12,
+      currency: "EUR",
+      eurAmount: 12,
+      refund: false,
+      occurredOn: day,
+      card: null,
+      text: "",
+      kind: "Carte",
+      agencyCard: false,
+      cardInfo: null,
+      suggestions: [],
+    },
+  ];
+  const openCard: PliantCardRecap = {
+    ...card,
+    pliantCardId: "card-ouverte",
+    spends: [attempt("open-auth", "CONFIRMED", "card-ouverte")].map((row) => ({ ...row, merchant: "AUTRE", billingCents: -1200 })),
+  };
+  const hidden = pendingCostLines({
+    proposed: proposed.filter((line) => line.id === "auth-1"),
+    cards: [first, second],
+    bookingId: dossier,
+  });
+  assert.deepEqual(hidden.map((line) => line.id), []);
+  const kept = pendingCostLines({ proposed, cards: [first, second, openCard], bookingId: dossier });
+  assert.deepEqual(kept.map((line) => line.id), ["open-auth"]);
+});

@@ -375,6 +375,7 @@ export function OutgoingAttach({
  * générée depuis le dossier. Sur un dossier, la proposition qui compte est celle de ce dossier.
  */
 export function lineIsSure(line: OutgoingLine, fixedBookingId: string | null) {
+  if (line.coveredNote) return false;
   if (fixedBookingId) {
     const hit = line.suggestions.find((row) => row.bookingId === fixedBookingId) || null;
     if (hit) return isSureSuggestion(hit);
@@ -433,6 +434,7 @@ export function OutgoingRow({
             {line.card ? ` · ${line.card}` : ""}
             {line.text ? ` · ${line.text}` : ""}
           </p>
+          {line.coveredNote ? <p className="mt-1 text-xs leading-5 text-[var(--admin-navy)]">{line.coveredNote}</p> : null}
           {cardLabel ? <p className="mt-1 text-xs leading-5 text-[var(--admin-navy)]">{cardLabel}</p> : null}
         </div>
         <OutgoingAmount line={line} />

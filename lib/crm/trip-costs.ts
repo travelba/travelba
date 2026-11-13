@@ -592,6 +592,11 @@ export type OutgoingLine = {
   agencyCard: boolean;
   /** Carte Pliant générée depuis un dossier : porteur, plafond, validité, dossier d’origine. */
   cardInfo: OutgoingCardInfo | null;
+  /**
+   * Autorisation déjà réglée par un débit. La file générale la montre avec cette mention.
+   * La liste du dossier ne la reçoit pas. Rien n’est rattaché.
+   */
+  coveredNote?: string | null;
   suggestions: (CostSuggestion & {
     reference: string;
     title: string;
