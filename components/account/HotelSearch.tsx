@@ -11,9 +11,13 @@ import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import {
   HOTEL_ACCESS_EYEBROW,
+  HOTEL_ACCESS_LEVEL,
+  HOTEL_ACCESS_LEVEL_LABEL,
   HOTEL_ACCESS_LINES,
+  HOTEL_ACCESS_OFFER,
   HOTEL_ACCESS_PROMISE,
   HOTEL_ACCESS_RESERVE,
+  HOTEL_ACCESS_UNTIL,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
   hotelDraftStorageKey,
@@ -765,7 +769,7 @@ export function HotelSearch({
       </div>
       {!searched ? (
         <div className="h-ask">
-          <div className="relative overflow-hidden rounded-2xl bg-[#0B192C] text-[#f7f4ee]" data-hotel-hero="1">
+          <div className="h-member" data-hotel-hero="1">
             {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
             <img
               src={heroSrc}
@@ -775,12 +779,22 @@ export function HotelSearch({
               fetchPriority="high"
               decoding="async"
               onError={() => setHeroBroken(true)}
-              className="absolute inset-0 h-full w-full object-cover opacity-40"
+              className="absolute inset-0 h-full w-full object-cover opacity-35"
             />
-            <div className="absolute inset-0 bg-[#0B192C]/75" aria-hidden />
+            <div className="absolute inset-0 bg-[#0B192C]/80" aria-hidden />
             <div className="relative space-y-3 px-4 py-4" data-hotel-agency-benefits="1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
-              <h1 className="h-serif text-[1.05rem] font-semibold leading-snug">{HOTEL_ACCESS_PROMISE}</h1>
+              <div className="flex items-end justify-between gap-3 border-b border-[#C5A880]/40 pb-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">{HOTEL_ACCESS_LEVEL_LABEL}</p>
+                  <p className="h-serif text-[1.45rem] leading-none tracking-[0.04em] text-[#f7f4ee]">{HOTEL_ACCESS_LEVEL}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-[13px] font-semibold text-[#C5A880]">{HOTEL_ACCESS_OFFER}</p>
+                  <p className="mt-1 text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
+                </div>
+              </div>
+              <h1 className="h-serif text-[1.02rem] font-semibold leading-snug">{HOTEL_ACCESS_PROMISE}</h1>
               <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
               <p className="text-[11px] leading-snug text-white/70">{HOTEL_ACCESS_RESERVE}</p>
             </div>

@@ -3,8 +3,12 @@ import test from "node:test";
 import { SEARCH_PERK_LABEL, stayBenefits } from "./hotel-journey";
 import type { HotelPerks } from "./hotel-search";
 import {
+  HOTEL_ACCESS_EYEBROW,
+  HOTEL_ACCESS_LEVEL,
   HOTEL_ACCESS_LINES,
+  HOTEL_ACCESS_OFFER,
   HOTEL_ACCESS_RESERVE,
+  HOTEL_ACCESS_UNTIL,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
   TRAVEL_BA_SEARCH_ADVANTAGES,
@@ -52,6 +56,10 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
     "Transfert aéroport*",
   ]);
   assert.equal(HOTEL_ACCESS_RESERVE, "* Soumis à disponibilité et selon l’hôtel.");
+  assert.equal(HOTEL_ACCESS_EYEBROW, "Club Travel BA");
+  assert.equal(HOTEL_ACCESS_LEVEL, "Platinum");
+  assert.equal(HOTEL_ACCESS_OFFER, "Offert*");
+  assert.equal(HOTEL_ACCESS_UNTIL, "Jusqu’au 31 déc. 2026");
   assert.equal(HOTEL_ACCESS_LINES[0].endsWith("*"), false);
   const perks: HotelPerks = {
     breakfast: true,

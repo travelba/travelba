@@ -23,8 +23,16 @@ export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
   (key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label || ""
 ).filter((label) => label.length > 0);
 
-/** Première page : le client voit l’accès avant de chercher. */
-export const HOTEL_ACCESS_EYEBROW = "Votre accès";
+/** Première page : la carte membre, avant de chercher. */
+export const HOTEL_ACCESS_EYEBROW = "Club Travel BA";
+
+export const HOTEL_ACCESS_LEVEL_LABEL = "Niveau";
+
+export const HOTEL_ACCESS_LEVEL = "Platinum";
+
+export const HOTEL_ACCESS_OFFER = "Offert*";
+
+export const HOTEL_ACCESS_UNTIL = "Jusqu’au 31 déc. 2026";
 
 export const HOTEL_ACCESS_PROMISE =
   "Un catalogue d’hôtels aux tarifs qui vous sont réservés, avec des avantages que l’on ne trouve pas en réservation directe.";
