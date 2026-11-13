@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toAuditRow } from "@/lib/crm/audit-events";
-import { hotelBookingStem, hotelRefTokens, hotelRefsShareBooking } from "@/lib/crm/item-match";
+import { hotelBrandsAlign, hotelRefTokens, hotelRefsShareBooking, hotelStaysOverlapNights } from "@/lib/crm/item-match";
 import { LittleEmperorsError, splitGuestName } from "@/lib/crm/little-emperors";
 import { formatDateRangeShort } from "@/lib/crm/money";
 import { foldName, lastNamesMatch, namesReferToSamePerson, type PersonName } from "@/lib/crm/person-match";
@@ -25,6 +25,8 @@ type LeRow = {
   confirmation_number: string | null;
   guest_names: string[] | null;
   hotel_name: string | null;
+  check_in: string | null;
+  check_out: string | null;
   crm_booking_id: string | null;
 };
 
@@ -44,6 +46,9 @@ type HotelCard = {
   confirmation_ref: string | null;
   sort_order: number | null;
   booking_id: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  details?: Record<string, unknown> | null;
 };
 
 export type ReattachInput = {
@@ -80,6 +85,54 @@ export function leConfirmationMatches(stored: string | null | undefined, query: 
   const asked = new Set(hotelRefTokens(query));
   if (!asked.size) return false;
   return hotelRefTokens(stored).some((token) => asked.has(token));
+}
+
+/** Collision : le jeton demandé est écrit en entier. `64570` n’est pas `64570SH046735`. */
+export function leConfirmationExact(stored: string | null | undefined, query: string) {
+  const asked = hotelRefTokens(query);
+  const have = new Set(hotelRefTokens(stored));
+  if (!asked.length || !have.size) return false;
+  return asked.every((token) => have.has(token));
+}
+
+function dayStamp(value: string | null | undefined) {
+  const day = (value || "").slice(0, 10);
+  const time = Date.parse(day);
+  return Number.isFinite(time) ? time : null;
+}
+
+function datesAreClose(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  otherStart: string | null | undefined,
+  otherEnd: string | null | undefined
+) {
+  if (hotelStaysOverlapNights({ start_at: start, end_at: end }, { start_at: otherStart, end_at: otherEnd })) return true;
+  const left = dayStamp(start);
+  const right = dayStamp(otherStart);
+  if (left == null || right == null) return false;
+  return Math.abs(left - right) <= 3 * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Carte déjà sur le dossier cible : même confirmation, ou préfixe Little Emperors
+ * avec le même hôtel et des dates proches. On relie, on ne copie pas la carte.
+ */
+export function probableHotelLink(
+  cards: HotelCard[],
+  stay: { reference: string; hotel: string | null; checkIn: string | null; checkOut: string | null }
+) {
+  return cards.filter((card) => {
+    if (card.kind !== "hotel") return false;
+    const exact = leConfirmationExact(card.confirmation_ref, stay.reference);
+    const prefix = !exact && hotelRefsShareBooking(card.confirmation_ref, stay.reference);
+    if (!exact && !prefix) return false;
+    if (exact) return true;
+    const hotelName = typeof card.details?.hotel_name === "string" ? card.details.hotel_name : "";
+    const names = [card.title, hotelName].map((name) => (name || "").trim()).filter(Boolean);
+    const sameHotel = Boolean(stay.hotel) && names.some((name) => hotelBrandsAlign(name, stay.hotel));
+    return sameHotel && datesAreClose(card.start_at, card.end_at, stay.checkIn, stay.checkOut);
+  });
 }
 
 function personViews(person: Person): PersonName[] {
@@ -168,13 +221,21 @@ async function defaultJournal(entry: JournalEntry) {
 async function rowsFor(admin: Admin, needle: string) {
   const { data, error } = await admin
     .from("crm_le_bookings")
-    .select("id, confirmation_number, guest_names, hotel_name, crm_booking_id")
+    .select("id, confirmation_number, guest_names, hotel_name, check_in, check_out, crm_booking_id")
     .ilike("confirmation_number", `%${needle}%`);
   if (error) fail("Réservation Little Emperors introuvable.", 404, "not_found");
   return (data || []) as LeRow[];
 }
 
-async function dossierBy(admin: Admin, column: "id" | "reference", value: string) {
+const DOSSIER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function canonicalReference(value: string) {
+  const trimmed = value.trim();
+  if (/^tb-\d{4}-\d+$/i.test(trimmed)) return trimmed.toUpperCase();
+  return trimmed;
+}
+
+async function dossierEq(admin: Admin, column: "id" | "reference", value: string) {
   const { data, error } = await admin
     .from("crm_bookings")
     .select("id, reference, customer_id, status, archived_at, visible_to_client")
@@ -184,14 +245,20 @@ async function dossierBy(admin: Admin, column: "id" | "reference", value: string
   return (data as Dossier | null) || null;
 }
 
-async function dossiersByIds(admin: Admin, ids: string[]) {
-  if (!ids.length) return [] as Dossier[];
-  const { data, error } = await admin
-    .from("crm_bookings")
-    .select("id, reference, customer_id, status, archived_at, visible_to_client")
-    .in("id", ids);
-  if (error) fail("Dossier introuvable.", 404, "dossier");
-  return (data || []) as Dossier[];
+/** Identifiant ou référence `TB-AAAA-NNNN`, dans un sens ou dans l’autre. */
+async function findDossier(admin: Admin, value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (DOSSIER_UUID.test(trimmed)) {
+    const byId = await dossierEq(admin, "id", trimmed);
+    if (byId) return byId;
+  }
+  return dossierEq(admin, "reference", canonicalReference(trimmed));
+}
+
+async function dossierBy(admin: Admin, column: "id" | "reference", value: string) {
+  if (column === "id") return findDossier(admin, value);
+  return dossierEq(admin, "reference", canonicalReference(value));
 }
 
 async function customersByIds(admin: Admin, ids: string[]) {
@@ -215,31 +282,18 @@ export async function reattachLittleEmperorsReservation(input: ReattachInput, de
   const dossierReference = (input.dossierReference || "").trim();
   if (!dossierId && !dossierReference) fail("Indiquez le dossier cible.", 422, "dossier");
 
-  let stored = await rowsFor(admin, needle);
-  const stem = hotelBookingStem(reference);
-  if (stem && stem !== needle) {
-    const more = await rowsFor(admin, stem);
-    const seen = new Set(stored.map((row) => row.id));
-    stored = stored.concat(more.filter((row) => !seen.has(row.id)));
-  }
-  const matched = stored.filter((row) => leConfirmationMatches(row.confirmation_number, reference));
+  const stored = await rowsFor(admin, needle);
+  const matched = stored.filter((row) => leConfirmationExact(row.confirmation_number, reference));
   if (!matched.length) fail("Réservation Little Emperors introuvable.", 404, "not_found");
   const linked = matched.filter((row) => row.crm_booking_id);
   if (!linked.length) {
     fail("Cette réservation n’est pas rattachée à un dossier.", 409, "unlinked");
   }
   const sourceIds = [...new Set(linked.map((row) => row.crm_booking_id as string))];
-  if (sourceIds.length > 1) {
-    const several = await dossiersByIds(admin, sourceIds);
-    const labels = sourceIds.map((id) => several.find((row) => row.id === id)?.reference || id);
-    fail(`Cette référence est déjà sur plusieurs dossiers : ${labels.join(", ")}.`, 409, "ambiguous");
-  }
-  const source = await dossierBy(admin, "id", sourceIds[0]);
+  const target = await resolveTarget(admin, dossierId, dossierReference);
+  const leaving = sourceIds.filter((id) => id !== target.id);
+  const source = await dossierBy(admin, "id", leaving[0] || sourceIds[0]);
   if (!source) fail("Le dossier actuel est introuvable.", 404, "dossier");
-  const target = dossierId
-    ? await dossierBy(admin, "id", dossierId)
-    : await dossierBy(admin, "reference", dossierReference);
-  if (!target) fail("Dossier cible introuvable.", 404, "dossier");
   if (target.archived_at) fail("Ce dossier est archivé.", 409, "archived");
   if (target.status === "cancelled") fail("Ce dossier est annulé.", 409, "cancelled");
 
@@ -251,9 +305,9 @@ export async function reattachLittleEmperorsReservation(input: ReattachInput, de
   );
   const { data: travelerRows, error: travelerError } = await admin
     .from("crm_booking_travelers")
-    .select("first_name, last_name, usage_name")
+    .select("first_name, last_name")
     .eq("booking_id", target.id);
-  if (travelerError) fail("Dossier cible introuvable.", 404, "dossier");
+  if (travelerError) fail("Voyageurs du dossier illisibles.", 500, "voyageurs");
   const holder = target.customer_id ? names.get(target.customer_id) : undefined;
   const people: Person[] = [
     ...(holder ? [{ first_name: holder.first_name, last_name: holder.last_name }] : []),
@@ -263,20 +317,37 @@ export async function reattachLittleEmperorsReservation(input: ReattachInput, de
   const sourceClient = displayName(source.customer_id ? names.get(source.customer_id) : undefined);
   const targetClient = displayName(holder);
 
-  const { data: sourceItems, error: itemError } = await admin
+  const { data: targetItems, error: targetItemError } = await admin
     .from("crm_booking_items")
-    .select("id, kind, title, confirmation_ref, sort_order, booking_id")
-    .eq("booking_id", source.id);
-  if (itemError) fail("Le rattachement n’a pas été lu.", 500, "link");
-  const references = [reference, ...linked.map((row) => row.confirmation_number || "")];
-  const cards = ((sourceItems || []) as HotelCard[]).filter(
-    (item) => item.kind === "hotel" && references.some((ref) => leConfirmationMatches(item.confirmation_ref, ref))
-  );
+    .select("id, kind, title, confirmation_ref, sort_order, booking_id, start_at, end_at, details")
+    .eq("booking_id", target.id);
+  if (targetItemError) fail("Le rattachement n’a pas été lu.", 500, "link");
+  const stay = {
+    reference,
+    hotel,
+    checkIn: linked.find((row) => row.check_in)?.check_in || null,
+    checkOut: linked.find((row) => row.check_out)?.check_out || null,
+  };
+  const links = probableHotelLink((targetItems || []) as HotelCard[], stay);
+  const link = links.length === 1 ? links[0] : null;
+  const cards: HotelCard[] = [];
+  if (!links.length) {
+    for (const bookingId of leaving) {
+      const { data: sourceItems, error: itemError } = await admin
+        .from("crm_booking_items")
+        .select("id, kind, title, confirmation_ref, sort_order, booking_id, start_at, end_at, details")
+        .eq("booking_id", bookingId);
+      if (itemError) fail("Le rattachement n’a pas été lu.", 500, "link");
+      for (const item of (sourceItems || []) as HotelCard[]) {
+        if (item.kind === "hotel" && leConfirmationExact(item.confirmation_ref, reference)) cards.push(item);
+      }
+    }
+  }
 
   const preview = {
     apercu: true as const,
     ecrit: false as const,
-    deja: target.id === source.id,
+    deja: leaving.length === 0,
     message: false as const,
     debit_cree: false as const,
     cartes_pliant: "inchangees" as const,
@@ -293,13 +364,20 @@ export async function reattachLittleEmperorsReservation(input: ReattachInput, de
       reference: card.confirmation_ref,
     })),
     titre: hotel,
+    relier_carte: link
+      ? { id: link.id, titre: link.title, reference: link.confirmation_ref }
+      : null,
     resume: moveResume({
       titre: hotel || "Cette réservation",
       source,
       target,
       sourceClient,
       targetClient,
-      suit: cards.length ? "La carte hôtel suit, avec ses pièces, ses courriers et ses coûts déjà posés." : "Aucune carte hôtel ne suit.",
+      suit: links.length
+        ? `Le dossier cible a déjà la carte « ${link?.title || links[0]?.title || "Hôtel"} »${link?.confirmation_ref ? ` (réf. ${link.confirmation_ref})` : ""}. La réservation y sera reliée. Aucune carte n’est ajoutée.`
+        : cards.length
+          ? "La carte hôtel suit, avec ses pièces, ses courriers et ses coûts déjà posés."
+          : "Aucune carte hôtel ne suit.",
     }),
   };
   if (preview.deja || input.confirmer !== true) return preview;
@@ -486,7 +564,7 @@ async function resolveTarget(admin: Admin, dossierId?: string | null, dossierRef
   const id = (dossierId || "").trim();
   const reference = (dossierReference || "").trim();
   if (!id && !reference) fail("Indiquez le dossier cible.", 422, "dossier");
-  const target = id ? await dossierBy(admin, "id", id) : await dossierBy(admin, "reference", reference);
+  const target = (id ? await findDossier(admin, id) : null) || (reference ? await findDossier(admin, reference) : null);
   if (!target) fail("Dossier cible introuvable.", 404, "dossier");
   if (target.archived_at) fail("Ce dossier est archivé.", 409, "archived");
   if (target.status === "cancelled") fail("Ce dossier est annulé.", 409, "cancelled");
@@ -497,9 +575,9 @@ async function partyOf(admin: Admin, dossier: Dossier) {
   const customers = await customersByIds(admin, dossier.customer_id ? [dossier.customer_id] : []);
   const { data, error } = await admin
     .from("crm_booking_travelers")
-    .select("first_name, last_name, usage_name")
+    .select("first_name, last_name")
     .eq("booking_id", dossier.id);
-  if (error) fail("Dossier introuvable.", 404, "dossier");
+  if (error) fail("Voyageurs du dossier illisibles.", 500, "voyageurs");
   const holder = dossier.customer_id ? customers.get(dossier.customer_id) : undefined;
   const people: Person[] = [
     ...(holder ? [{ first_name: holder.first_name, last_name: holder.last_name }] : []),
@@ -585,7 +663,7 @@ export async function moveCarnetStep(
     .select("id, confirmation_number, crm_booking_id")
     .eq("crm_booking_id", source.id);
   const leIds = ((leRows || []) as { id: string; confirmation_number: string | null }[])
-    .filter((row) => item.confirmation_ref && leConfirmationMatches(row.confirmation_number, item.confirmation_ref))
+    .filter((row) => item.confirmation_ref && leConfirmationExact(row.confirmation_number, item.confirmation_ref))
     .map((row) => row.id);
   const preview = {
     ...previewMove({
@@ -657,21 +735,35 @@ export async function moveSupplierReservation(
     .ilike("confirmation_ref", `%${needle}%`);
   if (error) fail("Réservation introuvable.", 404, "not_found");
   const cards = ((data || []) as (HotelCard & { details?: unknown; supplier?: string | null })[]).filter((item) => {
-    if (!countsAsCarnetCard(item.kind) || !leConfirmationMatches(item.confirmation_ref, reference)) return false;
+    if (!countsAsCarnetCard(item.kind) || !leConfirmationExact(item.confirmation_ref, reference)) return false;
     if (!fournisseur) return true;
     const folded = foldName(fournisseur);
     return foldName(item.supplier).includes(folded) || foldName(item.title).includes(folded);
   });
   if (!cards.length) fail("Réservation introuvable.", 404, "not_found");
-  const sourceIds = [...new Set(cards.map((card) => card.booking_id).filter((id): id is string => Boolean(id)))];
-  if (sourceIds.length > 1) {
-    const several = await dossiersByIds(admin, sourceIds);
-    const labels = sourceIds.map((id) => several.find((row) => row.id === id)?.reference || id);
-    fail(`Cette référence est déjà sur plusieurs dossiers : ${labels.join(", ")}.`, 409, "ambiguous");
+  const target = await resolveTarget(admin, input.dossierId, input.dossierReference);
+  const sourceIds = [...new Set(cards.map((card) => card.booking_id).filter((id): id is string => Boolean(id)))].filter(
+    (id) => id !== target.id
+  );
+  if (!sourceIds.length) {
+    const source = await dossierBy(admin, "id", target.id);
+    if (!source) fail("Le dossier actuel est introuvable.", 404, "dossier");
+    return {
+      apercu: true as const,
+      ecrit: false as const,
+      deja: true,
+      message: false as const,
+      debit_cree: false as const,
+      cartes_pliant: "inchangees" as const,
+      reference,
+      titre: cards[0]?.title || null,
+      de: { id: target.id, reference: target.reference, client: null },
+      vers: { id: target.id, reference: target.reference, client: null },
+    };
   }
+  const moving = cards.filter((card) => card.booking_id && sourceIds.includes(card.booking_id));
   const source = await dossierBy(admin, "id", sourceIds[0]);
   if (!source) fail("Le dossier actuel est introuvable.", 404, "dossier");
-  const target = await resolveTarget(admin, input.dossierId, input.dossierReference);
   const sourceParty = await partyOf(admin, source);
   const targetParty = await partyOf(admin, target);
   const guests = [
@@ -686,7 +778,7 @@ export async function moveSupplierReservation(
       sourceClient: sourceParty.client,
       targetClient: targetParty.client,
       guests,
-      cards,
+      cards: moving,
       suit: "La réservation suit, avec ses pièces, ses courriers et ses coûts déjà posés.",
     }),
     reference,
@@ -703,7 +795,7 @@ export async function moveSupplierReservation(
   }
   const summary = `Réservation ${reference} déplacée de ${source.reference || "l’ancien dossier"} vers ${target.reference || "le dossier cible"}.`;
   await commitDossierMove(admin, deps, {
-    cards,
+    cards: moving,
     leIds: [],
     source,
     target,
