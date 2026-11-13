@@ -25,8 +25,11 @@ import {
   HOTEL_CLUB_EVENT,
   HOTEL_CLUB_FAMILY,
   HOTEL_CLUB_GIVEN,
+  HOTEL_CLUB_LADDER,
+  HOTEL_CLUB_LADDER_LABEL,
   HOTEL_CLUB_NUMBER,
   HOTEL_CLUB_OPEN,
+  hotelClubLadderState,
   hotelMemberNumber,
   HOTEL_SEARCH_CITY_CHIPS,
   HOTEL_SEARCH_HERO_FALLBACK,
@@ -900,7 +903,7 @@ export function HotelSearch({
                     ))}
                   </ul>
                 </div>
-                {highlights.length ? (
+                {!clubOpen && highlights.length ? (
                   <section aria-label="Hôtels coups de cœur" data-hotel-highlights="1">
                     <h2 className="h-section px-1">Hôtels coups de cœur</h2>
                     <ul className="h-gallery mt-3 flex gap-3 overflow-x-auto px-1 pb-1">
@@ -1322,6 +1325,17 @@ export function HotelSearch({
                 <p className="h-club-until">{HOTEL_ACCESS_UNTIL}</p>
               </div>
             </div>
+            <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
+              {HOTEL_CLUB_LADDER.map((name) => {
+                const state = hotelClubLadderState(name);
+                return (
+                  <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
+                    <span className="h-ladder-dot" aria-hidden />
+                    <span className="h-ladder-name">{name}</span>
+                  </li>
+                );
+              })}
+            </ol>
             <div className="h-loyalty-pad">
               <div className="h-loyalty-wrap">
                 <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
