@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { isSandboxOrderSuffix, type SandboxOrderSuffix } from "./catalog";
 
 export const RATEHAWK_LIMITS = {
@@ -147,6 +148,12 @@ export function validateUserPhone(value: string | null | undefined): string | nu
 
 export function bookingUser(email: string, phone: string) {
   return { email, phone: phone.trim() };
+}
+
+/** `user_ip` ETG : IPv4 ou IPv6. Un libellé (`mcp`) n’est pas une adresse. */
+export function bookingUserIp(value: string | null | undefined): string | null {
+  const ip = (value || "").trim();
+  return isIP(ip) ? ip : null;
 }
 
 export function guestsPayload(rooms: { guests: FinishGuest[] }[]) {

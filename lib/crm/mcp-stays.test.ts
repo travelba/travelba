@@ -242,4 +242,9 @@ test("un téléphone absent ou hors limites est refusé dès l’aperçu de rese
   assert.equal(booked, 1);
   const booking = readFileSync(new URL("./ratehawk/book.ts", import.meta.url), "utf8");
   assert.match(booking, /validateUserPhone\(input\.phone\)/);
+  const stays = readFileSync(new URL("./mcp-stays.ts", import.meta.url), "utf8");
+  assert.match(stays, /currentBookingUserIp\(\)/);
+  assert.doesNotMatch(stays, /userIp:\s*"mcp"/);
+  const route = readFileSync(new URL("../../app/api/mcp/route.ts", import.meta.url), "utf8");
+  assert.match(route, /runWithBookingUserIp\(requestIp\(request\)/);
 });

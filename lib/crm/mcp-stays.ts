@@ -338,6 +338,7 @@ async function liveRateApply(input: Record<string, unknown>) {
     if (!result.ok) throw new McpWriteError("error" in result && result.error ? String(result.error) : "L’annulation Ratehawk a échoué.");
     return { annule: true };
   }
+  const { currentBookingUserIp } = await import("@/lib/crm/ratehawk/http");
   const rooms = guestRooms(input.chambres);
   const searched = Array.isArray(input.recherche)
     ? input.recherche.map((row) => {
@@ -358,7 +359,7 @@ async function liveRateApply(input: Record<string, unknown>) {
     acceptFormPrice: input.accepter_prix === true,
     scenario: text(input.scenario) || null,
     dossier: text(input.dossier) || null,
-    userIp: "mcp",
+    userIp: currentBookingUserIp(),
     phone: text(input.telephone),
     partnerOrderId: text(input.commande) || null,
   });
@@ -370,7 +371,15 @@ async function liveRateStatus(input: Record<string, unknown>) {
   const { pollBooking } = await import("@/lib/crm/ratehawk/book");
   const result = await pollBooking(text(input.commande), undefined, undefined, { linkCrm: true });
   if (!result.ok) throw new McpWriteError("Le statut Ratehawk est indisponible.");
-  return { action: "statut", commande: text(input.commande), statut: result.status, ecrit: false, envoye: false };
+  const reason = "reason" in result && result.reason ? String(result.reason) : "";
+  return {
+    action: "statut",
+    commande: text(input.commande),
+    statut: result.status,
+    ...(result.status === "failed" && reason ? { raison: reason } : {}),
+    ecrit: false,
+    envoye: false,
+  };
 }
 
 function guestRooms(value: unknown) {
