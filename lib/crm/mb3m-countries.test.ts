@@ -4,11 +4,12 @@ import { MB3M_COUNTRY_CODES, mapMb3mCountry, mb3mUnknownCountryMessage } from ".
 
 describe("pays MB3M", () => {
   it("reprend les 256 codes de GetCountries, sans le Kosovo", () => {
-    assert.equal(MB3M_COUNTRY_CODES.length, 256);
-    assert.equal(new Set(MB3M_COUNTRY_CODES).size, 256);
-    assert.equal(MB3M_COUNTRY_CODES.includes("XK"), false);
-    assert.equal(MB3M_COUNTRY_CODES.includes("RS"), true);
-    assert.equal(MB3M_COUNTRY_CODES.includes("FR"), true);
+    const codes: readonly string[] = MB3M_COUNTRY_CODES;
+    assert.equal(codes.length, 256);
+    assert.equal(new Set(codes).size, 256);
+    assert.equal(codes.includes("XK"), false);
+    assert.equal(codes.includes("RS"), true);
+    assert.equal(codes.includes("FR"), true);
   });
 
   it("envoie XK en RS, laisse FR, et nomme un pays inconnu", () => {
