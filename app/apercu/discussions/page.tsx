@@ -165,7 +165,7 @@ export default async function DiscussionsPreviewPage({
             threads={THREADS}
             messagesByKey={{ "+33601020304": CAMILLE }}
             templates={[{ key: "sejour_texte", label: "Le séjour est dans l’espace" }]}
-            previewBlocked
+            previewBlocked={false}
             live={false}
             persist={false}
             initialPanelOpen={open}

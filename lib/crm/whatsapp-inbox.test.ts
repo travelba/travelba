@@ -1,16 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  adminReplyKind,
   approvedManualTemplates,
+  closedWindowComposerLine,
+  conversationBadge,
   deliveryCaption,
   deliveryLabel,
   draftTemplateRefused,
   filterThreads,
-  conversationBadge,
   foldThreads,
   messageSpeaker,
   messagesNewestFirst,
   sessionWindowOpen,
+  windowClosedSinceLabel,
+  withFreeMessageChoice,
   type InboxMessage,
 } from "./whatsapp-inbox";
 
@@ -74,6 +78,10 @@ test("le fil regroupe, marque le non-lu et distingue robot, agence et escalade",
   );
   assert.equal(messageSpeaker(message({ id: "2", createdAt: "2026-10-20T08:01:00Z", direction: "outbound", body: "x", authorName: "Victoria" })), "agency");
   assert.equal(messageSpeaker(message({ id: "2", createdAt: "2026-10-20T08:01:00Z", direction: "outbound", body: "x", templateKey: "chat" })), "robot");
+  assert.equal(
+    messageSpeaker(message({ id: "2", createdAt: "2026-10-20T08:01:00Z", direction: "outbound", body: "x", templateKey: "message_libre_texte" })),
+    "agency"
+  );
   const found = filterThreads(threads, { query: "hôtel", filter: "prospects" });
   assert.equal(found.length, 1);
   assert.equal(deliveryLabel("read"), "Lu");
@@ -89,4 +97,17 @@ test("le fil regroupe, marque le non-lu et distingue robot, agence et escalade",
   const approved = approvedManualTemplates({ TWILIO_CONTENT_SEJOUR_TEXTE: "HX1" }).map((row) => row.key).join(" ");
   assert.equal(approved.includes("concierge"), false);
   assert.equal(approvedManualTemplates({ TWILIO_CONTENT_SEJOUR_TEXTE: "HX1" })[0]?.key, "sejour_texte");
+  assert.equal(withFreeMessageChoice([{ key: "sejour_texte", label: "Séjour" }]).some((row) => row.key === "message_libre_texte"), true);
+  assert.equal(withFreeMessageChoice([{ key: "message_libre_texte", label: "Déjà là" }]).length, 1);
+  assert.equal(adminReplyKind({ windowOpen: true, template: "" }), "session");
+  assert.equal(adminReplyKind({ windowOpen: false, template: "sejour_texte" }), "sejour");
+  assert.equal(adminReplyKind({ windowOpen: false, template: "" }), "libre");
+  assert.equal(adminReplyKind({ windowOpen: false, template: "message_libre_texte" }), "libre");
+  assert.equal(windowClosedSinceLabel("2026-11-13T14:58:00.000Z"), "Fenêtre fermée depuis le 14/11 à 15:58");
+  assert.equal(windowClosedSinceLabel(null), "Fenêtre fermée");
+  assert.equal(
+    closedWindowComposerLine("2026-11-13T14:58:00.000Z", true),
+    "Fenêtre fermée depuis le 14/11 à 15:58 · votre texte partira via le modèle message libre"
+  );
+  assert.match(closedWindowComposerLine("2026-11-13T14:58:00.000Z", false), /le modèle choisi part/);
 });

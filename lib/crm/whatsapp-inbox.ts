@@ -27,6 +27,8 @@ export type InboxMessage = {
   error?: string | null;
   templateKey: string | null;
   authorName: string | null;
+  /** Prénom de la fiche, pour le modèle message libre. */
+  firstName?: string | null;
   mediaPath: string | null;
   /** Transcription brute. Le corps porte déjà « Note vocale : … » ou la phrase d’échec. */
   transcript?: string | null;
@@ -41,6 +43,8 @@ export type InboxThread = {
   phone: string | null;
   customerId: string | null;
   customerName: string | null;
+  /** Prénom de la fiche, pour le modèle message libre. */
+  firstName?: string | null;
   prospect: boolean;
   bookingId: string | null;
   bookingReference: string | null;
@@ -72,9 +76,14 @@ export function threadKey(row: { phone?: string | null; customerId?: string | nu
   return (row.phone || "").trim() || row.customerId || "";
 }
 
+/** Message écrit par l’agence : auteur, modèle staff, ou message libre. */
+export function agencyWroteTemplate(template: string | null | undefined) {
+  return template === "staff" || template === "agence" || Boolean(template && template.startsWith("message_libre"));
+}
+
 export function messageSpeaker(row: Pick<InboxMessage, "direction" | "authorName" | "templateKey">): InboxSpeaker {
   if (row.direction === "inbound") return "client";
-  if (row.authorName || row.templateKey === "staff" || row.templateKey === "agence") return "agency";
+  if (row.authorName || agencyWroteTemplate(row.templateKey)) return "agency";
   return "robot";
 }
 
@@ -139,6 +148,67 @@ export function sessionWindowOpen(lastInboundIso: string | null, now: Date) {
   return now.getTime() - at < DAY;
 }
 
+/** Fin de la fenêtre : 24 h après le dernier message du client. */
+export function sessionWindowClosesAt(lastInboundIso: string | null): Date | null {
+  if (!lastInboundIso) return null;
+  const at = new Date(lastInboundIso).getTime();
+  if (Number.isNaN(at)) return null;
+  return new Date(at + DAY);
+}
+
+/** Jour et heure à Paris, `14/11 à 15:58`. */
+export function parisDayHour(date: Date) {
+  const parts = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const pick = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "";
+  const day = pick("day");
+  const month = pick("month");
+  const hour = pick("hour");
+  const minute = pick("minute");
+  if (!day || !month || !hour || !minute) return "";
+  return `${day}/${month} à ${hour}:${minute}`;
+}
+
+export function windowClosedSinceLabel(lastInboundIso: string | null) {
+  const closed = sessionWindowClosesAt(lastInboundIso);
+  const stamp = closed ? parisDayHour(closed) : "";
+  if (!stamp) return "Fenêtre fermée";
+  return `Fenêtre fermée depuis le ${stamp}`;
+}
+
+export function closedWindowComposerLine(lastInboundIso: string | null, libre: boolean) {
+  const via = libre ? "votre texte partira via le modèle message libre" : "le modèle choisi part";
+  return `${windowClosedSinceLabel(lastInboundIso)} · ${via}`;
+}
+
+export function latestInboundAt(messages: { direction: string; createdAt: string }[]) {
+  return (
+    [...messages].filter((row) => row.direction === "inbound").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+      ?.createdAt || null
+  );
+}
+
+/** Séjour et rappel restent les modèles du lien. Le reste, hors fenêtre, est le message libre. */
+export function adminReplyKind(input: { windowOpen: boolean; template: string }): "session" | "sejour" | "libre" {
+  const template = input.template.trim();
+  if (template === "sejour_texte" || template === "rappel") return "sejour";
+  if (!input.windowOpen) return "libre";
+  return "session";
+}
+
+export const MESSAGE_LIBRE_CHOICE = { key: "message_libre_texte", label: "Message libre" };
+
+export function withFreeMessageChoice<T extends { key: string; label: string }>(templates: T[]): T[] {
+  if (templates.some((row) => row.key === MESSAGE_LIBRE_CHOICE.key)) return templates;
+  return [...templates, { ...MESSAGE_LIBRE_CHOICE } as T];
+}
+
 export function foldThreads(
   messages: InboxMessage[],
   input: {
@@ -163,6 +233,7 @@ export function foldThreads(
     const ordered = [...rows].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const last = ordered[ordered.length - 1];
     const named = [...ordered].reverse().find((row) => row.customerName);
+    const firstName = [...ordered].reverse().find((row) => row.firstName)?.firstName || null;
     const phone = [...ordered].reverse().find((row) => row.phone)?.phone || null;
     const customerId = [...ordered].reverse().find((row) => row.customerId)?.customerId || null;
     const booking = [...ordered].reverse().find((row) => row.bookingReference);
@@ -175,6 +246,7 @@ export function foldThreads(
       phone,
       customerId,
       customerName: named?.customerName || null,
+      firstName,
       prospect: !customerId,
       bookingId: booking?.bookingId || null,
       bookingReference: booking?.bookingReference || null,

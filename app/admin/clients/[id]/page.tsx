@@ -446,6 +446,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         phone={c.phone}
         customerId={c.id}
         customerName={[c.first_name, c.last_name].filter(Boolean).join(" ")}
+        customerFirstName={c.first_name}
         paused={conciergePaused}
         templates={approvedManualTemplates()}
         previewBlocked={isVercelPreview()}
