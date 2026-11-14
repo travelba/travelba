@@ -306,7 +306,8 @@ export type BenefitTone =
   | "transfer"
   | "rate"
   | "concierge"
-  | "welcome";
+  | "welcome"
+  | "guest";
 
 export type BenefitLine = { title: string; note: string; tone: BenefitTone };
 
@@ -333,6 +334,7 @@ export function benefitLine(raw: string): BenefitLine {
   else if (/reduction|catalogue/.test(folded) || /%/.test(title)) tone = "rate";
   else if (/conciergerie/.test(folded)) tone = "concierge";
   else if (/accueil vip|\bvip\b/.test(folded)) tone = "welcome";
+  else if (/non adherent/.test(folded)) tone = "guest";
   else if (/credit/.test(folded)) tone = "credit";
   else if (/depart|check out|checkout/.test(folded) && !/enregistrement|arrivee|check in|checkin/.test(folded)) tone = "night";
   else if (/enregistrement|depart|arrivee|check/.test(folded)) tone = "schedule";

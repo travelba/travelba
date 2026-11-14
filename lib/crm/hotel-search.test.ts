@@ -793,6 +793,7 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(homeCopy, /Conciergerie de luxe, tables et activités/);
   assert.match(homeCopy, /Accueil VIP à l’aéroport/);
   assert.match(homeCopy, /Pré-enregistrement à l’hôtel/);
+  assert.match(homeCopy, /Réservation pour un non-adhérent/);
   assert.match(ui, /data-hotel-tiers/);
   assert.match(ui, /HOTEL_CLUB_TIERS/);
   assert.match(ui, /HOTEL_CLUB_YOURS/);

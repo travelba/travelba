@@ -101,6 +101,7 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
     "Conciergerie de luxe, tables et activités",
     "Accueil VIP à l’aéroport",
     "Pré-enregistrement à l’hôtel",
+    "Réservation pour un non-adhérent",
   ]);
   assert.equal(HOTEL_ACCESS_RESERVE, "* Soumis à disponibilité et selon l’hôtel.");
   assert.equal(HOTEL_ACCESS_EYEBROW, "Club Travel BA");

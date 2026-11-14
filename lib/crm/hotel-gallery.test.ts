@@ -332,6 +332,7 @@ describe("carte hôtel", () => {
     assert.equal(benefitLine("Accueil VIP à l’aéroport").tone, "welcome");
     assert.equal(benefitLine("Transfert aéroport*").tone, "transfer");
     assert.equal(benefitLine("Pré-enregistrement à l’hôtel").tone, "schedule");
+    assert.equal(benefitLine("Réservation pour un non-adhérent").tone, "guest");
   });
 
   it("charge la galerie du catalogue pour une carte sans photo", async () => {

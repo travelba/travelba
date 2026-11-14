@@ -109,6 +109,7 @@ export const HOTEL_CLUB_TIERS = [
       "Conciergerie de luxe, tables et activités",
       "Accueil VIP à l’aéroport",
       "Pré-enregistrement à l’hôtel",
+      "Réservation pour un non-adhérent",
     ],
   },
 ] as const satisfies readonly { name: HotelClubLadderName; price: string; lines: readonly string[] }[];
