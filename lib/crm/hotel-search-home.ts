@@ -69,6 +69,50 @@ export const HOTEL_CLUB_LADDER_LABEL = "Parcours";
 
 export type HotelClubLadderName = (typeof HOTEL_CLUB_LADDER)[number];
 
+export const HOTEL_CLUB_YOURS = "Votre niveau";
+
+export const HOTEL_CLUB_NEXT = "Niveau suivant";
+
+const CLUB_EARLY = "Arrivée anticipée et départ tardif*";
+const CLUB_BREAKFAST = "Petit-déjeuner offert";
+const CLUB_PRIORITY = "Surclassement prioritaire*";
+const CLUB_CREDIT = "Jusqu’à 200 $ de crédit de dépense dans l’hôtel*";
+const CLUB_TRANSFER = "Transfert aéroport*";
+
+/** Prix d’adhésion et avantages, du plus simple au plus haut. Une seule liste. */
+export const HOTEL_CLUB_TIERS = [
+  {
+    name: "Silver",
+    price: "300 € par an",
+    lines: ["Jusqu’à −10 % sur le catalogue", CLUB_EARLY],
+  },
+  {
+    name: "Gold",
+    price: "700 € par an",
+    lines: ["Jusqu’à −15 % sur le catalogue", CLUB_EARLY, "Surclassement si disponible*"],
+  },
+  {
+    name: "Platinum",
+    price: "1 200 € par an",
+    lines: ["Jusqu’à −20 % sur le catalogue", CLUB_BREAKFAST, CLUB_EARLY, CLUB_PRIORITY, CLUB_CREDIT, CLUB_TRANSFER],
+  },
+  {
+    name: "Titanium",
+    price: "1 600 € par an",
+    lines: [
+      "Jusqu’à −25 % sur le catalogue",
+      CLUB_BREAKFAST,
+      CLUB_EARLY,
+      CLUB_PRIORITY,
+      CLUB_CREDIT,
+      CLUB_TRANSFER,
+      "Conciergerie de luxe, tables et activités",
+      "Accueil VIP à l’aéroport",
+      "Pré-enregistrement à l’hôtel",
+    ],
+  },
+] as const satisfies readonly { name: HotelClubLadderName; price: string; lines: readonly string[] }[];
+
 export function hotelClubLadderState(name: HotelClubLadderName) {
   const current = HOTEL_CLUB_LADDER.indexOf(HOTEL_ACCESS_LEVEL);
   const index = HOTEL_CLUB_LADDER.indexOf(name);
@@ -84,14 +128,8 @@ export const HOTEL_ACCESS_UNTIL = "Jusqu’au 31 déc. 2026";
 export const HOTEL_ACCESS_PROMISE =
   "Un catalogue d’hôtels aux tarifs qui vous sont réservés, avec des avantages que l’on ne trouve pas en réservation directe.";
 
-/** Ordre du bandeau. L’astérisque renvoie à HOTEL_ACCESS_RESERVE. Le petit-déjeuner n’en a pas. */
-export const HOTEL_ACCESS_LINES = [
-  "Petit-déjeuner offert",
-  "Arrivée anticipée et départ tardif*",
-  "Surclassement prioritaire*",
-  "Jusqu’à 200 $ de crédit de dépense dans l’hôtel*",
-  "Transfert aéroport*",
-] as const;
+/** Avantages du niveau en cours. L’astérisque renvoie à HOTEL_ACCESS_RESERVE. Le petit-déjeuner n’en a pas. */
+export const HOTEL_ACCESS_LINES = HOTEL_CLUB_TIERS.find((tier) => tier.name === HOTEL_ACCESS_LEVEL)!.lines;
 
 export const HOTEL_ACCESS_RESERVE = "* Soumis à disponibilité et selon l’hôtel.";
 

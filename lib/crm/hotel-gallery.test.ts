@@ -327,6 +327,11 @@ describe("carte hôtel", () => {
     assert.equal(benefitLine("Petit-déjeuner quotidien pour deux personnes").tone, "breakfast");
     assert.equal(benefitLine("Crédit hôtel de 100 $ par séjour").tone, "credit");
     assert.equal(benefitLine("Troisième nuit offerte").tone, "night");
+    assert.equal(benefitLine("Jusqu’à −20 % sur le catalogue").tone, "rate");
+    assert.equal(benefitLine("Conciergerie de luxe, tables et activités").tone, "concierge");
+    assert.equal(benefitLine("Accueil VIP à l’aéroport").tone, "welcome");
+    assert.equal(benefitLine("Transfert aéroport*").tone, "transfer");
+    assert.equal(benefitLine("Pré-enregistrement à l’hôtel").tone, "schedule");
   });
 
   it("charge la galerie du catalogue pour une carte sans photo", async () => {

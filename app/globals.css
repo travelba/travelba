@@ -791,6 +791,61 @@
 .hotel-theme .h-ladder li[data-state="now"] .h-ladder-name {
   color: #1a1a1a;
 }
+.hotel-theme .h-club-tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.hotel-theme .h-club-tier {
+  padding: 0.7rem 0.8rem 0.45rem;
+  border: 1px solid rgba(26, 26, 26, 0.1);
+  border-radius: 12px;
+}
+.hotel-theme .h-club-tier[data-state="done"] {
+  background: transparent;
+}
+.hotel-theme .h-club .h-club-tier[data-state="done"] .h-benefit-line,
+.hotel-theme .h-club-tier[data-state="done"] .h-club-tier-name,
+.hotel-theme .h-club-tier[data-state="done"] .h-club-tier-price {
+  color: #6d675f;
+}
+.hotel-theme .h-club-tier[data-state="now"] {
+  border-color: #c5a880;
+  background: #fbf7ec;
+}
+.hotel-theme .h-club-tier[data-state="next"] {
+  border-style: dashed;
+  border-color: rgba(11, 25, 44, 0.28);
+}
+.hotel-theme .h-club-tier-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+.hotel-theme .h-club-tier-name {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.hotel-theme .h-club-tier-mark {
+  margin: 0.1rem 0 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8c7352;
+}
+.hotel-theme .h-club-tier-price {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
 .hotel-theme .h-club-open {
   display: flex;
   width: 100%;
