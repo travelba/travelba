@@ -55,6 +55,7 @@ import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
   mergeBookingSuggestions,
   deterministicBookingId,
+  nameOnlyBookingReason,
   extractReferences,
   suggestBookingByClientEmail,
   suggestBookingByDestination,
@@ -317,7 +318,7 @@ export function backfillCdsgroupeMessages() {
 async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   const { data: customers } = await admin
     .from("crm_customers")
-    .select("id, first_name, last_name, usage_name, company_name, email");
+    .select("id, first_name, last_name, usage_name, company_name, email, phone, whatsapp");
   const people = (customers || []) as (Pick<
     CrmCustomer,
     "id" | "first_name" | "last_name" | "company_name" | "email"
@@ -370,7 +371,13 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   let suggestedBookingId = booking.autoBookingId;
   if (tier.tier === "reference") suggestedBookingId = tier.bookingId;
   if (tier.tier === "email_dates") suggestedBookingId = null;
-  if (!suggestedBookingId && tier.tier === "human" && hotelStay.candidates.length === 0 && destination.candidates.length === 1) {
+  if (
+    !suggestedBookingId &&
+    tier.tier === "human" &&
+    hotelStay.candidates.length === 0 &&
+    destination.candidates.length === 1 &&
+    !nameOnlyBookingReason(destination.candidates[0].reason)
+  ) {
     suggestedBookingId = destination.candidates[0].booking_id;
   }
 
@@ -568,8 +575,10 @@ async function inboundCorpus(files: PreparedIngestFile[]) {
   return { sourceText: text, corroborationText: text, imageOnly: images > 0 && pdfs === 0 };
 }
 
-/** Traite une ligne `received` : télécharge le mail, extrait, rapproche. Ne crée pas de dossier et ne touche pas aux cartes. */
-export async function processEmailIngestRow(row: CrmEmailIngest) {
+export type IngestPass = { bornIds: Set<string>; passStartedAt: string };
+
+/** Traite une ligne `received` : télécharge le mail, extrait, rapproche. */
+export async function processEmailIngestRow(row: CrmEmailIngest, pass?: IngestPass) {
   const admin = createServiceClient();
   const message = await getMessage(row.gmail_message_id);
   const bodyPreview = (message.text || "").trim();
@@ -732,7 +741,7 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
       })
       .eq("id", row.id);
     const { organizeInboundMail } = await import("@/lib/crm/inbox-organize-run");
-    await organizeInboundMail(row.id);
+    await organizeInboundMail(row.id, pass);
     return;
   }
 
@@ -778,7 +787,7 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     if (proposalError) console.error("[import] proposition non enregistrée");
   }
   const { organizeInboundMail } = await import("@/lib/crm/inbox-organize-run");
-  await organizeInboundMail(row.id);
+  await organizeInboundMail(row.id, pass);
   const { data: organized } = await admin.from("crm_email_ingest").select("status").eq("id", row.id).maybeSingle();
   if (organized?.status !== "attached") await foldParsedConfirmation(admin, row.id);
 }
@@ -822,9 +831,10 @@ export async function processReceivedEmailIngest(limit = 10) {
   const rows = (data || []) as CrmEmailIngest[];
   let processed = 0;
   let failed = 0;
+  const pass: IngestPass = { bornIds: new Set<string>(), passStartedAt: new Date().toISOString() };
   for (const row of rows) {
     try {
-      await processEmailIngestRow(row);
+      await processEmailIngestRow(row, pass);
       processed += 1;
     } catch (err) {
       failed += 1;

@@ -17,6 +17,7 @@ import {
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
   usableCustomerEmail,
+  isAgencyCustomerEmail,
 } from "./email-match";
 import { detectCancellationDocument, isCancellationExtract } from "./ingest-types";
 
@@ -55,6 +56,26 @@ describe("suggestCustomerFromExtract", () => {
     assert.equal(res.autoCustomerId, "c1");
   });
 
+  it("ne rapproche pas une fiche dont l’e-mail est une boîte agence", () => {
+    const res = suggestCustomerFromExtract(
+      [{ id: "agence", first_name: "Amin", last_name: "Khiari", company_name: null, email: "amin@travelba.fr" }],
+      extractWith({ customer_first_name: "Amin", customer_last_name: "Khiari" })
+    );
+    assert.equal(res.autoCustomerId, null);
+    assert.equal(res.candidates.length, 0);
+    assert.equal(isAgencyCustomerEmail("resa@travelbt.fr"), true);
+    assert.equal(usableCustomerEmail("amin@travelba.fr"), null);
+  });
+
+  it("un nom de famille seul, même unique, ne choisit pas la fiche", () => {
+    const res = suggestCustomerFromExtract(
+      customers,
+      extractWith({ customer_last_name: "Martin" })
+    );
+    assert.equal(res.autoCustomerId, null);
+    assert.equal(res.candidates[0]?.reason, "Nom de famille");
+  });
+
   it("ne rapproche pas automatiquement un nom de famille ambigu", () => {
     const res = suggestCustomerFromExtract(
       customers,
@@ -63,6 +84,7 @@ describe("suggestCustomerFromExtract", () => {
     assert.equal(res.autoCustomerId, null);
     const ids = res.candidates.map((c) => c.customer_id).sort();
     assert.deepEqual(ids, ["c2", "c3"]);
+    assert.equal(res.candidates.every((row) => row.reason === "Homonyme"), true);
   });
 
   it("rapproche un prénom et un nom inversés", () => {
@@ -316,11 +338,22 @@ describe("suggestBookingByTripSignals", () => {
     ],
   });
 
-  it("dates + destination + nom flou → voyage unique", () => {
+  it("le nom, la destination et les dates ne choisissent pas le dossier", () => {
     const res = suggestBookingByTripSignals(telAvivExtract, [telAviv, avoriaz], people);
-    assert.equal(res.autoBookingId, "b-tlv");
+    assert.equal(res.autoBookingId, null);
     assert.equal(res.candidates.length, 1);
     assert.equal(res.candidates[0].reason, "Nom, destination et dates");
+    assert.equal(res.candidates[0].booking_id, "b-tlv");
+  });
+
+  it("l’e-mail du client, avec le nom et les dates, choisit le dossier", () => {
+    const res = suggestBookingByTripSignals(
+      extractWith({ ...telAvivExtract, customer_email: "client.alb@example.com" }),
+      [telAviv, avoriaz],
+      people
+    );
+    assert.equal(res.autoBookingId, "b-tlv");
+    assert.match(res.candidates[0].reason, /E-mail/i);
   });
 
   it("deux voyages au même score → pas d’auto", () => {
