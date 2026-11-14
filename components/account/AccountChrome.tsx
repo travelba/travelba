@@ -9,7 +9,6 @@ import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 import { ONBOARDING_PATH } from "@/lib/crm/session";
 import { accountTabDirection } from "@/lib/crm/account-motion";
-import { openHotelClub } from "@/lib/crm/hotel-search-home";
 import { AccountNightTabs, type NightTabIcon } from "@/components/account/AccountNightTabs";
 import { AccountUserMenu } from "@/components/account/AccountUserMenu";
 import { SIGN_OUT_LABEL } from "@/lib/crm/user-menu";
@@ -144,7 +143,6 @@ export function AccountChrome({
                   href={tab.href}
                   transitionTypes={[accountTabDirection(pathname, tab.href, basePath)]}
                   aria-current={active ? "page" : undefined}
-                  onClick={tab.night === "hotel" ? () => openHotelClub() : undefined}
                   className={
                     featured
                       ? "account-hotel-desk account-press"

@@ -13,6 +13,7 @@ import {
   HOTEL_CLUB_LADDER_LABEL,
   HOTEL_CLUB_NEXT,
   HOTEL_CLUB_NUMBER,
+  HOTEL_CLUB_BACK,
   HOTEL_CLUB_OPEN,
   HOTEL_CLUB_TIERS,
   HOTEL_CLUB_YOURS,
@@ -112,6 +113,7 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
   assert.equal(HOTEL_CLUB_FAMILY, "Nom");
   assert.equal(HOTEL_CLUB_NUMBER, "N° d’adhérent");
   assert.equal(HOTEL_CLUB_OPEN, "Ouvrir les hôtels");
+  assert.equal(HOTEL_CLUB_BACK, "Retour");
   assert.equal(hotelMemberNumber("exemple-client"), hotelMemberNumber("exemple-client"));
   assert.match(hotelMemberNumber("exemple-client"), /^\d{4} \d{4}$/);
   assert.notEqual(hotelMemberNumber("exemple-client"), hotelMemberNumber("autre-client"));

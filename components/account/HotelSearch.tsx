@@ -13,6 +13,7 @@ import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { greetingGivenName } from "@/lib/crm/identity";
 import {
   HOTEL_ACCESS_EYEBROW,
+  HOTEL_ACCESS_LINES,
   HOTEL_ACCESS_LEVEL,
   HOTEL_ACCESS_OFFER,
   HOTEL_ACCESS_PROMISE,
@@ -22,13 +23,13 @@ import {
   HOTEL_CLUB_LEVEL,
   HOTEL_CLUB_NEXT,
   HOTEL_CLUB_TITLE,
-  HOTEL_CLUB_EVENT,
   HOTEL_CLUB_FAMILY,
   HOTEL_CLUB_GIVEN,
   HOTEL_CLUB_LADDER,
   HOTEL_CLUB_LADDER_LABEL,
-  HOTEL_CLUB_NUMBER,
+  HOTEL_CLUB_BACK,
   HOTEL_CLUB_OPEN,
+  HOTEL_CLUB_NUMBER,
   HOTEL_CLUB_TIERS,
   HOTEL_CLUB_YOURS,
   hotelClubLadderState,
@@ -366,6 +367,7 @@ export function HotelSearch({
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
   const [clubOpen, setClubOpen] = useState(true);
+  const [pricesOpen, setPricesOpen] = useState(false);
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
@@ -420,10 +422,18 @@ export function HotelSearch({
   }, [customerId]);
 
   useEffect(() => {
-    const open = () => setClubOpen(true);
-    window.addEventListener(HOTEL_CLUB_EVENT, open);
-    return () => window.removeEventListener(HOTEL_CLUB_EVENT, open);
-  }, []);
+    function closeOnHotels(event: MouseEvent) {
+      const link = (event.target as Element | null)?.closest("a[href]");
+      if (!(link instanceof HTMLAnchorElement)) return;
+      const href = link.getAttribute("href") || "";
+      if (href === hotelsPath || href.startsWith(`${hotelsPath}?`)) {
+        setPricesOpen(false);
+        setClubOpen(true);
+      }
+    }
+    document.addEventListener("click", closeOnHotels);
+    return () => document.removeEventListener("click", closeOnHotels);
+  }, [hotelsPath]);
 
   useEffect(() => {
     const root = document.querySelector(".account-app");
@@ -781,7 +791,7 @@ export function HotelSearch({
           leApi={leApi}
         />
       ) : null}
-      {openedLive ? null : <>
+      {openedLive || clubOpen || pricesOpen ? null : <>
       <div className={searched ? "h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" : ""} data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
         {searched ? (
           <div className="h-searchbar-row">
@@ -905,7 +915,7 @@ export function HotelSearch({
                     ))}
                   </ul>
                 </div>
-                {!clubOpen && highlights.length ? (
+                {highlights.length ? (
                   <section aria-label="Hôtels coups de cœur" data-hotel-highlights="1">
                     <h2 className="h-section px-1">Hôtels coups de cœur</h2>
                     <ul className="h-gallery mt-3 flex gap-3 overflow-x-auto px-1 pb-1">
@@ -1288,7 +1298,7 @@ export function HotelSearch({
           </div>
         </div>
       ) : null}
-      {clubOpen ? (
+      {clubOpen && !pricesOpen && !openedLive ? (
         <div className="h-club" data-hotel-club="1" role="dialog" aria-modal="true" aria-label={HOTEL_CLUB_TITLE}>
           <p className="h-club-title">{HOTEL_CLUB_TITLE}</p>
           <div className="h-club-body" data-hotel-agency-benefits="1">
@@ -1330,20 +1340,13 @@ export function HotelSearch({
             <div className="h-loyalty-pad">
               <div className="h-loyalty-wrap">
                 <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
-                <div className="h-member h-loyalty">
+                <div className="h-member h-loyalty" data-card={HOTEL_ACCESS_LEVEL}>
                   {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
-                  <img
-                    src={heroSrc}
-                    alt=""
-                    width={960}
-                    height={540}
-                    decoding="async"
-                    className="absolute inset-0 h-full w-full object-cover opacity-40"
-                  />
+                  <img src={heroSrc} alt="" width={960} height={540} decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-40" />
                   <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
                   <div className="relative flex h-full flex-col justify-between px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+                      <p className="h-card-kicker">{HOTEL_ACCESS_EYEBROW}</p>
                       <AgencyLogo className="h-club-card-logo" alt="" />
                     </div>
                     <div className="flex items-end justify-between gap-3">
@@ -1354,7 +1357,7 @@ export function HotelSearch({
                         </p>
                         <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
                       </div>
-                      <p className="shrink-0 text-right text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
+                      <p className="h-card-until">{HOTEL_ACCESS_UNTIL}</p>
                     </div>
                   </div>
                 </div>
@@ -1364,24 +1367,43 @@ export function HotelSearch({
                   const state = hotelClubLadderState(name);
                   return (
                     <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
-                      <span className="h-ladder-dot" aria-hidden />
-                      <span className="h-ladder-name">{name}</span>
+                      <button type="button" className="h-ladder-step" data-hotel-status={name} onClick={() => setPricesOpen(true)}>
+                        <span className="h-ladder-dot" aria-hidden />
+                        <span className="h-ladder-name">{name}</span>
+                        {state === "now" ? <span className="h-ladder-yours">{HOTEL_CLUB_YOURS}</span> : null}
+                      </button>
                     </li>
                   );
                 })}
               </ol>
               <p className="sr-only">{HOTEL_CLUB_CARD}</p>
               <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
+              <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_LEVEL} layout="grid" />
+              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+            </div>
+          </div>
+          <div className="h-club-bar">
+            <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
+              {HOTEL_CLUB_OPEN}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {pricesOpen && !openedLive ? (
+        <div className="h-club" data-hotel-prices="1" role="dialog" aria-modal="true" aria-label={HOTEL_CLUB_LADDER_LABEL}>
+          <p className="h-club-title">{HOTEL_CLUB_LADDER_LABEL}</p>
+          <div className="h-club-body">
+            <div className="h-loyalty-pad">
               <div className="h-club-tiers" data-hotel-tiers="1">
                 {HOTEL_CLUB_TIERS.map((tier) => {
                   const state = hotelClubLadderState(tier.name);
-                  const mark = state === "now" ? HOTEL_CLUB_YOURS : state === "next" ? HOTEL_CLUB_NEXT : "";
                   return (
                     <section key={tier.name} className="h-club-tier" data-state={state} data-hotel-tier={tier.name}>
                       <header className="h-club-tier-head">
                         <div className="min-w-0">
                           <h2 className="h-club-tier-name">{tier.name}</h2>
-                          {mark ? <p className="h-club-tier-mark">{mark}</p> : null}
+                          {state === "now" ? <p className="h-club-tier-mark">{HOTEL_CLUB_YOURS}</p> : null}
+                          {state === "next" ? <p className="h-club-tier-mark">{HOTEL_CLUB_NEXT}</p> : null}
                         </div>
                         <p className="h-club-tier-price">{tier.price}</p>
                       </header>
@@ -1394,8 +1416,8 @@ export function HotelSearch({
             </div>
           </div>
           <div className="h-club-bar">
-            <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
-              {HOTEL_CLUB_OPEN}
+            <button type="button" className="h-club-open h-press" onClick={() => setPricesOpen(false)}>
+              {HOTEL_CLUB_BACK}
             </button>
           </div>
         </div>

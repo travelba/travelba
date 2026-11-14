@@ -611,7 +611,8 @@
 .hotel-theme .h-benefit-line {
   color: #f7f4ee;
 }
-.hotel-theme .h-club .h-benefit-line {
+.hotel-theme .h-club .h-benefit-line,
+.hotel-theme .h-status-card .h-benefit-line {
   color: #1a1a1a;
 }
 .hotel-theme .h-club {
@@ -735,6 +736,44 @@
 .hotel-theme .h-club-bar {
   padding: 0.65rem 1.25rem 2.35rem;
 }
+.hotel-theme .h-status {
+  margin: 0 0 0.7rem;
+}
+.hotel-theme .h-status-step {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.15rem 0 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.hotel-theme .h-status-step[aria-expanded="true"] .h-ladder-name {
+  color: #0b192c;
+}
+.hotel-theme .h-status-card {
+  margin: 0.55rem 0 0.15rem;
+  text-align: left;
+}
+.hotel-theme .h-status-who {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.hotel-theme .h-status-yours {
+  margin-top: -0.2rem;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8c7352;
+}
 .hotel-theme .h-ladder {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -749,6 +788,33 @@
   flex-direction: column;
   align-items: center;
   gap: 0.45rem;
+}
+.hotel-theme .h-ladder-step {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.hotel-theme button.h-ladder-step {
+  cursor: pointer;
+}
+.hotel-theme .h-ladder-yours {
+  margin-top: -0.2rem;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8c7352;
+}
+.hotel-theme .h-ladder li[data-open="true"] .h-ladder-name {
+  color: #0b192c;
+  font-weight: 700;
 }
 .hotel-theme .h-ladder li:not(:last-child)::before {
   content: "";
@@ -872,12 +938,18 @@
   position: relative;
   width: 100%;
 }
+@media (min-width: 768px) {
+  .hotel-theme .h-loyalty-wrap {
+    max-width: 24rem;
+  }
+}
 .hotel-theme .h-loyalty {
   min-height: 11rem;
   border: 1.5px solid #c5a880;
   box-shadow: inset 0 0 0 1px rgba(197, 168, 128, 0.45);
 }
 .hotel-theme .h-loyalty > .relative {
+  z-index: 1;
   min-height: 11rem;
 }
 .hotel-theme .h-club-card-logo {
@@ -925,6 +997,64 @@
   font-weight: 650;
   letter-spacing: 0.12em;
   color: #f7f4ee;
+}
+.hotel-theme .h-card-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #c5a880;
+}
+.hotel-theme .h-card-until {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(247, 244, 238, 0.75);
+}
+.hotel-theme .h-loyalty[data-card="Platinum"] {
+  background-color: #0b192c;
+  background-image: none;
+  border-color: #c5a880;
+  color: #f7f4ee;
+}
+.hotel-theme .h-loyalty[data-card="Silver"] {
+  background-color: #d5dae0;
+  background-image: none;
+  border-color: #8b949e;
+  color: #0b192c;
+}
+.hotel-theme .h-loyalty[data-card="Gold"] {
+  background-color: #c5a880;
+  background-image: none;
+  border-color: #8c7352;
+  color: #0b192c;
+}
+.hotel-theme .h-loyalty[data-card="Titanium"] {
+  background-color: #2a3038;
+  background-image: none;
+  border-color: #6e7884;
+  color: #f4f6f8;
+}
+.hotel-theme .h-loyalty[data-card="Silver"] .h-loyalty-value,
+.hotel-theme .h-loyalty[data-card="Silver"] .h-loyalty-number,
+.hotel-theme .h-loyalty[data-card="Gold"] .h-loyalty-value,
+.hotel-theme .h-loyalty[data-card="Gold"] .h-loyalty-number,
+.hotel-theme .h-loyalty[data-card="Silver"] .h-card-kicker,
+.hotel-theme .h-loyalty[data-card="Gold"] .h-card-kicker,
+.hotel-theme .h-loyalty[data-card="Silver"] .h-card-until,
+.hotel-theme .h-loyalty[data-card="Gold"] .h-card-until {
+  color: #0b192c;
+}
+.hotel-theme .h-loyalty[data-card="Titanium"] .h-loyalty-value,
+.hotel-theme .h-loyalty[data-card="Titanium"] .h-loyalty-number {
+  color: #f4f6f8;
+}
+.hotel-theme .h-loyalty[data-card="Titanium"] .h-card-kicker {
+  color: #c5a880;
+}
+.hotel-theme .h-loyalty[data-card="Titanium"] .h-card-until {
+  color: rgba(244, 246, 248, 0.75);
 }
 .hotel-theme .h-searchbar {
   position: sticky;
