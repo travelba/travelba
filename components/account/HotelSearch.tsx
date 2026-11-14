@@ -1357,6 +1357,9 @@ export function HotelSearch({
               <div className="h-loyalty-wrap">
                 <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
                 <div className="h-member h-loyalty" data-card={HOTEL_ACCESS_LEVEL}>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+                  <img src={heroSrc} alt="" width={960} height={540} decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-40" />
+                  <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
                   <div className="relative flex h-full flex-col justify-between px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <p className="h-card-kicker">{HOTEL_ACCESS_EYEBROW}</p>

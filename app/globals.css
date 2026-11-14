@@ -1012,28 +1012,27 @@
   line-height: 1.35;
   color: rgba(247, 244, 238, 0.75);
 }
-.hotel-theme .h-loyalty[data-card] {
-  background-image: linear-gradient(160deg, #fbfcfe 0%, #d5e2ee 40%, #9eb4c8 100%);
+.hotel-theme .h-loyalty[data-card="Platinum"] {
+  background-color: #0b192c;
+  background-image: none;
   border-color: #c5a880;
-  color: #0b192c;
-}
-.hotel-theme .h-loyalty[data-card]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(115deg, rgba(255, 255, 255, 0.55) 0%, transparent 46%);
-  pointer-events: none;
+  color: #f7f4ee;
 }
 .hotel-theme .h-loyalty[data-card="Silver"] {
-  background-image: linear-gradient(160deg, #f3f4f6 0%, #c5ccd4 46%, #8e98a4 100%);
+  background-color: #d5dae0;
+  background-image: none;
   border-color: #8b949e;
+  color: #0b192c;
 }
 .hotel-theme .h-loyalty[data-card="Gold"] {
-  background-image: linear-gradient(160deg, #f8eed9 0%, #c5a880 46%, #8c7352 100%);
+  background-color: #c5a880;
+  background-image: none;
   border-color: #8c7352;
+  color: #0b192c;
 }
 .hotel-theme .h-loyalty[data-card="Titanium"] {
-  background-image: linear-gradient(160deg, #4a525c 0%, #2a3038 42%, #12151a 100%);
+  background-color: #2a3038;
+  background-image: none;
   border-color: #6e7884;
   color: #f4f6f8;
 }
@@ -1041,19 +1040,10 @@
 .hotel-theme .h-loyalty[data-card="Silver"] .h-loyalty-number,
 .hotel-theme .h-loyalty[data-card="Gold"] .h-loyalty-value,
 .hotel-theme .h-loyalty[data-card="Gold"] .h-loyalty-number,
-.hotel-theme .h-loyalty[data-card="Platinum"] .h-loyalty-value,
-.hotel-theme .h-loyalty[data-card="Platinum"] .h-loyalty-number {
-  color: #0b192c;
-}
 .hotel-theme .h-loyalty[data-card="Silver"] .h-card-kicker,
 .hotel-theme .h-loyalty[data-card="Gold"] .h-card-kicker,
-.hotel-theme .h-loyalty[data-card="Platinum"] .h-card-kicker,
 .hotel-theme .h-loyalty[data-card="Silver"] .h-card-until,
-.hotel-theme .h-loyalty[data-card="Gold"] .h-card-until,
-.hotel-theme .h-loyalty[data-card="Platinum"] .h-card-until {
-  color: #3d4652;
-}
-.hotel-theme .h-loyalty[data-card="Gold"] .h-card-kicker {
+.hotel-theme .h-loyalty[data-card="Gold"] .h-card-until {
   color: #0b192c;
 }
 .hotel-theme .h-loyalty[data-card="Titanium"] .h-loyalty-value,
