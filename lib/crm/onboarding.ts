@@ -1,11 +1,26 @@
+import { HOTEL_ACCESS_COPY } from "@/lib/crm/hotel-access";
+import {
+  HOTEL_ACCESS_LEVEL,
+  HOTEL_ACCESS_LINES,
+  HOTEL_ACCESS_PROMISE,
+  HOTEL_ACCESS_RESERVE,
+  HOTEL_ACCESS_UNTIL,
+} from "@/lib/crm/hotel-search-home";
+
 export const ONBOARDING_SKIP_LABEL = "Passer";
 export const ONBOARDING_BACK_LABEL = "Retour";
 export const ONBOARDING_NEXT_LABEL = "Suivant";
 export const ONBOARDING_REPLAY_LABEL = "Revoir la visite";
 
+/** Même date que la carte Club, dans la phrase de la bienvenue. */
+function clubOfferedLegend() {
+  const until = HOTEL_ACCESS_UNTIL.replace(/^Jusqu[’']/, "jusqu’");
+  return `Votre carte est offerte ${until}.`;
+}
+
 /**
- * Une étape par capture de l’espace client dans la présentation,
- * dans l’ordre des pages. Le titre et la légende sont ceux de la page.
+ * Une étape par capture de l’espace client, dans l’ordre des pages.
+ * Le Club ferme la visite : les textes viennent du produit, sans avantage ajouté.
  */
 export const CLIENT_ONBOARDING_STEPS = [
   {
@@ -83,6 +98,30 @@ export const CLIENT_ONBOARDING_STEPS = [
     title: "Passeports, ESTA, ETA et visas : rien n’est oublié",
     legend:
       "Photo ou PDF : un ou plusieurs passeports sur le même fichier, chaque voyageur est importé avec ses dates de validité.",
+  },
+  {
+    id: "hotels-catalogue",
+    image: "/onboarding/11-hotels-catalogue.webp",
+    title: "Vos hôtels, aux tarifs qui vous sont réservés",
+    legend: HOTEL_ACCESS_PROMISE,
+  },
+  {
+    id: "hotels-club",
+    image: "/onboarding/12-hotels-club.webp",
+    title: `Le Club Travel BA, niveau ${HOTEL_ACCESS_LEVEL}`,
+    legend: clubOfferedLegend(),
+  },
+  {
+    id: "hotels-avantages",
+    image: "/onboarding/13-hotels-avantages.webp",
+    title: "Les avantages réservés à nos clients",
+    legend: `${HOTEL_ACCESS_LINES.join(". ")}. ${HOTEL_ACCESS_RESERVE}`,
+  },
+  {
+    id: "hotels-parcours",
+    image: "/onboarding/14-hotels-parcours.webp",
+    title: "Vous choisissez, l’hôtel confirme",
+    legend: `${HOTEL_ACCESS_COPY.benefits.join(". ")}.`,
   },
 ] as const;
 
