@@ -1,8 +1,10 @@
 import { HotelButtonSetting } from "@/components/admin/HotelButtonSetting";
+import { SelfServiceSetting } from "@/components/admin/SelfServiceSetting";
 import { HotelPlatinum } from "@/components/account/HotelPlatinum";
 import { requireAdminPage } from "@/lib/crm/auth";
 import { HOTEL_BUTTON_AUTHORIZED, HOTEL_BUTTON_EVERYONE } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
+import { readSelfServiceSettings } from "@/lib/crm/self-signup-run";
 
 export const metadata = { title: "Accès Hôtels" };
 
@@ -17,6 +19,7 @@ export default async function HotelAccessSettingsPage() {
     );
   }
   const visibility = await readHotelButtonVisibility();
+  const selfService = await readSelfServiceSettings();
   return (
     <div>
       <h2 className="mt-6 font-display text-lg font-bold text-[var(--admin-navy)]">Accès Hôtels</h2>
@@ -24,6 +27,7 @@ export default async function HotelAccessSettingsPage() {
         Le bouton doré. Au déploiement, seuls les clients dont l’accès est activé le voient.
       </p>
       <HotelButtonSetting value={visibility} />
+      <SelfServiceSetting settings={selfService} />
       <p className="mt-8 text-sm text-muted">
         Aperçu local de l’écran {visibility === HOTEL_BUTTON_EVERYONE ? "ouvert à tous" : "réservé"}. Ce réglage en
         production reste « {visibility === HOTEL_BUTTON_AUTHORIZED ? "Clients autorisés seulement" : "Tous les clients"} ».

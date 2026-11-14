@@ -18,7 +18,9 @@ Deux mondes, un Supabase Auth.
 | Rôle JWT | `app_metadata.crm_role` = `admin` \| `agent` | `crm_role=client` |
 | Après login | `/admin` | mot de passe à définir → bienvenue (une fois) → profil si pas de téléphone, sinon `/mon-compte` |
 
-Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche.
+Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche. Le lien magique ne crée pas non plus de compte.
+
+L’exception est l’inscription autonome, page publique `/inscription`. Google revient sur `/auth/callback?compte=google` (sans `hd`, distinct de `?staff=google`). Une adresse e-mail et un mot de passe suivent le même parcours. Origine `self_service` dans `app_metadata` seulement. Une fiche déjà invitée reste invitée, sans accès Hôtels en plus. `@travelba.fr` et `crm_staff` ne deviennent pas un inscrit autonome. Le téléphone est vérifié par SMS (Twilio Verify), la carte est un SetupIntent à 0 €. `hotel_booking_enabled` et `hotel_direct_live` ne s’ouvrent qu’à la fin, en service role. L’inscrit paie par autorisation Stripe puis capture si Little Emperors confirme ; il ne voit ni « payé par l’agence » ni le widget de garantie. Son espace : Hôtels, Réservations, profil court.
 
 ## Créer ≠ Inviter
 

@@ -137,7 +137,8 @@ export function agencyPayOffered(input: { api: boolean; currency: string }) {
 }
 
 /** Modes réellement proposés. La carte reste ouverte. L’agence suit la règle déjà appliquée à l’envoi. */
-export function offeredPayMethods(input: { api: boolean; currency: string }): PayMethod[] {
+export function offeredPayMethods(input: { api: boolean; currency: string; selfService?: boolean }): PayMethod[] {
+  if (input.selfService) return ["card"];
   const methods: PayMethod[] = ["card"];
   if (agencyPayOffered(input)) methods.push("agency");
   return methods;

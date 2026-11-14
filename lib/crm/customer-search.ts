@@ -19,9 +19,10 @@ export const CUSTOMER_PICK_SELECT =
   "id, first_name, last_name, usage_name, company_name, email, phone, birth_date, company_role, billing_parent_id";
 
 /** Ligne de la liste Clients : ce que la table affiche, rien de plus (A-06). */
-export type CustomerListRow = PickableCustomer & Pick<CrmCustomer, "on_hold" | "created_at">;
+export type CustomerListRow = PickableCustomer &
+  Pick<CrmCustomer, "on_hold" | "created_at"> & { account_origin?: string | null };
 
-export const CUSTOMER_LIST_SELECT = `${CUSTOMER_PICK_SELECT}, on_hold, created_at`;
+export const CUSTOMER_LIST_SELECT = `${CUSTOMER_PICK_SELECT}, on_hold, created_at, account_origin`;
 
 /** Juste le nom : listes et grand livre. */
 export type CustomerNameRow = Pick<CrmCustomer, "id" | "first_name" | "last_name">;

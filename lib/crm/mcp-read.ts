@@ -30,6 +30,7 @@ import {
   parseStoredExtract,
 } from "@/lib/crm/cancellation-standing";
 import { McpReadError } from "@/lib/crm/mcp-passport";
+import { ficheSignupFields } from "@/lib/crm/self-signup";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
 import { ledgerTravelerLabel } from "@/lib/crm/ledger-travelers";
@@ -545,6 +546,20 @@ async function oneCustomer(admin: SupabaseClient, input: { id?: string; q?: stri
   return { kind: "one" as const, customer: rows[0] };
 }
 
+async function readSignupOrigin(admin: SupabaseClient, customerId: string) {
+  const { data, error } = await admin
+    .from("crm_customers")
+    .select("account_origin, phone_verified_at")
+    .eq("id", customerId)
+    .maybeSingle();
+  if (error) {
+    if (error.code === "42703") return ficheSignupFields(null);
+    logRead("fiche-origine", error);
+    return ficheSignupFields(null);
+  }
+  return ficheSignupFields(data as { account_origin?: string | null; phone_verified_at?: string | null } | null);
+}
+
 export async function readFicheClient(input: { id?: string; q?: string }, admin = db()) {
   const found = await oneCustomer(admin, input);
   if (found.kind === "missing" || found.kind === "invalid") {
@@ -579,8 +594,10 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
     };
   });
   const pieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]);
+  const signup = await readSignupOrigin(admin, customer.id);
   return {
     ...customerLine(customer),
+    ...signup,
     societes: billingCompaniesPublic(companies.companies),
     en_veille: customer.on_hold === true,
     encours: wallets,

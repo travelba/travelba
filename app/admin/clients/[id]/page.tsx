@@ -311,6 +311,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </div>
       </header>
 
+      <SelfServiceLine customer={c} />
       <HotelAccessCard
         customerId={c.id}
         enabled={c.hotel_booking_enabled === true}
@@ -550,6 +551,23 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </aside>
       </div>
     </div>
+  );
+}
+
+async function SelfServiceLine({ customer }: { customer: CrmCustomer }) {
+  if (customer.account_origin !== "self_service") return null;
+  const { data } = await createServiceClient()
+    .from("crm_payment_methods")
+    .select("last4")
+    .eq("customer_id", customer.id)
+    .order("is_default", { ascending: false })
+    .limit(1);
+  const last4 = (data?.[0] as { last4?: string | null } | undefined)?.last4;
+  return (
+    <p className="rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3 text-sm text-[var(--admin-navy)]">
+      Inscription autonome. Téléphone {customer.phone_verified_at ? "vérifié" : "non vérifié"}.
+      {last4 ? ` Carte •••• ${last4}.` : " Aucune carte enregistrée."}
+    </p>
   );
 }
 

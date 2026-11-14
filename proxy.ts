@@ -163,6 +163,7 @@ async function route(request: NextRequest) {
     path.startsWith("/admin") ||
     path.startsWith("/mon-compte") ||
     path.startsWith("/connexion") ||
+    path.startsWith("/inscription") ||
     path.startsWith("/auth")
   ) {
     return updateSession(request);

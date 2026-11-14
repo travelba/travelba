@@ -78,6 +78,11 @@ export function ClientsTable({
                         En veille
                       </span>
                     ) : null}
+                    {c.account_origin === "self_service" ? (
+                      <span className="mt-0.5 inline-flex rounded-full bg-[#C5A880]/30 px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                        Autonome
+                      </span>
+                    ) : null}
                   </span>
                 </Link>
                 <p className="break-all text-sm text-muted">{c.email}</p>
@@ -151,6 +156,11 @@ export function ClientsTable({
                             {c.on_hold ? (
                               <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
                                 En veille
+                              </span>
+                            ) : null}
+                            {c.account_origin === "self_service" ? (
+                              <span className="rounded-full bg-[#C5A880]/30 px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                                Autonome
                               </span>
                             ) : null}
                           </span>

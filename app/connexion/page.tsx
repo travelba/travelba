@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
@@ -300,6 +301,9 @@ function LoginForm() {
       >
         Mot de passe oublié
       </button>
+      <Link href="/inscription" className="block w-full text-center text-sm font-semibold text-[var(--admin-navy)]">
+        Créer un accès
+      </Link>
     </form>
   );
 }
