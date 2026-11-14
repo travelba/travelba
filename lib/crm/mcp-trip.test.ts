@@ -27,7 +27,6 @@ import {
   removeCarte,
   removeVoyageur,
   setCarteVisibilite,
-  prepareCarnetMessage,
   retargetCompanionDetails,
   travelerSex,
 } from "@/lib/crm/mcp-trip";
