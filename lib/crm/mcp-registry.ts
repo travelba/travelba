@@ -2624,10 +2624,10 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Traite une proposition du Concierge ou une relance. action : approuver, refuser, modifier (texte), relancer. Sans confirmer, aperçu du texte et si un message partirait. confirmer true enregistre. Un message ne part que si le canal est ouvert et confirmer est true. Refuser n’envoie rien.",
+      "Traite une proposition du Concierge ou une relance. action : approuver, refuser, modifier (texte), relancer, annuler. annuler retire une relance planifiée : rien n’est envoyé, le journal le note. Sans confirmer, aperçu du texte et si un message partirait. confirmer true enregistre. Un message ne part que si le canal est ouvert et confirmer est true. Refuser n’envoie rien. annuler non plus.",
     input: {
-      action: z.enum(["approuver", "refuser", "modifier", "relancer"]),
-      id: z.string().trim().max(80).describe("Proposition, ou relance si action est relancer"),
+      action: z.enum(["approuver", "refuser", "modifier", "relancer", "annuler"]),
+      id: z.string().trim().max(80).describe("Proposition, ou relance si action est relancer ou annuler"),
       texte: z.string().trim().max(2000).optional().describe("Texte corrigé, pour modifier"),
       confirmer: confirmOpt,
     },
