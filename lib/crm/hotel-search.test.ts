@@ -765,7 +765,11 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(ui, /data-hotel-status=\{name\}/);
   assert.match(ui, /data-hotel-ladder/);
   assert.match(ui, /hotelClubLadderState/);
+  assert.match(ui, /data-card=\{cardTone\}/);
   assert.match(ui, /setStatusName\(open \? null : name\)/);
+  assert.match(css, /\.h-loyalty\[data-card="Silver"\]/);
+  assert.match(css, /\.h-loyalty\[data-card="Gold"\]/);
+  assert.match(css, /\.h-loyalty\[data-card="Titanium"\]/);
   assert.match(ui, /useState<HotelClubLadderName \| null>\(null\)/);
   assert.match(ui, /\[clubOpen, setClubOpen\] = useState\(true\)/);
   assert.match(ui, /openedLive \|\| clubOpen \? null/);

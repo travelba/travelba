@@ -721,6 +721,7 @@ export function HotelSearch({
   }
   const heroSrc = heroBroken ? HOTEL_SEARCH_HERO_FALLBACK : heroCandidate;
   const opened = HOTEL_CLUB_TIERS.find((tier) => tier.name === statusName) ?? null;
+  const cardTone = statusName ?? HOTEL_ACCESS_LEVEL;
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
@@ -1325,21 +1326,11 @@ export function HotelSearch({
             </div>
             <div className="h-loyalty-pad">
               <div className="h-loyalty-wrap">
-                <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
-                <div className="h-member h-loyalty">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
-                  <img
-                    src={heroSrc}
-                    alt=""
-                    width={960}
-                    height={540}
-                    decoding="async"
-                    className="absolute inset-0 h-full w-full object-cover opacity-40"
-                  />
-                  <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
+                <p className="h-member-status">{cardTone}</p>
+                <div className="h-member h-loyalty" data-card={cardTone}>
                   <div className="relative flex h-full flex-col justify-between px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+                      <p className="h-card-kicker">{HOTEL_ACCESS_EYEBROW}</p>
                       <AgencyLogo className="h-club-card-logo" alt="" />
                     </div>
                     <div className="flex items-end justify-between gap-3">
@@ -1350,7 +1341,7 @@ export function HotelSearch({
                         </p>
                         <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
                       </div>
-                      <p className="shrink-0 text-right text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
+                      <p className="h-card-until">{HOTEL_ACCESS_UNTIL}</p>
                     </div>
                   </div>
                 </div>
