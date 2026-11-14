@@ -800,7 +800,17 @@
   border: 0;
   background: transparent;
   color: inherit;
+}
+.hotel-theme button.h-ladder-step {
   cursor: pointer;
+}
+.hotel-theme .h-ladder-yours {
+  margin-top: -0.2rem;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8c7352;
 }
 .hotel-theme .h-ladder li[data-open="true"] .h-ladder-name {
   color: #0b192c;

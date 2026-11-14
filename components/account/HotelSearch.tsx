@@ -26,8 +26,8 @@ import {
   HOTEL_CLUB_GIVEN,
   HOTEL_CLUB_LADDER,
   HOTEL_CLUB_LADDER_LABEL,
+  HOTEL_CLUB_BACK,
   HOTEL_CLUB_NUMBER,
-  HOTEL_CLUB_OPEN,
   HOTEL_CLUB_TIERS,
   HOTEL_CLUB_YOURS,
   hotelClubLadderState,
@@ -38,7 +38,6 @@ import {
   hotelRecentStorageKey,
   hotelSearchHeroSrc,
   type FeaturedHotel,
-  type HotelClubLadderName,
 } from "@/lib/crm/hotel-search-home";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { HOTEL_RESULT_PAGE } from "@/lib/crm/hotel-activity";
@@ -365,8 +364,7 @@ export function HotelSearch({
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
-  const [clubOpen, setClubOpen] = useState(true);
-  const [statusName, setStatusName] = useState<HotelClubLadderName | null>(null);
+  const [clubOpen, setClubOpen] = useState(false);
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
@@ -419,6 +417,17 @@ export function HotelSearch({
   useEffect(() => {
     adoptHotelStorage(customerId);
   }, [customerId]);
+
+  useEffect(() => {
+    function closeOnHotels(event: MouseEvent) {
+      const link = (event.target as Element | null)?.closest("a[href]");
+      if (!(link instanceof HTMLAnchorElement)) return;
+      const href = link.getAttribute("href") || "";
+      if (href === hotelsPath || href.startsWith(`${hotelsPath}?`)) setClubOpen(false);
+    }
+    document.addEventListener("click", closeOnHotels);
+    return () => document.removeEventListener("click", closeOnHotels);
+  }, [hotelsPath]);
 
   useEffect(() => {
     const root = document.querySelector(".account-app");
@@ -720,8 +729,6 @@ export function HotelSearch({
     setHeroBroken(false);
   }
   const heroSrc = heroBroken ? HOTEL_SEARCH_HERO_FALLBACK : heroCandidate;
-  const opened = HOTEL_CLUB_TIERS.find((tier) => tier.name === statusName) ?? null;
-  const cardTone = statusName ?? HOTEL_ACCESS_LEVEL;
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
@@ -779,6 +786,28 @@ export function HotelSearch({
         />
       ) : null}
       {openedLive || clubOpen ? null : <>
+      <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
+        {HOTEL_CLUB_LADDER.map((name) => {
+          const state = hotelClubLadderState(name);
+          const yours = state === "now";
+          return (
+            <li key={name} data-state={state} aria-current={yours ? "step" : undefined}>
+              {yours ? (
+                <button type="button" className="h-ladder-step" data-hotel-status={HOTEL_ACCESS_LEVEL} onClick={() => setClubOpen(true)}>
+                  <span className="h-ladder-dot" aria-hidden />
+                  <span className="h-ladder-name">{name}</span>
+                  <span className="h-ladder-yours">{HOTEL_CLUB_YOURS}</span>
+                </button>
+              ) : (
+                <span className="h-ladder-step">
+                  <span className="h-ladder-dot" aria-hidden />
+                  <span className="h-ladder-name">{name}</span>
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
       <div className={searched ? "h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" : ""} data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
         {searched ? (
           <div className="h-searchbar-row">
@@ -1326,8 +1355,8 @@ export function HotelSearch({
             </div>
             <div className="h-loyalty-pad">
               <div className="h-loyalty-wrap">
-                <p className="h-member-status">{cardTone}</p>
-                <div className="h-member h-loyalty" data-card={cardTone}>
+                <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
+                <div className="h-member h-loyalty" data-card={HOTEL_ACCESS_LEVEL}>
                   <div className="relative flex h-full flex-col justify-between px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <p className="h-card-kicker">{HOTEL_ACCESS_EYEBROW}</p>
@@ -1346,41 +1375,32 @@ export function HotelSearch({
                   </div>
                 </div>
               </div>
-              <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
-                {HOTEL_CLUB_LADDER.map((name) => {
-                  const state = hotelClubLadderState(name);
-                  const open = statusName === name;
-                  return (
-                    <li key={name} data-state={state} data-open={open ? "true" : undefined} aria-current={state === "now" ? "step" : undefined}>
-                      <button type="button" className="h-ladder-step" data-hotel-status={name} aria-pressed={open} onClick={() => setStatusName(open ? null : name)}>
-                        <span className="h-ladder-dot" aria-hidden />
-                        <span className="h-ladder-name">{name}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
               <p className="sr-only">{HOTEL_CLUB_CARD}</p>
               <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
-              {opened ? (
-                <section className="h-club-tier" data-state={hotelClubLadderState(opened.name)} data-hotel-tier={opened.name} data-hotel-tiers="1">
-                  <header className="h-club-tier-head">
-                    <div className="min-w-0">
-                      <h2 className="h-club-tier-name">{opened.name}</h2>
-                      {hotelClubLadderState(opened.name) === "now" ? <p className="h-club-tier-mark">{HOTEL_CLUB_YOURS}</p> : null}
-                      {hotelClubLadderState(opened.name) === "next" ? <p className="h-club-tier-mark">{HOTEL_CLUB_NEXT}</p> : null}
-                    </div>
-                    <p className="h-club-tier-price">{opened.price}</p>
-                  </header>
-                  <HotelBenefits lines={[...opened.lines]} title={opened.name} layout="grid" />
-                  <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
-                </section>
-              ) : null}
+              <div className="h-club-tiers" data-hotel-tiers="1">
+                {HOTEL_CLUB_TIERS.map((tier) => {
+                  const state = hotelClubLadderState(tier.name);
+                  return (
+                    <section key={tier.name} className="h-club-tier" data-state={state} data-hotel-tier={tier.name}>
+                      <header className="h-club-tier-head">
+                        <div className="min-w-0">
+                          <h2 className="h-club-tier-name">{tier.name}</h2>
+                          {state === "now" ? <p className="h-club-tier-mark">{HOTEL_CLUB_YOURS}</p> : null}
+                          {state === "next" ? <p className="h-club-tier-mark">{HOTEL_CLUB_NEXT}</p> : null}
+                        </div>
+                        <p className="h-club-tier-price">{tier.price}</p>
+                      </header>
+                      <HotelBenefits lines={[...tier.lines]} title={tier.name} layout="grid" />
+                    </section>
+                  );
+                })}
+              </div>
+              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
             </div>
           </div>
           <div className="h-club-bar">
             <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
-              {HOTEL_CLUB_OPEN}
+              {HOTEL_CLUB_BACK}
             </button>
           </div>
         </div>
