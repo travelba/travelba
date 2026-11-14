@@ -698,6 +698,160 @@ describe("client MB3M Partners", () => {
     assert.equal(body.toLowerCase().includes("tva"), false);
   });
 
+  it("envoie le Kosovo en Serbie et refuse un pays que MB3M ne connaît pas", async () => {
+    arm();
+    let foreign = "";
+    await mb3mSaveCompany(
+      {
+        name: "BEELYNQ LLC",
+        address: {
+          name: "BEELYNQ LLC",
+          line1: 'Rr. "Tirana", Arberia III, Lokali 12-1',
+          postalCode: "10000",
+          city: "Prishtine",
+          countryCode: "XK",
+        },
+      },
+      async (_url, init) => {
+        foreign = String(init?.body);
+        return new Response(
+          `<CustomerOperationResponse><ResultCode>1</ResultCode><Id>BEELYNQ</Id><Uid>company-rs</Uid></CustomerOperationResponse>`
+        );
+      }
+    );
+    assert.equal(foreign.includes("<CountryCode>RS</CountryCode>"), true);
+    assert.equal(foreign.includes("XK"), false);
+    assert.equal(foreign.includes("<PostalCode>10000</PostalCode>"), true);
+    assert.equal(foreign.includes("<City>Prishtine</City>"), true);
+
+    let france = "";
+    await mb3mSaveCompany(
+      {
+        name: "Travelba",
+        address: {
+          name: "Travelba",
+          line1: "2 rue de la Facture",
+          postalCode: "75002",
+          city: "Paris",
+          countryCode: "FR",
+        },
+      },
+      async (_url, init) => {
+        france = String(init?.body);
+        return new Response(`<CustomerOperationResponse><ResultCode>1</ResultCode><Uid>fr-uid</Uid></CustomerOperationResponse>`);
+      }
+    );
+    assert.equal(france.includes("<CountryCode>FR</CountryCode>"), true);
+
+    let called = false;
+    await assert.rejects(
+      () =>
+        mb3mSaveCompany(
+          {
+            name: "BEELYNQ LLC",
+            address: {
+              name: "BEELYNQ LLC",
+              line1: "1 rue",
+              postalCode: "10000",
+              city: "Prishtine",
+              countryCode: "XX",
+            },
+          },
+          async () => {
+            called = true;
+            return new Response("");
+          }
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof Mb3mError);
+        assert.equal(error.message, "BEELYNQ LLC : MB3M ne connaît pas le pays XX.");
+        return true;
+      }
+    );
+    assert.equal(called, false);
+
+    let person = "";
+    await mb3mSavePerson(
+      {
+        firstName: "Ada",
+        name: "Lovelace",
+        country: "XK",
+        address: {
+          name: "Ada Lovelace",
+          line1: 'Rr. "Tirana", Arberia III, Lokali 12-1',
+          postalCode: "10000",
+          city: "Prishtine",
+          countryCode: "XK",
+        },
+      },
+      async (_url, init) => {
+        person = String(init?.body);
+        return new Response(`<CustomerOperationResponse><ResultCode>1</ResultCode><Uid>person-rs</Uid></CustomerOperationResponse>`);
+      }
+    );
+    assert.equal(person.includes("<Country>RS</Country>"), true);
+    assert.equal(person.includes("<CountryCode>RS</CountryCode>"), true);
+    assert.equal(person.includes("XK"), false);
+
+    called = false;
+    await assert.rejects(
+      () =>
+        mb3mSavePerson(
+          {
+            firstName: "Ada",
+            name: "Lovelace",
+            country: "FR",
+            address: {
+              name: "Ada Lovelace",
+              line1: "1 rue du Test",
+              postalCode: "75001",
+              city: "Paris",
+              countryCode: "XX",
+            },
+          },
+          async () => {
+            called = true;
+            return new Response("");
+          }
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof Mb3mError);
+        assert.equal(error.message, "Ada Lovelace : MB3M ne connaît pas le pays XX.");
+        return true;
+      }
+    );
+    assert.equal(called, false);
+
+    called = false;
+    await assert.rejects(
+      () =>
+        mb3mSavePerson(
+          {
+            firstName: "Ada",
+            name: "Lovelace",
+            country: "XX",
+            address: {
+              name: "Ada Lovelace",
+              line1: "1 rue du Test",
+              postalCode: "75001",
+              city: "Paris",
+              countryCode: "FR",
+            },
+          },
+          async () => {
+            called = true;
+            return new Response("");
+          }
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof Mb3mError);
+        assert.equal(error.message, "Ada Lovelace : MB3M ne connaît pas le pays XX.");
+        return true;
+      }
+    );
+    assert.equal(called, false);
+  });
+
   it("écrit l’adresse dans l’ordre du contrat quand le code postal est renseigné", async () => {
     arm();
     let full = "";
