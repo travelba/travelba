@@ -152,7 +152,9 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
             booking={b}
             allItems={allItems}
             rawItems={rawItems}
-            travelers={(travelers || []) as CrmBookingTraveler[]}
+            travelers={((travelers || []) as (CrmBookingTraveler & { proposed?: boolean | null })[]).filter(
+              (row) => row.proposed !== true
+            )}
             docs={(docs || []) as CrmBookingDocument[]}
             identityDocs={(identityDocs || []) as CrmTravelDocument[]}
             companions={(companions || []) as CrmCompanion[]}
