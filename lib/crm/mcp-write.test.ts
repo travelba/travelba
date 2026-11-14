@@ -72,8 +72,8 @@ test("créer ou mettre à jour un dossier ne l’ouvre pas et ne prévient pas",
   const write = readFileSync(new URL("./mcp-write.ts", import.meta.url), "utf8");
   const publish = write.slice(write.indexOf("export async function publishCarnet("), write.indexOf("export async function updateBooking("));
   const update = write.slice(write.indexOf("export async function updateBooking("), write.indexOf("export async function confirmService("));
-  assert.match(publish, /notifyStayPublished/);
-  assert.match(publish, /remindMissingPieces/);
+  assert.match(publish, /Seul l’écran de l’agence peut montrer au client/);
+  assert.doesNotMatch(publish, /notifyStayPublished/);
   assert.doesNotMatch(update, /notifyStayPublished/);
   const notes = prepareBookingUpdate({ id: BOOKING, notes_internes: "Ne pas notifier" });
   assert.equal(Object.prototype.hasOwnProperty.call(notes.patch, "visible_to_client"), false);

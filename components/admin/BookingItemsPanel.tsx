@@ -899,7 +899,11 @@ export function BookingItemsPanel({
                       </span>
                     ) : null}
                     {unshown ? (
-                      <span className="block text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</span>
+                      <span className="block text-xs font-semibold text-[var(--admin-gold-dark)]">
+                        {item.details?.email_ingest_id || item.details?.needs_review || item.details?.proposed
+                          ? "Proposé · pas encore montré au client"
+                          : "Pas encore montré au client"}
+                      </span>
                     ) : null}
                   </span>
                   {price ? <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:block">{price}</span> : null}

@@ -22,7 +22,7 @@ Trois statuts : **Non visible** (`status=draft`, `visible_to_client=false`), **V
 | Geste | Effet |
 |-------|--------|
 | **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché. Il s’allume dès qu’une étape est retirée, ajoutée, modifiée ou réordonnée. Il ne cache pas l’étape : `client_hidden` vient seulement du geste Cacher |
-| **Montrer au client** | le client voit ; le séjour passe **Visible** (confirmé). Items + PDFs du dossier passent visibles. Le séjour entre au grand livre |
+| **Montrer au client** | le client voit ; le séjour passe **Visible** (confirmé). Items + PDFs du dossier passent visibles. Le séjour entre au grand livre. Un import, une fusion, un cron, un outil ou un robot ne peut pas faire ce geste : la carte ou le voyageur posé ainsi reste proposé, caché, jusqu’à ce clic (une carte déjà montrée le reste). |
 
 Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`. Confirmer reste éteint, et le dit, si les étapes sont cachées et qu’il ne reste que des fichiers.
 
