@@ -342,7 +342,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_client",
     description:
-      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro). id ou q.",
+      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro). Un inscrit autonome porte origine autonome et telephone_verifie. id ou q.",
     input: { id, q },
     run: (args: ToolArgs) => readFicheClient({ id: str(args, "id"), q: str(args, "q") }),
   },

@@ -48,10 +48,11 @@ export async function POST(request: Request) {
     if (!customer) return NextResponse.json({ ok: true });
     const pm = await stripe.paymentMethods.retrieve(pmId);
     const card = pm.card;
-    const { count } = await admin
-      .from("crm_payment_methods")
-      .select("id", { count: "exact", head: true })
-      .eq("customer_id", customer.id);
+    const [{ count }, prior] = await Promise.all([
+      admin.from("crm_payment_methods").select("id", { count: "exact", head: true }).eq("customer_id", customer.id),
+      admin.from("crm_payment_methods").select("is_default").eq("stripe_payment_method_id", pmId).maybeSingle(),
+    ]);
+    const already = prior.data as { is_default?: boolean } | null;
     await admin.from("crm_payment_methods").upsert(
       {
         customer_id: customer.id,
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
         last4: card?.last4 || null,
         exp_month: card?.exp_month || null,
         exp_year: card?.exp_year || null,
-        is_default: (count ?? 0) === 0,
+        is_default: already ? already.is_default === true : (count ?? 0) === 0,
       },
       { onConflict: "stripe_payment_method_id" }
     );

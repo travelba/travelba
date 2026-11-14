@@ -319,6 +319,7 @@ function seedFromSnapshot(today: string, raw: string) {
 export function HotelSearch({
   trial = true,
   leApi = false,
+  selfService = false,
   customerId = "",
   firstName = "",
   lastName = "",
@@ -326,6 +327,7 @@ export function HotelSearch({
 }: {
   trial?: boolean;
   leApi?: boolean;
+  selfService?: boolean;
   /** Isole les recherches récentes de cet appareil pour cette personne. */
   customerId?: string;
   firstName?: string;
@@ -776,7 +778,8 @@ export function HotelSearch({
           others={shown.filter((item) => item.hotelKey !== openedLive.hotelKey).slice(0, 8)}
           onOpenOther={openHotel}
           trial={trial}
-          leApi={leApi}
+          leApi={leApi || selfService}
+          selfService={selfService}
         />
       ) : null}
       {openedLive ? null : <>

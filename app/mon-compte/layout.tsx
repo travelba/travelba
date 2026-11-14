@@ -6,6 +6,7 @@ import { customerFullName } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
 import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
+import { isSelfServiceOrigin } from "@/lib/crm/self-signup";
 import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 
 export const metadata = {
@@ -36,10 +37,18 @@ export default async function AccountLayout({
   const jar = await cookies();
   const desk = deskBypass(jar.get(DESK_COOKIE)?.value, user.id);
   const enabled = hotelBookingEnabled(customer);
-  const hotels = showHotelButton({ enabled, visibility: await readHotelButtonVisibility() });
+  const selfService = isSelfServiceOrigin(customer.account_origin);
+  const hotels = selfService || showHotelButton({ enabled, visibility: await readHotelButtonVisibility() });
 
   return (
-    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk} desk={desk} hotels={hotels}>
+    <AccountChrome
+      customerName={name}
+      initials={initials}
+      needsPhone={!selfService && !customer.phone && !desk}
+      desk={desk}
+      hotels={hotels}
+      selfService={selfService}
+    >
       {children}
     </AccountChrome>
   );

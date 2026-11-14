@@ -32,6 +32,7 @@ import {
   isOnboardingReplay,
   needsClientOnboarding,
 } from "@/lib/crm/session";
+import { SIGNUP_COOKIE, inscriptionRedirect } from "@/lib/crm/self-signup";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { readVerifiedUser } from "@/lib/crm/verified-user";
 
@@ -108,6 +109,20 @@ export async function updateSession(request: NextRequest) {
     staff: deskAccess.staff || deskAccess.partner || deskAccess.ratehawk,
   });
   const staff = access.staff;
+  const meta = user?.app_metadata || {};
+  const signupTarget = inscriptionRedirect({
+    pathname,
+    signupCookie: request.cookies.get(SIGNUP_COOKIE)?.value || null,
+    staff,
+    origin: typeof meta.account_origin === "string" ? meta.account_origin : null,
+    signupComplete: meta.signup_complete === true,
+  });
+  if (signupTarget) {
+    const url = request.nextUrl.clone();
+    url.pathname = signupTarget;
+    url.search = "";
+    return seal(NextResponse.redirect(url));
+  }
   const partner = Boolean(deskAccess.partner && staff);
   const ratehawk = Boolean(deskAccess.ratehawk && staff);
   const showPasswordSetup = mayShowPasswordSetup({

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { parisTodayIso } from "@/lib/crm/dates";
 import { hotelBookingEnabled } from "@/lib/crm/hotel-access";
+import { selfServiceSearchAllowed, signupRequestIp } from "@/lib/crm/self-signup-run";
 import { hotelActivityMode, hotelFilterLabels } from "@/lib/crm/hotel-activity";
 import { recordHotelClientActivity } from "@/lib/crm/hotel-activity-run";
 import {
@@ -45,6 +46,8 @@ export async function POST(request: Request) {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
   if (!hotelBookingEnabled(auth.customer)) return jsonError("Introuvable", 404);
+  const searchAllowed = await selfServiceSearchAllowed(auth.customer.id, auth.customer.account_origin, signupRequestIp(request.headers));
+  if (!searchAllowed) return jsonError("Trop de recherches. Réessayez plus tard.", 429);
   const body = await request.json().catch(() => null);
   const parsed = parseHotelSearchQuery(body, parisTodayIso());
   const mode = hotelActivityMode(auth.customer);
