@@ -22,13 +22,12 @@ import {
   HOTEL_CLUB_LEVEL,
   HOTEL_CLUB_NEXT,
   HOTEL_CLUB_TITLE,
-  HOTEL_CLUB_EVENT,
   HOTEL_CLUB_FAMILY,
   HOTEL_CLUB_GIVEN,
   HOTEL_CLUB_LADDER,
   HOTEL_CLUB_LADDER_LABEL,
   HOTEL_CLUB_NUMBER,
-  HOTEL_CLUB_OPEN,
+  HOTEL_CLUB_BACK,
   HOTEL_CLUB_TIERS,
   HOTEL_CLUB_YOURS,
   hotelClubLadderState,
@@ -365,7 +364,7 @@ export function HotelSearch({
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
-  const [clubOpen, setClubOpen] = useState(true);
+  const [clubOpen, setClubOpen] = useState(false);
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
@@ -420,21 +419,15 @@ export function HotelSearch({
   }, [customerId]);
 
   useEffect(() => {
-    const open = () => setClubOpen(true);
-    window.addEventListener(HOTEL_CLUB_EVENT, open);
-    return () => window.removeEventListener(HOTEL_CLUB_EVENT, open);
-  }, []);
-
-  useEffect(() => {
     const root = document.querySelector(".account-app");
     if (!(root instanceof HTMLElement)) return;
-    if (searched || openedLive) {
+    if (searched || openedLive || clubOpen) {
       root.removeAttribute("data-hotel-home");
       return;
     }
     root.setAttribute("data-hotel-home", "");
     return () => root.removeAttribute("data-hotel-home");
-  }, [searched, openedLive]);
+  }, [searched, openedLive, clubOpen]);
 
   useEffect(() => {
     if (focusReady.current) return;
@@ -781,8 +774,31 @@ export function HotelSearch({
           leApi={leApi}
         />
       ) : null}
-      {openedLive ? null : <>
+      {openedLive || clubOpen ? null : <>
       <div className={searched ? "h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" : ""} data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
+        <button
+          type="button"
+          className="h-status"
+          data-hotel-status="1"
+          onClick={() => {
+            setSheet(false);
+            setClubOpen(true);
+          }}
+        >
+          <span className="sr-only">Voir {HOTEL_CLUB_TITLE}</span>
+          <ol className="h-ladder" data-hotel-ladder="1" aria-label={HOTEL_CLUB_LADDER_LABEL}>
+            {HOTEL_CLUB_LADDER.map((name) => {
+              const state = hotelClubLadderState(name);
+              return (
+                <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
+                  <span className="h-ladder-dot" aria-hidden />
+                  <span className="h-ladder-name">{name}</span>
+                  {state === "now" ? <span className="h-status-yours">{HOTEL_CLUB_YOURS}</span> : null}
+                </li>
+              );
+            })}
+          </ol>
+        </button>
         {searched ? (
           <div className="h-searchbar-row">
             <button type="button" data-hotel-destination="1" onClick={() => openSheet("where")} className="h-bar-cell h-press" aria-label={destination.trim() ? `Destination, ${destinationLabel}` : "Destination ou hôtel"}>
@@ -984,7 +1000,7 @@ export function HotelSearch({
       </div>
       </>}
 
-      {sheet && panel !== "when" && panel !== "who" ? (
+      {!clubOpen && sheet && panel !== "when" && panel !== "who" ? (
         <div className="hotel-sheet h-search fixed inset-x-0 top-16 z-[60] flex flex-col bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:bottom-0" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
           <header className="flex items-center justify-between bg-white px-5 py-4 pt-[max(1rem,env(safe-area-inset-top))]">
             <p className="h-serif text-[1.7rem] font-medium leading-tight h-ink">Où souhaitez-vous séjourner ?</p>
@@ -1056,7 +1072,7 @@ export function HotelSearch({
           </footer>
         </div>
       ) : null}
-      {sheet && panel === "when" ? (
+      {!clubOpen && sheet && panel === "when" ? (
         <div className="hotel-sheet h-dates fixed inset-0 z-[70] flex flex-col" data-hotel-sheet="1" data-hotel-dates-sheet="1" role="dialog" aria-modal="true" aria-label="Dates du séjour">
           <header className="flex items-center justify-end px-3 py-2">
             <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-11 w-11 place-items-center h-ink">
@@ -1102,7 +1118,7 @@ export function HotelSearch({
           </footer>
         </div>
       ) : null}
-      {sheet && panel === "who" ? (
+      {!clubOpen && sheet && panel === "who" ? (
         <div
           className="fixed inset-x-0 top-0 z-[60] flex items-end bg-[#0B192C]/45 bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-0"
           data-hotel-sheet="1"
@@ -1359,17 +1375,6 @@ export function HotelSearch({
                   </div>
                 </div>
               </div>
-              <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
-                {HOTEL_CLUB_LADDER.map((name) => {
-                  const state = hotelClubLadderState(name);
-                  return (
-                    <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
-                      <span className="h-ladder-dot" aria-hidden />
-                      <span className="h-ladder-name">{name}</span>
-                    </li>
-                  );
-                })}
-              </ol>
               <p className="sr-only">{HOTEL_CLUB_CARD}</p>
               <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
               <div className="h-club-tiers" data-hotel-tiers="1">
@@ -1395,7 +1400,7 @@ export function HotelSearch({
           </div>
           <div className="h-club-bar">
             <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
-              {HOTEL_CLUB_OPEN}
+              {HOTEL_CLUB_BACK}
             </button>
           </div>
         </div>

@@ -23,7 +23,7 @@ export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
   (key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label || ""
 ).filter((label) => label.length > 0);
 
-/** Première page : la carte membre, avant de chercher. */
+/** La recherche est la porte. Ma carte s’ouvre depuis le statut. */
 export const HOTEL_ACCESS_EYEBROW = "Club Travel BA";
 
 export const HOTEL_CLUB_TITLE = "Ma carte";
@@ -38,7 +38,7 @@ export const HOTEL_CLUB_FAMILY = "Nom";
 
 export const HOTEL_CLUB_NUMBER = "N° d’adhérent";
 
-export const HOTEL_CLUB_OPEN = "Ouvrir les hôtels";
+export const HOTEL_CLUB_BACK = "Retour";
 
 /** Huit chiffres stables, tirés de la fiche. Le même client garde le même numéro. */
 export function hotelMemberNumber(customerId: string) {
@@ -49,13 +49,6 @@ export function hotelMemberNumber(customerId: string) {
   }
   const body = String(hash >>> 0).padStart(8, "0").slice(-8);
   return `${body.slice(0, 4)} ${body.slice(4)}`;
-}
-
-export const HOTEL_CLUB_EVENT = "travelba-hotel-club";
-
-export function openHotelClub() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(HOTEL_CLUB_EVENT));
 }
 
 export const HOTEL_ACCESS_LEVEL_LABEL = "Niveau";
