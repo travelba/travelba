@@ -6,38 +6,24 @@ import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelMap } from "@/components/account/HotelMap";
 import { HotelWait } from "@/components/account/HotelWait";
-import { AgencyLogo } from "@/components/AgencyLogo";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { greetingGivenName } from "@/lib/crm/identity";
 import {
-  HOTEL_ACCESS_EYEBROW,
   HOTEL_ACCESS_LEVEL,
-  HOTEL_ACCESS_OFFER,
-  HOTEL_ACCESS_PROMISE,
   HOTEL_ACCESS_RESERVE,
-  HOTEL_ACCESS_UNTIL,
-  HOTEL_CLUB_CARD,
-  HOTEL_CLUB_LEVEL,
-  HOTEL_CLUB_NEXT,
-  HOTEL_CLUB_TITLE,
-  HOTEL_CLUB_FAMILY,
-  HOTEL_CLUB_GIVEN,
   HOTEL_CLUB_LADDER,
   HOTEL_CLUB_LADDER_LABEL,
-  HOTEL_CLUB_NUMBER,
-  HOTEL_CLUB_BACK,
+  HOTEL_CLUB_NEXT,
   HOTEL_CLUB_TIERS,
   HOTEL_CLUB_YOURS,
   hotelClubLadderState,
-  hotelMemberNumber,
   HOTEL_SEARCH_CITY_CHIPS,
-  HOTEL_SEARCH_HERO_FALLBACK,
   hotelDraftStorageKey,
   hotelRecentStorageKey,
-  hotelSearchHeroSrc,
   type FeaturedHotel,
+  type HotelClubLadderName,
 } from "@/lib/crm/hotel-search-home";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { HOTEL_RESULT_PAGE } from "@/lib/crm/hotel-activity";
@@ -364,9 +350,7 @@ export function HotelSearch({
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
-  const [clubOpen, setClubOpen] = useState(false);
-  const [heroBroken, setHeroBroken] = useState(false);
-  const [heroSeen, setHeroSeen] = useState("");
+  const [statusName, setStatusName] = useState<HotelClubLadderName | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const hotelsPath = pathname.startsWith("/exemple") ? "/exemple/hotels" : "/mon-compte/hotels";
@@ -421,13 +405,13 @@ export function HotelSearch({
   useEffect(() => {
     const root = document.querySelector(".account-app");
     if (!(root instanceof HTMLElement)) return;
-    if (searched || openedLive || clubOpen) {
+    if (searched || openedLive) {
       root.removeAttribute("data-hotel-home");
       return;
     }
     root.setAttribute("data-hotel-home", "");
     return () => root.removeAttribute("data-hotel-home");
-  }, [searched, openedLive, clubOpen]);
+  }, [searched, openedLive]);
 
   useEffect(() => {
     if (focusReady.current) return;
@@ -712,12 +696,7 @@ export function HotelSearch({
     }
   }
 
-  const heroCandidate = hotelSearchHeroSrc((city || destination).trim());
-  if (heroSeen !== heroCandidate) {
-    setHeroSeen(heroCandidate);
-    setHeroBroken(false);
-  }
-  const heroSrc = heroBroken ? HOTEL_SEARCH_HERO_FALLBACK : heroCandidate;
+  const opened = HOTEL_CLUB_TIERS.find((tier) => tier.name === statusName) ?? null;
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
@@ -774,31 +753,51 @@ export function HotelSearch({
           leApi={leApi}
         />
       ) : null}
-      {openedLive || clubOpen ? null : <>
+      {openedLive ? null : <>
       <div className={searched ? "h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" : ""} data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
-        <button
-          type="button"
-          className="h-status"
-          data-hotel-status="1"
-          onClick={() => {
-            setSheet(false);
-            setClubOpen(true);
-          }}
-        >
-          <span className="sr-only">Voir {HOTEL_CLUB_TITLE}</span>
+        <div className="h-status" data-hotel-status="1">
           <ol className="h-ladder" data-hotel-ladder="1" aria-label={HOTEL_CLUB_LADDER_LABEL}>
             {HOTEL_CLUB_LADDER.map((name) => {
               const state = hotelClubLadderState(name);
+              const open = statusName === name;
               return (
                 <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
-                  <span className="h-ladder-dot" aria-hidden />
-                  <span className="h-ladder-name">{name}</span>
-                  {state === "now" ? <span className="h-status-yours">{HOTEL_CLUB_YOURS}</span> : null}
+                  <button
+                    type="button"
+                    className="h-status-step"
+                    data-hotel-status={name}
+                    aria-expanded={open}
+                    onClick={() => {
+                      setSheet(false);
+                      setStatusName(open ? null : name);
+                    }}
+                  >
+                    <span className="h-ladder-dot" aria-hidden />
+                    <span className="h-ladder-name">{name}</span>
+                    {state === "now" ? <span className="h-status-yours">{HOTEL_CLUB_YOURS}</span> : null}
+                  </button>
                 </li>
               );
             })}
           </ol>
-        </button>
+          {opened ? (
+            <section className="h-club-tier h-status-card" data-state={hotelClubLadderState(opened.name)} data-hotel-tier={opened.name} data-hotel-tiers="1" data-hotel-agency-benefits="1">
+              <header className="h-club-tier-head">
+                <div className="min-w-0">
+                  <h2 className="h-club-tier-name">{opened.name}</h2>
+                  {hotelClubLadderState(opened.name) === "now" ? <p className="h-club-tier-mark">{HOTEL_CLUB_YOURS}</p> : null}
+                  {hotelClubLadderState(opened.name) === "next" ? <p className="h-club-tier-mark">{HOTEL_CLUB_NEXT}</p> : null}
+                  {hotelClubLadderState(opened.name) === "now" ? (
+                    <p className="h-status-who">{[greetingGivenName(firstName), lastName.trim()].filter(Boolean).join(" ") || HOTEL_ACCESS_LEVEL}</p>
+                  ) : null}
+                </div>
+                <p className="h-club-tier-price">{opened.price}</p>
+              </header>
+              <HotelBenefits lines={[...opened.lines]} title={opened.name} layout="grid" />
+              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+            </section>
+          ) : null}
+        </div>
         {searched ? (
           <div className="h-searchbar-row">
             <button type="button" data-hotel-destination="1" onClick={() => openSheet("where")} className="h-bar-cell h-press" aria-label={destination.trim() ? `Destination, ${destinationLabel}` : "Destination ou hôtel"}>
@@ -921,7 +920,7 @@ export function HotelSearch({
                     ))}
                   </ul>
                 </div>
-                {!clubOpen && highlights.length ? (
+                {highlights.length ? (
                   <section aria-label="Hôtels coups de cœur" data-hotel-highlights="1">
                     <h2 className="h-section px-1">Hôtels coups de cœur</h2>
                     <ul className="h-gallery mt-3 flex gap-3 overflow-x-auto px-1 pb-1">
@@ -1000,7 +999,7 @@ export function HotelSearch({
       </div>
       </>}
 
-      {!clubOpen && sheet && panel !== "when" && panel !== "who" ? (
+      {sheet && panel !== "when" && panel !== "who" ? (
         <div className="hotel-sheet h-search fixed inset-x-0 top-16 z-[60] flex flex-col bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:bottom-0" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
           <header className="flex items-center justify-between bg-white px-5 py-4 pt-[max(1rem,env(safe-area-inset-top))]">
             <p className="h-serif text-[1.7rem] font-medium leading-tight h-ink">Où souhaitez-vous séjourner ?</p>
@@ -1072,7 +1071,7 @@ export function HotelSearch({
           </footer>
         </div>
       ) : null}
-      {!clubOpen && sheet && panel === "when" ? (
+      {sheet && panel === "when" ? (
         <div className="hotel-sheet h-dates fixed inset-0 z-[70] flex flex-col" data-hotel-sheet="1" data-hotel-dates-sheet="1" role="dialog" aria-modal="true" aria-label="Dates du séjour">
           <header className="flex items-center justify-end px-3 py-2">
             <button type="button" aria-label="Fermer" onClick={() => setSheet(false)} className="grid h-11 w-11 place-items-center h-ink">
@@ -1118,7 +1117,7 @@ export function HotelSearch({
           </footer>
         </div>
       ) : null}
-      {!clubOpen && sheet && panel === "who" ? (
+      {sheet && panel === "who" ? (
         <div
           className="fixed inset-x-0 top-0 z-[60] flex items-end bg-[#0B192C]/45 bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))] md:bottom-0"
           data-hotel-sheet="1"
@@ -1301,107 +1300,6 @@ export function HotelSearch({
                 </button>
               </>
             )}
-          </div>
-        </div>
-      ) : null}
-      {clubOpen ? (
-        <div className="h-club" data-hotel-club="1" role="dialog" aria-modal="true" aria-label={HOTEL_CLUB_TITLE}>
-          <p className="h-club-title">{HOTEL_CLUB_TITLE}</p>
-          <div className="h-club-body" data-hotel-agency-benefits="1">
-            <div className="h-club-hero" data-hotel-hero="1">
-              {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
-              <img
-                src={heroSrc}
-                alt=""
-                width={960}
-                height={540}
-                fetchPriority="high"
-                decoding="async"
-                onError={() => setHeroBroken(true)}
-                className="h-club-hero-photo"
-              />
-              <div className="h-club-hero-shade" aria-hidden />
-              <div className="h-club-hero-row">
-                <div className="min-w-0">
-                  <p className="h-club-given">
-                    <span className="sr-only">{HOTEL_CLUB_GIVEN}</span>
-                    {greetingGivenName(firstName) || "—"}
-                  </p>
-                  <p className="h-club-hero-number">{hotelMemberNumber(customerId)}</p>
-                  <p className="h-club-hero-meta">{HOTEL_CLUB_NUMBER}</p>
-                </div>
-                <AgencyLogo className="h-16 w-16" alt="" />
-              </div>
-            </div>
-            <div className="h-club-level">
-              <div className="h-club-level-mark">
-                <p className="h-loyalty-label">{HOTEL_CLUB_LEVEL}</p>
-                <p className="h-club-level-name">{HOTEL_ACCESS_LEVEL}</p>
-              </div>
-              <div className="text-right">
-                <p className="h-loyalty-label">{HOTEL_ACCESS_OFFER}</p>
-                <p className="h-club-until">{HOTEL_ACCESS_UNTIL}</p>
-              </div>
-            </div>
-            <div className="h-loyalty-pad">
-              <div className="h-loyalty-wrap">
-                <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
-                <div className="h-member h-loyalty">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
-                  <img
-                    src={heroSrc}
-                    alt=""
-                    width={960}
-                    height={540}
-                    decoding="async"
-                    className="absolute inset-0 h-full w-full object-cover opacity-40"
-                  />
-                  <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
-                  <div className="relative flex h-full flex-col justify-between px-4 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
-                      <AgencyLogo className="h-club-card-logo" alt="" />
-                    </div>
-                    <div className="flex items-end justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="h-loyalty-value">
-                          <span className="sr-only">{HOTEL_CLUB_FAMILY}</span>
-                          {[greetingGivenName(firstName), lastName.trim()].filter(Boolean).join(" ") || "—"}
-                        </p>
-                        <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
-                      </div>
-                      <p className="shrink-0 text-right text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <p className="sr-only">{HOTEL_CLUB_CARD}</p>
-              <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
-              <div className="h-club-tiers" data-hotel-tiers="1">
-                {HOTEL_CLUB_TIERS.map((tier) => {
-                  const state = hotelClubLadderState(tier.name);
-                  const mark = state === "now" ? HOTEL_CLUB_YOURS : state === "next" ? HOTEL_CLUB_NEXT : "";
-                  return (
-                    <section key={tier.name} className="h-club-tier" data-state={state} data-hotel-tier={tier.name}>
-                      <header className="h-club-tier-head">
-                        <div className="min-w-0">
-                          <h2 className="h-club-tier-name">{tier.name}</h2>
-                          {mark ? <p className="h-club-tier-mark">{mark}</p> : null}
-                        </div>
-                        <p className="h-club-tier-price">{tier.price}</p>
-                      </header>
-                      <HotelBenefits lines={[...tier.lines]} title={tier.name} layout="grid" />
-                    </section>
-                  );
-                })}
-              </div>
-              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
-            </div>
-          </div>
-          <div className="h-club-bar">
-            <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
-              {HOTEL_CLUB_BACK}
-            </button>
           </div>
         </div>
       ) : null}
