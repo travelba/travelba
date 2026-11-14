@@ -101,7 +101,7 @@ export async function draftConciergeTouchpoints(admin: Admin, now = new Date()) 
   }
   const sent = new Set(
     ((prior.data || []) as { phone: string; kind: string; slot: string | null; status: string }[])
-      .filter((row) => row.status === "sent")
+      .filter((row) => row.status === "sent" || row.status === "cancelled")
       .map((row) => `${row.phone}|${row.kind}|${row.slot || ""}`)
   );
 

@@ -26,7 +26,7 @@ export type InboxRequest = {
   nom: string;
 };
 
-export type ProposalAction = "approuver" | "refuser" | "modifier" | "relancer";
+export type ProposalAction = "approuver" | "refuser" | "modifier" | "relancer" | "annuler";
 export type ProposalRequest = { action: ProposalAction; id: string; texte: string };
 
 type Effects<TPreview, TRequest> = {
@@ -95,11 +95,11 @@ export function parseInbox(input: Record<string, unknown>): InboxRequest {
 
 export function parseProposal(input: Record<string, unknown>): ProposalRequest {
   const action = text(input.action);
-  if (action !== "approuver" && action !== "refuser" && action !== "modifier" && action !== "relancer") {
+  if (action !== "approuver" && action !== "refuser" && action !== "modifier" && action !== "relancer" && action !== "annuler") {
     throw new McpWriteError("Action inconnue.");
   }
   const id = text(input.id);
-  if (!UUID.test(id)) throw new McpWriteError(action === "relancer" ? "Relance manquante." : "Proposition manquante.");
+  if (!UUID.test(id)) throw new McpWriteError(action === "relancer" || action === "annuler" ? "Relance manquante." : "Proposition manquante.");
   const texte = text(input.texte);
   if (action === "modifier" && texte.length < 10) throw new McpWriteError("Texte trop court.");
   return { action, id, texte };
@@ -371,6 +371,7 @@ async function liveInboxReply(request: InboxRequest, admin: SupabaseClient, staf
 }
 
 async function liveProposalPreview(request: ProposalRequest) {
+  if (request.action === "annuler") return liveFollowupCancelPreview(request.id);
   if (request.action === "relancer") return liveFollowupPreview(request.id);
   const row = await loadProposal(request.id);
   const { conciergeOutboundArmed } = await import("@/lib/crm/concierge-proposals");
@@ -391,6 +392,7 @@ async function liveProposalPreview(request: ProposalRequest) {
 }
 
 async function liveProposalApply(request: ProposalRequest) {
+  if (request.action === "annuler") return liveFollowupCancel(request.id);
   if (request.action === "relancer") return liveFollowupSend(request.id);
   const row = await loadProposal(request.id);
   const { conciergeOutboundArmed } = await import("@/lib/crm/concierge-proposals");
@@ -433,6 +435,53 @@ async function liveProposalApply(request: ProposalRequest) {
     });
   }
   return { envoye: decision.send, statut: decision.status };
+}
+
+async function liveFollowupCancelPreview(id: string) {
+  const row = await loadFollowup(id);
+  if (row.status !== "planned") throw new McpWriteError("Cette relance est déjà traitée.");
+  return {
+    action: "annuler" as const,
+    id,
+    kind: row.kind,
+    envoie: false,
+    ecrit: false,
+    apercu: true,
+  };
+}
+
+async function liveFollowupCancel(id: string) {
+  const row = await loadFollowup(id);
+  if (row.status !== "planned") throw new McpWriteError("Cette relance est déjà traitée.");
+  const { createServiceClient } = await import("@/lib/supabase/admin");
+  const { toAuditRow } = await import("@/lib/crm/audit-events");
+  const { currentMcpAccess } = await import("@/lib/crm/mcp-auth");
+  const admin = createServiceClient();
+  const claimed = await admin
+    .from("crm_concierge_followups")
+    .update({ status: "cancelled" })
+    .eq("id", id)
+    .eq("status", "planned")
+    .select("id");
+  if (claimed.error?.code === "23514") {
+    throw new McpWriteError("L’annulation des relances attend la migration. Rien n’a été annulé.");
+  }
+  if (claimed.error || !claimed.data?.length) throw new McpWriteError("Cette relance est déjà traitée.");
+  const summary = `Relance annulée (${row.kind}).`;
+  const audit = await admin.from("crm_audit_events").insert(
+    toAuditRow({
+      actorKind: "human",
+      actorId: currentMcpAccess().staff?.id || null,
+      action: "relance_annulee",
+      bookingId: row.booking_id,
+      customerId: row.customer_id,
+      summary,
+      detail: { relance_id: id, kind: row.kind },
+      source: "whatsapp",
+    })
+  );
+  if (audit.error) throw new McpWriteError("La relance est annulée, mais le journal n’a pas été écrit.");
+  return { action: "annuler" as const, id, annule: true, envoye: false, journal: true };
 }
 
 async function liveFollowupPreview(id: string) {

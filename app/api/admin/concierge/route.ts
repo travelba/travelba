@@ -11,6 +11,7 @@ import { proactiveWhatsappAllowed } from "@/lib/crm/whatsapp-concierge";
 import { withConciergeSignature } from "@/lib/crm/whatsapp";
 import { sessionWindowOpen } from "@/lib/crm/whatsapp-inbox";
 import { sendWhatsappSession, sessionAddress } from "@/lib/crm/whatsapp-session";
+import { toAuditRow } from "@/lib/crm/audit-events";
 
 export const runtime = "nodejs";
 
@@ -136,6 +137,51 @@ export async function POST(request: Request) {
       }
     }
     return NextResponse.json({ ok: true, sent, status: decision.status });
+  }
+
+  if (action === "cancel-followup") {
+    const followupId = body?.followupId || "";
+    if (!ID.test(followupId)) return jsonError("Relance manquante", 400);
+    const loaded = await admin
+      .from("crm_concierge_followups")
+      .select("id, customer_id, booking_id, kind, status")
+      .eq("id", followupId)
+      .maybeSingle();
+    if (loaded.error || !loaded.data) return jsonError("La relance n’est pas encore disponible.", 503);
+    const row = loaded.data as {
+      id: string;
+      customer_id: string | null;
+      booking_id: string | null;
+      kind: string;
+      status: string;
+    };
+    if (row.status !== "planned") return jsonError("Cette relance est déjà traitée.", 400);
+    const claimed = await admin
+      .from("crm_concierge_followups")
+      .update({ status: "cancelled" })
+      .eq("id", followupId)
+      .eq("status", "planned")
+      .select("id");
+    if (claimed.error?.code === "23514") {
+      return jsonError("L’annulation des relances attend la migration. Rien n’a été annulé.", 503);
+    }
+    if (claimed.error) return jsonError("La relance n’est pas encore disponible.", 503);
+    if (!claimed.data?.length) return jsonError("Cette relance est déjà traitée.", 400);
+    const summary = `Relance annulée (${row.kind}).`;
+    const audit = await admin.from("crm_audit_events").insert(
+      toAuditRow({
+        actorKind: "human",
+        actorId: auth.user.id,
+        action: "relance_annulee",
+        bookingId: row.booking_id,
+        customerId: row.customer_id,
+        summary,
+        detail: { relance_id: followupId, kind: row.kind },
+        source: "whatsapp",
+      })
+    );
+    if (audit.error) return jsonError("La relance est annulée, mais le journal n’a pas été écrit.", 500);
+    return NextResponse.json({ ok: true, annule: true });
   }
 
   if (action === "send-followup") {
