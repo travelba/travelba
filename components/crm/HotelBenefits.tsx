@@ -9,6 +9,10 @@ const TONE_ICON: Record<BenefitTone, string> = {
   night: "moon",
   gift: "verified",
   transfer: "airport_shuttle",
+  rate: "percent",
+  concierge: "headset",
+  welcome: "user_star",
+  guest: "person",
 };
 
 /** Avantages ou inclus, en bloc. Le titre reste « Inclus » hors Little Emperors. `row` aligne les mêmes lignes. */

@@ -11,8 +11,11 @@ import {
   HOTEL_CLUB_GIVEN,
   HOTEL_CLUB_LADDER,
   HOTEL_CLUB_LADDER_LABEL,
+  HOTEL_CLUB_NEXT,
   HOTEL_CLUB_NUMBER,
   HOTEL_CLUB_OPEN,
+  HOTEL_CLUB_TIERS,
+  HOTEL_CLUB_YOURS,
   hotelClubLadderState,
   hotelMemberNumber,
   HOTEL_ACCESS_LEVEL,
@@ -59,12 +62,46 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
     "Arrivée anticipée",
     "Départ tardif",
   ]);
+  assert.deepEqual(
+    HOTEL_CLUB_TIERS.map((tier) => [tier.name, tier.price]),
+    [
+      ["Silver", "300 € par an"],
+      ["Gold", "700 € par an"],
+      ["Platinum", "1 200 € par an"],
+      ["Titanium", "1 600 € par an"],
+    ]
+  );
+  assert.equal(HOTEL_CLUB_YOURS, "Votre niveau");
+  assert.equal(HOTEL_CLUB_NEXT, "Niveau suivant");
+  assert.deepEqual(HOTEL_CLUB_TIERS.map((tier) => tier.name), [...HOTEL_CLUB_LADDER]);
+  assert.deepEqual(
+    HOTEL_CLUB_TIERS.find((tier) => tier.name === "Silver")?.lines,
+    ["Jusqu’à −10 % sur le catalogue", "Arrivée anticipée et départ tardif*"]
+  );
+  assert.deepEqual(HOTEL_CLUB_TIERS.find((tier) => tier.name === "Gold")?.lines, [
+    "Jusqu’à −15 % sur le catalogue",
+    "Arrivée anticipée et départ tardif*",
+    "Surclassement si disponible*",
+  ]);
   assert.deepEqual([...HOTEL_ACCESS_LINES], [
+    "Jusqu’à −20 % sur le catalogue",
     "Petit-déjeuner offert",
     "Arrivée anticipée et départ tardif*",
     "Surclassement prioritaire*",
     "Jusqu’à 200 $ de crédit de dépense dans l’hôtel*",
     "Transfert aéroport*",
+  ]);
+  assert.deepEqual(HOTEL_CLUB_TIERS.find((tier) => tier.name === "Titanium")?.lines, [
+    "Jusqu’à −25 % sur le catalogue",
+    "Petit-déjeuner offert",
+    "Arrivée anticipée et départ tardif*",
+    "Surclassement prioritaire*",
+    "Jusqu’à 200 $ de crédit de dépense dans l’hôtel*",
+    "Transfert aéroport*",
+    "Conciergerie de luxe, tables et activités",
+    "Accueil VIP à l’aéroport",
+    "Pré-enregistrement à l’hôtel",
+    "Réservation pour un non-adhérent",
   ]);
   assert.equal(HOTEL_ACCESS_RESERVE, "* Soumis à disponibilité et selon l’hôtel.");
   assert.equal(HOTEL_ACCESS_EYEBROW, "Club Travel BA");
@@ -87,6 +124,7 @@ test("les avantages de l’accueil sont ceux de la recherche, pas un modèle gé
   assert.equal(hotelClubLadderState("Titanium"), "next");
   assert.equal(HOTEL_ACCESS_OFFER, "Offert*");
   assert.equal(HOTEL_ACCESS_UNTIL, "Jusqu’au 31 déc. 2026");
+  assert.equal(HOTEL_ACCESS_LINES.find((line) => line.startsWith("Petit-déjeuner"))?.endsWith("*"), false);
   assert.equal(HOTEL_ACCESS_LINES[0].endsWith("*"), false);
   const perks: HotelPerks = {
     breakfast: true,

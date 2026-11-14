@@ -14,13 +14,13 @@ import { greetingGivenName } from "@/lib/crm/identity";
 import {
   HOTEL_ACCESS_EYEBROW,
   HOTEL_ACCESS_LEVEL,
-  HOTEL_ACCESS_LINES,
   HOTEL_ACCESS_OFFER,
   HOTEL_ACCESS_PROMISE,
   HOTEL_ACCESS_RESERVE,
   HOTEL_ACCESS_UNTIL,
   HOTEL_CLUB_CARD,
   HOTEL_CLUB_LEVEL,
+  HOTEL_CLUB_NEXT,
   HOTEL_CLUB_TITLE,
   HOTEL_CLUB_EVENT,
   HOTEL_CLUB_FAMILY,
@@ -29,6 +29,8 @@ import {
   HOTEL_CLUB_LADDER_LABEL,
   HOTEL_CLUB_NUMBER,
   HOTEL_CLUB_OPEN,
+  HOTEL_CLUB_TIERS,
+  HOTEL_CLUB_YOURS,
   hotelClubLadderState,
   hotelMemberNumber,
   HOTEL_SEARCH_CITY_CHIPS,
@@ -1370,7 +1372,24 @@ export function HotelSearch({
               </ol>
               <p className="sr-only">{HOTEL_CLUB_CARD}</p>
               <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
-              <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_EYEBROW} layout="grid" />
+              <div className="h-club-tiers" data-hotel-tiers="1">
+                {HOTEL_CLUB_TIERS.map((tier) => {
+                  const state = hotelClubLadderState(tier.name);
+                  const mark = state === "now" ? HOTEL_CLUB_YOURS : state === "next" ? HOTEL_CLUB_NEXT : "";
+                  return (
+                    <section key={tier.name} className="h-club-tier" data-state={state} data-hotel-tier={tier.name}>
+                      <header className="h-club-tier-head">
+                        <div className="min-w-0">
+                          <h2 className="h-club-tier-name">{tier.name}</h2>
+                          {mark ? <p className="h-club-tier-mark">{mark}</p> : null}
+                        </div>
+                        <p className="h-club-tier-price">{tier.price}</p>
+                      </header>
+                      <HotelBenefits lines={[...tier.lines]} title={tier.name} layout="grid" />
+                    </section>
+                  );
+                })}
+              </div>
               <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
             </div>
           </div>
