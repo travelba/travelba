@@ -36,6 +36,7 @@ export function WhatsappThread({
   phone = null,
   customerId = null,
   customerName = null,
+  customerFirstName = null,
   bookingId = null,
   paused = false,
   templates = [],
@@ -49,6 +50,8 @@ export function WhatsappThread({
   phone?: string | null;
   customerId?: string | null;
   customerName?: string | null;
+  /** Prénom de la fiche, pour l’aperçu du message libre. */
+  customerFirstName?: string | null;
   bookingId?: string | null;
   paused?: boolean;
   templates?: InboxTemplate[];
@@ -63,6 +66,7 @@ export function WhatsappThread({
     phone: message.phone || phone,
     customerId,
     customerName,
+    firstName: customerFirstName,
     bookingId: message.booking_id || null,
     bookingReference: message.booking_id ? stay.get(message.booking_id) || null : null,
     direction: message.direction === "inbound" ? "inbound" : "outbound",
@@ -107,6 +111,7 @@ export function WhatsappThread({
           phone,
           customerId,
           customerName,
+          firstName: customerFirstName,
           prospect: !customerId,
           bookingId,
           bookingReference: null,

@@ -2328,6 +2328,7 @@ export function BookingEditor({
           phone={customer?.phone || null}
           customerId={customer?.id || null}
           customerName={customer ? [customer.first_name, customer.last_name].filter(Boolean).join(" ") : null}
+          customerFirstName={customer?.first_name || null}
           bookingId={booking.id}
           templates={whatsappTemplates}
           previewBlocked={whatsappPreviewBlocked}

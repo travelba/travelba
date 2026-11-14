@@ -127,7 +127,7 @@ async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: stri
   const names = new Map(
     ((customers.data || []) as { id: string; first_name: string | null; last_name: string | null; phone: string | null }[]).map((row) => [
       row.id,
-      { name: [row.first_name, row.last_name].filter(Boolean).join(" "), phone: row.phone },
+      { name: [row.first_name, row.last_name].filter(Boolean).join(" "), firstName: row.first_name, phone: row.phone },
     ])
   );
   const stays = new Map(
@@ -146,6 +146,7 @@ async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: stri
       phone: row.phone || customer?.phone || null,
       customerId: row.customer_id,
       customerName: customer?.name || null,
+      firstName: customer?.firstName || null,
       bookingId: row.booking_id,
       bookingReference: row.booking_id ? stays.get(row.booking_id) || null : null,
       direction: row.direction === "inbound" ? "inbound" : "outbound",

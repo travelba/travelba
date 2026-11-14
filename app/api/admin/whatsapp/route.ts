@@ -6,12 +6,13 @@ import { toE164 } from "@/lib/crm/phone";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 import { stayDestinationLine } from "@/lib/crm/stay-phrase";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { draftTemplateRefused, readStamp } from "@/lib/crm/whatsapp-inbox";
+import { adminReplyKind, draftTemplateRefused, readStamp } from "@/lib/crm/whatsapp-inbox";
 import { loadDockSnapshot, loadDockThread } from "@/lib/crm/whatsapp-dock-load";
 import { releaseThreadToConcierge } from "@/lib/crm/whatsapp-handoff";
 import { agencySignoff, nextParisMorning } from "@/lib/crm/whatsapp-takeover";
 import { sendContentTemplate } from "@/lib/crm/whatsapp";
 import { sendWhatsappSession, sessionAddress } from "@/lib/crm/whatsapp-session";
+import { sendClosedWindowReply } from "@/lib/crm/whatsapp-admin-reply";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
     text?: string;
     body?: string;
     template?: string;
+    confirmer?: boolean;
     requestId?: string;
     messageId?: string;
     mark?: string;
@@ -168,7 +170,8 @@ export async function POST(request: Request) {
   }
 
   const template = (body?.template || "").trim();
-  const text = agencySignoff((body?.body || body?.text || "").trim());
+  const rawText = (body?.body || body?.text || "").trim();
+  const text = agencySignoff(rawText);
   if (isVercelPreview()) return jsonError("Envoi coupé sur l’aperçu.", 403);
   if (template && draftTemplateRefused(template)) {
     return jsonError("Ce modèle n’est pas soumis à Meta.", 400);
@@ -197,6 +200,26 @@ export async function POST(request: Request) {
   const to = sessionAddress(phone || "");
   if (!to) return jsonError("Téléphone manquant", 400);
 
+  const kind = adminReplyKind({ windowOpen, template });
+  if (kind === "libre") {
+    if (body?.mediaBase64) {
+      return jsonError("Hors fenêtre, la pièce jointe ne part pas avec le message libre. Envoyez le texte, ou déposez la pièce sur le dossier.", 400);
+    }
+    const sent = await sendClosedWindowReply(
+      {
+        customerId,
+        bookingId,
+        text: rawText,
+        confirmer: body?.confirmer === true,
+        staffId: auth.staff.id,
+      },
+      admin
+    );
+    if (!sent.ok) return jsonError(sent.error, 400);
+    if (sent.apercu) return NextResponse.json({ ok: true, apercu: true, envoye: false, texte: sent.texte });
+    return NextResponse.json({ ok: true, envoye: true });
+  }
+
   let sentBody = text;
   let sentSid: string | null = null;
   let mediaPath: string | null = null;
@@ -209,7 +232,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (template) {
+  if (kind === "sejour") {
     const key = template as "sejour_texte" | "rappel";
     const sid = conciergeContentSid(key);
     if (!sid || !bookingId) return jsonError("Ce modèle approuvé a besoin du séjour.", 400);
@@ -236,7 +259,7 @@ export async function POST(request: Request) {
     customer_id: customerId,
     booking_id: bookingId,
     direction: "outbound",
-    template_key: template || "staff",
+    template_key: kind === "sejour" ? template : "staff",
     body: sentBody,
     twilio_sid: sentSid,
     status: "sent",
@@ -250,7 +273,7 @@ export async function POST(request: Request) {
       customer_id: customerId,
       booking_id: bookingId,
       direction: "outbound",
-      template_key: template || "staff",
+      template_key: kind === "sejour" ? template : "staff",
       body: sentBody,
       twilio_sid: sentSid,
       status: "sent",

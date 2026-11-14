@@ -8,15 +8,20 @@ import { useVisiblePoll } from "@/components/crm/useVisiblePoll";
 import { PAGE_POLL_MS } from "@/lib/crm/page-poll";
 import { ConciergeProposalDesk } from "@/components/admin/ConciergeProposalDesk";
 import { WhatsappHoldButton, type HandoffResult } from "@/components/admin/WhatsappHoldButton";
+import { composerFreePreview } from "@/lib/crm/free-message-copy";
 import {
+  adminReplyKind,
+  closedWindowComposerLine,
   conversationBadge,
   deliveryCaption,
   filterThreads,
   isVoiceNotePath,
+  latestInboundAt,
   messageSpeaker,
   messagesNewestFirst,
   parisStamp,
   speakerLabel,
+  withFreeMessageChoice,
   type InboxFilter,
   type InboxMessage,
   type InboxThread,
@@ -99,10 +104,14 @@ export function WhatsappInbox({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = (await response.json().catch(() => null)) as { error?: string } | null;
+    const data = (await response.json().catch(() => null)) as { error?: string; apercu?: boolean } | null;
     setBusy(false);
     if (!response.ok) {
       setNote(data?.error || "L’envoi n’a pas abouti.");
+      return false;
+    }
+    if (data?.apercu) {
+      setNote("Rien n’a été envoyé.");
       return false;
     }
     if (!options?.keepDraft) setBody("");
@@ -121,16 +130,26 @@ export function WhatsappInbox({
       mediaType = file.type;
       mediaBase64 = await fileToBase64(file);
     }
+    const kind = adminReplyKind({ windowOpen, template });
+    if (kind === "libre" && file) {
+      setNote("Hors fenêtre, la pièce jointe ne part pas avec le message libre. Envoyez le texte, ou déposez la pièce sur le dossier.");
+      return;
+    }
+    if (kind === "libre" && !active.customerId && !active.bookingId) {
+      setNote("Le message libre a besoin de la fiche du client.");
+      return;
+    }
     const ok = await post({
       action: "reply",
       phone: active.phone,
       customerId: active.customerId,
       bookingId: active.bookingId,
       body,
-      template: windowOpen ? "" : template,
-      mediaName,
-      mediaType,
-      mediaBase64,
+      template: kind === "sejour" ? template : "",
+      confirmer: kind === "libre",
+      mediaName: kind === "libre" ? null : mediaName,
+      mediaType: kind === "libre" ? null : mediaType,
+      mediaBase64: kind === "libre" ? null : mediaBase64,
     });
     if (ok) {
       const input = document.getElementById("wa-file") as HTMLInputElement | null;
@@ -358,46 +377,103 @@ export function WhatsappInbox({
               void send();
             }}
           >
-            <p className="mb-2 text-xs text-[var(--color-ink-soft)]">
-              {windowOpen
-                ? "Fenêtre de 24 h ouverte : texte libre."
-                : "Au-delà de 24 h : choisissez un modèle déjà approuvé. Le texte libre ne part pas."}
-              {previewBlocked ? " Aperçu : l’envoi est coupé." : ""}
-            </p>
-            {windowOpen ? null : (
-              <select
-                value={template}
-                onChange={(event) => setTemplate(event.target.value)}
-                className="mb-2 w-full rounded-full border px-3 py-2 text-sm"
-                aria-label="Modèle approuvé"
-              >
-                <option value="">Choisir un modèle</option>
-                {templates.map((item) => (
-                  <option key={item.key} value={item.key}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            )}
-            <textarea
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              rows={3}
-              placeholder={windowOpen ? "Écrire au client" : "Le texte libre attend la fenêtre de 24 h"}
-              disabled={!windowOpen}
-              className="w-full rounded-2xl border border-[var(--border)] px-3 py-2 text-sm disabled:bg-[#f6f3ee]"
+            <ClosedWindowFields
+              windowOpen={windowOpen}
+              lastInboundAt={latestInboundAt(messages)}
+              template={template}
+              templates={templates}
+              body={body}
+              firstName={active.firstName || active.customerName}
+              previewBlocked={previewBlocked}
+              busy={busy}
+              onTemplate={setTemplate}
+              onBody={setBody}
             />
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <input id="wa-file" type="file" accept="image/*,application/pdf" className="text-xs" aria-label="Pièce jointe" />
-              <button type="submit" className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm" disabled={busy || previewBlocked}>
-                Envoyer
-              </button>
-            </div>
             {note ? <p className="mt-2 text-sm text-[#0B192C]">{note}</p> : null}
           </form>
         ) : null}
       </section>
     </div>
+  );
+}
+
+function ClosedWindowFields({
+  windowOpen,
+  lastInboundAt,
+  template,
+  templates,
+  body,
+  firstName,
+  previewBlocked,
+  busy,
+  onTemplate,
+  onBody,
+}: {
+  windowOpen: boolean;
+  lastInboundAt: string | null;
+  template: string;
+  templates: InboxTemplate[];
+  body: string;
+  firstName: string | null;
+  previewBlocked: boolean;
+  busy: boolean;
+  onTemplate: (value: string) => void;
+  onBody: (value: string) => void;
+}) {
+  const stay = adminReplyKind({ windowOpen, template }) === "sejour";
+  const choices = withFreeMessageChoice(templates);
+  const preview = composerFreePreview({ windowOpen, template, text: body, firstName });
+  return (
+    <>
+      <p className="mb-2 text-xs text-[var(--color-ink-soft)]">
+        {windowOpen ? "Fenêtre de 24 h ouverte : texte libre." : closedWindowComposerLine(lastInboundAt, !stay)}
+        {previewBlocked ? " Aperçu : l’envoi est coupé." : ""}
+      </p>
+      {windowOpen ? null : (
+        <select
+          value={template}
+          onChange={(event) => onTemplate(event.target.value)}
+          className="mb-2 w-full rounded-full border px-3 py-2 text-sm"
+          aria-label="Modèle approuvé"
+        >
+          <option value="">Choisir un modèle</option>
+          {choices.map((item) => (
+            <option key={item.key} value={item.key}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      )}
+      <textarea
+        value={body}
+        onChange={(event) => onBody(event.target.value)}
+        rows={3}
+        placeholder={windowOpen ? "Écrire au client" : "Texte libre hors fenêtre"}
+        disabled={stay}
+        className="w-full rounded-2xl border border-[var(--border)] px-3 py-2 text-sm disabled:bg-[#f6f3ee]"
+      />
+      {preview.texte ? (
+        <div className="mt-2 rounded-2xl border border-[var(--border)] bg-[#f7f1e6] px-3 py-2" role="status" aria-live="polite">
+          <p className="text-[10px] uppercase tracking-wide text-[#8a7350]">Le client recevra</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-[#0B192C]">{preview.texte}</p>
+        </div>
+      ) : null}
+      {preview.erreur ? (
+        <p className="mt-2 text-sm text-[#0B192C]" role="alert">
+          {preview.erreur}
+        </p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <input id="wa-file" type="file" accept="image/*,application/pdf" className="text-xs" aria-label="Pièce jointe" />
+        <button
+          type="submit"
+          className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm"
+          disabled={busy || previewBlocked || (preview.libre && !preview.texte)}
+        >
+          Envoyer
+        </button>
+      </div>
+    </>
   );
 }
 

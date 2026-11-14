@@ -13,6 +13,8 @@ import { deposerModelesMessageLibreWhatsapp } from "./mcp-agency-templates";
 import { McpWriteError } from "./mcp-write";
 import { MCP_TOOLS } from "./mcp-registry";
 import { memoryContentSidStore } from "./whatsapp-content-sid-store";
+import { CONCIERGE_SIGNATURE } from "./whatsapp";
+import { composerFreePreview, FREE_MESSAGE_SIGNATURE, freeMessageTemplateText } from "./free-message-copy";
 import { whatsappCatalog } from "./whatsapp-catalog";
 import {
   FREE_MESSAGE_MEDIA_BODY,
@@ -43,7 +45,23 @@ test("le corps a assez de français fixe, et ce n’est pas l’autorisation", (
     assert.equal(body.includes("autorisation"), false);
   }
   assert.equal(freeMessageRatio("{{1}}").ok, false);
+  assert.equal(FREE_MESSAGE_SIGNATURE, CONCIERGE_SIGNATURE);
+  assert.equal(FREE_MESSAGE_TEXT_BODY.endsWith(CONCIERGE_SIGNATURE), true);
   const text = freeMessageTemplatePreview("message_libre_texte", "Amin", "Voici votre attestation.");
+  assert.equal(text, freeMessageTemplateText("Amin", "Voici votre attestation."));
+  const composer = composerFreePreview({
+    windowOpen: false,
+    template: "",
+    text: "Il y a bien le vip fast track pour l’aller et le retour.",
+    firstName: "David Alexis",
+  });
+  assert.equal(composer.libre, true);
+  assert.match(composer.texte || "", /Bonjour David,/);
+  assert.match(composer.texte || "", /vip fast track/);
+  assert.match(composer.texte || "", /Le Concierge/);
+  assert.equal(composerFreePreview({ windowOpen: true, template: "", text: "Bonjour", firstName: "David" }).libre, false);
+  assert.equal(composerFreePreview({ windowOpen: false, template: "rappel", text: "Bonjour", firstName: "David" }).libre, false);
+  assert.match(composerFreePreview({ windowOpen: false, template: "", text: "Passeport AB345678", firstName: "David" }).erreur || "", /numéro de pièce/);
   const media = freeMessageTemplatePreview("message_libre_document", "Amin", "Voici votre attestation.");
   assert.match(text || "", /Bonjour Amin/);
   assert.match(text || "", /Voici votre attestation/);

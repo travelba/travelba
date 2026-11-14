@@ -30,17 +30,22 @@ import {
   type BubbleFrame,
   type DockTab,
 } from "@/lib/crm/whatsapp-dock";
+import { composerFreePreview } from "@/lib/crm/free-message-copy";
 import {
+  adminReplyKind,
+  closedWindowComposerLine,
   conversationBadge,
   deliveryCaption,
   filterThreads,
   isVoiceNotePath,
+  latestInboundAt,
   messageSpeaker,
   messagesNewestFirst,
   parisStamp,
   sessionWindowOpenNow,
   speakerLabel,
   threadKey,
+  withFreeMessageChoice,
   type InboxMessage,
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
@@ -353,10 +358,14 @@ export function WhatsappDock({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = (await response.json().catch(() => null)) as { error?: string } | null;
+    const data = (await response.json().catch(() => null)) as { error?: string; apercu?: boolean } | null;
     setBusy(false);
     if (!response.ok) {
       setNote(data?.error || "L’envoi n’a pas abouti.");
+      return false;
+    }
+    if (data?.apercu) {
+      setNote("Rien n’a été envoyé.");
       return false;
     }
     if (refresh) router.refresh();
@@ -364,7 +373,16 @@ export function WhatsappDock({
   }
 
   async function send() {
-    if (!expandedThread?.phone || previewBlocked) return;
+    if (!expandedThread?.phone) return;
+    if (!live || previewBlocked) {
+      setNote("Aperçu : rien n’est parti.");
+      return;
+    }
+    const kind = adminReplyKind({ windowOpen, template });
+    if (kind === "libre" && !expandedThread.customerId && !expandedThread.bookingId) {
+      setNote("Le message libre a besoin de la fiche du client.");
+      return;
+    }
     const ok = await post(
       {
         action: "reply",
@@ -372,7 +390,8 @@ export function WhatsappDock({
         customerId: expandedThread.customerId,
         bookingId: expandedThread.bookingId,
         body: draft,
-        template: windowOpen ? "" : template,
+        template: kind === "sejour" ? template : "",
+        confirmer: kind === "libre",
       },
       true
     );
@@ -657,6 +676,11 @@ function ChatPane({
     onHeldChange(result.status === "agency");
   }
   const linkClass = sheet ? "inline-flex min-h-11 items-center underline" : "underline";
+  const inboundAt = latestInboundAt(messages);
+  const choices = withFreeMessageChoice(templates);
+  const stay = adminReplyKind({ windowOpen, template }) === "sejour";
+  const firstName = thread.firstName || messages.find((row) => row.firstName)?.firstName || thread.customerName;
+  const preview = composerFreePreview({ windowOpen, template, text: draft, firstName });
   return (
     <div className={sheet ? "flex h-full min-h-0 flex-1 flex-col bg-[#efe7da]" : "flex max-h-[28rem] flex-col bg-[#efe7da]"}>
       {sheet ? (
@@ -744,20 +768,27 @@ function ChatPane({
         }}
       >
         <p className="mb-1 text-[10px] text-[var(--color-ink-soft)]">
-          {windowOpen ? "Fenêtre de 24 h ouverte : texte libre." : "Au-delà de 24 h : un modèle déjà approuvé."}
+          {windowOpen ? "Fenêtre de 24 h ouverte : texte libre." : closedWindowComposerLine(inboundAt, !stay)}
           {previewBlocked ? " Aperçu : l’envoi est coupé." : ""}
         </p>
         {windowOpen ? null : (
           <select value={template} onChange={(event) => onTemplate(event.target.value)} className="mb-1 w-full rounded-full border px-2 py-1 text-xs" aria-label="Modèle approuvé">
             <option value="">Choisir un modèle</option>
-            {templates.map((item) => (
+            {choices.map((item) => (
               <option key={item.key} value={item.key}>{item.label}</option>
             ))}
           </select>
         )}
-        <textarea value={draft} onChange={(event) => onDraft(event.target.value)} rows={2} disabled={!windowOpen} placeholder={windowOpen ? "Écrire au client" : "Texte libre hors fenêtre"} className="w-full rounded-2xl border px-2 py-1 text-xs disabled:bg-[#f6f3ee]" />
+        <textarea value={draft} onChange={(event) => onDraft(event.target.value)} rows={2} disabled={stay} placeholder={windowOpen ? "Écrire au client" : "Texte libre hors fenêtre"} className="w-full rounded-2xl border px-2 py-1 text-xs disabled:bg-[#f6f3ee]" />
+        {preview.texte ? (
+          <div className="mt-1 rounded-2xl border border-[var(--border)] bg-[#f7f1e6] px-2 py-1.5" role="status" aria-live="polite">
+            <p className="text-[10px] uppercase tracking-wide text-[#8a7350]">Le client recevra</p>
+            <p className="mt-1 whitespace-pre-wrap text-xs text-[#0B192C]">{preview.texte}</p>
+          </div>
+        ) : null}
+        {preview.erreur ? <p className="mt-1 text-xs text-[#0B192C]" role="alert">{preview.erreur}</p> : null}
         <div className="mt-1 flex justify-end">
-          <button type="submit" disabled={busy || previewBlocked} className={sheet ? "inline-flex h-11 items-center rounded-full bg-[#0B192C] px-4 text-sm text-white disabled:opacity-50" : "rounded-full bg-[#0B192C] px-3 py-1 text-xs text-white disabled:opacity-50"}>
+          <button type="submit" disabled={busy || previewBlocked || (preview.libre && !preview.texte)} className={sheet ? "inline-flex h-11 items-center rounded-full bg-[#0B192C] px-4 text-sm text-white disabled:opacity-50" : "rounded-full bg-[#0B192C] px-3 py-1 text-xs text-white disabled:opacity-50"}>
             Envoyer
           </button>
         </div>

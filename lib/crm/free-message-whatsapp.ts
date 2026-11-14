@@ -1,7 +1,24 @@
-import { greetingGivenName } from "./identity";
 import { siteConfig } from "../site";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 import { visaGrantHeader, type VisaGrantHeader } from "./visa-grant-whatsapp";
+import {
+  FREE_MESSAGE_TEXT_BODY,
+  freeMessageGivenName,
+  freeMessageLooksLikeDocumentNumber,
+  freeMessageTemplateText,
+  freeMessageTextError,
+  freeMessageVariableText,
+} from "./free-message-copy";
+
+export {
+  FREE_MESSAGE_MAX_CHARS,
+  FREE_MESSAGE_TEXT_BODY,
+  freeMessageGivenName,
+  freeMessageLooksLikeDocumentNumber,
+  freeMessageTemplateText,
+  freeMessageTextError,
+  freeMessageVariableText,
+} from "./free-message-copy";
 
 /**
  * Message libre WhatsApp. Ce n’est pas l’autorisation de voyage.
@@ -22,24 +39,12 @@ export const FREE_MESSAGE_SAMPLE_PDF_PATH = "exemple/esta-exemple.pdf";
 export const FREE_MESSAGE_SAMPLE_IMAGE_PATH = "exemple/esta-exemple.jpg";
 export const FREE_MESSAGE_SAMPLE_GREETING = "Camille";
 export const FREE_MESSAGE_SAMPLE_TEXT = "Voici le document demandé pour votre séjour.";
-export const FREE_MESSAGE_MAX_CHARS = 700;
 export const FREE_MESSAGE_URL_TTL_SECONDS = 60 * 60;
 
 const MEDIA_BASE = `${siteConfig.url}/api/whatsapp/autorisations/`;
 
 export const FREE_MESSAGE_SAMPLE_PDF_URL = `${MEDIA_BASE}${FREE_MESSAGE_SAMPLE_PDF_PATH}`;
 export const FREE_MESSAGE_SAMPLE_IMAGE_URL = `${MEDIA_BASE}${FREE_MESSAGE_SAMPLE_IMAGE_PATH}`;
-
-/** Hors pièce. {{1}} prénom, {{2}} texte de l’agence. */
-export const FREE_MESSAGE_TEXT_BODY = [
-  "Bonjour {{1}},",
-  "",
-  "Votre conseiller Travel BA vous adresse ce message :",
-  "",
-  "{{2}}",
-  "",
-  CONCIERGE_SIGNATURE,
-].join("\n");
 
 /** PDF ou image. {{1}} est le média, hors corps. {{2}} prénom, {{3}} texte de l’agence. */
 export const FREE_MESSAGE_MEDIA_BODY = [
@@ -52,7 +57,6 @@ export const FREE_MESSAGE_MEDIA_BODY = [
   CONCIERGE_SIGNATURE,
 ].join("\n");
 
-const PASSPORT = /\b[A-Z]{1,2}\d{6,9}\b/i;
 const IDENTITY = new Set(["passport", "id_card", "passeport", "carte d'identité", "carte d'identite"]);
 
 export function freeMessageTemplateFor(header: FreeMessageHeader | null): FreeMessageTemplate {
@@ -85,31 +89,6 @@ export function freeMessageIdentityBlocked(docType: string | null | undefined) {
   return IDENTITY.has(type);
 }
 
-export function freeMessageGivenName(value: string | null | undefined) {
-  const name = (greetingGivenName(value) || "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!name || name.length > 40) return "voyageur";
-  if (PASSPORT.test(name) || /https?:|travelba\.fr/i.test(name) || name.includes("{{")) return "voyageur";
-  return name;
-}
-
-/** Texte mis dans la variable. Une ligne : Meta refuse les sauts dans une variable. */
-export function freeMessageVariableText(value: string | null | undefined): string | null {
-  const text = (value || "").replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim();
-  if (!text || text.length > FREE_MESSAGE_MAX_CHARS) return null;
-  if (text.includes("{{") || text.includes("}}") || PASSPORT.test(text)) return null;
-  return text;
-}
-
-export function freeMessageTextError(value: string | null | undefined) {
-  const raw = (value || "").trim();
-  if (!raw) return "Écrivez le message.";
-  if (raw.length > FREE_MESSAGE_MAX_CHARS) return `Le message dépasse ${FREE_MESSAGE_MAX_CHARS} caractères.`;
-  if (raw.includes("{{") || raw.includes("}}")) return "Le message ne peut pas contenir de variable.";
-  if (PASSPORT.test(raw)) return "Le message ne peut pas contenir un numéro de pièce.";
-  if (!freeMessageVariableText(raw)) return "Le message n’a pas pu être préparé.";
-  return null;
-}
-
 /** Texte de la fenêtre de 24 h : les mots de l’agence, puis la signature. */
 export function freeMessageSessionBody(value: string | null | undefined) {
   if (freeMessageTextError(value)) return null;
@@ -125,13 +104,11 @@ function applyVars(body: string, variables: Record<string, string>) {
 
 /** Texte que le client lit quand le modèle part. */
 export function freeMessageTemplatePreview(template: FreeMessageTemplate, firstName: string | null | undefined, text: string) {
+  if (template === "message_libre_texte") return freeMessageTemplateText(firstName, text);
   const variable = freeMessageVariableText(text);
   if (!variable) return null;
   const greeting = freeMessageGivenName(firstName);
-  const filled =
-    template === "message_libre_texte"
-      ? applyVars(FREE_MESSAGE_TEXT_BODY, { "1": greeting, "2": variable })
-      : applyVars(FREE_MESSAGE_MEDIA_BODY, { "2": greeting, "3": variable });
+  const filled = applyVars(FREE_MESSAGE_MEDIA_BODY, { "2": greeting, "3": variable });
   if (/\{\{\d+\}\}/.test(filled)) return null;
   return filled;
 }
@@ -146,7 +123,7 @@ export function freeMessageFileName(stored: string | null | undefined, header: F
     .replace(/[^A-Za-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
-  if (!stem || /\d{5,}/.test(stem) || PASSPORT.test(stem)) return `Document-Travel-BA.${ext}`;
+  if (!stem || /\d{5,}/.test(stem) || freeMessageLooksLikeDocumentNumber(stem)) return `Document-Travel-BA.${ext}`;
   const name = `${stem}.${ext}`;
   if (name.length > 80 || /["\\\r\n]/.test(name)) return `Document-Travel-BA.${ext}`;
   return name;

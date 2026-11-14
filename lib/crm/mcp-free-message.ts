@@ -121,6 +121,8 @@ export async function envoyerMessageLibre(
     sendTemplate?: (message: { phone: string; contentSid: string; variables: Record<string, string> }) => Promise<
       { ok: true; sid: string } | { ok: false; detail?: string }
     >;
+    /** Auteur du journal. L’écran agence passe le collègue connecté. */
+    author?: { id: string | null; actor?: string };
   }
 ) {
   const db = client(admin);
@@ -213,7 +215,9 @@ export async function envoyerMessageLibre(
   if (!phone) throw new McpWriteError("Pas de téléphone pour WhatsApp.");
 
   const dedupe = `message-libre:${customer.id}:${now.getTime()}`;
-  const staff = currentMcpAccess().staff;
+  const access = currentMcpAccess();
+  const staffId = deps?.author ? deps.author.id : access.staff?.id || null;
+  const actor = deps?.author?.actor || access.actor;
   const inserted = await db
     .from("crm_whatsapp_messages")
     .insert({
@@ -225,9 +229,9 @@ export async function envoyerMessageLibre(
       body: planned.plan.texte,
       status: "queued",
       phone,
-      author_staff_id: staff?.id || null,
+      author_staff_id: staffId,
       media_path: file?.storagePath || null,
-      payload: { actor: currentMcpAccess().actor },
+      payload: { actor },
     })
     .select("id")
     .maybeSingle();
@@ -257,7 +261,7 @@ export async function envoyerMessageLibre(
       customer_id: customer.id,
       paused_at: now.toISOString(),
       paused_until: nextParisMorning(now).toISOString(),
-      paused_by: staff?.id || null,
+      paused_by: staffId,
       updated_at: now.toISOString(),
     });
     if (paused.error) console.error("[message-libre] pause", paused.error.code || "error");

@@ -1,3 +1,5 @@
+import { agencyWroteTemplate } from "./whatsapp-inbox";
+
 /** Pause du Concierge jusqu’au lendemain matin, heure de Paris. */
 
 /** L’humain a le fil : sans geste de sa part pendant ce délai, le Concierge reprend. */
@@ -94,7 +96,7 @@ export function beatFromMessage(row: {
   const human =
     row.direction === "outbound" &&
     !system &&
-    (Boolean(row.author_staff_id) || template === "staff" || template === "agence");
+    (Boolean(row.author_staff_id) || agencyWroteTemplate(template));
   return {
     at: row.created_at,
     direction: row.direction === "inbound" ? "inbound" : "outbound",
