@@ -547,7 +547,7 @@ export function HotelJourney({
 
   function chooseRoom(next: ClientRoom) {
     const picked = collapseRooms([next])[0] || next;
-    const rates = presentRates(picked.rates);
+    const rates = presentRates(picked.rates, programme.lines);
     setRoom({ ...picked, rates });
     setRate(initialRate(rates));
     postHotelActivity({
@@ -1051,7 +1051,7 @@ export function HotelJourney({
                 </div>
               ) : null}
               <div className="space-y-3" role="radiogroup" aria-label="Tarifs" data-hotel-rates="1">
-                {presentRates(room.rates).map((item) => {
+                {presentRates(room.rates, programme.lines).map((item) => {
                   const line = readStayRate({ ...item, freeCancellation: item.perks.freeCancellation });
                   const selected =
                     Boolean(rate) &&

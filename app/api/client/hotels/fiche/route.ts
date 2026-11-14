@@ -163,11 +163,15 @@ export async function POST(request: Request) {
     coords: profile.coords,
     rooms,
   };
-  await recordHotelClientActivity({
-    customerId: auth.customer.id,
-    authUserId: auth.user.id,
-    mode,
-    gesture: { kind: "view", hotel: name, city },
-  });
+  try {
+    await recordHotelClientActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      mode,
+      gesture: { kind: "view", hotel: name, city },
+    });
+  } catch {
+    /* le journal ne bloque pas la fiche */
+  }
   return NextResponse.json({ file });
 }

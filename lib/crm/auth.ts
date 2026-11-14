@@ -225,7 +225,14 @@ export const ensureCustomerForUser = cache(async (user: User): Promise<CrmCustom
 
     return null;
   } catch {
-    return null;
+    // La preview n’a pas la clé service. La fiche du titulaire reste lisible par sa session.
+    try {
+      const { supabase } = await getSessionUser();
+      const { data } = await supabase.from("crm_customers").select("*").eq("auth_user_id", user.id).maybeSingle();
+      return (data as CrmCustomer) || null;
+    } catch {
+      return null;
+    }
   }
 });
 
