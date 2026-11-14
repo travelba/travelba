@@ -23,7 +23,7 @@ export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
   (key) => SEARCH_PERK_LABEL.find((row) => row.key === key)?.label || ""
 ).filter((label) => label.length > 0);
 
-/** La recherche s’ouvre d’abord. Le parcours est au-dessus des champs. */
+/** Ma carte s’ouvre à chaque clic sur Hôtels. Le parcours, sous la carte, ouvre les prix. */
 export const HOTEL_ACCESS_EYEBROW = "Club Travel BA";
 
 export const HOTEL_CLUB_TITLE = "Ma carte";
@@ -37,6 +37,8 @@ export const HOTEL_CLUB_GIVEN = "Prénom";
 export const HOTEL_CLUB_FAMILY = "Nom";
 
 export const HOTEL_CLUB_NUMBER = "N° d’adhérent";
+
+export const HOTEL_CLUB_OPEN = "Ouvrir les hôtels";
 
 export const HOTEL_CLUB_BACK = "Retour";
 

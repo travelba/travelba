@@ -13,6 +13,7 @@ import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { greetingGivenName } from "@/lib/crm/identity";
 import {
   HOTEL_ACCESS_EYEBROW,
+  HOTEL_ACCESS_LINES,
   HOTEL_ACCESS_LEVEL,
   HOTEL_ACCESS_OFFER,
   HOTEL_ACCESS_PROMISE,
@@ -27,6 +28,7 @@ import {
   HOTEL_CLUB_LADDER,
   HOTEL_CLUB_LADDER_LABEL,
   HOTEL_CLUB_BACK,
+  HOTEL_CLUB_OPEN,
   HOTEL_CLUB_NUMBER,
   HOTEL_CLUB_TIERS,
   HOTEL_CLUB_YOURS,
@@ -364,7 +366,8 @@ export function HotelSearch({
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
-  const [clubOpen, setClubOpen] = useState(false);
+  const [clubOpen, setClubOpen] = useState(true);
+  const [pricesOpen, setPricesOpen] = useState(false);
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
@@ -423,7 +426,10 @@ export function HotelSearch({
       const link = (event.target as Element | null)?.closest("a[href]");
       if (!(link instanceof HTMLAnchorElement)) return;
       const href = link.getAttribute("href") || "";
-      if (href === hotelsPath || href.startsWith(`${hotelsPath}?`)) setClubOpen(false);
+      if (href === hotelsPath || href.startsWith(`${hotelsPath}?`)) {
+        setPricesOpen(false);
+        setClubOpen(true);
+      }
     }
     document.addEventListener("click", closeOnHotels);
     return () => document.removeEventListener("click", closeOnHotels);
@@ -785,29 +791,7 @@ export function HotelSearch({
           leApi={leApi}
         />
       ) : null}
-      {openedLive || clubOpen ? null : <>
-      <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
-        {HOTEL_CLUB_LADDER.map((name) => {
-          const state = hotelClubLadderState(name);
-          const yours = state === "now";
-          return (
-            <li key={name} data-state={state} aria-current={yours ? "step" : undefined}>
-              {yours ? (
-                <button type="button" className="h-ladder-step" data-hotel-status={HOTEL_ACCESS_LEVEL} onClick={() => setClubOpen(true)}>
-                  <span className="h-ladder-dot" aria-hidden />
-                  <span className="h-ladder-name">{name}</span>
-                  <span className="h-ladder-yours">{HOTEL_CLUB_YOURS}</span>
-                </button>
-              ) : (
-                <span className="h-ladder-step">
-                  <span className="h-ladder-dot" aria-hidden />
-                  <span className="h-ladder-name">{name}</span>
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      {openedLive || clubOpen || pricesOpen ? null : <>
       <div className={searched ? "h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" : ""} data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
         {searched ? (
           <div className="h-searchbar-row">
@@ -1314,7 +1298,7 @@ export function HotelSearch({
           </div>
         </div>
       ) : null}
-      {clubOpen ? (
+      {clubOpen && !pricesOpen && !openedLive ? (
         <div className="h-club" data-hotel-club="1" role="dialog" aria-modal="true" aria-label={HOTEL_CLUB_TITLE}>
           <p className="h-club-title">{HOTEL_CLUB_TITLE}</p>
           <div className="h-club-body" data-hotel-agency-benefits="1">
@@ -1378,8 +1362,38 @@ export function HotelSearch({
                   </div>
                 </div>
               </div>
+              <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
+                {HOTEL_CLUB_LADDER.map((name) => {
+                  const state = hotelClubLadderState(name);
+                  return (
+                    <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
+                      <button type="button" className="h-ladder-step" data-hotel-status={name} onClick={() => setPricesOpen(true)}>
+                        <span className="h-ladder-dot" aria-hidden />
+                        <span className="h-ladder-name">{name}</span>
+                        {state === "now" ? <span className="h-ladder-yours">{HOTEL_CLUB_YOURS}</span> : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
               <p className="sr-only">{HOTEL_CLUB_CARD}</p>
               <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
+              <HotelBenefits lines={[...HOTEL_ACCESS_LINES]} title={HOTEL_ACCESS_LEVEL} layout="grid" />
+              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+            </div>
+          </div>
+          <div className="h-club-bar">
+            <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
+              {HOTEL_CLUB_OPEN}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {pricesOpen && !openedLive ? (
+        <div className="h-club" data-hotel-prices="1" role="dialog" aria-modal="true" aria-label={HOTEL_CLUB_LADDER_LABEL}>
+          <p className="h-club-title">{HOTEL_CLUB_LADDER_LABEL}</p>
+          <div className="h-club-body">
+            <div className="h-loyalty-pad">
               <div className="h-club-tiers" data-hotel-tiers="1">
                 {HOTEL_CLUB_TIERS.map((tier) => {
                   const state = hotelClubLadderState(tier.name);
@@ -1402,7 +1416,7 @@ export function HotelSearch({
             </div>
           </div>
           <div className="h-club-bar">
-            <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
+            <button type="button" className="h-club-open h-press" onClick={() => setPricesOpen(false)}>
               {HOTEL_CLUB_BACK}
             </button>
           </div>
