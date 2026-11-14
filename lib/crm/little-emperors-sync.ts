@@ -146,7 +146,9 @@ async function loadMatchContext(admin: SupabaseClient) {
   const [{ data: bookings }, { data: items }, { data: hotels }, { data: customers }, { data: travelers }] = await Promise.all([
     admin
       .from("crm_bookings")
-      .select("id, reference, title, destination, customer_id, status, start_date, end_date, visible_to_client, archived_at")
+      .select(
+        "id, reference, title, destination, customer_id, status, start_date, end_date, visible_to_client, archived_at, created_at"
+      )
       .neq("status", "cancelled")
       .is("archived_at", null),
     admin.from("crm_booking_items").select("booking_id, confirmation_ref"),
@@ -357,7 +359,8 @@ async function placeSameTrip(
   context: Awaited<ReturnType<typeof loadMatchContext>>,
   booking: LeBooking,
   suggestion: { candidates: { score: number }[] },
-  decision: LeAutoDecision
+  decision: LeAutoDecision,
+  pass?: { bornIds?: Set<string>; passStartedAt?: string | null }
 ): Promise<{ decision: LeAutoDecision; lastError: string | null }> {
   if (isLeCancelled(booking.state) || isLeFailed(booking.state)) {
     return { decision, lastError: null };
@@ -395,7 +398,7 @@ async function placeSameTrip(
     })
   );
   const customerId = decision.kind === "create" ? decision.customerId : null;
-  const reunion = reunionPlan(incomingTrip(leBookingExtract(booking), customerId), dossiers);
+  const reunion = reunionPlan(incomingTrip(leBookingExtract(booking), customerId), dossiers, pass);
   if (reunion.hold) return { decision: { kind: "wait" }, lastError: reunion.hold };
   const strongTie = suggestion.candidates.filter((row) => row.score >= 90).length > 1;
   let next = decision;
@@ -404,7 +407,7 @@ async function placeSameTrip(
   if (keepId) {
     for (const dropId of reunion.mergeIds) {
       if (dropId === keepId) continue;
-      const merged = await mergeDossierInto(admin, keepId, dropId);
+      const merged = await mergeDossierInto(admin, keepId, dropId, pass);
       if (!merged.ok && merged.message) return { decision: next, lastError: merged.message };
     }
   }
@@ -632,6 +635,7 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
   const pending = listed.filter((booking) => leBookingNeedsWork(leSnap(storedById.get(booking.id), booking), booking));
   const fetched = await enrich(pending, fetchImpl);
   const context = fetched.length ? await loadMatchContext(admin) : null;
+  const pass = { bornIds: new Set<string>(), passStartedAt: new Date().toISOString() };
   const rememberHotel = hotelCatalogCache(admin, fetchImpl);
   let linked = 0;
   let created = 0;
@@ -661,7 +665,7 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
       linkedBookingId: existing?.crm_booking_id,
       ignored: existing?.status === "ignored",
     });
-    const placed = await placeSameTrip(admin, context, booking, suggestion, decision);
+    const placed = await placeSameTrip(admin, context, booking, suggestion, decision, pass);
     decision = placed.decision;
     let crmBookingId = decision.kind === "link" ? decision.bookingId : null;
     const cancelledRemote = isLeCancelled(booking.state);
@@ -702,7 +706,10 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
     if (saved.crmBookingId && !crmBookingId) crmBookingId = saved.crmBookingId;
     if (decision.kind === "create" && rowId && !crmBookingId) {
       const outcome = await ensureLeDossier({ admin, rowId, booking, decision });
-      if (outcome.created) created += 1;
+      if (outcome.created) {
+        created += 1;
+        if (outcome.crmBookingId) pass.bornIds.add(outcome.crmBookingId);
+      }
       else if (outcome.crmBookingId) linked += 1;
       crmBookingId = outcome.crmBookingId;
       if (outcome.lastError) lastError = outcome.lastError;

@@ -155,6 +155,7 @@ export const bookingExtractSchema = z.object({
   notes_client: looseString,
   notes_internal: looseString,
   customer_email: looseString,
+  customer_phone: looseString,
   customer_first_name: looseString,
   customer_last_name: looseString,
   items: z

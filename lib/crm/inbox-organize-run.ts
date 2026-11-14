@@ -7,7 +7,7 @@ import { screenInboundExtract } from "@/lib/crm/ingest-samples";
 import { parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
 import { namesReferToSamePerson } from "@/lib/crm/person-match";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { tripDossierFromRows, type TripDossier, type TripPerson } from "@/lib/crm/trip-match";
+import { tripDossierFromRows, type ReunionOptions, type TripDossier, type TripPerson } from "@/lib/crm/trip-match";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 type Admin = ReturnType<typeof createServiceClient>;
@@ -48,7 +48,9 @@ async function loadDossiers(admin: Admin): Promise<TripDossier[]> {
   const [{ data: bookings }, { data: items }, { data: travelers }, { data: customers }] = await Promise.all([
     admin
       .from("crm_bookings")
-      .select("id, reference, title, destination, customer_id, status, start_date, end_date, visible_to_client, archived_at")
+      .select(
+        "id, reference, title, destination, customer_id, status, start_date, end_date, visible_to_client, archived_at, created_at"
+      )
       .is("archived_at", null)
       .neq("status", "cancelled"),
     admin
@@ -95,7 +97,7 @@ async function loadDossiers(admin: Admin): Promise<TripDossier[]> {
 }
 
 /** Après le parse : un seul dossier caché, avec les cartes et les voyageurs. Aucun message. */
-export async function organizeInboundMail(id: string) {
+export async function organizeInboundMail(id: string, pass?: ReunionOptions) {
   const admin = createServiceClient();
   const { data } = await admin.from("crm_email_ingest").select("*").eq("id", id).maybeSingle();
   if (!data) return { attached: false, bookingId: null };
@@ -128,6 +130,7 @@ export async function organizeInboundMail(id: string) {
     suppressions,
     customerId: row.suggested_customer_id,
     unreadTicket,
+    pass,
   });
   try {
     const handlers: InboxHandlers = {
@@ -174,6 +177,7 @@ export async function organizeInboundMail(id: string) {
           .from("crm_bookings")
           .update({ visible_to_client: false, status: "draft", notes_client: null })
           .eq("id", booking.id);
+        if (pass?.bornIds && booking.id) pass.bornIds.add(booking.id);
         return { id: booking.id };
       },
       apply: async (bookingId, customerId, next) => {
@@ -190,7 +194,7 @@ export async function organizeInboundMail(id: string) {
           automatic: true,
         });
       },
-      merge: (keepId, dropId) => mergeDossierInto(admin, keepId, dropId),
+      merge: (keepId, dropId) => mergeDossierInto(admin, keepId, dropId, pass),
       markAttached: async (bookingId, customerId, created) => {
         await admin
           .from("crm_email_ingest")

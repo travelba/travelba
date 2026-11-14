@@ -3,7 +3,15 @@ import { extractPeople, extractPrimaryPerson, extractReferences } from "@/lib/cr
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import { suppressionMatches, SUPPRESSED_DOSSIER, type SuppressionRow } from "@/lib/crm/booking-suppression";
 import { countsAsCarnetCard } from "@/lib/crm/types";
-import { incomingTrip, reunionPlan, type TripDossier, type TripPerson } from "@/lib/crm/trip-match";
+import {
+  DIFFERENT_CLIENT_HOLD,
+  incomingTrip,
+  reunionPlan,
+  type ReunionOptions,
+  type ReunionProposal,
+  type TripDossier,
+  type TripPerson,
+} from "@/lib/crm/trip-match";
 
 export const INBOX_HOLDS = {
   thin: "Ce message n’a pas donné de carte. La file le garde.",
@@ -18,7 +26,7 @@ export const INBOX_HOLDS = {
 } as const;
 
 export type InboxPlan =
-  | { action: "attach"; bookingId: string; customerId: string; mergeIds: string[] }
+  | { action: "attach"; bookingId: string; customerId: string; mergeIds: string[]; proposals: ReunionProposal[] }
   | { action: "propose"; bookingId: string; customerId: string; message: string }
   | { action: "create"; customerId: string }
   | { action: "create_customer"; firstName: string; lastName: string; email: string | null }
@@ -44,6 +52,7 @@ export function planInboxOrganization(input: {
   suppressions?: SuppressionRow[];
   customerId?: string | null;
   unreadTicket?: boolean;
+  pass?: ReunionOptions;
 }): InboxPlan {
   const extract = input.extract;
   const refs = [...extractReferences(extract)];
@@ -59,7 +68,7 @@ export function planInboxOrganization(input: {
     return { action: "hold", message: input.unreadTicket ? INBOX_HOLDS.unread : INBOX_HOLDS.thin };
   }
   const incoming = incomingTrip(extract, input.customerId);
-  const reunion = reunionPlan(incoming, input.dossiers);
+  const reunion = reunionPlan(incoming, input.dossiers, input.pass);
   if (reunion.hold) return { action: "hold", message: reunion.hold };
   if (reunion.keeper?.customerId) {
     if (reunion.keeper.visible) {
@@ -75,6 +84,7 @@ export function planInboxOrganization(input: {
       bookingId: reunion.keeper.id,
       customerId: reunion.keeper.customerId,
       mergeIds: reunion.mergeIds,
+      proposals: reunion.proposals,
     };
   }
   if (input.customerId) return { action: "create", customerId: input.customerId };
@@ -127,6 +137,9 @@ export async function executeInboxPlan(plan: InboxPlan, extract: BookingExtract,
   await handlers.ensureCompanions(customerId, people);
   let bookingId = "";
   if (plan.action === "attach") {
+    if (plan.proposals.length && handlers.propose) {
+      await handlers.propose(plan.proposals[0].id, plan.customerId, DIFFERENT_CLIENT_HOLD);
+    }
     for (const dropId of plan.mergeIds) {
       const merged = await handlers.merge(plan.bookingId, dropId);
       if (!merged.ok && merged.message) {
