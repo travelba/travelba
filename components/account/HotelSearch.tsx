@@ -6,22 +6,37 @@ import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { HotelMap } from "@/components/account/HotelMap";
 import { HotelWait } from "@/components/account/HotelWait";
+import { AgencyLogo } from "@/components/AgencyLogo";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { greetingGivenName } from "@/lib/crm/identity";
 import {
+  HOTEL_ACCESS_EYEBROW,
   HOTEL_ACCESS_LEVEL,
+  HOTEL_ACCESS_OFFER,
+  HOTEL_ACCESS_PROMISE,
   HOTEL_ACCESS_RESERVE,
+  HOTEL_ACCESS_UNTIL,
+  HOTEL_CLUB_CARD,
+  HOTEL_CLUB_LEVEL,
+  HOTEL_CLUB_NEXT,
+  HOTEL_CLUB_TITLE,
+  HOTEL_CLUB_FAMILY,
+  HOTEL_CLUB_GIVEN,
   HOTEL_CLUB_LADDER,
   HOTEL_CLUB_LADDER_LABEL,
-  HOTEL_CLUB_NEXT,
+  HOTEL_CLUB_NUMBER,
+  HOTEL_CLUB_OPEN,
   HOTEL_CLUB_TIERS,
   HOTEL_CLUB_YOURS,
   hotelClubLadderState,
+  hotelMemberNumber,
   HOTEL_SEARCH_CITY_CHIPS,
+  HOTEL_SEARCH_HERO_FALLBACK,
   hotelDraftStorageKey,
   hotelRecentStorageKey,
+  hotelSearchHeroSrc,
   type FeaturedHotel,
   type HotelClubLadderName,
 } from "@/lib/crm/hotel-search-home";
@@ -350,7 +365,10 @@ export function HotelSearch({
   const [page, setPage] = useState(1);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
-  const [statusName, setStatusName] = useState<HotelClubLadderName | null>(null);
+  const [clubOpen, setClubOpen] = useState(true);
+  const [statusName, setStatusName] = useState<HotelClubLadderName>(HOTEL_ACCESS_LEVEL);
+  const [heroBroken, setHeroBroken] = useState(false);
+  const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
   const pathname = usePathname();
   const hotelsPath = pathname.startsWith("/exemple") ? "/exemple/hotels" : "/mon-compte/hotels";
@@ -696,7 +714,13 @@ export function HotelSearch({
     }
   }
 
-  const opened = HOTEL_CLUB_TIERS.find((tier) => tier.name === statusName) ?? null;
+  const heroCandidate = hotelSearchHeroSrc((city || destination).trim());
+  if (heroSeen !== heroCandidate) {
+    setHeroSeen(heroCandidate);
+    setHeroBroken(false);
+  }
+  const heroSrc = heroBroken ? HOTEL_SEARCH_HERO_FALLBACK : heroCandidate;
+  const opened = HOTEL_CLUB_TIERS.find((tier) => tier.name === statusName) ?? HOTEL_CLUB_TIERS[2];
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
@@ -753,51 +777,8 @@ export function HotelSearch({
           leApi={leApi}
         />
       ) : null}
-      {openedLive ? null : <>
+      {openedLive || clubOpen ? null : <>
       <div className={searched ? "h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" : ""} data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
-        <div className="h-status" data-hotel-status="1">
-          <ol className="h-ladder" data-hotel-ladder="1" aria-label={HOTEL_CLUB_LADDER_LABEL}>
-            {HOTEL_CLUB_LADDER.map((name) => {
-              const state = hotelClubLadderState(name);
-              const open = statusName === name;
-              return (
-                <li key={name} data-state={state} aria-current={state === "now" ? "step" : undefined}>
-                  <button
-                    type="button"
-                    className="h-status-step"
-                    data-hotel-status={name}
-                    aria-expanded={open}
-                    onClick={() => {
-                      setSheet(false);
-                      setStatusName(open ? null : name);
-                    }}
-                  >
-                    <span className="h-ladder-dot" aria-hidden />
-                    <span className="h-ladder-name">{name}</span>
-                    {state === "now" ? <span className="h-status-yours">{HOTEL_CLUB_YOURS}</span> : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-          {opened ? (
-            <section className="h-club-tier h-status-card" data-state={hotelClubLadderState(opened.name)} data-hotel-tier={opened.name} data-hotel-tiers="1" data-hotel-agency-benefits="1">
-              <header className="h-club-tier-head">
-                <div className="min-w-0">
-                  <h2 className="h-club-tier-name">{opened.name}</h2>
-                  {hotelClubLadderState(opened.name) === "now" ? <p className="h-club-tier-mark">{HOTEL_CLUB_YOURS}</p> : null}
-                  {hotelClubLadderState(opened.name) === "next" ? <p className="h-club-tier-mark">{HOTEL_CLUB_NEXT}</p> : null}
-                  {hotelClubLadderState(opened.name) === "now" ? (
-                    <p className="h-status-who">{[greetingGivenName(firstName), lastName.trim()].filter(Boolean).join(" ") || HOTEL_ACCESS_LEVEL}</p>
-                  ) : null}
-                </div>
-                <p className="h-club-tier-price">{opened.price}</p>
-              </header>
-              <HotelBenefits lines={[...opened.lines]} title={opened.name} layout="grid" />
-              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
-            </section>
-          ) : null}
-        </div>
         {searched ? (
           <div className="h-searchbar-row">
             <button type="button" data-hotel-destination="1" onClick={() => openSheet("where")} className="h-bar-cell h-press" aria-label={destination.trim() ? `Destination, ${destinationLabel}` : "Destination ou hôtel"}>
@@ -1300,6 +1281,114 @@ export function HotelSearch({
                 </button>
               </>
             )}
+          </div>
+        </div>
+      ) : null}
+      {clubOpen ? (
+        <div className="h-club" data-hotel-club="1" role="dialog" aria-modal="true" aria-label={HOTEL_CLUB_TITLE}>
+          <p className="h-club-title">{HOTEL_CLUB_TITLE}</p>
+          <div className="h-club-body" data-hotel-agency-benefits="1">
+            <div className="h-club-hero" data-hotel-hero="1">
+              {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+              <img
+                src={heroSrc}
+                alt=""
+                width={960}
+                height={540}
+                fetchPriority="high"
+                decoding="async"
+                onError={() => setHeroBroken(true)}
+                className="h-club-hero-photo"
+              />
+              <div className="h-club-hero-shade" aria-hidden />
+              <div className="h-club-hero-row">
+                <div className="min-w-0">
+                  <p className="h-club-given">
+                    <span className="sr-only">{HOTEL_CLUB_GIVEN}</span>
+                    {greetingGivenName(firstName) || "—"}
+                  </p>
+                  <p className="h-club-hero-number">{hotelMemberNumber(customerId)}</p>
+                  <p className="h-club-hero-meta">{HOTEL_CLUB_NUMBER}</p>
+                </div>
+                <AgencyLogo className="h-16 w-16" alt="" />
+              </div>
+            </div>
+            <div className="h-club-level">
+              <div className="h-club-level-mark">
+                <p className="h-loyalty-label">{HOTEL_CLUB_LEVEL}</p>
+                <p className="h-club-level-name">{HOTEL_ACCESS_LEVEL}</p>
+              </div>
+              <div className="text-right">
+                <p className="h-loyalty-label">{HOTEL_ACCESS_OFFER}</p>
+                <p className="h-club-until">{HOTEL_ACCESS_UNTIL}</p>
+              </div>
+            </div>
+            <div className="h-loyalty-pad">
+              <div className="h-loyalty-wrap">
+                <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
+                <div className="h-member h-loyalty">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+                  <img
+                    src={heroSrc}
+                    alt=""
+                    width={960}
+                    height={540}
+                    decoding="async"
+                    className="absolute inset-0 h-full w-full object-cover opacity-40"
+                  />
+                  <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
+                  <div className="relative flex h-full flex-col justify-between px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">{HOTEL_ACCESS_EYEBROW}</p>
+                      <AgencyLogo className="h-club-card-logo" alt="" />
+                    </div>
+                    <div className="flex items-end justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="h-loyalty-value">
+                          <span className="sr-only">{HOTEL_CLUB_FAMILY}</span>
+                          {[greetingGivenName(firstName), lastName.trim()].filter(Boolean).join(" ") || "—"}
+                        </p>
+                        <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
+                      </div>
+                      <p className="shrink-0 text-right text-[12px] leading-snug text-white/75">{HOTEL_ACCESS_UNTIL}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
+                {HOTEL_CLUB_LADDER.map((name) => {
+                  const state = hotelClubLadderState(name);
+                  const open = statusName === name;
+                  return (
+                    <li key={name} data-state={state} data-open={open ? "true" : undefined} aria-current={state === "now" ? "step" : undefined}>
+                      <button type="button" className="h-ladder-step" data-hotel-status={name} aria-pressed={open} onClick={() => setStatusName(name)}>
+                        <span className="h-ladder-dot" aria-hidden />
+                        <span className="h-ladder-name">{name}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="sr-only">{HOTEL_CLUB_CARD}</p>
+              <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
+              <section className="h-club-tier" data-state={hotelClubLadderState(opened.name)} data-hotel-tier={opened.name} data-hotel-tiers="1">
+                <header className="h-club-tier-head">
+                  <div className="min-w-0">
+                    <h2 className="h-club-tier-name">{opened.name}</h2>
+                    {hotelClubLadderState(opened.name) === "now" ? <p className="h-club-tier-mark">{HOTEL_CLUB_YOURS}</p> : null}
+                    {hotelClubLadderState(opened.name) === "next" ? <p className="h-club-tier-mark">{HOTEL_CLUB_NEXT}</p> : null}
+                  </div>
+                  <p className="h-club-tier-price">{opened.price}</p>
+                </header>
+                <HotelBenefits lines={[...opened.lines]} title={opened.name} layout="grid" />
+              </section>
+              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+            </div>
+          </div>
+          <div className="h-club-bar">
+            <button type="button" className="h-club-open h-press" onClick={() => setClubOpen(false)}>
+              {HOTEL_CLUB_OPEN}
+            </button>
           </div>
         </div>
       ) : null}
