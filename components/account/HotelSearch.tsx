@@ -366,7 +366,7 @@ export function HotelSearch({
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
   const [clubOpen, setClubOpen] = useState(true);
-  const [statusName, setStatusName] = useState<HotelClubLadderName>(HOTEL_ACCESS_LEVEL);
+  const [statusName, setStatusName] = useState<HotelClubLadderName | null>(null);
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
   const router = useRouter();
@@ -720,7 +720,7 @@ export function HotelSearch({
     setHeroBroken(false);
   }
   const heroSrc = heroBroken ? HOTEL_SEARCH_HERO_FALLBACK : heroCandidate;
-  const opened = HOTEL_CLUB_TIERS.find((tier) => tier.name === statusName) ?? HOTEL_CLUB_TIERS[2];
+  const opened = HOTEL_CLUB_TIERS.find((tier) => tier.name === statusName) ?? null;
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
   const nightCount = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const summaryDates = checkIn && checkOut ? formatDateRangeShort(checkIn, checkOut) : "Choisir les dates";
@@ -1361,7 +1361,7 @@ export function HotelSearch({
                   const open = statusName === name;
                   return (
                     <li key={name} data-state={state} data-open={open ? "true" : undefined} aria-current={state === "now" ? "step" : undefined}>
-                      <button type="button" className="h-ladder-step" data-hotel-status={name} aria-pressed={open} onClick={() => setStatusName(name)}>
+                      <button type="button" className="h-ladder-step" data-hotel-status={name} aria-pressed={open} onClick={() => setStatusName(open ? null : name)}>
                         <span className="h-ladder-dot" aria-hidden />
                         <span className="h-ladder-name">{name}</span>
                       </button>
@@ -1371,18 +1371,20 @@ export function HotelSearch({
               </ol>
               <p className="sr-only">{HOTEL_CLUB_CARD}</p>
               <p className="h-club-promise">{HOTEL_ACCESS_PROMISE}</p>
-              <section className="h-club-tier" data-state={hotelClubLadderState(opened.name)} data-hotel-tier={opened.name} data-hotel-tiers="1">
-                <header className="h-club-tier-head">
-                  <div className="min-w-0">
-                    <h2 className="h-club-tier-name">{opened.name}</h2>
-                    {hotelClubLadderState(opened.name) === "now" ? <p className="h-club-tier-mark">{HOTEL_CLUB_YOURS}</p> : null}
-                    {hotelClubLadderState(opened.name) === "next" ? <p className="h-club-tier-mark">{HOTEL_CLUB_NEXT}</p> : null}
-                  </div>
-                  <p className="h-club-tier-price">{opened.price}</p>
-                </header>
-                <HotelBenefits lines={[...opened.lines]} title={opened.name} layout="grid" />
-              </section>
-              <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+              {opened ? (
+                <section className="h-club-tier" data-state={hotelClubLadderState(opened.name)} data-hotel-tier={opened.name} data-hotel-tiers="1">
+                  <header className="h-club-tier-head">
+                    <div className="min-w-0">
+                      <h2 className="h-club-tier-name">{opened.name}</h2>
+                      {hotelClubLadderState(opened.name) === "now" ? <p className="h-club-tier-mark">{HOTEL_CLUB_YOURS}</p> : null}
+                      {hotelClubLadderState(opened.name) === "next" ? <p className="h-club-tier-mark">{HOTEL_CLUB_NEXT}</p> : null}
+                    </div>
+                    <p className="h-club-tier-price">{opened.price}</p>
+                  </header>
+                  <HotelBenefits lines={[...opened.lines]} title={opened.name} layout="grid" />
+                  <p className="h-club-reserve">{HOTEL_ACCESS_RESERVE}</p>
+                </section>
+              ) : null}
             </div>
           </div>
           <div className="h-club-bar">
