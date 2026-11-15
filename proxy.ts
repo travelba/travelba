@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { routing } from "./i18n/routing";
 import { gateAgencyApi } from "./lib/crm/agency-gate";
 import { IN_APP_STAY_COOKIE, IN_APP_STAY_MAX_AGE, IN_APP_STAY_PARAM, inAppHandoffDecision, inAppHandoffHtml } from "./lib/crm/in-app-browser";
-import { clubAdminInternalPath, clubMaquetteRequest } from "./lib/crm/club-maquette";
+import { clubMaquetteRequest } from "./lib/crm/club-maquette";
 import { catalogueCrawlerDecision } from "./lib/crm/public-catalogue";
 import { updateSession } from "./lib/supabase/middleware";
 
@@ -145,7 +145,7 @@ async function route(request: NextRequest) {
   }
 
   // Maquette Club : aucune session, aucune écriture. Fermée en production.
-  // L’admin est réécrit hors de /admin pour ne pas ouvrir la session agence.
+  // L’admin reste sur /admin/maquette-club, sans la session ni les compteurs réels.
   const maquette = clubMaquetteRequest(path, process.env.VERCEL_ENV);
   if (maquette === "redirect") {
     const url = request.nextUrl.clone();
@@ -153,12 +153,14 @@ async function route(request: NextRequest) {
     url.search = "";
     return NextResponse.redirect(url);
   }
-  if (maquette === "rewrite-admin") {
-    const url = request.nextUrl.clone();
-    url.pathname = clubAdminInternalPath(path);
-    return NextResponse.rewrite(url);
+  if (maquette === "next") {
+    if (path === "/admin/maquette-club" || path.startsWith("/admin/maquette-club/")) {
+      const headers = new Headers(request.headers);
+      headers.set("x-travelba-maquette", "club");
+      return NextResponse.next({ request: { headers } });
+    }
+    return NextResponse.next();
   }
-  if (maquette === "next") return NextResponse.next();
 
   // Aperçu local : aucune session, aucune écriture. Fermé en production.
   if (

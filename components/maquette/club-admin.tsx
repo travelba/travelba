@@ -16,7 +16,6 @@ export function ClubAdmin({ path, screen }: { path: string; screen: string }) {
   const title = clubScreenById(screen)?.title || "Club";
   return (
     <ClubAdminFrame title={title} path={path}>
-      <p className="mt-1 text-sm text-muted">Maquette isolée du menu de l’agence. Aucune écriture.</p>
       {screen === "admin-members" ? <Members /> : null}
       {screen === "admin-queue" ? <Queue /> : null}
       {screen === "admin-file" ? <File /> : null}
@@ -29,7 +28,19 @@ export function ClubAdmin({ path, screen }: { path: string; screen: string }) {
 }
 
 function Card({ children }: { children: ReactNode }) {
-  return <article className="rounded-2xl border border-[#e5e3dc] bg-white p-4">{children}</article>;
+  return <article className="admin-af-card rounded-2xl p-4">{children}</article>;
+}
+
+function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "alert" }) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+        tone === "alert" ? "bg-[var(--admin-peach)] text-[var(--admin-navy)]" : "bg-[var(--admin-sky)] text-[var(--admin-navy)]"
+      }`}
+    >
+      {children}
+    </span>
+  );
 }
 
 function Members() {
@@ -41,39 +52,77 @@ function Members() {
   ];
   return (
     <div className="mt-6 space-y-3">
-      <div className="flex flex-wrap gap-3 text-sm">
-        <Link href="/admin/maquette-club/inscriptions" className="font-semibold text-[var(--admin-navy)] underline">
-          2 inscriptions à valider
-        </Link>
-        <Link href="/admin/maquette-club/tableau" className="font-semibold text-[var(--admin-navy)] underline">
-          Tableau de bord
-        </Link>
-      </div>
-      {rows.map((row) => (
-        <Card key={row.name}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              {row.href ? (
-                <Link href={row.href} className="font-semibold text-[var(--admin-navy)]">
-                  {row.name}
-                </Link>
-              ) : (
+      <div className="admin-af-card overflow-hidden rounded-2xl">
+        <ul className="divide-y divide-border lg:hidden">
+          {rows.map((row) => (
+            <li key={row.name} className="space-y-2 px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
                 <p className="font-semibold text-[var(--admin-navy)]">{row.name}</p>
-              )}
+                <Badge tone={row.status === "Suspendu" ? "alert" : "neutral"}>{row.status}</Badge>
+              </div>
               <p className="text-sm text-muted">{row.note}</p>
-            </div>
-            <span className="rounded-full bg-[#f4efe6] px-3 py-1 text-xs font-semibold text-[var(--admin-navy)]">{row.status}</span>
-          </div>
-          {row.name === "Camille Exemplaire" && !suspended ? (
-            <button type="button" className="mt-3 text-sm font-semibold text-[var(--admin-navy)] underline" onClick={() => setSuspended(true)}>
-              Suspendre
-            </button>
-          ) : null}
-          {row.name === "Camille Exemplaire" && suspended ? (
-            <p className="mt-3 text-sm text-muted">Suspendue dans la maquette. Rien n’est enregistré.</p>
-          ) : null}
-        </Card>
-      ))}
+              {row.href ? (
+                <Link href={row.href} className="text-sm font-semibold text-[var(--admin-navy)] underline">
+                  Ouvrir la fiche
+                </Link>
+              ) : null}
+              {row.name === "Camille Exemplaire" ? (
+                <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={suspended} onClick={() => setSuspended(true)}>
+                  {suspended ? "Suspendue" : "Suspendre"}
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto lg:block">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-[var(--admin-sky)]/70 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+              <tr>
+                <th className="px-5 py-3">Membre</th>
+                <th className="px-5 py-3">Note</th>
+                <th className="px-5 py-3">Statut</th>
+                <th className="px-5 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rows.map((row) => (
+                <tr key={row.name} className="hover:bg-[var(--admin-sky)]/40">
+                  <td className="px-5 py-3 font-semibold text-[var(--admin-navy)]">
+                    {row.href ? <Link href={row.href}>{row.name}</Link> : row.name}
+                  </td>
+                  <td className="px-5 py-3 text-muted">{row.note}</td>
+                  <td className="px-5 py-3">
+                    <Badge tone={row.status === "Suspendu" ? "alert" : "neutral"}>{row.status}</Badge>
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    {row.name === "Camille Exemplaire" ? (
+                      <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={suspended} onClick={() => setSuspended(true)}>
+                        {suspended ? "Suspendue" : "Suspendre"}
+                      </button>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QueueActions({ decision, onDecide }: { decision?: string; onDecide: (value: string) => void }) {
+  if (decision) return <p className="text-sm font-semibold text-[var(--admin-navy)]">{decision} Rien n’est enregistré.</p>;
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" onClick={() => onDecide("Validée.")}>
+        Valider
+      </button>
+      <button type="button" className="rounded-full border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]" onClick={() => onDecide("Refusée.")}>
+        Refuser
+      </button>
     </div>
   );
 }
@@ -98,28 +147,45 @@ function Queue() {
   ];
   return (
     <div className="mt-6 space-y-3">
-      {rows.map((row) => (
-        <Card key={row.id}>
-          <p className="font-semibold text-[var(--admin-navy)]">{row.name}</p>
-          <ul className="mt-2 space-y-1 text-sm text-muted">
-            <li>Parrainage : {row.code}</li>
-            <li>{row.phone}</li>
-            <li>{row.card}</li>
-          </ul>
-          {decisions[row.id] ? (
-            <p className="mt-3 text-sm font-semibold text-[var(--admin-navy)]">{decisions[row.id]} Rien n’est enregistré.</p>
-          ) : (
-            <div className="mt-3 flex gap-2">
-              <button type="button" className="rounded-full bg-[var(--admin-navy)] px-4 py-2 text-sm font-semibold text-white" onClick={() => setDecisions((current) => ({ ...current, [row.id]: "Validée." }))}>
-                Valider
-              </button>
-              <button type="button" className="rounded-full border border-[#e5e3dc] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]" onClick={() => setDecisions((current) => ({ ...current, [row.id]: "Refusée." }))}>
-                Refuser
-              </button>
-            </div>
-          )}
-        </Card>
-      ))}
+      <div className="admin-af-card overflow-hidden rounded-2xl">
+        <ul className="divide-y divide-border lg:hidden">
+          {rows.map((row) => (
+            <li key={row.id} className="space-y-2 px-4 py-4">
+              <p className="font-semibold text-[var(--admin-navy)]">{row.name}</p>
+              <p className="text-sm text-muted">{row.code}</p>
+              <p className="text-sm text-muted">{row.phone}</p>
+              <p className="text-sm text-muted">{row.card}</p>
+              <QueueActions decision={decisions[row.id]} onDecide={(value) => setDecisions((current) => ({ ...current, [row.id]: value }))} />
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto lg:block">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-[var(--admin-sky)]/70 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+              <tr>
+                <th className="px-5 py-3">Membre</th>
+                <th className="px-5 py-3">Parrainage</th>
+                <th className="px-5 py-3">Téléphone</th>
+                <th className="px-5 py-3">Carte</th>
+                <th className="px-5 py-3 text-right">Décision</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="px-5 py-3 font-semibold text-[var(--admin-navy)]">{row.name}</td>
+                  <td className="px-5 py-3">{row.code}</td>
+                  <td className="px-5 py-3">{row.phone}</td>
+                  <td className="px-5 py-3">{row.card}</td>
+                  <td className="px-5 py-3 text-right">
+                    <QueueActions decision={decisions[row.id]} onDecide={(value) => setDecisions((current) => ({ ...current, [row.id]: value }))} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -151,7 +217,7 @@ function File() {
         <p className="mt-2 text-sm">Code {CLUB_MEMBER.code}. Filleuls illimités.</p>
         <p className="mt-1 text-sm text-muted">{CLUB_MEMBER.filleul} — cotisation offerte dès son inscription.</p>
       </Card>
-      <Link href="/admin/maquette-club/membres/lea-exemplaire/prelever" className="inline-flex h-11 items-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white">
+      <Link href="/admin/maquette-club/membres/lea-exemplaire/prelever" className="admin-af-btn inline-flex h-11 items-center rounded-full px-5 text-sm">
         Prélever sur la carte de garantie
       </Link>
     </div>
@@ -177,7 +243,7 @@ function Charge() {
             <input type="checkbox" className="mt-1" checked={ok} onChange={(event) => setOk(event.target.checked)} />
             <span>Je suis Raphael et je confirme ce prélèvement de {formatMoney(180, "EUR")}.</span>
           </label>
-          <button type="button" disabled={!ok} className="h-11 rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white disabled:opacity-40" onClick={() => setDone(true)}>
+          <button type="button" disabled={!ok} className="admin-af-btn h-11 rounded-full px-5 text-sm disabled:opacity-40" onClick={() => setDone(true)}>
             Prélever
           </button>
         </>

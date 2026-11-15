@@ -69,6 +69,7 @@ export type ClubHotel = {
   checkIn: string;
   checkOut: string;
   tone: string;
+  photo: string;
   rooms: ClubRoom[];
 };
 
@@ -95,6 +96,7 @@ export const CLUB_HOTELS: ClubHotel[] = [
     checkIn: "15 h",
     checkOut: "12 h",
     tone: "linear-gradient(160deg, #1a3358 0%, #0B192C 55%, #8c7352 140%)",
+    photo: "https://images.unsplash.com/photo-1677837488142-a85ffbffe408?q=75&w=1200&auto=format&fit=crop",
     rooms: [
       {
         id: "patio",
@@ -156,6 +158,7 @@ export const CLUB_HOTELS: ClubHotel[] = [
     checkIn: "15 h",
     checkOut: "11 h",
     tone: "linear-gradient(160deg, #3d3428 0%, #0B192C 60%, #C5A880 150%)",
+    photo: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?q=75&w=1200&auto=format&fit=crop",
     rooms: [
       {
         id: "piazza",
@@ -190,6 +193,7 @@ export const CLUB_HOTELS: ClubHotel[] = [
     checkIn: "16 h",
     checkOut: "12 h",
     tone: "linear-gradient(165deg, #16324a 0%, #0B192C 50%, #6d675f 130%)",
+    photo: "https://images.unsplash.com/photo-1585208798174-6cedd86e019a?q=75&w=1200&auto=format&fit=crop",
     rooms: [
       {
         id: "tejo",
@@ -318,7 +322,6 @@ export function clubMaquetteRequest(path: string, vercelEnv: string | undefined)
     path.startsWith("/admin/maquette-club/");
   if (!club) return "ignore" as const;
   if (vercelEnv === "production") return "redirect" as const;
-  if (path === "/admin/maquette-club" || path.startsWith("/admin/maquette-club/")) return "rewrite-admin" as const;
   return "next" as const;
 }
 

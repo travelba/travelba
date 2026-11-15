@@ -41,7 +41,7 @@ test("la maquette est fermée en production et l’admin ne passe pas par la ses
   assert.equal(clubMaquetteRequest("/admin/maquette-club/tableau", "production"), "redirect");
   assert.equal(clubMaquetteRequest("/maquette/club/recherche", "preview"), "next");
   assert.equal(clubMaquetteRequest("/maquette/club", undefined), "next");
-  assert.equal(clubMaquetteRequest("/admin/maquette-club", "preview"), "rewrite-admin");
+  assert.equal(clubMaquetteRequest("/admin/maquette-club", "preview"), "next");
   assert.equal(
     clubAdminInternalPath("/admin/maquette-club/membres/lea-exemplaire"),
     "/maquette/admin-club/membres/lea-exemplaire"

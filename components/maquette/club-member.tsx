@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
 import { HotelWait } from "@/components/account/HotelWait";
 import { Icon } from "@/components/crm/icons";
-import { ClubBanner, ClubButton, ClubField, ClubMemberFrame, GoldChoice } from "@/components/maquette/club-chrome";
+import { ClubBanner, ClubButton, ClubField, ClubMemberFrame, GoldChoice, HotelCover } from "@/components/maquette/club-chrome";
 import {
   CLUB_FEE_EXAMPLE,
   CLUB_HOTELS,
@@ -157,7 +157,7 @@ function Index() {
     <div className="space-y-8">
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8c7352]">Travel BA</p>
-        <h1 className="mt-2 font-display text-3xl font-semibold text-[#0B192C]">Club Travel BA</h1>
+        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Club Travel BA</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[#1a1a1a]">
           Maquette cliquable, dans l’ordre du parcours. Les noms sont inventés. Rien n’est enregistré, aucun paiement ne part.
           RateHawk et Expedia ne sont pas dans cette maquette.
@@ -165,11 +165,11 @@ function Index() {
       </div>
       {lanes.map(([lane, label]) => (
         <section key={lane}>
-          <h2 className="font-display text-lg font-semibold text-[#0B192C]">{label}</h2>
+          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">{label}</h2>
           <ol className="mt-3 space-y-2">
             {CLUB_SCREENS.filter((item) => item.lane === lane).map((item) => (
               <li key={item.href}>
-                <Link href={item.href} className="h-recap flex items-start gap-3">
+                <Link href={item.href} className="admin-af-card flex items-start gap-3 rounded-2xl px-4 py-3">
                   <span className="mt-0.5 text-sm font-semibold text-[#8c7352]">{CLUB_SCREENS.indexOf(item) + 1}</span>
                   <span>
                     <span className="block font-semibold text-[#1a1a1a]">{item.title}</span>
@@ -189,7 +189,7 @@ function PublicScreen() {
   return (
     <div className="space-y-5">
       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8c7352]">Travel BA</p>
-      <h1 className="font-display text-[2rem] font-semibold leading-none text-[#1a1a1a]">Club Travel BA</h1>
+      <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Club Travel BA</h1>
       <p className="text-[15px] leading-relaxed">
         Le programme hôtelier de l’agence, pour les particuliers qui voyagent, où qu’ils habitent. Une adresse e-mail suffit, même gratuite.
       </p>
@@ -315,7 +315,7 @@ function WaitScreen() {
     return () => window.clearInterval(timer);
   }, []);
   return (
-    <div className="px-2 py-10 text-center" role="status">
+    <div className="hotel-theme px-2 py-10 text-center" role="status">
       <span className="h-wait-ring mx-auto" aria-hidden>
         <span />
       </span>
@@ -330,7 +330,7 @@ function RefuseScreen() {
   const href = `https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent("Bonjour, je souhaite échanger au sujet de mon inscription au Club Travel BA.")}`;
   return (
     <div className="space-y-4">
-      <h1 className="h-serif text-[1.5rem] font-semibold">Inscription non retenue</h1>
+      <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Inscription non retenue</h1>
       <p className="text-[15px] leading-relaxed">Votre inscription n’a pas été retenue. L’agence reste joignable si vous souhaitez en parler.</p>
       <a href={href} className="h-btn flex h-12 w-full items-center justify-center text-sm font-semibold">
         Écrire sur WhatsApp
@@ -343,7 +343,7 @@ function ExistingScreen() {
   return (
     <div className="space-y-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8c7352]">Déjà client</p>
-      <h1 className="h-serif text-[1.7rem] font-semibold">Votre accès est ouvert</h1>
+      <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Votre accès est ouvert</h1>
       <p className="text-[15px] leading-relaxed">
         Vous êtes déjà client de l’agence. L’accès au Club est direct : pas de nouvelle validation, pas de carte à enregistrer pour entrer.
       </p>
@@ -358,7 +358,7 @@ function LoginScreen() {
   const ready = email.includes("@") && password.length >= 8;
   return (
     <form className="space-y-4" onSubmit={(event) => event.preventDefault()}>
-      <h1 className="h-serif text-[1.7rem] font-semibold">Connexion</h1>
+      <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Connexion</h1>
       <p className="text-[15px] leading-relaxed">La recherche est réservée aux membres connectés.</p>
       <ClubField label="E-mail" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="off" />
       <ClubField label="Mot de passe" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
@@ -377,7 +377,7 @@ function SearchScreen() {
     return [...rows].sort((a, b) => (sort === "prix" ? a.total - b.total : b.benefits.length - a.benefits.length || a.total - b.total));
   }, [breakfast, sort]);
   return (
-    <div className="space-y-4">
+    <div className="hotel-theme -mx-4 space-y-4 px-4 sm:-mx-5 sm:px-5">
       <p className="text-sm h-muted">Connectée en tant que {CLUB_MEMBER.firstName} {CLUB_MEMBER.lastName}, exemple.</p>
       <div className="h-search-stack">
         <div className="h-stack-field">
@@ -418,13 +418,7 @@ function SearchScreen() {
 function HotelResult({ hotel }: { hotel: ClubHotel }) {
   return (
     <article className="h-result">
-      <div className="h-cover" style={{ background: hotel.tone }}>
-        <div className="h-cover-fade" />
-        <div className="h-cover-copy">
-          <h3 className="h-serif text-[1.2rem] font-semibold leading-tight">{hotel.name}</h3>
-          <p className="mt-0.5 text-sm text-white/80">{hotel.city}</p>
-        </div>
-      </div>
+      <HotelCover hotel={hotel} />
       <Link href={`/maquette/club/hotel/${hotel.slug}`} className="block">
         <div className="flex items-end justify-between gap-3 px-4 py-3">
           <p className="text-lg font-medium h-ink">
@@ -445,14 +439,8 @@ function HotelScreen({ hotel }: { hotel: ClubHotel }) {
   const [rooms, setRooms] = useState(1);
   const [cap, setCap] = useState(false);
   return (
-    <div className="space-y-5">
-      <div className="h-cover overflow-hidden rounded-xl" style={{ background: hotel.tone }}>
-        <div className="h-cover-fade" />
-        <div className="h-cover-copy">
-          <p className="text-sm text-white/80">{hotel.city}</p>
-          <h1 className="h-serif text-[1.35rem] font-semibold">{hotel.name}</h1>
-        </div>
-      </div>
+    <div className="hotel-theme -mx-4 space-y-5 px-4 sm:-mx-5 sm:px-5">
+      <HotelCover hotel={hotel} />
       <p className="text-sm h-muted">{hotel.address} · Arrivée {hotel.checkIn} · Départ {hotel.checkOut}</p>
       <p className="text-2xl font-semibold">{euros(hotel.total)} TTC</p>
       <p className="text-sm h-muted">Séjour de {hotel.nights} nuits · prix TTC, en euros, sans majoration.</p>
@@ -497,7 +485,7 @@ function RateScreen({ hotel }: { hotel: ClubHotel }) {
   const blocked = !picked || (picked.rate.free === false && !ack);
   const router = useRouter();
   return (
-    <div className="space-y-4 pb-8">
+    <div className="hotel-theme -mx-4 space-y-4 px-4 pb-28 sm:-mx-5 sm:px-5">
       <p className="text-sm h-muted">{hotel.city}</p>
       <h1 className="h-serif text-[1.3rem] font-semibold">{hotel.name}</h1>
       <div className="space-y-3" role="radiogroup" aria-label="Tarifs">
@@ -505,6 +493,7 @@ function RateScreen({ hotel }: { hotel: ClubHotel }) {
           room.rates.map((rate) => (
             <GoldChoice
               key={rate.id}
+              hotel
               selected={rateId === rate.id}
               title={`${room.name} · ${rate.title}`}
               body={rate.board}
@@ -531,8 +520,6 @@ function RateScreen({ hotel }: { hotel: ClubHotel }) {
           </label>
         </div>
       ) : null}
-      {picked?.rate.free ? <p className="text-sm h-muted">{picked.rate.conditions}</p> : null}
-      <HotelBenefits lines={hotel.benefits} />
       <Dock signedIn>
         <ClubButton
           disabled={blocked}
@@ -576,11 +563,11 @@ function GuestScreen({ hotel }: { hotel: ClubHotel }) {
     { id: "libre", title: "Une autre personne", body: "Nom libre" },
   ];
   return (
-    <div className="space-y-4">
+    <div className="hotel-theme -mx-4 space-y-4 px-4 sm:-mx-5 sm:px-5">
       <h1 className="h-serif text-[1.4rem] font-semibold">Pour qui est ce séjour ?</h1>
       <div className="space-y-3" role="radiogroup" aria-label="Voyageur">
         {options.map((option) => (
-          <GoldChoice key={option.id} selected={who === option.id} title={option.title} body={option.body} onPick={() => setWho(option.id)} />
+          <GoldChoice hotel key={option.id} selected={who === option.id} title={option.title} body={option.body} onPick={() => setWho(option.id)} />
         ))}
       </div>
       {who === "libre" ? (
@@ -622,7 +609,7 @@ function PayScreen() {
   const [number, setNumber] = useState("");
   const ready = number.replace(/\s/g, "").length >= 12;
   return (
-    <form className="space-y-4" onSubmit={(event) => event.preventDefault()}>
+    <form className="hotel-theme -mx-4 space-y-4 px-4 pb-16 sm:-mx-5 sm:px-5" onSubmit={(event) => event.preventDefault()}>
       <h1 className="h-serif text-[1.4rem] font-semibold">Paiement</h1>
       <article className="h-recap space-y-1">
         <p className="font-semibold">{choice.hotel.name}</p>
@@ -650,11 +637,9 @@ function PayScreen() {
         {" · "}
         <Link href="/maquette/club/paiement/cotisation" className="font-semibold text-[#8c7352]">cotisation</Link>
       </p>
-      <Dock signedIn>
-        <ClubButton href={ready ? "/maquette/club/confirmation" : undefined} disabled={!ready}>
-          Payer {euros(choice.rate.total)}
-        </ClubButton>
-      </Dock>
+      <ClubButton href={ready ? "/maquette/club/confirmation" : undefined} disabled={!ready}>
+        Payer {euros(choice.rate.total)}
+      </ClubButton>
     </form>
   );
 }
@@ -662,7 +647,7 @@ function PayScreen() {
 function PriceScreen() {
   const [ok, setOk] = useState(false);
   return (
-    <div className="space-y-4">
+    <div className="hotel-theme -mx-4 space-y-4 px-4 sm:-mx-5 sm:px-5">
       <h1 className="h-serif text-[1.4rem] font-semibold">Le prix a changé</h1>
       <article className="h-recap space-y-2">
         <p className="text-sm h-muted line-through">{euros(1240)} TTC</p>
@@ -719,8 +704,9 @@ function DuesScreen() {
 
 function ConfirmScreen() {
   return (
-    <div className="space-y-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8c7352]">Confirmé</p>
+    <div className="hotel-theme -mx-4 space-y-4 px-4 sm:-mx-5 sm:px-5">
+      <HotelCover hotel={CLUB_STAY.hotel} />
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] h-gold">Confirmé</p>
       <h1 className="h-serif text-[1.6rem] font-semibold">Votre séjour est dans l’application</h1>
       <article className="h-recap space-y-2">
         <p className="font-semibold">{CLUB_STAY.hotel.name}</p>
@@ -738,7 +724,7 @@ function ConfirmScreen() {
 
 function EmailScreen() {
   return (
-    <article className="h-recap space-y-3 text-[15px]">
+    <article className="admin-af-card space-y-3 rounded-2xl p-4 text-[15px]">
       <p className="text-xs uppercase tracking-[0.14em] text-[#8c7352]">Aperçu · non envoyé</p>
       <p className="text-sm h-muted">De Travel BA · à {CLUB_MEMBER.email}</p>
       <h1 className="h-serif text-[1.25rem] font-semibold">Votre séjour à Marrakech est confirmé</h1>
@@ -787,11 +773,14 @@ function ReminderScreen() {
 function StaysScreen() {
   return (
     <div className="space-y-4">
-      <h1 className="h-serif text-[1.5rem] font-semibold">Mes séjours</h1>
-      <Link href="/maquette/club/sejours/riad-lina" className="h-recap block">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8c7352]">Confirmé</p>
-        <p className="mt-1 font-semibold">{CLUB_STAY.hotel.name}</p>
-        <p className="text-sm h-muted">{CLUB_STAY.when} · {CLUB_STAY.hotel.city}</p>
+      <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Mes séjours</h1>
+      <Link href="/maquette/club/sejours/riad-lina" className="admin-af-card block overflow-hidden rounded-2xl">
+        <HotelCover hotel={CLUB_STAY.hotel} />
+        <div className="p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8c7352]">Confirmé</p>
+          <p className="mt-1 font-semibold text-[var(--admin-navy)]">{CLUB_STAY.hotel.name}</p>
+          <p className="text-sm text-muted">{CLUB_STAY.when} · {CLUB_STAY.hotel.city}</p>
+        </div>
       </Link>
     </div>
   );
@@ -799,7 +788,8 @@ function StaysScreen() {
 
 function StayScreen() {
   return (
-    <div className="space-y-4">
+    <div className="hotel-theme -mx-4 space-y-4 px-4 pb-8 sm:-mx-5 sm:px-5">
+      <HotelCover hotel={CLUB_STAY.hotel} />
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8c7352]">Confirmé · {CLUB_STAY.confirmation}</p>
       <h1 className="h-serif text-[1.5rem] font-semibold">{CLUB_STAY.hotel.name}</h1>
       <p className="text-sm h-muted">{CLUB_STAY.when} · {CLUB_STAY.room} · {CLUB_STAY.guest}</p>
@@ -852,7 +842,7 @@ function FeeNote() {
 function FeeScreen() {
   return (
     <div className="space-y-4">
-      <h1 className="h-serif text-[1.5rem] font-semibold">Cotisation</h1>
+      <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Cotisation</h1>
       <p className="text-[15px] leading-relaxed">Vous la payez vous-même, après les six mois offerts. Ici, elle est encore offerte jusqu’au 15 mai 2027.</p>
       <p className="text-3xl font-semibold">{CLUB_FEE_EXAMPLE.label}</p>
       <FeeNote />
@@ -867,7 +857,7 @@ function FeePayScreen() {
   if (done) {
     return (
       <div className="space-y-4">
-        <h1 className="h-serif text-[1.5rem] font-semibold">Cotisation réglée</h1>
+        <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Cotisation réglée</h1>
         <p>Dans la maquette seulement. Aucun paiement n’a été lancé. Vous pouvez à nouveau réserver.</p>
         <ClubButton href="/maquette/club/paiement">Reprendre la réservation</ClubButton>
       </div>
@@ -875,7 +865,7 @@ function FeePayScreen() {
   }
   return (
     <div className="space-y-4">
-      <h1 className="h-serif text-[1.5rem] font-semibold">Payer {CLUB_FEE_EXAMPLE.label}</h1>
+      <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Payer {CLUB_FEE_EXAMPLE.label}</h1>
       <FeeNote />
       <ClubField label="Carte" placeholder="0000 0000 0000 4242" autoComplete="off" />
       <ClubButton onClick={() => setDone(true)}>Payer {CLUB_FEE_EXAMPLE.label}</ClubButton>
@@ -887,7 +877,7 @@ function ReferralScreen() {
   const [copied, setCopied] = useState(false);
   return (
     <div className="space-y-4">
-      <h1 className="h-serif text-[1.5rem] font-semibold">Parrainage</h1>
+      <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Parrainage</h1>
       <p className="text-3xl font-semibold tracking-wide">{CLUB_MEMBER.code}</p>
       <p className="text-[15px] leading-relaxed">
         Filleuls illimités. Dès qu’un filleul s’inscrit, votre prochaine cotisation est offerte.
@@ -902,7 +892,7 @@ function ReferralScreen() {
       >
         {copied ? "Code copié" : "Copier le code"}
       </button>
-      <article className="h-recap">
+      <article className="admin-af-card rounded-2xl p-4">
         <p className="text-sm h-muted">Filleul d’exemple</p>
         <p className="font-semibold">{CLUB_MEMBER.filleul}</p>
         <p className="text-sm">Inscrit. Cotisation offerte.</p>
@@ -915,10 +905,10 @@ function ConciergeScreen() {
   const [ok, setOk] = useState(false);
   return (
     <div className="space-y-3">
-      <h1 className="h-serif text-[1.4rem] font-semibold">Concierge</h1>
+      <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Concierge</h1>
       <p className="text-sm h-muted">Votre conseiller sur WhatsApp. Aperçu, rien n’est envoyé.</p>
       <Bubble>Bonjour {CLUB_MEMBER.firstName}. Je peux vous proposer la Suite Jardin au {CLUB_STAY.hotel.name}, du 12 au 15 mars, {euros(1680)} TTC, petit-déjeuner inclus.</Bubble>
-      <article className="h-recap space-y-2">
+      <article className="admin-af-card space-y-2 rounded-2xl p-4">
         <p className="font-semibold">Suite Jardin · {euros(1680)} TTC</p>
         <p className="text-sm h-muted">Annulation gratuite jusqu’au 1 mars 2027.</p>
         {ok ? (
@@ -935,8 +925,8 @@ function ConciergeScreen() {
 function AccountScreen() {
   return (
     <div className="space-y-4">
-      <h1 className="h-serif text-[1.5rem] font-semibold">Mon compte</h1>
-      <article className="h-recap space-y-1 text-sm">
+      <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Mon compte</h1>
+      <article className="admin-af-card space-y-1 rounded-2xl p-4 text-sm">
         <p className="font-semibold">{CLUB_MEMBER.firstName} {CLUB_MEMBER.lastName}</p>
         <p>{CLUB_MEMBER.email}</p>
         <p>{CLUB_MEMBER.phone} · vérifié</p>
@@ -958,14 +948,14 @@ function DeleteScreen() {
   if (done) {
     return (
       <div className="space-y-4">
-        <h1 className="h-serif text-[1.5rem] font-semibold">Compte supprimé</h1>
+        <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Compte supprimé</h1>
         <p>Dans la maquette seulement. Aucune fiche n’a été effacée.</p>
       </div>
     );
   }
   return (
     <div className="space-y-4">
-      <h1 className="h-serif text-[1.5rem] font-semibold">Supprimer le compte</h1>
+      <h1 className="font-display text-2xl font-bold text-[var(--admin-navy)]">Supprimer le compte</h1>
       <p className="text-[15px] leading-relaxed">Vous le faites vous-même. Saisissez {expected} pour confirmer.</p>
       <ClubField label="Nom complet" value={value} onChange={(event) => setValue(event.target.value)} autoComplete="off" />
       <ClubButton disabled={value.trim() !== expected} onClick={() => setDone(true)}>
