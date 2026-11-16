@@ -1,14 +1,15 @@
 /**
  * Facture MB3M conforme au fichier agence (activités du 12/11/2026, fournisseurs existants).
- * Le CRM ne crée aucun fournisseur. La billetterie (2, 1001, 27) ne part pas tant que
- * MB3M n’accepte pas CommissionId : `MB3M_FLIGHT_COMMISSION=1` ouvre ce chemin.
+ * Le CRM ne crée aucun fournisseur. Les vols (2, 1001, 27) partent avec une commission
+ * fixe de 1 € (`MB3M_FLIGHT_EURO_COMMISSION=0` les retient). `MB3M_FLIGHT_COMMISSION=1`
+ * reste le chemin CommissionId, non utilisé.
  */
 
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { MB3M_AIRLINE_PROVIDERS, MB3M_PROVIDERS, type Mb3mCatalogProvider } from "@/lib/crm/mb3m-providers";
 import { mb3mVerifiedProviderId } from "@/lib/crm/mb3m-verified-providers";
 import type { Mb3mAccountLine } from "@/lib/crm/mb3m-account";
-import type { Mb3mLine } from "@/lib/crm/mb3m";
+import { mb3mFlightEuroCommissionEnabled, type Mb3mLine } from "@/lib/crm/mb3m";
 import { siteConfig } from "@/lib/site";
 
 /** Activités du fichier MB3M. 14 (frais généraux) n’est jamais une ligne de facture. */
@@ -474,7 +475,8 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
       airlineIata: iata,
       airlineName: carrier,
     });
-    const held = MB3M_FLIGHT_ACTIVITIES.has(activityId) && !mb3mFlightLinesEnabled();
+    const held =
+      MB3M_FLIGHT_ACTIVITIES.has(activityId) && !mb3mFlightLinesEnabled() && !mb3mFlightEuroCommissionEnabled();
     const generic = supplier.ok && supplier.genericLand;
     const tickets = ticketRefs(item?.details);
     const providerName = supplier.ok ? supplier.provider.name : null;
@@ -520,7 +522,7 @@ export function mb3mInvoiceRefCommand(dossierRef: string, lines: Mb3mLine[]) {
   return dossierRef;
 }
 
-/** Ligne SOAP. Les frais d’agence sont Custom, sans marge. Les vols gardent la marge, jamais une commission, tant que l’envoi est coupé. */
+/** Ligne SOAP. Les frais d’agence sont Custom, sans marge. Les vols partent avec la commission fixe de 1 €, sans CommissionId. */
 export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): Mb3mLine {
   if (line.customCode) {
     const amount = Math.round(line.amount * 100) / 100;

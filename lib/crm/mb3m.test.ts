@@ -373,8 +373,11 @@ describe("client MB3M Partners", () => {
     const flight = body.slice(body.lastIndexOf("<InvoiceLine>"));
     assert.equal(flight.includes("<MarginUnit>"), false);
     assert.equal(flight.includes("<Note>"), false);
-    assert.ok(flight.includes("<ActivityId>2</ActivityId><Label>Vol</Label>"), flight);
-    assert.equal(flight.includes("Commission"), false);
+    assert.ok(
+      flight.includes("<ActivityId>2</ActivityId><CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal><Label>Vol</Label>"),
+      flight
+    );
+    assert.equal(flight.includes("CommissionId"), false);
   });
 
   it("pose un ProviderId sur chaque ligne, le défaut d’environnement avant l’agence", () => {
@@ -418,8 +421,18 @@ describe("client MB3M Partners", () => {
     for (const activityId of [2, 5, 27, 1001] as const) {
       assert.equal(mb3mPrestationActivityId(activityId), activityId);
       const air = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId }]);
-      assert.ok(air.includes(`<ActivityId>${activityId}</ActivityId><Label>Vol</Label>`), air);
-      assert.equal(air.includes("Commission"), false);
+      if (activityId === 5) {
+        assert.ok(air.includes(`<ActivityId>${activityId}</ActivityId><Label>Vol</Label>`), air);
+        assert.equal(air.includes("Commission"), false);
+      } else {
+        assert.ok(
+          air.includes(
+            `<ActivityId>${activityId}</ActivityId><CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal><Label>Vol</Label>`
+          ),
+          air
+        );
+        assert.equal(air.includes("CommissionId"), false);
+      }
     }
     assert.equal(mb3mPrestationActivityId(7), 7);
     assert.throws(() => mb3mPrestationActivityId(14), /frais généraux/i);
@@ -440,11 +453,18 @@ describe("client MB3M Partners", () => {
     assert.deepEqual(pricedAt, [...pricedAt].sort((left, right) => left - right));
     assert.equal(priced.includes("Commission"), false);
     const ready = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId: 2, commissionId: 1 }]);
-    assert.ok(ready.includes("<ActivityId>2</ActivityId><CommissionId>1</CommissionId><Label>Vol</Label>"), ready);
-    assert.equal(ready.includes("CommissionNetTotal"), false);
+    assert.ok(
+      ready.includes("<ActivityId>2</ActivityId><CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal><Label>Vol</Label>"),
+      ready
+    );
+    assert.equal(ready.includes("CommissionId"), false);
     const credit = linesXml("CreditNoteLine", [{ ...base, label: "Avoir vol", activityId: 2 }]);
-    assert.ok(credit.includes("<CreditNoteLine><ActivityId>2</ActivityId><Label>Avoir vol</Label>"));
-    assert.equal(credit.includes("Commission"), false);
+    assert.ok(
+      credit.includes(
+        "<CreditNoteLine><ActivityId>2</ActivityId><CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal><Label>Avoir vol</Label>"
+      )
+    );
+    assert.equal(credit.includes("CommissionId"), false);
   });
 
   it("le train et le vol partent en 22 avec le net et la marge du CRM, sans commission", async () => {
@@ -501,8 +521,9 @@ describe("client MB3M Partners", () => {
     assert.equal(Math.round(((trainLine?.netPriceUnit || 0) + (trainLine?.marginUnit || 0)) * 100) / 100, 362);
     assert.equal(issued.every((line) => line.commissionId == null), true);
     const xml = linesXml("InvoiceLine", issued);
-    assert.equal(xml.includes("Commission"), false);
-    assert.ok(xml.includes("<ActivityId>2</ActivityId><Label>Vol"));
+    assert.ok(xml.includes("<CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal>"));
+    assert.equal(xml.includes("CommissionId"), false);
+    assert.ok(xml.includes("<ActivityId>2</ActivityId><CommissionNetTotal>1</CommissionNetTotal>"));
     assert.ok(xml.includes("<ActivityId>5</ActivityId>"));
     assert.ok(xml.includes("<NetPriceTotal>198</NetPriceTotal>"));
     assert.ok(xml.includes("<MarginUnit>1000.44</MarginUnit>"));
@@ -546,17 +567,24 @@ describe("client MB3M Partners", () => {
       }
     );
     for (const body of [invoiceBody, creditBody]) {
-      assert.equal(body.includes("Commission"), false, body);
+      assert.ok(body.includes("<CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal>"), body);
+      assert.equal(body.includes("CommissionId"), false);
       assert.ok(body.includes("<ActivityId>2</ActivityId>"));
       assert.ok(body.includes("<ActivityId>5</ActivityId>"));
       assert.ok(body.includes("<NetPriceTotal>198</NetPriceTotal>"));
       assert.ok(body.includes("<MarginUnit>1000.44</MarginUnit>"));
+      const close = body.includes("</InvoiceLine>") ? "</InvoiceLine>" : "</CreditNoteLine>";
+      const trainAt = body.indexOf("<ActivityId>5</ActivityId>");
+      const trainLine = body.slice(trainAt, body.indexOf(close, trainAt) + close.length);
+      assert.equal(trainLine.includes("Commission"), false, trainLine);
     }
     const lowCost = linesXml("InvoiceLine", [
       { label: "Low cost", quantity: 1, netPriceUnit: 80, netPriceTotal: 80, activityId: 27 },
     ]);
-    assert.ok(lowCost.includes("<ActivityId>27</ActivityId><Label>Low cost</Label>"));
-    assert.equal(lowCost.includes("Commission"), false);
+    assert.ok(
+      lowCost.includes("<ActivityId>27</ActivityId><CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal><Label>Low cost</Label>")
+    );
+    assert.equal(lowCost.includes("CommissionId"), false);
   });
 
   it("crée un avoir sur le dossier déjà ouvert", async () => {

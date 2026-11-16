@@ -127,8 +127,8 @@ export type Mb3mLine = {
   /** Marge unitaire : prix vendu − coûts rattachés. Peut être négative. Absente sur un frais d’agence. */
   marginUnit?: number | null;
   /**
-   * CommissionId MB3M, seulement quand la billetterie est ouverte (`MB3M_FLIGHT_COMMISSION=1`).
-   * Jamais les champs CommissionNetTotal / CommissionTotal : la marge seule est envoyée.
+   * CommissionId MB3M, seulement si `MB3M_FLIGHT_COMMISSION=1`.
+   * Hors WSDL aujourd’hui : le provisoire envoie CommissionNetTotal et CommissionTotal, pas cet id.
    */
   commissionId?: number | null;
   /** Frais d’agence : Type Custom, LineType 4, code 401, 12, 13 ou 4. */
@@ -471,10 +471,32 @@ export function mb3mDefaultProviderId() {
   return mb3mGuid(raw);
 }
 
+/**
+ * Commission fixe de 1 € sur les vols (activités 2, 1001, 27), en attendant l’API MB3M.
+ * Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` le retire et retient à nouveau les vols.
+ * Ce n’est pas `MB3M_FLIGHT_COMMISSION` : celui-là enverrait un CommissionId, absent du WSDL.
+ */
+export const MB3M_FLIGHT_EURO_COMMISSION_AMOUNT = 1;
+
+export function mb3mFlightEuroCommissionEnabled() {
+  return process.env.MB3M_FLIGHT_EURO_COMMISSION !== "0";
+}
+
+function flightEuroActivity(activityId: number | null | undefined) {
+  return activityId === 2 || activityId === 1001 || activityId === 27;
+}
+
 function commissionIdXml(line: Mb3mLine) {
+  if (mb3mFlightEuroCommissionEnabled()) return "";
   const id = line.commissionId;
   if (id == null || !Number.isInteger(id) || id <= 0) return "";
   return tag("CommissionId", id);
+}
+
+function flightEuroCommissionXml(line: Mb3mLine) {
+  if (!mb3mFlightEuroCommissionEnabled() || line.type === "Custom" || !flightEuroActivity(line.activityId)) return "";
+  const amount = money(MB3M_FLIGHT_EURO_COMMISSION_AMOUNT);
+  return `${tag("CommissionNetTotal", amount)}${tag("CommissionTotal", amount)}`;
 }
 
 function customTypeXml(line: Mb3mLine) {
@@ -504,10 +526,10 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
           : tag("MarginUnit", money(line.marginUnit));
       const note = line.type === "Custom" ? "" : tag("Note", (line.note || "").trim().slice(0, 250));
       const refPiece = tag("RefPiece", (line.refPiece || "").trim().slice(0, 40));
-      // Ordre WCF : ActivityId, CommissionId, CustomType, Label, MarginUnit, NetPriceTotal,
-      // NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
-      // Pas de CommissionNetTotal ni de CommissionTotal : la marge seule.
-      return `<${kind}>${activity}${commissionIdXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
+      // Ordre WCF : ActivityId, CommissionNetTotal, CommissionTotal, CustomType, Label,
+      // MarginUnit, NetPriceTotal, NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
+      // CommissionId n’est pas dans le WSDL.
+      return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
     })
     .join("");
 }
