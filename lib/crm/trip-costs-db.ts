@@ -695,7 +695,52 @@ export async function loadCostTargets(admin: SupabaseClient, bookingId?: string 
       confirmationRef: item.confirmation_ref || null,
     })),
   }));
-  return attachClientFaces(admin, await attachMatchHints(admin, built));
+  return attachClientFaces(admin, await attachPaidCosts(admin, await attachMatchHints(admin, built)));
+}
+
+/**
+ * Coûts déjà posés (ou en attente) sur ces dossiers. Lecture locale, jamais un appel Pliant ou Revolut.
+ * En échec, les propositions continuent sans cette liste : les dépenses « à valider » restent lues sur les lignes.
+ */
+async function attachPaidCosts(admin: SupabaseClient, bookings: CostTargetBooking[]): Promise<CostTargetBooking[]> {
+  const ids = bookings.map((row) => row.id);
+  if (!ids.length) return bookings;
+  try {
+    const rows = await chunked(ids, async (slice) => {
+      const first = await admin.from("crm_trip_costs").select("booking_id, booking_item_id, amount_eur, supplier, state").in("booking_id", slice);
+      const data =
+        first.error && /state/i.test(first.error.message || "")
+          ? await admin.from("crm_trip_costs").select("booking_id, booking_item_id, amount_eur, supplier").in("booking_id", slice)
+          : first;
+      if (data.error || !data.data) return [];
+      return data.data as {
+        booking_id: string;
+        booking_item_id: string | null;
+        amount_eur: number | string | null;
+        supplier: string | null;
+        state?: string | null;
+      }[];
+    });
+    const byBooking = new Map<string, NonNullable<CostTargetBooking["paid"]>>();
+    for (const row of rows) {
+      const amount = Number(row.amount_eur);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      const list = byBooking.get(row.booking_id) || [];
+      list.push({
+        itemId: row.booking_item_id,
+        amountEur: Math.round(amount * 100) / 100,
+        supplier: (row.supplier || "").trim() || null,
+        pending: row.state === "pending",
+      });
+      byBooking.set(row.booking_id, list);
+    }
+    return bookings.map((booking) => {
+      const paid = byBooking.get(booking.id);
+      return paid?.length ? { ...booking, paid } : booking;
+    });
+  } catch {
+    return bookings;
+  }
 }
 
 function holderName(person: { first_name?: string | null; last_name?: string | null; usage_name?: string | null } | null) {
