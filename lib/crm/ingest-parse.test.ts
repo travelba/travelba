@@ -34,6 +34,7 @@ import {
   parseUsMonthDayYear,
   parsedItemsFromText,
   parseDocumentMoney,
+  parseTicketPassengers,
   shouldUseVision,
   structuredHintFromPdfText,
 } from "./ingest-parse";
@@ -294,6 +295,55 @@ describe("inferAirportIata", () => {
     assert.equal(inferAirportIata("Al Maktoum International")?.iata, "DWC");
     assert.equal(inferAirportIata("Dubai World Central")?.iata, "DWC");
     assert.equal(inferAirportIata("Paris"), null);
+    assert.equal(inferAirportIata("Aéroport international Hurghada")?.iata, "HRG");
+    assert.equal(inferAirportIata("Aéroport international Hurghada")?.city, "Hurghada");
+    assert.equal(inferAirportIata("Le Caire")?.iata, "CAI");
+    assert.equal(inferAirportIata("Cairo")?.iata, "CAI");
+  });
+});
+
+describe("billet compagnie, distance et passagers", () => {
+  const EASYJET = `
+Reçu de Billet Electronique
+Référence du dossier WFPMHG
+Référence du dossier compagnie U2/KDQ68JS
+Passager / Numéro De Billet
+TEST/PAX MR 000-0000001234
+Compagnie émettrice : EASYJET
+Lundi 03 novembre 2026
+EASYJET U2 4692 (Opéré Par easyJet, )
+03 November 09:10 Aéroport international Hurghada
+Départ
+03 November 11:40 Le Caire
+Arrivée
+Distance 3 610,00 km
+Émissions CO2 120 kg
+`;
+
+  it("garde KDQ68JS entier et ignore la distance", () => {
+    const flights = parseAmadeusFlights(EASYJET);
+    assert.equal(flights.length, 1);
+    assert.equal(flights[0]?.pnr, "KDQ68JS");
+    assert.equal(flights[0]?.confirmation_ref, "WFPMHG");
+    assert.equal(flights[0]?.flight_number, "U2 4692");
+    assert.equal(flights[0]?.from, "HRG");
+    assert.equal(flights[0]?.to, "CAI");
+    assert.equal(parseDocumentMoney(EASYJET), null);
+    const items = parsedItemsFromText(EASYJET).items;
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.details?.document_amount ?? null, null);
+    assert.equal(JSON.stringify(items).includes("3610"), false);
+    assert.equal(JSON.stringify(items).includes("3 610"), false);
+  });
+
+  it("lit le tableau passager et ne garde que les 4 derniers chiffres", () => {
+    const people = parseTicketPassengers(EASYJET);
+    assert.equal(people.length, 1);
+    assert.equal(people[0]?.first_name, "Pax");
+    assert.equal(people[0]?.last_name, "Test");
+    assert.equal(people[0]?.ticket_last4, "1234");
+    assert.equal(JSON.stringify(people).includes("0000001234"), false);
+    assert.equal(JSON.stringify(people).includes("000-0000001234"), false);
   });
 });
 

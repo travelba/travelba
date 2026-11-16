@@ -31,6 +31,7 @@ import { emailHtmlHasText, sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { collapseSharedTicketPrice } from "@/lib/crm/item-match";
 import { collapseInboxRows } from "@/lib/crm/email-thread";
 import { proposalLine, type ProposalOp } from "@/lib/crm/import-proposal";
+import { planFlightDeposit } from "@/lib/crm/email-flight-deposit";
 
 type ExtractItem = {
   kind?: string;
@@ -447,6 +448,7 @@ export function EmailIngestInbox({
       apply_stay_currency?: boolean;
       item_id?: string;
       confirmer?: boolean;
+      cartes?: boolean;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -936,8 +938,11 @@ export function EmailIngestInbox({
                   {(() => {
                     const picked = selectedBooking[row.id];
                     const depositBookingId = picked != null ? picked : row.suggested_booking_id || "";
-                    // Un seul geste de dépôt : la relecture (titre, extract) part avec, les étapes ne changent pas.
                     const edited = Boolean(drafts[row.id]);
+                    const flightPlan = planFlightDeposit({
+                      items: (viewOf(row).items || []).map((item) => ({ ...item, kind: item.kind || "" })),
+                    });
+                    const withFlights = flightPlan.cartes.length > 0;
                     return (
                       <>
                         <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -955,6 +960,7 @@ export function EmailIngestInbox({
                                       booking_id: depositBookingId,
                                       item_id: undefined,
                                       title: cardTitle.trim(),
+                                      cartes: withFlights,
                                       ...(drafts[row.id]
                                         ? {
                                             extract: drafts[row.id],
@@ -962,7 +968,7 @@ export function EmailIngestInbox({
                                           }
                                         : {}),
                                     }
-                                  : { action: "attach_booking", booking_id: depositBookingId }
+                                  : { action: "attach_booking", booking_id: depositBookingId, cartes: withFlights }
                               )
                             }
                           >
@@ -970,6 +976,18 @@ export function EmailIngestInbox({
                               ? pendingLabel("attach_booking")
                               : "Déposer les pièces"}
                           </button>
+                          {withFlights ? (
+                            <button
+                              type="button"
+                              disabled={isBusy || !depositBookingId}
+                              className="admin-tap rounded-lg border border-border px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+                              onClick={() =>
+                                act(row.id, { action: "attach_booking", booking_id: depositBookingId, cartes: false })
+                              }
+                            >
+                              Déposer seulement
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             disabled={isBusy || !depositBookingId}
@@ -1013,6 +1031,21 @@ export function EmailIngestInbox({
                           >
                             {rowNotice[row.id]}
                           </p>
+                        ) : withFlights ? (
+                          <div className="sm:col-span-2 text-xs text-muted">
+                            <ul className="space-y-1">
+                              {flightPlan.cartes.map((card) => (
+                                <li key={card.pnr}>
+                                  {card.pnr} · {card.lignes.map((line) => `${line.vol} ${line.date}`).join(" · ")} · carte
+                                  cachée · 0 €
+                                  {card.cout != null ? ` · coût imprimé ${card.cout}` : " · sans coût imprimé"}
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-1">
+                              Déposer les pièces ajoute ces vols. Déposer seulement laisse les cartes inchangées.
+                            </p>
+                          </div>
                         ) : (
                           <p className="text-xs text-muted sm:col-span-2">
                             Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée.

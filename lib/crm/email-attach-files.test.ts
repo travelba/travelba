@@ -95,17 +95,22 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
   const route = readFileSync(new URL("../../app/api/admin/email-ingest/[id]/route.ts", import.meta.url), "utf8");
   const mcp = readFileSync(new URL("./mcp-write.ts", import.meta.url), "utf8");
 
-  it("le bouton Déposer les pièces ne passe pas par les cartes", () => {
+  it("le bouton Déposer les pièces crée le vol quand le billet est lisible", () => {
     const start = route.indexOf('if (action === "attach_booking")');
     const end = route.indexOf('if (action === "apply_cards"');
     const block = route.slice(start, end);
     assert.ok(start > 0 && end > start);
+    assert.match(block, /depositFlightsOnBooking/);
+    assert.match(block, /hasUsableFlight/);
+    assert.match(block, /cartes !== false/);
     assert.match(block, /depositEmailAttachments/);
-    assert.match(block, /body_text/);
+    assert.match(block, /cards: false/);
     const inbox = readFileSync(new URL("../../components/admin/EmailIngestInbox.tsx", import.meta.url), "utf8");
     assert.match(inbox, /aria-live="assertive"/);
     assert.match(inbox, /rowNotice\[row\.id\]/);
-    assert.equal(/applyIngestCards|applyReplacementToBooking|applyCancellationToBooking|upsertItems/.test(block), false);
+    assert.match(inbox, /Déposer seulement/);
+    assert.match(inbox, /planFlightDeposit/);
+    assert.equal(/applyCancellationToBooking/.test(block), false);
   });
 
   it("mettre à jour les cartes dépose les pièces et n’en crée pas", () => {
@@ -125,7 +130,7 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     assert.match(run, /matchEmailToCard/);
   });
 
-  it("rattacher dépose les pièces, sans créer de carte", () => {
+  it("rattacher dépose les pièces, et cartes true dépose le vol", () => {
     const start = mcp.indexOf('if (action.action === "rattacher")');
     const end = mcp.indexOf("export async function createClient");
     const block = mcp.slice(start, end);
@@ -133,7 +138,9 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     assert.match(block, /depositEmailAttachments/);
     assert.match(block, /body_text/);
     assert.match(block, /cartes: false/);
-    assert.equal(/applyReplacementToBooking|applyBookingSteps/.test(block), false);
+    assert.match(block, /action\.cartes/);
+    assert.match(block, /depositFlightsOnBooking/);
+    assert.equal(/applyReplacementToBooking/.test(block), false);
   });
 
   it("mettre_a_jour montre l’aperçu et n’écrit qu’avec confirmer", () => {

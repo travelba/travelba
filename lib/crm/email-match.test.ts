@@ -14,6 +14,7 @@ import {
   suggestBookingByDestination,
   suggestBookingByHotelStay,
   suggestBookingByReference,
+  suggestBookingByTraveler,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
   usableCustomerEmail,
@@ -105,6 +106,39 @@ describe("referenceTokens / extractReferences", () => {
     });
     const refs = extractReferences(extract);
     assert.ok(refs.has("tb20260017"));
+  });
+
+  it("lit le PNR compagnie et le rapproche d’une carte ou d’un mail déjà déposé", () => {
+    const extract = extractWith({
+      items: [
+        {
+          kind: "flight",
+          title: "Hurghada → Le Caire",
+          supplier: null,
+          confirmation_ref: "WFPMHG",
+          start_at: "2026-11-02T09:10:00",
+          end_at: null,
+          amount: null,
+          details: { pnr: "KDQ68JS", flight_number: "U2 4692" },
+        },
+      ],
+    });
+    const refs = extractReferences(extract);
+    assert.ok(refs.has("kdq68js"));
+    assert.ok(refs.has("wfpmhg"));
+    const bookings = [
+      { id: "b-jeanne", customer_id: "c1", reference: "TB-2026-0152", title: "Égypte", destination: "Hurghada", status: "confirmed" },
+    ];
+    const byCard = suggestBookingByReference(
+      extract,
+      bookings,
+      new Map([["b-jeanne", [{ confirmation_ref: "OTHER", details: { pnr: "KDQ68JS" } }]]])
+    );
+    assert.equal(byCard.autoBookingId, "b-jeanne");
+    assert.equal(byCard.candidates[0]?.reason, "Référence fournisseur");
+    const byMail = suggestBookingByReference(extract, bookings, new Map(), new Map([["b-jeanne", ["KDQ68JS"]]]));
+    assert.equal(byMail.autoBookingId, "b-jeanne");
+    assert.equal(byMail.candidates[0]?.score, 90);
   });
 });
 
@@ -261,6 +295,74 @@ describe("suggestCustomerFromExtract — nom approchant", () => {
     );
     assert.equal(res.autoCustomerId, "c-alb");
     assert.match(res.candidates[0].reason, /approchant|prénom/i);
+  });
+});
+
+describe("suggestBookingByTraveler", () => {
+  const dossier = {
+    id: "b-voyage",
+    customer_id: "c-holder",
+    reference: "TB-2026-0152",
+    title: "Égypte",
+    destination: "Hurghada",
+    start_date: "2026-11-01",
+    end_date: "2026-11-08",
+    status: "confirmed",
+  };
+  const ticket = extractWith({
+    start_date: "2026-11-02",
+    end_date: "2026-11-02",
+    travelers: [{ first_name: "Inès", last_name: "Morel" }],
+    items: [
+      {
+        kind: "flight",
+        title: "Hurghada → Le Caire",
+        supplier: null,
+        confirmation_ref: "KDQ68JS",
+        start_at: "2026-11-02T09:10:00",
+        end_at: null,
+        amount: null,
+        details: { flight_number: "U2 4692", pnr: "KDQ68JS" },
+      },
+    ],
+  });
+
+  it("trouve le dossier par le voyageur, pas par le titulaire", () => {
+    const res = suggestBookingByTraveler(
+      ticket,
+      [dossier],
+      [{ booking_id: "b-voyage", first_name: "Inès, Louise", last_name: "Morel" }],
+      [],
+      [{ id: "c-holder", first_name: "Paul", last_name: "Titulaire", company_name: null, email: "paul@example.com" }]
+    );
+    assert.equal(res.autoBookingId, "b-voyage");
+    assert.equal(res.candidates.length, 1);
+    assert.equal(res.candidates[0]?.score, 88);
+    assert.equal(res.candidates[0]?.reason, "Voyageur et dates");
+  });
+
+  it("accepte le prénom et le nom inversés, et deux dossiers restent proposés", () => {
+    const swapped = suggestBookingByTraveler(
+      extractWith({
+        start_date: "2026-11-02",
+        end_date: "2026-11-02",
+        travelers: [{ first_name: "Morel", last_name: "Inès" }],
+      }),
+      [dossier],
+      [{ booking_id: "b-voyage", first_name: "Inès", last_name: "Morel" }]
+    );
+    assert.equal(swapped.autoBookingId, "b-voyage");
+    const other = { ...dossier, id: "b-autre", reference: "TB-2026-0153" };
+    const both = suggestBookingByTraveler(
+      ticket,
+      [dossier, other],
+      [
+        { booking_id: "b-voyage", first_name: "Inès", last_name: "Morel" },
+        { booking_id: "b-autre", first_name: "Inès", last_name: "Morel" },
+      ]
+    );
+    assert.equal(both.autoBookingId, null);
+    assert.equal(both.candidates.length, 2);
   });
 });
 

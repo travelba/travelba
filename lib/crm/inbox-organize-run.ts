@@ -2,6 +2,7 @@ import "server-only";
 
 import { loadSuppressions } from "@/lib/crm/booking-suppression";
 import { mergeDossierInto } from "@/lib/crm/dossier-merge";
+import { buildImportProposal } from "@/lib/crm/import-proposal";
 import { executeInboxPlan, planInboxOrganization, type InboxHandlers } from "@/lib/crm/inbox-organize";
 import { screenInboundExtract } from "@/lib/crm/ingest-samples";
 import { parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
@@ -203,19 +204,57 @@ export async function organizeInboundMail(id: string) {
           })
           .eq("id", row.id);
       },
-      propose: async (bookingId) => {
+      propose: async (bookingId, customerId) => {
+        const { data: booking } = await admin
+          .from("crm_bookings")
+          .select("id, reference, title, destination")
+          .eq("id", bookingId)
+          .maybeSingle();
+        const label = booking?.reference
+          ? `${booking.reference}${booking.title || booking.destination ? ` — ${booking.title || booking.destination}` : ""}`
+          : "Séjour";
+        const candidate = {
+          customer_id: customerId,
+          booking_id: bookingId,
+          label,
+          reason: "Séjour déjà Visible",
+          score: 88,
+        };
+        const previous = Array.isArray(row.candidates) ? row.candidates : [];
+        const candidates = previous.some((item) => item.booking_id === bookingId)
+          ? previous
+          : [candidate, ...previous];
+        await admin
+          .from("crm_email_ingest")
+          .update({
+            suggested_booking_id: bookingId,
+            suggested_customer_id: customerId,
+            candidates,
+          })
+          .eq("id", row.id);
+        const { data: stayItems } = await admin
+          .from("crm_booking_items")
+          .select("id, kind, title, confirmation_ref, start_at, end_at, details, lifecycle, amount, include_in_ledger")
+          .eq("booking_id", bookingId);
+        const proposal = buildImportProposal(extract, stayItems || []);
         const { data: existing } = await admin
           .from("crm_import_proposals")
           .select("id")
           .eq("email_ingest_id", row.id)
           .limit(1);
-        if ((existing || []).length) return;
+        if ((existing || []).length) {
+          await admin
+            .from("crm_import_proposals")
+            .update({ booking_id: bookingId, conflict: proposal.conflict, ops: proposal.ops })
+            .eq("email_ingest_id", row.id);
+          return;
+        }
         const { error } = await admin.from("crm_import_proposals").insert({
           email_ingest_id: row.id,
           booking_id: bookingId,
           confidence: null,
-          conflict: true,
-          ops: [{ op: "attach_mail" }],
+          conflict: proposal.conflict,
+          ops: proposal.ops,
         });
         if (error) console.error("[import] proposition non enregistrée");
       },

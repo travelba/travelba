@@ -60,6 +60,7 @@ import {
   suggestBookingByDestination,
   suggestBookingByHotelStay,
   suggestBookingByReference,
+  suggestBookingByTraveler,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
   type HotelStayCard,
@@ -67,7 +68,6 @@ import {
 import {
   EMAIL_INBOX_QUEUE_STATUSES,
   type CrmBooking,
-  type CrmBookingItem,
   type CrmCustomer,
   type CrmEmailIngest,
   type EmailIngestAttachment,
@@ -333,20 +333,49 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
     "id" | "reference" | "title" | "destination" | "start_date" | "end_date" | "status"
   > & { customer_id: string })[];
   const ids = bookingList.map((b) => b.id);
-  const itemsByBooking = new Map<string, Pick<CrmBookingItem, "confirmation_ref">[]>();
+  const itemsByBooking = new Map<string, { confirmation_ref: string | null; details?: Record<string, unknown> | null }[]>();
   const hotelCards: HotelStayCard[] = [];
+  const travelerRows: { booking_id: string; first_name: string | null; last_name: string | null }[] = [];
+  const companionRows: { customer_id: string; first_name: string | null; last_name: string | null }[] = [];
+  const attachedRefs = new Map<string, string[]>();
+  const [{ data: travelers }, { data: companions }, { data: attachedMails }] = await Promise.all([
+    admin.from("crm_booking_travelers").select("booking_id, first_name, last_name"),
+    admin.from("crm_travel_companions").select("customer_id, first_name, last_name"),
+    admin
+      .from("crm_email_ingest")
+      .select("created_booking_id, suggested_booking_id, confirmation_refs")
+      .eq("status", "attached")
+      .limit(2000),
+  ]);
+  for (const row of travelers || []) {
+    if (row.booking_id) travelerRows.push(row);
+  }
+  for (const row of companions || []) {
+    if (row.customer_id) companionRows.push(row);
+  }
+  for (const mail of attachedMails || []) {
+    const bookingId = mail.created_booking_id || mail.suggested_booking_id;
+    const refs = Array.isArray(mail.confirmation_refs) ? mail.confirmation_refs.filter((ref) => typeof ref === "string") : [];
+    if (!bookingId || !refs.length) continue;
+    const list = attachedRefs.get(bookingId) || [];
+    attachedRefs.set(bookingId, [...list, ...refs]);
+  }
   if (ids.length) {
     const [{ data: items }, { data: hotels }] = await Promise.all([
-      admin.from("crm_booking_items").select("booking_id, confirmation_ref").in("booking_id", ids),
+      admin.from("crm_booking_items").select("booking_id, confirmation_ref, details").in("booking_id", ids),
       admin
         .from("crm_booking_items")
         .select("booking_id, kind, title, confirmation_ref, start_at, end_at, details, lifecycle")
         .eq("kind", "hotel")
         .in("booking_id", ids),
     ]);
-    for (const item of (items || []) as { booking_id: string; confirmation_ref: string | null }[]) {
+    for (const item of (items || []) as {
+      booking_id: string;
+      confirmation_ref: string | null;
+      details?: Record<string, unknown> | null;
+    }[]) {
       const arr = itemsByBooking.get(item.booking_id) || [];
-      arr.push({ confirmation_ref: item.confirmation_ref });
+      arr.push({ confirmation_ref: item.confirmation_ref, details: item.details || null });
       itemsByBooking.set(item.booking_id, arr);
     }
     for (const hotel of (hotels || []) as HotelStayCard[]) {
@@ -359,8 +388,10 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
     : suggestBookingByDestination(extract, bookingList, people);
   const hotelStay = suggestBookingByHotelStay(extract, bookingList, hotelCards, people);
   const byEmail = suggestBookingByClientEmail(extract, bookingList, people);
+  const byTraveler = suggestBookingByTraveler(extract, bookingList, travelerRows, companionRows, people);
   const booking = mergeBookingSuggestions(
-    suggestBookingByReference(extract, bookingList, itemsByBooking),
+    suggestBookingByReference(extract, bookingList, itemsByBooking, attachedRefs),
+    byTraveler,
     byEmail,
     hotelStay,
     suggestBookingByTripSignals(extract, bookingList, people),
@@ -628,7 +659,7 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
     .neq("id", row.id)
     .limit(400);
-  const parent = openThreadParent(
+  const queueParent = openThreadParent(
     {
       id: row.id,
       gmail_thread_id: message.threadId || row.gmail_thread_id,
@@ -638,20 +669,6 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     },
     (openRows || []) as ThreadRow[]
   );
-  if (parent) {
-    await admin
-      .from("crm_email_ingest")
-      .update({ ...headerPatch, status: "grouped", grouped_into: parent.id, error: null })
-      .eq("id", row.id);
-    await recordIngestAudit(admin, {
-      actorKind: "auto",
-      action: "group",
-      emailIngestId: row.id,
-      summary: "Message regroupé dans le fil",
-      detail: { parent_id: parent.id },
-    });
-    return;
-  }
 
   const prepared: PreparedIngestFile[] = [];
   const stored: EmailIngestAttachment[] = [];
@@ -756,6 +773,7 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
   }
   await admin.from("crm_email_ingest").update(basePatch).eq("id", row.id);
   const suggestions = await matchAndStoreExtract(admin, row.id, extract, warnings, stored);
+  await copySuggestionOntoGrouped(admin, row.id, suggestions);
   const scored = scoreExtractFields(extract, headed);
   const { error: scoreError } = await admin
     .from("crm_email_ingest")
@@ -777,16 +795,49 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     });
     if (proposalError) console.error("[import] proposition non enregistrée");
   }
-  const { organizeInboundMail } = await import("@/lib/crm/inbox-organize-run");
-  await organizeInboundMail(row.id);
+  const { decideFlightAutoAttach, hasUsableFlight } = await import("@/lib/crm/email-flight-deposit");
+  const decision = decideFlightAutoAttach(extract, suggestions.candidates);
+  if (decision && hasUsableFlight(extract)) {
+    try {
+      const { autoAttachMatchedFlight } = await import("@/lib/crm/email-flight-deposit-run");
+      await autoAttachMatchedFlight(admin, { ...row, extract, attachments: stored }, decision);
+    } catch (err) {
+      console.error("[import] rattachement automatique non fait", err instanceof Error ? err.message : "");
+    }
+  } else if (!hasUsableFlight(extract)) {
+    const { organizeInboundMail } = await import("@/lib/crm/inbox-organize-run");
+    await organizeInboundMail(row.id);
+  }
   const { data: organized } = await admin.from("crm_email_ingest").select("status").eq("id", row.id).maybeSingle();
-  if (organized?.status !== "attached") await foldParsedConfirmation(admin, row.id);
+  if (organized?.status !== "attached") await foldParsedConfirmation(admin, row.id, queueParent?.id || null);
 }
 
-async function foldParsedConfirmation(admin: Admin, rowId: string) {
+async function copySuggestionOntoGrouped(
+  admin: Admin,
+  parentId: string,
+  suggestion: {
+    suggested_booking_id: string | null;
+    suggested_customer_id: string | null;
+    candidates: EmailIngestCandidate[];
+  }
+) {
+  if (!suggestion.suggested_booking_id) return;
+  await admin
+    .from("crm_email_ingest")
+    .update({
+      suggested_booking_id: suggestion.suggested_booking_id,
+      suggested_customer_id: suggestion.suggested_customer_id,
+      candidates: suggestion.candidates,
+    })
+    .eq("grouped_into", parentId);
+}
+
+async function foldParsedConfirmation(admin: Admin, rowId: string, knownParentId?: string | null) {
   const { data: current } = await admin
     .from("crm_email_ingest")
-    .select("id, gmail_thread_id, confirmation_refs, grouped_into, received_at, extract, status")
+    .select(
+      "id, gmail_thread_id, confirmation_refs, grouped_into, received_at, extract, status, suggested_booking_id, suggested_customer_id, candidates"
+    )
     .eq("id", rowId)
     .maybeSingle();
   if (!current || current.status === "attached") return false;
@@ -796,9 +847,44 @@ async function foldParsedConfirmation(admin: Admin, rowId: string) {
     .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
     .neq("id", rowId)
     .limit(400);
-  const parent = openThreadParent(current as ThreadRow, (openRows || []) as ThreadRow[]);
+  const parent =
+    (knownParentId
+      ? ((openRows || []) as ThreadRow[]).find((row) => row.id === knownParentId) ||
+        ({ id: knownParentId } as ThreadRow)
+      : null) || openThreadParent(current as ThreadRow, (openRows || []) as ThreadRow[]);
   if (!parent) return false;
-  await admin.from("crm_email_ingest").update({ status: "grouped", grouped_into: parent.id }).eq("id", rowId);
+  const { data: main } = await admin
+    .from("crm_email_ingest")
+    .select("suggested_booking_id, suggested_customer_id, candidates")
+    .eq("id", parent.id)
+    .maybeSingle();
+  await admin
+    .from("crm_email_ingest")
+    .update({
+      status: "grouped",
+      grouped_into: parent.id,
+      ...(main?.suggested_booking_id
+        ? {
+            suggested_booking_id: main.suggested_booking_id,
+            suggested_customer_id: main.suggested_customer_id,
+            candidates: main.candidates,
+          }
+        : {}),
+    })
+    .eq("id", rowId);
+  if (!main?.suggested_booking_id && current && "suggested_booking_id" in current) {
+    const childBooking = (current as { suggested_booking_id?: string | null }).suggested_booking_id;
+    if (childBooking) {
+      await admin
+        .from("crm_email_ingest")
+        .update({
+          suggested_booking_id: childBooking,
+          suggested_customer_id: (current as { suggested_customer_id?: string | null }).suggested_customer_id || null,
+          candidates: (current as { candidates?: unknown }).candidates || [],
+        })
+        .eq("id", parent.id);
+    }
+  }
   await recordIngestAudit(admin, {
     actorKind: "auto",
     action: "group",

@@ -12,7 +12,6 @@ import {
 import { siteConfig } from "@/lib/site";
 import {
   type CrmBooking,
-  type CrmBookingItem,
   type CrmCustomer,
   type EmailIngestCandidate,
   isActiveItem,
@@ -207,11 +206,17 @@ export function confirmationRefsAlign(a: string | null | undefined, b: string | 
   return hotelRefsShareBooking(a, b);
 }
 
-/** Toutes les références présentes dans un extract (items + réf. dossier). */
+function detailPnr(details: Record<string, unknown> | null | undefined) {
+  const value = details?.pnr;
+  return typeof value === "string" ? value : "";
+}
+
+/** Toutes les références présentes dans un extract (confirmation, PNR compagnie, chambres). */
 export function extractReferences(extract: BookingExtract): Set<string> {
   const out = new Set<string>();
   for (const item of extract.items || []) {
     for (const token of referenceTokens(item.confirmation_ref)) out.add(token);
+    for (const token of referenceTokens(detailPnr(item.details))) out.add(token);
     const rooms = Array.isArray(item.details?.rooms) ? item.details!.rooms : [];
     for (const room of rooms) {
       for (const token of referenceTokens(room?.confirmation_ref)) out.add(token);
@@ -451,10 +456,21 @@ export function mergeBookingSuggestions(
  * Voyage existant suggéré par recouvrement de références (réf. dossier ou
  * confirmation_ref d'un item) avec les documents de l'e-mail.
  */
+export type SupplierRefItem = {
+  confirmation_ref?: string | null;
+  details?: Record<string, unknown> | null;
+};
+
+function supplierRefHit(item: SupplierRefItem, token: string) {
+  if (confirmationRefsAlign(token, item.confirmation_ref)) return true;
+  return confirmationRefsAlign(token, detailPnr(item.details));
+}
+
 export function suggestBookingByReference(
   extract: BookingExtract,
   bookings: TripBooking[],
-  itemsByBooking: Map<string, Pick<CrmBookingItem, "confirmation_ref">[]>
+  itemsByBooking: Map<string, SupplierRefItem[]>,
+  attachedRefsByBooking?: Map<string, string[]>
 ): BookingSuggestion {
   const refs = extractReferences(extract);
   const candidates: BookingSuggestion["candidates"] = [];
@@ -469,10 +485,10 @@ export function suggestBookingByReference(
         reason = "Référence dossier";
       } else {
         const items = itemsByBooking.get(booking.id) || [];
-        const hit = items.some((item) =>
-          [...refs].some((token) => confirmationRefsAlign(token, item.confirmation_ref))
-        );
-        if (hit) {
+        const hitItem = items.some((item) => [...refs].some((token) => supplierRefHit(item, token)));
+        const attached = attachedRefsByBooking?.get(booking.id) || [];
+        const hitMail = attached.some((ref) => [...refs].some((token) => confirmationRefsAlign(token, ref)));
+        if (hitItem || hitMail) {
           score = 90;
           reason = "Référence fournisseur";
         }
@@ -538,6 +554,89 @@ export function suggestBookingByTripSignals(
 
   candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
   return { autoBookingId: pickAutoBookingId(candidates), candidates };
+}
+
+export const TRAVELER_DATES_REASON = "Voyageur et dates";
+export const TRAVELER_DATES_SCORE = 88;
+
+export type TravelerName = {
+  booking_id?: string | null;
+  customer_id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  usage_name?: string | null;
+};
+
+function compactTraveler(value: string | null | undefined) {
+  return foldName(value).replace(/ /g, "");
+}
+
+/** Le prénom du billet est égal au prénom enregistré, ou il en est le début (« Inès » et « Inès, Louise »). */
+function ticketGivenNameStarts(ticketFirst: string, storedFirst: string | null | undefined) {
+  const ticket = compactTraveler(ticketFirst);
+  const stored = compactTraveler(storedFirst);
+  if (!ticket || !stored || ticket.length < 2) return false;
+  return stored === ticket || stored.startsWith(ticket);
+}
+
+function ticketLastExact(ticketLast: string, last: string | null | undefined, usage?: string | null) {
+  const incoming = compactTraveler(ticketLast);
+  if (!incoming || incoming.length < 2) return false;
+  return [last, usage].some((value) => compactTraveler(value) === incoming);
+}
+
+/** Prénom et nom exacts, dans les deux sens. Pas le seul nom de famille. */
+export function ticketNameMatches(
+  person: ExtractPerson,
+  stored: { first_name?: string | null; last_name?: string | null; usage_name?: string | null }
+) {
+  const orientations: [string, string][] = [
+    [person.first_name, person.last_name],
+    [person.last_name, person.first_name],
+  ];
+  return orientations.some(
+    ([first, last]) => ticketGivenNameStarts(first, stored.first_name) && ticketLastExact(last, stored.last_name, stored.usage_name)
+  );
+}
+
+/**
+ * Un voyageur du billet (pas seulement le titulaire) désigne un seul dossier :
+ * nom exact, dates qui se croisent. Plusieurs dossiers : les candidats restent, aucun n’est choisi.
+ */
+export function suggestBookingByTraveler(
+  extract: BookingExtract,
+  bookings: TripBooking[],
+  travelers: TravelerName[],
+  companions: TravelerName[] = [],
+  customers: CustomerLite[] = []
+): BookingSuggestion {
+  const people = extractPeople(extract).filter((person) => person.first_name && person.last_name);
+  const window = extractWindow(extract);
+  if (!people.length || !window.start) return { autoBookingId: null, candidates: [] };
+  const byCustomer = new Map(customers.map((row) => [row.id, row]));
+  const candidates: BookingSuggestion["candidates"] = [];
+  for (const booking of bookings) {
+    if (booking.status === "cancelled") continue;
+    if (!dateRangesOverlap(window.start, window.end, booking.start_date, booking.end_date)) continue;
+    const holder = booking.customer_id ? byCustomer.get(booking.customer_id) : undefined;
+    const names: TravelerName[] = [
+      ...travelers.filter((row) => row.booking_id === booking.id),
+      ...companions.filter((row) => row.customer_id && row.customer_id === booking.customer_id),
+    ];
+    if (holder) names.push(holder);
+    const hit = names.some((stored) => people.some((person) => ticketNameMatches(person, stored)));
+    if (!hit) continue;
+    candidates.push({
+      booking_id: booking.id,
+      customer_id: booking.customer_id || null,
+      label: bookingLabel(booking),
+      reason: TRAVELER_DATES_REASON,
+      score: TRAVELER_DATES_SCORE,
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
+  const unique = candidates.length === 1 ? candidates[0].booking_id : null;
+  return { autoBookingId: unique, candidates };
 }
 
 export type HotelStayCard = {
@@ -780,7 +879,10 @@ export function deterministicBookingId(
   if (byEmail.length > 1) return { tier: "email_dates", bookingId: null };
   const byStay = uniqueByBooking(
     candidates.filter(
-      (row) => row.reason === HOTEL_STAY_REASON || row.reason.startsWith("Nom, destination")
+      (row) =>
+        row.reason === HOTEL_STAY_REASON ||
+        row.reason === TRAVELER_DATES_REASON ||
+        row.reason.startsWith("Nom, destination")
     )
   );
   if (byStay.length === 1) return { tier: "traveler_hotel_dates", bookingId: byStay[0].booking_id };
