@@ -36,7 +36,8 @@ describe("pas de rattachement autonome hors billet certain", () => {
     const rematchEnd = ingest.indexOf("async function storeAttachment");
     const rematch = ingest.slice(rematchStart, rematchEnd);
     assert.match(rematch, /rematchStoredEmailIngest/);
-    assert.match(rematch, /autoAttachMatchedFlight/);
+    assert.match(rematch, /autoCreateStayFromMail/);
+    assert.match(rematch, /autoSettleStay/);
     assert.match(rematch, /refreshStaleFlightExtract/);
     assert.equal(rematch.includes("depositEmailAttachments"), false);
     assert.equal(rematch.includes("inviteCustomer"), false);
