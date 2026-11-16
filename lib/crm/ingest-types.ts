@@ -390,16 +390,67 @@ const CONFIRMATION_MAIL =
 const CANCEL_PHRASE =
   /\b(?:r[eé]servation|booking|voyage)\s+annul[eé]e?\b|\bannulation\s+(?:de\s+)?(?:la\s+|votre\s+|cette\s+)?(?:r[eé]servation|booking)\b/i;
 
+const PARTIAL_PASSENGER =
+  /cancell?ed for passenger\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)*)|passager\s+([A-ZÀ-Ÿ][A-Za-zÀ-ÿ'’-]+(?:\s+[A-ZÀ-Ÿ][A-Za-zÀ-ÿ'’-]+)*)\s+(?:a [eé]t[eé] |est )?retir[eé]|([A-ZÀ-Ÿ][A-Za-zÀ-ÿ'’-]+(?:\s+[A-ZÀ-Ÿ][A-Za-zÀ-ÿ'’-]+)*)\s+(?:has been|a [eé]t[eé])\s+(?:removed|retir[eé])/gi;
+
+/** Retire les pieds de page qui parlent d’annuler, sans toucher au reste du mail. */
+export function stripCancellationBoilerplate(text: string) {
+  return text
+    .replace(/politique d['’]annulation[\s\S]{0,500}/gi, " ")
+    .replace(/conditions d['’]annulation[\s\S]{0,500}/gi, " ")
+    .replace(/cancellation policy[\s\S]{0,500}/gi, " ")
+    .replace(/vous pouvez annuler[\s\S]{0,240}/gi, " ")
+    .replace(/you can cancel[\s\S]{0,240}/gi, " ");
+}
+
+function personFromPhrase(raw: string) {
+  const parts = raw.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (parts.length < 2) return null;
+  const last = parts[parts.length - 1];
+  const first = parts.slice(0, -1).join(" ");
+  if (!first || !last) return null;
+  return { first_name: first, last_name: last };
+}
+
+/** Passager nommé comme retiré. Ne marque pas tout le dossier annulé. */
+export function detectRemovedPassengers(text: string | null | undefined) {
+  const raw = String(text || "");
+  const people: { first_name: string; last_name: string }[] = [];
+  const seen = new Set<string>();
+  for (const match of raw.matchAll(PARTIAL_PASSENGER)) {
+    const phrase = match[1] || match[2] || match[3] || "";
+    const person = personFromPhrase(phrase);
+    if (!person) continue;
+    const key = `${person.first_name}|${person.last_name}`.toLocaleLowerCase("fr");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    people.push(person);
+  }
+  return people;
+}
+
+/** Montant de remboursement imprimé. Ce n’est pas le prix du billet. */
+export function parseRefundAmount(text: string | null | undefined): number | null {
+  const raw = String(text || "");
+  const match = raw.match(
+    /(?:rembours\w*|refund(?:ed)?)[^0-9]{0,24}(\d{1,6}(?:[\s\u00a0]\d{3})*(?:[.,]\d{2})?)/i
+  );
+  if (!match) return null;
+  const amount = Number(match[1].replace(/[\s\u00a0]/g, "").replace(",", "."));
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
 /**
  * Vrai mail d’annulation — pas une politique « free cancellation »
- * ni une confirmation qui mentionne l’annulation.
+ * ni une confirmation qui mentionne l’annulation, ni un seul passager retiré.
  */
 export function detectCancellationDocument(text: string | null | undefined) {
-  const raw = String(text || "");
+  const raw = stripCancellationBoilerplate(String(text || ""));
   if (!raw.trim()) return false;
   if (CANCEL_EVENT.test(raw)) return true;
   if (CANCEL_POLICY.test(raw)) return false;
   if (CONFIRMATION_MAIL.test(raw)) return false;
+  if (detectRemovedPassengers(raw).length) return false;
   return CANCEL_PHRASE.test(raw);
 }
 

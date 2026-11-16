@@ -13,6 +13,8 @@ import {
   collectAttachments,
   collectBodyText,
   collectHistoryMessageIds,
+  collectHistoryThreadMessages,
+  unseenMessageIds,
   decodeGmailPushBody,
   extractEmailAddress,
   gmailLabelMatchKey,
@@ -232,6 +234,21 @@ describe("collectHistoryMessageIds", () => {
   it("renvoie une liste vide sans historique", () => {
     assert.deepEqual(collectHistoryMessageIds(undefined), []);
     assert.deepEqual(collectHistoryMessageIds([]), []);
+  });
+  it("retient un message nouveau d’un fil, même sans le label", () => {
+    const rows = collectHistoryThreadMessages([
+      {
+        messagesAdded: [
+          { message: { id: "deja", threadId: "fil-easyjet", labelIds: ["Label_BA"] } },
+          { message: { id: "suite", threadId: "fil-easyjet", labelIds: ["INBOX"] } },
+        ],
+      },
+    ]);
+    assert.deepEqual(rows, [
+      { id: "deja", threadId: "fil-easyjet" },
+      { id: "suite", threadId: "fil-easyjet" },
+    ]);
+    assert.deepEqual(unseenMessageIds(["deja"], rows), ["suite"]);
   });
 });
 

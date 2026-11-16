@@ -7,8 +7,10 @@ import {
   dossierSpansTooLong,
   flightExtractIsStale,
   FLIGHT_PARSER_REVISION,
+  partyReviewReason,
   planFlightDeposit,
   planQueuedFlightAttach,
+  reviseFlightParty,
   sumFlightTicketCounts,
 } from "./email-flight-deposit";
 import { emptyBookingExtract } from "./ingest-types";
@@ -133,6 +135,97 @@ describe("dépôt des vols", () => {
     const names = (list: { first_name?: string }[] | undefined) => (list || []).map((row) => row.first_name);
     assert.deepEqual(names((nice?.details as { passengers?: { first_name?: string }[] }).passengers), ["Raphael", "Lea"]);
     assert.deepEqual(names((dubai?.details as { passengers?: { first_name?: string }[] }).passengers), ["Lea"]);
+  });
+
+  it("une confirmation easyJet à 8 passagers retire Lavigne, note le remboursement et garde le prix de vente", () => {
+    const nine = ["Camille", "Louis", "Alice", "Hugo", "Léa", "Nina", "Paul", "Emma", "Christophe"].map((first) => ({
+      first_name: first,
+      last_name: first === "Christophe" ? "Lavigne" : "Martin",
+    }));
+    const eight = nine.filter((person) => person.first_name !== "Christophe");
+    const card = {
+      kind: "flight",
+      confirmation_ref: "KDQ68JS",
+      start_at: "2027-03-21T10:00:00",
+      title: "Hurghada → Paris",
+      amount: 2400,
+      details: {
+        flight_number: "U2 4692",
+        pnr: "KDQ68JS",
+        document_amount: 2100,
+        passengers: nine,
+      },
+    };
+    const summed = sumFlightTicketCounts(
+      {
+        document_status: "confirmed",
+        items: [
+          {
+            kind: "flight",
+            title: "Hurghada → Paris",
+            confirmation_ref: "KDQ68JS",
+            start_at: "2027-03-21T10:00:00",
+            amount: 1800,
+            details: {
+              flight_number: "U2 4692",
+              pnr: "KDQ68JS",
+              document_amount: 1958.47,
+              refund_amount: 141.53,
+              passengers: eight,
+            },
+          },
+        ],
+      },
+      [card],
+      "mail-huit"
+    );
+    const flight = summed.items?.[0];
+    const details = flight?.details as {
+      passengers?: { first_name?: string }[];
+      document_amount?: number;
+      refund_amount?: number;
+      needs_review?: boolean;
+      review_reason?: string;
+      passengers_revised?: boolean;
+    };
+    assert.equal(summed.document_status, "confirmed");
+    assert.equal(flight?.amount, 0);
+    assert.equal(details.passengers_revised, true);
+    assert.deepEqual((details.passengers || []).map((row) => row.first_name), eight.map((row) => row.first_name));
+    assert.equal((details.passengers || []).some((row) => row.first_name === "Christophe"), false);
+    assert.equal(details.document_amount, 1958.47);
+    assert.equal(details.refund_amount, 141.53);
+    assert.equal(details.needs_review, true);
+    assert.match(details.review_reason || "", /Christophe Lavigne/);
+    assert.match(details.review_reason || "", /141,53/);
+    assert.match(details.review_reason || "", /prix de vente/);
+    const added = reviseFlightParty(eight, [{ first_name: "Inès", last_name: "Martin" }]);
+    assert.equal(added.revised, false);
+    assert.equal(added.passengers.length, 9);
+    const named = reviseFlightParty(nine, [], [{ first_name: "Christophe", last_name: "Lavigne" }]);
+    assert.equal(named.revised, true);
+    assert.equal(named.passengers.length, 8);
+    const cleared = sumFlightTicketCounts(
+      {
+        items: [
+          {
+            kind: "flight",
+            confirmation_ref: "KDQ68JS",
+            start_at: "2027-03-21T10:00:00",
+            details: {
+              flight_number: "U2 4692",
+              pnr: "KDQ68JS",
+              passengers: [],
+              removed_passengers: [{ first_name: "Christophe", last_name: "Lavigne" }],
+            },
+          },
+        ],
+      },
+      [{ ...card, details: { ...card.details, passengers: [{ first_name: "Christophe", last_name: "Lavigne" }] } }],
+      "mail-vide"
+    );
+    assert.equal(cleared.document_status, "cancelled");
+    assert.match(partyReviewReason(named.removed, 141.53), /retiré/);
   });
 });
 
@@ -349,6 +442,7 @@ describe("relecture des mails déjà en file", () => {
     const items = readFileSync(new URL("../../app/api/admin/bookings/[id]/items/route.ts", import.meta.url), "utf8");
     const rematch = readFileSync(new URL("./email-flight-rematch.ts", import.meta.url), "utf8");
     assert.match(cron, /rematchStoredEmailIngest\(8\)/);
+    assert.match(cron, /backfillSeenGmailThreads\(8\)/);
     assert.match(travelers, /schedulePendingFlightRematch/);
     assert.match(items, /schedulePendingFlightRematch/);
     assert.match(rematch, /after\(/);

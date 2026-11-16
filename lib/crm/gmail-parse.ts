@@ -250,6 +250,7 @@ export const GMAIL_HISTORY_TYPES = ["messageAdded", "labelAdded"] as const;
 
 export type GmailHistoryMessageRef = {
   id?: string;
+  threadId?: string;
   labelIds?: string[];
 };
 
@@ -289,6 +290,42 @@ function matchesWatchedLabel(
  * - messagesAdded : mail nouveau (éventuellement déjà labellisé par un filtre).
  * - labelsAdded : label appliqué à un message déjà dans la boîte.
  */
+/** Messages d’un fil déjà connu qui n’ont pas encore de ligne. Le fil et l’objet ne dédoublonnent pas. */
+export function unseenMessageIds(
+  known: Iterable<string>,
+  messages: { id?: string | null }[]
+): string[] {
+  const have = new Set(known);
+  const out: string[] = [];
+  for (const message of messages) {
+    const id = String(message.id || "").trim();
+    if (!id || have.has(id) || out.includes(id)) continue;
+    out.push(id);
+  }
+  return out;
+}
+
+/**
+ * Messages ajoutés dans l’historique, même sans le label suivi.
+ * Sert à reprendre un message nouveau d’un fil déjà ingéré.
+ */
+export function collectHistoryThreadMessages(
+  history: GmailHistoryRecord[] | undefined
+): { id: string; threadId: string }[] {
+  const rows: { id: string; threadId: string }[] = [];
+  const seen = new Set<string>();
+  for (const record of history || []) {
+    for (const added of record.messagesAdded || []) {
+      const id = String(added.message?.id || "").trim();
+      const threadId = String(added.message?.threadId || "").trim();
+      if (!id || !threadId || seen.has(id)) continue;
+      seen.add(id);
+      rows.push({ id, threadId });
+    }
+  }
+  return rows;
+}
+
 export function collectHistoryMessageIds(
   history: GmailHistoryRecord[] | undefined,
   labelId?: string

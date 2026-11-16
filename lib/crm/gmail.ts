@@ -4,6 +4,7 @@ import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import {
   buildGmailHistorySearchParams,
   collectHistoryMessageIds,
+  collectHistoryThreadMessages,
   matchGmailLabelIds,
   mergeGmailLabelNames,
   parseGmailMessage,
@@ -175,8 +176,10 @@ export class GmailHistoryTooOldError extends Error {}
 export async function listHistoryMessageIds(
   startHistoryId: string,
   labelId?: string
-): Promise<{ messageIds: string[]; historyId: string }> {
+): Promise<{ messageIds: string[]; historyId: string; threadMessages: { id: string; threadId: string }[] }> {
   const ids = new Set<string>();
+  const threadMessages: { id: string; threadId: string }[] = [];
+  const seenThreads = new Set<string>();
   let pageToken: string | undefined;
   let latest = startHistoryId;
   do {
@@ -202,9 +205,14 @@ export async function listHistoryMessageIds(
     for (const id of collectHistoryMessageIds(json.history, labelId)) {
       ids.add(id);
     }
+    for (const row of collectHistoryThreadMessages(json.history)) {
+      if (seenThreads.has(row.id)) continue;
+      seenThreads.add(row.id);
+      threadMessages.push(row);
+    }
     pageToken = json.nextPageToken;
   } while (pageToken);
-  return { messageIds: [...ids], historyId: latest };
+  return { messageIds: [...ids], historyId: latest, threadMessages };
 }
 
 /** Messages d'un label, du plus récent au plus ancien (pagination Gmail). */

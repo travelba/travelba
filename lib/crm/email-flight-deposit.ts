@@ -149,7 +149,75 @@ function printedCost(item: MatchableItem) {
 }
 
 function passengerKey(person: { first_name?: string | null; last_name?: string | null }) {
-  return `${text(person.first_name).toLowerCase()}|${text(person.last_name).toLowerCase()}`;
+  return `${text(person.first_name).toLocaleLowerCase("fr")}|${text(person.last_name).toLocaleLowerCase("fr")}`;
+}
+
+type FlightPerson = { first_name?: string | null; last_name?: string | null; ticket_last4?: string | null };
+
+function namedPeople(value: unknown): FlightPerson[] {
+  if (!Array.isArray(value)) return [];
+  const rows: FlightPerson[] = [];
+  const seen = new Set<string>();
+  for (const person of value) {
+    if (!person || typeof person !== "object") continue;
+    const row = person as FlightPerson;
+    if (!text(row.first_name) && !text(row.last_name)) continue;
+    const key = passengerKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function personLabel(person: FlightPerson) {
+  return [text(person.first_name), text(person.last_name)].filter(Boolean).join(" ");
+}
+
+/**
+ * Une confirmation qui liste moins de passagers, ou qui nomme un passager retiré,
+ * remplace la liste. Un billet d’un seul passager s’ajoute.
+ */
+export function reviseFlightParty(
+  current: FlightPerson[],
+  incoming: FlightPerson[],
+  removedNamed: FlightPerson[] = []
+) {
+  const drop = new Set(removedNamed.map(passengerKey).filter((key) => key !== "|"));
+  if (drop.size) {
+    const kept = current.filter((person) => !drop.has(passengerKey(person)));
+    for (const person of incoming) {
+      if (drop.has(passengerKey(person))) continue;
+      if (!kept.some((row) => passengerKey(row) === passengerKey(person))) kept.push(person);
+    }
+    return {
+      passengers: kept,
+      revised: true,
+      removed: current.filter((person) => drop.has(passengerKey(person))),
+    };
+  }
+  if (incoming.length >= 2 && current.length > incoming.length) {
+    const next = new Set(incoming.map(passengerKey));
+    const removed = current.filter((person) => !next.has(passengerKey(person)));
+    if (removed.length) return { passengers: incoming, revised: true, removed };
+  }
+  const passengers = [...current];
+  for (const person of incoming) {
+    if (!passengers.some((row) => passengerKey(row) === passengerKey(person))) passengers.push(person);
+  }
+  return { passengers, revised: false, removed: [] as FlightPerson[] };
+}
+
+export function partyReviewReason(removed: FlightPerson[], refund: number | null) {
+  const names = removed.map(personLabel).filter(Boolean);
+  const who = names.length
+    ? `${names.join(", ")} ${names.length > 1 ? "ont été retirés" : "a été retiré"} de ce trajet.`
+    : "La liste des passagers a changé.";
+  const money =
+    refund == null
+      ? ""
+      : ` Remboursement ${refund.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €.`;
+  return `${who}${money} Le prix de vente n’a pas changé.`;
 }
 
 /** Une carte par trajet. Le PNR reste sur chaque carte. Prix de vente 0. Coût seulement s’il est imprimé. */
@@ -200,7 +268,7 @@ export function sumFlightTicketCounts<T extends FlightExtract>(
   existing: MatchableItem[],
   emailId: string,
   folded: FlightExtract[] = []
-): T {
+): T & { document_status?: string | null } {
   const incomingItems = [...(extract.items || [])];
   for (const extra of folded) {
     if (extra === extract) continue;
@@ -228,18 +296,39 @@ export function sumFlightTicketCounts<T extends FlightExtract>(
       ? 0
       : countedTickets(item, 1) + extras.reduce((sum, other) => sum + countedTickets(other, 1), 0);
     const ids = new Set([...(hit ? seenEmailIds(hit) : []), emailId]);
-    const passengers = mergePassengers(hit, item, extras);
+    const currentPeople = namedPeople(hit?.details?.passengers);
+    const incomingPeople = [
+      ...namedPeople(item.details?.passengers),
+      ...extras.flatMap((extra) => namedPeople(extra.details?.passengers)),
+    ];
+    const removedNamed = namedPeople(item.details?.removed_passengers);
+    const revision = reviseFlightParty(currentPeople, incomingPeople, removedNamed);
+    const passengers = revision.passengers;
+    const refundRaw = item.details?.refund_amount;
+    const refund = typeof refundRaw === "number" && Number.isFinite(refundRaw) && refundRaw > 0 ? refundRaw : null;
     const cost = printedCost(item) ?? (hit ? printedCost(hit) : null);
     const details: Record<string, unknown> = { ...(hit?.details || {}), ...(item.details || {}) };
     if (cost == null) delete details.document_amount;
     else details.document_amount = cost;
-    details.ticket_count = previous + incoming;
+    if (refund == null) delete details.refund_amount;
+    else details.refund_amount = refund;
+    details.ticket_count = revision.revised ? passengers.length : previous + incoming;
     details.ticket_email_ids = [...ids];
     if (hit) delete details.email_ingest_id;
-    if (passengers.length) details.passengers = passengers;
+    if (passengers.length || revision.revised) details.passengers = passengers;
+    if (revision.revised || refund != null) {
+      details.passengers_revised = revision.revised;
+      details.needs_review = true;
+      details.review_reason = partyReviewReason(revision.removed, refund);
+      details.party_note = details.review_reason;
+    }
     return { ...item, amount: 0, details };
   });
-  return { ...extract, items, travelers };
+  const cleared = items.some((item) => {
+    const details = item.details as { passengers_revised?: boolean; passengers?: unknown[] } | undefined;
+    return details?.passengers_revised === true && Array.isArray(details.passengers) && details.passengers.length === 0;
+  });
+  return cleared ? { ...extract, items, travelers, document_status: "cancelled" } : { ...extract, items, travelers };
 }
 
 function flightSameSegment(left: MatchableItem, right: MatchableItem) {
@@ -249,28 +338,6 @@ function flightSameSegment(left: MatchableItem, right: MatchableItem) {
   const leftPnr = pnrOf(left);
   const rightPnr = pnrOf(right);
   return !leftPnr || !rightPnr || leftPnr === rightPnr;
-}
-
-function mergePassengers(hit: MatchableItem | null, item: MatchableItem, extras: MatchableItem[]) {
-  const rows: { first_name?: string | null; last_name?: string | null; ticket_last4?: string | null }[] = [];
-  const seen = new Set<string>();
-  const push = (person: { first_name?: string | null; last_name?: string | null; ticket_last4?: string | null }) => {
-    if (!text(person.first_name) || !text(person.last_name)) return;
-    const key = passengerKey(person);
-    if (seen.has(key)) return;
-    seen.add(key);
-    const last4 = text(person.ticket_last4);
-    rows.push(last4 ? { first_name: person.first_name, last_name: person.last_name, ticket_last4: last4 } : { first_name: person.first_name, last_name: person.last_name });
-  };
-  const lists = [hit?.details?.passengers, item.details?.passengers, ...extras.map((extra) => extra.details?.passengers)];
-  for (const list of lists) {
-    if (!Array.isArray(list)) continue;
-    for (const person of list) {
-      if (!person || typeof person !== "object") continue;
-      push(person as { first_name?: string | null; last_name?: string | null; ticket_last4?: string | null });
-    }
-  }
-  return rows;
 }
 
 /** Seulement les vols utilisables. Le prix de vente est 0. Le coût absent reste absent. */

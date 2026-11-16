@@ -59,6 +59,34 @@ test("deux billets du même PNR, deux passagers, restent deux mails", () => {
   assert.equal(openThreadParent(elon, [raphael]), null);
 });
 
+test("une confirmation easyJet plus courte, même fil et même objet, reste un mail", () => {
+  const nine = ["Camille", "Louis", "Alice", "Hugo", "Lea", "Nina", "Paul", "Emma", "Christophe"].map((first) => ({
+    first_name: first,
+    last_name: first === "Christophe" ? "Lavigne" : "Martin",
+  }));
+  const eight = nine.filter((person) => person.first_name !== "Christophe");
+  const first = {
+    id: "neuf",
+    gmail_thread_id: "fil-kdq68js",
+    subject: "easyJet référence de réservation: KDQ68JS",
+    received_at: "2027-03-21T11:44:00Z",
+    confirmation_refs: ["KDQ68JS"],
+    extract: {
+      items: [{ kind: "flight", confirmation_ref: "KDQ68JS", details: { passengers: nine } }],
+    },
+  };
+  const second = {
+    ...first,
+    id: "huit",
+    received_at: "2027-03-21T15:17:00Z",
+    extract: {
+      items: [{ kind: "flight", confirmation_ref: "KDQ68JS", details: { passengers: eight } }],
+    },
+  };
+  assert.equal(collapseInboxRows([first, second]).length, 2);
+  assert.equal(openThreadParent(second, [first]), null);
+});
+
 test("un message nouveau rejoint le parent du fil, il n’ouvre pas une septième ligne", () => {
   const open = [
     { id: "first", gmail_thread_id: thread, received_at: "2026-06-01" },
