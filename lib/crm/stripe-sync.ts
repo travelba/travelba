@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/crm/stripe";
 import { stripeInboxFromIntent, type StripeInboxDraft, type StripeIntentInput } from "@/lib/crm/stripe-inbox";
+import { stripeClientEmail } from "@/lib/crm/stripe-payer";
 import { createStripeCustomerCache, lookupStripePayer } from "@/lib/crm/stripe-payer-fetch";
 import { snapshotFromPaymentIntent } from "@/lib/crm/stripe-snapshot";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
@@ -48,6 +49,8 @@ export async function enrichStripeIntents(intents: Stripe.PaymentIntent[]): Prom
         {
           intentId: intent.id,
           customerId: base.customerId,
+        customerName: base.customerName,
+        customerEmail: base.customerEmail,
           invoiceId: null,
           billingEmail: base.charge?.email,
           billingName: base.charge?.name,
@@ -76,7 +79,7 @@ export async function fetchStripePaymentIntents(sinceUnix: number) {
       limit: 100,
       created: { gte: sinceUnix },
       starting_after: startingAfter,
-      expand: ["data.latest_charge"],
+      expand: ["data.latest_charge", "data.customer"],
     });
     out.push(...list.data);
     if (!list.has_more) break;
@@ -128,6 +131,22 @@ async function inboxByIntent(admin: StripeAdmin, ids: string[]) {
   return found;
 }
 
+function keptText(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text || /^(payeur inconnu|client stripe)$/i.test(text)) return null;
+  return text;
+}
+
+function mergeInboxFields(stored: StripeStoredRow | null, draft: StripeInboxDraft) {
+  if (!stored) return stripeFields(draft);
+  return stripeFields({
+    ...draft,
+    payer_name: keptText(stored.payer_name) || draft.payer_name,
+    payer_email: keptText(stored.payer_email) || draft.payer_email,
+    reference: keptText(stored.reference) || draft.reference,
+  });
+}
+
 function stripeFields(draft: StripeInboxDraft) {
   return {
     amount: draft.amount,
@@ -153,8 +172,8 @@ export async function upsertStripeInbox(admin: StripeAdmin, intents: StripeInten
   let inserted = 0;
   for (const draft of drafts) {
     const existing = linked.get(draft.stripe_payment_intent_id);
-    const fields = stripeFields(draft);
     const row = inbox.get(draft.stripe_payment_intent_id) || null;
+    const fields = mergeInboxFields(row, draft);
     if (!row) {
       const { error, data } = await admin
         .from("crm_stripe_transactions")
@@ -198,7 +217,68 @@ export async function syncStripeInbox(admin: StripeAdmin, now = Date.now()) {
   if (!sepa.ok) throw new Error("prélèvement");
   const succeeded = intents.filter((intent) => intent.status === "succeeded");
   const inserted = await upsertStripeInbox(admin, await enrichStripeIntents(succeeded));
+  await enrichStaleStripePayers(admin);
   await writeSyncWatermark(SYNC_WATERMARK.stripe, new Date(now).toISOString());
   const auto = await autoMatchUnmatchedStripe();
   return { fetched: intents.length, inserted, auto_matched: auto.matched, since };
+}
+
+/** Relit les paiements ouverts sans nom, hors du curseur. N’écrit que les champs vides. Ne crédite pas. */
+export async function enrichStaleStripePayers(admin: StripeAdmin, limit = 12) {
+  const stripe = getStripe();
+  if (!stripe) return { filled: 0 };
+  const { data, error } = await admin
+    .from("crm_stripe_transactions")
+    .select("id, stripe_payment_intent_id, payer_name, payer_email, reference")
+    .eq("status", "unmatched")
+    .eq("direction", "credit")
+    .or("payer_name.is.null,payer_name.eq.")
+    .order("booked_at", { ascending: false, nullsFirst: false })
+    .limit(limit);
+  if (error || !data?.length) return { filled: 0 };
+  const cache = createStripeCustomerCache();
+  let filled = 0;
+  for (const row of data as Array<{
+    id: string;
+    stripe_payment_intent_id: string;
+    payer_name: string | null;
+    payer_email: string | null;
+    reference: string | null;
+  }>) {
+    try {
+      const intent = await stripe.paymentIntents.retrieve(row.stripe_payment_intent_id, {
+        expand: ["latest_charge", "customer"],
+      });
+      const base = snapshotFromPaymentIntent(intent);
+      const payer = await lookupStripePayer(
+        stripe,
+        {
+          intentId: intent.id,
+          customerId: base.customerId,
+          customerName: base.customerName,
+          customerEmail: base.customerEmail,
+          billingEmail: base.charge?.email,
+          billingName: base.charge?.name,
+          receiptEmail: base.receiptEmail,
+          description: base.description,
+          metadata: base.metadata,
+        },
+        cache
+      );
+      const patch: Record<string, string> = {};
+      if (!keptText(row.payer_name) && payer.name) patch.payer_name = payer.name;
+      if (!keptText(row.payer_email) && stripeClientEmail(payer.email)) patch.payer_email = stripeClientEmail(payer.email) as string;
+      if (!keptText(row.reference) && payer.designation) patch.reference = payer.designation;
+      if (!Object.keys(patch).length) continue;
+      const { error: writeError } = await admin
+        .from("crm_stripe_transactions")
+        .update(patch)
+        .eq("id", row.id)
+        .eq("status", "unmatched");
+      if (!writeError) filled += 1;
+    } catch (err) {
+      console.error("[stripe] payeur ancien", err instanceof Error ? err.message : "lecture");
+    }
+  }
+  return { filled };
 }

@@ -3,16 +3,17 @@ import "server-only";
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/crm/stripe";
 import { createStripeCustomerCache, lookupStripePayer } from "@/lib/crm/stripe-payer-fetch";
-import { pieceDigits } from "@/lib/crm/stripe-payer";
+import { isAgencyStripeEmail, pieceDigits } from "@/lib/crm/stripe-payer";
+import { stripePayerHeadline } from "@/lib/crm/stripe-inbox";
 import { loadStripeSuggestHints } from "@/lib/crm/stripe-suggest-load";
 import { classifyStoredRevolut } from "@/lib/crm/revolut-classify";
 import {
   buildStripeSplit,
   matchStripePayout,
   moneyCents,
-  stripeCacheFresh,
   stripeLiveKey,
   stripePaymentExternalId,
+  stripePayoutNeedsFetch,
   stripeSplitSums,
   splitWrite,
   type BalanceLineSnapshot,
@@ -88,7 +89,13 @@ function snapshotBalance(tx: Stripe.BalanceTransaction): BalanceLineSnapshot {
     email = charge.billing_details?.email || charge.receipt_email || null;
     metadata = stringMeta(charge.metadata);
     const customer = charge.customer;
-    customerId = !customer ? null : typeof customer === "string" ? customer : customer.id;
+    if (customer && typeof customer === "object" && !("deleted" in customer && customer.deleted)) {
+      customerId = customer.id;
+      if (!name) name = customer.name || null;
+      if (!email) email = customer.email || null;
+    } else {
+      customerId = !customer ? null : typeof customer === "string" ? customer : customer.id;
+    }
   } else if (sourceObj && "object" in sourceObj && sourceObj.object === "refund") {
     const refund = sourceObj as Stripe.Refund;
     chargeId = !refund.charge ? null : typeof refund.charge === "string" ? refund.charge : refund.charge.id;
@@ -186,7 +193,7 @@ async function loadChildren(admin: Admin, parentIds: string[]) {
   if (!parentIds.length) return [];
   const { data, error } = await admin
     .from("crm_revolut_transactions")
-    .select("id, revolut_transaction_id, parent_id, amount, status, category, stripe_line")
+    .select("id, revolut_transaction_id, parent_id, amount, status, category, counterparty_name, stripe_line")
     .in("parent_id", parentIds);
   if (error) throw new Error(error.message);
   return (data || []) as Array<{
@@ -196,6 +203,7 @@ async function loadChildren(admin: Admin, parentIds: string[]) {
     amount: number | string;
     status: string | null;
     category: string | null;
+    counterparty_name: string | null;
     stripe_line: StripeLineDetail | null;
   }>;
 }
@@ -339,18 +347,37 @@ async function rememberParent(admin: Admin, parent: ParentRow, line: StripeLineD
   await admin.from("crm_revolut_transactions").update(patch).eq("id", parent.id).neq("status", "matched");
 }
 
-async function writeDrafts(admin: Admin, parentId: string, drafts: SplitDraft[], existingByKey: Map<string, { id: string; status: string | null }>) {
+async function writeDrafts(
+  admin: Admin,
+  parentId: string,
+  drafts: SplitDraft[],
+  existingByKey: Map<string, { id: string; status: string | null; counterparty_name: string | null; stripe_line: StripeLineDetail | null }>
+) {
   for (const draft of drafts) {
     const existing = existingByKey.get(draft.revolut_transaction_id) || null;
     const plan = splitWrite(existing, draft);
     if (plan.op === "skip") continue;
+    const keptName = (existing?.stripe_line?.name || "").trim();
+    const keptEmail = (existing?.stripe_line?.email || "").trim();
+    const stripe_line = {
+      ...draft.stripe_line,
+      name: draft.stripe_line.name || keptName || null,
+      email: draft.stripe_line.email || keptEmail || null,
+      description: draft.stripe_line.description || existing?.stripe_line?.description || null,
+    };
+    const storedLabel = (existing?.counterparty_name || "").trim();
+    const incomingLabel = (draft.counterparty_name || "").trim();
+    const counterparty_name =
+      incomingLabel && incomingLabel !== "Payeur inconnu"
+        ? incomingLabel
+        : storedLabel || incomingLabel;
     const fields = {
       amount: draft.amount,
       currency: draft.currency,
-      counterparty_name: draft.counterparty_name,
-      reference: draft.reference,
+      counterparty_name,
+      reference: draft.reference || existing?.stripe_line?.dossier_ref || null,
       booked_at: draft.booked_at,
-      stripe_line: draft.stripe_line,
+      stripe_line,
       category: draft.category,
       direction: "credit",
     };
@@ -390,6 +417,69 @@ async function markStripeInbox(admin: Admin, externalId: string, customerId: str
     })
     .eq("stripe_payment_intent_id", externalId)
     .eq("status", "unmatched");
+}
+
+/** Complète le nom manquant d’une ligne déjà découpée. Ne crédite pas, n’écrase pas un nom. */
+async function fillStoredBlankPayers(admin: Admin) {
+  if (!stripeLiveKey(process.env.STRIPE_SECRET_KEY)) return;
+  const stripe = getStripe();
+  if (!stripe) return;
+  const { data, error } = await admin
+    .from("crm_revolut_transactions")
+    .select("id, counterparty_name, reference, stripe_line")
+    .eq("category", "stripe_paiement")
+    .order("booked_at", { ascending: false })
+    .limit(40);
+  if (error || !data?.length) return;
+  const rows = (data as Array<{
+    id: string;
+    counterparty_name: string | null;
+    reference: string | null;
+    stripe_line: StripeLineDetail | null;
+  }>).filter((row) => row.stripe_line?.kind === "paiement" && !(row.stripe_line.name || "").trim());
+  if (!rows.length) return;
+  const cache = createStripeCustomerCache();
+  for (const row of rows.slice(0, 12)) {
+    const line = row.stripe_line;
+    if (!line) continue;
+    try {
+      const payer = await lookupStripePayer(
+        stripe,
+        {
+          intentId: line.payment_intent_id,
+          customerId: line.stripe_customer_id,
+          billingEmail: line.email,
+          billingName: line.name,
+          description: line.description || row.reference,
+        },
+        cache
+      );
+      const next = { ...line };
+      let changed = false;
+      if (!next.name && payer.name) {
+        next.name = payer.name;
+        changed = true;
+      }
+      if (!next.email && payer.email && !isAgencyStripeEmail(payer.email)) {
+        next.email = payer.email;
+        changed = true;
+      }
+      if (!next.description && payer.designation) {
+        next.description = payer.designation;
+        changed = true;
+      }
+      if (!changed) continue;
+      const headline = stripePayerHeadline({ name: next.name, email: next.email, description: next.description });
+      const current = (row.counterparty_name || "").trim();
+      const patch: Record<string, unknown> = { stripe_line: next };
+      if (!current || current === "Payeur inconnu" || current === "Client Stripe" || current === "Stripe · Client Stripe") {
+        patch.counterparty_name = headline;
+      }
+      await admin.from("crm_revolut_transactions").update(patch).eq("id", row.id);
+    } catch (err) {
+      console.error("[revolut] nom stripe", err instanceof Error ? err.message : "lecture");
+    }
+  }
 }
 
 /** Relie les lignes encore ouvertes à un crédit Stripe déjà posté. Aucune écriture nouvelle. */
@@ -443,6 +533,11 @@ export async function linkPostedStripeSplits(admin: Admin) {
 export async function splitPendingStripePayouts(admin: Admin, opts?: { refresh?: boolean; now?: number }) {
   const now = opts?.now ?? Date.now();
   try {
+    await fillStoredBlankPayers(admin);
+  } catch (err) {
+    console.error("[revolut] noms stripe", err instanceof Error ? err.message : "échec");
+  }
+  try {
     await linkPostedStripeSplits(admin);
   } catch (err) {
     console.error("[revolut] stripe déjà encaissé", err instanceof Error ? err.message : "échec");
@@ -465,13 +560,20 @@ export async function splitPendingStripePayouts(admin: Admin, opts?: { refresh?:
     list.push(child);
     childrenOf.set(child.parent_id, list);
   }
-  const pending = parents.filter((parent) => {
-    const own = childrenOf.get(parent.id) || [];
-    const cache = asLine(parent.stripe_line);
-    if (own.length && cache?.complete && stripeSplitSums(Number(parent.amount), own.map((row) => ({ amount: Number(row.amount) })))) return false;
-    if (stripeCacheFresh(cache, now, opts?.refresh === true)) return false;
-    return true;
-  });
+  const pending = parents
+    .filter((parent) => {
+      const own = childrenOf.get(parent.id) || [];
+      const cache = asLine(parent.stripe_line);
+      return stripePayoutNeedsFetch({
+        childCount: own.length,
+        sums: stripeSplitSums(Number(parent.amount), own.map((row) => ({ amount: Number(row.amount) }))),
+        cache,
+        now,
+        refresh: opts?.refresh === true,
+      });
+    })
+    .sort((left, right) => (childrenOf.get(left.id) || []).length - (childrenOf.get(right.id) || []).length)
+    .slice(0, 6);
   if (!pending.length) return;
   if (!stripeLiveKey(process.env.STRIPE_SECRET_KEY)) return;
   const stripe = getStripe();
@@ -512,12 +614,14 @@ export async function splitPendingStripePayouts(admin: Admin, opts?: { refresh?:
       );
       return;
     }
+    const own = childrenOf.get(parent.id) || [];
+    if (!own.length && payout.status !== "paid") return;
     let balance: BalanceLineSnapshot[] = [];
     let complete = true;
     try {
       const listed = await listPages((startingAfter) =>
         stripe.balanceTransactions.list(
-          { payout: payout.id, limit: 100, starting_after: startingAfter, expand: ["data.source"] },
+          { payout: payout.id, limit: 100, starting_after: startingAfter, expand: ["data.source", "data.source.customer"] },
           { timeout: STRIPE_TIMEOUT_MS }
         )
       );
@@ -565,7 +669,10 @@ export async function splitPendingStripePayouts(admin: Admin, opts?: { refresh?:
       return;
     }
     const existing = new Map(
-      (childrenOf.get(parent.id) || []).map((row) => [row.revolut_transaction_id, { id: row.id, status: row.status }])
+      (childrenOf.get(parent.id) || []).map((row) => [
+        row.revolut_transaction_id,
+        { id: row.id, status: row.status, counterparty_name: row.counterparty_name, stripe_line: row.stripe_line },
+      ])
     );
     await writeDrafts(admin, parent.id, built.drafts, existing);
     const fee = built.drafts.find((draft) => draft.category === "frais");

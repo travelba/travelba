@@ -10,6 +10,7 @@ import {
   stripeSafeMetadata,
   stripeSuggestedCustomerId,
 } from "./stripe-inbox";
+import { snapshotFromPaymentIntent } from "./stripe-snapshot";
 import { matchStripeReasonLabel } from "./stripe-labels";
 
 const base = {
@@ -103,4 +104,41 @@ test("Apple Pay vient du portefeuille, le last4 invalide est ignoré", () => {
   assert.equal(draft?.method, "apple_pay");
   assert.equal(draft?.last4, null);
   assert.equal(stripeInboxCopy({ payer_name: "", reference: "" }).sender, "Payeur inconnu");
+  assert.equal(stripeInboxCopy({ payer_name: "", payer_email: "reservations@travelba.fr", reference: "tHOMAS" }).sender, "tHOMAS");
+  assert.equal(
+    stripeInboxCopy({ payer_name: "", payer_email: "leo@exemple.fr", reference: "sejour Maroc" }).sender,
+    "leo@exemple.fr"
+  );
+  assert.equal(
+    stripeInboxCopy({ payer_name: "", payer_email: "leo@exemple.fr", reference: "sejour Maroc" }).designation,
+    "sejour Maroc"
+  );
+});
+
+test("le client Stripe étendu remplit le nom quand la facturation est vide", () => {
+  const snap = snapshotFromPaymentIntent({
+    id: "pi_cam",
+    status: "succeeded",
+    amount: 210800,
+    currency: "eur",
+    description: "2108",
+    receipt_email: null,
+    created: 1,
+    metadata: {},
+    customer: { id: "cus_cam", object: "customer", name: "CAM NEGOCE", email: "cam@exemple.fr" },
+    latest_charge: {
+      id: "ch_cam",
+      object: "charge",
+      billing_details: { name: null, email: null },
+      receipt_email: null,
+      customer: "cus_cam",
+      payment_method_details: { type: "card", card: { last4: "4242", wallet: null } },
+    },
+  } as never);
+  assert.equal(snap.customerName, "CAM NEGOCE");
+  assert.equal(snap.customerEmail, "cam@exemple.fr");
+  assert.equal(snap.charge?.name, "CAM NEGOCE");
+  const draft = stripeInboxFromIntent(snap);
+  assert.equal(draft?.payer_name, "CAM NEGOCE");
+  assert.equal(draft?.reference, "2108");
 });

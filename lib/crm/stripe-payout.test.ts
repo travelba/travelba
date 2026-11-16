@@ -5,6 +5,7 @@ import {
   matchStripePayout,
   splitWrite,
   stripeLiveKey,
+  stripePayoutNeedsFetch,
   stripeSplitSums,
   type BalanceLineSnapshot,
 } from "./stripe-payout";
@@ -47,6 +48,30 @@ describe("stripe-payout", () => {
       ]
     );
     assert.equal(hit?.id, "po_jour");
+  });
+
+  it("relit un versement encore agrégé, même si le cache est complet", () => {
+    const now = Date.parse("2026-10-09T12:00:00Z");
+    const cache = {
+      kind: "cache" as const,
+      complete: true,
+      payout_id: "po_oct",
+      payment_id: null,
+      payment_intent_id: null,
+      email: null,
+      name: null,
+      dossier_ref: null,
+      customer_id: null,
+      booking_id: null,
+      gross: 0,
+      fee: 0,
+      net: 0,
+      currency: "EUR",
+      deja_encaisse: false,
+      fetched_at: "2026-10-09T08:00:00Z",
+    };
+    assert.equal(stripePayoutNeedsFetch({ childCount: 0, sums: false, cache, now }), true);
+    assert.equal(stripePayoutNeedsFetch({ childCount: 2, sums: true, cache, now }), false);
   });
 
   it("découpe 1 053,49 € en bruts plus les frais d’agence, sans second crédit", () => {

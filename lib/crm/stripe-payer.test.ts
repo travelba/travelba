@@ -116,13 +116,42 @@ test("l'e-mail, l'historique et la pièce proposent sans créditer", () => {
   assert.equal(history[0]?.customerId, ADA.id);
 
   const piece = scoreStripeMatches(
-    { payer_name: null, payer_email: null, reference: "2108", raw: { stripe_customer_id: "cus_inconnu" } },
+    {
+      payer_name: "Ada Martin",
+      payer_email: null,
+      reference: "2108",
+      amount: 125,
+      raw: { stripe_customer_id: "cus_inconnu" },
+    },
     [ADA],
-    { pieces: [{ number: "FA-2108", customerId: ADA.id, bookingId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", reference: "TB-2026-0001" }] }
+    {
+      pieces: [
+        {
+          number: "FA-2108",
+          customerId: ADA.id,
+          bookingId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          reference: "TB-2026-0001",
+          amount: 125,
+        },
+      ],
+    }
   );
   assert.equal(piece.autoCustomerId, null);
   assert.equal(piece.candidates[0]?.reason, "piece");
   assert.equal(piece.candidates[0]?.customer_id, ADA.id);
+
+  const digitsOnly = scoreStripeMatches(
+    { payer_name: null, payer_email: null, reference: "2108", amount: 125, raw: {} },
+    [ADA],
+    { pieces: [{ number: "FA-2108", customerId: ADA.id, amount: 125 }] }
+  );
+  assert.equal(digitsOnly.candidates.some((item) => item.reason === "piece"), false);
+
+  const agency = suggestStripePayers({
+    email: "contact@travelba.fr",
+    customers: [{ ...ADA, email: "contact@travelba.fr" }],
+  });
+  assert.deepEqual(agency, []);
 });
 
 test("un lien créé par le CRM exige l'e-mail et la référence du dossier", async () => {

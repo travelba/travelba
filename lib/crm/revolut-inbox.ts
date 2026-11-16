@@ -1,3 +1,4 @@
+import { stripePayerHeadline } from "@/lib/crm/stripe-inbox";
 import {
   classifyRevolutCredit,
   revolutCreditInboxStatus,
@@ -8,6 +9,7 @@ type InboxStripeLine = {
   kind?: string | null;
   name?: string | null;
   email?: string | null;
+  description?: string | null;
   dossier_ref?: string | null;
   payment_intent_id?: string | null;
   fee?: number | null;
@@ -122,16 +124,12 @@ export function revolutDesignation(row: Pick<RevolutSenderSource, "reference">) 
 
 function stripePaymentDesignation(line: InboxStripeLine | null | undefined) {
   if (!line || line.kind === "cache") return "";
+  const piece = (line.dossier_ref || "").trim() || (line.description || "").trim();
   const parts = [
+    piece,
     (line.email || "").trim(),
-    (line.dossier_ref || "").trim(),
-    (line.payment_intent_id || "").trim(),
-  ].filter(Boolean);
+  ].filter((part, index, all) => part && all.indexOf(part) === index);
   if (line.fee) parts.push(`frais ${line.fee.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € à la charge de l’agence`);
-  const net = line.net;
-  if (line.kind === "paiement" && typeof net === "number" && Number.isFinite(net)) {
-    parts.push(`net ${net.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`);
-  }
   return parts.join(" · ");
 }
 
@@ -159,12 +157,18 @@ export function revolutInboxCopy(row: RevolutSenderSource) {
   }
   if (category === "stripe") return { sender: "Stripe", designation: "Versement en attente du détail" };
   if (category === "stripe_paiement") {
-    const name = (row.stripe_line?.name || "").trim() || revolutSenderName(row) || "Client Stripe";
+    const headline = stripePayerHeadline({
+      name: row.stripe_line?.name || revolutSenderName(row),
+      email: row.stripe_line?.email,
+      description: row.stripe_line?.description || row.reference,
+    });
     const detail = stripePaymentDesignation(row.stripe_line);
     const ref = revolutDesignation(row);
     return {
-      sender: `Stripe · ${name}`,
-      designation: [detail, ref && !detail.includes(ref) ? ref : ""].filter(Boolean).join(" · "),
+      sender: `Stripe · ${headline}`,
+      designation: [detail, ref && !detail.includes(ref) && ref.toLowerCase() !== headline.toLowerCase() ? ref : ""]
+        .filter(Boolean)
+        .join(" · "),
     };
   }
   if (category === "remboursement") {

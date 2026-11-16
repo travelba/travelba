@@ -1,4 +1,5 @@
-import { pieceDigits, suggestStripePayers, type PayerHistory, type PayerPiece } from "@/lib/crm/stripe-payer";
+import { isAgencyStripeEmail, pieceDigits, suggestStripePayers, type PayerHistory, type PayerPiece } from "@/lib/crm/stripe-payer";
+import { stripePayerHeadline } from "@/lib/crm/stripe-inbox";
 
 /**
  * Un versement Stripe sur Revolut devient une ligne par paiement client,
@@ -43,6 +44,7 @@ export type StripeLineDetail = {
   payment_intent_id: string | null;
   email: string | null;
   name: string | null;
+  description?: string | null;
   stripe_customer_id?: string | null;
   suggestion_reason?: string | null;
   dossier_ref: string | null;
@@ -165,7 +167,7 @@ function linkPayment(line: BalanceLineSnapshot, links: StripeLinkIndex) {
     customerId = "";
     suggestionReason = null;
   }
-  if (!customerId && line.email) {
+  if (!customerId && line.email && !isAgencyStripeEmail(line.email)) {
     const hits = links.customers.filter((item) => emailKey(item.email) === emailKey(line.email));
     if (hits.length === 1) {
       customerId = hits[0].id;
@@ -181,7 +183,9 @@ function linkPayment(line: BalanceLineSnapshot, links: StripeLinkIndex) {
     }
   }
   const suggestions = suggestStripePayers({
-    email: customerId ? null : line.email,
+    email: customerId || isAgencyStripeEmail(line.email) ? null : line.email,
+    name: line.name,
+    amount: eurosFromCents(line.amountCents),
     stripeCustomerId: customerId ? null : stripeCustomer,
     designation: pieceDigits(line.description) || pieceDigits(metadata.reference) || line.description,
     customers: links.customers,
@@ -269,7 +273,7 @@ export function buildStripeSplit(input: {
       status: linked.posted ? "matched" : "unmatched",
       amount: gross,
       currency,
-      counterparty_name: (line.name || "").trim() || (line.email || "").trim() || "Client Stripe",
+      counterparty_name: stripePayerHeadline({ name: line.name, email: line.email, description: line.description }),
       reference: linked.dossierRef || line.paymentIntentId || line.description || null,
       booked_at: input.parent.bookedAt,
       matched_customer_id: linked.posted?.customer_id || null,
@@ -281,6 +285,7 @@ export function buildStripeSplit(input: {
         payment_intent_id: line.paymentIntentId,
         email: (line.email || "").trim() || null,
         name: (line.name || "").trim() || null,
+        description: (line.description || "").trim() || null,
         stripe_customer_id: linked.stripeCustomerId,
         suggestion_reason: linked.suggestionReason,
         dossier_ref: linked.dossierRef,
@@ -381,11 +386,23 @@ export function stripeSplitSums(parentAmount: number, lines: Array<{ amount: num
 
 export function stripeCacheFresh(line: StripeLineDetail | null | undefined, now: number, refresh: boolean) {
   if (!line || line.kind !== "cache") return false;
-  if (line.complete) return true;
   if (refresh) return false;
   const at = line.fetched_at ? Date.parse(line.fetched_at) : Number.NaN;
   if (!Number.isFinite(at)) return false;
   return now - at < 6 * 60 * 60 * 1000;
+}
+
+/** Un versement déjà découpé et dont la somme tient n’est pas relu. Un versement encore agrégé l’est, même si le cache dit complet. */
+export function stripePayoutNeedsFetch(input: {
+  childCount: number;
+  sums: boolean;
+  cache: StripeLineDetail | null;
+  now: number;
+  refresh?: boolean;
+}) {
+  if (input.childCount > 0 && input.cache?.complete && input.sums) return false;
+  if (input.childCount === 0) return true;
+  return !stripeCacheFresh(input.cache, input.now, input.refresh === true);
 }
 
 export function stripePaymentExternalId(line: {

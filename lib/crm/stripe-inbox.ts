@@ -1,6 +1,7 @@
 /** File Stripe : uniquement les paiements réussis, jamais un virement Revolut ni un PAN. */
 
 import type { StripePayerIdentity } from "@/lib/crm/stripe-payer";
+import { isAgencyStripeEmail, stripeClientEmail } from "@/lib/crm/stripe-payer";
 
 export const STRIPE_INBOX_METHODS = ["card", "apple_pay", "sepa", "other"] as const;
 
@@ -25,6 +26,8 @@ export type StripeIntentInput = {
   /** Secondes Unix. */
   created?: number | null;
   customerId?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
   metadata?: Record<string, string> | null;
   charge?: StripeChargeHint | null;
   /** Identité déjà relue (session, client, facture). */
@@ -137,8 +140,12 @@ export function stripeInboxFromIntent(input: StripeIntentInput): StripeInboxDraf
   });
   const last4 = last4Of(input.charge?.last4);
   const payer = input.payer;
-  const payerName = clean(payer?.name) || clean(input.charge?.name);
-  const payerEmail = clean(payer?.email) || clean(input.charge?.email) || clean(input.receiptEmail);
+  const payerName = clean(payer?.name) || clean(input.charge?.name) || clean(input.customerName);
+  const payerEmail =
+    stripeClientEmail(payer?.email) ||
+    stripeClientEmail(input.charge?.email) ||
+    stripeClientEmail(input.receiptEmail) ||
+    stripeClientEmail(input.customerEmail);
   const reference = clean(payer?.designation) || clean(input.description);
   const cents = Math.round(Number(input.amount));
   const created = Number(input.created);
@@ -187,9 +194,36 @@ export function stripeSuggestedCustomerId(candidates: { customer_id: string; sco
   return strong.length === 1 ? strong[0].customer_id : "";
 }
 
-export function stripeInboxCopy(row: { payer_name?: string | null; reference?: string | null }) {
-  const sender = (row.payer_name || "").trim() || "Payeur inconnu";
+const BLANK_PAYER = /^(client stripe|payeur inconnu|payeur|stripe)$/i;
+
+/** Nom, sinon e-mail du client, sinon la description Stripe. */
+export function stripePayerHeadline(input: {
+  name?: string | null;
+  email?: string | null;
+  description?: string | null;
+}) {
+  const rawName = (input.name || "").trim().replace(/^stripe\s·\s/i, "").trim();
+  if (rawName && !BLANK_PAYER.test(rawName)) return rawName;
+  const email = stripeClientEmail(input.email);
+  if (email) return email;
+  const description = (input.description || "").trim();
+  if (description && !BLANK_PAYER.test(description) && !/^(pi_|ch_|cs_|cus_|txn_)/.test(description)) return description;
+  return "Payeur inconnu";
+}
+
+export function stripeInboxCopy(row: {
+  payer_name?: string | null;
+  payer_email?: string | null;
+  reference?: string | null;
+}) {
+  const sender = stripePayerHeadline({
+    name: row.payer_name,
+    email: row.payer_email,
+    description: row.reference,
+  });
   const designation = (row.reference || "").trim();
   const same = designation.toLowerCase() === sender.toLowerCase();
   return { sender, designation: designation && !same ? designation : "" };
 }
+
+export { isAgencyStripeEmail };

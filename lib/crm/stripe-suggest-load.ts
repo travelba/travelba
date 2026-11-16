@@ -50,18 +50,19 @@ async function loadPieces(admin: Admin, numbers: string[]): Promise<PayerPiece[]
   const numberFilter = numbers.map((number) => `piece_number.ilike.%${number}%`).join(",");
   const fileFilter = numbers.map((number) => `file_name.ilike.%${number}%`).join(",");
   const [mb3m, account, documents] = await Promise.all([
-    admin.from("crm_mb3m_pieces").select("piece_number, booking_id").or(numberFilter).limit(40),
+    admin.from("crm_mb3m_pieces").select("piece_number, booking_id, amount").or(numberFilter).limit(40),
     admin.from("crm_mb3m_account_invoices").select("piece_number, customer_id").or(numberFilter).limit(40),
     admin.from("crm_booking_documents").select("file_name, kind, booking_id").or(fileFilter).limit(40),
   ]);
   const bookingIds = new Set<string>();
-  const pending: { number: string; bookingId: string | null; customerId: string | null }[] = [];
-  for (const row of (mb3m.data || []) as { piece_number?: string | null; booking_id?: string | null }[]) {
+  const pending: { number: string; bookingId: string | null; customerId: string | null; amount: number | null }[] = [];
+  for (const row of (mb3m.data || []) as { piece_number?: string | null; booking_id?: string | null; amount?: number | string | null }[]) {
     const number = clean(row.piece_number);
     const bookingId = clean(row.booking_id);
     if (!number || !numbers.some((digits) => numberMatches(number, digits))) continue;
     if (bookingId) bookingIds.add(bookingId);
-    pending.push({ number, bookingId: bookingId || null, customerId: null });
+    const amount = Number(row.amount);
+    pending.push({ number, bookingId: bookingId || null, customerId: null, amount: Number.isFinite(amount) ? amount : null });
   }
   for (const row of (documents.data || []) as { file_name?: string | null; kind?: string | null; booking_id?: string | null }[]) {
     if (!isInvoicePieceKind(row.kind)) continue;
@@ -70,23 +71,31 @@ async function loadPieces(admin: Admin, numbers: string[]): Promise<PayerPiece[]
     const number = numbers.find((digits) => numberMatches(name, digits));
     if (!number || !bookingId) continue;
     bookingIds.add(bookingId);
-    pending.push({ number, bookingId, customerId: null });
+    pending.push({ number, bookingId, customerId: null, amount: null });
   }
   const bookings = bookingIds.size
     ? await admin
         .from("crm_bookings")
-        .select("id, reference, customer_id, billing_customer_id")
+        .select("id, reference, customer_id, billing_customer_id, total_amount")
         .in("id", [...bookingIds])
     : { data: [] as { id: string; reference?: string | null; customer_id?: string | null; billing_customer_id?: string | null }[] };
-  const byBooking = new Map<string, { customerId: string; reference: string | null }>();
+  const byBooking = new Map<string, { customerId: string; reference: string | null; amount: number | null }>();
   for (const row of (bookings.data || []) as {
     id: string;
     reference?: string | null;
     customer_id?: string | null;
     billing_customer_id?: string | null;
+    total_amount?: number | string | null;
   }[]) {
     const customerId = clean(row.billing_customer_id) || clean(row.customer_id);
-    if (row.id && customerId) byBooking.set(row.id, { customerId, reference: clean(row.reference) || null });
+    const total = Number(row.total_amount);
+    if (row.id && customerId) {
+      byBooking.set(row.id, {
+        customerId,
+        reference: clean(row.reference) || null,
+        amount: Number.isFinite(total) ? total : null,
+      });
+    }
   }
   const pieces: PayerPiece[] = [];
   for (const row of pending) {
@@ -97,6 +106,7 @@ async function loadPieces(admin: Admin, numbers: string[]): Promise<PayerPiece[]
       customerId: booking.customerId,
       bookingId: row.bookingId,
       reference: booking.reference,
+      amount: row.amount ?? booking.amount,
     });
   }
   for (const row of (account.data || []) as { piece_number?: string | null; customer_id?: string | null }[]) {

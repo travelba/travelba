@@ -59,6 +59,8 @@ export type PayerPiece = {
   customerId: string;
   bookingId?: string | null;
   reference?: string | null;
+  /** Montant de la pièce ou du séjour, pour ne pas proposer sur le seul numéro. */
+  amount?: number | null;
 };
 
 function clean(value: string | null | undefined) {
@@ -76,6 +78,42 @@ function first(values: Array<string | null | undefined>) {
 
 function emailKey(value: string | null | undefined) {
   return (value || "").trim().toLowerCase();
+}
+
+/** Adresse de l’agence : jamais une clé de rapprochement. */
+export function isAgencyStripeEmail(value: string | null | undefined) {
+  const email = emailKey(value);
+  return Boolean(email) && email.endsWith("@travelba.fr");
+}
+
+export function stripeClientEmail(value: string | null | undefined) {
+  const email = (value || "").trim();
+  if (!email || isAgencyStripeEmail(email)) return null;
+  return email;
+}
+
+function foldName(value: string | null | undefined) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Le nom lu couvre le client (société, ou prénom et nom). */
+export function payerNameCovers(
+  payer: string | null | undefined,
+  person: { first_name?: string | null; last_name?: string | null; company_name?: string | null }
+) {
+  const left = foldName(payer);
+  if (left.length < 3) return false;
+  const company = foldName(person.company_name);
+  if (company.length >= 3 && (left.includes(company) || company.includes(left))) return true;
+  const first = foldName(person.first_name);
+  const last = foldName(person.last_name);
+  if (last.length >= 3 && left.includes(last) && (!first || first.length < 2 || left.includes(first))) return true;
+  return false;
 }
 
 /** Texte saisi dans les champs du lien. Une suite de chiffres de carte est ignorée. */
@@ -165,19 +203,27 @@ export function isInvoicePieceKind(kind: string | null | undefined) {
 }
 
 /**
- * Proposition, jamais un crédit. E-mail d'abord, sinon un client Stripe déjà
- * rapproché. Un numéro à quatre chiffres s'ajoute, même si l'e-mail a déjà parlé.
+ * Proposition, jamais un crédit. L'e-mail d'agence ne compte pas.
+ * Une pièce à quatre chiffres ne propose un dossier que si le nom et le montant vont avec.
  */
 export function suggestStripePayers(input: {
   email?: string | null;
+  name?: string | null;
+  amount?: number | null;
   stripeCustomerId?: string | null;
   designation?: string | null;
-  customers: { id: string; email?: string | null }[];
+  customers: {
+    id: string;
+    email?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    company_name?: string | null;
+  }[];
   history?: PayerHistory[];
   pieces?: PayerPiece[];
 }): PayerSuggestion[] {
   const out: PayerSuggestion[] = [];
-  const email = emailKey(input.email);
+  const email = isAgencyStripeEmail(input.email) ? "" : emailKey(input.email);
   if (email) {
     const hits = input.customers.filter((customer) => emailKey(customer.email) === email);
     if (hits.length === 1) {
@@ -198,8 +244,14 @@ export function suggestStripePayers(input: {
     }
   }
   const digits = pieceDigits(input.designation);
-  if (digits) {
-    const matched = (input.pieces || []).filter((piece) => numberMatches(piece.number, digits) && piece.customerId);
+  const amount = Number(input.amount);
+  if (digits && input.name && Number.isFinite(amount)) {
+    const matched = (input.pieces || []).filter((piece) => {
+      if (!numberMatches(piece.number, digits) || !piece.customerId) return false;
+      if (piece.amount == null || Math.abs(Number(piece.amount) - amount) > 0.02) return false;
+      const person = input.customers.find((customer) => customer.id === piece.customerId);
+      return Boolean(person && payerNameCovers(input.name, person));
+    });
     const ids = [...new Set(matched.map((piece) => piece.customerId))];
     if (ids.length === 1) {
       const booking = matched.find((piece) => piece.bookingId) || matched[0];
@@ -211,7 +263,7 @@ export function suggestStripePayers(input: {
         out.push({
           customerId: ids[0],
           reason: "piece",
-          score: 70,
+          score: 82,
           bookingId: booking.bookingId || null,
           reference: booking.reference || null,
         });
