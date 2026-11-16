@@ -29,6 +29,79 @@ function day(value: string | null | undefined) {
   return value.slice(0, 10);
 }
 
+/** Code OACI marketing ramené au code IATA, pour U2 / EJU. */
+const FLIGHT_PREFIX_ALIAS: Record<string, string> = {
+  EJU: "U2",
+  EZY: "U2",
+  AFR: "AF",
+  BAW: "BA",
+  UAE: "EK",
+  TVF: "TO",
+  TRA: "HV",
+};
+
+export function flightNumberParts(raw: string | null | undefined): { prefix: string; digits: string } | null {
+  const compact = norm(raw);
+  const match = compact.match(/^([A-Z]{3}|[A-Z][A-Z0-9]|[A-Z0-9][A-Z])?(\d{1,4})$/);
+  if (!match?.[2]) return null;
+  const digits = match[2].replace(/^0+/, "") || match[2];
+  let prefix = match[1] || "";
+  if (prefix.length === 3) prefix = FLIGHT_PREFIX_ALIAS[prefix] || prefix;
+  return { prefix, digits };
+}
+
+/** `U2 4692`, `4692` et `EJU4692` sont le même vol. Deux compagnies différentes ne le sont pas. */
+export function flightNumbersAlign(a: string | null | undefined, b: string | null | undefined) {
+  const left = flightNumberParts(a);
+  const right = flightNumberParts(b);
+  if (!left || !right || left.digits !== right.digits) return false;
+  if (!left.prefix || !right.prefix) return true;
+  return left.prefix === right.prefix;
+}
+
+function flightPnrTokens(item: MatchableItem) {
+  const raw = `${item.confirmation_ref || ""} ${detail(item, "pnr")}`;
+  return new Set(
+    raw
+      .split(/[^A-Za-z0-9]+/)
+      .map(norm)
+      .filter((token) => token.length >= 5)
+  );
+}
+
+function sameFlightDay(a: MatchableItem, b: MatchableItem) {
+  const left = day(a.start_at);
+  const right = day(b.start_at);
+  return Boolean(left && right && left === right);
+}
+
+function pnrsOverlap(left: MatchableItem, right: MatchableItem) {
+  const wanted = flightPnrTokens(left);
+  if (!wanted.size) return false;
+  const have = flightPnrTokens(right);
+  for (const token of wanted) if (have.has(token)) return true;
+  return false;
+}
+
+/**
+ * Même jour : le numéro de vol d’abord (`U2 4692` = `EJU4692`).
+ * Le PNR ne réunit pas deux segments différents (EK 706 puis EK 75).
+ * Il complète seulement une carte du même PNR qui n’a pas encore de numéro.
+ */
+export function findFlightCard<T extends MatchableItem>(existing: T[], incoming: MatchableItem): T | null {
+  if ((incoming.kind || "") !== "flight" || !day(incoming.start_at)) return null;
+  const sameDay = existing.filter((row) => (row.kind || "") === "flight" && sameFlightDay(row, incoming));
+  const number = detail(incoming, "flight_number");
+  if (number) {
+    const byNumber = sameDay.find((row) => flightNumbersAlign(number, detail(row, "flight_number")));
+    if (byNumber) return byNumber;
+    return (
+      sameDay.find((row) => !detail(row, "flight_number") && pnrsOverlap(incoming, row)) || null
+    );
+  }
+  return sameDay.find((row) => pnrsOverlap(incoming, row)) || null;
+}
+
 export function hotelRefTokens(ref: string | null | undefined) {
   return (ref || "")
     .split(/[;,\s/]+/)
@@ -382,6 +455,8 @@ export function itemMatchKey(item: MatchableItem): string | null {
   const start = day(item.start_at);
 
   if (kind === "flight") {
+    const parts = flightNumberParts(detail(item, "flight_number"));
+    if (parts && start) return `flight:${parts.prefix}:${parts.digits}:${start}`;
     const num = norm(detail(item, "flight_number"));
     if (num && start) return `flight:${num}:${start}`;
     if (ref && start) return `flight:${ref}:${start}`;
@@ -435,6 +510,8 @@ export function findMatchingItem<T extends MatchableItem>(
     const stay = findHotelSameStay(existing, incoming);
     if (stay) return stay;
   }
+  const flight = findFlightCard(existing, incoming);
+  if (flight) return flight;
   const key = itemMatchKey(incoming);
   if (!key) return null;
   return existing.find((row) => itemMatchKey(row) === key) || null;
@@ -540,7 +617,23 @@ export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
       hit.details = { ...(hit.details || {}), ticket_count: currentCount + incomingCount };
     }
   }
-  return out;
+  return dropUndatedFlightDuplicates(out);
+}
+
+/** Un vol sans date qui répète un segment daté du même numéro est retiré. */
+function dropUndatedFlightDuplicates<T extends MatchableItem>(items: T[]): T[] {
+  return items.filter((item, index) => {
+    if ((item.kind || "") !== "flight" || day(item.start_at)) return true;
+    const number = detail(item, "flight_number");
+    if (!number) return true;
+    return !items.some(
+      (other, otherIndex) =>
+        otherIndex !== index &&
+        (other.kind || "") === "flight" &&
+        Boolean(day(other.start_at)) &&
+        flightNumbersAlign(number, detail(other, "flight_number"))
+    );
+  });
 }
 
 function positiveDocumentAmount(details?: Record<string, unknown> | null): number | null {

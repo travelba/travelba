@@ -26,6 +26,8 @@ const AIRPORTS: { re: RegExp; iata: string; city: string }[] = [
   { re: /A[ÉE]ROPORT DE GEN[ÈE]VE|GEN[ÈE]VE GEN[ÈE]VE/i, iata: "GVA", city: "Genève" },
   { re: /HEATHROW/i, iata: "LHR", city: "Londres" },
   { re: /MARSEILLE PROVENCE/i, iata: "MRS", city: "Marseille" },
+  { re: /HURGHADA|\bHRG\b/i, iata: "HRG", city: "Hurghada" },
+  { re: /LE CAIRE|\bCAIRO\b|\bCAI\b/i, iata: "CAI", city: "Le Caire" },
 ];
 
 const MONTHS: Record<string, string> = {
@@ -105,6 +107,7 @@ export function parseDocumentMoney(text: string): { amount: number; currency: st
     /(?:(total|tarif|montant|fare|amount|prix)[^\n]{0,80}?)?([€$£]|USD|EUR|CHF|GBP)?\s*\b([0-9]{1,3}(?:,[0-9]{3})+\.[0-9]{2}|[0-9]{1,3}(?:[.\s\u00a0][0-9]{3})+[.,][0-9]{2}|[0-9]{2,}[.,][0-9]{2})\s*(USD|EUR|CHF|GBP|€|\$|£)?/gi;
 
   for (const line of lines) {
+    if (/\b(km|kg|co2)\b|distances?|[eé]missions/i.test(line)) continue;
     if (/\bNET\b/i.test(line) && !/\btotal\b/i.test(line)) continue;
     if (/total forfaits|total mat[eé]riel|total prestations|total assurances/i.test(line)) {
       continue;
@@ -272,7 +275,7 @@ export function parseAmadeusFlights(text: string): ParsedAmadeusFlight[] {
   );
   if (!gds) return [];
   const company = text.match(
-    /R[eé]f[eé]rence du dossier compagnie\s+([A-Z0-9]{2})\/([A-Z0-9]{5,6})/i
+    /R[eé]f[eé]rence du dossier compagnie\s+([A-Z0-9]{2})\/([A-Z0-9]{5,8})\b/i
   );
   const issuer = text.match(/Compagnie [eé]mettrice\s*:\s*([A-Z][A-Z ]+)/i);
   const opRe =
@@ -312,20 +315,68 @@ function stripCourtesy(value: string) {
     .trim();
 }
 
-/** Passager d’un e-ticket : « BERDA/DAVID MR » ou « Passager : BERDA/DAVID ». */
-export function parseTicketPassengers(text: string): { first_name: string; last_name: string }[] {
+export type TicketPassenger = {
+  first_name: string;
+  last_name: string;
+  /** Quatre derniers chiffres seulement. Le numéro complet n’est pas conservé. */
+  ticket_last4?: string;
+};
+
+function rememberPassenger(
+  out: TicketPassenger[],
+  seen: Set<string>,
+  lastRaw: string,
+  firstRaw: string,
+  last4?: string
+) {
+  const last = titleCasePerson(stripCourtesy(lastRaw));
+  const first = titleCasePerson(stripCourtesy(firstRaw));
+  if (!first || !last) return;
+  const key = `${first.toLowerCase()}|${last.toLowerCase()}`;
+  const previous = out.find((row) => `${row.first_name.toLowerCase()}|${row.last_name.toLowerCase()}` === key);
+  if (previous) {
+    if (!previous.ticket_last4 && last4) previous.ticket_last4 = last4;
+    return;
+  }
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push(last4 ? { first_name: first, last_name: last, ticket_last4: last4 } : { first_name: first, last_name: last });
+}
+
+/** Derniers chiffres d’un numéro de billet à 13 chiffres. Rien d’autre n’est gardé. */
+function ticketLast4(line: string) {
+  const match = line.match(/\b\d{3}[-\s]?(\d{10})\b/);
+  return match ? match[1].slice(-4) : undefined;
+}
+
+/** Tableau « Passager / Numéro De Billet » : nom, et seulement les 4 derniers chiffres. */
+function parsePassengerTicketTable(text: string, out: TicketPassenger[], seen: Set<string>) {
+  const lines = text.split(/\n/);
+  const start = lines.findIndex((line) => /passager\s*\/\s*num[eé]ro\s+de\s+billet/i.test(line));
+  if (start < 0) return;
+  for (const line of lines.slice(start + 1)) {
+    if (!line.trim()) {
+      if (out.length) break;
+      continue;
+    }
+    const match = line.match(/([A-Z][A-Z' -]{1,40})\/([A-Z][A-Z' -]{1,40})/);
+    if (!match) {
+      if (out.length) break;
+      continue;
+    }
+    rememberPassenger(out, seen, match[1] || "", match[2] || "", ticketLast4(line));
+  }
+}
+
+/** Passager d’un e-ticket : « BERDA/DAVID MR », le tableau du billet, ou « Passager : BERDA/DAVID ». */
+export function parseTicketPassengers(text: string): TicketPassenger[] {
+  const out: TicketPassenger[] = [];
+  const seen = new Set<string>();
+  parsePassengerTicketTable(text, out, seen);
   const re =
     /(?:passager|passenger|voyageur|billet [eé]lectronique)\s*:?\s*([A-Z][A-Z' -]{1,40})\/([A-Z][A-Z' -]{1,40})/gi;
-  const out: { first_name: string; last_name: string }[] = [];
-  const seen = new Set<string>();
   for (const match of text.matchAll(re)) {
-    const last = titleCasePerson(stripCourtesy(match[1] || ""));
-    const first = titleCasePerson(stripCourtesy(match[2] || ""));
-    if (!first || !last) continue;
-    const key = `${first.toLowerCase()}|${last.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ first_name: first, last_name: last });
+    rememberPassenger(out, seen, match[1] || "", match[2] || "");
   }
   return out;
 }
@@ -1981,10 +2032,14 @@ export function parsedItemsFromText(text: string): {
     );
   }
   if (travelers.length) {
-    const passengers = travelers.map((row) => ({
-      first_name: row.first_name,
-      last_name: row.last_name,
-    }));
+    const passengers = travelers.map((row) => {
+      const last4 = (row as { ticket_last4?: unknown }).ticket_last4;
+      return {
+        first_name: row.first_name,
+        last_name: row.last_name,
+        ...(typeof last4 === "string" && last4 ? { ticket_last4: last4 } : {}),
+      };
+    });
     for (const item of items) {
       if (item.kind !== "flight") continue;
       item.details = { ...(item.details || {}), passengers };

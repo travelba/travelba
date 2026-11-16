@@ -168,6 +168,7 @@ export async function markEmailAttached(
     actorId: string | null;
     summary: string;
     cards: boolean;
+    auditAction?: string;
   }
 ) {
   const { error } = await admin
@@ -179,7 +180,7 @@ export async function markEmailAttached(
   await noteIngestDecision(admin, {
     actorKind: "human",
     actorId: opts.actorId,
-    action: opts.cards ? "apply_cards" : "attach_files",
+    action: opts.auditAction || (opts.cards ? "apply_cards" : "attach_files"),
     emailIngestId: row.id,
     bookingId: opts.bookingId,
     customerId: opts.customerId,

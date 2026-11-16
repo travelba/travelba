@@ -29,6 +29,7 @@ import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CU
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { extraMomentOf, extraPlaceOf, extraServiceLeg } from "@/lib/crm/extras";
+import { isCancellationExtract } from "@/lib/crm/ingest-types";
 import { bookingBelongsToCustomer, revolutExpenseError } from "@/lib/crm/revolut-debit";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
 import { applyStripeToCustomer } from "@/lib/crm/stripe-match";
@@ -374,7 +375,7 @@ export function prepareEmailAction(input: Record<string, unknown>) {
   const id = uuid(input.id, "E-mail");
   const dossierId =
     action === "rattacher" || action === "mettre_a_jour" ? uuid(input.dossier_id, "Dossier") : "";
-  return { action, id, dossierId };
+  return { action, id, dossierId, cartes: input.cartes === true };
 }
 
 export function prepareClientCreate(input: Record<string, unknown>) {
@@ -1086,6 +1087,27 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
     };
   }
   if (action.action === "rattacher") {
+    if (action.cartes && extract && !isCancellationExtract(extract)) {
+      const { hasUsableFlight } = await import("@/lib/crm/email-flight-deposit");
+      const { depositFlightsOnBooking } = await import("@/lib/crm/email-flight-deposit-run");
+      if (hasUsableFlight(extract)) {
+        try {
+          const flown = await depositFlightsOnBooking(db, row, booking.id, booking.customer_id, null);
+          if (flown.wrote) {
+            return {
+              id: row.id,
+              statut: "attached" as const,
+              dossier_id: booking.id,
+              pieces: flown.pieces,
+              cartes: true as const,
+              message: flown.message,
+            };
+          }
+        } catch (err) {
+          raise(err, "E-mail non traité.");
+        }
+      }
+    }
     let deposited;
     try {
       deposited = await depositEmailAttachments(db, booking.id, row.id, row.attachments, cardId, {

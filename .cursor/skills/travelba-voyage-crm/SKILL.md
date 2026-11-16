@@ -14,7 +14,7 @@ Site public : `https://travelba.fr`. Compte : Travel Business Agency (TBA).
 
 Lire **ce fichier en premier**, puis **un seul** skill spécialisé ci-dessous.
 PDF / photos / « entraîne l’import » → **`travelba-document-ingest`** (dropzone admin, relecture humaine avant Enregistrer).
-Gmail / `crm_email_ingest` / labels Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, `crm`, `reservations-tba` et `cdsgroupe.com` → **`travelba-email-ingest`** (parse → suggestions, dépôt des pièces au clic, cartes seulement sur un second clic).
+Gmail / `crm_email_ingest` / labels Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, `crm`, `reservations-tba` et `cdsgroupe.com` → **`travelba-email-ingest`** (parse → suggestions, dépôt des pièces au clic ; un billet certain rattache le vol tout seul, sinon les cartes au clic).
 Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les skills.
 
 ## Dossier agence (toutes les réservations)

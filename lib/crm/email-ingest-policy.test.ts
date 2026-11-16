@@ -7,8 +7,8 @@ const ingest = readFileSync(new URL("./email-ingest.ts", import.meta.url), "utf8
 
 const createRun = readFileSync(new URL("./email-ingest-create-run.ts", import.meta.url), "utf8");
 
-describe("pas de rattachement autonome", () => {
-  it("email-ingest ne rattache pas et n’annule pas", () => {
+describe("pas de rattachement autonome hors billet certain", () => {
+  it("email-ingest n’annule pas et ne publie pas", () => {
     for (const name of [
       "executeEmailIngestDecision",
       "applyExtractToBooking",

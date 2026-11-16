@@ -447,7 +447,8 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(lecture?.description || "", /PNR/);
   const mail = MCP_TOOLS.find((tool) => tool.name === "traiter_email");
   assert.match(mail?.description || "", /creer_dossier/);
-  assert.match(mail?.description || "", /ne crée ni ne modifie aucune carte/);
+  assert.match(mail?.description || "", /Sans cartes, aucune carte n’est créée/);
+  assert.match(mail?.description || "", /cartes true/);
   assert.match(mail?.description || "", /mettre_a_jour/);
   assert.match(mail?.description || "", /confirmer true/);
   assert.match(mail?.description || "", /prix de vente/);

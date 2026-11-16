@@ -261,6 +261,32 @@ describe("itemMatchKey", () => {
     assert.equal((merged[0]?.details as { ticket_count?: number } | undefined)?.ticket_count, 5);
   });
 
+  it("fusionne U2 4692, 4692 et EJU4692 le même jour, et retire le doublon sans date", () => {
+    const merged = mergeExtractItems([
+      {
+        kind: "flight",
+        confirmation_ref: "KDQ68JS",
+        start_at: "2026-11-02T09:10:00",
+        details: { flight_number: "U2 4692", pnr: "KDQ68JS" },
+      },
+      {
+        kind: "flight",
+        confirmation_ref: "KDQ68JS",
+        start_at: null,
+        details: { flight_number: "4692" },
+      },
+      {
+        kind: "flight",
+        confirmation_ref: "KDQ68JS",
+        start_at: "2026-11-02T09:10:00",
+        details: { flight_number: "EJU4692", pnr: "KDQ68JS" },
+      },
+    ]);
+    assert.equal(merged.length, 1);
+    assert.equal((merged[0]?.details as { ticket_count?: number }).ticket_count, 2);
+    assert.equal(merged[0]?.start_at, "2026-11-02T09:10:00");
+  });
+
   it("replie la mention vide sur l’hôtel du même nom qui a des dates", () => {
     const dated = {
       kind: "hotel",

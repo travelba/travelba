@@ -914,7 +914,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "traiter_email",
     write: true,
     description:
-      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher dépose les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier, et ne crée ni ne modifie aucune carte. mettre_a_jour met à jour les étapes du dossier : sans confirmer, aperçu (étapes à créer ou à compléter, confirmation, dates, vols, prix fournisseur, voyageurs, écarts). confirmer true écrit. Une étape vide du même type est remplie. Un aller-retour au même PNR reste une carte, une ligne par trajet. Le prix de vente n’est pas pris dans le mail. Une annulation ne met pas les étapes à jour. creer_dossier est le bouton Créer un dossier : il trouve ou crée la fiche (client_id, ou email, ou le nom du billet ; sans e-mail si le billet n’en a pas), crée le dossier caché, les cartes du billet (aller-retour au même PNR : une carte à l’écran, une ligne par trajet) et dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation.",
+      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher dépose les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier. cartes true, si le billet a un vol (numéro et date), crée ou complète aussi la carte vol : une carte par PNR, une ligne par trajet, voyageurs ajoutés, cartes nouvelles cachées, prix de vente 0, coût seulement s’il est imprimé. Sans cartes, aucune carte n’est créée. mettre_a_jour met à jour les étapes du dossier : sans confirmer, aperçu (étapes à créer ou à compléter, confirmation, dates, vols, prix fournisseur, voyageurs, écarts). confirmer true écrit. Une étape vide du même type est remplie. Un aller-retour au même PNR reste une carte, une ligne par trajet. Le prix de vente n’est pas pris dans le mail. Une annulation ne met pas les étapes à jour. creer_dossier est le bouton Créer un dossier : il trouve ou crée la fiche (client_id, ou email, ou le nom du billet ; sans e-mail si le billet n’en a pas), crée le dossier caché, les cartes du billet (aller-retour au même PNR : une carte à l’écran, une ligne par trajet) et dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation.",
     input: {
       id: z.string().trim().describe("Identifiant de l’e-mail en attente"),
       action: z
@@ -925,6 +925,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .trim()
         .optional()
         .describe("Dossier choisi, obligatoire pour rattacher et mettre_a_jour"),
+      cartes: z
+        .boolean()
+        .optional()
+        .describe("rattacher seulement : true crée ou complète les cartes vol du billet, cachées, sans message"),
       confirmer: confirmOpt,
       client_id: z
         .string()

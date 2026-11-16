@@ -887,7 +887,8 @@ export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId:
 export async function syncBookingLedger(
   supabase: SupabaseClient,
   booking: CrmBooking,
-  previousStatus?: BookingStatus
+  previousStatus?: BookingStatus,
+  opts?: { skipTicketingFee?: boolean }
 ) {
   if (booking.archived_at) {
     await clearBookingCharges(supabase, booking.id);
@@ -895,7 +896,7 @@ export async function syncBookingLedger(
   }
   try {
     await syncBookingDebit(supabase, booking, previousStatus);
-    await syncTicketingFee(supabase, booking);
+    if (!opts?.skipTicketingFee) await syncTicketingFee(supabase, booking);
     await syncBookingItemDebits(supabase, booking);
     await syncAgencyCommission(supabase, booking);
   } finally {

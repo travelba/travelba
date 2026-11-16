@@ -15,6 +15,8 @@ import {
   resolveEmailCardId,
 } from "@/lib/crm/email-attach-run";
 import { applyBookingSteps, EmailStepError, previewBookingSteps } from "@/lib/crm/email-step-run";
+import { hasUsableFlight } from "@/lib/crm/email-flight-deposit";
+import { depositFlightsOnBooking } from "@/lib/crm/email-flight-deposit-run";
 import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
 import { closeIngestSiblings, loadEmailIngestFiles, noteIngestDecision, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
@@ -57,6 +59,7 @@ export async function POST(request: Request, ctx: Ctx) {
     apply_stay_currency?: boolean;
     item_id?: string;
     confirmer?: boolean;
+    cartes?: boolean;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -206,6 +209,18 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("id", bookingId)
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
+      if (body.cartes !== false && extract && hasUsableFlight(extract) && !isCancellationExtract(extract)) {
+        const flown = await depositFlightsOnBooking(admin, row, bookingId, booking.customer_id, auth.user.id);
+        if (flown.wrote) {
+          return NextResponse.json({
+            ok: true,
+            booking_id: bookingId,
+            pieces: flown.pieces,
+            cartes: flown.cartes,
+            message: flown.message,
+          });
+        }
+      }
       const cardId = await resolveEmailCardId(admin, bookingId, extract);
       const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId, {
         subject: row.subject,
@@ -238,6 +253,27 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("id", bookingId)
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
+      if (body.cartes !== false && extract && hasUsableFlight(extract) && !isCancellationExtract(extract)) {
+        if (extractPatch.extract) {
+          await admin.from("crm_email_ingest").update(extractPatch).eq("id", id);
+        }
+        const flown = await depositFlightsOnBooking(
+          admin,
+          extractPatch.extract ? { ...row, extract } : row,
+          bookingId,
+          booking.customer_id,
+          auth.user.id
+        );
+        if (flown.wrote) {
+          return NextResponse.json({
+            ok: true,
+            booking_id: bookingId,
+            pieces: flown.pieces,
+            cartes: flown.cartes,
+            message: flown.message,
+          });
+        }
+      }
       const cardId = await resolveEmailCardId(admin, bookingId, extract);
       const deposited = await depositEmailAttachments(admin, bookingId, id, row.attachments, cardId, {
         subject: row.subject,

@@ -423,7 +423,9 @@ async function upsertItemsAndTravelers(
         ? parseMoney(match.amount)
         : replacing
           ? parseMoney(replacing.amount)
-          : null
+          : incomingAmount === 0
+            ? 0
+            : null
       : incomingAmount != null
         ? incomingAmount
         : match
@@ -735,6 +737,8 @@ export async function applyExtractToBooking(opts: {
   importTasks?: ImportTask[];
   /** Le montant du mail ne remplace pas le prix vendu. */
   keepSellingPrice?: boolean;
+  /** Dépôt d’un billet : ne pas créer les frais de billeterie automatiques. */
+  skipTicketingFee?: boolean;
   replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
   /** Un dossier annulé revient Non visible : le client ne le voit pas tant qu’on ne le montre pas. */
   reopenIfCancelled?: boolean;
@@ -834,7 +838,9 @@ export async function applyExtractToBooking(opts: {
     .eq("id", opts.bookingId)
     .maybeSingle();
   const next = (refreshed || booking) as CrmBooking;
-  await syncBookingLedger(admin, next, booking.status as BookingStatus);
+  await syncBookingLedger(admin, next, booking.status as BookingStatus, {
+    skipTicketingFee: opts.skipTicketingFee,
+  });
   return next;
 }
 
@@ -852,6 +858,7 @@ export async function applyReplacementToBooking(opts: {
   emailIngestId?: string;
   automatic?: boolean;
   replaceItemId?: string | null;
+  skipTicketingFee?: boolean;
 }) {
   const admin = createServiceClient();
   const { data: items } = await admin

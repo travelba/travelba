@@ -101,6 +101,7 @@ const detailsObjectLoose = z
         z.object({
           first_name: looseString,
           last_name: looseString,
+          ticket_last4: looseString,
         })
       )
       .optional(),
