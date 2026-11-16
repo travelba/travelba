@@ -271,9 +271,9 @@ Le tableau de bord relit le fil Gmail du courrier (`refreshStaleHotelThreads`, b
 
 ## Relancer une ligne déjà parsée
 
-Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
+Sans re-télécharger Gmail (ne pas remettre `received`). Le cron `gmail-ingest` (toutes les 5 minutes) reprend un lot de 8 mails `parsed` / `matched`. Un extract antérieur au correctif billet est relu sur les pièces déjà stockées, puis le même rattachement qu’à l’ingestion : un seul dossier à forte confiance, cartes cachées, prix de vente 0, aucun message, journal `auto_attach`. Zéro ou plusieurs dossiers restent en file. Un voyageur, une carte ou un mail déposé relance le même lot après la réponse, sans attendre l’affichage. Le geste est idempotent.
 
-- Cron : `rematchStoredEmailIngest` rafraîchit les suggestions sur `parsed` / `matched`
+- Cron : `rematchStoredEmailIngest`
 - Staff : `POST /api/admin/email-ingest/[id]` `{ "action": "rematch" }`
 
 ## Fichiers

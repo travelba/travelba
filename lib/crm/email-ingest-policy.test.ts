@@ -36,7 +36,11 @@ describe("pas de rattachement autonome hors billet certain", () => {
     const rematchEnd = ingest.indexOf("async function storeAttachment");
     const rematch = ingest.slice(rematchStart, rematchEnd);
     assert.match(rematch, /rematchStoredEmailIngest/);
+    assert.match(rematch, /autoAttachMatchedFlight/);
+    assert.match(rematch, /refreshStaleFlightExtract/);
     assert.equal(rematch.includes("depositEmailAttachments"), false);
+    assert.equal(rematch.includes("inviteCustomer"), false);
+    assert.equal(rematch.includes("visibleToClient: true"), false);
   });
 
   it("le premier dossier est un brouillon caché ; seul ce fichier applique un séjour unique", () => {

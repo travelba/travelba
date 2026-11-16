@@ -158,6 +158,8 @@ export const bookingExtractSchema = z.object({
   customer_email: looseString,
   customer_first_name: looseString,
   customer_last_name: looseString,
+  /** Révision du parseur déterministe. Absent = extract antérieur au correctif billet. */
+  parser_revision: z.number().int().optional(),
   items: z
     .array(
       z.object({

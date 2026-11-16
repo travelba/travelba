@@ -14,6 +14,7 @@ import {
   type FlightAutoDecision,
 } from "@/lib/crm/email-flight-deposit";
 import { applyBookingSteps } from "@/lib/crm/email-step-run";
+import { enterFlightRematch, leaveFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { parseExtractPayloadSafe, type BookingExtract } from "@/lib/crm/ingest-types";
 import type { MatchableItem } from "@/lib/crm/item-match";
 import type { CrmEmailIngest } from "@/lib/crm/types";
@@ -83,6 +84,8 @@ export async function depositFlightsOnBooking(
 ) {
   const extract = asExtract(row.extract);
   if (!extract || !hasUsableFlight(extract)) return { wrote: false as const, message: "" };
+  enterFlightRematch();
+  try {
   const prepared = await prepareFlightDepositExtract(admin, bookingId, extract, row.id);
   if (!(prepared.items || []).length) return { wrote: false as const, message: "" };
   await applyBookingSteps({
@@ -113,6 +116,9 @@ export async function depositFlightsOnBooking(
     auditAction: opts?.automatic ? "auto_attach" : "attach_flights",
   });
   return { wrote: true as const, message, pieces: deposited.added, cartes: planFlightDeposit(prepared).cartes.length };
+  } finally {
+    leaveFlightRematch();
+  }
 }
 
 /** À l’ingestion : un seul dossier à forte confiance. Rien n’est envoyé. Le détachement annule. */
