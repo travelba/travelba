@@ -359,6 +359,28 @@ export const TRIP_ACCOUNTING_LABELS: Record<TripAccountingState, string> = {
   comptabilise: "Facturé",
 };
 
+/** La recherche des sorties à rattacher. Au-delà, l’écran propose de réessayer. */
+export const TRIP_PROPOSAL_WAIT_MS = 20_000;
+
+export function tripProposalStatusCopy(status: "loading" | "error") {
+  if (status === "loading") return "Recherche des paiements à rattacher…";
+  return "La recherche des paiements à rattacher n’a pas abouti.";
+}
+
+/**
+ * Tant que les propositions ne sont pas lues, on n’annonce pas « Pointé » ni « Facturé » :
+ * une sortie peut encore attendre. Un coût sans vente, lui, est déjà connu.
+ */
+export function visibleTripState(
+  view: { state: TripAccountingState; unsold: readonly unknown[] } | null | undefined,
+  proposals: { known: boolean; count: number }
+): TripAccountingState | null {
+  if (!view) return null;
+  if (!proposals.known) return view.unsold.length > 0 ? "a_pointer" : null;
+  if (proposals.count > 0 || view.unsold.length > 0) return "a_pointer";
+  return view.state;
+}
+
 /**
  * Marge par transaction du grand livre, pour la ligne MB3M. Seules les lignes pointées (au moins un coût) y figurent.
  * Le mode de règlement (`settlementLabel`) n’y est pas : il reste dans le CRM, le client lit la facture MB3M.

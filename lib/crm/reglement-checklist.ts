@@ -18,6 +18,11 @@ export type ReglementChecklistInput = {
   booking: Parameters<typeof staffLedgerCaption>[0];
   /** Sorties proposées + coûts sans vente. */
   costsToPoint: number;
+  /**
+   * La file des sorties n’est pas encore lue. On n’écrit pas « Coûts pointés »
+   * tant que cette recherche n’a pas répondu.
+   */
+  costsSearch?: "pending" | "failed";
   invoice: {
     number: string | null;
     printed: boolean;
@@ -67,15 +72,21 @@ export function reglementChecklist(input: ReglementChecklistInput): ReglementChe
     checks.push({ id: "ledger", label: "Hors agence · le client règle l’hôtel", state: "info" });
   else checks.push({ id: "ledger", label: caption, state: "info" });
 
-  checks.push(
-    input.costsToPoint > 0
-      ? {
-          id: "costs",
-          label: `${input.costsToPoint} ${plural(input.costsToPoint, "coût à pointer", "coûts à pointer")}`,
-          state: "todo",
-        }
-      : { id: "costs", label: "Coûts pointés", state: "done" }
-  );
+  if (input.costsSearch === "pending") {
+    checks.push({ id: "costs", label: "Recherche des paiements à rattacher…", state: "info" });
+  } else if (input.costsSearch === "failed") {
+    checks.push({ id: "costs", label: "Recherche des paiements interrompue", state: "info" });
+  } else {
+    checks.push(
+      input.costsToPoint > 0
+        ? {
+            id: "costs",
+            label: `${input.costsToPoint} ${plural(input.costsToPoint, "coût à pointer", "coûts à pointer")}`,
+            state: "todo",
+          }
+        : { id: "costs", label: "Coûts pointés", state: "done" }
+    );
+  }
 
   const { number, printed, marginStale } = input.invoice;
   if (marginStale && number) checks.push({ id: "invoice", label: `Marge à corriger sur la facture n° ${number}`, state: "todo" });

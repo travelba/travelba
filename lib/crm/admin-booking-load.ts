@@ -12,7 +12,7 @@ import { pliantConfigured } from "@/lib/crm/pliant";
 import { pliantCardForBooking, pliantSpendsForCards, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
-import { pliantBookingCards, pliantCardRecaps } from "@/lib/crm/pliant-booking";
+import { pliantBookingCards, pliantCardRecaps, type PliantCardRecap } from "@/lib/crm/pliant-booking";
 import { companionsForShare, isTripShareCode, tripShareUrl } from "@/lib/crm/trip-share";
 import { loadEstaForBookingId } from "@/lib/crm/esta-run";
 import { readUkEtaLines } from "@/lib/crm/uk-eta-run";
@@ -177,6 +177,63 @@ async function loadRevolutExpenses(bookingId: string) {
   }
 }
 
+/** Cartes Pliant du dossier, lues en base : émises, hôtel, registre, et leurs dépenses déjà synchronisées. */
+async function loadDossierPliantFace(bookingId: string, items: CrmBookingItem[]) {
+  const admin = createServiceClient();
+  const [cards, arrivals, registry] = await Promise.all([
+    admin
+      .from("crm_booking_cards")
+      .select(
+        "id, booking_id, pliant_card_id, label, first_name, last_name, limit_cents, transaction_limit_cents, max_transaction_count, currency, valid_from, valid_to, last4, status, created_at"
+      )
+      .eq("booking_id", bookingId)
+      .order("created_at", { ascending: true }),
+    admin
+      .from("crm_hotel_arrivals")
+      .select("pliant_card_id, booking_item_id, card_last4, card_limit_cents, currency, task_note")
+      .eq("booking_id", bookingId),
+    pliantCardForBooking(admin, bookingId).catch(() => null as PliantCardDraft | null),
+  ]);
+  const bookingCards = cards.error || !cards.data ? [] : (cards.data as CrmBookingCard[]);
+  const arrivalRows = (arrivals.error || !arrivals.data ? [] : arrivals.data) as CrmHotelArrival[];
+  const hotelNames: Record<string, string> = {};
+  for (const item of items) {
+    if (item.kind === "hotel") hotelNames[item.id] = hotelDisplayName(item);
+  }
+  const spends = await loadPliantSpends(bookingCards, arrivalRows, registry);
+  return {
+    bookingCards,
+    pliantRecap: pliantCardRecaps(pliantBookingCards({ bookingCards, arrivals: arrivalRows, hotelNames, registry }), spends),
+  };
+}
+
+/**
+ * Coûts déjà rattachés, cartes du dossier et totaux. Base seulement :
+ * pas de file globale, pas d’appel Pliant, Revolut ou Stripe.
+ */
+async function loadDossierCostFace(booking: CrmBooking, items: CrmBookingItem[]) {
+  const admin = createServiceClient();
+  const emptyCards = { bookingCards: [] as CrmBookingCard[], pliantRecap: [] as PliantCardRecap[] };
+  const [inputs, pliant, revolutExpenses] = await Promise.all([
+    loadDossierAccountingInputs(admin, booking.id).catch((error: unknown) => {
+      console.error("[reservation] coûts", error instanceof Error ? error.message : error);
+      return EMPTY_ACCOUNTING;
+    }),
+    loadDossierPliantFace(booking.id, items).catch((error: unknown) => {
+      console.error("[reservation] cartes", error instanceof Error ? error.message : error);
+      return emptyCards;
+    }),
+    loadRevolutExpenses(booking.id),
+  ]);
+  const accounting = await buildTripAccountingView(admin, booking, items, inputs, { skipOutgoingQueue: true }).catch(
+    (error: unknown) => {
+      console.error("[reservation] coûts", error instanceof Error ? error.message : error);
+      return null;
+    }
+  );
+  return { accounting, revolutExpenses, ...pliant };
+}
+
 export async function loadAdminBookingCritical(input: {
   supabase: SupabaseClient;
   staff: CrmStaff;
@@ -238,6 +295,7 @@ export async function loadAdminBookingCritical(input: {
   const billingCustomer = party.find((row) => row.id === (b.billing_customer_id || b.customer_id)) || customer;
   const bookingItems = await loadHotelContacts(id, rawItems, { live: false });
   console.timeEnd("[dossier] vague 1");
+  const costFacePromise = loadDossierCostFace(b, bookingItems);
   const allIdentity = (first.identityDocs.data || []) as CrmTravelDocument[];
   const bookingTravelers = (first.travelers.data || []) as CrmBookingTraveler[];
   const billingCompanyRows = (first.billingCompanies.data || []) as {
@@ -286,6 +344,7 @@ export async function loadAdminBookingCritical(input: {
     .eq("customer_id", b.customer_id)
     .eq("realm", mb3mRealm())
     .then((result) => (result.error ? [] : result.data || []));
+  const costFace = await costFacePromise;
 
   return {
     booking: b,
@@ -345,7 +404,7 @@ export async function loadAdminBookingCritical(input: {
     openRelanceId: input.openRelanceId,
     openReplyId: input.openReplyId,
     billingCompanies: billingCompanyRows,
-    revolutExpenses: [],
+    revolutExpenses: costFace.revolutExpenses,
     expenseBilling: bookingItems
       .filter((item) => isLedgerExpenseKind(item.kind))
       .map((item) => ({
@@ -365,8 +424,8 @@ export async function loadAdminBookingCritical(input: {
     leStays: leList,
     ledger: null,
     accountLedger: null,
-    bookingCards: [],
-    pliantRecap: [],
+    bookingCards: costFace.bookingCards,
+    pliantRecap: costFace.pliantRecap,
     estaLines: [],
     ukEtaLines: [],
     whatsappMessages: [],
@@ -389,7 +448,7 @@ export async function loadAdminBookingCritical(input: {
       preparation: { state: null, message: null, resume: false },
       amadeus: [],
     },
-    accounting: null,
+    accounting: costFace.accounting,
     panels,
     importTasks: first.importTasks.error
       ? []
@@ -545,12 +604,12 @@ function startDossierPanels(input: {
         .eq("realm", mb3mRealm()),
       loadRevolutExpenses(id),
     ]);
-    const accounting = await buildTripAccountingView(createServiceClient(), b, bookingItems, accountingInputs).catch(
-      (error: unknown) => {
-        console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
-        return null;
-      }
-    );
+    const accounting = await buildTripAccountingView(createServiceClient(), b, bookingItems, accountingInputs, {
+      skipOutgoingQueue: true,
+    }).catch((error: unknown) => {
+      console.error("[reservation] comptabilité", error instanceof Error ? error.message : error);
+      return null;
+    });
     const mb3mPiece = accountingInputs.openNumber ? { number: accountingInputs.openNumber } : null;
     const mb3mDraft = accountingInputs.pieces.find((row) => !row.printed_at && !(row.piece_number || "").trim()) || null;
     const amadeus = ((gdsPieces.data || []) as { piece_number: string | null; lines: unknown }[]).flatMap((row) => {

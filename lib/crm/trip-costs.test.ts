@@ -17,6 +17,8 @@ import {
   suggestCostTargets,
   suggestItem,
   tripAccountingState,
+  tripProposalStatusCopy,
+  visibleTripState,
   tripCostFromPliant,
   tripCostFromRevolut,
   tripTotals,
@@ -171,6 +173,18 @@ describe("coûts du voyage", () => {
     assert.equal(tripAccountingState({ proposedCount: 0, unsoldCount: 0, invoiceNumber: null, invoicePrinted: false, marginStale: false }), "pointe");
     assert.equal(tripAccountingState({ proposedCount: 0, unsoldCount: 0, invoiceNumber: "12", invoicePrinted: true, marginStale: true }), "pointe");
     assert.equal(tripAccountingState({ proposedCount: 0, unsoldCount: 0, invoiceNumber: "12", invoicePrinted: true, marginStale: false }), "comptabilise");
+  });
+
+  it("n’annonce pas Pointé tant que les propositions ne sont pas lues", () => {
+    const pointed = { state: "pointe" as const, unsold: [] };
+    const open = { state: "a_pointer" as const, unsold: [{ id: "cost" }] };
+    assert.equal(visibleTripState(null, { known: false, count: 0 }), null);
+    assert.equal(visibleTripState(pointed, { known: false, count: 0 }), null);
+    assert.equal(visibleTripState(open, { known: false, count: 0 }), "a_pointer");
+    assert.equal(visibleTripState(pointed, { known: true, count: 2 }), "a_pointer");
+    assert.equal(visibleTripState({ state: "comptabilise", unsold: [] }, { known: true, count: 0 }), "comptabilise");
+    assert.equal(tripProposalStatusCopy("loading"), "Recherche des paiements à rattacher…");
+    assert.match(tripProposalStatusCopy("error"), /n’a pas abouti/);
   });
 
   it("propose le dossier par référence, carte, fournisseur puis montant, sans écrire", () => {

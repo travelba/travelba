@@ -73,8 +73,10 @@ import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { ChargeControl } from "@/components/admin/ChargeControl";
 import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
-import type { TripAccountingView } from "@/lib/crm/trip-costs";
-import { reglementChecklist, reglementCostsToPoint } from "@/lib/crm/reglement-checklist";
+import { TripCostsBlock } from "@/components/admin/TripCostsBlock";
+import { attachedCostStamp, useTripProposals } from "@/components/admin/use-trip-proposals";
+import { visibleTripState, type TripAccountingView } from "@/lib/crm/trip-costs";
+import { reglementChecklist } from "@/lib/crm/reglement-checklist";
 import { hotelCardNeedsAlert, principalGuest } from "@/lib/crm/hotel-arrival";
 import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
 import type { WhatsappThreadMessage, WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
@@ -168,9 +170,6 @@ const ClientTransactionsPanel = dynamic(
   () => import("@/components/account/ClientTransactionsPanel").then((m) => m.ClientTransactionsPanel),
   { loading: () => panelLoading("Chargement du compte…") }
 );
-const TripCostsBlock = dynamic(() => import("@/components/admin/TripCostsBlock").then((m) => m.TripCostsBlock), {
-  loading: () => panelLoading("Chargement des coûts…"),
-});
 const InvoiceBlock = dynamic(() => import("@/components/admin/InvoiceBlock").then((m) => m.InvoiceBlock), {
   loading: () => panelLoading("Chargement de la facture…"),
 });
@@ -485,7 +484,7 @@ export function BookingEditor({
     preparation: { state: "running" | "failed" | null; message: string | null; resume: boolean };
     amadeus?: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }[];
   };
-  /** Comptabilité du voyage : ventes, coûts rattachés, marge, sorties proposées. */
+  /** Comptabilité du voyage déjà en base : ventes, coûts rattachés, marge, totaux. Les propositions arrivent ensuite. */
   accounting?: TripAccountingView | null;
   /** Raccourcis du bloc Dépenses. Vide si l’agence les a tous retirés. */
   expensePresets?: readonly ExpensePreset[];
@@ -540,8 +539,10 @@ export function BookingEditor({
   const pliantRecap = hotelRows?.pliantRecap ?? pliantRecapIn;
   const ledger = moneyRows?.ledger ?? ledgerIn;
   const accountLedger = moneyRows?.accountLedger ?? accountLedgerIn;
+  // Le premier rendu porte déjà les coûts en base. La vague différée et l’enregistrement
+  // les remplacent quand ils arrivent ; la file des propositions, elle, reste à part.
   const serverAccounting = moneyRows?.accounting ?? accountingIn;
-  const revolutExpenses = moneyRows?.revolutExpenses ?? revolutIn;
+  const revolutExpenses = revolutIn.length ? revolutIn : (moneyRows?.revolutExpenses ?? revolutIn);
   const mb3m = moneyRows?.mb3m ?? mb3mIn;
   const estaLines = estaRows?.estaLines ?? estaIn;
   const ukEtaLines = estaRows?.ukEtaLines ?? ukIn;
@@ -1223,7 +1224,15 @@ export function BookingEditor({
   const shownLedger = held ? held.accountLedger : liveLedger;
   const shownPreview = held ? held.ledger : previewLedger;
   const agencyCommission = commissionOverride ?? held?.agencyCommission ?? booking.agency_commission === true;
-  const costsToPoint = reglementCostsToPoint(accounting);
+  const proposals = useTripProposals(booking.id, attachedCostStamp(accounting));
+  const costsToPoint =
+    proposals.status === "ready"
+      ? proposals.lines.length + (accounting?.unsold.length ?? 0)
+      : (accounting?.unsold.length ?? 0);
+  const tripState = visibleTripState(accounting, {
+    known: proposals.status === "ready",
+    count: proposals.lines.length,
+  });
   const checkinLines = flightCheckinViews({ items, documents, rows: checkins, now: new Date() });
   const checkinBadge = dossierCheckinBadge(checkinLines);
   const blockers = staffBlockingChips({
@@ -1286,6 +1295,7 @@ export function BookingEditor({
       client_settles_stay: clientSettles,
     },
     costsToPoint,
+    costsSearch: proposals.status === "loading" ? "pending" : proposals.status === "error" ? "failed" : undefined,
     invoice: {
       number: invoiceNumber,
       printed: Boolean(accounting?.invoice.printed),
@@ -2453,7 +2463,7 @@ export function BookingEditor({
               })}
               payerCaption={payerCaption}
               totals={accounting?.totals || null}
-              state={accounting?.state || null}
+              state={tripState}
               invoiceNumber={invoiceNumber}
               checks={checklist}
             />
@@ -2567,6 +2577,7 @@ export function BookingEditor({
                 busy={busy !== "idle"}
                 showMargins={showMargins}
                 onUpdated={refreshArgent}
+                proposals={proposals}
               />
             ) : (
               <section className="admin-af-card space-y-2 rounded-3xl p-5">
