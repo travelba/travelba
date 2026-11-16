@@ -24,7 +24,7 @@ import {
 } from "./mb3m-conform";
 import { mb3mInvoiceBlocker, type Mb3mInvoiceContext } from "./mb3m-invoice";
 import type { Mb3mAccountLine } from "./mb3m-account";
-import { mb3mVerifiedProviderId } from "./mb3m-verified-providers";
+import { MB3M_VERIFIED_PROVIDERS, mb3mVerifiedProviderId } from "./mb3m-verified-providers";
 
 const TRANSAVIA_FRANCE = "11c9b85d-e7fd-4106-be84-5843083d8e81";
 
@@ -225,18 +225,25 @@ describe("lignes de facture", () => {
     assert.equal(mb3mTicketRef("1349"), null);
   });
 
-  it("n’envoie un ProviderId que s’il est dans la liste vérifiée", () => {
+  it("n’envoie un ProviderId que s’il est dans le référentiel TBA", () => {
     delete process.env.MB3M_FLIGHT_COMMISSION;
     const little = "85abcd27-fca7-4b39-a72a-f997678367a9";
+    const airFranceId = "7b98a09d-fb77-4dc3-9908-af6a74af18f0";
+    const receptifs = "e9c6fe94-6df3-4e54-91f1-201b2a778930";
     const bolonLittle = "58c34812-e2d2-4b40-a578-3035cb1b4fa0";
     const bolonDivers = "a328a3a1-3641-41ff-9c30-c17b3e6076b8";
     const bolonAirFrance = "70bdae3f-d8d7-4aa0-8bf3-4209fa426504";
+    assert.equal(MB3M_VERIFIED_PROVIDERS.length, 237);
     assert.equal(mb3mVerifiedProviderId("Little Emperors"), little);
     assert.equal(mb3mVerifiedProviderId("LITTLE EMPERORS"), little);
     assert.notEqual(mb3mVerifiedProviderId("LITTLE EMPERORS"), bolonLittle);
+    assert.equal(mb3mVerifiedProviderId("AIR FRANCE"), airFranceId);
+    assert.notEqual(airFranceId, bolonAirFrance);
     assert.equal(mb3mVerifiedProviderId("HOTELS DIVERS"), null);
-    assert.equal(mb3mVerifiedProviderId("AIR FRANCE"), null);
-    assert.equal(mb3mVerifiedProviderId("DISTINCT DESTINATIONS"), "e9c6fe94-6df3-4e54-91f1-201b2a778930");
+    assert.equal(mb3mVerifiedProviderId("Hôtel Divers"), "013428ca-a71c-4d2a-90a7-75c279281f82");
+    assert.equal(mb3mVerifiedProviderId("DISTINCT DESTINATIONS"), null);
+    assert.equal(mb3mVerifiedProviderId("RECEPTIFS TOURCOM"), receptifs);
+    assert.equal(mb3mVerifiedProviderId("AIR ARABIA MAROC"), "a34ae5c7-5cb0-4dc4-93b6-013a0bdc67b8");
 
     const lines = conformMb3mAccountLines(
       [
@@ -306,9 +313,9 @@ describe("lignes de facture", () => {
     assert.equal(divers?.held, false);
     assert.equal(riad?.providerId ?? null, null);
     assert.equal(riad?.note, "Fournisseur : RIAD KNIZA, HOTELS DIVERS");
-    assert.equal(airFrance?.providerId ?? null, null);
+    assert.equal(airFrance?.providerId, airFranceId);
     assert.equal(airFrance?.providerName, "AIR FRANCE");
-    assert.equal(airFrance?.note, "Fournisseur : AIR FRANCE");
+    assert.equal(airFrance?.note ?? null, null);
     assert.equal(airFrance?.supplierReason ?? null, null);
     assert.equal(airFrance?.held, true);
     assert.equal(transavia?.providerId, "aa8d41ef-4caf-4481-997e-d3bff7ca8e06");
@@ -334,9 +341,18 @@ describe("lignes de facture", () => {
     assert.equal(diversXml.includes(bolonDivers), false);
     assert.equal(diversXml.includes(agency), false);
     assert.match(diversXml, /<Note>Fournisseur : HOTELS DIVERS<\/Note>/);
-    assert.equal(airFranceXml.includes("<ProviderId>"), false);
+    assert.ok(airFranceXml.includes(`<ProviderId>${airFranceId}</ProviderId>`), airFranceXml);
     assert.equal(airFranceXml.includes(bolonAirFrance), false);
-    assert.match(airFranceXml, /<Note>Fournisseur : AIR FRANCE<\/Note>/);
+    assert.equal(airFranceXml.includes("<Note>"), false);
+    const tour = conformMb3mAccountLines(
+      [{ transactionId: "tx-rt", label: "Circuit", amount: 500, activityId: 11, itemId: "pkg", chargeKind: "package" }],
+      [{ id: "pkg", kind: "package", supplier: "Receptifs Tourcom", title: "Circuit" }]
+    );
+    assert.equal(tour[0]?.providerId, receptifs);
+    assert.equal(tour[0]?.providerName, "RECEPTIFS TOURCOM");
+    assert.equal(tour[0]?.supplierReason ?? null, null);
+    assert.equal(mb3mSupplierBlock(tour), null);
+    assert.equal(mb3mInvoiceBlocker(invoiceContext(tour)), null);
   });
 });
 
