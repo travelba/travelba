@@ -40,6 +40,7 @@ import {
 import { expenseCountsForClient, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
+import { readMb3mActivityOverride } from "@/lib/crm/mb3m-activity";
 import { Icon } from "@/components/crm/icons";
 import type { EstaTravelerLine } from "@/lib/crm/esta-status";
 import { settledAuthorizationCountries } from "@/lib/crm/visa-cover";
@@ -2604,6 +2605,20 @@ export function BookingEditor({
                 preparation: mb3m.preparation,
                 amadeus: mb3m.amadeus,
               }}
+              cards={pricedItems
+                .filter(
+                  (item) =>
+                    isActiveItem(item) &&
+                    item.kind === "flight" &&
+                    !item.id.startsWith("draft:")
+                )
+                .map((item) => ({
+                  id: item.id,
+                  label: item.title || "Vol",
+                  amount: item.amount == null ? null : Number(item.amount),
+                  currency: booking.currency || "EUR",
+                  category: readMb3mActivityOverride(item.details) === "land" ? ("land" as const) : ("auto" as const),
+                }))}
               note={invoiceNote}
               onBusy={(active) => setBusy(active ? "invoice" : "idle")}
               onNote={setInvoiceNote}

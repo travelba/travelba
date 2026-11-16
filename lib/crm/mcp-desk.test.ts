@@ -7,6 +7,7 @@ import { reactiverMembre } from "./mcp-agency";
 import {
   type DeskDeps,
   ajouterCarte,
+  modifierCarte,
   archiverDossier,
   cacherCarnet,
   ajouterSociete,
@@ -36,6 +37,47 @@ const CLIENT = "11111111-1111-4111-8111-111111111111";
 const DOSSIER = "22222222-2222-4222-8222-222222222222";
 const CARTE = "33333333-3333-4333-8333-333333333333";
 const DOC = "44444444-4444-4444-8444-444444444444";
+
+test("modifier_carte pose divers terrestres sans changer le type de carte", async () => {
+  const seen: { body: Record<string, unknown> | null } = { body: null };
+  const booking = {
+    id: DOSSIER,
+    reference: "TB-2026-0159",
+    visible_to_client: true,
+    archived_at: null,
+    status: "confirmed",
+  };
+  const result = await modifierCarte(
+    { dossier_id: DOSSIER, carte_id: CARTE, categorie_mb3m: "divers_terrestres" },
+    {
+      admin: fakeAdmin(),
+      findBooking: async () => booking,
+      patchCard: async (_client, bookingId, itemId, body: Record<string, unknown>) => {
+        assert.equal(bookingId, DOSSIER);
+        assert.equal(itemId, CARTE);
+        seen.body = body;
+        return { item: { id: CARTE }, ledgerWarning: null };
+      },
+    }
+  );
+  assert.equal(result.carte_id, CARTE);
+  assert.equal(seen.body?.mb3m_activity, "land");
+  assert.equal(seen.body ? "kind" in seen.body : false, false);
+  await assert.rejects(
+    () =>
+      modifierCarte(
+        { dossier_id: DOSSIER, carte_id: CARTE, categorie_mb3m: "hôtel" },
+        {
+          admin: fakeAdmin(),
+          findBooking: async () => booking,
+          patchCard: async () => {
+            throw new Error("ne doit pas écrire");
+          },
+        }
+      ),
+    (err: unknown) => err instanceof McpWriteError && /Catégorie MB3M/.test(err.message)
+  );
+});
 
 test("supprimer un client exige son nom complet", async () => {
   let removed = false;

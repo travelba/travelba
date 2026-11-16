@@ -9,6 +9,7 @@ import {
   type BillingCompanyInput,
 } from "@/lib/crm/billing-companies";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
+import { parseMb3mActivityInput } from "@/lib/crm/mb3m-activity";
 import { setCarnetPublished, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
 import { customerDeleteConfirmed, DELETE_CUSTOMER_CONFIRM_ERROR } from "@/lib/crm/delete-confirm";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
@@ -548,6 +549,11 @@ export async function modifierCarte(input: Record<string, unknown>, deps: DeskDe
   if (input.type && !kind) throw new McpWriteError("Type de carte inconnu.");
   const body = cardBody(input, kind || "fee");
   delete body.kind;
+  if ("categorie_mb3m" in input) {
+    const chosen = parseMb3mActivityInput(input.categorie_mb3m);
+    if ("error" in chosen) throw new McpWriteError(chosen.error);
+    body.mb3m_activity = chosen.value === "land" ? "land" : "automatique";
+  }
   const patch = deps.patchCard ?? patchStaffBookingCard;
   const result = await patch(clientOf(deps, Boolean(deps.patchCard)), booking.id, carteId, body);
   if ("error" in result) throw new McpWriteError(result.error);

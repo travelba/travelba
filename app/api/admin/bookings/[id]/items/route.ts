@@ -15,6 +15,7 @@ import {
 import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-addition";
 import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
+import { readMb3mActivityOverride, withMb3mActivity } from "@/lib/crm/mb3m-activity";
 import { parseMoney } from "@/lib/crm/money";
 import { applyExpensePricing } from "@/lib/crm/expense-pricing";
 import { awaitingExpenseDetails, validatedExpenseDetails } from "@/lib/crm/expense-validation";
@@ -223,6 +224,17 @@ async function updateBookingItem(
     const details = parseItemDetails(body.details);
     if ("error" in details) return { error: jsonError(details.error) };
     patch.details = details.details;
+  }
+  if ("mb3m_activity" in body) {
+    const chosen = withMb3mActivity("details" in patch ? patch.details : current.details, body.mb3m_activity);
+    if ("error" in chosen) return { error: jsonError(chosen.error) };
+    patch.details = chosen.details;
+  } else if ("details" in patch) {
+    const kept = readMb3mActivityOverride(current.details);
+    const next = patch.details;
+    if (kept && next && typeof next === "object" && !Array.isArray(next) && !("mb3m_activity" in next)) {
+      patch.details = { ...(next as Record<string, unknown>), mb3m_activity: "land" };
+    }
   }
   if (isLedgerExpenseKind(nextKind) && typeof body.validate === "boolean") {
     // Valider : la dépense automatique sort de « À valider » et compte côté client. false la remet à valider.

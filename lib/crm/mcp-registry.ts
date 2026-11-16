@@ -2096,7 +2096,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_carte",
     write: true,
     description:
-      "Corrige une carte déjà au dossier (carte_id de fiche_dossier) : titre, fournisseur, confirmation, dates, prix, détails. Ne change pas la visibilité et n’envoie rien. Le séjour caché ne débite pas. Vol et hôtel détaillés : modifier_vol et modifier_hotel.",
+      "Corrige une carte déjà au dossier (carte_id de fiche_dossier) : titre, fournisseur, confirmation, dates, prix, détails, categorie_mb3m. categorie_mb3m vaut automatique ou divers_terrestres. divers_terrestres facture cette ligne en activité 22, fournisseur DIVERS TERRESTRE, et la sort de la retenue billetterie. Le vol reste un vol : itinéraire, enregistrement, carte d’embarquement. fiche_dossier.cartes d’un vol porte categorie_mb3m. Ne change pas la visibilité et n’envoie rien. Le séjour caché ne débite pas. Vol et hôtel détaillés : modifier_vol et modifier_hotel.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
@@ -2107,6 +2107,10 @@ export const MCP_TOOLS: ToolDef[] = [
       debut: z.string().trim().max(40).optional(),
       fin: z.string().trim().max(40).optional(),
       prix: z.union([z.number(), z.string()]).optional(),
+      categorie_mb3m: z
+        .enum(["automatique", "divers_terrestres"])
+        .optional()
+        .describe("Facture MB3M : automatique, ou divers terrestres (activité 22)"),
       details: z.record(z.string(), z.unknown()).optional(),
     },
     run: (args) => modifierCarte(args),
