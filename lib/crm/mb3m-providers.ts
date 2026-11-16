@@ -1,4 +1,8 @@
-/** Fournisseurs MB3M (export officiel, Uid + nom). Aucun fournisseur n’est créé. */
+/**
+ * Export fournisseurs de Thomas Bolon (noms). Sert à reconnaître un fournisseur.
+ * Ces Uid ne sont pas ceux des factures : aucun ProviderId n’en est envoyé.
+ * Les identifiants envoyés sont dans `mb3m-verified-providers.ts`.
+ */
 export type Mb3mCatalogProvider = { id: string; name: string; account: boolean };
 export const MB3M_PROVIDERS: readonly Mb3mCatalogProvider[] = [
   { id: "8e5b819e-fec5-47e9-b771-939cc9ccd417", name: "360 Line", account: true },
