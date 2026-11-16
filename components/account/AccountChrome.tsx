@@ -28,8 +28,11 @@ function tabLabel(label: string) {
   return label;
 }
 
-function tabsFor(basePath: string, hotels: boolean) {
-  return TAB_DEFS.filter((tab) => hotels || tab.suffix !== "/hotels").map((tab) => ({
+function tabsFor(basePath: string, hotels: boolean, selfService: boolean) {
+  return TAB_DEFS.filter((tab) => {
+    if (selfService) return tab.suffix === "/hotels" || tab.suffix === "/reservations" || tab.suffix === "/profil";
+    return hotels || tab.suffix !== "/hotels";
+  }).map((tab) => ({
     ...tab,
     href: `${basePath}${tab.suffix}`,
   }));
@@ -43,6 +46,7 @@ export function AccountChrome({
   preview = false,
   desk = false,
   hotels = false,
+  selfService = false,
   children,
 }: {
   customerName: string;
@@ -56,10 +60,12 @@ export function AccountChrome({
   preview?: boolean;
   /** Barre noire et onglet Hôtels. Réservé au compte autorisé, tant que la barre n’est pas validée. */
   hotels?: boolean;
+  /** Inscrit autonome : Hôtels, Réservations, profil court. */
+  selfService?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const tabs = tabsFor(basePath, hotels);
+  const tabs = tabsFor(basePath, hotels, selfService);
   const activeIndex = tabs.findIndex((tab) =>
     tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
   );

@@ -13,6 +13,7 @@ import { Icon } from "@/components/crm/icons";
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hotel-fr";
 import { HotelCardHold } from "@/components/account/HotelCardHold";
+import { loadStripe } from "@stripe/stripe-js";
 import { LE_PAY_COPY, PAY_COPY } from "@/lib/crm/hotel-direct";
 import { lePrimaryGuest, leWidgetSignal, safeCardWidgetUrl } from "@/lib/crm/le-self-book";
 import {
@@ -57,6 +58,7 @@ type BookingReply = {
   widgetOrigin?: string;
   clientSecret?: string;
   intentId?: string;
+  reuseCard?: boolean;
   phase?: string;
   view?: { id: string; label: string; cancel: "cancel" | "ask" | "none"; conditions: string; dossier?: string | null; confirmation?: string | null };
 };
@@ -389,6 +391,7 @@ export function HotelJourney({
   onOpenOther,
   trial = true,
   leApi = false,
+  selfService = false,
 }: {
   hotel: ClientHotel;
   stayRooms: HotelRoomOccupancy[];
@@ -403,6 +406,8 @@ export function HotelJourney({
   trial?: boolean;
   /** Réservation par l’API. Les autres clients gardent le parcours e-mail. */
   leApi?: boolean;
+  /** Inscrit autonome : carte déjà enregistrée, jamais le règlement par l’agence. */
+  selfService?: boolean;
 }) {
   const requestKey = hotel.hotelId
     ? `${hotel.hotelId}|${query.destination}|${query.checkIn}|${query.checkOut}|${query.rooms.length}`
@@ -445,7 +450,14 @@ export function HotelJourney({
   const [cardSecret, setCardSecret] = useState<{ clientSecret: string; intentId: string } | null>(null);
   const [widget, setWidget] = useState<{ url: string; origin: string; terms: string } | null>(null);
   const [cardFrame, setCardFrame] = useState<"idle" | "loading" | "ready" | "saved">("idle");
-  const payCopy = leApi
+  const payCopy = selfService
+    ? {
+        cardTitle: "Carte enregistrée",
+        card: "Le montant du séjour est autorisé sur votre carte. Il est encaissé lorsque l’hôtel est confirmé.",
+        agencyTitle: "",
+        agency: "",
+      }
+    : leApi
     ? { cardTitle: LE_PAY_COPY.clientTitle, card: LE_PAY_COPY.client, agencyTitle: LE_PAY_COPY.agencyTitle, agency: LE_PAY_COPY.agency }
     : { cardTitle: PAY_COPY.cardTitle, card: PAY_COPY.card, agencyTitle: PAY_COPY.agencyTitle, agency: PAY_COPY.agency };
   const roomsRef = useRef<HTMLDivElement>(null);
@@ -453,10 +465,11 @@ export function HotelJourney({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const payCurrency = rate?.currency || "";
   const payMethods = useMemo(
-    () => offeredPayMethods({ api: Boolean(leApi), currency: payCurrency }),
-    [leApi, payCurrency]
+    () => offeredPayMethods({ api: Boolean(leApi || selfService), currency: payCurrency, selfService }),
+    [leApi, payCurrency, selfService]
   );
-  const selectedPay: PayMethod | "" = payMethod && payMethods.includes(payMethod) ? payMethod : "";
+  const selectedPay: PayMethod | "" =
+    payMethods.length === 1 ? payMethods[0] : payMethod && payMethods.includes(payMethod) ? payMethod : "";
 
   useEffect(() => {
     const lock = placing || Boolean(widget) || (sending && !widget);
@@ -695,6 +708,21 @@ export function HotelJourney({
         setWidget(null);
         setFareBlock(json?.error || BOOKING_FAILED);
         setNote("");
+        return;
+      }
+      if (json?.reuseCard && json.clientSecret && json.intentId) {
+        const publishable = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "";
+        const stripe = publishable ? await loadStripe(publishable) : null;
+        if (!stripe) {
+          setFareBlock("L’autorisation n’a pas pu être ouverte.");
+          return;
+        }
+        const confirmed = await stripe.confirmCardPayment(json.clientSecret, { return_url: window.location.href });
+        if (confirmed.error || confirmed.paymentIntent?.status !== "requires_capture") {
+          setFareBlock(confirmed.error?.message || "L’autorisation n’est pas confirmée.");
+          return;
+        }
+        await send(json.intentId);
         return;
       }
       if (json?.clientSecret && json.intentId) {

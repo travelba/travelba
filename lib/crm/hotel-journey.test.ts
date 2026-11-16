@@ -196,6 +196,11 @@ function sampleRate(partial: Partial<ClientRate> = {}): ClientRate {
   };
 }
 
+test("un inscrit autonome ne voit que la carte", () => {
+  assert.deepEqual(offeredPayMethods({ api: true, currency: "EUR", selfService: true }), ["card"]);
+  assert.deepEqual(offeredPayMethods({ api: true, currency: "EUR" }), ["card", "agency"]);
+});
+
 test("deux tarifs identiques n’en font qu’un, une pension différente reste", () => {
   const same = presentRates([
     sampleRate({ offerId: "a" }),

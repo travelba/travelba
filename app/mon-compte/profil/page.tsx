@@ -10,6 +10,10 @@ import { ProfileForm } from "@/components/account/ProfileForm";
 import { PhoneWallBanner } from "@/components/crm/ui";
 import { SignOutButton } from "@/components/account/SignOutButton";
 import { AccountPage } from "@/components/account/AccountPage";
+import { PhoneVerifyForm } from "@/components/account/PhoneVerifyForm";
+import { SignupCard } from "@/components/account/SignupCard";
+import { isSelfServiceOrigin } from "@/lib/crm/self-signup";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export default async function ProfilPage() {
   const supabase = await createClient();
@@ -26,6 +30,30 @@ export default async function ProfilPage() {
 
   const jar = await cookies();
   const desk = deskBypass(jar.get(DESK_COOKIE)?.value, user.id);
+  if (isSelfServiceOrigin(customer.account_origin)) {
+    const { data: cards } = await createServiceClient()
+      .from("crm_payment_methods")
+      .select("last4")
+      .eq("customer_id", customer.id)
+      .order("is_default", { ascending: false })
+      .limit(1);
+    const last4 = (cards?.[0] as { last4?: string | null } | undefined)?.last4;
+    return (
+      <AccountPage motion="fade">
+        <div className="space-y-4">
+          {customer.phone_verified_at ? (
+            <p className="text-sm text-[var(--admin-navy)]">Téléphone vérifié.</p>
+          ) : (
+            <PhoneVerifyForm initialPhone={customer.phone || ""} />
+          )}
+          <p className="text-sm text-[var(--admin-navy)]">{last4 ? `Carte •••• ${last4}` : "Aucune carte enregistrée."}</p>
+          <SignupCard onSaved={() => {}} />
+          <PasswordChangeForm />
+          <SignOutButton />
+        </div>
+      </AccountPage>
+    );
+  }
 
   return (
     <AccountPage motion="fade">

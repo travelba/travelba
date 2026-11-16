@@ -207,6 +207,11 @@ export type CrmCustomer = {
   hotel_direct_live?: boolean;
   /** Réservation hôtel par l’API. Défaut faux. Le mode réel seul ne l’ouvre pas. */
   hotel_le_api_booking?: boolean;
+  /** invited : fiche de l’agence. self_service : inscrit autonome. */
+  account_origin?: string | null;
+  phone_verified_at?: string | null;
+  signup_completed_at?: string | null;
+  signup_terms_at?: string | null;
   /** Taux du compte : 0.1, 0.075 ou 0.05. Null = 10 %. */
   agency_fee_rate?: number | string | null;
   created_at: string;

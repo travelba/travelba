@@ -53,6 +53,8 @@ import { centsToAmount, formatMoney } from "@/lib/crm/money";
 import { cardReadStopReason, issuePliantCard, lockPliantCard, pliantConfigured, readIssuedPliantCardSecrets, readPliantCardholderName } from "@/lib/crm/pliant";
 import { scrubPliantLog } from "@/lib/crm/pliant-tx";
 import { recordPliantAlert } from "@/lib/crm/agency-log";
+import { isSelfServiceOrigin } from "@/lib/crm/self-signup";
+import { defaultCardId, selfServiceBookBlock } from "@/lib/crm/self-signup-run";
 import { ensureStripeCustomer, getStripe, stripeConfigured } from "@/lib/crm/stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -562,7 +564,29 @@ type StayCustomer = HotelAccessCustomer & {
   first_name?: string | null;
   last_name?: string | null;
   email?: string | null;
+  account_origin?: string | null;
+  on_hold?: boolean | null;
+  phone_verified_at?: string | null;
 };
+
+async function dropClientHold(intentId: string | null | undefined) {
+  if (!intentId) return;
+  const stripe = getStripe();
+  if (!stripe) return;
+  const current = await stripe.paymentIntents.retrieve(intentId).catch(() => null);
+  if (!current || current.status === "succeeded" || current.status === "canceled") return;
+  await stripe.paymentIntents.cancel(intentId).catch(() => null);
+}
+
+async function captureClientAuthorization(intentId: string) {
+  const stripe = getStripe();
+  if (!stripe) return false;
+  const captured = await stripe.paymentIntents.capture(intentId).catch(async () => {
+    const current = await stripe.paymentIntents.retrieve(intentId).catch(() => null);
+    return current && current.status === "succeeded" ? current : null;
+  });
+  return Boolean(captured && (captured.status === "succeeded" || captured.status === "processing"));
+}
 
 async function saveStay(admin: Admin, stayId: string, stay: DirectStay) {
   await admin
@@ -644,6 +668,8 @@ async function placeLeStay(input: {
   guests: string[];
   arrival: string | null;
   payMethod: "card" | "agency";
+  /** Autorisation Stripe du client, encaissée seulement si l’hôtel confirme. */
+  clientCardIntent?: string | null;
   companions: string[][];
   now: string;
   fetchImpl?: typeof fetch;
@@ -809,8 +835,10 @@ async function placeLeStay(input: {
       .eq("id", stayId);
   }
 
-  const release = (reason: string) =>
-    rollbackLe({ admin: input.admin, stayId, stay, offer: input.offer, bookingId, reason });
+  const release = async (reason: string) => {
+    await dropClientHold(input.clientCardIntent);
+    await rollbackLe({ admin: input.admin, stayId, stay, offer: input.offer, bookingId, reason });
+  };
 
   const agency = input.payMethod === "agency";
   if (!agency && !input.offer.le_session_id) {
@@ -1081,7 +1109,27 @@ async function placeLeStay(input: {
     }
     if (!booking && posted.ok && "booking" in posted) booking = posted.booking;
   }
-  if (!booking) return { ok: false, message: NOT_CHARGED };
+  if (!booking) {
+    await release("Refus");
+    return { ok: false, message: NOT_CHARGED };
+  }
+
+  if (input.clientCardIntent) {
+    const taken = await captureClientAuthorization(input.clientCardIntent);
+    if (!taken) {
+      await cancelLittleEmperorsBooking(booking.id, input.fetchImpl).catch(() => null);
+      await dropClientHold(input.clientCardIntent);
+      await rollbackLe({
+        admin: input.admin,
+        stayId,
+        stay,
+        offer: input.offer,
+        bookingId,
+        reason: "Encaissement",
+      });
+      return { ok: false, message: "L’encaissement n’a pas abouti. La réservation n’est pas ouverte." };
+    }
+  }
 
   input.onPhase?.("stay");
   const confirmation = booking.confirmation_number || String(booking.id);
@@ -1219,6 +1267,29 @@ async function placeLeStay(input: {
     { onConflict: "le_booking_id" }
   );
 
+  if (input.clientCardIntent) {
+    const { data: prior } = await input.admin
+      .from("crm_transactions")
+      .select("id")
+      .eq("external_id", input.clientCardIntent)
+      .eq("source", "stripe")
+      .maybeSingle();
+    if (!prior) {
+      await input.admin.from("crm_transactions").insert({
+        customer_id: input.customer.id,
+        booking_id: bookingId,
+        direction: "credit",
+        kind: "payment",
+        amount: centsToAmount(input.offer.sell_cents),
+        currency: input.offer.currency,
+        label: input.offer.hotel_name,
+        source: "stripe",
+        external_id: input.clientCardIntent,
+        status: "posted",
+      });
+    }
+  }
+
   const step = openLeConfirmed({
     payMethod: input.payMethod,
     sellCents: input.offer.sell_cents,
@@ -1235,6 +1306,14 @@ async function placeLeStay(input: {
   });
   step.stay.reference = reference;
   step.stay.hotelName = input.offer.hotel_name;
+  if (input.clientCardIntent) {
+    step.stay = {
+      ...step.stay,
+      payMethod: "card",
+      stripe: "captured",
+      stripeIntent: input.clientCardIntent,
+    };
+  }
   await runEffects({
     admin: input.admin,
     stayId,
@@ -1252,14 +1331,29 @@ async function placeLeStay(input: {
   });
   await input.admin
     .from("crm_hotel_direct_stays")
-    .update({ state: step.stay, phase: step.stay.phase, le_booking_id: booking.id, updated_at: input.now })
+    .update({
+      state: step.stay,
+      phase: step.stay.phase,
+      le_booking_id: booking.id,
+      pay_method: step.stay.payMethod,
+      updated_at: input.now,
+    })
     .eq("id", stayId);
   const view = viewOf(stayId, step.stay, input.offer, input.now.slice(0, 10));
   return { ok: true, view: { ...view, dossier: /^TB-/.test(reference) ? reference : null } };
 }
 
 export async function openDirectStay(input: {
-  customer: HotelAccessCustomer & { id: string; first_name?: string | null; last_name?: string | null; email?: string | null; stripe_customer_id?: string | null };
+  customer: HotelAccessCustomer & {
+    id: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+    stripe_customer_id?: string | null;
+    account_origin?: string | null;
+    on_hold?: boolean | null;
+    phone_verified_at?: string | null;
+  };
   offerId: string;
   guests: string[];
   arrival?: string | null;
@@ -1296,14 +1390,40 @@ export async function openDirectStay(input: {
     partnerRate: offer.account === "little_emperors",
   };
   const live = hotelDirectLive(input.customer);
+  const selfService = isSelfServiceOrigin(input.customer.account_origin);
+  if (selfService) {
+    const block = await selfServiceBookBlock(input.customer, offer.sell_cents, offer.currency);
+    if (block) return { ok: false as const, message: block };
+    if (input.payMethod !== "card") return { ok: false as const, message: "Le règlement se fait par carte." };
+  }
   const port = portForBooking({
     partnerRate: quote.partnerRate,
-    leEndpoint: hotelLeApiBooking(input.customer) && quote.partnerRate && littleEmperorsConfigured(),
+    leEndpoint: (selfService || hotelLeApiBooking(input.customer)) && quote.partnerRate && littleEmperorsConfigured(),
   });
   const checked = port.recheck(quote, now);
   if (!checked.ok) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
   const booked = port.book(quote);
   if (booked.status === "place") {
+    if (selfService) {
+      if (!input.stripeIntent) return { ok: false as const, message: "L’autorisation de la carte n’est pas confirmée." };
+      const held = await cardHoldMatches(input.customer.id, offer, input.stripeIntent);
+      if (!held) return { ok: false as const, message: "L’autorisation de la carte n’est pas confirmée." };
+      return placeLeStay({
+        admin,
+        customer: input.customer,
+        offer,
+        guests: input.guests,
+        arrival: input.arrival || null,
+        payMethod: "agency",
+        clientCardIntent: input.stripeIntent,
+        companions: input.companions || [],
+        now,
+        fetchImpl: input.deps?.fetchImpl,
+        sendMail: input.deps?.sendMail,
+        secretsSleep: input.deps?.secretsSleep,
+        onPhase: input.onPhase,
+      });
+    }
     if (input.payMethod === "card" && !input.cardReady) return prepareLeClientCard(admin, input.customer.id, offer, input.companions || []);
     return placeLeStay({
       admin,
@@ -1320,6 +1440,7 @@ export async function openDirectStay(input: {
       onPhase: input.onPhase,
     });
   }
+  if (selfService) return { ok: false as const, message: "La réservation n’est pas ouverte." };
   if (booked.status === "unavailable") return { ok: false as const, message: "La réservation directe n’est pas ouverte." };
 
   const existing = await admin.from("crm_hotel_direct_stays").select("id, state").eq("idempotency_key", quote.idempotencyKey).maybeSingle();
@@ -1590,6 +1711,9 @@ export async function prepareDirectPayment(input: {
     first_name: string | null;
     last_name: string | null;
     stripe_customer_id: string | null;
+    account_origin?: string | null;
+    on_hold?: boolean | null;
+    phone_verified_at?: string | null;
   };
   offerId: string;
   companions?: string[][];
@@ -1598,6 +1722,13 @@ export async function prepareDirectPayment(input: {
   const { data } = await admin.from("crm_hotel_search_offers").select(OFFER_COLUMNS).eq("id", input.offerId).eq("customer_id", input.customer.id).maybeSingle();
   const offer = data as Offer | null;
   if (!offer || Date.parse(offer.expires_at) <= Date.now()) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
+  if (isSelfServiceOrigin(input.customer.account_origin)) {
+    const block = await selfServiceBookBlock(input.customer, offer.sell_cents, offer.currency);
+    if (block) return { ok: false as const, message: block };
+    const paymentMethodId = await defaultCardId(input.customer.id);
+    if (!paymentMethodId) return { ok: false as const, message: "Enregistrez une carte avant de réserver." };
+    return beginDirectCard({ ...input, savedPaymentMethodId: paymentMethodId });
+  }
   if (offer.account === "little_emperors" && littleEmperorsConfigured() && hotelLeApiBooking(input.customer)) {
     return prepareLeClientCard(admin, input.customer.id, offer, input.companions || []);
   }
@@ -1613,6 +1744,7 @@ export async function beginDirectCard(input: {
     stripe_customer_id: string | null;
   };
   offerId: string;
+  savedPaymentMethodId?: string | null;
 }) {
   if (!hotelDirectLive(input.customer)) return { ok: false as const, message: "Le mode réel est éteint." };
   if (!stripeConfigured()) return { ok: false as const, message: "Stripe n’est pas configuré." };
@@ -1622,11 +1754,34 @@ export async function beginDirectCard(input: {
   const { data } = await admin.from("crm_hotel_search_offers").select(OFFER_COLUMNS).eq("id", input.offerId).eq("customer_id", input.customer.id).maybeSingle();
   const offer = data as Offer | null;
   if (!offer || Date.parse(offer.expires_at) <= Date.now()) return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
-  if (offer.account === "little_emperors" && littleEmperorsConfigured() && hotelLeApiBooking(input.customer)) {
+  if (!input.savedPaymentMethodId && offer.account === "little_emperors" && littleEmperorsConfigured() && hotelLeApiBooking(input.customer)) {
     return { ok: false as const, message: "Ce séjour se règle auprès de l’hôtel, ou par l’agence." };
   }
   try {
     const stripeCustomerId = await ensureStripeCustomer(stripe, admin, input.customer);
+    if (input.savedPaymentMethodId) {
+      const baseKey = `direct-auth:${input.customer.id}:${offer.id}:${offer.sell_cents}:${input.savedPaymentMethodId}`;
+      const openHold = (idempotencyKey: string) =>
+        stripe.paymentIntents.create(
+          {
+            amount: offer.sell_cents,
+            currency: offer.currency.toLowerCase(),
+            customer: stripeCustomerId,
+            payment_method: input.savedPaymentMethodId || undefined,
+            capture_method: "manual",
+            confirm: false,
+            payment_method_types: ["card"],
+            payment_method_options: { card: { request_three_d_secure: "any" } },
+            description: offer.hotel_name.slice(0, 180),
+            metadata: { purpose: "hotel_direct", crm_customer_id: input.customer.id, offer_id: offer.id },
+          },
+          { idempotencyKey }
+        );
+      let intent = await openHold(baseKey);
+      if (intent.status === "canceled" || intent.status === "succeeded") intent = await openHold(`${baseKey}:${Date.now()}`);
+      if (!intent.client_secret) return { ok: false as const, message: "L’autorisation n’a pas pu être ouverte." };
+      return { ok: true as const, clientSecret: intent.client_secret, intentId: intent.id, reuseCard: true as const };
+    }
     const intent = await stripe.paymentIntents.create(
       {
         amount: offer.sell_cents,

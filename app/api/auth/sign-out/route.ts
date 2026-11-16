@@ -9,6 +9,7 @@ import {
   revokeAuthSession,
   signOutRedirectPath,
 } from "@/lib/crm/sign-out";
+import { signupCookieWrite } from "@/lib/crm/self-signup";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 
 export const runtime = "nodejs";
@@ -47,5 +48,7 @@ export async function POST(request: Request) {
   }
 
   const response = NextResponse.json({ ok: true, redirect });
+  const signup = signupCookieWrite("clear", secure);
+  response.cookies.set(signup.name, signup.value, signup.options);
   return applySignOut(response, before, secure);
 }

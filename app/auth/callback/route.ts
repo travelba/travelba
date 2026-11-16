@@ -8,6 +8,9 @@ import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { isGoogleUser, rejectGoogleStaffLogin, verifyGoogleStaffLogin } from "@/lib/crm/google-staff";
 import { loginMethodFromCallback, recordCustomerLogin } from "@/lib/crm/customer-login";
+import { requestIp } from "@/lib/crm/rate-limit";
+import { signupCookieWrite } from "@/lib/crm/self-signup";
+import { resolvePublicGoogle } from "@/lib/crm/self-signup-run";
 import { safeInternalPath } from "@/lib/crm/safe-path";
 import {
   PASSWORD_SETUP_COOKIE,
@@ -54,6 +57,23 @@ export async function GET(request: Request) {
 
   if (!user) {
     return NextResponse.redirect(new URL(next.startsWith("/admin") ? "/admin/login?error=auth" : "/connexion?error=auth", url.origin));
+  }
+
+  if (url.searchParams.get("compte") === "google") {
+    const result = await resolvePublicGoogle(user, requestIp(request.headers));
+    if (result.kind === "staff" || result.kind === "refuse") {
+      await supabase.auth.signOut();
+      await rejectGoogleStaffLogin(user, result.kind === "staff" ? "domaine" : "inconnu");
+      const path = result.kind === "staff" ? "/admin/login?error=google-domaine" : result.path;
+      return NextResponse.redirect(new URL(path, url.origin));
+    }
+    await supabase.auth.refreshSession();
+    await recordCustomerLogin(user.id, "entry");
+    const response = NextResponse.redirect(new URL(result.path, url.origin));
+    const cookie = signupCookieWrite(result.cookie, process.env.NODE_ENV === "production");
+    response.cookies.set(cookie.name, cookie.value, cookie.options);
+    stampClientSession(response, (await cookies()).getAll(), process.env.NODE_ENV === "production");
+    return response;
   }
 
   // Entrée Google de l’équipe : domaine travelba.fr et collègue invité, vérifiés côté serveur.

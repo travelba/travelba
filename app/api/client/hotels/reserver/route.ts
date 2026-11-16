@@ -5,6 +5,7 @@ import { hotelActivityMode } from "@/lib/crm/hotel-activity";
 import { recordHotelClientActivity } from "@/lib/crm/hotel-activity-run";
 import { openDirectStay, prepareDirectPayment } from "@/lib/crm/hotel-direct-run";
 import { lePrimaryGuest } from "@/lib/crm/le-self-book";
+import { isSelfServiceOrigin } from "@/lib/crm/self-signup";
 
 export const runtime = "nodejs";
 
@@ -47,9 +48,11 @@ export async function POST(request: Request) {
     await noteError(auth.customer.id, auth.user.id, mode, "Indiquez le prénom et le nom de chaque voyageur, une personne par ligne.");
     return jsonError("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne.", 400);
   }
-  if (!payMethod) {
-    await noteError(auth.customer.id, auth.user.id, mode, "Choisissez un règlement.");
-    return jsonError("Choisissez un règlement.", 400);
+  const selfCard = isSelfServiceOrigin(auth.customer.account_origin) && payMethod !== "card";
+  if (!payMethod || selfCard) {
+    const message = selfCard ? "Le règlement se fait par carte." : "Choisissez un règlement.";
+    await noteError(auth.customer.id, auth.user.id, mode, message);
+    return jsonError(message, 400);
   }
   const live = hotelDirectLive(auth.customer);
   try {
@@ -66,7 +69,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true, widgetUrl: prep.widgetUrl, widgetOrigin: prep.widgetOrigin, terms: prep.terms });
       }
       if ("clientSecret" in prep && prep.clientSecret) {
-        return NextResponse.json({ ok: true, clientSecret: prep.clientSecret, intentId: prep.intentId });
+        return NextResponse.json({
+          ok: true,
+          clientSecret: prep.clientSecret,
+          intentId: prep.intentId,
+          reuseCard: "reuseCard" in prep ? prep.reuseCard === true : false,
+        });
       }
       return jsonError("La réservation n’a pas pu être ouverte.", 400);
     }
