@@ -61,6 +61,7 @@ import {
   findMatchingItem,
   hotelMatchKeepsStay,
   keptHotelStayFields,
+  mergeFlightPassengers,
 } from "@/lib/crm/item-match";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
@@ -400,6 +401,13 @@ async function upsertItemsAndTravelers(
       details,
     };
     let match = findMatchingItem(pool, probe);
+    if (kind === "flight" && match) {
+      const passengers = mergeFlightPassengers(match.details, details);
+      if (passengers.length) {
+        details.passengers = passengers;
+        details.ticket_count = passengers.length;
+      }
+    }
     let sameBooking = Boolean(match && hotelMatchKeepsStay(match, probe));
     if (!match) {
       match = findHotelExactStay(pool, probe);

@@ -25,7 +25,6 @@ import {
   kindIcon,
 } from "@/lib/crm/carnet";
 import { flightCountsInStay } from "@/lib/crm/bookings";
-import { flightLegLine, hiddenItineraryIds, itineraryTail, roundTripMate, roundTripPairs, roundTripPriceLabel, roundTripReturnIds } from "@/lib/crm/flight-roundtrip";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { DRAFT_STEP_PREFIX, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
@@ -134,48 +133,13 @@ function stayCards(list: CrmBookingItem[]) {
 }
 
 function visibleStayCards(cards: CrmBookingItem[]) {
-  const hidden = hiddenItineraryIds(cards);
-  for (const id of roundTripReturnIds(cards)) hidden.add(id);
-  return cards.filter((item) => !hidden.has(item.id));
+  return cards;
 }
 
-function roundTripIds(id: string, rows: CrmBookingItem[]) {
-  const ids = new Set([id]);
-  for (const pair of roundTripPairs(stayCards(rows))) {
-    if (pair.outbound.id === id || pair.inbound.id === id) {
-      ids.add(pair.outbound.id);
-      ids.add(pair.inbound.id);
-    }
-  }
-  return ids;
-}
-
-/** Le retour reste juste après l’aller quand on réordonne la carte groupée. */
-function stitchRoundTrips(visible: CrmBookingItem[], rows: CrmBookingItem[]) {
-  const cards = stayCards(rows);
-  const inboundOf = new Map(roundTripPairs(cards).map((pair) => [pair.outbound.id, pair.inbound]));
-  const placed = new Set<string>();
-  const next: CrmBookingItem[] = [];
-  for (const item of visible) {
-    if (placed.has(item.id)) continue;
-    next.push(item);
-    placed.add(item.id);
-    const back = inboundOf.get(item.id);
-    if (back && !placed.has(back.id)) {
-      next.push(back);
-      placed.add(back.id);
-    }
-    for (const leg of itineraryTail(item, cards)) {
-      if (!placed.has(leg.id)) {
-        next.push(leg);
-        placed.add(leg.id);
-      }
-    }
-  }
-  for (const item of cards) {
-    if (!placed.has(item.id)) next.push(item);
-  }
-  return next;
+/** L’ordre glissé est gardé. Une carte absente de la liste reste à la fin. */
+function stitchCardOrder(visible: CrmBookingItem[], rows: CrmBookingItem[]) {
+  const placed = new Set(visible.map((item) => item.id));
+  return [...visible, ...stayCards(rows).filter((item) => !placed.has(item.id))];
 }
 
 function toSnapshot(item: CrmBookingItem): StepSnapshot {
@@ -468,15 +432,7 @@ export function BookingItemsPanel({
     setRows(next);
   }
 
-  const cardRows = (() => {
-    const cards = stayCards(rows);
-    const visible = visibleStayCards(cards);
-    if (editingId && roundTripReturnIds(cards).has(editingId)) {
-      const editing = cards.find((item) => item.id === editingId);
-      if (editing) return [...visible, editing];
-    }
-    return visible;
-  })();
+  const cardRows = visibleStayCards(stayCards(rows));
   const checkinByItem = new Map(
     flightCheckinViews({ items: stayCards(rows), documents, rows: checkins, now: new Date() }).map((line) => [line.itemId, line])
   );
@@ -495,7 +451,7 @@ export function BookingItemsPanel({
     }
     const expenses = rowsRef.current.filter((item) => isLedgerExpenseKind(item.kind));
     orderDirty.current = true;
-    remember([...stitchRoundTrips(nextCards, rowsRef.current), ...expenses]);
+    remember([...stitchCardOrder(nextCards, rowsRef.current), ...expenses]);
   }
 
   function finishCardDrag() {
@@ -666,7 +622,7 @@ export function BookingItemsPanel({
       return;
     }
     setMenuFor(null);
-    const ids = roundTripIds(item.id, rowsRef.current);
+    const ids = new Set([item.id]);
     remember(
       rowsRef.current.map((row) => {
         if (!ids.has(row.id)) return row;
@@ -698,7 +654,7 @@ export function BookingItemsPanel({
   }
 
   async function removeItem(id: string) {
-    const ids = roundTripIds(id, rowsRef.current);
+    const ids = new Set([id]);
     if (editingId && ids.has(editingId)) setEditingId(null);
     setMenuFor(null);
     remember(rowsRef.current.filter((row) => !ids.has(row.id)));
@@ -738,14 +694,11 @@ export function BookingItemsPanel({
       >
         {cardRows.map((item) => {
           const locked = editingId === item.id || busy;
-          const returnLeg = roundTripMate(item, rows);
-          const extraLegs = itineraryTail(item, rows);
-          const docs = documentsForItems(returnLeg ? [item, returnLeg] : [item], documents);
+          const docs = documentsForItems([item], documents);
           const subtitle = stepSubtitle(item);
           const ticketNames = item.kind === "flight" ? ticketTravelerNames(item.details) : [];
           const airport = item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
           const checkin = checkinByItem.get(item.id);
-          const returnCheckin = returnLeg ? checkinByItem.get(returnLeg.id) : undefined;
           const when =
             item.kind === "hotel" ? shortStayRange(item.start_at, item.end_at) : shortStayDay(item.start_at);
           const retired =
@@ -759,13 +712,7 @@ export function BookingItemsPanel({
             !item.visible_to_client &&
             !keptHiddenFromClient(item.details) &&
             countsAsCarnetCard(item.kind);
-          const price = retired
-            ? null
-            : returnLeg
-              ? roundTripPriceLabel(item, returnLeg, rows, currency)
-              : !flightCountsInStay(item, rows)
-                ? null
-                : itemPriceLabel(item, currency);
+          const price = retired || !flightCountsInStay(item, rows) ? null : itemPriceLabel(item, currency);
           const printed = readDocumentAmount(item.details);
           const stepAmount = item.amount == null ? null : Number(item.amount);
           const priceDiffers =
@@ -887,22 +834,6 @@ export function BookingItemsPanel({
                         <OnlineCheckinBadge line={checkin} />
                       </span>
                     ) : null}
-                    {extraLegs.length ? (
-                      <span className="block break-words text-xs text-muted">
-                        {extraLegs.map((leg) => (
-                          <span key={leg.id} className="block">{flightLegLine(leg)}</span>
-                        ))}
-                      </span>
-                    ) : returnLeg ? (
-                      <span className="block break-words text-xs text-muted">
-                        <span className="block">Retour · {flightLegLine(returnLeg)}</span>
-                        {returnCheckin ? (
-                          <span className="mt-1 block">
-                            <OnlineCheckinBadge line={returnCheckin} />
-                          </span>
-                        ) : null}
-                      </span>
-                    ) : null}
                     {quiet ? <span className="block break-words text-xs text-muted lg:truncate">{quiet}</span> : null}
                     {doubts.length ? (
                       <span className="mt-1 block text-xs font-semibold text-accent">{doubts.join(" ")}</span>
@@ -982,15 +913,6 @@ export function BookingItemsPanel({
                   >
                     Modifier
                   </button>
-                  {returnLeg ? (
-                    <button
-                      type="button"
-                      className="admin-tap inline-flex h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] lg:h-8 lg:flex-none"
-                      onClick={() => startEdit(returnLeg)}
-                    >
-                      Modifier le retour
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     aria-label="Autres actions de l’étape"

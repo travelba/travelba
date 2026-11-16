@@ -56,6 +56,18 @@ describe("dépôt des vols", () => {
     assert.equal(plan.cartes[1]?.cout, null);
   });
 
+  it("prépare une carte cachée par trajet, même PNR compris", () => {
+    const plan = planFlightDeposit({
+      items: [
+        transavia,
+        { ...transavia, title: "Dubaï → Athènes", start_at: "2026-11-01T18:00:00", details: { flight_number: "EK 209", pnr: "WFPMHG" } },
+      ],
+    });
+    assert.equal(plan.cartes.length, 2);
+    assert.deepEqual(plan.cartes.map((card) => card.pnr), ["WFPMHG", "WFPMHG"]);
+    assert.deepEqual(plan.cartes.map((card) => card.lignes[0]?.vol), ["TO 4338", "EK 209"]);
+  });
+
   it("additionne les billets repliés sur le même vol", () => {
     const summed = sumFlightTicketCounts(
       ticket(),
@@ -72,6 +84,55 @@ describe("dépôt des vols", () => {
     assert.equal((hurghada?.details as { ticket_count?: number } | undefined)?.ticket_count, 2);
     assert.equal(hurghada?.amount, 0);
     assert.equal((summed.travelers || []).length, 2);
+  });
+
+  it("ajoute le passager sur la carte du même vol et laisse l’autre trajet", () => {
+    const existing = {
+      kind: "flight",
+      confirmation_ref: "ZU5TCO",
+      start_at: "2027-04-13T10:00:00",
+      title: "Nice → Dubaï",
+      details: {
+        flight_number: "EK 78",
+        pnr: "ZU5TCO",
+        passengers: [{ first_name: "Raphael", last_name: "Boukris" }],
+      },
+    };
+    const summed = sumFlightTicketCounts(
+      {
+        items: [
+          {
+            kind: "flight",
+            title: "Nice → Dubaï",
+            confirmation_ref: "ZU5TCO",
+            start_at: "2027-04-13T10:00:00",
+            details: {
+              flight_number: "EK 78",
+              pnr: "ZU5TCO",
+              passengers: [{ first_name: "Lea", last_name: "Martin" }],
+            },
+          },
+          {
+            kind: "flight",
+            title: "Dubaï → Athènes",
+            confirmation_ref: "ZU5TCO",
+            start_at: "2027-04-13T18:00:00",
+            details: {
+              flight_number: "EK 209",
+              pnr: "ZU5TCO",
+              passengers: [{ first_name: "Lea", last_name: "Martin" }],
+            },
+          },
+        ],
+      },
+      [existing],
+      "mail-lea"
+    );
+    const nice = (summed.items || []).find((item) => item.title === "Nice → Dubaï");
+    const dubai = (summed.items || []).find((item) => item.title === "Dubaï → Athènes");
+    const names = (list: { first_name?: string }[] | undefined) => (list || []).map((row) => row.first_name);
+    assert.deepEqual(names((nice?.details as { passengers?: { first_name?: string }[] }).passengers), ["Raphael", "Lea"]);
+    assert.deepEqual(names((dubai?.details as { passengers?: { first_name?: string }[] }).passengers), ["Lea"]);
   });
 });
 

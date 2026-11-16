@@ -41,7 +41,7 @@ import {
   itemPriceLabel,
   undatedTimeline,
 } from "@/lib/crm/carnet";
-import { flightLegLine, roundTripMate, roundTripPriceLabel, roundTripReturnIds } from "@/lib/crm/flight-roundtrip";
+import { flightLegLine, roundTripPriceLabel } from "@/lib/crm/flight-roundtrip";
 import { statedTicketCount } from "@/lib/crm/item-match";
 import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import {
@@ -465,7 +465,6 @@ export function CarnetItinerary({
   } | null;
 }) {
   const liveItems = completeFlightRoutes(items).filter((item) => isActiveItem(item));
-  const returnIds = roundTripReturnIds(liveItems);
   const days = groupByDay(liveItems);
   const undated = undatedTimeline(liveItems);
   const now = new Date();
@@ -600,8 +599,7 @@ export function CarnetItinerary({
             </p>
             {rows.map((row) => {
               if (row.type !== "item") return offerCard(row.offer);
-              if (coveredExtraIds.has(row.item.id) || returnIds.has(row.item.id)) return null;
-              const mate = roundTripMate(row.item, liveItems);
+              if (coveredExtraIds.has(row.item.id)) return null;
               return (
                   <CardBody
                     key={`${row.item.id}-${day}`}
@@ -621,12 +619,9 @@ export function CarnetItinerary({
                     showPrice={flightCountsInStay(row.item, items)}
                     reference={booking.reference}
                     cancelOffer={hotelCancels.find((offer) => offer.itemId === row.item.id) || null}
-                    returnLeg={mate}
-                    returnCalendarHref={mate ? itemHref(mate.id) : null}
                     stayItems={liveItems}
                     checkinStatus={checkinByItem[row.item.id] || null}
-                    returnCheckinStatus={mate ? checkinByItem[mate.id] || null : null}
-                    boarding={boardingFor(row.item, mate)}
+                    boarding={boardingFor(row.item, null)}
                   />
               );
             })}
@@ -637,9 +632,7 @@ export function CarnetItinerary({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
               Sans horaire
             </p>
-            {undated.filter((item) => !returnIds.has(item.id)).map((item) => {
-              const mate = roundTripMate(item, liveItems);
-              return (
+            {undated.map((item) => (
               <CardBody
                 key={item.id}
                 item={item}
@@ -652,15 +645,11 @@ export function CarnetItinerary({
                 partage={partage}
                 reference={booking.reference}
                 cancelOffer={hotelCancels.find((offer) => offer.itemId === item.id) || null}
-                returnLeg={mate}
-                returnCalendarHref={mate ? itemHref(mate.id) : null}
                 stayItems={liveItems}
                 checkinStatus={checkinByItem[item.id] || null}
-                returnCheckinStatus={mate ? checkinByItem[mate.id] || null : null}
-                boarding={boardingFor(item, mate)}
+                boarding={boardingFor(item, null)}
               />
-              );
-            })}
+            ))}
           </div>
         ) : null}
       </section>

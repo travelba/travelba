@@ -18,6 +18,7 @@ import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { clientCreditLines } from "@/lib/crm/unmatch-credit";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
+import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import { mb3mActivityChoiceLabel, readMb3mActivityOverride } from "@/lib/crm/mb3m-activity";
 import { flightGate, flightTerminal } from "@/lib/crm/flight-watch";
 import { checkinMcpLine, type FlightCheckinView } from "@/lib/crm/online-checkin";
@@ -751,6 +752,7 @@ function cardLine(
       debut: dossierFlightStamp(item.start_at, from, item.details?.departure_timezone),
       fin: dossierFlightStamp(item.end_at, to, item.details?.arrival_timezone),
       reference: item.confirmation_ref,
+      voyageurs: ticketTravelerNames(item.details),
       montre: item.visible_to_client,
       categorie_mb3m: mb3mActivityChoiceLabel(readMb3mActivityOverride(item.details)),
       enregistrement: line

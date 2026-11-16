@@ -116,7 +116,7 @@ function salePrice(amount: number | string | null | undefined) {
 
 /**
  * Aperçu des étapes d’un mail sur un dossier déjà ouvert.
- * Une étape vide du même type est remplie. Un aller-retour au même PNR reste une carte, une ligne par trajet.
+ * Une étape vide du même type est remplie. Chaque trajet reste une carte, même s’il partage le PNR.
  * Le prix de vente n’est pas repris du mail.
  */
 export function planEmailSteps(

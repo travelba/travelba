@@ -25,7 +25,7 @@ function flight(partial: Partial<CrmBookingItem> & Pick<CrmBookingItem, "id" | "
   };
 }
 
-test("le carnet montre l’aller-retour Arkia en une carte", async () => {
+test("le carnet montre l’aller et le retour Arkia en deux cartes", async () => {
   const outbound = flight({
     id: "out",
     title: "Tel Aviv → Paris",
@@ -85,6 +85,6 @@ test("le carnet montre l’aller-retour Arkia en une carte", async () => {
   );
   assert.match(html, /IZ611/);
   assert.match(html, /IZ612/);
-  assert.equal((html.match(/aller-retour/g) || []).length, 1);
-  assert.equal((html.match(/<summary/g) || []).length, 1);
+  assert.equal((html.match(/aller-retour/g) || []).length, 0);
+  assert.equal((html.match(/<summary/g) || []).length, 2);
 });

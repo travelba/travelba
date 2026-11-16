@@ -86,7 +86,7 @@ describe("un aller-retour, une carte", () => {
     assert.equal(roundTripPairs([outbound, sameWay]).length, 0);
   });
 
-  it("EK78 et EK209 au même PNR font une carte et une ligne", () => {
+  it("EK78 et EK209 au même PNR restent deux cartes", () => {
     const first = flight({
       id: "ek78",
       title: "Nice → Dubaï",
@@ -101,9 +101,8 @@ describe("un aller-retour, une carte", () => {
       start_at: "2027-04-13T18:00:00",
       details: { pnr: "KDP4AS", flight_number: "EK 209", from: "DXB", to: "ATH" },
     });
-    assert.equal(itineraryTail(first, [first, second]).map((leg) => leg.id).join(), "ek209");
-    assert.equal(itineraryTail(second, [first, second]).length, 0);
-    assert.deepEqual([...hiddenItineraryIds([first, second])], ["ek209"]);
+    assert.equal(itineraryTail(first, [first, second]).length, 0);
+    assert.equal(hiddenItineraryIds([first, second]).size, 0);
   });
 
   it("le prix identique s’affiche une fois", () => {
