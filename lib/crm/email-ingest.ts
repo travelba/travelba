@@ -7,6 +7,7 @@ import {
   gmailLabelNames,
   getAttachmentBytes,
   getMessage,
+  getThread,
   GmailHistoryTooOldError,
   listHistoryMessageIds,
   listMessageIdsByQuery,
@@ -23,6 +24,7 @@ import {
   gmailLabelMatchKey,
   isBookingCancellationLabel,
   nextBilletBackfillCursor,
+  unseenMessageIds,
 } from "@/lib/crm/gmail-parse";
 import {
   extractBookingFromPrepared,
@@ -156,16 +158,17 @@ export async function captureGmailHistory(
   }
 
   const perMessageLabel = new Map<string, string>();
+  const threadMessages: { id: string; threadId: string }[] = [];
   let latest = startHistoryId;
   try {
     for (const [labelName, labelId] of labelIds) {
-      const { messageIds, historyId } = await listHistoryMessageIds(
-        startHistoryId,
-        labelId
-      );
-      if (Number(historyId) > Number(latest)) latest = historyId;
-      for (const id of messageIds) {
+      const listed = await listHistoryMessageIds(startHistoryId, labelId);
+      if (Number(listed.historyId) > Number(latest)) latest = listed.historyId;
+      for (const id of listed.messageIds) {
         if (!perMessageLabel.has(id)) perMessageLabel.set(id, labelName);
+      }
+      for (const row of listed.threadMessages) {
+        if (!threadMessages.some((known) => known.id === row.id)) threadMessages.push(row);
       }
     }
   } catch (err) {
@@ -187,6 +190,35 @@ export async function captureGmailHistory(
         { onConflict: "gmail_message_id", ignoreDuplicates: true }
       );
     if (!error) captured += 1;
+  }
+
+  const missingThreads = threadMessages.filter((row) => !perMessageLabel.has(row.id));
+  if (missingThreads.length) {
+    const threadIds = [...new Set(missingThreads.map((row) => row.threadId))];
+    const { data: knownThreads } = await admin
+      .from("crm_email_ingest")
+      .select("gmail_thread_id, label")
+      .in("gmail_thread_id", threadIds)
+      .limit(200);
+    const labelOf = new Map<string, string>();
+    for (const row of knownThreads || []) {
+      const threadId = String(row.gmail_thread_id || "");
+      if (threadId && !labelOf.has(threadId)) labelOf.set(threadId, String(row.label || ""));
+    }
+    for (const row of missingThreads) {
+      const label = labelOf.get(row.threadId);
+      if (!label || perMessageLabel.has(row.id)) continue;
+      const { error } = await admin
+        .from("crm_email_ingest")
+        .upsert(
+          { gmail_message_id: row.id, label, status: "received" },
+          { onConflict: "gmail_message_id", ignoreDuplicates: true }
+        );
+      if (!error) {
+        perMessageLabel.set(row.id, label);
+        captured += 1;
+      }
+    }
   }
 
   const nextHistory =
@@ -1028,6 +1060,56 @@ export async function backfillRecentGmailMessages(days = 30) {
         { onConflict: "gmail_message_id", ignoreDuplicates: true }
       );
       if (error) break;
+      captured += 1;
+      if (captured >= 15) return { captured, scanned };
+    }
+  }
+  return { captured, scanned };
+}
+
+/**
+ * Reprend les messages manquants des fils déjà connus.
+ * Dédoublonne par identifiant de message, pas par fil ni par objet.
+ */
+export async function backfillSeenGmailThreads(limit = 8) {
+  const admin = createServiceClient();
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const bounded = Math.min(12, Math.max(1, limit));
+  const { data } = await admin
+    .from("crm_email_ingest")
+    .select("gmail_thread_id, label, received_at")
+    .not("gmail_thread_id", "is", null)
+    .gte("received_at", since)
+    .order("received_at", { ascending: false })
+    .limit(80);
+  const threads = new Map<string, string>();
+  for (const row of data || []) {
+    const threadId = String(row.gmail_thread_id || "").trim();
+    if (!threadId || threads.has(threadId)) continue;
+    threads.set(threadId, String(row.label || "crm"));
+    if (threads.size >= bounded) break;
+  }
+  let captured = 0;
+  let scanned = 0;
+  for (const [threadId, label] of threads) {
+    let messages: { id: string }[] = [];
+    try {
+      messages = await getThread(threadId);
+    } catch (err) {
+      console.error("[import] fil non relu", err instanceof Error ? err.message : "");
+      continue;
+    }
+    scanned += messages.length;
+    const ids = messages.map((message) => message.id).filter(Boolean);
+    if (!ids.length) continue;
+    const { data: existing } = await admin.from("crm_email_ingest").select("gmail_message_id").in("gmail_message_id", ids);
+    const known = (existing || []).map((row) => String(row.gmail_message_id || ""));
+    for (const messageId of unseenMessageIds(known, messages)) {
+      const { error } = await admin.from("crm_email_ingest").upsert(
+        { gmail_message_id: messageId, label, status: "received" },
+        { onConflict: "gmail_message_id", ignoreDuplicates: true }
+      );
+      if (error) return { captured, scanned };
       captured += 1;
       if (captured >= 15) return { captured, scanned };
     }

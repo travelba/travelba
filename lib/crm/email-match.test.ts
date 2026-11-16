@@ -21,7 +21,7 @@ import {
   suggestCustomerFromExtract,
   usableCustomerEmail,
 } from "./email-match";
-import { detectCancellationDocument, isCancellationExtract } from "./ingest-types";
+import { detectCancellationDocument, detectRemovedPassengers, isCancellationExtract, parseRefundAmount } from "./ingest-types";
 
 type Cust = {
   id: string;
@@ -946,6 +946,17 @@ describe("annulation extract", () => {
       detectCancellationDocument("Cancellation Policy : Reservation must be cancelled 48 hours prior"),
       false
     );
+    assert.equal(
+      detectCancellationDocument(
+        "easyJet référence de réservation: KDQ68JS\nVous pouvez annuler votre réservation.\nPolitique d'annulation\nAnnulation gratuite jusqu'au 1er mars."
+      ),
+      false
+    );
+    assert.equal(detectCancellationDocument("cancelled for passenger Christophe Lavigne"), false);
+    assert.deepEqual(detectRemovedPassengers("cancelled for passenger Christophe Lavigne"), [
+      { first_name: "Christophe", last_name: "Lavigne" },
+    ]);
+    assert.equal(parseRefundAmount("Remboursement 141,53 €"), 141.53);
     assert.equal(isCancellationExtract(extractWith({ document_status: "cancelled" })), true);
     assert.equal(isCancellationExtract(extractWith({ document_status: "confirmed" })), false);
   });

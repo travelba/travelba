@@ -22,7 +22,7 @@ La file « e-mails à relire » garde ces mails. La notification (« Un e-mail e
 vol (numéro et date), crée ou complète la carte : une par trajet. Le même vol, le même
 jour et le même PNR ajoute le voyageur. Le PNR reste sur chaque carte.
 voyageurs ajoutés, carte nouvelle cachée, prix de vente 0, coût seulement s’il est
-imprimé. **Déposer seulement** laisse les cartes. `traiter_email` `rattacher` dépose
+imprimé. Un message nouveau d’un fil déjà vu est ingéré : on dédoublonne par identifiant de message, pas par fil ni par objet. Le cron reprend les messages manquants de ces fils. Une confirmation du même vol qui liste moins de passagers, ou qui nomme un passager retiré, retire ces voyageurs de la carte, sans la supprimer, sans changer le prix de vente, et le signale sur la carte. Un remboursement imprimé est noté, ou le coût imprimé est mis à jour. Aucun débit n’est créé. Plus aucun passager : le mail reste une annulation, la carte n’est pas retirée toute seule. **Déposer seulement** laisse les cartes. `traiter_email` `rattacher` dépose
 les pièces ; `cartes` true fait le vol. Sans fichier joint (ou seulement une image de signature), le texte
 du mail est déposé comme fichier sur la carte qui correspond, ou sur le dossier.
 Un mail sans texte est classé et rien n’est ajouté. Le résultat du clic est

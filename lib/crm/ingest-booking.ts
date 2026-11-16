@@ -401,7 +401,8 @@ async function upsertItemsAndTravelers(
       details,
     };
     let match = findMatchingItem(pool, probe);
-    if (kind === "flight" && match) {
+    const revisedParty = kind === "flight" && details.passengers_revised === true;
+    if (kind === "flight" && match && !revisedParty) {
       const passengers = mergeFlightPassengers(match.details, details);
       if (passengers.length) {
         details.passengers = passengers;

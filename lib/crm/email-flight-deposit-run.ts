@@ -67,7 +67,14 @@ export function flightDepositSummary(extract: BookingExtract) {
       return `${card.pnr} (${lines}, ${cost})`;
     })
     .join(" · ");
-  return `Vols déposés, cachés, prix de vente 0 € : ${vols}. Aucun message.`;
+  const notes = (extract.items || [])
+    .map((item) => {
+      const note = (item.details as { party_note?: unknown } | null | undefined)?.party_note;
+      return typeof note === "string" ? note.trim() : "";
+    })
+    .filter(Boolean);
+  const tail = notes.length ? ` ${notes.join(" ")}` : "";
+  return `Vols déposés, cachés, prix de vente 0 € : ${vols}.${tail} Aucun message. Aucun débit.`;
 }
 
 /**
@@ -88,6 +95,13 @@ export async function depositFlightsOnBooking(
   try {
   const prepared = await prepareFlightDepositExtract(admin, bookingId, extract, row.id);
   if (!(prepared.items || []).length) return { wrote: false as const, message: "" };
+  if (prepared.document_status === "cancelled") {
+    await admin
+      .from("crm_email_ingest")
+      .update({ extract: { ...extract, document_status: "cancelled" } })
+      .eq("id", row.id);
+    return { wrote: false as const, message: "Plus aucun passager : le mail reste une annulation. La carte n’est pas retirée." };
+  }
   await applyBookingSteps({
     admin,
     bookingId,

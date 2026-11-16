@@ -1,7 +1,7 @@
 import { inferAirlineIata } from "./brand-marks";
 import { extractHotelEmail, extractHotelPhone, extractHotelWebsite } from "./hotel-contact";
 import { redactIngestText } from "./ingest-redact";
-import { detectCancellationDocument, joinAgencyNotes, type BookingExtract } from "./ingest-types";
+import { detectCancellationDocument, detectRemovedPassengers, joinAgencyNotes, parseRefundAmount, type BookingExtract } from "./ingest-types";
 import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
 import { tripCityPlan } from "./layover";
@@ -2039,6 +2039,8 @@ export function parsedItemsFromText(text: string): {
     status = "cancelled";
     notes.push(SUPPLIER_CANCELLATION_NOTE);
   }
+  const removedPassengers = detectRemovedPassengers(clean);
+  const refund = parseRefundAmount(clean);
   if (isToucanActivities(clean)) {
     notes.push(
       "Toucan Discovery : activités uniquement ; les étapes du cadre ne sont pas des hôtels."
@@ -2055,7 +2057,21 @@ export function parsedItemsFromText(text: string): {
     });
     for (const item of items) {
       if (item.kind !== "flight") continue;
-      item.details = { ...(item.details || {}), passengers };
+      item.details = {
+        ...(item.details || {}),
+        passengers,
+        ...(removedPassengers.length ? { removed_passengers: removedPassengers } : {}),
+        ...(refund != null ? { refund_amount: refund } : {}),
+      };
+    }
+  } else if (removedPassengers.length || refund != null) {
+    for (const item of items) {
+      if (item.kind !== "flight") continue;
+      item.details = {
+        ...(item.details || {}),
+        ...(removedPassengers.length ? { removed_passengers: removedPassengers } : {}),
+        ...(refund != null ? { refund_amount: refund } : {}),
+      };
     }
   }
   return { items: mergeExtractItems(items), status, notes, travelers, title, destination };

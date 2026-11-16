@@ -1,6 +1,6 @@
 import { hotelRefsShareBooking } from "@/lib/crm/item-match";
 
-/** Un fil Gmail, ou une même confirmation, = une carte dans la file. */
+/** Une même confirmation peut partager une carte. Le fil Gmail, à lui seul, ne cache pas un message nouveau. */
 
 export type ThreadRow = {
   id: string;
@@ -80,7 +80,17 @@ export function distinctPassengerTickets(a: ThreadRow, b: ThreadRow) {
   return !left.some((name) => right.includes(name));
 }
 
+function passengerPartiesDiffer(a: ThreadRow, b: ThreadRow) {
+  if (!hasFlight(a) || !hasFlight(b)) return false;
+  const left = passengerKeys(a);
+  const right = passengerKeys(b);
+  if (!left.length || !right.length) return false;
+  if (left.length !== right.length) return true;
+  return left.some((name) => !right.includes(name));
+}
+
 export function sharesInboxGroup(a: ThreadRow, b: ThreadRow) {
+  if (passengerPartiesDiffer(a, b)) return false;
   const leftThread = (a.gmail_thread_id || "").trim();
   const rightThread = (b.gmail_thread_id || "").trim();
   if (leftThread && leftThread === rightThread) return true;

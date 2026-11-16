@@ -12,6 +12,7 @@ import {
   processReceivedEmailIngest,
   reopenDistinctPassengerTickets,
   backfillRecentGmailMessages,
+  backfillSeenGmailThreads,
   rematchStoredEmailIngest,
 } from "@/lib/crm/email-ingest";
 import { gmailConfigured } from "@/lib/crm/gmail";
@@ -107,6 +108,12 @@ export async function GET(request: Request) {
     } catch (err) {
       console.error("[cron/gmail-ingest] recent", err instanceof Error ? err.message : err);
     }
+    let threads = { captured: 0, scanned: 0 };
+    try {
+      threads = await backfillSeenGmailThreads(8);
+    } catch (err) {
+      console.error("[cron/gmail-ingest] threads", err instanceof Error ? err.message : err);
+    }
     let rematch = { scanned: 0, rematched: 0, failed: 0 };
     try {
       rematch = await rematchStoredEmailIngest(8);
@@ -145,6 +152,7 @@ export async function GET(request: Request) {
       hotelThreads,
       reopened,
       recent,
+      threads,
     });
   } catch (err) {
     console.error("[cron/gmail-ingest]", err instanceof Error ? err.message : err);
