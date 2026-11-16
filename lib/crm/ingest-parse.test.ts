@@ -1444,6 +1444,10 @@ describe("parseTransaviaConfirmation", () => {
     assert.equal(hinted.destination, "Tel Aviv");
     assert.equal(inferAirportIata("Paris (Orly)")?.iata, "ORY");
     assert.equal(inferAirportIata("Tel Aviv")?.iata, "TLV");
+    assert.equal(inferAirportIata("NICE")?.iata, "NCE");
+    assert.equal(inferAirportIata("NCE")?.iata, "NCE");
+    assert.equal(inferAirportIata("ATHENS")?.iata, "ATH");
+    assert.equal(inferAirportIata("DXB")?.iata, "DXB");
   });
 
   it("lit une confirmation Transavia « Numéro de réservation » sans en faire le prix de vente", () => {

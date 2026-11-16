@@ -71,6 +71,7 @@ import {
   issuesSummary,
   zodIssuesToBookingIssues,
 } from "@/lib/crm/booking-issues";
+import { printedStayTravelers } from "@/lib/crm/document-passengers";
 import {
   applyRoomGuestLabels,
   attachTravelerToHousehold,
@@ -545,7 +546,8 @@ async function upsertItemsAndTravelers(
 
   if (!saved && lastError) throw new Error(lastError);
 
-  const incoming = extract.travelers || [];
+  const printed = printedStayTravelers(extract);
+  const incoming = printed.length ? printed : extract.travelers || [];
   const skipPlaceholders =
     incoming.some((traveler) => {
       const first = emptyToNull(traveler.first_name);

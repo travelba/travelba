@@ -9,6 +9,7 @@ import {
   getMessage,
   GmailHistoryTooOldError,
   listHistoryMessageIds,
+  listMessageIdsByQuery,
   listMessagesByLabel,
   resolveLabelIds,
 } from "@/lib/crm/gmail";
@@ -34,7 +35,7 @@ import { preparedLooksLikeImage, preparedLooksLikePdf, screenInboundExtract } fr
 import { isNestedMailFile, unfoldMail } from "@/lib/crm/nested-mail";
 import { isAgencySender, shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
 import { loadSentMailIndex, rememberSentMail } from "@/lib/crm/sent-mail";
-import { openThreadParent, sharesInboxGroup, type ThreadRow } from "@/lib/crm/email-thread";
+import { distinctPassengerTickets, openThreadParent, sharesInboxGroup, type ThreadRow } from "@/lib/crm/email-thread";
 import { toAuditRow } from "@/lib/crm/audit-events";
 import { scoreExtractFields } from "@/lib/crm/extract-confidence";
 import { buildImportProposal } from "@/lib/crm/import-proposal";
@@ -949,6 +950,71 @@ async function foldParsedConfirmation(admin: Admin, rowId: string, knownParentId
     detail: { parent_id: parent.id },
   });
   return true;
+}
+
+/**
+ * Un billet par passager qui a été plié sur le même PNR redevient un mail de la file.
+ * Idempotent. Le rattachement suivant le dépose sur le dossier de ce PNR.
+ */
+export async function reopenDistinctPassengerTickets(limit = 20) {
+  const admin = createServiceClient();
+  const bounded = Math.min(40, Math.max(1, limit));
+  const { data } = await admin
+    .from("crm_email_ingest")
+    .select("id, subject, gmail_thread_id, confirmation_refs, extract, grouped_into")
+    .eq("status", "grouped")
+    .not("grouped_into", "is", null)
+    .order("received_at", { ascending: false })
+    .limit(bounded);
+  const rows = (data || []) as ThreadRow[];
+  const parentIds = [...new Set(rows.map((row) => row.grouped_into).filter((id): id is string => Boolean(id)))];
+  if (!parentIds.length) return { scanned: rows.length, reopened: 0 };
+  const { data: parents } = await admin
+    .from("crm_email_ingest")
+    .select("id, subject, gmail_thread_id, confirmation_refs, extract")
+    .in("id", parentIds);
+  const byId = new Map(((parents || []) as ThreadRow[]).map((row) => [row.id, row]));
+  let reopened = 0;
+  for (const row of rows) {
+    const parent = row.grouped_into ? byId.get(row.grouped_into) : null;
+    if (!parent || !distinctPassengerTickets(row, parent)) continue;
+    const { error } = await admin
+      .from("crm_email_ingest")
+      .update({ status: "parsed", grouped_into: null })
+      .eq("id", row.id)
+      .eq("status", "grouped");
+    if (!error) reopened += 1;
+  }
+  return { scanned: rows.length, reopened };
+}
+
+/**
+ * Insère les messages Gmail des 30 derniers jours qui n’ont pas encore de ligne.
+ * Idempotent sur gmail_message_id. N’écrit rien d’autre.
+ */
+export async function backfillRecentGmailMessages(days = 30) {
+  const admin = createServiceClient();
+  const window = Math.min(30, Math.max(1, days));
+  let captured = 0;
+  let scanned = 0;
+  for (const label of gmailLabelNames()) {
+    const ids = await listMessageIdsByQuery(`label:"${label.replace(/"/g, "")}" newer_than:${window}d`, 25);
+    scanned += ids.length;
+    if (!ids.length) continue;
+    const { data: existing } = await admin.from("crm_email_ingest").select("gmail_message_id").in("gmail_message_id", ids);
+    const known = new Set((existing || []).map((row) => String(row.gmail_message_id || "")));
+    for (const messageId of ids) {
+      if (known.has(messageId)) continue;
+      const { error } = await admin.from("crm_email_ingest").upsert(
+        { gmail_message_id: messageId, label, status: "received" },
+        { onConflict: "gmail_message_id", ignoreDuplicates: true }
+      );
+      if (error) break;
+      captured += 1;
+      if (captured >= 15) return { captured, scanned };
+    }
+  }
+  return { captured, scanned };
 }
 
 /** Traite en lot les lignes `received` (appelé par le cron / après capture). */

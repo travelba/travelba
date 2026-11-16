@@ -173,7 +173,7 @@ describe("rattachement automatique", () => {
     assert.equal(ingest.includes("notifyStayPublished"), false);
     const run = readFileSync(new URL("./email-flight-deposit-run.ts", import.meta.url), "utf8");
     assert.match(run, /visibleToClient: false/);
-    assert.match(run, /skipTicketingFee: true/);
+    assert.match(run, /skipTicketingFee: opts\?\.automatic \? false : true/);
     assert.match(run, /auto_attach/);
     assert.equal(run.includes("inviteCustomer"), false);
     assert.equal(run.includes("notifyStayPublished"), false);

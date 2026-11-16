@@ -124,13 +124,13 @@ function fillOwn(item: RouteItem) {
     if (!cityTo && right) cityTo = right;
   }
   const airline = airlineOf(item);
-  const from = iataCode(details.from) || iataForCity(cityFrom, airline);
-  const to = iataCode(details.to) || iataForCity(cityTo, airline);
+  const fromCode = iataCode(details.from) || iataCode(cityFrom) || iataForCity(cityFrom, airline);
+  const toCode = iataCode(details.to) || iataCode(cityTo) || iataForCity(cityTo, airline);
   return writeRoute(item, {
-    cityFrom: cityFrom || undefined,
-    cityTo: cityTo || undefined,
-    from: from || undefined,
-    to: to || undefined,
+    cityFrom: cityFrom && !iataCode(cityFrom) ? cityFrom : text(details.city_from) || undefined,
+    cityTo: cityTo && !iataCode(cityTo) ? cityTo : text(details.city_to) || undefined,
+    from: fromCode || undefined,
+    to: toCode || undefined,
   });
 }
 

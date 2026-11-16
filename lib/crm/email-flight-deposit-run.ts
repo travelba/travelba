@@ -72,7 +72,7 @@ export function flightDepositSummary(extract: BookingExtract) {
 
 /**
  * Dépose les fichiers et crée ou complète les cartes vol.
- * Les cartes nouvelles restent cachées. Aucun envoi au client, aucun frais de billeterie automatique.
+ * Les cartes nouvelles restent cachées. Le dépôt automatique tient les frais de billeterie au nombre de voyageurs.
  */
 export async function depositFlightsOnBooking(
   admin: SupabaseClient,
@@ -96,7 +96,7 @@ export async function depositFlightsOnBooking(
     staffUserId: actorId,
     emailIngestId: row.id,
     visibleToClient: false,
-    skipTicketingFee: true,
+    skipTicketingFee: opts?.automatic ? false : true,
   });
   const cardId = await resolveEmailCardId(admin, bookingId, prepared);
   const deposited = await depositEmailAttachments(admin, bookingId, row.id, row.attachments, cardId, {

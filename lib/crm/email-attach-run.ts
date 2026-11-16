@@ -179,7 +179,7 @@ export async function markEmailAttached(
   if (error) throw new Error("E-mail non classé.");
   await closeIngestSiblings(admin, row, "attached", opts.actorId);
   await noteIngestDecision(admin, {
-    actorKind: opts.auditAction === "auto_attach" ? "auto" : "human",
+    actorKind: opts.auditAction === "auto_attach" || opts.auditAction === "auto_create" ? "auto" : "human",
     actorId: opts.actorId,
     action: opts.auditAction || (opts.cards ? "apply_cards" : "attach_files"),
     emailIngestId: row.id,

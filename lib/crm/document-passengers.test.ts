@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { peopleNotOnStay, passengersFromDetails, ticketPartyKeys, ticketTravelerNames, uniquePeople } from "./document-passengers";
+import { peopleNotOnStay, passengersFromDetails, printedStayTravelers, ticketPartyKeys, ticketTravelerNames, uniquePeople } from "./document-passengers";
 
 test("les passagers du document s’ajoutent s’ils ne sont pas déjà sur le séjour", () => {
   const details = {
@@ -28,6 +28,24 @@ test("les passagers du document s’ajoutent s’ils ne sont pas déjà sur le s
     [{ first_name: "Paul", last_name: "Martin" }]
   );
   assert.deepEqual(loose, [{ first_name: "Lea", last_name: null }]);
+});
+
+test("la création ne garde que le passager imprimé, pas les autres compagnons", () => {
+  const printed = printedStayTravelers({
+    items: [
+      {
+        kind: "flight",
+        title: "Nice → Dubaï",
+        supplier: "Emirates",
+        confirmation_ref: "KDP4AS",
+        start_at: "2027-04-13T10:00:00",
+        end_at: null,
+        amount: null,
+        details: { passengers: [{ first_name: "Raphael", last_name: "Boukris" }] },
+      },
+    ],
+  });
+  assert.deepEqual(printed, [{ first_name: "Raphael", last_name: "Boukris" }]);
 });
 
 test("un billet affiche les voyageurs concernés et retrouve leur case", () => {

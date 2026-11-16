@@ -231,6 +231,17 @@ export async function listMessagesByLabel(
   };
 }
 
+/** Identifiants d’une recherche Gmail, du plus récent. */
+export async function listMessageIdsByQuery(query: string, max = 30): Promise<string[]> {
+  const params = new URLSearchParams({
+    q: query,
+    maxResults: String(Math.min(Math.max(max, 1), 50)),
+  });
+  const res = await gmailApi(`/messages?${params.toString()}`);
+  const json = (await res.json()) as { messages?: { id?: string }[] };
+  return (json.messages || []).map((row) => row.id).filter((id): id is string => Boolean(id));
+}
+
 /** Recherche dans toute la boîte, pas seulement les labels fournisseurs. */
 export async function searchInbox(query: string, max = 8): Promise<ParsedGmailMessage[]> {
   const params = new URLSearchParams({ q: query, maxResults: String(max) });

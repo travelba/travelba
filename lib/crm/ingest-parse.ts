@@ -28,6 +28,9 @@ const AIRPORTS: { re: RegExp; iata: string; city: string }[] = [
   { re: /MARSEILLE PROVENCE/i, iata: "MRS", city: "Marseille" },
   { re: /HURGHADA|\bHRG\b/i, iata: "HRG", city: "Hurghada" },
   { re: /LE CAIRE|\bCAIRO\b|\bCAI\b/i, iata: "CAI", city: "Le Caire" },
+  { re: /NICE|C[OÔ]TE D'AZUR|\bNCE\b/i, iata: "NCE", city: "Nice" },
+  { re: /ATH[EÈ]NES|ATHENS|ATHINA|\bATH\b/i, iata: "ATH", city: "Athènes" },
+  { re: /\bDXB\b/i, iata: "DXB", city: "Dubaï" },
 ];
 
 const MONTHS: Record<string, string> = {
@@ -72,6 +75,16 @@ const MONTHS: Record<string, string> = {
 };
 
 export function inferAirportIata(label: string): ParsedAirport | null {
+  const explicit = label.toUpperCase().match(/\(([A-Z]{3})\)/);
+  if (explicit) {
+    const known = AIRPORTS.find((row) => row.iata === explicit[1]);
+    return { iata: explicit[1], city: known?.city || explicit[1] };
+  }
+  const bare = label.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(bare)) {
+    const known = AIRPORTS.find((row) => row.iata === bare);
+    return { iata: bare, city: known?.city || bare };
+  }
   for (const row of AIRPORTS) {
     if (row.re.test(label)) return { iata: row.iata, city: row.city };
   }

@@ -25,7 +25,7 @@ import {
   kindIcon,
 } from "@/lib/crm/carnet";
 import { flightCountsInStay } from "@/lib/crm/bookings";
-import { flightLegLine, roundTripMate, roundTripPairs, roundTripPriceLabel, roundTripReturnIds } from "@/lib/crm/flight-roundtrip";
+import { flightLegLine, hiddenItineraryIds, itineraryTail, roundTripMate, roundTripPairs, roundTripPriceLabel, roundTripReturnIds } from "@/lib/crm/flight-roundtrip";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { DRAFT_STEP_PREFIX, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
@@ -134,7 +134,8 @@ function stayCards(list: CrmBookingItem[]) {
 }
 
 function visibleStayCards(cards: CrmBookingItem[]) {
-  const hidden = roundTripReturnIds(cards);
+  const hidden = hiddenItineraryIds(cards);
+  for (const id of roundTripReturnIds(cards)) hidden.add(id);
   return cards.filter((item) => !hidden.has(item.id));
 }
 
@@ -163,6 +164,12 @@ function stitchRoundTrips(visible: CrmBookingItem[], rows: CrmBookingItem[]) {
     if (back && !placed.has(back.id)) {
       next.push(back);
       placed.add(back.id);
+    }
+    for (const leg of itineraryTail(item, cards)) {
+      if (!placed.has(leg.id)) {
+        next.push(leg);
+        placed.add(leg.id);
+      }
     }
   }
   for (const item of cards) {
@@ -732,6 +739,7 @@ export function BookingItemsPanel({
         {cardRows.map((item) => {
           const locked = editingId === item.id || busy;
           const returnLeg = roundTripMate(item, rows);
+          const extraLegs = itineraryTail(item, rows);
           const docs = documentsForItems(returnLeg ? [item, returnLeg] : [item], documents);
           const subtitle = stepSubtitle(item);
           const ticketNames = item.kind === "flight" ? ticketTravelerNames(item.details) : [];
@@ -879,7 +887,13 @@ export function BookingItemsPanel({
                         <OnlineCheckinBadge line={checkin} />
                       </span>
                     ) : null}
-                    {returnLeg ? (
+                    {extraLegs.length ? (
+                      <span className="block break-words text-xs text-muted">
+                        {extraLegs.map((leg) => (
+                          <span key={leg.id} className="block">{flightLegLine(leg)}</span>
+                        ))}
+                      </span>
+                    ) : returnLeg ? (
                       <span className="block break-words text-xs text-muted">
                         <span className="block">Retour · {flightLegLine(returnLeg)}</span>
                         {returnCheckin ? (
