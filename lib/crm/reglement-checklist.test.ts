@@ -73,4 +73,7 @@ test("un particulier sans carte reste lisible", () => {
 test("les coûts à pointer comptent les sorties proposées et les coûts sans vente", () => {
   assert.equal(reglementCostsToPoint(null), 0);
   assert.equal(reglementCostsToPoint({ proposed: [1, 2], unsold: [3] }), 3);
+  assert.equal(reglementChecklist({ ...base, costsSearch: "pending" })[3]?.label, "Recherche des paiements à rattacher…");
+  assert.equal(reglementChecklist({ ...base, costsSearch: "pending" })[3]?.state, "info");
+  assert.equal(reglementChecklist({ ...base, costsSearch: "failed" })[3]?.label, "Recherche des paiements interrompue");
 });

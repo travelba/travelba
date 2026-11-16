@@ -80,7 +80,7 @@ export async function buildTripAccountingView(
   inputs: DossierAccountingInputs,
   options?: { skipOutgoingQueue?: boolean }
 ): Promise<TripAccountingView> {
-  // La file globale des sorties (toutes les cartes) ne change pas quand un prix est enregistré.
+  // La file globale ne bloque pas l’écran, et elle n’est pas relue quand un prix est enregistré.
   const proposed = options?.skipOutgoingQueue
     ? []
     : await loadOutgoingQueue({ bookingId: booking.id }, admin).catch(() => []);

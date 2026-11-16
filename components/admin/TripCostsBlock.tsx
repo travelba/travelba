@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { OutgoingRow, type TargetOption } from "@/components/admin/OutgoingAttach";
+import { TripProposalError, TripProposalSearch } from "@/components/admin/TripProposalSearch";
+import type { TripProposalStatus } from "@/components/admin/use-trip-proposals";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { StatusChip } from "@/components/crm/ui";
@@ -20,6 +22,8 @@ import {
 import {
   TRIP_ACCOUNTING_LABELS,
   settlementLabel,
+  visibleTripState,
+  type OutgoingLine,
   type TripAccountingState,
   type TripAccountingView,
   type TripCost,
@@ -88,6 +92,7 @@ export function TripCostsBlock({
   busy,
   showMargins = true,
   onUpdated,
+  proposals,
 }: {
   bookingId: string;
   booking: TargetOption;
@@ -99,13 +104,23 @@ export function TripCostsBlock({
   showMargins?: boolean;
   /** Relit vendu, coût et marge sans attendre le refresh de la fiche. */
   onUpdated?: () => Promise<void> | void;
+  /** File des sorties, lue après le premier affichage. Absente : on garde `view.proposed`. */
+  proposals?: { status: TripProposalStatus; lines: OutgoingLine[]; retry: () => void };
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
 
-  const pending = useMemo(() => pendingCostLines({ proposed: view.proposed, cards, bookingId }), [view.proposed, cards, bookingId]);
+  const proposalStatus: TripProposalStatus = proposals?.status ?? "ready";
+  const pending = useMemo(() => {
+    if (proposalStatus !== "ready") return [];
+    const proposed = proposals ? proposals.lines : view.proposed;
+    return pendingCostLines({ proposed, cards, bookingId });
+  }, [proposalStatus, proposals, view.proposed, cards, bookingId]);
+  const chipState = proposals
+    ? visibleTripState(view, { known: proposals.status === "ready", count: proposals.lines.length })
+    : view.state;
   const placements = useMemo(() => costPlacements(view), [view]);
   const legacyRevolut = useMemo(() => revolutLinkedWithoutCost(revolutLinked, placements), [revolutLinked, placements]);
 
@@ -164,10 +179,12 @@ export function TripCostsBlock({
               : "Les ventes du séjour."}
           </p>
         </div>
-        <StatusChip tone={stateTone(view.state)}>{TRIP_ACCOUNTING_LABELS[view.state]}</StatusChip>
+        {chipState ? <StatusChip tone={stateTone(chipState)}>{TRIP_ACCOUNTING_LABELS[chipState]}</StatusChip> : null}
       </div>
 
-      {showMargins && pending.length ? (
+      {showMargins && proposalStatus === "loading" ? <TripProposalSearch /> : null}
+      {showMargins && proposalStatus === "error" ? <TripProposalError onRetry={() => proposals?.retry()} /> : null}
+      {showMargins && proposalStatus === "ready" && pending.length ? (
         <div className="rounded-2xl border border-[var(--admin-gold)]/50 bg-[#fbf7ef] px-4 py-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-gold-dark)]">
             {pending.length > 1 ? `${pending.length} sorties à rattacher` : "Une sortie à rattacher"}
@@ -265,7 +282,11 @@ export function TripCostsBlock({
                   </ul>
                 ) : (
                   <p className="mt-2 text-sm text-muted">
-                    {card.spends.length ? "Toutes les transactions de cette carte attendent ci-dessus." : "Aucune transaction sur cette carte."}
+                    {card.spends.length
+                      ? proposalStatus === "loading"
+                        ? "Recherche des paiements à rattacher…"
+                        : "Toutes les transactions de cette carte attendent ci-dessus."
+                      : "Aucune transaction sur cette carte."}
                   </p>
                 )}
               </article>
