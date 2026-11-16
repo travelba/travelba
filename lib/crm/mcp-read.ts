@@ -546,6 +546,50 @@ async function oneCustomer(admin: SupabaseClient, input: { id?: string; q?: stri
   return { kind: "one" as const, customer: rows[0] };
 }
 
+export function clientCompanionLines(
+  companions: { id: string; first_name: string | null; last_name: string | null }[],
+  stays: { companion_id: string | null; booking_id: string }[],
+  bookings: { id: string; reference: string | null }[]
+) {
+  return companions.map((companion) => ({
+    compagnon_id: companion.id,
+    nom: customerFullName({ first_name: companion.first_name || "", last_name: companion.last_name || "" }),
+    dossiers: stays
+      .filter((stay) => stay.companion_id === companion.id)
+      .map((stay) => {
+        const booking = bookings.find((row) => row.id === stay.booking_id);
+        return { dossier_id: stay.booking_id, reference: booking?.reference || null };
+      }),
+  }));
+}
+
+async function companionsOfClient(admin: SupabaseClient, customerId: string) {
+  const listed = await admin
+    .from("crm_travel_companions")
+    .select("id, first_name, last_name")
+    .eq("customer_id", customerId);
+  if (listed.error) throw new McpReadError("Lecture des accompagnateurs impossible.");
+  const companions = (listed.data || []) as { id: string; first_name: string | null; last_name: string | null }[];
+  if (!companions.length) return [];
+  const staysQuery = await admin
+    .from("crm_booking_travelers")
+    .select("companion_id, booking_id")
+    .in(
+      "companion_id",
+      companions.map((row) => row.id)
+    );
+  if (staysQuery.error) throw new McpReadError("Lecture des accompagnateurs impossible.");
+  const stays = (staysQuery.data || []) as { companion_id: string | null; booking_id: string }[];
+  const bookingIds = [...new Set(stays.map((row) => row.booking_id).filter(Boolean))];
+  let bookings: { id: string; reference: string | null }[] = [];
+  if (bookingIds.length) {
+    const books = await admin.from("crm_bookings").select("id, reference").in("id", bookingIds);
+    if (books.error) throw new McpReadError("Lecture des accompagnateurs impossible.");
+    bookings = (books.data || []) as { id: string; reference: string | null }[];
+  }
+  return clientCompanionLines(companions, stays, bookings);
+}
+
 export async function readFicheClient(input: { id?: string; q?: string }, admin = db()) {
   const found = await oneCustomer(admin, input);
   if (found.kind === "missing" || found.kind === "invalid") {
@@ -586,6 +630,7 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
     en_veille: customer.on_hold === true,
     encours: wallets,
     pieces_a_echeance: pieces.map((doc) => pieceLine(doc)),
+    compagnons: await companionsOfClient(admin, customer.id),
   };
 }
 

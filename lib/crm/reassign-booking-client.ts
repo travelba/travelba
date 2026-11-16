@@ -208,6 +208,69 @@ export function matchingClientDuplicates(
   return hits;
 }
 
+export type CompanionUsage = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  usedElsewhere: boolean;
+};
+
+export type CompanionHandoff = {
+  travelerId: string;
+  companionId: string;
+  /** Le voyageur devient le nouveau titulaire, le compagnon est déplacé, ou copié s’il sert encore. */
+  action: "holder" | "move" | "copy";
+  dropCompanion: boolean;
+};
+
+function sameClientName(
+  left: { first_name: string | null; last_name: string | null },
+  right: { first_name: string | null; last_name: string | null }
+) {
+  const leftFirst = attachSearchFold(left.first_name);
+  const leftLast = attachSearchFold(left.last_name);
+  const rightFirst = attachSearchFold(right.first_name);
+  const rightLast = attachSearchFold(right.last_name);
+  if (!leftFirst || !leftLast || !rightFirst || !rightLast) return false;
+  return (leftFirst === rightFirst && leftLast === rightLast) || (leftFirst === rightLast && leftLast === rightFirst);
+}
+
+/**
+ * Un compagnon de l’ancien client qui voyage sur ce dossier suit le nouveau.
+ * Celui qui porte le nom du nouveau titulaire n’est plus un compagnon.
+ * S’il reste sur un autre dossier de l’ancien client, la fiche est copiée.
+ */
+export function planCompanionHandoff(
+  travelers: TravelerRow[],
+  companions: CompanionUsage[],
+  next: { first_name: string | null; last_name: string | null }
+): CompanionHandoff[] {
+  const byId = new Map(companions.map((row) => [row.id, row]));
+  const handoffs: CompanionHandoff[] = [];
+  for (const traveler of travelers) {
+    if (!traveler.companion_id) continue;
+    const companion = byId.get(traveler.companion_id);
+    if (!companion) continue;
+    const becomesHolder = sameClientName(traveler, next) || sameClientName(companion, next);
+    if (becomesHolder) {
+      handoffs.push({
+        travelerId: traveler.id,
+        companionId: companion.id,
+        action: "holder",
+        dropCompanion: !companion.usedElsewhere,
+      });
+      continue;
+    }
+    handoffs.push({
+      travelerId: traveler.id,
+      companionId: companion.id,
+      action: companion.usedElsewhere ? "copy" : "move",
+      dropCompanion: false,
+    });
+  }
+  return handoffs;
+}
+
 /** Le voyageur coché est l’ancien client lui-même, pas un compagnon homonyme. */
 export function travelerIsFormerClient(
   traveler: TravelerRow,
@@ -280,6 +343,7 @@ type PlanInput = {
   items: { id: string; billing_company_id: string | null }[];
   creation: boolean;
   duplicates: DuplicateClient[];
+  companions?: CompanionUsage[];
 };
 
 type MovePatch = { id: string; patch: Record<string, unknown> };
@@ -295,6 +359,7 @@ export type ReassignPlan = {
   pliantTx: MovePatch[];
   pliantCards: MovePatch[];
   items: MovePatch[];
+  companions: CompanionHandoff[];
 };
 
 export function planBookingClientChange(input: PlanInput): ReassignPlan {
@@ -330,6 +395,7 @@ export function planBookingClientChange(input: PlanInput): ReassignPlan {
   }
 
   const travelers = input.travelers.filter((traveler) => travelerIsFormerClient(traveler, input.from));
+  const companions = planCompanionHandoff(input.travelers, input.companions || [], input.to);
   const travelerPatch = travelers.length
     ? {
         first_name: input.to.first_name || "",
@@ -442,6 +508,11 @@ export function planBookingClientChange(input: PlanInput): ReassignPlan {
     follows
       ? `Le payeur passe de ${avant} à ${apres}.${companyCleared ? " La société de l’ancien client n’est pas sur la nouvelle fiche : le séjour redevient particulier." : ""}`
       : `Le payeur reste ${avant} : il ne venait pas de l’ancien client.`,
+    companions.length
+      ? companions.some((row) => row.action === "copy")
+        ? `Les compagnons de ce séjour passent chez ${toName}. Ceux qui restent sur un autre dossier de ${fromName} sont copiés.`
+        : `Les compagnons de ce séjour passent chez ${toName}.`
+      : `Aucun compagnon de ${fromName} n’était lié à ce séjour.`,
     visible
       ? `${fromName} ne voit plus ce séjour. ${toName} le voit.`
       : `Le séjour reste non visible : ${toName} ne le voit pas encore.`,
@@ -495,6 +566,7 @@ export function planBookingClientChange(input: PlanInput): ReassignPlan {
     pliantTx,
     pliantCards,
     items,
+    companions,
   };
 }
 
@@ -567,6 +639,28 @@ async function loadContext(
   to: Person,
   companies: Company[]
 ) {
+  const companions = await readRows<{ id: string; first_name: string | null; last_name: string | null }>(
+    admin.from("crm_travel_companions").select("id, first_name, last_name").eq("customer_id", from.id)
+  );
+  const companionIds = companions.map((row) => row.id).filter(Boolean);
+  const links = companionIds.length
+    ? await readRows<{ id: string; booking_id: string; companion_id: string | null }>(
+        admin.from("crm_booking_travelers").select("id, booking_id, companion_id").in("companion_id", companionIds)
+      )
+    : [];
+  const otherBookingIds = [...new Set(links.map((row) => row.booking_id).filter((id) => id && id !== booking.id))];
+  const otherBookings = otherBookingIds.length
+    ? await readRows<{ id: string; customer_id: string }>(
+        admin.from("crm_bookings").select("id, customer_id").in("id", otherBookingIds)
+      )
+    : [];
+  const stillOnFormer = new Set(otherBookings.filter((row) => row.customer_id === from.id).map((row) => row.id));
+  const companionUsage: CompanionUsage[] = companions.map((row) => ({
+    id: row.id,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    usedElsewhere: links.some((link) => link.companion_id === row.id && stillOnFormer.has(link.booking_id)),
+  }));
   const [travelers, transactions, revolutByBooking, pliantTx, pliantCards, items] = await Promise.all([
     readRows<TravelerRow>(
       admin
@@ -623,7 +717,7 @@ async function loadContext(
   for (const row of revolutByLedger) {
     if (!revolut.some((item) => item.id === row.id)) revolut.push(row);
   }
-  return { travelers, transactions, revolut, stripe, pliantTx, pliantCards, items, companies };
+  return { travelers, transactions, revolut, stripe, pliantTx, pliantCards, items, companies, companions: companionUsage };
 }
 
 async function peopleForPlan(admin: SupabaseClient, booking: BookingRow, from: Person, to: Person, companies: Company[]) {
@@ -651,6 +745,82 @@ async function peopleForPlan(admin: SupabaseClient, booking: BookingRow, from: P
   return { payerBefore, payerAfter, companies: merged };
 }
 
+function withoutId(row: Record<string, unknown>) {
+  const copy = { ...row };
+  delete copy.id;
+  delete copy.created_at;
+  delete copy.updated_at;
+  return copy;
+}
+
+async function insertReturning(admin: SupabaseClient, table: string, row: Record<string, unknown>) {
+  const { data, error } = await admin.from(table).insert(row).select("*").single();
+  if (error || !data || typeof data !== "object" || !("id" in data) || !data.id) {
+    throw new ReassignClientError("Le compagnon n’a pas pu suivre le nouveau client.");
+  }
+  return data as Record<string, unknown> & { id: string };
+}
+
+async function applyCompanionHandoff(admin: SupabaseClient, customerId: string, handoffs: CompanionHandoff[]) {
+  if (!customerId || !handoffs.length) return;
+  for (const handoff of handoffs) {
+    const companion = await readOne<Record<string, unknown> & { id: string }>(
+      admin.from("crm_travel_companions").select("*").eq("id", handoff.companionId).maybeSingle(),
+      "Compagnon introuvable."
+    );
+    if (!companion) continue;
+    const documents = await readRows<Record<string, unknown> & { id: string }>(
+      admin.from("crm_travel_documents").select("*").eq("companion_id", handoff.companionId)
+    );
+    if (handoff.action === "move") {
+      await writeRow(admin, "crm_travel_companions", handoff.companionId, { customer_id: customerId });
+      for (const document of documents) {
+        await writeRow(admin, "crm_travel_documents", document.id, { customer_id: customerId });
+      }
+      continue;
+    }
+    if (handoff.action === "copy") {
+      const created = await insertReturning(admin, "crm_travel_companions", {
+        ...withoutId(companion),
+        customer_id: customerId,
+      });
+      await writeRow(admin, "crm_booking_travelers", handoff.travelerId, { companion_id: created.id });
+      for (const document of documents) {
+        await insertReturning(admin, "crm_travel_documents", {
+          ...withoutId(document),
+          customer_id: customerId,
+          companion_id: created.id,
+        });
+      }
+      continue;
+    }
+    await writeRow(admin, "crm_booking_travelers", handoff.travelerId, {
+      companion_id: null,
+      is_account_holder: true,
+    });
+    if (handoff.dropCompanion) {
+      for (const document of documents) {
+        await writeRow(admin, "crm_travel_documents", document.id, {
+          customer_id: customerId,
+          companion_id: null,
+          traveler_id: handoff.travelerId,
+        });
+      }
+      const { error } = await admin.from("crm_travel_companions").delete().eq("id", handoff.companionId);
+      if (error && !soft(error)) throw new ReassignClientError("Le compagnon n’a pas pu suivre le nouveau client.");
+      continue;
+    }
+    for (const document of documents) {
+      await insertReturning(admin, "crm_travel_documents", {
+        ...withoutId(document),
+        customer_id: customerId,
+        companion_id: null,
+        traveler_id: handoff.travelerId,
+      });
+    }
+  }
+}
+
 async function applyPlan(admin: SupabaseClient, plan: ReassignPlan) {
   await writeRow(admin, "crm_bookings", plan.result.dossier_id, plan.bookingPatch);
   if (plan.travelerPatch) {
@@ -664,6 +834,7 @@ async function applyPlan(admin: SupabaseClient, plan: ReassignPlan) {
   for (const row of plan.pliantTx) await writeRow(admin, "crm_pliant_transactions", row.id, row.patch);
   for (const row of plan.pliantCards) await writeRow(admin, "crm_pliant_cards", row.id, row.patch);
   for (const row of plan.items) await writeRow(admin, "crm_booking_items", row.id, row.patch);
+  await applyCompanionHandoff(admin, String(plan.bookingPatch.customer_id || ""), plan.companions);
 }
 
 async function insertClient(admin: SupabaseClient, draft: PreparedClientDraft) {
@@ -784,6 +955,7 @@ export async function changeBookingClient(
     items: context.items,
     creation: Boolean(draft && !customerId),
     duplicates,
+    companions: context.companions,
   });
   if (input.confirmer !== true) return plan.result;
   if (!to.id) throw new ReassignClientError("Client introuvable.");

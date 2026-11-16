@@ -23,7 +23,23 @@ export function preparedLooksLikePdf(file: { name?: string | null; type?: string
 
 const DAY_MS = 86_400_000;
 
-const SAMPLE_PNRS = new Set(["ABC123", "DEF456", "XYZ123", "ABCDE1", "ABCDEFG", "97531XY"]);
+const SAMPLE_PNRS = new Set(["ABC123", "DEF456", "XYZ123", "ABCDE1", "ABCDEFG", "97531XY", "PNR123", "A12345", "123456"]);
+
+function isPlaceholderCode(token: string) {
+  if (SAMPLE_PNRS.has(token)) return true;
+  if (/^(.)\1{5,}$/.test(token)) return true;
+  if (/^PNR\d+$/.test(token)) return true;
+  if (/^A\d{5}$/.test(token)) return true;
+  if (token === "123456") return true;
+  if (/^(ABC|DEF|XYZ)\d{3,}$/.test(token)) return true;
+  if (/^ABCDE\d$/.test(token)) return true;
+  return false;
+}
+
+/** PNR d’exemple ou de démonstration. Aucune carte ne le garde. */
+export function isPlaceholderReference(value: string | null | undefined) {
+  return codeTokens(value).some((token) => isPlaceholderCode(token));
+}
 
 const SAMPLE_FLIGHTS = new Set(["1234", "5678", "LX123", "HV5802", "TO3456", "AF123", "UA100"]);
 
@@ -56,7 +72,7 @@ function codeTokens(value: string | null | undefined) {
 }
 
 export function isSamplePnr(value: string | null | undefined) {
-  return codeTokens(value).some((token) => SAMPLE_PNRS.has(token));
+  return isPlaceholderReference(value);
 }
 
 export function isSampleFlightNumber(value: string | null | undefined) {

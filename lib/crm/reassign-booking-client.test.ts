@@ -402,6 +402,90 @@ test("une adresse déjà prise ne crée pas de fiche", async () => {
   assert.equal(db.tables.crm_bookings[0].customer_id, OLD);
 });
 
+test("les compagnons du séjour suivent le nouveau titulaire, ou sont copiés s’ils restent", async () => {
+  const LEO = "77777777-7777-4777-8777-777777777777";
+  const DUPIN = "88888888-8888-4888-8888-888888888888";
+  const OTHER_BOOK = "99999999-9999-4999-8999-999999999999";
+  const db = base({
+    crm_customers: [
+      person(OLD, "Manuel", "Jeanne"),
+      person(OTHER, "Leo", "Periol"),
+    ],
+    crm_bookings: [
+      booking({ customer_id: OLD, billing_customer_id: OLD, billing_company_id: null, payer_kind: "personal", reference: "TB-2026-0203", title: "Casablanca" }),
+      booking({ id: OTHER_BOOK, customer_id: OLD, billing_customer_id: OLD, billing_company_id: null, payer_kind: "personal", reference: "TB-2026-0100" }),
+    ],
+    crm_booking_travelers: [
+      { id: "t-leo", booking_id: BOOK, is_account_holder: false, companion_id: LEO, first_name: "LEO", last_name: "PERIOL" },
+      { id: "t-dupin", booking_id: BOOK, is_account_holder: false, companion_id: DUPIN, first_name: "GUILLIAN", last_name: "DUPIN" },
+      { id: "t-dupin-other", booking_id: OTHER_BOOK, is_account_holder: false, companion_id: DUPIN, first_name: "GUILLIAN", last_name: "DUPIN" },
+    ],
+    crm_travel_companions: [
+      { id: LEO, customer_id: OLD, first_name: "Leo", last_name: "Periol" },
+      { id: DUPIN, customer_id: OLD, first_name: "Guillian", last_name: "Dupin" },
+    ],
+    crm_travel_documents: [
+      { id: "doc-leo", customer_id: OLD, companion_id: LEO, doc_type: "passport", number: "L000000" },
+      { id: "doc-dupin", customer_id: OLD, companion_id: DUPIN, doc_type: "passport", number: "D000000" },
+    ],
+    crm_billing_companies: [],
+    crm_transactions: [],
+    crm_revolut_transactions: [],
+    crm_stripe_transactions: [],
+    crm_pliant_transactions: [],
+    crm_pliant_cards: [],
+  });
+  const done = await changeBookingClient(db as unknown as SupabaseClient, {
+    reference: "TB-2026-0203",
+    customerId: OTHER,
+    confirmer: true,
+  });
+  assert.equal(done.applique, true);
+  assert.equal(db.tables.crm_bookings.find((row) => row.id === BOOK)?.customer_id, OTHER);
+  const leoTraveler = db.tables.crm_booking_travelers.find((row) => row.id === "t-leo");
+  assert.equal(leoTraveler?.companion_id, null);
+  assert.equal(leoTraveler?.is_account_holder, true);
+  assert.equal(db.tables.crm_travel_companions.some((row) => row.id === LEO), false);
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === "doc-leo")?.customer_id, OTHER);
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === "doc-leo")?.companion_id, null);
+  const dupinCopy = db.tables.crm_travel_companions.find((row) => row.customer_id === OTHER && row.last_name === "Dupin");
+  assert.ok(dupinCopy);
+  assert.equal(db.tables.crm_travel_companions.find((row) => row.id === DUPIN)?.customer_id, OLD);
+  assert.equal(db.tables.crm_booking_travelers.find((row) => row.id === "t-dupin")?.companion_id, dupinCopy?.id);
+  assert.equal(db.tables.crm_booking_travelers.find((row) => row.id === "t-dupin-other")?.companion_id, DUPIN);
+  const copiedDoc = db.tables.crm_travel_documents.find((row) => row.companion_id === dupinCopy?.id);
+  assert.equal(copiedDoc?.customer_id, OTHER);
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === "doc-dupin")?.customer_id, OLD);
+});
+
+test("un compagnon sans autre dossier est déplacé, avec sa pièce", async () => {
+  const DUPIN = "88888888-8888-4888-8888-888888888888";
+  const db = base({
+    crm_customers: [person(OLD, "Manuel", "Jeanne"), person(OTHER, "Leo", "Periol")],
+    crm_bookings: [booking({ reference: "TB-2026-0203", billing_company_id: null, payer_kind: "personal" })],
+    crm_booking_travelers: [
+      { id: "t-dupin", booking_id: BOOK, is_account_holder: false, companion_id: DUPIN, first_name: "Guillian", last_name: "Dupin" },
+    ],
+    crm_travel_companions: [{ id: DUPIN, customer_id: OLD, first_name: "Guillian", last_name: "Dupin" }],
+    crm_travel_documents: [{ id: "doc-dupin", customer_id: OLD, companion_id: DUPIN, doc_type: "passport", number: "D000000" }],
+    crm_billing_companies: [],
+    crm_transactions: [],
+    crm_revolut_transactions: [],
+    crm_stripe_transactions: [],
+    crm_pliant_transactions: [],
+    crm_pliant_cards: [],
+  });
+  await changeBookingClient(db as unknown as SupabaseClient, {
+    reference: "TB-2026-0203",
+    customerId: OTHER,
+    confirmer: true,
+  });
+  assert.equal(db.tables.crm_travel_companions.find((row) => row.id === DUPIN)?.customer_id, OTHER);
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === "doc-dupin")?.customer_id, OTHER);
+  assert.equal(db.tables.crm_travel_documents.find((row) => row.id === "doc-dupin")?.companion_id, DUPIN);
+  assert.equal(db.tables.crm_booking_travelers[0]?.companion_id, DUPIN);
+});
+
 test("le même client est refusé, et rien n’invite", () => {
   const src = readFileSync(join(root, "lib/crm/reassign-booking-client.ts"), "utf8");
   assert.equal(src.includes("inviteCustomer"), false);

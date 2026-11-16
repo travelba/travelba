@@ -1,5 +1,5 @@
 import { clientEmailForAutoCreate } from "@/lib/crm/email-ingest-create";
-import { extractPeople, extractPrimaryPerson, extractReferences } from "@/lib/crm/email-match";
+import { clientIsMailTraveler, extractPeople, extractPrimaryPerson, extractReferences } from "@/lib/crm/email-match";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import { suppressionMatches, SUPPRESSED_DOSSIER, type SuppressionRow } from "@/lib/crm/booking-suppression";
 import { countsAsCarnetCard } from "@/lib/crm/types";
@@ -43,6 +43,12 @@ export function planInboxOrganization(input: {
   dossiers: TripDossier[];
   suppressions?: SuppressionRow[];
   customerId?: string | null;
+  customer?: {
+    first_name?: string | null;
+    last_name?: string | null;
+    usage_name?: string | null;
+    email?: string | null;
+  } | null;
   unreadTicket?: boolean;
 }): InboxPlan {
   const extract = input.extract;
@@ -77,7 +83,9 @@ export function planInboxOrganization(input: {
       mergeIds: reunion.mergeIds,
     };
   }
-  if (input.customerId) return { action: "create", customerId: input.customerId };
+  if (input.customerId && input.customer && clientIsMailTraveler(input.customer, extract)) {
+    return { action: "create", customerId: input.customerId };
+  }
   const person = extractPrimaryPerson(extract) || extractPeople(extract).find((row) => row.first_name && row.last_name);
   if (!person?.first_name || !person.last_name) return { action: "hold", message: INBOX_HOLDS.unnamed };
   return {

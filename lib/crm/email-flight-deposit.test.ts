@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   applyFreshFlightParse,
   decideFlightAutoAttach,
+  dossierSpansTooLong,
   flightExtractIsStale,
   FLIGHT_PARSER_REVISION,
   planFlightDeposit,
@@ -88,6 +89,63 @@ describe("rattachement automatique", () => {
   it("rattache un voyageur unique aux dates qui se croisent", () => {
     const decision = decideFlightAutoAttach(ticket(), [traveler]);
     assert.equal(decision?.bookingId, "b1");
+  });
+
+  it("laisse un dossier trop long, un vol antérieur ou un PNR d’exemple", () => {
+    const traveler = {
+      booking_id: "b-long",
+      customer_id: "c1",
+      score: 88,
+      reason: "Voyageur et dates",
+      start_date: "2023-09-15",
+      end_date: "2026-10-09",
+      covers_passengers: true,
+    };
+    assert.equal(dossierSpansTooLong("2023-09-15", "2026-10-09"), true);
+    assert.equal(decideFlightAutoAttach(ticket(), [traveler], { receivedAt: "2026-10-09" }), null);
+    const dated = { ...traveler, start_date: "2026-11-01", end_date: "2026-11-08" };
+    assert.equal(
+      decideFlightAutoAttach(ticket(), [dated], { receivedAt: "2026-11-20T15:42:00.000Z" }),
+      null
+    );
+    const example = {
+      ...ticket(),
+      items: [{ ...transavia, confirmation_ref: "ABC123", details: { ...transavia.details, pnr: "DEF456" } }],
+    };
+    assert.equal(decideFlightAutoAttach(example, [dated]), null);
+  });
+
+  it("parmi plusieurs clients, le dossier qui couvre les passagers est choisi", () => {
+    const flight = {
+      document_status: "confirmed" as const,
+      travelers: [
+        { first_name: "Leo", last_name: "Periol" },
+        { first_name: "Guillian", last_name: "Dupin" },
+      ],
+      items: [easyjet],
+    };
+    const dossier = {
+      booking_id: "b-0152",
+      customer_id: "c-holder",
+      score: 88,
+      reason: "Voyageur et dates",
+      start_date: "2026-11-01",
+      end_date: "2026-11-08",
+      covers_passengers: true,
+    };
+    const clients = [
+      { customer_id: "c-jeanne", booking_id: null, score: 92, reason: "Nom et prénom", label: "Manuel Jeanne" },
+      dossier,
+      { customer_id: "c-heather", booking_id: null, score: 85, reason: "Nom de famille", label: "Heather Devigne" },
+    ];
+    const decision = decideFlightAutoAttach(flight, clients, { receivedAt: "2026-11-01" });
+    assert.equal(decision?.bookingId, "b-0152");
+    const partial = { ...dossier, booking_id: "b-autre", covers_passengers: false };
+    assert.equal(decideFlightAutoAttach(flight, [clients[0], partial, clients[2]]), null);
+    assert.equal(
+      decideFlightAutoAttach(flight, [dossier, { ...dossier, booking_id: "b-autre" }]),
+      null
+    );
   });
 
   it("laisse la file décider quand il y a zéro ou plusieurs dossiers, ou un score bas", () => {

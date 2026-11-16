@@ -41,6 +41,11 @@ describe("pas de rattachement autonome hors billet certain", () => {
     assert.equal(rematch.includes("depositEmailAttachments"), false);
     assert.equal(rematch.includes("inviteCustomer"), false);
     assert.equal(rematch.includes("visibleToClient: true"), false);
+    assert.equal(rematch.includes("organizeInboundMail"), false);
+    assert.equal(rematch.includes("createCustomer"), false);
+    assert.equal(rematch.includes("persistNewBookingFromExtract"), false);
+    assert.match(rematch, /receivedTooOldForAutoAttach/);
+    assert.match(rematch, /ascending: false/);
   });
 
   it("le premier dossier est un brouillon caché ; seul ce fichier applique un séjour unique", () => {

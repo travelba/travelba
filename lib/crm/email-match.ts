@@ -3,6 +3,7 @@ import { documentPriceIssues } from "@/lib/crm/booking-issues";
 import { cityPlaceKey } from "@/lib/crm/city-names";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import { hotelExactStay, hotelRefsShareBooking } from "@/lib/crm/item-match";
+import { isPlaceholderReference } from "@/lib/crm/ingest-samples";
 import {
   firstNamesMatch,
   foldName,
@@ -190,12 +191,65 @@ export function dateRangesExact(
   return Boolean(a0 && b0 && a1 && b1 && a0 === b0 && a1 === b1);
 }
 
-/** Découpe une référence composite (« 976;977 », « A / B ») en jetons normalisés. */
-export function referenceTokens(value: string | null | undefined): string[] {
-  return String(value || "")
-    .split(/[\s;,/|]+/)
-    .map((token) => normalizeMatchText(token))
-    .filter((token) => token.length >= 4);
+const REFERENCE_WORDS = new Set([
+  "reservation",
+  "reservations",
+  "pour",
+  "confirmation",
+  "chambre",
+  "chambres",
+  "booking",
+  "room",
+  "rooms",
+  "hotel",
+  "hotels",
+  "ref",
+  "reference",
+  "voyage",
+  "sejour",
+  "dossier",
+  "client",
+  "guest",
+  "passager",
+  "passenger",
+  "numero",
+  "number",
+  "votre",
+  "votreconfirmation",
+]);
+
+function nameCodes(extract: BookingExtract) {
+  const names = new Set<string>();
+  for (const person of extractPeople(extract)) {
+    for (const part of [person.first_name, person.last_name]) {
+      const code = normalizeMatchText(part);
+      if (code.length >= 4) names.add(code);
+    }
+  }
+  return names;
+}
+
+/** Une référence fournisseur : code entier, au moins un chiffre ou un PNR de 5 à 8 lettres. Jamais un mot ni un nom. */
+export function isSupplierReference(value: string | null | undefined, names?: Set<string>) {
+  const raw = String(value || "").trim();
+  if (!raw || /\s/.test(raw)) return false;
+  if (isPlaceholderReference(raw)) return false;
+  const code = normalizeMatchText(raw);
+  if (code.length < 5 || code.length > 16) return false;
+  if (REFERENCE_WORDS.has(code)) return false;
+  if (names?.has(code)) return false;
+  if (/\d/.test(code)) return true;
+  return /^[a-z]{5,8}$/.test(code);
+}
+
+/** Découpe une référence composite (« 976;977 », « A/B ») en codes entiers. Pas les mots d’une phrase. */
+export function referenceTokens(value: string | null | undefined, names?: Set<string>): string[] {
+  const tokens = String(value || "")
+    .split(/[;,/|]+/)
+    .map((token) => token.trim())
+    .filter((token) => isSupplierReference(token, names))
+    .map((token) => normalizeMatchText(token));
+  return [...new Set(tokens)];
 }
 
 /** Même confirmation, y compris `64570` et `64570SH046795`. */
@@ -213,16 +267,29 @@ function detailPnr(details: Record<string, unknown> | null | undefined) {
 
 /** Toutes les références présentes dans un extract (confirmation, PNR compagnie, chambres). */
 export function extractReferences(extract: BookingExtract): Set<string> {
+  const names = nameCodes(extract);
   const out = new Set<string>();
+  const push = (value: string | null | undefined) => {
+    for (const token of referenceTokens(value, names)) out.add(token);
+  };
   for (const item of extract.items || []) {
-    for (const token of referenceTokens(item.confirmation_ref)) out.add(token);
-    for (const token of referenceTokens(detailPnr(item.details))) out.add(token);
+    push(item.confirmation_ref);
+    push(detailPnr(item.details));
     const rooms = Array.isArray(item.details?.rooms) ? item.details!.rooms : [];
-    for (const room of rooms) {
-      for (const token of referenceTokens(room?.confirmation_ref)) out.add(token);
-    }
+    for (const room of rooms) push(room?.confirmation_ref);
   }
   return out;
+}
+
+/** Le client est nommé dans le mail, ou c’est son e-mail. Un client emprunté à un autre dossier ne compte pas. */
+export function clientIsMailTraveler(
+  customer: { first_name?: string | null; last_name?: string | null; usage_name?: string | null; email?: string | null } | null | undefined,
+  extract: BookingExtract
+) {
+  if (!customer) return false;
+  const email = usableCustomerEmail(extract.customer_email);
+  if (email && (customer.email || "").trim().toLowerCase() === email) return true;
+  return extractPeople(extract).some((person) => ticketNameMatches(person, customer));
 }
 
 export function usableCustomerEmail(email: string | null | undefined): string | null {
@@ -413,12 +480,25 @@ export type BookingSuggestionCandidate = {
   label: string;
   reason: string;
   score: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  covers_passengers?: boolean;
 };
 
 export type BookingSuggestion = {
   autoBookingId: string | null;
   candidates: BookingSuggestionCandidate[];
 };
+
+function absorbCandidate(primary: BookingSuggestionCandidate, extra?: BookingSuggestionCandidate) {
+  if (!extra) return primary;
+  return {
+    ...primary,
+    covers_passengers: primary.covers_passengers || extra.covers_passengers || undefined,
+    start_date: primary.start_date ?? extra.start_date,
+    end_date: primary.end_date ?? extra.end_date,
+  };
+}
 
 function bookingLabel(b: Pick<CrmBooking, "reference" | "title" | "destination">) {
   const title = (b.title || b.destination || "").trim();
@@ -443,7 +523,8 @@ export function mergeBookingSuggestions(
   for (const part of parts) {
     for (const cand of part.candidates) {
       const prev = byId.get(cand.booking_id);
-      if (!prev || cand.score > prev.score) byId.set(cand.booking_id, cand);
+      if (!prev || cand.score > prev.score) byId.set(cand.booking_id, absorbCandidate(cand, prev));
+      else byId.set(cand.booking_id, absorbCandidate(prev, cand));
     }
   }
   const candidates = [...byId.values()].sort(
@@ -486,7 +567,7 @@ export function suggestBookingByReference(
       } else {
         const items = itemsByBooking.get(booking.id) || [];
         const hitItem = items.some((item) => [...refs].some((token) => supplierRefHit(item, token)));
-        const attached = attachedRefsByBooking?.get(booking.id) || [];
+        const attached = (attachedRefsByBooking?.get(booking.id) || []).filter((ref) => isSupplierReference(ref));
         const hitMail = attached.some((ref) => [...refs].some((token) => confirmationRefsAlign(token, ref)));
         if (hitItem || hitMail) {
           score = 90;
@@ -626,12 +707,16 @@ export function suggestBookingByTraveler(
     if (holder) names.push(holder);
     const hit = names.some((stored) => people.some((person) => ticketNameMatches(person, stored)));
     if (!hit) continue;
+    const covers = people.every((person) => names.some((stored) => ticketNameMatches(person, stored)));
     candidates.push({
       booking_id: booking.id,
       customer_id: booking.customer_id || null,
       label: bookingLabel(booking),
       reason: TRAVELER_DATES_REASON,
       score: TRAVELER_DATES_SCORE,
+      start_date: booking.start_date,
+      end_date: booking.end_date,
+      covers_passengers: covers,
     });
   }
   candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));

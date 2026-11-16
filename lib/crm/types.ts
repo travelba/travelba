@@ -735,6 +735,9 @@ export type EmailIngestCandidate = {
   label: string;
   reason: string;
   score: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  covers_passengers?: boolean;
 };
 
 export type LeBookingLinkStatus = "unmatched" | "linked" | "ignored";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyBookingExtract, type BookingExtract } from "./ingest-types";
-import { cardDateIsStale, isSampleTravelerName, screenInboundExtract } from "./ingest-samples";
+import { cardDateIsStale, isPlaceholderReference, isSampleTravelerName, screenInboundExtract } from "./ingest-samples";
 
 const RECEIVED = "2026-10-15T08:00:00.000Z";
 
@@ -87,6 +87,11 @@ test("les PNR, vols, hôtels et voyageurs d’exemple ne deviennent pas des cart
   assert.equal(isSampleTravelerName("John", "Smith"), true);
   assert.equal(isSampleTravelerName("Paul", "Durand"), true);
   assert.equal(isSampleTravelerName("David", "Berda"), false);
+  for (const sample of ["PNR123", "A12345", "123456", "XXXXXX", "ABCDE1"]) {
+    assert.equal(isPlaceholderReference(sample), true, sample);
+  }
+  assert.equal(isPlaceholderReference("KDQ68JS"), false);
+  assert.equal(isPlaceholderReference("WFPMHG"), false);
   assert.equal(isSampleTravelerName("Adulte", "2"), false);
 });
 
