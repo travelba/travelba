@@ -49,6 +49,20 @@ export type CostTargetBooking = {
     amounts?: CostAmountHint[];
     texts?: string[];
   };
+  /**
+   * Débits déjà rattachés au dossier, ou encore en attente.
+   * Une dépense Pliant « à valider » est lue sur la ligne, même sans cette liste.
+   */
+  paid?: CostPaid[];
+};
+
+/** Coût déjà posé ou en attente : il couvre une ligne, il n’est pas une nouvelle proposition. */
+export type CostPaid = {
+  itemId: string | null;
+  amountEur: number;
+  supplier?: string | null;
+  /** Autorisation, ou dépense encore « à valider ». */
+  pending?: boolean;
 };
 
 export type CostSignal =
@@ -68,7 +82,10 @@ export type CostSignal =
   | "duplicate"
   | "clientCard"
   | "sameCard"
-  | "nearest";
+  | "nearest"
+  | "covered"
+  | "otherStay"
+  | "amountGap";
 
 export type CostConfidence = "haute" | "moyenne" | "basse";
 
@@ -80,6 +97,8 @@ export type CostSuggestion = {
   reasons: CostSignal[];
   passengers: string[];
   confidence: CostConfidence;
+  /** Phrases françaises ajoutées aux indices (coût déjà couvert, libellé, écart). */
+  notes?: string[];
 };
 
 export type CostMatchInput = {
@@ -187,6 +206,9 @@ const SIGNAL_LABEL: Record<CostSignal, string> = {
   clientCard: "Carte au nom du client (ancien système, une carte par client).",
   sameCard: "Même client / même carte.",
   nearest: "Dossier le plus proche : la date est hors du séjour.",
+  covered: "",
+  otherStay: "",
+  amountGap: "",
 };
 
 const REASON_LABEL: Record<CostSuggestion["reason"], string> = {
@@ -212,12 +234,15 @@ export function costConfidenceLabel(level: CostConfidence) {
 }
 
 /** Pourquoi la proposition, dans l’ordre des indices. */
-export function costSuggestionSummary(hit: { reason: CostSuggestion["reason"]; reasons?: CostSignal[] }) {
+export function costSuggestionSummary(hit: { reason: CostSuggestion["reason"]; reasons?: CostSignal[]; notes?: string[] }) {
   const reasons = hit.reasons?.length ? hit.reasons : [];
   const labels: string[] = [];
   for (const reason of reasons) {
     const label = SIGNAL_LABEL[reason];
     if (label && !labels.includes(label)) labels.push(label);
+  }
+  for (const note of hit.notes || []) {
+    if (note && !labels.includes(note)) labels.push(note);
   }
   if (!labels.length) labels.push(costSuggestionReasonLabel(hit.reason));
   return labels.join(" ");
@@ -519,7 +544,24 @@ function scoreOne(input: CostMatchInput, booking: CostTargetBooking, cards: Set<
     }
   }
 
-  if (!airline) {
+  const labelTokens = stayLabelTokens(input.text);
+  if (!airline && labelTokens.length) {
+    // Le libellé (« hotel solal ») désigne l’hôtel. Le nom du bénéficiaire ne le remplace pas.
+    const namedStay = activeItems(booking).find((item) => isLodging(item) && lineMatchesStayLabel(item, labelTokens));
+    if (namedStay) {
+      add(signals, "hotel");
+      score += 40;
+      itemId = namedStay.id;
+      if (paid.exact) score = Math.max(score, 90);
+      const at = dayMs(input.date);
+      const start = dayMs(namedStay.startAt);
+      const end = dayMs(namedStay.endAt) ?? start;
+      if (at != null && start != null && end != null && at >= start - 5 * DAY && at <= end + 2 * DAY) {
+        add(signals, "date");
+        score += 12;
+      }
+    }
+  } else if (!airline) {
     const hotel = hotelMatch(payment, booking);
     if (hotel.item && hotel.overlap) {
       add(signals, "hotel");
@@ -539,7 +581,7 @@ function scoreOne(input: CostMatchInput, booking: CostTargetBooking, cards: Set<
     }
   }
 
-  const email = emailHit(booking, payment, people);
+  const email = emailHit(booking, payment, people, labelTokens);
   if (email) {
     add(signals, "email");
     score += 36;
@@ -578,10 +620,12 @@ function hotelMatch(payment: string, booking: CostTargetBooking) {
   return { item: null, overlap: 0, place };
 }
 
-function emailHit(booking: CostTargetBooking, payment: string, people: { last: string }[]) {
+function emailHit(booking: CostTargetBooking, payment: string, people: { last: string }[], labelTokens: string[] = []) {
   const texts = (booking.hints?.texts || []).map((text) => text.trim()).filter(Boolean);
   if (!texts.length) return false;
   const blob = texts.join(" \n ");
+  // « hotel solal » : l’e-mail doit nommer cet hôtel, pas seulement le prénom du bénéficiaire.
+  if (labelTokens.length && !labelTokens.some((token) => normalizeMatchText(blob).includes(token))) return false;
   if (!surnamesIn(people, blob).length) return false;
   const airline = mentionsAirline(payment);
   if (airline && mentionsAirline(blob) === airline) return true;
@@ -610,7 +654,7 @@ function confidenceOf(score: number): CostConfidence {
   return score >= HAUTE_SCORE ? "haute" : "moyenne";
 }
 
-const SIGNAL_ORDER: CostSignal[] = ["reference", "card", "pnr", "itinerary", "amount", "fx", "passengers", "email", "airline", "hotel", "place", "date", "client", "clientCard", "sameCard", "nearest", "duplicate"];
+const SIGNAL_ORDER: CostSignal[] = ["reference", "card", "pnr", "itinerary", "amount", "fx", "passengers", "email", "airline", "hotel", "place", "date", "client", "clientCard", "sameCard", "nearest", "duplicate", "covered", "otherStay", "amountGap"];
 
 function toSuggestion(row: Scored, extra?: CostSignal[]): CostSuggestion {
   const signals = [...row.signals];
@@ -624,6 +668,7 @@ function toSuggestion(row: Scored, extra?: CostSignal[]): CostSuggestion {
     reasons: signals,
     passengers: row.passengers,
     confidence: confidenceOf(row.score),
+    notes: [],
   };
 }
 
@@ -861,10 +906,222 @@ function clientCardSuggestion(input: CostMatchInput, bookings: CostTargetBooking
   };
 }
 
+function isLodging(item: CostTargetItem) {
+  return item.kind !== "flight" && item.kind !== "train" && item.kind !== "fee" && item.kind !== "expense";
+}
+
+/**
+ * Le libellé nomme un hôtel (« hotel solal », ou une marque comme Kempinski).
+ * Le bénéficiaire (« David PITOUN ») n’entre pas dans ces mots.
+ */
+function stayLabelTokens(text: string | null | undefined) {
+  const raw = text || "";
+  if (!/\bh[oô]tels?\b/i.test(raw) && brands(raw).length === 0) return [];
+  return [...new Set([...distinctive(raw), ...brands(raw)])].filter((token) => token.length >= 4);
+}
+
+function lineMatchesStayLabel(item: CostTargetItem, tokens: string[]) {
+  const have = new Set([...distinctive(itemBlob(item)), ...brands(itemBlob(item))]);
+  return tokens.some((token) => have.has(token));
+}
+
+function lodgingName(item: CostTargetItem) {
+  return textOf(item.details?.hotel_name) || (item.title || "").trim() || "cette étape";
+}
+
+function clipLabel(text: string | null | undefined) {
+  const clean = (text || "").replace(/\s+/g, " ").trim();
+  return clean.length > 80 ? `${clean.slice(0, 77)}…` : clean;
+}
+
+function euros(value: number) {
+  const [whole, cents] = Math.abs(value).toFixed(2).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
+  return `${grouped},${cents} €`;
+}
+
+function isAwaitingPliantExpense(item: CostTargetItem) {
+  if (item.kind !== "expense") return false;
+  const details = item.details || {};
+  if (details.awaiting_validation !== true && details.awaiting_validation !== "true") return false;
+  return Boolean(textOf(details.pliant_merchant) || textOf(details.pliant_transaction_id) || num(details.pliant_amount) != null);
+}
+
+/** Prix de référence de la ligne : coût net en euros s’il est connu, sinon le prix vendu. */
+function costBenchmark(item: CostTargetItem) {
+  const details = item.details || {};
+  const netEur = num(details.supplier_net_eur);
+  if (netEur != null && netEur > 0) return round2(netEur);
+  const currency = (textOf(details.supplier_currency) || textOf(details.currency) || "EUR").toUpperCase();
+  const net = num(details.supplier_net);
+  if (net != null && net > 0 && currency === "EUR") return round2(net);
+  const sale = num(item.amount);
+  if (sale != null && sale > 0) return round2(sale);
+  return null;
+}
+
+/** Montants qui couvrent la ligne : le net en euros, et le prix vendu. */
+function costTargets(item: CostTargetItem) {
+  const details = item.details || {};
+  const out: number[] = [];
+  const netEur = num(details.supplier_net_eur);
+  if (netEur != null && netEur > 0) out.push(round2(netEur));
+  const currency = (textOf(details.supplier_currency) || "EUR").toUpperCase();
+  const net = num(details.supplier_net);
+  if (net != null && net > 0 && currency === "EUR") out.push(round2(net));
+  const sale = num(item.amount);
+  if (sale != null && sale > 0) out.push(round2(sale));
+  return [...new Set(out.map((value) => value.toFixed(2)))].map(Number);
+}
+
+function coversOf(booking: CostTargetBooking): CostPaid[] {
+  const rows: CostPaid[] = [];
+  for (const item of activeItems(booking)) {
+    if (!isAwaitingPliantExpense(item)) continue;
+    const amount = num(item.details?.pliant_amount) ?? num(item.amount);
+    if (amount == null || amount <= 0) continue;
+    rows.push({
+      itemId: item.id,
+      amountEur: round2(amount),
+      supplier: textOf(item.details?.pliant_merchant) || item.title,
+      pending: true,
+    });
+  }
+  for (const row of booking.paid || []) {
+    const amount = round2(Math.abs(Number(row.amountEur) || 0));
+    if (amount <= 0) continue;
+    const supplier = (row.supplier || "").trim() || null;
+    const same = rows.findIndex((existing) => existing.itemId === (row.itemId || null) && close(existing.amountEur, amount, 0.02) && (existing.supplier || "") === (supplier || ""));
+    const next = { itemId: row.itemId || null, amountEur: amount, supplier, pending: row.pending === true };
+    if (same >= 0) {
+      if (rows[same].pending && !next.pending) rows[same] = next;
+      continue;
+    }
+    rows.push(next);
+  }
+  return rows;
+}
+
+function coverFor(item: CostTargetItem, booking: CostTargetBooking): CostPaid | null {
+  const targets = costTargets(item);
+  const benchmark = costBenchmark(item);
+  if (!targets.length || benchmark == null) return null;
+  const rows = coversOf(booking);
+  const onLine = rows.filter((row) => row.itemId === item.id);
+  const sum = round2(onLine.reduce((total, row) => total + row.amountEur, 0));
+  if (sum + 0.02 >= benchmark) {
+    const named = [...onLine].sort((left, right) => right.amountEur - left.amountEur)[0];
+    return { itemId: item.id, amountEur: sum, supplier: named?.supplier || "un débit déjà rattaché", pending: onLine.every((row) => row.pending) };
+  }
+  return (
+    rows.find((row) => {
+      if (row.itemId === item.id) return false;
+      if (!targets.some((value) => close(row.amountEur, value, 0.02))) return false;
+      if (!row.itemId) return true;
+      const owner = activeItems(booking).find((line) => line.id === row.itemId);
+      // Un coût déjà posé sur un autre hôtel ou un autre vol ne couvre pas cette ligne.
+      return !owner || !isLodging(owner);
+    }) || null
+  );
+}
+
+function paymentEuros(input: CostMatchInput) {
+  const currency = (input.originalCurrency || "EUR").toUpperCase();
+  const original = input.originalAmount != null ? Math.abs(Number(input.originalAmount)) : null;
+  if (currency === "EUR" && original != null && original > 0) return round2(original);
+  return round2(Math.abs(Number(input.amount) || 0));
+}
+
+const IDENTIFIER: CostSignal[] = ["reference", "card", "pnr", "itinerary", "clientCard"];
+
+function isIdentifier(signals: CostSignal[]) {
+  return signals.some((signal) => IDENTIFIER.includes(signal));
+}
+
+function capConfidence(current: CostConfidence, ceiling: CostConfidence): CostConfidence {
+  const rank: Record<CostConfidence, number> = { haute: 3, moyenne: 2, basse: 1 };
+  return rank[current] <= rank[ceiling] ? current : ceiling;
+}
+
+function sortSignals(signals: CostSignal[]) {
+  return [...signals].sort((left, right) => SIGNAL_ORDER.indexOf(left) - SIGNAL_ORDER.indexOf(right));
+}
+
+/**
+ * Après le score : un hôtel déjà payé, un libellé qui nomme un autre hôtel,
+ * ou un montant très éloigné du reste. Rien n’est écrit.
+ */
+function qualify(input: CostMatchInput, bookings: CostTargetBooking[], suggestion: CostSuggestion): CostSuggestion | null {
+  const booking = bookings.find((row) => row.id === suggestion.bookingId);
+  if (!booking) return suggestion;
+  const labelTokens = stayLabelTokens(input.text);
+  const item = suggestion.itemId ? activeItems(booking).find((row) => row.id === suggestion.itemId) || null : null;
+  const notes = [...(suggestion.notes || [])];
+  const reasons = [...suggestion.reasons];
+  let confidence = suggestion.confidence;
+  let itemId = suggestion.itemId;
+  let score = suggestion.score;
+  const identified = isIdentifier(reasons);
+  const labelHit =
+    labelTokens.length > 0 &&
+    bookings.some((row) => activeItems(row).some((line) => isLodging(line) && lineMatchesStayLabel(line, labelTokens)));
+
+  if (labelTokens.length && item && isLodging(item) && !lineMatchesStayLabel(item, labelTokens)) {
+    notes.push(`Le libellé « ${clipLabel(input.text)} » nomme un autre hôtel que ${lodgingName(item)}.`);
+    add(reasons, "otherStay");
+    if (!identified) return null;
+    itemId = null;
+    confidence = capConfidence(confidence, "moyenne");
+  } else if (labelTokens.length && !labelHit && !identified) {
+    return null;
+  }
+
+  const priced = itemId ? activeItems(booking).find((row) => row.id === itemId) || null : null;
+  if (priced) {
+    const cover = coverFor(priced, booking);
+    if (cover) {
+      const pending = cover.pending ? ", en attente" : "";
+      notes.push(`Coût déjà couvert par ${cover.supplier || "un débit déjà rattaché"} (${euros(cover.amountEur)}${pending}).`);
+      add(reasons, "covered");
+      confidence = "basse";
+      const paidNow = paymentEuros(input);
+      const benchmark = costBenchmark(priced);
+      if (benchmark != null && paidNow >= 20 && Math.abs(paidNow - benchmark) / benchmark >= 0.25) {
+        notes.push(`Le montant est éloigné du coût restant (${euros(paidNow)} pour un reste de ${euros(0)}).`);
+        add(reasons, "amountGap");
+      }
+    }
+    const paid = paymentEuros(input);
+    const benchmark = costBenchmark(priced);
+    const hits = moneyHits(input, moneysOf({ ...booking, items: [priced] }));
+    if (!cover && benchmark != null && benchmark >= 20 && paid >= 20 && !hits.exact && !hits.fx && !identified && !reasons.includes("amount") && !reasons.includes("fx")) {
+      const onLine = coversOf(booking).filter((row) => row.itemId === priced.id).reduce((total, row) => total + row.amountEur, 0);
+      const remaining = round2(Math.max(0, benchmark - onLine));
+      const basis = remaining > 0.5 ? remaining : benchmark;
+      const gap = Math.abs(paid - basis) / basis;
+      if (gap >= 0.25) {
+        notes.push(`Le montant est éloigné du coût restant (${euros(paid)} pour un reste de ${euros(remaining)}).`);
+        add(reasons, "amountGap");
+        confidence = capConfidence(confidence, gap >= 0.5 ? "basse" : "moyenne");
+      }
+    }
+  }
+
+  if (confidence === "basse") score = Math.min(score, 70);
+  else if (confidence === "moyenne") score = Math.min(score, 84);
+  return { ...suggestion, itemId, score, reasons: sortSignals(reasons), notes, confidence };
+}
+
+function publish(input: CostMatchInput, bookings: CostTargetBooking[], suggestion: CostSuggestion | null) {
+  if (!suggestion) return null;
+  return qualify(input, bookings, suggestion);
+}
+
 /**
  * Classe les dossiers. Référence, carte, PNR, montant, hôtel distinct (pas la marque seule),
  * e-mail et noms. Deux pistes trop proches et peu sûres : aucune proposition.
  * Une carte au nom du client l’emporte sur l’hôtel d’un autre dossier.
+ * Un libellé qui nomme un autre hôtel, ou une ligne déjà payée, ne donne pas une confiance haute.
  */
 export function rankCostTargets(input: CostMatchInput, bookings: CostTargetBooking[]): CostSuggestion[] {
   const reference = (input.text || input.party || "").match(/\bTB-\d{4}-\d{4}\b/i)?.[0]?.toUpperCase() || null;
@@ -874,15 +1131,16 @@ export function rankCostTargets(input: CostMatchInput, bookings: CostTargetBooki
     if (booking) {
       const scored = scoreOne(input, booking, cards);
       scored.score = 100;
-      return [toSuggestion(scored, ["reference"])];
+      const hit = publish(input, bookings, toSuggestion(scored, ["reference"]));
+      return hit ? [hit] : [];
     }
   }
   const scored = bookings.map((booking) => scoreOne(input, booking, cards));
   boostUnique(scored, "amount", 64);
   boostUnique(scored, "hotel", 70);
-  const itinerary = itinerarySuggestion(input, bookings);
+  const itinerary = publish(input, bookings, itinerarySuggestion(input, bookings));
   if (itinerary) return [itinerary];
-  const namedCard = clientCardSuggestion(input, bookings, scored);
+  const namedCard = publish(input, bookings, clientCardSuggestion(input, bookings, scored));
   if (namedCard) return [namedCard];
   const passengerHits = scored.filter((row) => row.signals.includes("passengers") && (row.signals.includes("airline") || row.signals.includes("hotel") || row.signals.includes("amount") || row.signals.includes("email")));
   if (passengerHits.length === 1) passengerHits[0].score = Math.max(passengerHits[0].score, 66);
@@ -892,13 +1150,17 @@ export function rankCostTargets(input: CostMatchInput, bookings: CostTargetBooki
     const clients = scored.filter((row) => row.clientEligible);
     if (clients.length === 1) {
       clients[0].score = Math.max(clients[0].score, 68);
-      return [toSuggestion(clients[0], ["client"])];
+      const hit = publish(input, bookings, toSuggestion(clients[0], ["client"]));
+      return hit ? [hit] : [];
     }
     return [];
   }
   visible.sort((left, right) => right.score - left.score || left.booking.reference.localeCompare(right.booking.reference));
   if (visible.length > 1 && visible[0].score < HAUTE_SCORE && visible[0].score - visible[1].score < AMBIGUOUS_GAP) return [];
-  return visible.slice(0, 3).map((row) => toSuggestion(row));
+  return visible
+    .slice(0, 3)
+    .map((row) => publish(input, bookings, toSuggestion(row)))
+    .filter((hit): hit is CostSuggestion => Boolean(hit));
 }
 
 type DuplicateLine = {
@@ -946,7 +1208,7 @@ function itinerarySuggestion(input: CostMatchInput, bookings: CostTargetBooking[
 export function markDuplicateOutgoing<T extends DuplicateLine>(lines: T[]): T[] {
   const next = lines.map((line) => ({
     ...line,
-    suggestions: line.suggestions.map((hit) => ({ ...hit, reasons: [...hit.reasons], passengers: [...hit.passengers] })),
+    suggestions: line.suggestions.map((hit): CostSuggestion => ({ ...hit, reasons: [...hit.reasons], passengers: [...hit.passengers], notes: [...(hit.notes || [])] })),
   }));
   const groups = new Map<string, number[]>();
   next.forEach((line, index) => {

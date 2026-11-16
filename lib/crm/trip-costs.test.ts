@@ -929,6 +929,96 @@ describe("coûts du voyage", () => {
       assert.match(costSuggestionSummary(line.suggestions[0]!), /doublon possible/i);
     }
   });
+
+  it("ne propose pas Kempinski pour un virement « hotel solal » quand le coût est déjà couvert", () => {
+    const telAviv = {
+      id: "f937",
+      reference: "TB-2026-0170",
+      title: "Tel Aviv",
+      destination: "Tel Aviv",
+      startDate: "2026-11-10",
+      endDate: "2026-11-14",
+      travelers: [
+        { first: "Alan David Henri", last: "Lasry" },
+        { first: "Jonas Elie", last: "Lasry" },
+      ],
+      hints: { texts: ["Booking confirmation for The David Kempinski Tel Aviv Lasry"] },
+      items: [
+        {
+          id: "kempinski",
+          kind: "hotel",
+          title: "The David Kempinski Tel Aviv",
+          supplier: "Little Emperors",
+          amount: 2996.23,
+          startAt: "2026-11-11",
+          endAt: "2026-11-14",
+          details: { hotel_name: "The David Kempinski Tel Aviv", city: "Tel Aviv" },
+        },
+        {
+          id: "bridge",
+          kind: "expense",
+          title: "BIT BRIDGE LTD",
+          amount: 2996.23,
+          details: {
+            awaiting_validation: true,
+            pliant_merchant: "BIT BRIDGE LTD",
+            pliant_amount: 2996.23,
+            pliant_transaction_id: "acc11790",
+          },
+        },
+      ],
+      paid: [{ itemId: "bridge", amountEur: 2996.23, supplier: "BIT BRIDGE LTD", pending: false }],
+    };
+    const transfer = { party: "David PITOUN", text: "hotel solal", amount: 1940, originalAmount: 1940, originalCurrency: "EUR", date: "2026-10-23" };
+
+    assert.deepEqual(suggestCostTargets(transfer, [telAviv]), []);
+
+    const named = suggestCostTargets({ ...transfer, text: "hotel kempinski" }, [telAviv]);
+    assert.equal(named.length, 1);
+    assert.equal(named[0]?.itemId, "kempinski");
+    assert.equal(named[0]?.confidence, "basse");
+    assert.equal(named[0]?.reasons.includes("covered"), true);
+    assert.match(costSuggestionSummary(named[0]!), /Coût déjà couvert par BIT BRIDGE LTD/i);
+    assert.doesNotMatch(costSuggestionSummary(named[0]!), /en attente/i);
+    assert.match(costSuggestionSummary(named[0]!), /2[\s\u00a0\u202f]?996,23/);
+    assert.match(costSuggestionSummary(named[0]!), /éloigné du coût restant/i);
+    assert.match(costSuggestionSummary(named[0]!), /1[\s\u00a0\u202f]?940,00/);
+
+    const solal = {
+      id: "solal-booking",
+      reference: "TB-2026-0999",
+      title: "Tel Aviv",
+      destination: "Tel Aviv",
+      items: [{ id: "solal", kind: "hotel", title: "Hotel Solal", supplier: "Solal", amount: 1940, details: { hotel_name: "Hotel Solal", city: "Tel Aviv" } }],
+    };
+    const elsewhere = suggestCostTargets(transfer, [telAviv, solal]);
+    assert.equal(elsewhere.length, 1);
+    assert.equal(elsewhere[0]?.bookingId, "solal-booking");
+    assert.equal(elsewhere[0]?.itemId, "solal");
+    assert.equal(elsewhere[0]?.confidence, "haute");
+
+    const open = { ...telAviv, id: "open", items: telAviv.items.filter((item) => item.id !== "bridge"), paid: [] };
+    const far = suggestCostTargets({ party: "LITTLE EMPERORS", text: "hotel kempinski", amount: 1940, originalAmount: 1940, originalCurrency: "EUR" }, [open]);
+    assert.equal(far[0]?.itemId, "kempinski");
+    assert.notEqual(far[0]?.confidence, "haute");
+    assert.match(costSuggestionSummary(far[0]!), /éloigné du coût restant/i);
+    assert.match(costSuggestionSummary(far[0]!), /2[\s\u00a0\u202f]?996,23/);
+
+    const fromExpense = suggestCostTargets({ ...transfer, text: "hotel kempinski", amount: 2996.23, originalAmount: 2996.23 }, [{ ...telAviv, paid: undefined }]);
+    assert.equal(fromExpense[0]?.confidence, "basse");
+    assert.match(costSuggestionSummary(fromExpense[0]!), /BIT BRIDGE LTD/);
+    assert.match(costSuggestionSummary(fromExpense[0]!), /en attente/i);
+
+    const pendingOnly = {
+      ...open,
+      paid: [{ itemId: null, amountEur: 2996.23, supplier: "BIT BRIDGE LTD", pending: true }],
+    };
+    const pendingHit = suggestCostTargets({ party: "David PITOUN", text: "The David Kempinski", amount: 500, originalAmount: 500, originalCurrency: "EUR" }, [pendingOnly]);
+    assert.equal(pendingHit[0]?.itemId, "kempinski");
+    assert.equal(pendingHit[0]?.confidence, "basse");
+    assert.match(costSuggestionSummary(pendingHit[0]!), /Coût déjà couvert par BIT BRIDGE LTD/i);
+    assert.match(costSuggestionSummary(pendingHit[0]!), /en attente/i);
+  });
 });
 
 function roundSale(lines: { sale: number; cost: number }[]) {
