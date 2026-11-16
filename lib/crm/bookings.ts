@@ -360,7 +360,11 @@ type AgencyFeeItem = {
   lifecycle?: string | null;
 };
 
-/** Étapes actives (séjour et extras) plus dépenses. Une étape annulée ou remplacée sort. */
+/**
+ * Assiette depuis les cartes : séjour, extras et dépenses vendues, y compris la billeterie.
+ * Une étape annulée ou remplacée sort. Une dépense « à valider » n’est pas vendue.
+ * La commission n’est pas une carte : elle ne peut pas entrer dans sa propre assiette.
+ */
 export function agencyFeeBaseFromItems(items: AgencyFeeItem[]) {
   const extras: { amount: number | null }[] = [];
   const expenses: { amount: number | null }[] = [];
@@ -368,7 +372,7 @@ export function agencyFeeBaseFromItems(items: AgencyFeeItem[]) {
     if (!isActiveItem(item)) continue;
     const amount = itemSellingAmount(item);
     if (isExtraItemKind(item.kind)) extras.push({ amount });
-    else if (expenseCountsForClient(item) && !isAutoTicketingExpense(item)) expenses.push({ amount });
+    else if (expenseCountsForClient(item)) expenses.push({ amount });
   }
   return agencyFeeBaseAmount({
     stayTotal: bookingTotalFromItems(items),

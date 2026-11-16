@@ -47,7 +47,7 @@ import {
 } from "@/lib/crm/agency-fee-rate";
 import { AgencyFeeRateField } from "@/components/admin/AgencyFeeRateField";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
-import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
   canConfirmCarnetPublish,
@@ -1172,7 +1172,7 @@ export function BookingEditor({
     agencyFeeRate: previewFeeRate,
     expenses: pricedItems
       .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
-      .map((item) => ({ ...item, agencyFee: !isAutoTicketingExpense(item) })),
+      .map((item) => ({ amount: item.amount == null ? null : Number(item.amount) })),
     extras: agencyFeeExtraAmounts(pricedItems),
     ticketingFee: chargeableTicketingFee({
       items: pricedItems,

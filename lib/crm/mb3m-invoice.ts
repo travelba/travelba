@@ -5,7 +5,7 @@ import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { staffStayFacts } from "@/lib/crm/staff-stay";
-import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { isActiveItem, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 
@@ -309,7 +309,7 @@ export function dossierStayAmount(input: {
     agencyCommission: input.agencyCommission,
     expenses: items
       .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
-      .map((item) => ({ amount: item.amount, agencyFee: !isAutoTicketingExpense(item) })),
+      .map((item) => ({ amount: item.amount })),
     extras: agencyFeeExtraAmounts(items),
     ticketingFee: chargeableTicketingFee({
       items,

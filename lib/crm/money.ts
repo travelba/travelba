@@ -27,7 +27,7 @@ export function centsToAmount(cents: number) {
   return cents / 100;
 }
 
-/** Commission d’agence par défaut : 10 % des étapes et des dépenses, si le voyage l’active. */
+/** Commission d’agence par défaut : 10 % du total vendu, si le voyage l’active. */
 export const AGENCY_FEE_RATE = DEFAULT_AGENCY_FEE_RATE;
 
 export function agencyFeeFromGross(gross: number, rate: number = AGENCY_FEE_RATE) {
@@ -45,19 +45,24 @@ function addPositiveAmounts(sum: number, rows: { amount: number | null }[] | und
   return sum;
 }
 
-/** Assiette de la commission : étapes (montant du séjour + extras) et dépenses. Hors billeterie. */
+/**
+ * Assiette de la commission : total vendu.
+ * Séjour, extras, dépenses vendues et frais de billeterie.
+ * La ligne de commission n’est pas une dépense : elle n’entre pas ici.
+ * `ticketingFee` est la billeterie qui n’est pas encore une ligne de dépense (0 sinon, pour ne pas la compter deux fois).
+ */
 export function agencyFeeBaseAmount(input: {
   stayTotal: number;
-  expenses?: { amount: number | null; agencyFee?: boolean }[];
+  expenses?: { amount: number | null }[];
   extras?: { amount: number | null }[];
+  ticketingFee?: number | null;
 }) {
   const stay = Number(input.stayTotal);
   let sum = Number.isFinite(stay) && stay > 0 ? stay : 0;
   sum = addPositiveAmounts(sum, input.extras);
-  sum = addPositiveAmounts(
-    sum,
-    (input.expenses || []).filter((row) => row.agencyFee !== false)
-  );
+  sum = addPositiveAmounts(sum, input.expenses);
+  const ticketing = Number(input.ticketingFee);
+  if (Number.isFinite(ticketing) && ticketing > 0) sum += ticketing;
   return Math.round(sum * 100) / 100;
 }
 

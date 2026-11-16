@@ -136,6 +136,7 @@ export function paymentSlips(input: {
         stayTotal: Number.isFinite(stay) ? stay : 0,
         expenses: input.expenses,
         extras: input.extras,
+        ticketingFee: input.ticketingFee,
       }),
       input.agencyFeeRate ?? undefined
     );

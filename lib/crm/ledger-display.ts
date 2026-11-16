@@ -109,7 +109,7 @@ export type ClientExpenseLine = {
 
 /**
  * Prix lu sur la réservation : cartes + frais d’agence + billeterie + dépenses libres.
- * La commission porte sur les étapes (séjour + extras) et les dépenses, pas sur la billeterie.
+ * La commission porte sur le total vendu, billeterie comprise.
  * L’assiette stockée (`total_amount`) reste la somme des cartes du séjour.
  */
 export function stayPriceWithExpenses(input: {
@@ -128,6 +128,7 @@ export function stayPriceWithExpenses(input: {
         stayTotal: sum,
         expenses: input.expenses,
         extras: input.extras,
+        ticketingFee: input.ticketingFee,
       }),
       input.agencyFeeRate ?? undefined
     );
@@ -179,6 +180,7 @@ export function clientStayExpenseLines(input: {
             stayTotal: input.stayTotal,
             expenses: input.expenses,
             extras: input.extras,
+            ticketingFee: input.ticketingFee,
           }),
           input.agencyFeeRate ?? undefined
         ),

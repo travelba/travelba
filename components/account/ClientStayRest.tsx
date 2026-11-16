@@ -35,7 +35,7 @@ import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
-import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger-load";
 import { ibanLast4 } from "@/lib/crm/billing";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
@@ -418,7 +418,6 @@ async function loadExpenseChoices(bookingId: string, fallback: CrmBookingItem[])
         title: visibleServiceCopy(item.title),
         amount: item.amount == null ? null : Number(item.amount),
         billing_company_id: item.billing_company_id || null,
-        agencyFee: !isAutoTicketingExpense(item),
       }));
   } catch {
     return fallback
@@ -428,7 +427,6 @@ async function loadExpenseChoices(bookingId: string, fallback: CrmBookingItem[])
         title: visibleServiceCopy(item.title),
         amount: item.amount == null ? null : Number(item.amount),
         billing_company_id: item.billing_company_id || null,
-        agencyFee: !isAutoTicketingExpense(item),
       }));
   }
 }
