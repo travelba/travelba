@@ -56,7 +56,7 @@ export function mb3mAddress(input: {
   const line1 = (input.line || "").trim();
   const postalCode = (input.postal || "").trim();
   const cityName = (input.city || "").trim();
-  const countryCode = resolveCountryCode(input.country) || undefined;
+  const countryCode = mb3mCountryCode(resolveCountryCode(input.country));
   const postalOptional = Boolean(input.company && countryCode && countryCode !== "FR");
   if (!line1 || !cityName) return null;
   if (!postalOptional && !postalCode) return null;
@@ -115,7 +115,24 @@ export type Mb3mCustomerHit = {
   name: string;
   altName: string;
   company: boolean;
+  partnerId?: string;
+  email?: string;
+  countryCode?: string;
+  /** SIRET ou identifiant renvoyé par MB3M, s’il est dans le résumé. */
+  siret?: string;
+  commercialName?: string;
 };
+
+/**
+ * Code pays envoyé à MB3M. Le Kosovo (XK) n’est pas dans la table des pays MB3M :
+ * ContactAddress refuse l’insertion. L’agence l’envoie en Serbie (RS).
+ * Le CRM garde XK.
+ */
+export function mb3mCountryCode(value: string | null | undefined) {
+  const code = (value || "").trim().toUpperCase();
+  if (!code) return undefined;
+  return code === "XK" ? "RS" : code;
+}
 
 export type Mb3mLine = {
   label: string;
@@ -254,7 +271,7 @@ function addressXml(address: Mb3mAddress, fallbackName: string) {
   // Élément vide : le désérialiseur accepte, puis SQL refuse l’insertion ContactAddress (-701).
   if (!postal) throw new Mb3mError("MB3M refuse l’adresse sans code postal.", -701);
   // Name, Line1, Line2, Line3, PostalCode, City, CountryCode. Pas d’autre ordre : WCF refuse City avant PostalCode.
-  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tag("PostalCode", postal)}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}`;
+  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tag("PostalCode", postal)}${tag("City", address.city.trim())}${tag("CountryCode", mb3mCountryCode(address.countryCode))}`;
 }
 
 /** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
@@ -366,26 +383,180 @@ function agencyXml(uid: string | null | undefined) {
   return value ? `<Agency><Uid>${escapeMb3mXml(value)}</Uid></Agency>` : "";
 }
 
-export async function mb3mFindPersons(
-  query: { email?: string; name?: string; firstName?: string },
-  fetchImpl?: FetchImpl
-) {
-  const inner = `<CustomerFindRequest xmlns="http://schemas.mb3m.fr/Partners">${tag("AltName", query.firstName)}${tag("Email", query.email)}<IncludeCompanies>false</IncludeCompanies><IncludePersons>true</IncludePersons>${tag("Name", query.name)}<PageIndex>0</PageIndex><PageSize>10</PageSize></CustomerFindRequest>`;
-  const xml = await mb3mSoap("CustomerService", "ICustomerService", "FindAll", inner, fetchImpl);
+function customerFindXml(query: {
+  firstName?: string;
+  email?: string;
+  name?: string;
+  companies: boolean;
+  persons: boolean;
+  pageSize: number;
+}) {
+  return `<CustomerFindRequest xmlns="http://schemas.mb3m.fr/Partners">${tag("AltName", query.firstName)}${tag("Email", query.email)}<IncludeCompanies>${query.companies}</IncludeCompanies><IncludePersons>${query.persons}</IncludePersons>${tag("Name", query.name)}<PageIndex>0</PageIndex><PageSize>${query.pageSize}</PageSize></CustomerFindRequest>`;
+}
+
+function parseCustomerHits(xml: string, assumeCompany: boolean): Mb3mCustomerHit[] {
   const blocks = xml.match(/<CustomerSummary>[\s\S]*?<\/CustomerSummary>/g) || [];
   const customers: Mb3mCustomerHit[] = [];
   for (const block of blocks) {
     const uid = mb3mXmlText(block, "Uid");
     if (!uid) continue;
+    const flag = mb3mXmlText(block, "IsCompany").toLowerCase();
+    const company = flag === "true" || (assumeCompany && flag !== "false");
     customers.push({
       uid,
       name: mb3mXmlText(block, "Name"),
       altName: mb3mXmlText(block, "AltName"),
-      company: mb3mXmlText(block, "IsCompany") === "true",
+      company,
+      partnerId: mb3mXmlText(block, "Id"),
+      email: mb3mXmlText(block, "Email"),
+      countryCode: mb3mXmlText(block, "CountryCode"),
+      siret: mb3mXmlText(block, "Siret") || mb3mXmlText(block, "RegistrationNumber"),
+      commercialName: mb3mXmlText(block, "CommercialName"),
     });
   }
+  return customers;
+}
+
+function findTotal(xml: string, count: number) {
   const total = Number(mb3mXmlText(xml, "TotalCount"));
-  return { customers, total: Number.isFinite(total) ? total : customers.length };
+  return Number.isFinite(total) ? total : count;
+}
+
+export async function mb3mFindPersons(
+  query: { email?: string; name?: string; firstName?: string },
+  fetchImpl?: FetchImpl
+) {
+  const inner = customerFindXml({
+    firstName: query.firstName,
+    email: query.email,
+    name: query.name,
+    companies: false,
+    persons: true,
+    pageSize: 10,
+  });
+  const xml = await mb3mSoap("CustomerService", "ICustomerService", "FindAll", inner, fetchImpl);
+  const customers = parseCustomerHits(xml, false);
+  return { customers, total: findTotal(xml, customers.length) };
+}
+
+/** Sociétés seulement. Le contrat Partners cherche par nom et par e-mail. Le SIRET n’y est pas. */
+export async function mb3mFindCompanies(
+  query: { email?: string; name?: string },
+  fetchImpl?: FetchImpl
+) {
+  const inner = customerFindXml({
+    email: query.email,
+    name: query.name,
+    companies: true,
+    persons: false,
+    pageSize: 50,
+  });
+  const xml = await mb3mSoap("CustomerService", "ICustomerService", "FindAll", inner, fetchImpl);
+  const companies = parseCustomerHits(xml, true).filter((row) => row.company);
+  return { companies, total: findTotal(xml, companies.length) };
+}
+
+/** Nom, puis e-mail s’il est connu. Les doublons d’Uid sont fusionnés. */
+export async function mb3mCollectCompanies(
+  query: { name?: string | null; email?: string | null },
+  fetchImpl?: FetchImpl
+) {
+  const byUid = new Map<string, Mb3mCustomerHit>();
+  const take = async (part: { name?: string; email?: string }) => {
+    const found = await mb3mFindCompanies(part, fetchImpl);
+    for (const row of found.companies) {
+      if (row.uid) byUid.set(row.uid, row);
+    }
+  };
+  const name = (query.name || "").trim();
+  const email = (query.email || "").trim();
+  if (name) await take({ name });
+  if (email) await take({ email });
+  return [...byUid.values()];
+}
+
+function foldMb3mPartyName(value: string | null | undefined) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function partyEmail(value: string | null | undefined) {
+  return (value || "").trim().toLowerCase();
+}
+
+function partyIdent(value: string | null | undefined) {
+  return (value || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+}
+
+export type Mb3mCompanyMatchQuery = {
+  name: string;
+  email?: string | null;
+  countryCode?: string | null;
+  siret?: string | null;
+  registrationNumber?: string | null;
+};
+
+export type Mb3mCompanyPick =
+  | { status: "match"; company: Mb3mCustomerHit }
+  | { status: "none" }
+  | { status: "ambiguous" };
+
+function companyNameMatches(hit: Mb3mCustomerHit, wanted: string) {
+  const name = foldMb3mPartyName(hit.name);
+  const commercial = foldMb3mPartyName(hit.commercialName || hit.altName);
+  if (name === wanted) return true;
+  return !name && commercial === wanted;
+}
+
+function wantedIdents(query: Mb3mCompanyMatchQuery) {
+  return [partyIdent(query.siret), partyIdent(query.registrationNumber)].filter(Boolean);
+}
+
+function companyContradicts(hit: Mb3mCustomerHit, query: Mb3mCompanyMatchQuery) {
+  const email = partyEmail(query.email);
+  const hitEmail = partyEmail(hit.email);
+  if (email && hitEmail && email !== hitEmail) return true;
+  const wanted = wantedIdents(query);
+  const found = partyIdent(hit.siret);
+  if (wanted.length && found && !wanted.includes(found)) return true;
+  const country = mb3mCountryCode(query.countryCode) || "";
+  const hitCountry = mb3mCountryCode(hit.countryCode) || "";
+  return Boolean(country && hitCountry && country !== hitCountry);
+}
+
+/**
+ * Société déjà dans MB3M. Le nom normalisé doit être exactement celui de la fiche.
+ * Une seule : on la reprend. Plusieurs : e-mail, SIRET ou pays n’en laisse qu’une,
+ * sans contredire les autres champs présents. Sinon on n’en choisit pas.
+ */
+export function selectMb3mCompany(hits: Mb3mCustomerHit[], query: Mb3mCompanyMatchQuery): Mb3mCompanyPick {
+  const wanted = foldMb3mPartyName(query.name);
+  if (!wanted) return { status: "none" };
+  const exact = hits.filter((hit) => hit.company && hit.uid && companyNameMatches(hit, wanted));
+  if (!exact.length) return { status: "none" };
+  if (exact.length === 1) return { status: "match", company: exact[0] };
+  const open = exact.filter((hit) => !companyContradicts(hit, query));
+  const email = partyEmail(query.email);
+  if (email) {
+    const byEmail = open.filter((hit) => partyEmail(hit.email) === email);
+    if (byEmail.length === 1) return { status: "match", company: byEmail[0] };
+  }
+  const idents = wantedIdents(query);
+  if (idents.length) {
+    const byIdent = open.filter((hit) => idents.includes(partyIdent(hit.siret)));
+    if (byIdent.length === 1) return { status: "match", company: byIdent[0] };
+  }
+  const country = mb3mCountryCode(query.countryCode) || "";
+  if (country) {
+    const byCountry = open.filter((hit) => (mb3mCountryCode(hit.countryCode) || "") === country);
+    if (byCountry.length === 1) return { status: "match", company: byCountry[0] };
+  }
+  return { status: "ambiguous" };
 }
 
 export async function mb3mSavePerson(draft: Mb3mPersonDraft, fetchImpl?: FetchImpl) {

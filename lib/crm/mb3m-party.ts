@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveNationality } from "@/lib/crm/countries";
 import { queryWithOptionalColumn } from "@/lib/crm/optional-column";
 import { mb3mCompanyError, mb3mCompanyName, mb3mCompanyRefusal } from "@/lib/crm/mb3m-companies";
@@ -245,8 +246,25 @@ async function partyExists(customerId: string) {
   return Boolean(data?.id);
 }
 
-async function remember(customerId: string, companyId: string | null, uid: string, partnerId: string) {
-  const admin = createServiceClient();
+export async function readMb3mParty(admin: SupabaseClient, customerId: string, companyId: string | null) {
+  const realm = mb3mRealm();
+  let query = admin.from("crm_mb3m_parties").select("mb3m_uid, partner_id").eq("customer_id", customerId).eq("realm", realm);
+  query = companyId ? query.eq("billing_company_id", companyId) : query.is("billing_company_id", null);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Mb3mError(error.message, -1);
+  const row = data as { mb3m_uid?: string | null; partner_id?: string | null } | null;
+  const uid = (row?.mb3m_uid || "").trim();
+  if (!uid) return null;
+  return { uid, partnerId: (row?.partner_id || "").trim() || null };
+}
+
+export async function writeMb3mParty(
+  admin: SupabaseClient,
+  customerId: string,
+  companyId: string | null,
+  uid: string,
+  partnerId: string | null
+) {
   const realm = mb3mRealm();
   let query = admin.from("crm_mb3m_parties").select("id").eq("customer_id", customerId).eq("realm", realm);
   query = companyId ? query.eq("billing_company_id", companyId) : query.is("billing_company_id", null);
@@ -269,4 +287,8 @@ async function remember(customerId: string, companyId: string | null, uid: strin
     ...row,
   });
   if (error) throw new Mb3mError(error.message, -1);
+}
+
+async function remember(customerId: string, companyId: string | null, uid: string, partnerId: string) {
+  await writeMb3mParty(createServiceClient(), customerId, companyId, uid, partnerId || null);
 }
