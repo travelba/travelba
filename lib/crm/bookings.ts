@@ -361,8 +361,10 @@ type AgencyFeeItem = {
 };
 
 /**
- * Assiette depuis les cartes : séjour, extras et dépenses vendues, y compris la billeterie.
- * Une étape annulée ou remplacée sort. Une dépense « à valider » n’est pas vendue.
+ * Assiette depuis les cartes : séjour, extras et toutes les dépenses vendues.
+ * Billeterie, saisie, raccourci, Pliant validé, ou un type de dépense à venir : le montant de la ligne
+ * (quantité × prix unitaire, déjà dans `amount`). Aucun filtre sur l’origine.
+ * Une étape annulée ou remplacée sort. Une dépense Pliant encore « à valider » n’est pas vendue.
  * La commission n’est pas une carte : elle ne peut pas entrer dans sa propre assiette.
  */
 export function agencyFeeBaseFromItems(items: AgencyFeeItem[]) {

@@ -47,8 +47,8 @@ function addPositiveAmounts(sum: number, rows: { amount: number | null }[] | und
 
 /**
  * Assiette de la commission : total vendu.
- * Séjour, extras, dépenses vendues et frais de billeterie.
- * La ligne de commission n’est pas une dépense : elle n’entre pas ici.
+ * Séjour, extras, et chaque dépense passée (billeterie, saisie, raccourci, Pliant validé, type à venir).
+ * Le montant est celui de la ligne, pas le prix unitaire. La ligne de commission n’est pas dans `expenses`.
  * `ticketingFee` est la billeterie qui n’est pas encore une ligne de dépense (0 sinon, pour ne pas la compter deux fois).
  */
 export function agencyFeeBaseAmount(input: {
