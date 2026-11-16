@@ -5,7 +5,8 @@ import { dossierMergeSummary, mergeDossierInto } from "./dossier-merge";
 
 type Row = Record<string, unknown>;
 
-function memoryAdmin(seed: Record<string, Row[]>) {
+function memoryAdmin(seed: Record<string, Row[]>, options?: { failInsert?: string[] }) {
+  const failInsert = new Set(options?.failInsert || []);
   const tables: Record<string, Row[]> = {};
   for (const [key, rows] of Object.entries(seed)) tables[key] = rows.map((row) => ({ ...row }));
   const writes: { table: string; op: string; payload: unknown }[] = [];
@@ -22,6 +23,10 @@ function memoryAdmin(seed: Record<string, Row[]>) {
     const run = () => {
       const all = tables[table] || [];
       if (op === "insert") {
+        if (failInsert.has(table)) {
+          writes.push({ table, op, payload });
+          return { data: null, error: { code: "forced" } };
+        }
         const rows = (Array.isArray(payload) ? payload : [payload]) as Row[];
         tables[table] = [...all, ...rows];
         writes.push({ table, op, payload });
@@ -265,5 +270,109 @@ test("une carte bancaire bloque la réunion, sans journal", async () => {
   assert.equal(result.ok, false);
   assert.match(result.message || "", /carte bancaire/);
   assert.equal(writes.some((row) => row.table === "crm_audit_events"), false);
+  assert.equal(tables.crm_bookings.length, 2);
+});
+
+test("deux clients ne sont pas réunis", async () => {
+  const { admin, tables, writes } = memoryAdmin({
+    crm_booking_cards: [],
+    crm_bookings: [
+      { id: KEEP, reference: "TB-2026-0124", customer_id: "khiari", visible_to_client: false },
+      { id: DROP, reference: "TB-2026-0200", customer_id: "bettane", visible_to_client: false },
+    ],
+    crm_booking_items: [
+      { id: "item-hotel", booking_id: DROP, kind: "hotel", title: "Park Hyatt", confirmation_ref: "1", start_at: "2026-12-17", details: {} },
+    ],
+    crm_booking_travelers: [
+      { id: "trav-new", booking_id: DROP, first_name: "Marc", last_name: "Bettane", is_account_holder: true },
+    ],
+    crm_booking_documents: [],
+    crm_email_ingest: [{ id: "mail-1", suggested_booking_id: DROP, suggested_customer_id: "bettane" }],
+    crm_audit_events: [],
+    crm_agency_journal: [],
+  });
+  const result = await mergeDossierInto(admin, KEEP, DROP);
+  assert.equal(result.ok, false);
+  assert.match(result.message || "", /clients différents/);
+  assert.equal(tables.crm_bookings.length, 2);
+  assert.equal(tables.crm_booking_items[0]?.booking_id, DROP);
+  assert.equal(tables.crm_booking_travelers[0]?.is_account_holder, true);
+  assert.equal(tables.crm_email_ingest[0]?.suggested_booking_id, DROP);
+  assert.equal((writes.find((row) => row.table === "crm_audit_events")?.payload as { action?: string })?.action, "reunion_proposee");
+});
+
+test("un voyageur déplacé n’est plus titulaire, et le mail d’un autre client ne suit pas", async () => {
+  const { admin, tables } = memoryAdmin({
+    crm_booking_cards: [],
+    crm_bookings: [
+      { id: KEEP, reference: "TB-2026-0098", customer_id: "client-1" },
+      { id: DROP, reference: "TB-2026-0102", customer_id: "client-1" },
+    ],
+    crm_booking_items: [],
+    crm_booking_travelers: [
+      { id: "trav-new", booking_id: DROP, first_name: "Léa", last_name: "Martin", is_account_holder: true },
+    ],
+    crm_booking_documents: [],
+    crm_le_bookings: [],
+    crm_email_ingest: [
+      { id: "mail-same", suggested_booking_id: DROP, suggested_customer_id: "client-1" },
+      { id: "mail-other", suggested_booking_id: DROP, suggested_customer_id: "client-2" },
+    ],
+    crm_audit_events: [],
+    crm_agency_journal: [],
+  });
+  const result = await mergeDossierInto(admin, KEEP, DROP);
+  assert.equal(result.ok, true);
+  const moved = tables.crm_booking_travelers.find((row) => row.id === "trav-new");
+  assert.equal(moved?.booking_id, KEEP);
+  assert.equal(moved?.is_account_holder, false);
+  assert.equal(tables.crm_email_ingest.find((row) => row.id === "mail-same")?.suggested_booking_id, KEEP);
+  assert.equal(tables.crm_email_ingest.find((row) => row.id === "mail-other")?.suggested_booking_id, null);
+});
+
+test("sans journal, la réunion ne déplace rien", async () => {
+  const { admin, tables } = memoryAdmin(
+    {
+      crm_booking_cards: [],
+      crm_bookings: [
+        { id: KEEP, reference: "TB-2026-0098", customer_id: "client-1" },
+        { id: DROP, reference: "TB-2026-0102", customer_id: "client-1" },
+      ],
+      crm_booking_items: [
+        { id: "item-hotel", booking_id: DROP, kind: "hotel", title: "Park Hyatt", confirmation_ref: "9", start_at: "2026-12-17", details: {} },
+      ],
+      crm_booking_travelers: [],
+      crm_booking_documents: [],
+      crm_audit_events: [],
+      crm_agency_journal: [],
+    },
+    { failInsert: ["crm_audit_events"] }
+  );
+  const result = await mergeDossierInto(admin, KEEP, DROP);
+  assert.equal(result.ok, false);
+  assert.match(result.message || "", /journalisée/);
+  assert.equal(tables.crm_bookings.length, 2);
+  assert.equal(tables.crm_booking_items[0]?.booking_id, DROP);
+});
+
+test("un dossier né dans le même passage n’est pas absorbé", async () => {
+  const { admin, tables } = memoryAdmin({
+    crm_booking_cards: [],
+    crm_bookings: [
+      { id: KEEP, reference: "TB-2026-0124", customer_id: "client-1", created_at: "2026-11-14T10:00:00.000Z" },
+      { id: DROP, reference: "TB-2026-0125", customer_id: "client-1", created_at: "2026-11-14T10:01:00.000Z" },
+    ],
+    crm_booking_items: [],
+    crm_booking_travelers: [],
+    crm_booking_documents: [],
+    crm_audit_events: [],
+    crm_agency_journal: [],
+  });
+  const result = await mergeDossierInto(admin, KEEP, DROP, {
+    bornIds: new Set([DROP]),
+    passStartedAt: "2026-11-14T10:00:30.000Z",
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.message || "", /passage/);
   assert.equal(tables.crm_bookings.length, 2);
 });

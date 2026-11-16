@@ -18,15 +18,36 @@ export type TripDossier = {
   status?: string | null;
   archived?: boolean;
   visible?: boolean;
+  createdAt?: string | null;
   start: string | null;
   end: string | null;
   places: string[];
   people: TripPerson[];
 };
 
-export type Reunion =
-  | { keeper: TripDossier; mergeIds: string[]; hold: null }
-  | { keeper: null; mergeIds: []; hold: string | null };
+export type ReunionProposal = { id: string; reference: string | null };
+
+/** Deux fiches. Rien n’est fusionné : la file attend une validation. */
+export const DIFFERENT_CLIENT_HOLD =
+  "Deux clients différents ont un séjour proche. La réunion attend une validation.";
+
+/** Dossier né pendant ce passage du cron. Il n’absorbe rien et n’est pas absorbé. */
+export const SAME_PASS_HOLD =
+  "Un dossier vient d’être créé pendant ce passage. La réunion attend une validation.";
+
+export type ReunionOptions = {
+  /** Dossiers créés plus tôt dans le même passage (cron, sync). */
+  bornIds?: Set<string>;
+  /** Horodatage de début du passage. Un dossier créé après n’est pas fusionné. */
+  passStartedAt?: string | null;
+};
+
+export type Reunion = {
+  keeper: TripDossier | null;
+  mergeIds: string[];
+  hold: string | null;
+  proposals: ReunionProposal[];
+};
 
 function dayNumber(value: string | null | undefined) {
   const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -98,16 +119,11 @@ export function windowsConnect(
   return gap <= SAME_CITY_GAP_DAYS && placesConnect(left.places, right.places);
 }
 
-function sameParty(left: TripDossier, right: TripDossier) {
-  if (sharePerson(left.people, right.people)) return true;
-  return Boolean(left.customerId && left.customerId === right.customerId);
-}
-
-/** Même client ou mêmes voyageurs, dates qui se suivent ou se chevauchent. */
+/** Même client, dates qui se suivent ou se chevauchent. Un nom partagé ne suffit pas. */
 export function dossiersSameTrip(left: TripDossier, right: TripDossier) {
   if (!openDossier(left) || !openDossier(right)) return false;
   if (left.id === right.id) return false;
-  if (!sameParty(left, right)) return false;
+  if (!left.customerId || left.customerId !== right.customerId) return false;
   return windowsConnect(left, right);
 }
 
@@ -176,41 +192,65 @@ function pickKeeper(group: TripDossier[]): { keeper: TripDossier | null; hold: s
   return { keeper: keeper || null, hold: null };
 }
 
+function bornThisPass(dossier: TripDossier, options?: ReunionOptions) {
+  if (options?.bornIds?.has(dossier.id)) return true;
+  const started = options?.passStartedAt || "";
+  const created = dossier.createdAt || "";
+  return Boolean(started && created && created >= started);
+}
+
+/** Même fiche, et les dates de la pièce touchent ce dossier. Pas un voisin du voisin. */
+function directSameClient(incoming: TripDossier, dossier: TripDossier) {
+  if (!incoming.customerId || incoming.customerId !== dossier.customerId) return false;
+  return windowsConnect(incoming, dossier);
+}
+
 /**
- * Dossiers du même voyage que la pièce qui arrive, plus ceux qui se suivent entre eux.
+ * Dossiers du même client que la pièce qui arrive, et qui touchent directement ses dates.
+ * Pas de chaîne : un dossier qui ne touche que un autre dossier n’est pas pris.
+ * Un autre client, même avec un nom proche, reste une proposition.
+ * Un dossier créé pendant ce passage n’est pas fusionné.
  * Un seul séjour montré est gardé. Deux séjours déjà montrés restent en file.
  */
-export function reunionPlan(incoming: TripDossier, dossiers: TripDossier[]): Reunion {
+export function reunionPlan(
+  incoming: TripDossier,
+  dossiers: TripDossier[],
+  options?: ReunionOptions
+): Reunion {
+  const none = { keeper: null as null, mergeIds: [] as string[], hold: null as string | null, proposals: [] as ReunionProposal[] };
   const open = dossiers.filter(openDossier);
-  const hits = open.filter((dossier) => {
-    if (!incoming.people.length && !incoming.customerId) return false;
+  if (!incoming.people.length && !incoming.customerId) return none;
+  const same: TripDossier[] = [];
+  const other: TripDossier[] = [];
+  for (const dossier of open) {
+    if (!windowsConnect(incoming, dossier)) continue;
     if (incoming.customerId && dossier.customerId && incoming.customerId !== dossier.customerId) {
-      if (!sharePerson(incoming.people, dossier.people)) return false;
-    } else if (incoming.people.length && dossier.people.length && !sharePerson(incoming.people, dossier.people)) {
-      if (!(incoming.customerId && incoming.customerId === dossier.customerId)) return false;
-    } else if (!incoming.people.length && incoming.customerId !== dossier.customerId) {
-      return false;
+      if (sharePerson(incoming.people, dossier.people)) other.push(dossier);
+      continue;
     }
-    return windowsConnect(incoming, dossier);
-  });
-  if (!hits.length) return { keeper: null, mergeIds: [], hold: null };
-  const group = [...hits];
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const dossier of open) {
-      if (group.some((row) => row.id === dossier.id)) continue;
-      if (!group.some((row) => dossiersSameTrip(row, dossier))) continue;
-      group.push(dossier);
-      grew = true;
-    }
+    if (!directSameClient(incoming, dossier)) continue;
+    same.push(dossier);
   }
-  const picked = pickKeeper(group);
-  if (!picked.keeper) return { keeper: null, mergeIds: [], hold: picked.hold };
+  const proposals = other.map((row) => ({ id: row.id, reference: row.reference || null }));
+  if (!same.length) {
+    return other.length
+      ? { keeper: null, mergeIds: [], hold: DIFFERENT_CLIENT_HOLD, proposals }
+      : { ...none, proposals };
+  }
+  const fresh = same.filter((row) => bornThisPass(row, options));
+  const settled = same.filter((row) => !bornThisPass(row, options));
+  if (!settled.length && fresh.length) {
+    const picked = pickKeeper(fresh);
+    if (!picked.keeper) return { keeper: null, mergeIds: [], hold: picked.hold, proposals };
+    return { keeper: picked.keeper, mergeIds: [], hold: null, proposals };
+  }
+  const picked = pickKeeper(settled);
+  if (!picked.keeper) return { keeper: null, mergeIds: [], hold: picked.hold, proposals };
   return {
     keeper: picked.keeper,
-    mergeIds: group.filter((row) => row.id !== picked.keeper!.id).map((row) => row.id),
+    mergeIds: settled.filter((row) => row.id !== picked.keeper!.id).map((row) => row.id),
     hold: null,
+    proposals,
   };
 }
 
@@ -259,6 +299,7 @@ export function tripDossierFromRows(input: {
     status: booking.status,
     archived: Boolean(booking.archived_at),
     visible: Boolean(booking.visible_to_client),
+    createdAt: (booking as { created_at?: string | null }).created_at || null,
     start,
     end,
     places: places.filter(Boolean),

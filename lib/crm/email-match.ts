@@ -1,3 +1,4 @@
+import { isAgencyCustomerEmail } from "@/lib/crm/agency-mail";
 import { shownPersonName } from "@/lib/crm/identity";
 import { documentPriceIssues } from "@/lib/crm/booking-issues";
 import { cityPlaceKey } from "@/lib/crm/city-names";
@@ -22,7 +23,15 @@ import { normalizeMatchText } from "@/lib/crm/revolut-match";
 type CustomerLite = Pick<
   CrmCustomer,
   "id" | "first_name" | "last_name" | "company_name" | "email"
-> & { usage_name?: string | null };
+> & { usage_name?: string | null; phone?: string | null; whatsapp?: string | null };
+
+export { isAgencyCustomerEmail } from "@/lib/crm/agency-mail";
+
+export function phoneDigits(value: string | null | undefined) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length < 8) return "";
+  return digits.length > 9 ? digits.slice(-9) : digits;
+}
 
 export type TripBooking = Pick<CrmBooking, "id" | "reference" | "title" | "destination"> & {
   customer_id?: string | null;
@@ -223,9 +232,16 @@ export function extractReferences(extract: BookingExtract): Set<string> {
 export function usableCustomerEmail(email: string | null | undefined): string | null {
   const value = (email || "").trim().toLowerCase();
   if (!value || !value.includes("@")) return null;
-  if (AGENCY_INBOXES.has(value)) return null;
-  if (/^(contact|agence|hello|info|bonjour|admin|crm)@travelba\.fr$/.test(value)) return null;
+  if (isAgencyCustomerEmail(value) || AGENCY_INBOXES.has(value)) return null;
   return value;
+}
+
+/** Le nom, même avec une ville et des dates, ne choisit pas le dossier. */
+export function nameOnlyBookingReason(reason: string | null | undefined) {
+  const text = reason || "";
+  if (/référence|e-mail|téléphone/i.test(text)) return false;
+  if (text === HOTEL_STAY_REASON) return false;
+  return /nom|homonyme|destination/i.test(text);
 }
 
 export function extractPeople(extract: BookingExtract): ExtractPerson[] {
@@ -346,10 +362,11 @@ export function suggestCustomerFromExtract(
     });
   };
 
+  const peopleCustomers = customers.filter((row) => !isAgencyCustomerEmail(row.email));
   const email = usableCustomerEmail(extract.customer_email);
   let emailHit: string | null = null;
   if (email) {
-    const hit = customers.find((c) => (c.email || "").toLowerCase() === email);
+    const hit = peopleCustomers.find((c) => (c.email || "").toLowerCase() === email);
     if (hit) {
       push(hit, 100, "E-mail du client");
       emailHit = hit.id;
@@ -358,7 +375,7 @@ export function suggestCustomerFromExtract(
 
   const people = extractPeople(extract);
   const lastCounts = new Map<string, number>();
-  for (const c of customers) {
+  for (const c of peopleCustomers) {
     const l = compactName(c.last_name);
     if (l) lastCounts.set(l, (lastCounts.get(l) || 0) + 1);
   }
@@ -366,27 +383,28 @@ export function suggestCustomerFromExtract(
   const nameHits: string[] = [];
   for (const person of people) {
     if (compactName(person.last_name).length < 2) continue;
-    for (const c of customers) {
+    for (const c of peopleCustomers) {
       const match = personMatchesCustomer(person, c);
       if (!match.last) continue;
       const uniqueLast = (lastCounts.get(compactName(c.last_name)) || 0) === 1;
+      const namesake = !uniqueLast;
       let score = 0;
-      let reason = "Nom de famille";
+      let reason = namesake ? "Homonyme" : "Nom de famille";
       if (match.exactLast && match.first) {
-        score = uniqueLast ? 92 : 85;
-        reason = match.inverted ? "Prénom et nom inversés" : "Nom et prénom";
+        score = uniqueLast ? 92 : 70;
+        reason = namesake ? "Homonyme" : match.inverted ? "Prénom et nom inversés" : "Nom et prénom";
       } else if (match.first) {
-        score = uniqueLast ? 86 : 80;
-        reason = "Nom approchant et prénom";
+        score = uniqueLast ? 86 : 70;
+        reason = namesake ? "Homonyme" : "Nom approchant et prénom";
       } else if (match.exactLast) {
-        score = uniqueLast ? 88 : 60;
-        reason = "Nom de famille";
+        score = 60;
+        reason = namesake ? "Homonyme" : "Nom de famille";
       } else {
-        score = 62;
-        reason = "Nom de famille approchant";
+        score = 60;
+        reason = namesake ? "Homonyme" : "Nom de famille approchant";
       }
       push(c, score, reason);
-      nameHits.push(c.id);
+      if (match.first) nameHits.push(c.id);
     }
   }
 
@@ -421,8 +439,9 @@ function bookingLabel(b: Pick<CrmBooking, "reference" | "title" | "destination">
 }
 
 export function pickAutoBookingId(candidates: BookingSuggestionCandidate[]) {
-  if (!candidates.length) return null;
-  const sorted = [...candidates].sort(
+  const anchored = candidates.filter((row) => !nameOnlyBookingReason(row.reason));
+  if (!anchored.length) return null;
+  const sorted = [...anchored].sort(
     (a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr")
   );
   const top = sorted[0];
@@ -507,10 +526,18 @@ export function suggestBookingByTripSignals(
   const byCustomer = new Map(customers.map((row) => [row.id, row]));
   const candidates: BookingSuggestion["candidates"] = [];
 
+  const email = usableCustomerEmail(extract.customer_email);
+  const phone = phoneDigits(extract.customer_phone);
+  const lastCounts = new Map<string, number>();
+  for (const row of customers) {
+    if (isAgencyCustomerEmail(row.email)) continue;
+    const key = compactName(row.last_name);
+    if (key) lastCounts.set(key, (lastCounts.get(key) || 0) + 1);
+  }
   for (const booking of bookings) {
     if (booking.status === "cancelled") continue;
     const customer = booking.customer_id ? byCustomer.get(booking.customer_id) : undefined;
-    if (!customer) continue;
+    if (!customer || isAgencyCustomerEmail(customer.email)) continue;
     const nameHit = people
       .map((person) => personMatchesCustomer(person, customer))
       .find((row) => row.last);
@@ -524,15 +551,23 @@ export function suggestBookingByTripSignals(
       booking.end_date
     );
     if (!destHit || !overlapDates) continue;
+    const emailHit = Boolean(email && (customer.email || "").toLowerCase() === email);
+    const phoneHit = Boolean(
+      phone &&
+        [customer.phone, customer.whatsapp].some((value) => phoneDigits(value) === phone)
+    );
+    const namesake = (lastCounts.get(compactName(customer.last_name)) || 0) > 1 && !nameHit.first;
     const score = exactDates ? 88 : 84;
+    let reason = exactDates ? "Nom, destination et dates" : "Nom, destination et dates (chevauchement)";
+    if (emailHit) reason = `E-mail, ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`;
+    else if (phoneHit) reason = `Téléphone, ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`;
+    else if (namesake || !nameHit.first) reason = "Homonyme";
     candidates.push({
       booking_id: booking.id,
       customer_id: booking.customer_id || null,
       label: bookingLabel(booking),
-      reason: exactDates
-        ? "Nom, destination et dates"
-        : "Nom, destination et dates (chevauchement)",
-      score,
+      reason,
+      score: emailHit || phoneHit ? score : Math.min(score, 70),
     });
   }
 
@@ -627,6 +662,7 @@ export function suggestBookingByHotelStay(
   for (const booking of bookings) {
     if (booking.status === "cancelled") continue;
     const customer = booking.customer_id ? byCustomer.get(booking.customer_id) : undefined;
+    if (customer && isAgencyCustomerEmail(customer.email)) continue;
     const stayCards = byBooking.get(booking.id) || [];
     const hit = hotels.some((item) => {
       const incoming = {
@@ -701,7 +737,7 @@ export function suggestBookingByDestination(
 
   for (const booking of bookings) {
     const customer = booking.customer_id ? byCustomer.get(booking.customer_id) : undefined;
-    if (!customer) continue;
+    if (!customer || isAgencyCustomerEmail(customer.email)) continue;
     const nameHit = people.some((person) => personMatchesCustomer(person, customer).last);
     const emailHit = Boolean(emailCustomer && emailCustomer.id === customer.id);
     if (!nameHit && !emailHit) continue;
@@ -735,7 +771,7 @@ export function suggestBookingByClientEmail(
   const window = extractWindow(extract);
   if (!window.start) return { autoBookingId: null, candidates: [] };
   const customer = customers.find((row) => (row.email || "").trim().toLowerCase() === email);
-  if (!customer) return { autoBookingId: null, candidates: [] };
+  if (!customer || isAgencyCustomerEmail(customer.email)) return { autoBookingId: null, candidates: [] };
   const candidates: BookingSuggestion["candidates"] = [];
   for (const booking of bookings) {
     if (booking.customer_id !== customer.id) continue;
@@ -778,12 +814,9 @@ export function deterministicBookingId(
   const byEmail = uniqueByBooking(candidates.filter((row) => row.reason === OVERLAP_ADD_REASON));
   if (byEmail.length === 1) return { tier: "email_dates", bookingId: byEmail[0].booking_id };
   if (byEmail.length > 1) return { tier: "email_dates", bookingId: null };
-  const byStay = uniqueByBooking(
-    candidates.filter(
-      (row) => row.reason === HOTEL_STAY_REASON || row.reason.startsWith("Nom, destination")
-    )
-  );
+  const byStay = uniqueByBooking(candidates.filter((row) => row.reason === HOTEL_STAY_REASON));
   if (byStay.length === 1) return { tier: "traveler_hotel_dates", bookingId: byStay[0].booking_id };
+  if (byStay.length > 1) return { tier: "traveler_hotel_dates", bookingId: null };
   return { tier: "human", bookingId: null };
 }
 

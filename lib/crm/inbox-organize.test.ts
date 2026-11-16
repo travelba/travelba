@@ -93,7 +93,7 @@ test("un objet vide et un .eml imbriqué donnent le vol, le passager et le PNR",
   assert.equal(parsed.travelers[0]?.last_name, "Berda");
 });
 
-test("le billet rejoint le dossier hôtel et réunit Con Dao, sans second dossier", async () => {
+test("le billet rejoint le dossier hôtel sans absorber Con Dao", async () => {
   const extract = ticketExtract();
   const plan = planInboxOrganization({
     extract,
@@ -104,7 +104,7 @@ test("le billet rejoint le dossier hôtel et réunit Con Dao, sans second dossie
   assert.equal(plan.action, "attach");
   if (plan.action !== "attach") return;
   assert.equal(plan.bookingId, "dossier-hcm");
-  assert.deepEqual(plan.mergeIds, ["dossier-con-dao"]);
+  assert.deepEqual(plan.mergeIds, []);
   const calls = { apply: 0, persist: 0, merge: [] as string[], attached: "" };
   const result = await executeInboxPlan(plan, extract, {
     ensureCompanions: async () => undefined,
@@ -134,7 +134,7 @@ test("le billet rejoint le dossier hôtel et réunit Con Dao, sans second dossie
   assert.equal(result.attached, true);
   assert.equal(calls.persist, 0);
   assert.equal(calls.apply, 1);
-  assert.deepEqual(calls.merge, ["dossier-con-dao"]);
+  assert.deepEqual(calls.merge, []);
   assert.equal(calls.attached, "dossier-hcm");
 });
 

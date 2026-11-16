@@ -4,6 +4,7 @@ import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Plus } from "lucide-react";
 import { agencyFeeRateKey, formatAgencyFeePercent, parseStoredAgencyFeeRate } from "@/lib/crm/agency-fee-rate";
+import { isAgencyCustomerEmail } from "@/lib/crm/agency-mail";
 import { AgencyFeeRateField } from "@/components/admin/AgencyFeeRateField";
 import type { CrmBillingCompany, CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
@@ -431,6 +432,11 @@ export function CustomerEditor({
                   autoComplete="off"
                   className={`${fieldControlClass} admin-tap`}
                 />
+                {isAgencyCustomerEmail(email) ? (
+                  <p role="status" className="mt-2 text-sm text-[var(--admin-red)]">
+                    Cette adresse est une boîte de l’agence (travelba.fr ou travelbt.fr). Elle n’est pas utilisée pour rapprocher un client.
+                  </p>
+                ) : null}
               </Field>
               <PhoneField name="phone" value={phone} onChange={setPhone} />
               <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
