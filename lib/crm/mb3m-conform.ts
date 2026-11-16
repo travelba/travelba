@@ -6,6 +6,7 @@
 
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { MB3M_AIRLINE_PROVIDERS, MB3M_PROVIDERS, type Mb3mCatalogProvider } from "@/lib/crm/mb3m-providers";
+import { mb3mVerifiedProviderId } from "@/lib/crm/mb3m-verified-providers";
 import type { Mb3mAccountLine } from "@/lib/crm/mb3m-account";
 import type { Mb3mLine } from "@/lib/crm/mb3m";
 import { siteConfig } from "@/lib/site";
@@ -405,6 +406,17 @@ function landLabel(label: string, supplier: string) {
   return `${label} · ${clean}`.slice(0, 120);
 }
 
+/** Nom résolu dans la Note quand aucun ProviderId vérifié n’est envoyé. */
+function noteWithResolvedProvider(existing: string | null | undefined, name: string) {
+  const clean = name.trim();
+  if (!clean) return existing ?? null;
+  const current = (existing || "").trim();
+  if (!current) return `Fournisseur : ${clean}`;
+  if (foldMb3mName(current).includes(foldMb3mName(clean))) return current;
+  if (/^fournisseur :/i.test(current)) return `${current}, ${clean}`.slice(0, 250);
+  return `Fournisseur : ${clean}`.slice(0, 250);
+}
+
 function bookingRef(item: Mb3mConformItem | null) {
   const ref = (item?.confirmation_ref || detailText(item?.details, "pnr") || "").trim();
   return ref.slice(0, 40);
@@ -465,11 +477,14 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
     const held = MB3M_FLIGHT_ACTIVITIES.has(activityId) && !mb3mFlightLinesEnabled();
     const generic = supplier.ok && supplier.genericLand;
     const tickets = ticketRefs(item?.details);
+    const providerName = supplier.ok ? supplier.provider.name : null;
+    const providerId = providerName ? mb3mVerifiedProviderId(providerName) : null;
     return {
       ...line,
       activityId,
-      providerId: supplier.ok ? supplier.provider.id : null,
-      providerName: supplier.ok ? supplier.provider.name : null,
+      providerId,
+      providerName,
+      note: providerName && !providerId ? noteWithResolvedProvider(line.note, providerName) : line.note,
       refPiece:
         activityId === MB3M_ACTIVITY.hotel || activityId === MB3M_ACTIVITY.land ? bookingRef(item) || null : tickets[0] || null,
       ticketRefs: tickets,
@@ -589,5 +604,7 @@ export function mb3mSupplierAlertMail(input: { reference: string; bookingId: str
 export function mb3mAccountSyncCanSend(lines: Mb3mAccountLine[]) {
   const sendable = lines.filter((line) => !line.held && !line.rollup);
   if (!sendable.length) return false;
-  return sendable.every((line) => line.agencyProvider || Boolean(line.providerId));
+  return sendable.every(
+    (line) => line.agencyProvider || Boolean(line.providerId) || (Boolean(line.providerName) && !line.supplierReason)
+  );
 }
