@@ -178,6 +178,33 @@ export function dateRangesOverlap(
   return a0 <= b1 && a1 >= b0;
 }
 
+export function stayWindowsNear(
+  leftStart: string | null | undefined,
+  leftEnd: string | null | undefined,
+  rightStart: string | null | undefined,
+  rightEnd: string | null | undefined,
+  days = NEAR_STAY_DAYS
+) {
+  if (dateRangesOverlap(leftStart, leftEnd, rightStart, rightEnd)) return true;
+  const left0 = extractDay(leftStart);
+  const right0 = extractDay(rightStart);
+  if (!left0 || !right0) return false;
+  const left1 = extractDay(leftEnd) || left0;
+  const right1 = extractDay(rightEnd) || right0;
+  const endA = left0 <= left1 ? left1 : left0;
+  const startA = left0 <= left1 ? left0 : left1;
+  const endB = right0 <= right1 ? right1 : right0;
+  const startB = right0 <= right1 ? right0 : right1;
+  const gap = endA < startB ? daySpan(endA, startB) : endB < startA ? daySpan(endB, startA) : 0;
+  return gap <= days;
+}
+
+function daySpan(earlier: string, later: string) {
+  const [ay, am, ad] = earlier.split("-").map(Number);
+  const [by, bm, bd] = later.split("-").map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}
+
 export function dateRangesExact(
   leftStart: string | null | undefined,
   leftEnd: string | null | undefined,
@@ -639,6 +666,8 @@ export function suggestBookingByTripSignals(
 
 export const TRAVELER_DATES_REASON = "Voyageur et dates";
 export const TRAVELER_DATES_SCORE = 88;
+export const SAME_TRIP_REASON = "Même séjour";
+export const NEAR_STAY_DAYS = 30;
 
 export type TravelerName = {
   booking_id?: string | null;
@@ -698,7 +727,9 @@ export function suggestBookingByTraveler(
   const candidates: BookingSuggestion["candidates"] = [];
   for (const booking of bookings) {
     if (booking.status === "cancelled") continue;
-    if (!dateRangesOverlap(window.start, window.end, booking.start_date, booking.end_date)) continue;
+    const overlap = dateRangesOverlap(window.start, window.end, booking.start_date, booking.end_date);
+    const near = stayWindowsNear(window.start, window.end, booking.start_date, booking.end_date);
+    if (!overlap && !near) continue;
     const holder = booking.customer_id ? byCustomer.get(booking.customer_id) : undefined;
     const names: TravelerName[] = [
       ...travelers.filter((row) => row.booking_id === booking.id),
@@ -712,7 +743,7 @@ export function suggestBookingByTraveler(
       booking_id: booking.id,
       customer_id: booking.customer_id || null,
       label: bookingLabel(booking),
-      reason: TRAVELER_DATES_REASON,
+      reason: overlap ? TRAVELER_DATES_REASON : SAME_TRIP_REASON,
       score: TRAVELER_DATES_SCORE,
       start_date: booking.start_date,
       end_date: booking.end_date,

@@ -166,8 +166,9 @@ describe("rattachement automatique", () => {
 
   it("l’ingestion appelle le rattachement, sans invitation ni envoi", () => {
     const ingest = readFileSync(new URL("./email-ingest.ts", import.meta.url), "utf8");
-    assert.match(ingest, /autoAttachMatchedFlight/);
-    assert.match(ingest, /decideFlightAutoAttach/);
+    assert.match(ingest, /autoSettleStay/);
+    assert.match(ingest, /decideStayAutoAttach/);
+    assert.match(ingest, /autoCreateStayFromMail/);
     assert.equal(ingest.includes("inviteCustomer"), false);
     assert.equal(ingest.includes("visibleToClient: true"), false);
     assert.equal(ingest.includes("notifyStayPublished"), false);

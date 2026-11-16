@@ -4,6 +4,7 @@ import {
   suggestBookingByReference,
   suggestBookingByTraveler,
   TRAVELER_DATES_REASON,
+  SAME_TRIP_REASON,
   type TravelerName,
   type TripBooking,
 } from "@/lib/crm/email-match";
@@ -85,6 +86,16 @@ export function flightsDatedBeforeMail(extract: FlightExtract | null | undefined
   if (received == null) return false;
   return (extract?.items || []).some((item) => {
     if ((item.kind || "") !== "flight") return false;
+    const when = dayStamp(item.start_at);
+    return when != null && when < received;
+  });
+}
+
+export function hotelDatedBeforeMail(extract: FlightExtract | null | undefined, receivedAt: string | null | undefined) {
+  const received = dayStamp(receivedAt);
+  if (received == null) return false;
+  return (extract?.items || []).some((item) => {
+    if ((item.kind || "") !== "hotel") return false;
     const when = dayStamp(item.start_at);
     return when != null && when < received;
   });
@@ -277,7 +288,7 @@ function strongFlightReason(row: FlightAutoCandidate) {
   const reason = row.reason || "";
   const score = row.score || 0;
   if (score >= 90 && /r[eé]f[eé]rence fournisseur/i.test(reason)) return true;
-  return reason === TRAVELER_DATES_REASON && score >= 88;
+  return (reason === TRAVELER_DATES_REASON || reason === SAME_TRIP_REASON) && score >= 88;
 }
 
 /**
@@ -300,7 +311,7 @@ export function decideFlightAutoAttach(
   if (ids.length === 1) {
     const hit = strong.find((row) => row.booking_id === ids[0]);
     if (hit?.customer_id && hit.reason && hit.covers_passengers !== false) {
-      if (hit.reason !== TRAVELER_DATES_REASON || !travelerDatesBlocked(extract, hit, context?.receivedAt)) {
+      if (!dateBoundReason(hit.reason) || !travelerDatesBlocked(extract, hit, context?.receivedAt)) {
         return { bookingId: ids[0], customerId: hit.customer_id, reason: hit.reason };
       }
     }
@@ -320,12 +331,16 @@ export function decideFlightAutoAttach(
   return { bookingId: coverIds[0], customerId: hit.customer_id, reason: hit.reason || TRAVELER_DATES_REASON };
 }
 
+function dateBoundReason(reason: string) {
+  return reason === TRAVELER_DATES_REASON || reason === SAME_TRIP_REASON;
+}
+
 function travelerDatesBlocked(
   extract: FlightExtract,
   hit: FlightAutoCandidate,
   receivedAt: string | null | undefined
 ) {
-  if (flightsDatedBeforeMail(extract, receivedAt)) return true;
+  if (flightsDatedBeforeMail(extract, receivedAt) || hotelDatedBeforeMail(extract, receivedAt)) return true;
   return dossierSpansTooLong(hit.start_date, hit.end_date);
 }
 

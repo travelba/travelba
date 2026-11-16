@@ -42,7 +42,6 @@ import { buildImportProposal } from "@/lib/crm/import-proposal";
 import {
   applyFreshFlightParse,
   autoAttachNotBefore,
-  decideFlightAutoAttach,
   FLIGHT_PARSER_REVISION,
   flightExtractIsStale,
   hasUsableFlight,
@@ -567,15 +566,22 @@ export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   }
   const admin = createServiceClient();
   const suggestions = await matchAndStoreExtract(admin, row.id, extract, row.warnings || [], row.attachments || []);
-  const decision = receivedTooOldForAutoAttach(row.received_at)
-    ? null
-    : decideFlightAutoAttach(extract, suggestions.candidates, { receivedAt: row.received_at });
   let attached = false;
-  if (decision && hasUsableFlight(extract)) {
+  if (!receivedTooOldForAutoAttach(row.received_at)) {
     try {
-      const { autoAttachMatchedFlight } = await import("@/lib/crm/email-flight-deposit-run");
-      const result = await autoAttachMatchedFlight(admin, { ...row, extract }, decision);
-      attached = result.wrote;
+      const { decideStayAutoAttach, decideStayAutoCreate } = await import("@/lib/crm/email-stay-open");
+      const { autoCreateStayFromMail, autoSettleStay } = await import("@/lib/crm/email-stay-open-run");
+      const decision = decideStayAutoAttach(extract, suggestions.candidates, { receivedAt: row.received_at });
+      if (decision) {
+        const result = await autoSettleStay(admin, { ...row, extract }, decision);
+        attached = result.wrote;
+      } else {
+        const create = decideStayAutoCreate(extract, suggestions.candidates, { receivedAt: row.received_at });
+        if (create) {
+          const result = await autoCreateStayFromMail(admin, { ...row, extract }, create.customerId);
+          attached = result.wrote;
+        }
+      }
     } catch (err) {
       console.error("[import] rattachement automatique non fait", err instanceof Error ? err.message : "");
     }
@@ -850,18 +856,30 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     });
     if (proposalError) console.error("[import] proposition non enregistrée");
   }
-  const { decideFlightAutoAttach, hasUsableFlight } = await import("@/lib/crm/email-flight-deposit");
-  const decision = decideFlightAutoAttach(extract, suggestions.candidates, {
-    receivedAt: message.receivedAt || row.received_at,
-  });
-  if (decision && hasUsableFlight(extract)) {
+  const { decideStayAutoAttach, decideStayAutoCreate, hasUsableHotel } = await import("@/lib/crm/email-stay-open");
+  const { autoCreateStayFromMail, autoSettleStay } = await import("@/lib/crm/email-stay-open-run");
+  const receivedAt = message.receivedAt || row.received_at;
+  const decision = decideStayAutoAttach(extract, suggestions.candidates, { receivedAt });
+  let settled = false;
+  if (decision) {
     try {
-      const { autoAttachMatchedFlight } = await import("@/lib/crm/email-flight-deposit-run");
-      await autoAttachMatchedFlight(admin, { ...row, extract, attachments: stored }, decision);
+      const result = await autoSettleStay(admin, { ...row, extract, attachments: stored }, decision);
+      settled = result.wrote;
     } catch (err) {
       console.error("[import] rattachement automatique non fait", err instanceof Error ? err.message : "");
     }
-  } else if (!hasUsableFlight(extract)) {
+  } else {
+    const create = decideStayAutoCreate(extract, suggestions.candidates, { receivedAt });
+    if (create) {
+      try {
+        const result = await autoCreateStayFromMail(admin, { ...row, extract, attachments: stored }, create.customerId);
+        settled = result.wrote;
+      } catch (err) {
+        console.error("[import] création automatique non faite", err instanceof Error ? err.message : "");
+      }
+    }
+  }
+  if (!settled && !hasUsableFlight(extract) && !hasUsableHotel(extract)) {
     const { organizeInboundMail } = await import("@/lib/crm/inbox-organize-run");
     await organizeInboundMail(row.id);
   }

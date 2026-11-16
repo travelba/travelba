@@ -418,6 +418,35 @@ describe("suggestBookingByTraveler", () => {
     assert.equal(both.autoBookingId, null);
     assert.equal(both.candidates.length, 2);
   });
+
+  it("rattache un vol douze jours après le séjour du même client", () => {
+    const later = extractWith({
+      start_date: "2026-11-20",
+      end_date: "2026-11-20",
+      travelers: [{ first_name: "Inès", last_name: "Morel" }],
+      items: [
+        {
+          kind: "flight",
+          title: "Athènes → Nice",
+          supplier: null,
+          confirmation_ref: "YFFRS8",
+          start_at: "2026-11-20T09:10:00",
+          end_at: null,
+          amount: null,
+          details: { flight_number: "A3 640", pnr: "YFFRS8" },
+        },
+      ],
+    });
+    const res = suggestBookingByTraveler(
+      later,
+      [dossier],
+      [{ booking_id: "b-voyage", first_name: "Inès", last_name: "Morel" }],
+      [],
+      [{ id: "c-holder", first_name: "Paul", last_name: "Titulaire", company_name: null, email: "paul@example.com" }]
+    );
+    assert.equal(res.candidates[0]?.reason, "Même séjour");
+    assert.equal(res.autoBookingId, "b-voyage");
+  });
 });
 
 describe("suggestBookingByTripSignals", () => {
