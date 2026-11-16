@@ -407,8 +407,7 @@ async function defaultPersist(opts: {
 
 /**
  * Même geste que « Créer un dossier » : fiche trouvée ou créée, dossier caché,
- * cartes du billet (une ligne par trajet ; l’aller-retour au même PNR s’affiche
- * en une carte), pièces jointes. N’invite pas.
+ * cartes du billet (une carte par trajet ; le PNR reste sur chaque carte), pièces jointes. N’invite pas.
  */
 export async function createDossierFromEmail(input: Record<string, unknown>, admin?: Admin, deps?: EmailDossierDeps) {
   const id = uuid(input.id, "E-mail");

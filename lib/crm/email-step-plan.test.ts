@@ -26,7 +26,7 @@ function flight(partial: Partial<StepCard> & { id: string }): StepCard {
 }
 
 describe("mise à jour des étapes depuis un mail", () => {
-  it("remplit l’étape vide Transavia et garde l’aller-retour NHN3QN en une carte", () => {
+  it("remplit l’étape vide Transavia et ouvre le retour NHN3QN en seconde carte", () => {
     const blank = flight({
       id: "vide",
       title: "Tel Aviv",

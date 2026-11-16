@@ -75,6 +75,14 @@ function sameFlightDay(a: MatchableItem, b: MatchableItem) {
   return Boolean(left && right && left === right);
 }
 
+function pnrsCompatible(left: MatchableItem, right: MatchableItem) {
+  const wanted = flightPnrTokens(left);
+  const have = flightPnrTokens(right);
+  if (!wanted.size || !have.size) return true;
+  for (const token of wanted) if (have.has(token)) return true;
+  return false;
+}
+
 function pnrsOverlap(left: MatchableItem, right: MatchableItem) {
   const wanted = flightPnrTokens(left);
   if (!wanted.size) return false;
@@ -93,11 +101,11 @@ export function findFlightCard<T extends MatchableItem>(existing: T[], incoming:
   const sameDay = existing.filter((row) => (row.kind || "") === "flight" && sameFlightDay(row, incoming));
   const number = detail(incoming, "flight_number");
   if (number) {
-    const byNumber = sameDay.find((row) => flightNumbersAlign(number, detail(row, "flight_number")));
-    if (byNumber) return byNumber;
-    return (
-      sameDay.find((row) => !detail(row, "flight_number") && pnrsOverlap(incoming, row)) || null
+    const byNumber = sameDay.find(
+      (row) => flightNumbersAlign(number, detail(row, "flight_number")) && pnrsCompatible(incoming, row)
     );
+    if (byNumber) return byNumber;
+    return sameDay.find((row) => !detail(row, "flight_number") && pnrsOverlap(incoming, row)) || null;
   }
   return sameDay.find((row) => pnrsOverlap(incoming, row)) || null;
 }
@@ -586,6 +594,30 @@ function mergeDetails(
   return out;
 }
 
+export function mergeFlightPassengers(
+  target: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown> | null | undefined
+) {
+  const rows: { first_name: string; last_name: string; ticket_last4?: string }[] = [];
+  const seen = new Set<string>();
+  for (const list of [target?.passengers, incoming?.passengers]) {
+    if (!Array.isArray(list)) continue;
+    for (const person of list) {
+      if (!person || typeof person !== "object") continue;
+      const record = person as { first_name?: unknown; last_name?: unknown; ticket_last4?: unknown };
+      const first_name = String(record.first_name || "").trim();
+      const last_name = String(record.last_name || "").trim();
+      if (!first_name && !last_name) continue;
+      const key = `${first_name}|${last_name}`.toLocaleLowerCase("fr");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const ticket_last4 = String(record.ticket_last4 || "").trim();
+      rows.push(ticket_last4 ? { first_name, last_name, ticket_last4 } : { first_name, last_name });
+    }
+  }
+  return rows;
+}
+
 /** Un e-ticket par passager → une carte vol. Deux réf. hôtel → une carte. */
 export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
   const out: T[] = [];
@@ -614,7 +646,11 @@ export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
     const incomingCount = itemTicketCount(item);
     hit.details = mergeDetails(hit.details, item.details);
     if ((hit.kind || "") === "flight") {
-      hit.details = { ...(hit.details || {}), ticket_count: currentCount + incomingCount };
+      const passengers = mergeFlightPassengers(hit.details, item.details);
+      hit.details = {
+        ...(hit.details || {}),
+        ...(passengers.length ? { passengers, ticket_count: passengers.length } : { ticket_count: currentCount + incomingCount }),
+      };
     }
   }
   return dropUndatedFlightDuplicates(out);

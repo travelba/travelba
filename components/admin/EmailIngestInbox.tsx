@@ -1034,8 +1034,8 @@ export function EmailIngestInbox({
                         ) : withFlights ? (
                           <div className="sm:col-span-2 text-xs text-muted">
                             <ul className="space-y-1">
-                              {flightPlan.cartes.map((card) => (
-                                <li key={card.pnr}>
+                              {flightPlan.cartes.map((card, index) => (
+                                <li key={`${card.pnr}-${card.lignes[0]?.vol}-${card.lignes[0]?.date}-${index}`}>
                                   {card.pnr} · {card.lignes.map((line) => `${line.vol} ${line.date}`).join(" · ")} · carte
                                   cachée · 0 €
                                   {card.cout != null ? ` · coût imprimé ${card.cout}` : " · sans coût imprimé"}

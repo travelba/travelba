@@ -4,8 +4,7 @@ import { formatMoney } from "@/lib/crm/money";
 import type { CrmBookingItem } from "@/lib/crm/types";
 
 /**
- * Aller-retour au même PNR (et au même fournisseur, s’il est indiqué) :
- * une carte à l’écran, deux lignes en base. Le prix du séjour ne change pas.
+ * Paires aller-retour, pour signaler le billet. L’écran montre une carte par trajet.
  */
 
 type Leg = {
@@ -66,7 +65,7 @@ function suppliersAgree(a: Leg, b: Leg) {
 
 export type RoundTripPair<T> = { outbound: T; inbound: T };
 
-/** Paires aller-retour. Le retour n’est pas une seconde carte à l’écran. */
+/** Paires aller-retour. Chaque trajet reste une carte à l’écran. */
 export function roundTripPairs<T extends Leg>(items: T[]): RoundTripPair<T>[] {
   const flights = items.filter(
     (item) => (item.kind || "") === "flight" && item.lifecycle !== "cancelled" && item.lifecycle !== "superseded"
@@ -107,27 +106,13 @@ export function roundTripMate<T extends Leg>(item: T, items: T[]): T | null {
   return pair ? pair.inbound : null;
 }
 
-/** Autres segments du même PNR, du plus tôt au plus tard. Le premier reste la carte. */
-export function itineraryTail<T extends Leg>(item: T, items: T[]): T[] {
-  if ((item.kind || "") !== "flight" || !pnrTokens(item).size) return [];
-  const mates = items.filter((other) => {
-    if (other.id === item.id) return false;
-    if ((other.kind || "") !== "flight") return false;
-    if (other.lifecycle === "cancelled" || other.lifecycle === "superseded") return false;
-    return sharesPnr(item, other) && suppliersAgree(item, other);
-  });
-  if (!mates.length) return [];
-  const ordered = [item, ...mates].sort((a, b) => String(a.start_at || "").localeCompare(String(b.start_at || "")));
-  if (ordered[0].id !== item.id) return [];
-  return ordered.slice(1);
+/** Chaque trajet reste une carte. Un PNR partagé ne cache pas le segment suivant. */
+export function itineraryTail<T extends Leg>(_item: T, _items: T[]): T[] {
+  return [];
 }
 
-export function hiddenItineraryIds<T extends Leg>(items: T[]) {
-  const hidden = new Set<string>();
-  for (const item of items) {
-    for (const leg of itineraryTail(item, items)) hidden.add(leg.id);
-  }
-  return hidden;
+export function hiddenItineraryIds<T extends Leg>(_items: T[]) {
+  return new Set<string>();
 }
 
 function dayLabel(iso: string | null | undefined) {

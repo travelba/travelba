@@ -261,6 +261,53 @@ describe("itemMatchKey", () => {
     assert.equal((merged[0]?.details as { ticket_count?: number } | undefined)?.ticket_count, 5);
   });
 
+  it("un PNR à deux segments reste deux cartes, et un passager de plus rejoint la sienne", () => {
+    const outbound = {
+      kind: "flight",
+      confirmation_ref: "ZU5TCO",
+      start_at: "2027-04-13T10:00:00",
+      title: "Nice → Dubaï",
+      details: { flight_number: "EK 78", pnr: "KDP4AS", from: "NCE", to: "DXB", passengers: [{ first_name: "Raphael", last_name: "Boukris" }] },
+    };
+    const connection = {
+      kind: "flight",
+      confirmation_ref: "ZU5TCO",
+      start_at: "2027-04-13T18:00:00",
+      title: "Dubaï → Athènes",
+      details: { flight_number: "EK 209", pnr: "KDP4AS", from: "DXB", to: "ATH", passengers: [{ first_name: "Raphael", last_name: "Boukris" }] },
+    };
+    const five = ["Raphael", "Elon", "Liam", "Leana", "Noemie"].map((first) => ({
+      kind: "flight",
+      confirmation_ref: "ZU5TCO",
+      start_at: "2027-04-13T10:00:00",
+      details: { flight_number: "EK 78", pnr: "KDP4AS", passengers: [{ first_name: first, last_name: "Boukris" }] },
+    }));
+    const fiveBack = five.map((item) => ({
+      ...item,
+      start_at: "2027-04-13T18:00:00",
+      details: { ...item.details, flight_number: "EK 209", to: "ATH", from: "DXB" },
+    }));
+    const grouped = mergeExtractItems([outbound, connection, ...five, ...fiveBack]);
+    const flights = grouped.filter((item) => item.kind === "flight");
+    assert.equal(flights.length, 2);
+    for (const card of flights) {
+      const names = ((card.details as { passengers?: { first_name?: string }[] }).passengers || []).map((row) => row.first_name);
+      assert.equal(names.length, 5);
+    }
+    const again = mergeExtractItems([
+      ...grouped,
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-13T10:00:00",
+        details: { flight_number: "EK 78", pnr: "KDP4AS", passengers: [{ first_name: "Lea", last_name: "Martin" }] },
+      },
+    ]);
+    assert.equal(again.filter((item) => item.kind === "flight").length, 2);
+    const nice = again.find((item) => (item.details as { flight_number?: string }).flight_number === "EK 78");
+    assert.equal(((nice?.details as { passengers?: unknown[] }).passengers || []).length, 6);
+  });
+
   it("fusionne U2 4692, 4692 et EJU4692 le même jour, et retire le doublon sans date", () => {
     const merged = mergeExtractItems([
       {

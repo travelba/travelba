@@ -152,28 +152,26 @@ function passengerKey(person: { first_name?: string | null; last_name?: string |
   return `${text(person.first_name).toLowerCase()}|${text(person.last_name).toLowerCase()}`;
 }
 
-/** Une carte par PNR, une ligne par segment. Prix de vente 0. Coût seulement s’il est imprimé. */
+/** Une carte par trajet. Le PNR reste sur chaque carte. Prix de vente 0. Coût seulement s’il est imprimé. */
 export function planFlightDeposit(extract: FlightExtract | null | undefined): { cartes: FlightDepositCard[] } {
-  const groups = new Map<string, FlightDepositCard>();
+  const cartes: FlightDepositCard[] = [];
   for (const item of extract?.items || []) {
     if (!isUsableFlight(item)) continue;
-    const pnr = pnrOf(item) || "sans référence";
-    const card = groups.get(pnr) || {
-      pnr,
-      lignes: [],
-      prix_vente: 0 as const,
-      cachee: true as const,
-      cout: null,
-    };
-    card.lignes.push({
-      vol: detail(item, "flight_number"),
-      date: day(item.start_at),
-      titre: text(item.title) || detail(item, "flight_number"),
+    cartes.push({
+      pnr: pnrOf(item) || "sans référence",
+      lignes: [
+        {
+          vol: detail(item, "flight_number"),
+          date: day(item.start_at),
+          titre: text(item.title) || detail(item, "flight_number"),
+        },
+      ],
+      prix_vente: 0,
+      cachee: true,
+      cout: printedCost(item),
     });
-    if (card.cout == null) card.cout = printedCost(item);
-    groups.set(pnr, card);
   }
-  return { cartes: [...groups.values()] };
+  return { cartes };
 }
 
 function countedTickets(item: MatchableItem, fallback: number) {
@@ -247,7 +245,10 @@ export function sumFlightTicketCounts<T extends FlightExtract>(
 function flightSameSegment(left: MatchableItem, right: MatchableItem) {
   if (!isUsableFlight(right)) return false;
   if (day(left.start_at) !== day(right.start_at)) return false;
-  return flightNumbersAlign(detail(left, "flight_number"), detail(right, "flight_number"));
+  if (!flightNumbersAlign(detail(left, "flight_number"), detail(right, "flight_number"))) return false;
+  const leftPnr = pnrOf(left);
+  const rightPnr = pnrOf(right);
+  return !leftPnr || !rightPnr || leftPnr === rightPnr;
 }
 
 function mergePassengers(hit: MatchableItem | null, item: MatchableItem, extras: MatchableItem[]) {
