@@ -77,14 +77,19 @@ import {
   mb3mRealm,
   mb3mRenderPiece,
   mb3mCivilityFromSex,
+  mb3mCollectCompanies,
   mb3mSaveCompany,
   mb3mSaveFolder,
   mb3mSavePerson,
   mb3mSingleAgencyUid,
   mb3mAddress,
+  selectMb3mCompany,
   type Mb3mAddress,
   type Mb3mCivility,
+  type Mb3mCompanyMatchQuery,
+  type Mb3mCustomerHit,
 } from "@/lib/crm/mb3m";
+import { readMb3mParty, writeMb3mParty } from "@/lib/crm/mb3m-party";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 type StayItem = {
@@ -103,6 +108,8 @@ type StayItem = {
 
 type CompanyRow = PayerCompany & {
   company_name?: string | null;
+  siret?: string | null;
+  registration_number?: string | null;
   billing_email?: string | null;
   billing_address_line?: string | null;
   billing_postal_code?: string | null;
@@ -121,6 +128,8 @@ export type Mb3mInvoiceContext = {
   destination: string | null;
   destinationIso: string | null;
   payerKind: "company" | "personal";
+  /** Client payeur : la ligne `crm_mb3m_parties` est à son nom. */
+  customerId?: string | null;
   person: {
     id: string;
     firstName: string;
@@ -141,6 +150,8 @@ export type Mb3mInvoiceContext = {
     address: Mb3mAddress | null;
     commercialName?: string | null;
     phoneNumber?: string | null;
+    siret?: string | null;
+    registrationNumber?: string | null;
   } | null;
   travelers: { firstName: string; lastName: string }[];
   visibleToClient: boolean;
@@ -262,6 +273,17 @@ export type Mb3mInvoiceDeps = {
   remove: (id: string) => Promise<void>;
   savePerson: typeof mb3mSavePerson;
   saveCompany: typeof mb3mSaveCompany;
+  /** Lien déjà enregistré pour cette société. Absent des tests qui créent encore la fiche. */
+  linkedCompany?: (input: { customerId: string; companyId: string }) => Promise<{ uid: string; partnerId?: string | null } | null>;
+  /** Sociétés MB3M candidates (nom, e-mail). Le choix exact est fait ici. */
+  findCompanies?: (query: { name: string; email?: string | null }) => Promise<Mb3mCustomerHit[]>;
+  /** Enregistre l’Uid repris ou créé. Un échec n’empêche pas la facture : l’Uid est déjà sur la pièce. */
+  rememberCompany?: (input: {
+    customerId: string;
+    companyId: string;
+    uid: string;
+    partnerId: string | null;
+  }) => Promise<void>;
   saveFolder: typeof mb3mSaveFolder;
   addInvoice: typeof mb3mAddInvoice;
   findPiece: typeof mb3mFindPiece;
@@ -459,6 +481,7 @@ export function buildMb3mInvoiceContext(input: {
     dateEnd: facts.end,
     destination: facts.placeLine.trim().slice(0, 120) || null,
     destinationIso: resolveCountryCode(input.booking.destination),
+    customerId: input.payer?.id || null,
     payerKind,
     person: input.payer
       ? {
@@ -482,6 +505,8 @@ export function buildMb3mInvoiceContext(input: {
           email: blank(company.billing_email) || blank(input.payer?.email),
           phoneNumber: blank(input.payer?.phone),
           countryCode: resolveCountryCode(company.billing_country),
+          siret: blank(company.siret),
+          registrationNumber: blank(company.registration_number),
           address: mb3mAddress({
             name: companyName || "Société",
             line: company.billing_address_line,
@@ -795,33 +820,88 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
   }
 }
 
+function companyReuseMessage(name: string) {
+  return `Plusieurs sociétés MB3M portent le nom « ${name} ». La facture n’en a pas choisi une.`;
+}
+
+async function rememberCompanyLink(
+  deps: Mb3mInvoiceDeps,
+  customerId: string,
+  companyId: string,
+  uid: string,
+  partnerId: string | null
+) {
+  if (!customerId || !deps.rememberCompany) return;
+  try {
+    await deps.rememberCompany({ customerId, companyId, uid, partnerId });
+  } catch (error) {
+    console.error("[mb3m] lien société non enregistré", error instanceof Error ? error.message : "erreur");
+  }
+}
+
+function companyMatchQuery(ctx: Mb3mInvoiceContext): Mb3mCompanyMatchQuery | null {
+  const company = ctx.company;
+  if (!company?.name) return null;
+  return {
+    name: company.name,
+    email: company.email,
+    countryCode: company.address?.countryCode || company.countryCode,
+    siret: company.siret,
+    registrationNumber: company.registrationNumber,
+  };
+}
+
+/** Société : lien CRM, sinon recherche MB3M, sinon création. Une personne est créée comme avant. */
+async function ensureCustomer(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps) {
+  const companyAddress = ctx.company?.address;
+  if (ctx.payerKind === "company" && ctx.company && companyAddress) {
+    const company = ctx.company;
+    const customerId = (ctx.customerId || ctx.person?.id || "").trim();
+    if (customerId && deps.linkedCompany) {
+      const known = await deps.linkedCompany({ customerId, companyId: company.id });
+      if (known?.uid) return { uid: known.uid };
+    }
+    const query = companyMatchQuery(ctx);
+    if (query && deps.findCompanies) {
+      const hits = await deps.findCompanies({ name: query.name, email: query.email });
+      const pick = selectMb3mCompany(hits, query);
+      if (pick.status === "match") {
+        const partnerId = (pick.company.partnerId || "").trim() || null;
+        await rememberCompanyLink(deps, customerId, company.id, pick.company.uid, partnerId);
+        return { uid: pick.company.uid };
+      }
+      if (pick.status === "ambiguous") throw new Mb3mError(companyReuseMessage(company.name), -1);
+    }
+    const saved = await deps.saveCompany({
+      partnerId: mb3mPartnerCode(company.id),
+      name: company.name,
+      commercialName: company.commercialName || company.name,
+      email: company.email || undefined,
+      phoneNumber: company.phoneNumber,
+      address: companyAddress,
+    });
+    await rememberCompanyLink(deps, customerId, company.id, saved.uid, saved.partnerId || null);
+    return saved;
+  }
+  if (!ctx.person?.address) return null;
+  return deps.savePerson({
+    partnerId: mb3mPartnerCode(ctx.person.id),
+    civility: ctx.person.civility,
+    firstName: ctx.person.firstName,
+    name: ctx.person.lastName,
+    email: ctx.person.email || undefined,
+    address: ctx.person.address,
+    birthDate: ctx.person.birthDate,
+    country: ctx.person.country,
+    mobileNumber: ctx.person.mobileNumber,
+    phoneNumber: ctx.person.phoneNumber,
+  });
+}
+
 async function ensureFolder(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps, piece: Mb3mStoredPiece) {
   let customerUid = piece.customerUid;
   if (!customerUid) {
-    const saved =
-      ctx.payerKind === "company" && ctx.company?.address
-        ? await deps.saveCompany({
-            partnerId: mb3mPartnerCode(ctx.company.id),
-            name: ctx.company.name,
-            commercialName: ctx.company.commercialName || ctx.company.name,
-            email: ctx.company.email || undefined,
-            phoneNumber: ctx.company.phoneNumber,
-            address: ctx.company.address,
-          })
-        : ctx.person?.address
-          ? await deps.savePerson({
-              partnerId: mb3mPartnerCode(ctx.person.id),
-              civility: ctx.person.civility,
-              firstName: ctx.person.firstName,
-              name: ctx.person.lastName,
-              email: ctx.person.email || undefined,
-              address: ctx.person.address,
-              birthDate: ctx.person.birthDate,
-              country: ctx.person.country,
-              mobileNumber: ctx.person.mobileNumber,
-              phoneNumber: ctx.person.phoneNumber,
-            })
-          : null;
+    const saved = await ensureCustomer(ctx, deps);
     if (!saved?.uid) throw new Mb3mError("La fiche MB3M n’a pas abouti.", -1);
     customerUid = saved.uid;
     await deps.save(piece.id, { customerUid });
@@ -1224,6 +1304,10 @@ function supabaseInvoiceDeps(supabase: SupabaseClient, actorName?: string | null
     },
     savePerson: mb3mSavePerson,
     saveCompany: mb3mSaveCompany,
+    linkedCompany: async ({ customerId, companyId }) => readMb3mParty(supabase, customerId, companyId),
+    findCompanies: (query) => mb3mCollectCompanies(query),
+    rememberCompany: ({ customerId, companyId, uid, partnerId }) =>
+      writeMb3mParty(supabase, customerId, companyId, uid, partnerId),
     saveFolder: mb3mSaveFolder,
     addInvoice: mb3mAddInvoice,
     recordPayments: (input) => recordMb3mInvoicePayments(supabase, input),

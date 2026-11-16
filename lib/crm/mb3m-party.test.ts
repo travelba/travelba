@@ -73,6 +73,23 @@ describe("fiche MB3M", () => {
     assert.equal(full?.mobileNumber, "+33600000000");
     assert.equal(full?.phoneNumber, "+33100000000");
     assert.equal(full?.email, "ada@example.invalid");
+    const kosovo = mb3mPersonDraft({
+      id: customerId,
+      first_name: "Agon",
+      last_name: "Hoxha",
+      email: null,
+      billing_email: null,
+      billing_address_line: null,
+      billing_postal_code: null,
+      billing_city: null,
+      billing_country: null,
+      address_line: "Rr. Tirana",
+      postal_code: "10000",
+      city: "Prishtine",
+      country: "XK",
+    });
+    assert.equal(kosovo?.address.countryCode, "RS");
+    assert.equal(kosovo?.address.city, "Prishtine");
   });
 
   it("envoie la société avec son adresse de facturation", () => {
@@ -134,7 +151,7 @@ describe("fiche MB3M", () => {
     });
     assert.equal(kosovo?.address.city, "Prishtine");
     assert.equal(kosovo?.address.postalCode, "");
-    assert.equal(kosovo?.address.countryCode, "XK");
+    assert.equal(kosovo?.address.countryCode, "RS");
     assert.equal("siret" in (kosovo || {}), false);
     const buttons = mb3mCompanyButtons([
       {

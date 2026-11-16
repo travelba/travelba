@@ -344,7 +344,7 @@ describe("facture MB3M", () => {
     });
     assert.equal(foreign.company?.countryCode, "XK");
     assert.equal(foreign.company?.address?.postalCode, "");
-    assert.equal(foreign.company?.address?.countryCode, "XK");
+    assert.equal(foreign.company?.address?.countryCode, "RS");
     assert.equal(foreign.company?.address?.city, "Prishtine");
     assert.notEqual(
       mb3mInvoiceBlocker(foreign),
@@ -929,5 +929,159 @@ describe("facture MB3M", () => {
       mb3mInvoiceChip({ marginStale: false, printed: false, number: null, preparation: null }).label,
       "À préparer"
     );
+  });
+
+  it("reprend la société déjà dans MB3M, et n’en crée une que s’il n’y en a pas", async () => {
+    const companyContext = context({
+      payerKind: "company",
+      customerId: payerId,
+      company: {
+        id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        name: "BEELYNQ LLC",
+        email: "agon@beelynq.com",
+        countryCode: "XK",
+        siret: null,
+        registrationNumber: "810123456",
+        address: {
+          name: "BEELYNQ LLC",
+          line1: "Rr. Tirana",
+          postalCode: "10000",
+          city: "Prishtine",
+          countryCode: "RS",
+        },
+      },
+    });
+    const failed = blankPiece({
+      attemptStatus: "failed",
+      attemptError:
+        "Une erreur s'est produite, empêchant la création de la société. — Message : Erreur d'insertion d'une ligne dans la table ContactAddress",
+    });
+    const hit = {
+      uid: "existing-uid",
+      name: "BEELYNQ LLC",
+      altName: "",
+      company: true,
+      email: "agon@beelynq.com",
+      countryCode: "RS",
+      siret: "810123456",
+      partnerId: "MANUAL01",
+    };
+    let stored = { ...failed };
+    let created = 0;
+    let lookedUp = 0;
+    const remembered: { uid: string; partnerId: string | null }[] = [];
+    const deps = (find: Mb3mInvoiceDeps["findCompanies"], link: Mb3mInvoiceDeps["linkedCompany"]): Mb3mInvoiceDeps => ({
+      now: () => Date.parse("2026-11-16T10:00:00.000Z"),
+      actorName: "Camille",
+      claim: async () => ({ piece: { ...stored }, created: false, owned: true }),
+      save: async (_id, patch) => {
+        stored = {
+          ...stored,
+          customerUid: patch.customerUid === undefined ? stored.customerUid : patch.customerUid,
+          folderId: patch.folderId === undefined ? stored.folderId : patch.folderId,
+          pieceNumber: patch.pieceNumber === undefined ? stored.pieceNumber : patch.pieceNumber,
+          attemptStatus: patch.attemptStatus === undefined ? stored.attemptStatus : patch.attemptStatus,
+          attemptError: patch.attemptError === undefined ? stored.attemptError : patch.attemptError,
+        };
+      },
+      remove: async () => undefined,
+      savePerson: async () => {
+        throw new Error("fiche personne");
+      },
+      saveCompany: async (draft) => {
+        created += 1;
+        assert.equal(draft.address.countryCode, "RS");
+        assert.equal(draft.name, "BEELYNQ LLC");
+        return { uid: "created-uid", partnerId: "COXKPARTNER" };
+      },
+      linkedCompany: link,
+      findCompanies: async (query) => {
+        lookedUp += 1;
+        assert.equal(query.name, "BEELYNQ LLC");
+        assert.equal(query.email, "agon@beelynq.com");
+        return find ? find(query) : [];
+      },
+      rememberCompany: async (input) => {
+        remembered.push({ uid: input.uid, partnerId: input.partnerId });
+      },
+      saveFolder: async (input) => {
+        assert.equal(input.customerUid, stored.customerUid);
+        return { id: "22-0000159", uid: "folder-uid" };
+      },
+      addInvoice: async (input) => {
+        assert.equal(input.customerUid, stored.customerUid);
+        return { number: "4701", uid: "piece-uid" };
+      },
+      findPiece: async () => "missing",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+    });
+
+    const resumed = await runMb3mInvoice(
+      companyContext,
+      deps(async () => [hit], async () => null)
+    );
+    assert.equal(resumed.number, "4701");
+    assert.equal(created, 0);
+    assert.equal(lookedUp, 1);
+    assert.equal(stored.customerUid, "existing-uid");
+    assert.equal(stored.attemptStatus, null);
+    assert.deepEqual(remembered, [{ uid: "existing-uid", partnerId: "MANUAL01" }]);
+
+    stored = { ...failed, customerUid: null, pieceNumber: null, folderId: null, attemptStatus: "failed" };
+    created = 0;
+    lookedUp = 0;
+    remembered.length = 0;
+    const linked = await runMb3mInvoice(
+      companyContext,
+      deps(async () => {
+        throw new Error("recherche inutile");
+      }, async () => ({ uid: "linked-uid", partnerId: "DEJA" }))
+    );
+    assert.equal(linked.number, "4701");
+    assert.equal(created, 0);
+    assert.equal(lookedUp, 0);
+    assert.equal(stored.customerUid, "linked-uid");
+    assert.equal(remembered.length, 0);
+
+    stored = { ...failed, customerUid: null, pieceNumber: null, folderId: null, attemptStatus: "failed" };
+    created = 0;
+    lookedUp = 0;
+    remembered.length = 0;
+    const fresh = await runMb3mInvoice(
+      companyContext,
+      deps(async () => [{ ...hit, name: "Autre société", uid: "autre" }], async () => null)
+    );
+    assert.equal(fresh.number, "4701");
+    assert.equal(created, 1);
+    assert.equal(stored.customerUid, "created-uid");
+    assert.deepEqual(remembered, [{ uid: "created-uid", partnerId: "COXKPARTNER" }]);
+
+    stored = { ...failed, customerUid: null, pieceNumber: null, folderId: null, attemptStatus: null, attemptError: null };
+    created = 0;
+    await assert.rejects(
+      () =>
+        runMb3mInvoice(
+          companyContext,
+          deps(
+            async () => [
+              { ...hit, email: "", countryCode: "", siret: "" },
+              { ...hit, uid: "co-2", email: "", countryCode: "", siret: "" },
+            ],
+            async () => null
+          )
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof Mb3mError);
+        assert.match(error.message, /Plusieurs sociétés MB3M/);
+        assert.match(error.message, /BEELYNQ LLC/);
+        return true;
+      }
+    );
+    assert.equal(created, 0);
+    assert.equal(stored.customerUid, null);
+    assert.equal(stored.attemptStatus, "failed");
+    assert.match(stored.attemptError || "", /Plusieurs sociétés/);
   });
 });

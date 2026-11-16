@@ -14,7 +14,11 @@ import {
   mb3mEntityUid,
   mb3mFaultDetail,
   mb3mOperationMessage,
+  mb3mCollectCompanies,
+  mb3mCountryCode,
+  mb3mFindCompanies,
   mb3mFindPersons,
+  selectMb3mCompany,
   linesXml,
   mb3mPartnerCode,
   mb3mPdfBytes,
@@ -619,13 +623,43 @@ describe("client MB3M Partners", () => {
 
   it("retrouve une fiche et la liste des agences", async () => {
     arm();
-    const found = await mb3mFindPersons({ email: "probe.travelba@example.invalid" }, async () => {
+    let personBody = "";
+    const found = await mb3mFindPersons({ email: "probe.travelba@example.invalid" }, async (_url, init) => {
+      personBody = String(init?.body);
       return new Response(
         `<CustomerFindResponse><Customers><CustomerSummary><Uid>abc</Uid><AltName>Probe</AltName><IsCompany>false</IsCompany><Name>TRAVELBA</Name></CustomerSummary></Customers><TotalCount>1</TotalCount></CustomerFindResponse>`
       );
     });
     assert.equal(found.total, 1);
     assert.equal(found.customers[0]?.name, "TRAVELBA");
+    assert.equal(personBody.includes("<IncludeCompanies>false</IncludeCompanies>"), true);
+    assert.equal(personBody.includes("<IncludePersons>true</IncludePersons>"), true);
+    let companyBody = "";
+    const companies = await mb3mFindCompanies({ name: "BEELYNQ LLC", email: "agon@beelynq.com" }, async (_url, init) => {
+      companyBody = String(init?.body);
+      return new Response(
+        `<CustomerFindResponse><Customers><CustomerSummary><Uid>co-1</Uid><Id>MANUAL01</Id><Name>BEELYNQ LLC</Name><Email>agon@beelynq.com</Email><IsCompany>true</IsCompany><CountryCode>RS</CountryCode><Siret>810123456</Siret></CustomerSummary></Customers><TotalCount>1</TotalCount></CustomerFindResponse>`
+      );
+    });
+    assert.equal(companyBody.includes("<IncludeCompanies>true</IncludeCompanies>"), true);
+    assert.equal(companyBody.includes("<IncludePersons>false</IncludePersons>"), true);
+    assert.equal(companyBody.includes("<Name>BEELYNQ LLC</Name>"), true);
+    assert.ok(companyBody.indexOf("<Email>") < companyBody.indexOf("<IncludeCompanies>"));
+    assert.ok(companyBody.indexOf("<Name>") < companyBody.indexOf("<PageIndex>"));
+    assert.equal(companies.companies[0]?.uid, "co-1");
+    assert.equal(companies.companies[0]?.partnerId, "MANUAL01");
+    assert.equal(companies.companies[0]?.siret, "810123456");
+    assert.equal(companies.companies[0]?.countryCode, "RS");
+    const calls: string[] = [];
+    const collected = await mb3mCollectCompanies({ name: "BEELYNQ LLC", email: "agon@beelynq.com" }, async (_url, init) => {
+      const body = String(init?.body);
+      calls.push(body.includes("<Email>") ? "email" : "name");
+      return new Response(
+        `<CustomerFindResponse><CustomerSummary><Uid>co-1</Uid><Name>BEELYNQ LLC</Name><IsCompany>true</IsCompany></CustomerSummary><TotalCount>1</TotalCount></CustomerFindResponse>`
+      );
+    });
+    assert.deepEqual(calls, ["name", "email"]);
+    assert.equal(collected.length, 1);
     const names = await mb3mAgencyNames(async () => {
       return new Response(`<AgencyCollection><Agency><DisplayName>Agence 1750</DisplayName></Agency></AgencyCollection>`);
     });
@@ -780,6 +814,101 @@ describe("client MB3M Partners", () => {
     );
     assert.deepEqual(mainAddressElements(person), ["Name", "Line1", "PostalCode", "City", "CountryCode"]);
     assert.ok(person.indexOf("<Id>") < person.indexOf("<Person>"));
+  });
+
+  it("envoie le Kosovo en RS, société et personne", async () => {
+    arm();
+    assert.equal(mb3mCountryCode("XK"), "RS");
+    assert.equal(mb3mCountryCode("xk"), "RS");
+    assert.equal(mb3mCountryCode("FR"), "FR");
+    assert.equal(mb3mCountryCode("Kosovo"), "KOSOVO");
+    let company = "";
+    await mb3mSaveCompany(
+      {
+        name: "BEELYNQ LLC",
+        address: {
+          name: "BEELYNQ LLC",
+          line1: "Rr. Tirana",
+          postalCode: "10000",
+          city: "Prishtine",
+          countryCode: "XK",
+        },
+      },
+      async (_url, init) => {
+        company = String(init?.body);
+        return new Response(
+          `<CustomerOperationResponse><ResultCode>1</ResultCode><Id>BEELYNQ</Id><Uid>company-xk</Uid></CustomerOperationResponse>`
+        );
+      }
+    );
+    assert.equal(company.includes("<CountryCode>RS</CountryCode>"), true);
+    assert.equal(company.includes("<CountryCode>XK</CountryCode>"), false);
+    let person = "";
+    await mb3mSavePerson(
+      {
+        firstName: "Agon",
+        name: "Hoxha",
+        address: {
+          name: "Agon Hoxha",
+          line1: "Rr. Tirana",
+          postalCode: "10000",
+          city: "Prishtine",
+          countryCode: "XK",
+        },
+      },
+      async (_url, init) => {
+        person = String(init?.body);
+        return new Response(
+          `<CustomerOperationResponse><ResultCode>1</ResultCode><Id>AGON</Id><Uid>person-xk</Uid></CustomerOperationResponse>`
+        );
+      }
+    );
+    assert.equal(person.includes("<CountryCode>RS</CountryCode>"), true);
+    assert.equal(person.includes("XK"), false);
+  });
+
+  it("ne reprend une société MB3M que sur le nom exact, et départage les homonymes", () => {
+    const beelynq = {
+      uid: "co-1",
+      name: "BEELYNQ LLC",
+      altName: "",
+      company: true,
+      email: "agon@beelynq.com",
+      countryCode: "RS",
+      siret: "810123456",
+      partnerId: "MANUAL01",
+    };
+    const other = { ...beelynq, uid: "co-2", email: "autre@example.invalid", countryCode: "FR", siret: "999" };
+    assert.equal(selectMb3mCompany([beelynq], { name: "beelynq llc", email: "agon@beelynq.com", countryCode: "XK" }).status, "match");
+    assert.equal(selectMb3mCompany([{ ...beelynq, name: "Béelynq LLC" }], { name: "BEELYNQ LLC" }).status, "match");
+    assert.equal(
+      selectMb3mCompany([{ ...beelynq, email: "autre@example.invalid" }], { name: "BEELYNQ LLC", email: "agon@beelynq.com" }).status,
+      "match"
+    );
+    assert.equal(selectMb3mCompany([beelynq], { name: "BEELYNQ", countryCode: "RS" }).status, "none");
+    assert.equal(selectMb3mCompany([{ ...beelynq, company: false }], { name: "BEELYNQ LLC" }).status, "none");
+    const picked = selectMb3mCompany([beelynq, other], {
+      name: "BEELYNQ LLC",
+      email: "agon@beelynq.com",
+      countryCode: "RS",
+      registrationNumber: "810 123 456",
+    });
+    assert.equal(picked.status, "match");
+    if (picked.status === "match") assert.equal(picked.company.uid, "co-1");
+    assert.equal(
+      selectMb3mCompany(
+        [
+          { ...beelynq, email: "", countryCode: "", siret: "" },
+          { ...other, email: "", countryCode: "", siret: "" },
+        ],
+        { name: "BEELYNQ LLC", email: "agon@beelynq.com", countryCode: "RS" }
+      ).status,
+      "ambiguous"
+    );
+    assert.equal(
+      selectMb3mCompany([beelynq, other], { name: "BEELYNQ LLC", countryCode: "RS", siret: "810123456" }).status,
+      "match"
+    );
   });
 
   it("n’envoie que le prénom et le nom des voyageurs", async () => {
