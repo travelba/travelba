@@ -50,15 +50,27 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     schedule: (task) => after(task),
   });
 
+  const panels = shell.value.panels
+    ? {
+        ...shell.value.panels,
+        money: shell.value.panels.money.then((value) =>
+          value ? { ...value, revision: shell.argentStamp, layer: 0 } : null
+        ),
+      }
+    : null;
+
   return (
     <BookingEditor
       {...shell.value}
+      panels={panels}
+      deferredLedger={shell.reconcile.then((value) =>
+        value ? { ...value, revision: shell.argentStamp, layer: 1 } : null
+      )}
       pliantBalance={
         <Suspense fallback={<p className="rounded-3xl bg-[#faf9f6] px-5 py-4 text-sm text-muted">Solde Pliant…</p>}>
           <DossierPliantBalance />
         </Suspense>
       }
-      deferredLedger={shell.reconcile}
       deferredItems={shell.enrich}
     />
   );

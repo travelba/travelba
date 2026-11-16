@@ -87,6 +87,7 @@ export function TripCostsBlock({
   revolutLinked,
   busy,
   showMargins = true,
+  onUpdated,
 }: {
   bookingId: string;
   booking: TargetOption;
@@ -96,6 +97,8 @@ export function TripCostsBlock({
   revolutLinked: { id: string; label: string; amount: string }[];
   busy: boolean;
   showMargins?: boolean;
+  /** Relit vendu, coût et marge sans attendre le refresh de la fiche. */
+  onUpdated?: () => Promise<void> | void;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +125,7 @@ export function TripCostsBlock({
         return message;
       }
       setMoving(null);
+      await onUpdated?.();
       router.refresh();
       return null;
     } catch {

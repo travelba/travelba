@@ -29,6 +29,14 @@ import {
   type CrmCustomerLogin,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import {
+  acceptArgent,
+  mergeItemMoney,
+  moneyFieldsEqual,
+  recallArgent,
+  rememberArgent,
+  type ArgentIncoming,
+} from "@/lib/crm/argent-live";
 import { expenseCountsForClient, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
@@ -248,6 +256,7 @@ function stayAmountKey(list: CrmBookingItem[]) {
         item.kind,
         item.lifecycle || "",
         item.amount ?? "",
+        item.include_in_ledger ? "1" : "0",
         item.start_at || "",
         details.ticket_count ?? "",
         details.from ?? "",
@@ -512,6 +521,8 @@ export function BookingEditor({
     accounting: typeof accountingIn;
     revolutExpenses: typeof revolutIn;
     mb3m: typeof mb3mIn;
+    revision?: number;
+    layer?: number;
   } | null>(null);
   const [estaRows, setEstaRows] = useState<{ estaLines: typeof estaIn; ukEtaLines: typeof ukIn } | null>(null);
   const [threadRows, setThreadRows] = useState<{
@@ -529,7 +540,7 @@ export function BookingEditor({
   const pliantRecap = hotelRows?.pliantRecap ?? pliantRecapIn;
   const ledger = moneyRows?.ledger ?? ledgerIn;
   const accountLedger = moneyRows?.accountLedger ?? accountLedgerIn;
-  const accounting = moneyRows?.accounting ?? accountingIn;
+  const serverAccounting = moneyRows?.accounting ?? accountingIn;
   const revolutExpenses = moneyRows?.revolutExpenses ?? revolutIn;
   const mb3m = moneyRows?.mb3m ?? mb3mIn;
   const estaLines = estaRows?.estaLines ?? estaIn;
@@ -541,17 +552,25 @@ export function BookingEditor({
   const customerActivity = activityRows?.activity ?? activityIn;
   const onMails = useCallback((value: NonNullable<typeof mailRows>) => setMailRows(value), []);
   const onHotels = useCallback((value: NonNullable<typeof hotelRows>) => setHotelRows(value), []);
-  const onMoney = useCallback((value: NonNullable<typeof moneyRows>) => setMoneyRows(value), []);
   const onEsta = useCallback((value: NonNullable<typeof estaRows>) => setEstaRows(value), []);
   const onThread = useCallback((value: NonNullable<typeof threadRows>) => setThreadRows(value), []);
   const onActivity = useCallback((value: NonNullable<typeof activityRows>) => setActivityRows(value), []);
+  const [held, setHeld] = useState(() => recallArgent(booking.id));
+  const [commissionOverride, setCommissionOverride] = useState<boolean | null>(null);
   const [seenSource, setSeenSource] = useState(sourceItems);
   const [liveSource, setLiveSource] = useState<CrmBookingItem[] | null>(null);
   if (seenSource !== sourceItems) {
     setSeenSource(sourceItems);
     setLiveSource(null);
   }
-  const items = useMemo(() => completeFlightRoutes(liveSource ?? sourceItems), [liveSource, sourceItems]);
+  const serverItems = useMemo(() => completeFlightRoutes(liveSource ?? sourceItems), [liveSource, sourceItems]);
+  // Un prix enregistré reste, même si le changement d’onglet restaure l’ancienne page.
+  // `held` entier : le compilateur refuse `held.items` seul. Le tableau ne change que si les prix changent.
+  const items = useMemo(() => {
+    if (!held?.items) return serverItems;
+    const merged = mergeItemMoney(serverItems, held.items);
+    return moneyFieldsEqual(serverItems, merged) ? serverItems : merged;
+  }, [held, serverItems]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -561,21 +580,64 @@ export function BookingEditor({
   const [seenLedgerKey, setSeenLedgerKey] = useState(ledgerKey);
   const [liveLedger, setLiveLedger] = useState(accountLedger);
   const [previewLedger, setPreviewLedger] = useState(ledger);
-  const [ledgerEdited, setLedgerEdited] = useState(false);
   const [stripeLedgerReady, setStripeLedgerReady] = useState(false);
   if (ledgerKey !== seenLedgerKey) {
     setSeenLedgerKey(ledgerKey);
-    if (!stripeLedgerReady && !ledgerEdited) {
+    if (!held && !stripeLedgerReady) {
       setLiveLedger(accountLedger);
       setPreviewLedger(ledger);
     }
   }
-  const onDeferredLedger = useCallback((value: DeferredLedgerValue) => {
-    if (ledgerEdited) return;
-    setStripeLedgerReady(true);
-    setLiveLedger(value.accountLedger);
-    setPreviewLedger(value.ledger);
-  }, [ledgerEdited]);
+  const applyArgent = useCallback(
+    (incoming: ArgentIncoming) => {
+      if (incoming.agencyCommission !== undefined) setCommissionOverride(null);
+      setHeld((current) => {
+        const next = acceptArgent(current, incoming);
+        if (next !== current) rememberArgent(booking.id, next);
+        return next;
+      });
+    },
+    [booking.id]
+  );
+  const refreshArgent = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/bookings/${booking.id}/argent`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as ArgentIncoming;
+      if (typeof json?.revision !== "number") return;
+      applyArgent(json);
+    } catch {
+      // Le séjour est déjà enregistré. L’onglet garde le dernier montant reçu.
+    }
+  }, [applyArgent, booking.id]);
+  const onMoney = useCallback(
+    (value: NonNullable<typeof moneyRows>) => {
+      setMoneyRows(value);
+      applyArgent({
+        revision: value.revision ?? 0,
+        layer: value.layer ?? 0,
+        accounting: value.accounting,
+        ledger: value.ledger,
+        accountLedger: value.accountLedger,
+      });
+    },
+    [applyArgent]
+  );
+  const onDeferredLedger = useCallback(
+    (value: DeferredLedgerValue) => {
+      setStripeLedgerReady(true);
+      applyArgent({
+        revision: value.revision ?? 0,
+        layer: value.layer ?? 1,
+        ledger: value.ledger,
+        accountLedger: value.accountLedger,
+      });
+    },
+    [applyArgent]
+  );
   const onDeferredItems = useCallback((next: CrmBookingItem[]) => {
     setLiveSource(next);
   }, []);
@@ -585,19 +647,28 @@ export function BookingEditor({
   const onExpenseWrite = useCallback(
     (change: ExpenseWrite) => {
       setPricedItems((current) => withExpenseWrite(current, change, booking.id));
-      setLedgerEdited(true);
-      setLiveLedger((current) =>
-        applyExpenseLedgerChange(current, {
-          bookingId: booking.id,
-          itemId: change.id,
-          previousTitle: change.previousTitle,
-          title: change.title,
-          previousAmount: change.previousAmount,
-          amount: change.amount,
-          removed: change.removed,
-          currency: booking.currency,
-        })
-      );
+      const patch = {
+        bookingId: booking.id,
+        itemId: change.id,
+        previousTitle: change.previousTitle,
+        title: change.title,
+        previousAmount: change.previousAmount,
+        amount: change.amount,
+        removed: change.removed,
+        currency: booking.currency,
+      };
+      setLiveLedger((current) => applyExpenseLedgerChange(current, patch));
+      setPreviewLedger((current) => applyExpenseLedgerChange(current, patch));
+      setHeld((current) => {
+        if (!current) return current;
+        const next = {
+          ...current,
+          ledger: applyExpenseLedgerChange(current.ledger, patch),
+          accountLedger: applyExpenseLedgerChange(current.accountLedger, patch),
+        };
+        rememberArgent(booking.id, next);
+        return next;
+      });
     },
     [booking.currency, booking.id]
   );
@@ -688,6 +759,11 @@ export function BookingEditor({
   const [payerPick, setPayerPick] = useMirror<PickableCustomer | null>(serverPayerPick);
   const serverPayerPickId = serverPayerPick?.id || null;
   const [stepsPending, setStepsPending] = useState(false);
+  const [appliedMoneyRev, setAppliedMoneyRev] = useState(() => recallArgent(booking.id)?.revision ?? 0);
+  if (held?.items && held.revision !== appliedMoneyRev && !stepsPending) {
+    setAppliedMoneyRev(held.revision);
+    setPricedItems((current) => mergeItemMoney(current, held.items!));
+  }
   const dirty =
     titleEdit.dirty ||
     startDraft !== (booking.start_date || "") ||
@@ -706,6 +782,7 @@ export function BookingEditor({
   const unsaved = dirty || stepsPending;
   // `replaceState(null, …)` : Next recopie lui-même ses internes et prévient le routeur, donc
   // `useSearchParams()` suit sans rejouer le GET du dossier. Avec `history.state`, l’appel serait ignoré.
+  // Cette restauration annule aussi un `router.refresh()` encore en vol : les montants passent par `/argent`.
   const setTab = useCallback(
     (next: BookingTabId) => {
       const query = bookingTabQuery(searchParams.toString(), next);
@@ -862,6 +939,7 @@ export function BookingEditor({
         return;
       }
       setIssues([]);
+      await refreshArgent();
       setFlash(
         booking.visible_to_client
           ? "Enregistré."
@@ -892,6 +970,7 @@ export function BookingEditor({
       return;
     }
     setFlash(status === "cancelled" ? "Séjour annulé." : "Séjour rouvert. Le client ne le voit pas encore.");
+    await refreshArgent();
     router.refresh();
   }
 
@@ -934,6 +1013,7 @@ export function BookingEditor({
     }
     const saved = payload ? "Enregistré. " : "";
     setFlash(`${saved}${visible ? "Le client voit ce séjour." : "Le client ne voit plus ce séjour."}`);
+    await refreshArgent();
     router.refresh();
   }
 
@@ -1139,6 +1219,10 @@ export function BookingEditor({
     startDate: booking.start_date,
     endDate: booking.end_date,
   });
+  const accounting = held?.accounting ?? serverAccounting;
+  const shownLedger = held ? held.accountLedger : liveLedger;
+  const shownPreview = held ? held.ledger : previewLedger;
+  const agencyCommission = commissionOverride ?? held?.agencyCommission ?? booking.agency_commission === true;
   const costsToPoint = reglementCostsToPoint(accounting);
   const checkinLines = flightCheckinViews({ items, documents, rows: checkins, now: new Date() });
   const checkinBadge = dossierCheckinBadge(checkinLines);
@@ -1168,7 +1252,7 @@ export function BookingEditor({
   const previewFeeSource: AgencyFeeSource = feeChoice === "compte" ? inheritedFee.inheritedSource : "dossier";
   const stayAmount = stayPriceWithExpenses({
     stayTotal: bookingTotalFromItems(pricedItems),
-    agencyCommission: booking.agency_commission === true,
+    agencyCommission,
     agencyFeeRate: previewFeeRate,
     expenses: pricedItems
       .filter((item) => isActiveItem(item) && expenseCountsForClient(item))
@@ -1735,7 +1819,7 @@ export function BookingEditor({
           pliantReady={pliantReady}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
-          ledger={previewLedger}
+          ledger={shownPreview}
           settled={settledAuthorizationCountries({
             travelerIds: travelers.map((traveler) => traveler.id),
             estaTones: estaLines,
@@ -2441,7 +2525,7 @@ export function BookingEditor({
             />
             <p className="text-sm text-[var(--admin-navy)]">
               Taux retenu : {formatAgencyFeePercent(previewFeeRate)} · {agencyFeeSourceLabel(previewFeeSource)}.
-              {booking.agency_commission === true
+              {agencyCommission
                 ? " La ligne est dans les dépenses."
                 : " Cochez la commission pour l’ajouter aux dépenses."}
             </p>
@@ -2450,9 +2534,11 @@ export function BookingEditor({
               items={pricedItems}
               visible={booking.visible_to_client}
               currency={booking.currency}
-              agencyCommission={booking.agency_commission === true}
+              agencyCommission={agencyCommission}
               agencyFeeRate={previewFeeRate}
               onExpenseWrite={onExpenseWrite}
+              onCommissionChange={setCommissionOverride}
+              onArgentRefresh={refreshArgent}
               presets={expensePresets}
             />
           </section>
@@ -2479,6 +2565,7 @@ export function BookingEditor({
                 revolutLinked={revolutExpenses}
                 busy={busy !== "idle"}
                 showMargins={showMargins}
+                onUpdated={refreshArgent}
               />
             ) : (
               <section className="admin-af-card space-y-2 rounded-3xl p-5">
@@ -2536,9 +2623,9 @@ export function BookingEditor({
                   Toutes les transactions du client
                 </Link>
               ) : null}
-              {liveLedger ? (
+              {shownLedger ? (
                 <ClientTransactionsPanel
-                  view={liveLedger}
+                  view={shownLedger}
                   statementEndpoint={
                     statementCustomer ? `/api/admin/clients/${statementCustomer.id}/releve` : null
                   }
