@@ -1,6 +1,7 @@
 /** Client SOAP MB3M Partners (serveur). Les identifiants restent dans l’environnement. */
 
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { mapMb3mCountry, mb3mUnknownCountryMessage } from "@/lib/crm/mb3m-countries";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export const MB3M_ORIGIN = "https://api.mb3m.com";
@@ -249,12 +250,20 @@ function birthStamp(value: string | null | undefined) {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day}T00:00:00` : "";
 }
 
+/** Code pays envoyé à MB3M. La fiche CRM ne change pas. Un code inconnu n’appelle pas l’API. */
+function mb3mSentCountry(code: string | null | undefined, entity: string) {
+  const sent = mapMb3mCountry(code);
+  if (sent.rejected) throw new Mb3mError(mb3mUnknownCountryMessage(sent.rejected, entity), -1);
+  return sent.code;
+}
+
 function addressXml(address: Mb3mAddress, fallbackName: string) {
   const postal = address.postalCode.trim();
   // Élément vide : le désérialiseur accepte, puis SQL refuse l’insertion ContactAddress (-701).
   if (!postal) throw new Mb3mError("MB3M refuse l’adresse sans code postal.", -701);
+  const country = mb3mSentCountry(address.countryCode, address.name.trim() || fallbackName);
   // Name, Line1, Line2, Line3, PostalCode, City, CountryCode. Pas d’autre ordre : WCF refuse City avant PostalCode.
-  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tag("PostalCode", postal)}${tag("City", address.city.trim())}${tag("CountryCode", address.countryCode?.trim())}`;
+  return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tag("PostalCode", postal)}${tag("City", address.city.trim())}${tag("CountryCode", country)}`;
 }
 
 /** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
@@ -394,7 +403,9 @@ export async function mb3mSavePerson(draft: Mb3mPersonDraft, fetchImpl?: FetchIm
   if (!firstName || !name) throw new Mb3mError("Le nom et le prénom sont requis.", -1);
   // Pas de XSD dans le dépôt (WSDL Partners en 401). L’ordre déjà accepté est Id puis Person.
   // Person : BirthDate, Civility, Country, Email, FirstName, MainAddress, MobileNumber, Name, PhoneNumber.
-  const person = `<Person>${tag("BirthDate", birthStamp(draft.birthDate))}${tag("Civility", draft.civility)}${tag("Country", draft.country?.trim())}${tag("Email", draft.email?.trim())}${tag("FirstName", firstName)}<MainAddress>${addressXml(draft.address, name)}</MainAddress>${tag("MobileNumber", draft.mobileNumber?.trim())}${tag("Name", name)}${tag("PhoneNumber", draft.phoneNumber?.trim())}</Person>`;
+  const label = `${firstName} ${name}`.trim();
+  const nationality = mb3mSentCountry(draft.country, label);
+  const person = `<Person>${tag("BirthDate", birthStamp(draft.birthDate))}${tag("Civility", draft.civility)}${tag("Country", nationality)}${tag("Email", draft.email?.trim())}${tag("FirstName", firstName)}<MainAddress>${addressXml(draft.address, name)}</MainAddress>${tag("MobileNumber", draft.mobileNumber?.trim())}${tag("Name", name)}${tag("PhoneNumber", draft.phoneNumber?.trim())}</Person>`;
   const inner = `<CustomerSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Customer>${tag("Id", draft.partnerId?.trim())}${person}</Customer></CustomerSaveRequest>`;
   const xml = await mb3mSoap("CustomerService", "ICustomerService", "Save", inner, fetchImpl);
   assertOperation(xml);
